@@ -303,33 +303,89 @@ embedded licence banner.
 |---|---|---|---|
 | [highlight.js](https://github.com/highlightjs/highlight.js) v11.12.0 | `highlight.min.js` | Code syntax highlighting | BSD-3-Clause ([`licenses/highlight.js-BSD-3-Clause.txt`](licenses/highlight.js-BSD-3-Clause.txt)) |
 | [SheetJS / xlsx](https://github.com/SheetJS/sheetjs) v0.20.3 | `xlsx.full.min.js` | Spreadsheet (`.xlsx`) read/write | Apache-2.0 ([`licenses/SheetJS-Apache-2.0.txt`](licenses/SheetJS-Apache-2.0.txt)) |
-| [docx](https://github.com/dolanmiu/docx) v8.5.0 | `docx.umd.min.js` | Generate `.docx` documents | MIT ([`licenses/docx-MIT-LICENSE.txt`](licenses/docx-MIT-LICENSE.txt)) |
+| [docx](https://github.com/dolanmiu/docx) v9.7.1 | `docx.umd.min.js` (upstream's `dist/index.umd.cjs`, byte for byte; v8.5.0 through 2026-10-29) | Generate `.docx` documents | MIT ([`licenses/docx-MIT-LICENSE.txt`](licenses/docx-MIT-LICENSE.txt)) |
 | [mammoth.js](https://github.com/mwilliamson/mammoth.js) v1.12.3 | `mammoth.browser.min.js` | Convert `.docx` → HTML | BSD-2-Clause ([`licenses/mammoth.js-BSD-2-Clause.txt`](licenses/mammoth.js-BSD-2-Clause.txt)) |
-| [html2pdf.js](https://github.com/eKoopmans/html2pdf.js) v0.14.0 | `html2pdf.bundle.min.js` | HTML → PDF export (bundles jsPDF + html2canvas) | MIT ([`licenses/html2pdf.js-MIT-LICENSE.txt`](licenses/html2pdf.js-MIT-LICENSE.txt)); bundle sidecar: [`licenses/html2pdf.bundle.min.js.LICENSE.txt`](licenses/html2pdf.bundle.min.js.LICENSE.txt) |
-| [jsPDF](https://github.com/parallax/jsPDF) v4.0.0 | bundled inside `html2pdf.bundle.min.js` | PDF generation | MIT ([`licenses/jsPDF-MIT-LICENSE.txt`](licenses/jsPDF-MIT-LICENSE.txt)) |
-| [html2canvas](https://github.com/niklasvh/html2canvas) v1.4.1 | bundled inside `html2pdf.bundle.min.js` | DOM → canvas rasterization | MIT ([`licenses/html2canvas-MIT-LICENSE.txt`](licenses/html2canvas-MIT-LICENSE.txt)) |
+| [jsPDF](https://github.com/parallax/jsPDF) v4.2.1 | `jspdf.umd.min.js` (inside `html2pdf.bundle.min.js` at v4.0.0 through 2026-10-29) | The PDF a document exports as where the browser cannot print it — its own `html()` (`B421`) | MIT ([`licenses/jsPDF-MIT-LICENSE.txt`](licenses/jsPDF-MIT-LICENSE.txt)) |
+| [html2canvas](https://github.com/niklasvh/html2canvas) v1.4.1 | `html2canvas.min.js` (inside `html2pdf.bundle.min.js` through 2026-10-29) | Lays the document out and draws it into jsPDF's canvas | MIT ([`licenses/html2canvas-MIT-LICENSE.txt`](licenses/html2canvas-MIT-LICENSE.txt)) |
+| [DOMPurify](https://github.com/cure53/DOMPurify) v3.4.17 | `purify.min.js` (inside `html2pdf.bundle.min.js` at v3.3.1 through 2026-10-29) | Sanitises the HTML jsPDF's `html()` is handed | **Apache-2.0**, chosen from a dual offer (or MPL-2.0) — D-2026-09-07-01 ([`licenses/DOMPurify-Apache-2.0-or-MPL-2.0.txt`](licenses/DOMPurify-Apache-2.0-or-MPL-2.0.txt)) |
+| [css-line-break](https://github.com/niklasvh/css-line-break) | bundled inside `html2canvas.min.js` | Line-break opportunities (UAX #14) inside html2canvas | MIT ([`licenses/css-line-break-MIT-LICENSE.txt`](licenses/css-line-break-MIT-LICENSE.txt)) |
+| [text-segmentation](https://github.com/niklasvh/text-segmentation) | bundled inside `html2canvas.min.js` | Grapheme clusters (UAX #29) inside html2canvas | MIT ([`licenses/text-segmentation-MIT-LICENSE.txt`](licenses/text-segmentation-MIT-LICENSE.txt)) |
+| [utrie](https://github.com/niklasvh/utrie) | bundled inside `html2canvas.min.js` | Unicode trie lookups behind the two above | MIT ([`licenses/utrie-MIT-LICENSE.txt`](licenses/utrie-MIT-LICENSE.txt)) |
+| [base64-arraybuffer](https://github.com/niklasvh/base64-arraybuffer) | bundled inside `html2canvas.min.js` | Base64 ↔ `ArrayBuffer` behind `utrie` | MIT ([`licenses/base64-arraybuffer-MIT-LICENSE.txt`](licenses/base64-arraybuffer-MIT-LICENSE.txt)) |
+| [tslib](https://github.com/Microsoft/tslib) | bundled inside `html2canvas.min.js` | TypeScript's runtime helpers | 0BSD ([`licenses/tslib-0BSD-LICENSE.txt`](licenses/tslib-0BSD-LICENSE.txt)) |
+| [omggif](https://github.com/deanm/omggif) | bundled inside `jspdf.umd.min.js` (jsPDF carries it in its own source) | GIF decoding | MIT ([`licenses/omggif-MIT-LICENSE.txt`](licenses/omggif-MIT-LICENSE.txt)) |
+| JPEGEncoder (Adobe Systems) | bundled inside `jspdf.umd.min.js` (jsPDF carries it in its own source) | JPEG encoding | BSD-3-Clause ([`licenses/JPEGEncoder-Adobe-BSD-3-Clause.txt`](licenses/JPEGEncoder-Adobe-BSD-3-Clause.txt)) |
+| WebP decoder (Dominik Homberger, [webpjs](https://webpjs.appspot.com)) | bundled inside `jspdf.umd.min.js` (jsPDF carries it in its own source) | WebP decoding | MIT ([`licenses/webp-js-MIT-LICENSE.txt`](licenses/webp-js-MIT-LICENSE.txt)) |
+| md5 (Joseph Myers) | bundled inside `jspdf.umd.min.js` (jsPDF carries it in its own source) | MD5, behind jsPDF's encryption | None stated — the notice in the file says *"Joseph Myers does not specify a particular license for his work"*; there is no text to ship |
+| FPDF's RC4 protection script | bundled inside `jspdf.umd.min.js` (jsPDF carries it in its own source) | RC4, behind jsPDF's encryption | Permissive — the notice in the file says *"FPDF is released under a permissive license: there is no usage restriction"*; there is no text to ship |
+| [html2pdf.js](https://github.com/eKoopmans/html2pdf.js) v0.14.0 | `html2pdf.bundle.min.js` **through 2026-10-29**; no longer shipped (`B421`) | HTML → PDF export, until jsPDF's own `html()` replaced it | MIT ([`licenses/html2pdf.js-MIT-LICENSE.txt`](licenses/html2pdf.js-MIT-LICENSE.txt)); bundle sidecar: [`licenses/html2pdf.bundle.min.js.LICENSE.txt`](licenses/html2pdf.bundle.min.js.LICENSE.txt) |
 | [es6-promise](https://github.com/stefanpenner/es6-promise) v4.2.8 | bundled inside `html2pdf.bundle.min.js` **through 0.10.2**; not in 0.14.0 | Promise polyfill | MIT ([`licenses/es6-promise-MIT-LICENSE.txt`](licenses/es6-promise-MIT-LICENSE.txt)) |
 | [@babel/runtime-corejs3](https://github.com/babel/babel) | bundled inside `html2pdf.bundle.min.js` **through 0.10.2**; not in 0.14.0 | Babel's runtime helpers, core-js-backed | MIT ([`licenses/babel-runtime-corejs3-MIT-LICENSE.txt`](licenses/babel-runtime-corejs3-MIT-LICENSE.txt)) |
-| [canvg](https://github.com/canvg/canvg) | bundled inside `html2pdf.bundle.min.js` | SVG → canvas rendering | MIT ([`licenses/canvg-MIT-LICENSE.txt`](licenses/canvg-MIT-LICENSE.txt)) |
-| [core-js](https://github.com/zloirock/core-js) | bundled inside `html2pdf.bundle.min.js` | ES polyfills (global) | MIT ([`licenses/core-js-MIT-LICENSE.txt`](licenses/core-js-MIT-LICENSE.txt)) |
+| [canvg](https://github.com/canvg/canvg) | bundled inside `html2pdf.bundle.min.js` **through 2026-10-29**; not shipped since `B421` | SVG → canvas rendering | MIT ([`licenses/canvg-MIT-LICENSE.txt`](licenses/canvg-MIT-LICENSE.txt)) |
+| [core-js](https://github.com/zloirock/core-js) | bundled inside `html2pdf.bundle.min.js` **through 2026-10-29**; not shipped since `B421` | ES polyfills (global) | MIT ([`licenses/core-js-MIT-LICENSE.txt`](licenses/core-js-MIT-LICENSE.txt)) |
 | [core-js-pure](https://github.com/zloirock/core-js) | bundled inside `html2pdf.bundle.min.js` **through 0.10.2**; not in 0.14.0 | ES polyfills (non-global) | MIT ([`licenses/core-js-pure-MIT-LICENSE.txt`](licenses/core-js-pure-MIT-LICENSE.txt)) |
-| [@babel/runtime](https://github.com/babel/babel) | bundled inside `html2pdf.bundle.min.js` (0.14.0) | Babel's runtime helpers | MIT ([`licenses/babel-runtime-MIT-LICENSE.txt`](licenses/babel-runtime-MIT-LICENSE.txt)) |
-| [fast-png](https://github.com/image-js/fast-png) | bundled inside `html2pdf.bundle.min.js` (0.14.0) | PNG encode/decode, behind jsPDF 4's image path | MIT ([`licenses/fast-png-MIT-LICENSE.txt`](licenses/fast-png-MIT-LICENSE.txt)) |
-| [iobuffer](https://github.com/image-js/iobuffer) | bundled inside `html2pdf.bundle.min.js` (0.14.0) | Byte-level reader/writer used by fast-png | MIT ([`licenses/iobuffer-MIT-LICENSE.txt`](licenses/iobuffer-MIT-LICENSE.txt)) |
-| [pako](https://github.com/nodeca/pako) | bundled inside `html2pdf.bundle.min.js` (0.14.0) | zlib in JavaScript, for PNG streams | MIT ([`licenses/pako-MIT-LICENSE.txt`](licenses/pako-MIT-LICENSE.txt)) |
-| [DOMPurify](https://github.com/cure53/DOMPurify) | bundled inside `html2pdf.bundle.min.js` | HTML sanitisation inside canvg | **Apache-2.0**, chosen from a dual offer (or MPL-2.0) — D-2026-09-07-01 ([`licenses/DOMPurify-Apache-2.0-or-MPL-2.0.txt`](licenses/DOMPurify-Apache-2.0-or-MPL-2.0.txt)) |
-| [fflate](https://github.com/101arrowz/fflate) | bundled inside `html2pdf.bundle.min.js` | DEFLATE, for PDF stream compression | MIT ([`licenses/fflate-MIT-LICENSE.txt`](licenses/fflate-MIT-LICENSE.txt)) |
-| [performance-now](https://github.com/braveg1rl/performance-now) | bundled inside `html2pdf.bundle.min.js` | High-resolution timer shim | MIT ([`licenses/performance-now-MIT-LICENSE.txt`](licenses/performance-now-MIT-LICENSE.txt)) |
-| [raf](https://github.com/chrisdickinson/raf) | bundled inside `html2pdf.bundle.min.js` | `requestAnimationFrame` shim | MIT ([`licenses/raf-MIT-LICENSE.txt`](licenses/raf-MIT-LICENSE.txt)) |
-| [regenerator-runtime](https://github.com/facebook/regenerator) | bundled inside `html2pdf.bundle.min.js` **through 0.10.2**; not in 0.14.0 | Generator/async transpilation runtime | MIT ([`licenses/regenerator-runtime-MIT-LICENSE.txt`](licenses/regenerator-runtime-MIT-LICENSE.txt)) |
-| [rgbcolor](https://github.com/canvg/rgbcolor) | bundled inside `html2pdf.bundle.min.js` | CSS colour parsing inside canvg | MIT ([`licenses/rgbcolor-MIT-LICENSE.txt`](licenses/rgbcolor-MIT-LICENSE.txt)) |
-| [stackblur-canvas](https://github.com/flozz/StackBlur) | bundled inside `html2pdf.bundle.min.js` | Canvas blur filter inside canvg | MIT ([`licenses/stackblur-canvas-MIT-LICENSE.txt`](licenses/stackblur-canvas-MIT-LICENSE.txt)) |
-| [svg-pathdata](https://github.com/nfroidure/svg-pathdata) | bundled inside `html2pdf.bundle.min.js` | SVG path parsing inside canvg | MIT ([`licenses/svg-pathdata-MIT-LICENSE.txt`](licenses/svg-pathdata-MIT-LICENSE.txt)) |
+| [@babel/runtime](https://github.com/babel/babel) | bundled inside `jspdf.umd.min.js` (and inside `html2pdf.bundle.min.js` from 0.14.0 through 2026-10-29) | Babel's runtime helpers | MIT ([`licenses/babel-runtime-MIT-LICENSE.txt`](licenses/babel-runtime-MIT-LICENSE.txt)) |
+| [fast-png](https://github.com/image-js/fast-png) | bundled inside `jspdf.umd.min.js` (and inside `html2pdf.bundle.min.js` from 0.14.0 through 2026-10-29) | PNG encode/decode, behind jsPDF 4's image path | MIT ([`licenses/fast-png-MIT-LICENSE.txt`](licenses/fast-png-MIT-LICENSE.txt)) |
+| [iobuffer](https://github.com/image-js/iobuffer) | bundled inside `jspdf.umd.min.js` (and inside `html2pdf.bundle.min.js` from 0.14.0 through 2026-10-29) | Byte-level reader/writer used by fast-png | MIT ([`licenses/iobuffer-MIT-LICENSE.txt`](licenses/iobuffer-MIT-LICENSE.txt)) |
+| [pako](https://github.com/nodeca/pako) | bundled inside `jspdf.umd.min.js` and, inside JSZip, `docx.umd.min.js` (and inside `html2pdf.bundle.min.js` from 0.14.0 through 2026-10-29) | zlib in JavaScript, for PNG streams and the `.docx` zip | MIT ([`licenses/pako-MIT-LICENSE.txt`](licenses/pako-MIT-LICENSE.txt)) |
+| [fflate](https://github.com/101arrowz/fflate) | bundled inside `jspdf.umd.min.js` (and inside `html2pdf.bundle.min.js` through 2026-10-29) | DEFLATE, for PDF stream compression | MIT ([`licenses/fflate-MIT-LICENSE.txt`](licenses/fflate-MIT-LICENSE.txt)) |
+| [performance-now](https://github.com/braveg1rl/performance-now) | bundled inside `html2pdf.bundle.min.js` **through 2026-10-29**; not shipped since `B421` | High-resolution timer shim | MIT ([`licenses/performance-now-MIT-LICENSE.txt`](licenses/performance-now-MIT-LICENSE.txt)) |
+| [raf](https://github.com/chrisdickinson/raf) | bundled inside `html2pdf.bundle.min.js` **through 2026-10-29**; not shipped since `B421` | `requestAnimationFrame` shim | MIT ([`licenses/raf-MIT-LICENSE.txt`](licenses/raf-MIT-LICENSE.txt)) |
+| [regenerator-runtime](https://github.com/facebook/regenerator) | bundled inside `html2pdf.bundle.min.js` **through 0.10.2**; not in 0.14.0. Its notice also rides on Babel's helpers inside `purify.min.js` | Generator/async transpilation runtime | MIT ([`licenses/regenerator-runtime-MIT-LICENSE.txt`](licenses/regenerator-runtime-MIT-LICENSE.txt)) |
+| [rgbcolor](https://github.com/canvg/rgbcolor) | bundled inside `html2pdf.bundle.min.js` **through 2026-10-29**; not shipped since `B421`; Stoyan Stefanov's RGBColor itself rides inside `jspdf.umd.min.js` | CSS colour parsing | MIT ([`licenses/rgbcolor-MIT-LICENSE.txt`](licenses/rgbcolor-MIT-LICENSE.txt)) |
+| [stackblur-canvas](https://github.com/flozz/StackBlur) | bundled inside `html2pdf.bundle.min.js` **through 2026-10-29**; not shipped since `B421` | Canvas blur filter inside canvg | MIT ([`licenses/stackblur-canvas-MIT-LICENSE.txt`](licenses/stackblur-canvas-MIT-LICENSE.txt)) |
+| [svg-pathdata](https://github.com/nfroidure/svg-pathdata) | bundled inside `html2pdf.bundle.min.js` **through 2026-10-29**; not shipped since `B421` | SVG path parsing inside canvg | MIT ([`licenses/svg-pathdata-MIT-LICENSE.txt`](licenses/svg-pathdata-MIT-LICENSE.txt)) |
 | [node-qrcode](https://github.com/soldair/node-qrcode) v1.5.4 | `qrcode.min.js` **through 2026-09-17**; no longer shipped | Nothing. It was loaded by nothing, ever — see below | MIT ([`licenses/node-qrcode-MIT-LICENSE.txt`](licenses/node-qrcode-MIT-LICENSE.txt)) |
 | [dijkstrajs](https://github.com/tcort/dijkstrajs) | bundled inside `qrcode.min.js` **through 2026-09-17**; no longer shipped | Shortest-path search, behind node-qrcode's segment optimiser | MIT ([`licenses/dijkstrajs-MIT-LICENSE.txt`](licenses/dijkstrajs-MIT-LICENSE.txt)) |
 | [ieee754](https://github.com/feross/ieee754) | bundled inside `docx.umd.min.js` and `swagger-ui-bundle.js` | IEEE-754 float read/write behind `Buffer` | BSD-3-Clause ([`licenses/ieee754-BSD-3-Clause.txt`](licenses/ieee754-BSD-3-Clause.txt)) |
 | [buffer](https://github.com/feross/buffer) | bundled inside `docx.umd.min.js` and `swagger-ui-bundle.js` | Node's `Buffer` for the browser | MIT ([`licenses/buffer-MIT-LICENSE.txt`](licenses/buffer-MIT-LICENSE.txt)) |
-| [string.fromcodepoint](https://github.com/mathiasbynens/String.fromCodePoint) | bundled inside `docx.umd.min.js` | `String.fromCodePoint` polyfill behind the XML writer | MIT ([`licenses/string.fromcodepoint-MIT-LICENSE.txt`](licenses/string.fromcodepoint-MIT-LICENSE.txt)) |
+| [string.fromcodepoint](https://github.com/mathiasbynens/String.fromCodePoint) | bundled inside `docx.umd.min.js` | `String.fromCodePoint` polyfill inside `sax`, behind the XML reader | MIT ([`licenses/string.fromcodepoint-MIT-LICENSE.txt`](licenses/string.fromcodepoint-MIT-LICENSE.txt)) |
+| [available-typed-arrays](https://github.com/inspect-js/available-typed-arrays) | bundled inside `docx.umd.min.js` | Type check behind the `util` polyfill's `util.types` | MIT ([`licenses/available-typed-arrays-MIT-LICENSE.txt`](licenses/available-typed-arrays-MIT-LICENSE.txt)) |
+| [base64-js](https://github.com/beatgammit/base64-js) | bundled inside `docx.umd.min.js` | Base64 behind `Buffer` | MIT ([`licenses/base64-js-MIT-LICENSE.txt`](licenses/base64-js-MIT-LICENSE.txt)) |
+| [call-bind](https://github.com/ljharb/call-bind) | bundled inside `docx.umd.min.js` | Part of the `es-*`/`is-*` shim family behind the `util` polyfill's type checks | MIT ([`licenses/call-bind-MIT-LICENSE.txt`](licenses/call-bind-MIT-LICENSE.txt)) |
+| [call-bind-apply-helpers](https://github.com/ljharb/call-bind-apply-helpers) | bundled inside `docx.umd.min.js` | Part of the `es-*`/`is-*` shim family behind the `util` polyfill's type checks | MIT ([`licenses/call-bind-apply-helpers-MIT-LICENSE.txt`](licenses/call-bind-apply-helpers-MIT-LICENSE.txt)) |
+| [call-bound](https://github.com/ljharb/call-bound) | bundled inside `docx.umd.min.js` | Part of the `es-*`/`is-*` shim family behind the `util` polyfill's type checks | MIT ([`licenses/call-bound-MIT-LICENSE.txt`](licenses/call-bound-MIT-LICENSE.txt)) |
+| [define-data-property](https://github.com/ljharb/define-data-property) | bundled inside `docx.umd.min.js` | Part of the `es-*`/`is-*` shim family behind the `util` polyfill's type checks | MIT ([`licenses/define-data-property-MIT-LICENSE.txt`](licenses/define-data-property-MIT-LICENSE.txt)) |
+| [dunder-proto](https://github.com/es-shims/dunder-proto) | bundled inside `docx.umd.min.js` | Part of the `es-*`/`is-*` shim family behind the `util` polyfill's type checks | MIT ([`licenses/dunder-proto-MIT-LICENSE.txt`](licenses/dunder-proto-MIT-LICENSE.txt)) |
+| [es-define-property](https://github.com/ljharb/es-define-property) | bundled inside `docx.umd.min.js` | Part of the `es-*`/`is-*` shim family behind the `util` polyfill's type checks | MIT ([`licenses/es-define-property-MIT-LICENSE.txt`](licenses/es-define-property-MIT-LICENSE.txt)) |
+| [es-errors](https://github.com/ljharb/es-errors) | bundled inside `docx.umd.min.js` | Part of the `es-*`/`is-*` shim family behind the `util` polyfill's type checks | MIT ([`licenses/es-errors-MIT-LICENSE.txt`](licenses/es-errors-MIT-LICENSE.txt)) |
+| [es-object-atoms](https://github.com/ljharb/es-object-atoms) | bundled inside `docx.umd.min.js` | Part of the `es-*`/`is-*` shim family behind the `util` polyfill's type checks | MIT ([`licenses/es-object-atoms-MIT-LICENSE.txt`](licenses/es-object-atoms-MIT-LICENSE.txt)) |
+| [events](https://github.com/Gozala/events) | bundled inside `docx.umd.min.js` | Node's `EventEmitter`, behind the stream polyfills | MIT ([`licenses/events-MIT-LICENSE.txt`](licenses/events-MIT-LICENSE.txt)) |
+| [for-each](https://github.com/Raynos/for-each) | bundled inside `docx.umd.min.js` | Part of the `es-*`/`is-*` shim family behind the `util` polyfill's type checks | MIT ([`licenses/for-each-MIT-LICENSE.txt`](licenses/for-each-MIT-LICENSE.txt)) |
+| [function-bind](https://github.com/Raynos/function-bind) | bundled inside `docx.umd.min.js` | Part of the `es-*`/`is-*` shim family behind the `util` polyfill's type checks | MIT ([`licenses/function-bind-MIT-LICENSE.txt`](licenses/function-bind-MIT-LICENSE.txt)) |
+| [get-intrinsic](https://github.com/ljharb/get-intrinsic) | bundled inside `docx.umd.min.js` | Part of the `es-*`/`is-*` shim family behind the `util` polyfill's type checks | MIT ([`licenses/get-intrinsic-MIT-LICENSE.txt`](licenses/get-intrinsic-MIT-LICENSE.txt)) |
+| [get-proto](https://github.com/ljharb/get-proto) | bundled inside `docx.umd.min.js` | Part of the `es-*`/`is-*` shim family behind the `util` polyfill's type checks | MIT ([`licenses/get-proto-MIT-LICENSE.txt`](licenses/get-proto-MIT-LICENSE.txt)) |
+| [gopd](https://github.com/ljharb/gopd) | bundled inside `docx.umd.min.js` | Part of the `es-*`/`is-*` shim family behind the `util` polyfill's type checks | MIT ([`licenses/gopd-MIT-LICENSE.txt`](licenses/gopd-MIT-LICENSE.txt)) |
+| [has-property-descriptors](https://github.com/inspect-js/has-property-descriptors) | bundled inside `docx.umd.min.js` | Part of the `es-*`/`is-*` shim family behind the `util` polyfill's type checks | MIT ([`licenses/has-property-descriptors-MIT-LICENSE.txt`](licenses/has-property-descriptors-MIT-LICENSE.txt)) |
+| [has-symbols](https://github.com/inspect-js/has-symbols) | bundled inside `docx.umd.min.js` | Part of the `es-*`/`is-*` shim family behind the `util` polyfill's type checks | MIT ([`licenses/has-symbols-MIT-LICENSE.txt`](licenses/has-symbols-MIT-LICENSE.txt)) |
+| [has-tostringtag](https://github.com/inspect-js/has-tostringtag) | bundled inside `docx.umd.min.js` | Part of the `es-*`/`is-*` shim family behind the `util` polyfill's type checks | MIT ([`licenses/has-tostringtag-MIT-LICENSE.txt`](licenses/has-tostringtag-MIT-LICENSE.txt)) |
+| [hash.js](git@github.com:indutny/hash.js) | bundled inside `docx.umd.min.js` | SHA-1 ids for the images docx embeds | MIT ([`licenses/hash.js-MIT-LICENSE.txt`](licenses/hash.js-MIT-LICENSE.txt)) |
+| [hasown](https://github.com/inspect-js/hasOwn) | bundled inside `docx.umd.min.js` | Part of the `es-*`/`is-*` shim family behind the `util` polyfill's type checks | MIT ([`licenses/hasown-MIT-LICENSE.txt`](licenses/hasown-MIT-LICENSE.txt)) |
+| [immediate](https://github.com/calvinmetcalf/immediate) | bundled inside `docx.umd.min.js` (in JSZip's `dist/jszip.min.js`) | Microtask scheduling behind `lie` | MIT ([`licenses/immediate-MIT-LICENSE.txt`](licenses/immediate-MIT-LICENSE.txt)) |
+| [inherits](https://github.com/isaacs/inherits) | bundled inside `docx.umd.min.js` | `util.inherits` for the browser | ISC ([`licenses/inherits-ISC-LICENSE.txt`](licenses/inherits-ISC-LICENSE.txt)) |
+| [is-arguments](https://github.com/inspect-js/is-arguments) | bundled inside `docx.umd.min.js` | Type check behind the `util` polyfill's `util.types` | MIT ([`licenses/is-arguments-MIT-LICENSE.txt`](licenses/is-arguments-MIT-LICENSE.txt)) |
+| [is-callable](https://github.com/inspect-js/is-callable) | bundled inside `docx.umd.min.js` | Type check behind the `util` polyfill's `util.types` | MIT ([`licenses/is-callable-MIT-LICENSE.txt`](licenses/is-callable-MIT-LICENSE.txt)) |
+| [is-generator-function](https://github.com/inspect-js/is-generator-function) | bundled inside `docx.umd.min.js` | Type check behind the `util` polyfill's `util.types` | MIT ([`licenses/is-generator-function-MIT-LICENSE.txt`](licenses/is-generator-function-MIT-LICENSE.txt)) |
+| [is-typed-array](https://github.com/inspect-js/is-typed-array) | bundled inside `docx.umd.min.js` | Type check behind the `util` polyfill's `util.types` | MIT ([`licenses/is-typed-array-MIT-LICENSE.txt`](licenses/is-typed-array-MIT-LICENSE.txt)) |
+| [jszip](https://github.com/Stuk/jszip) | bundled inside `docx.umd.min.js` | Writes the `.docx` zip container | MIT, chosen from a dual offer (or GPL-3.0-or-later) ([`licenses/jszip-MIT-or-GPL-3.0-LICENSE.txt`](licenses/jszip-MIT-or-GPL-3.0-LICENSE.txt)) |
+| [lie](https://github.com/calvinmetcalf/lie) | bundled inside `docx.umd.min.js` (in JSZip's `dist/jszip.min.js`) | Promise polyfill inside JSZip's own build | MIT ([`licenses/lie-MIT-LICENSE.txt`](licenses/lie-MIT-LICENSE.txt)) |
+| [math-intrinsics](https://github.com/es-shims/math-intrinsics) | bundled inside `docx.umd.min.js` | Part of the `es-*`/`is-*` shim family behind the `util` polyfill's type checks | MIT ([`licenses/math-intrinsics-MIT-LICENSE.txt`](licenses/math-intrinsics-MIT-LICENSE.txt)) |
+| [minimalistic-assert](https://github.com/calvinmetcalf/minimalistic-assert) | bundled inside `docx.umd.min.js` | Assertions inside `hash.js` | ISC ([`licenses/minimalistic-assert-ISC-LICENSE.txt`](licenses/minimalistic-assert-ISC-LICENSE.txt)) |
+| [nanoid](ai/nanoid) | bundled inside `docx.umd.min.js` | Unique ids for the parts docx writes | MIT ([`licenses/nanoid-MIT-LICENSE.txt`](licenses/nanoid-MIT-LICENSE.txt)) |
+| [possible-typed-array-names](https://github.com/ljharb/possible-typed-array-names) | bundled inside `docx.umd.min.js` | Type check behind the `util` polyfill's `util.types` | MIT ([`licenses/possible-typed-array-names-MIT-LICENSE.txt`](licenses/possible-typed-array-names-MIT-LICENSE.txt)) |
+| [process](https://github.com/shtylman/node-process) | bundled inside `docx.umd.min.js` (in vite-plugin-node-polyfills' `process` shim) | Node's `process`, as vite-plugin-node-polyfills' prebuilt shim | MIT ([`licenses/process-MIT-LICENSE.txt`](licenses/process-MIT-LICENSE.txt)) |
+| [readable-stream](https://github.com/nodejs/readable-stream) | bundled inside `docx.umd.min.js` | Node streams for the browser, behind `stream-browserify` | MIT ([`licenses/readable-stream-MIT-LICENSE.txt`](licenses/readable-stream-MIT-LICENSE.txt)) |
+| [sax](https://github.com/isaacs/sax-js) | bundled inside `docx.umd.min.js` | XML parser behind `xml-js` | ISC ([`licenses/sax-ISC-LICENSE.txt`](licenses/sax-ISC-LICENSE.txt)) |
+| [set-function-length](https://github.com/ljharb/set-function-length) | bundled inside `docx.umd.min.js` | Part of the `es-*`/`is-*` shim family behind the `util` polyfill's type checks | MIT ([`licenses/set-function-length-MIT-LICENSE.txt`](licenses/set-function-length-MIT-LICENSE.txt)) |
+| [setimmediate](YuzuJS/setImmediate) | bundled inside `docx.umd.min.js` (in JSZip's `dist/jszip.min.js`) | `setImmediate` polyfill inside JSZip's own build | MIT ([`licenses/setimmediate-MIT-LICENSE.txt`](licenses/setimmediate-MIT-LICENSE.txt)) |
+| [stream-browserify](https://github.com/browserify/stream-browserify) | bundled inside `docx.umd.min.js` | Node's `stream` for the browser | MIT ([`licenses/stream-browserify-MIT-LICENSE.txt`](licenses/stream-browserify-MIT-LICENSE.txt)) |
+| [string_decoder](https://github.com/nodejs/string_decoder) | bundled inside `docx.umd.min.js` | Node's `string_decoder` for the browser | MIT ([`licenses/string-decoder-MIT-LICENSE.txt`](licenses/string-decoder-MIT-LICENSE.txt)) |
+| [util](https://github.com/browserify/node-util) | bundled inside `docx.umd.min.js` | Node's `util` for the browser | MIT ([`licenses/util-MIT-LICENSE.txt`](licenses/util-MIT-LICENSE.txt)) |
+| [util-deprecate](https://github.com/TooTallNate/util-deprecate) | bundled inside `docx.umd.min.js` | Node's `util.deprecate`, behind `readable-stream` | MIT ([`licenses/util-deprecate-MIT-LICENSE.txt`](licenses/util-deprecate-MIT-LICENSE.txt)) |
+| [vite-plugin-node-polyfills](https://github.com/davidmyersdev/vite-plugin-node-polyfills) | bundled inside `docx.umd.min.js` | The `global` and `process` shims docx's build injects | MIT ([`licenses/vite-plugin-node-polyfills-MIT-LICENSE.txt`](licenses/vite-plugin-node-polyfills-MIT-LICENSE.txt)) |
+| [which-typed-array](https://github.com/inspect-js/which-typed-array) | bundled inside `docx.umd.min.js` | Type check behind the `util` polyfill's `util.types` | MIT ([`licenses/which-typed-array-MIT-LICENSE.txt`](licenses/which-typed-array-MIT-LICENSE.txt)) |
+| [xml](https://github.com/dylang/node-xml) | bundled inside `docx.umd.min.js` | XML writer behind the `word/*.xml` parts | MIT ([`licenses/xml-MIT-LICENSE.txt`](licenses/xml-MIT-LICENSE.txt)) |
+| [xml-js](https://github.com/nashwaan/xml-js) | bundled inside `docx.umd.min.js` | XML ↔ objects, behind docx's templates and patches | MIT ([`licenses/xml-js-MIT-LICENSE.txt`](licenses/xml-js-MIT-LICENSE.txt)) |
 | [KaTeX](https://github.com/KaTeX/KaTeX) v0.18.7 | `katex/katex.min.{js,css}` + `katex/fonts/*.woff2` | Math typesetting | MIT ([`licenses/KaTeX-MIT-LICENSE.txt`](licenses/KaTeX-MIT-LICENSE.txt)) |
 | [Mermaid](https://github.com/mermaid-js/mermaid) v11.17.2 | `mermaid.min.js` | Diagrams from text | MIT ([`licenses/Mermaid-MIT-LICENSE.txt`](licenses/Mermaid-MIT-LICENSE.txt)) |
 | [vscode-languageserver](https://github.com/microsoft/vscode-languageserver-node) — `vscode-jsonrpc` v8.2.0, `vscode-languageserver-protocol` v3.17.5, `vscode-languageserver-types` v3.17.5 | bundled inside `mermaid.min.js` | Language-server plumbing behind Mermaid's parsers | MIT ([`licenses/vscode-languageserver-MIT-LICENSE.txt`](licenses/vscode-languageserver-MIT-LICENSE.txt)) |
@@ -343,7 +399,7 @@ embedded licence banner.
 | [deep-extend](https://github.com/unclechu/node-deep-extend) | bundled inside `swagger-ui-bundle.js` | Recursive object merge | MIT ([`licenses/deep-extend-MIT-LICENSE.txt`](licenses/deep-extend-MIT-LICENSE.txt)) |
 | [fast-json-patch](https://github.com/Starcounter-Jack/JSON-Patch) | bundled inside `swagger-ui-bundle.js` | RFC 6902 JSON Patch | MIT ([`licenses/fast-json-patch-MIT-LICENSE.txt`](licenses/fast-json-patch-MIT-LICENSE.txt)) |
 | [repeat-string](https://github.com/jonschlinkert/repeat-string) | bundled inside `swagger-ui-bundle.js` | String repetition | MIT ([`licenses/repeat-string-MIT-LICENSE.txt`](licenses/repeat-string-MIT-LICENSE.txt)) |
-| [safe-buffer](https://github.com/feross/safe-buffer) | bundled inside `swagger-ui-bundle.js` | Safer `Buffer` constructor | MIT ([`licenses/safe-buffer-MIT-LICENSE.txt`](licenses/safe-buffer-MIT-LICENSE.txt)) |
+| [safe-buffer](https://github.com/feross/safe-buffer) | bundled inside `swagger-ui-bundle.js` and `docx.umd.min.js` | Safer `Buffer` constructor | MIT ([`licenses/safe-buffer-MIT-LICENSE.txt`](licenses/safe-buffer-MIT-LICENSE.txt)) |
 
 **Swagger UI is here because of `/docs`, and it is two files out of a package
 of fifty.** FastAPI generates that page itself and its HTML named
@@ -372,14 +428,20 @@ longer prose that a reader has to trust.
 notice inline — `highlight.min.js` opens with *"Highlight.js v11.12.0 (git:
 f7f7d3803b) (c) 2006-2026 Josh Goebel and other contributors License:
 BSD-3-Clause"*, and `xlsx.full.min.js` opens with *"xlsx.js (C) 2013-present
-SheetJS -- http://sheetjs.com"*. `html2pdf.bundle.min.js` opens with *"For
-license information please see html2pdf.bundle.min.js.LICENSE.txt"*, and that
-sidecar file is now in
+SheetJS -- http://sheetjs.com"*. So do the three files the PDF export runs on
+since 2026-10-29 (`B421`): `jspdf.umd.min.js` opens with jsPDF's own
+`@license` banner (and carries twenty-seven more legal comments, each claimed
+by an entry — see [What is inside a bundle](#what-is-inside-a-bundle-and-how-this-repository-knows)),
+`html2canvas.min.js` with *"html2canvas 1.4.1 … Released under MIT License"*,
+and `purify.min.js` with *"@license DOMPurify 3.4.17 …"*.
+`html2pdf.bundle.min.js`, which they replaced, opened with *"For license
+information please see html2pdf.bundle.min.js.LICENSE.txt"*; that sidecar is
+still in
 [`licenses/html2pdf.bundle.min.js.LICENSE.txt`](licenses/html2pdf.bundle.min.js.LICENSE.txt)
-— fetched verbatim from html2pdf.js 0.14.0, not reconstructed. **The other
-seven files carry no banner at all**: docx, mammoth.js, KaTeX (`.js` and
-`.css`), Mermaid, node-qrcode (removed 2026-09-17, `B338`), and — inside the
-html2pdf bundle — jsPDF and html2canvas. *(Measured 2026-09-01: zero `/*!` markers and zero occurrences of
+— fetched verbatim from html2pdf.js 0.14.0, not reconstructed — for the tags
+that shipped it. **The other files carry no banner at all**: docx, mammoth.js,
+KaTeX (`.js` and `.css`), Mermaid, node-qrcode (removed 2026-09-17, `B338`),
+and — inside the html2pdf bundle, until it went — jsPDF and html2canvas. *(Measured 2026-09-01: zero `/*!` markers and zero occurrences of
 "license" or "copyright" in the first 4 KB of each. An earlier version of this
 paragraph named only five, which implied KaTeX and Mermaid had banners; they do
 not.)* Their texts landed in [`licenses/`](licenses/) on 2026-08-27, each
@@ -554,9 +616,46 @@ the sha256 of what we serve, and a hash for a file that is not there is a hash
 over nothing. Removing the record and leaving the notice is not an
 inconsistency; they answer different questions.
 
-### The html2pdf bundle carries an old jsPDF, and we are keeping it
+### The html2pdf bundle carried an old jsPDF, and it is gone
 
-`B336`, decided 2026-09-17. **The decision is (a): stay on the published
+**`B421`, 2026-10-29 — the owner's call (`D-2026-10-29-02` §2): "Use jsPDF's
+own html()."** The bundle is out of `static/lib/`. The PDF a document exports
+as where the browser cannot print it (`B1333`'s fallback, `_rasterisePdf` in
+`static/js/document.js`) is drawn by jsPDF 4.2.1's `html()`, from three
+published files loaded in order — `purify.min.js` (DOMPurify 3.4.17),
+`html2canvas.min.js` (1.4.1), `jspdf.umd.min.js` (4.2.1) — each byte-identical
+to a file in its registry tarball (checked against the registry's own
+`dist.integrity`), each its own record in
+[`.pantheon/check-vendored-versions.py`](.pantheon/check-vendored-versions.py),
+each bumpable alone. All three return zero advisories (OSV, 2026-10-29). Option
+(c) below — html2pdf's own three files — was measured on 2026-10-28 not to move
+a single advisory, because html2pdf.js 0.14.0's non-bundle build still carries
+jsPDF 4.0.0 and DOMPurify 3.3.1 inside it; that is why the owner was asked.
+
+What changed for a person: the fallback file is **text**, not JPEG tiles — `html()`
+hands html2canvas jsPDF's own canvas, whose 2D context writes PDF operators —
+so it can be selected and searched, as the printed frame's can. And it
+produces a file again: measured on the tree before this row, html2pdf and all,
+a document with a fenced code block exported nothing — html2canvas copies the
+live page's computed style onto every SVG it clones, the code block's icons
+compute to `oklab(…)`, and its parser throws (`B1322`'s defect, one layer
+down); the clone now drops any colour it cannot read. html2pdf's
+link plugin, which Pantheon had on by default, is rebuilt (`_pdfLinkBoxes`): a
+`http(s)`/`mailto` link in the document is a link in the file. Its page-break
+plugin is not, because it had nothing to act on (measured in Chromium: zero
+elements of an export carry a break rule; `static/style.css`'s one is inside
+`@media print`). And one thing is lost, and said rather than hidden: `html()`
+writes with the PDF's built-in fonts, which draw Windows-1252 and nothing else,
+so Cyrillic, CJK and emoji come out wrong — the export tells the person which
+characters, and that *Export as Word* keeps them. Driven end to end in
+`tests/test_the_fallback_pdf_is_jspdfs_own_with_its_links_in_a_browser.py`.
+
+The paperwork for what the bundle carried stays — its rows above say *through
+2026-10-29* — for the reason `B334` and `B338` give. What follows is how
+`B336` decided to wait, kept because it is the record of why the owner was
+asked.
+
+`B336`, decided 2026-09-17. **The decision was (a): stay on the published
 artifact, and make the waiting machine-checked.**
 
 The measurement first, because it is unflattering. `html2pdf.js` 0.14.0 is the
@@ -640,6 +739,40 @@ extracted sidecar that nothing had ever read against the inventory. Inside it:
 of them now has a row in the table above, a licence text in
 [`licenses/`](licenses/) and an `INVENTORY` entry. This is `P0-21b` again — a
 sidecar present and unread — in the one bundle nobody had thought to look at.
+
+**`B424`, 2026-10-29 (`D-2026-10-29-02` §4): docx 9.7.1, and forty-nine
+packages declared.** docx 8.5.0's rollup build left no module paths, so it
+answered `single`. 9.7.1's Vite build — upstream's own `dist/index.umd.cjs`,
+shipped byte for byte as `docx.umd.min.js` — leaves a `//#region
+node_modules/<pkg>/` marker for every module it took, so it answers `derived`
+and rule 7 reads **45** packages out of it: `jszip`, `xml`, `xml-js`, `sax`,
+`nanoid`, `hash.js`, the Node polyfills Vite injects (`buffer`, `events`,
+`util`, `stream-browserify`, `readable-stream`, `string_decoder`, …) and the
+`es-*`/`is-*` shim family behind `util.types`. They were in 8.5.0 too; that
+build did not say so. Four more are inside files the build took whole, where
+no marker reaches: JSZip's own browserify `dist/jszip.min.js` carries `lie`,
+`immediate` and `setimmediate` (its module map names them), and
+vite-plugin-node-polyfills' prebuilt `process` shim is `process`'s
+`browser.js`. All forty-nine have a row above. Each text is the package's own,
+from the release the registry resolves docx 9.7.1's ranges to as of its
+publication (2026-05-27) — except `sax`, whose release was read off the code
+instead (1.2.4: 1.3.0's `parsedEntity` is not there), because sax relicensed
+from ISC to BlueOak-1.0.0 at 1.4.2 and the resolver would have said 1.6.0.
+`hash.js` ships no LICENSE file; its text is its README's *LICENSE* section,
+verbatim. JSZip is offered under MIT **or** GPLv3 and is taken under MIT; the
+file in [`licenses/`](licenses/) carries both offers, as DOMPurify's does.
+
+**`B421`, the same day: `single` was held to its notices three more times.**
+`jspdf.umd.min.js` carries twenty-eight legal comments. Most are jsPDF's own
+plugins in their authors' names; the rest are code jsPDF ships in its own
+source from somebody else — `omggif`, Adobe's JPEG encoder, a WebP decoder,
+`pako`, Joseph Myers' md5 (whose notice says he *"does not specify a particular
+license"*), FPDF's RC4 (*"no usage restriction"*) and Stoyan Stefanov's
+RGBColor — and each now has an entry. `html2canvas.min.js` carries Microsoft's
+`tslib` header, and html2canvas's own four dependencies (`css-line-break`,
+`text-segmentation`, `utrie`, `base64-arraybuffer`) are inside it with no
+notice at all; all five have rows now. Inside the html2pdf bundle these were
+either in a sidecar rule 8 did not read for a `derived` answer, or nowhere.
 
 ### How these stay current
 

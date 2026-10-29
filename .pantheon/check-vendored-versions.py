@@ -228,21 +228,45 @@ VENDORED = [
              "the SheetJS section of CREDITS.md before 'fixing' this.",
     ),
     Vendored(
-        "docx", "docx", "8.5.0", "2026-09-16",
-        "https://registry.npmjs.org/docx/-/docx-8.5.0.tgz",
-        "v8.5.0",
+        "docx", "docx", "9.7.1", "2026-10-29",
+        "https://registry.npmjs.org/docx/-/docx-9.7.1.tgz",
+        "v9.7.1",
         files={"static/lib/docx.umd.min.js":
-               "02d568d203c0180af37609bcf5ff6c0919d220f933a88ca896eba0556a08faad"},
-        note="Zero advisories at 8.5.0 AND at 9.7.1 (OSV, 2026-09-17), so "
-             "this is currency, not exposure. 9.7.1 was fetched, run against "
-             "the real `exportAsDocx` and measured on 2026-09-17 (B335): the "
-             "API surface is unchanged and the body XML it emits for "
-             "Pantheon's paragraph and run shapes is byte-identical. It is "
-             "not the bytes that stopped the bump — see B424.",
-        behind_ok="B424 — 9.7.1's Vite UMD build leaves `//#region "
-             "node_modules/<pkg>/` markers for 44 bundled packages that "
-             "8.5.0's rollup build did not, so the bump ships 44 newly visible "
-             "third-party packages needing notices. Measured 2026-09-17.",
+               "096ce30fdd0a8ddc94fe44a86ab1d5ce58165c88d8be797005eba8788fab7203"},
+        note="Bumped from 8.5.0 on 2026-10-29 (B424, D-2026-10-29-02 §4): "
+             "upstream's `dist/index.umd.cjs` byte for byte, from the tarball "
+             "the registry's `dist.integrity` vouched for. It is a Vite build "
+             "that names every module it took, so check-licences.py derives 45 "
+             "packages from it and each is declared. Zero advisories at 8.5.0 "
+             "and at 9.7.1 (OSV, 2026-10-29). `exportAsDocx`'s `word/document.xml` "
+             "body for Pantheon's shapes is byte-identical to 8.5.0's, and the "
+             "package gains what 8.5.0 left out — a `word/endnotes.xml`, and a "
+             "relationship to `word/fontTable.xml` (`tests/test_a_word_export_"
+             "keeps_its_body_and_gains_the_parts_8_5_0_left_out.py`; the third "
+             "defect B424 named, a missing `mc:Ignorable`, does not hold on "
+             "this path). Inside it, `nanoid`'s non-secure "
+             "generator is a release GHSA-28wg-ghj8-5hjv covers (< 5.1.16: a "
+             "negative size loops forever); docx calls it with 21, 8, 4 and 12 "
+             "and nothing else, so it is not reachable — no version string "
+             "survives in the bytes for `contains=` to pin.",
+        behind_ok="D-2026-10-29-02 §4 — the owner ruled 9.7.1, the release "
+             "B335 measured against Pantheon's export; 9.15.0 (npm `latest` on "
+             "2026-10-29) is a new row filed by B424, to be measured the same "
+             "way before it is taken.",
+        contains=(
+            Inside(
+                "jszip", "3.10.1", "JSZip v3.10.1",
+                behind_ok="B424 — docx 9.7.1 bundles JSZip's own "
+                          "`dist/jszip.min.js` at 3.10.1; 3.10.2 "
+                          "(2026-09-08) arrives with a docx built against it, "
+                          "the same row as the docx bump.",
+                note="The zip writer behind every `.docx` this app exports, "
+                     "and a parser with an advisory history (CVE-2022-48285, "
+                     "fixed in 3.8.0). Zero advisories at 3.10.1 (OSV, "
+                     "2026-10-29). Read out of JSZip's own banner, which the "
+                     "bundle keeps.",
+            ),
+        ),
     ),
     Vendored(
         "mammoth.js", "mammoth", "1.12.3", "2026-09-16",
@@ -254,110 +278,50 @@ VENDORED = [
              "document carrying mc:AlternateContent with no mc:Fallback, which "
              "1.8.0 rejected with a TypeError and no import.",
     ),
+    # `B421`, 2026-10-29 (`D-2026-10-29-02` §2). The `html2pdf.js` record is
+    # GONE with its bundle, and with it the twenty-seven advisory excuses
+    # written for the jsPDF 4.0.0 and DOMPurify 3.3.1 inside it (`B336`): the
+    # versions they excused are no longer shipped, so there is nothing left for
+    # them to excuse. The attribution stays in check-licences.py with empty
+    # patterns, as `B338`'s did. In its place, the three libraries the fallback
+    # PDF now runs on, each upstream's own published file, each its own record,
+    # each bumpable on its own.
     Vendored(
-        "html2pdf.js", "html2pdf.js", "0.14.0", "2026-09-16",
-        "https://registry.npmjs.org/html2pdf.js/-/html2pdf.js-0.14.0.tgz",
-        "v0.14.0",
-        files={"static/lib/html2pdf.bundle.min.js":
-               "9563c45f032179c73454293a649929e60fc24c05a326e8ab2811cfa8f25c3607"},
-        note="Bumped from 0.10.2 on 2026-09-16 (B334), crossing jsPDF 2 -> 4. "
-             "The published bundle carries jsPDF 4.0.0 and DOMPurify 3.3.1, "
-             "neither of which is the current release of its own project. "
-             "B336's decision, 2026-09-17: STAY on the published artifact. "
-             "`contains=` below is what that decision cost us and what now "
-             "holds it honest — the inner versions are read out of the shipped "
-             "bytes on every gate run, and the freshness workflow asks OSV "
-             "about them by name every week.",
-        contains=(
-            Inside(
-                "jspdf", "4.0.0", 'M.version="4.0.0"',
-                behind_ok="B336 — jsPDF 4.2.1 returns zero advisories and this "
-                          "bundle is what html2pdf.js 0.14.0 published. Ours "
-                          "moves when html2pdf publishes a release built "
-                          "against it, or when B421 splits the bundle.",
-                note="Nine open advisories at 4.0.0 (OSV, 2026-09-17), one "
-                     "CRITICAL and six HIGH; 4.2.1 returns zero. None is "
-                     "reachable on Pantheon's path — see the per-id reasons "
-                     "below, each of which names an API `static/js/document.js` "
-                     "does not call. This is audit noise and supply-chain "
-                     "hygiene, not a live vulnerability, and it is written down "
-                     "rather than argued away.",
-                osv_known={
-                    "GHSA-wfv2-pwc8-crg5":
-                        "CRITICAL, HTML injection in the new-window output "
-                        "paths. Reached only by `output()` with a "
-                        "window/dataurlnewwindow option. exportAsPdf calls "
-                        "`.save()`; the bundle's Worker never calls `output` "
-                        "with a window target.",
-                    "GHSA-9vjf-qc39-jprp":
-                        "PDF object injection via unsanitised input in "
-                        "`addJS`. Pantheon never calls `addJS`, and html2pdf's "
-                        "Worker does not either.",
-                    "GHSA-cjw8-79x6-5cj4":
-                        "Shared-state race in the addJS plugin. Same API, same "
-                        "answer, and the race is between Node processes.",
-                    "GHSA-7x6v-j9x4-qf24":
-                        "Object injection via FreeText annotation colour. "
-                        "Needs `createAnnotation`; nothing here annotates.",
-                    "GHSA-p5xg-68wr-hm3m":
-                        "Injection in the AcroForm module. Needs the AcroForm "
-                        "classes; Pantheon generates no form fields.",
-                    "GHSA-pqxr-3g65-p328":
-                        "Injection in AcroFormChoiceField. Same module, same "
-                        "answer.",
-                    "GHSA-vm32-vv63-w422":
-                        "Stored XMP metadata injection. Needs "
-                        "`addMetadata`/XMP; exportAsPdf sets none.",
-                    "GHSA-95fx-jjr5-f39c":
-                        "DoS via unvalidated BMP dimensions. The image path is "
-                        "html2canvas's own PNG canvas, not a user-supplied "
-                        "BMP.",
-                    "GHSA-67pg-wm7f-q7fj":
-                        "DoS via a malicious font/file load. The Node-only "
-                        "`loadFile` LFI half is structurally unreachable in a "
-                        "browser; no font is loaded from user input here.",
-                },
-            ),
-            Inside(
-                "dompurify", "3.3.1", "@license DOMPurify 3.3.1",
-                where="licenses/html2pdf.bundle.min.js.LICENSE.txt",
-                behind_ok="B336 — DOMPurify 3.4.15 returns zero advisories. "
-                          "Same answer as jsPDF: it moves when html2pdf "
-                          "publishes, or when B421 splits the bundle.",
-                note="Eighteen open advisories at 3.3.1 (OSV, 2026-09-17); "
-                     "3.4.15 returns zero. **DOMPurify is not invoked at all on "
-                     "Pantheon's path.** html2pdf calls `DOMPurify.sanitize` in "
-                     "exactly one place — `createElement`, the string branch of "
-                     "`Worker.from()` — and `exportAsPdf` passes a DOM element, "
-                     "which `tests/test_vendored_libraries_still_work.py` pins "
-                     "by measurement rather than by reading the call site. The "
-                     "bundle's other consumer is canvg, which that path does "
-                     "not reach either.",
-                osv_known={gid: (
-                    "Not reachable: DOMPurify is never invoked on Pantheon's "
-                    "PDF path. html2pdf sanitises only in `createElement`, the "
-                    "string branch of `from()`, and exportAsPdf passes an "
-                    "element (pinned by test, B334). B336.")
-                    for gid in (
-                        "GHSA-39q2-94rc-95cp", "GHSA-55q2-fjhq-7xh7",
-                        "GHSA-76mc-f452-cxcm", "GHSA-c2j3-45gr-mqc4",
-                        "GHSA-cj63-jhhr-wcxv", "GHSA-cjmm-f4jc-qw8r",
-                        "GHSA-cmwh-pvxp-8882", "GHSA-crv5-9vww-q3g8",
-                        "GHSA-gvmj-g25r-r7wr", "GHSA-h7mw-gpvr-xq4m",
-                        "GHSA-h8r8-wccr-v5f2", "GHSA-hpcv-96wg-7vj8",
-                        "GHSA-r47g-fvhr-h676", "GHSA-rp9w-3fw7-7cwq",
-                        "GHSA-v2wj-7wpq-c8vv", "GHSA-v9jr-rg53-9pgp",
-                        "GHSA-vxr8-fq34-vvx9", "GHSA-x4vx-rjvf-j5p4",
-                    )},
-            ),
-            Inside(
-                "html2canvas", "1.4.1", "html2canvas 1.4.1",
-                where="licenses/html2pdf.bundle.min.js.LICENSE.txt",
-                note="1.4.1 is html2canvas's current release and returns zero "
-                     "advisories, so this one is here to be checked rather "
-                     "than excused.",
-            ),
-        ),
+        "jsPDF", "jspdf", "4.2.1", "2026-10-29",
+        "https://registry.npmjs.org/jspdf/-/jspdf-4.2.1.tgz",
+        "v4.2.1",
+        files={"static/lib/jspdf.umd.min.js":
+               "e6551fcdc32f09d6853b2c5126d18d01d9447e0da618a41a11ebeee0f6c20d54"},
+        note="B421. Upstream's `dist/jspdf.umd.min.js` byte for byte. Zero "
+             "advisories (OSV, 2026-10-29), against the nine — one CRITICAL — "
+             "that the 4.0.0 inside html2pdf.js 0.14.0 carried. Its own "
+             "`html()` draws the fallback PDF; html2canvas and DOMPurify are "
+             "looked up on `window` when it runs, which is why they are files "
+             "of their own rather than inside it.",
+    ),
+    Vendored(
+        "html2canvas", "html2canvas", "1.4.1", "2026-10-29",
+        "https://registry.npmjs.org/html2canvas/-/html2canvas-1.4.1.tgz",
+        "v1.4.1",
+        files={"static/lib/html2canvas.min.js":
+               "e87e550794322e574a1fda0c1549a3c70dae5a93d9113417a429016838eab8cb"},
+        note="B421. Upstream's `dist/html2canvas.min.js` byte for byte — the "
+             "same release html2pdf.js 0.14.0 bundled, now a file of its own. "
+             "Current, and zero advisories (OSV, 2026-10-29).",
+    ),
+    Vendored(
+        "DOMPurify", "dompurify", "3.4.17", "2026-10-29",
+        "https://registry.npmjs.org/dompurify/-/dompurify-3.4.17.tgz",
+        "v3.4.17",
+        files={"static/lib/purify.min.js":
+               "cd37898f9782adf54820c413191b5691803f0f137c799d6edcfd38523b4c2c31"},
+        note="B421. Upstream's `dist/purify.min.js` byte for byte. Zero "
+             "advisories (OSV, 2026-10-29), against the eighteen at the 3.3.1 "
+             "inside html2pdf.js 0.14.0. On Pantheon's path now, where it was "
+             "not before: `_rasterisePdf` hands jsPDF's `html()` a string, and "
+             "`html()` sanitises a string with this before it is put into the "
+             "page (driven in tests/test_the_fallback_pdf_is_jspdfs_own_with_"
+             "its_links_in_a_browser.py).",
     ),
     # B338, 2026-09-17. The `node-qrcode` record is GONE, because the bytes
     # are: `static/lib/qrcode.min.js` was loaded by nothing and is no longer
@@ -682,11 +646,13 @@ def check(max_age_days=None, today=None):
             )
 
     # 6 — `B336`. A bundle's inner versions are read out of the shipped bytes.
-    # `CREDITS.md` and the freshness workflow both say html2pdf.js 0.14.0
-    # carries jsPDF 4.0.0 and DOMPurify 3.3.1; until this rule existed, nothing
+    # `CREDITS.md` and the freshness workflow both said html2pdf.js 0.14.0
+    # carried jsPDF 4.0.0 and DOMPurify 3.3.1; until this rule existed, nothing
     # checked that against the file, so a replacement bundle carrying a
     # different jsPDF would have gone in under a record that still said 4.0.0
     # and under twenty-seven advisory excuses that no longer applied to it.
+    # (`B421` took that bundle out; `B424`'s docx carries JSZip, read the same
+    # way.)
     for name in sorted(records):
         rec = records[name]
         if not rec.contains:

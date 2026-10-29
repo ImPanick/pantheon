@@ -1,69 +1,75 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""P0-21b — fifteen packages ship inside one file and four had paperwork.
+"""P0-21b — fifteen packages shipped inside one file and four had paperwork.
 
-`static/lib/html2pdf.bundle.min.js` is 906 KB of webpack output. Its
+`static/lib/html2pdf.bundle.min.js` was 906 KB of webpack output. Its
 `LICENSE.txt` sidecar is what webpack could *extract* — the licence comments
 that happened to survive minification — and that came to four: html2pdf.js
 itself plus `es6-promise`, `html2canvas` and `jspdf`. The other eleven had no
-notice anywhere in this repository for as long as the file has shipped, and MIT
+notice anywhere in this repository for as long as the file had shipped, and MIT
 requires the notice to travel with redistributed copies. `dompurify` was worse
 than a missing file: Cure53 offers it under Apache-2.0 **or** MPL-2.0, and a
 dual offer is a choice somebody has to make and record.
 
-**The list is read out of the shipped bytes.** Webpack left 1,736
-`node_modules/<package>/` paths in the blob, so what is inside it is a fact
-about the file rather than a claim in a comment — which matters, because the
-row this closes was written after an earlier count said five, from grepping
-`/*!` markers only. If the bundle is ever replaced, these recompute.
+**The list was read out of the shipped bytes**: webpack left 1,736
+`node_modules/<package>/` paths in the blob. `B334` (2026-09-16) moved the
+bundle to html2pdf.js 0.14.0 — still fifteen packages and not the same
+fifteen, which is why the lists below are written down rather than counted.
 
-`B45` is the other thing that fell out of re-deriving: the shipped bundle was not
-upstream's bytes. One string differed, it came in at the fork baseline, and
-nothing recorded it. `B334` closed it by replacing the file — see the bottom of
-this module, which now records the refreshed bundle rather than the deviation.
+`B421` (2026-10-29, `D-2026-10-29-02` §2): the bundle is gone. The fallback
+PDF is jsPDF's own `html()`, and jsPDF, html2canvas and DOMPurify ship as
+their own published files. What it carried keeps its paperwork — those bytes
+are in every tag up to 2026-10-29 (`B334`'s and `B338`'s rule) — so the two
+lists stay, as the record of what has to stay attributed.
 
-`B334`, 2026-09-16: the bundle is html2pdf.js **0.14.0**, crossing jsPDF 2 -> 4.
-Still fifteen packages and not the same fifteen, which is exactly why this list
-is written down rather than counted: `fast-png`, `iobuffer`, `pako` and
-`@babel/runtime` arrived and `@babel/runtime-corejs3`, `core-js-pure`,
-`es6-promise` and `regenerator-runtime` left, and a test that only asserted
-`len(found) == 15` would have passed through all eight changes without a word.
+`B424` (2026-10-29, `D-2026-10-29-02` §4): the derived bundle is now
+`docx.umd.min.js`, docx 9.7.1's Vite build, which names forty-five packages in
+its `//#region node_modules/<pkg>/` markers. They are read out of the bytes the
+same way, below.
 """
-import hashlib
 import pathlib
 import re
 
 import pytest
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-BUNDLE = ROOT / "static" / "lib" / "html2pdf.bundle.min.js"
 CREDITS = (ROOT / "CREDITS.md").read_text(encoding="utf-8")
-BLOB = BUNDLE.read_bytes().decode("utf-8", "replace")
-SIDECAR = (ROOT / "licenses" / "html2pdf.bundle.min.js.LICENSE.txt").read_text(
-    encoding="utf-8", errors="replace")
+DOCX = ROOT / "static" / "lib" / "docx.umd.min.js"
 
 _MODULE_PATH = re.compile(r'node_modules/((?:@[^/"\\]+/)?[^/"\\]+)/')
 
 
-def bundled():
-    return {m.group(1) for m in _MODULE_PATH.finditer(BLOB)}
+def bundled(path):
+    blob = path.read_bytes().decode("utf-8", "replace")
+    return {m.group(1) for m in _MODULE_PATH.finditer(blob)}
 
 
-# What the derivation found on 2026-09-07. Written down so the test can say
-# *which* package appeared or vanished rather than only that a number moved —
-# a count alone tells you nothing about what to go and license.
+# What html2pdf.js 0.14.0's bundle carried, derived on 2026-09-16 (`B334`).
 EXPECTED = {
     "@babel/runtime", "canvg", "core-js", "dompurify", "fast-png", "fflate",
     "html2canvas", "iobuffer", "jspdf", "pako", "performance-now", "raf",
     "rgbcolor", "stackblur-canvas", "svg-pathdata",
 }
 
-# What 0.10.2 shipped, kept so the diff above is readable and so that a
-# roll-back to the old bundle fails loudly rather than quietly re-introducing
-# three packages whose notices this file no longer claims are inside it.
+# What 0.10.2 shipped, kept so the diff above is readable.
 EXPECTED_0_10_2 = {
     "@babel/runtime-corejs3", "canvg", "core-js", "core-js-pure", "dompurify",
     "es6-promise", "fflate", "html2canvas", "jspdf", "performance-now", "raf",
     "regenerator-runtime", "rgbcolor", "stackblur-canvas", "svg-pathdata",
+}
+
+# What docx 9.7.1's build names (`B424`), derived from the shipped bytes.
+DOCX_EXPECTED = {
+    "available-typed-arrays", "base64-js", "buffer", "call-bind",
+    "call-bind-apply-helpers", "call-bound", "define-data-property",
+    "dunder-proto", "es-define-property", "es-errors", "es-object-atoms",
+    "events", "for-each", "function-bind", "get-intrinsic", "get-proto", "gopd",
+    "has-property-descriptors", "has-symbols", "has-tostringtag", "hash.js",
+    "hasown", "ieee754", "inherits", "is-arguments", "is-callable",
+    "is-generator-function", "is-typed-array", "jszip", "math-intrinsics",
+    "minimalistic-assert", "nanoid", "possible-typed-array-names",
+    "readable-stream", "safe-buffer", "sax", "set-function-length",
+    "stream-browserify", "string_decoder", "util", "util-deprecate",
+    "vite-plugin-node-polyfills", "which-typed-array", "xml", "xml-js",
 }
 
 # package -> the licence text that has to travel with it.
@@ -90,16 +96,57 @@ TEXTS = {
 }
 
 
-def test_the_package_list_is_still_readable_from_the_bundle():
-    """Guards the derivation, not the paperwork. Every assertion below is
-    vacuous against a bundle whose module paths were minified away, and a
-    silently empty set is exactly how a licence check goes green over nothing."""
-    found = bundled()
-    assert len(found) == 15, sorted(found)
-    assert found == EXPECTED, {
-        "appeared": sorted(found - EXPECTED),
-        "vanished": sorted(EXPECTED - found),
+def _licences():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "_check_licences_r8", ROOT / ".pantheon" / "check-licences.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def test_the_docx_package_list_is_readable_from_the_bundle():
+    """Guards the derivation, not the paperwork (`B424`). Every assertion about
+    docx's packages is vacuous against a bundle whose markers were minified
+    away, and a silently empty set is exactly how a licence check goes green
+    over nothing. Written down so a change says *which* package appeared or
+    vanished — a count alone tells you nothing about what to go and license."""
+    found = bundled(DOCX)
+    assert found == DOCX_EXPECTED, {
+        "appeared": sorted(found - DOCX_EXPECTED),
+        "vanished": sorted(DOCX_EXPECTED - found),
     }
+
+
+@pytest.mark.parametrize("pkg", sorted(DOCX_EXPECTED))
+def test_every_package_inside_docx_has_an_entry_a_text_and_a_credits_row(pkg):
+    """`B424`'s `Verify:` — rule 7 finds every package in docx 9.7.1 declared,
+    asserted here per package so a failure names it. The entry's text is on
+    disk, names a holder, and is linked from a `CREDITS.md` row that names the
+    package."""
+    mod = _licences()
+    owners = [e for e in mod.INVENTORY if pkg in e.bundled]
+    assert owners, f"{pkg} ships inside docx.umd.min.js and no Entry declares it"
+    text = owners[0].text
+    body = (ROOT / "licenses" / text).read_text(encoding="utf-8")
+    assert re.search(r"(?i)copyright", body), text
+    lines = _credit_lines(text)
+    assert any(f"[{pkg}]" in ln for ln in lines), (pkg, lines)
+
+
+@pytest.mark.parametrize("pkg", ["lie", "immediate", "setimmediate", "process"])
+def test_what_docx_carries_inside_files_it_took_whole_is_declared_too(pkg):
+    """Rule 7 cannot open these: JSZip's own browserify build inside docx
+    carries `lie`, `immediate` and `setimmediate` (its module map names them),
+    and vite-plugin-node-polyfills' prebuilt `process` shim is `process`'s
+    `browser.js`. Read off the bytes by hand on 2026-10-29 and declared the
+    same way."""
+    mod = _licences()
+    assert any(pkg in e.bundled for e in mod.INVENTORY), pkg
+    blob = DOCX.read_bytes().decode("utf-8", "replace")
+    marker = {"lie": 'e("lie")', "immediate": 'e("immediate")',
+              "setimmediate": 'e("setimmediate")', "process": "cachedSetTimeout"}[pkg]
+    assert marker in blob, (pkg, marker)
 
 
 @pytest.mark.parametrize("pkg", sorted(EXPECTED_0_10_2 - EXPECTED))
@@ -122,8 +169,10 @@ def test_a_package_that_left_the_bundle_keeps_its_licence_text(pkg):
 
 @pytest.mark.parametrize("pkg", sorted(EXPECTED))
 def test_every_bundled_package_has_a_licence_text(pkg):
+    """Every package the html2pdf bundle carried, still — `B421` took the
+    bytes out of the tree, not out of the tags."""
     path = ROOT / "licenses" / TEXTS[pkg]
-    assert path.is_file(), f"{pkg} ships inside the bundle with no licence text"
+    assert path.is_file(), f"{pkg} shipped inside the bundle with no licence text"
     text = path.read_text(encoding="utf-8")
     assert re.search(r"(?i)copyright", text), f"{TEXTS[pkg]} names no copyright holder"
     assert len(text) > 400, f"{TEXTS[pkg]} is too short to be a licence"
@@ -180,67 +229,31 @@ def test_dompurify_ships_both_offered_texts_and_records_which_was_taken():
     assert "Apache-2.0" in decisions.split("D-2026-09-07-01", 1)[1][:2000]
 
 
-# --- B45, closed by B334 ---------------------------------------------------
+# --- B45, closed by B334; the file itself gone by B421 ----------------------
 
-# Until 2026-09-16 the vendored bundle differed from upstream html2pdf.js
-# 0.10.2 in exactly one string, inherited at the fork baseline `fff72ec`.
-# Substituting it back made the two files byte-identical after CRLF
-# normalisation, which is how "exactly one difference" was known.
-FORK_DEVIATION = '"sv-SV":"Swedish (SE)"'
-UPSTREAM_HAS = '"sv-SV":"Swedish (Sweden)"'
-
-# The published 0.14.0 artifact, from the npm tarball the registry's own
-# `dist.integrity` vouched for. Recorded here as well as in
-# `.pantheon/check-vendored-versions.py` for a reason: that checker asks "are
-# these the bytes we recorded", and this asks "are those bytes upstream's" —
-# the second question is what `B45` was, and it is not the same question.
-UPSTREAM_0_14_0_SHA256 = (
-    "9563c45f032179c73454293a649929e60fc24c05a326e8ab2811cfa8f25c3607"
-)
+def test_the_bundle_and_its_one_string_deviation_are_history_now():
+    """`B45`: until 2026-09-16 the vendored bundle differed from upstream
+    html2pdf.js 0.10.2 in one string (`"sv-SV":"Swedish (SE)"`), inherited at
+    the fork baseline. `B334` replaced the file with upstream's 0.14.0 bytes,
+    and `B421` replaced html2pdf altogether. `CREDITS.md` still says what the
+    deviation was and what replaced it, because a reader who meets either
+    string needs to know which is true."""
+    assert not (ROOT / "static" / "lib" / "html2pdf.bundle.min.js").exists()
+    assert "B45" in CREDITS and "B334" in CREDITS and "B421" in CREDITS
+    assert "Swedish (SE)" in CREDITS and "Swedish (Sweden)" in CREDITS
 
 
-def test_the_bundle_is_upstreams_bytes_again_and_the_deviation_is_recorded():
-    """`B45`, closed by `B334`. The deviation was pinned by a test precisely so
-    that replacing this file would be a decision rather than an accident — and
-    that is what happened. The 0.14.0 refresh reverts it.
-
-    Recording the change rather than deleting the old assertion is the point:
-    a reader who finds `Swedish (SE)` in a CREDITS.md paragraph and
-    `Swedish (Sweden)` in the file needs this test to tell them which is now
-    true and why both are mentioned.
-    """
-    assert FORK_DEVIATION not in BLOB, (
-        "the fork's `Swedish (SE)` edit is back. That means the 0.10.2 bundle "
-        "was restored; re-derive the package list and the CREDITS.md rows "
-        "before letting it pass"
-    )
-    assert BLOB.count(UPSTREAM_HAS) == 1
-    assert hashlib.sha256(BUNDLE.read_bytes()).hexdigest() == UPSTREAM_0_14_0_SHA256, (
-        "the bundle is neither upstream 0.14.0 nor the 0.10.2 fork copy"
-    )
-    assert "B45" in CREDITS
-    assert "B334" in CREDITS
-    assert "Swedish (SE)" in CREDITS and "Swedish (Sweden)" in CREDITS, (
-        "CREDITS.md no longer records what the fork's edit was and what "
-        "replaced it"
-    )
-
-
-def test_the_bundle_carries_the_versions_credits_claims():
-    """The versions in CREDITS.md's table for the packages inside this bundle
-    are read out of the shipped bytes, not carried from a document. Four of
-    them are still legible after minification, so four of them are checked.
-    """
-    for marker, credited in (
-        ('M.version="4.0.0"', "jsPDF](https://github.com/parallax/jsPDF) v4.0.0"),
-        ("html2canvas 1.4.1", "html2canvas) v1.4.1"),
-        ("DOMPurify 3.3.1", None),
-        ("html2pdf.js v0.14.0", "html2pdf.js) v0.14.0"),
-    ):
-        haystack = BLOB + SIDECAR
-        assert marker in haystack, f"{marker!r} is not in the bundle or its sidecar"
-        if credited:
-            assert credited in CREDITS, credited
+@pytest.mark.parametrize("file,marker,credited", [
+    ("jspdf.umd.min.js", "Version 4.2.1", "jsPDF](https://github.com/parallax/jsPDF) v4.2.1"),
+    ("html2canvas.min.js", "html2canvas 1.4.1", "html2canvas](https://github.com/niklasvh/html2canvas) v1.4.1"),
+    ("purify.min.js", "DOMPurify 3.4.17", "DOMPurify](https://github.com/cure53/DOMPurify) v3.4.17"),
+])
+def test_the_pdf_files_carry_the_versions_credits_claims(file, marker, credited):
+    """`B421`. Each of the three files states its own release in its banner, so
+    the version on its `CREDITS.md` row is checked against the bytes."""
+    blob = (ROOT / "static" / "lib" / file).read_bytes().decode("utf-8", "replace")
+    assert marker in blob[:2000], f"{marker!r} is not in {file}'s banner"
+    assert credited in CREDITS, credited
 
 
 # --- B46 -------------------------------------------------------------------
@@ -298,8 +311,10 @@ def test_the_bundle_list_is_derived_and_not_written_down():
         "emptied without anything noticing"
     )
     found = mod.discover_bundles(mod.tracked())
+    # `B421` took the html2pdf bundle out and `B424` brought docx 9.7.1's
+    # Vite build in, which names its modules; the derivation noticed both.
     assert set(found) == {
-        "static/lib/html2pdf.bundle.min.js",
+        "static/lib/docx.umd.min.js",
         "static/lib/mermaid.min.js",
     }, sorted(found)
 
@@ -317,15 +332,6 @@ def test_the_bundle_list_is_derived_and_not_written_down():
 # to fail. They run against the real tree, because the claims are about this
 # tree — the mutation half lives in `tests/test_licence_alignment.py`, whose
 # fixture now keeps the real script bytes for exactly this reason.
-
-def _licences():
-    import importlib.util
-    spec = importlib.util.spec_from_file_location(
-        "_check_licences_r8", ROOT / ".pantheon" / "check-licences.py")
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod
-
 
 def test_every_vendored_script_says_how_its_contents_are_known():
     """No default. A vendored script whose entry answers nothing fails, which
@@ -414,23 +420,49 @@ def test_the_packages_rule_8_found_have_a_text_and_a_credits_row(pkg, text):
     assert any(pkg.split()[0] in ln for ln in lines), (pkg, lines)
 
 
+@pytest.mark.parametrize("pkg,text", [
+    ("tslib", "tslib-0BSD-LICENSE.txt"),
+    ("css-line-break", "css-line-break-MIT-LICENSE.txt"),
+    ("text-segmentation", "text-segmentation-MIT-LICENSE.txt"),
+    ("utrie", "utrie-MIT-LICENSE.txt"),
+    ("base64-arraybuffer", "base64-arraybuffer-MIT-LICENSE.txt"),
+    ("omggif", "omggif-MIT-LICENSE.txt"),
+    ("JPEGEncoder", "JPEGEncoder-Adobe-BSD-3-Clause.txt"),
+    ("WebP decoder", "webp-js-MIT-LICENSE.txt"),
+])
+def test_what_the_three_pdf_files_carry_has_a_text_and_a_credits_row(pkg, text):
+    """`B421`. Reading the new files' own notices (rule 8, `single`) and
+    html2canvas's `package.json` found these inside them. **Fails on the tree
+    as it stood**: none had a licence text or a row — `tslib`'s notice and
+    jsPDF's third-party ones sat in the html2pdf bundle's sidecar, which rule 8
+    reads for a `sidecar` answer and not for a `derived` one, and html2canvas's
+    own four dependencies had no notice at all."""
+    assert (ROOT / "licenses" / text).is_file(), text
+    lines = _credit_lines(text)
+    assert lines and any(pkg in ln for ln in lines), (pkg, lines)
+
+
 def test_a_single_package_claim_is_checked_against_the_files_own_notices():
     """The half that makes `single` mean something.
 
-    `docx.umd.min.js` is upstream's rollup UMD build and leaves no module
-    paths, so a `single` claim would otherwise be unfalsifiable. It carries
-    three legal comments that are not docx's — `ieee754`, `buffer` and
-    `string.fromcodepoint` — and rule 8 requires each to be claimed by an
-    entry. That is what turns "this is just one library" from an assertion into
-    something the file can contradict.
+    It was `docx.umd.min.js` until `B424` made that file `derived`. It is
+    `jspdf.umd.min.js` now (`B421`): upstream's rollup UMD build, no module
+    paths, and twenty-eight legal comments — jsPDF's own plugins' and the code
+    it ships from somebody else (`omggif`, Adobe's JPEG encoder, a WebP
+    decoder, `pako`, Joseph Myers' md5, FPDF's RC4, Stoyan Stefanov's
+    RGBColor). Rule 8 requires each to be claimed by an entry, which is what
+    turns "this is just one library" from an assertion into something the file
+    can contradict. And html2canvas's file carries tslib's.
     """
     mod = _licences()
-    docx = ROOT / "static" / "lib" / "docx.umd.min.js"
-    blocks = mod.notice_blocks(docx.read_bytes().decode("utf-8", "replace"))
-    assert len(blocks) >= 3, blocks
-    for notice in blocks:
-        claimers = mod._claimed_by(notice, mod.INVENTORY)
-        assert claimers, notice[:160]
+    for name, at_least in (("jspdf.umd.min.js", 28), ("html2canvas.min.js", 2),
+                           ("purify.min.js", 2)):
+        path = ROOT / "static" / "lib" / name
+        blocks = mod.notice_blocks(path.read_bytes().decode("utf-8", "replace"))
+        assert len(blocks) >= at_least, (name, len(blocks))
+        for notice in blocks:
+            claimers = mod._claimed_by(notice, mod.INVENTORY)
+            assert claimers, (name, notice[:160])
 
 
 # Rule 8's five answers, each broken in a throwaway copy of the tree. A rule
@@ -492,18 +524,17 @@ def test_rule_8_fails_when_a_bundles_contents_stop_being_readable(repo):
     paths went away is a bundle nothing can see inside, and before rule 8 that
     was silence rather than a failure.
 
-    The mutation replaces the html2pdf bundle — declared `derived` — with bytes
-    carrying no module paths, which is exactly what happened when `qrcode.min.js`
-    was built with esbuild.
+    The mutation replaces docx — declared `derived` since `B424` (it was the
+    html2pdf bundle until `B421` took that out) — with bytes carrying no module
+    paths, which is exactly what happened when `qrcode.min.js` was built with
+    esbuild, and what docx 8.5.0's rollup build looked like.
     """
-    target = repo / "static" / "lib" / "html2pdf.bundle.min.js"
-    target.write_text(
-        "/*! For license information please see nothing.txt */\n"
-        "window.html2pdf=function(){};\n", encoding="utf-8")
+    target = repo / "static" / "lib" / "docx.umd.min.js"
+    target.write_text("window.docx={};\n", encoding="utf-8")
     r = check(repo)
     assert r.returncode == 1, r.stdout
     assert "NOT DERIVED" in r.stdout, r.stdout
-    assert "html2pdf.bundle.min.js" in r.stdout, r.stdout
+    assert "docx.umd.min.js" in r.stdout, r.stdout
 
 
 def test_rule_8_fails_when_a_vendored_script_answers_nothing(repo):
@@ -579,15 +610,14 @@ def test_rule_8_fails_on_a_build_record_naming_an_undeclared_package(repo):
 def test_rule_8_fails_when_a_single_package_file_turns_out_to_be_a_bundle(repo):
     """The `single` answer's other half.
 
-    `docx.umd.min.js` is upstream's rollup UMD build and leaves no module paths,
-    which is what makes `single` the right answer for it today. Upstream's 9.x
-    Vite build leaves `//#region node_modules/<pkg>/` markers for forty-four
-    packages (`B424`), so a refresh that took that build would turn this file
-    into a declared-as-single bundle overnight. That is the case this fails on,
-    and it is not hypothetical — it is the reason the docx bump was filed rather
-    than taken.
+    It was written for `docx.umd.min.js`, whose 9.x Vite build leaves
+    `//#region node_modules/<pkg>/` markers — and that is exactly what happened:
+    `B424` took 9.7.1 and the entry had to say `derived` and declare forty-five
+    packages before rule 7 went green. The subject is `jspdf.umd.min.js` now
+    (`B421`), upstream's rollup build: a jsPDF that one day ships a Vite build
+    fails here until somebody declares what it names.
     """
-    target = repo / "static" / "lib" / "docx.umd.min.js"
+    target = repo / "static" / "lib" / "jspdf.umd.min.js"
     blob = target.read_text(encoding="utf-8", errors="replace")
     target.write_text(
         blob + "\n//#region node_modules/jszip/dist/jszip.min.js\n"
@@ -596,7 +626,7 @@ def test_rule_8_fails_when_a_single_package_file_turns_out_to_be_a_bundle(repo):
     r = check(repo)
     assert r.returncode == 1, r.stdout
     assert "NOT SINGLE" in r.stdout, r.stdout
-    assert "docx.umd.min.js" in r.stdout, r.stdout
+    assert "jspdf.umd.min.js" in r.stdout, r.stdout
 
 
 def test_rule_8_fails_when_a_single_package_file_carries_a_foreign_notice(repo):

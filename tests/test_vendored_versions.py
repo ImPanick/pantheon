@@ -420,61 +420,58 @@ def test_the_offline_checker_never_reaches_the_network():
 # ── rule 6: what a bundle carries INSIDE it (B336) ─────────────────────────
 #
 # A vendored bundle is one npm coordinate to a scanner and a dozen to an
-# attacker. `html2pdf.js` 0.14.0 has zero advisories of its own and ships jsPDF
-# 4.0.0 with nine — one CRITICAL — and DOMPurify 3.3.1 with eighteen. Until
-# 2026-09-17 that lived in a roadmap row and in `CREDITS.md` prose, and nothing
-# compared either to the file. `B336`'s decision is to stay on the published
-# artifact, which is only defensible if the waiting is checked rather than
-# remembered.
+# attacker. `B336` wrote this rule for `html2pdf.js` 0.14.0, which had zero
+# advisories of its own and shipped jsPDF 4.0.0 with nine — one CRITICAL — and
+# DOMPurify 3.3.1 with eighteen. `B421` (2026-10-29) took that bundle out:
+# jsPDF, html2canvas and DOMPurify are files of their own now, each its own
+# record, and the twenty-seven excuses went with the versions they excused.
+# The rule stays and has a new subject: docx 9.7.1 (`B424`) carries JSZip's own
+# `dist/jszip.min.js` — the zip writer behind every `.docx` this app exports,
+# a parser with an advisory history — and JSZip's banner says which release.
 
 def test_the_recorded_inner_versions_are_in_the_shipped_bytes():
-    """The real tree. `M.version="4.0.0"` is jsPDF's own version literal in the
-    blob and `@license DOMPurify 3.3.1` is in the extracted sidecar, so both
-    numbers are read out of the artifact rather than asserted about it."""
+    """The real tree. `JSZip v3.10.1` is JSZip's own banner, which docx's build
+    kept, so the number is read out of the artifact rather than asserted
+    about it."""
     mod = load()
     recorded = {r.entry: r for r in mod.VENDORED}
-    html2pdf = recorded["html2pdf.js"]
-    inner = {i.package: i for i in html2pdf.contains}
-    assert set(inner) == {"jspdf", "dompurify", "html2canvas"}, sorted(inner)
-    assert inner["jspdf"].version == "4.0.0"
-    assert inner["dompurify"].version == "3.3.1"
-    bundle = (ROOT / "static" / "lib" / "html2pdf.bundle.min.js").read_bytes()
-    assert inner["jspdf"].witness.encode() in bundle, inner["jspdf"].witness
-    sidecar = (ROOT / "licenses"
-               / "html2pdf.bundle.min.js.LICENSE.txt").read_bytes()
-    assert inner["dompurify"].witness.encode() in sidecar
+    inner = {i.package: i for i in recorded["docx"].contains}
+    assert set(inner) == {"jszip"}, sorted(inner)
+    assert inner["jszip"].version == "3.10.1"
+    bundle = (ROOT / "static" / "lib" / "docx.umd.min.js").read_bytes()
+    assert inner["jszip"].witness.encode() in bundle, inner["jszip"].witness
+    assert inner["jszip"].behind_ok, "being behind needs a row that owns it"
 
 
-def test_every_inner_advisory_has_a_reason_written_beside_its_version():
-    """The excuses are per advisory id and live beside the version they excuse,
-    so a bump orphans them and somebody has to look again — `B333`'s pattern,
-    applied to the twenty-seven advisories inside this bundle."""
+def test_the_html2pdf_excuses_left_with_the_versions_they_excused():
+    """`B421`. Twenty-seven advisory ids were excused beside jsPDF 4.0.0 and
+    DOMPurify 3.3.1 (`B333`'s pattern: the excuse lives beside the version, so
+    a bump orphans it). Those versions are not shipped any more, so neither is
+    a word of the excuse: an id excused for a release nobody serves is an id a
+    future scanner hit would be waved through on."""
     mod = load()
-    inner = {i.package: i
-             for r in mod.VENDORED for i in r.contains}
-    assert len(inner["jspdf"].osv_known) == 9, sorted(inner["jspdf"].osv_known)
-    assert len(inner["dompurify"].osv_known) == 18, len(inner["dompurify"].osv_known)
-    # The CRITICAL one is named, not lumped in.
-    assert "GHSA-wfv2-pwc8-crg5" in inner["jspdf"].osv_known
-    for why in inner["jspdf"].osv_known.values():
-        assert len(why) > 40, why
-    assert not inner["html2canvas"].osv_known, (
-        "html2canvas is current and has nothing to excuse")
+    entries = {r.entry for r in mod.VENDORED}
+    assert "html2pdf.js" not in entries
+    excused = {gid for r in mod.VENDORED for gid in r.osv_known}
+    excused |= {gid for r in mod.VENDORED for i in r.contains for gid in i.osv_known}
+    for gid in ("GHSA-wfv2-pwc8-crg5", "GHSA-9vjf-qc39-jprp", "GHSA-39q2-94rc-95cp"):
+        assert gid not in excused, gid
+    for name in ("jsPDF", "html2canvas", "DOMPurify"):
+        rec = next(r for r in mod.VENDORED if r.entry == name)
+        assert rec.osv_known == {} and rec.behind_ok is None, (name, rec.osv_known)
 
 
 def test_a_bundle_carrying_a_different_inner_version_fails(clean):
-    """The claim in one line. Swap the bundle for one carrying a different jsPDF
-    and this goes red — which matters because the record does not merely say
-    `4.0.0`, it carries nine advisory excuses written *for* 4.0.0, and an excuse
-    written for one version is not an excuse for another."""
-    target = clean / "static" / "lib" / "html2pdf.bundle.min.js"
+    """The claim in one line. Swap docx for a build carrying a different JSZip
+    and this goes red — before anybody has re-asked OSV about the new one."""
+    target = clean / "static" / "lib" / "docx.umd.min.js"
     blob = target.read_bytes()
-    target.write_bytes(blob.replace(b'M.version="4.0.0"', b'M.version="4.2.1"'))
+    target.write_bytes(blob.replace(b"JSZip v3.10.1", b"JSZip v3.10.2"))
     r = run(clean)
     assert r.returncode == 1, r.stdout
     # The hash moves too; the point is that the inner version is named.
     assert "INNER" in r.stdout, r.stdout
-    assert "jspdf" in r.stdout and "4.0.0" in r.stdout, r.stdout
+    assert "jszip" in r.stdout and "3.10.1" in r.stdout, r.stdout
 
 
 def test_an_inner_witness_whose_file_is_gone_fails(clean):
@@ -483,10 +480,8 @@ def test_an_inner_witness_whose_file_is_gone_fails(clean):
     in."""
     patch_checker(
         clean,
-        '"dompurify", "3.3.1", "@license DOMPurify 3.3.1",\n'
-        '                where="licenses/html2pdf.bundle.min.js.LICENSE.txt",',
-        '"dompurify", "3.3.1", "@license DOMPurify 3.3.1",\n'
-        '                where="licenses/not-a-file.txt",')
+        '"jszip", "3.10.1", "JSZip v3.10.1",',
+        '"jszip", "3.10.1", "JSZip v3.10.1", where="licenses/not-a-file.txt",')
     r = run(clean)
     assert r.returncode == 1, r.stdout
     assert "NO WITNESS" in r.stdout, r.stdout
@@ -495,25 +490,24 @@ def test_an_inner_witness_whose_file_is_gone_fails(clean):
 def test_the_freshness_workflow_is_handed_the_inner_packages():
     """`Law 16` splits the question: this checker reads the tree, the workflow
     asks upstream. The workflow can only ask about what `--json` hands it, so a
-    `contains` that stopped being exported would silently stop twenty-seven
-    advisories being counted every week."""
+    `contains` that stopped being exported would silently stop the packages
+    inside a bundle being counted every week."""
     r = subprocess.run(
         [sys.executable, str(CHECKER), "--json"],
         cwd=ROOT, capture_output=True, text=True, check=True)
     records = {rec["entry"]: rec for rec in json.loads(r.stdout)}
-    inner = {i["package"]: i for i in records["html2pdf.js"]["contains"]}
-    assert set(inner) == {"jspdf", "dompurify", "html2canvas"}, sorted(inner)
-    assert inner["jspdf"]["version"] == "4.0.0"
-    assert inner["jspdf"]["behind_ok"], "being behind here needs a row that owns it"
-    assert len(inner["dompurify"]["osv_known"]) == 18
+    inner = {i["package"]: i for i in records["docx"]["contains"]}
+    assert set(inner) == {"jszip"}, sorted(inner)
+    assert inner["jszip"]["version"] == "3.10.1"
+    assert inner["jszip"]["behind_ok"], "being behind here needs a row that owns it"
 
     # `B437`: driven, not grepped — the job asks OSV about the packages inside
     # the bundle, at the versions the record carries.
     asked = []
-    _freshness().ask([records["html2pdf.js"]], lambda pkg: {"latest": "0"},
+    _freshness().ask([records["docx"]], lambda pkg: {"latest": "0"},
                      lambda pkg, ver: asked.append((pkg, ver)) or [],
-                     _upstream_holds_ours([records["html2pdf.js"]]))
-    assert ("jspdf", "4.0.0") in asked and ("dompurify", "3.3.1") in asked, (
+                     _upstream_holds_ours([records["docx"]]))
+    assert ("jszip", "3.10.1") in asked and ("docx", "9.7.1") in asked, (
         "the freshness job no longer asks OSV about the packages inside a bundle")
 
 
@@ -624,3 +618,46 @@ def test_the_qrcode_attribution_survives_the_file():
     assert "licenses/dijkstrajs-MIT-LICENSE.txt" in credits
     assert "through 2026-09-17" in credits, (
         "CREDITS.md does not say which release was the last to carry the file")
+
+
+# ── B421: html2pdf.bundle.min.js is gone, and its paperwork is not ─────────
+
+def test_the_html2pdf_bundle_is_no_longer_shipped():
+    """`B421` (`D-2026-10-29-02` §2). The fallback PDF is jsPDF's own `html()`
+    from three published files, so the bundle is not tracked, has no
+    fingerprint record, and nothing the app serves names it.
+
+    **Fails on the tree as it stood**: the file was tracked, the `html2pdf.js`
+    record pinned its hash, and `static/js/document.js` loaded it.
+    """
+    tracked = subprocess.run(
+        ["git", "ls-files", "static/lib/"], cwd=ROOT,
+        capture_output=True, text=True, check=True).stdout.split()
+    assert "static/lib/html2pdf.bundle.min.js" not in tracked, tracked
+    assert {"static/lib/jspdf.umd.min.js", "static/lib/html2canvas.min.js",
+            "static/lib/purify.min.js"} <= set(tracked), tracked
+    mod = load()
+    assert "html2pdf.js" not in {r.entry for r in mod.VENDORED}
+    # The served path, not the name: `document.js`'s comment says what the
+    # loader used to fetch, and a comment naming a file is not a load of it.
+    hits = subprocess.run(
+        ["git", "grep", "-l", "lib/html2pdf", "--", "static/", "app.py",
+         "routes/", "src/"],
+        cwd=ROOT, capture_output=True, text=True).stdout.split()
+    assert not hits, hits
+
+
+def test_the_html2pdf_attribution_survives_the_file():
+    """`B338`'s rule, applied again: the bytes ship in every tag up to
+    2026-10-29, so their notices stay; the patterns go because no file is
+    there for them to match."""
+    spec = importlib.util.spec_from_file_location(
+        "_cl_h2p", ROOT / ".pantheon" / "check-licences.py")
+    lic = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(lic)
+    by_name = {e.name: e for e in lic.INVENTORY}
+    for name in ("html2pdf.js", "html2pdf bundle sidecar"):
+        assert by_name[name].patterns == [], name
+        assert (ROOT / "licenses" / by_name[name].text).is_file(), name
+    credits = (ROOT / "CREDITS.md").read_text(encoding="utf-8")
+    assert "`html2pdf.bundle.min.js` **through 2026-10-29**; no longer shipped" in credits
