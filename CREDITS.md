@@ -871,7 +871,7 @@ and whose Reserved Font Name the subset does not use.
 |---|---|---|---|---|
 | [Fira Code](https://github.com/tonsky/FiraCode) | `static/fonts/FiraCode-{Light,Regular,SemiBold}.woff2` | SIL Open Font License 1.1 ([`licenses/FiraCode-OFL.txt`](licenses/FiraCode-OFL.txt)) | Nikita Prokopov & contributors | none declared |
 | [Inter](https://github.com/rsms/inter) v4.1 | `static/fonts/Inter-{Regular,Medium,SemiBold}.woff2`, `static/lib/pdf-fonts/Inter-{Regular,Bold,Italic,BoldItalic}.ttf` | SIL Open Font License 1.1 ([`licenses/Inter-OFL.txt`](licenses/Inter-OFL.txt)) | Rasmus Andersson | none declared |
-| [Noto Sans CJK](https://github.com/notofonts/noto-cjk) SC v2.004, subset | `static/lib/pdf-fonts/NotoSansCJKsc-Regular.subset.ttf` | SIL Open Font License 1.1 ([`licenses/NotoSansCJK-OFL.txt`](licenses/NotoSansCJK-OFL.txt)) | Adobe, for Google's Noto project | **yes — `Source`**, which the subset's name does not use |
+| [Noto Sans CJK](https://github.com/notofonts/noto-cjk) SC v2.004, two subsets | `static/lib/pdf-fonts/NotoSansCJKsc-{Regular,Symbols}.subset.ttf` | SIL Open Font License 1.1 ([`licenses/NotoSansCJK-OFL.txt`](licenses/NotoSansCJK-OFL.txt)) | Adobe, for Google's Noto project | **yes — `Source`**, which the subset's name does not use |
 | [OpenDyslexic](https://opendyslexic.org/) | `static/fonts/OpenDyslexic-{Regular,Bold}.woff2` | SIL Open Font License 1.1 ([`licenses/OpenDyslexic-OFL.txt`](licenses/OpenDyslexic-OFL.txt)) | Abbie Gonzalez | **yes — `OpenDyslexic`** |
 | KaTeX (20 faces) v0.18.7 | `static/lib/katex/fonts/*.woff2` | SIL Open Font License 1.1 ([`licenses/KaTeX-fonts-OFL.txt`](licenses/KaTeX-fonts-OFL.txt)) | Design Science, Inc. and Khan Academy | **yes — every face** |
 
@@ -886,8 +886,12 @@ variable TrueType at tag `Sans2.004`, cut by `scripts/build-pdf-cjk-font.py` to
 the characters GB 2312, Big5, JIS X 0208 and KS X 1001 encode plus the kana,
 CJK punctuation and fullwidth blocks (20,340 glyphs of 65,535), with its weight
 fixed at Regular. jsPDF takes TrueType outlines, not the CFF of Noto CJK's
-`.otf`s, which is why it is this file. `.pantheon/check-vendored-versions.py`
-holds each file's sha256.
+`.otf`s, which is why it is this file. The same build cuts a second face from
+the same source (`B1691`): `NotoSansCJKsc-Symbols.subset.ttf`, 73 KB, the box
+drawing, blocks, maths, enclosed numbers and dingbats it draws (and a few
+small blocks outside the CJK face's) less what Windows-1252 and Inter draw —
+532 characters, fetched for a Latin document's `├──` instead of the 6.4 MB
+face. `.pantheon/check-vendored-versions.py` holds each file's sha256.
 
 The 20 KaTeX faces are `KaTeX_AMS`, `KaTeX_Caligraphic`, `KaTeX_Fraktur`,
 `KaTeX_Main`, `KaTeX_Math`, `KaTeX_SansSerif`, `KaTeX_Script`, `KaTeX_Size1–4`

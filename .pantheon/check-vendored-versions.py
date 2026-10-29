@@ -354,7 +354,9 @@ VENDORED = [
              "TrueType because jsPDF embeds `glyf` outlines and not WOFF2. "
              "B1687: static/js/pdfFontCoverage.js is read out of Regular "
              "(which characters it draws, decided before it is fetched) — "
-             "a bump re-runs `node scripts/build-pdf-font-coverage.mjs`.",
+             "a bump re-runs `node scripts/build-pdf-font-coverage.mjs`. "
+             "B1691: and scripts/build-pdf-cjk-font.py, whose symbols face "
+             "holds what Regular does not draw.",
     ),
     Vendored(
         "Noto Sans CJK", "notofonts/noto-cjk", "2.004", "2026-10-29",
@@ -362,11 +364,15 @@ VENDORED = [
         "NotoSansCJKsc-VF.ttf",
         "v2.004",
         registry="github",
+        # `B1691`: one command builds both faces, so both build records
+        # carry it (rule 7 holds each file to this record's command).
         build="python3 scripts/build-pdf-cjk-font.py NotoSansCJKsc-VF.ttf "
-              "static/lib/pdf-fonts/NotoSansCJKsc-Regular.subset.ttf",
+              "static/lib/pdf-fonts",
         files={
             "static/lib/pdf-fonts/NotoSansCJKsc-Regular.subset.ttf":
                 "5e89eb7fae7353b6760ca6de6daa04d548ffa2b76be35bdb069fad9908e98a9f",
+            "static/lib/pdf-fonts/NotoSansCJKsc-Symbols.subset.ttf":
+                "34522edadec558fa828a223237a33e91b1f39b58995676210e55b355ac131911",
         },
         note="B1674. Built, not upstream's bytes: Noto Sans CJK SC's "
              "variable TrueType at tag Sans2.004 (36,144,788 bytes, sha256 "
@@ -381,7 +387,15 @@ VENDORED = [
              "run with fontTools 4.66.1. What it leaves out: Hangul syllables "
              "outside KS X 1001's 2,350, ideographs outside the four sets "
              "(Extension A and beyond), and anything past U+FFFF, which "
-             "jsPDF cannot address; the export names those it cannot draw.",
+             "jsPDF cannot address; the export names those it cannot draw. "
+             "B1691: the same build cuts a second face from the same source, "
+             "NotoSansCJKsc-Symbols.subset.ttf (73,336 bytes, 532 characters "
+             "in 521 glyphs): what the source draws in the symbol and "
+             "punctuation blocks (box drawing, blocks, maths, enclosed "
+             "numbers, dingbats) and four small blocks outside the CJK "
+             "face's, less what Windows-1252 and Inter-Regular.ttf draw — so "
+             "a Latin document's `├──` fetches 73 KB, not 6.4 MB. The CJK "
+             "face's bytes did not move.",
     ),
     # B338, 2026-09-17. The `node-qrcode` record is GONE, because the bytes
     # are: `static/lib/qrcode.min.js` was loaded by nothing and is no longer

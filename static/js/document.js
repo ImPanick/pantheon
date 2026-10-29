@@ -10108,7 +10108,8 @@ import { PDF_FONT_COVERAGE } from './pdfFontCoverage.js';   // `B1687`
       // (`PDF_PAGE`, `B1686`): each face jsPDF writes is ~90 KB
       // uncompressed, however few glyphs it holds, and a page of text is
       // its operators written out in full.
-      const pdf = new window.jspdf.jsPDF(needs.sans || needs.cjk
+      // `B1691`: any face — the symbols face may be the only one.
+      const pdf = new window.jspdf.jsPDF(Object.values(needs).some(Boolean)
         ? { ...PDF_PAGE, putOnlyUsedFonts: true } : PDF_PAGE);
       const { fonts, trouble } = await _pdfRegisterFonts(pdf, needs);
       if (fonts.sans) container.style.fontFamily = `${fonts.sans.family}, sans-serif`;
@@ -10203,11 +10204,24 @@ import { PDF_FONT_COVERAGE } from './pdfFontCoverage.js';   // `B1687`
    *
    * The family names are letters only: jsPDF's `font` parser takes nothing
    * else in a family name.
+   *
+   * `B1691`. And a third, between them: Noto Sans CJK SC's box drawing,
+   * blocks, maths, enclosed numbers and dingbats (`├── └──`, `█`, `∀ ∈ ≡`,
+   * `⑴ ❶`, `☎ ♠`), cut from the same source as the CJK face by the same
+   * script into a 73 KB face of its own — every character of that font
+   * outside `_PDF_CJK`'s blocks that neither the built-in fonts nor Inter
+   * draws. A Latin document with a pasted `tree` listing lost every
+   * connector of it: none was in Inter or in `_PDF_CJK`'s blocks, and the
+   * 6.4 MB CJK face that draws them is not worth fetching for a `─`. It is
+   * decided by its own table, like Inter (`_pdfFaceDraws`), and comes before
+   * the CJK face, so a `─` is drawn from the same face whether or not the
+   * document has Chinese in it too.
    */
   const PDF_FONT_DIR = '/static/lib/pdf-fonts/';
   const PDF_FONTS = {
     sans: { family: 'pantheonpdfsans', faces: { normal: 'Inter-Regular.ttf', bold: 'Inter-Bold.ttf',
       italic: 'Inter-Italic.ttf', bolditalic: 'Inter-BoldItalic.ttf' } },
+    symbols: { family: 'pantheonpdfsymbols', faces: { normal: 'NotoSansCJKsc-Symbols.subset.ttf' } },
     cjk: { family: 'pantheonpdfcjk', faces: { normal: 'NotoSansCJKsc-Regular.subset.ttf' } },
   };
 
@@ -10229,14 +10243,19 @@ import { PDF_FONT_COVERAGE } from './pdfFontCoverage.js';   // `B1687`
    *  ▶, ❤, ‼ and seventeen more that Inter draws, so a Latin document's
    *  `Brand™` fetched nothing and its `™` was left out (measured in
    *  Chromium); and Inter was fetched for 3,342 characters it lacks, `─` and
-   *  U+FE0F among them. Now it is the font's own answer (`_pdfFaceDraws`). */
+   *  U+FE0F among them. Now it is the font's own answer (`_pdfFaceDraws`).
+   *
+   *  `B1691`. And the symbols face for what Inter lacks and it draws — a
+   *  `tree` listing's `├── └──` fetches 73 KB, not the CJK face's 6.4 MB,
+   *  and nothing at all was fetched for it before. */
   function _pdfFontsNeeded(text) {
-    const needs = { sans: false, cjk: false };
+    const needs = { sans: false, symbols: false, cjk: false };
     if (!_PDF_DRAWABLE) return needs;
     for (const ch of text) {
       if (_PDF_UNSEEN.test(ch) || _PDF_DRAWABLE.has(ch)) continue;
       if (_PDF_CJK.test(ch)) needs.cjk = true;
       else if (_pdfFaceDraws(PDF_FONTS.sans.faces.normal, ch)) needs.sans = true;
+      else if (_pdfFaceDraws(PDF_FONTS.symbols.faces.normal, ch)) needs.symbols = true;
     }
     return needs;
   }

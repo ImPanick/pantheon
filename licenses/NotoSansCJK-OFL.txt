@@ -2,7 +2,8 @@ Copyright 2014-2021 Adobe (http://www.adobe.com/), with Reserved Font Name 'Sour
 
 (The copyright line above is the one the font itself carries, in its `name` table;
 Noto CJK's own LICENSE file, which follows unchanged, does not repeat it. Shipped
-as static/lib/pdf-fonts/NotoSansCJKsc-Regular.subset.ttf, a Modified Version: see
+as static/lib/pdf-fonts/NotoSansCJKsc-Regular.subset.ttf and
+static/lib/pdf-fonts/NotoSansCJKsc-Symbols.subset.ttf, two Modified Versions: see
 scripts/build-pdf-cjk-font.py and CREDITS.md.)
 
 This Font Software is licensed under the SIL Open Font License,

@@ -2,7 +2,7 @@
  "file": "static/lib/pdf-fonts/NotoSansCJKsc-Regular.subset.ttf",
  "entry": "Noto Sans CJK",
  "bundler": "fonttools 4.66.1 (scripts/build-pdf-cjk-font.py)",
- "command": "python3 scripts/build-pdf-cjk-font.py NotoSansCJKsc-VF.ttf static/lib/pdf-fonts/NotoSansCJKsc-Regular.subset.ttf",
+ "command": "python3 scripts/build-pdf-cjk-font.py NotoSansCJKsc-VF.ttf static/lib/pdf-fonts",
  "input": {
   "url": "https://raw.githubusercontent.com/notofonts/noto-cjk/Sans2.004/Sans/Variable/TTF/NotoSansCJKsc-VF.ttf",
   "sha256": "990c807e79c25662a5a9ecf7f971baeb2bf2eab9a559e5ecf15cdfdb8561d21f"
