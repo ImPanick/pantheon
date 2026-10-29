@@ -269,7 +269,11 @@ def test_the_export_options_come_from_the_one_call_site(chain):
     `document.js`, so the two cannot drift; asserting their values here is
     what makes the reading visible to somebody changing them."""
     cs = chain["callSite"]
-    assert cs["ctor"] == {"unit": "mm", "format": "a4", "orientation": "portrait"}, cs
+    # `B1686` added `compress`: every fallback PDF is deflated, where only
+    # one with an embedded face was (a Latin-only probe 510,195 → 53,427 B,
+    # `tests/test_the_fallback_pdf_never_cuts_a_line_and_draws_formulas_in_a_browser.py`).
+    assert cs["ctor"] == {"unit": "mm", "format": "a4", "orientation": "portrait",
+                          "compress": True}, cs
     opts = cs["options"]
     assert opts["worker"] is True and opts["margin"] == 10, opts
     assert opts["autoPaging"] is True, opts

@@ -10101,11 +10101,12 @@ import { printHtmlInFrame } from './printFrame.js';   // `B1333`
       const needs = _pdfFontsNeeded(text);
       // With faces to embed, only those the file draws with are written
       // into it (jsPDF writes every registered font otherwise, ~85 KB for
-      // each face nothing used), and its streams are deflated (each face
-      // jsPDF writes is ~90 KB uncompressed, however few glyphs it holds).
-      // A document that needs none is made exactly as before.
+      // each face nothing used). Every file's streams are deflated
+      // (`PDF_PAGE`, `B1686`): each face jsPDF writes is ~90 KB
+      // uncompressed, however few glyphs it holds, and a page of text is
+      // its operators written out in full.
       const pdf = new window.jspdf.jsPDF(needs.sans || needs.cjk
-        ? { ...PDF_PAGE, putOnlyUsedFonts: true, compress: true } : PDF_PAGE);
+        ? { ...PDF_PAGE, putOnlyUsedFonts: true } : PDF_PAGE);
       const { fonts, trouble } = await _pdfRegisterFonts(pdf, needs);
       if (fonts.sans) container.style.fontFamily = `${fonts.sans.family}, sans-serif`;
       // `B421`. A string, not the node: `html()` sanitises a string with the
@@ -10116,12 +10117,14 @@ import { printHtmlInFrame } from './printFrame.js';   // `B1333`
       await _pdfFromHtml(pdf, container.outerHTML, fonts);
       pdf.save(baseName + '.pdf');
       // Said, not left for the reader of the file to find (`Law 15`).
+      // `B1685`: what is said is what happened — the clone hides each of
+      // them (`_pdfFontRuns`), so the file has a blank where it was.
       const lost = _undrawableInPdf(text, fonts);
       if (lost.length && uiModule) {
         const shown = lost.slice(0, 8).join(' ') + (lost.length > 8 ? ' …' : '');
         const why = trouble.length ? ` (the font that draws them did not load: ${trouble.join('; ')})` : '';
         uiModule.showError(`Saved — but this PDF can't draw ${shown}${why}, so `
-          + `${lost.length === 1 ? 'it comes' : 'they come'} out wrong in the file. `
+          + `${lost.length === 1 ? 'it is' : 'they are'} left out of the file. `
           + 'Export as Word keeps every character.');
       }
     } catch (e) {
@@ -10143,7 +10146,9 @@ import { printHtmlInFrame } from './printFrame.js';   // `B1333`
    * scripts neither covers, anything past U+FFFF — is what this names.
    * Whitespace and the invisible format characters (KaTeX's zero-width
    * spaces) are not counted: nobody can be told about a character they
-   * cannot see.
+   * cannot see. `B1685`: each one named is left out of the file — hidden in
+   * the clone by `_pdfFontRuns`, by the same test of every font — not
+   * written into it as noise.
    */
   const _PDF_DRAWABLE = (() => {
     try {
@@ -10294,21 +10299,43 @@ import { printHtmlInFrame } from './printFrame.js';   // `B1333`
 
   /** `B1674`. The font a character is drawn in, where its own (`base`) is
    *  given: its own if that draws it, else the first of `fonts` that does,
-   *  else a built-in one — which leaves it out of the file rather than
-   *  ending the rest of the word with it, as a TrueType face would.
-   *  Whitespace stays with its run: html2canvas never draws it inside one. */
+   *  else a built-in one if that does — and `null` when none does (`B1685`).
+   *  Whitespace stays with its run: html2canvas never draws it inside one
+   *  (measured for `B1685`: `10 000` in a built-in font is drawn as
+   *  `10` and `000`, the thin space in neither).
+   *
+   *  `B1685`. That last answer was `'std'`, on the belief that a built-in
+   *  font leaves out what it cannot draw. It does not: jsPDF writes a string
+   *  holding anything past U+00FF as UTF-16 bytes, and a built-in font draws
+   *  those bytes as Windows-1252 letters — `# CODEPROBE 🎉` came out as
+   *  `# CODEPROBE Ø<ß‰`, a Hebrew word as `\x05é\x05Ü…`, and every other
+   *  letter of the same stretch after a NUL. Measured in Chromium, in a
+   *  Latin-only document (no face embedded, so every run is a built-in
+   *  font's) as much as beside Inter. */
   function _pdfFontFor(ch, base, fonts) {
     if (/[\s\p{Cc}]/u.test(ch)) return base;
     const draws = (key) => (key === 'std' ? _PDF_DRAWABLE.has(ch) : !!(fonts[key] && fonts[key].draws(ch)));
     if (draws(base)) return base;
-    return Object.keys(fonts).find((key) => key !== base && draws(key)) || 'std';
+    return Object.keys(fonts).find((key) => key !== base && draws(key))
+      || (draws('std') ? 'std' : null);
   }
 
   /** `B1674`. In html2canvas's clone, give every stretch of text the font
    *  that draws it (`_pdfFontFor`), as a `<span data-pdf-font>` naming that
    *  family — so the browser lays it out in the font jsPDF will draw it in.
+   *
+   *  `B1685`. A stretch no font draws is laid out but not drawn: its span is
+   *  `visibility: hidden`, which html2canvas does not paint and the browser
+   *  still lays out — so the words around it keep their places, a
+   *  zero-width character keeps whatever part it had in the layout (KaTeX
+   *  puts one in every stacked formula), and the file has a blank where the
+   *  character was rather than noise.
+   *  `_undrawableInPdf` names the visible ones in the export's sentence.
+   *  Runs for every fallback PDF, a Latin-only one too (`fonts` empty: every
+   *  run is a built-in font's, and only what Windows-1252 lacks is hidden).
    *  Returns how many stretches it wrapped. */
   function _pdfFontRuns(root, fonts, win) {
+    if (!_PDF_DRAWABLE) return 0;   // no table to check against: change nothing
     const doc = root.ownerDocument;
     const walker = doc.createTreeWalker(root, win.NodeFilter.SHOW_TEXT);
     const nodes = [];
@@ -10332,7 +10359,8 @@ import { printHtmlInFrame } from './printFrame.js';   // `B1333`
         }
         const span = doc.createElement('span');
         span.setAttribute('data-pdf-font', '');
-        span.style.fontFamily = run.font === 'std' ? 'sans-serif' : fonts[run.font].family;
+        if (run.font === null) span.style.visibility = 'hidden';
+        else span.style.fontFamily = run.font === 'std' ? 'sans-serif' : fonts[run.font].family;
         span.textContent = run.text;
         frag.appendChild(span);
         wrapped++;
@@ -10370,8 +10398,15 @@ import { printHtmlInFrame } from './printFrame.js';   // `B1333`
 
   /** `B421`. A4 portrait in millimetres with a 10 mm margin — the page
    *  html2pdf was asked for (`margin: 10`, `jsPDF: {unit, format,
-   *  orientation}`), kept. */
-  const PDF_PAGE = { unit: 'mm', format: 'a4', orientation: 'portrait' };
+   *  orientation}`), kept.
+   *
+   *  `B1686`. And every stream deflated. jsPDF's `compress` is off by
+   *  default, and `B1674` turned it on only where a face is embedded, so a
+   *  Latin-only file — most of them — went out with its page content as
+   *  plain operators: `B1676`'s probe, five pages of text, a table and two
+   *  formulas, measured in Chromium at 510,195 B as written and 53,427 B
+   *  deflated. */
+  const PDF_PAGE = { unit: 'mm', format: 'a4', orientation: 'portrait', compress: true };
   const PDF_MARGIN_MM = 10;
   const MM_PER_CSS_PX = 25.4 / 96;
 
@@ -10435,6 +10470,9 @@ import { printHtmlInFrame } from './printFrame.js';   // `B1333`
           // `B1674`: the fonts are in place and loaded before the layout is
           // walked and measured — they change where every line falls.
           if (embedded && clonedEl) return _pdfFontsInClone(clonedDoc, clonedEl, fonts).then(() => layout(clonedEl));
+          // `B1685`: with no face embedded, what the built-in fonts cannot
+          // draw is still hidden rather than written as noise.
+          if (clonedEl) _pdfFontRuns(clonedEl, fonts, clonedDoc.defaultView);
           return layout(clonedEl);
         },
       },
