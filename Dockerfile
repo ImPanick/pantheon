@@ -9,6 +9,29 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl \
 COPY docker/build-realesrgan-wheels.sh /usr/local/bin/build-realesrgan-wheels.sh
 RUN bash /usr/local/bin/build-realesrgan-wheels.sh /wheels
 
+# ---- js-without-comments: Pantheon's own JavaScript, served without comments ----
+# `B1591` (`D-2026-10-29-02` §6). The repository's modules keep every comment
+# (`Law 1`); the image serves them without, which took the 244 modules from
+# 2,648 KB to 1,674 KB gzipped when it was measured. scripts/strip-js-comments.mjs
+# finds the comments with acorn's parser (a regular expression is never read as
+# a comment, nor a division as a regular expression), keeps every token on its
+# line and column so a stack trace still points into the repository's file,
+# keeps the licence notices, never touches static/lib/ (vendored), and proves
+# each file is the same token stream before it writes it — a file it cannot
+# prove stops the build. acorn is the one `dependencies` entry in
+# package-lock.json, at an exact version whose sha512 `npm ci` checks. The
+# stage runs on the base the other two use, with Debian's node (the one the
+# app's stage installs below), so no new image enters the build.
+FROM python:3.14-slim AS js-without-comments
+RUN apt-get update && apt-get install -y --no-install-recommends nodejs npm \
+    && rm -rf /var/lib/apt/lists/*
+WORKDIR /build
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund
+COPY scripts/strip-js-comments.mjs scripts/
+COPY static/ static/
+RUN node scripts/strip-js-comments.mjs /build /out
+
 FROM python:3.14-slim
 
 # P0-18. A published image is a distribution, and this one declared no licence
@@ -106,6 +129,13 @@ RUN pip install --no-cache-dir --no-deps /tmp/pantheon-wheels/*.whl \
 
 # Copy app code
 COPY . .
+
+# `B1591`. Pantheon's own modules as the image serves them — the files `COPY .
+# .` just wrote, without their comments (the `js-without-comments` stage above)
+# — and `js-without-comments.json`, the record of which git blob each was made
+# from, which `scripts/pantheon-deploy`'s byte check reads. The record is
+# outside `static/`, so it is never served.
+COPY --from=js-without-comments /out/ ./
 
 # `B453`. The commit this image was built from, read by `GET /api/version`
 # (`src/constants.build_commit`). `.git` is not copied in, so the build has to

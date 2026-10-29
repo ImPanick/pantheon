@@ -686,6 +686,12 @@ jobs:
           cache: pip
       - run: pip install -r requirements.txt
         if: steps.docs-check.outputs.docs_only != 'true'
+      # `B1591`. acorn, the parser the image's comment stripper uses, from
+      # package-lock.json with its sha512 checked: the suite drives
+      # `scripts/strip-js-comments.mjs` over every shipped module, and without
+      # it those tests skip. `--omit=dev` leaves bombadil out.
+      - run: npm ci --omit=dev --ignore-scripts --no-audit --no-fund
+        if: steps.docs-check.outputs.docs_only != 'true'
       - run: mkdir -p data  # sqlite DB lives at ./data/app.db
         if: steps.docs-check.outputs.docs_only != 'true'
       - run: python -m pytest -q

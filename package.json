@@ -5,6 +5,9 @@
     "type": "git",
     "url": "https://github.com/ImPanick/pantheon.git"
   },
+  "dependencies": {
+    "acorn": "8.19.0"
+  },
   "devDependencies": {
     "@antithesishq/bombadil": "^0.7.6"
   }
