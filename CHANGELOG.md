@@ -253,6 +253,12 @@ the next one is cut.
 
 ### Changed — read this before upgrading
 
+- **More programs are read for the files they replace or remove** (`B1682`, `B1683`): `pandoc`,
+  ImageMagick, `openssl`, the WebP tools, 7-Zip, `yt-dlp`, `rsync`, a recursive `wget`, and
+  compressors that delete the file they pack (`gzip` without `-k`, and the like) ask where deletions
+  ask when the file was there before the run. A `[ -e f ] ||` guard before the write is understood.
+  Image Optimiser's version moved.
+
 - **`write_file` can append** (`B1672`): an append adds to the end of a file and never counts as
   replacing it, so Receipt Collector adds its new rows to its ledger and its unattended sweeps
   finish without asking. Its version moved.
@@ -529,6 +535,11 @@ the next one is cut.
   arming that a non-empty memory store did on its own.
 
 ### Fixed
+
+- **The PDF fallback leaves a clean blank where it cannot draw a character, instead of garbled
+  letters, and every fallback PDF is compressed** (`B1685`, `B1686`).
+- **In the workstation, a chat's projects folder is the one the workstation gives its commands**
+  (`B1684`), so a new file written there is not asked about.
 
 - **The PDF fallback draws Cyrillic, Greek, Chinese, Japanese and Korean** (`B1674`), in fonts
   fetched only when a document needs them, and never cuts a picture at a page edge (`B1678`).
