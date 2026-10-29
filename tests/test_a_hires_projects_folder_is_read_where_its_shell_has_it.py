@@ -22,12 +22,14 @@ as `~`. Unquoted, a value the shell would split or glob is not known; any
 other variable is not known, and neither is one the command could set
 itself (nor `~` once it sets `HOME`). In the workstation the run asks there as
 before, and a hire's `$PANTHEON_PROJECTS` is the folder Pantheon hands its
-command (`run_env`); a chat's there is the daemon's own and stays unknown.
+command (`run_env`); a chat's there is the daemon's own and stays unknown
+— until `B1684`, which has the daemon report it.
 
 Speed Logger's header stays on `>>`: its `>` runs only when `speed.csv` is
 not there, behind a `[ -f speed.csv ] ||` this reader cannot see, so every
 run after the first would read it as writing over the log
-(`test_speed_logger_still_logs_under_its_never`).
+(`test_speed_logger_still_logs_under_its_never`; `B1682` reads that guard
+since).
 
 Driven (`Law 20`): the real gate and dispatcher running real `bash` with a
 hire's mark (`ToolPolicy.hired`), whose environment sets the variable, on
@@ -165,7 +167,8 @@ def test_in_the_workstation_a_hires_variable_is_the_folder_pantheon_hands_it(sta
     """A hire's run there: the loop asks the workstation (`RunFiles.look`)
     with the folder its command is given as `$PANTHEON_PROJECTS`; a new file
     is made by the real shell under a never, the person's is refused. A
-    chat's variable there is the daemon's own, and stays unknown."""
+    chat's variable there is the daemon's own — unknown until `B1684`, and
+    now read where the daemon reports it gives it."""
     workspace = workspace_for("ann", None)
     there = _mine(station) / "w"
     there.mkdir(parents=True)
@@ -191,7 +194,14 @@ def test_in_the_workstation_a_hires_variable_is_the_folder_pantheon_hands_it(sta
     assert f"(a > redirect replaces notes.md in your workstation, {THERE})" in refused["error"]
     assert (there / "notes.md").read_text(encoding="utf-8") == "keep"
 
+    # `B1684` changed this from "it cannot be known": the chat's value is the
+    # daemon's own, which it now reports — the same folder here — so the
+    # hire's file, there before the chat's run began, is read as replaced,
+    # and a name nothing has is a plain write.
     chat = RunFiles(workspace, "ann", session_id=f"s-{uuid.uuid4().hex[:8]}")
     asyncio.run(chat.look("bash", NEW))
     assert call_destroys("bash", NEW, chat) == \
-        "it cannot be known whether brand-new.md in your workstation was there before this run began"
+        f"a > redirect replaces brand-new.md in your workstation, {THERE}"
+    fresh = NEW.replace("brand-new.md", "another.md")
+    asyncio.run(chat.look("bash", fresh))
+    assert call_destroys("bash", fresh, chat) is None

@@ -254,6 +254,17 @@ class System:
         make it."""
         return self.projects_root() / P.project_folder_of(account)
 
+    def projects_env(self, account: str) -> Path:
+        """`B1684`. The folder every command this account runs is given as
+        `$PANTHEON_PROJECTS` (`_exec_prepare`): its own folder under the first
+        shared root that holds one (`project_dirs`), else where it would be
+        (`B1643`). One rule, so what `account` reports is what a command gets
+        — which is not always `projects_root`'s folder: with several roots,
+        the first may not hold the account's folder (a symlink there is not
+        its folder) while a later one does, and Pantheon cannot see which."""
+        projects = self.project_dirs(account)
+        return projects[0] if projects else self.project_dir_named(account)
+
     def ensure(self, account: str) -> Dict:  # pragma: no cover - interface
         raise NotImplementedError
 
@@ -487,8 +498,12 @@ class Workstation:
         """`B959` (`P20-07`): whether the home exists, without making it.
         Deliberately not `ensure`: nothing is made, started or woken."""
         exists = self.system.has_home(account)
+        # `B1684`: and the folder its commands are given as
+        # `$PANTHEON_PROJECTS`, so the gate reads a path spelled against it
+        # where the command will find it — this daemon's value, not a guess.
         return {"account": account, "exists": exists,
-                "home": str(self.system.home(account)) if exists else None}
+                "home": str(self.system.home(account)) if exists else None,
+                "projects_env": str(self.system.projects_env(account))}
 
     def settings(self) -> Dict:
         root = self.system.projects_root()
@@ -664,12 +679,12 @@ class Workstation:
             raise WorkstationError("bad_request", "“stdin” is text.")
         self._ready(account)
         prefix, env = self.system.run_as(account)
-        projects = self.system.project_dirs(account)
         # `B1643`: never unset. With nothing mounted the variable names the
         # folder that is not there, so a `cd "$PANTHEON_PROJECTS"/'<folder>'`
         # fails naming it instead of going to `/<folder>` (a hire's `tmp` is
         # `/tmp`); Pantheon says why (`workstation_tools.no_projects_sentence`).
-        env[P.PROJECTS_ENV] = str(projects[0] if projects else self.system.project_dir_named(account))
+        # `B1684`: by the one rule `account` reports it by.
+        env[P.PROJECTS_ENV] = str(self.system.projects_env(account))
         env = {**env, **env_in}
         with self.system.acting_as(account):
             cwd = self.resolve(account, body.get("cwd"))
