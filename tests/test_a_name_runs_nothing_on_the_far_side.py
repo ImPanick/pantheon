@@ -218,8 +218,11 @@ def _runs_under_its_own_hire(agent_id: str, command: str) -> bool:
     unreadable would be named on the card instead.
 
     `B1652`: or, for an agent whose hire asks before reaching the network
-    (Network Mapper), asks for its `ssh` and nothing else — the card names
-    the `ssh`, where an unreadable name would be named instead."""
+    (Network Mapper; Environment Setter), asks for its `ssh` (its `pip
+    install`) and nothing else — the card names the program, where an
+    unreadable name would be named instead. Environment Setter's was missed
+    when `B1652` landed, and its three filled commands in
+    `test_a_folder_with_a_space_is_one_folder.py` failed on `9d4d2d18`."""
     table = H.effective_effects(get_agent(None, agent_id), {})
     run = ToolRunSecurityContext(hire_ask_effects=frozenset(e for e, r in table.items() if r == "ask"),
                                  hire_never_effects=frozenset(e for e, r in table.items() if r == "never"))
@@ -227,7 +230,9 @@ def _runs_under_its_own_hire(agent_id: str, command: str) -> bool:
     decision = run.decision_for("bash", command)
     return decision.allowed or decision.reason in (
         "This agent's hire asks before destructive: 'bash' waits for your yes (rm deletes files).",
-        "This agent's hire asks before network_egress: 'bash' waits for your yes (ssh reaches the network).")
+        "This agent's hire asks before network_egress: 'bash' waits for your yes (ssh reaches the network).",
+        "This agent's hire asks before network_egress: 'bash' waits for your yes (pip install reaches the "
+        "network).")
 
 
 HOSTILE = ["x'; touch pwned1; '.conf", "$(touch pwned2).conf", "`touch pwned3`.conf",
