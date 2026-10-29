@@ -54,6 +54,9 @@ import { readRefusal } from './workbench/refusal.js';
 import { KEYBIND_DEFAULTS, KEYBIND_LABELS, keybindLayers, mergeKeybinds } from './keyboard-shortcuts.js';
 import { chevronIcon } from './icons.js';
 import { mountHfToken, mountServers } from './servingSettings.js';   // `B1258`: the token's and the servers' one editor
+// `B1564`: the chat's microphone, and whether this browser has speech
+// recognition of its own, in the recorder's words (the same specifier as `app.js`'s).
+import voiceRecorderModule, { browserSpeechRecognition, NO_BROWSER_SPEECH } from './voiceRecorder.js';
 
 let initialized = false;
 let modalEl = null;
@@ -1182,88 +1185,184 @@ async function initTtsSettings() {
   }
 }
 
-/* ── Speech to Text ── */
+/* ── Speech to Text (`B1564`) ──
+   The card is `static/index.html`'s `set-stt*` block, which the fork arrived
+   without: this function had wired it all along and returned on the missing
+   select. Every provider the owner allowed (`D-2026-10-29-01` §3): an
+   endpoint someone added, local Whisper behind the model-download switch
+   (`B1565`), and the browser's own, said beside the choice to send the audio
+   to Google in Chrome. One control: "Off" is `stt_enabled: false`, so a
+   switch and a list can never say two things. Saved through `_postSettings`
+   (admin-only, as the panel is); the chat's microphone is told through the
+   recorder's own reader (`refreshSttProvider`), which asks the server. */
+var _STT_LOCAL_SIZES = ['tiny', 'base', 'small', 'medium', 'large-v3'];
+
+function _sttNoteLine(note, text) {
+  var line = document.createElement('div');
+  line.textContent = text;
+  note.appendChild(line);
+  return line;
+}
+
 async function initSttSettings() {
   var provSel = el('set-sttProviderSelect');
+  var note = el('set-sttProviderNote');
   var modelSelect = el('set-sttModelSelect');
   var modelInput = el('set-sttModelInput');
   var modelRow = el('set-sttModelRow');
   var langRow = el('set-sttLangRow');
   var langInput = el('set-sttLangInput');
   var sttMsg = el('set-sttSettingsMsg');
-  var sttEnabledToggle = el('set-sttEnabledToggle');
-  var sttConfigWrap = el('set-sttConfigWrap');
-  // STT was removed from AI Defaults — bail if the UI isn't present.
-  if (!provSel) return;
+  if (!provSel || !note) return;
+  var endpointNames = {};
+  var saved = { provider: 'disabled', enabled: false };
+  var serverSays = '';   // why local Whisper is not running, from `/api/stt/stats`
+  var downloadLine = '';   // the model-download switch, in `_envflagSourceLine`'s words
 
   function isEndpoint() { return provSel.value.startsWith('endpoint:'); }
-  function getModel() { return isEndpoint() ? modelInput.value : modelSelect.value; }
+  function getModel() {
+    if (isEndpoint()) return modelInput.value.trim() || 'whisper-1';
+    return modelSelect.value || 'base';
+  }
 
-  function updateVisibility() {
+  var listed = [];
+  function fillEndpoints(endpoints, keep) {
+    listed = endpoints || [];
+    if (keep === undefined) keep = provSel.value;
+    Array.from(provSel.querySelectorAll('option[data-stt-endpoint]')).forEach(function(o) { o.remove(); });
+    endpointNames = {};
+    (endpoints || []).forEach(function(ep) {
+      if (!ep || !ep.is_enabled) return;
+      endpointNames[ep.id] = ep.name;
+      var opt = document.createElement('option');
+      opt.value = 'endpoint:' + ep.id;
+      opt.textContent = 'Endpoint: ' + ep.name;
+      opt.dataset.sttEndpoint = '1';
+      provSel.appendChild(opt);
+    });
+    // A saved endpoint that is gone or switched off stays the select's value,
+    // said for what it is, rather than the list falling to "Off" and looking
+    // like the setting (`D-2026-10-07-02` §1's rule for a model).
+    if (keep && keep.startsWith('endpoint:') && !endpointNames[keep.slice(9)]) {
+      var gone = document.createElement('option');
+      gone.value = keep;
+      gone.textContent = 'An endpoint that is gone or switched off';
+      gone.dataset.sttEndpoint = '1';
+      provSel.appendChild(gone);
+    }
+    if (keep) provSel.value = keep;
+  }
+
+  function describe() {
     var prov = provSel.value;
-    var showModel = prov === 'local' || prov.startsWith('endpoint:');
-    var showLang = prov !== 'disabled';
-    modelRow.style.display = showModel ? 'flex' : 'none';
-    langRow.style.display = showLang ? 'flex' : 'none';
-    if (isEndpoint()) {
-      modelSelect.style.display = 'none'; modelInput.style.display = '';
-    } else {
-      modelSelect.style.display = ''; modelInput.style.display = 'none';
+    note.textContent = '';
+    if (prov === 'disabled') {
+      _sttNoteLine(note, 'Off: the chat has no microphone.');
+    } else if (prov === 'browser') {
+      _sttNoteLine(note, 'In Chrome, the audio goes to Google to be turned into text, so it leaves this machine. '
+        + 'Other browsers may send it to their own service.');
+      if (!browserSpeechRecognition()) _sttNoteLine(note, NO_BROWSER_SPEECH);
+    } else if (prov === 'local') {
+      _sttNoteLine(note, 'Whisper runs on this server, so the audio stays here.');
+      if (downloadLine) _sttNoteLine(note, 'Downloading its model: ' + downloadLine);
+      if (serverSays && saved.enabled && saved.provider === 'local') _sttNoteLine(note, serverSays);
+      var door = document.createElement('button');
+      door.type = 'button';
+      door.className = 'admin-btn-sm';
+      door.textContent = 'System › Switches';
+      door.title = 'The switch that lets Pantheon download a model';
+      door.style.marginTop = '4px';
+      door.addEventListener('click', function() {
+        _openForgeDoor('settings:system', 'set-envflag-allow_model_download');
+      });
+      note.appendChild(door);
+    } else if (isEndpoint()) {
+      var name = endpointNames[prov.slice(9)];
+      _sttNoteLine(note, name
+        ? 'The recording is sent to ' + name + ', an endpoint added under Added Models, at its /audio/transcriptions.'
+        : 'That endpoint is gone or switched off, so nothing is transcribed. Choose another.');
     }
   }
 
-  function syncSttDisabled() {
-    var off = sttEnabledToggle && !sttEnabledToggle.checked;
-    var card = sttEnabledToggle ? sttEnabledToggle.closest('.admin-card') : null;
-    if (card) card.style.opacity = off ? '0.45' : '';
-    if (sttConfigWrap) sttConfigWrap.style.pointerEvents = off ? 'none' : '';
+  function updateVisibility() {
+    var prov = provSel.value;
+    var showModel = prov === 'local' || isEndpoint();
+    modelRow.style.display = showModel ? 'flex' : 'none';
+    langRow.style.display = prov !== 'disabled' ? 'flex' : 'none';
+    modelSelect.style.display = isEndpoint() ? 'none' : '';
+    modelInput.style.display = isEndpoint() ? '' : 'none';
+    langInput.placeholder = prov === 'browser'
+      ? 'Blank uses the browser’s language, or e.g. en-GB'
+      : 'Blank detects it, or e.g. en';
+    describe();
   }
 
-  // Effective provider: if toggle is off, treat as disabled regardless of provider select
-  function effectiveProvider() {
-    if (sttEnabledToggle && !sttEnabledToggle.checked) return 'disabled';
-    return provSel.value;
+  async function readServer() {
+    // Why local Whisper is not running, when it is the saved provider: the
+    // download gate's refusal (`B1565`) or faster-whisper missing.
+    serverSays = '';
+    try {
+      var res = await fetch('/api/stt/stats', { credentials: 'same-origin' });
+      if (res.ok) serverSays = String((await res.json()).unavailable_reason || '');
+    } catch (_) { /* the line is left out; saving reports its own errors */ }
   }
 
-  // Add API endpoints that might support STT
+  async function readDownloadSwitch() {
+    try {
+      var res = await fetch('/api/auth/settings/flag-sources', { credentials: 'same-origin' });
+      if (!res.ok) return;
+      var info = ((await res.json()).flags || {}).allow_model_download;
+      downloadLine = info ? _envflagSourceLine(info) : '';
+    } catch (_) { /* the line is left out */ }
+  }
+
   try {
-    var epRes = await fetch('/api/model-endpoints', { credentials: 'same-origin' });
-    var endpoints = await epRes.json();
-    endpoints.forEach(function(ep) {
-      if (!ep.is_enabled) return;
-      var opt = document.createElement('option'); opt.value = 'endpoint:' + ep.id; opt.textContent = ep.name + ' (API)'; provSel.appendChild(opt);
-    });
+    fillEndpoints(await _fetchModelEndpoints());
   } catch (e) { console.warn('Failed to load endpoints for STT', e); }
 
-  // Load saved settings
   try {
     var settingsRes = await fetch('/api/auth/settings', { credentials: 'same-origin' });
     var settings = await settingsRes.json();
-    if (settings.stt_provider) provSel.value = settings.stt_provider;
-    if (settings.stt_model) { modelSelect.value = settings.stt_model; modelInput.value = settings.stt_model; }
+    saved.enabled = settings.stt_enabled === true;
+    saved.provider = saved.enabled ? String(settings.stt_provider || 'disabled') : 'disabled';
+    fillEndpoints(listed, saved.provider);
+    if (provSel.value !== saved.provider) provSel.value = 'disabled';
+    var model = String(settings.stt_model || '');
+    if (_STT_LOCAL_SIZES.indexOf(model) >= 0) modelSelect.value = model;
+    else if (model) modelInput.value = model;
     if (settings.stt_language) langInput.value = settings.stt_language;
-    if (sttEnabledToggle) sttEnabledToggle.checked = settings.stt_enabled !== false;
   } catch (e) { console.warn('Failed to load STT settings', e); }
 
-  syncSttDisabled();
   updateVisibility();
+  await Promise.all([saved.provider === 'local' ? readServer() : null, readDownloadSwitch()]);
+  describe();
 
   async function saveSTT() {
+    var prov = provSel.value;
     try {
-      var enabled = sttEnabledToggle ? sttEnabledToggle.checked : false;
-      await _postSettings({ stt_enabled: enabled, stt_provider: provSel.value, stt_model: getModel() || 'base', stt_language: langInput.value.trim() });
+      await _postSettings({ stt_enabled: prov !== 'disabled', stt_provider: prov,
+                            stt_model: getModel(), stt_language: langInput.value.trim() });
+      saved = { provider: prov, enabled: prov !== 'disabled' };
       sttMsg.textContent = 'Saved'; sttMsg.style.color = 'var(--fg)'; setTimeout(() => { sttMsg.textContent = ''; }, 2000);
-      // Notify voiceRecorder of effective provider and update send button icon
-      if (window.voiceRecorderModule) window.voiceRecorderModule._sttProvider = effectiveProvider();
-      if (window._updateSendBtnIcon) window._updateSendBtnIcon();
+      // The chat's microphone, from the server's answer rather than this
+      // select's value: `refreshSttProvider` reads `/api/stt/stats` and
+      // redraws the send button. `B1564`: it was set through
+      // `window.voiceRecorderModule`, which nothing ever defined, so a change
+      // here reached the chat only after a reload.
+      voiceRecorderModule.refreshSttProvider();
+      if (prov === 'local') { await readServer(); describe(); }
     } catch (e) { sttMsg.textContent = _notSaved(e); sttMsg.style.color = 'var(--red)'; }
   }
 
-  provSel.addEventListener('change', function() { updateVisibility(); saveSTT(); });
+  provSel.addEventListener('change', function() {
+    if (isEndpoint() && _STT_LOCAL_SIZES.indexOf(modelInput.value.trim()) >= 0) modelInput.value = '';
+    updateVisibility();
+    saveSTT();
+  });
   modelSelect.addEventListener('change', saveSTT);
   modelInput.addEventListener('change', saveSTT);
   langInput.addEventListener('change', saveSTT);
-  if (sttEnabledToggle) sttEnabledToggle.addEventListener('change', function() { syncSttDisabled(); saveSTT(); });
+  _registerAiEndpointRefresh(function(endpoints) { fillEndpoints(endpoints); describe(); });
 }
 
 /* ═══════════════════════════════════════════

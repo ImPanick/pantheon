@@ -20,9 +20,52 @@ let recordingInterval = null;
 // Browser STT state
 let _recognition = null;
 let _browserTranscript = '';
+// `B1564`. Why the browser's recognition gave no words (its `error` code), and
+// the promise of its `end`, which is when the last words have arrived.
+let _recognitionError = '';
+let _recognitionEnded = null;
 
 // Cached STT provider — refreshed on settings change
 let _sttProvider = 'disabled';
+// `B1564`. The language set in Settings → AI Defaults; blank is the browser's own.
+let _sttLanguage = '';
+
+/**
+ * `B1564`. The browser's own speech recognition (the Web Speech API), or
+ * `null` in a browser that has none — Firefox, for one. Chrome's sends the
+ * audio to Google, which the Settings card says beside the choice.
+ */
+export function browserSpeechRecognition(win = (typeof window !== 'undefined' ? window : null)) {
+  if (!win) return null;
+  return win.SpeechRecognition || win.webkitSpeechRecognition || null;
+}
+
+/** `B1564`. Said where the browser provider is chosen and this browser has
+ *  no recognition (the Settings card), and when a recording is started in one. */
+export const NO_BROWSER_SPEECH = 'This browser has no speech recognition of its own, '
+  + 'so a recording is attached to the message as a sound file instead.';
+
+/**
+ * `B1564`. Why the browser's recognition gave no words, as a sentence, or ''
+ * when the reason is only that nothing was said (`no-speech`, `aborted`).
+ * The codes are the Web Speech API's `SpeechRecognitionErrorEvent.error`.
+ */
+export function browserSpeechRefusal(code) {
+  switch (code) {
+    case 'not-allowed':
+    case 'service-not-allowed':
+      return 'The browser would not let this page use its speech recognition. '
+        + 'Check its microphone and speech settings for this site.';
+    case 'network':
+      return 'The browser’s speech recognition could not reach its service (in Chrome, Google’s).';
+    case 'audio-capture':
+      return 'The browser’s speech recognition could not hear the microphone.';
+    case 'language-not-supported':
+      return 'The browser’s speech recognition does not know the language set in Settings → AI Defaults.';
+    default:
+      return '';
+  }
+}
 
 /**
  * Fetch current STT provider from server settings
@@ -33,6 +76,7 @@ async function refreshSttProvider() {
     if (res.ok) {
       const stats = await res.json();
       _sttProvider = stats.provider || 'disabled';
+      _sttLanguage = String(stats.language || '');
       // Notify the send button to update its icon
       if (window._updateSendBtnIcon) window._updateSendBtnIcon();
     }
@@ -71,19 +115,29 @@ function _resetRecordingUI() {
 }
 
 /**
- * Start browser speech recognition alongside recording
+ * Start browser speech recognition alongside recording. `false` when this
+ * browser has none (`B1564`: it used to return without a word, and the
+ * recording ended in "No speech detected").
  */
 function startBrowserSTT() {
-  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (!SpeechRecognition) return;
-
+  const Recognition = browserSpeechRecognition();
   _browserTranscript = '';
-  _recognition = new SpeechRecognition();
-  _recognition.continuous = true;
-  _recognition.interimResults = false;
-  _recognition.lang = '';
+  _recognitionError = '';
+  _recognition = null;
+  _recognitionEnded = null;
+  if (!Recognition) return false;
 
-  _recognition.onresult = (event) => {
+  const recognition = new Recognition();
+  recognition.continuous = true;
+  recognition.interimResults = false;
+  // `B1564`: the language Settings holds; blank is the page's, as it was.
+  recognition.lang = _sttLanguage;
+
+  let ended;
+  _recognitionEnded = new Promise((resolve) => { ended = resolve; });
+  recognition.onend = () => ended();
+
+  recognition.onresult = (event) => {
     for (let i = event.resultIndex; i < event.results.length; i++) {
       if (event.results[i].isFinal) {
         _browserTranscript += event.results[i][0].transcript + ' ';
@@ -91,18 +145,36 @@ function startBrowserSTT() {
     }
   };
 
-  _recognition.onerror = (e) => {
-    console.warn('Browser STT error:', e.error);
+  recognition.onerror = (e) => {
+    _recognitionError = String((e && e.error) || '');
+    console.warn('Browser STT error:', _recognitionError);
   };
 
-  _recognition.start();
+  try {
+    recognition.start();
+  } catch (e) {
+    _recognitionError = 'not-allowed';
+    ended();
+  }
+  _recognition = recognition;
+  return true;
 }
 
-function stopBrowserSTT() {
-  if (_recognition) {
-    try { _recognition.stop(); } catch (e) { /* ignore */ }
-    _recognition = null;
+/**
+ * Stop the browser's recognition and answer what it heard. `B1564`: the last
+ * words arrive after `stop()` — the final `result`, then `end` — and this read
+ * the transcript the moment it asked, so a short recording came back empty
+ * and was said as "No speech detected". It waits for `end` now, a few
+ * seconds at most.
+ */
+async function stopBrowserSTT() {
+  const recognition = _recognition;
+  const ended = _recognitionEnded;
+  _recognition = null;
+  if (recognition) {
+    try { recognition.stop(); } catch (e) { /* already stopped */ }
   }
+  if (ended) await Promise.race([ended, new Promise((resolve) => setTimeout(resolve, 4000))]);
   return _browserTranscript.trim();
 }
 
@@ -182,11 +254,16 @@ export function startRecording(onFileCreated, showToast, showError) {
         const provider = _sttProvider;
 
         if (provider === 'browser') {
-          const transcript = stopBrowserSTT();
+          const heard = _recognitionEnded !== null;   // this browser has recognition
+          const transcript = await stopBrowserSTT();
           if (transcript) {
             insertTranscription(transcript, showToast);
           } else {
-            if (showToast) showToast('No speech detected');
+            // `B1564`: why there are no words, when the browser said why;
+            // a browser with no recognition was told at the start.
+            const why = heard ? browserSpeechRefusal(_recognitionError) : '';
+            if (why && showError) showError(why + ' The recording is attached instead.');
+            else if (heard && showToast) showToast('No speech detected');
             const audioFile = new File([audioBlob], `voice-message-${Date.now()}.webm`, { type: 'audio/webm' });
             if (onFileCreated) onFileCreated(audioFile);
           }
@@ -220,12 +297,12 @@ export function startRecording(onFileCreated, showToast, showError) {
       isRecording = true;
       recordingStartTime = new Date();
 
-      // Start browser STT if that's the provider
-      if (_sttProvider === 'browser') {
-        startBrowserSTT();
-      }
-
-      if (showToast) {
+      // Start browser STT if that's the provider. `B1564`: in a browser with
+      // none, said now, before anyone speaks to it — in place of
+      // "Recording...", which would take the same toast from it.
+      if (_sttProvider === 'browser' && !startBrowserSTT() && showError) {
+        showError(NO_BROWSER_SPEECH);
+      } else if (showToast) {
         showToast('Recording...');
       }
     })
