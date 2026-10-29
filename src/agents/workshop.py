@@ -66,9 +66,15 @@ memory: own
 # ── The file ────────────────────────────────────────────────────────────────
 
 def check(text: str):
-    """The one rule, for a person's own file. Answers the `Manifest`."""
-    from src.agents.manifest import parse_manifest
-    return parse_manifest(text or "", source="own")
+    """The one rule, for a person's own file. Answers the `Manifest`.
+
+    `B1659`: and, since the person is writing it now, every effect its table
+    names is one a call of its agent can carry (`check_effects_carried`) —
+    a file already kept is read by the lint alone, so it stays theirs."""
+    from src.agents.manifest import check_effects_carried, parse_manifest
+    m = parse_manifest(text or "", source="own")
+    check_effects_carried(m)
+    return m
 
 
 def own_path(owner: Optional[str], agent_id: str, data_dir: Optional[str] = None) -> str:
@@ -180,16 +186,22 @@ def render(fields: Dict[str, Any]) -> str:
 
 def palette() -> Dict[str, Any]:
     """What a draft may use: Pantheon's own tools with their effects, the
-    sections, input kinds, triggers and events — Pantheon's facts only."""
+    sections, input kinds, triggers and events — Pantheon's facts only.
+
+    `B1658`. A tool's effects are what some call of it can carry
+    (`hires.tool_effects`) — the rows its hire form draws — not its
+    registration: `bash` is registered `execute_code`, and its `rm` is
+    `destructive` and its `pip install` `network_egress`. Told the
+    registration, a draft that named every effect it was given left those two
+    to the cautious default instead of deciding them."""
+    from src.agents.hires import tool_effects
     from src.agents.manifest import DELIVER_KINDS, INPUT_KINDS, SECTIONS, TRIGGER_KINDS
-    from src.tool_capabilities import capabilities_for_tool
     from src.tool_index import BUILTIN_TOOL_DESCRIPTIONS
     from src.tool_policy import selectable_tool_names
     from src.event_bus import EVENT_NAMES
     tools = []
     for name in sorted(selectable_tool_names()):
-        caps = capabilities_for_tool(name)
-        tools.append({"name": name, "effects": sorted(e.value for e in caps.effects),
+        tools.append({"name": name, "effects": tool_effects(name),
                       "does": (BUILTIN_TOOL_DESCRIPTIONS.get(name) or "")[:160]})
     return {"tools": tools, "sections": [s for s, _l, _f in SECTIONS], "input_kinds": list(INPUT_KINDS),
             "triggers": list(TRIGGER_KINDS), "events": list(EVENT_NAMES), "delivers": list(DELIVER_KINDS)}
@@ -214,8 +226,9 @@ you answer with ONE JSON object and nothing else.
  "runbook": ["step 1", "step 2", "..."]}
 
 Rules:
-- Use only tools the palette lists, by their exact names. Name every effect of every tool you
-  chose in "effects". Anything that sends, posts, pays, deletes or changes settings is "ask".
+- Use only tools the palette lists, by their exact names. Name every effect the palette lists for
+  every tool you chose in "effects", and no other. Anything that sends, posts, pays, deletes or
+  changes settings is "ask".
 - The runbook is for a small model: one numbered step per tool call, naming the tool and when to
   stop; the answer's exact headings; what to do when there is nothing to report; what it must
   never do. Refer to inputs as "the <label> you were hired with". 4 to 12 steps.

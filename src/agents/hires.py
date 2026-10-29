@@ -170,14 +170,43 @@ def kit(manifest: Manifest, never) -> List[str]:
 def manifest_effects(manifest: Manifest) -> Dict[str, str]:
     """Every effect the agent's tools can have — including one only some of
     their calls carry (`B1629`) — with the manifest's rule for it, or the
-    cautious default where the manifest is silent."""
+    cautious default where the manifest is silent.
+
+    `B1659`: and nothing else. A rule for an effect no call of its tools
+    carries was copied in as well, so the hire form drew a row that never
+    happens (*read public pages — without asking* for a `web_fetch` agent:
+    only the agent browser's looking carries `read_public`), and a person
+    could set it to *never* and nothing changed. The gate is the same either
+    way — it asks a call's effects, and no call has that one. A person's file
+    is told so when it is saved (`manifest.check_effects_carried`); one kept
+    before — a Topic Watcher customised before `B1656`, whose table allows
+    `read_public` — keeps its line, and runs, and the row is not drawn."""
     out: Dict[str, str] = {}
     for tool in manifest.tools:
         for eff in tool_effects(tool):
             out[eff] = manifest.effects.get(eff) or ("allow" if eff in QUIET_EFFECTS else "ask")
-    for eff, rule in manifest.effects.items():
-        out.setdefault(eff, rule)
     return dict(sorted(out.items()))
+
+
+def kit_reach(manifest: Manifest):
+    """`B1659`. `(what some call of its tools can carry, what some call its
+    run can make can carry)` — the second under the table's own `never`s, as
+    a hired run gets its kit (`kit`, `tool_capabilities.reach_left`)."""
+    from src.tool_capabilities import reach_left
+    never = {e for e, r in manifest.effects.items() if r == "never"}
+    tools = {e for t in manifest.tools for e in tool_effects(t)}
+    run = {e.value for t in kit(manifest, never) for e in reach_left(t, never)}
+    return tools, run
+
+
+def effects_no_call_carries(manifest: Manifest) -> Dict[str, str]:
+    """`B1659`. The rules the agent's table names that no call can trip —
+    `B1656`'s rule, which every shipped table keeps: a `never` names what
+    some call of its tools carries, so it refuses something; an `allow` or an
+    `ask` names what some call its run can make carries, so it lets something
+    through or asks something."""
+    tools, run = kit_reach(manifest)
+    return {e: r for e, r in manifest.effects.items() if e not in (tools if r == "never" else run)}
 
 
 def check_grants(manifest: Manifest, raw: Any) -> Dict[str, str]:

@@ -488,6 +488,37 @@ def _check_effects(raw: dict) -> Dict[str, str]:
     return out
 
 
+def check_effects_carried(m: "Manifest") -> None:
+    """`B1659`. For a file a person is writing now (`workshop.check`: saved,
+    checked, drafted): each effect its table names is one some call of its
+    agent can carry (`hires.effects_no_call_carries`, `B1656`'s rule for the
+    shipped tables). A row nothing can trip is a line the person believes
+    does something; they are told which, and what the calls can have.
+
+    Not part of `lint`, which every load runs: a file a person kept before —
+    a Topic Watcher customised before `B1656` allows `read_public` — stays
+    theirs and hireable, and its dead row is not drawn
+    (`hires.manifest_effects`). Its next save says so."""
+    from src.agents.hires import effects_no_call_carries, kit, kit_reach, tool_effects
+    dead = effects_no_call_carries(m)
+    if not dead:
+        return
+    eff, rule = sorted(dead.items())[0]
+    tools, run = kit_reach(m)
+    if rule == "never":
+        raise ManifestRefused(
+            f"Effect “{eff}” is never, and no call of this agent's tools has it, so it refuses "
+            f"nothing — a row on the hire form that never happens. Take it out; its tools' effects "
+            f"are: {', '.join(sorted(tools)) or 'none'}.")
+    never = {e for e, r in m.effects.items() if r == "never"}
+    gone = [t for t in m.tools if t not in kit(m, never) and eff in tool_effects(t)]
+    why = f" (a never in its table takes {', '.join(gone)} away)" if gone else ""
+    raise ManifestRefused(
+        f"Effect “{eff}” is {rule}, and no call this agent can make has it{why} — a row on the "
+        f"hire form that never happens. Take it out; the effects its calls can have are: "
+        f"{', '.join(sorted(run)) or 'none'}.")
+
+
 def _check_budget(raw: dict) -> Dict[str, int]:
     ceilings = {"runs_per_day": RUNS_PER_DAY_CEILING, "max_steps": MAX_STEPS_CEILING,
                 "max_minutes": MAX_MINUTES_CEILING}
