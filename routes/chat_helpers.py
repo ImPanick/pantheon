@@ -15,7 +15,7 @@ from core.database import SessionLocal
 from core.database import Session as DBSession, ModelEndpoint
 from src.llm_core import normalize_model_id
 from src.endpoint_resolver import normalize_base
-from src.context_compactor import maybe_compact, trim_for_context
+from src.context_compactor import maybe_compact, trim_for_context, trim_left_out
 from src.model_context import estimate_tokens, get_context_length
 from src.auth_helpers import effective_user, request_is_a_person
 from src.prompt_security import untrusted_context_message
@@ -156,6 +156,11 @@ class ChatContext:
     context_messages_after_compact: int = 0
     context_tokens_before_compact: int = 0
     context_tokens_after_compact: int = 0
+    # `B1572`. What the trim left out that the person relies on — their saved
+    # memory, the documents retrieved for the turn, the middle of their own
+    # message — in `context_compactor.trim_left_out`'s words; empty when it
+    # left out none of those.
+    context_trim_left_out: list = field(default_factory=list)
     # Documents auto-created server-side during preprocess (e.g. when an
     # attached fillable PDF gets rendered into a markdown editor doc).
     # The chat route emits a doc_update SSE event for each before streaming
@@ -1180,11 +1185,13 @@ async def build_chat_context(
     _compact_stats = shaping_stats(_before_compact, messages) if was_compacted else {}
     _before_trim_messages = len(messages)
     _before_trim_tokens = estimate_tokens(messages)
+    _untrimmed = messages
     if not defer_context_shaping:
         messages = trim_for_context(messages, context_length)
     _after_trim_messages = len(messages)
     _after_trim_tokens = estimate_tokens(messages)
     _context_trimmed = _after_trim_messages < _before_trim_messages or _after_trim_tokens < _before_trim_tokens
+    _trim_left_out = trim_left_out(_untrimmed, messages) if _context_trimmed else []   # `B1572`
 
     return ChatContext(
         preface=preface,
@@ -1206,6 +1213,7 @@ async def build_chat_context(
         context_messages_after_trim=_after_trim_messages,
         context_tokens_before_trim=_before_trim_tokens,
         context_tokens_after_trim=_after_trim_tokens,
+        context_trim_left_out=_trim_left_out,
         context_messages_before_compact=_compact_stats.get("messages_before", 0),
         context_messages_after_compact=_compact_stats.get("messages_after", 0),
         context_tokens_before_compact=_compact_stats.get("tokens_before", 0),

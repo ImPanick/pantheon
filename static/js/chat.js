@@ -4923,6 +4923,21 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
                   // `B1033`: `trimNoticeText`'s sentence, which the reloaded
                   // reply's line says too (`trimFromRecord`).
                   uiModule.showToast(trimNoticeText(json));
+                  // `B1572`. When the trim left out what the person relies on
+                  // — their saved memory, the documents retrieved for it, the
+                  // middle of their message — the line is drawn live as well,
+                  // above the reply, where the reload draws it: a toast is gone
+                  // before the reply is read. A later notice in the same turn
+                  // (a later step left out more) replaces it.
+                  const _left = json.data && json.data.left_out;
+                  if (Array.isArray(_left) && _left.length) {
+                    const _trimBox = document.getElementById('chat-history');
+                    const _placed = holder && holder.parentNode === _trimBox;
+                    const _earlier = _placed ? holder.previousElementSibling : null;
+                    if (_earlier && _earlier.classList.contains('context-trimmed-note')) _earlier.remove();
+                    const _trimNote = renderAgentNote(_trimBox, json);
+                    if (_trimNote && _placed) _trimBox.insertBefore(_trimNote, holder);
+                  }
                 }
               } else if (json.type === 'agent_terminal' || json.type === 'chat_terminal') {
                 // The backend persisted canonical partial output, sanitized

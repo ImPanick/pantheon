@@ -39,6 +39,10 @@ from src.context_compactor import (
     compaction_figures,
     compaction_metric_figures,
     maybe_compact,
+    SHAPING_FIGURES,
+    trim_left_out,
+    trim_metric_figures,
+    trimmed_frame,
 )
 from src.settings import get_setting
 from src.prompt_security import (
@@ -8434,6 +8438,15 @@ async def stream_agent_loop(
     yield _agent_prep_frame(prep_timings, running="prompt_build")   # `P4-08`
     _t2 = time.time()
     _route_context_lengths = {}
+    # `B1572` (`D-2026-10-29-01` §4). What this turn's trims cost, said where
+    # the person reads the reply. The loop trims every request to the agent
+    # input budget (`trim_for_context` below) and said so in a log line only:
+    # on a window nothing proves, 24,000 characters of attachments against the
+    # 6,000-token budget dropped the saved memory with no word. `figures` are
+    # the first trim that shrank anything (the one shaped from the person's
+    # turn); `left_out` is every trim's, in `trim_left_out`'s words; `said` is
+    # how much of it a `context_trimmed` frame has carried.
+    _turn_trim: Dict[str, Any] = {}
     # `P4-16`. Filled by `_build_route_request_state` (a coroutine, which cannot
     # yield) and emitted once by the generator below.
     _injected_skills_seen: list = []
@@ -8483,6 +8496,17 @@ async def stream_agent_loop(
                 reserve_tokens=reserve_tokens,
             )
             after_trim_tokens = estimate_tokens(trimmed_messages)
+            if after_trim_tokens < before_trim_tokens or len(trimmed_messages) < len(route_messages):
+                # `B1572`. Kept for the turn's frame and record.
+                if not _turn_trim:
+                    _turn_trim.update(
+                        figures=dict(zip(SHAPING_FIGURES, (
+                            len(route_messages), len(trimmed_messages),
+                            before_trim_tokens, after_trim_tokens))),
+                        context_length=candidate_context, left_out=[], said=None)
+                for _words in trim_left_out(route_messages, trimmed_messages):
+                    if _words not in _turn_trim["left_out"]:
+                        _turn_trim["left_out"].append(_words)
             if after_trim_tokens < before_trim_tokens:
                 logger.info(
                     "[agent] soft-trimmed route model=%s context: %s -> %s tokens "
@@ -8501,6 +8525,19 @@ async def stream_agent_loop(
                 e,
             )
             return _without_protection(route_messages)
+
+    def _pending_trim_frame() -> Optional[str]:
+        """`B1572`. The `context_trimmed` notice for this turn's trims, or
+        `None`: once when a trim first shrank the request, and again only when
+        a later one left out something the last notice did not name."""
+        if not _turn_trim:
+            return None
+        left_out = list(_turn_trim["left_out"])
+        if _turn_trim["said"] is not None and left_out == _turn_trim["said"]:
+            return None
+        _turn_trim["said"] = left_out
+        return "data: " + json.dumps(trimmed_frame(
+            _turn_trim["context_length"], _turn_trim["figures"], left_out)) + "\n\n"
 
     async def _build_route_request_state(candidate_url, candidate_model, candidate_headers, source_messages):
         compaction_state: Dict = {}
@@ -8700,6 +8737,9 @@ async def stream_agent_loop(
         context_length,
     )
     prep_timings["context_trim"] = time.time() - _t3
+    _trim_frame = _pending_trim_frame()   # `B1572`
+    if _trim_frame:
+        yield _trim_frame
 
     run_security.observe_messages(_initial_route_request_messages)
     agent_prompt_tokens = estimate_tokens(_initial_route_request_messages)
@@ -8881,6 +8921,14 @@ async def stream_agent_loop(
             return {}
         return {"context_compacted": True,
                 **compaction_metric_figures(_committed_compaction.get("figures"))}
+
+    def _trim_metrics() -> Dict[str, Any]:
+        """`B1572`. The loop's own trim on the record the reply is saved from,
+        under the keys the route saves its trim with (`_apply_shaping_metrics`),
+        so a reload draws the line the live turn drew."""
+        if not _turn_trim:
+            return {}
+        return trim_metric_figures(_turn_trim["figures"], _turn_trim["left_out"])
 
     # "I said I would, then didn't" detector. The pattern that breaks debug
     # loops on weak models (deepseek-v4-flash mid-2026): the model writes
@@ -9936,6 +9984,7 @@ async def stream_agent_loop(
                             actual_endpoint_cost_tracked
                         )
                     terminal_metadata.update(_compaction_metrics())   # `B921`
+                    terminal_metadata.update(_trim_metrics())   # `B1572`
                     # `B942`. A guard that stopped an earlier round, on this
                     # record as on the final metrics (`P4-10`): a loop-breaker
                     # stop is followed by a forced-answer round, and when that
@@ -9968,6 +10017,9 @@ async def stream_agent_loop(
                         _compaction_frame = _committed_compaction_frame(candidate_index)   # `B921`
                         if _compaction_frame:
                             yield _compaction_frame
+                        _trim_frame = _pending_trim_frame()   # `B1572`
+                        if _trim_frame:
+                            yield _trim_frame
                         native_tool_calls = data.get("calls", [])
                         logger.info(f"Agent round {round_num}: received {len(native_tool_calls)} native tool call(s)")
                     elif data.get("type") == "usage":
@@ -10093,6 +10145,9 @@ async def stream_agent_loop(
                         _compaction_frame = _committed_compaction_frame(candidate_index)   # `B921`
                         if _compaction_frame:
                             yield _compaction_frame
+                        _trim_frame = _pending_trim_frame()   # `B1572`
+                        if _trim_frame:
+                            yield _trim_frame
                         _round_actual_model = data.get("answered_by") or model
                         _round_actual_endpoint_id = actual_endpoint_id
                         _round_actual_endpoint_label = actual_endpoint_label
@@ -10106,6 +10161,9 @@ async def stream_agent_loop(
                         )   # `B921`
                         if _compaction_frame:
                             yield _compaction_frame
+                        _trim_frame = _pending_trim_frame()   # `B1572`
+                        if _trim_frame:
+                            yield _trim_frame
                         actual_model = data.get("model") or actual_model
                         _round_actual_model = data.get("model") or _round_actual_model
                         data["requested_model"] = requested_model
@@ -10121,6 +10179,9 @@ async def stream_agent_loop(
                         )   # `B921`
                         if _compaction_frame:
                             yield _compaction_frame
+                        _trim_frame = _pending_trim_frame()   # `B1572`
+                        if _trim_frame:
+                            yield _trim_frame
                         if not first_token_received:
                             time_to_first_token = time.time() - total_start
                             first_token_received = True
@@ -12182,6 +12243,7 @@ async def stream_agent_loop(
     # `_apply_shaping_metrics` saw a context it had not compacted and said
     # nothing, so a reload of an agent turn the loop compacted never said so.
     metrics.update(_compaction_metrics())
+    metrics.update(_trim_metrics())   # `B1572`
     metrics["requested_model"] = requested_model
     metrics["endpoint_id"] = actual_endpoint_id
     metrics["endpoint_label"] = actual_endpoint_label
