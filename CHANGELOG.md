@@ -481,6 +481,9 @@ the next one is cut.
 
 ### Fixed
 
+- **In the workstation a hired agent's files land where its shell works** — the person's projects
+  folder, not their home (`B1642`); with no projects folder mounted it says so (`B1643`); the
+  Knowledge listing shows an upload under the name it was given (`B1644`).
 - **A hired agent's shell finds its projects folder on an install with no workstation** — the
   path was set only inside the workstation (`B1640`); a re-read upload keeps the name it was
   uploaded under (`B1641`).
