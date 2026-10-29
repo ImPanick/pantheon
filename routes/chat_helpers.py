@@ -1192,6 +1192,12 @@ async def build_chat_context(
     _after_trim_tokens = estimate_tokens(messages)
     _context_trimmed = _after_trim_messages < _before_trim_messages or _after_trim_tokens < _before_trim_tokens
     _trim_left_out = trim_left_out(_untrimmed, messages) if _context_trimmed else []   # `B1572`
+    if _context_trimmed and used_memories:
+        # `B1650`. A memory the trim left out was never sent: the turn does not
+        # name it as used — not in its `memories_used` frame, not on the reply.
+        from src.agent_loop import _saved_memory_facts, memories_not_sent, memories_sent
+        used_memories = memories_sent(used_memories, memories_not_sent(
+            _saved_memory_facts(_untrimmed), _saved_memory_facts(messages)))
 
     return ChatContext(
         preface=preface,

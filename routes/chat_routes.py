@@ -25,6 +25,7 @@ from src.llm_core import (
     stream_llm_with_fallback,
 )
 from src.agent_loop import (
+    memories_sent,
     pan_qwen_route_temperature,
     pending_steers,
     stream_agent_loop,
@@ -650,6 +651,11 @@ def _chat_candidate_request_factory(
         # `B1572`. Read before a recording is put into words below, which
         # rewrites the person's message as a new object.
         left_out = trim_left_out(candidate_messages, request_messages)
+        # `B1650`. And the saved memories it left out, which the turn then
+        # does not name as used if this candidate is the one that answers.
+        from src.agent_loop import _saved_memory_facts, memories_not_sent
+        memories_left_out = memories_not_sent(
+            _saved_memory_facts(candidate_messages), _saved_memory_facts(request_messages))
         # `B1290`. Only the selected model was asked whether it hears; a
         # fallback that says nothing, or no, is sent the turn's words alone —
         # an audio part it does not take would fail the turn it is rescuing.
@@ -683,6 +689,8 @@ def _chat_candidate_request_factory(
         state["trim_stats"][index] = shaping_stats(candidate_messages, request_messages)
         if left_out:   # `B1572`: only when there is something to say
             state["trim_stats"][index]["left_out"] = left_out
+        if memories_left_out:   # `B1650`
+            state["trim_stats"][index]["memories_left_out"] = memories_left_out
         state["compaction_stats"][index] = (
             shaping_stats(messages, candidate_messages) if was_compacted else {}
         )
@@ -3485,6 +3493,17 @@ def setup_chat_routes(
                                 yield f'data: {json.dumps({"type": "metrics", "data": last_metrics})}\n\n'
                             if full_response:
                                 _commit_chat_compaction(_actual_candidate_index)
+                                # `B1650`. A memory the answering candidate's
+                                # trim left out (a fallback chain trims at
+                                # request time, after the turn named its
+                                # memories) is not kept as used, and the pill
+                                # is drawn without it.
+                                _sent = memories_sent(ctx.used_memories, (_chat_request_state.get(
+                                    "trim_stats", {}).get(_actual_candidate_index) or {}).get(
+                                    "memories_left_out"))
+                                if _sent != (ctx.used_memories or []):
+                                    ctx.used_memories = _sent
+                                    yield f"data: {json.dumps({'type': 'memories_used', 'data': _sent})}\n\n"
                                 _metrics_to_save = dict(last_metrics or {})
                                 if not _metrics_to_save.get("thinking"):
                                     _metrics_to_save.update(_thinking_record(thinking_response))
@@ -3608,6 +3627,10 @@ def setup_chat_routes(
                     elif _explicit_browser_intent:
                         _forced_tools = set(_BROWSER_MCP_TOOLS)
 
+                    # `B1650`. The memories the turn named before the loop
+                    # trimmed its request; a trim that left one out takes it
+                    # off (`context_trimmed` below).
+                    _memories_offered = list(ctx.used_memories or [])
                     async for chunk in stream_agent_loop(
                         sess.endpoint_url,
                         sess.model,
@@ -3836,6 +3859,17 @@ def setup_chat_routes(
                                     if data.get("teacher") is True:
                                         _metrics_event["teacher"] = True
                                     yield f'data: {json.dumps(_metrics_event)}\n\n'
+                                elif data.get("type") == "context_trimmed":
+                                    yield chunk
+                                    # `B1650`. A memory the trim left out was
+                                    # never sent, so the pill stops naming it
+                                    # and the saved reply does not keep it: the
+                                    # turn's `memories_used` again, without it.
+                                    _sent = memories_sent(_memories_offered, (data.get("data") or {}).get(
+                                        "memories_left_out"))
+                                    if _sent != (ctx.used_memories or []):
+                                        ctx.used_memories = _sent
+                                        yield f"data: {json.dumps({'type': 'memories_used', 'data': _sent})}\n\n"
                                 elif data.get("type") in AGENT_METER_EVENT_TYPES:
                                     # `P4-08` / `P4-23`. This chain forwards only
                                     # the types it names and drops the rest

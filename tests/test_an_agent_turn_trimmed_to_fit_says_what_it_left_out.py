@@ -53,7 +53,12 @@ MODEL = "plain-unknown-model"
 WORDS = "Use what I gave you and tell me the code word."
 MEMORY = "MEMWORDQ7"
 SCRIPT = [{"key": "c", "title": "Ctx", "turns": [{"user": WORDS, "steps": [{"say": "OK."}]}]}]
-LEFT_OUT = ["your saved memory", "the middle of your message"]
+#: `B1651` changed this turn: the person's message now gives way before the
+#: instructions, and the memory before it keeps its place, so the trim leaves
+#: out the middle of the message alone. A turn whose trim leaves out the memory
+#: (and the end of the instructions) is driven in
+#: `test_a_trim_keeps_the_instructions_and_names_only_the_memories_it_sent.py`.
+LEFT_OUT = ["the middle of your message"]
 
 node_only = pytest.mark.skipif(not shutil.which("node"), reason="node binary not on PATH")
 
@@ -148,14 +153,16 @@ def test_an_unproven_window_keeps_the_24000_character_allowance(crowded):
     assert 11_800 < given < 12_000, second["reach_note"]
 
 
-def test_the_trim_that_left_out_the_memory_says_so_in_the_stream(crowded):
+def test_the_trim_says_what_it_left_out_in_the_stream(crowded):
     """The row's `Verify:`: *or the reply says what was cut*."""
     events, sent, _reply = crowded
-    assert MEMORY not in sent, "the premise: the trim made room by dropping the memory"
+    # `B1651`: it made room by shortening the message; the memory was sent.
+    assert MEMORY in sent, "the memory before the message keeps its place"
     [trim] = _trims(events)
     data = trim["data"]
     assert data["left_out"] == LEFT_OUT, data
-    assert data["messages_after"] < data["messages_before"]
+    # `B1651`: every message was sent, the person's shortened.
+    assert data["messages_after"] == data["messages_before"]
     assert data["tokens_after"] < data["tokens_before"]
     first_step = next(i for i, e in enumerate(events) if e.get("type") in ("agent_step", "delta")
                       or "delta" in e)
@@ -232,9 +239,9 @@ def test_the_line_names_the_cut_live_and_after_a_reload(crowded, sandbox):
         console.log(JSON.stringify({ toasts, live, reloaded: shape(),
                                      said: trimNoticeText(%s) }));
     """ % (_live_arm(), json.dumps(trim), json.dumps(trim), json.dumps(reply), json.dumps(trim)))
-    d = trim["data"]
-    said = (f"Context trimmed for this model ({d['messages_after']}/{d['messages_before']} "
-            "messages sent) — left out to fit: your saved memory and the middle of your message")
+    # `B1651`: every message was sent (the person's shortened), so the line
+    # gives no count — `trimNoticeText` says one only when messages were dropped.
+    said = "Context trimmed for this model — left out to fit: the middle of your message"
     assert out["said"] == said
     assert out["toasts"] == [said, said]
     assert out["live"] == ["trim:" + said, "reply"], "drawn once, above the reply it shaped"

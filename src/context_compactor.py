@@ -235,6 +235,12 @@ def _truncate_message_to_token_budget(msg: Dict[str, Any], token_budget: int) ->
 #: that are dropped whole before the leading system prompt is truncated.
 SHED_BEFORE_THE_PROMPT = frozenset({"skills"})
 
+#: What the leading system message is cut to when nothing else makes room, and
+#: what the cut says where it cut. `B1651`: also the least the person's message
+#: is shortened to before the instructions are cut at all.
+PROMPT_CUT_CHARS = 2000
+PROMPT_CUT_NOTICE = "\n[System prompt truncated for context limits]"
+
 
 def trim_for_context(messages: List[Dict], context_length: int, reserve_tokens: int = 512) -> List[Dict]:
     """Trim system messages to fit within context_length.
@@ -242,7 +248,9 @@ def trim_for_context(messages: List[Dict], context_length: int, reserve_tokens: 
     For small-context models, progressively strips:
     1. RAG/memory system messages (keep preset system prompt)
     2. Older conversation turns
-    Reserves space for the response.
+    Reserves space for the response. The skills block (`B1425`) and then the
+    middle of the person's message (`B1651`) give way before the leading
+    system prompt is cut.
     """
     budget = context_length - reserve_tokens
     used = estimate_tokens(messages)
@@ -313,12 +321,29 @@ def trim_for_context(messages: List[Dict], context_length: int, reserve_tokens: 
                         len(shed_ids))
             return _sanitize_tool_messages(essential_system + protected_msgs + without)
 
+    # `B1651`. Then the person's message gives way, before the instructions do.
+    # Measured through `/api/chat_stream` (`B1572`'s turn: an Agent-mode turn
+    # on a window nothing proves, 24,000 characters of attachments against the
+    # 6,000-token budget): the cut below took the agent's instructions from
+    # 7,173 characters to their first 2,000 — its tool rules with them — while
+    # 14,478 characters of the attachments were still sent. The message keeps
+    # its beginning and end and says so (`PASTED_MESSAGE_CUT_NOTICE`), and no
+    # less than the instructions would have kept; the memory and the turns
+    # before it keep the trimmer's old rule, as `B1425` left them. Only when
+    # that is what saves the instructions: if they are cut either way, the
+    # message is not shortened twice.
+    shortened = _the_persons_message_shortened(
+        essential_system, [m for m in convo_msgs if id(m) not in shed_ids], budget)
+    if shortened is not None:
+        logger.info("Shortened the person's message so the system prompt fits uncut")
+        return _sanitize_tool_messages(essential_system + protected_msgs + shortened)
+
     # Still too big — truncate the first system message (but keep more than 500 chars)
     if essential_system:
         sys_text = essential_system[0].get("content", "")
-        if len(sys_text) > 2000:
+        if len(sys_text) > PROMPT_CUT_CHARS:
             truncated_system = dict(essential_system[0])
-            truncated_system["content"] = sys_text[:2000] + "\n[System prompt truncated for context limits]"
+            truncated_system["content"] = sys_text[:PROMPT_CUT_CHARS] + PROMPT_CUT_NOTICE
             essential_system[0] = truncated_system
             trimmed = essential_system + convo_msgs
             if estimate_tokens(trimmed) <= budget:
@@ -353,6 +378,34 @@ def trim_for_context(messages: List[Dict], context_length: int, reserve_tokens: 
     result = _sanitize_tool_messages(essential_system + protected_msgs + convo_msgs)
     logger.info(f"Trimmed to {estimate_tokens(result)} tokens ({len(result)} messages)")
     return result
+
+
+def _the_persons_message_shortened(essential_system: List[Dict], convo_msgs: List[Dict],
+                                   budget: int) -> Optional[List[Dict]]:
+    """`B1651`. `convo_msgs` with the person's message shortened so that the
+    leading system message fits whole, or `None` when that is not what saves
+    it: the instructions are short enough never to be cut, there is no message
+    of the person's, or it would have to keep less than `PROMPT_CUT_CHARS`
+    (or all of itself, when it is shorter) to fit."""
+    if not essential_system:
+        return None
+    if len(_content_as_text(essential_system[0].get("content"))) <= PROMPT_CUT_CHARS:
+        return None
+    theirs = _the_persons_message(convo_msgs)
+    if theirs is None:
+        return None
+    at = next(i for i, m in enumerate(convo_msgs) if m is theirs)
+    room = budget - estimate_tokens(essential_system + convo_msgs[:at] + convo_msgs[at + 1:])
+    if room <= 0:
+        return None
+    shorter = _truncate_message_to_token_budget(theirs, room)
+    kept = convo_msgs[:at] + [shorter] + convo_msgs[at + 1:]
+    whole = len(_content_as_text(theirs.get("content")))
+    if len(_content_as_text(shorter.get("content"))) < min(whole, PROMPT_CUT_CHARS):
+        return None
+    if estimate_tokens(essential_system + kept) > budget:
+        return None
+    return kept
 
 
 async def maybe_compact(
@@ -587,6 +640,23 @@ TRIM_LEFT_OUT = (
 #: fit — the trim keeps its beginning and end (`PASTED_MESSAGE_CUT_NOTICE`).
 MESSAGE_CUT_WORDS = "the middle of your message"
 
+#: `B1651`. Said when the leading system message — the instructions the model
+#: works by, an agent's tool rules among them — was cut to its first
+#: `PROMPT_CUT_CHARS` to fit. It was cut and nothing said so.
+PROMPT_CUT_WORDS = "the end of its instructions"
+
+
+def _the_instructions(messages: List[Dict]) -> Optional[Dict]:
+    """The leading system message, as `trim_for_context` picks it: the first
+    `system` message that is neither protected nor a research primer."""
+    for message in messages or []:
+        if message.get("role") != "system" or message.get("_protected"):
+            continue
+        if (message.get("metadata") or {}).get("research_spinoff_from"):
+            continue
+        return message
+    return None
+
 
 def _the_persons_message(messages: List[Dict]) -> Optional[Dict]:
     """The last `user` message that is the person's own words: not a context
@@ -611,9 +681,16 @@ def trim_left_out(before: List[Dict], after: List[Dict]) -> List[str]:
 
     The trim keeps the messages it keeps as the same objects, so a block is
     left out when it is in `before` and not in `after`. The person's message is
-    the one the trim copies to shorten: said when the copy is shorter."""
+    the one the trim copies to shorten: said when the copy is shorter — and,
+    `B1651`, so are the instructions."""
     kept = {id(message) for message in after or []}
     said: List[str] = []
+    lead = _the_instructions(before)
+    if lead is not None and id(lead) not in kept:
+        now = _the_instructions(after)
+        if now is None or (len(_content_as_text(now.get("content")))
+                           < len(_content_as_text(lead.get("content")))):
+            said.append(PROMPT_CUT_WORDS)
     for message in before or []:
         if id(message) in kept:
             continue
@@ -630,16 +707,24 @@ def trim_left_out(before: List[Dict], after: List[Dict]) -> List[str]:
     return said
 
 
-def trimmed_frame(context_length, stats=None, left_out=None) -> Dict[str, Any]:
+def trimmed_frame(context_length, stats=None, left_out=None, *,
+                  memories_left_out=None) -> Dict[str, Any]:
     """`B1572`. The `context_trimmed` event, as a dict: `context_length` and
     `P4-13`'s four figures in `data`, and `left_out` when the trim left out
     something `trim_left_out` names. One builder for the route's trim and the
-    agent loop's, which said nothing at all; `compacted_frame`'s twin."""
+    agent loop's, which said nothing at all; `compacted_frame`'s twin.
+
+    `B1650`: and `memories_left_out`, the saved memories (`{id, text}`) no
+    request of the turn carried, which the route takes off the turn's
+    `memories_used` — the pill named a memory the model never received."""
     stats = stats or {}
     data = {"context_length": context_length}
     data.update({key: stats.get(key) for key in SHAPING_FIGURES})
     if left_out:
         data["left_out"] = list(left_out)
+    if memories_left_out:
+        data["memories_left_out"] = [{"id": m.get("id"), "text": m.get("text")}
+                                     for m in memories_left_out]
     return {"type": "context_trimmed", "data": data}
 
 

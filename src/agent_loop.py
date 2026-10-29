@@ -3588,6 +3588,41 @@ def _saved_memory_facts(messages: List[Dict]) -> List[Dict]:
     return facts
 
 
+def memories_not_sent(offered: List[Dict], carried: List[Dict]) -> List[Dict]:
+    """`B1650`. The saved memories in `offered` that `carried` does not hold —
+    both lists of `{id, text}` as `_saved_memory_facts` reads them off a
+    request, so what a trim left out and what the pill names are one set
+    (`B711`). A memory is carried when a block names its id or, where a block
+    recorded none (a minimal route's), its text."""
+    def text(fact):
+        return str(fact.get("text") or "").strip()
+
+    ids = {fact.get("id") for fact in carried or () if fact.get("id")}
+    unnamed = {text(fact) for fact in carried or () if not fact.get("id")}
+    every = {text(fact) for fact in carried or ()}
+    out: List[Dict] = []
+    for fact in offered or ():
+        # Two memories may share their text (`B711`), so an id is matched by
+        # id, and by text only against a block that recorded no ids.
+        if fact.get("id") and (fact["id"] in ids or text(fact) in unnamed):
+            continue
+        if not fact.get("id") and text(fact) in every:
+            continue
+        if fact not in out:
+            out.append(fact)
+    return out
+
+
+def memories_sent(used: List[Dict], not_sent: List[Dict]) -> List[Dict]:
+    """`B1650`. A turn's `memories_used` without the memories its model never
+    received (`memories_not_sent`). In `B1572`'s measured turn the pill and the
+    saved reply named the memory the trim had left out."""
+    gone_ids = {fact.get("id") for fact in not_sent or () if fact.get("id")}
+    gone_texts = {str(fact.get("text") or "").strip() for fact in not_sent or () if not fact.get("id")}
+    return [m for m in used or () if not (
+        (m.get("id") and m["id"] in gone_ids) or str(m.get("text") or "").strip() in gone_texts)]
+
+
 def _minimal_saved_memory_message(messages: List[Dict]) -> Optional[Dict]:
     """The person's own memory, for a route that cannot carry the full preface.
 
@@ -8466,6 +8501,21 @@ async def stream_agent_loop(
     # turn); `left_out` is every trim's, in `trim_left_out`'s words; `said` is
     # how much of it a `context_trimmed` frame has carried.
     _turn_trim: Dict[str, Any] = {}
+    # `B1650`. The saved memories this turn's requests were built with, and the
+    # ones a request carried after its trim: a memory no request carried was
+    # never used, and the `context_trimmed` notice names it so the route takes
+    # it off the turn's `memories_used` (`memories_sent`).
+    _memories_offered: List[Dict] = []
+    _memories_carried: List[Dict] = []
+
+    def _note_memories(route_messages, sent_messages) -> None:
+        for _fact in _saved_memory_facts(route_messages):
+            if _fact not in _memories_offered:
+                _memories_offered.append(_fact)
+        for _fact in _saved_memory_facts(sent_messages):
+            if _fact not in _memories_carried:
+                _memories_carried.append(_fact)
+
     # `P4-16`. Filled by `_build_route_request_state` (a coroutine, which cannot
     # yield) and emitted once by the generator below.
     _injected_skills_seen: list = []
@@ -8495,6 +8545,7 @@ async def stream_agent_loop(
             # resolver the context meter reads too.
             soft_budget = int(resolve_agent_input_budget_setting(owner).value or 0)
             if soft_budget <= 0:
+                _note_memories(route_messages, route_messages)   # `B1650`
                 return _without_protection(route_messages)
             before_trim_tokens = estimate_tokens(route_messages)
             reserve_tokens = min(max(max_tokens or 1024, 512), 2048)
@@ -8515,6 +8566,7 @@ async def stream_agent_loop(
                 reserve_tokens=reserve_tokens,
             )
             after_trim_tokens = estimate_tokens(trimmed_messages)
+            _note_memories(route_messages, trimmed_messages)   # `B1650`
             if after_trim_tokens < before_trim_tokens or len(trimmed_messages) < len(route_messages):
                 # `B1572`. Kept for the turn's frame and record.
                 if not _turn_trim:
@@ -8543,20 +8595,24 @@ async def stream_agent_loop(
                 candidate_model,
                 e,
             )
+            _note_memories(route_messages, route_messages)   # `B1650`
             return _without_protection(route_messages)
 
     def _pending_trim_frame() -> Optional[str]:
         """`B1572`. The `context_trimmed` notice for this turn's trims, or
         `None`: once when a trim first shrank the request, and again only when
-        a later one left out something the last notice did not name."""
+        a later one left out something the last notice did not name — or,
+        `B1650`, changed which saved memories no request has carried."""
         if not _turn_trim:
             return None
         left_out = list(_turn_trim["left_out"])
-        if _turn_trim["said"] is not None and left_out == _turn_trim["said"]:
+        unsent = memories_not_sent(_memories_offered, _memories_carried)
+        if _turn_trim["said"] is not None and [left_out, unsent] == _turn_trim["said"]:
             return None
-        _turn_trim["said"] = left_out
+        _turn_trim["said"] = [left_out, unsent]
         return "data: " + json.dumps(trimmed_frame(
-            _turn_trim["context_length"], _turn_trim["figures"], left_out)) + "\n\n"
+            _turn_trim["context_length"], _turn_trim["figures"], left_out,
+            memories_left_out=unsent)) + "\n\n"
 
     async def _build_route_request_state(candidate_url, candidate_model, candidate_headers, source_messages):
         compaction_state: Dict = {}
