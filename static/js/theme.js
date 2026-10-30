@@ -57,12 +57,16 @@ const LS_KEY = 'pantheon-theme';
 const CUSTOM_THEMES_KEY = 'pantheon-custom-themes';
 
 const FONT_MAP = {
+  // The cockpit shell's face (`static/cockpit.css`), and the default since it
+  // shipped. A theme saved under the old default stored no font, so it opens
+  // in this one; a font a person chose is stored and kept.
+  geist: "'Geist', system-ui, -apple-system, 'Segoe UI', sans-serif",
   mono: "'Fira Code', monospace",
   sans: "system-ui, -apple-system, 'Segoe UI', sans-serif",
   serif: "Georgia, 'Times New Roman', serif",
   opendyslexic: "'OpenDyslexic', sans-serif",
 };
-const DEFAULT_FONT = 'mono';
+const DEFAULT_FONT = 'geist';
 const DEFAULT_DENSITY = 'comfortable';
 const MAX_CUSTOM_THEMES = 8;
 
@@ -442,6 +446,8 @@ function _isLightBackground(hex) {
 export function applyColors(colors) {
   const s = document.documentElement.style;
   s.setProperty('color-scheme', _isLightBackground(colors.bg) ? 'light' : 'dark');
+  // The cockpit's material follows the same test (`static/cockpit.css`).
+  document.documentElement.setAttribute('data-ck-tone', _isLightBackground(colors.bg) ? 'light' : 'dark');
   s.setProperty('--bg', colors.bg);
   s.setProperty('--fg', colors.fg);
   s.setProperty('--panel', colors.panel);

@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
-<html lang="en">
+<html lang="en" class="cockpit">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, interactive-widget=resizes-content, viewport-fit=cover" />
@@ -40,6 +40,8 @@
             light = (0.2126 * lin[0] + 0.7152 * lin[1] + 0.0722 * lin[2]) > 0.5;
           }
           s.setProperty('color-scheme', light ? 'light' : 'dark');
+          // The cockpit's material follows the same test (`static/cockpit.css`).
+          document.documentElement.setAttribute('data-ck-tone', light ? 'light' : 'dark');
         })();
         s.setProperty('--fg', c.fg);
         s.setProperty('--panel', c.panel);
@@ -339,6 +341,12 @@
   <link rel="preload" as="font" type="font/woff2" crossorigin href="/static/fonts/FiraCode-Regular.woff2">
   <link rel="preload" as="font" type="font/woff2" crossorigin href="/static/fonts/FiraCode-SemiBold.woff2">
   <link rel="stylesheet" href="/static/style.css?v=20261009census">
+  <!-- The cockpit shell (the accepted V4 study): every rule scoped to
+       `html.cockpit`, loaded after style.css so it restyles without editing it.
+       Its type is local (`static/fonts/Geist*`, `InstrumentSerif*`). -->
+  <link rel="preload" as="font" type="font/woff2" crossorigin href="/static/fonts/Geist-Regular.woff2">
+  <link rel="preload" as="font" type="font/woff2" crossorigin href="/static/fonts/InstrumentSerif-Regular.woff2">
+  <link rel="stylesheet" href="/static/cockpit.css">
   <link rel="modulepreload" href="/static/app.js?v=20261009census">
   <!-- B58. This must carry the SAME query as the <script> tag below, or the
        browser fetches chat.js twice: the cache and the module map are keyed on
@@ -1077,6 +1085,7 @@
           <div class="theme-fd-group">
             <label class="theme-fd-label">Font</label>
             <select id="theme-font-select" class="theme-fd-select" aria-label="Font">
+              <option value="geist">Geist</option>
               <option value="mono">Monospace</option>
               <option value="sans">Sans-serif</option>
               <option value="serif">Serif</option>
@@ -4552,6 +4561,8 @@
 <script type="module" src="/static/app.js?v=20261009census"></script>  <!-- app.js must be LAST -->
   <script type="module" src="/static/js/init.js?v=20260918a11yfocus1"></script>
 <script type="module" src="/static/js/a11y.js"></script>
+<script type="module" src="/static/js/cockpit.js"></script>
+<script type="module" src="/static/js/cockpitWorkspace.js"></script>
 <!-- `P23-07` (PERF-M-1): scope '/' (the server sends Service-Worker-Allowed: /), so the worker controls the app; the
      registration the old scope left behind (/static/) is dropped. -->
 <script>if('serviceWorker' in navigator){navigator.serviceWorker.register('/static/sw.js',{scope:'/'}).then(()=>navigator.serviceWorker.getRegistrations()).then(rs=>rs.forEach(r=>{if(new URL(r.scope).pathname==='/static/')r.unregister();})).catch(()=>{});}</script>

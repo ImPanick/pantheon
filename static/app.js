@@ -2537,7 +2537,10 @@ function initializeEventListeners() {
 	    // swipe is in the Plan chip's tooltip now (`syncPlanToggle`).
 	    function setComposerPlaceholder(width) {
 	      if (!textarea) return;
-	      textarea.setAttribute('placeholder', width < PLACEHOLDER_COMPACT_WIDTH ? 'Message…' : 'Message Pantheon…');
+	      // The cockpit composer also names the two doors a person might not know.
+	      const wide = document.documentElement.classList.contains('cockpit')
+	        ? 'Message Pantheon  ·  / commands  ·  @ agents' : 'Message Pantheon…';
+	      textarea.setAttribute('placeholder', width < PLACEHOLDER_COMPACT_WIDTH ? 'Message…' : (width < 520 ? 'Message Pantheon…' : wide));
 	    }
 
 		    function checkPickerOverflow() {

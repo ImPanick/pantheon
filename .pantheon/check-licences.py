@@ -899,6 +899,14 @@ INVENTORY = [
           "swagger-ui-bundle.js.LICENSE.txt", "swagger-ui-bundle.js.LICENSE.txt"),
     Entry("Fira Code", ["static/fonts/FiraCode-*.woff2"], "OFL-1.1",
           "FiraCode-OFL.txt", "Fira Code"),
+    # The cockpit shell's type (`static/cockpit.css`): Geist for the interface,
+    # Geist Mono for code and readouts, Instrument Serif for display words. The
+    # latin subsets of the Fontsource 5.3.0 packages, byte for byte, so the
+    # shell never asks a font CDN for anything (`Law 16`).
+    Entry("Geist", ["static/fonts/Geist-*.woff2", "static/fonts/GeistMono-*.woff2"], "OFL-1.1",
+          "Geist-OFL.txt", "Geist"),
+    Entry("Instrument Serif", ["static/fonts/InstrumentSerif-*.woff2"], "OFL-1.1",
+          "InstrumentSerif-OFL.txt", "Instrument Serif"),
     # `B1674`: the same release's static TrueType faces, which the fallback
     # PDF embeds (`static/js/document.js` `PDF_FONTS`) — jsPDF takes `glyf`
     # outlines and not WOFF2.
