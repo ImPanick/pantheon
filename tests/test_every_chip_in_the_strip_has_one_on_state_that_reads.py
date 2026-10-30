@@ -87,7 +87,10 @@ const BASE = process.argv[2];
     };
     const ratio = (a, b) => { const x = lum(a), y = lum(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
     const bar = document.querySelector('.chat-input-bar');
-    const chips = [...document.querySelectorAll('.chat-input-left .tool-chip')];
+    // `B1706`: the bottom row, not only its left strip — the approval-mode
+    // chip moved from the strip to the row's right and is the same chip
+    // (`.tool-chip`, its on-state Auto), so it is measured where it is.
+    const chips = [...document.querySelectorAll('.chat-input-bottom .tool-chip')];
     const res = {};
     for (const name of Object.keys(tm.THEMES)) {
       tm.applyColors(tm.THEMES[name]);
@@ -141,6 +144,9 @@ def test_every_palette_and_every_chip_was_measured(measured):
     assert len(measured["palettes"]) == 23, sorted(measured["palettes"])
     for row in measured["palettes"].values():
         assert {"plan-toggle-btn", "web-toggle-btn", "bash-toggle-btn"} <= set(row["chips"]), sorted(row["chips"])
+        # Eleven still after `B1706`: ten in the strip and the approval-mode
+        # chip, which left the strip for the row's right and is measured there.
+        assert "approval-mode-btn" in row["chips"], sorted(row["chips"])
         assert len(_switches(row)) == 11, sorted(row["chips"])
 
 

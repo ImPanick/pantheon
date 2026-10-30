@@ -3237,10 +3237,15 @@ body.bg-pattern-ascii {
        that replaces it is smaller than it (124.5px → ~76px measured), says the
        mode without anything being opened, and opens `#turn-sheet` with the
        rest of what decides a turn. The typing area is on its own row above and
-       is not touched. */
+       is not touched.
+       `B1706`: the approval-mode chip goes with the toggle, for the same
+       reason — the sheet's Approval row is its 44px door there, and
+       `#turn-chip` already says *Auto* when it is on — so a phone's row keeps
+       its room. */
     .chat-input-bar { container-type: inline-size; container-name: chatbar; }
     @container chatbar (max-width: 420px) {
       .chat-input-right .mode-toggle { display: none !important; }
+      .chat-input-right .approval-mode-wrap { display: none !important; }
       .chat-input-right .turn-chip { display: inline-flex; }
     }
     @container chatbar (max-width: 260px) {
@@ -4470,13 +4475,96 @@ body.bg-pattern-ascii {
       border-color: color-mix(in srgb, var(--red) 75%, transparent);
     }
     .chat-auto-approve-badge[hidden] { display: none; }
-    /* The composer chip is a toggle while it is off and a clearable indicator
-       while it is on, so the clear affordance appears with the on-state —
-       measured in Chromium at 1400x900 on `dark` and `light`: the off chip was
-       drawing an X that cleared nothing. The chip is otherwise entirely
-       `.tool-chip` + `.tool-indicator` (`P5-12`), which is why this is two
-       lines and not a chip of its own. */
-    #approval-mode-btn:not(.active) > .tool-indicator-x { display: none; }
+    /* `B1706` — the approval-mode selector at the bottom right of the
+       composer. It was an on/off chip in the Plan / Web / Shell strip with a
+       clear X shown only while on; it is a chip naming the mode that opens a
+       menu, so the X and its rule went with it. The chip is `.tool-chip`
+       (`P5-12`'s geometry, and `.tool-chip.active`'s on-state for Auto — the
+       colour the header badge matches) with its own label class: on a phone
+       a `.tool-chip-label` is dropped to leave the icon, and this chip's word
+       IS the control. The menu is the model picker's — `.model-picker-menu`,
+       `.model-picker-list`, `.mp-section-label`, `.model-switch-item` — and
+       the rules below lay out a row that carries a line under its name and a
+       check, and keep each piece of text on a ground it clears 4.5:1 on, on
+       every palette (measured in
+       `tests/test_the_approval_mode_is_chosen_at_the_bottom_of_the_composer.py`).
+       No ring of its own: the one `:focus-visible` rule draws it (`B662`). The
+       description is the muted ladder (`check-contrast.py`'s
+       `LADDER_IDIOM`). */
+    .approval-mode-wrap {
+      position: relative;
+      display: flex;
+      align-items: center;
+      flex-shrink: 0;
+    }
+    .approval-mode-chip {
+      padding: 0 6px 0 8px;
+    }
+    /* Under the pointer the word keeps `--chip-off-fg`, which `applyColors`
+       clears against this very hover tint; `.input-icon-btn:hover`'s `--fg`
+       measures 4.24:1 on `retrowave` and 4.40:1 on `cute` there. Auto keeps
+       its on-state (`.tool-chip.active`) under the pointer, as every chip
+       does. */
+    .approval-mode-chip:hover:not(.active) {
+      color: var(--chip-off-fg, var(--fg));
+    }
+    .approval-mode-chip-label {
+      font-size: 11px;
+      font-weight: 600;
+      line-height: 1;
+      white-space: nowrap;
+    }
+    /* Compounded with the picker's own classes, which are written later in
+       this sheet at the same weight. */
+    .model-picker-menu.approval-mode-menu {
+      min-width: 300px;
+    }
+    /* Room for the one ring: an item here takes the focus (the model picker's
+       never do — its box keeps it), and a scrolling list clips whatever is
+       drawn outside its padding box. */
+    .model-picker-list.approval-mode-list {
+      padding: 4px;
+    }
+    .model-picker-list .model-switch-item.approval-mode-item {
+      align-items: flex-start;
+      gap: 10px;
+      padding: 7px 8px;
+    }
+    /* The picker's row highlights are a red tint under the text, and `--fg`
+       on `--panel` is as low as 4.51:1 (`retrowave`): under the 8% hover tint
+       a row's name measures 4.22:1 there and under the 14% keyboard tint
+       3.96:1 (`cute` 4.41 / 4.17). So a row here keeps its ground. The
+       keyboard's place is the one focus ring, which the focused row already
+       draws, and the pointer's is an edge. */
+    .model-picker-list .model-switch-item.approval-mode-item.kb-active {
+      background: none;
+    }
+    .model-picker-list .model-switch-item.approval-mode-item:hover {
+      background: none;
+      box-shadow: inset 2px 0 0 var(--red);
+    }
+    .approval-mode-item-text {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      flex: 1 1 auto;
+      min-width: 0;
+    }
+    .approval-mode-item-name {
+      font-weight: 600;
+    }
+    .approval-mode-item-desc {
+      line-height: 1.35;
+      color: color-mix(in oklab, var(--fg) 70%, var(--fg-muted));
+    }
+    .approval-mode-item-check {
+      flex: 0 0 auto;
+      margin-top: 1px;
+      visibility: hidden;
+    }
+    .approval-mode-item[aria-checked="true"] .approval-mode-item-check {
+      visibility: visible;
+    }
     /* Session cost indicator (next to chevron in header) */
     .session-cost-display {
       font-size: inherit;

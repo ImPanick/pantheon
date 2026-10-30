@@ -524,7 +524,12 @@ from test_tool_effect_surfaces_js import _make_sandbox  # noqa: E402
 
 @pytest.fixture(scope="module")
 def chat_sandbox(tmp_path_factory):
-    """The real `approvalMode.js` with the chat test's DOM shim."""
+    """The real `approvalMode.js` with the chat test's DOM shim.
+
+    `B1706`: the chip opens a menu now, so each case below asks for Auto with
+    the menu's own item (`choose('auto')`, the shim's click on it) where it
+    clicked the chip — a chip click sends nothing at all now, which would pass
+    the third case for the wrong reason."""
     return _make_sandbox(tmp_path_factory.mktemp("approvalmode-b1703"), APPROVAL_MODE, _CHAT_SHIM, {})
 
 
@@ -534,12 +539,12 @@ def test_with_no_warning_to_show_nothing_is_sent(chat_sandbox):
     read): Auto stays off and nothing is asked of the server — never turned
     on without the person having read the server's words."""
     out = _case(chat_sandbox, """
-        const { chip } = paint();
+        paint();
         serve((url, method) => ({ status: 200, body: { mode: 'manual', auto: false, may_set: true } }));
         installUi({ answer: true });
         approvalMode.init(() => 'chat-a');
         await approvalMode.load('chat-a');
-        chip.dispatchEvent({ type: 'click' });
+        choose('auto');
         await new Promise((r) => setTimeout(r, 0));
         console.log(JSON.stringify({ ui: read(), confirms: said.confirms, toasts: said.toasts,
                                      posts: sent.filter((s) => s.method === 'POST') }));
@@ -552,14 +557,14 @@ def test_with_no_warning_to_show_nothing_is_sent(chat_sandbox):
 @node
 def test_a_warning_that_changed_shows_the_servers_sentence(chat_sandbox):
     out = _case(chat_sandbox, """
-        const { chip } = paint();
+        paint();
         serve((url, method, body) => method === 'GET'
           ? { status: 200, body: { mode: 'manual', auto: false, may_set: true, ...%s } }
           : { status: 409, body: { detail: %s } });
         installUi({ answer: true });
         approvalMode.init(() => 'chat-a');
         await approvalMode.load('chat-a');
-        chip.dispatchEvent({ type: 'click' });
+        choose('auto');
         await new Promise((r) => setTimeout(r, 0));
         console.log(JSON.stringify({ ui: read(), toasts: said.toasts }));
     """ % (_WARNING_FIELDS, json.dumps(am.AUTO_WARNING_CHANGED_SENTENCE)))
@@ -572,12 +577,12 @@ def test_a_dialog_dismissed_any_way_but_proceed_sends_nothing(chat_sandbox):
     """Escape and the backdrop answer `false` as *Keep asking me* does; an
     `'alternate'` or anything else is not *Proceed* either."""
     out = _case(chat_sandbox, """
-        const { chip } = paint();
+        paint();
         serve((url, method) => ({ status: 200, body: { mode: 'manual', auto: false, may_set: true, ...%s } }));
         globalThis.window.uiModule = { styledConfirm: async () => 'alternate', showToast: () => {} };
         approvalMode.init(() => 'chat-a');
         await approvalMode.load('chat-a');
-        chip.dispatchEvent({ type: 'click' });
+        choose('auto');
         await new Promise((r) => setTimeout(r, 0));
         console.log(JSON.stringify({ posts: sent.filter((s) => s.method === 'POST') }));
     """ % _WARNING_FIELDS)
