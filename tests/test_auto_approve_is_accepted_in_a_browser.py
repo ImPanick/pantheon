@@ -94,7 +94,9 @@ const WHO = process.argv[3];
   await page.click('#approval-mode-btn');
   await page.waitForSelector('#styled-confirm-ok', { state: 'visible' });
   out.dialog = await dialog();
-  await page.click('#styled-confirm-cancel');
+  // `B1704`: the dialog opens on the safe answer, so Enter here is *Keep asking me*.
+  out.focusedOnOpen = await page.evaluate(() => document.activeElement && document.activeElement.id);
+  await page.keyboard.press('Enter');
   await page.waitForTimeout(300);
   out.kept = { posts: posts.length, auto: (await mode()).auto };
 
@@ -184,6 +186,12 @@ def test_the_chip_shows_the_servers_warning_with_the_rulings_control(driven):
 
 
 def test_keep_asking_me_sends_nothing(driven):
+    assert driven["kept"] == {"posts": 0, "auto": False}
+
+
+def test_the_warning_opens_on_keep_asking_me_so_enter_accepts_nothing(driven):
+    # `B1704`: `styledConfirm` focused the yes, so a reflexive Enter accepted the risk.
+    assert driven["focusedOnOpen"] == "styled-confirm-cancel"
     assert driven["kept"] == {"posts": 0, "auto": False}
 
 

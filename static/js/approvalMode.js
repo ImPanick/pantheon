@@ -229,6 +229,8 @@ export async function toggle(sessionId) {
     }
     const yes = await ui.styledConfirm(warning.text, {
       title: 'Auto-approve', confirmText: warning.proceed, cancelText: warning.keep, danger: true,
+      // `B1704`: opens on *Keep asking me*, so a reflexive Enter accepts nothing.
+      focusCancel: true,
     });
     if (yes !== true) return false;
     const ok = await _write(sid, MODE_AUTO, warning.id);

@@ -737,7 +737,7 @@ function _renderConfirmDetails(overlay, msgEl, details) {
  * name, which is the shape `Law 10` is about — so the list is what a person
  * reads, and the answer is still yes or no.
  */
-export function styledConfirm(message, { confirmText = 'Confirm', cancelText = 'Cancel', alternateText = '', alternateDanger = false, title = 'Confirm', danger = false, details = null } = {}) {
+export function styledConfirm(message, { confirmText = 'Confirm', cancelText = 'Cancel', alternateText = '', alternateDanger = false, title = 'Confirm', danger = false, details = null, focusCancel = false } = {}) {
   return new Promise(resolve => {
     // Reuse or create the modal
     let overlay = document.getElementById('styled-confirm-overlay');
@@ -830,7 +830,9 @@ export function styledConfirm(message, { confirmText = 'Confirm', cancelText = '
     cancelBtn.addEventListener('click', onCancel);
     overlay.addEventListener('click', onBackdrop);
     document.addEventListener('keydown', onKey);
-    okBtn.focus();
+    // `B1704`. A dialog whose yes is a risk the person accepts opens on the
+    // safe answer, so a reflexive Enter keeps things as they were.
+    (focusCancel ? cancelBtn : okBtn).focus();
   });
 }
 
