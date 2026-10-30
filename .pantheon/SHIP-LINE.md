@@ -371,6 +371,10 @@ Re-measured 2026-10-30, after the thirty-sixth wave: **40 filed, 42 closed**, op
 
 **Direction as of 2026-10-30, after the thirty-sixth wave: falling over the window; the system-and-function list is down to decisions, what this sandbox cannot reach, and small remainders, and the redesign is next.**
 
+Re-measured 2026-10-30, after the thirty-seventh wave: **34 filed, 36 closed**, open **42 → 40** — falling over the window, up by three in this wave (one closed, four filed for the revamp). The window moved on, so its start reads 42. The ship-line composition is unchanged — 0 of the last 40 `B` rows (`B1671`–`B1710`) block.
+
+**Direction as of 2026-10-30, after the thirty-seventh wave: the system-and-function list is done but for decisions, what this sandbox cannot reach and small remainders; the UI/UX revamp is next.**
+
 ### A second number, which is the one that moves
 
 Of the last 40 `B` rows filed — `B360` through `B455`, four waves of sweeps plus

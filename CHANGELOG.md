@@ -253,6 +253,10 @@ the next one is cut.
 
 ### Changed — read this before upgrading
 
+- **The approval mode is chosen at the bottom of the composer** (`B1706`): a chip names the mode
+  and opens a menu of Manual approve and Auto-approve, each with a line saying what it does; it
+  replaces the Auto-approve button in the Plan / Web / Shell strip.
+
 - **Auto-approve is now a risk you accept on the record** (`B1703`, `B1704`): a chat's Auto, and a
   hired agent's "without asking" after it reads outside content, turn on only when you choose
   **Proceed to auto-approve** under a warning naming what the agent's reading can steer. Pantheon
