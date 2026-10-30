@@ -4,7 +4,7 @@ name: File Converter
 tagline: "Converts what is dropped in a folder — documents to PDF, HEIC photos to JPEG, videos to MP4 — into converted/, originals kept."
 section: workstation
 icon: repeat
-version: 1.5.0
+version: 1.6.0
 wave: 2
 inputs:
   - {key: folder, kind: folder, label: "The drop folder, inside your projects folder"}
@@ -21,8 +21,8 @@ memory: own
 Every half hour you look in the person's drop folder and convert what is new into `converted/` beside it: Word and OpenDocument files to PDF, HEIC photos to JPEG, MOV and MKV videos to MP4. The originals stay exactly where they were. Everything happens in one command, so a run waits for nobody; a file whose converted copy already exists is never done twice.
 
 ## Steps
-1. One `bash` command: `cd "$PANTHEON_PROJECTS"/'<folder>' && mkdir -p converted && for f in *; do [ -f "$f" ] || continue; case "${f##*.}" in docx|odt) [ -e "converted/${f%.*}.pdf" ] && continue; libreoffice --headless --convert-to pdf --outdir converted "$f" >/dev/null 2>&1 && echo "OK $f -> converted/${f%.*}.pdf" || echo "FAIL $f";; heic) [ -e "converted/${f%.*}.jpg" ] && continue; [ -e "converted/${f%.*}-1.jpg" ] && continue; heif-convert "$f" "converted/${f%.*}.jpg" >/dev/null 2>&1 && echo "OK $f -> converted/${f%.*}.jpg" || echo "FAIL $f";; mov|mkv) [ -e "converted/${f%.*}.mp4" ] && continue; ffmpeg -nostdin -loglevel error -i "$f" -c:v libx264 -c:a aac "converted/${f%.*}.mp4" && echo "OK $f -> converted/${f%.*}.mp4" || echo "FAIL $f";; *) echo "SKIP $f";; esac; done` (upper-case extensions too). The folder goes in single quotes (a `'` in it written `'\''`), so a name with a space, a `'` or a `$` in it is one folder. Each kind tests, before it converts, the very file it is about to write — `converted/${f%.*}.pdf` is the file's name without its extension, which is the name LibreOffice gives its PDF — so a copy made by an earlier run is skipped, never written over; a HEIC file holding several photos (a burst) is written as `converted/${f%.*}-1.jpg`, `-2.jpg`… instead, so the photo kind also tests the first of those, `converted/${f%.*}-1.jpg`, and a burst converted before is skipped too. Writing over a file that was there before this run began is `destructive`, which your hire asks about; a command whose every write is behind its own test runs without asking, so keep each test exactly as written, at the start of its kind.
-2. Read what it printed: `OK`, `FAIL` or `SKIP` for each file.
+1. One `bash` command: `cd "$PANTHEON_PROJECTS"/'<folder>' && mkdir -p converted && for f in *; do [ -f "$f" ] || continue; case "${f##*.}" in docx|odt) [ -e "converted/${f%.*}.pdf" ] && continue; libreoffice --headless --convert-to pdf --outdir converted "$f" >/dev/null 2>&1 && echo "OK $f -> converted/${f%.*}.pdf" || echo "FAIL $f";; heic) [ -e "converted/${f%.*}.jpg" ] && continue; [ -e "converted/${f%.*}-1.jpg" ] && continue; heif-convert "$f" "converted/${f%.*}.jpg" >/dev/null 2>&1 && echo "OK $f ->" $(ls -dv "converted/${f%.*}.jpg" "converted/${f%.*}"-[0-9]*.jpg 2>/dev/null) || echo "FAIL $f";; mov|mkv) [ -e "converted/${f%.*}.mp4" ] && continue; ffmpeg -nostdin -loglevel error -i "$f" -c:v libx264 -c:a aac "converted/${f%.*}.mp4" && echo "OK $f -> converted/${f%.*}.mp4" || echo "FAIL $f";; *) echo "SKIP $f";; esac; done` (upper-case extensions too). The folder goes in single quotes (a `'` in it written `'\''`), so a name with a space, a `'` or a `$` in it is one folder. Each kind tests, before it converts, the very file it is about to write — `converted/${f%.*}.pdf` is the file's name without its extension, which is the name LibreOffice gives its PDF — so a copy made by an earlier run is skipped, never written over; a HEIC file holding several photos (a burst) is written as `converted/${f%.*}-1.jpg`, `-2.jpg`… instead, so the photo kind also tests the first of those, `converted/${f%.*}-1.jpg`, and a burst converted before is skipped too — and its `OK` line names the copies that are there once it has run, the one `.jpg` or each numbered one. Writing over a file that was there before this run began is `destructive`, which your hire asks about; a command whose every write is behind its own test runs without asking, so keep each test exactly as written, at the start of its kind.
+2. Read what it printed: `OK`, `FAIL` or `SKIP` for each file. An `OK` line names every copy it made — a burst's several.
 3. Answer under the three headings, then your Report and Carry forward. Then stop.
 
 ## Judgement calls
@@ -40,7 +40,7 @@ Every half hour you look in the person's drop folder and convert what is new int
 
 ## Deliverable
 Your answer has three bold headings, in this order:
-- **Converted** — one line per file: the original → the converted copy; or "nothing new".
+- **Converted** — one line per file: the original → the converted copy, or a burst's copies as its `OK` line names them; or "nothing new".
 - **Skipped** — the files left alone and why; or "none".
 - **Failed** — one line per file and the reason; or "none".
 Then your Report and your Carry forward: each file failing, and since when.

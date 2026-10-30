@@ -114,7 +114,11 @@ command is looked at where the link points (`B1697`: `cp -l`/`-s` onto a
 name that is there writes nothing over it unless `-f`, `--remove-destination`
 or `-i` — GNU `cp` refuses, *File exists*); (`B1696`) **the symbolic links it
 copies as links** — `cp -a`, `-P`, `-d`, `-r`, `rsync -l`, `-a` — a `links`
-finding marked `copied`, whose text the run reads from the source; and
+finding marked `copied`, whose text the run reads from the source;
+(`B1698`) **the names a move puts what it moves at** — `mv`, `mv -n`,
+`git mv`, each the source's own file or link (`moved`) — and **what an
+archive or git puts in a folder**, any name of which may be a link
+(`unpacked`: `tar -x`, `unzip`, `7z x`, `git checkout`, `pull`, `clone`…); and
 (`B1695`) a test of the first of `heif-convert`'s numbered names, which
 speaks for them all; and **where the command goes**
 — a `chdir` finding — for each `cd`, `pushd`,
@@ -230,7 +234,16 @@ class Finding:
     is one (`cp -P`, `-d`, `rsync -l`); `deep`, those and every one inside
     a folder it copies (`cp -a`, `cp -r`, `rsync -a`); `inside`, only those
     inside, the sources followed (`cp -rH`). Empty: a link the command
-    makes itself (`ln`, `cp -l`)."""
+    makes itself (`ln`, `cp -l`).
+
+    `B1698`. And two more: `moved`, the names `mv` (or `git mv`) puts what
+    it moves at — each the source's own thing, the person's file itself
+    or a symbolic link with the same text, a folder with all it holds — and
+    `unpacked`, what an archive (`tar -x`, `unzip`, `7z x`) or git (`git
+    checkout`, `pull`, `clone`…) puts in a folder: names the command does
+    not hold (its `sources`, as an archive's writes are), any of which may
+    be a symbolic link pointing anywhere, which nothing here opens the
+    archive to read."""
     kind: str
     why: str
     path: str = ""
@@ -1064,13 +1077,17 @@ def _replaces_through(op: str, target: _Word) -> bool:
 
 
 #: `B1669`. Options of `cp` and `install` that take a value, short and long.
-#: (`B1697`: and `cp`'s `--no-preserve` and `--sparse`, which take one too.)
+#: (`B1697`: and `cp`'s `--no-preserve` and `--sparse`, which take one too.
+#: `B1698`: and `mv`'s, whose words `_copy_words` reads as `cp`'s — it is
+#: read by `_Judge._mv`, before `cp` and `install` are.)
 _COPY_VALUES = {"cp": ("tS", {"--target-directory", "--suffix", "--no-preserve", "--sparse"}),
                 "install": ("gmoSt", {"--group", "--mode", "--owner", "--suffix",
-                                       "--target-directory", "--strip-program"})}
+                                       "--target-directory", "--strip-program"}),
+                "mv": ("tS", {"--target-directory", "--suffix"})}
 #: `B1697`. Every long option `cp` and `install` take (coreutils 9.4's
 #: `--help`), so one written short of its name — `--forc`, `--remove-d`,
 #: `--no-deref` — is read as `getopt_long` reads it: the one it begins.
+#: (`B1698`: and `mv`'s.)
 _COPY_LONG = {
     "cp": ("--archive", "--attributes-only", "--backup", "--context", "--copy-contents", "--debug",
            "--dereference", "--force", "--help", "--interactive", "--link", "--no-clobber",
@@ -1082,6 +1099,9 @@ _COPY_LONG = {
                 "--help", "--mode", "--no-target-directory", "--owner", "--preserve-context",
                 "--preserve-timestamps", "--strip", "--strip-program", "--suffix",
                 "--target-directory", "--verbose", "--version"),
+    "mv": ("--backup", "--context", "--debug", "--force", "--help", "--interactive",
+           "--no-clobber", "--no-copy", "--no-target-directory", "--strip-trailing-slashes",
+           "--suffix", "--target-directory", "--update", "--verbose", "--version"),
 }
 #: `B1697`. What makes `cp -l`/`-s` replace a name that is there: without
 #: one, GNU `cp` refuses — measured, coreutils 9.4: *cannot create hard link
@@ -1098,6 +1118,63 @@ def _long_name(key: str, names: Sequence[str]) -> str:
         return key
     begun = [n for n in names if n.startswith(key)]
     return begun[0] if len(begun) == 1 else key
+
+
+def _copy_words(name: str, args: Sequence[_Word]):
+    """`B1669`. `cp`'s, `install`'s or (`B1698`) `mv`'s words, read as GNU
+    reads them — options anywhere before `--`, a short option's value joined
+    to it or the next word, a long one's after `=` or the next, and
+    (`B1697`) one written short of its name as the one it begins: `(flags,
+    said, operands, folder)` — the options as a set and (`B1696`) in order,
+    the operands, and `-t`'s folder — or `None` where it refuses, an option
+    missing its value (nothing done)."""
+    shorts, longs = _COPY_VALUES[name]
+    flags: set = set()
+    said: List[str] = []
+    operands: List[_Word] = []
+    folder: Optional[_Word] = None
+    ended = False
+    i = 0
+    while i < len(args):
+        w = args[i]
+        t = w.text
+        i += 1
+        if ended or t == "-" or not t.startswith("-"):
+            operands.append(w)
+            continue
+        if t == "--":
+            ended = True
+            continue
+        if t.startswith("--"):
+            key, eq, value = t.partition("=")
+            key = _long_name(key, _COPY_LONG[name])     # `B1697`: `--forc` is `--force`
+            flags.add(key)
+            said.append(key)
+            if key in longs and not eq:
+                if i >= len(args):
+                    return None
+                value_word, i = args[i], i + 1
+            else:
+                value_word = replace(w, text=value)
+            if key == "--target-directory":
+                folder = value_word
+            elif eq:
+                flags.add(f"{key}={value}")
+            continue
+        for j, letter in enumerate(t[1:], start=1):
+            flags.add("-" + letter)
+            said.append("-" + letter)
+            if letter in shorts:
+                if j + 1 < len(t):
+                    value_word = replace(w, text=t[j + 1:])
+                elif i < len(args):
+                    value_word, i = args[i], i + 1
+                else:
+                    return None
+                if letter == "t":
+                    folder = value_word
+                break
+    return flags, said, operands, folder
 
 
 def _cp_keeps_links(said: Sequence[str], hard: bool) -> str:
@@ -1621,6 +1698,15 @@ _TRIMMED = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)(?:(?:%%?|##?)[^}]*)?\}"
 #: `B1692`. `ln`'s options that take a value.
 _LN_SHORT = "St"
 _LN_LONG = {"--suffix", "--target-directory"}
+#: `B1698`. `git clone`'s options that take a value (git 2.43's `-h`).
+_GIT_CLONE_SHORT = "objcu"
+_GIT_CLONE_LONG = {"--origin", "--branch", "--upload-pack", "--template", "--config", "--depth",
+                   "--shallow-since", "--shallow-exclude", "--reference", "--reference-if-able",
+                   "--separate-git-dir", "--jobs", "--filter", "--bundle-uri", "--server-option",
+                   "--revision", "--ref-format"}
+#: `B1698`. git's commands that write its work tree from what it holds
+#: whatever their words, beside those `_Judge._git_puts` reads the words of.
+_GIT_PUTS = frozenset({"pull", "merge", "rebase", "cherry-pick", "revert", "am"})
 
 
 def _scan(words: Sequence[_Word], shorts: str, longs: set,
@@ -2102,6 +2188,7 @@ class _Judge:
                            for f in flags))
             if _short(flags, "f") or "--force" in flags or not kept:
                 self.destroys("mv replaces whatever already has the new name")
+            self._mv(name, args)            # `B1698`: and the names it moves things to
             return
         if name == "tee":
             # `B1669`: each file it is handed, from its start — unless `-a`.
@@ -2446,8 +2533,7 @@ class _Judge:
                 words.append(w)
         opts, operands = _scan(words, _UNZIP_SHORT, set())
         said = {o for o, _v in opts}
-        if not operands or "-o" not in said or "-n" in said or any(o[1:] in _UNZIP_READS
-                                                                      for o in said):
+        if not operands or any(o[1:] in _UNZIP_READS for o in said):
             return
         folder = next((v for o, v in reversed(opts) if o == "-d" and v is not None),
                       _Word(text="."))
@@ -2456,8 +2542,12 @@ class _Judge:
             members = []        # its own patterns: which members, it decides
         if "-j" in said:
             members = [replace(m, text=posixpath.basename(m.text)) for m in members]
-        self.writes("unzip -o", folder, sources=members or [_Word()], into="folder",
-                    parents=True)
+        if "-o" in said and "-n" not in said:
+            self.writes("unzip -o", folder, sources=members or [_Word()], into="folder",
+                        parents=True)
+        # `B1698`: and what it unpacks, with `-o` or not, may be a link.
+        self.links(name, folder, members or [_Word()], into="folder", parents=True,
+                   copied="unpacked")
 
     def _tar(self, name: str, args: List[_Word]) -> None:
         opts, operands = _scan(args, _TAR_SHORT, _TAR_LONG, old_style=True)
@@ -2485,9 +2575,8 @@ class _Judge:
             return
         if not said & {"-x", "--extract", "--get"}:
             return
-        if said & {"-O", "--to-stdout", "--to-command", "-k", "--keep-old-files",
-                   "--skip-old-files"}:
-            return
+        if said & {"-O", "--to-stdout", "--to-command"}:
+            return              # onto the screen, or into a program: no file
         folders = [v for o, v in opts if o in ("-C", "--directory")]
         if len(folders) > 1 or (folders and folders[0] is None):
             folder = _unknown(" ".join(w.text for w in folders if w is not None))
@@ -2498,8 +2587,19 @@ class _Judge:
                     "--wildcards", "-T", "--files-from"}
                 or any(not _spelled(m) for m in members)):
             members = []        # where each lands, it decides
-        self.writes(f"{name} -x", folder, sources=members or [_Word()], into="folder",
-                    parents=True)
+        # `B1698`: with `-P`, which keeps a name's leading `/` and its `..`,
+        # what it writes may be anywhere at all — measured, GNU tar 1.35: a
+        # member named `/…/notes.md` writes the person's notes from inside a
+        # folder `mkdir` made — so where cannot be known.
+        absolute = bool(said & {"-P", "--absolute-names"})
+        held = _file_value(archive)
+        anywhere = _unknown(f"what {held.text if held is not None else 'the archive'} holds")
+        if not said & {"-k", "--keep-old-files", "--skip-old-files"}:
+            self.writes(f"{name} -x", anywhere if absolute else folder,
+                        sources=members or [_Word()], into="folder", parents=True)
+        # `B1698`: and what it unpacks, keeping old files or not, may be a link.
+        self.links(f"{name} -x", anywhere if absolute else folder,
+                   members or [_Word()], into="folder", parents=True, copied="unpacked")
 
     def _ffmpeg(self, name: str, args: List[_Word]) -> None:
         texts = {w.text for w in args}
@@ -2622,13 +2722,16 @@ class _Judge:
         if command not in ("x", "e") or "-so" in said:
             return
         modes = [s for s in said if s.startswith("-ao")]
-        if (modes[-1] if modes else ("-aoa" if "-y" in said else "")) != "-aoa":
-            return              # it asks, skips or renames: what is there stays
+        # Unless it asks, skips or renames, where what is there stays.
+        over = (modes[-1] if modes else ("-aoa" if "-y" in said else "")) == "-aoa"
         why = f"{name} {command}"
         outs = [w for w in switches if w.text.startswith("-o")]
         folder = replace(outs[-1], text=outs[-1].text[2:]) if outs else _Word(text=".")
         if not folder.text or "*" in folder.text or any(s.startswith("-spf") for s in said):
-            self.writes(why, _unknown(folder.text or "-o"))   # where each lands, it decides
+            unknown = _unknown(folder.text or "-o")     # where each lands, it decides
+            if over:
+                self.writes(why, unknown)
+            self.links(why, unknown, [_Word()], into="folder", parents=True, copied="unpacked")
             return
         members = operands[2:]
         if (any(s.startswith(("-i", "-ai")) or (s.startswith("-r") and s != "-r-") for s in said)
@@ -2636,7 +2739,11 @@ class _Judge:
             members = []        # which members, it decides
         if command == "e":
             members = [replace(m, text=posixpath.basename(m.text.rstrip("/"))) for m in members]
-        self.writes(why, folder, sources=members or [_Word()], into="folder", parents=True)
+        if over:
+            self.writes(why, folder, sources=members or [_Word()], into="folder", parents=True)
+        # `B1698`: and what it unpacks, however it treats what is there, may be a link.
+        self.links(why, folder, members or [_Word()], into="folder", parents=True,
+                   copied="unpacked")
 
     def _ytdlp(self, name: str, args: List[_Word]) -> None:
         opts, _operands = _scan(args, _YTDLP_SHORT, _YTDLP_LONG)
@@ -3107,56 +3214,39 @@ class _Judge:
                     else "folder" if len(operands) > 2 else "")
             self.links(why, operands[-1], operands[:-1], into=into, beside=beside)
 
+    def _mv(self, name: str, args: List[_Word]) -> None:
+        """`B1698`. The names `mv` puts what it moves at, its words read as
+        `cp`'s are (`_copy_words`): `mv SOURCE DEST` (`-T`: `DEST` whatever
+        is there), `mv SOURCE… FOLDER`, or `-t FOLDER`. Each holds what its
+        source held — the person's file itself, or a symbolic link with the
+        same text, read from its new folder — so a write onto it later in
+        the command lands there (`src/run_files.py`): a `links` finding
+        marked `moved`. With `-n` too, which only keeps a name that is there
+        (above, replacing nothing), and moves onto one that is not."""
+        words = _copy_words(name, args)
+        if words is None:
+            return                                  # it refuses: nothing moved
+        flags, _said, operands, folder = words
+        if flags & {"--help", "--version"}:
+            return
+        if folder is not None:
+            if operands:
+                self.links(name, folder, operands, into="folder", copied="moved")
+            return
+        if len(operands) < 2:
+            return
+        into = ("file" if flags & {"-T", "--no-target-directory"}
+                else "folder" if len(operands) > 2 else "")
+        self.links(name, operands[-1], operands[:-1], into=into, copied="moved")
+
     def _copies(self, name: str, args: List[_Word]) -> None:
         """`B1669`. `cp` or `install`: what it writes over, read as GNU reads
-        its words — options anywhere before `--`, a short option's value
-        joined to it or the next word."""
-        shorts, longs = _COPY_VALUES[name]
-        flags: set = set()
-        said: List[str] = []        # `B1696`: the options in order — the last of `-L`/`-P` wins
-        operands: List[_Word] = []
-        folder: Optional[_Word] = None
-        ended = False
-        i = 0
-        while i < len(args):
-            w = args[i]
-            t = w.text
-            i += 1
-            if ended or t == "-" or not t.startswith("-"):
-                operands.append(w)
-                continue
-            if t == "--":
-                ended = True
-                continue
-            if t.startswith("--"):
-                key, eq, value = t.partition("=")
-                key = _long_name(key, _COPY_LONG[name])     # `B1697`: `--forc` is `--force`
-                flags.add(key)
-                said.append(key)
-                if key in longs and not eq:
-                    if i >= len(args):
-                        return                      # it refuses: nothing copied
-                    value_word, i = args[i], i + 1
-                else:
-                    value_word = replace(w, text=value)
-                if key == "--target-directory":
-                    folder = value_word
-                elif eq:
-                    flags.add(f"{key}={value}")
-                continue
-            for j, letter in enumerate(t[1:], start=1):
-                flags.add("-" + letter)
-                said.append("-" + letter)
-                if letter in shorts:
-                    if j + 1 < len(t):
-                        value_word = replace(w, text=t[j + 1:])
-                    elif i < len(args):
-                        value_word, i = args[i], i + 1
-                    else:
-                        return
-                    if letter == "t":
-                        folder = value_word
-                    break
+        its words (`_copy_words`)."""
+        words = _copy_words(name, args)
+        if words is None:
+            return                                  # it refuses: nothing copied
+        # `B1696`: `said`, the options in order — the last of `-L`/`-P` wins.
+        flags, said, operands, folder = words
         if name == "install" and ({"-d", "--directory"} & flags):
             return                                  # it makes folders
         parents = "--parents" in flags
@@ -3199,14 +3289,23 @@ class _Judge:
         with_value = {"-C", "-c", "--git-dir", "--work-tree", "--namespace", "--exec-path",
                       "--config-env"}
         i = 0
+        # `B1698`: where its paths are named from — moved by each `-C`, and
+        # unknown once told where its work tree is.
+        home: Optional[_Word] = None
         while i < len(args) and args[i].text.startswith("-"):
-            i += 2 if args[i].text in with_value else 1
+            t = args[i].text
+            if t == "-C" and i + 1 < len(args):
+                home = _under(home, args[i + 1])
+            elif t.startswith(("--work-tree", "--git-dir")):
+                home = _unknown(t)
+            i += 2 if t in with_value else 1
         if i >= len(args):
             return
         sub = args[i].text
         rest = args[i + 1:]
         flags = _flags(rest)
         plain = _plain_words(rest)
+        self._git_puts(sub, rest, flags, plain, home)
         if sub == "push":
             if (_short(flags, "f") or _short(flags, "d")
                     or any(f.startswith(("--force", "--mirror", "--delete", "--prune")) for f in flags)
@@ -3241,6 +3340,14 @@ class _Judge:
         elif sub == "mv":
             if _short(flags, "f") or "--force" in flags:
                 self.destroys("git mv -f replaces a file")
+            cut = next((j for j, w in enumerate(rest) if w.text == "--"), len(rest))
+            names = [w for w in rest[:cut] if not w.text.startswith("-") or w.text == "-"]
+            names += rest[cut + 1:]
+            if len(names) >= 2 and not (_short(flags, "n") or "--dry-run" in flags):
+                # `B1698`: as `mv` moves (`_mv`) — the work tree's own file, at its new name.
+                names = [_under(home, w) for w in names]
+                self.links("git mv", names[-1], names[:-1],
+                           into="folder" if len(names) > 2 else "", copied="moved")
         elif sub in ("filter-branch", "filter-repo"):
             self.destroys(f"git {sub} rewrites history")
         elif sub == "reflog":
@@ -3255,6 +3362,56 @@ class _Judge:
         elif sub == "gc":
             if any(f.startswith("--prune") for f in flags):
                 self.destroys("git gc --prune deletes unreachable work")
+
+    def _git_puts(self, sub: str, rest: List[_Word], flags: List[str], plain: List[str],
+                  home: Optional[_Word]) -> None:
+        """`B1698`. A git command that writes its work tree from what git
+        holds — another commit checked out or restored, a merge, a pull, a
+        stash put back, a patch applied, a clone — may put a symbolic link
+        at any name in it, pointing anywhere, as an archive may: a `links`
+        finding marked `unpacked`. Where the work tree is, the words do not
+        say (the folder the command is in, or any folder above it), so a
+        write after one is unknown wherever it is; a clone's is the folder
+        it names, and — named by its address (`git_url_basename`'s rules,
+        not followed here) — unknown too. Not what leaves the tree as it
+        is: a branch made where it stands (`checkout -b new`, `switch -c`),
+        `restore --staged`, a soft or mixed `reset`, `stash list`, `apply
+        --check`, a bare clone or one that checks nothing out, or `-h`."""
+        if {"-h", "--help"} & set(flags):
+            return
+        why = f"git {sub}"
+        if sub in ("checkout", "switch"):
+            shorts, longs = (("bB", {"--orphan", "--conflict", "--pathspec-from-file"})
+                             if sub == "checkout" else
+                             ("cC", {"--create", "--force-create", "--orphan", "--conflict"}))
+            opts, operands = _scan(rest, shorts, longs)
+            if not operands and "--pathspec-from-file" not in {o for o, _v in opts}:
+                return          # a branch made where it stands, or nothing at all
+        elif sub == "restore":
+            if ("--staged" in flags or _short(flags, "S")) and not (
+                    "--worktree" in flags or _short(flags, "W")):
+                return
+        elif sub == "reset":
+            if not {"--hard", "--merge", "--keep"} & set(flags):
+                return
+        elif sub == "stash":
+            if plain[:1] and plain[0] in ("list", "show", "drop", "clear", "create", "store"):
+                return
+        elif sub == "apply":
+            if {"--check", "--stat", "--numstat", "--summary", "--cached"} & set(flags):
+                return
+        elif sub == "clone":
+            opts, operands = _scan(rest, _GIT_CLONE_SHORT, _GIT_CLONE_LONG)
+            said = {o for o, _v in opts}
+            if said & {"--bare", "--mirror", "-n", "--no-checkout"} or not operands:
+                return
+            folder = (_under(home, operands[1]) if len(operands) > 1
+                      else _unknown(operands[0].text))
+            self.links(why, folder, [_Word()], into="folder", copied="unpacked")
+            return
+        elif sub not in _GIT_PUTS:
+            return
+        self.links(why, _unknown("its work tree"), [_Word()], into="folder", copied="unpacked")
 
     def _docker(self, name: str, args: List[_Word]) -> None:
         plain = _plain_words(args)

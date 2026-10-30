@@ -139,9 +139,10 @@ def _file_converter():
 
 def test_file_converters_photo_kind_tests_a_bursts_first_copy():
     """1.5.0: the runbook and every case's command test the first copy,
-    right after the single name's test, and its hire still asks."""
+    right after the single name's test, and its hire still asks. (`B1699`
+    made it 1.6.0: its `OK` line names the copies that exist.)"""
     m, cases, command = _file_converter()
-    assert m.version == "1.5.0"
+    assert m.version == "1.6.0"
     assert H.manifest_effects(m)["destructive"] == "ask"
     assert ('heic|HEIC) [ -e "converted/${f%.*}.jpg" ] && continue; ' + FIRST_TEST
             + 'heif-convert "$f" "converted/${f%.*}.jpg"') in command
