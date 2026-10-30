@@ -7220,8 +7220,13 @@ async def stream_agent_loop(
     # and for Auto's reason — a privilege revoked mid-turn must not answer two
     # blocks of one turn two ways — and False for every chat, task and
     # summoned agent (`ToolPolicy.hired` is the task engine's, for a hire).
+    # `B1703` / `D-2026-10-30-01`: and only once the hire's person accepted
+    # the warning naming what it allows (`hire_id`, `allow_effects`) — none on
+    # record, and the gate asks as it always did.
     _hire_lift = await asyncio.to_thread(
         hire_lift_for, owner, hired=bool(getattr(tool_policy, "hired", False)),
+        hire_id=getattr(tool_policy, "hire_id", None),
+        allow_effects=frozenset(getattr(tool_policy, "allow_effects", ()) or ()),
         delegated_credential=bool(delegated_credential),
     )
     if _hire_lift:

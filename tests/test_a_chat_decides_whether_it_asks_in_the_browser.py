@@ -30,7 +30,10 @@ import pytest
 from src.approval_mode import (
     AUTO_LABEL,
     AUTO_NOT_ALLOWED_SENTENCE,
-    AUTO_TURN_ON_SENTENCE,
+    AUTO_WARNING,
+    KEEP_ASKING_LABEL,
+    PROCEED_LABEL,
+    chat_warning,
 )
 from test_tool_effect_surfaces_js import _make_sandbox, _run  # noqa: E402
 from tests.helpers.source_text import blank_text  # B290
@@ -131,12 +134,20 @@ def _case(sandbox, script: str) -> dict:
     return _run(sandbox, _PREAMBLE, script)
 
 
+#: `B1703`. What `GET …/approval-mode` says about the warning, from the
+#: server's own module — the browser shows these and holds no copy.
+_WARNING_FIELDS = json.dumps({
+    "warning": chat_warning()["text"], "warning_id": chat_warning()["id"],
+    "proceed_label": PROCEED_LABEL, "keep_asking_label": KEEP_ASKING_LABEL,
+})
+
 _SERVE_ALLOWED = """
     serve((url, method, body) => {
-      if (method === 'GET') return { status: 200, body: { mode: 'manual', auto: false, may_set: true } };
+      if (method === 'GET') return { status: 200, body: { mode: 'manual', auto: false, may_set: true,
+                                                          ...%s } };
       return { status: 200, body: { mode: body.mode, auto: body.mode === 'auto' } };
     });
-"""
+""" % _WARNING_FIELDS
 
 
 # ── A. the chat says so, and turning it on is one deliberate act ────────────
@@ -158,10 +169,16 @@ def test_a_chat_in_manual_approve_shows_no_banner(sandbox):
     assert out["badgeShown"] is False
 
 
-def test_turning_auto_on_asks_once_with_one_plain_sentence(sandbox):
-    """*"one deliberate act with one plain sentence"*, and *"it must not be a
-    silent toggle either"*. One confirm, one sentence, and the sentence is the
-    server's own copy so the two cannot drift (`Law 7`)."""
+def test_turning_auto_on_asks_once_and_sends_back_the_warning_accepted(sandbox):
+    """*"one deliberate act"*, and *"it must not be a silent toggle either"*.
+    One confirm, and its words are the server's own, read from `GET`, so the
+    two cannot drift (`Law 7`).
+
+    `B1703` / `D-2026-10-30-01` changed what the one act is: it was one
+    sentence and *Turn on*; it is the warning that names the risk — what the
+    agent reads can steer what it does next — accepted with *Proceed to
+    auto-approve*, whose id goes back with the write for the server to record.
+    Still short (Doc 2 § 5: not a wall)."""
     out = _case(sandbox, """
         const { chip } = paint();
         %s
@@ -177,19 +194,19 @@ def test_turning_auto_on_asks_once_with_one_plain_sentence(sandbox):
 
     assert len(out["confirms"]) == 1, "asked once, not twice and not never"
     confirm = out["confirms"][0]
-    assert confirm["message"] == AUTO_TURN_ON_SENTENCE
-    # One sentence of consequence and one question. Not a wall of warning.
-    assert confirm["message"].count(".") <= 1
-    assert len(confirm["message"]) < 220
-    assert confirm["opts"]["confirmText"] == "Turn on"
-    assert confirm["opts"]["cancelText"] == "Keep asking me"
+    assert confirm["message"] == AUTO_WARNING
+    # A warning that names the risk, and not a wall of one.
+    assert "can steer what it does next" in confirm["message"]
+    assert len(confirm["message"]) < 400
+    assert confirm["opts"]["confirmText"] == PROCEED_LABEL == "Proceed to auto-approve"
+    assert confirm["opts"]["cancelText"] == KEEP_ASKING_LABEL == "Keep asking me"
 
     assert out["ui"]["chipActive"] is True
     assert out["ui"]["chipPressed"] == "true"
     assert out["ui"]["badgeShown"] is True
     assert out["sent"][-1] == {
         "url": "/api/session/chat-a/approval-mode", "method": "POST",
-        "body": {"mode": "auto"},
+        "body": {"mode": "auto", "accept_warning": chat_warning()["id"]},
     }
 
 
@@ -372,12 +389,26 @@ def test_the_mode_is_never_written_to_browser_storage():
 
 
 def test_the_chat_switch_reads_the_mode_for_the_chat_being_opened():
-    """`Law 13` — nothing half-wired. `setCurrentSessionId` is the one place
-    that knows which chat is open, so it is the one place that reads this."""
+    """`Law 13` — nothing half-wired.
+
+    `B1703` found this case green while the wiring was not: it asserted the
+    read inside `setCurrentSessionId`, and opening a chat from the list
+    (`selectSession`) sets `currentSessionId` itself and never calls that, so
+    in Chromium the chip stayed hidden on every chat opened from the list
+    (`Law 20`: the grep found the right line in a function the path does not
+    take). Now every assignment of `currentSessionId` in `sessions.js` is
+    followed by the read — and `tests/test_auto_approve_is_accepted_in_a_browser.py`
+    opens a chat from the list in the real app and presses the chip."""
     source = SESSIONS.read_text(encoding="utf-8")
-    body = source[source.index("export function setCurrentSessionId"):]
-    body = body[: body.index("\n}")]
-    assert "approvalModeModule.load(id)" in body
+    code = blank_text(source, "js")
+    sites = [m.end() for m in re.finditer(r"(?<!let )\bcurrentSessionId = [^;=]+;", code)]
+    assert len(sites) >= 5, sites
+    for end in sites:
+        # Past a blanked comment, as in `setCurrentSessionId`; before the
+        # next statement block could be another function's.
+        after = code[end: end + 1000]
+        assert "approvalModeModule.load(" in after[: after.find("\n}") if "\n}" in after else None], (
+            code[end - 80: end + 200])
     assert "import approvalModeModule from './approvalMode.js'" in source
 
     app = APP.read_text(encoding="utf-8")
@@ -409,7 +440,8 @@ def test_a_refused_write_shows_the_servers_sentence_and_leaves_the_chip(sandbox)
     out = _case(sandbox, """
         const { chip } = paint();
         serve((url, method, body) => {
-          if (method === 'GET') return { status: 200, body: { mode: 'manual', auto: false, may_set: true } };
+          if (method === 'GET') return { status: 200, body: { mode: 'manual', auto: false, may_set: true,
+                                                              ...%s } };
           return { status: 403, body: { detail: %s } };
         });
         installUi({ answer: true });
@@ -418,7 +450,7 @@ def test_a_refused_write_shows_the_servers_sentence_and_leaves_the_chip(sandbox)
         chip.dispatchEvent({ type: 'click' });
         await new Promise((r) => setTimeout(r, 0));
         console.log(JSON.stringify({ ui: read(), toasts: said.toasts }));
-    """ % json.dumps(AUTO_NOT_ALLOWED_SENTENCE))
+    """ % (_WARNING_FIELDS, json.dumps(AUTO_NOT_ALLOWED_SENTENCE)))
 
     assert out["toasts"] == [AUTO_NOT_ALLOWED_SENTENCE]
     assert out["ui"]["chipActive"] is False, "the chip stays where the server left it"
