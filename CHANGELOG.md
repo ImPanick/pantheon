@@ -253,6 +253,10 @@ the next one is cut.
 
 ### Changed — read this before upgrading
 
+- **File Converter skips a burst photo it converted before; a copied symbolic link is read where it
+  points; and `cp -l` onto an existing name is no longer asked about** (`B1695`–`B1697`). File
+  Converter's version moved.
+
 - **A write through a link the command itself made, and a converter's numbered copies, are read
   where they land** (`B1692`, `B1693`): over a file that was there before the run they ask where
   deletions ask.
