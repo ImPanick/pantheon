@@ -11,6 +11,10 @@ without the acceptance, granted with it, and the record names the person.
     buttons read *Proceed to auto-approve* and *Keep asking me*; *Keep asking
     me* sends nothing, *Proceed* turns it on and the server says who accepted;
     pressing the chip again turns it off with no dialog, and ends the record.
+    (`B1706`: the chip opens the approval-mode menu now, so *pressing the
+    chip* is choosing its *Auto-approve* — and, to turn it off, its *Manual
+    approve*; the menu itself is driven in
+    `tests/test_the_approval_mode_is_chosen_at_the_bottom_of_the_composer.py`.)
   * **the hire.** The hire form shows the warning above an unticked *Proceed
     to auto-approve*. Summoned unticked, the hire lifts nothing and its page
     offers the same control; pressed there, its record names the person.
@@ -90,8 +94,14 @@ const WHO = process.argv[3];
   });
   const posts = [];
   page.on('request', (r) => { if (r.method() === 'POST' && r.url().includes('/approval-mode')) posts.push(r.postDataJSON()); });
+  // `B1706`: a mode is chosen from the chip's menu, once it has risen.
+  const choose = async (mode) => {
+    await page.click('#approval-mode-btn');
+    await page.waitForTimeout(350);
+    await page.click(`[data-approval-choice="${mode}"]`);
+  };
 
-  await page.click('#approval-mode-btn');
+  await choose('auto');
   await page.waitForSelector('#styled-confirm-ok', { state: 'visible' });
   out.dialog = await dialog();
   // `B1704`: the dialog opens on the safe answer, so Enter here is *Keep asking me*.
@@ -100,15 +110,15 @@ const WHO = process.argv[3];
   await page.waitForTimeout(300);
   out.kept = { posts: posts.length, auto: (await mode()).auto };
 
-  await page.click('#approval-mode-btn');
+  await choose('auto');
   await page.waitForSelector('#styled-confirm-ok', { state: 'visible' });
   await page.click('#styled-confirm-ok');
   await page.waitForFunction(() => !document.getElementById('chat-auto-approve-badge').hidden);
   const on = await mode();
   out.on = { posts: posts.slice(), auto: on.auto, accepted: on.accepted,
-             chipPressed: await page.getAttribute('#approval-mode-btn', 'aria-pressed') };
+             chipChecked: await page.getAttribute('[data-approval-choice="auto"]', 'aria-checked') };
 
-  await page.click('#approval-mode-btn');
+  await choose('manual');
   await page.waitForFunction(() => document.getElementById('chat-auto-approve-badge').hidden);
   const off = await mode();
   out.off = { dialog: await dialog(), lastPost: posts[posts.length - 1], auto: off.auto, accepted: off.accepted };
@@ -197,7 +207,7 @@ def test_the_warning_opens_on_keep_asking_me_so_enter_accepts_nothing(driven):
 
 def test_proceed_turns_it_on_and_the_record_names_the_person(driven):
     on = driven["on"]
-    assert on["auto"] is True and on["chipPressed"] == "true"
+    assert on["auto"] is True and on["chipChecked"] == "true"   # `B1706`: was `aria-pressed`
     assert on["accepted"]["by"] == WHO and on["accepted"]["at"]
     (sent,) = on["posts"]
     assert sent["mode"] == "auto" and sent["accept_warning"] == on["accepted"]["warning_id"]

@@ -16,6 +16,17 @@ chat, so a leak cannot come from there; it can come from a browser that draws
 the chip from its own memory. Group B is that: a switch to another chat, a
 switch to no chat, and an answer that arrives after the person has already moved
 on.
+
+**`B1706` changed the control these cases press.** The chip was an on/off
+switch beside Plan / Web / Shell (`aria-pressed`, a click flipped the mode); it
+is a chip naming the mode at the bottom right of the composer that opens a menu
+of both, a check (`aria-checked`) on the current one — the owner's request for
+a mode selector at the bottom of the composer. So the shim paints that markup,
+a case that turned Auto on or off by clicking the chip now clicks the menu's
+item for the mode, and `read()` reports the check rather than `aria-pressed`.
+What each case asserts about the server, the warning and the badge is
+unchanged. `tests/test_the_approval_mode_is_chosen_at_the_bottom_of_the_composer.py`
+drives the menu itself in Chromium.
 """
 
 from __future__ import annotations
@@ -28,12 +39,13 @@ from pathlib import Path
 import pytest
 
 from src.approval_mode import (
-    AUTO_LABEL,
     AUTO_NOT_ALLOWED_SENTENCE,
     AUTO_WARNING,
     KEEP_ASKING_LABEL,
     PROCEED_LABEL,
+    SETTING_LABEL,
     chat_warning,
+    mode_choices,
 )
 from test_tool_effect_surfaces_js import _make_sandbox, _run  # noqa: E402
 from tests.helpers.source_text import blank_text  # B290
@@ -52,19 +64,37 @@ _SHIM = r"""
 import { installDom, Node } from './dom.js';
 export const document = installDom();
 
-/** The two surfaces, exactly as `static/index.html` ships them. */
+/** The two surfaces, exactly as `static/index.html` ships them — `B1706`: the
+ *  chip in its wrap, and the menu it opens, whose words are blank until the
+ *  server's arrive. */
+function el(tag, attrs, parent) {
+  const n = new Node(tag);
+  for (const [k, v] of Object.entries(attrs || {})) {
+    if (k === 'class') n.className = v; else n.setAttribute(k, v);
+  }
+  if (parent) parent.appendChild(n);
+  return n;
+}
 export function paint() {
-  const chip = new Node('button');
-  chip.setAttribute('id', 'approval-mode-btn');
-  chip.className = 'input-icon-btn tool-indicator tool-chip';
-  chip.title = 'Auto-approve';
-  chip.setAttribute('aria-pressed', 'false');
+  const wrap = el('div', { class: 'approval-mode-wrap', id: 'approval-mode-wrap' }, document.body);
+  wrap.style.display = 'none';
+  const chip = el('button', { class: 'input-icon-btn tool-chip approval-mode-chip', id: 'approval-mode-btn',
+                              'aria-haspopup': 'menu', 'aria-expanded': 'false',
+                              'aria-controls': 'approval-mode-options' }, wrap);
   chip.style.display = 'none';
-  const label = new Node('span');
-  label.className = 'tool-chip-label';
-  label.textContent = 'Auto-approve';
-  chip.appendChild(label);
-  document.body.appendChild(chip);
+  el('span', { class: 'approval-mode-chip-label', id: 'approval-mode-label' }, chip);
+  const menu = el('div', { class: 'model-picker-menu approval-mode-menu hidden', id: 'approval-mode-menu' }, wrap);
+  const list = el('div', { class: 'model-picker-list approval-mode-list' }, menu);
+  el('div', { class: 'mp-section-label', id: 'approval-mode-menu-title' }, list);
+  const options = el('div', { role: 'menu', id: 'approval-mode-options',
+                              'aria-labelledby': 'approval-mode-menu-title' }, list);
+  for (const mode of ['manual', 'auto']) {
+    const item = el('div', { class: 'model-switch-item approval-mode-item', role: 'menuitemradio',
+                             tabindex: '-1', 'aria-checked': 'false', 'data-approval-choice': mode }, options);
+    const text = el('span', { class: 'approval-mode-item-text' }, item);
+    el('span', { class: 'approval-mode-item-name' }, text);
+    el('span', { class: 'approval-mode-item-desc' }, text);
+  }
 
   const badge = new Node('button');
   badge.setAttribute('id', 'chat-auto-approve-badge');
@@ -72,18 +102,34 @@ export function paint() {
   badge.hidden = true;
   badge.textContent = 'Auto-approve';
   document.body.appendChild(badge);
-  return { chip, badge };
+  return { chip, badge, menu };
+}
+
+/** `B1706`. Press the menu's item for a mode — what a person's click does. */
+export function choose(mode) {
+  document.querySelector(`[data-approval-choice="${mode}"]`).dispatchEvent({ type: 'click' });
 }
 
 export function read() {
   const chip = document.getElementById('approval-mode-btn');
   const badge = document.getElementById('chat-auto-approve-badge');
+  const items = document.querySelectorAll('.approval-mode-item');
+  const checked = items.filter((i) => i.getAttribute('aria-checked') === 'true')
+    .map((i) => i.getAttribute('data-approval-choice'));
   return {
     chipShown: chip.style.display !== 'none',
     chipActive: chip.classList.contains('active'),
-    chipPressed: chip.getAttribute('aria-pressed'),
-    chipTitle: chip.title,
-    chipLabel: chip.querySelector('.tool-chip-label').textContent,
+    checked: checked.length === 1 ? checked[0] : checked,
+    chipName: chip.getAttribute('aria-label'),
+    chipLabel: document.getElementById('approval-mode-label').textContent,
+    menuOpen: !document.getElementById('approval-mode-menu').classList.contains('hidden'),
+    heading: document.getElementById('approval-mode-menu-title').textContent,
+    items: items.map((i) => ({
+      mode: i.getAttribute('data-approval-choice'),
+      name: i.querySelector('.approval-mode-item-name').textContent,
+      line: i.querySelector('.approval-mode-item-desc').textContent,
+      shown: i.style.display !== 'none',
+    })),
     badgeShown: !badge.hidden,
     badgeText: badge.textContent,
   };
@@ -118,7 +164,7 @@ export function installUi({ answer = true } = {}) {
 """
 
 _PREAMBLE = (
-    "import { document, paint, read, serve, sent, installUi, said } from './shim.js';\n"
+    "import { document, paint, read, serve, sent, installUi, said, choose } from './shim.js';\n"
     "const approvalMode = (await import('./approvalMode.js')).default;\n"
 )
 
@@ -141,13 +187,26 @@ _WARNING_FIELDS = json.dumps({
     "proceed_label": PROCEED_LABEL, "keep_asking_label": KEEP_ASKING_LABEL,
 })
 
+#: `B1706`. What `GET …/approval-mode` says for the composer's mode menu —
+#: the setting's name and each mode's words — from the server's own module.
+_MENU_FIELDS = json.dumps({"setting_label": SETTING_LABEL, "modes": mode_choices()})
+
 _SERVE_ALLOWED = """
     serve((url, method, body) => {
       if (method === 'GET') return { status: 200, body: { mode: 'manual', auto: false, may_set: true,
-                                                          ...%s } };
+                                                          ...%s, ...%s } };
       return { status: 200, body: { mode: body.mode, auto: body.mode === 'auto' } };
     });
-""" % _WARNING_FIELDS
+""" % (_WARNING_FIELDS, _MENU_FIELDS)
+
+#: The same, for a chat already on Auto.
+_SERVE_ON = """
+    serve((url, method, body) => {
+      if (method === 'GET') return { status: 200, body: { mode: 'auto', auto: true, may_set: true,
+                                                          ...%s, ...%s } };
+      return { status: 200, body: { mode: body.mode, auto: body.mode === 'auto' } };
+    });
+""" % (_WARNING_FIELDS, _MENU_FIELDS)
 
 
 # ── A. the chat says so, and turning it on is one deliberate act ────────────
@@ -165,8 +224,48 @@ def test_a_chat_in_manual_approve_shows_no_banner(sandbox):
 
     assert out["chipShown"] is True, "the switch is reachable"
     assert out["chipActive"] is False
-    assert out["chipPressed"] == "false"
+    assert out["checked"] == "manual"   # `B1706`: was `aria-pressed="false"`
     assert out["badgeShown"] is False
+
+
+def test_the_chip_names_the_mode_and_the_menu_says_the_servers_words(sandbox):
+    """`B1706`. *"a compact chip naming the current mode"*, and a menu headed
+    with the setting's name, listing both modes with one line each — every
+    word the server's (`setting_label`, `modes`), none of them the page's."""
+    out = _case(sandbox, """
+        const { chip } = paint();
+        %s
+        approvalMode.init(() => 'chat-a');
+        await approvalMode.load('chat-a');
+        const closed = read();
+        chip.dispatchEvent({ type: 'click' });
+        console.log(JSON.stringify({ closed, open: read() }));
+    """ % _SERVE_ALLOWED)
+
+    manual, auto = mode_choices()
+    assert out["closed"]["chipLabel"] == manual["short_label"] == "Manual"
+    assert out["closed"]["chipName"] == f"{SETTING_LABEL}: {manual['label']}"
+    assert out["closed"]["menuOpen"] is False
+    opened = out["open"]
+    assert opened["menuOpen"] is True, "the chip opens its menu"
+    assert opened["heading"] == SETTING_LABEL
+    assert opened["items"] == [
+        {"mode": m["mode"], "name": m["label"], "line": m["description"], "shown": True}
+        for m in (manual, auto)]
+    assert opened["checked"] == "manual"
+
+
+def test_a_server_that_sends_no_menu_words_gets_no_chip(sandbox):
+    """`B1706`, `Law 15`. A menu of blank rows is a dead control, and the
+    page will not write its own words in their place (`Law 7`)."""
+    out = _case(sandbox, """
+        paint();
+        serve(() => ({ status: 200, body: { mode: 'manual', auto: false, may_set: true, ...%s } }));
+        await approvalMode.load('chat-a');
+        console.log(JSON.stringify(read()));
+    """ % _WARNING_FIELDS)
+    assert out["chipShown"] is False
+    assert out["chipLabel"] == "" and {i["name"] for i in out["items"]} == {""}
 
 
 def test_turning_auto_on_asks_once_and_sends_back_the_warning_accepted(sandbox):
@@ -180,12 +279,12 @@ def test_turning_auto_on_asks_once_and_sends_back_the_warning_accepted(sandbox):
     auto-approve*, whose id goes back with the write for the server to record.
     Still short (Doc 2 § 5: not a wall)."""
     out = _case(sandbox, """
-        const { chip } = paint();
+        paint();
         %s
         installUi({ answer: true });
         approvalMode.init(() => 'chat-a');
         await approvalMode.load('chat-a');
-        chip.dispatchEvent({ type: 'click' });
+        choose('auto');   // `B1706`: the menu's item, not a chip that flips
         await new Promise((r) => setTimeout(r, 0));
         console.log(JSON.stringify({
           ui: read(), confirms: said.confirms, toasts: said.toasts, sent,
@@ -202,7 +301,7 @@ def test_turning_auto_on_asks_once_and_sends_back_the_warning_accepted(sandbox):
     assert confirm["opts"]["cancelText"] == KEEP_ASKING_LABEL == "Keep asking me"
 
     assert out["ui"]["chipActive"] is True
-    assert out["ui"]["chipPressed"] == "true"
+    assert out["ui"]["checked"] == "auto" and out["ui"]["chipLabel"] == "Auto"
     assert out["ui"]["badgeShown"] is True
     assert out["sent"][-1] == {
         "url": "/api/session/chat-a/approval-mode", "method": "POST",
@@ -211,45 +310,62 @@ def test_turning_auto_on_asks_once_and_sends_back_the_warning_accepted(sandbox):
 
 
 def test_saying_no_to_the_question_changes_nothing(sandbox):
-    """A deliberate act is one a person can decline."""
+    """A deliberate act is one a person can decline — and `B1706`, declining
+    leaves the menu's check on Manual approve."""
     out = _case(sandbox, """
-        const { chip } = paint();
+        paint();
         %s
         installUi({ answer: false });
         approvalMode.init(() => 'chat-a');
         await approvalMode.load('chat-a');
-        chip.dispatchEvent({ type: 'click' });
+        choose('auto');
         await new Promise((r) => setTimeout(r, 0));
         console.log(JSON.stringify({ ui: read(), posts: sent.filter((s) => s.method === 'POST') }));
     """ % _SERVE_ALLOWED)
 
     assert out["posts"] == [], "nothing was asked of the server"
     assert out["ui"]["chipActive"] is False
+    assert out["ui"]["checked"] == "manual" and out["ui"]["chipLabel"] == "Manual"
     assert out["ui"]["badgeShown"] is False
 
 
 def test_turning_auto_off_is_one_click_with_no_question(sandbox):
     """Putting a gate back is never the move that needs confirming."""
     out = _case(sandbox, """
-        const { chip } = paint();
-        serve((url, method, body) => {
-          if (method === 'GET') return { status: 200, body: { mode: 'auto', auto: true, may_set: true } };
-          return { status: 200, body: { mode: body.mode, auto: body.mode === 'auto' } };
-        });
+        paint();
+        %s
         installUi({ answer: false });
         approvalMode.init(() => 'chat-a');
         await approvalMode.load('chat-a');
         const on = read();
-        chip.dispatchEvent({ type: 'click' });
+        choose('manual');
         await new Promise((r) => setTimeout(r, 0));
         console.log(JSON.stringify({ on, off: read(), confirms: said.confirms, sent }));
-    """)
+    """ % _SERVE_ON)
 
     assert out["on"]["chipActive"] is True and out["on"]["badgeShown"] is True
+    assert out["on"]["checked"] == "auto" and out["on"]["chipLabel"] == "Auto"
     assert out["confirms"] == [], "no question on the way out"
     assert out["off"]["chipActive"] is False
+    assert out["off"]["checked"] == "manual" and out["off"]["chipLabel"] == "Manual"
     assert out["off"]["badgeShown"] is False
     assert out["sent"][-1]["body"] == {"mode": "manual"}
+
+
+def test_choosing_the_mode_the_chat_is_in_asks_and_sends_nothing(sandbox):
+    """`B1706`. A menu lists both modes, so the current one can be chosen:
+    that is not a change, so it is neither a question nor a write."""
+    out = _case(sandbox, """
+        paint();
+        %s
+        installUi({ answer: true });
+        approvalMode.init(() => 'chat-a');
+        await approvalMode.load('chat-a');
+        choose('manual');
+        await new Promise((r) => setTimeout(r, 0));
+        console.log(JSON.stringify({ confirms: said.confirms, posts: sent.filter((s) => s.method === 'POST') }));
+    """ % _SERVE_ALLOWED)
+    assert out == {"confirms": [], "posts": []}
 
 
 def test_the_badge_is_a_way_out_as_well_as_a_statement(sandbox):
@@ -276,21 +392,24 @@ def test_the_chip_and_the_badge_never_disagree(sandbox):
     """One state, two surfaces (`Law 7`). Over every transition this control
     has, the chip's pressed state and the badge's visibility are one fact."""
     out = _case(sandbox, """
-        const { chip } = paint();
+        paint();
         %s
         installUi({ answer: true });
         approvalMode.init(() => 'chat-a');
         const seen = [];
-        const snap = () => { const r = read(); seen.push([r.chipActive, r.chipPressed, r.badgeShown]); };
+        const snap = () => { const r = read(); seen.push([r.chipActive, r.checked, r.chipLabel, r.badgeShown]); };
         await approvalMode.load('chat-a'); snap();
-        chip.dispatchEvent({ type: 'click' });
+        choose('auto');
         await new Promise((r) => setTimeout(r, 0)); snap();
-        chip.dispatchEvent({ type: 'click' });
+        choose('manual');
         await new Promise((r) => setTimeout(r, 0)); snap();
         console.log(JSON.stringify(seen));
     """ % _SERVE_ALLOWED)
 
-    assert out == [[False, "false", False], [True, "true", True], [False, "false", False]]
+    # `B1706`: the chip's word and the menu's check join the chip's on-state
+    # and the badge as one fact (it was `aria-pressed`).
+    assert out == [[False, "manual", "Manual", False], [True, "auto", "Auto", True],
+                   [False, "manual", "Manual", False]]
 
 
 # ── B. the adversary: the chat you just left ────────────────────────────────
@@ -438,22 +557,23 @@ def test_a_refused_write_shows_the_servers_sentence_and_leaves_the_chip(sandbox)
     four refusals it was, so the browser shows what it said rather than
     guessing."""
     out = _case(sandbox, """
-        const { chip } = paint();
+        paint();
         serve((url, method, body) => {
           if (method === 'GET') return { status: 200, body: { mode: 'manual', auto: false, may_set: true,
-                                                              ...%s } };
+                                                              ...%s, ...%s } };
           return { status: 403, body: { detail: %s } };
         });
         installUi({ answer: true });
         approvalMode.init(() => 'chat-a');
         await approvalMode.load('chat-a');
-        chip.dispatchEvent({ type: 'click' });
+        choose('auto');
         await new Promise((r) => setTimeout(r, 0));
         console.log(JSON.stringify({ ui: read(), toasts: said.toasts }));
-    """ % (_WARNING_FIELDS, json.dumps(AUTO_NOT_ALLOWED_SENTENCE)))
+    """ % (_WARNING_FIELDS, _MENU_FIELDS, json.dumps(AUTO_NOT_ALLOWED_SENTENCE)))
 
     assert out["toasts"] == [AUTO_NOT_ALLOWED_SENTENCE]
     assert out["ui"]["chipActive"] is False, "the chip stays where the server left it"
+    assert out["ui"]["checked"] == "manual"
     assert out["ui"]["badgeShown"] is False
 
 
@@ -478,13 +598,12 @@ def test_a_chat_with_no_id_says_what_to_do_instead_of_failing_quietly(sandbox):
     """`Law 15`. Clicking the chip before the chat exists explains why, in one
     line that names the scope."""
     out = _case(sandbox, """
-        const { chip } = paint();
+        paint();
         %s
         installUi({ answer: true });
         approvalMode.init(() => null);
         await approvalMode.load(null);
-        chip.style.display = '';
-        chip.dispatchEvent({ type: 'click' });
+        choose('auto');   // `B1706`: the menu's Auto-approve
         await new Promise((r) => setTimeout(r, 0));
         console.log(JSON.stringify({ toasts: said.toasts, posts: sent.filter((s) => s.method === 'POST') }));
     """ % _SERVE_ALLOWED)
@@ -498,17 +617,33 @@ def test_a_chat_with_no_id_says_what_to_do_instead_of_failing_quietly(sandbox):
 
 
 def test_the_shipped_markup_holds_both_surfaces():
-    """The ids `fx8-mobile` is told to drive, in the page they are on."""
-    html = INDEX.read_text(encoding="utf-8")
+    """The ids `fx8-mobile` is told to drive, in the page they are on.
+
+    `B1706` moved the chip and changed what it is: from an `aria-pressed`
+    toggle labelled *Auto-approve* in the Plan / Web / Shell strip (it carried
+    `.tool-indicator` for that strip's clear X) to a menu button at the right
+    of the composer's bottom row, whose word and whose menu's words arrive from
+    the server — so the page ships the spans empty."""
+    html = blank_text(INDEX.read_text(encoding="utf-8"), "html")
     chip = re.search(r'<button[^>]*id="approval-mode-btn"[^>]*>', html)
     assert chip, "the composer chip is not in the page"
-    assert "tool-chip" in chip.group(0), "it must sit in the composer strip"
-    assert "tool-indicator" in chip.group(0), "and carry the strip's on-state"
-    assert 'aria-pressed="false"' in chip.group(0)
+    assert "tool-chip" in chip.group(0), "the composer's chip, and its on-state"
+    assert 'aria-haspopup="menu"' in chip.group(0) and 'aria-expanded="false"' in chip.group(0)
+    assert "aria-pressed" not in chip.group(0), "a menu button, not a toggle"
     assert 'style="display:none;"' in chip.group(0), (
         "hidden until the server says this person may set it"
     )
-    assert f">{AUTO_LABEL}</span>" in html, "the chip is labelled, not an icon alone"
+    bottom = html[html.index('<div class="chat-input-bottom"'):]
+    left = bottom[: bottom.index('<div class="chat-input-right">')]
+    right = bottom[bottom.index('<div class="chat-input-right">'):]
+    assert 'id="approval-mode-btn"' not in left, "the old chip is still in the strip"
+    assert 'id="approval-mode-btn"' in right[: right.index('class="send-btn')], (
+        "the selector is at the bottom right of the composer")
+    items = re.findall(r'<div[^>]*role="menuitemradio"[^>]*data-approval-choice="([a-z]+)"[^>]*>', html)
+    assert items == ["manual", "auto"], items
+    for name in ("approval-mode-item-name", "approval-mode-item-desc"):
+        assert re.findall(rf'<span class="{name}">([^<]*)</span>', html) == ["", ""], (
+            "the menu's words are the server's, not the page's")
 
     badge = re.search(r'<button[^>]*id="chat-auto-approve-badge"[^>]*>', html)
     assert badge, "the header badge is not in the page"

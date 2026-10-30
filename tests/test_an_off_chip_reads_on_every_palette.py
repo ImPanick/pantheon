@@ -76,7 +76,10 @@ const BASE = process.argv[2];
     };
     const ratio = (a, b) => { const x = lum(a), y = lum(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
     const bar = document.querySelector('.chat-input-bar');
-    const chips = [...document.querySelectorAll('.chat-input-left .tool-chip')];
+    // `B1706`: the bottom row, not only its left strip — the approval-mode
+    // chip moved from the strip to the row's right and is the same chip
+    // (`.tool-chip`, its on-state Auto), so it is measured where it is.
+    const chips = [...document.querySelectorAll('.chat-input-bottom .tool-chip')];
     const ws = document.getElementById('workspace-indicator-btn');
     const res = {};
     for (const name of Object.keys(tm.THEMES)) {
@@ -139,7 +142,9 @@ def test_every_palette_and_every_chip_was_measured(measured):
     assert len(measured["palettes"]) == 23, sorted(measured["palettes"])
     for row in measured["palettes"].values():
         assert {"plan-toggle-btn", "web-toggle-btn", "bash-toggle-btn",
-                "workspace-indicator-btn"} <= set(_chips(row)), sorted(row)
+                "workspace-indicator-btn",
+                # `B1706`: the approval-mode chip, now at the row's right.
+                "approval-mode-btn"} <= set(_chips(row)), sorted(row)
 
 
 def test_the_off_label_clears_aa_on_every_palette(measured):

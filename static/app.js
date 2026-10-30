@@ -1965,9 +1965,9 @@ function initializeEventListeners() {
 	    setMode(currentMode);
 	  })();
 
-  // `D-2026-10-09-01` §2. This chat's approval mode, wired beside Plan mode
-  // because it is the same shape of control: one composer chip, `aria-pressed`
-  // for the state, the server as the only place the state lives. The chat id
+  // `D-2026-10-09-01` §2. This chat's approval mode: one composer chip that
+  // names the mode and opens its menu (`B1706`; it was an `aria-pressed`
+  // toggle), the server the only place the state lives. The chat id
   // is passed as a getter rather than read from a global, so `sessions.js`
   // stays the one thing that knows which chat is open (`Law 7`).
   (function initApprovalMode() {
@@ -2192,6 +2192,9 @@ function initializeEventListeners() {
       if (e.target.closest('#overflow-attach-btn')) return;
       // Don't refocus for model picker button — focus should go to picker search input
       if (e.target.closest('.model-picker-btn')) return;
+      // `B1706`: nor for the approval-mode chip — its menu takes the focus,
+      // on the mode this chat is in, as the model picker's box does.
+      if (e.target.closest('#approval-mode-btn')) return;
       // Don't refocus when tapping the +/chevron tools button — the user
       // is explicitly trying to dismiss the keyboard and open the tools
       // menu. Without this, the textarea blurs (keyboard down), then this

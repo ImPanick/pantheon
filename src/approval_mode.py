@@ -126,6 +126,45 @@ PRIVILEGE = "can_auto_approve"
 #: chat is saying one thing (`Law 7`, Doc 2 § 5 rule 1).
 AUTO_LABEL = "Auto-approve"
 
+#: `B1706`. The other mode's name, as this module has always called it.
+MANUAL_LABEL = "Manual approve"
+
+#: `B1706`. The setting's own name — the heading of the composer's mode menu
+#: and the first words of its chip's accessible name.
+SETTING_LABEL = "Approval mode"
+
+#: `B1706`. The two modes as the composer's selector offers them, in the order
+#: it lists them: the name in the menu, the one word on the chip (*"a compact
+#: chip naming the current mode"*), and one line naming the consequence (Doc 2
+#: § 5: a consequence, not a mechanism). Served by `GET …/approval-mode` as
+#: `modes`, so the browser shows these words and holds no copy (`Law 7`,
+#: `Law 10`). Auto's line ends where its warning ends, because it is true
+#: (`B1341`) and the menu is where a person decides.
+MODE_CHOICES = (
+    {
+        "mode": ApprovalMode.MANUAL.value,
+        "label": MANUAL_LABEL,
+        "short_label": "Manual",
+        "description": "Pantheon stops and asks you before a step that needs your yes.",
+    },
+    {
+        "mode": ApprovalMode.AUTO.value,
+        "label": AUTO_LABEL,
+        "short_label": "Auto",
+        "description": (
+            "Pantheon runs tool steps without asking you. "
+            "A step that deletes or overwrites something still asks."
+        ),
+    },
+)
+
+
+def mode_choices() -> list:
+    """`B1706`. `MODE_CHOICES` as the route serves them — fresh copies, so no
+    caller can change the module's words in place."""
+    return [dict(choice) for choice in MODE_CHOICES]
+
+
 #: `B1703` / `D-2026-10-30-01`. The warning a person accepts before a chat
 #: runs steps unasked — it was one sentence and a *Turn on* button
 #: (`AUTO_TURN_ON_SENTENCE`) and recorded nothing. Short and plain (Doc 2 § 5:

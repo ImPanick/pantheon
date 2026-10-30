@@ -736,10 +736,14 @@ def setup_session_routes(
         labels, so the browser shows the server's words and holds no copy
         (`Law 7`, `Law 10`); and, while the chat is on Auto, who accepted it
         and when (`accepted`).
+
+        `B1706`: and the composer's mode menu, in the same way — the setting's
+        name (`setting_label`) and each mode's name, the word its chip shows
+        and its one line (`modes`).
         """
         from src.approval_mode import (
-            ApprovalMode, AUTO_LABEL, KEEP_ASKING_LABEL, PROCEED_LABEL, SUBJECT_CHAT,
-            acceptance_for, chat_warning, may_use_auto, mode_for,
+            ApprovalMode, AUTO_LABEL, KEEP_ASKING_LABEL, PROCEED_LABEL, SETTING_LABEL,
+            SUBJECT_CHAT, acceptance_for, chat_warning, may_use_auto, mode_choices, mode_for,
         )
 
         _verify_session_owner(request, sid)
@@ -768,6 +772,8 @@ def setup_session_routes(
             "keep_asking_label": KEEP_ASKING_LABEL,
             "accepted": ({"by": record["by"], "at": record["at"], "warning_id": record["warning_id"]}
                          if record else None),
+            "setting_label": SETTING_LABEL,
+            "modes": mode_choices(),
         }
 
     @router.post("/session/{sid}/approval-mode")
