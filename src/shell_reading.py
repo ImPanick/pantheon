@@ -110,7 +110,13 @@ where the command starts and what the run has already looked at:
 
 and (`B1692`) **the links it makes** — `ln`, `ln -s`, `link`, `cp -l`/`-s`
 — a `links` finding, so a write onto a link's name after it in the same
-command is looked at where the link points; and **where the command goes**
+command is looked at where the link points (`B1697`: `cp -l`/`-s` onto a
+name that is there writes nothing over it unless `-f`, `--remove-destination`
+or `-i` — GNU `cp` refuses, *File exists*); (`B1696`) **the symbolic links it
+copies as links** — `cp -a`, `-P`, `-d`, `-r`, `rsync -l`, `-a` — a `links`
+finding marked `copied`, whose text the run reads from the source; and
+(`B1695`) a test of the first of `heif-convert`'s numbered names, which
+speaks for them all; and **where the command goes**
 — a `chdir` finding — for each `cd`, `pushd`,
 `env -C`, `sudo -D`, a Python `os.chdir` or a subprocess `cwd=`, so a relative
 target is looked for wherever the command could be when it writes. A target or
@@ -207,7 +213,24 @@ class Finding:
     the shape of their names there, as a regular expression a name matches
     whole (`out-[0-9]+\\.png`). How many it writes is the input's to decide,
     so a name of that shape that was there may be written over, or may
-    not."""
+    not.
+
+    `B1695`. `first`: the first of those names, as the command spells it
+    (`converted/${f%.*}-1.jpg`), where the program numbers them from a
+    known start, one after another — `heif-convert`'s from 1 — so it is
+    written whenever any of them is; and `tested`, that a test before the
+    write skips it where that name is there (`[ -e … ] && continue`,
+    `_unguard`). A numbered name that was there is then written over only
+    where the first of its own is not.
+
+    `B1696`. `copied`: a `links` finding for a copy that keeps a symbolic
+    link as one, with the same text — so a write onto the copy lands where
+    that text points from the copy's own folder. Which links it keeps, as
+    the copy's options say (`_cp_keeps_links`): `named`, each source that
+    is one (`cp -P`, `-d`, `rsync -l`); `deep`, those and every one inside
+    a folder it copies (`cp -a`, `cp -r`, `rsync -a`); `inside`, only those
+    inside, the sources followed (`cp -rH`). Empty: a link the command
+    makes itself (`ln`, `cp -l`)."""
     kind: str
     why: str
     path: str = ""
@@ -222,6 +245,9 @@ class Finding:
     steady: bool = False
     beside: bool = False
     numbered: str = ""
+    first: str = ""
+    tested: bool = False
+    copied: str = ""
 
 
 @dataclass
@@ -1038,9 +1064,64 @@ def _replaces_through(op: str, target: _Word) -> bool:
 
 
 #: `B1669`. Options of `cp` and `install` that take a value, short and long.
-_COPY_VALUES = {"cp": ("tS", {"--target-directory", "--suffix"}),
+#: (`B1697`: and `cp`'s `--no-preserve` and `--sparse`, which take one too.)
+_COPY_VALUES = {"cp": ("tS", {"--target-directory", "--suffix", "--no-preserve", "--sparse"}),
                 "install": ("gmoSt", {"--group", "--mode", "--owner", "--suffix",
                                        "--target-directory", "--strip-program"})}
+#: `B1697`. Every long option `cp` and `install` take (coreutils 9.4's
+#: `--help`), so one written short of its name — `--forc`, `--remove-d`,
+#: `--no-deref` — is read as `getopt_long` reads it: the one it begins.
+_COPY_LONG = {
+    "cp": ("--archive", "--attributes-only", "--backup", "--context", "--copy-contents", "--debug",
+           "--dereference", "--force", "--help", "--interactive", "--link", "--no-clobber",
+           "--no-dereference", "--no-preserve", "--no-target-directory", "--one-file-system",
+           "--parents", "--preserve", "--recursive", "--reflink", "--remove-destination",
+           "--sparse", "--strip-trailing-slashes", "--suffix", "--symbolic-link",
+           "--target-directory", "--update", "--verbose", "--version"),
+    "install": ("--backup", "--compare", "--context", "--debug", "--directory", "--group",
+                "--help", "--mode", "--no-target-directory", "--owner", "--preserve-context",
+                "--preserve-timestamps", "--strip", "--strip-program", "--suffix",
+                "--target-directory", "--verbose", "--version"),
+}
+#: `B1697`. What makes `cp -l`/`-s` replace a name that is there: without
+#: one, GNU `cp` refuses — measured, coreutils 9.4: *cannot create hard link
+#: 'b' to 'a': File exists* — and `-i` replaces it on a yes (`copy.c`'s
+#: `create_hard_link`/`force_symlinkat`, told to replace by either).
+_LINK_REPLACES = frozenset({"-f", "--force", "--remove-destination", "-i", "--interactive"})
+
+
+def _long_name(key: str, names: Sequence[str]) -> str:
+    """`B1697`. A long option as `getopt_long` reads it: itself, or the one
+    option it is the beginning of (`--forc` → `--force`); an ambiguous one
+    (`--re`), which the program refuses, as written."""
+    if key in names:
+        return key
+    begun = [n for n in names if n.startswith(key)]
+    return begun[0] if len(begun) == 1 else key
+
+
+def _cp_keeps_links(said: Sequence[str], hard: bool) -> str:
+    """`B1696`. Which symbolic links `cp` copies as links, from its options
+    in order (`Finding.copied`). Measured, coreutils 9.4: `-P`, `-d`, `-a`
+    and `-r` copy one as a link, plain `cp` and `--preserve=links` the file
+    it points at; the last of `-L`, `-P`, `-H`, `-d`, `-a` wins (`-aL`
+    follows, `-La` keeps); `-rH` follows the sources and keeps those inside.
+    With none, a recursive copy keeps them — unless it makes hard links
+    (`cp.c`: `x.recursive && ! x.hard_link`), where it follows."""
+    recursive = any(o in ("-R", "-r", "--recursive", "-a", "--archive") for o in said)
+    deref = ""
+    for o in said:
+        if o in ("-L", "--dereference"):
+            deref = "always"
+        elif o in ("-P", "--no-dereference", "-d", "-a", "--archive"):
+            deref = "never"
+        elif o == "-H":
+            deref = "named"
+    if not deref:
+        deref = "never" if recursive and not hard else "always"
+    if deref == "never":
+        return "deep" if recursive else "named"
+    return "inside" if deref == "named" and recursive else ""
 
 # ── `B1680` · programs that write over an output they are told to ───────────
 #
@@ -1268,6 +1349,39 @@ _RSYNC_LONG = {
 }
 _RSYNC_KEEPS = {"--ignore-existing", "-b", "--backup", "--backup-dir", "-n", "--dry-run",
                 "--list-only", "--append", "--append-verify", "--only-write-batch"}
+#: `B1696`. Of those, the ones that write nothing here at all — the others
+#: still make the names that were not there, links among them.
+_RSYNC_NOTHING = {"-n", "--dry-run", "--list-only", "--only-write-batch"}
+
+
+def _rsync_keeps_links(said: Sequence[str]) -> str:
+    """`B1696`. Which symbolic links `rsync` copies as links, from its
+    options in order (`Finding.copied`): with `-l`/`--links` (in `-a`), each
+    one it copies — those inside a folder too when it recurses (`-r`, `-a`)
+    — until `--no-l`; none with `-L`/`--copy-links`, which copies what each
+    points at. (`--safe-links`, `--copy-unsafe-links` and `-k` keep only
+    some: read as keeping all, which asks more, never less.)"""
+    links = recursive = follows = False
+    for o in said:
+        if o in ("-a", "--archive"):
+            links = recursive = True
+        elif o in ("-l", "--links"):
+            links = True
+        elif o in ("--no-l", "--no-links"):
+            links = False
+        elif o in ("-r", "--recursive"):
+            recursive = True
+        elif o in ("--no-r", "--no-recursive"):
+            recursive = False
+        elif o in ("-L", "--copy-links"):
+            follows = True
+        elif o in ("--no-L", "--no-copy-links"):
+            follows = False
+    if follows or not links:
+        return ""
+    return "deep" if recursive else "named"
+
+
 #: `zip`'s options that take a value; `-x` and `-i` take the words after them.
 _ZIP_VALUES = {"-b", "-n", "-t", "-tt", "-P", "-Z", "-s", "-O", "-lf", "-ds", "--temp-path",
                "--suffixes", "--from-date", "--before-date", "--password",
@@ -1614,11 +1728,14 @@ def _under(folder: Optional[_Word], name: _Word) -> _Word:
 
 
 def _numbered(word: _Word, bare: frozenset, gm: bool = False,
-              also: Sequence[str] = ()) -> Optional[Tuple[_Word, str]]:
+              also: Sequence[str] = ()) -> Optional[Tuple[_Word, str, Optional[Tuple[str, str]]]]:
     """`B1693`. Where a program that may write several images puts them,
     and the shape of their names there: `(the folder, a regular expression
-    a name in it matches whole)` — `out.png` → `out-[0-9]+\\.png` in `.` —
-    or `None` when it cannot be known.
+    a name in it matches whole, how one is spelled)` — `out.png` →
+    `out-[0-9]+\\.png` in `.` — or `None` when it cannot be known.
+    (`B1695`: how one is spelled is the words before its number and after
+    it, `("converted/${f%.*}", ".jpg")`, or `None` where the loop's value
+    decides where its last `.` is, which no words spell.)
 
     The name is cut at its last `.` (none: the whole name), and the number
     goes before it. The folder must be spelled out, or spelled against the
@@ -1657,12 +1774,17 @@ def _numbered(word: _Word, bare: frozenset, gm: bool = False,
         if any("$" in t or "`" in t for filled, t in pieces if not filled):
             return None         # `$1`, `${#f}`, `${f/a/b}`: not a trimmed name
     last = pieces[-1][1]
+    around: Optional[Tuple[str, str]] = None
     if "." in last:
         root = [(f, t) for f, t in pieces[:-1]] + [(False, last[:last.rfind(".")])]
         ext = last[last.rfind(".") + 1:]
         tail = r"\.(?i:" + "|".join(re.escape(s) for s in (ext, *also)) + ")"
+        # The last `.` of the words is the last of the name: it is in its
+        # last piece, which nothing fills in.
+        around = (text[:text.rfind(".")], text[text.rfind("."):])
     elif len(pieces) == 1:
         root, tail = pieces, ""
+        around = (text, "")
     else:
         # Where its last `.` is, the loop's value decides: any number before
         # an ending with no `.` in it.
@@ -1672,7 +1794,8 @@ def _numbered(word: _Word, bare: frozenset, gm: bool = False,
     if gm:
         whole = "".join("[^/]*" if filled else re.escape(t) for filled, t in pieces)
         shape = f"(?:{shape}|{whole}\\.[0-9]+)"
-    return folder, shape
+        around = None           # two shapes: no one first name
+    return folder, shape, around
 
 
 def _address_name(word: _Word, default: str) -> _Word:
@@ -1774,6 +1897,9 @@ class _Judge:
     def __init__(self, lexer: _Lexer):
         self.lexer = lexer
         self.findings = lexer.findings
+        # `B1697`: the program is BusyBox's, whose `cp` reads as GNU's but
+        # for a link onto a name that is there (`_copies`).
+        self.busybox = False
 
     def destroys(self, why: str) -> None:
         self.findings.append(Finding(DESTROYS, why))
@@ -1802,32 +1928,41 @@ class _Judge:
         self.writes(why, word, sources=[_Word()] if recursive else (), removes=True)
 
     def links(self, why: str, word: _Word, targets: Sequence[_Word], into: str = "",
-              parents: bool = False, beside: bool = False) -> None:
+              parents: bool = False, beside: bool = False, copied: str = "") -> None:
         """`B1692`. `why` makes a link at `word` — or (`into`) in the folder
-        there, by each target's name — to each of `targets`."""
+        there, by each target's name — to each of `targets`. (`B1696`:
+        `copied`, a copy of each that keeps a symbolic link as one.)"""
         known, var, split = _spelling(word)
         self.findings.append(Finding(
             LINKS, why, path=word.text, known=known, far=self.lexer.far,
             sources=tuple((w.text, _spelled(w)) for w in targets), into=into, parents=parents,
-            var=var, split=split, beside=beside))
+            var=var, split=split, beside=beside, copied=copied))
 
-    def numbered(self, why: str, word: _Word, gm: bool = False, also: Sequence[str] = ()) -> None:
+    def numbered(self, why: str, word: _Word, gm: bool = False, also: Sequence[str] = (),
+                 first: Optional[int] = None) -> None:
         """`B1693`. `why` may write several images, each by a number after
         `word`'s name (`_numbered`): the names of that shape in its folder,
-        or — when they cannot be spelled — what it writes there, unknown."""
+        or — when they cannot be spelled — what it writes there, unknown.
+        `B1695`: `first`, the number a program that numbers them one after
+        another starts from (`heif-convert`'s 1), so a test of that name is
+        followed (`Finding.first`)."""
         shape = _numbered(word, self.lexer.bare, gm, also)
         if shape is None:
             # Not a folder (`into`): the names beside `word`, wherever it is.
             self.findings.append(Finding(WRITES, why, path=word.text, known=False,
                                          far=self.lexer.far, numbered=".+"))
             return
-        folder, pattern = shape
+        folder, pattern, around = shape
         known, var, split = _spelling(folder)
         # Never `steady`: a test of one name (`[ -e out.png ] ||`) says
-        # nothing of the numbered ones beside it.
+        # nothing of the numbered ones beside it — but (`B1695`) a test of
+        # the first, the same words read the same way, does of them all.
+        spelled = (f"{around[0]}-{first}{around[1]}"
+                   if around is not None and first is not None
+                   and not (self.lexer.apart and word.expanded) else "")
         self.findings.append(Finding(WRITES, why, path=folder.text, known=known,
                                      far=self.lexer.far, into="folder", var=var, split=split,
-                                     numbered=pattern))
+                                     numbered=pattern, first=spelled))
 
     def chdir(self, word: Optional[_Word]) -> None:
         """`B1669`. What follows runs in another folder — `None`: one only
@@ -1904,7 +2039,11 @@ class _Judge:
             return
         if name == "busybox":
             if args:
-                self.command(args, simple)
+                was, self.busybox = self.busybox, True
+                try:
+                    self.command(args, simple)
+                finally:
+                    self.busybox = was
             return
         if name in _SHELLS:
             self._shell(name, args, simple)
@@ -2534,24 +2673,38 @@ class _Judge:
     def _rsync(self, name: str, args: List[_Word]) -> None:
         opts, operands = _scan(args, _RSYNC_SHORT, _RSYNC_LONG)
         said = {o for o, _v in opts}
-        if said & _RSYNC_KEEPS or len(operands) < 2:
-            return              # it keeps what is there, or only lists
+        if said & _RSYNC_NOTHING or len(operands) < 2:
+            return              # it only lists, or writes nothing here
         *sources, dest = operands
         names: List[_Word] = []
+        copies: List[_Word] = []    # `B1696`: what each source is, for the links it keeps
         for src in sources:
             # `B1688`: a source on another machine by its path there — and
             # `host:*.md`, which the far side expands, by no name at all.
-            path, _far = _far_name(src, _REMOTE_PATH_RE)
+            path, far_source = _far_name(src, _REMOTE_PATH_RE)
             if "--files-from" in said or path.text.endswith("/") or path.text in ("", ".", ".."):
                 names.append(_Word())       # what is in it: names the command does not hold
             else:
                 names.append(path)
+            if far_source or "--files-from" in said or path.text in ("", ".."):
+                copies.append(_unknown(src.text))   # not looked at from here
+            elif path.text.endswith("/") or path.text == ".":
+                # What is in it, into the destination: the folder itself, there.
+                copies.append(replace(path, text=path.text.rstrip("/") + "/."))
+            else:
+                copies.append(path)
         far = dest.plain() and bool(_REMOTE_PATH_RE.match(dest.text))
         was, self.lexer.far = self.lexer.far, self.lexer.far or far
+        into = "folder" if dest.text.endswith("/") else ""
+        parents = bool(said & {"-R", "--relative"})
         try:
-            self.writes(name, dest, sources=names,
-                        into="folder" if dest.text.endswith("/") else "",
-                        parents=bool(said & {"-R", "--relative"}))
+            if not said & _RSYNC_KEEPS:     # unless it keeps what is there
+                self.writes(name, dest, sources=names, into=into, parents=parents)
+            copied = _rsync_keeps_links([o for o, _v in opts])
+            if copied:
+                # `B1696`: a symbolic link it copies is one there, with the
+                # same text, whether or not it keeps what was there.
+                self.links(name, dest, copies, into=into, parents=parents, copied=copied)
         finally:
             self.lexer.far = was
 
@@ -2800,8 +2953,11 @@ class _Judge:
             return
         # `B1693`: a file holding several images is written `out-1.jpg`,
         # `out-2.jpg`… (`heif_dec.cc`), and their metadata, read as beside them.
+        # `B1695`: numbered from 1, one after another (its `image_index`), so
+        # `out-1.jpg` is written whenever any of them is.
         self.numbered(name, target, also=[s for o, s in (("--with-xmp", "xmp"),
-                                                         ("--with-exif", "exif")) if o in said])
+                                                         ("--with-exif", "exif")) if o in said],
+                      first=1)
 
     # ── `B1683` · what packs or unpacks a file and takes it away ──────────
 
@@ -2957,6 +3113,7 @@ class _Judge:
         joined to it or the next word."""
         shorts, longs = _COPY_VALUES[name]
         flags: set = set()
+        said: List[str] = []        # `B1696`: the options in order — the last of `-L`/`-P` wins
         operands: List[_Word] = []
         folder: Optional[_Word] = None
         ended = False
@@ -2973,7 +3130,9 @@ class _Judge:
                 continue
             if t.startswith("--"):
                 key, eq, value = t.partition("=")
+                key = _long_name(key, _COPY_LONG[name])     # `B1697`: `--forc` is `--force`
                 flags.add(key)
+                said.append(key)
                 if key in longs and not eq:
                     if i >= len(args):
                         return                      # it refuses: nothing copied
@@ -2987,6 +3146,7 @@ class _Judge:
                 continue
             for j, letter in enumerate(t[1:], start=1):
                 flags.add("-" + letter)
+                said.append("-" + letter)
                 if letter in shorts:
                     if j + 1 < len(t):
                         value_word = replace(w, text=t[j + 1:])
@@ -3009,16 +3169,31 @@ class _Judge:
             into = "file" if ({"-T", "--no-target-directory"} & flags) else ""
         else:
             return
-        if not {"-n", "--no-clobber", "-b", "--backup", "--update=none",
-                "--update=none-fail"} & flags:
+        symbolic = name == "cp" and bool({"-s", "--symbolic-link"} & flags)
+        hard = name == "cp" and bool({"-l", "--link"} & flags)
+        keeps = bool({"-n", "--no-clobber", "-b", "--backup", "--update=none",
+                      "--update=none-fail"} & flags)
+        if (symbolic or hard) and not _LINK_REPLACES & flags and not self.busybox:
+            # `B1697`: a link onto a name that is there is refused ("File
+            # exists") — it makes a new name, or nothing — unless told to
+            # replace it (`-f`, `--remove-destination`, or `-i` and a yes).
+            # Not BusyBox's: built `FEATURE_NON_POSIX_CP`, its default, it
+            # takes the name away and links (`copy_file.c`'s
+            # `ask_and_unlink`) — read as replacing it.
+            keeps = True
+        if not keeps:
             # Unless it never overwrites, or keeps what it would.
             self.writes(name, dest, sources=sources, into=into, parents=parents)
-        symbolic = bool({"-s", "--symbolic-link"} & flags)
-        if name == "cp" and (symbolic or {"-l", "--link"} & flags):
+        if symbolic or hard:
             # `B1692`: it makes links, not copies — read after its own write,
             # which makes the name and does not write through it.
             self.links("cp -s" if symbolic else "cp -l", dest, sources, into=into,
                        parents=parents, beside=symbolic)
+        copied = "" if name != "cp" or symbolic else _cp_keeps_links(said, hard)
+        if copied:
+            # `B1696`: a symbolic link it copies is one in the copy, with the
+            # same text — so a write onto the copy writes where that points.
+            self.links("cp", dest, sources, into=into, parents=parents, copied=copied)
 
     def _git(self, args: List[_Word]) -> None:
         with_value = {"-C", "-c", "--git-dir", "--work-tree", "--namespace", "--exec-path",
@@ -3269,9 +3444,15 @@ def _unguard(findings: List[Finding], start: int, word: _Word, test: str) -> Non
     added = findings[start:]
     if any(f.kind == CHDIR for f in added):
         return
-    findings[start:] = [f for f in added if not (
-        f.kind == WRITES and not f.far and f.steady and f.path == word.text
-        and (test == "-e" or not f.sources))]
+    findings[start:] = [
+        # `B1695`: a test of the first of a program's numbered names skips
+        # them all where it is there — kept, marked, for the run to read
+        # each numbered name that was there against the first of its own.
+        replace(f, tested=True) if f.kind == WRITES and not f.far and f.first == word.text
+        else f
+        for f in added if not (
+            f.kind == WRITES and not f.far and f.steady and f.path == word.text
+            and (test == "-e" or not f.sources))]
 
 
 def _skips_the_rest(words: Sequence[_Word]) -> bool:
