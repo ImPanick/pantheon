@@ -3462,3 +3462,23 @@ going.* Each is ruled as it was put:
    (`D-2026-10-29-02` §6).
 
 What reopens it: the owner changing any one of these.
+
+---
+
+## D-2026-10-30-01 — Auto-approve is a risk the person accepts, warned, by one deliberate act
+
+*The owner, 2026-10-30, after the sitrep named `B1605`'s cost:* *"Auto-Approve should be
+appropriately 'warned' and the user accepting that risk by enabling it (or 'proceed to
+auto-approve') — then that's on them."*
+
+**Decided:** every way a step stops being asked about — a chat set to Auto (`D-2026-10-09-01`), and
+a hire whose effects run unasked after outside content because its person holds
+`can_auto_approve` (`D-2026-10-29-01` §1) — is turned on only by an explicit acceptance after a
+warning that names the risk in plain words: a page, file or email the agent reads can steer what
+it does next, within everything that is set to run without asking (and, for a hire, including
+deleting or overwriting where its *destructive* row is set to allow). The control says what it is
+— *Proceed to auto-approve* — and the acceptance is recorded (who, when, for which chat or hire),
+so the risk is the person's, knowingly. Turning a gate back on never asks. What this does not
+change: who may use Auto (`can_auto_approve`), and what is validated either way.
+
+What reopens it: the owner changing it.

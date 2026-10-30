@@ -88,8 +88,8 @@ from scratch. Introduced 2026-08-31; the folds are listed in § *What this run l
 | P25 | The + menu, git per account, the agent browser | 13 | 0 | 0 | **13** |
 | P26 | Design — the studio, and notes on the live page | 10 | 0 | 0 | **10** |
 | P27 | Connections — the hub and the private vault | 11 | 1 | 0 | **10** |
-| Backlog | Bugs and hardening found in flight | 1289 | 17 | 0 | **1272** |
-| **Total** | | **1781** | **32** | **3** | **1746** |
+| Backlog | Bugs and hardening found in flight | 1290 | 18 | 0 | **1272** |
+| **Total** | | **1782** | **33** | **3** | **1746** |
 
 **Nothing is waiting on a decision** except one, and it is first: `P0-19` has to settle which of
 `CREDITS.md` and `ACKNOWLEDGMENTS.md` is the credits file. All eighteen ledger calls are answered
@@ -253,7 +253,7 @@ they are for.*
 > was claimed at the time is worth more than a quietly corrected one (`B44`).
 
 ### A thirty-fifth wave, of one: a link a move, an archive or git puts in place is read, and a burst's answer names its copies
-`ad2fa67`…`HEAD`. **1781 tracked, 1746 done. Three rows closed (`B1698`–`B1700`); two filed open (`B1701`, `B1702`).**
+`ad2fa67`…`HEAD`. **1782 tracked, 1746 done. Three rows closed (`B1698`–`B1700`); three filed open (`B1701`, `B1702`, and the owner's `B1703`).**
 **What a move, an archive or a git command puts in place is read** — a moved link keeps where it points, a moved file is still the person's, and a write into a folder an archive or git just filled cannot be known to be safe, so it asks where deletions ask (`B1698`); **File Converter's answer names the copies it wrote for a burst** (`B1699`); and **in the workstation a file the run wrote inside a folder it copied stays its own** (`B1700`). Two filed: a backup name `-b` makes (`B1701`), and a move onto a draft in the workstation (`B1702`).
 
 ### A thirty-fourth wave, of one: a burst converted before is skipped whole, a copied link is written through, and `cp -l` asks only when it can replace
@@ -23581,4 +23581,5 @@ this is the same thing happening to the row that corrected the store.
 - [x] **B1700** **In the workstation, a file the run wrote inside a folder it copied with `cp -a`/`-r` is not its own afterwards.** `_linked` drops every name under a deep copy rather than checking each one's source — the cautious reading, which over-asks. `Verify:` `cp -a template proj && echo x > proj/README.md`, then `echo y > proj/README.md`, runs with no card in the workstation. — found while doing `B1696` — agent:`wave-bm` **done 2026-10-30:** `_copies_linked` looks only at the names under the copy the run holds as its own (`RunFiles._held_in_workstation`) and drops only those whose own source has a link on the way, asking the daemon in one round. `Verify:` `tests/test_a_file_the_run_wrote_in_a_folder_it_copied_stays_its_own.py` (the workstation daemon, and the same commands on this machine).
 - [ ] **B1701** **A backup name `-b` makes holds the person's file and is read as new.** Measured: `mv -b new notes.md; echo x > notes.md~` gives `call_destroys` `None` and empties the old notes; `cp -b` the same. `Verify:` a write after the command onto the backup name `mv`/`cp`/`install`/`ln -b` made, where the replaced file was there before the run, is destructive; a numbered backup's name is unknown. — found while doing `B1698` — agent:`wave-bn`
 - [ ] **B1702** **In the workstation, a move or link onto a `write_file` draft leaves it the run's own.** Measured with the daemon: `write_file draft.md`, `mv notes.md draft.md`, then `write_file draft.md` gives `call_destroys` `None` while `draft.md` holds the notes; the workstation keys its record by the path as the call names it (`RunFiles.key`), which `_look_at_command`'s forget never reaches. `Verify:` after a move or `ln -f` onto a name `write_file` made, `write_file` onto it asks. — found while doing `B1698` — agent:`wave-bn`
+- [ ] **B1703** **Auto-approve is turned on by an explicit acceptance after a warning that names the risk.** `D-2026-10-30-01`. Today a chat's Auto asks one sentence (`AUTO_TURN_ON_SENTENCE`: *runs tool steps without asking you first — including after it has read a web page or an email*) with *Turn on* / *Keep asking me*, and a hire whose effects run unasked after outside content (`B1605`) has a sentence on the form but no acceptance at all; neither records who accepted. Build: one warning, in the server's words, naming that what the agent reads can steer what it does within everything set to run unasked (for a hire, deletions where *destructive* is allow); a *Proceed to auto-approve* control; the server refuses Auto, or a hire that lifts the gate, without the acceptance, and records who accepted, when and for what; turning a gate back on never asks. `Verify:` driven in a browser and through the routes: Auto and such a hire are refused without the acceptance, granted with it, and the record names the person. — the owner, 2026-10-30 — agent:`coordinator`
 
