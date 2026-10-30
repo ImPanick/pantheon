@@ -253,6 +253,12 @@ the next one is cut.
 
 ### Changed — read this before upgrading
 
+- **Auto-approve is now a risk you accept on the record** (`B1703`, `B1704`): a chat's Auto, and a
+  hired agent's "without asking" after it reads outside content, turn on only when you choose
+  **Proceed to auto-approve** under a warning naming what the agent's reading can steer. Pantheon
+  records who accepted, when and for what. **Chats already set to Auto, and every existing hire, ask
+  again until their person accepts.** The warning opens on *Keep asking me*.
+
 - **A write onto a name a move, an archive or a git command just put in place is read where it
   lands** (`B1698`), and File Converter's answer names a burst's copies (`B1699`; its version moved).
 
