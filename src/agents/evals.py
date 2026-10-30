@@ -55,7 +55,10 @@ hold `can_auto_approve`, and what a hire allows runs after outside content
 without a card. A case with `"can_auto_approve": false` is hired by a person
 who does not hold it — every step after outside content asks, as before — so
 a case that proves a person's *no* stops a step the hire allows says whose
-runs that is true of.
+runs that is true of. `B1703` / `D-2026-10-30-01`: and the person who holds it
+accepts the hire's auto-approve warning when they hire, as the form's
+*Proceed to auto-approve* does — a lift is on only with an acceptance on
+record.
 
 `B1602`. A world has its own memory and its own chats — `manage_memory`,
 `list_sessions` and `search_chats` answer from them (they answered *not
@@ -102,6 +105,11 @@ SCRIPTED_MODEL = "scripted"
 #: `D-2026-10-29-01` §1. Whether the world's person holds `can_auto_approve` —
 #: yes, as its admin; a test sets it False to measure a hirer who does not.
 WORLD_CAN_AUTO_APPROVE = True
+#: `B1703` / `D-2026-10-30-01`. Whether that person accepts the hire's
+#: auto-approve warning when they hire — yes, as *Proceed to auto-approve*;
+#: a test sets it False to measure a hirer who holds the privilege and has
+#: not accepted, whose runs ask after outside content.
+WORLD_ACCEPTS_AUTO_APPROVE = True
 SCRIPTED_URL = "http://127.0.0.1:9/v1"
 
 # What the world answers: everything that would reach outside the install.
@@ -1261,6 +1269,17 @@ async def run_case(manifest, case: Dict[str, Any], *, factory, data_dir: str,
                                  endpoint_kind="local", cached_models=json.dumps([name])))
         seeded = _seed(db, owner, case.get("world") or {}, data_dir)
         hire = H.make_hire(db, owner=owner, manifest=manifest, inputs=case.get("inputs") or {})
+        # `B1703` / `D-2026-10-30-01`. A lift is on only once its person
+        # accepts the warning naming what it runs unasked, so the world's
+        # person — who holds `can_auto_approve`, above — accepts it as the
+        # hire's page does (*Proceed to auto-approve*): the id of the warning
+        # for the hire as made, recorded through the one door
+        # (`accept_auto_approve`). A case whose hirer may not auto-approve
+        # accepts nothing; nor does an agent with nothing to lift.
+        offer = (H.auto_approve_warning(manifest, H.hire_grants(hire))
+                 if may_auto and WORLD_ACCEPTS_AUTO_APPROVE else None)
+        if offer is not None:
+            H.accept_auto_approve(db, hire, manifest, offer["id"], by=owner)
         # `P24-27`. What the last run carried forward, so a case can measure
         # "new since last time" — read by the run as its notebook always is.
         if case.get("notebook"):

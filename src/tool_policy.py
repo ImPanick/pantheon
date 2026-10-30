@@ -294,6 +294,10 @@ class ToolPolicy:
     #: holds `can_auto_approve` (`src.approval_mode.hire_lift_for`). Empty for
     #: every other turn.
     allow_effects: frozenset = frozenset()
+    #: `B1703`. The hire this run is of — so `hire_lift_for` asks whether its
+    #: person accepted the warning naming `allow_effects` (`D-2026-10-30-01`):
+    #: none on record, no lift. `None` for every other turn.
+    hire_id: Optional[str] = None
     #: `D-2026-10-24-01`. True when a hired agent's whole kit has no way to
     #: carry data out of the install (`src.agents.runtime.SEALING_EFFECTS`) —
     #: read from the calls its hire's `never`s leave (`B1632`): then reading

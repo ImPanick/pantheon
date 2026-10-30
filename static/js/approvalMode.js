@@ -20,12 +20,16 @@
  *
  * One API: `GET`/`POST /api/session/{sid}/approval-mode`.
  *
- * Turning it on is one deliberate act with one plain sentence
- * (`AUTO_TURN_ON_SENTENCE`, kept in step with `src/approval_mode.py` by
- * `tests/test_a_chat_decides_whether_it_asks_in_the_browser.py`) and no wall of
- * warning — Doc 2 § 5: short, plain, names a consequence rather than a
- * mechanism. Turning it off is a click, with no question: putting a gate back
- * is never the move that needs confirming.
+ * Turning it on is one deliberate act: `B1703` / `D-2026-10-30-01`, the
+ * person accepts a warning that names the risk — what the agent reads can steer
+ * what it does next — with *Proceed to auto-approve*, and the server records
+ * who accepted it. The words are the server's (`AUTO_WARNING` in
+ * `src/approval_mode.py`), read from `GET …/approval-mode` with their id and
+ * the two controls' labels, and the id goes back with the write
+ * (`accept_warning`): this module holds no copy of them, so the page cannot
+ * show one warning while the server records another (`Law 7`, `Law 10`). Short
+ * and plain, not a wall (Doc 2 § 5). Turning it off is a click, with no
+ * question: putting a gate back is never the move that needs confirming.
  */
 
 // `B1005`'s shape in the browser: every refusal the server can give is shown as
@@ -34,7 +38,7 @@
 const MODE_MANUAL = 'manual';
 const MODE_AUTO = 'auto';
 
-let _state = { sid: null, mode: MODE_MANUAL, maySet: false };
+let _state = { sid: null, mode: MODE_MANUAL, maySet: false, warning: null };
 let _ui = null;
 let _busy = false;
 
@@ -95,7 +99,7 @@ export function isAuto() {
  * leak this function exists to prevent on every chat switch.
  */
 export async function load(sessionId) {
-  _state = { sid: sessionId || null, mode: MODE_MANUAL, maySet: _state.maySet };
+  _state = { sid: sessionId || null, mode: MODE_MANUAL, maySet: _state.maySet, warning: null };
   if (!sessionId) {
     render();
     return _state;
@@ -115,6 +119,7 @@ export async function load(sessionId) {
           sid: sessionId,
           mode: data && data.auto ? MODE_AUTO : MODE_MANUAL,
           maySet: !!(data && data.may_set),
+          warning: _warningOf(data),
         };
       }
     }
@@ -126,16 +131,51 @@ export async function load(sessionId) {
   return _state;
 }
 
-/** POST the mode and draw the server's answer, or show why it refused. */
-async function _write(sessionId, mode) {
+/**
+ * `B1703`. The warning a `GET` answered with — its words, its id and the two
+ * controls' labels — or null when the answer carried none (an older server, a
+ * stub): then Auto is not offered, because there is nothing to accept.
+ */
+function _warningOf(data) {
+  const said = (key) => (data && typeof data[key] === 'string' && data[key]) || null;
+  const text = said('warning');
+  const id = said('warning_id');
+  const proceed = said('proceed_label');
+  const keep = said('keep_asking_label');
+  return text && id && proceed && keep ? { text, id, proceed, keep } : null;
+}
+
+/** The warning for this chat, read again from the server when this module
+ *  has none for it yet (a chip pressed before the read landed). */
+async function _warningFor(sessionId) {
+  if (_state.sid === sessionId && _state.warning) return _state.warning;
+  try {
+    const res = await fetch(
+      `/api/session/${encodeURIComponent(sessionId)}/approval-mode`,
+      { credentials: 'same-origin' },
+    );
+    if (!res.ok) return null;
+    const warning = _warningOf(await res.json());
+    if (_state.sid === sessionId) _state.warning = warning;
+    return warning;
+  } catch (_) {
+    return null;
+  }
+}
+
+/** POST the mode and draw the server's answer, or show why it refused.
+ *  `accept` is the warning's id the person accepted — `B1703`: Auto is
+ *  refused without it — and nothing for Manual, which never asks. */
+async function _write(sessionId, mode, accept) {
   const ui = _deps();
+  const body = accept ? { mode, accept_warning: accept } : { mode };
   const res = await fetch(
     `/api/session/${encodeURIComponent(sessionId)}/approval-mode`,
     {
       method: 'POST',
       credentials: 'same-origin',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ mode }),
+      body: JSON.stringify(body),
     },
   );
   if (!res.ok) {
@@ -152,17 +192,22 @@ async function _write(sessionId, mode) {
     sid: sessionId,
     mode: data && data.auto ? MODE_AUTO : MODE_MANUAL,
     maySet: _state.maySet,
+    warning: _state.sid === sessionId ? _state.warning : null,
   };
   render();
   return true;
 }
 
 /**
- * The chip's click: turn Auto on (after one sentence) or off (at once).
+ * The chip's click: turn Auto on (after its warning is accepted) or off (at
+ * once).
  *
  * The server decides, every time. This asks first because the person is about
- * to give something up and should read one line saying what — not because the
- * answer here is the control (`P2-18`: a display-side gate does not work).
+ * to take on a risk and should read what it is — and `B1703`, the server
+ * refuses Auto without the id of the warning they accepted, so the dialog is
+ * the only way on, not a courtesy in front of it (`P2-18`). With no dialog to
+ * show, or no warning to show in it, nothing is sent: Auto is never turned on
+ * without the person having read the server's words.
  */
 export async function toggle(sessionId) {
   const sid = sessionId || _state.sid;
@@ -175,16 +220,18 @@ export async function toggle(sessionId) {
   _busy = true;
   try {
     if (_state.mode === MODE_AUTO) return await _write(sid, MODE_MANUAL);
-    if (ui && ui.styledConfirm) {
-      const yes = await ui.styledConfirm(
-        'In this chat, Pantheon runs tool steps without asking you first — '
-        + 'including after it has read a web page or an email. '
-        + 'Turn on Auto-approve?',
-        { title: 'Auto-approve', confirmText: 'Turn on', cancelText: 'Keep asking me' },
-      );
-      if (!yes) return false;
+    const warning = await _warningFor(sid);
+    if (!warning || !ui || !ui.styledConfirm) {
+      if (ui && ui.showToast) {
+        ui.showToast('Auto-approve could not show its warning, so it stays off. Try again.', 6000);
+      }
+      return false;
     }
-    const ok = await _write(sid, MODE_AUTO);
+    const yes = await ui.styledConfirm(warning.text, {
+      title: 'Auto-approve', confirmText: warning.proceed, cancelText: warning.keep, danger: true,
+    });
+    if (yes !== true) return false;
+    const ok = await _write(sid, MODE_AUTO, warning.id);
     if (ok && ui && ui.showToast) {
       ui.showToast('Auto-approve is on for this chat.');
     }

@@ -26,6 +26,7 @@ of the agent's tools that leaves out, so the form can say so before the hire.
 from __future__ import annotations
 
 import json
+import logging
 import re
 import secrets
 import uuid
@@ -53,6 +54,8 @@ QUIET_EFFECTS = frozenset({
 })
 
 _RULE_RANK = {"allow": 0, "ask": 1, "never": 2}
+
+logger = logging.getLogger(__name__)
 
 
 class HireRefused(Exception):
@@ -291,32 +294,146 @@ def held_effects(manifest: Manifest, grants: Optional[Dict[str, str]] = None) ->
     return dict(sorted(out.items()))
 
 
-#: `D-2026-10-29-01` §1 (`B1605`). What the hire form says before the hire,
-#: to a person whose hire lifts the post-external gate: in plain words, that
-#: *without asking* holds after the agent has read the web, and the cost.
+#: `B1703`. The hire form's words for each effect — the rows the person reads
+#: under *What it may do* (`agentsWindow.js`'s `EFFECT_WORDS`, kept in step by
+#: `tests/test_auto_approve_is_a_risk_the_person_accepts.py`) — so the warning
+#: names what it lifts in the words of the rows just above it. In this order,
+#: which is the order the warning lists them in.
+EFFECT_WORDS = {
+    "read_public": "read public pages",
+    "read_workspace": "read files in your projects",
+    "read_private": "read your mail, notes, calendar and documents",
+    "brokered_network_read": "search and read the web",
+    "user_interaction": "ask you a question",
+    "write_workspace": "write files in your projects",
+    "write_private": "write to your documents, notes, contacts and calendar",
+    "execute_code": "run commands",
+    "network_egress": "reach other sites and machines",
+    "external_side_effect": "send mail or act outside Pantheon",
+    "ui_side_effect": "change what Pantheon's screen shows",
+    "admin_change": "change Pantheon's settings",
+    "destructive": "delete or overwrite things",
+}
+
+#: `D-2026-10-29-01` §1 (`B1605`), made a warning to accept by `B1703` /
+#: `D-2026-10-30-01`. What the hire form says before a hire that would lift
+#: the post-external gate, and what its person accepts with *Proceed to
+#: auto-approve*: what it runs unasked, named effect by effect, holds after it
+#: has read something from outside, and what it reads can steer what it does
+#: within those. `{destructive}` is `ALLOWED_AFTER_OUTSIDE_DESTRUCTIVE` where
+#: the table allows `destructive` — the ruling names deleting and overwriting —
+#: and empty otherwise. The words are the server's; the form shows them and
+#: sends back their id (`approval_mode.warning_id`).
 ALLOWED_AFTER_OUTSIDE = (
-    "What is set to “without asking” above runs without asking even after {name} has read a "
-    "web page, an email or anything else from outside — so what it reads there can steer what "
-    "it does with your data, within what you allow here. Each step it runs that way is marked "
-    "on its run.")
+    "{name} will do these without asking you, even after it has read a web page, a file or "
+    "an email from outside: {effects}. What it reads there can steer what it does next, within "
+    "those.{destructive} Each step it runs that way is marked on its run.")
+ALLOWED_AFTER_OUTSIDE_DESTRUCTIVE = " That includes deleting or overwriting your files and data."
+
+#: `B1703`. Refusals of an acceptance that has nothing to accept, and of a
+#: request that both accepts and withdraws.
+NOTHING_TO_AUTO_APPROVE = ("{name} has nothing to auto-approve: nothing it is set to do without "
+                           "asking would be asked about after it reads something from outside.")
+AUTO_APPROVE_OFF_ONLY = ("“auto_approve” is “off”, to stop auto-approving this hire; to start, "
+                         "send the warning's id as “accept_warning”.")
 
 
-def allowed_after_outside(manifest: Manifest, owner: Optional[str], grants: Any = None, *,
-                          auth_manager: Any = None) -> Optional[str]:
-    """The sentence the hire form shows before the hire, or `None`.
+def auto_approve_warning(manifest: Manifest, grants: Any = None) -> Optional[Dict[str, Any]]:
+    """`B1703`. The warning a lift of this hire would need accepted —
+    `{text, id, effects}` — or `None` when its table allows nothing the gate
+    asks about after outside content (reading the public web or asking a
+    question never was), so there is nothing to accept.
 
-    `None` for a person whose hire would not lift the gate (no
-    `can_auto_approve`, the one rule `approval_mode.hire_lift_for` asks), and
-    for an agent none of whose *allow* effects the gate would ask about after
-    outside content — reading the public web or asking a question never did,
-    so there is nothing the sentence would be true of."""
-    from src.approval_mode import hire_lift_for
-    from src.tool_capabilities import POST_EXTERNAL_BLOCKED_EFFECTS
-    if not hire_lift_for(owner, hired=True, auth_manager=auth_manager):
+    Of what the run is held to (`held_effects`), which is what
+    `runtime.plan_for_task` hands the gate as `allow_effects`, so the warning
+    names exactly what a lift would run (`Law 7`). Named for the agent, not
+    the hire's own name, so renaming a hire does not re-ask."""
+    from src.approval_mode import lifted_effects, warning_id
+    allowed = [e for e, r in held_effects(manifest, grants or {}).items() if r == "allow"]
+    lifted = lifted_effects(allowed)
+    if not lifted:
         return None
-    gated = {e.value for e in POST_EXTERNAL_BLOCKED_EFFECTS}
-    allowed = {e for e, r in effective_effects(manifest, grants or {}).items() if r == "allow"}
-    return ALLOWED_AFTER_OUTSIDE.format(name=manifest.name) if allowed & gated else None
+    order = list(EFFECT_WORDS)
+    named = sorted(lifted, key=lambda e: (order.index(e) if e in order else len(order), e))
+    text = ALLOWED_AFTER_OUTSIDE.format(
+        name=manifest.name,
+        effects="; ".join(EFFECT_WORDS.get(e, e.replace("_", " ")) for e in named),
+        destructive=ALLOWED_AFTER_OUTSIDE_DESTRUCTIVE if "destructive" in lifted else "")
+    return {"text": text, "id": warning_id(text), "effects": sorted(lifted)}
+
+
+def auto_approve_offer(manifest: Manifest, owner: Optional[str], grants: Any = None, *,
+                       auth_manager: Any = None) -> Optional[Dict[str, Any]]:
+    """What the hire form offers before the hire: the warning and its control,
+    or `None`.
+
+    `None` for a person whose hire could not lift the gate (no
+    `can_auto_approve`, the privilege `approval_mode.hire_lift_for` asks), and
+    for an agent with nothing to lift (`auto_approve_warning`)."""
+    from src.approval_mode import PROCEED_LABEL, may_use_auto
+    if not may_use_auto(owner, auth_manager=auth_manager):
+        return None
+    warning = auto_approve_warning(manifest, grants)
+    if warning is None:
+        return None
+    return {"warning": warning["text"], "id": warning["id"], "effects": warning["effects"],
+            "proceed_label": PROCEED_LABEL, "accepted": None}
+
+
+def auto_approve_state(db, hire, manifest: Optional[Manifest], *,
+                       auth_manager: Any = None) -> Optional[Dict[str, Any]]:
+    """`B1703`. A hire's offer (`auto_approve_offer`), and whether its person
+    has accepted it: `accepted` is `{by, at}` when an acceptance on record
+    names every effect the warning names now — the question `hire_lift_for`
+    asks at each run (`approval_mode.hire_accepted`) — and `None` otherwise,
+    when its runs ask after outside content."""
+    from src.approval_mode import hire_acceptance
+    if manifest is None:
+        return None
+    offer = auto_approve_offer(manifest, hire.owner, hire_grants(hire), auth_manager=auth_manager)
+    if offer is None:
+        return None
+    record = hire_acceptance(hire.id, hire.owner, offer["effects"], db=db)
+    if record is not None:
+        offer["accepted"] = {"by": record["by"], "at": record["at"], "warning_id": record["warning_id"]}
+    return offer
+
+
+def accept_auto_approve(db, hire, manifest: Manifest, sent: Any, *, by: Optional[str],
+                        auth_manager: Any = None) -> Dict[str, Any]:
+    """`B1703`. Record `by` accepting this hire's warning as it reads now, in
+    the caller's session (so a refused hire leaves nothing). Raises
+    `HireRefused` in the sentence the chat's Auto would give: no privilege
+    (403), nothing to accept (400), no acceptance or one of other words
+    (`approval_mode.check_acceptance`, 400 / 409)."""
+    from core.database import record_auto_approve_acceptance
+    from src.approval_mode import (
+        AUTO_NOT_ALLOWED_SENTENCE, SUBJECT_HIRE, AutoRefused, check_acceptance, may_use_auto,
+    )
+    from src.owner_identity import normalize_owner
+    who = normalize_owner(by)
+    if not who or not may_use_auto(who, auth_manager=auth_manager):
+        raise HireRefused(AUTO_NOT_ALLOWED_SENTENCE, 403)
+    warning = auto_approve_warning(manifest, hire_grants(hire))
+    if warning is None:
+        raise HireRefused(NOTHING_TO_AUTO_APPROVE.format(name=manifest.name))
+    try:
+        check_acceptance(sent, warning)
+    except AutoRefused as refused:
+        raise HireRefused(refused.sentence, refused.status) from None
+    record = record_auto_approve_acceptance(SUBJECT_HIRE, hire.id, who, warning["id"],
+                                            warning["text"], warning["effects"], db=db)
+    logger.info("[agents] %s accepted auto-approve's warning %s for hire %s (%s)",
+                who, warning["id"], hire.id, ", ".join(warning["effects"]))
+    return record
+
+
+def withdraw_auto_approve(db, hire) -> int:
+    """`B1703`. Stop auto-approving this hire: its runs ask after outside
+    content again. Turning a gate back on never asks."""
+    from core.database import withdraw_auto_approve_acceptance
+    from src.approval_mode import SUBJECT_HIRE
+    return withdraw_auto_approve_acceptance(SUBJECT_HIRE, hire.id, db=db)
 
 
 # ── Compile ─────────────────────────────────────────────────────────────────
@@ -466,9 +583,16 @@ def labels_for_tasks(db, task_ids) -> Dict[str, Dict[str, str]]:
 
 def make_hire(db, *, owner: Optional[str], manifest: Manifest, inputs: Any = None,
               grants: Any = None, tz_name: Optional[str] = None, project: Optional[str] = None,
-              name: Optional[str] = None, status: str = "on"):
+              name: Optional[str] = None, status: str = "on", accept_warning: Any = None,
+              auth_manager: Any = None):
     """Hire `manifest` for `owner`. Everything is checked before anything is
-    written, so a refused hire leaves nothing behind."""
+    written, so a refused hire leaves nothing behind.
+
+    `B1703`: `accept_warning` — the id of the warning the form showed — is
+    the hirer's *Proceed to auto-approve*, recorded in the same session as the
+    hire; one that does not match is refused and the caller's rollback takes
+    the hire with it. Without it the hire is made and lifts nothing: its runs
+    ask after outside content until its person accepts on its page."""
     from core.database import AgentHire
     checked = check_inputs(manifest, inputs)
     granted = check_grants(manifest, grants)
@@ -482,13 +606,23 @@ def make_hire(db, *, owner: Optional[str], manifest: Manifest, inputs: Any = Non
     db.add(hire)
     db.flush()
     compile_hire(db, hire, manifest)
+    if accept_warning is not None:
+        accept_auto_approve(db, hire, manifest, accept_warning, by=owner, auth_manager=auth_manager)
     return hire
 
 
 def update_hire(db, hire, manifest: Manifest, *, inputs: Any = None, grants: Any = None,
                 tz_name: Any = ..., project: Any = ..., name: Any = None,
-                to_version: bool = False):
-    """Change a hire. `to_version` moves it to the manifest's current version."""
+                to_version: bool = False, accept_warning: Any = None, auto_approve: Any = None,
+                auth_manager: Any = None):
+    """Change a hire. `to_version` moves it to the manifest's current version.
+
+    `B1703`: `accept_warning` accepts the warning for the hire as this change
+    leaves it (its grants, its version) — so a change that allows more names
+    the more, and the old acceptance no longer covers it (`hire_accepted`);
+    `auto_approve: "off"` withdraws it, and never asks."""
+    if auto_approve is not None and (auto_approve != "off" or accept_warning is not None):
+        raise HireRefused(AUTO_APPROVE_OFF_ONLY)
     if to_version:
         hire.version = manifest.version
     elif manifest.version != hire.version:
@@ -510,6 +644,10 @@ def update_hire(db, hire, manifest: Manifest, *, inputs: Any = None, grants: Any
     if name is not None:
         hire.name = check_name(name, manifest)
     compile_hire(db, hire, manifest)
+    if auto_approve == "off":
+        withdraw_auto_approve(db, hire)
+    elif accept_warning is not None:
+        accept_auto_approve(db, hire, manifest, accept_warning, by=hire.owner, auth_manager=auth_manager)
     return hire
 
 
@@ -620,6 +758,8 @@ def hire_to_dict(db, hire, manifest: Optional[Manifest]) -> Dict[str, Any]:
         # `B1663`: with its grants — a never the hire set that takes a tool
         # away (`web_fetch` under `network_egress: never`) is one its runs lack.
         out["lacking"] = lacking_tools(manifest, hire.owner, hire_grants(hire))
+        # `B1703`. The warning a lift would need, and who accepted it, if anyone.
+        out["auto_approve"] = auto_approve_state(db, hire, manifest)
     else:
         out["starts_on"] = ""
         out["missing"] = True

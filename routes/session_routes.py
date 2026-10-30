@@ -730,9 +730,16 @@ def setup_session_routes(
         a client knows whether to offer the control at all — and it is advisory,
         because the write asks again (`P2-18`: a display-side gate does not
         work).
+
+        `B1703`: and the warning a person accepts to turn it on — its words
+        and its id, which the write must carry back — with the controls'
+        labels, so the browser shows the server's words and holds no copy
+        (`Law 7`, `Law 10`); and, while the chat is on Auto, who accepted it
+        and when (`accepted`).
         """
         from src.approval_mode import (
-            ApprovalMode, AUTO_LABEL, may_use_auto, mode_for,
+            ApprovalMode, AUTO_LABEL, KEEP_ASKING_LABEL, PROCEED_LABEL, SUBJECT_CHAT,
+            acceptance_for, chat_warning, may_use_auto, mode_for,
         )
 
         _verify_session_owner(request, sid)
@@ -742,6 +749,8 @@ def setup_session_routes(
             delegated_credential=is_delegated_credential(request),
             auth_manager=getattr(request.app.state, "auth_manager", None),
         )
+        warning = chat_warning()
+        record = acceptance_for(SUBJECT_CHAT, sid, user) if mode is ApprovalMode.AUTO else None
         return {
             "mode": mode.value,
             "auto": mode is ApprovalMode.AUTO,
@@ -753,6 +762,12 @@ def setup_session_routes(
                     auth_manager=getattr(request.app.state, "auth_manager", None),
                 )
             ),
+            "warning": warning["text"],
+            "warning_id": warning["id"],
+            "proceed_label": PROCEED_LABEL,
+            "keep_asking_label": KEEP_ASKING_LABEL,
+            "accepted": ({"by": record["by"], "at": record["at"], "warning_id": record["warning_id"]}
+                         if record else None),
         }
 
     @router.post("/session/{sid}/approval-mode")
@@ -768,11 +783,17 @@ def setup_session_routes(
           4. Auto, without `can_auto_approve`. Switching **to** `manual` is
              never refused by the privilege: a person who may not use Auto must
              still be able to turn it off, and an admin who revokes the
-             privilege leaves chats that `mode_for` already reads as Manual.
+             privilege leaves chats that `mode_for` already reads as Manual;
+          5. `B1703` / `D-2026-10-30-01`: Auto, without `accept_warning` naming
+             the warning `GET` serves now — 400 with none, 409 for other words.
+             With it, the acceptance is recorded (who, when, which warning,
+             this chat) before the column moves, and answered as `accepted`.
+             `manual` never asks for one: turning a gate back on never asks,
+             and it withdraws the acceptance (`set_mode_for`).
         """
         from src.approval_mode import (
-            ApprovalMode, AUTO_NOT_ALLOWED_SENTENCE, coerce_approval_mode,
-            may_use_auto, set_mode_for,
+            ApprovalMode, AUTO_NOT_ALLOWED_SENTENCE, AutoRefused, coerce_approval_mode,
+            may_use_auto, set_mode_for, turn_auto_on,
         )
 
         await asyncio.to_thread(_verify_session_owner, request, sid)
@@ -798,12 +819,22 @@ def setup_session_routes(
             user, auth_manager=getattr(request.app.state, "auth_manager", None),
         ):
             raise HTTPException(403, AUTO_NOT_ALLOWED_SENTENCE)
+        if mode is ApprovalMode.AUTO:
+            try:
+                record = await asyncio.to_thread(
+                    turn_auto_on, sid, user, (body or {}).get("accept_warning"))
+            except AutoRefused as refused:
+                raise HTTPException(refused.status, refused.sentence) from None
+            logger.info("[approval] %s set chat %s to auto", user, sid)
+            return {"mode": mode.value, "auto": True,
+                    "accepted": {"by": record["by"], "at": record["at"],
+                                 "warning_id": record["warning_id"]}}
         if not await asyncio.to_thread(set_mode_for, sid, mode):
             raise HTTPException(500, "That did not save. Try again.")
         logger.info(
             "[approval] %s set chat %s to %s", user, sid, mode.value,
         )
-        return {"mode": mode.value, "auto": mode is ApprovalMode.AUTO}
+        return {"mode": mode.value, "auto": False}
 
     @router.post("/session/{sid}/inject_messages")
     async def inject_messages(request: Request, sid: str):

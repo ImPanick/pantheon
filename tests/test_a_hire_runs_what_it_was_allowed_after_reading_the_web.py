@@ -156,7 +156,12 @@ class _Auth:
         return dict(self._p)
 
 
-def test_the_lift_is_held_to_the_people_auto_is_held_to():
+def test_the_lift_is_held_to_the_people_auto_is_held_to(monkeypatch):
+    # `B1703` / `D-2026-10-30-01` added a second condition — the hire's person
+    # accepted its warning (`am.hire_accepted`, driven against a real database
+    # in `tests/test_auto_approve_is_a_risk_the_person_accepts.py`). Held
+    # true here, so this case asks the privilege alone, as it did.
+    monkeypatch.setattr(am, "hire_accepted", lambda *a, **k: True)
     holds = _Auth({**DEFAULT_PRIVILEGES, am.PRIVILEGE: True})
     lacks = _Auth(dict(DEFAULT_PRIVILEGES))
     assert DEFAULT_PRIVILEGES[am.PRIVILEGE] is False, "premise: off for non-admins"
@@ -168,16 +173,22 @@ def test_the_lift_is_held_to_the_people_auto_is_held_to():
 
 
 def test_the_form_says_it_before_the_hire_only_where_it_is_true():
+    """`B1703` / `D-2026-10-30-01` made the sentence a warning to accept
+    (`hires.auto_approve_offer`, which was `allowed_after_outside`): it names
+    the effects it lifts, and carries the id the hire sends back."""
     from src.agents import hires as H
     holds = _Auth({**DEFAULT_PRIVILEGES, am.PRIVILEGE: True})
     m = get_agent(None, "newsletter-writer")
-    said = H.allowed_after_outside(m, "ana", auth_manager=holds)
-    assert said == H.ALLOWED_AFTER_OUTSIDE.format(name="Newsletter Writer")
-    assert "after Newsletter Writer has read a web page" in said and "can steer what it does" in said
-    assert H.allowed_after_outside(m, "ana", auth_manager=_Auth(dict(DEFAULT_PRIVILEGES))) is None
+    offer = H.auto_approve_offer(m, "ana", auth_manager=holds)
+    said = offer["warning"]
+    assert said.startswith("Newsletter Writer will do these without asking you, even after it has "
+                           "read a web page")
+    assert "can steer what it does next" in said
+    assert offer["id"] == am.warning_id(said) and offer["proceed_label"] == "Proceed to auto-approve"
+    assert H.auto_approve_offer(m, "ana", auth_manager=_Auth(dict(DEFAULT_PRIVILEGES))) is None
     quiet = dataclasses.replace(m, tools=["web_search"], effects={"brokered_network_read": "allow",
                                                                   "network_egress": "ask"})
-    assert H.allowed_after_outside(quiet, "ana", auth_manager=holds) is None, \
+    assert H.auto_approve_offer(quiet, "ana", auth_manager=holds) is None, \
         "nothing it allows was ever asked about after outside content"
 
 
@@ -272,9 +283,12 @@ from test_the_agents_hall_js import _hall, sandbox  # noqa: E402,F401  (fixture)
 
 
 def test_the_hall_shows_the_sentence_on_the_form_before_summon(sandbox):  # noqa: F811
+    # `B1703`: the server's offer is `auto_approve` — the warning, its id and
+    # the control's label (it was `after_outside`, the sentence alone).
     out = _hall(sandbox, """
         const said = 'What is set to “without asking” above runs without asking even after it has read a web page.';
-        hall.agents.find((a) => a.id === 'topic-watcher').after_outside = said;
+        hall.agents.find((a) => a.id === 'topic-watcher').auto_approve = {
+          warning: said, id: 'w1', effects: ['network_egress'], proceed_label: 'Proceed to auto-approve' };
         await mod.openAgents(); await settle(30);
         await press(q('.agents-card').find((c) => c.dataset.agent === 'topic-watcher'));
         const form = q('.agents-form')[0];
