@@ -253,6 +253,9 @@ the next one is cut.
 
 ### Changed — read this before upgrading
 
+- **A write onto a name a move, an archive or a git command just put in place is read where it
+  lands** (`B1698`), and File Converter's answer names a burst's copies (`B1699`; its version moved).
+
 - **File Converter skips a burst photo it converted before; a copied symbolic link is read where it
   points; and `cp -l` onto an existing name is no longer asked about** (`B1695`–`B1697`). File
   Converter's version moved.
