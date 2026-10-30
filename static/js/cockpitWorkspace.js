@@ -8,8 +8,8 @@
 // them.** Each is the window its own module already draws —
 //
 //   Document     `#doc-editor-pane`        document.js (opened by `#overflow-doc-btn`)
-//   Workstation  `#workstation-screen-modal` workstationScreen.js
-//   Browser      `#agent-browser-modal`      browserWindow.js
+//   Workstation  `.modal.wsv-modal`  workstationScreen.js (its MODAL_ID)
+//   Browser      `.modal.abw-modal`  browserWindow.js (its MODAL_ID)
 //
 // — and this module only decides WHERE it sits: in a pane of the column, or
 // floating over the page. A tool window floats exactly as it always did
@@ -24,18 +24,20 @@
 // to dock it. `toggle_workspace` (Ctrl+\) tucks the column to a tab.
 
 import { icon } from './cockpit.js';
+import { prefersReducedMotion } from './motion.js';
+import { renderEmptyState } from './ui.js';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
 const byId = (id) => document.getElementById(id);
 const LS = 'pantheon-cockpit-workspace';
-const reduced = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+const reduced = prefersReducedMotion;
 const EASE = 'cubic-bezier(.22,.9,.24,1)';
 
 const SURFACES = {
   doc: { label: 'Document', icon: 'doc', node: () => byId('doc-editor-pane') },
-  vm: { label: 'Workstation', icon: 'monitor', node: () => byId('workstation-screen-modal') },
-  browser: { label: 'Browser', icon: 'browser', node: () => byId('agent-browser-modal') },
+  vm: { label: 'Workstation', icon: 'monitor', node: () => document.querySelector('.modal.wsv-modal') },
+  browser: { label: 'Browser', icon: 'browser', node: () => document.querySelector('.modal.abw-modal') },
 };
 const ORDER = ['doc', 'vm', 'browser'];
 
@@ -429,9 +431,12 @@ function build() {
     + '<div id="ck-ws-grid"></div>';
   grid = $('#ck-ws-grid', ws);
   ORDER.forEach((k) => { panes[k] = buildPane(k); grid.appendChild(panes[k]); });
-  empty = document.createElement('div');
-  empty.className = 'ck-ws-empty';
-  empty.innerHTML = '<span>Nothing open. Turn on Document, Workstation or Browser above.</span>';
+  // The shared empty shape (`ui.renderEmptyState`), built without a host so
+  // the panes beside it stay where they are.
+  empty = renderEmptyState(null, {
+    kind: 'empty', className: 'ck-ws-empty', title: 'Nothing open',
+    message: 'Turn on Document, Workstation or Browser above.',
+  });
   grid.appendChild(empty);
   cc.insertAdjacentElement('afterend', resizer);
   resizer.insertAdjacentElement('afterend', ws);

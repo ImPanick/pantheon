@@ -68,8 +68,10 @@ STYLE = ROOT / "static" / "style.css"
 TIERS = (0.07, 0.17, 0.31, 0.50)
 
 #: The light arm is this fraction of the dark one, derived in the docstring
-#: above and re-derived by `derived_light_ratio()` below.
-LIGHT_RATIO = 0.2
+#: above and re-derived by `derived_light_ratio()` below. 0.2 until 2026-10-30,
+#: when the cockpit retired three dark palettes (theme.js `RETIRED_THEMES`) and
+#: the median dark panel moved: 0.219, 0.223, 0.222, 0.220 across the tiers.
+LIGHT_RATIO = 0.22
 
 #: `P1-13` swept 168 occurrences. A sweep that finds fewer has lost sites to a
 #: refactor and should be re-measured, not quietly accepted.

@@ -700,6 +700,8 @@ def test_install_caches_everything_the_documents_it_stores_reference(installed):
         # file and `/login` has no `.html` to recognise it by.
         "/login",
         _shell_stylesheet(),
+        # The cockpit's sheet, which names its own self-hosted faces.
+        "/static/cockpit.css",
         "/static/lib/katex/katex.min.css",
         "/static/manifest.json",
     }, sorted(assets)
@@ -1186,6 +1188,12 @@ def test_the_login_page_is_read_for_what_it_references(installed):
         "/static/icons/icon-192.png",
         "/static/fonts/FiraCode-Regular.woff2",
         "/static/fonts/FiraCode-SemiBold.woff2",
+        # The cockpit's sign-in card (2026-10-30): its Geist and Instrument
+        # Serif faces, named relatively like the rest and precached by sw.js.
+        "/static/fonts/Geist-Regular.woff2",
+        "/static/fonts/Geist-Medium.woff2",
+        "/static/fonts/Geist-SemiBold.woff2",
+        "/static/fonts/InstrumentSerif-Regular.woff2",
     ], referenced
     assert set(referenced) <= set(installed["cached"])
 

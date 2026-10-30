@@ -861,7 +861,7 @@ CLAIMS: Tuple[Claim, ...] = (
     Claim(
         id="credits",
         area="Licence and provenance",
-        headline="Every shipped third-party file attributed, checked against the bytes on disk — 110 licence texts.",
+        headline="Every shipped third-party file attributed, checked against the bytes on disk — 112 licence texts.",
         stock=(
             "Bundled third-party code without its licence text; the desktop builds "
             "redistributed a dozen libraries with attribution stripped."
@@ -874,7 +874,7 @@ CLAIMS: Tuple[Claim, ...] = (
         # was 1,023 lines on 2026-10-02 — and neither is a number the repro
         # prints. The pair is now the defect and the checker's own count.
         before="12 bundled packages with no notice",
-        after="110 licence texts, every shipped file attributed",
+        after="112 licence texts, every shipped file attributed",
         provenance="counted",
         repro="python3 .pantheon/check-licences.py",
         evidence=("CREDITS.md", "licenses", ".pantheon/check-licences.py"),

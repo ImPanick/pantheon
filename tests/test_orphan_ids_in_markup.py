@@ -199,7 +199,7 @@ NEVER_BUILT = {                # empty anchors for features that never shipped
 }
 DEAD_ATTRIBUTE = {             # live element, dead id
     "adm-epApiKey-row", "agent-drafts-chevron", "auto-sort-sessions-row",
-    "chats-section-label", "chats-section-title", "export-dropdown-wrap",
+    "chats-section-label",
     "settings-2fa-card", "settings-system-logs-card", "sidebar-user-bar",
     "theme-frosted-group", "theme-save-row",
 }

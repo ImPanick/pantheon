@@ -32,6 +32,7 @@ measured in `tests/test_a_notes_checklist_is_ticked_from_the_keyboard.py`.
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 from pathlib import Path
 
@@ -46,7 +47,12 @@ pytestmark = pytest.mark.skipif(NODE is None, reason=_SKIP or "")
 
 ROOT = Path(__file__).resolve().parents[1]
 
-SURFACES = ["#message", "#model-picker-btn", "#tool-agents-btn", "#set-agentMaxTools", "#set-agentBudgetMode"]
+# `#message` left this list with the cockpit (2026-10-30): the composer capsule
+# draws the ring around the whole box it belongs to, and the textarea inside it
+# draws none (`test_the_composer_capsule_carries_the_ring_for_its_textarea`).
+# `#tool-agents-btn` became `#rail-agents`: on a desktop the cockpit's drawer
+# leaves the tools to the rail, and the rail button is the same door.
+SURFACES = ["#model-picker-btn", "#rail-agents", "#set-agentMaxTools", "#set-agentBudgetMode"]
 
 _SCRIPT = r"""
 const { chromium } = require('playwright');
@@ -96,7 +102,7 @@ const THEMES = async (surfaces) => {
   // A mouse press on a sidebar row and on the model picker: focus, and no
   // ring. First, while nothing covers them.
   out.mouse = {};
-  for (const sel of ['#tool-agents-btn', '#model-picker-btn']) {
+  for (const sel of ['#rail-agents', '#model-picker-btn']) {
     const box = await page.locator(sel).boundingBox();
     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
     await page.mouse.down();
@@ -155,7 +161,7 @@ def measured(app_url, tmp_path_factory):  # noqa: F811
 
 def test_every_palette_was_measured(measured):
     assert measured["errors"] == []
-    assert len(measured["themes"]) == 23, sorted(measured["themes"])
+    assert len(measured["themes"]) == 20, sorted(measured["themes"])  # three retired: theme.js `RETIRED_THEMES`
 
 
 def test_keyboard_focus_draws_the_one_ring_on_every_surface_and_palette(measured):
@@ -172,7 +178,7 @@ def test_keyboard_focus_draws_the_one_ring_on_every_surface_and_palette(measured
 
 def test_the_document_editor_draws_the_one_ring_on_every_palette(measured):
     docs = measured["docThemes"]
-    assert len(docs) == 23, sorted(docs)
+    assert len(docs) == 20, sorted(docs)  # three retired: theme.js `RETIRED_THEMES`
     wrong = [(name, row["got"]["#doc-editor-textarea"], row["want"]) for name, row in docs.items()
              if not (row["got"]["#doc-editor-textarea"]["visible"]
                      and row["got"]["#doc-editor-textarea"]["style"] == "solid"
@@ -186,7 +192,18 @@ def test_the_ring_is_each_palettes_own_red_not_one_colour(measured):
     assert len(colours) >= 15, colours
 
 
-@pytest.mark.parametrize("sel", ["#tool-agents-btn", "#model-picker-btn"])
+@pytest.mark.parametrize("sel", ["#rail-agents", "#model-picker-btn"])
 def test_a_mouse_press_draws_no_ring(measured, sel):
     got = measured["mouse"][sel]
     assert got["focused"] and got["style"] == "none", got
+
+
+def test_the_composer_capsule_carries_the_ring_for_its_textarea():
+    """The cockpit's composer is one lit capsule: focus anywhere in it lights its
+    edge and a wash around it, so the textarea draws no second ring inside.
+    Both halves are pinned together — the suppression may not outlive the
+    capsule's own ring."""
+    css = (ROOT / "static" / "cockpit.css").read_text(encoding="utf-8")
+    assert "html.cockpit #message { --focus-ring-width: 0px; }" in css
+    assert "html.cockpit .chat-input-bar:focus-within::before { opacity: 1; }" in css
+    assert re.search(r"html\.cockpit \.chat-input-bar:focus-within \{ box-shadow:[^}]*var\(--ck-accent-wash\)", css)

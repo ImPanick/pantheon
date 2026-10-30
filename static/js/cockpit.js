@@ -22,6 +22,8 @@
 // does the job.
 
 import { KEYBIND_DEFAULTS, formatKeybind } from './keyboard-shortcuts.js';
+import { getDefaultChat } from './appConfig.js';
+import { viewerMayAdminister, toolShown, whenToolVisibilityReady } from './ui_visibility.js';
 
 const IS_MAC = /Mac|iPhone|iPad/.test(navigator.platform || '') || /Mac OS X/.test(navigator.userAgent || '');
 const $ = (sel, root = document) => root.querySelector(sel);
@@ -387,7 +389,9 @@ function renderLeftOpen() {
   if (!box) return;
   const rows = [];
   const current = window.sessionModule?.getCurrentSessionId?.() || '';
-  (_readyData.sessions || [])
+  // The chat list the sidebar already holds (`sessions.js`): the page asks for
+  // it once, early (`B1228`), and the ready screen reads that, not a copy.
+  (window.sessionModule?.getSessions?.() || [])
     .filter((s) => s && !s.archived && s.id !== current && Number(s.message_count || 0) > 0 && s.folder !== 'Assistant')
     .sort((a, b) => Date.parse(b.last_message_at || b.updated_at || 0) - Date.parse(a.last_message_at || a.updated_at || 0))
     .slice(0, 2)
@@ -411,9 +415,18 @@ function renderLeftOpen() {
 }
 
 async function refreshReadyData() {
-  const [defaultChat, workstation, memory, skills, mcp, sessions, documents] = await Promise.all([
-    getJSON('/api/default-chat'), getJSON('/api/workstation/status'), getJSON('/api/memory'),
-    getJSON('/api/skills'), getJSON('/api/mcp/servers'), getJSON('/api/sessions'), getJSON('/api/documents/library?limit=1'),
+  // The default chat is the boot read the composer already started
+  // (`B1228`: one ask per load); MCP servers are an admin's list, so a guest
+  // is never made to ask for them (`B1192`). A tool the person has hidden is
+  // not asked about either (`B1194`): its cell says so instead.
+  await whenToolVisibilityReady();
+  const brainOn = toolShown('brain'), libraryOn = toolShown('library');
+  const [defaultChat, workstation, memory, skills, mcp, documents] = await Promise.all([
+    getDefaultChat().catch(() => null), getJSON('/api/workstation/status'),
+    brainOn ? getJSON('/api/memory') : null,
+    getJSON('/api/skills'),
+    viewerMayAdminister().then((admin) => (admin ? getJSON('/api/mcp/servers') : null), () => null),
+    libraryOn ? getJSON('/api/documents/library?limit=1') : null,
   ]);
   Object.assign(_readyData, {
     defaultChat: defaultChat && defaultChat.model ? defaultChat : (window.__pantheonDefaultChat || null),
@@ -421,7 +434,6 @@ async function refreshReadyData() {
     memory: memory && Array.isArray(memory.memory) ? memory.memory : null,
     skills: skills && Array.isArray(skills.skills) ? skills.skills : null,
     mcp: Array.isArray(mcp) ? mcp : (mcp && Array.isArray(mcp.servers) ? mcp.servers : null),
-    sessions: Array.isArray(sessions) ? sessions : null,
     documents: documents && Array.isArray(documents.documents) ? documents.documents : null,
   });
   renderReady();
@@ -446,6 +458,9 @@ function buildReady() {
   const rerender = () => { clearTimeout(rerender._t); rerender._t = setTimeout(() => renderReady(), 60); };
   ['web-toggle-btn', 'bash-toggle-btn', 'plan-toggle-btn', 'mode-agent-btn', 'workspace-indicator-btn', 'approval-mode-label', 'model-picker-label', 'chat-context-pill']
     .forEach((id) => { const n = byId(id); if (n) new MutationObserver(rerender).observe(n, { attributes: true, childList: true, characterData: true, subtree: true }); });
+  // and when the chat list is drawn, which is when "Left open" has its rows
+  const list = byId('session-list');
+  if (list) new MutationObserver(rerender).observe(list, { childList: true });
   const cc = byId('chat-container');
   if (cc) {
     let wasWelcome = cc.classList.contains('welcome-active');

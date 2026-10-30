@@ -34,6 +34,11 @@
 
 /* ───────────────────────── tokens ───────────────────────── */
 html.cockpit {
+  /* layers, named once (`.pantheon/check-zindex.py`'s tiers): the field under
+     everything, the shell's parts in flow, the workspace tab with the sticky
+     chrome, and a floating pane with its drop hint in the tool-window tier */
+  --ck-z-field: -1; --ck-z-composer: 1; --ck-z-sidebar: 2; --ck-z-workspace: 2; --ck-z-rail: 3;
+  --ck-z-resizer: 4; --ck-z-topbar: 6; --ck-z-ws-tab: 50; --ck-z-ghost: 1000; --ck-z-float: 1001;
   --ck-accent: var(--accent, var(--red));
   --ck-accent-2: color-mix(in oklch, var(--ck-accent) 70%, var(--fg));
   --ck-accent-wash: color-mix(in oklab, var(--ck-accent) 15%, transparent);
@@ -70,12 +75,15 @@ html.cockpit {
   --ck-ring-lo: color-mix(in oklab, #000 40%, transparent);
 
   --ck-text: var(--fg);
-  --ck-text-2: color-mix(in oklab, var(--fg) 74%, var(--bg));
-  --ck-text-3: color-mix(in oklab, var(--fg) 64%, var(--bg));
+  /* The de-emphasis ladder is style.css's own (`--fg-muted`, `B1408`), whose
+     every rung check-contrast.py holds over 4.5:1 on every palette; the
+     mockup's mixes toward --bg missed it on light glass. */
+  --ck-text-2: color-mix(in oklab, var(--fg) 55%, var(--fg-muted));
+  --ck-text-3: var(--fg-muted);
   --ck-ok: color-mix(in oklab, #3aa874 76%, var(--fg));
   --ck-warn: color-mix(in oklab, #d08a2c 80%, var(--fg));
   --ck-danger: color-mix(in oklab, #d24f45 82%, var(--fg));
-  --ck-warn-text: var(--ck-warn);
+  --ck-warn-text: color-mix(in oklab, var(--ck-warn) 60%, #fff);
   --ck-danger-text: var(--ck-danger);
   --ck-shade: color-mix(in srgb, #000 40%, transparent);
   --ck-shade-deep: color-mix(in srgb, #000 55%, transparent);
@@ -110,6 +118,11 @@ html.cockpit body {
   --font-mono: var(--ck-font-mono);
 }
 html.cockpit[data-ck-tone="light"] {
+  /* light glass is frosted toward white, not toward the ink: it keeps small
+     labels over 4.5:1 where the dark-arm mix greyed them under it */
+  --ck-glass-base: color-mix(in oklab, var(--panel) 78%, #fff);
+  --ck-tint: color-mix(in oklab, var(--fg) 5%, transparent);
+  --ck-tint-2: color-mix(in oklab, var(--fg) 9%, transparent);
   --ck-edge-hi: color-mix(in oklab, #fff 55%, transparent);
   --ck-shade: color-mix(in srgb, #1a1410 18%, transparent);
   --ck-shade-deep: color-mix(in srgb, #1a1410 30%, transparent);
@@ -118,7 +131,7 @@ html.cockpit[data-ck-tone="light"] {
   --ck-sheen-lo: color-mix(in oklab, #000 5%, transparent);
   --ck-ring-hi: color-mix(in oklab, #fff 85%, transparent);
   --ck-ring-lo: color-mix(in oklab, #000 12%, transparent);
-  --ck-warn-text: color-mix(in oklab, var(--ck-warn) 55%, var(--ck-text));
+  --ck-warn-text: color-mix(in oklab, var(--ck-warn) 55%, #000);
   --ck-danger-text: color-mix(in oklab, var(--ck-danger) 60%, var(--ck-text));
 }
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
@@ -126,7 +139,9 @@ html.cockpit[data-ck-tone="light"] {
 }
 
 /* ───────────────────────── canvas, field, grain ───────────────────────── */
-html.cockpit { background: var(--bg); transition: background var(--ck-t-slow) var(--ck-ease); }
+/* The page itself snaps to the palette (what is measured behind text is what is
+   painted); the field above it is what cross-fades. */
+html.cockpit { background: var(--bg); }
 html.cockpit body {
   background: transparent !important;
   background-color: transparent !important;
@@ -138,7 +153,7 @@ html.cockpit body {
 }
 #ck-field { display: none; }
 html.cockpit #ck-field {
-  display: block; position: fixed; inset: 0; z-index: -1; overflow: hidden; pointer-events: none;
+  display: block; position: fixed; inset: 0; z-index: var(--ck-z-field); overflow: hidden; pointer-events: none;
   background: var(--bg); transition: background var(--ck-t-slow) var(--ck-ease);
 }
 html.cockpit #ck-field span {
@@ -154,10 +169,10 @@ html.cockpit #ck-field::after { content: ""; position: absolute; inset: 0; backg
 @keyframes ck-float-a { to { transform: translate(8vw, 6vh) scale(1.1); } }
 @keyframes ck-float-b { to { transform: translate(-6vw, 10vh) scale(.92); } }
 /* the theme's own animated background (its canvas pattern) sits over the field
-   and under the slabs, toned down so it reads as weather, not wallpaper */
+   and under the slabs, at the intensity the person set (theme editor) */
 html.cockpit #synapse-canvas, html.cockpit #rain-canvas, html.cockpit #constellations-canvas,
 html.cockpit #perlin-flow-canvas, html.cockpit #petals-canvas, html.cockpit #sparkles-canvas,
-html.cockpit #embers-canvas, html.cockpit #ascii-canvas { opacity: .55; mix-blend-mode: normal; }
+html.cockpit #embers-canvas, html.cockpit #ascii-canvas { mix-blend-mode: normal; }
 
 /* ───────────────────────── shared material ───────────────────────── */
 html.cockpit .ck-slab,
@@ -240,7 +255,7 @@ html.cockpit .ck-wave.lg i { width: 5px; }
     padding: 11px 1px !important;
     gap: 3px;
     align-items: center;
-    z-index: 3;
+    z-index: var(--ck-z-rail);
     order: 0;
   }
   html.cockpit.pan-sidebar-off .icon-rail { display: flex !important; }
@@ -268,6 +283,9 @@ html.cockpit .ck-wave.lg i { width: 5px; }
   html.cockpit.pan-sidebar-mini #rail-new-session,
   html.cockpit.pan-sidebar-off #rail-new-session { display: grid !important; }
   html.cockpit .icon-rail .rail-hover-label { display: none !important; }
+  /* A door Customize UI turned off (`ui_visibility.js` writes `display: none`
+     inline) stays off: the grid above is `!important` and would win. */
+  html.cockpit .icon-rail-btn[style*="display: none"] { display: none !important; }
   html.cockpit .icon-rail-btn[data-ck-tip]:hover::after {
     content: attr(data-ck-tip); position: absolute; left: 48px; top: 50%; transform: translateY(-50%);
     white-space: nowrap; font: 400 12px/1.4 var(--ck-font-ui); padding: 5px 10px; border-radius: 10px;
@@ -288,7 +306,7 @@ html.cockpit .ck-wave.lg i { width: 5px; }
   /* 2 · contextual drawer */
   html.cockpit .sidebar {
     width: var(--ck-drawer-w) !important; min-width: var(--ck-drawer-w) !important; max-width: var(--ck-drawer-w);
-    border-radius: var(--ck-r-l) !important; overflow: hidden; order: 1; z-index: 2;
+    border-radius: var(--ck-r-l) !important; overflow: hidden; order: 1; z-index: var(--ck-z-sidebar);
     transition: opacity var(--ck-t) var(--ck-ease), transform var(--ck-t-slow) var(--ck-ease), width var(--ck-t-slow) var(--ck-ease), min-width var(--ck-t-slow) var(--ck-ease);
   }
   html.cockpit.pan-sidebar-mini .sidebar,
@@ -355,8 +373,9 @@ html.cockpit .sidebar .session-item.active-session .session-star { opacity: 1; }
 html.cockpit .sidebar .session-item.active-session .session-star::before { background: var(--ck-accent); box-shadow: 0 0 0 3px var(--ck-accent-wash); }
 html.cockpit .sidebar .session-item .session-menu-btn { opacity: 0; width: 24px !important; height: 24px !important; padding: 0 !important; border-radius: 8px !important; transition: opacity var(--ck-t) var(--ck-ease); }
 html.cockpit .sidebar .session-item:hover .session-menu-btn, html.cockpit .sidebar .session-item:focus-within .session-menu-btn { opacity: 1; }
-/* the drawer shows what belongs to the destination you are on; the rail already holds every tool */
-html.cockpit #tools-section { display: none !important; }
+/* the drawer shows what belongs to the destination you are on; on a desktop the
+   rail already holds every tool. A phone has no rail, so its drawer keeps them. */
+@media (min-width: 769px) { html.cockpit #tools-section { display: none !important; } }
 html.cockpit #email-section { order: 3; }
 html.cockpit #session-list .list-item,
 html.cockpit .sidebar .session-item {
@@ -401,7 +420,7 @@ html.cockpit .chat-container {
 }
 html.cockpit .chat-top-bar {
   position: relative !important; inset: auto !important; height: 52px; flex: none; display: flex !important; align-items: center; gap: 10px;
-  padding: 0 18px !important; margin: 0 !important; background: transparent !important; border: 0 !important; box-shadow: none !important; z-index: 6;
+  padding: 0 18px !important; margin: 0 !important; background: transparent !important; border: 0 !important; box-shadow: none !important; z-index: var(--ck-z-topbar);
   transform: none !important; width: auto !important;
 }
 html.cockpit .chat-top-bar::after { content: ""; position: absolute; left: 18px; right: 18px; bottom: 0; height: 1px; background: linear-gradient(90deg, transparent, var(--ck-edge), transparent); }
@@ -467,7 +486,7 @@ html.cockpit .welcome-scenery { display: none !important; }
 /* ───────────────────────── the conversation ───────────────────────── */
 /* A user turn is a lit glass bubble on the right; an answer is prose on the
    column itself, headed by who spoke, with its steps in one quiet list. */
-html.cockpit .chat-history > .msg { animation: ck-in 600ms var(--ck-ease) both; }
+html.cockpit .chat-history > .msg { animation: ck-in 600ms var(--ck-ease) backwards; }
 html.cockpit .msg-user {
   max-width: 78% !important; margin: 0 0 24px auto !important; padding: 10px 15px !important;
   background: var(--ck-glass-strong) !important; border: 1px solid var(--ck-edge-lo) !important;
@@ -480,9 +499,9 @@ html.cockpit .msg-ai {
   width: 100% !important; max-width: 66ch !important; margin: 0 0 18px !important; padding: 0 !important;
   background: transparent !important; border: 0 !important; border-radius: 0 !important; box-shadow: none !important; overflow: visible;
 }
+/* The name keeps its own legible hue (chatRenderer `applyModelColor`, `B1084`). */
 html.cockpit .msg-ai > .role {
   display: flex; align-items: center; gap: 9px; margin-bottom: 10px; font: 500 13px/1.2 var(--ck-font-ui) !important;
-  color: var(--ck-text-2) !important;
 }
 html.cockpit .msg-ai > .role .role-provider-logo { width: 16px; height: 16px; display: inline-grid; place-items: center; opacity: .9; }
 html.cockpit .msg .role-timestamp { font: 400 12px/1 var(--ck-font-ui) !important; color: var(--ck-text-3) !important; opacity: 1 !important; }
@@ -558,7 +577,7 @@ html.cockpit .thinking-indicator, html.cockpit .thinking-dots { color: var(--ck-
 html.cockpit .agent-thread {
   margin: 0 0 14px !important; padding: 6px !important; max-width: 66ch !important; width: 100%;
   border-radius: var(--ck-r-m); background: var(--ck-glass-soft); border: 1px solid var(--ck-edge-lo);
-  display: flex; flex-direction: column; gap: 2px; animation: ck-in 500ms var(--ck-ease) both;
+  display: flex; flex-direction: column; gap: 2px; animation: ck-in 500ms var(--ck-ease) backwards;
 }
 html.cockpit .agent-thread::before, html.cockpit .agent-thread::after { display: none !important; }
 html.cockpit .agent-thread-toolbar { padding: 0 2px 2px; }
@@ -642,12 +661,12 @@ html.cockpit .ck-pf .k .ck-led { width: 6px; height: 6px; box-shadow: none; }
 html.cockpit .ck-pf .v { font-size: 15px; font-weight: 500; color: var(--ck-text); white-space: normal; overflow-wrap: anywhere; }
 html.cockpit .ck-pf .v.mono { font-family: var(--ck-font-mono); font-size: 13px; }
 html.cockpit .ck-pf .s { font-size: 12px; color: var(--ck-text-3); line-height: 1.35; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-html.cockpit .ck-run-in .ck-pf { animation: ck-in 700ms var(--ck-ease) both; }
+html.cockpit .ck-run-in .ck-pf { animation: ck-in 700ms var(--ck-ease) backwards; }
 html.cockpit .ck-run-in .ck-pf:nth-child(2) { animation-delay: 60ms; } html.cockpit .ck-run-in .ck-pf:nth-child(3) { animation-delay: 120ms; }
 html.cockpit .ck-run-in .ck-pf:nth-child(4) { animation-delay: 180ms; } html.cockpit .ck-run-in .ck-pf:nth-child(5) { animation-delay: 240ms; }
 html.cockpit .ck-run-in .ck-pf:nth-child(6) { animation-delay: 300ms; }
-html.cockpit .ck-run-in .ck-ready-head { animation: ck-in 700ms var(--ck-ease) both; }
-html.cockpit .ck-run-in .ck-ready-state { animation: ck-in 700ms var(--ck-ease) 380ms both; }
+html.cockpit .ck-run-in .ck-ready-head { animation: ck-in 700ms var(--ck-ease) backwards; }
+html.cockpit .ck-run-in .ck-ready-state { animation: ck-in 700ms var(--ck-ease) 380ms backwards; }
 html.cockpit .ck-left-open { display: flex; flex-direction: column; gap: 4px; }
 html.cockpit .ck-left-open[hidden] { display: none; }
 html.cockpit .ck-left-open .h { font-size: 12px; color: var(--ck-text-3); padding: 0 4px 4px; }
@@ -667,7 +686,7 @@ html.cockpit #ck-dockcol { max-width: 760px; margin: 0 auto; display: flex; flex
 /* 6 · one strip for plan, queue and approvals */
 html.cockpit #ck-strip {
   border-radius: var(--ck-r-m); background: var(--ck-glass); border: 1px solid var(--ck-edge-lo); box-shadow: inset 0 1px 0 var(--ck-edge-hi);
-  overflow: hidden; margin-bottom: 10px; position: relative; animation: ck-in 500ms var(--ck-ease) both;
+  overflow: hidden; margin-bottom: 10px; position: relative; animation: ck-in 500ms var(--ck-ease) backwards;
 }
 html.cockpit #ck-strip[hidden] { display: none; }
 html.cockpit .ck-strip-tabs { display: flex; flex-wrap: wrap; align-items: center; gap: 3px; padding: 5px 32px 5px 5px; }
@@ -728,15 +747,17 @@ html.cockpit .ck-loadout .tool-indicator,
 html.cockpit .attach-strip > * {
   display: inline-flex; align-items: center; gap: 6px; font: 400 12px/1.4 var(--ck-font-ui) !important; padding: 3px 10px !important; height: auto !important;
   border-radius: 999px !important; background: var(--ck-tint) !important; color: var(--ck-text-2) !important; border: 0 !important; box-shadow: none !important;
-  animation: ck-chip-in var(--ck-t) var(--ck-spring) both; max-width: 260px; width: auto !important; min-width: 0;
+  animation: ck-chip-in var(--ck-t) var(--ck-spring) backwards; max-width: 260px; width: auto !important; min-width: 0;
 }
 html.cockpit .ck-loadout .tool-chip svg { width: 13px; height: 13px; }
+/* On a light page the tint darkens the ground, so a chip's name reads in full text (`cute` measured 4.46). */
+html.cockpit[data-ck-tone="light"] .ck-loadout :is(.tool-chip, .tool-indicator, #workspace-indicator-btn) { color: color-mix(in oklab, var(--ck-text) 80%, #000) !important; }
 html.cockpit .ck-loadout .tool-chip:hover { background: var(--ck-tint-2) !important; color: var(--ck-text) !important; }
 @keyframes ck-chip-in { from { opacity: 0; transform: scale(.85); } }
 
 /* ───────────────────────── the composer: same anatomy, a lit glass capsule ───────────────────────── */
 html.cockpit .chat-input-bar {
-  position: relative; z-index: 1; max-width: 760px !important; width: calc(100% - 36px) !important; margin: 0 auto 18px !important; padding: 0 !important; gap: 0 !important; flex: none;
+  position: relative; z-index: var(--ck-z-composer); max-width: 760px !important; width: calc(100% - 36px) !important; margin: 0 auto 18px !important; padding: 0 !important; gap: 0 !important; flex: none;
   border-radius: 22px !important; border: 1px solid var(--ck-edge) !important;
   background: linear-gradient(135deg, var(--ck-sheen-hi) 0%, transparent 42%, transparent 72%, var(--ck-sheen-lo) 100%), var(--ck-noise-soft) 0 0/240px 240px, var(--ck-glass-strong) !important;
   background-origin: border-box !important;
@@ -780,7 +801,7 @@ html.cockpit .overflow-wrapper { position: static !important; flex: none; }
 html.cockpit .overflow-plus-btn {
   width: 32px !important; height: 32px !important; min-width: 32px; border-radius: 50% !important; display: grid !important; place-items: center; padding: 0 !important;
   color: var(--ck-text-2) !important; background: var(--ck-tint) !important; border: 0 !important; box-shadow: none !important;
-  transition: transform var(--ck-t-slow) var(--ck-spring), background var(--ck-t) var(--ck-ease) !important;
+  transition: transform var(--ck-t-slow) var(--ck-spring), background var(--ck-t) var(--ck-ease);
 }
 html.cockpit .overflow-plus-btn svg { width: 16px; height: 16px; stroke-width: 1.6; }
 html.cockpit .overflow-plus-btn:hover { background: var(--ck-tint-2) !important; color: var(--ck-text) !important; }
@@ -796,7 +817,7 @@ html.cockpit #bash-toggle-btn {
   display: inline-flex !important; align-items: center; gap: 6px; height: 30px !important; padding: 0 11px 0 9px !important; border-radius: 999px !important;
   font: 400 12.5px/1 var(--ck-font-ui) !important; color: var(--ck-text-3) !important; background: transparent !important; border: 0 !important; box-shadow: none !important;
   min-width: 0; width: auto !important; flex: none; opacity: 1 !important;
-  transition: background var(--ck-t) var(--ck-ease), color var(--ck-t) var(--ck-ease) !important;
+  transition: background var(--ck-t) var(--ck-ease), color var(--ck-t) var(--ck-ease);
 }
 html.cockpit #plan-toggle-btn::before,
 html.cockpit #web-toggle-btn::before,
@@ -814,6 +835,16 @@ html.cockpit #plan-toggle-btn.active, html.cockpit #web-toggle-btn.active, html.
 }
 html.cockpit #plan-toggle-btn[aria-pressed="true"]::before, html.cockpit #web-toggle-btn[aria-pressed="true"]::before, html.cockpit #bash-toggle-btn[aria-pressed="true"]::before,
 html.cockpit #plan-toggle-btn.active::before, html.cockpit #web-toggle-btn.active::before, html.cockpit #bash-toggle-btn.active::before { background: var(--ck-accent); }
+/* One on-state for every switch, in the row and in the loadout (`B1552`):
+   full text on the accent wash. On a light page the wash darkens the ground,
+   so the label steps a little toward black to keep 4.5:1 (`cute` was 4.11).
+   Auto approval keeps its warning look instead, the one the header badge
+   repeats, because that lamp means "steps run without asking". */
+html.cockpit .ck-loadout .tool-chip.active:not(#workspace-indicator-btn),
+html.cockpit .ck-loadout .tool-indicator.active { color: var(--ck-text) !important; background: var(--ck-accent-wash) !important; }
+html.cockpit[data-ck-tone="light"] :is(#plan-toggle-btn, #web-toggle-btn, #bash-toggle-btn):is(.active, [aria-pressed="true"]),
+html.cockpit[data-ck-tone="light"] .ck-loadout :is(.tool-chip, .tool-indicator).active:not(#workspace-indicator-btn) { color: color-mix(in oklab, var(--ck-text) 80%, #000) !important; }
+html.cockpit .approval-mode-chip.active { color: var(--ck-warn-text) !important; background: color-mix(in oklab, var(--ck-warn) 14%, transparent) !important; }
 /* indicator chips that used to crowd the switch row now live in the loadout */
 html.cockpit .chat-input-left > .tool-indicator { display: none !important; }
 
@@ -854,7 +885,7 @@ html.cockpit .mode-toggle {
 html.cockpit .mode-toggle-btn {
   display: inline-flex !important; align-items: center; gap: 5px; padding: 4px 11px !important; border-radius: 999px !important; height: auto !important;
   font: 400 12px/1.4 var(--ck-font-ui) !important; color: var(--ck-text-3) !important; background: transparent !important; border: 0 !important; box-shadow: none !important;
-  transition: all var(--ck-t) var(--ck-ease) !important; margin: 0 !important;
+  transition: all var(--ck-t) var(--ck-ease); margin: 0 !important;
 }
 html.cockpit .mode-toggle-btn::before {
   content: ""; width: 12px; height: 12px; flex: none; background: currentColor;
@@ -869,8 +900,9 @@ html.cockpit .mode-toggle-btn:not(.active):hover { color: var(--ck-text-2) !impo
 /* the approval mode is said once: by the lock, and by the chip only while Auto is on */
 html.cockpit .approval-mode-chip {
   height: 30px !important; padding: 0 11px !important; border-radius: 999px !important; font: 400 12px/1 var(--ck-font-ui) !important;
-  color: var(--ck-text-3) !important; background: transparent !important; border: 0 !important; box-shadow: none !important;
+  color: var(--ck-text-2) !important; background: transparent !important; border: 0 !important; box-shadow: none !important;
 }
+html.cockpit .approval-mode-menu-title { color: var(--ck-text-2) !important; font-family: var(--ck-font-ui) !important; }
 html.cockpit .approval-mode-chip:hover { background: var(--ck-tint) !important; color: var(--ck-text-2) !important; }
 html.cockpit body.ck-auto-approve .approval-mode-chip { color: var(--ck-warn-text) !important; background: color-mix(in oklab, var(--ck-warn) 14%, transparent) !important; }
 html.cockpit .turn-chip {
@@ -883,7 +915,7 @@ html.cockpit .send-btn {
   display: grid !important; place-items: center;
   background: linear-gradient(135deg, var(--ck-accent), var(--ck-accent-2)) !important; color: var(--ck-on-accent) !important; border: 0 !important;
   box-shadow: inset 0 1px 0 color-mix(in oklab, #fff 35%, transparent), 0 4px 12px -4px var(--ck-accent-glow) !important;
-  transition: transform var(--ck-t) var(--ck-spring), box-shadow var(--ck-t) var(--ck-ease), opacity .1s !important;
+  transition: transform var(--ck-t) var(--ck-spring), box-shadow var(--ck-t) var(--ck-ease), opacity .1s;
 }
 html.cockpit .send-btn:hover { transform: translateY(-2px) scale(1.04); box-shadow: inset 0 1px 0 color-mix(in oklab, #fff 35%, transparent), 0 14px 28px -8px var(--ck-accent-glow) !important; }
 html.cockpit .send-btn:active { transform: scale(.92); }
@@ -923,8 +955,17 @@ html.cockpit .ck-pop {
   box-shadow: inset 0 1px 0 var(--ck-edge-hi), var(--ck-lift-2) !important;
   color: var(--ck-text) !important; font-family: var(--ck-font-ui) !important; padding: 6px !important;
 }
-html.cockpit .overflow-menu:not(.hidden) { animation: ck-pop-in var(--ck-t-slow) var(--ck-spring) both; transform-origin: bottom left; }
-html.cockpit .model-picker-menu:not(.hidden) { animation: ck-pop-in var(--ck-t-slow) var(--ck-spring) both; transform-origin: bottom right; }
+/* The + menu holds its submenu as a fixed child, and a backdrop-filter makes
+   an element the containing block of its fixed children: the submenu landed a
+   whole menu's offset away, off the screen. The menu's blur moves to a layer
+   behind it, which leaves the submenu placed by the page and free to blur. */
+html.cockpit .overflow-menu { -webkit-backdrop-filter: none !important; backdrop-filter: none !important; isolation: isolate; }
+html.cockpit .overflow-menu::before {
+  content: ""; position: absolute; inset: 0; border-radius: inherit; z-index: -1; pointer-events: none;
+  -webkit-backdrop-filter: blur(34px) saturate(1.6); backdrop-filter: blur(34px) saturate(1.6);
+}
+html.cockpit .overflow-menu:not(.hidden) { animation: ck-pop-in var(--ck-t-slow) var(--ck-spring) backwards; transform-origin: bottom left; }
+html.cockpit .model-picker-menu:not(.hidden) { animation: ck-pop-in var(--ck-t-slow) var(--ck-spring) backwards; transform-origin: bottom right; }
 @keyframes ck-pop-in { from { opacity: 0; transform: translateY(10px) scale(.96); filter: blur(6px); } }
 html.cockpit .overflow-menu { width: 272px !important; min-width: 0 !important; }
 html.cockpit .overflow-menu-item,
@@ -933,10 +974,14 @@ html.cockpit .dropdown-item,
 html.cockpit .model-switch-item,
 html.cockpit .composer-submenu [role="menuitem"],
 html.cockpit .composer-submenu button {
-  display: flex !important; align-items: center; gap: 11px; width: 100%; padding: 8px 10px !important; border-radius: 12px !important;
+  display: flex !important; align-items: center; gap: 11px; width: 100%; height: auto !important; min-height: 32px; padding: 8px 10px !important; border-radius: 12px !important;
   font: 400 13px/1.4 var(--ck-font-ui) !important; text-align: left; color: var(--ck-text) !important; background: transparent !important; border: 0 !important;
   box-shadow: none !important; transition: background var(--ck-t-fast) var(--ck-ease);
 }
+/* A row the page has put away stays away: the flex above is `!important`,
+   and would otherwise draw folded rows (RAG lives under Modes) and rows a
+   switch or `ui_visibility.js` hid inline. */
+html.cockpit :is(.overflow-menu-item, .export-dropdown-item, .dropdown-item, .model-switch-item, .composer-submenu button):is([hidden], .hidden, .composer-menu-folded, [style*="display: none"], [style*="display:none"]) { display: none !important; }
 html.cockpit .overflow-menu-item:hover, html.cockpit .overflow-menu-item:focus-visible,
 html.cockpit .export-dropdown-item:hover, html.cockpit .dropdown-item:hover,
 html.cockpit .model-switch-item:hover, html.cockpit .model-switch-item.active, html.cockpit .model-switch-item[aria-selected="true"],
@@ -983,7 +1028,7 @@ html.cockpit .chat-context-compact-btn:hover { background: var(--ck-tint-2) !imp
 #ck-workspace, #ck-resizer, #ck-ws-tab { display: none; }
 @media (min-width: 769px) {
   html.cockpit #ck-resizer {
-    display: block; flex: none; width: 14px; margin: 0 calc(-1 * var(--ck-gap)); cursor: col-resize; position: relative; border-radius: 999px; z-index: 4;
+    display: block; flex: none; width: 14px; margin: 0 calc(-1 * var(--ck-gap)); cursor: col-resize; position: relative; border-radius: 999px; z-index: var(--ck-z-resizer);
   }
   html.cockpit #ck-resizer::after {
     content: ""; position: absolute; top: 50%; left: 50%; width: 4px; height: 44px; transform: translate(-50%, -50%); border-radius: 4px;
@@ -992,7 +1037,7 @@ html.cockpit .chat-context-compact-btn:hover { background: var(--ck-tint-2) !imp
   html.cockpit #ck-resizer:hover::after, html.cockpit.ck-dragging #ck-resizer::after { background: var(--ck-accent); height: 84px; }
   html.cockpit #ck-workspace {
     display: flex; flex-direction: column; flex: 0 0 var(--ck-ws-w); width: var(--ck-ws-w); min-width: 280px; max-width: 66%;
-    border-radius: var(--ck-r-l); overflow: hidden; container-type: inline-size; z-index: 2;
+    border-radius: var(--ck-r-l); overflow: hidden; container-type: inline-size; z-index: var(--ck-z-workspace);
     transition: opacity var(--ck-t) var(--ck-ease), transform var(--ck-t-slow) var(--ck-ease), flex-basis var(--ck-t-slow) var(--ck-ease), min-width var(--ck-t-slow) var(--ck-ease);
   }
   html.cockpit.ck-dragging #ck-workspace { transition: none; }
@@ -1000,7 +1045,7 @@ html.cockpit .chat-context-compact-btn:hover { background: var(--ck-tint-2) !imp
   html.cockpit.ck-ws-off #ck-workspace { flex-basis: 0; width: 0; min-width: 0; opacity: 0; transform: translateX(16px); margin-left: calc(-1 * var(--ck-gap)); pointer-events: none; box-shadow: none; }
   html.cockpit.ck-ws-off #ck-resizer { opacity: 0; pointer-events: none; width: 0; }
   html.cockpit #ck-ws-tab {
-    position: fixed; right: 26px; top: 50%; transform: translateY(-50%); z-index: 50; display: none; flex-direction: column; align-items: center; gap: 8px;
+    position: fixed; right: 26px; top: 50%; transform: translateY(-50%); z-index: var(--ck-z-ws-tab); display: none; flex-direction: column; align-items: center; gap: 8px;
     padding: 12px 7px; border-radius: 999px; color: var(--ck-text-2); font: 400 11px/1 var(--ck-font-ui); cursor: pointer;
     background: linear-gradient(135deg, var(--ck-sheen-hi) 0%, transparent 60%), var(--ck-glass-strong); -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px);
     border: 1px solid var(--ck-edge); box-shadow: inset 0 1px 0 var(--ck-edge-hi), var(--ck-lift-2);
@@ -1039,7 +1084,7 @@ html.cockpit .ck-ws-empty .row { display: flex; gap: 6px; flex-wrap: wrap; justi
 html.cockpit .ck-pane {
   display: flex; flex-direction: column; min-width: 0; min-height: 0; border-radius: var(--ck-r-m); overflow: hidden; position: relative;
   background: var(--ck-glass-strong); border: 1px solid var(--ck-edge-lo); box-shadow: inset 0 1px 0 var(--ck-edge-hi);
-  animation: ck-pane-in var(--ck-t-slow) var(--ck-ease) both;
+  animation: ck-pane-in var(--ck-t-slow) var(--ck-ease) backwards;
 }
 html.cockpit .ck-pane[hidden] { display: none; }
 @keyframes ck-pane-in { from { opacity: 0; transform: scale(.97) translateY(6px); filter: blur(6px); } }
@@ -1058,17 +1103,17 @@ html.cockpit .ck-holder.agent::before { content: ""; width: 5px; height: 5px; bo
 html.cockpit .ck-holder.you { color: var(--ck-ok); background: color-mix(in oklab, var(--ck-ok) 14%, transparent); }
 html.cockpit .ck-pane-b { flex: 1; min-height: 0; overflow: auto; position: relative; scrollbar-width: thin; display: flex; flex-direction: column; }
 html.cockpit .ck-pane.ck-floating {
-  position: fixed; z-index: 900; width: 440px; height: 300px;
+  position: fixed; z-index: var(--ck-z-float); width: 440px; height: 300px;
   background: linear-gradient(135deg, var(--ck-sheen-hi) 0%, transparent 42%, transparent 72%, var(--ck-sheen-lo) 100%), var(--ck-noise-soft) 0 0/240px 240px, var(--ck-glass-strong);
   -webkit-backdrop-filter: blur(36px) saturate(1.6); backdrop-filter: blur(36px) saturate(1.6);
-  box-shadow: inset 0 1px 0 var(--ck-edge-hi), 0 0 0 1px var(--ck-edge), var(--ck-lift-2); animation: ck-float-in var(--ck-t-slow) var(--ck-spring) both;
+  box-shadow: inset 0 1px 0 var(--ck-edge-hi), 0 0 0 1px var(--ck-edge), var(--ck-lift-2); animation: ck-float-in var(--ck-t-slow) var(--ck-spring) backwards;
 }
 @keyframes ck-float-in { from { transform: scale(.94); opacity: .5; } }
 html.cockpit #ck-ghost {
-  position: fixed; z-index: 899; border-radius: var(--ck-r-l); background: var(--ck-accent-wash); box-shadow: inset 0 0 0 1.5px var(--ck-accent-line);
+  position: fixed; z-index: var(--ck-z-ghost); border-radius: var(--ck-r-l); background: var(--ck-accent-wash); box-shadow: inset 0 0 0 1.5px var(--ck-accent-line);
   pointer-events: none; opacity: 0; transition: opacity var(--ck-t) var(--ck-ease);
 }
-html.cockpit #ck-ghost.show { opacity: 1; animation: ck-ghost-in var(--ck-t-slow) var(--ck-spring) both; }
+html.cockpit #ck-ghost.show { opacity: 1; animation: ck-ghost-in var(--ck-t-slow) var(--ck-spring) backwards; }
 @keyframes ck-ghost-in { from { transform: scale(.97); } }
 html.cockpit.ck-ghosting #ck-ws-grid .ck-pane { opacity: .72; transform: scale(.985); }
 
@@ -1269,7 +1314,7 @@ html.cockpit :is(.admin-switch, .toggle-switch, .switch) input:checked + :is(.sl
 
 /* the palette */
 html.cockpit .search-overlay { background: color-mix(in srgb, #000 28%, transparent) !important; -webkit-backdrop-filter: blur(6px) saturate(1.1); backdrop-filter: blur(6px) saturate(1.1); }
-html.cockpit .search-popup { width: 600px !important; border-radius: var(--ck-r-l) !important; padding: 6px !important; animation: ck-pop-in var(--ck-t-slow) var(--ck-spring) both; }
+html.cockpit .search-popup { width: 600px !important; border-radius: var(--ck-r-l) !important; padding: 6px !important; animation: ck-pop-in var(--ck-t-slow) var(--ck-spring) backwards; }
 html.cockpit .search-popup input#search-input {
   font: 400 16px/1.4 var(--ck-font-ui) !important; color: var(--ck-text) !important; padding: 12px 14px !important; background: transparent !important;
   border: 0 !important; border-bottom: 1px solid var(--ck-edge-lo) !important; border-radius: 0 !important; box-shadow: none !important;
@@ -1317,3 +1362,34 @@ html.cockpit ::-webkit-scrollbar { width: 10px; height: 10px; }
 html.cockpit ::-webkit-scrollbar-track { background: transparent; }
 html.cockpit ::-webkit-scrollbar-thumb { background: var(--ck-tint-2); border-radius: 999px; border: 3px solid transparent; background-clip: padding-box; }
 html.cockpit ::-webkit-scrollbar-thumb:hover { background-color: color-mix(in oklab, var(--fg) 22%, transparent); }
+
+/* the licence's source link (src/source_link.py): kept, quiet, in the frame's gutter */
+html.cockpit .pan-source-offer a {
+  background: transparent !important; border-color: transparent !important; color: var(--ck-text-3) !important;
+  font-family: var(--ck-font-ui) !important; letter-spacing: .02em;
+}
+html.cockpit .pan-source-offer a:hover { color: var(--ck-text) !important; opacity: 1 !important; }
+@media (min-width: 769px) { html.cockpit .pan-source-offer { right: 22px !important; bottom: 1px !important; } }
+@media (max-width: 768px) {
+  /* A phone's window is a sheet edge to edge: no hairline round it, so its
+     panel meets the bottom of the screen (the lit inset edge still reads). */
+  html.cockpit .modal .modal-content:not(#ck-workspace *):not(.ck-docked *) { border-width: 0 !important; }
+  html.cockpit .pan-source-offer { left: 50% !important; transform: translateX(-50%); top: calc(env(safe-area-inset-top, 0px) + 2px) !important; }
+}
+
+/* ───────────────────────── a phone: the same cockpit, folded ───────────────────────── */
+@media (max-width: 560px) {
+  html.cockpit .ck-preflight { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  html.cockpit .ck-pf .v { overflow-wrap: break-word; }
+  html.cockpit .ck-ready-word { font-size: 44px; }
+}
+@container chatbar (max-width: 440px) {
+  html.cockpit .mode-toggle-btn { font-size: 0 !important; gap: 0 !important; padding: 4px 9px !important; }
+  html.cockpit .chat-input-right { gap: 4px !important; min-width: 0; flex-wrap: wrap; justify-content: flex-end; }
+  html.cockpit .chat-context-pill .ctx-ring-pct { font-size: 11.5px; }
+}
+/* On light glass a row lifts toward white when pointed at, rather than taking
+   ink, so a pale palette's own text (cute's pink) keeps 4.5:1 under it. */
+html.cockpit[data-ck-tone="light"] :is(.overflow-menu-item, .export-dropdown-item, .dropdown-item, .model-switch-item, .composer-submenu button):is(:hover, .active, [aria-selected="true"], .kb-active) {
+  background: color-mix(in oklab, #fff 62%, transparent) !important; box-shadow: inset 0 0 0 1px var(--ck-edge-lo) !important;
+}

@@ -55,7 +55,8 @@ const BASE = process.argv[2];
   const openForm = async () => {
     await page.goto(BASE + '/', { waitUntil: 'load' });
     await page.waitForFunction(() => window.__pantheonAppStarted === true, null, { timeout: 90000 });
-    await page.click('#tool-notes-btn');
+    // The cockpit's rail is the desktop door to Notes (its Tools list lives in the phone drawer).
+    await page.click('#rail-notes');
     const card = `.note-card[data-note-id="${id}"] .note-card-title`;
     await page.waitForSelector(card, { state: 'visible', timeout: 30000 });
     await page.click(card);

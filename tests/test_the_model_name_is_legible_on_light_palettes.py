@@ -130,7 +130,8 @@ def _light_palettes(themes):
 
 
 def test_the_twenty_three_palettes_are_all_here_and_eight_are_light(shipped):
-    assert len(shipped["themes"]) == 23
+    # Twenty since the cockpit retired three presets (theme.js `RETIRED_THEMES`).
+    assert len(shipped["themes"]) == 20
     assert set(_light_palettes(shipped["themes"])) == {"light", "paper", "lavender", "cute", "notebook", "codehost", "video", "mintchat"}
 
 
@@ -285,7 +286,7 @@ def test_in_a_browser_every_light_palette_reads_at_least_4_5_to_1(painted):
 def test_in_a_browser_every_dark_palette_reads_at_least_4_5_to_1(painted):
     """`B1084`: what the browser resolved, against what the bubble paints."""
     dark = {n: p for n, p in painted["palettes"].items() if p["scheme"] == "dark"}
-    assert len(dark) == 15
+    assert len(dark) == 12  # fifteen until the cockpit retired three (theme.js `RETIRED_THEMES`)
     for name, p in dark.items():
         worst = min(p["rows"], key=lambda r: _ratio(r["fg"][:3], p["bubble"]))
         ratio = _ratio(worst["fg"][:3], p["bubble"])

@@ -52,7 +52,7 @@ are the numbers most likely to be quoted and least able to carry the weight.
 | Three trust rungs, a 13-value capability taxonomy, and 21,360 cases pinning it. | `taxonomy unused` | **`21,360 cases, 0 diverged`** | `measured` |
 | Four event types carried an approval flag no line of the frontend ever read. | `4 events lying` | **`0`** | `cited` |
 | Every file of program text now declares its licence, and no vendored file does. None did. | `0 files` | **`every file of program text`** | `measured` |
-| Every shipped third-party file attributed, checked against the bytes on disk — 110 licence texts. | `12 bundled packages with no notice` | **`110 licence texts, every shipped file attributed`** | `counted` |
+| Every shipped third-party file attributed, checked against the bytes on disk — 112 licence texts. | `12 bundled packages with no notice` | **`112 licence texts, every shipped file attributed`** | `counted` |
 | Unreachable UI 78 -> 120 -> 23 -> 0 and ratcheted, with 1,524 lines deleted against 340 added. | `78` | **`0`** | `measured` |
 | A 3,126-line module was parsed three times per page load. | `11 forked` | **`0`** | `measured` |
 | 440 silent exception handlers, 12 of them explained. The mutating ones are now zero. | `26 mutating-and-silent` | **`0`** | `measured` |
@@ -444,9 +444,9 @@ python3 .pantheon/check-spdx.py
 
 Argued in: `P0-18`, `B411`.
 
-### Every shipped third-party file attributed, checked against the bytes on disk — 110 licence texts.
+### Every shipped third-party file attributed, checked against the bytes on disk — 112 licence texts.
 
-**`12 bundled packages with no notice` → `110 licence texts, every shipped file attributed`**  ·  provenance **`counted`**
+**`12 bundled packages with no notice` → `112 licence texts, every shipped file attributed`**  ·  provenance **`counted`**
 
 **Odysseus:** Bundled third-party code without its licence text; the desktop builds redistributed a dozen libraries with attribution stripped.
 

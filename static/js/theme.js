@@ -15,14 +15,11 @@ export const THEMES = {
   midnight:   { bg:'#0d1117', fg:'#c9d1d9', panel:'#161b22', border:'#30363d', red:'#f85149' },
   paper:      { bg:'#faf8f5', fg:'#3b3836', panel:'#ffffff', border:'#d5d0c8', red:'#c5ac4a' },
   // Spicy / fun themes
-  cyberpunk:  { bg:'#0a0a0f', fg:'#0ff0fc', panel:'#12101a', border:'#9b30ff', red:'#e040fb' },
   // `B390` (`D-2026-10-26-01` §13): its surfaces a shade darker (ΔL −3.4), its red kept.
-  retrowave:  { bg:'#141423', fg:'#e94560', panel:'#111a31', border:'#533483', red:'#e94560' },
   forest:     { bg:'#1b2a1b', fg:'#a8d5a2', panel:'#142414', border:'#3d6b3d', red:'#7cb871' },
   ocean:      { bg:'#0b1a2c', fg:'#64d2ff', panel:'#091422', border:'#1e5074', red:'#4facfe' },
   ume:        { bg:'#2b1b2e', fg:'#f5c2e7', panel:'#1e1420', border:'#6c4675', red:'#f5a0c0' },
   copper:     { bg:'#1c1410', fg:'#e8c39e', panel:'#140f0a', border:'#7a5533', red:'#d4764e' },
-  terminal:   { bg:'#000000', fg:'#00ff41', panel:'#0a0a0a', border:'#003b00', red:'#00ff41' },
   organs:     { bg:'#0a0406', fg:'#efe1c8', panel:'#15080a', border:'#3a1519', red:'#c83240' },
   lavender:   { bg:'#f3eef8', fg:'#3d3551', panel:'#faf7ff', border:'#cec3de', red:'#9b6dcc' },
   gpt:        { bg:'#212121', fg:'#ececec', panel:'#171717', border:'#424242', red:'#949494',
@@ -76,11 +73,8 @@ const THEME_DEFAULT_PATTERN = {
   light:      'dots',
   midnight:   'rain',
   paper:      'dots',
-  cyberpunk:  'synapse',
-  retrowave:  'embers',
   forest:     'petals',
   ocean:      'constellations',
-  terminal:   'perlin-flow',
   organs:     'rain',
   ume:        'petals',
   cute:       'sparkles',
@@ -97,7 +91,6 @@ const THEME_DEFAULT_EFFECT_COLOR = {
 // Default effect intensity (0..1) per theme. Any theme not listed defaults to 1.
 const THEME_DEFAULT_INTENSITY = {
   midnight:   0.5,
-  terminal:   0.8,
   organs:     0.65,
 };
 
@@ -949,8 +942,20 @@ export function applyBgPattern(pattern) {
   if (note) note.hidden = !(reduced && !!_CANVAS_PATTERNS[p]);
 }
 
+// The cockpit (2026-10-30). Three presets were neon by design — pure green
+// text on black, hot-pink text, cyan text under magenta — and there is no way
+// to port them to a tasteful material without making them a different theme,
+// so they were retired on the owner's instruction. Whoever had one saved
+// lands on Dark, once, and the choice is written back.
+export const RETIRED_THEMES = new Set(['terminal', 'retrowave', 'cyberpunk']);
+
 export function getSaved() {
-  const obj = Storage.getJSON(LS_KEY, null);
+  let obj = Storage.getJSON(LS_KEY, null);
+  if (obj && RETIRED_THEMES.has(obj.name)) {
+    obj = { ...obj, name: 'dark', colors: THEMES.dark };
+    delete obj.bgPattern; delete obj.bgEffectIntensity;
+    Storage.setJSON(LS_KEY, obj);
+  }
   // Migration: 'chatgpt' preset was renamed to 'gpt'
   if (obj && obj.name === 'chatgpt') obj.name = 'gpt';
   // Migration: 'sakura' preset was renamed to 'ume'
@@ -2652,8 +2657,8 @@ const _ASCII_ART = {
   page:    ['--', '__', '...', ';', '" "', '- -'],
 };
 const _ASCII_THEME_ART = {
-  terminal: 'shell', codehost: 'shell', gpt: 'shell', claude: 'shell',
-  cyberpunk: 'circuit', retrowave: 'grid', guild: 'grid', video: 'grid',
+  codehost: 'shell', gpt: 'shell', claude: 'shell',
+  guild: 'grid', video: 'grid',
   ume: 'blossom', cute: 'blossom', lavender: 'blossom', channel: 'blossom',
   forest: 'pines', grove: 'pines', mintchat: 'pines',
   ocean: 'tide',
@@ -2752,6 +2757,7 @@ async function _initWithSync() {
     const serverTheme = await _loadFromServer();
     if (serverTheme && serverTheme.colors) {
       if (serverTheme.name === 'sakura') serverTheme.name = 'ume';
+      if (RETIRED_THEMES.has(serverTheme.name)) { serverTheme.name = 'dark'; serverTheme.colors = THEMES.dark; }
       Storage.setJSON(LS_KEY, serverTheme);
       applyColors(serverTheme.colors);
     }

@@ -83,7 +83,7 @@ def _expected(accent: str) -> str:
 
 def test_there_is_more_than_one_palette_and_the_row_s_count_is_stale():
     """Non-vacuity, and the finding that reframed the row: it says sixteen."""
-    assert len(PALETTES) >= 23, f"only {len(PALETTES)} palettes parsed"
+    assert len(PALETTES) >= 20, f"only {len(PALETTES)} palettes parsed"  # three retired: theme.js `RETIRED_THEMES`
 
 
 def test_the_contrast_audit_passes_on_this_tree():
@@ -118,7 +118,7 @@ def test_the_filled_design_is_the_only_one_offered_and_why():
     assert CC.OFFERABLE == ("filled",)
     assert CC.B15_THEMES == set() and CC.BLOCKED_ON_B15 == ()
     assert min(r["outline"] for r in designs.values()) >= BODY_FLOOR
-    assert {t for t, r in designs.items() if r["tinted"] < BODY_FLOOR} == {"cute", "retrowave"}
+    assert {t for t, r in designs.items() if r["tinted"] < BODY_FLOOR} == {"cute"}  # `retrowave` retired
     for theme in CC.B15_THEMES:
         assert designs[theme]["filled"] >= BODY_FLOOR, (
             f"filled no longer clears {theme}; B15 would have no fix left")
@@ -128,8 +128,10 @@ def test_the_filled_design_is_the_only_one_offered_and_why():
     # And the legacy white button is kept in the table as the thing that failed.
     legacy = [t for t, r in designs.items()
               if r["filled_white_legacy"] < BODY_FLOOR]
-    assert len(legacy) >= 18, (
-        f"only {len(legacy)} palettes fail white-on-accent; the row measured 18")
+    # 18 when the row measured it; 15 since the cockpit retired three presets
+    # that all failed it (theme.js `RETIRED_THEMES`).
+    assert len(legacy) >= 15, (
+        f"only {len(legacy)} palettes fail white-on-accent; the row measured 18, less the three retired")
 
 
 # ── P1-09: the guard that has no case to catch ─────────────────────────────

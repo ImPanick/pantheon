@@ -101,7 +101,8 @@ async function open(browser, who, size, theme) {
 // The sidebar's Agents — through the drawer on a phone, as a thumb reaches it.
 async function agents(page, phone) {
   if (phone) { await page.click('#hamburger-btn'); await page.waitForTimeout(700); }
-  await page.click('#tool-agents-btn');
+  // The cockpit keeps the Tools list in the phone drawer; on a desktop the rail is the door.
+  await page.click(phone ? '#tool-agents-btn' : '#rail-agents');
   await page.waitForSelector('#agents-modal .agents-chips', { timeout: 20000 });
   await page.waitForTimeout(500);
 }

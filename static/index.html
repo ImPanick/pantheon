@@ -20,6 +20,9 @@
   (function(){
     try {
       var t = JSON.parse(localStorage.getItem('pantheon-theme'));
+      // A retired preset (theme.js `RETIRED_THEMES`) paints nothing here; the
+      // module moves it to Dark on boot.
+      if (t && /^(terminal|retrowave|cyberpunk)$/.test(t.name)) t = null;
       if (t && t.colors) {
         var s = document.documentElement.style;
         var c = t.colors;

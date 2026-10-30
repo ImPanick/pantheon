@@ -554,7 +554,7 @@ def test_everything_it_paints_reads_on_every_palette(driven):
     `--fg`), 4.18 and 4.19 with the menu open (`.input-icon-btn.expanded`),
     and 3.96 and 4.17 for a row's name under the keyboard's 14% red tint."""
     palettes = driven["palettes"]
-    assert len(palettes) >= 23, sorted(palettes)
+    assert len(palettes) >= 20, sorted(palettes)  # three retired: theme.js `RETIRED_THEMES`
     assert driven["highlight"]["kb"] == "manual" and driven["highlight"]["focused"] is True
     under = {(name, what): r for name, row in palettes.items() for what, r in row.items() if r < 4.5}
     assert not under, under
