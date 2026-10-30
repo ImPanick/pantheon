@@ -257,9 +257,10 @@ def _file_converter():
 def test_file_converters_runbook_tests_the_very_file_each_kind_writes():
     """1.4.0: its runbook and every case run the one command, and each kind
     tests the file it is about to write — not an `$o` LibreOffice never
-    names."""
+    names. (`B1695` made it 1.5.0: the photo kind also tests a burst's
+    first numbered copy — `tests/test_a_burst_converted_before_is_skipped_whole.py`.)"""
     m, cases, command = _file_converter()
-    assert m.version == "1.4.0"
+    assert m.version == "1.5.0"
     assert H.manifest_effects(m)["destructive"] == "ask"
     for kind, write in (("pdf", 'libreoffice --headless --convert-to pdf --outdir converted "$f"'),
                         ("jpg", 'heif-convert "$f" "converted/${f%.*}.jpg"'),
