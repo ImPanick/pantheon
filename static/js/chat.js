@@ -307,10 +307,15 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
     const openUp = above >= pRect.height || above >= below;
     const room = Math.max(160, (openUp ? above : below) - 8);
     popup.style.maxHeight = `${Math.round(room)}px`;
-    const height = Math.min(pRect.height, room);
-    popup.style.top = openUp
-      ? `${Math.round(Math.max(8, rect.top - height - 8))}px`
-      : `${Math.round(rect.bottom + 8)}px`;
+    // Opened upward it hangs from its BOTTOM edge: a row that unfolds grows
+    // the panel up, away from the wheel, instead of pushing it down over it.
+    if (openUp) {
+      popup.style.top = 'auto';
+      popup.style.bottom = `${Math.round(window.innerHeight - rect.top + 8)}px`;
+    } else {
+      popup.style.bottom = 'auto';
+      popup.style.top = `${Math.round(rect.bottom + 8)}px`;
+    }
     let left = rect.right - pRect.width;
     left = Math.max(8, Math.min(left, window.innerWidth - pRect.width - 8));
     popup.style.left = `${Math.round(left)}px`;

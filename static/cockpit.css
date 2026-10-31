@@ -1697,3 +1697,119 @@ html.cockpit .voice-call-end:hover { color: #fff; background: color-mix(in oklab
 /* The tab bar's Library door wears the new-tab button's shape, not its
    half-turn on hover (that belongs to the plus). */
 html.cockpit .doc-tab-library:hover svg { transform: none; }
+
+/* ───────────────────────── 2026-10-31 · the context breakdown, read on one line ───────────────────────── */
+/* Panick: the expand arrows sat on lines of their own under each row. The
+   row grid above had four columns and the product's disclosure chevron
+   (`summary::after`) is a fifth child, so it wrapped. Every row now has a
+   fifth, fixed column: rows that open draw their chevron there, beside the
+   share; rows that don't leave it empty, so every figure lines up.
+
+   Colour: the old ladder ran the accent into the text colour, which on a
+   warm accent read as reds fading to pink. Now the parts the model always
+   carries (system, tools, skills, memory) are a neutral ladder, and what
+   this chat brought (retrieved, attachments, the conversation) wears the
+   accent. The wheel in the composer uses the same tokens. */
+html.cockpit, html.cockpit .ctx-usage {
+  --ctx-seg-system:       color-mix(in oklab, var(--fg) 78%, var(--bg));
+  --ctx-seg-tools:        color-mix(in oklab, var(--fg) 60%, var(--bg));
+  --ctx-seg-skills:       color-mix(in oklab, var(--fg) 46%, var(--bg));
+  --ctx-seg-memory:       color-mix(in oklab, var(--fg) 34%, var(--bg));
+  --ctx-seg-retrieved:    color-mix(in oklab, var(--ck-hue) 55%, color-mix(in oklab, var(--fg) 55%, var(--bg)));
+  --ctx-seg-attachments:  color-mix(in oklab, var(--ck-hue) 70%, var(--bg));
+  --ctx-seg-conversation: var(--ck-hue);
+}
+html.cockpit .ctx-usage { interpolate-size: allow-keywords; }
+html.cockpit .ctx-usage-cat[data-key="system"]       { --ctx-cat: var(--ctx-seg-system); }
+html.cockpit .ctx-usage-cat[data-key="tools"]        { --ctx-cat: var(--ctx-seg-tools); }
+html.cockpit .ctx-usage-cat[data-key="skills"]       { --ctx-cat: var(--ctx-seg-skills); }
+html.cockpit .ctx-usage-cat[data-key="memory"]       { --ctx-cat: var(--ctx-seg-memory); }
+html.cockpit .ctx-usage-cat[data-key="retrieved"]    { --ctx-cat: var(--ctx-seg-retrieved); }
+html.cockpit .ctx-usage-cat[data-key="attachments"]  { --ctx-cat: var(--ctx-seg-attachments); }
+html.cockpit .ctx-usage-cat[data-key="conversation"] { --ctx-cat: var(--ctx-seg-conversation); }
+
+/* the head: the big figure is the percentage */
+html.cockpit .ctx-usage-head { margin-bottom: 2px; }
+html.cockpit .ctx-usage-pct { font-variant-numeric: tabular-nums; color: var(--ck-text-2) !important; }
+html.cockpit .chat-context-popup.warn .ctx-usage-pct { color: var(--ck-warn-text) !important; }
+html.cockpit .chat-context-popup.danger .ctx-usage-pct { color: var(--ck-danger-text) !important; }
+html.cockpit .ctx-usage-sub { font-variant-numeric: tabular-nums; }
+
+/* the bar, with where auto-compact starts marked on it */
+html.cockpit .ctx-usage-bar-wrap { position: relative; margin: 12px 0 12px; }
+html.cockpit .ctx-usage-bar-wrap .ctx-usage-bar { margin: 0 !important; }
+html.cockpit .ctx-usage-bar-mark {
+  position: absolute; top: -3px; bottom: -3px; width: 2px; margin-left: -1px; border-radius: 1px;
+  background: var(--ck-text-3); opacity: .65; pointer-events: auto;
+}
+html.cockpit .ctx-usage-seg { transition: opacity var(--ck-t) var(--ck-ease); }
+html.cockpit .ctx-usage.has-focus .ctx-usage-seg:not(.is-focus) { opacity: .22; }
+
+/* the rows: swatch · label · tokens · share · chevron */
+html.cockpit .ctx-usage-list { gap: 2px; }
+html.cockpit .ctx-usage-cat-head {
+  grid-template-columns: 8px minmax(0, 1fr) auto 40px 14px !important;
+  gap: 10px !important; padding: 6px 8px !important; border-radius: 10px !important;
+  color: var(--ck-text) !important; transition: background var(--ck-t-fast) var(--ck-ease);
+}
+html.cockpit summary.ctx-usage-cat-head { cursor: pointer; }
+html.cockpit summary.ctx-usage-cat-head:focus-visible { outline: 2px solid var(--ck-edge-hi); outline-offset: -2px; }
+html.cockpit .ctx-usage-cat-label { color: var(--ck-text); }
+html.cockpit .ctx-usage-cat-tokens { font-variant-numeric: tabular-nums; font-weight: 500; color: var(--ck-text) !important; }
+html.cockpit .ctx-usage-cat-share { width: auto !important; font-variant-numeric: tabular-nums; }
+html.cockpit .ctx-usage-cat.unmeasured .ctx-usage-cat-share { font-size: 10.5px; white-space: nowrap; }
+html.cockpit .ctx-usage-cat.is-focus > .ctx-usage-cat-head { background: var(--ck-tint); }
+html.cockpit .ctx-usage-swatch { background: var(--ctx-cat); box-shadow: 0 0 0 3px color-mix(in oklab, var(--ctx-cat) 18%, transparent); }
+html.cockpit .ctx-usage-swatch-free { background: transparent !important; box-shadow: inset 0 0 0 1.5px var(--ck-tint-2), 0 0 0 0 transparent; }
+html.cockpit .ctx-usage-cat.unmeasured .ctx-usage-swatch { box-shadow: none; }
+html.cockpit summary.ctx-usage-cat-head::after {
+  content: '' !important; grid-column: 5; justify-self: center; align-self: center;
+  width: 14px; height: 14px; margin: 0 !important; font-size: 0 !important;
+  background: var(--ck-text-3);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M4 6l4 4 4-4' fill='none' stroke='%23000' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / 12px 12px no-repeat;
+          mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M4 6l4 4 4-4' fill='none' stroke='%23000' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / 12px 12px no-repeat;
+  transition: transform var(--ck-t) var(--ck-spring), background var(--ck-t-fast) var(--ck-ease);
+}
+html.cockpit summary.ctx-usage-cat-head:hover::after { background: var(--ck-text); }
+html.cockpit details.ctx-usage-cat[open] > summary.ctx-usage-cat-head::after { transform: rotate(180deg); background: var(--ck-text-2); }
+
+/* open: the row and its parts become one tinted group, unfolding smoothly */
+html.cockpit details.ctx-usage-cat { border-radius: 10px !important; transition: background var(--ck-t) var(--ck-ease); }
+html.cockpit details.ctx-usage-cat[open] { background: var(--ck-tint) !important; }
+html.cockpit details.ctx-usage-cat[open] > summary.ctx-usage-cat-head:hover { background: var(--ck-tint); }
+html.cockpit details.ctx-usage-cat::details-content {
+  block-size: 0; overflow: clip;
+  transition: block-size var(--ck-t) var(--ck-ease), content-visibility var(--ck-t) allow-discrete;
+}
+html.cockpit details.ctx-usage-cat[open]::details-content { block-size: auto; }
+
+/* the parts: name, kind, tokens under the row's tokens; the gauge under
+   each name is its share of the part it belongs to */
+html.cockpit .ctx-usage-items {
+  display: flex; flex-direction: column; gap: 0;
+  margin: 0 !important; padding: 0 8px 8px 26px !important; max-height: 208px;
+  scrollbar-width: thin;
+}
+html.cockpit .ctx-usage-cat .ctx-usage-item {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; column-gap: 10px; row-gap: 3px;
+  padding: 4px 74px 4px 8px; border-radius: 6px; line-height: 16px;
+  font-size: 11.5px; color: var(--ck-text-2); transition: background var(--ck-t-fast) var(--ck-ease);
+}
+html.cockpit .ctx-usage-cat .ctx-usage-item:hover { background: var(--ck-tint); }
+html.cockpit .ctx-usage-item-bar { grid-column: 1 / -1; grid-row: 2; height: 2px; border-radius: 2px; background: var(--ck-tint-2); overflow: hidden; }
+html.cockpit .ctx-usage-item-meter { display: block; height: 100%; border-radius: 2px; background: var(--ctx-cat, var(--ck-text-3)); }
+html.cockpit .ctx-usage-item-main { display: flex; align-items: center; gap: 6px; min-width: 0; }
+html.cockpit .ctx-usage-item-name { font-family: var(--ck-font-mono); font-size: 11px; color: var(--ck-text-2); }
+html.cockpit .ctx-usage-cat .ctx-usage-item-tokens { text-align: right; font-variant-numeric: tabular-nums; color: var(--ck-text-2) !important; font-size: 11.5px; }
+html.cockpit .ctx-usage-kind { border: 0 !important; background: var(--ck-tint-2); color: var(--ck-text-3) !important; border-radius: 999px !important; padding: 0 6px !important; line-height: 15px !important; }
+html.cockpit .ctx-usage-item-count { color: var(--ck-text-3) !important; }
+/* the files waiting to be sent keep their own simple list */
+html.cockpit .ctx-usage-pending .ctx-usage-item { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 8px; padding: 3px 4px; font-size: 11.5px; }
+html.cockpit .ctx-usage-pending .ctx-usage-item-main { display: contents; }
+html.cockpit .ctx-usage-attach { border-top-color: var(--ck-edge-lo) !important; }
+
+@media (prefers-reduced-motion: reduce) {
+  html.cockpit details.ctx-usage-cat::details-content,
+  html.cockpit summary.ctx-usage-cat-head::after,
+  html.cockpit .ctx-usage-seg { transition: none; }
+}
