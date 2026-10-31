@@ -88,7 +88,7 @@ from scratch. Introduced 2026-08-31; the folds are listed in § *What this run l
 | P25 | The + menu, git per account, the agent browser | 13 | 0 | 0 | **13** |
 | P26 | Design — the studio, and notes on the live page | 10 | 0 | 0 | **10** |
 | P27 | Connections — the hub and the private vault | 11 | 1 | 0 | **10** |
-| Backlog | Bugs and hardening found in flight | 1297 | 22 | 0 | **1275** |
+| Backlog | Bugs and hardening found in flight | 1298 | 22 | 0 | **1276** |
 | **Total** | | **1789** | **37** | **3** | **1749** |
 
 **Nothing is waiting on a decision** except one, and it is first: `P0-19` has to settle which of
