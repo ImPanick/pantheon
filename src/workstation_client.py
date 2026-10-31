@@ -214,7 +214,14 @@ def effective_backend() -> str:
     choice = backend_choice()
     if choice != "auto":
         return choice
-    return "vm" if vm_configured() and vm_accel() == "kvm" else "container"
+    if not vm_configured():
+        return "container"
+    # The owner (2026-10-31): the workstation is *a proper VM*. Pantheon's own
+    # stack ships the VM backend alone, so with no container beside it `auto`
+    # is the VM whatever it runs on — slow without KVM, and the panel says so.
+    if not parse_base(os.environ.get(URL_ENV, "")):
+        return "vm"
+    return "vm" if vm_accel() == "kvm" else "container"
 
 
 def resolve_base() -> tuple[Optional[str], str]:

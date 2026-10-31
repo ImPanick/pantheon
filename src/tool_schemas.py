@@ -530,8 +530,8 @@ FUNCTION_TOOL_SCHEMAS = [
             # `P25-05`. The agent browser (`src/agent_tools/browser_tools.py`).
             "name": "agent_browser",
             "description": (
-                "A real web browser — Firefox in the person's workstation — that the person can "
-                "watch and take over in the app. One call is one action. open a url; read the "
+                "A real web browser — Firefox, in the person's workstation when they have one and "
+                "in Pantheon otherwise — that the person can watch and take over in the app. One call is one action. open a url; read the "
                 "page to get its text and its clickable and typable elements numbered [1], [2]…; "
                 "click an element by ref; type text into one (ref), with submit to press Enter "
                 "after; press keys such as Enter, Tab or ctrl+a; scroll (dy, positive is down); "

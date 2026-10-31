@@ -417,8 +417,40 @@ def check_url(raw: Any) -> str:
     return url
 
 
+# Where a Firefox may be, beyond `PATH`'s `firefox`. Debian's package (the one
+# Pantheon's own image installs for the browser without a workstation,
+# `src/local_browser.py`) is `firefox-esr`; a desktop install of Pantheon finds
+# the person's own Firefox where its installer puts it. `FIREFOX_ENV` wins.
+FIREFOX_ENV = "PANTHEON_BROWSER_FIREFOX"
+FIREFOX_NAMES = ("firefox", "firefox-esr")
+FIREFOX_PATHS = (
+    "/Applications/Firefox.app/Contents/MacOS/firefox",
+    r"C:\Program Files\Mozilla Firefox\firefox.exe",
+    r"C:\Program Files (x86)\Mozilla Firefox\firefox.exe",
+)
+
+
+def find_firefox() -> Optional[str]:
+    """The Firefox this machine has, or None."""
+    chosen = (os.environ.get(FIREFOX_ENV) or "").strip()
+    if chosen:
+        return chosen if os.path.isfile(chosen) and os.access(chosen, os.X_OK) else None
+    for name in FIREFOX_NAMES:
+        found = shutil.which(name)
+        if found:
+            return found
+    for path in FIREFOX_PATHS:
+        if os.path.isfile(path):
+            return path
+    return None
+
+
 class AccountBrowser:
     """One person's browser: the process, its session, its tabs."""
+
+    #: Preferences written after the shipped ones — the browser without a
+    #: workstation sets its proxy here (`src/local_browser.py`).
+    extra_prefs = ""
 
     def __init__(self, launch_prefix: List[str], env: Dict[str, str], profile: Path,
                  headless: bool, own=None):
@@ -449,13 +481,13 @@ class AccountBrowser:
                 and self.session is not None and not self.session.closed)
 
     def start(self) -> None:
-        firefox = shutil.which("firefox")
+        firefox = find_firefox()
         if not firefox:
             raise BrowserError("unavailable", "This workstation has no Firefox, so it has no browser.")
         self.profile.mkdir(parents=True, exist_ok=True)
         names = self.names() if callable(getattr(self, "names", None)) else None
-        (self.profile / "user.js").write_text(USER_JS + (names.browser_prefs() if names else ""),
-                                              encoding="utf-8")
+        (self.profile / "user.js").write_text(USER_JS + (names.browser_prefs() if names else "")
+                                              + self.extra_prefs, encoding="utf-8")
         if self.own:
             self.own([self.profile.parent, self.profile, self.profile / "user.js"])
         if names:
@@ -517,6 +549,8 @@ class AccountBrowser:
                 except Exception:  # noqa: BLE001
                     pass
             self.session = None
+            if self.proc is not None and self.proc.poll() is None and not hasattr(os, "killpg"):
+                self.proc.kill()   # Windows: no process groups; Firefox's children follow it
             if self.proc is not None and self.proc.poll() is None:
                 try:
                     os.killpg(self.proc.pid, 15)

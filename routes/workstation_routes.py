@@ -342,6 +342,34 @@ def setup_workstation_routes() -> APIRouter:
         except WorkstationError as e:
             raise _http_error(e)
 
+    def _browser_mine(request: Request):
+        """`(client, account)` for the caller's own browser: their
+        workstation's when it would answer them, Pantheon's own otherwise
+        (`src/local_browser.browser_for`)."""
+        from src.local_browser import browser_for
+        owner = require_user(request)
+        try:
+            return browser_for(owner, auth_manager=_auth_manager(request))
+        except WorkstationError as e:
+            raise _http_error(e)
+
+    def _control_target(request: Request):
+        """Whose holder `/control` reads and sets: the workstation's screen
+        when it answers the caller; Pantheon's own browser when it does not
+        and that browser is theirs; otherwise the workstation's refusal."""
+        from src.local_browser import LocalBrowserClient, browser_for
+        owner = require_user(request)
+        try:
+            return wa.workstation_for(owner, auth_manager=_auth_manager(request))
+        except WorkstationError as refusal:
+            try:
+                client, account = browser_for(owner, auth_manager=_auth_manager(request))
+            except WorkstationError:
+                raise _http_error(refusal)
+            if not isinstance(client, LocalBrowserClient):
+                raise _http_error(refusal)
+            return client, account
+
     def _watched(request: Request, person: str):
         """`B1424`. `(client, account)` for the screen being watched: the
         caller's own, or — for an admin, and only to watch — another person's.
@@ -398,7 +426,7 @@ def setup_workstation_routes() -> APIRouter:
     async def workstation_holder(request: Request, person: str = ""):
         """Who has the mouse and keyboard right now — on the caller's screen,
         or on the one an admin is watching (`B1424`)."""
-        client, account = _watched(request, person)
+        client, account = _watched(request, person) if (person or "").strip() else _control_target(request)
         try:
             made = await client.ensure(account)
         except WorkstationError as e:
@@ -408,7 +436,7 @@ def setup_workstation_routes() -> APIRouter:
     @router.post("/control")
     async def workstation_control(request: Request):
         """Take over (`person`) or hand back (`agent`) the caller's own screen."""
-        client, account = _mine(request)
+        client, account = _control_target(request)
         holder = (await _body(request)).get("holder")
         if holder not in P.HOLDERS:
             raise HTTPException(400, "“holder” is “person” (take over) or “agent” (hand back).")
@@ -427,7 +455,8 @@ def setup_workstation_routes() -> APIRouter:
         """The caller's own browser: one frame of the page, its address, title
         and tabs, and what it did after `since` (`P25-07`); `304` when none
         of that changed."""
-        client, account = _mine(request)
+        from src.local_browser import runs_in
+        client, account = _browser_mine(request)
         try:
             shot = await client.browser(account, "frame", if_none_match=if_none_match or None,
                                         since=max(0, int(since or 0)))
@@ -442,13 +471,16 @@ def setup_workstation_routes() -> APIRouter:
         seq = shot.get("seq") if isinstance(shot.get("seq"), int) and not isinstance(shot.get("seq"), bool) else 0
         return JSONResponse({**frame, "url": str(shot.get("url") or "")[:4000],
                              "title": str(shot.get("title") or "")[:300], "tabs": tabs,
-                             "activity": activity, "seq": seq},
+                             "activity": activity, "seq": seq,
+                             # Which browser this is: the workstation's, or
+                             # Pantheon's own (`src/local_browser.py`).
+                             "runs_in": runs_in(client) or "pantheon"},
                             headers=_NO_STORE)
 
     @router.post("/browser")
     async def workstation_browser_act(request: Request):
         """The person's own hand on their browser."""
-        client, account = _mine(request)
+        client, account = _browser_mine(request)
         body = await _body(request)
         action = body.get("action")
         if action not in _BROWSER_PERSON_ACTIONS:
