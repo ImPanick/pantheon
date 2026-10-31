@@ -108,6 +108,13 @@ the next one is cut.
 
 ### Added
 
+- **Plan mode gathers what it needs before it plans** (2026-10-31). Before drafting, the agent
+  checks it knows the outcome, what done looks like, the limits and the person's taste; whatever
+  the project cannot tell it, it asks on one card of up to five questions (`ask_user` with
+  `questions`), each with suggested answers and a line for the person's own words, plus *Plan
+  with what you have*. The answers come back as one message, and the plan opens with a `Goal:`
+  line that stays pinned while it executes. A plan-mode turn that asked instead of planning no
+  longer offers *Execute*.
 - **The browser runs without a workstation** (2026-10-31). A person the workstation would not
   answer gets Pantheon's own headless Firefox (Debian's `firefox-esr`, now in the image; a desktop
   install finds the Firefox it has, or `PANTHEON_BROWSER_FIREFOX`). It is the same browser as the

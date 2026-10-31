@@ -1769,7 +1769,7 @@ If the user asks for a reminder/alarm before the event, pass `reminder_minutes` 
     "read_chat": "- ```read_chat``` — Read one of the user's own past chats through, in order, a page at a time — to summarise, quote or learn from a whole conversation, where a search shows only a match and a few lines around it. Args (JSON): {\"session_id\": \"<id from list_sessions or search_chats>\", \"from\": <message number, default 1>}; the answer says where the next page starts.",
     "pipeline": "- ```pipeline``` — Run a multi-step AI pipeline. Args (JSON) with ordered steps, each specifying a model and prompt. Use for complex workflows.",
     "ui_control": "- ```ui_control``` — Control the UI: toggle tools on/off, OPEN PANELS, open email reply drafts, switch models, change themes. Commands: `toggle <name> on/off` (names: bash/shell, web/search, research, incognito), `open_panel <name>` (panels: documents, gallery, email, sessions, notes, memories/brain, skills, settings, cookbook), `open_email_reply <uid> <folder> <reply|reply-all|ai-reply> <body text>` (opens an email compose document pre-filled with body, DOES NOT send; use this for normal “write/draft a reply saying X” requests), `set_mode agent/chat`, `switch_model <name>`, `set_theme <preset>`, `create_theme <name> <bg> <fg> <panel> <border> <accent>` (optional key=val for advanced colors AND background effects: bgPattern=<none|dots|synapse|rain|constellations|perlin-flow|petals|sparkles|embers|ascii>, bgEffectColor=#RRGGBB, bgEffectIntensity=<num>, bgEffectSize=<num>, frosted=true|false). \"open documents\" / \"open library\" / \"show gallery\" / \"open inbox\" / \"open notes\" / \"open cookbook\" all map to `open_panel <name>`. Built-in theme presets: dark, light, midnight, paper, forest, ocean, ume, copper, organs, lavender, gpt, claude, cute, guild, codehost, grove, notebook, channel, video, mintchat. For any other vibe/name, use create_theme.",
-    "ask_user": "- ```ask_user``` — Ask the user a multiple-choice question when the task is genuinely ambiguous and the answer changes what you do next (pick an approach, confirm an assumption, choose a target). Args (JSON): {\"question\": \"...\", \"options\": [{\"label\": \"...\", \"description\": \"...\"?}, ...], \"multi\": false?}. 2-6 options. The user gets clickable buttons; calling this ENDS your turn and their choice comes back as your next message. Prefer sensible defaults — only ask when you truly can't proceed well without their input. LOOK BEFORE YOU ASK: if any tool in this turn's list would answer the question, call it instead — a question whose answer a tool would have printed is the defect, not the caution. Never use this to ask permission for a step the user already asked for; take the step. Holding an act that needs a person is the approval gate's job, not this tool's.",
+    "ask_user": "- ```ask_user``` — Ask the user a multiple-choice question when the task is genuinely ambiguous and the answer changes what you do next (pick an approach, confirm an assumption, choose a target). Args (JSON): {\"question\": \"...\", \"options\": [{\"label\": \"...\", \"description\": \"...\"?}, ...], \"multi\": false?}. 2-6 options. To ask several things at once (plan mode, before drafting a plan): {\"question\": \"one-line lead-in\", \"questions\": [{\"question\": \"...\", \"options\"?: [...], \"multi\"?: false}, ...]} — up to 5, options optional, the person can always type their own answer. The user gets clickable buttons; calling this ENDS your turn and their choice comes back as your next message. Prefer sensible defaults — only ask when you truly can't proceed well without their input. LOOK BEFORE YOU ASK: if any tool in this turn's list would answer the question, call it instead — a question whose answer a tool would have printed is the defect, not the caution. Never use this to ask permission for a step the user already asked for; take the step. Holding an act that needs a person is the approval gate's job, not this tool's.",
     "update_plan": "- ```update_plan``` — While executing an approved plan, write the plan back: tick steps done or revise them. Args (JSON): {\"plan\": \"- [x] done step\\n- [ ] next step\"}. Always pass the COMPLETE checklist, not a diff. Call it after finishing each step (mark it `- [x]`) and whenever the user asks to change the plan. The user's docked plan window updates live. Does nothing if there's no active plan. Writing the plan is not doing the work: after this call, take the next unchecked step in the same turn.",
     "list_served_models": "- ```list_served_models``` — Show what the Forge (LLM-serving subsystem) is currently running. NO args. Use this for ANY 'what's running' / 'what's serving' / 'show my cookbook' / 'is anything up' query. DO NOT shell out (`ps aux`, `docker ps`, etc.) — this tool is the source of truth. Failed serve tasks include recent logs plus diagnosis/retry suggestions.\n  Use those suggestions to call `serve_model` again with an adjusted command when appropriate.",
     "stop_served_model": "- ```stop_served_model``` — Stop a running model server. Args (JSON): {\"session_id\": \"<from list_served_models>\"}. Use for 'kill my cookbook' / 'stop the model' / 'shut down vLLM'.",
@@ -6632,12 +6632,16 @@ PLAN_MODE_DIRECTIVE = (
     "ground the plan. If the task is 'write a file', your plan is to DESCRIBE "
     "writing it — you do NOT write it now.\n"
     "\n"
-    "OUTPUT: present the plan as a GitHub-style checklist, one concrete step per line:\n"
+    "OUTPUT: open with one line, `Goal: ...`, saying in the person's own terms "
+    "what will be true once the plan is carried out. Then present the plan as a "
+    "GitHub-style checklist, one concrete step per line:\n"
     "- [ ] first action you will take once approved\n"
     "- [ ] next action\n"
     "Each item = one concrete action (file to create/edit, command to run, side "
     "effect). Do not execute. Do not end with 'Done' or anything implying the work "
-    "is finished. End your turn with the checklist.\n"
+    "is finished. End your turn with the checklist — or, when you do not yet know "
+    "enough to plan, with your questions (below). Never with both, never with "
+    "neither.\n"
     "\n"
     # `audit-P1-plan-loop`. GPT-6.1's audit found a weak local model stuck for
     # over four minutes reconciling a request's own formatting demands (three
@@ -6674,7 +6678,33 @@ PLAN_MODE_DIRECTIVE = (
     "person — so a question that the repository would have answered costs the "
     "person a round trip for nothing, and a plan built on a guess about what "
     "was meant is still worse than a question, because the guess is invisible "
-    "once the plan is approved. Look first, then ask, then plan."
+    "once the plan is approved. Look first, then ask, then plan.\n"
+    "\n"
+    # The owner, 2026-10-31: *"we also need to ensure the LLM has enough
+    # information to actually draft a plan... if it doesn't — it needs to query
+    # the user for more information to build the plan off of... gather the
+    # users vision — form the plan that makes it reality."* The paragraph above
+    # says to ask; nothing said what a plan needs, so a model given "build me a
+    # dashboard" checked nothing and planned a guess. These four are the check,
+    # and `ask_user`'s `questions` is the one card that asks for all of them at
+    # once (`src/agent_tools/interaction_tools.py` `_brief`), so gathering the
+    # vision costs one round trip rather than one per question.
+    "BEFORE YOU WRITE A PLAN, CHECK YOU HAVE ENOUGH TO PLAN FROM. A plan the "
+    "person can approve rests on four things: (1) THE OUTCOME — what they want "
+    "to exist or change, in a sentence; (2) DONE — how they will know it worked; "
+    "(3) THE LIMITS — where it lives, what it must use or must not touch, how "
+    "big, by when; (4) THEIR TASTE — the look, feel, audience or priority, "
+    "wherever it would change the steps. After grounding, if any of the four is "
+    "still a guess that would change the steps, do NOT draft a plan on top of "
+    "the guess: call `ask_user` with `questions` — only the few that matter, "
+    "at most 5, each short and specific, with 2-4 suggested answers where you "
+    "can offer sensible ones and none where only their own words will do — and "
+    "end the turn there. Do not ask what the request already says, and do not "
+    "ask for the sake of asking: a request that answers all four gets its plan "
+    "straight away. When the answers come back, plan from them and carry their "
+    "words into the `Goal:` line and the steps; ask again only about a gap their "
+    "answers opened. If they tell you to go ahead with what you have, plan, and "
+    "name each assumption you made in the step it shapes."
 )
 
 

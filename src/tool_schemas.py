@@ -831,7 +831,7 @@ FUNCTION_TOOL_SCHEMAS = [
         "type": "function",
         "function": {
             "name": "ask_user",
-            "description": "Ask the user a multiple-choice question to get a decision or clarification when the task is genuinely ambiguous and the answer changes what you do next (e.g. pick between approaches, confirm an assumption, choose a target). The user sees clickable option buttons; calling this ENDS your turn and their selection arrives as your next message. LOOK BEFORE YOU ASK: if any tool offered this turn would answer the question, call it instead — a question whose answer a tool would have printed is the defect, not the caution. Never use it to ask permission for a step the user already asked for; take the step. Do NOT use it to confirm irreversible/destructive actions that have a dedicated confirmation flow — the approval gate holds those.",
+            "description": "Ask the user a multiple-choice question (or, with `questions`, several at once) to get a decision or clarification when the task is genuinely ambiguous and the answer changes what you do next (e.g. pick between approaches, confirm an assumption, choose a target). The user sees clickable option buttons; calling this ENDS your turn and their selection arrives as your next message. LOOK BEFORE YOU ASK: if any tool offered this turn would answer the question, call it instead — a question whose answer a tool would have printed is the defect, not the caution. Never use it to ask permission for a step the user already asked for; take the step. Do NOT use it to confirm irreversible/destructive actions that have a dedicated confirmation flow — the approval gate holds those.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -848,9 +848,28 @@ FUNCTION_TOOL_SCHEMAS = [
                             "required": ["label"]
                         }
                     },
-                    "multi": {"type": "boolean", "description": "Set true ONLY when the question explicitly allows choosing more than one option. Otherwise omit it or set false. Default false."}
+                    "multi": {"type": "boolean", "description": "Set true ONLY when the question explicitly allows choosing more than one option. Otherwise omit it or set false. Default false."},
+                    # Plan mode's brief: several questions on one card, so the
+                    # model gathers what a plan rests on in one round trip.
+                    "questions": {
+                        "type": "array",
+                        "description": "Ask several things at once (up to 5) instead of one — how plan mode gathers what a plan needs before drafting it. When set, `question` is a one-line lead-in and `options` is not needed. The person can always type their own answer to each.",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "question": {"type": "string", "description": "One short, specific question."},
+                                "options": {"type": "array", "description": "0-6 suggested answers; leave out for an open question.",
+                                            "items": {"type": "object",
+                                                      "properties": {"label": {"type": "string"}, "description": {"type": "string"}},
+                                                      "required": ["label"]}},
+                                "multi": {"type": "boolean", "description": "True only when more than one suggestion may be picked."},
+                                "placeholder": {"type": "string", "description": "Optional hint shown in the answer box, e.g. an example answer."}
+                            },
+                            "required": ["question"]
+                        }
+                    }
                 },
-                "required": ["question", "options"]
+                "required": ["question"]
             }
         }
     },

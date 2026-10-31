@@ -1480,6 +1480,93 @@ html.cockpit #export-dl-btn { margin-right: 2px !important; }
   html.cockpit .chat-input-right .mode-toggle { display: none !important; }
 }
 
+/* ───────────────────────── a question from the agent ───────────────────────── */
+/* The agent's question card (`chatRenderer.renderAskUserCard`) is a slab on the
+   column, like a lit instrument waiting on a reading: a lamp on the shared beat
+   says it is waiting, pills for the answers, the one primary to send. The
+   brief (`.ask-brief`, plan mode's several questions at once) is the same card
+   with a numbered list; each numeral lights when its question has an answer. */
+html.cockpit .ask-user-card {
+  width: 100%; max-width: 66ch; margin: 4px 0 20px; padding: 16px 18px 16px; border-radius: var(--ck-r-l);
+  border: 1px solid var(--ck-edge-lo);
+  background:
+    linear-gradient(135deg, var(--ck-sheen-hi) 0%, transparent 36%, transparent 68%, var(--ck-sheen-lo) 100%),
+    var(--ck-noise-soft) 0 0/240px 240px,
+    var(--ck-glass-strong);
+  box-shadow: inset 0 1px 0 var(--ck-edge-hi), var(--ck-lift-1);
+  color: var(--ck-text); font-family: var(--ck-font-ui);
+  animation: ck-in 600ms var(--ck-ease) backwards;
+}
+html.cockpit .ask-user-head { display: flex; align-items: center; gap: 8px; min-height: 22px; }
+html.cockpit .ask-user-head .ask-user-close { margin-left: auto; }
+html.cockpit .ask-user-card .ask-user-question {
+  font-family: var(--ck-font-display); font-weight: 400; font-size: 22px !important; line-height: 1.25; letter-spacing: -.005em;
+  color: var(--ck-text); margin: 4px 0 14px;
+}
+html.cockpit .ask-user-card .ask-user-option {
+  border-radius: var(--ck-r-m); border: 1px solid var(--ck-edge-lo); background: var(--ck-tint); color: var(--ck-text);
+  font-size: 13px !important; padding: 9px 13px; transition: background var(--ck-t-fast) var(--ck-ease), border-color var(--ck-t-fast) var(--ck-ease);
+}
+html.cockpit .ask-user-card .ask-user-option-label { font-size: 13px !important; }
+html.cockpit .ask-user-card .ask-user-option-desc { font-size: 12px !important; color: var(--ck-text-3); }
+html.cockpit .ask-user-card .ask-user-option:hover:not(:disabled) { background: var(--ck-tint-2); border-color: var(--ck-accent-line); }
+
+html.cockpit .ask-brief-eyebrow {
+  display: inline-flex; align-items: center; gap: 8px; font: 500 11px/1 var(--ck-font-ui); letter-spacing: .08em; text-transform: uppercase; color: var(--ck-text-3);
+}
+html.cockpit .ask-brief-eyebrow::before {
+  content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--ck-warn);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--ck-warn) 20%, transparent); animation: ck-pulse var(--ck-beat) var(--ck-ease) infinite;
+}
+html.cockpit .ask-brief-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 14px; }
+html.cockpit .ask-brief-item { display: grid; gap: 8px; padding-left: 32px; position: relative; }
+html.cockpit .ask-brief-q { font: 500 14px/1.45 var(--ck-font-ui); color: var(--ck-text); }
+html.cockpit .ask-brief-n {
+  position: absolute; left: 0; top: 0; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center;
+  font: 500 11.5px/1 var(--ck-font-mono); color: var(--ck-text-2); background: var(--ck-tint); box-shadow: inset 0 0 0 1px var(--ck-edge-lo);
+  transition: background var(--ck-t) var(--ck-ease), color var(--ck-t) var(--ck-ease), box-shadow var(--ck-t) var(--ck-ease);
+}
+html.cockpit .ask-brief-item.answered .ask-brief-n {
+  background: linear-gradient(135deg, var(--ck-accent), var(--ck-accent-2)); color: var(--ck-on-accent);
+  box-shadow: inset 0 1px 0 var(--ck-ring-hi), 0 0 0 4px var(--ck-accent-wash);
+}
+html.cockpit .ask-brief-options { display: flex; flex-wrap: wrap; gap: 6px; }
+html.cockpit .ask-brief-option {
+  height: auto !important; min-height: 30px; padding: 6px 13px; border-radius: 999px; border: 1px solid var(--ck-edge-lo);
+  background: transparent; color: var(--ck-text-2); font: 400 13px/1.25 var(--ck-font-ui); text-align: left; cursor: pointer;
+  transition: background var(--ck-t-fast) var(--ck-ease), color var(--ck-t-fast) var(--ck-ease), border-color var(--ck-t-fast) var(--ck-ease);
+}
+html.cockpit .ask-brief-option:hover { background: var(--ck-tint); color: var(--ck-text); }
+html.cockpit .ask-brief-option[aria-pressed="true"] {
+  background: var(--ck-accent-wash); border-color: var(--ck-accent-line); color: var(--ck-text); box-shadow: inset 0 1px 0 var(--ck-edge-hi);
+}
+html.cockpit .ask-brief-own {
+  width: 100%; margin: 0; min-height: 34px; padding: 7px 12px; border-radius: 10px;
+  border: 1px solid var(--ck-edge-lo) !important; background: var(--ck-tint) !important; color: var(--ck-text) !important; font: 400 13px/1.4 var(--ck-font-ui) !important;
+  box-shadow: none !important; transition: border-color var(--ck-t-fast) var(--ck-ease), background-color var(--ck-t-fast) var(--ck-ease), box-shadow var(--ck-t-fast) var(--ck-ease);
+}
+html.cockpit .ask-brief-own::placeholder { color: var(--ck-text-3); opacity: 1; }
+html.cockpit .ask-brief-own:focus { outline: none; border-color: var(--ck-accent-line) !important; background: var(--ck-tint-2) !important; box-shadow: 0 0 0 3px var(--ck-accent-wash) !important; }
+html.cockpit .ask-brief-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 16px; }
+html.cockpit .ask-brief-count { font: 400 12px/1 var(--ck-font-ui); color: var(--ck-text-3); font-variant-numeric: tabular-nums; }
+html.cockpit .ask-brief-actions { display: flex; gap: 8px; margin-left: auto; }
+html.cockpit .ask-brief-skip {
+  height: 32px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--ck-edge-lo); background: transparent; color: var(--ck-text-2);
+  font: 500 12.5px/1 var(--ck-font-ui); cursor: pointer; transition: background var(--ck-t-fast) var(--ck-ease), color var(--ck-t-fast) var(--ck-ease);
+}
+html.cockpit .ask-brief-skip:hover { background: var(--ck-tint); color: var(--ck-text); }
+html.cockpit .ask-brief-send { height: 32px !important; padding: 0 16px !important; }
+html.cockpit .ask-brief-send:disabled { opacity: .45; cursor: default; filter: none; }
+@media (max-width: 640px) {
+  html.cockpit .ask-user-card { padding: 14px 14px; border-radius: var(--ck-r-m); }
+  html.cockpit .ask-user-card .ask-user-question { font-size: 20px !important; }
+  html.cockpit .ask-brief-item { padding-left: 0; }
+  html.cockpit .ask-brief-n { position: static; display: inline-grid; margin-right: 8px; vertical-align: -5px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  html.cockpit .ask-user-card, html.cockpit .ask-brief-eyebrow::before { animation: none; }
+}
+
 /* ───────────────────────── 2026-10-31 · a calmer chat ───────────────────────── */
 /* The owner, on the chat: "change the LLM's chat color scheme … The
    pink/purples etc." The conversation and its composer take their colour from
