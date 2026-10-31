@@ -9,11 +9,23 @@
  *   "browser"        — use Web Speech API for real-time transcription
  *   "local"          — send recording to server /api/stt/transcribe (Whisper)
  *   "endpoint:<id>"  — send recording to server /api/stt/transcribe (API)
+ *
+ * `B1718`. Dictation has its own button beside Send (`#composer-mic-btn`,
+ * wired by `initDictation`), shown while a provider is chosen in
+ * Settings → Voice. `refreshSttProvider` is the composer's one read of
+ * `/api/stt/stats`; it answers it to the page as `pantheon:voice-settings`,
+ * which the voice chat's button follows too (`voiceCall.js`).
  */
+
+import { getAuthStatus } from './appConfig.js';
 
 let mediaRecorder = null;
 let audioChunks = [];
 let isRecording = false;
+// `B1718`. Asked for the microphone and not yet answered (a permission prompt
+// can stay up for as long as the person leaves it), and stopped before it was.
+let _starting = false;
+let _cancelStart = false;
 let recordingStartTime = null;
 let recordingInterval = null;
 
@@ -27,8 +39,11 @@ let _recognitionEnded = null;
 
 // Cached STT provider — refreshed on settings change
 let _sttProvider = 'disabled';
-// `B1564`. The language set in Settings → AI Defaults; blank is the browser's own.
+// `B1564`. The language set in Settings → Voice; blank is the browser's own.
 let _sttLanguage = '';
+// `B1718`. The dictation button and what it calls, once `initDictation` ran.
+let _micBtn = null;
+let _dictation = null;
 
 /**
  * `B1564`. The browser's own speech recognition (the Web Speech API), or
@@ -61,10 +76,34 @@ export function browserSpeechRefusal(code) {
     case 'audio-capture':
       return 'The browser’s speech recognition could not hear the microphone.';
     case 'language-not-supported':
-      return 'The browser’s speech recognition does not know the language set in Settings → AI Defaults.';
+      return 'The browser’s speech recognition does not know the language set in Settings → Voice.';
     default:
       return '';
   }
+}
+
+/**
+ * `B1718`. The kinds of recording a browser can make, in the order asked for:
+ * Chrome and Firefox make WebM (Opus), Safari makes MP4 (AAC). The server
+ * reads what a recording is from its bytes (`sniff_audio_format`), so any of
+ * them is heard; '' leaves the choice to the browser.
+ */
+const RECORDING_TYPES = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg;codecs=opus', 'audio/ogg'];
+
+export function recordingType(Recorder = (typeof MediaRecorder !== 'undefined' ? MediaRecorder : null)) {
+  if (!Recorder || typeof Recorder.isTypeSupported !== 'function') return '';
+  return RECORDING_TYPES.find((t) => {
+    try { return Recorder.isTypeSupported(t); } catch (_) { return false; }
+  }) || '';
+}
+
+/** `B1718`. The file name a recording of `type` is sent and attached under. */
+export function recordingExtension(type) {
+  const t = String(type || '');
+  if (/mp4|aac|m4a/.test(t)) return 'm4a';
+  if (/ogg/.test(t)) return 'ogg';
+  if (/wav/.test(t)) return 'wav';
+  return 'webm';
 }
 
 /**
@@ -77,12 +116,32 @@ async function refreshSttProvider() {
       const stats = await res.json();
       _sttProvider = stats.provider || 'disabled';
       _sttLanguage = String(stats.language || '');
+      _syncMicButton();
       // Notify the send button to update its icon
       if (window._updateSendBtnIcon) window._updateSendBtnIcon();
+      // `B1718`: and the voice chat's button, which an admin is shown before
+      // speech-to-text is set up (it says where), and a member only once it is.
+      let isAdmin = null;
+      try { isAdmin = !!(await getAuthStatus()).is_admin; } catch (_) { /* unknown */ }
+      try {
+        window.dispatchEvent(new CustomEvent('pantheon:voice-settings', { detail: { ...stats, is_admin: isAdmin } }));
+      } catch (_) { /* a listener that throws is its own problem */ }
     }
   } catch (e) {
     console.warn('Failed to fetch STT stats:', e);
   }
+}
+
+/** `B1718`. The dictation button: shown while a provider is chosen, pressed while recording. */
+function _syncMicButton(state = isRecording ? 'recording' : '') {
+  const btn = _micBtn || (typeof document !== 'undefined' ? document.getElementById('composer-mic-btn') : null);
+  if (!btn) return;
+  btn.hidden = !_sttProvider || _sttProvider === 'disabled';
+  const recording = state === 'recording';
+  btn.setAttribute('aria-pressed', String(recording));
+  if (state === 'transcribing') btn.dataset.state = 'transcribing'; else delete btn.dataset.state;
+  const title = recording ? 'Stop dictating' : (state === 'transcribing' ? 'Writing out what was said' : 'Dictate');
+  if (btn.title !== title) { btn.title = title; btn.setAttribute('aria-label', title); }
 }
 
 /**
@@ -103,9 +162,12 @@ function _resetRecordingUI() {
     clearInterval(recordingInterval);
     recordingInterval = null;
   }
-  // Reset send button via global callback
+  _syncMicButton('');
+  // Reset send button via global callback. `B1718`: only from its own
+  // recording state; dictation from its own button can end while a reply
+  // streams, and that Stop is not this module's to reset.
   const sendBtn = document.querySelector('.send-btn');
-  if (sendBtn) {
+  if (sendBtn && (sendBtn.dataset.mode === 'recording' || sendBtn.classList.contains('recording'))) {
     sendBtn.classList.remove('recording');
     sendBtn.dataset.mode = '';
   }
@@ -183,7 +245,7 @@ async function stopBrowserSTT() {
  */
 async function transcribeOnServer(audioBlob) {
   const formData = new FormData();
-  formData.append('file', audioBlob, 'audio.webm');
+  formData.append('file', audioBlob, `audio.${recordingExtension(audioBlob.type)}`);
 
   const res = await fetch('/api/stt/transcribe', {
     method: 'POST',
@@ -235,11 +297,32 @@ export function startRecording(onFileCreated, showToast, showError) {
     return;
   }
 
+  // `B1718`: one recording at a time. A second press while the first waited
+  // on the permission prompt opened a second microphone, and the first one's
+  // never closed.
+  if (_starting || isRecording) return;
+  _starting = true;
+  _cancelStart = false;
   audioChunks = [];
+  let opened = null;
 
   navigator.mediaDevices.getUserMedia({ audio: true })
     .then(stream => {
-      mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+      opened = stream;
+      _starting = false;
+      if (_cancelStart) {
+        // Stopped while the browser asked: the microphone it gave is closed.
+        _cancelStart = false;
+        stream.getTracks().forEach(track => track.stop());
+        _resetRecordingUI();
+        return;
+      }
+      // `B1718`: a kind this browser makes. `audio/webm` was asked for by
+      // name, which Safari refuses, and the refusal was "Microphone error".
+      const asked = recordingType();
+      mediaRecorder = asked ? new MediaRecorder(stream, { mimeType: asked }) : new MediaRecorder(stream);
+      const type = mediaRecorder.mimeType || asked || 'audio/webm';
+      const fileName = () => `voice-message-${Date.now()}.${recordingExtension(type)}`;
 
       mediaRecorder.ondataavailable = event => {
         if (event.data.size > 0) {
@@ -250,7 +333,7 @@ export function startRecording(onFileCreated, showToast, showError) {
       mediaRecorder.onstop = async () => {
         stream.getTracks().forEach(track => track.stop());
 
-        const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+        const audioBlob = new Blob(audioChunks, { type: type.split(';')[0] });
         const provider = _sttProvider;
 
         if (provider === 'browser') {
@@ -264,12 +347,13 @@ export function startRecording(onFileCreated, showToast, showError) {
             const why = heard ? browserSpeechRefusal(_recognitionError) : '';
             if (why && showError) showError(why + ' The recording is attached instead.');
             else if (heard && showToast) showToast('No speech detected');
-            const audioFile = new File([audioBlob], `voice-message-${Date.now()}.webm`, { type: 'audio/webm' });
+            const audioFile = new File([audioBlob], fileName(), { type: audioBlob.type });
             if (onFileCreated) onFileCreated(audioFile);
           }
         } else if (provider === 'local' || provider.startsWith('endpoint:')) {
           // Show "Transcribing..." feedback
           if (showToast) showToast('Transcribing...', 5000);
+          _syncMicButton('transcribing');
           try {
             const transcript = await transcribeOnServer(audioBlob);
             if (transcript) {
@@ -281,12 +365,12 @@ export function startRecording(onFileCreated, showToast, showError) {
             console.error('STT transcription error:', e);
             if (showError) showError('Transcription failed: ' + e.message);
             // Fallback: attach as file
-            const audioFile = new File([audioBlob], `voice-message-${Date.now()}.webm`, { type: 'audio/webm' });
+            const audioFile = new File([audioBlob], fileName(), { type: audioBlob.type });
             if (onFileCreated) onFileCreated(audioFile);
           }
         } else {
           // STT disabled — attach audio file
-          const audioFile = new File([audioBlob], `voice-message-${Date.now()}.webm`, { type: 'audio/webm' });
+          const audioFile = new File([audioBlob], fileName(), { type: audioBlob.type });
           if (onFileCreated) onFileCreated(audioFile);
         }
 
@@ -296,6 +380,7 @@ export function startRecording(onFileCreated, showToast, showError) {
       mediaRecorder.start();
       isRecording = true;
       recordingStartTime = new Date();
+      _syncMicButton('recording');
 
       // Start browser STT if that's the provider. `B1564`: in a browser with
       // none, said now, before anyone speaks to it — in place of
@@ -307,6 +392,13 @@ export function startRecording(onFileCreated, showToast, showError) {
       }
     })
     .catch(error => {
+      _starting = false;
+      _cancelStart = false;
+      // `B1718`: a recorder that could not be made or started leaves the
+      // microphone it was given open (the browser's light stays on).
+      if (opened && !(mediaRecorder && mediaRecorder.state === 'recording')) {
+        try { opened.getTracks().forEach(track => track.stop()); } catch (_) { /* gone */ }
+      }
       console.error('Microphone access error:', error);
       if (showError) {
         if (error.name === 'NotAllowedError') {
@@ -329,6 +421,8 @@ export function stopRecording() {
     mediaRecorder.stop();
     // isRecording will be set to false in _resetRecordingUI called from onstop
   } else {
+    // `B1718`: still waiting on the browser; the microphone is closed when it answers.
+    if (_starting) _cancelStart = true;
     _resetRecordingUI();
   }
 }
@@ -337,7 +431,8 @@ export function stopRecording() {
  * Check if currently recording
  */
 export function getIsRecording() {
-  return isRecording;
+  // `B1718`: and while the browser is still asking for the microphone.
+  return isRecording || _starting;
 }
 
 /**
@@ -348,11 +443,40 @@ export function init() {
   refreshSttProvider();
 }
 
+/**
+ * `B1718`. The dictation button beside Send: a press starts a recording and
+ * the next one stops it; what was said is written into the message box
+ * (`insertTranscription`), or attached as a sound file when it could not be
+ * heard. Not while a voice chat has the microphone (`isCallOn`).
+ */
+export function initDictation({ onFileCreated, showToast, showError, isCallOn } = {}) {
+  const btn = typeof document !== 'undefined' ? document.getElementById('composer-mic-btn') : null;
+  if (!btn || _micBtn === btn) return;
+  _micBtn = btn;
+  _dictation = { onFileCreated, showToast, showError, isCallOn };
+  btn.addEventListener('click', (e) => {
+    e.preventDefault();
+    if (isRecording || _starting || (mediaRecorder && mediaRecorder.state === 'recording')) {
+      stopRecording();
+      return;
+    }
+    if (btn.dataset.state === 'transcribing') return;
+    if (_dictation.isCallOn && _dictation.isCallOn()) {
+      if (_dictation.showToast) _dictation.showToast('The voice chat has the microphone. End it to dictate.', 4000);
+      return;
+    }
+    _syncMicButton('recording');
+    startRecording(_dictation.onFileCreated, _dictation.showToast, _dictation.showError);
+  });
+  _syncMicButton();
+}
+
 const voiceRecorderModule = {
   startRecording,
   stopRecording,
   getIsRecording,
   init,
+  initDictation,
   refreshSttProvider,
   get _sttProvider() { return _sttProvider; },
   set _sttProvider(v) { _sttProvider = v; },

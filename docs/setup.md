@@ -32,6 +32,8 @@ To include optional extras in the image (PDF viewer, Office extraction; includes
 
 The image carries the default local embedding model (about 90 MB), fetched while it is built and copied into `./data/fastembed_cache` on first start, so memory and document search work by meaning without anything being downloaded at run time. `--build-arg BAKE_MODELS=false` builds without it.
 
+The image also carries speech for voice chat and dictation (about half a gigabyte): faster-whisper with the Whisper `base` model, and Piper with the `en_US-ljspeech-medium` voice, both running on the CPU. Turn them on in **Settings → Voice**: *Speech to text* → *Local Whisper, on this server*, and the voice chat's voice → *Piper, on this server*; each has a test button. `--build-arg INSTALL_VOICE=false` builds without speech; `BAKE_MODELS=false` leaves out its models too, and they are then fetched on first use only with *Download models from the internet* on (Settings → System). `WHISPER_SEED_MODEL` and `PIPER_SEED_VOICE` choose which model and voice are baked. After an update, hard-refresh the browser once so it loads the new page.
+
 Open `http://localhost:7000` when the containers are healthy. Docker Compose
 binds the web UI to `127.0.0.1` by default. If the port is taken, set
 `APP_PORT=7001` in `.env` and recreate the container. Set `APP_BIND=0.0.0.0`
@@ -562,6 +564,15 @@ A grab-bag of small gotchas that otherwise turn into long debugging sessions.
 - **Local mail (Dovecot) login fails: "Plaintext authentication disallowed on non-encrypted connections."** Your IMAP/SMTP server is refusing cleartext auth over an unencrypted link. Prefer enabling TLS on the mail server; on a trusted LAN only, you can allow cleartext (Dovecot: `disable_plaintext_auth = no`).
 - **Calendar/contacts (Radicale) won't sync.** Point Pantheon at the **full collection URL** with its trailing slash — e.g. `http://host:5232/<user>/<collection-id>/` — not just the server root. Radicale shows this address for each calendar/address book in its web UI.
 
+### Speech on a native install
+The Docker image installs `requirements-voice.txt` for you. On a native install, install it to use local Whisper and the Piper voice:
+
+```bash
+pip install -r requirements-voice.txt
+```
+
+Both install from wheels on Python 3.11–3.14, x86-64 and ARM64. With nothing baked, the Whisper model and the Piper voice are fetched from Hugging Face on first use, and only once *Download models from the internet* is on; or put a voice's `.onnx` and `.onnx.json` in `data/models/piper/` yourself. Piper is GPL-3.0-or-later (see `CREDITS.md`). The browser's own speech recognition and voice, and any OpenAI-compatible speech endpoint you add, need none of this.
+
 ### Optional Dependencies
 `requirements-optional.txt` contains packages that unlock extra features. It is not installed by default.
 
@@ -579,7 +590,7 @@ Install the optional set only when you need these features:
 pip install -r requirements-optional.txt
 ```
 
-The default Docker image currently uses Python 3.14, while Kokoro 0.9.4 declares Python `>=3.10,<3.13`. Pantheon itself continues to support Python 3.11+, but this pinned optional local-TTS feature requires a native Python 3.11 or 3.12 environment. Kokoro declares `torch`, but the local provider only activates when that torch build has CUDA and a GPU is visible; install the CUDA build appropriate for your host. Browser and configured endpoint TTS remain available on Python 3.13+ and in the container image.
+The default Docker image currently uses Python 3.14, while Kokoro 0.9.4 declares Python `>=3.10,<3.13`. Pantheon itself continues to support Python 3.11+, but this pinned optional local-TTS feature requires a native Python 3.11 or 3.12 environment. Kokoro declares `torch`, but the local provider only activates when that torch build has CUDA and a GPU is visible; install the CUDA build appropriate for your host. Browser and configured endpoint TTS remain available on Python 3.13+ and in the container image, and so does Piper, which speaks on the CPU (`requirements-voice.txt`, in the image by default).
 
 ### Faster, reproducible installs with uv (optional)
 [uv](https://docs.astral.sh/uv/) works as a drop-in replacement for the

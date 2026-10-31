@@ -107,11 +107,20 @@ export const SETTINGS_PANELS = Object.freeze([
     label: 'AI Defaults',
     group: 'models',
     adminOnly: true,
-    // `B1564`: the speech-to-text card's words, for a person who types what
-    // they want rather than the abbreviation.
-    keywords: ['ai', 'defaults', 'model', 'vision', 'image', 'tts', 'stt',
-               'speech', 'speech to text', 'voice', 'dictation', 'transcribe',
-               'transcription', 'whisper', 'microphone'],
+    keywords: ['ai', 'defaults', 'model', 'vision', 'image'],
+  }),
+  definePanel({
+    id: 'voice',
+    icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 10v4"/><path d="M8 6.5v11"/><path d="M12 3.5v17"/><path d="M16 7.5v9"/><path d="M20 10.5v3"/></svg>',
+    // `B1718`. Speech to text (moved from AI Defaults, `B1564`'s card) and
+    // the voice chat, with the voice it answers in. The words are the ones a
+    // person types for either, and the abbreviations.
+    label: 'Voice',
+    group: 'models',
+    adminOnly: true,
+    keywords: ['voice', 'voice chat', 'call', 'talk', 'speak', 'speech', 'speech to text',
+               'text to speech', 'tts', 'stt', 'dictation', 'dictate', 'transcribe',
+               'transcription', 'whisper', 'piper', 'microphone', 'read aloud'],
   }),
   definePanel({
     id: 'search',

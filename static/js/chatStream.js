@@ -314,17 +314,21 @@ function _steerPendingCount() {
 }
 
 /** Hand the text to the queue instead, and say so. The queue is `chat.js`'s and
- *  stays the only queue (`Law 14`); this never builds a second one. */
-function _queueInsteadOfSteering(reason) {
+ *  stays the only queue (`Law 14`); this never builds a second one.
+ *  `B1718`: `spoken` is a voice chat's turn, which is not in the composer —
+ *  it goes to the same queue by `queueSpokenTurn`. */
+function _queueInsteadOfSteering(reason, spoken = '') {
   let queued = false;
   try {
     const cm = window.chatModule;
-    queued = !!(cm && cm.queueStreamingComposerRequest && cm.queueStreamingComposerRequest());
+    queued = spoken
+      ? !!(cm && cm.queueSpokenTurn && cm.queueSpokenTurn(spoken))
+      : !!(cm && cm.queueStreamingComposerRequest && cm.queueStreamingComposerRequest());
   } catch (_) { queued = false; }
   try {
     if (queued) {
       uiModule.showToast && uiModule.showToast(reason + ' — queued for after this response instead');
-    } else {
+    } else if (!spoken) {
       // The queue declined too (nothing is streaming any more). The text was
       // never cleared, so say where it is rather than leaving the user guessing.
       uiModule.showError && uiModule.showError(
@@ -379,29 +383,48 @@ async function probeSteerSupport() {
 }
 
 /**
+ * `B1718`. Whether a steer sent now can reach the run in flight: this build
+ * has the route, a run is live, and neither the run (`stream_steerable`) nor
+ * the composer's guess has said it cannot take one. A voice chat asks this
+ * before it steers with what the person said, and otherwise stops the reply.
+ */
+export function canSteerNow() {
+  if (_steerSupported !== true || !_steerChatBusy()) return false;
+  if (_steerRunAnswer !== null) return _steerRunAnswer === true;
+  return !_steerComposerSaysNo();
+}
+
+/**
  * Send one steer to the run in flight for the current session.
  * Bound to the session read at THIS moment, never at delivery: a steer is
  * addressed to one conversation and posting it into another is the P6-01
  * defect in a different costume.
+ *
+ * `B1718`. `{ spoken: true }` is a voice chat's turn: the words are not in
+ * the composer, so the composer is neither read for pictures nor cleared,
+ * and a refusal queues the words themselves (`queueSpokenTurn`). It answers
+ * `'steered'`, `'queued'` or `false` rather than a boolean, because the call
+ * waits for a steer differently from a queued turn.
  */
-export async function submitSteer(text) {
+export async function submitSteer(text, { spoken = false } = {}) {
   const body = String(text || '').trim();
   if (!body) return false;
+  const fallBack = (reason) => {
+    const queued = _queueInsteadOfSteering(reason, spoken ? body : '');
+    return spoken ? (queued ? 'queued' : false) : false;
+  };
   const sid = _steerSessionId();
-  if (!sid) {
-    _queueInsteadOfSteering('No active chat to steer');
-    return false;
-  }
+  if (!sid) return fallBack('No active chat to steer');
   // fx5-vision (`B1280`). A steer is words only — `/api/chat/steer` takes
   // text — so a picture in the composer stayed in the tray while its words
   // steered the run without it (measured on `0345288` in Chromium: the steer
   // posted `{"text": …}` alone and the thumbnail stayed). The queue carries
   // attachments, so a message with a picture waits for the run instead.
-  if (_composerHoldsFiles()) {
+  if (!spoken && _composerHoldsFiles()) {
     _queueInsteadOfSteering("A picture can't steer a running reply");
     return false;
   }
-  const input = _steerComposer();
+  const input = spoken ? null : _steerComposer();
   const btn = _steerBar && _steerBar.querySelector('.steer-bar-btn');
   if (btn) btn.disabled = true;
   try {
@@ -414,8 +437,7 @@ export async function submitSteer(text) {
     if (res.status === 404 || res.status === 405 || res.status === 501) {
       _steerSupported = false;
       _removeSteerBar();
-      _queueInsteadOfSteering('Steering is not available on this server');
-      return false;
+      return fallBack('Steering is not available on this server');
     }
     let data = {};
     try { data = await res.json(); } catch (_) { data = {}; }
@@ -430,18 +452,16 @@ export async function submitSteer(text) {
         too_long: 'That steer is too long to send mid-run',
         empty: 'Nothing to steer with',
       }[data.reason] || 'Could not steer that';
-      _queueInsteadOfSteering(why);
-      return false;
+      return fallBack(why);
     }
     _clearComposerAfterSteer(input);
     _noteSteerSent(body);
     try {
       uiModule.showToast && uiModule.showToast('Steering — the agent picks this up at its next step');
     } catch (_) {}
-    return true;
+    return spoken ? 'steered' : true;
   } catch (err) {
-    _queueInsteadOfSteering('Steering failed: ' + ((err && err.message) || err));
-    return false;
+    return fallBack('Steering failed: ' + ((err && err.message) || err));
   } finally {
     if (btn) btn.disabled = false;
   }

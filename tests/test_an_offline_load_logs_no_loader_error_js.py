@@ -109,7 +109,7 @@ def test_the_calendar_loader(tmp_path):
 
 def test_the_speech_loader(tmp_path):
     out = _node(tmp_path, """
-        const getSettings = async () => ({ tts_enabled: true });
+        const getSettings = async () => ({ tts_enabled: true, tts_read_aloud: true });   // `B1718`: read-aloud on
         const manager = { available: true, async checkAvailability() %s };
         await both(() => manager.checkAvailability());
     """ % _cut("tts-ai.js", "async checkAvailability()"))

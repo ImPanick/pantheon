@@ -602,6 +602,20 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
       window.dispatchEvent(new CustomEvent('pantheon:chat-busy-change', { detail }));
     } catch (_) {}
   }
+  /** `B1718`. The reply on screen as it streams, for whoever speaks it
+   *  (`voiceCall.js`): `start`; `text`, the round's text as it is shown so
+   *  far; `round`, a new bubble, so the text before it is done; `end`, with
+   *  the last round's text; `stop`, aborted or failed; `ask`, the agent put a
+   *  question or an approval to the person (`detail.question`, `kind`,
+   *  `options`); `steered`, the run read `count` steers. Foreground streams
+   *  only: a reply in a chat that is not open is not spoken in this one. */
+  function _announceReply(phase, sessionId, text, extra) {
+    try {
+      window.dispatchEvent(new CustomEvent('pantheon:reply', {
+        detail: Object.assign({ phase, sessionId: sessionId || '', text: typeof text === 'string' ? text : '' }, extra || {}),
+      }));
+    } catch (_) {}
+  }
   let _pendingContinue = null; // Stores the stopped AI element to merge with new response
   // `B941`: the pending continue carries on an agent run's steps (Continue ▸
   // after the step limit) rather than a stopped reply's text.
@@ -2389,6 +2403,48 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
     currentHolder = null;
   }
 
+  /** `B1718`. Whether a reply is being written into the open chat, or a send
+   *  is on its way there: a voice chat's next turn then waits for it. */
+  export function isReplyRunning() {
+    return !!(isStreaming || _sendInFlight);
+  }
+
+  /**
+   * `B1718`. A voice chat's turn, as the person's next message: sent as if
+   * typed and sent, with whatever is attached. A draft in the box is kept —
+   * set aside while the spoken words go, and put back once they have
+   * (`pantheon:message-sent`). With a reply still running it waits in the
+   * queue instead (`queueSpokenTurn`). Answers `'sent'`, `'queued'` or
+   * `false`.
+   */
+  export function sendSpokenTurn(text) {
+    const said = String(text || '').trim();
+    const input = uiModule.el('message');
+    if (!said || !input) return false;
+    if (isReplyRunning()) return queueSpokenTurn(said) ? 'queued' : false;
+    const draft = input.value || '';
+    if (draft.trim()) {
+      const giveBack = () => {
+        window.removeEventListener('pantheon:message-sent', giveBack);
+        setTimeout(() => {
+          if (input.value) return;
+          input.value = draft;
+          input.dispatchEvent(new Event('input', { bubbles: true }));
+          if (uiModule.autoResize) uiModule.autoResize(input);
+        }, 0);
+      };
+      window.addEventListener('pantheon:message-sent', giveBack);
+      setTimeout(() => window.removeEventListener('pantheon:message-sent', giveBack), 15000);
+    }
+    return _setComposerAndSend(said) ? 'sent' : false;
+  }
+
+  /** `B1718`. A spoken turn that waits for the reply in flight, in the same
+   *  queue Enter puts a draft in while a reply streams. */
+  export function queueSpokenTurn(text) {
+    return !!_queueAgentRequest(String(text || '').trim(), { attachments: [], pendingUpload: false });
+  }
+
   /**
    * `P23-04` (CHAT-M-1, CHAT-M-5). Stop the reply on screen, as the Stop
    * button does — the one call Escape makes. Returns false when nothing is
@@ -3551,8 +3607,11 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
       let isThinking = false;
       let thinkingStartTime = null;
       // Streaming TTS: synthesize sentence-by-sentence during streaming
-      streamingTTS = !!(window.aiTTSManager && window.aiTTSManager.autoPlay && window.aiTTSManager.available);
+      // `B1718`: not in a voice chat, which speaks the reply itself.
+      streamingTTS = !!(window.aiTTSManager && window.aiTTSManager.autoPlay && window.aiTTSManager.available
+                        && !window.__pantheonVoiceCall);
       if (streamingTTS) window.aiTTSManager.streamingStart();
+      _announceReply('start', streamSessionId);
       // Multi-bubble agent tracking
       let roundHolder = holder;       // Current AI text bubble (changes per round)
       let roundText = '';             // Text accumulated for current round
@@ -4351,8 +4410,10 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
                       roundReplyText += _delta;
                       const replyDisplayText = _replyDisplayProjector.append(_delta, roundReplyText);
                       _renderStream({ replyText: replyDisplayText });
+                      _announceReply('text', streamSessionId, replyDisplayText);
                     } else {
                       _renderStream({ knownNormal: true, displayText: _roundDisplayProjector.current() });
+                      _announceReply('text', streamSessionId, _roundDisplayProjector.current());
                     }
                     _scheduleThinkingSpinner();
                     if (streamingTTS) window.aiTTSManager.streamingUpdate(roundText);
@@ -4474,8 +4535,10 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
                     roundReplyText += _delta;
                     const replyDisplayText = _replyDisplayProjector.append(_delta, roundReplyText);
                     _renderStream({ replyText: replyDisplayText });
+                    _announceReply('text', streamSessionId, replyDisplayText);
                   } else {
                     _renderStream({ knownNormal: true, displayText: _roundDisplayProjector.current() });
+                    _announceReply('text', streamSessionId, _roundDisplayProjector.current());
                   }
                   _scheduleThinkingSpinner();
                   // Feed streaming TTS with accumulated text
@@ -5216,6 +5279,7 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
                 // `data`, so the event goes through whole.
                 if (_isBg) continue;
                 chatStream.handleSteerApplied(json);
+                _announceReply('steered', streamSessionId, '', { count: Number(json.count) || 1 });
 
               } else if (json.type === 'ask_user') {
                 if (_isBg) continue;
@@ -5234,6 +5298,14 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
                 }
                 if (holder) holder.dataset.askedUser = '1';
                 chatRenderer.renderAskUserCard(json.data || {});
+                {
+                  const _ask = json.data || {};
+                  _announceReply('ask', streamSessionId, '', {
+                    question: String(_ask.question || ''),
+                    kind: String(_ask.kind || ''),
+                    options: Array.isArray(_ask.options) ? _ask.options.map((o) => String((o && (o.label || o.text)) || o || '')) : [],
+                  });
+                }
 
               } else if (json.type === 'plan_update') {
                 if (_isBg) continue;
@@ -5284,6 +5356,7 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
                   spinner = _openRoundSpinner(newBody, _meter);   // `P4-23`: it carries the meter
                 }
                 if (streamingTTS) window.aiTTSManager._streamSentencesSent = 0;
+                _announceReply('round', streamSessionId);
                 uiModule.scrollHistory();
               } else if (json.type === 'budget_exceeded') {
                 if (_isBg) continue;
@@ -5652,8 +5725,11 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
 	        if (addAITTSButton && accumulated && window.aiTTSManager?._provider !== 'disabled' && window.aiTTSManager?.available) {
 	          addAITTSButton(footerTarget, accumulated);
 	        }
+        _announceReply('end', streamSessionId,
+                       _streamDisplayText(roundReplyText !== null ? roundReplyText : roundText));
         // TTS auto-play: streaming mode flushes remaining text, non-streaming enqueues full message
-        if (accumulated && window.aiTTSManager && window.aiTTSManager.autoPlay) {
+        // `B1718`: never in a voice chat, which has said the reply already.
+        if (accumulated && window.aiTTSManager && window.aiTTSManager.autoPlay && !window.__pantheonVoiceCall) {
           const ttsBtn = holder.querySelector('.ai-tts-button');
           if (ttsBtn) {
             var ICON_PLAY_TTS = playIcon({ size: 14 });
@@ -5819,6 +5895,7 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
       } else {
         // Stop streaming TTS on any error/abort
         if (streamingTTS && window.aiTTSManager) window.aiTTSManager.stop();
+        _announceReply('stop', streamSessionId);
 
         if (abortCtrl && abortCtrl.signal.aborted) {
           const abortReason = abortCtrl._reason || '';
@@ -9024,6 +9101,10 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
     queueStreamingComposerRequest,
     abortCurrentRequest,
     stopCurrentReply,
+    // `B1718`: a voice chat's turns (`voiceCall.js`, wired by `app.js`).
+    isReplyRunning,
+    sendSpokenTurn,
+    queueSpokenTurn,
     detachCurrentStream,
     checkBackgroundStream,
     resumeStream,

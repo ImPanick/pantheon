@@ -1,0 +1,37 @@
+# Speech on this server's own processor — what a voice chat hears with and
+# speaks with when no GPU and no speech service is linked (`B1716`, `B1717`).
+#
+# The container image installs this file by default (Dockerfile
+# `INSTALL_VOICE`, `--build-arg INSTALL_VOICE=false` leaves it out) and bakes
+# each one's default model beside the embedding model (`BAKE_MODELS`), so the
+# "local" speech-to-text and the "Piper" voice work on a fresh install without
+# fetching anything at runtime (`Law 16`). On a host:
+#
+#     pip install -r requirements-voice.txt
+#
+# Both install from wheels on Python 3.11–3.14, x86-64 and ARM64 alike
+# (measured for the image's 3.14 with `pip download --only-binary=:all:`).
+# Pinned exactly, for the reasons in requirements.txt's header (`B320`).
+
+# Whisper, for the "local" speech-to-text provider: CTranslate2 on the CPU,
+# or on a CUDA GPU when it can run there (`services/stt/stt_service.py`
+# probes it in a child process first). MIT. Also listed in
+# requirements-optional.txt, at the same pin, for installs that take that file.
+faster-whisper==1.2.1
+# Not imported: faster-whisper opens every recording with it (PyAV, FFmpeg's
+# libraries in a wheel). Range before pinning: >=11,<19. faster-whisper 1.2.1
+# calls `av.open(..., metadata_errors="ignore")`, an argument PyAV 19 removed,
+# so with PyAV 19 every recording raised TypeError and local speech-to-text
+# heard nothing (`B1716`, found running the image's own Python).
+# faster-whisper's main branch passes it only to an older PyAV; move this pin
+# to 19 with the faster-whisper release that carries that, and not before
+# (`.github/dependabot.yml` holds PyAV's majors back;
+# `tests/test_speech_to_text_keeps_up_with_a_conversation.py` fails on 19).
+av==18.1.0
+
+# Piper, for the "piper" voice: ONNX Runtime on the CPU, fast enough to speak
+# a sentence while the next is written. GPL-3.0-or-later (it carries
+# espeak-ng for pronunciation), which an AGPL-3.0-or-later program may use;
+# see CREDITS.md. Kokoro, the GPU voice in requirements-optional.txt, cannot
+# install on the image's Python at all.
+piper-tts==1.8.0

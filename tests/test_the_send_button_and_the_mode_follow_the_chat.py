@@ -54,7 +54,7 @@ const sendBtn = { dataset: {}, innerHTML: '', title: '',
   addEventListener() {} };
 const messageInput = { value: '' };
 const _sendIcon = 'SEND', _micIcon = 'MIC', _stopIcon = 'STOP', _newChatIcon = 'PLUS';
-const _isSttEnabled = () => false;
+const _sendBtnIsMic = () => false;
 const _hasAttachments = () => false;
 const groupModule = { isActive: () => false };
 let welcome = false;

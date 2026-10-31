@@ -5,6 +5,7 @@
 import { getSettings } from './appConfig.js';
 import { playIcon, stopIcon } from './icons.js';
 import { markUnreached, quietIfUnreached } from './presets.js';   // `B1256`
+import { speakableText } from './speechText.js';   // `B1718`
 
 class AITTSManager {
     constructor() {
@@ -40,7 +41,10 @@ class AITTSManager {
             // the shared cache before doing so, so this still sees the new value.
             try {
                 const settings = await getSettings();
-                if (settings.tts_enabled === false) {
+                // `B1718`: and only while the read-aloud button is on
+                // (Settings → Voice). A voice chosen for voice chat is not
+                // the owner asking for read-aloud back.
+                if (settings.tts_enabled === false || settings.tts_read_aloud !== true) {
                     this.available = false;
                     this._provider = 'disabled';
                     return;
@@ -75,30 +79,11 @@ class AITTSManager {
     }
 
     extractPlainText(content) {
-        // Strip <think>/<thinking> blocks (model reasoning)
-        let cleaned = content.replace(/<think(?:ing)?>[\s\S]*?<\/think(?:ing)?>/gi, '');
-
-        // Create a temporary div to parse HTML/markdown
-        const temp = document.createElement('div');
-        temp.innerHTML = cleaned;
-
-        // Remove code blocks
-        temp.querySelectorAll('pre, code').forEach(el => el.remove());
-
-        // Get text content
-        let text = temp.textContent || temp.innerText || '';
-
-        // Clean up markdown syntax
-        text = text
-            .replace(/#{1,6}\s/g, '') // Remove headers
-            .replace(/\*\*(.+?)\*\*/g, '$1') // Remove bold
-            .replace(/\*(.+?)\*/g, '$1') // Remove italic
-            .replace(/\[(.+?)\]\(.+?\)/g, '$1') // Remove links
-            .replace(/`(.+?)`/g, '$1') // Remove inline code
-            .replace(/\n{3,}/g, '\n\n') // Normalize line breaks
-            .trim();
-
-        return text;
+        // `B1718`. What a person reading the reply out would say, from
+        // `speechText.js`, which the voice chat speaks with too. This parsed
+        // the model's text as HTML in a detached <div>, where an
+        // `<img onerror>` in a reply ran.
+        return speakableText(String(content || ''));
     }
 
     getCacheKey(text) {

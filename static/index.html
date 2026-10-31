@@ -1690,6 +1690,31 @@
     <input type="checkbox" id="incognito-toggle" style="display:none;">
     <input type="file" id="file-input" class="hidden" multiple />
 
+    <!-- `B1718`. The voice chat, while one is on: a lamp and a word for what
+         the call is doing ("Listening." / "Hearing you." / "Thinking." /
+         "Speaking."), the microphone's level, the last thing said or why
+         something cannot work, and the call's own buttons. Hidden until a
+         call starts from the composer's call button (`#composer-call-btn`);
+         drawn and driven by `static/js/voiceCall.js`. -->
+    <section id="voice-call-bar" class="voice-call-bar" role="region" aria-label="Voice chat" hidden>
+      <span class="voice-call-lamp" aria-hidden="true"></span>
+      <span id="voice-call-state" class="voice-call-state" role="status" aria-live="polite">Starting.</span>
+      <span class="voice-call-meter" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>
+      <span id="voice-call-caption" class="voice-call-caption"></span>
+      <span class="voice-call-actions">
+        <button type="button" id="voice-call-setup" class="voice-call-btn voice-call-text-btn" title="Open Settings → Voice" hidden>Voice settings</button>
+        <button type="button" id="voice-call-skip" class="voice-call-btn" title="Stop speaking" aria-label="Stop speaking" hidden>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 5.5v13l9-6.5z"/><path d="M18.5 5.5v13"/></svg>
+        </button>
+        <button type="button" id="voice-call-mute" class="voice-call-btn" title="Mute" aria-label="Mute" aria-pressed="false" data-icon="on">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="2.5" width="6" height="12" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0"/><path d="M12 17.5V21"/></svg>
+        </button>
+        <button type="button" id="voice-call-end" class="voice-call-btn voice-call-end" title="End voice chat" aria-label="End voice chat">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.6 14.6c4.6-4.4 12.2-4.4 16.8 0l-1.9 2.6-3.4-1.3.2-2.3a11 11 0 0 0-6.6 0l.2 2.3-3.4 1.3z"/></svg>
+        </button>
+      </span>
+    </section>
+
     <!-- Unified chat input bar -->
     <div class="chat-input-bar">
       <div class="chat-input-top">
@@ -1996,6 +2021,16 @@
             <span class="turn-chip-mode" id="turn-chip-mode">Agent</span>
             <span class="turn-chip-flag" id="turn-chip-approval" hidden>Auto</span>
             <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="{{chevron:up}}"/></svg>
+          </button>
+          <!-- `B1718`. Speech to text and voice chat, beside Send, each shown
+               when its setting is on (Settings → Voice): the microphone types
+               what is said into the box (`voiceRecorder.js`), and the call
+               button talks with the agent (`voiceCall.js`). -->
+          <button type="button" class="composer-voice-btn" id="composer-mic-btn" title="Dictate" aria-label="Dictate" aria-pressed="false" hidden>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="2.5" width="6" height="12" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0"/><path d="M12 17.5V21"/></svg>
+          </button>
+          <button type="button" class="composer-voice-btn composer-call-btn" id="composer-call-btn" title="Voice chat" aria-label="Voice chat" aria-pressed="false" hidden>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 10v4"/><path d="M8 6.5v11"/><path d="M12 3.5v17"/><path d="M16 7.5v9"/><path d="M20 10.5v3"/></svg>
           </button>
           <button type="submit" form="chat-form" class="send-btn newchat-mode" data-mode="idle" title="Send message">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
@@ -2467,101 +2502,6 @@
               <div id="set-imgSettingsMsg" style="font-size:11px;color:color-mix(in oklab, var(--fg) 45%, var(--fg-muted));"></div>
             </div>
           </div>
-          <!-- `B1564` (`D-2026-10-29-01` §3, the owner: "Allow for both
-               local + browser. All options available."). The card the fork
-               arrived without: `initSttSettings` in `settings.js` had wired
-               these ids all along and returned on the missing select. One
-               control, the provider: "Off" saves `stt_enabled: false`, so the
-               switch and the list can never disagree. The browser's sentence
-               is on its own option and in the note under the list, where it is
-               chosen — the exception to `Law 16` the owner made with it in
-               front of them. Admin-only with the panel (`registry.js`), as
-               `POST /api/auth/settings` is. -->
-          <div class="admin-card">
-            <h2><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;opacity:0.6" aria-hidden="true"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>Speech to Text</h2>
-            <div class="admin-toggle-sub" style="margin-bottom:8px">Turns what you say into words in the message box. On, the chat's empty send button becomes a microphone.</div>
-            <div class="settings-col">
-              <div class="settings-row">
-                <label class="settings-label" for="set-sttProviderSelect">Provider</label>
-                <select id="set-sttProviderSelect" class="settings-select" aria-describedby="set-sttProviderNote">
-                  <option value="disabled">Off</option>
-                  <option value="local">Local Whisper, on this server</option>
-                  <option value="browser">The browser’s own — in Chrome, the audio goes to Google</option>
-                </select>
-              </div>
-              <div id="set-sttProviderNote" class="admin-toggle-sub" role="note"></div>
-              <div id="set-sttModelRow" class="settings-row" style="display:none">
-                <label class="settings-label" for="set-sttModelSelect">Model</label>
-                <select id="set-sttModelSelect" class="settings-select">
-                  <option value="tiny">tiny (fastest)</option>
-                  <option value="base" selected>base</option>
-                  <option value="small">small</option>
-                  <option value="medium">medium</option>
-                  <option value="large-v3">large-v3 (most accurate)</option>
-                </select>
-                <input id="set-sttModelInput" class="settings-select" type="text" placeholder="whisper-1" aria-label="Model the endpoint transcribes with" style="display:none">
-              </div>
-              <div id="set-sttLangRow" class="settings-row" style="display:none">
-                <label class="settings-label" for="set-sttLangInput">Language</label>
-                <input id="set-sttLangInput" class="settings-select" type="text" placeholder="Blank detects it, or e.g. en">
-              </div>
-              <div id="set-sttSettingsMsg" class="admin-toggle-sub" role="status" aria-live="polite"></div>
-            </div>
-          </div>
-          <!-- TTS panel hidden — user opted out of read-aloud entirely. Kept
-               in DOM so the JS that wires set-ttsProviderSelect etc. doesn't
-               throw on missing nodes; not visible to anyone. -->
-          <div class="admin-card" hidden style="display:none">
-            <h2 style="display:flex;align-items:center;gap:6px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;opacity:0.6"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>Text to Speech<span style="flex:1"></span><label class="admin-switch"><input type="checkbox" id="set-ttsEnabledToggle" checked><span class="admin-slider"></span></label></h2>
-            <div class="admin-toggle-sub" style="margin-bottom:8px">Reads replies aloud.</div>
-            <div style="display:flex;flex-direction:column;gap:0.5rem;">
-              <div style="display:flex;align-items:center;gap:0.75rem;">
-                <label class="settings-label">Provider</label>
-                <select id="set-ttsProviderSelect" class="settings-select">
-                  <option value="disabled">Disabled</option>
-                  <option value="browser">Browser (built-in)</option>
-                  <option value="local">Local (Kokoro-82M)</option>
-                </select>
-              </div>
-              <div id="set-ttsModelRow" style="display:flex;align-items:center;gap:0.75rem;">
-                <label class="settings-label">Model</label>
-                <select id="set-ttsModelSelect" class="settings-select">
-                  <option value="tts-1">tts-1 (fast)</option>
-                  <option value="tts-1-hd">tts-1-hd (quality)</option>
-                  <option value="gpt-4o-mini-tts">gpt-4o-mini-tts (steerable)</option>
-                </select>
-                <input id="set-ttsModelInput" type="text" placeholder="model name" style="flex:1;padding:5px;display:none;">
-              </div>
-              <div id="set-ttsVoiceRow" style="display:flex;align-items:center;gap:0.75rem;">
-                <label class="settings-label">Voice</label>
-                <select id="set-ttsVoiceSelect" class="settings-select">
-                  <option value="alloy">Alloy</option>
-                  <option value="ash">Ash</option>
-                  <option value="coral">Coral</option>
-                  <option value="echo">Echo</option>
-                  <option value="fable">Fable</option>
-                  <option value="nova">Nova</option>
-                  <option value="onyx">Onyx</option>
-                  <option value="sage">Sage</option>
-                  <option value="shimmer">Shimmer</option>
-                </select>
-                <input id="set-ttsVoiceInput" type="text" placeholder="af_heart" style="flex:1;padding:5px;display:none;">
-              </div>
-              <div id="set-ttsSpeedRow" style="display:flex;align-items:center;gap:0.75rem;">
-                <label class="settings-label">Speed</label>
-                <select id="set-ttsSpeedSelect" class="settings-select">
-                  <option value="0.5">0.5x</option>
-                  <option value="0.75">0.75x</option>
-                  <option value="1" selected>1x (normal)</option>
-                  <option value="1.25">1.25x</option>
-                  <option value="1.5">1.5x</option>
-                  <option value="2">2x</option>
-                </select>
-              </div>
-              <button type="button" id="set-ttsPreviewBtn" class="admin-btn-sm" style="margin-top:4px;padding:5px 16px;font-size:12px;">Preview</button>
-              <div id="set-ttsSettingsMsg" style="font-size:11px;color:color-mix(in oklab, var(--fg) 45%, var(--fg-muted));"></div>
-            </div>
-          </div>
           <!-- Teacher Model settings card hidden as part of the 2.0
                "harden the core" pass. The escalation flow is dormant when
                `teacher_model` is unset (its default), so the backend keeps
@@ -2593,6 +2533,148 @@
                 <span id="set-doc-style-msg" style="font-size:11px;"></span>
                 <button class="admin-btn-add" id="set-doc-style-save" style="margin-left:auto;">Save</button>
               </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ═══ VOICE TAB (`B1718`) ═══
+             Speaking with Pantheon. Speech to text, which the microphone
+             beside Send and a voice chat both hear with; and the voice chat,
+             with the voice it answers in, how long a pause ends a turn, and
+             whether talking over the agent stops it. Admin-only
+             (`registry.js`), as `POST /api/auth/settings` is; wired by
+             `initSttSettings` and `initTtsSettings` in `settings.js`. -->
+        <div data-settings-panel="voice" class="hidden">
+          <!-- `B1564` (`D-2026-10-29-01` §3, the owner: "Allow for both
+               local + browser. All options available."). The card the fork
+               arrived without: `initSttSettings` in `settings.js` had wired
+               these ids all along and returned on the missing select. One
+               control, the provider: "Off" saves `stt_enabled: false`, so the
+               switch and the list can never disagree. The browser's sentence
+               is on its own option and in the note under the list, where it is
+               chosen — the exception to `Law 16` the owner made with it in
+               front of them. Admin-only with the panel (`registry.js`), as
+               `POST /api/auth/settings` is. `B1718` moved it here from AI
+               Defaults, its ids unchanged. -->
+          <div class="admin-card">
+            <h2><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;opacity:0.6" aria-hidden="true"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>Speech to Text</h2>
+            <div class="admin-toggle-sub" style="margin-bottom:8px">Turns what you say into words: the microphone beside Send writes them in the message box, and a voice chat hears you with it.</div>
+            <div class="settings-col">
+              <div class="settings-row">
+                <label class="settings-label" for="set-sttProviderSelect">Provider</label>
+                <select id="set-sttProviderSelect" class="settings-select" aria-describedby="set-sttProviderNote">
+                  <option value="disabled">Off</option>
+                  <option value="local">Local Whisper, on this server</option>
+                  <option value="browser">The browser’s own — in Chrome, the audio goes to Google</option>
+                </select>
+              </div>
+              <div id="set-sttProviderNote" class="admin-toggle-sub" role="note"></div>
+              <div id="set-sttModelRow" class="settings-row" style="display:none">
+                <label class="settings-label" for="set-sttModelSelect">Model</label>
+                <select id="set-sttModelSelect" class="settings-select">
+                  <option value="tiny">tiny (fastest)</option>
+                  <option value="base" selected>base</option>
+                  <option value="small">small</option>
+                  <option value="medium">medium</option>
+                  <option value="large-v3">large-v3 (most accurate)</option>
+                </select>
+                <input id="set-sttModelInput" class="settings-select" type="text" placeholder="whisper-1" aria-label="Model the endpoint transcribes with" style="display:none">
+              </div>
+              <div id="set-sttLangRow" class="settings-row" style="display:none">
+                <label class="settings-label" for="set-sttLangInput">Language</label>
+                <input id="set-sttLangInput" class="settings-select" type="text" placeholder="Blank detects it, or e.g. en">
+              </div>
+              <!-- `B1718`. A few seconds of the microphone, heard by what is
+                   saved, and what it heard said back (or why not). -->
+              <div class="settings-row" style="gap:10px;flex-wrap:wrap">
+                <button type="button" id="set-sttTestBtn" class="admin-btn-sm">Test: say something</button>
+                <span id="set-sttTestResult" class="admin-toggle-sub" role="status" aria-live="polite" style="flex:1;min-width:12em"></span>
+              </div>
+              <div id="set-sttSettingsMsg" class="admin-toggle-sub" role="status" aria-live="polite"></div>
+            </div>
+          </div>
+          <!-- `B1718`. The card read-aloud hid (its ids kept): the voice is
+               the voice chat's now, and the read-aloud button under a reply
+               is a switch of its own here (`tts_read_aloud`: off as shipped,
+               on for an install that had a voice chosen before it existed).
+               "None" saves `tts_enabled: false` — one control, as speech to
+               text has. -->
+          <div class="admin-card">
+            <h2 style="display:flex;align-items:center;gap:6px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="margin-right:1px;opacity:0.6;flex-shrink:0" aria-hidden="true"><path d="M4 10v4"/><path d="M8 6.5v11"/><path d="M12 3.5v17"/><path d="M16 7.5v9"/><path d="M20 10.5v3"/></svg>Voice Chat<span style="flex:1"></span><label class="admin-switch" title="The call button beside Send"><input type="checkbox" id="set-voiceChatEnabledToggle" checked aria-label="Voice chat" aria-describedby="set-voiceChatSub"><span class="admin-slider"></span></label></h2>
+            <div class="admin-toggle-sub" id="set-voiceChatSub" style="margin-bottom:8px">Talk with the agent in the open chat, from the call button beside Send. It hears you with speech to text, sends what you said as your next message, and says the reply while it is being written. An approval is always given on its card in the chat, never by voice.</div>
+            <div class="settings-col">
+              <div class="settings-row">
+                <label class="settings-label" for="set-ttsProviderSelect">Voice</label>
+                <select id="set-ttsProviderSelect" class="settings-select" aria-describedby="set-ttsProviderNote">
+                  <option value="disabled">None: replies are shown, not said</option>
+                  <option value="piper">Piper, on this server</option>
+                  <option value="browser">The browser’s own</option>
+                  <option value="local">Kokoro, on this server (needs a GPU)</option>
+                </select>
+              </div>
+              <div id="set-ttsProviderNote" class="admin-toggle-sub" role="note"></div>
+              <div id="set-ttsModelRow" class="settings-row" style="display:none">
+                <label class="settings-label" for="set-ttsModelSelect">Model</label>
+                <select id="set-ttsModelSelect" class="settings-select">
+                  <option value="tts-1">tts-1 (fast)</option>
+                  <option value="tts-1-hd">tts-1-hd (quality)</option>
+                  <option value="gpt-4o-mini-tts">gpt-4o-mini-tts (steerable)</option>
+                </select>
+                <input id="set-ttsModelInput" class="settings-select" type="text" placeholder="model name" aria-label="Model" style="display:none">
+              </div>
+              <div id="set-ttsVoiceRow" class="settings-row" style="display:none">
+                <label class="settings-label" for="set-ttsVoiceInput">Speaker</label>
+                <select id="set-ttsVoiceSelect" class="settings-select" aria-label="Speaker" style="display:none">
+                  <option value="alloy">Alloy</option>
+                  <option value="ash">Ash</option>
+                  <option value="coral">Coral</option>
+                  <option value="echo">Echo</option>
+                  <option value="fable">Fable</option>
+                  <option value="nova">Nova</option>
+                  <option value="onyx">Onyx</option>
+                  <option value="sage">Sage</option>
+                  <option value="shimmer">Shimmer</option>
+                </select>
+                <input id="set-ttsVoiceInput" class="settings-select" type="text" list="set-ttsVoiceList" autocomplete="off" placeholder="en_US-ljspeech-medium">
+                <datalist id="set-ttsVoiceList"></datalist>
+              </div>
+              <div id="set-ttsSpeedRow" class="settings-row" style="display:none">
+                <label class="settings-label" for="set-ttsSpeedSelect">Speed</label>
+                <select id="set-ttsSpeedSelect" class="settings-select">
+                  <option value="0.5">0.5×</option>
+                  <option value="0.75">0.75×</option>
+                  <option value="1" selected>1× (normal)</option>
+                  <option value="1.25">1.25×</option>
+                  <option value="1.5">1.5×</option>
+                  <option value="2">2×</option>
+                </select>
+              </div>
+              <div class="settings-row">
+                <label class="settings-label" for="set-voiceChatPauseSelect">A turn ends</label>
+                <select id="set-voiceChatPauseSelect" class="settings-select">
+                  <option value="short">after a short pause (half a second)</option>
+                  <option value="normal" selected>after a pause (under a second)</option>
+                  <option value="relaxed">after a long pause (a second and a half)</option>
+                </select>
+              </div>
+              <div class="admin-toggle-row">
+                <div>
+                  <div class="admin-toggle-label" id="set-voiceChatBargeInLabel">Talking over the agent stops it</div>
+                  <div class="admin-toggle-sub" id="set-voiceChatBargeInSub">Say “wait”, or start your next question, while it speaks. Off: it takes turns and does not listen while it talks, for a speaker the microphone hears too well.</div>
+                </div>
+                <label class="admin-switch"><input type="checkbox" id="set-voiceChatBargeInToggle" checked aria-labelledby="set-voiceChatBargeInLabel" aria-describedby="set-voiceChatBargeInSub"><span class="admin-slider"></span></label>
+              </div>
+              <div class="admin-toggle-row">
+                <div>
+                  <div class="admin-toggle-label" id="set-ttsReadAloudLabel">A read-aloud button under each reply</div>
+                  <div class="admin-toggle-sub" id="set-ttsReadAloudSub">Says a reply in this voice when pressed. Choosing a voice for voice chat does not turn it on.</div>
+                </div>
+                <label class="admin-switch"><input type="checkbox" id="set-ttsReadAloudToggle" aria-labelledby="set-ttsReadAloudLabel" aria-describedby="set-ttsReadAloudSub"><span class="admin-slider"></span></label>
+              </div>
+              <div class="settings-row" style="gap:10px;flex-wrap:wrap">
+                <button type="button" id="set-ttsPreviewBtn" class="admin-btn-sm">Hear the voice</button>
+              </div>
+              <div id="set-ttsSettingsMsg" class="admin-toggle-sub" role="status" aria-live="polite"></div>
             </div>
           </div>
         </div>

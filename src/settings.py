@@ -675,6 +675,23 @@ DEFAULT_SETTINGS = {
     "stt_provider": "disabled",
     "stt_model": "base",
     "stt_language": "",
+    # `B1718`. Voice chat: talking with the agent in the open chat, heard by
+    # speech-to-text above and answered in the voice above that. On by default
+    # because it does nothing until someone presses the call button, and a
+    # press with no speech-to-text set up says where to set it. `pause` is how
+    # long a silence ends a turn (`static/js/voiceCapture.js` `PAUSES`);
+    # `barge_in` lets the person talk over the agent to stop or correct it,
+    # and off is taking turns, for a speaker the microphone hears too well.
+    # Global and admin-written, like the speech settings beside them.
+    "voice_chat_enabled": True,
+    "voice_chat_pause": "normal",
+    "voice_chat_barge_in": True,
+    # `B1718`. The read-aloud button under each reply. It had no switch: it
+    # showed whenever a voice was chosen, and choosing one for voice chat must
+    # not bring it under every reply by itself. Off as shipped; an install
+    # that chose a voice before this switch existed keeps its button
+    # (`_read_aloud_as_it_was`).
+    "tts_read_aloud": False,
     "search_provider": "searxng",
     # Empty by default as of 2026-08-31 (`Law 16`). This shipped as
     # `["duckduckgo"]` on the reasoning that it is free and needs no API key —
@@ -1328,6 +1345,16 @@ def load_settings() -> dict:
     return _owned_copy(_cached_settings())
 
 
+def _read_aloud_as_it_was(saved: dict) -> bool:
+    """`B1718`. Whether a settings file written before `tts_read_aloud`
+    existed had the read-aloud button: a voice chosen and speech not switched
+    off. The first save writes the answer down (`POST /api/auth/settings`
+    writes the whole merged dict), so choosing a voice after that is not
+    taken for asking for the button."""
+    provider = str(saved.get("tts_provider") or "disabled")
+    return saved.get("tts_enabled", True) is not False and provider != "disabled"
+
+
 def _cached_settings() -> dict:
     """The merged settings this process is serving — **never returned to a
     caller outside this module.** `load_settings` copies it; `get_setting`
@@ -1342,6 +1369,8 @@ def _cached_settings() -> dict:
         if not isinstance(saved, dict):
             raise ValueError("settings must be an object")
         merged = {**DEFAULT_SETTINGS, **saved}
+        if "tts_read_aloud" not in saved:
+            merged["tts_read_aloud"] = _read_aloud_as_it_was(saved)
     except FileNotFoundError:
         merged = dict(DEFAULT_SETTINGS)
     except (PermissionError, json.JSONDecodeError, ValueError) as exc:

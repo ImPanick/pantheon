@@ -31,6 +31,10 @@ import sessionModule from './js/sessions.js';
 import approvalModeModule from './js/approvalMode.js';   // `D-2026-10-09-01` §2
 import memoryModule from './js/memory.js?v=20261009census';
 import voiceRecorderModule from './js/voiceRecorder.js';
+// `B1718`. The voice chat, and the steer it sends a correction through while a
+// reply runs (the same specifier chat.js uses: one module, not two).
+import { initVoiceCall, isVoiceCallActive } from './js/voiceCall.js';
+import { canSteerNow, submitSteer } from './js/chatStream.js?v=20261009census';
 import censorModule from './js/censor.js';
 import galleryModule from './js/gallery.js?v=20260708match1';
 import { UI_VIS_DEFAULT_OFF, resolveVisibility, applyToolVisibility, guardRouteOpener, installToolDoorGuard, noteStatusAsked, noteStatusFailed, onToolVisibilityApplied, statusVisibility, toolShown, viewerMayRunInstance, whenToolVisibilityReady } from './js/ui_visibility.js';
@@ -3976,7 +3980,11 @@ function startPantheonApp() {
   // Expose icons globally so chat.js updateSubmitButton can use them
   window._pantheonBtnIcons = { send: _sendIcon, mic: _micIcon, stop: _stopIcon, newChat: _newChatIcon };
 
-  function _isSttEnabled() {
+  // `B1718`. Dictation has its own button beside Send (`#composer-mic-btn`,
+  // `voiceRecorder.js`), so the send button is the microphone only in a page
+  // without that button; its states are unchanged (`FORBIDDEN.md`).
+  function _sendBtnIsMic() {
+    if (document.getElementById('composer-mic-btn')) return false;
     return voiceRecorderModule._sttProvider && voiceRecorderModule._sttProvider !== 'disabled';
   }
 
@@ -4015,14 +4023,14 @@ function startPantheonApp() {
     const hasText = messageInput && messageInput.value.trim().length > 0;
     const hasFiles = _hasAttachments();
     let newMode;
-    if (!hasText && !hasFiles && _isSttEnabled()) {
+    if (!hasText && !hasFiles && _sendBtnIsMic()) {
       clearTimeout(sendBtn._collapseTimer);
       sendBtn.innerHTML = _micIcon;
       sendBtn.title = 'Record voice';
       newMode = 'mic';
       sendBtn.classList.add('mic-mode');
       sendBtn.classList.remove('newchat-mode', 'newchat-expanded');
-    } else if (!hasText && !hasFiles && !_isSttEnabled()) {
+    } else if (!hasText && !hasFiles && !_sendBtnIsMic()) {
       clearTimeout(sendBtn._collapseTimer);
       // Group chat: always show send button, never newchat mode
       if (groupModule && groupModule.isActive()) {
@@ -4101,7 +4109,7 @@ function startPantheonApp() {
       }
 
       // If input is empty and STT is enabled, start recording
-      if (!hasText && !hasFiles && _isSttEnabled()) {
+      if (!hasText && !hasFiles && _sendBtnIsMic()) {
         sendBtn.innerHTML = _stopIcon;
         sendBtn.title = 'Stop recording';
         sendBtn.dataset.mode = 'recording';
@@ -4448,6 +4456,20 @@ function startPantheonApp() {
   }, 9000);
 	  runNonCriticalStartup(() => memoryModule.loadMemories(), 12000);
 
+	  // `B1718`. Speech beside Send: dictation into the box, and the voice chat
+	  // (its button, its capsule over the composer, the chat it talks in).
+	  initVoiceCall({
+	    chatModule, sessionModule, showToast: uiModule.showToast,
+	    steer: { canSteerNow, submitSteer },
+	    openSettings: (tab) => settingsModule.open(tab),
+	    beforeStart: () => { if (voiceRecorderModule.getIsRecording()) voiceRecorderModule.stopRecording(); },
+	  });
+	  voiceRecorderModule.initDictation({
+	    onFileCreated: (audioFile) => fileHandlerModule.addFiles([audioFile]),
+	    showToast: uiModule.showToast,
+	    showError: uiModule.showError,
+	    isCallOn: isVoiceCallActive,
+	  });
 	  // Ensure proper initial state
 	  voiceRecorderModule.init();
 	  if (censorModule) censorModule.init();

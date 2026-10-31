@@ -22,7 +22,8 @@
 #     log a person is already reading.
 #
 # Scope note: this job audits requirements.txt, requirements-optional.txt,
-# requirements-image.txt AND the Real-ESRGAN wheel pins, which live in a shell
+# requirements-image.txt, requirements-voice.txt (the image's speech set,
+# `B1716`/`B1717`) AND the Real-ESRGAN wheel pins, which live in a shell
 # variable in docker/build-realesrgan-wheels.sh and are read from there rather
 # than copied. Those three packages are installed into every image and appear in
 # no requirements file, which is how basicsr's advisory came to be visible only

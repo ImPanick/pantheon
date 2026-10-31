@@ -1330,6 +1330,9 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
         # `Ask every time` and `ask-every-time`. Reject at the door instead.
         _ENUMS = {
             "trust_rung": tuple(rung.value for rung in TrustRung),
+            # `B1718`. How long a silence ends a voice chat turn; the three
+            # `static/js/voiceCapture.js` `PAUSES` knows.
+            "voice_chat_pause": ("short", "normal", "relaxed"),
         }
         # `P12-01` / `P12-05b`. The eighteen numeric limits, whose shipped value
         # is `None` — the third value an integer needs so the flat merged dict
@@ -1496,6 +1499,10 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
             if key == "networks_per_person" and not isinstance(val, bool):
                 # `B1475`. Read as `is True` (`person_networks.enabled`), so a
                 # string would store and turn nothing on.
+                raise HTTPException(400, f"{key} must be true or false")
+            if key in ("voice_chat_enabled", "voice_chat_barge_in", "tts_read_aloud") and not isinstance(val, bool):
+                # `B1718`. Read as booleans by the voice chat and the reply's
+                # read-aloud button; a string would store and switch nothing.
                 raise HTTPException(400, f"{key} must be true or false")
             if key == "forge_model_hubs" and not isinstance(val, bool):
                 # `B1229`. The switch that lets the Forge reach Hugging Face
