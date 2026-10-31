@@ -231,6 +231,26 @@ Settings → Workstation then says *KVM* instead of *emulated*, and *Automatic*
 moves to the VM. On Windows 10 and on macOS, Docker has no KVM to give, so the
 container is the fast workstation there.
 
+**A real VM per person on Proxmox.** Run Pantheon in a Proxmox VM (not an
+LXC container) and let that VM use KVM itself (nested virtualization). Docker
+in it then has `/dev/kvm`, and each person's machine runs at close to native
+speed:
+
+1. On the Proxmox host, `cat /sys/module/kvm_intel/parameters/nested`
+   (`kvm_amd` on AMD) prints `Y` or `1`. It usually does on a current Proxmox;
+   if not, put `options kvm_intel nested=Y` (or `options kvm_amd nested=1`) in
+   a file under `/etc/modprobe.d/` and reboot the host.
+2. Pantheon's VM: Hardware → Processors → Type `host` (`qm set <vmid> --cpu
+   host`), then stop and start it from Proxmox; a reboot from inside does not
+   pick up the change. A `host` CPU cannot live-migrate to a node with a
+   different CPU.
+3. Inside it, `ls /dev/kvm` shows the device; then `docker compose up -d
+   --force-recreate workstation-vm`.
+
+Size the VM for the people who work at once: each running machine takes up to
+`PANTHEON_WORKSTATION_VM_MEMORY_MIB` (2 GB) and `PANTHEON_WORKSTATION_VM_CPUS`
+(2), on top of Pantheon itself.
+
 Agents have full access by default: *sudo* is on in every backend until an
 admin turns it off (the owner, 2026-10-31: *"Agents get FULL access"*). In the
 container that means one person's agent can read another's workstation home,
