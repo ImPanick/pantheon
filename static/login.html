@@ -417,10 +417,11 @@
     --ck-edge-hi: color-mix(in oklab, #fff 18%, transparent);
     --ck-tint: color-mix(in oklab, var(--fg) 7%, transparent);
     --ck-accent: var(--accent, var(--red));
-    --ck-accent-2: color-mix(in oklch, var(--ck-accent) 70%, var(--fg));
+    /* the same hue a step lighter, as cockpit.css draws it (no turn through violet) */
+    --ck-accent-2: color-mix(in oklch, var(--ck-accent) 78%, white);
     --ck-ui: 'Geist', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
   }
-  :root[data-ck-tone="light"] { --ck-glass-base: color-mix(in oklab, var(--panel) 78%, #fff); --ck-edge-hi: color-mix(in oklab, #fff 55%, transparent); --ck-tint: color-mix(in oklab, var(--fg) 5%, transparent); }
+  :root[data-ck-tone="light"] { --ck-accent-2: color-mix(in oklch, var(--ck-accent) 82%, black); --ck-glass-base: color-mix(in oklab, var(--panel) 78%, #fff); --ck-edge-hi: color-mix(in oklab, #fff 55%, transparent); --ck-tint: color-mix(in oklab, var(--fg) 5%, transparent); }
   body { font-family: var(--ck-ui); -webkit-font-smoothing: antialiased; }
   .ck-field { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; background: var(--bg); }
   .ck-field span { position: absolute; border-radius: 50%; filter: blur(70px); opacity: .5; }
@@ -451,7 +452,7 @@
   }
   button[type="submit"], #submitBtn {
     font-family: var(--ck-ui); border-radius: 999px; margin-top: .5rem; letter-spacing: 0;
-    background: linear-gradient(135deg, color-mix(in srgb, var(--red) 78%, #000), color-mix(in srgb, color-mix(in oklch, var(--red) 70%, var(--fg)) 72%, #000));
+    background: linear-gradient(135deg, color-mix(in srgb, var(--red) 78%, #000), color-mix(in srgb, color-mix(in oklch, var(--red) 78%, white) 72%, #000));
     box-shadow: inset 0 1px 0 color-mix(in oklab, #fff 30%, transparent), 0 8px 20px -10px color-mix(in oklab, var(--ck-accent) 55%, transparent);
   }
   button[type="submit"]:hover, #submitBtn:hover { filter: brightness(1.08); }

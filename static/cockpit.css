@@ -40,16 +40,24 @@ html.cockpit {
   --ck-z-field: -1; --ck-z-composer: 1; --ck-z-sidebar: 2; --ck-z-workspace: 2; --ck-z-rail: 3;
   --ck-z-resizer: 4; --ck-z-topbar: 6; --ck-z-ws-tab: 50; --ck-z-ghost: 1000; --ck-z-float: 1001;
   --ck-accent: var(--accent, var(--red));
-  --ck-accent-2: color-mix(in oklch, var(--ck-accent) 70%, var(--fg));
+  /* The theme's own accent, which the chat column does not re-scope (see "a
+     calmer chat" at the end). */
+  --ck-hue: var(--accent, var(--red));
+  /* The accent's second stop is the same hue a step lighter. It was the accent
+     mixed toward --fg in OKLCH, and on a palette whose text is a strong hue
+     the shorter way round the wheel runs through violet: Original's coral
+     against its cyan text came out mauve. White has no hue, so OKLCH keeps the
+     accent's. */
+  --ck-accent-2: color-mix(in oklch, var(--ck-accent) 78%, white);
   --ck-accent-wash: color-mix(in oklab, var(--ck-accent) 15%, transparent);
   --ck-accent-line: color-mix(in oklab, var(--ck-accent) 40%, transparent);
   --ck-accent-glow: color-mix(in oklab, var(--ck-accent) 45%, transparent);
   --ck-on-accent: var(--on-accent, #fff);
 
   /* light field */
-  --ck-field-a: color-mix(in oklab, var(--red) 58%, var(--bg));
+  --ck-field-a: color-mix(in oklab, var(--ck-hue) 58%, var(--bg));
   --ck-field-b: color-mix(in oklab, var(--fg) 40%, var(--bg));
-  --ck-field-c: color-mix(in oklab, var(--border) 70%, var(--red) 30%);
+  --ck-field-c: color-mix(in oklab, var(--border) 70%, var(--ck-hue) 30%);
   --ck-field-d: color-mix(in oklab, var(--ck-accent-2) 55%, var(--bg));
   --ck-field-alpha: .5;
   --ck-grain: .2;
@@ -118,6 +126,9 @@ html.cockpit body {
   --font-mono: var(--ck-font-mono);
 }
 html.cockpit[data-ck-tone="light"] {
+  /* on light glass the accent's second stop is a step deeper, as the ink-ward
+     mix it replaced was, so links drawn in it keep their contrast */
+  --ck-accent-2: color-mix(in oklch, var(--ck-accent) 82%, black);
   /* light glass is frosted toward white, not toward the ink: it keeps small
      labels over 4.5:1 where the dark-arm mix greyed them under it */
   --ck-glass-base: color-mix(in oklab, var(--panel) 78%, #fff);
@@ -867,13 +878,13 @@ html.cockpit .chat-context-pill.danger .ctx-ring-pct { color: var(--ck-danger-te
 html.cockpit .chat-context-pill .ctx-ring-of { font-size: 11.5px; color: var(--ck-text-3); }
 html.cockpit .chat-context-pill .chat-context-dot { display: none !important; }
 html.cockpit, html.cockpit .ctx-usage {
-  --ctx-seg-system: color-mix(in oklch, var(--ck-accent) 100%, var(--fg));
-  --ctx-seg-tools: color-mix(in oklch, var(--ck-accent) 85%, var(--fg));
-  --ctx-seg-skills: color-mix(in oklch, var(--ck-accent) 70%, var(--fg));
-  --ctx-seg-memory: color-mix(in oklch, var(--ck-accent) 55%, var(--fg));
-  --ctx-seg-retrieved: color-mix(in oklch, var(--ck-accent) 40%, var(--fg));
-  --ctx-seg-attachments: color-mix(in oklch, var(--ck-accent) 25%, var(--fg));
-  --ctx-seg-conversation: color-mix(in oklch, var(--ck-accent) 10%, var(--fg));
+  --ctx-seg-system: color-mix(in oklab, var(--ck-hue) 100%, var(--fg));
+  --ctx-seg-tools: color-mix(in oklab, var(--ck-hue) 85%, var(--fg));
+  --ctx-seg-skills: color-mix(in oklab, var(--ck-hue) 70%, var(--fg));
+  --ctx-seg-memory: color-mix(in oklab, var(--ck-hue) 55%, var(--fg));
+  --ctx-seg-retrieved: color-mix(in oklab, var(--ck-hue) 40%, var(--fg));
+  --ctx-seg-attachments: color-mix(in oklab, var(--ck-hue) 25%, var(--fg));
+  --ctx-seg-conversation: color-mix(in oklab, var(--ck-hue) 10%, var(--fg));
 }
 html.cockpit .agent-limits-hint { display: none !important; }
 
@@ -1468,3 +1479,29 @@ html.cockpit #export-dl-btn { margin-right: 2px !important; }
 @container chatbar (max-width: 420px) {
   html.cockpit .chat-input-right .mode-toggle { display: none !important; }
 }
+
+/* ───────────────────────── 2026-10-31 · a calmer chat ───────────────────────── */
+/* The owner, on the chat: "change the LLM's chat color scheme … The
+   pink/purples etc." The conversation and its composer take their colour from
+   the theme's own text instead of its accent: the accent stays on the rail,
+   the sidebar and the settings, where it marks place, and the chat reads in
+   one quiet ink. On Original that is its cyan; on a neutral palette a send
+   button of white glass on dark, or ink on light, as most chat apps draw it.
+   --fg sits at ≥ 4.5:1 on --bg on every palette, so the arrow drawn in --bg
+   on it reads by construction. */
+html.cockpit .chat-container {
+  --ck-accent: var(--fg);
+  --ck-accent-2: color-mix(in oklab, var(--fg) 80%, var(--bg));
+  --ck-accent-wash: color-mix(in oklab, var(--fg) 9%, transparent);
+  --ck-accent-line: color-mix(in oklab, var(--fg) 26%, transparent);
+  --ck-accent-glow: color-mix(in oklab, var(--fg) 24%, transparent);
+  --ck-on-accent: var(--bg);
+}
+/* Who answered is said by the name and the maker's mark, in the secondary ink,
+   not by a hue hashed from the name (which landed half the models on pink or
+   violet). `applyModelColor` still writes the hue inline; this outranks it. */
+html.cockpit .msg-ai > .role { color: var(--ck-text-2) !important; }
+html.cockpit .msg-ai > .role .role-provider-logo { color: var(--ck-text-2); opacity: .85; }
+/* A link reads as the text it sits in, marked by its underline. */
+html.cockpit .chat-container .msg .body a { color: var(--ck-text); text-decoration-color: var(--ck-accent-line); text-decoration-thickness: 1px; }
+html.cockpit .chat-container .msg .body a:hover { text-decoration-color: currentColor; }
