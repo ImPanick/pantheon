@@ -123,19 +123,20 @@ WORKDIR /app
 # Install Python deps first (layer cache). Optional extras (PyMuPDF AGPL, etc.)
 # are opt-in so the default image stays MIT-core; see requirements-optional.txt.
 ARG INSTALL_OPTIONAL=false
-COPY requirements.txt requirements-optional.txt requirements-image.txt requirements-voice.txt ./
-RUN pip install --no-cache-dir -r requirements.txt \
-    && if [ "$INSTALL_OPTIONAL" = "true" ]; then pip install --no-cache-dir -r requirements-optional.txt; fi
-
 # `B1716`, `B1717`. Speech on this server's own processor, installed by
 # default: Whisper hears (faster-whisper, CTranslate2) and Piper speaks (ONNX
 # Runtime), so a voice chat works on a fresh install with no GPU and no
 # service linked. Both are wheels on this Python; Kokoro, the GPU voice, is
 # not (see requirements-optional.txt). `--build-arg INSTALL_VOICE=false`
 # leaves them out, and a voice chat then uses the browser's own speech or an
-# endpoint added under Added Models.
+# endpoint added under Added Models. Installed in the same step as the core
+# requirements, after them: it adds five packages and moves no core pin
+# (measured on this image's base; `pip check` clean).
 ARG INSTALL_VOICE=true
-RUN if [ "$INSTALL_VOICE" = "true" ]; then pip install --no-cache-dir -r requirements-voice.txt; fi
+COPY requirements.txt requirements-optional.txt requirements-image.txt requirements-voice.txt ./
+RUN pip install --no-cache-dir -r requirements.txt \
+    && if [ "$INSTALL_OPTIONAL" = "true" ]; then pip install --no-cache-dir -r requirements-optional.txt; fi \
+    && if [ "$INSTALL_VOICE" = "true" ]; then pip install --no-cache-dir -r requirements-voice.txt; fi
 
 # python-magic powers content-based MIME sniffing in src/upload_handler.py.
 # Image-only (not in requirements.txt) because it needs the libmagic1 system
