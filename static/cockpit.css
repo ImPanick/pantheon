@@ -1813,3 +1813,36 @@ html.cockpit .ctx-usage-attach { border-top-color: var(--ck-edge-lo) !important;
   html.cockpit summary.ctx-usage-cat-head::after,
   html.cockpit .ctx-usage-seg { transition: none; }
 }
+
+/* ───────────────────────── 2026-10-31 · the preset sliders sit on their line ───────────────────────── */
+/* style.css gives `.preset-range` a 6 px runnable track and an 18 px thumb
+   with no offset; Chromium hangs such a thumb from the track's top edge, so
+   it sat below the line and over the "Balanced" hint. The input is now the
+   thumb's height, the track a 4 px line through its middle, the thumb pulled
+   up by half the difference, and the hints clear of it. */
+html.cockpit .preset-range {
+  height: 18px !important; margin: 2px 0 4px !important; background: transparent !important; border-radius: 0 !important;
+  border: 0 !important; box-shadow: none !important; outline: none;
+  cursor: pointer;
+}
+html.cockpit .preset-range::-webkit-slider-runnable-track {
+  height: 4px; border-radius: 999px; background: var(--ck-tint-2);
+}
+html.cockpit .preset-range::-moz-range-track {
+  height: 4px; border-radius: 999px; background: var(--ck-tint-2);
+}
+html.cockpit .preset-range::-webkit-slider-thumb {
+  width: 16px; height: 16px; margin-top: -6px; border: 2px solid var(--ck-glass-base, var(--panel));
+  background: var(--ck-accent); box-shadow: 0 0 0 1px var(--ck-edge), 0 2px 6px color-mix(in oklab, #000 30%, transparent);
+  transition: transform var(--ck-t-fast) var(--ck-spring);
+}
+html.cockpit .preset-range::-moz-range-thumb {
+  width: 12px; height: 12px; border: 2px solid var(--ck-glass-base, var(--panel));
+  background: var(--ck-accent); box-shadow: 0 0 0 1px var(--ck-edge), 0 2px 6px color-mix(in oklab, #000 30%, transparent);
+}
+html.cockpit .preset-range:hover::-webkit-slider-thumb,
+html.cockpit .preset-range:focus-visible::-webkit-slider-thumb { transform: scale(1.12); }
+html.cockpit .preset-range:focus-visible { outline: none; }
+html.cockpit .preset-range:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 3px color-mix(in oklab, var(--ck-accent) 35%, transparent); }
+html.cockpit .preset-temp-hints { margin-top: 2px !important; margin-bottom: 14px !important; padding: 0 !important; color: var(--ck-text-3) !important; font-size: 10.5px !important; }
+html.cockpit .preset-slider-value { font-variant-numeric: tabular-nums; }

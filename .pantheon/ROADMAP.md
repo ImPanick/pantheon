@@ -252,8 +252,12 @@ they are for.*
 > Entries below the `P0-31` one keep the figure they were written with: a record of what
 > was claimed at the time is worth more than a quietly corrected one (`B44`).
 
+### A forty-ninth wave, of one: the preset sliders sit on their line
+`8ad8aa26`…`HEAD`. **1797 tracked, 1759 done. No rows closed or filed; the owner's report (2026-10-31) that the Temperature and Max Tokens sliders were misaligned.**
+**Chromium hangs a range thumb from the top of a styled track.** style.css gave `.preset-range` a 6 px runnable track and an 18 px thumb with no offset, so the thumb sat below the line and over the *Balanced* hint. In the cockpit the input is now the thumb's height, the track a 4 px line through its middle, the thumb raised by half the difference, and the hints clear of it (`cockpit.css`, "the preset sliders sit on their line").
+
 ### A forty-eighth wave, of one: the context window's breakdown reads on one line
-`deca9629`…`HEAD`. **1797 tracked, 1759 done. No rows closed or filed; the owner's report (2026-10-31) that the context panel's expand arrows sat on lines of their own.**
+`deca9629`…`8ad8aa26`. **1797 tracked, 1759 done. No rows closed or filed; the owner's report (2026-10-31) that the context panel's expand arrows sat on lines of their own.**
 **The arrow was the row's fifth child in a four-column grid.** The cockpit gave each category row swatch, label, tokens and share, and the product's one disclosure chevron (`summary::after`) wrapped under them. Every row now has a fixed fifth column, the chevron in it beside the share and turning as the row opens; rows that do not open leave it empty, so every figure lines up. An opened row and its parts are one tinted group that unfolds rather than jumps (`::details-content`), each part has a thin gauge of its share of the row under its name and its tokens under the row's tokens, the bar marks where auto-compact starts, and pointing at a row or its stretch of the bar lights both. Opened upward, the panel hangs from its bottom edge (`chat.js`), so a row that unfolds grows it away from the wheel. The parts the model always carries are a neutral ladder and what the chat brought wears the accent, in place of the accent fading to pink (`cockpit.css`, "the context breakdown").
 
 ### A forty-seventh wave, of one: the rail's labels read, and an open document has a road to the rest
