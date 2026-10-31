@@ -335,6 +335,59 @@ def test_the_loop_hands_the_builder_its_approved_plan(store, monkeypatch):
     assert "### workstation-self-test" in text
 
 
+# ── 4b. the desktop's manual rides with the `computer` tool (`B1719`) ───────
+#
+# Measured on `e22fd4a`, Pantheon's own loop driving a real XFCE workstation:
+# this request matched the other three workstation skills, the default cap of
+# three left `workstation-desktop` out, and the model was handed `computer`
+# with no word on where the panel's buttons are or that it looks before it
+# clicks.
+
+TERMINAL_REQUEST = "On the workstation, open a terminal and write a file by typing in it"
+DESKTOP_STEP = "The panel is the bottom 40 pixels"
+
+
+def test_premise_the_wording_alone_leaves_the_desktop_out(store):
+    rows = store.injectable_skills(owner="alice", active_toolsets=["computer", "bash"])
+    matched = store.get_relevant_skills(TERMINAL_REQUEST, skills=rows, threshold=0.25, max_items=3)
+    assert "workstation-desktop" not in _names(matched)
+
+
+def test_a_turn_offered_computer_gets_the_desktop_procedure_whatever_its_wording(store, monkeypatch):
+    """Red before `B1719`."""
+    text, _ = _loop_prompt(monkeypatch, TERMINAL_REQUEST)
+    assert "### workstation-desktop" in text
+    assert DESKTOP_STEP in text, "the procedure's steps, not only its name"
+
+
+def test_the_manual_comes_first_and_once(store):
+    from services.memory.skill_injection import with_tool_manuals
+    rows = store.injectable_skills(owner="alice", active_toolsets=["computer", "bash"])
+    by_name = {r["name"]: r for r in rows}
+    shell = by_name["workstation-shell"]
+    desktop = by_name["workstation-desktop"]
+    assert [r["name"] for r in with_tool_manuals([shell], rows, {"computer"})] == [
+        "workstation-desktop", "workstation-shell"]
+    assert [r["name"] for r in with_tool_manuals([shell, desktop], rows, {"computer", "bash"})] == [
+        "workstation-desktop", "workstation-shell"]
+
+
+def test_no_computer_offered_adds_nothing(store):
+    from services.memory.skill_injection import with_tool_manuals
+    rows = store.injectable_skills(owner="alice", active_toolsets=["computer", "bash"])
+    shell = next(r for r in rows if r["name"] == "workstation-shell")
+    assert with_tool_manuals([shell], rows, {"bash", "read_file"}) == [shell]
+    assert with_tool_manuals([shell], rows, ()) == [shell]
+
+
+def test_a_manual_the_gates_withheld_stays_out(store):
+    """It comes from the injectable list only: a turn whose cap lacks
+    `computer` has no desktop skill to add, whatever it names."""
+    from services.memory.skill_injection import with_tool_manuals
+    rows = store.injectable_skills(owner="alice", active_toolsets=["bash", "read_file"])
+    assert with_tool_manuals([], rows, {"computer"}) == []
+
+
 def test_all_four_bodies_fit_the_default_budget_uncut(store):
     from services.memory.skill_injection import render_matched_skills_block
     rows = [s for s in store.injectable_skills(owner="alice", active_toolsets=["computer", "bash"])

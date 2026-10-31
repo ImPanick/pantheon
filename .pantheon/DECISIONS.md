@@ -3573,3 +3573,41 @@ compositor on. **Not verified here:** the same on KasmVNC's server (the build sa
 it) and in the built images; the opt-in image tests cover both.
 
 What reopens it: the owner changing it, or the look not surviving the stream.
+
+## D-2026-10-31-03 — unanswered, the workstation is on when the stack runs one
+
+*The owner, 2026-10-31, 20:24:* *"Ensure the LLM can actually no shit reach the VM and use the
+VM..."* Proved here with Pantheon's own agent loop and tools (only the model scripted) against a
+real workstation daemon running XFCE: the agent took a screenshot, was asked once for *Allow for
+this task* (the trust rung, by design), opened a terminal from the panel, typed a command, and the
+file it wrote was on disk. Two things stood between that and a fresh install, and this entry is the
+second (`B1719` is the first: the desktop's procedure now rides with the `computer` tool).
+
+**The gap.** `workstation_enabled` shipped off (`D-2026-09-30-03`: *an admin turns it on*). That
+was right while the workstation was an overlay someone chose to start. Since `9687cdf` it is in the
+default stack, so a fresh install ran a workstation its agent could not reach until an admin found
+the switch.
+
+**Asked on a card, 2026-10-31; recommended *on by default*; built on that answer while the card
+waits.** Undoing it is `src/workstation_client.enabled()` returning to the stored value alone; this
+entry is updated with the owner's answer.
+
+**What it is.** The setting ships unanswered (`None`), as `workstation_sudo` does. Unanswered means
+on when Pantheon's environment carries a workstation address (`PANTHEON_WORKSTATION_URL` or
+`PANTHEON_WORKSTATION_VM_URL`, which the compose files set), off when it does not. An admin's on or
+off wins, and `null` hands it back to the default. Who may use it is unchanged: the
+`can_use_workstation` privilege, on for admins only.
+
+**Calls made here, not by the owner, and why.**
+
+- **The environment, not a stored address, is "the stack runs one".** An admin who typed an
+  address in Settings has the switch beside it; the environment is what the stack itself says.
+- **An upgraded install keeps its answer.** The settings save path writes every default into
+  `settings.json`, so an install that saved Settings while the default was off has `false` stored,
+  and that cannot be told from an admin's off. It stays off; the setup notes say to turn it on.
+- **Not changed:** an unknown model window still trims a request to 6,000 tokens (`H18`, #4122).
+  Measured on the same run: with a model Pantheon cannot size, the trim dropped the skills and
+  most of the instructions. Local servers report their window and the common models are in the
+  table, so this is noted for the owner rather than reopened.
+
+What reopens it: the owner choosing *keep off* on the card.

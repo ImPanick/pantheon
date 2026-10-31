@@ -321,6 +321,13 @@ the next one is cut.
 
 ### Changed — read this before upgrading
 
+- **The workstation is on when the stack runs one** (2026-10-31, `B1720`, `D-2026-10-31-03`). It
+  was off until an admin found the switch, so a fresh install ran a workstation its agent could
+  not use. Now, until an admin answers *Settings → Workstation → On*, it is on whenever Pantheon's
+  environment carries the workstation's address — which the default compose files set — and off
+  when it does not. An admin's on or off still wins, and who may use it is still the
+  `can_use_workstation` privilege (on for admins). An install whose Settings were saved before
+  this change keeps the answer it had.
 - **The image carries speech, and is about half a gigabyte larger** (2026-10-31, `B1716`,
   `B1717`): faster-whisper, Piper and their models (measured on x86-64: about 300 MB of packages,
   145 MB for Whisper `base`, 63 MB for the voice). `docker compose build --build-arg
@@ -670,6 +677,19 @@ the next one is cut.
 
 ### Fixed
 
+- **The workstation's desktop sits idle** (2026-10-31, `B1721`). The owner: it *"constantly opens
+  and reopens firefox and the terminal... Let it be idle."* Every desktop session opened a
+  terminal, so every restart of the display was a terminal opening again, and the agent's Firefox
+  was started again as often as it stopped. The desktop now starts with nothing open (a home
+  still holding the old start-up entry unchanged loses it; one the person edited is kept); a
+  live-desktop server that stops within a minute of starting twice in a row is not started a
+  third time, the screen falls back to pictures and the log says what the server said; and the
+  agent's browser is not started more than three times in two minutes.
+- **The agent is told how to drive the workstation's screen on every turn it can** (2026-10-31,
+  `B1719`). A turn gets at most three matched skills, and which three turned on the wording:
+  *"open a terminal and write a file by typing in it"* got the shell, windows and self-test
+  procedures and not `workstation-desktop`, the one that says where the panel's buttons are and
+  to look before clicking. That procedure now rides with the `computer` tool, ahead of the three.
 - **Local speech-to-text can open a recording again** (2026-10-31, `B1716`). faster-whisper 1.2.1
   opens audio with an argument PyAV 19 (released 2026-09-29) removed, so an install that took
   faster-whisper since then turned every recording into an error and heard nothing. PyAV is held

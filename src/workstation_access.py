@@ -6,7 +6,8 @@ Three conditions, all of them, in this order, and a sentence for each that
 fails — because a tool that silently runs somewhere else is the one outcome
 this phase exists to prevent (`P20-03`: *a turn is never silently moved*):
 
-  1. an admin switched the workstation on (`workstation_enabled`);
+  1. it is on (`workstation_enabled`): an admin switched it on, or nobody
+     has answered and the stack runs one (`B1720`);
   2. it has an address (the setting, or the overlay's environment);
   3. the person may use it: auth is off (the single-user owner), or their
      privileges resolve `can_use_workstation` true — which every admin's do,
@@ -317,6 +318,9 @@ def settings_view() -> Dict[str, Any]:
     stored_pin = stored_pin if isinstance(stored_pin, str) else ""
     return {
         "enabled": wc.enabled(),
+        # `B1720`. None while nobody has answered: then `enabled` is whether
+        # the stack runs one.
+        "enabled_choice": wc.enabled_choice(),
         "url": base or "",
         "url_source": base_source,
         "url_setting": stored_url if isinstance(stored_url, str) else "",
@@ -358,6 +362,8 @@ def validate_setting(key: str, value: Any) -> Any:
     are the same string."""
     if key == "workstation_sudo" and value is None:
         return None   # `B1428`: back to *by backend*
+    if key == "workstation_enabled" and value is None:
+        return None   # `B1720`: back to *on when the stack runs one*
     if key in _BOOL_KEYS:
         if not isinstance(value, bool):
             raise ValueError(f"{key} is true or false.")

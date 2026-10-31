@@ -202,9 +202,12 @@ in: a private account, home and desktop per person, kept between chats, with
 *Reset to clean*. When it is on, the agent's shell, Python and file tools run
 there instead of inside Pantheon, a `computer` tool can see and work its
 screen, and the person can watch that screen and take over at any time. It is
-part of the default stack; turn it on in **Settings → Workstation → On**.
-Nothing to paste: Pantheon finds it and reads its keys from volumes only it and
-the workstation's containers share.
+part of the default stack and on from the first start: the agent can use it
+as soon as the admin account exists. **Settings → Workstation → On** switches
+it off or back on, and a stack without a workstation leaves it off. Nothing to
+paste: Pantheon finds it and reads its keys from volumes only it and the
+workstation's containers share. Upgrading an install whose Settings were saved
+before this change keeps the answer it had; if the switch reads off, turn it on.
 
 The stack ships both local kinds, and *Backend* in the same panel chooses
 between them. *Automatic* (the default) picks the VM where Docker can use KVM

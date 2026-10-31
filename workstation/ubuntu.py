@@ -92,7 +92,8 @@ chose it, 2026-10-31, over a lighter desktop that clashed with the rest of
 Pantheon). `xfce4-session` starts it as the account, under a session bus of
 its own: xfwm4 with Pantheon's window frames and its compositor, the panel
 along the bottom (the Pantheon menu, Terminal, Firefox, Files, the open
-windows, the clock), the wallpaper, and one terminal. Every setting is a file
+windows, the clock) and the wallpaper — and nothing open: an idle desktop
+stays idle (`B1721`; the owner, *"Let it be idle"*). Every setting is a file
 in the skeleton's `.config` (`skel/`), so "Reset to clean" restores the look
 with the home, and the theme's files are made by
 `scripts/make-workstation-theme.py`. A home made before this has none of those
@@ -100,9 +101,13 @@ files, and XFCE's panel would open on a question; the display gives it the
 skeleton's `.config` once, as the account, before the session starts
 (`add_desktop_settings`). A machine without XFCE (an image built before it, a
 host whose operator skipped the packages) gets JWM, as before: a tray with a
-Terminal and a Firefox button and one terminal (`skel/.jwmrc`). The display
-starts on the first `ensure` or the first screenshot or input, not on every
-command: a person who only uses the shell does not pay for a desktop.
+Terminal and a Firefox button (`skel/.jwmrc`). The display starts on the
+first `ensure` or the first screenshot or input, not on every command: a
+person who only uses the shell does not pay for a desktop. A display whose X
+server stopped is started again on its next use and says so in the log, with
+how long it ran and its last words; a live-desktop server that keeps stopping
+within a minute is given up for Xvfb (`B1721`), because each start is a new
+session and a desktop that keeps reopening is the defect the person sees.
 
 **The grabber is `scrot`, measured** (2026-09-30, 1280x800 JWM desktop, three
 runs each): scrot PNG 64-70 ms and JPEG q75 20-24 ms; `xwd` plus a
@@ -146,8 +151,10 @@ workstation`) — homes are in the volume and survive it.
 from __future__ import annotations
 
 import base64
+import collections
 import contextlib
 import ctypes
+import errno
 import hashlib
 import grp
 import json
@@ -204,6 +211,22 @@ XFCE_ENV = {"XDG_CURRENT_DESKTOP": "XFCE", "XDG_SESSION_DESKTOP": "xfce",
 # desktop was XFCE is given once (`UbuntuSystem.add_desktop_settings`).
 DESKTOP_SETTINGS = ".config"
 DESKTOP_SETTINGS_MARK = ".config/xfce4"
+# `B1721`. Files the skeleton shipped and no longer ships, by their exact bytes
+# (sha256): a home that still holds one unchanged loses it on the desktop's next
+# start (`UbuntuSystem.retire_shipped_files`); a copy the person edited is
+# theirs and stays. The terminal that opened with every desktop is the first:
+# the owner, 2026-10-31, *"Let it be idle."*
+RETIRED_HOME_FILES = {
+    ".config/autostart/pantheon-terminal.desktop":
+        "34023af3acfc051f5617482d8f693fb9f47aeca9cbcc332a708d9b6fc46e4ee7",
+}
+# `B1721`. A live-desktop server that stops within `_QUICK_DEATH_S` of
+# starting, `_QUICK_DEATHS_MAX` times in a row, is not started again until the
+# daemon restarts: the display is Xvfb (pictures) and says why. Every restart
+# is a new desktop session, so a server that keeps dying is a desktop that
+# keeps opening itself again.
+_QUICK_DEATH_S = 60.0
+_QUICK_DEATHS_MAX = 2
 _WM_READY_S = 3.0
 _XFCE_READY_S = 10.0
 _INPUT_TIMEOUT_S = 15.0
@@ -769,6 +792,12 @@ class XDisplay(Screen):
         self._desktop: Optional[Tuple[int, DesktopLogins]] = None
         self._desktop_why = ""
         self._driving = False
+        # `B1721`: when the X server started, what it last said on stderr, and
+        # how many live-desktop servers in a row stopped soon after starting.
+        self._started_at = 0.0
+        self._server_tail: "collections.deque[str]" = collections.deque(maxlen=20)
+        self._last_words = ""
+        self._quick_deaths = 0
 
     @property
     def name(self) -> Optional[str]:
@@ -787,9 +816,18 @@ class XDisplay(Screen):
             if self._procs:
                 # Said, because a display that keeps stopping is otherwise a
                 # mystery: -9 or -15 here means something outside the daemon
-                # killed it.
-                logger.warning("display :%s for %s had stopped (exit %s); starting it again",
-                               self.number, self.account, self._procs[0].returncode)
+                # killed it. `B1721`: with how long it ran and its last words,
+                # which were only ever logged at debug.
+                lived = time.monotonic() - self._started_at
+                self._last_words = " | ".join(list(self._server_tail)[-3:])[:300]
+                logger.warning("display :%s for %s had stopped (exit %s) after %.0f s; starting it "
+                               "again%s", self.number, self.account, self._procs[0].returncode,
+                               lived, f". It last said: {self._last_words}" if self._last_words
+                               else "")
+                if self._desktop is not None and lived < _QUICK_DEATH_S:
+                    self._quick_deaths += 1
+                elif self._desktop is not None:
+                    self._quick_deaths = 0
             self._stop_locked()
             prefix, env = self.system.run_as(self.account, with_display=False)
             auth = self.auth_path()
@@ -804,7 +842,9 @@ class XDisplay(Screen):
             except OSError as e:
                 raise WorkstationError("unavailable", f"The display's key could not be written to "
                                                       f"{auth}: {e.strerror or e}.")
+            self._server_tail.clear()
             server, number, desktop = self._start_server(prefix, env, auth, uid)
+            self._started_at = time.monotonic()
             self.number = number
             self._procs = [server]
             self._desktop = desktop
@@ -815,6 +855,7 @@ class XDisplay(Screen):
             xfce = program == [XFCE_SESSION]
             if xfce:
                 self.system.add_desktop_settings(self.account)
+                self.system.retire_shipped_files(self.account)  # `B1721`
             # A session bus of the account's own, so a second Firefox launch
             # finds the first one (without it: "Firefox is already running"),
             # and XFCE's settings daemon (xfconfd) has a bus to be started on.
@@ -844,7 +885,14 @@ class XDisplay(Screen):
         the log and in `desktop`'s answer; the screen still works, as pictures)."""
         kasm = shutil.which(KASMVNC_SERVER)
         self._desktop_why = ""
-        if kasm:
+        if kasm and self._quick_deaths >= _QUICK_DEATHS_MAX:
+            # `B1721`. Not a third time: each start was a new desktop session.
+            self._desktop_why = (
+                f"The live desktop stopped {self._quick_deaths} times within a minute of starting"
+                + (f" (it said: {self._last_words})" if self._last_words else "")
+                + ", so this screen is shown as pictures until the workstation restarts.")
+            logger.warning("display for %s: %s", self.account, self._desktop_why)
+        elif kasm:
             logins = DesktopLogins(self.system.desktop_root / str(uid) / "kasmpasswd", uid)
             try:
                 logins.write(self._driving)
@@ -904,7 +952,8 @@ class XDisplay(Screen):
             return None, _stop(proc, collect=True)
         if proc.stderr is not None:
             # Nothing reads it after start-up; a full pipe would stall the server.
-            threading.Thread(target=_drain, args=(proc.stderr, f"{label} {self.account}"),
+            threading.Thread(target=_drain, args=(proc.stderr, f"{label} {self.account}",
+                                                  self._server_tail),
                              daemon=True).start()
         return (proc, int(text)), ""
 
@@ -1061,14 +1110,53 @@ class XDisplay(Screen):
         self._run(argv, stdin, timeout)
 
 
-def _drain(stream, label: str = "") -> None:
+def _drain(stream, label: str = "", tail=None) -> None:
     """Read a child's stderr to the end so a full pipe never stalls it, and
-    keep what it says in the daemon's log at debug level."""
+    keep what it says in the daemon's log at debug level — and, with `tail`
+    (a bounded deque), its last lines, for the warning when it stops (`B1721`)."""
     try:
         for line in iter(stream.readline, b""):
-            logger.debug("%s: %s", label, line.decode("utf-8", "replace").rstrip())
+            text = line.decode("utf-8", "replace").rstrip()
+            logger.debug("%s: %s", label, text)
+            if tail is not None and text:
+                tail.append(text)
     except (OSError, ValueError):
         pass  # the pipe was closed under us by `_stop`: the child is gone
+
+
+def _unlink_if_digest(root: Path, rel: str, digest: str) -> bool:
+    """Unlink `root/rel` when its bytes hash to `digest`, opening every folder
+    on the way and the file itself without following a link; False when it is
+    not there, is not a plain file, or differs (`B1721`)."""
+    flags = os.O_RDONLY | os.O_NOFOLLOW | getattr(os, "O_DIRECTORY", 0)
+    parts = rel.split("/")
+    fds: List[int] = []
+    try:
+        fds.append(os.open(root, flags))
+        for part in parts[:-1]:
+            fds.append(os.open(part, flags, dir_fd=fds[-1]))
+        fd = os.open(parts[-1], os.O_RDONLY | os.O_NOFOLLOW, dir_fd=fds[-1])
+        try:
+            if not stat.S_ISREG(os.fstat(fd).st_mode):
+                return False
+            h = hashlib.sha256()
+            for block in iter(lambda: os.read(fd, 65536), b""):
+                h.update(block)
+        finally:
+            os.close(fd)
+        if h.hexdigest() != digest:
+            return False
+        os.unlink(parts[-1], dir_fd=fds[-1])
+        return True
+    except FileNotFoundError:
+        return False
+    except OSError as e:
+        if e.errno in (errno.ELOOP, errno.ENOTDIR):
+            return False   # a link or a file where a folder should be: not ours
+        raise
+    finally:
+        for f in reversed(fds):
+            os.close(f)
 
 
 def _stop(proc: subprocess.Popen, *, collect: bool = False) -> str:
@@ -1274,6 +1362,30 @@ class UbuntuSystem(System):
         if added:
             logger.info("gave %s's home the desktop's settings (%d files)", account, added)
         return added
+
+    def retire_shipped_files(self, account: str) -> int:
+        """`B1721`. Remove from the home every `RETIRED_HOME_FILES` entry that
+        is still exactly what the skeleton shipped. As the account, through no
+        link at any step (each folder opened `O_NOFOLLOW` from the one before),
+        and a file whose bytes differ is the person's and is left. Returns how
+        many were removed."""
+        home = self.home(account)
+        uid = self.uid(account)
+        removed = 0
+        try:
+            with fs_identity(uid, uid):
+                if home.is_symlink() or not home.is_dir():
+                    return 0
+                for rel, digest in RETIRED_HOME_FILES.items():
+                    if _unlink_if_digest(home, rel, digest):
+                        removed += 1
+        except OSError as e:
+            logger.warning("retired desktop files for %s could not be removed: %s", account, e)
+            return removed
+        if removed:
+            logger.info("removed %d file(s) the desktop no longer ships from %s's home",
+                        removed, account)
+        return removed
 
     def reset(self, account: str) -> None:
         self.ensure(account)
@@ -1508,4 +1620,6 @@ __all__ = ["AGENTS_GID", "AGENTS_GROUP", "AccountRegistry", "UID_MAX", "UID_MIN"
            "kasmvnc_argv", "sha256_crypt", "xvfb_argv",
            # `D-2026-10-31-02`, added.
            "DESKTOP_SETTINGS", "FALLBACK_WM", "XFCE_ENV", "XFCE_SESSION", "copy_missing",
-           "desktop_session"]
+           "desktop_session",
+           # `B1721`, added.
+           "RETIRED_HOME_FILES"]

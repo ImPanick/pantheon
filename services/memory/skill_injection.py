@@ -349,6 +349,48 @@ def _step_count(sk: Dict) -> int:
     return len(sk.get("procedure") or [])
 
 
+#: `B1719`. A tool whose use is a procedure, and the shipped skill that is that
+#: procedure. When the turn offers the tool, its manual is one of the matched
+#: skills whatever the request's wording, ahead of the matches.
+#:
+#: Measured on `e22fd4a` with Pantheon's own loop driving a real workstation:
+#: *"On the workstation, open a terminal and write a file by typing in it"*
+#: matched the other three workstation skills, and the default cap of three
+#: (`skill_max_injected`) left out `workstation-desktop` — the only one that
+#: says where the panel's buttons are, that every action returns a screenshot,
+#: and that you look before you click. The model was handed `computer` and no
+#: word on how to drive it. Which three won turned on the wording; a manual
+#: that rides with its tool does not.
+TOOL_MANUALS: Dict[str, str] = {"computer": "workstation-desktop"}
+
+
+def with_tool_manuals(matched: Optional[Sequence[Dict]],
+                      injectable: Optional[Sequence[Dict]],
+                      offered_tools) -> List[Dict]:
+    """`matched` with the manual of every offered tool in `TOOL_MANUALS` first.
+
+    A manual comes only from `injectable` — the one list the four gates have
+    already filtered (`B1361`) — so a skill the person switched off, or one
+    whose `requires_toolsets` this turn lacks, stays out. It is added on top
+    of the matches rather than in place of the weakest: the cap is how many
+    *guesses from the wording* a turn gets, and a manual is not a guess. The
+    body budget still applies to the lot (`render_matched_skills_block`), and
+    a manual placed first is the last to be shortened or dropped.
+    """
+    matched = list(matched or [])
+    offered = set(offered_tools or ())
+    by_name = {str(s.get("name")): s for s in (injectable or [])}
+    manuals: List[Dict] = []
+    for tool, name in TOOL_MANUALS.items():
+        if tool in offered and name in by_name and all(
+                str(m.get("name")) != name for m in manuals):
+            manuals.append(by_name[name])
+    if not manuals:
+        return matched
+    names = {str(m.get("name")) for m in manuals}
+    return manuals + [s for s in matched if str(s.get("name")) not in names]
+
+
 def render_matched_skills_block(skills: Optional[Sequence[Dict]],
                                 *, budget_chars: Optional[int] = None,
                                 owner=None, report: Optional[Dict] = None,

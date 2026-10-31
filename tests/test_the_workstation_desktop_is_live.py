@@ -342,6 +342,91 @@ def test_who_drives_is_written_live_and_kept_for_the_next_start(tmp_path, monkey
     assert ":rw" not in again[1].path.read_text()
 
 
+class _DyingProc:
+    """An X server that has stopped, the way a crashing one is found."""
+    def __init__(self):
+        self.returncode = None
+
+    def poll(self):
+        return self.returncode
+
+
+class _StartableSystem(_System):
+    def run_as(self, account, *, with_display=True):
+        return [], {"HOME": str(self.desktop_root)}
+
+    def uid(self, account):
+        return 2001
+
+    def add_desktop_settings(self, account):
+        return 0
+
+    def retire_shipped_files(self, account):
+        return 0
+
+
+def test_a_live_desktop_that_keeps_stopping_is_given_up_for_pictures(tmp_path, monkeypatch, no_chown):
+    """`B1721`. The owner, 2026-10-31: the desktop *"constantly opens and
+    reopens firefox and the terminal"*. Every start of a display is a new
+    session, so a server that dies a moment after starting is a desktop that
+    keeps opening itself. Twice within a minute and KasmVNC is not started a
+    third time: the display is Xvfb, says why, and the log says what the server
+    said before it stopped."""
+    display, spawned, _ = _display(tmp_path, monkeypatch, answers=(True, True, True))
+    display.system = _StartableSystem(tmp_path)
+    procs = []
+
+    def spawn(prefix, env, label, argv):
+        spawned.append((label, argv(9)))
+        procs.append(_DyingProc())
+        return (procs[-1], 7), ""
+
+    display._spawn = spawn
+    monkeypatch.setattr(ubuntu, "fs_identity", lambda uid, gid: __import__("contextlib").nullcontext())
+    monkeypatch.setattr(ubuntu, "desktop_session", lambda: (["true"], {}))
+    monkeypatch.setattr(ubuntu.subprocess, "Popen", lambda *a, **k: _DyingProc())
+    monkeypatch.setattr(display, "_wait_for_wm", lambda *a, **k: 0.0)
+    monkeypatch.setattr(display, "_open_watch", lambda: None)
+    warnings = []
+    monkeypatch.setattr(ubuntu.logger, "warning", lambda msg, *a: warnings.append(msg % a))
+
+    display.start()
+    for _ in range(2):
+        display._server_tail.append("Fatal server error: something KasmVNC said")
+        procs[-1].returncode = 1          # it stopped a moment after starting
+        display.start()
+    assert [label for label, _ in spawned] == ["Xkasmvnc", "Xkasmvnc", "Xvfb"]
+    assert display.desktop_kind is None
+    assert display.desktop_why.startswith("The live desktop stopped 2 times within a minute")
+    assert "something KasmVNC said" in display.desktop_why
+    assert any("had stopped (exit 1)" in w and "It last said: Fatal server error" in w
+               for w in warnings), warnings
+
+
+def test_a_live_desktop_that_ran_a_while_is_simply_started_again(tmp_path, monkeypatch, no_chown):
+    display, spawned, _ = _display(tmp_path, monkeypatch, answers=(True,) * 4)
+    display.system = _StartableSystem(tmp_path)
+    procs = []
+
+    def spawn(prefix, env, label, argv):
+        spawned.append((label, argv(9)))
+        procs.append(_DyingProc())
+        return (procs[-1], 7), ""
+
+    display._spawn = spawn
+    monkeypatch.setattr(ubuntu, "fs_identity", lambda uid, gid: __import__("contextlib").nullcontext())
+    monkeypatch.setattr(ubuntu, "desktop_session", lambda: (["true"], {}))
+    monkeypatch.setattr(ubuntu.subprocess, "Popen", lambda *a, **k: _DyingProc())
+    monkeypatch.setattr(display, "_wait_for_wm", lambda *a, **k: 0.0)
+    monkeypatch.setattr(display, "_open_watch", lambda: None)
+    display.start()
+    for _ in range(3):
+        display._started_at -= ubuntu._QUICK_DEATH_S + 1   # it ran for over a minute
+        procs[-1].returncode = -9
+        display.start()
+    assert [label for label, _ in spawned] == ["Xkasmvnc"] * 4
+
+
 def test_a_display_without_a_stream_says_why_when_asked_for_it(tmp_path, monkeypatch):
     display, _, _ = _display(tmp_path, monkeypatch, kasm_here=False)
     monkeypatch.setattr(display, "start", lambda: ":8")

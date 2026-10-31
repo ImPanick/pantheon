@@ -4827,23 +4827,32 @@ def _build_system_prompt(
                 from src.context_budget import resolve_skill_injection
                 _skill_max_injected = resolve_skill_injection(
                     owner, preference=_prefs.get("skill_max_injected"))
+                # `P8-51`: switched-off packages and groups stay out.
+                #
+                # `B1361`. This was `sm.load_active(owner=owner)`, which
+                # applies the package/group switches and **none** of the four
+                # gates the catalogue applies, so the same message withheld a
+                # skill by name and pasted its whole procedure in below.
+                # `injectable_skills` is the one list; `index_for` is its
+                # projection (`Law 7`).
+                _injectable = sm.injectable_skills(
+                    owner=owner,
+                    active_toolsets=_skill_active_toolsets(disabled_tools)
+                ) if _skill_max_injected > 0 else []
                 relevant_skills = sm.get_relevant_skills(
                     _skill_query(last_user, approved_plan),
-                    # `P8-51`: switched-off packages and groups stay out.
-                    #
-                    # `B1361`. This was `sm.load_active(owner=owner)`, which
-                    # applies the package/group switches and **none** of the four
-                    # gates the catalogue applies, so the same message withheld a
-                    # skill by name and pasted its whole procedure in below.
-                    # `injectable_skills` is the one list; `index_for` is its
-                    # projection (`Law 7`).
-                    skills=sm.injectable_skills(
-                        owner=owner,
-                        active_toolsets=_skill_active_toolsets(disabled_tools)),
+                    skills=_injectable,
                     threshold=0.25,
                     max_items=_skill_max_injected,
                     min_confidence=_skill_min_conf,
                 ) if _skill_max_injected > 0 else []
+                # `B1719`. The tool's manual rides with the tool: a turn
+                # offered `computer` is told how to drive the desktop however
+                # its request is worded. `relevant_tools` of `None` (every
+                # tool) names no tool, so it adds none.
+                from services.memory.skill_injection import with_tool_manuals
+                relevant_skills = with_tool_manuals(
+                    relevant_skills, _injectable, relevant_tools or ())
                 # `P4-25` — which skills were injected, and at what confidence.
                 # Recorded after selection rather than at the call site, because
                 # the threshold and max_items are applied here: what a receipt

@@ -248,9 +248,17 @@ def test_the_session_saves_nothing_asks_nothing_and_starts_no_agents_or_locks():
                         ("shutdown/LockScreen", "false")):
         assert _prop(session, path).get("value") == value, path
     assert "Hidden=true" in (SKEL / ".config" / "autostart" / "xscreensaver.desktop").read_text()
-    assert re.search(r"^Exec=xfce4-terminal$",
-                     (SKEL / ".config" / "autostart" / "pantheon-terminal.desktop").read_text(),
-                     re.M)
+
+
+def test_the_desktop_starts_with_nothing_open():
+    """`B1721`. The owner, 2026-10-31: *"Currently the VM constantly opens and
+    reopens firefox and the terminal... Let it be idle."* Every desktop
+    session opened a terminal, so every restart of the display was a terminal
+    opening again. Nothing starts with the session now, in XFCE or in JWM."""
+    autostart = SKEL / ".config" / "autostart"
+    for entry in autostart.iterdir():
+        assert "Hidden=true" in entry.read_text(), f"{entry.name} starts with the desktop"
+    assert "StartupCommand" not in (SKEL / ".jwmrc").read_text()
 
 
 def test_the_terminal_pastes_without_asking_and_has_no_chrome():
@@ -333,6 +341,7 @@ class _System:
     def __init__(self, home: Path):
         self._home = home
         self.added = []
+        self.retired = []
 
     def home(self, account):
         return self._home
@@ -345,6 +354,10 @@ class _System:
 
     def add_desktop_settings(self, account):
         self.added.append(account)
+        return 0
+
+    def retire_shipped_files(self, account):
+        self.retired.append(account)
         return 0
 
 
@@ -371,6 +384,7 @@ def test_a_display_starts_the_desktop_the_machine_has(tmp_path, monkeypatch, xfc
     if xfce:
         assert argv[3:] == ["xfce4-session"] and env["XDG_CURRENT_DESKTOP"] == "XFCE"
         assert system.added == ["pw-ann-12345678"] and waits == [{"panel": True}]
+        assert system.retired == ["pw-ann-12345678"]
     else:
         assert argv[3:] == ["jwm"] and "XDG_CURRENT_DESKTOP" not in env
         assert system.added == [] and waits == [{"panel": False}]
@@ -485,3 +499,73 @@ def test_a_home_whose_config_is_a_link_is_left_alone(open_dir, monkeypatch):
     (home / ".config").symlink_to(elsewhere)
     assert system.add_desktop_settings(account) == 0
     assert list(elsewhere.iterdir()) == []
+
+
+# ── `B1721`: the terminal a home was given at start is taken back, unless it was changed ──
+
+# What `e22fd4a` put in every home made while it shipped, byte for byte.
+SHIPPED_TERMINAL = """# SPDX-License-Identifier: AGPL-3.0-or-later
+# One terminal open when the desktop starts, so the first screenshot already
+# shows somewhere to type (D-2026-10-31-02). This file is in the account's
+# home; "Reset to clean" puts it back.
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Terminal
+Exec=xfce4-terminal
+Icon=org.xfce.terminal
+OnlyShowIn=XFCE;
+X-XFCE-Autostart-Override=true
+Terminal=false
+"""
+TERMINAL_REL = ".config/autostart/pantheon-terminal.desktop"
+
+
+def test_the_retired_files_digest_is_the_shipped_files():
+    import hashlib
+    assert ubuntu.RETIRED_HOME_FILES[TERMINAL_REL] == hashlib.sha256(
+        SHIPPED_TERMINAL.encode()).hexdigest()
+
+
+def _with_terminal(home, text, uid):
+    path = home / TERMINAL_REL
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text)
+    if IS_ROOT:
+        for p in (home / ".config", path.parent, path):
+            os.chown(p, uid, uid)
+    return path
+
+
+def test_a_home_still_holding_the_shipped_terminal_loses_it(open_dir, monkeypatch):
+    system, account, home, uid = _system(open_dir, monkeypatch)
+    path = _with_terminal(home, SHIPPED_TERMINAL, uid)
+    (path.parent / "mine.desktop").write_text("[Desktop Entry]\nExec=true\n")
+    assert system.retire_shipped_files(account) == 1
+    assert not path.exists()
+    assert (path.parent / "mine.desktop").exists(), "only the shipped file goes"
+    assert system.retire_shipped_files(account) == 0
+
+
+def test_a_terminal_entry_the_person_changed_is_theirs(open_dir, monkeypatch):
+    system, account, home, uid = _system(open_dir, monkeypatch)
+    path = _with_terminal(home, SHIPPED_TERMINAL.replace("Exec=xfce4-terminal",
+                                                         "Exec=xfce4-terminal --maximize"), uid)
+    assert system.retire_shipped_files(account) == 0
+    assert path.exists()
+
+
+def test_nothing_is_removed_through_a_link(open_dir, monkeypatch):
+    system, account, home, uid = _system(open_dir, monkeypatch)
+    elsewhere = open_dir / "elsewhere"
+    (elsewhere / "autostart").mkdir(parents=True)
+    target = elsewhere / "autostart" / "pantheon-terminal.desktop"
+    target.write_text(SHIPPED_TERMINAL)
+    (home / ".config").symlink_to(elsewhere)
+    assert system.retire_shipped_files(account) == 0
+    assert target.exists()
+    (home / ".config").unlink()
+    (home / ".config" / "autostart").mkdir(parents=True)
+    (home / TERMINAL_REL).symlink_to(target)
+    assert system.retire_shipped_files(account) == 0
+    assert target.exists() and (home / TERMINAL_REL).is_symlink()

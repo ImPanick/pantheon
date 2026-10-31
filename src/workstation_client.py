@@ -287,10 +287,34 @@ def configured_token() -> str:
     return resolve_token()[0]
 
 
+def enabled_choice() -> Optional[bool]:
+    """The admin's own answer, or None when nobody has answered (`B1720`)."""
+    value = _setting("workstation_enabled", None)
+    return value if isinstance(value, bool) else None
+
+
+def stack_provides() -> bool:
+    """Whether the stack Pantheon was started in runs a workstation beside it:
+    the compose files set its address in Pantheon's environment
+    (`docker-compose.yml`, the GPU files, `docker/workstation-remote.yml`)."""
+    return bool(parse_base(os.environ.get(URL_ENV, ""))
+                or parse_base(os.environ.get(P.VM_URL_ENV, "")))
+
+
 def enabled() -> bool:
-    """The admin's switch. Off by default: a workstation nobody turned on does
-    nothing, even if the overlay is running."""
-    return _setting("workstation_enabled", False) is True
+    """The admin's switch, and — until an admin answers it — whether the stack
+    runs a workstation (`B1720`, `D-2026-10-31-03`).
+
+    It was off until an admin turned it on, which made sense while the
+    workstation was an overlay someone had to choose. Since `9687cdf` it is in
+    the default stack, so the off default meant a fresh install ran a
+    workstation its agent could not use until someone found the switch. An
+    admin's explicit on or off always wins; an install with no workstation
+    address in its environment is off exactly as before (`Law 1`)."""
+    choice = enabled_choice()
+    if choice is not None:
+        return choice
+    return stack_provides()
 
 
 def from_settings() -> Optional["WorkstationClient"]:

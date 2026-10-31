@@ -418,17 +418,20 @@ DEFAULT_SETTINGS = {
     #
     # A separate Ubuntu machine the agent's shell, Python, files and screen
     # work run in — a container beside Pantheon, a VM, or any host running
-    # `workstation/agentd.py`. **Off, and that is the whole default**: with
-    # `workstation_enabled` false nothing is called and every tool runs exactly
-    # where it runs today (`Law 1`). An admin turns it on in Settings →
-    # Workstation; `can_use_workstation` (`core/auth.py`) decides who else may
-    # use it. Every key here is admin-only to write — `POST /api/auth/settings`
+    # `workstation/agentd.py`. **Unanswered (None) means "on when the stack
+    # runs one"** (`B1720`, `D-2026-10-31-03`): on when the compose file put a
+    # workstation address in Pantheon's environment, off otherwise — so an
+    # install without one calls nothing and every tool runs exactly where it
+    # always has (`Law 1`). An admin's on or off in Settings → Workstation
+    # wins; `can_use_workstation` (`core/auth.py`) decides who else may use
+    # it. A materialized None stays unanswered, the way `workstation_sudo`'s
+    # does. Every key here is admin-only to write — `POST /api/auth/settings`
     # validates each one through `src/workstation_access.validate_setting`, and
     # the agent's own `manage_settings` may read them and may not write them
     # (`_SELF_RESTRAINT_KEYS`): switching the workstation off, or routing off,
     # moves the agent's shell back into the process that holds every key, and a
     # new address hands a stranger the token and every command.
-    "workstation_enabled": False,
+    "workstation_enabled": None,
     # Where the daemon listens. Ships EMPTY: `check-destinations.py` requires a
     # destination-shaped key to, and the emptiness is what keeps the overlay's
     # `PANTHEON_WORKSTATION_URL` reachable beneath it (`H06`, `B20`) — the

@@ -96,7 +96,7 @@ def datadir(tmp_path, monkeypatch):
     monkeypatch.setattr(src.settings, "SETTINGS_FILE", settings_file)
     monkeypatch.setattr(src.settings, "FEATURES_FILE", features_file)
     monkeypatch.setenv("AUTH_ENABLED", "true")
-    for name in (P.URL_ENV, P.TOKEN_ENV):
+    for name in (P.URL_ENV, P.TOKEN_ENV, P.VM_URL_ENV):
         monkeypatch.delenv(name, raising=False)
     pairing = tmp_path / "pairing"
     pairing.mkdir()
@@ -169,7 +169,8 @@ def run(coro):
 def test_the_keys_ship_off_and_the_destination_ships_empty():
     from src.settings import DEFAULT_SETTINGS
     assert {k: DEFAULT_SETTINGS[k] for k in wa.SETTING_KEYS} == {
-        "workstation_enabled": False,
+        # `B1720` (`D-2026-10-31-03`): unanswered — on when the stack runs one.
+        "workstation_enabled": None,
         "workstation_url": "",
         "workstation_token": "",
         "workstation_tls_pin": "",            # `B980`: empty, the environment's beneath it
@@ -198,7 +199,7 @@ def test_only_an_admin_writes_a_workstation_setting(app, who):
         "workstation_enabled": True, "workstation_sudo": False,
         "workstation_url": "http://evil.example:7040"})
     assert r.status_code == 403
-    assert stored("workstation_enabled") is False
+    assert stored("workstation_enabled") is None
     assert stored("workstation_sudo") is None
     assert stored("workstation_url") == ""
 
@@ -239,7 +240,7 @@ def test_a_bad_value_is_refused_at_the_door_with_a_sentence(app, key, value, wor
                                  json={"workstation_enabled": True, key: value})
     assert r.status_code == 400
     assert words in r.json()["detail"]
-    assert stored("workstation_enabled") is False
+    assert stored("workstation_enabled") is None
 
 
 def test_an_empty_address_and_an_empty_token_mean_the_next_layer(app):
@@ -433,6 +434,64 @@ def test_routing_is_the_admins_switch_and_off_is_the_default_answer(app, ws, aut
     assert wa.routes_tools(ALLOWED, auth_manager=auth) is False
     as_user(app, ADMIN).post("/api/auth/settings", json={"workstation_route_tools": True})
     assert wa.routes_tools(ALLOWED, auth_manager=auth) is True
+
+
+# ── `B1720`: unanswered, it is on when the stack runs one ───────────────────
+#
+# `D-2026-10-31-03`. Since `9687cdf` the default stack runs the workstation and
+# puts its address in Pantheon's environment; the off default left a fresh
+# install's agent unable to use it until an admin found the switch.
+
+def test_unanswered_and_no_workstation_in_the_environment_is_off(app, auth):
+    from src import workstation_client as wc
+    assert stored("workstation_enabled") is None
+    assert (wc.enabled_choice(), wc.enabled()) == (None, False)
+    assert wa.routes_tools(ADMIN, auth_manager=auth) is False
+    assert as_user(app, ADMIN).get("/api/workstation/status").json()["state"] == wa.STATE_OFF
+
+
+def test_unanswered_with_the_stacks_workstation_is_on(app, ws, auth, monkeypatch):
+    """Red before `B1720`: the stack's address and token alone left it off."""
+    from src import workstation_client as wc
+    monkeypatch.setenv(P.URL_ENV, ws.url)
+    monkeypatch.setenv(P.TOKEN_ENV, ws.token)
+    assert (wc.enabled_choice(), wc.enabled()) == (None, True)
+    client, account = wa.workstation_for(ADMIN, auth_manager=auth)
+    assert client.base == ws.url and account == account_for(ADMIN)
+    assert wa.routes_tools(ADMIN, auth_manager=auth) is True
+    status = as_user(app, ADMIN).get("/api/workstation/status").json()
+    assert status["state"] == wa.STATE_UP
+    assert (status["settings"]["enabled"], status["settings"]["enabled_choice"]) == (True, None)
+    # Still the person's privilege: on is not on for everyone.
+    assert wa.routes_tools(PLAIN, auth_manager=auth) is False
+
+
+def test_the_vms_address_alone_is_the_stack_running_one(datadir, monkeypatch):
+    from src import workstation_client as wc
+    monkeypatch.setenv(P.VM_URL_ENV, "http://workstation-vm:7040")
+    assert wc.enabled() is True
+
+
+def test_an_admins_off_wins_over_the_stack(app, ws, auth, monkeypatch):
+    from src import workstation_client as wc
+    monkeypatch.setenv(P.URL_ENV, ws.url)
+    monkeypatch.setenv(P.TOKEN_ENV, ws.token)
+    r = as_user(app, ADMIN).post("/api/auth/settings", json={"workstation_enabled": False})
+    assert r.status_code == 200, r.text
+    assert (stored("workstation_enabled"), wc.enabled()) == (False, False)
+    assert wa.routes_tools(ADMIN, auth_manager=auth) is False
+    # And it can be handed back to the default, as `workstation_sudo` can.
+    r = as_user(app, ADMIN).post("/api/auth/settings", json={"workstation_enabled": None})
+    assert r.status_code == 200, r.text
+    assert (stored("workstation_enabled"), wc.enabled()) == (None, True)
+
+
+def test_a_hand_edited_non_answer_is_unanswered(datadir, monkeypatch):
+    from src import workstation_client as wc
+    monkeypatch.setattr(wc, "_setting", lambda key, default="": "yes")
+    assert wc.enabled_choice() is None and wc.enabled() is False
+    monkeypatch.setenv(P.URL_ENV, "http://workstation:7040")
+    assert wc.enabled() is True
 
 
 def test_an_api_token_does_not_inherit_its_owners_workstation(app, ws):

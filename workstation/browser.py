@@ -51,6 +51,14 @@ logger = logging.getLogger(__name__)
 
 PROFILE_DIR = ".pantheon/browser"
 START_TIMEOUT_S = 30.0
+# `B1721`. A browser that has been started this many times inside this window
+# is not started again until the oldest of those starts leaves it. It is on the
+# person's desktop, so every start is a Firefox window opening, and whatever
+# asked for it — the in-app window asks for a frame about once a second — would
+# otherwise open it again as often as it closes. A browser that runs is started
+# once.
+RESTARTS_MAX = 3
+RESTART_WINDOW_S = 120.0
 NAV_TIMEOUT_S = 45.0
 READ_MAX_CHARS = 12_000
 ELEMENTS_MAX = 150
@@ -473,6 +481,7 @@ class AccountBrowser:
         self.watched_at = 0.0
         self.pointed: Optional[Dict] = None   # `P25-10`: what the person last pointed at
         self._act_lock = threading.Lock()
+        self._starts: List[float] = []        # `B1721`: when it was last started
 
     # -- life -------------------------------------------------------------------
 
@@ -484,6 +493,16 @@ class AccountBrowser:
         firefox = find_firefox()
         if not firefox:
             raise BrowserError("unavailable", "This workstation has no Firefox, so it has no browser.")
+        now = time.monotonic()
+        self._starts = [t for t in self._starts if now - t < RESTART_WINDOW_S]
+        if len(self._starts) >= RESTARTS_MAX:
+            wait = int(RESTART_WINDOW_S - (now - self._starts[0])) + 1
+            raise BrowserError("unavailable", (
+                f"The browser stopped {len(self._starts)} times in the last "
+                f"{int(RESTART_WINDOW_S)} seconds, so it is not started again for {wait} s. "
+                "If the desktop's display restarted, it will settle; if Firefox keeps "
+                "failing, the workstation's log says why."))
+        self._starts.append(now)
         self.profile.mkdir(parents=True, exist_ok=True)
         names = self.names() if callable(getattr(self, "names", None)) else None
         (self.profile / "user.js").write_text(USER_JS + (names.browser_prefs() if names else "")

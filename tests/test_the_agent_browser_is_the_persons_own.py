@@ -114,6 +114,38 @@ def test_the_tool_is_registered_and_offered_only_with_a_workstation():
     assert "is not an `agent_browser` action" in B.parse_args('{"action": "hack"}')[1]
 
 
+def test_a_browser_that_keeps_stopping_is_not_reopened_on_every_ask(tmp_path, monkeypatch):
+    """`B1721`. The owner, 2026-10-31: the desktop *"constantly opens and
+    reopens firefox"*. The browser is on the person's desktop, and whatever
+    asks for it — the in-app window asks for a frame about once a second —
+    started it again as often as it stopped. Three starts in two minutes, then
+    a sentence instead of a fourth window, until the oldest start ages out."""
+    from workstation import browser as WB
+
+    class Launched(Exception):
+        pass
+
+    def launch(*a, **k):
+        raise Launched()
+
+    now = [1000.0]
+    monkeypatch.setattr(WB, "find_firefox", lambda: "/bin/true")
+    monkeypatch.setattr(WB.subprocess, "Popen", launch)
+    monkeypatch.setattr(WB.time, "monotonic", lambda: now[0])
+    b = WB.AccountBrowser([], {}, tmp_path / "profile", True)
+    for _ in range(WB.RESTARTS_MAX):
+        with pytest.raises(Launched):
+            b.start()
+        now[0] += 10
+    with pytest.raises(WB.BrowserError) as e:
+        b.start()
+    assert e.value.code == "unavailable"
+    assert "stopped 3 times in the last 120 seconds" in e.value.message
+    now[0] += WB.RESTART_WINDOW_S
+    with pytest.raises(Launched):
+        b.start()
+
+
 def test_a_page_reads_as_text_then_numbered_elements():
     out = B.page_text({"title": "Shop", "url": "https://x.org/", "text": "Hello", "cut": True,
                        "elements": [{"ref": 1, "tag": "a", "label": "Next", "href": "https://x.org/2"},

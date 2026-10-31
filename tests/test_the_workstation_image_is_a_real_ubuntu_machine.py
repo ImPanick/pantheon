@@ -300,6 +300,11 @@ def test_a_real_display_is_seen_typed_into_and_the_picture_changes(station):
     jpeg = run(client.screenshot(ann, fmt="jpeg"))
     assert jpeg["mime"] == "image/jpeg" and base64.b64decode(jpeg["data_b64"])[:2] == b"\xff\xd8"
     assert run(client.screenshot(ann, if_none_match=shot["digest"])) is None  # nothing moved
+    # `B1721`: the desktop starts with nothing open, so the terminal is opened
+    # from the panel, as a person or the agent would.
+    assert not sh(client, ann, f"xdotool search --onlyvisible --class {TERMINAL_CLASS}"
+                  )["stdout"].strip(), "something opened with the desktop"
+    run(client.input(ann, "click", x=TRAY_TERMINAL[0], y=TRAY_TERMINAL[1]))
 
     x, y = _wait_for(lambda: _terminal_centre(client, ann) if sh(
         client, ann, f"xdotool search --onlyvisible --class {TERMINAL_CLASS}")["stdout"].strip()
@@ -315,8 +320,8 @@ def test_a_real_display_is_seen_typed_into_and_the_picture_changes(station):
 def test_every_input_action_reaches_the_display(station):
     client, ann = station.client(), account_for("e2e-typist")
     run(client.ensure(ann))
-    # On the bare desktop, right of the terminal (centred, about 918 px wide, so
-    # it ends near x 1100): nothing here types into a shell.
+    # On the bare desktop, right of the terminal the last test opened (centred,
+    # about 918 px wide, so it ends near x 1100): nothing here types into a shell.
     for action, fields in [
         ("move", {"x": 1200, "y": 300}), ("click", {"x": 1200, "y": 300}),
         ("double_click", {"x": 1200, "y": 300}), ("triple_click", {"x": 1200, "y": 300}),
