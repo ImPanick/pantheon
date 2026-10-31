@@ -280,6 +280,19 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
         if body.allow_signup is not None:
             auth_manager.signup_enabled = bool(body.allow_signup)
         await asyncio.to_thread(auth_manager.mark_setup_complete, username)
+        # The person's own skills are on disk with the owner of the account
+        # they were made under. Boot re-assigns unclaimed ones to the admin
+        # (app.py), but boot ran before this account existed — so after an
+        # install was recovered by moving auth.json aside, every skill the
+        # person had stayed hidden until the next restart. Claim them now.
+        try:
+            from services.memory.skills import SkillsManager
+            claimed = await asyncio.to_thread(
+                SkillsManager(os.path.dirname(SKILLS_DIR)).backfill_owner, username, {username})
+            if claimed:
+                logger.info("Assigned %s existing skill file(s) to %s at setup", claimed, username)
+        except Exception as exc:
+            logger.warning("Could not assign existing skills to %s at setup: %s", username, exc)
         await _audit("user_create", actor=body.username,
                      subject=body.username,
                      detail={"via": "setup", "is_admin": True,

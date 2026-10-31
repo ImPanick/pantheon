@@ -27,7 +27,24 @@ and the obligation was not new.
 ## `pantheon/` — Pantheon's own skills
 
 Procedures written for this product's own tools, **published and switched on**
-(`B1419`). Today they are four, for the workstation:
+(`B1419`, `B1715`). Eleven are the core set (`category: core`), each offered
+when the tools it drives are allowed:
+
+| Skill | Teaches | Needs |
+| --- | --- | --- |
+| `clarify-the-goal` | look first, ask only what changes the work, restate the vision, then plan | `ask_user` |
+| `web-research` | several searches, read the sources, cross-check, cite | `web_search`, `web_fetch` |
+| `browse-a-website` | the real browser by numbered elements, vault sign-in, stop before anything irreversible | `agent_browser` |
+| `debug-a-failure` | reproduce, read the whole error, one hypothesis, smallest fix, rerun | `bash`, `read_file` |
+| `change-code-safely` | read the project's conventions, small edits, its own tests | `read_file`, `edit_file`, `bash` |
+| `review-code-changes` | read the change and its callers, findings with file and line | `bash`, `read_file` |
+| `analyze-data` | inspect before computing, sanity-check, show the derivation | `python` |
+| `write-a-document` | reader and purpose, outline, draft in the editor, revise by edits | `create_document` |
+| `summarize-for-a-reader` | answer first, exact numbers, attribution, what was left out | — |
+| `remember-what-matters` | search before adding, edit not duplicate, no secrets | `manage_memory` |
+| `schedule-recurring-work` | a task rather than a one-off, UTC times, dry run | `manage_tasks` |
+
+Four are for the workstation:
 
 | Skill | Teaches |
 | --- | --- |
@@ -58,6 +75,12 @@ From [ECC](https://github.com/affaan-m/ECC) by Affaan Mustafa, **MIT licensed**
 They needed no conversion. ECC writes `name:` / `description:` YAML frontmatter
 in `SKILL.md`; that is exactly what `services/memory/skill_format.py` reads, so
 all 286 parse with the reader Pantheon already had.
+
+The model is not shown them by default (`D-2026-10-26-01` §8), and the
+Workshop's card list leaves them out. They are on the **Skill library** shelf
+at the bottom of the Skills window instead (`GET /api/skills/library`): **Add**
+copies one into the person's own skills, published, and from then on their
+model is offered it and they can edit it (`B1715`).
 
 **What is vendored:** the `SKILL.md` text. 286 files, about 2.5 MB.
 

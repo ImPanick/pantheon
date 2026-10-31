@@ -375,6 +375,10 @@ Re-measured 2026-10-30, after the thirty-seventh wave: **34 filed, 36 closed**, 
 
 **Direction as of 2026-10-30, after the thirty-seventh wave: the system-and-function list is done but for decisions, what this sandbox cannot reach and small remainders; the UI/UX revamp is next.**
 
+Re-measured 2026-10-31, after the forty-fifth wave: **25 filed, 23 closed**, open **36 → 38** — rising, by two over the window. The waves since the thirty-seventh were the UI/UX revamp, the fresh-install sign-in fix and the owner's ask that every partly wired system work in full; most filed and closed their own rows in the same wave, and the forty-fifth filed and closed one (`B1715`, the shipped core skills). The ship-line composition is unchanged — 0 of the last 40 `B` rows (`B1676`–`B1715`) block.
+
+**Direction as of 2026-10-31, after the forty-fifth wave: the open count is rising.**
+
 ### A second number, which is the one that moves
 
 Of the last 40 `B` rows filed — `B360` through `B455`, four waves of sweeps plus

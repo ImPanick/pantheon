@@ -108,6 +108,18 @@ the next one is cut.
 
 ### Added
 
+- **Skills ship with Pantheon again, and the library can be found** (2026-10-31). Eleven core
+  skills now ship published and on for everyone, beside the workstation's four: clarify the goal,
+  web research, browse a website, debug a failure, change code safely, review code changes,
+  analyze data, write a document, summarize for a reader, remember what matters, and schedule
+  recurring work. Each is handed to the model as the procedure to follow when a turn is about it and the tools it drives are allowed, and costs other turns nothing. They live in
+  `library/pantheon/skills/`, so an update brings new versions and never touches a person's own
+  copy. The 286 vendored skills, which the Skills window stopped listing once sign-in became
+  mandatory, are on a folded **Skill library** shelf there: **Add** copies one into your skills,
+  published, so the model can use it (`GET /api/skills/library`,
+  `POST /api/skills/library/{name}/add`). First-run setup now claims skill files left by an
+  earlier account at once instead of after the next restart.
+
 - **Plan mode gathers what it needs before it plans** (2026-10-31). Before drafting, the agent
   checks it knows the outcome, what done looks like, the limits and the person's taste; whatever
   the project cannot tell it, it asks on one card of up to five questions (`ask_user` with

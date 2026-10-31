@@ -84,9 +84,12 @@ def _own_skill(store, name, owner, text="my own way"):
 # ── 1. what ships ───────────────────────────────────────────────────────────
 
 def test_four_skills_ship_published_and_gated_on_the_tools_they_drive(store):
-    dirs = {d.name for d in FIRST_PARTY.iterdir() if d.is_dir()}
+    # The workstation's four; the core set beside them is
+    # `tests/test_the_core_skills_ship_switched_on.py`'s.
+    dirs = {d.name for d in FIRST_PARTY.iterdir() if d.is_dir() and d.name.startswith("workstation-")}
     assert dirs == set(SHIPPED)
-    rows = {s["name"]: s for s in store.load_all() if s.get("library") == "pantheon"}
+    rows = {s["name"]: s for s in store.load_all()
+            if s.get("library") == "pantheon" and s.get("category") == "workstation"}
     assert set(rows) == set(SHIPPED)
     for name, needs in SHIPPED.items():
         assert rows[name]["status"] == "published", name

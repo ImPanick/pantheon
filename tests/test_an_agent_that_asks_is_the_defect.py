@@ -174,6 +174,10 @@ def _patch_common(monkeypatch, *, skills=False, blocked=()):
     # the test below that is *about* that interaction turns it on.
     monkeypatch.setattr(al, "_skills_pref_enabled",
                         lambda owner: bool(skills), raising=False)
+    # `B1715`. The shipped core skills pull in the tools they drive when a
+    # turn is about them ("read the three files" is), which would give these
+    # turns something to look with that the case did not state.
+    monkeypatch.setenv("PANTHEON_FIRST_PARTY_SKILLS", "")
     # `B1426`. "Any active skill" used to be met by those 286, which are
     # vendored drafts the catalogue never lists; it no longer counts them. So
     # the library this file's skills case is about is stated: one published

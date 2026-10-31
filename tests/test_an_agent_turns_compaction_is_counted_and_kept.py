@@ -44,6 +44,13 @@ from test_compaction_notice_js import _COMPACTED, _TRIMMED, _arm, _run as _run_a
 node_only = pytest.mark.skipif(not shutil.which("node"), reason="node binary not on PATH")
 
 
+@pytest.fixture(autouse=True)
+def _no_shipped_skills(monkeypatch):
+    """`B1715`. These turns are measured by their size; the shipped core skill
+    a turn about a failure or a build would be handed is held out."""
+    monkeypatch.setenv("PANTHEON_FIRST_PARTY_SKILLS", "")
+
+
 def _frames(chunks):
     out = []
     for chunk in chunks:

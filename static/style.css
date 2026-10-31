@@ -21100,6 +21100,47 @@ body:not(.email-doc-split-active) #email-lib-modal.email-lib-fullscreen:not(.mod
   font-weight: normal;
 }
 .skill-card-section-hidden { display: none !important; }
+/* The skill library shelf: the vendored skills, added one at a time. */
+.skill-library-shelf {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 4px 4px 8px;
+}
+.doclib-grid:has(.doclib-card-expanded) > .skill-library-shelf { display: none; }
+.skill-library-lede {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--fg-muted);
+}
+.skill-library-rows {
+  display: flex;
+  flex-direction: column;
+  max-height: 420px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.skill-library-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px;
+  border-bottom: 1px solid color-mix(in oklab, var(--border) 60%, transparent);
+}
+.skill-library-row:last-child { border-bottom: 0; }
+.skill-library-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.skill-library-name { font-size: 12px; font-weight: 600; color: var(--fg); }
+.skill-library-desc {
+  font-size: 11px;
+  color: var(--fg-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.skill-library-add { flex-shrink: 0; }
 /* Warning banner shown when previewing/editing a built-in capability. */
 .skill-builtin-warn {
   font-size: 9.5px;

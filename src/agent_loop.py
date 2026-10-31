@@ -5199,10 +5199,14 @@ def _skills_for_turn(sm, owner, disabled_tools=None) -> list:
     `5a7c75c`). A shipped skill counts only where the catalogue would list it:
     `injectable_skills`, gated on this turn's tools when they are known.
     """
+    from services.memory.skills import arrives_when_matched
+
     own = [s for s in sm.load_active(owner=owner) if not s.get("bundled")]
     active = _skill_active_toolsets(disabled_tools) if disabled_tools is not None else None
+    # `B1715`. The core set arrives as a matched body, which needs no tool to
+    # open — so it is not a reason to offer `manage_skills` either.
     shipped = [s for s in sm.injectable_skills(owner=owner, active_toolsets=active)
-               if s.get("bundled")]
+               if s.get("bundled") and not arrives_when_matched(s)]
     return own + shipped
 
 
