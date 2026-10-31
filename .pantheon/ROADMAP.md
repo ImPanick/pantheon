@@ -89,7 +89,7 @@ from scratch. Introduced 2026-08-31; the folds are listed in § *What this run l
 | P26 | Design — the studio, and notes on the live page | 10 | 0 | 0 | **10** |
 | P27 | Connections — the hub and the private vault | 11 | 1 | 0 | **10** |
 | Backlog | Bugs and hardening found in flight | 1298 | 22 | 0 | **1276** |
-| **Total** | | **1789** | **37** | **3** | **1749** |
+| **Total** | | **1790** | **37** | **3** | **1750** |
 
 **Nothing is waiting on a decision** except one, and it is first: `P0-19` has to settle which of
 `CREDITS.md` and `ACKNOWLEDGMENTS.md` is the credits file. All eighteen ledger calls are answered
@@ -251,6 +251,10 @@ they are for.*
 > `check-tracker.py` now validates the newest entry against the table and fails on drift.
 > Entries below the `P0-31` one keep the figure they were written with: a record of what
 > was claimed at the time is worth more than a quietly corrected one (`B44`).
+
+### A forty-first wave: every partly wired system brought to working order
+`81ecd5b`…`HEAD`. **1790 tracked, 1750 done. `B1711` filed and closed; the owner's ask (2026-10-31) that every system that exists but is only partly wired or partly working be made to work in full.**
+**An audit, then the fixes.** The static checkers were already clean (0 unresolved lookups, every setting read, the tool surface whole), so the audit ran the app: every rail window opened, every GET under `/api` called as an admin, the tracker's open rows and the optional-install gaps read. First fix: the codex cookbook's three hand-off routes, dead on FastAPI 0.141 (`B1711`).
 
 ### A fortieth wave, of one: every control where it belongs
 `6b8c1e4`…`HEAD`. **1789 tracked, 1749 done. No rows closed or filed; the owner's report (2026-10-31) of button layout and positioning bugs on `dev`, with four screenshots and an ask to audit the rest.**
