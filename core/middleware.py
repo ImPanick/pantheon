@@ -324,25 +324,6 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
                 "sandbox allow-scripts; "
                 "frame-ancestors 'self'"
             )
-        elif is_design_preview:
-            # A page the agent (or a hand) wrote, run as a design runs. The
-            # sandbox makes it an opaque origin — no cookie, no storage, no
-            # reach into this app or its window — and `default-src 'none'`
-            # means it fetches nothing at all: its stylesheets, scripts and
-            # small images arrive inlined (`design_files.bundle`), so a design
-            # that names a remote font or script shows without it (`Law 16`).
-            # Framed only by this app's own pages.
-            response.headers["X-Frame-Options"] = "SAMEORIGIN"
-            response.headers["Content-Security-Policy"] = (
-                "default-src 'none'; "
-                "script-src 'unsafe-inline'; "
-                "style-src 'unsafe-inline'; "
-                "img-src data: blob:; "
-                "font-src data:; "
-                "media-src data: blob:; "
-                "sandbox allow-scripts; "
-                "frame-ancestors 'self'"
-            )
         elif is_desktop_client:
             # Pantheon's own copy of a vendored client, framed by Pantheon's own
             # pages and nobody else's. Same-origin and not sandboxed, because
@@ -369,6 +350,25 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
                 "object-src 'none'; "
                 "base-uri 'none'; "
                 "form-action 'none'; "
+                "frame-ancestors 'self'"
+            )
+        elif is_design_preview:
+            # A page the agent (or a hand) wrote, run as a design runs. The
+            # sandbox makes it an opaque origin — no cookie, no storage, no
+            # reach into this app or its window — and `default-src 'none'`
+            # means it fetches nothing at all: its stylesheets, scripts and
+            # small images arrive inlined (`design_files.bundle`), so a design
+            # that names a remote font or script shows without it (`Law 16`).
+            # Framed only by this app's own pages.
+            response.headers["X-Frame-Options"] = "SAMEORIGIN"
+            response.headers["Content-Security-Policy"] = (
+                "default-src 'none'; "
+                "script-src 'unsafe-inline'; "
+                "style-src 'unsafe-inline'; "
+                "img-src data: blob:; "
+                "font-src data:; "
+                "media-src data: blob:; "
+                "sandbox allow-scripts; "
                 "frame-ancestors 'self'"
             )
         elif is_tool_render:
