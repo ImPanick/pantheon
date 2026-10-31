@@ -88,8 +88,8 @@ from scratch. Introduced 2026-08-31; the folds are listed in § *What this run l
 | P25 | The + menu, git per account, the agent browser | 13 | 0 | 0 | **13** |
 | P26 | Design — the studio, and notes on the live page | 10 | 0 | 0 | **10** |
 | P27 | Connections — the hub and the private vault | 11 | 1 | 0 | **10** |
-| Backlog | Bugs and hardening found in flight | 1298 | 22 | 0 | **1276** |
-| **Total** | | **1790** | **37** | **3** | **1750** |
+| Backlog | Bugs and hardening found in flight | 1299 | 22 | 0 | **1277** |
+| **Total** | | **1791** | **37** | **3** | **1751** |
 
 **Nothing is waiting on a decision** except one, and it is first: `P0-19` has to settle which of
 `CREDITS.md` and `ACKNOWLEDGMENTS.md` is the credits file. All eighteen ledger calls are answered
@@ -253,8 +253,8 @@ they are for.*
 > was claimed at the time is worth more than a quietly corrected one (`B44`).
 
 ### A forty-first wave: every partly wired system brought to working order
-`81ecd5b`…`HEAD`. **1790 tracked, 1750 done. `B1711` filed and closed; the owner's ask (2026-10-31) that every system that exists but is only partly wired or partly working be made to work in full.**
-**An audit, then the fixes.** The static checkers were already clean (0 unresolved lookups, every setting read, the tool surface whole), so the audit ran the app: every rail window opened, every GET under `/api` called as an admin, the tracker's open rows and the optional-install gaps read. First fix: the codex cookbook's three hand-off routes, dead on FastAPI 0.141 (`B1711`).
+`81ecd5b`…`HEAD`. **1791 tracked, 1751 done. `B1711` filed and closed; the owner's ask (2026-10-31) that every system that exists but is only partly wired or partly working be made to work in full.**
+**An audit, then the fixes.** The static checkers were already clean (0 unresolved lookups, every setting read, the tool surface whole), so the audit ran the app: every rail window opened, every GET under `/api` called as an admin, the tracker's open rows and the optional-install gaps read. Fixed: the codex cookbook's three hand-off routes, dead on FastAPI 0.141 (`B1711`); the default embedding model built into the image and seeded into the data volume, so memory search is semantic on a fresh install (`B1712`).
 
 ### A fortieth wave, of one: every control where it belongs
 `6b8c1e4`…`HEAD`. **1789 tracked, 1749 done. No rows closed or filed; the owner's report (2026-10-31) of button layout and positioning bugs on `dev`, with four screenshots and an ask to audit the rest.**
@@ -23615,3 +23615,4 @@ this is the same thing happening to the row that corrected the store.
 - [ ] **B1710** **The turn sheet's Approval row has its own copy of the mode words.** `#turn-approval-manual`/`#turn-approval-auto` say *Manual approve*/*Auto* in `index.html` and `#turn-chip-approval` *Auto*, while the menu shows the server's *Auto-approve* (`Law 7`). `Verify:` the sheet's labels are drawn from `GET …/approval-mode`'s `modes`. — found while doing `B1706` — agent:`wave-bp`
 
 - [x] **B1711** **The codex cookbook's `cached`, `serve` and `serve-preset` answered 503 on every call.** Each hands the work to `/api/model/cached` or `/api/model/serve` by looking the endpoint up on `request.app.routes`, and on FastAPI 0.141 an included router stays one `_IncludedRouter` there (`original_router` holds its routes), so the flat walk found nothing: *"model cached endpoint unavailable"*, measured live with a signed-in admin. The external-agent integrations (`integrations/codex`, `integrations/claude`) could list the servers but never list a model or launch one. — found by the partial-wiring audit, 2026-10-31 — **done 2026-10-31:** `_app_endpoint` walks included routers with their include prefixes; a FastAPI that still flattens answers at the first level. `Verify:` `tests/test_codex_cookbook_reaches_the_cookbook.py` (4 cases; red without the helper), and `GET /api/codex/cookbook/cached` answers 200 live.
+- [x] **B1712** **A fresh Docker install searched memory and documents by keyword alone.** The in-process vector index (`P13-21`) needs the fastembed model, the image did not carry it, and Pantheon will not fetch a model unasked (`allow_model_download`, `Law 16`), so the first boot logged *"VectorRAG init failed: No embedding lanes available"* and the Brain and RAG ran lexical until someone set `EMBEDDING_URL` or allowed the download. — found by the partial-wiring audit, 2026-10-31 — **done 2026-10-31:** the `Dockerfile` builds the default model (`FASTEMBED_SEED_MODEL`, the one `src/embeddings.py` and compose load) into `/opt/pantheon/seed-models/fastembed`, outside every bind mount, and `docker/entrypoint.sh`'s `seed_model_cache` copies it into the data volume's cache when that holds no model — never over one, and not at all when `FASTEMBED_MODEL` names another model, since any `.onnx` counts as cached and a wrong seed would let fastembed fetch unasked. fastembed opens its cache offline first (`download_model` tries `local_files_only=True`), so a running install still reaches nobody. `--build-arg BAKE_MODELS=false` leaves it out. `Verify:` `tests/test_a_fresh_install_has_its_embedding_model.py` (7 cases, the entrypoint lines run in `sh`). Not driven here: an image build, since this sandbox's proxy refuses Hugging Face.
