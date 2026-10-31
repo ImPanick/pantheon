@@ -286,7 +286,8 @@ def test_the_window_sees_and_drives_the_callers_own_browser(app, ws, site):
     assert frame.status_code == 200 and frame.headers["cache-control"] == "no-store"
     f = frame.json()
     assert set(f) == {"mime", "data_b64", "width", "height", "digest", "url", "title", "tabs",
-                      "activity", "seq"}
+                      "activity", "seq", "runs_in"}
+    assert f["runs_in"] == "workstation"   # not Pantheon's own (`src/local_browser.py`)
     assert f["url"] == site + "/two" and f["tabs"] == [{"tab": 1, "url": site + "/two", "current": True}]
     assert ws.token not in frame.text
     assert f["activity"][-1]["label"] == f"Opening {site}/two" and f["activity"][-1]["who"] == "person"

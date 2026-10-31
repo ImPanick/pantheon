@@ -133,6 +133,12 @@ def run_turn(monkeypatch, tmp_path, *, owner, user="what is the capital of franc
     brief's own measurement drove.
     """
     signed_in(monkeypatch, tmp_path / "auth")
+    # No Firefox of Pantheon's own either, whatever this machine has: then
+    # `agent_browser` has nowhere to run, as without a workstation
+    # (`src/local_browser.py`; offered when there is one, below).
+    import src.local_browser as LB
+    if not getattr(monkeypatch, "_pantheon_has_firefox", False):
+        monkeypatch.setattr(LB, "firefox_here", lambda: False)
     rec = Turn()
 
     stored = dict(settings or {})
@@ -240,6 +246,20 @@ def test_an_admin_is_capped_only_by_what_this_install_cannot_do(monkeypatch, tmp
     admin = run_turn(monkeypatch, tmp_path, owner=ADMIN)
     assert admin.cap == {"computer", "agent_browser", "network", "generate_image"}, sorted(admin.cap)
     assert not (admin.cap & set(ts.NON_ADMIN_BLOCKED_TOOLS))
+
+
+def test_with_pantheons_own_firefox_the_browser_is_offered_without_a_workstation(monkeypatch, tmp_path):
+    """The owner (2026-10-31): the browser runs without a workstation. With a
+    Firefox of Pantheon's own, `agent_browser` leaves the cap; `computer` and
+    `network` live on the workstation and stay in it. An API token still gets
+    no browser."""
+    import src.local_browser as LB
+    monkeypatch.setattr(LB, "firefox_here", lambda: True)
+    monkeypatch._pantheon_has_firefox = True
+    admin = run_turn(monkeypatch, tmp_path / "a", owner=ADMIN)
+    assert admin.cap == {"computer", "network", "generate_image"}, sorted(admin.cap)
+    token = run_turn(monkeypatch, tmp_path / "t", owner=ADMIN, delegated=True)
+    assert "agent_browser" in token.cap
 
 
 def test_a_delegated_credential_is_the_non_admin_cap_plus_its_own(monkeypatch, tmp_path):
