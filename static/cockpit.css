@@ -299,8 +299,14 @@ html.cockpit .ck-wave.lg i { width: 5px; }
   html.cockpit .icon-rail-btn[style*="display: none"] { display: none !important; }
   html.cockpit .icon-rail-btn[data-ck-tip]:hover::after {
     content: attr(data-ck-tip); position: absolute; left: 48px; top: 50%; transform: translateY(-50%);
+    /* style.css draws Chats' and Documents' "has items" dot on this same
+       ::after (`.rail-dynamic::after`, 4×4 at the bottom); without these the
+       label was squeezed into that dot and spilled out of a 24px pill */
+    right: auto; bottom: auto; width: auto; height: auto; opacity: 1;
     white-space: nowrap; font: 400 12px/1.4 var(--ck-font-ui); padding: 5px 10px; border-radius: 10px;
-    background: var(--ck-glass-strong); -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px);
+    /* near-solid: the rail is itself blurred, and Chromium will not blur
+       again inside it, so a glass label let the drawer's words show through */
+    background: color-mix(in oklab, var(--ck-glass-base) 96%, transparent);
     color: var(--ck-text); border: 1px solid var(--ck-edge); box-shadow: 0 10px 24px -8px var(--ck-shade-deep);
     pointer-events: none; z-index: 20; animation: ck-tip-in var(--ck-t) var(--ck-ease);
   }
@@ -1686,3 +1692,8 @@ html.cockpit .voice-call-end:hover { color: #fff; background: color-mix(in oklab
   html.cockpit .voice-call-caption:empty { display: none; }
   html.cockpit .voice-call-state { min-width: 0; font-size: 17px; }
 }
+
+/* ───────────────────────── 2026-10-31 · a road to every document ───────────────────────── */
+/* The tab bar's Library door wears the new-tab button's shape, not its
+   half-turn on hover (that belongs to the plus). */
+html.cockpit .doc-tab-library:hover svg { transform: none; }
