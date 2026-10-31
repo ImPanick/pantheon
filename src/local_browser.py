@@ -206,6 +206,8 @@ class _ProxyHandler(socketserver.BaseRequestHandler):
         try:
             conn.sendall(b"HTTP/1.1 502 Bad Gateway\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
         except OSError:
+            # Firefox already hung up on this connection: there is nobody
+            # left to tell, and the connection is closed by the caller.
             pass
 
 

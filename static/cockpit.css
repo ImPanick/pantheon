@@ -647,7 +647,6 @@ html.cockpit #welcome-screen > .welcome-sub {
   color: var(--ck-text-3) !important; opacity: .8; padding: 0 4px;
 }
 html.cockpit #welcome-screen > .welcome-sub:empty { display: none; }
-html.cockpit #welcome-screen > #welcome-setup { order: 4; max-width: 620px; width: 100%; margin: 16px auto 0; }
 html.cockpit .ck-ready { order: 1; max-width: 620px; width: 100%; margin: 0 auto; display: flex; flex-direction: column; gap: 20px; }
 html.cockpit .ck-ready-head { display: flex; align-items: center; gap: 14px; }
 html.cockpit .ck-ready-word {
@@ -804,7 +803,6 @@ html.cockpit .model-picker-btn::before { content: ""; width: 6px; height: 6px; b
 html.cockpit .model-picker-btn .ck-loc { font-size: 10px; font-weight: 500; color: var(--ck-text-3); letter-spacing: .04em; }
 html.cockpit .model-picker-btn svg { transform: rotate(180deg); }
 html.cockpit .plan-mode-status { position: static !important; order: 2; align-self: center; }
-html.cockpit #pinned-tools-bar:empty { display: none; }
 html.cockpit .chat-input-bottom { display: flex !important; align-items: center; gap: 6px; padding: 6px 10px 10px !important; margin: 0 !important; }
 html.cockpit .chat-input-left { display: flex !important; align-items: center; gap: 4px !important; flex: 1; min-width: 0; flex-wrap: nowrap !important; overflow: visible; }
 html.cockpit .chat-input-right { display: flex !important; align-items: center; gap: 4px !important; flex: none; }

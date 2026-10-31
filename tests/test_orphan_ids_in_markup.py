@@ -194,9 +194,10 @@ def unreached_ids():
 # the static block listed (`test_extract_memory_has_a_door_again`,
 # `test_the_runtime_menu_still_offers_what_it_carried_across`).
 SUPERSEDED_MARKUP: set = set()
-NEVER_BUILT = {                # empty anchors for features that never shipped
-    "pinned-tools-bar", "welcome-setup", "set-reminder-llm-persona-msg",
-}
+# `B1714`: `#pinned-tools-bar` and `#welcome-setup` are deleted (`D-2026-10-26-01`
+# item 15 ruled the strip removed), and `#set-reminder-llm-persona-msg` says
+# when the persona is read.
+NEVER_BUILT: set = set()
 DEAD_ATTRIBUTE = {             # live element, dead id
     "adm-epApiKey-row", "agent-drafts-chevron", "auto-sort-sessions-row",
     "chats-section-label",

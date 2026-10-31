@@ -4567,6 +4567,37 @@ def current_auto_approve_acceptance(subject: str, subject_id: str, *, db=None):
         logger.warning("Failed to read the Auto-approve acceptance for %s %s", subject, subject_id)
         return None
 
+def open_auto_approve_acceptances(*, db=None) -> list:
+    """`B1705`. Every acceptance still open, across chats and hires, newest
+    first — what an admin reads to see who accepted Auto where.
+
+    Each is `_auto_approve_acceptance_dict` plus `name` (the chat's title or
+    the hire's name, `None` when the chat or hire is gone — the record
+    outlives it on purpose) and `owner` (whose chat or hire it is). Raises on
+    a failed read: the admin's list says it could not load rather than
+    showing nobody, which would read as *no one has Auto on*."""
+    def _read(session):
+        rows = session.query(AutoApproveAcceptance).filter(
+            AutoApproveAcceptance.withdrawn_at.is_(None),
+        ).order_by(AutoApproveAcceptance.accepted_at.desc()).all()
+        chat_ids = [r.subject_id for r in rows if r.subject == "chat"]
+        hire_ids = [r.subject_id for r in rows if r.subject == "hire"]
+        chats = {c.id: c for c in session.query(Session).filter(Session.id.in_(chat_ids))} if chat_ids else {}
+        hires = {h.id: h for h in session.query(AgentHire).filter(AgentHire.id.in_(hire_ids))} if hire_ids else {}
+        out = []
+        for row in rows:
+            item = _auto_approve_acceptance_dict(row)
+            thing = (chats if row.subject == "chat" else hires).get(row.subject_id)
+            item["name"] = getattr(thing, "name", None) if thing is not None else None
+            item["owner"] = getattr(thing, "owner", None) if thing is not None else None
+            out.append(item)
+        return out
+
+    if db is not None:
+        return _read(db)
+    with get_db_session() as session:
+        return _read(session)
+
 def get_session_by_id(session_id: str):
     """Get a session by ID"""
     with get_db_session() as db:

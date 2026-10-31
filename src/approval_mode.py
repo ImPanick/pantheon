@@ -479,6 +479,62 @@ def set_mode_for(session_id: Any, mode: Any) -> bool:
     return saved
 
 
+def open_acceptances(*, auth_manager: Any = None) -> list:
+    """`B1705`. Every open acceptance, across chats and hires, for an admin.
+
+    Each record (`core.database.open_auto_approve_acceptances`) carries
+    `in_effect`: whether its person still holds `can_auto_approve` — the
+    question `mode_for` and `hire_lift_for` ask at every run, so an
+    acceptance whose person lost the privilege is on record and lifts
+    nothing — and `effect_words`, a hire's effects in the hire form's words. A chat whose column was set back to Manual withdrew its
+    acceptance (`set_mode_for`), so it is not here. Raises on a failed
+    read, like the store."""
+    from core.database import open_auto_approve_acceptances
+
+    from src.agents.hires import EFFECT_WORDS
+
+    records = open_auto_approve_acceptances()
+    answers: dict = {}
+    for record in records:
+        by = record.get("by")
+        if by not in answers:
+            answers[by] = may_use_auto(by, auth_manager=auth_manager)
+        record["in_effect"] = answers[by]
+        # The hire form's words for what runs unasked (`Law 7`), not the ids.
+        record["effect_words"] = [EFFECT_WORDS.get(e, e.replace("_", " "))
+                                  for e in record.get("effects") or ()]
+    return records
+
+
+def withdraw_for(subject: Any, subject_id: Any) -> bool:
+    """`B1705`. An admin turning someone's gate back on: a chat goes to
+    Manual approve (which withdraws its acceptance, `set_mode_for`), a hire's
+    acceptance is withdrawn so its runs ask after outside content again.
+    Turning a gate back on never asks, so this needs no acceptance; it is
+    the direction every refusal in this module already goes. Answers whether
+    anything was open. Raises `AutoRefused` for a subject this module does
+    not have, or when the write fails."""
+    from core.database import current_auto_approve_acceptance, withdraw_auto_approve_acceptance
+
+    sid = str(subject_id or "").strip()
+    if subject not in (SUBJECT_CHAT, SUBJECT_HIRE) or not sid:
+        raise AutoRefused("Name a chat or a hire.", 400)
+    was_open = current_auto_approve_acceptance(subject, sid) is not None
+    try:
+        if subject == SUBJECT_CHAT:
+            if not set_mode_for(sid, ApprovalMode.MANUAL):
+                raise AutoRefused("That did not save. Try again.", 500)
+        else:
+            withdraw_auto_approve_acceptance(SUBJECT_HIRE, sid)
+    except AutoRefused:
+        raise
+    except Exception as exc:  # noqa: BLE001 — refused in a sentence
+        logger.warning("could not withdraw the Auto-approve acceptance of %s %s: %s",
+                       subject, sid, exc)
+        raise AutoRefused("That did not save. Try again.", 500) from None
+    return was_open
+
+
 def turn_auto_on(session_id: Any, person: Optional[str], accepted_warning: Any) -> dict:
     """`B1703`. Turn one chat to Auto on its person's acceptance, and answer
     the record. Raises `AutoRefused` without an acceptance of the warning as

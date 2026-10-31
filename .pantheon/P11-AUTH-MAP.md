@@ -78,18 +78,18 @@ The four tiers are `P11-02b`'s own question. A site is exactly one of them:
   ownership check or a privilege key that does not exist. The fix is a data model, not
   an auth change.
 
-derived: direct 71 · Depends 14 · total 85
+derived: direct 73 · Depends 14 · total 87
 
 ### tier summary
 
 | tier | sites |
 |---|---|
-| `superuser` | 64 |
+| `superuser` | 66 |
 | `operator` | 0 |
 | `power-user` | 0 |
 | `only-because-nothing-finer-existed` | 21 |
 
-### `superuser` — **64 superuser sites.** A credential, an execution surface, or the whole instance's data. These stay `is_admin` under any role model — `P11-02` says so in its own words: *"keep `is_admin` as the superuser role rather than replacing it"*.
+### `superuser` — **66 superuser sites.** A credential, an execution surface, or the whole instance's data. These stay `is_admin` under any role model — `P11-02` says so in its own words: *"keep `is_admin` as the superuser role rather than replacing it"*.
 
 | file | function | route | protects |
 |---|---|---|---|
@@ -143,6 +143,8 @@ derived: direct 71 · Depends 14 · total 85
 | `routes/auth_routes.py` | `remove_role` | `DELETE /api/auth/roles/{name}` | removes a role and revokes it from every user holding it. `P11-02` |
 | `routes/auth_routes.py` | `set_user_role` | `PUT /api/auth/users/{username}/role` | grants somebody else a role. `P11-02` |
 | `routes/auth_routes.py` | `list_users` | `GET /api/auth/users` | every account, whether it is an admin, its role and its resolved privileges — the map of who may do what on this instance. `B543` |
+| `routes/auth_routes.py` | `list_auto_approve` | `GET /api/auth/auto-approve` | every person's open Auto-approve acceptances — which chats and hires run steps unasked, and whose. `B1705` |
+| `routes/auth_routes.py` | `withdraw_auto_approve` | `POST /api/auth/auto-approve/withdraw` | turns another person's chat back to Manual approve or makes their hire ask again. `B1705` |
 | `routes/auth_routes.py` | `admin_create_user` | `POST /api/auth/users` | creates an account, an admin account included. `B543` |
 | `routes/auth_routes.py` | `update_user_privileges` | `PUT /api/auth/users/{username}/privileges` | grants or takes away somebody else's privileges — `can_use_bash` among them. `B543` |
 | `routes/auth_routes.py` | `rename_user` | `PUT /api/auth/users/{username}/rename` | renames an account and moves everything it owns. `B543` |
@@ -330,7 +332,7 @@ The largest file in the fifteen and the one that matters most. Until `B543` (202
 
 The four role routes (`P11-02`) were the first here on `require_admin`, and they are the reason § A's superuser tier moved from 37 to 41 and this file's count from 35 to 39.
 
-routes: 45
+routes: 47
 
 | route | handler | gate | intended |
 |---|---|---|---|
@@ -346,6 +348,8 @@ routes: 45
 | `POST /api/auth/2fa/disable` | `totp_disable` | `middleware + _get_current_user` | yes — self-service. |
 | `GET /api/auth/2fa/status` | `totp_status` | `middleware + _get_current_user` | yes — self-service. |
 | `GET /api/auth/users` | `list_users` | `middleware + require_admin` | yes — admin is right for this, and since `B543` it is `require_admin` that says so: the hand-rolled `_get_current_user` + `is_admin` it used is gone from this file. |
+| `GET /api/auth/auto-approve` | `list_auto_approve` | `middleware + require_admin` | yes — every open Auto-approve acceptance across every person's chats and hires: who lifted which gate where. Another person's data, and an admin's question (`B1705`). |
+| `POST /api/auth/auto-approve/withdraw` | `withdraw_auto_approve` | `middleware + get_current_user + require_admin` | yes — turns another person's chat back to Manual approve or makes their hire ask again. Only ever turns a gate back on, but it acts on someone else's chat or hire, so admin (`B1705`). |
 | `POST /api/auth/users` | `admin_create_user` | `middleware + get_current_user + require_admin` | yes — admin is right for this, and since `B543` it is `require_admin` that says so: the hand-rolled `_get_current_user` + `is_admin` it used is gone from this file. |
 | `PUT /api/auth/users/{username}/privileges` | `update_user_privileges` | `middleware + get_current_user + require_admin` | yes — admin is right for this, and since `B543` it is `require_admin` that says so: the hand-rolled `_get_current_user` + `is_admin` it used is gone from this file. |
 | `PUT /api/auth/users/{username}/rename` | `rename_user` | `middleware + get_current_user + require_admin` | yes — admin is right for this, and since `B543` it is `require_admin` that says so: the hand-rolled `_get_current_user` + `is_admin` it used is gone from this file. |
@@ -542,11 +546,11 @@ this file's hand-rolled pattern, so the population that this map covers grew by 
 the number of admin decisions added — which is the behaviour the map was built to give.
 The paragraph above is about the 107 that predate roles; the counts below are live.
 
-- **64 superuser sites do not move.** They are already right. (`B1573` took five off the tier: the
+- **66 superuser sites do not move.** They are already right. (`B1573` took five off the tier: the
   API-integration routes answer each person's own, so they ask `require_user`, § B.)
 - **An `operator` overlay on `DEFAULT_PRIVILEGES` was the phase's return, and since
   `B683` it is there:** 0 operator sites are left on `require_admin`, and none of the
-  64 superuser sites moved. The only way to let someone keep the instance up was to make
+  66 superuser sites moved. The only way to let someone keep the instance up was to make
   them the owner; now `can_run_instance` is declared, and every site of the tier asks
   `require_operator` (§ G). (Both counts in the one spelling `check-auth-map.py` checks
   wherever it appears: this sentence said *"48 gates … the 37"* through every gate

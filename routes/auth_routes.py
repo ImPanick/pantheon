@@ -578,6 +578,49 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
         require_admin(request)
         return {"users": auth_manager.list_users()}
 
+    # `B1705`. Auto-approve acceptances are readable one chat or hire at a
+    # time, by their own person; an admin could not see who had accepted
+    # Auto where. The list, and the one act an admin may take on another
+    # person's acceptance: turn the gate back on.
+    @router.get("/auto-approve")
+    async def list_auto_approve(request: Request):
+        """Every open Auto-approve acceptance: person, chat or hire, when,
+        and whether it still lifts anything (`in_effect`)."""
+        require_admin(request)
+        from src.approval_mode import open_acceptances
+        try:
+            records = await asyncio.to_thread(
+                open_acceptances,
+                auth_manager=getattr(request.app.state, "auth_manager", None))
+        except Exception as exc:  # noqa: BLE001 — *could not load*, never *no one*
+            logger.warning("could not list Auto-approve acceptances: %s", exc)
+            raise HTTPException(500, "Could not read who has Auto-approve on. Try again.")
+        return {"acceptances": [
+            {key: record.get(key) for key in
+             ("subject", "subject_id", "name", "owner", "by", "at", "effects",
+              "effect_words", "in_effect")}
+            for record in records]}
+
+    @router.post("/auto-approve/withdraw")
+    async def withdraw_auto_approve(request: Request):
+        """Turn one chat back to Manual approve, or stop a hire running its
+        allowed actions unasked. Body: `{subject: chat|hire, subject_id}`."""
+        require_admin(request)
+        from src.approval_mode import AutoRefused, withdraw_for
+        try:
+            body = await request.json()
+        except Exception:
+            body = {}
+        body = body if isinstance(body, dict) else {}
+        try:
+            was_open = await asyncio.to_thread(
+                withdraw_for, body.get("subject"), body.get("subject_id"))
+        except AutoRefused as refused:
+            raise HTTPException(refused.status, refused.sentence) from None
+        logger.info("[approval] %s turned Auto-approve off for %s %s",
+                    get_current_user(request), body.get("subject"), body.get("subject_id"))
+        return {"ok": True, "was_on": was_open}
+
     @router.post("/users")
     async def admin_create_user(body: CreateUserRequest, request: Request):
         require_admin(request)

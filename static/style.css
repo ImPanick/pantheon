@@ -3347,9 +3347,7 @@ body.bg-pattern-ascii {
 	       tests/test_accent_fallback_semantics_css.py pins (814/553/562/181 →
 	       812/551/560/180). On every shipped palette `--accent` is the
 	       palette's red, so the chip's colour does not move; its tint goes
-	       14% → 12%, the strip's own.
-	       `P5-15` builds #pinned-tools-bar out of these two classes — no id in
-	       the geometry, so a second strip needs no second rule. */
+	       14% → 12%, the strip's own. */
 	    .tool-chip {
 	      height: 28px;
 	      padding: 0 8px 0 6px;

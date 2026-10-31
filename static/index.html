@@ -1545,7 +1545,6 @@
         </svg>
         <span class="incognito-label">Nobody</span>
       </button>
-      <div id="welcome-setup" style="display:none"></div>
     </div>
     <script>
     (function(){
@@ -1748,7 +1747,6 @@
         })();
         </script>
       </div>
-      <div id="pinned-tools-bar"></div>
       <div class="chat-input-bottom" style="visibility:hidden">
         <div class="chat-input-left">
           <!-- Overflow menu (+) — always first/left -->
@@ -3199,6 +3197,11 @@
           <div class="admin-card">
             <h2><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;opacity:0.6"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>Users</h2>
             <div id="adm-userList"><div class="lib-loading-row" role="status">Loading…</div></div>
+          </div>
+          <div class="admin-card">
+            <h2><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;opacity:0.6"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/></svg>Auto-approve in use</h2>
+            <div class="admin-toggle-sub" style="margin:0 0 10px 2px;">Chats and hired agents whose person accepted Auto-approve's warning, so steps run without asking. <em>Turn off</em> puts that chat back to Manual approve, or makes that hire ask again.</div>
+            <div id="adm-autoApproveList"><div class="lib-loading-row" role="status">Loading…</div></div>
           </div>
           <div class="admin-card">
             <h2><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;opacity:0.6"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>Add User</h2>
