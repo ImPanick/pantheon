@@ -108,6 +108,13 @@ the next one is cut.
 
 ### Added
 
+- **The browser runs without a workstation** (2026-10-31). A person the workstation would not
+  answer gets Pantheon's own headless Firefox (Debian's `firefox-esr`, now in the image; a desktop
+  install finds the Firefox it has, or `PANTHEON_BROWSER_FIREFOX`). It is the same browser as the
+  workstation's: the Browser window shows it, the person takes it over and points at pages, and
+  their agent drives it as `agent_browser`, which is now offered wherever there is a browser. It
+  reaches public web addresses only, through a proxy of Pantheon's own; the LAN and this machine
+  stay the workstation's. Who may use it is `can_use_browser`.
 - **The sign-in page makes accounts.** When sign-up is open, *Sign up* extends the card with
   display name, email and phone; when it is closed, the card says to ask an admin rather than
   showing nothing. Accounts keep a profile (display name, email, phone, bio, picture) through
@@ -258,6 +265,16 @@ the next one is cut.
 
 ### Changed — read this before upgrading
 
+- **The workstation is a virtual machine in the stack** (2026-10-31). `docker-compose.yml` now
+  runs the VM backend as `workstation-vm`, so Settings → Workstation → On works with no overlay:
+  each person gets an Ubuntu VM of their own. Nothing is made until it is first switched on; then
+  the host makes the machine image once (minutes with KVM, much longer without), and the panel
+  says so until it is done. `docker compose up -d --build` builds it. `docker/workstation-vm.yml`
+  and `docker/workstation-both.yml` still load and add nothing; **an install that ran
+  `docker/workstation-vm.yml` runs `docker compose up -d --remove-orphans` once** to retire its old
+  `workstation` container (the machines are on the same volume and are kept; the new host refuses
+  to start while the old one holds it). With no container backend beside it, `auto` is the VM
+  whatever the host runs on.
 - **A fresh install's first visit makes the admin** (2026-10-31). The installer no longer makes an
   `admin` with a random password printed only to a log, which had left most new instances with no
   way in. With no account, the sign-in page opens on setup: the first account is the admin, and a

@@ -4,7 +4,10 @@
 // hand it back.
 //
 // The owner (2026-10-24): *"we need an agent browser that's in app."* The
-// browser is the person's own Firefox in their workstation (`P25-05`); this
+// browser is the person's own Firefox in their workstation (`P25-05`) — or,
+// for a person without one, Pantheon's own headless Firefox
+// (`src/local_browser.py`, the owner 2026-10-31: *"the browser should be able
+// to run without needing a workstation/VM entirely"*); this
 // window shows the page itself — frames of the page, not the desktop — with
 // its address, back, forward, reload and its tabs, a few frames a second while
 // the window is open and the page is visible (`workstationScreen.js`'s rule,
@@ -124,6 +127,9 @@ let _digest = '';
 let _size = { w: 1280, h: 800 };
 let _holder = null;
 let _state = 'checking';
+// Whose browser this is: the workstation's, or Pantheon's own when the person
+// has no workstation (`src/local_browser.py`). The frame says.
+let _where = 'workstation';
 let _timer = null;
 let _inFlight = false;
 let _soon = false;
@@ -413,11 +419,12 @@ async function _tick() {
     if (res.status === 304 || res.ok) {
       if (res.ok) {
         const f = await res.json();
+        if (f.runs_in === 'pantheon' || f.runs_in === 'workstation') _where = f.runs_in;
         _showFrame(f);
         applyActivity(f.activity);
       }
       if (Date.now() - _lastAgentAt < TIMING.BUSY_FOR_MS) wait = TIMING.BUSY_FRAME_MS;
-      if (_state !== 'up') { _state = 'up'; _say('Your browser, in your workstation.'); }
+      if (_state !== 'up') { _state = 'up'; _say(_where === 'pantheon' ? 'Your browser, in Pantheon.' : 'Your browser, in your workstation.'); }
     } else {
       _state = res.status === 403 ? 'not_permitted' : 'down';
       _say(await _detail(res), { error: true });

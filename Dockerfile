@@ -61,6 +61,10 @@ LABEL org.opencontainers.image.licenses="AGPL-3.0-or-later"
 # launch inside Docker.
 # nodejs/npm provide npx for the built-in Browser MCP server.
 # chromium provides the actual browser binary used by that MCP server.
+# firefox-esr is the agent browser for a person without a workstation — their
+# own headless Firefox, which they watch and take over in the app and the
+# agent drives (`src/local_browser.py`, over WebDriver BiDi like the
+# workstation's); fonts-dejavu-core gives its pages letters to draw.
 # gosu lets the entrypoint drop privileges cleanly so signals still reach
 # uvicorn directly (no extra shell layer like `su`/`sudo` would add).
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -71,6 +75,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     nodejs \
     npm \
     chromium \
+    firefox-esr \
+    fonts-dejavu-core \
     tmux \
     openssh-client \
     gosu \

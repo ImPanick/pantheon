@@ -288,8 +288,17 @@ def _runs_in(tool_name: Any, owner: Any) -> Optional[str]:
     pick. Anything else, or a question that cannot be answered, is "here": the
     phrase that was always shown.
     """
-    if tool_name in ("computer", "agent_browser", "network"):
+    if tool_name in ("computer", "network"):
         return RUNS_IN_WORKSTATION
+    if tool_name == "agent_browser":
+        # Pantheon's own browser when the workstation would not answer them.
+        try:
+            from src.local_browser import LocalBrowserClient, browser_for
+
+            client, _account = browser_for(owner)
+            return None if isinstance(client, LocalBrowserClient) else RUNS_IN_WORKSTATION
+        except Exception:
+            return RUNS_IN_WORKSTATION
     try:
         from src.agent_tools import workstation_tools
 
@@ -1807,7 +1816,7 @@ Blocked paths/routes (refused for safety): /api/auth/, /api/users/, /api/tokens/
         "```agent_browser\n"
         '{"action": "open", "url": "https://example.org"}\n'
         "```\n"
-        "A real browser in the person's workstation, which they watch in the app — one action "
+        "A real browser — in the person's workstation, or in Pantheon when they have none — which they watch in the app — one action "
         "per block: open (url), read (the page's text and its elements numbered [1], [2]…), "
         "click (ref), type (ref, text, submit), press (keys), scroll (dy), back, forward, "
         "reload, tabs, tab_new (url), tab_switch (tab), tab_close (tab), screenshot, login "
@@ -7384,9 +7393,16 @@ async def stream_agent_loop(
     # question, so the two are offered to exactly the same people.
     # `P16-20`. The network tool lives on the same workstation too; and it is
     # offered only where an admin left LAN reach on (`agent_lan_reach`).
-    if (disabled_tools.allows("agent_browser") or disabled_tools.allows("network")) and \
+    # The owner (2026-10-31): the browser runs without a workstation too —
+    # Pantheon's own Firefox (`src/local_browser.py`) — so `agent_browser` is
+    # asked its own question, which falls back to the workstation's.
+    if disabled_tools.allows("network") and \
             _computer_unavailable_reason(owner, delegated_credential=bool(delegated_credential)):
-        disabled_tools.withhold({"agent_browser", "network"}, because=WITHHELD_BY_WORKSTATION)
+        disabled_tools.withhold({"network"}, because=WITHHELD_BY_WORKSTATION)
+    if disabled_tools.allows("agent_browser"):
+        from src.local_browser import unavailable_reason as _browser_unavailable_reason
+        if _browser_unavailable_reason(owner, delegated_credential=bool(delegated_credential)):
+            disabled_tools.withhold({"agent_browser"}, because=WITHHELD_BY_WORKSTATION)
     if disabled_tools.allows("network"):
         try:
             from src.agent_tools.network_tools import lan_reach_on

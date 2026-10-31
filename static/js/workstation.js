@@ -149,6 +149,7 @@ const ACCEL_WORDS = {
 };
 const IMAGE_WORDS = {
   preparing: 'preparing the machine image (first start)',
+  waiting: 'the machine image is made when the workstation is first turned on',
   failed: 'the machine image could not be prepared',
 };
 
@@ -276,12 +277,31 @@ function render(status) {
 
 /** One status answer, everywhere it goes: the first card, and for an admin
  *  the controls and the sentences under them. */
+// While the VM host makes its machine image (the first time the workstation is
+// switched on), the panel asks again on its own, so "ready" arrives without a
+// click. Only while the panel is on screen.
+const IMAGE_POLL_MS = 20000;
+let _imageTimer = null;
+
+function _pollWhilePreparing(status) {
+  if (_imageTimer) { clearTimeout(_imageTimer); _imageTimer = null; }
+  const image = status && status.daemon && status.daemon.machine && status.daemon.machine.image;
+  if (image !== 'preparing' && image !== 'waiting') return;
+  const onScreen = () => { const panel = $('ws-status'); return !!(panel && panel.offsetParent) && !document.hidden; };
+  if (!onScreen()) return;
+  _imageTimer = setTimeout(() => {
+    _imageTimer = null;
+    if (onScreen()) load();
+  }, IMAGE_POLL_MS);
+}
+
 function apply(status) {
   render(status);
   if (status.settings) {
     fillSettings(status.settings);
     renderEffects(status.settings, status.daemon, status.network);
   }
+  _pollWhilePreparing(status);
   return status;
 }
 

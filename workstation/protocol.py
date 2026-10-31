@@ -319,7 +319,9 @@ BACKEND_CHOICES = ("auto",) + BACKENDS
 # one of `MACHINE_IMAGE_STATES`, whether the Ubuntu image every person's
 # machine starts from is ready (`workstation/vm.py`).
 ACCELS = ("kvm", "tcg")
-MACHINE_IMAGE_STATES = ("ready", "preparing", "failed")
+# `waiting` (added 2026-10-31): a host that makes its image on first use
+# (`PANTHEON_WORKSTATION_VM_IMAGE=on_first_use`) and has not been asked yet.
+MACHINE_IMAGE_STATES = ("ready", "preparing", "failed", "waiting")
 # `B979`, added. The VM backend's host powers off a machine nobody has used for
 # a while and caps how many run (`workstation/vm.py`). Its `health`, for a
 # caller with the token, also answers
