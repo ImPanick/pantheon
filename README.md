@@ -143,9 +143,9 @@ docker compose up -d --build
 ```
 
 Open `http://localhost:7000` once the containers are healthy. The app binds to `127.0.0.1`
-unless you set `APP_BIND`, and the port is `APP_PORT`. Your first admin password is generated
-on first boot and printed in `docker compose logs pantheon` as `Temporary password:` — set
-`PANTHEON_ADMIN_PASSWORD` in `.env` beforehand to choose your own.
+unless you set `APP_BIND`, and the port is `APP_PORT`. The first visit asks you to make the
+admin account on the sign-in page, and lets you open sign-up for everyone else — or set
+`PANTHEON_ADMIN_PASSWORD` in `.env` beforehand to have it made for you.
 
 `.env.example` is the configuration an operator sets, commented; copying it unedited is a working
 default. (A few more variables exist for development and tests — `check-env-declared.py` lists

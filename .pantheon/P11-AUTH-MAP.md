@@ -330,7 +330,7 @@ The largest file in the fifteen and the one that matters most. Until `B543` (202
 
 The four role routes (`P11-02`) were the first here on `require_admin`, and they are the reason § A's superuser tier moved from 37 to 41 and this file's count from 35 to 39.
 
-routes: 40
+routes: 45
 
 | route | handler | gate | intended |
 |---|---|---|---|
@@ -374,6 +374,11 @@ routes: 40
 | `PUT /api/auth/integrations/{integration_id}` | `update_integration_route` | `middleware + get_current_user + require_user` | yes — `B1573`: anyone signed in, because a connection is its owner's (`P27-02`) and a member owns them too; the route answers and changes only the caller's own (another's is 404) and the shared (read-only, 403 naming whose), refuses `shared: true` from anyone the server does not call for, and a member's own is called from their workstation, never by the server (`integrations.calls_from_server`). |
 | `DELETE /api/auth/integrations/{integration_id}` | `delete_integration_route` | `middleware + get_current_user + require_user` | yes — `B1573`: anyone signed in, because a connection is its owner's (`P27-02`) and a member owns them too; the route answers and changes only the caller's own (another's is 404) and the shared (read-only, 403 naming whose), refuses `shared: true` from anyone the server does not call for, and a member's own is called from their workstation, never by the server (`integrations.calls_from_server`). |
 | `POST /api/auth/integrations/{integration_id}/test` | `test_integration_route` | `middleware + require_user` | yes — `B1573`: the caller's own or a shared one (`P27-02`). A member's own is asked from their workstation, as their agent calls it; one the server calls is tested by the server only for a caller it makes such requests for (`integrations.server_calls_for`, the tool policy's answer for `api_call`), anyone else 403 in a sentence. |
+| `GET /api/auth/profile` | `read_own_profile` | `middleware + require_user` | yes — 2026-10-31: the caller's own profile and nobody else's; the handler takes the account from the session and has no username parameter. |
+| `PUT /api/auth/profile` | `update_own_profile` | `middleware + require_user` | yes — 2026-10-31: the caller's own profile and nobody else's; the handler takes the account from the session and has no username parameter. Each field is checked (`clean_profile`) before it is kept. |
+| `POST /api/auth/profile/avatar` | `upload_own_avatar` | `middleware + require_user` | yes — 2026-10-31: the caller's own profile and nobody else's; the handler takes the account from the session and has no username parameter. At most 2 MB, PNG/JPEG/GIF/WebP by their magic bytes, kept under a random name beside `auth.json`. |
+| `DELETE /api/auth/profile/avatar` | `remove_own_avatar` | `middleware + require_user` | yes — 2026-10-31: the caller's own profile and nobody else's; the handler takes the account from the session and has no username parameter. |
+| `GET /api/auth/avatar/{username}` | `read_avatar` | `middleware + require_user` | yes — 2026-10-31: anyone signed in may see anyone's picture, which is what a picture is for; with no session the gate refuses. The stored name must be a bare file name or it is 404. |
 
 #### `routes/chat_routes.py`
 

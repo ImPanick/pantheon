@@ -108,6 +108,11 @@ the next one is cut.
 
 ### Added
 
+- **The sign-in page makes accounts.** When sign-up is open, *Sign up* extends the card with
+  display name, email and phone; when it is closed, the card says to ask an admin rather than
+  showing nothing. Accounts keep a profile (display name, email, phone, bio, picture) through
+  `GET/PUT /api/auth/profile`, `POST/DELETE /api/auth/profile/avatar` and
+  `GET /api/auth/avatar/{username}`, each the caller's own but the picture.
 - **Settings → AI Defaults → Speech-to-text:** off, local Whisper, the browser's own recognition
   (in Chrome the audio goes to Google, and the card says so), or an endpoint (`B1564`).
 - **`read_chat`:** an agent reads one of its person's own chats in order, a page at a time
@@ -252,6 +257,14 @@ the next one is cut.
   button all close it. `/toggle mode [agent|chat]` is the same control, typed.
 
 ### Changed — read this before upgrading
+
+- **A fresh install's first visit makes the admin** (2026-10-31). The installer no longer makes an
+  `admin` with a random password printed only to a log, which had left most new instances with no
+  way in. With no account, the sign-in page opens on setup: the first account is the admin, and a
+  switch there lets people create their own accounts (on unless you turn it off). The empty account
+  store is the signal, so an update never asks again. `PANTHEON_ADMIN_PASSWORD` (with
+  `PANTHEON_ADMIN_USER`) still makes the admin ahead of time. **An existing install is untouched:**
+  its accounts and its sign-up switch stay as they are.
 
 - **The approval mode is chosen at the bottom of the composer** (`B1706`): a chip names the mode
   and opens a menu of Manual approve and Auto-approve, each with a line saying what it does; it
