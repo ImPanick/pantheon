@@ -10,6 +10,7 @@ endpoint unavailable"* on every call — measured live with a signed-in admin.
 from fastapi import APIRouter, FastAPI
 
 from routes.codex_routes import _app_endpoint
+from tests.helpers.fresh_import import import_app_in_this_test
 
 
 def _app_with(router_prefix: str = "", include_prefix: str = ""):
@@ -48,8 +49,10 @@ def test_the_method_must_match():
     assert _app_endpoint(app, "GET", "/api/model/serve") is None
 
 
-def test_the_real_app_serves_both_cookbook_endpoints():
-    from app import app
+def test_the_real_app_serves_both_cookbook_endpoints(monkeypatch):
+    # Through the helper, which puts back what importing the app installs
+    # (`test_importing_the_app_in_a_test_leaves_nothing_behind`).
+    app = import_app_in_this_test(monkeypatch).app
 
     assert _app_endpoint(app, "GET", "/api/model/cached") is not None
     assert _app_endpoint(app, "POST", "/api/model/serve") is not None
