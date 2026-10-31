@@ -13,10 +13,13 @@ Named `agent_browser`, not `browser`: `disable_tool browser` already means
 the built-in Playwright server (`builtin_browser`), and one word meaning two
 switches is how an admin turns off the wrong one.
 
-**Where it is offered.** Exactly where `computer` is: when the workstation
-would answer this person (`computer_tools.unavailable_reason`, the same
-question, so the two cannot disagree about who has a workstation). Without
-one the tool is not offered and the window says why.
+**Where it is offered.** Wherever the person has a browser
+(`src/local_browser.unavailable_reason`): their workstation's Firefox when the
+workstation would answer them — the question `computer` asks, so the two
+cannot disagree about who has a workstation — and otherwise Pantheon's own
+headless Firefox (`src/local_browser.py`), so a person without a workstation
+still has a browser they and their agent share. Without either the tool is not
+offered and the window says why.
 
 **What each action is** (`tool_capabilities._ACTION_CAPABILITIES`): reading
 a page, a screenshot, the tab list and switching between tabs only look;
@@ -242,7 +245,10 @@ async def sync_names(client, account: str, owner: Optional[str]) -> None:
     """`P27-04`. The person's mapped names and pinned certificates, sent to
     their workstation when they changed (the browser restarts to read them)."""
     from src import vault_names
+    from src.local_browser import LocalBrowserClient
     from src.workstation_client import WorkstationError
+    if isinstance(client, LocalBrowserClient):
+        return   # mapped names are the LAN's, which Pantheon's own browser does not reach
     try:
         await vault_names.sync(client, account, owner)
     except WorkstationError as e:
@@ -264,7 +270,15 @@ class BrowserTool:
     """One action on the person's browser."""
 
     async def execute(self, content: str, ctx: Optional[dict] = None) -> Dict[str, Any]:
-        from src.workstation_access import ensure_ready
+        result = await self._execute(content, ctx)
+        # `P20-03`'s `ran_in` is said of the workstation only: Pantheon's own
+        # browser runs here, and a card on this machine carries none.
+        if isinstance(result, dict) and result.get("ran_in") is None:
+            result.pop("ran_in", None)
+        return result
+
+    async def _execute(self, content: str, ctx: Optional[dict] = None) -> Dict[str, Any]:
+        from src.local_browser import ready_browser, runs_in
         from src.workstation_client import WorkstationError
 
         owner = (ctx or {}).get("owner")
@@ -273,22 +287,22 @@ class BrowserTool:
             return {"error": problem, "exit_code": 1}
         action = args["action"]
         try:
-            ready = await ensure_ready(owner)
+            client, account = await ready_browser(owner)
         except WorkstationError as e:
             return e.as_result()
-        client, account = ready.client, ready.account
+        ran_in = runs_in(client)
         await sync_names(client, account, owner)
         fields = {k: v for k, v in args.items()
                   if k in ("url", "ref", "x", "y", "text", "submit", "keys", "dx", "dy", "tab", "double",
                            "note", "notes", "said", "declined", "all", "pointed", "selector", "why")}
         if action == "login":
             return await _login(client, account, owner, args, session=(ctx or {}).get("session_id"),
-                                agent=(ctx or {}).get("agent_id"))
+                                agent=(ctx or {}).get("agent_id"), ran_in=ran_in)
         try:
             if action == SCREENSHOT:
                 shot = await client.browser(account, "frame")
                 return {"output": f"The page is attached ({shot.get('width')}×{shot.get('height')}). "
-                                  + _where_now(shot), "exit_code": 0, "ran_in": "workstation",
+                                  + _where_now(shot), "exit_code": 0, "ran_in": ran_in,
                         "images": [{"data": shot["data_b64"], "mimeType": shot.get("mime") or "image/png"}],
                         "screenshot_caption": f"Browser: {shot.get('title') or shot.get('url') or 'page'}"}
             answer = await client.browser(account, action, **fields)
@@ -298,26 +312,27 @@ class BrowserTool:
             return e.as_result()
         answer = answer or {}
         if action == "read":
-            return {"output": page_text(answer), "exit_code": 0, "ran_in": "workstation",
+            return {"output": page_text(answer), "exit_code": 0, "ran_in": ran_in,
                     "url": answer.get("url")}
         if action == "inspect":
-            return {"output": inspect_text(answer), "exit_code": 0, "ran_in": "workstation",
+            return {"output": inspect_text(answer), "exit_code": 0, "ran_in": ran_in,
                     "url": answer.get("url")}
         if action in ("notes", "note_done"):
             return {"output": notes_text(answer, closed=action == "note_done"), "exit_code": 0,
-                    "ran_in": "workstation", "url": answer.get("url")}
+                    "ran_in": ran_in, "url": answer.get("url")}
         if action == "tabs":
             tabs = answer.get("tabs") or []
             listing = "\n".join(f"{n}. {t.get('url')}{' (this one)' if t.get('current') else ''}"
                                 for n, t in enumerate(tabs, 1))
             return {"output": f"{len(tabs)} tab{'s' if len(tabs) != 1 else ''}:\n{listing}",
-                    "exit_code": 0, "ran_in": "workstation"}
+                    "exit_code": 0, "ran_in": ran_in}
         return {"output": f"Did: {describe(args)}. {_where_now(answer)} Read the page to see it.",
-                "exit_code": 0, "ran_in": "workstation", "url": answer.get("url")}
+                "exit_code": 0, "ran_in": ran_in, "url": answer.get("url")}
 
 
 async def _login(client, account: str, owner: Optional[str], args: Dict[str, Any], *,
-                 session: Optional[str] = None, agent: Optional[str] = None) -> Dict[str, Any]:
+                 session: Optional[str] = None, agent: Optional[str] = None,
+                 ran_in: str = "workstation") -> Dict[str, Any]:
     """`P27-06`. Sign in on the open page with a login from the person's
     vault, by its name. The values go from the vault to the daemon in one
     request and from there into the page's fields; what comes back to the
@@ -355,4 +370,4 @@ async def _login(client, account: str, owner: Optional[str], args: Dict[str, Any
             if answer.get("still_asking") else " Read the page to see where it went.")
     return {"output": V.scrub(f"Signed in with “{got['label']}”: filled the {filled} and sent the form. "
                               f"{_where_now(answer)}{tail}", values),
-            "exit_code": 0, "ran_in": "workstation", "url": answer.get("url")}
+            "exit_code": 0, "ran_in": ran_in, "url": answer.get("url")}

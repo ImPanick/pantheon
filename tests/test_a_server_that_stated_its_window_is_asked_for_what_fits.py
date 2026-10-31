@@ -80,7 +80,10 @@ def pantheon(tmp_path_factory):
     data = tmp_path_factory.mktemp("stated-window") / "data"
     data.mkdir()
     server = capture.Server(sys.executable, data, capture._free_port(),
-                            extra_env={"PANTHEON_DISABLE_MCP": "1"})
+                            extra_env={"PANTHEON_DISABLE_MCP": "1",
+                                      # `B1715`: these windows are measured without the
+                                      # shipped skills a design-document turn would be handed.
+                                      "PANTHEON_FIRST_PARTY_SKILLS": ""})
     try:
         server.start(timeout=150)
     except RuntimeError as e:

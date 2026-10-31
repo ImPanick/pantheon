@@ -5232,6 +5232,7 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
                 if (holder && json.data && json.data.kind === 'tool_approval') {
                   holder.dataset.approvalPaused = String(json.data.question || '').trim() || '1';
                 }
+                if (holder) holder.dataset.askedUser = '1';
                 chatRenderer.renderAskUserCard(json.data || {});
 
               } else if (json.type === 'plan_update') {
@@ -5640,7 +5641,10 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
 	        }
 		        try {
 		          const _endToggles = Storage.loadToggleState();
-		          if (_endToggles.plan_mode && accumulated) {
+		          // A plan-mode turn that asked instead of planning offers no
+		          // Execute: its text is the questions, not a plan.
+		          if (_endToggles.plan_mode && accumulated && !holder.dataset.askedUser
+		              && planWindow.hasPlanSteps(accumulated)) {
 		            _setStoredPlan(accumulated, streamSessionId);
 		            _attachPlanActions(footerTarget, accumulated);
 		          }

@@ -1025,8 +1025,6 @@ async function initVisionSettings() {
   });
 }
 
-/* ── Face Recognition ── */
-
 /* ── Text to Speech ── */
 async function initTtsSettings() {
   var provSel = el('set-ttsProviderSelect');
@@ -2741,6 +2739,7 @@ const SHORTCUT_DEFAULTS = KEYBIND_DEFAULTS;
 const SHORTCUT_ICONS = {
   search:         '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="10" cy="10" r="7"/><path d="M21 21l-4.35-4.35"/></svg>',
   toggle_sidebar: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>',
+  toggle_workspace: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="14" y1="4" x2="14" y2="20"/></svg>',
   new_session:    '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>',
   fav_session:    '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>',
   delete_session: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>',
@@ -2766,7 +2765,7 @@ const SHORTCUT_ICONS = {
 const SHORTCUT_LABELS = KEYBIND_LABELS;   // `H19` — one table, not three
 
 const SHORTCUT_CATEGORIES = [
-  { name: 'Navigation', keys: ['search', 'toggle_sidebar', 'focus_input', 'settings'] },
+  { name: 'Navigation', keys: ['search', 'toggle_sidebar', 'toggle_workspace', 'focus_input', 'settings'] },
   { name: 'Chats', keys: ['new_session', 'fav_session', 'delete_session'] },
   { name: 'Tools', keys: ['plan_mode', 'incognito', 'tts', 'cancel'] },
   { name: 'Open Tools', keys: ['open_calendar', 'open_compare', 'open_cookbook', 'open_research', 'open_gallery', 'open_library', 'open_memory', 'open_notes', 'open_tasks', 'open_theme'] },
@@ -3776,6 +3775,12 @@ async function initReminderSettings() {
   function syncSynthesisDim() {
     const card = llmToggle.closest('.admin-card');
     if (card) card.style.opacity = llmToggle.checked ? '' : '0.45';
+    // `B1714`. The persona is read only when a model writes the reminder
+    // (`note_routes`' `reminder_llm_synthesis` gate), so with the switch off
+    // a choice here changed nothing and nothing said so.
+    const personaMsg = el('set-reminder-llm-persona-msg');
+    if (personaMsg) personaMsg.textContent = llmToggle.checked
+      ? '' : 'Used only while this card is switched on.';
   }
   syncSynthesisDim();
   llmToggle.addEventListener('change', () => {
@@ -4341,6 +4346,9 @@ const INTG_TYPES = {
   // `SET-U-9` (P23-03). A token that is neither agent's was listed nowhere —
   // the companion app's, a script's — so it could be neither seen nor revoked.
   token:   { label: 'API token', icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="15" r="4"/><path d="M10.85 12.15 19 4"/><path d="m18 5 2 2"/><path d="m15 8 2 2"/></svg>' },
+  // `B1713`. The companion bridge (`companion/`) mints a pairing code for a
+  // phone on the LAN; its only door was a bare page at /api/companion/pair.
+  phone:   { label: 'Phone', icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="2" width="12" height="20" rx="2"/><line x1="11" y1="18" x2="13" y2="18"/></svg>' },
   vault:   { label: 'Vault',   icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>' },
   // `P27-01`. The person's own logins (Settings → Vault) and git hosts
   // (Settings → Git), listed with everything else an agent can reach. Their
@@ -4679,6 +4687,7 @@ async function initUnifiedIntegrations() {
     // `SET-U-9`: a token row is listed to be seen and revoked; `B1193`: a new
     // one is made here, with a name, what it may do, and the secret shown once.
     else if (type === 'token') { if (editId === 'new') showTokenForm(); else formEl.style.display = 'none'; }
+    else if (type === 'phone') showPhonePairForm();
     // `P27-01`. A login and a git host are edited in their own panels.
     else if (type === 'login') { formEl.style.display = 'none'; open('vault'); }
     else if (type === 'githost') { formEl.style.display = 'none'; open('git'); }
@@ -4753,6 +4762,70 @@ async function initUnifiedIntegrations() {
         await renderList();
       } catch (e) {
         say('Not created: Pantheon did not answer.', true);
+        create.disabled = false;
+      }
+    });
+  }
+
+  // ── Pair a phone ──
+  // `B1713`. `POST /api/companion/pair?format=json` was built for "an in-app
+  // pairing screen" and nothing in the app called it: the only way to pair
+  // was to type /api/companion/pair into the address bar. Here: one press
+  // mints the code (a chat-scoped token, listed above as an API token so it
+  // can be revoked), and the QR and the details the phone needs are shown
+  // once. The server says which address it advertises; nothing is guessed.
+  function showPhonePairForm() {
+    const btn = 'display:inline-flex;align-items:center;gap:5px;background:transparent;color:var(--accent, var(--red));border-color:color-mix(in srgb, var(--accent, var(--red)) 45%, var(--border));';
+    formEl.innerHTML = `
+      <div class="admin-card" style="margin-top:8px">
+        <h2 style="font-size:13px;display:flex;align-items:center;gap:6px;"><span style="display:inline-flex;color:var(--accent, var(--red));">${INTG_TYPES.phone.icon}</span>Pair a phone</h2>
+        <div class="settings-col">
+          <div class="admin-toggle-sub">Makes a one-time pairing code for the Pantheon companion app on a phone on this network. The code is a token that may chat as you. It is listed here as an API token, so you can revoke it like any other.</div>
+          <div id="uf-pair-result" style="display:none;flex-direction:column;align-items:center;gap:8px;margin-top:10px;">
+            <img id="uf-pair-qr" alt="Pairing QR code" width="220" height="220" style="display:none;background:#fff;padding:8px;border-radius:8px;">
+            <div id="uf-pair-noqr" class="admin-toggle-sub" style="display:none;">No QR code could be drawn here. Enter the details below in the app instead.</div>
+            <dl id="uf-pair-details" style="display:grid;grid-template-columns:auto 1fr;gap:4px 10px;margin:0;font-size:12px;width:100%;"></dl>
+            <div class="admin-toggle-sub">Shown once. Pantheon keeps only a hash of the token. The phone must reach this address, so Pantheon has to listen on your network, not only on this computer.</div>
+          </div>
+          <div class="settings-row" style="margin-top:10px;align-items:center;justify-content:flex-end;gap:6px;">
+            <span id="uf-pair-msg" role="status" style="font-size:11px;flex:1;margin-right:8px"></span>
+            <button type="button" class="admin-btn-add" id="uf-pair-create" style="${btn}font-weight:600;">Make a pairing code</button>
+            <button type="button" class="admin-btn-add" id="uf-pair-cancel" style="${btn}">Close</button>
+          </div>
+        </div>
+      </div>`;
+    const msg = el('uf-pair-msg');
+    const say = (text, bad) => { msg.textContent = text; msg.style.color = bad ? 'var(--red)' : ''; };
+    el('uf-pair-cancel').addEventListener('click', () => { formEl.style.display = 'none'; formEl.innerHTML = ''; });
+    const create = el('uf-pair-create');
+    create.addEventListener('click', async () => {
+      create.disabled = true;
+      say('');
+      try {
+        const r = await fetch('/api/companion/pair?format=json', { method: 'POST', credentials: 'same-origin' });
+        if (!r.ok) {
+          say((await readRefusal(r, 'No code was made.')).sentence, true);
+          create.disabled = false;
+          return;
+        }
+        const d = await r.json();
+        const qr = el('uf-pair-qr');
+        if (typeof d.qr === 'string' && d.qr.startsWith('data:image/png;base64,')) {
+          qr.src = d.qr; qr.style.display = '';
+        } else {
+          el('uf-pair-noqr').style.display = '';
+        }
+        const others = Array.isArray(d.hosts) ? d.hosts.filter((h) => h && h !== d.host) : [];
+        const rows = [['Address', d.host], ['Port', d.port], ['Token', d.token]];
+        if (others.length) rows.push(['Also answers on', others.join(', ')]);
+        el('uf-pair-details').innerHTML = rows.map(([k, v]) =>
+          `<dt style="opacity:0.6;">${esc(k)}</dt><dd style="margin:0;"><code style="user-select:all;word-break:break-all;">${esc(String(v ?? ''))}</code></dd>`).join('');
+        el('uf-pair-result').style.display = 'flex';
+        create.style.display = 'none';
+        say('Scan it with the companion app.');
+        await renderList();
+      } catch (e) {
+        say('No code was made: Pantheon did not answer.', true);
         create.disabled = false;
       }
     });
@@ -7330,6 +7403,7 @@ async function initUnifiedIntegrations() {
       ['login', 'Login, for agents to sign in'],
       ['mcp', 'MCP Tool Server'],
       ['token', 'API token'],   // `B1193`
+      ['phone', 'Phone, paired with a QR code'],   // `B1713`
     ];
     const _iconFor = (k) => (INTG_TYPES[k]?.icon || '').replace(/width="14"/, 'width="16"').replace(/height="14"/, 'height="16"');
     const _rowsHtml = _typeOptions.map(([k, label]) => `<button type="button" class="uf-type-option" data-value="${k}" style="display:flex;align-items:center;gap:10px;width:100%;padding:8px 10px;background:transparent;border:0;color:var(--fg);font:inherit;cursor:pointer;text-align:left;"><span style="display:inline-flex;color:var(--accent, var(--red));flex-shrink:0;">${_iconFor(k)}</span><span>${esc(label)}</span></button>`).join('');

@@ -187,8 +187,11 @@ def test_imagemagick_writes_the_names_read_and_a_never_keeps_the_persons(tmp_pat
 def test_file_converter_asks_before_a_burst_photos_copies_and_not_without_them(tmp_path):
     """File Converter's own command under its hire's `ask`: a drop folder
     whose `converted/` holds only the copies its test skips runs with no
-    card; one holding a burst photo's numbered copies — which its test does
-    not see — waits for a yes, naming one."""
+    card; one holding a numbered copy its tests do not skip waits for a
+    yes, naming it. (`B1695` changed which: the photo kind now tests a
+    burst's first copy, so `IMG_7-1.jpg` there skips `IMG_7.heic` whole —
+    `tests/test_a_burst_converted_before_is_skipped_whole.py` — and the
+    copy that still asks is a numbered one whose first is not there.)"""
     m = get_agent(None, "file-converter")
     command = E.load_evals(m)[0]["script"][0]["call"][0][1]["command"]
     drop = tmp_path / "proj" / "drop"
@@ -203,10 +206,10 @@ def test_file_converter_asks_before_a_burst_photos_copies_and_not_without_them(t
                                                      hired=True))
 
     assert ask().decision_for("bash", command).allowed is True
-    (drop / "converted" / "IMG_7-1.jpg").write_text("a burst's first", encoding="utf-8")
+    (drop / "converted" / "IMG_7-2.jpg").write_text("a burst's second", encoding="utf-8")
     asked = ask().decision_for("bash", command)
     assert asked.allowed is False
-    assert (f"(it cannot be known whether heif-convert writes over converted/IMG_7-1.jpg, {THERE})"
+    assert (f"(it cannot be known whether heif-convert writes over converted/IMG_7-2.jpg, {THERE})"
             in asked.reason)
 
 

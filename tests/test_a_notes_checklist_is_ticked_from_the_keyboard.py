@@ -81,7 +81,8 @@ const BASE = process.argv[2];
   await page.goto(BASE + '/', { waitUntil: 'load' });
   await page.waitForFunction(() => window.__pantheonAppStarted === true, null, { timeout: 90000 });
   await page.waitForTimeout(800);
-  await page.click('#tool-notes-btn');
+  // The cockpit's rail is the desktop door to Notes (its Tools list lives in the phone drawer).
+  await page.click('#rail-notes');
   await page.waitForSelector('.note-card .note-check-dot', { timeout: 30000 });
   await page.waitForTimeout(400);
 

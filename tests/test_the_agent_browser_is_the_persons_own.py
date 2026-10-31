@@ -276,7 +276,7 @@ from test_the_workstation_is_admin_controlled import (  # noqa: E402,F401 — fi
 
 
 @needs_firefox
-def test_the_window_sees_and_drives_the_callers_own_browser(app, ws, site):
+def test_the_window_sees_and_drives_the_callers_own_browser(app, ws, site, monkeypatch):
     switch_on(app, ws)
     me = as_user(app, ALLOWED)
     opened = me.post("/api/workstation/browser", json={"action": "open", "url": site + "/two"})
@@ -286,7 +286,8 @@ def test_the_window_sees_and_drives_the_callers_own_browser(app, ws, site):
     assert frame.status_code == 200 and frame.headers["cache-control"] == "no-store"
     f = frame.json()
     assert set(f) == {"mime", "data_b64", "width", "height", "digest", "url", "title", "tabs",
-                      "activity", "seq"}
+                      "activity", "seq", "runs_in"}
+    assert f["runs_in"] == "workstation"   # not Pantheon's own (`src/local_browser.py`)
     assert f["url"] == site + "/two" and f["tabs"] == [{"tab": 1, "url": site + "/two", "current": True}]
     assert ws.token not in frame.text
     assert f["activity"][-1]["label"] == f"Opening {site}/two" and f["activity"][-1]["who"] == "person"
@@ -296,5 +297,10 @@ def test_the_window_sees_and_drives_the_callers_own_browser(app, ws, site):
     bad = me.post("/api/workstation/browser", json={"action": "read"})
     assert bad.status_code == 400, "reading the page as text is the agent's, not the window's"
     assert me.post("/api/workstation/browser", json={"action": "open", "url": "file:///etc/passwd"}).status_code == 400
+    # A person the workstation does not answer is refused when Pantheon has no
+    # Firefox of its own; with one they get that browser instead
+    # (`src/local_browser.py`, `test_the_browser_runs_without_a_workstation.py`).
+    import src.local_browser as LB
+    monkeypatch.setattr(LB, "firefox_here", lambda: False)
     assert as_user(app, PLAIN).get("/api/workstation/browser").status_code == 403
     ws.station.browsers.stop_all()

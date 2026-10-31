@@ -323,13 +323,19 @@ export function setMode(doc, mode) {
  *  on asks first — one sentence saying what is given up (`D-2026-10-09-01`
  *  §2) — and a question put over the sheet, with the sheet's own outside-tap
  *  dismissal underneath it, is two layers answering the same tap. The chip
- *  carries the answer afterwards, which is where a person cannot miss it. */
+ *  carries the answer afterwards, which is where a person cannot miss it.
+ *
+ *  `B1706`: the chip opens a menu now rather than flipping the mode, so what
+ *  is pressed is that menu's own item for the mode asked for
+ *  (`[data-approval-choice]`, the click a person makes on it) — and the chip
+ *  only on a page that has no such item. */
 export function setApproval(doc, mode) {
   const ctl = approvalControl(doc);
   if (!ctl) return false;
   if (_approvalOf(ctl) === mode) { closeSheet(doc); return true; }
   closeSheet(doc);
-  setTimeout(() => { _click(ctl); paint(doc); }, 0);
+  const choice = doc.querySelector(`[data-approval-choice="${mode === 'auto' ? 'auto' : 'manual'}"]`);
+  setTimeout(() => { _click(choice || ctl); paint(doc); }, 0);
   return true;
 }
 

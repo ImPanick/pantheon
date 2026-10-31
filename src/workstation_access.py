@@ -121,6 +121,13 @@ UNCONFIGURED_SENTENCE = ("The workstation is on but has no address. Start it wit
 NOT_PERMITTED_SENTENCE = ("Your account may not use the workstation. An admin can allow it "
                           "in Settings → Users.")
 UP_SENTENCE = "The workstation is answering."
+# The VM backend answers before its first machine can start: the Ubuntu image
+# every machine is made from is made once, the first time it is turned on.
+PREPARING_SENTENCE = ("The workstation is answering and is making its machine image — Ubuntu, a "
+                      "desktop, the tools and Firefox, once. With KVM that takes minutes; without "
+                      "it, much longer. Your machine starts when it is done.")
+IMAGE_FAILED_SENTENCE = ("The workstation is answering, but its machine image could not be made. "
+                         "Its container log says why; restarting the workstation tries again.")
 
 # `B956`. What undoes root: a new container on the same volumes. Turning `sudo`
 # off rewrites the daemon's rule from then on and cannot take back a setuid
@@ -452,6 +459,14 @@ async def sync_config(client: WorkstationClient) -> Dict[str, Any]:
     admins = admin_accounts()
     if daemon.get("admins") != admins:
         daemon.update(await client.config(admins=admins))
+    # A VM host that makes its machine image on first use (the default stack,
+    # `PANTHEON_WORKSTATION_VM_IMAGE=on_first_use`) starts on `config`: being
+    # here means the switch is on (or an admin pressed *Check now*), so it is
+    # sent even when nothing above differed.
+    machine = daemon.get("machine") if isinstance(daemon.get("machine"), dict) else None
+    if machine is not None and machine.get("image") == "waiting":
+        daemon.update(await client.config(sudo=want))
+        daemon["machine"] = {**machine, "image": "preparing"}
     gate = wc.gate_for(client)
     if gate is not None:
         held = await gate.health()
@@ -657,7 +672,10 @@ async def status_for(owner: Optional[str], *, is_admin: bool, auth_manager: Any 
         return out
     out["probe"] = PROBE_OK
     if enabled:
-        out.update(state=STATE_UP, sentence=UP_SENTENCE)
+        image = ((daemon.get("machine") or {}) if isinstance(daemon.get("machine"), dict) else {}).get("image")
+        sentence = (PREPARING_SENTENCE if image in ("preparing", "waiting")
+                    else IMAGE_FAILED_SENTENCE if image == "failed" else UP_SENTENCE)
+        out.update(state=STATE_UP, sentence=sentence)
     return out
 
 
@@ -667,7 +685,8 @@ __all__ = [
     "PRIVILEGE", "PROBE_FAILED", "PROBE_NOT_CHECKED", "PROBE_OK", "RECREATE_COMMAND", "Ready",
     "SETTING_KEYS",
     "STATES", "STATE_DOWN", "STATE_NOT_PERMITTED", "STATE_OFF", "STATE_UNCONFIGURED",
-    "STATE_UP", "UNCONFIGURED_SENTENCE", "UP_SENTENCE", "account_of", "backend_setting",
+    "STATE_UP", "UNCONFIGURED_SENTENCE", "UP_SENTENCE", "PREPARING_SENTENCE",
+    "IMAGE_FAILED_SENTENCE", "account_of", "backend_setting",
     "ensure_ready", "may_use", "network_setting", "reset_home", "route_tools_wanted",
     "routes_tools", "settings_view", "status_for", "sudo_wanted", "sync_config",
     "validate_setting", "workstation_for", "workstation_owner",

@@ -359,6 +359,26 @@ Re-measured 2026-10-29, after the thirty-third wave: **36 filed, 43 closed**, op
 
 **Direction as of 2026-10-29, after the thirty-third wave: falling over the window; what is left is decisions, the redesign, what this sandbox cannot reach, and the shell reading's long tail.**
 
+Re-measured 2026-10-30, after the thirty-fourth wave: **37 filed, 41 closed**, open **40 → 36** — falling over the window, flat in this wave (three closed, three filed). The window moved on, so its start reads 40. The ship-line composition is unchanged — 0 of the last 40 `B` rows (`B1661`–`B1700`) block.
+
+**Direction as of 2026-10-30, after the thirty-fourth wave: falling over the window, flat at the tail; what is left is decisions, the redesign, what this sandbox cannot reach, and the shell reading's long tail.**
+
+Re-measured 2026-10-30, after the thirty-fifth wave: **39 filed, 42 closed**, open **39 → 36** — falling over the window, flat in this wave (three closed, three filed, one the owner's `B1703`). The window moved on, so its start reads 39. The ship-line composition is unchanged — 0 of the last 40 `B` rows (`B1664`–`B1703`) block.
+
+**Direction as of 2026-10-30, after the thirty-fifth wave: falling; what is left is decisions, the redesign, what this sandbox cannot reach, and the shell reading's long tail.**
+
+Re-measured 2026-10-30, after the thirty-sixth wave: **40 filed, 42 closed**, open **38 → 36** — flat in this wave (two closed, two filed, one closed in it). The window moved on, so its start reads 38. The ship-line composition is unchanged — 0 of the last 40 `B` rows (`B1666`–`B1705`) block.
+
+**Direction as of 2026-10-30, after the thirty-sixth wave: falling over the window; the system-and-function list is down to decisions, what this sandbox cannot reach, and small remainders, and the redesign is next.**
+
+Re-measured 2026-10-30, after the thirty-seventh wave: **34 filed, 36 closed**, open **42 → 40** — falling over the window, up by three in this wave (one closed, four filed for the revamp). The window moved on, so its start reads 42. The ship-line composition is unchanged — 0 of the last 40 `B` rows (`B1671`–`B1710`) block.
+
+**Direction as of 2026-10-30, after the thirty-seventh wave: the system-and-function list is done but for decisions, what this sandbox cannot reach and small remainders; the UI/UX revamp is next.**
+
+Re-measured 2026-10-31, after the forty-fifth wave: **25 filed, 23 closed**, open **36 → 38** — rising, by two over the window. The waves since the thirty-seventh were the UI/UX revamp, the fresh-install sign-in fix and the owner's ask that every partly wired system work in full; most filed and closed their own rows in the same wave, and the forty-fifth filed and closed one (`B1715`, the shipped core skills). The ship-line composition is unchanged — 0 of the last 40 `B` rows (`B1676`–`B1715`) block.
+
+**Direction as of 2026-10-31, after the forty-fifth wave: the open count is rising.**
+
 ### A second number, which is the one that moves
 
 Of the last 40 `B` rows filed — `B360` through `B455`, four waves of sweeps plus

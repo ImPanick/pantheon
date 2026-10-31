@@ -862,10 +862,12 @@ async def shell_station(*, owner: Optional[str], workspace: Optional[str] = None
                         session_id: Optional[str] = None, hired: bool = False):
     """`B1669`. Where this person's next `bash` or `python` command in their
     workstation starts, and a way to ask what is at a path there:
-    `(starts, home, kind_at, values, names_at)`, or `None` when the
-    workstation cannot be asked — which the gate reads as destructive
+    `(starts, home, kind_at, values, names_at, link_at)`, or `None` when
+    the workstation cannot be asked — which the gate reads as destructive
     (`src/run_files.py`). `names_at(path)` (`B1693`): the files in a folder,
-    for the numbered copies a converter may write over.
+    for the numbered copies a converter may write over; `link_at(path)`
+    (`B1696`): whether what is there is a symbolic link, for a copy that
+    keeps one.
 
     Asked as `_shell` asks it: the folder the chat's shell was left in
     (`B962`, read without moving it) and the folder a command starts in when
@@ -920,12 +922,30 @@ async def shell_station(*, owner: Optional[str], workspace: Optional[str] = None
         return [str(e.get("path") or "") for e in listing.get("entries") or ()
                 if e.get("type") in ("file", "symlink")]
 
+    async def link_at(path: str) -> Optional[str]:
+        """`B1696`. Whether what is at `path` is a symbolic link, as its
+        folder's listing says: `""` when it is not, or nothing is (there is
+        no such folder); `None` when it is one — the daemon does not give a
+        link's text — or that could not be said."""
+        parent, name = posixpath.split(path.rstrip("/"))
+        if not name:
+            return ""                   # the root: a folder
+        try:
+            listing = await st.client.list(st.account, parent or "/")
+        except WorkstationError as e:
+            return "" if e.code == "not_found" else None
+        for entry in listing.get("entries") or ():
+            if entry.get("path") == name:
+                return None if entry.get("type") == "symlink" else ""
+        return None if listing.get("truncated") else ""
+
     from src.tool_execution import run_projects_folder
     values = {"HOME": home}
     projects = run_projects_folder(folder, hired) or await _given_projects(client, account)
     if projects:
         values[P.PROJECTS_ENV] = projects   # what `run_env`, or the daemon, hands the command
-    return list(dict.fromkeys(f for f in (held, start) if f)), home, kind_at, values, names_at
+    return (list(dict.fromkeys(f for f in (held, start) if f)), home, kind_at, values, names_at,
+            link_at)
 
 
 async def _given_projects(client, account: str) -> Optional[str]:

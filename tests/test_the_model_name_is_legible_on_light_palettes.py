@@ -30,6 +30,11 @@ Two halves:
     the page's own `theme.js:applyColors`, a reply's role line coloured by the
     page's own `applyModelColor` for sixty names, and the contrast read from
     what the browser resolved against what the bubble paints.
+
+Since 2026-10-31 the cockpit paints the name in one secondary ink over that
+hue (the owner did not want the pinks and violets it produced), so the
+browser half reads that ink's contrast, and the hue pair stays pinned by the
+node half for wherever else `modelColor` is drawn.
 """
 
 import colorsys
@@ -130,7 +135,8 @@ def _light_palettes(themes):
 
 
 def test_the_twenty_three_palettes_are_all_here_and_eight_are_light(shipped):
-    assert len(shipped["themes"]) == 23
+    # Twenty since the cockpit retired three presets (theme.js `RETIRED_THEMES`).
+    assert len(shipped["themes"]) == 20
     assert set(_light_palettes(shipped["themes"])) == {"light", "paper", "lavender", "cute", "notebook", "codehost", "video", "mintchat"}
 
 
@@ -226,6 +232,12 @@ const NAMES = JSON.parse(process.argv[3]);
     const renderer = await import('/static/js/chatRenderer.js');
     const parse = (s) => { const m = String(s).match(/rgba?\(([^)]+)\)/); if (!m) return null;
       const p = m[1].split(/[ ,\/]+/).filter(Boolean).map(Number); return [p[0], p[1], p[2], p.length > 3 ? p[3] : 1]; };
+    // A text colour in whatever space the browser keeps it (the cockpit's
+    // inks are OKLab mixes, which `getComputedStyle` reports as `oklab(...)`),
+    // drawn onto a pixel and read back as sRGB.
+    const ink = document.createElement('canvas').getContext('2d', { willReadFrequently: true });
+    const rgb = (s) => { ink.clearRect(0, 0, 1, 1); ink.fillStyle = '#000'; ink.fillStyle = s; ink.fillRect(0, 0, 1, 1);
+      const d = ink.getImageData(0, 0, 1, 1).data; return [d[0], d[1], d[2], d[3] / 255]; };
     // What the bubble paints behind the line: its own and its ancestors' backgrounds, composited.
     const behind = (el) => { const layers = [];
       for (let n = el; n && n.nodeType === 1; n = n.parentElement) {
@@ -247,7 +259,7 @@ const NAMES = JSON.parse(process.argv[3]);
         role.textContent = n; renderer.applyModelColor(role, n);
         const hue = /hsl\((\d+),/.exec(renderer.modelColor(n))[1];
         probe.style.color = `hsl(${hue}, 55%, 65%)`;   // the colour this line had before
-        rows.push({ n, fg: parse(getComputedStyle(role).color), old: parse(getComputedStyle(probe).color) });
+        rows.push({ n, fg: rgb(getComputedStyle(role).color), old: rgb(probe.style.color) });
       }
       result[name] = { scheme: getComputedStyle(document.documentElement).colorScheme, bubble: behind(role), rows };
     }
@@ -285,25 +297,25 @@ def test_in_a_browser_every_light_palette_reads_at_least_4_5_to_1(painted):
 def test_in_a_browser_every_dark_palette_reads_at_least_4_5_to_1(painted):
     """`B1084`: what the browser resolved, against what the bubble paints."""
     dark = {n: p for n, p in painted["palettes"].items() if p["scheme"] == "dark"}
-    assert len(dark) == 15
+    assert len(dark) == 12  # fifteen until the cockpit retired three (theme.js `RETIRED_THEMES`)
     for name, p in dark.items():
         worst = min(p["rows"], key=lambda r: _ratio(r["fg"][:3], p["bubble"]))
         ratio = _ratio(worst["fg"][:3], p["bubble"])
         assert ratio >= 4.5, f"{name}: {worst['n']} {worst['fg']} on {p['bubble']} is {ratio:.2f}:1"
 
 
-def test_in_a_browser_a_dark_name_that_was_legible_paints_what_it_did(painted):
-    dark = {n: p for n, p in painted["palettes"].items() if p["scheme"] == "dark"}
-    kept = changed = 0
-    for name, p in dark.items():
-        for row in p["rows"]:
-            if row["fg"] == row["old"]:
-                kept += 1
-            else:
-                # Lifted, never darkened, and the same name on every dark palette.
-                assert _luminance(row["fg"][:3]) > _luminance(row["old"][:3]), (name, row)
-                changed += 1
-    assert kept > changed > 0, (kept, changed)
+def test_in_a_browser_every_name_paints_one_ink_not_its_hue(painted):
+    """2026-10-31, the owner on the chat: "change the LLM's chat color scheme
+    … The pink/purples etc." The hashed hue landed half the names on pink or
+    violet. The cockpit paints every name in the column's secondary ink
+    (`static/cockpit.css`, "a calmer chat") over the hue `applyModelColor`
+    still writes inline, so on each palette sixty names are one colour, and
+    not the hue they hashed to."""
+    for name, p in painted["palettes"].items():
+        inks = {tuple(r["fg"][:3]) for r in p["rows"]}
+        assert len(inks) == 1, f"{name}: the names paint {len(inks)} colours"
+        hues = {tuple(r["old"][:3]) for r in p["rows"]}
+        assert len(hues) > 10 and inks.isdisjoint(hues), name
 
 
 def test_in_a_browser_nothing_threw(painted):

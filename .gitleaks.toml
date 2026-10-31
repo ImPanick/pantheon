@@ -83,4 +83,9 @@ regexes = [
   # the same webhook URL. Its suffix is ascending hex, not an issued secret.
   # Both boundaries keep this fixture from excusing a longer credential.
   '''\btok-0123456789abcdef\b''',
+  # `tests/test_service_connections_are_per_account.py` names each account's
+  # service connection by a key that says what it is: Ada's own Gitea secret,
+  # numbered 1. The test asserts it never reaches another account's tools.
+  # Both boundaries keep it from excusing a longer value.
+  '''\bADA-SECRET-gitea-1\b''',
 ]

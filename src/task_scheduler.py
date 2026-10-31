@@ -5863,6 +5863,8 @@ class TaskScheduler:
                     "sealed": bool(_agent.get("sealed")),
                     "blind": bool(_agent.get("blind")),
                     "agent_id": _agent.get("agent_id") or None,
+                    # `B1703`: whose acceptance the lift asks after.
+                    "hire_id": _agent.get("hire_id") or None,
                     "hired": True}   # `B1606`
                    if _agent else {}))
         if _slot.get("suppress_skills"):

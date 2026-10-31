@@ -258,9 +258,32 @@ def _copy_skill_dict(d: Dict) -> Dict:
 FIRST_PARTY_LIBRARY = "pantheon"
 VENDORED_LIBRARY = "ecc"
 
+# `B1715`. Pantheon's core skills — research, debugging, writing, memory and
+# the rest — are about what nearly every turn could be about, so listing them
+# in the catalogue would put eleven lines and `manage_skills`' schema into every
+# prompt, a note or a greeting included (`B1426`'s complaint, eleven times
+# over). They reach a turn as its matched procedure instead: the body is pasted
+# in whole when the turn is about it (`get_relevant_skills`), which needs no
+# catalogue line and no tool to open it.
+CORE_CATEGORY = "core"
+
+
+def arrives_when_matched(s: Dict) -> bool:
+    """A shipped core skill: offered as a matched body, never catalogued."""
+    return (s.get("library") == FIRST_PARTY_LIBRARY
+            and s.get("category") == CORE_CATEGORY
+            and bool(s.get("bundled")))
+
 
 def _first_party_library_root() -> str:
-    """`<repo>/library/pantheon/skills` — resolved like the vendored root."""
+    """`<repo>/library/pantheon/skills` — resolved like the vendored root.
+
+    `PANTHEON_FIRST_PARTY_SKILLS` names another folder, and set empty ships
+    none (`B1715`: a test that measures a prompt's exact size, against a
+    server it starts, has no other way to hold the shipped set out)."""
+    override = os.environ.get("PANTHEON_FIRST_PARTY_SKILLS")
+    if override is not None:
+        return override
     here = os.path.dirname(os.path.abspath(__file__))
     repo = os.path.dirname(os.path.dirname(here))
     return os.path.join(repo, "library", FIRST_PARTY_LIBRARY, "skills")
@@ -1509,6 +1532,94 @@ class SkillsManager:
         return out
 
     # ----------------------------------------------------------------------
+    # The vendored library as a shelf — browse it, take a skill off it
+    # ----------------------------------------------------------------------
+
+    def library_catalogue(self, owner: Optional[str] = None) -> List[Dict]:
+        """The vendored skills a person can add, as light rows.
+
+        The 286 stay out of the model's catalogue (`D-2026-10-26-01` §8) and
+        out of the Workshop's card list (`B1421`'s 3 s bound), which left them
+        with no way to be found at all: the owner read that as every skill
+        gone. This is the shelf — name, description, category and tags only, no
+        usage or similarity pass — and a skill the person already holds under
+        that name is marked rather than offered twice.
+        """
+        own = {s.get("name") for s in self.load(owner=owner)} if owner is not None else {
+            s.get("name") for s in self.load_all() if not s.get("bundled")}
+        out: List[Dict] = []
+        seen: set = set()
+        for lib, path in self._iter_library_layers():
+            if lib != VENDORED_LIBRARY:
+                continue
+            d = self._read_skill_dict(path)
+            name = (d or {}).get("name")
+            if not name or name in seen:
+                continue
+            seen.add(name)
+            out.append({
+                "name": name,
+                "description": d.get("description") or "",
+                "category": d.get("category") or "",
+                "tags": list(d.get("tags") or []),
+                "added": name in own,
+            })
+        out.sort(key=lambda r: r["name"])
+        return out
+
+    def adopt_library_skill(self, name: str, owner: Optional[str] = None) -> Optional[Dict]:
+        """Copy a vendored skill into the person's store, published.
+
+        Under its own name where it can, so it shadows the library entry for
+        them alone (the fork mechanism `load_all` describes); the copy is
+        theirs to edit, and the model is shown it from the next turn. Another
+        person's skill already at that path gets a suffixed name rather than
+        being overwritten. Returns None when no vendored skill has the name.
+        """
+        own_path = self._find_skill_path(name, owner)
+        if own_path is not None:
+            existing = self._read_skill(own_path)
+            return existing.to_dict() if existing else None
+        path = None
+        for lib, p in self._iter_library_layers():
+            if lib != VENDORED_LIBRARY:
+                continue
+            d = self._read_skill_dict(p)
+            if d and d.get("name") == name:
+                path = p
+                break
+        if path is None:
+            return None
+        src = self._read_skill(path)
+        if src is None:
+            return None
+        from core.atomic_io import atomic_write_text
+        from .skill_importer import _safe_relpath
+
+        cat = src.category or "general"
+        local, i = name, 2
+        while os.path.exists(self._skill_file(cat, local)):
+            local, i = f"{name}-{i}", i + 1
+        target_dir = self._skill_dir(cat, local)
+        for rel, text in self._files_under(os.path.dirname(path)).items():
+            if rel == "SKILL.md":
+                continue
+            dest = os.path.join(target_dir, _safe_relpath(rel))
+            os.makedirs(os.path.dirname(dest), exist_ok=True)
+            atomic_write_text(dest, text)
+        sk = src
+        sk.name, sk.owner, sk.source = local, owner, "library"
+        sk.status = "published"
+        sk.confidence = max(_to_float(sk.confidence, 0.0), 0.9)
+        dest = self._skill_file(cat, local)
+        os.makedirs(os.path.dirname(dest), exist_ok=True)
+        atomic_write_text(dest, sk.to_markdown())
+        sk.path = dest
+        out = sk.to_dict()
+        out["adopted_from"] = name
+        return out
+
+    # ----------------------------------------------------------------------
     # CRUD — disk-backed
     # ----------------------------------------------------------------------
 
@@ -2011,6 +2122,8 @@ class SkillsManager:
         out = []
         for s in self.injectable_skills(owner=owner, active_toolsets=active_toolsets,
                                         platform=platform):
+            if arrives_when_matched(s):
+                continue
             status = s.get("status")
             out.append({
                 "name": s["name"],

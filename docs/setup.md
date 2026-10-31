@@ -11,10 +11,12 @@ inside **Settings**. Only edit `.env` for deployment-level overrides like
 `APP_BIND`, `APP_PORT`, `DATABASE_URL`, or a pre-seeded admin password. (Sign-in is always on;
 there is no `.env` switch for it since 0.2.0.)
 
-On first setup, Pantheon creates an admin account (`admin` unless
-`PANTHEON_ADMIN_USER` is set) and prints a temporary password in the terminal.
-For Docker installs, the same line is in `docker compose logs pantheon`.
-Use that for the first login, then change it in **Settings**.
+On first setup, open Pantheon in a browser: with no account yet, the sign-in page
+asks you to make the admin (and whether people may create their own accounts).
+Running `setup.py` in a terminal asks for it there instead. To have it made ahead
+of time, set `PANTHEON_ADMIN_PASSWORD` (and `PANTHEON_ADMIN_USER`, `admin` if
+unset) in `.env`. An update never asks again: the setup appears only while the
+account store is empty.
 
 Contributing? See [CONTRIBUTING.md](../CONTRIBUTING.md) for setup, testing, and
 pull request guidelines.
@@ -27,6 +29,8 @@ cp .env.example .env       # optional, but recommended for explicit defaults
 docker compose up -d --build
 ```
 To include optional extras in the image (PDF viewer, Office extraction; includes AGPL PyMuPDF), build with `docker compose build --build-arg INSTALL_OPTIONAL=true` before `up`.
+
+The image carries the default local embedding model (about 90 MB), fetched while it is built and copied into `./data/fastembed_cache` on first start, so memory and document search work by meaning without anything being downloaded at run time. `--build-arg BAKE_MODELS=false` builds without it.
 
 Open `http://localhost:7000` when the containers are healthy. Docker Compose
 binds the web UI to `127.0.0.1` by default. If the port is taken, set

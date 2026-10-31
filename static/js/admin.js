@@ -158,6 +158,81 @@ async function _savePrivilege(input) {
   }
 }
 
+/** `B1705`. Every chat and hire whose person accepted Auto-approve's warning,
+ *  with who, when and whether it still lifts anything — the server's answer
+ *  to *who has Auto on where*, which was readable one chat at a time. *Turn
+ *  off* only ever turns a gate back on, so it asks nothing first. */
+async function loadAutoApprove() {
+  const list = el('adm-autoApproveList');
+  if (!list) return;
+  let res;
+  try {
+    res = await fetch('/api/auth/auto-approve', { credentials: 'same-origin' });
+  } catch (_) {
+    _refusedState(list, 0, 'Pantheon did not answer.', loadAutoApprove);
+    return;
+  }
+  if (!res.ok) {
+    const refused = res.status === 401 || res.status === 403
+      ? '' : (await readRefusal(res, `The server answered ${res.status}.`)).sentence;
+    _refusedState(list, res.status, refused, loadAutoApprove);
+    return;
+  }
+  const data = await res.json();
+  const rows = Array.isArray(data.acceptances) ? data.acceptances : [];
+  if (rows.length === 0) {
+    uiModule.renderEmptyState(list, {
+      kind: 'empty', className: 'admin-empty', title: 'Nobody has Auto-approve on',
+      message: 'Every chat and hired agent asks before a step that needs approval.',
+    });
+    return;
+  }
+  list.innerHTML = '';
+  rows.forEach(a => {
+    const row = document.createElement('div');
+    row.className = 'admin-user-row';
+    const kind = a.subject === 'hire' ? 'Hired agent' : 'Chat';
+    const name = a.name || (a.subject === 'hire' ? 'A removed hire' : 'A deleted chat');
+    const when = a.at ? new Date(a.at).toLocaleString() : '';
+    const effects = a.subject === 'hire' && Array.isArray(a.effect_words) && a.effect_words.length
+      ? ` · may ${a.effect_words.join(', ')} without asking` : '';
+    const dormant = a.in_effect ? '' : ' · lifts nothing: they no longer have <em>Auto-approve</em> under Privileges';
+    row.innerHTML = `
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:4px 0;">
+        <div style="min-width:0;">
+          <div class="admin-user-name" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(name)}</div>
+          <div class="admin-toggle-sub">${esc(kind)} · accepted by ${esc(a.by || '')}${when ? ` · ${esc(when)}` : ''}${esc(effects)}${dormant}</div>
+        </div>
+        <button type="button" class="admin-btn-sm" style="font-size:11px;flex-shrink:0;">Turn off</button>
+      </div>`;
+    const btn = row.querySelector('button');
+    btn.setAttribute('aria-label', `Turn Auto-approve off for ${name}`);
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      try {
+        const r = await fetch('/api/auth/auto-approve/withdraw', {
+          method: 'POST', credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ subject: a.subject, subject_id: a.subject_id }),
+        });
+        if (!r.ok) {
+          btn.disabled = false;
+          uiModule.showError((await readRefusal(r, 'Not turned off.')).sentence);
+          return;
+        }
+        uiModule.showToast(a.subject === 'hire'
+          ? `${name} asks again after outside content.`
+          : `${name} is back on Manual approve.`);
+        loadAutoApprove();
+      } catch (_) {
+        btn.disabled = false;
+        uiModule.showError('Not turned off: Pantheon did not answer.');
+      }
+    });
+    list.appendChild(row);
+  });
+}
+
 async function loadUsers() {
   const list = el('adm-userList');
   try {
@@ -3624,6 +3699,7 @@ function refreshAll(mayAdminister = true) {
     _runInits(_adminInits);
   }
   loadUsers();
+  loadAutoApprove();
   loadBuiltinTools();
   loadFeatures();
 }

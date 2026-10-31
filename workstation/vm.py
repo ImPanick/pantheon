@@ -126,6 +126,11 @@ ENV = {
     # never), and how many may run at once (`auto`: what the memory holds).
     "idle": "PANTHEON_WORKSTATION_VM_IDLE_MIN",
     "max_running": "PANTHEON_WORKSTATION_VM_MAX_RUNNING",
+    # `at_start` (the default): the image is made when this host starts.
+    # `on_first_use`: only once Pantheon asks for a machine — the switch
+    # turned on (its `config`) or a person's first call — so an install that
+    # ships this host and never turns the workstation on never makes one.
+    "image_when": "PANTHEON_WORKSTATION_VM_IMAGE",
     # Build-time knobs for making the image, like the container image's
     # `APT_MIRROR` and `build-ca` (`provision.sh`). None stays in the image.
     "apt_mirror": "PANTHEON_WORKSTATION_VM_APT_MIRROR",
@@ -639,6 +644,7 @@ class Fleet(System):
                  disk_gib: int = DEFAULT_DISK_GIB,
                  machine_factory: Optional[Callable[["Fleet", str], Machine]] = None,
                  image_options: Optional[Dict] = None, need_image: bool = True,
+                 image_on_first_use: bool = False,
                  start_timeout: float = P.MACHINE_START_S - 30.0,
                  idle_stop_s: Optional[float] = DEFAULT_IDLE_STOP_MIN * 60.0,
                  max_running: Optional[int] = None,
@@ -659,8 +665,10 @@ class Fleet(System):
         self._restricted: Dict[str, bool] = {}
         self._guest_net: Dict[str, Dict] = {}
         self._retiring: List[threading.Thread] = []
-        self.image_state = "preparing" if need_image else "ready"
+        self.image_state = ("ready" if not need_image
+                            else "waiting" if image_on_first_use else "preparing")
         self.image_why = ""
+        self._image_asked = threading.Lock()
         self._image: Optional[Path] = None
         self._machines: Dict[str, Machine] = {}
         self._locks: Dict[str, threading.Lock] = collections.defaultdict(threading.Lock)
@@ -867,6 +875,9 @@ class Fleet(System):
             return ("The workstation's machine image could not be made, so no machine can start: "
                     f"{self.image_why or 'see the workstation container log'}. Restart the "
                     "workstation container to try again.")
+        if self.image_state == "waiting":
+            return ("The workstation has not made its machine image yet; it starts making it now. "
+                    "With KVM that takes minutes; without it, much longer. Try again shortly.")
         return ("The workstation is still making the machine image every person's machine starts "
                 "from — Ubuntu, the desktop, the tools and Firefox, once, on its first start. With "
                 "KVM that takes minutes; without it, much longer. Try again shortly.")
@@ -889,6 +900,17 @@ class Fleet(System):
                 h.update(chunk)
         cache.write_text(f"{key} {h.hexdigest()}\n")
         return h.hexdigest()
+
+    def want_image(self) -> bool:
+        """Start making the image if it waits for its first use (`image_when`
+        `on_first_use`); True when this call started it."""
+        with self._image_asked:
+            if self.image_state != "waiting":
+                return False
+            self.image_state = "preparing"
+        logger.info("the workstation was asked for: making the machine image now")
+        threading.Thread(target=self.prepare_image, name="image", daemon=True).start()
+        return True
 
     def prepare_image(self) -> None:
         """The image for this payload: found, or made (module docstring). Sets
@@ -1038,7 +1060,9 @@ class Fleet(System):
                 # with this one.
                 m.stop(graceful=True)
             if not m.exists() and self.image_state != "ready":
-                raise WorkstationError("unavailable", self.image_sentence())
+                sentence = self.image_sentence()
+                self.want_image()
+                raise WorkstationError("unavailable", sentence)
             started = time.monotonic()
             with self._start_lock:  # `B979`: counted and started as one step
                 others = [a for a in self.running_accounts() if a != account]
@@ -1092,7 +1116,9 @@ class Fleet(System):
         m = self.machine_for(account)
         with self._locks[account]:
             if self.image_state != "ready":
-                raise WorkstationError("unavailable", self.image_sentence())
+                sentence = self.image_sentence()
+                self.want_image()
+                raise WorkstationError("unavailable", sentence)
             m.destroy()
             with self._registry:
                 self._machines.pop(account, None)
@@ -1363,6 +1389,14 @@ class VmStation(Workstation):
             out["machines"] = self.system.machines()  # `B979`
         return out
 
+    def config(self, body: Dict) -> Dict:
+        # Pantheon pushes `config` once the admin's switch is on
+        # (`workstation_access.sync_config`), which is what `on_first_use`
+        # waits for.
+        out = super().config(body)
+        self.system.want_image()
+        return out
+
     def account(self, account: str) -> Dict:
         """`B959`: from the machine itself when it is already running (the
         exact home it has), else from its disk — and never by starting it.
@@ -1475,6 +1509,26 @@ def parser() -> argparse.ArgumentParser:
     return ap
 
 
+HOST_LOCK = ".host.lock"
+
+
+def hold_state(state: Path):
+    """An exclusive lock on the state folder for this host's whole life, or
+    None when another host holds it. Two hosts on one volume — the VM overlay
+    left running beside the stack's own `workstation-vm` — would start the same
+    person's machine twice on one disk. A lock on the volume itself holds across
+    containers, which share the kernel."""
+    import fcntl
+    state.mkdir(parents=True, exist_ok=True)
+    f = open(state / HOST_LOCK, "a+")
+    try:
+        fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        f.close()
+        return None
+    return f
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     from workstation.__main__ import PAIRING_GID_ENV, _gid, secure_pairing
 
@@ -1486,10 +1540,20 @@ def main(argv: Optional[List[str]] = None) -> int:
     disk = _int_env(ENV["disk"], DEFAULT_DISK_GIB, 8, 4096)
     idle = idle_stop_from_env(os.environ.get(ENV["idle"], ""))  # `B979`
     cap = max_running_from_env(os.environ.get(ENV["max_running"], ""), memory, host_memory_mib())
+    image_when = (os.environ.get(ENV["image_when"]) or "at_start").strip().lower()
+    if image_when not in ("at_start", "on_first_use"):
+        logger.error("%s is at_start or on_first_use.", ENV["image_when"])
+        return 2
     want = (os.environ.get(ENV["accel"]) or "auto").strip().lower()
     if want not in ("auto", "kvm", "tcg"):
         logger.error("%s is auto, kvm or tcg.", ENV["accel"])
         return 2
+    lock = hold_state(Path(args.state))
+    if lock is None:
+        logger.error("another workstation VM host is using %s (an old docker/workstation-vm.yml "
+                     "container?). Stop it — `docker compose up -d --remove-orphans` — and this "
+                     "one starts.", args.state)
+        return 3
     try:
         gid = _gid(os.environ.get(PAIRING_GID_ENV, ""))
         accel, why = choose_accel(want=want)
@@ -1502,14 +1566,19 @@ def main(argv: Optional[List[str]] = None) -> int:
         fleet = Fleet(Path(args.state), accel=accel, accel_why=why,
                       base_image=Path(args.base_image), payload=Path(args.payload),
                       memory_mib=memory, cpus=cpus, disk_gib=disk, image_options=options,
-                      idle_stop_s=idle, max_running=cap)
+                      idle_stop_s=idle, max_running=cap,
+                      image_on_first_use=image_when == "on_first_use")
     except (WorkstationError, argparse.ArgumentTypeError) as e:
         logger.error("%s", getattr(e, "message", None) or e)
         return 2
     logger.info("%s", why)
     station = VmStation(fleet, token)
     server = make_server(fleet, token, bind=args.bind, port=args.port, station=station)
-    threading.Thread(target=fleet.prepare_image, name="image", daemon=True).start()
+    if image_when == "at_start":
+        threading.Thread(target=fleet.prepare_image, name="image", daemon=True).start()
+    else:
+        logger.info("the machine image is made when the workstation is first asked for (%s)",
+                    ENV["image_when"])
     done = threading.Event()
     threading.Thread(target=fleet.housekeeping, args=(done,), name="housekeeping",
                      daemon=True).start()  # `B979`
@@ -1541,7 +1610,7 @@ if __name__ == "__main__":
 
 __all__ = ["CLOCK_MAX_RTT_S", "CLOCK_STEP_S", "CLOCK_SYNC_S",  # `B984`
            "DEFAULT_IDLE_STOP_MIN", "MEMORY_RESERVE_MIB", "host_memory_mib",  # `B979`
-           "idle_stop_from_env", "max_running_from_env",
+           "idle_stop_from_env", "max_running_from_env", "HOST_LOCK", "hold_state",
            "Fleet", "Machine", "QemuMachine", "VmStation", "choose_accel", "guest_unit",
            "image_meta_data", "image_user_data", "make_iso", "payload_digest", "payload_files",
            "qemu_argv", "read_verdict"]

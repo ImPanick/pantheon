@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
-<html lang="en">
+<html lang="en" class="cockpit">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, interactive-widget=resizes-content, viewport-fit=cover" />
@@ -20,6 +20,9 @@
   (function(){
     try {
       var t = JSON.parse(localStorage.getItem('pantheon-theme'));
+      // A retired preset (theme.js `RETIRED_THEMES`) paints nothing here; the
+      // module moves it to Dark on boot.
+      if (t && /^(terminal|retrowave|cyberpunk)$/.test(t.name)) t = null;
       if (t && t.colors) {
         var s = document.documentElement.style;
         var c = t.colors;
@@ -40,6 +43,8 @@
             light = (0.2126 * lin[0] + 0.7152 * lin[1] + 0.0722 * lin[2]) > 0.5;
           }
           s.setProperty('color-scheme', light ? 'light' : 'dark');
+          // The cockpit's material follows the same test (`static/cockpit.css`).
+          document.documentElement.setAttribute('data-ck-tone', light ? 'light' : 'dark');
         })();
         s.setProperty('--fg', c.fg);
         s.setProperty('--panel', c.panel);
@@ -339,6 +344,12 @@
   <link rel="preload" as="font" type="font/woff2" crossorigin href="/static/fonts/FiraCode-Regular.woff2">
   <link rel="preload" as="font" type="font/woff2" crossorigin href="/static/fonts/FiraCode-SemiBold.woff2">
   <link rel="stylesheet" href="/static/style.css?v=20261009census">
+  <!-- The cockpit shell (the accepted V4 study): every rule scoped to
+       `html.cockpit`, loaded after style.css so it restyles without editing it.
+       Its type is local (`static/fonts/Geist*`, `InstrumentSerif*`). -->
+  <link rel="preload" as="font" type="font/woff2" crossorigin href="/static/fonts/Geist-Regular.woff2">
+  <link rel="preload" as="font" type="font/woff2" crossorigin href="/static/fonts/InstrumentSerif-Regular.woff2">
+  <link rel="stylesheet" href="/static/cockpit.css">
   <link rel="modulepreload" href="/static/app.js?v=20261009census">
   <!-- B58. This must carry the SAME query as the <script> tag below, or the
        browser fetches chat.js twice: the cache and the module map are keyed on
@@ -1077,6 +1088,7 @@
           <div class="theme-fd-group">
             <label class="theme-fd-label">Font</label>
             <select id="theme-font-select" class="theme-fd-select" aria-label="Font">
+              <option value="geist">Geist</option>
               <option value="mono">Monospace</option>
               <option value="sans">Sans-serif</option>
               <option value="serif">Serif</option>
@@ -1533,7 +1545,6 @@
         </svg>
         <span class="incognito-label">Nobody</span>
       </button>
-      <div id="welcome-setup" style="display:none"></div>
     </div>
     <script>
     (function(){
@@ -1736,7 +1747,6 @@
         })();
         </script>
       </div>
-      <div id="pinned-tools-bar"></div>
       <div class="chat-input-bottom" style="visibility:hidden">
         <div class="chat-input-left">
           <!-- Overflow menu (+) — always first/left -->
@@ -1861,22 +1871,9 @@
             </svg>
             <span class="tool-chip-label">Shell</span>
           </button>
-          <!-- Auto-approve (`D-2026-10-09-01` §2). This chat's approval mode,
-               beside Plan / Web / Shell because it is the same kind of thing: a
-               switch that changes what this turn is allowed to do on its own.
-               `.tool-chip` for the strip's geometry, `.tool-indicator` for the
-               on-state colour and the clear affordance — the pattern `P5-12`
-               unified, extended rather than re-rolled (`Law 14`).
-
-               Hidden until `GET /api/session/{sid}/approval-mode` says this
-               person may set it (`may_set`): an admin grants `can_auto_approve`
-               and until then there is no dead control here (`Law 15`). Drawn and
-               driven by `static/js/approvalMode.js`. -->
-          <button type="button" class="input-icon-btn tool-indicator tool-chip" title="Auto-approve" id="approval-mode-btn" aria-pressed="false" style="display:none;">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h8l-1 8 10-12h-8z"/></svg>
-            <span class="tool-chip-label">Auto-approve</span>
-            <svg class="tool-indicator-x" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>
-          </button>
+          <!-- (`B1706`: the Auto-approve on/off chip that sat here, beside Plan /
+               Web / Shell, is now the approval-mode selector at the right of
+               this row, `#approval-mode-wrap` — one control, `Law 7`.) -->
           <!-- Workspace indicator (hidden until a folder is set) -->
           <button type="button" class="input-icon-btn tool-indicator tool-chip" title="Workspace" id="workspace-indicator-btn" aria-label="Clear workspace" style="display:none;">
             <svg class="workspace-indicator-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
@@ -1949,6 +1946,42 @@
           <div class="mode-toggle">
             <button type="button" class="mode-toggle-btn active" id="mode-agent-btn" aria-pressed="true" aria-describedby="agent-limits-hint">Agent</button>
             <button type="button" class="mode-toggle-btn" id="mode-chat-btn" aria-pressed="false">Chat</button>
+          </div>
+          <!-- `B1706`. This chat's approval mode (`D-2026-10-09-01` §2), at the
+               bottom of the composer with the rest of what decides a turn: a
+               chip naming the mode in one word that opens a menu headed with
+               the setting's name, listing both modes with one line each and a
+               check on the one this chat is in. Every word is the server's
+               (`GET /api/session/{sid}/approval-mode`: `setting_label`,
+               `modes`), so the spans below are empty until it answers. The menu
+               is the model picker's — `.model-picker-menu`, `.model-switch-item`
+               and `pickerKeys.js` — not a second popover (`Law 14`). Choosing
+               Auto-approve opens its warning (`B1703`); Manual approve takes
+               effect at once. It replaced the on/off chip beside Plan / Web /
+               Shell: one control (`Law 7`). Hidden until the server says this
+               person may set it (`may_set`, `Law 15`), and on a phone-width bar,
+               where `#turn-chip`'s sheet carries it. Drawn and driven by
+               `static/js/approvalMode.js`. -->
+          <div class="approval-mode-wrap" id="approval-mode-wrap" style="display:none;">
+            <button type="button" class="input-icon-btn tool-chip approval-mode-chip" id="approval-mode-btn" aria-haspopup="menu" aria-expanded="false" aria-controls="approval-mode-options" style="display:none;">
+              <span class="approval-mode-chip-label" id="approval-mode-label"></span>
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="{{chevron:up}}"/></svg>
+            </button>
+            <div class="model-picker-menu approval-mode-menu hidden" id="approval-mode-menu">
+              <div class="model-picker-list approval-mode-list">
+                <div class="mp-section-label" id="approval-mode-menu-title"></div>
+                <div role="menu" id="approval-mode-options" aria-labelledby="approval-mode-menu-title">
+                  <div class="model-switch-item approval-mode-item" role="menuitemradio" tabindex="-1" aria-checked="false" data-approval-choice="manual">
+                    <span class="approval-mode-item-text"><span class="approval-mode-item-name"></span><span class="approval-mode-item-desc"></span></span>
+                    <svg class="approval-mode-item-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+                  </div>
+                  <div class="model-switch-item approval-mode-item" role="menuitemradio" tabindex="-1" aria-checked="false" data-approval-choice="auto">
+                    <span class="approval-mode-item-text"><span class="approval-mode-item-name"></span><span class="approval-mode-item-desc"></span></span>
+                    <svg class="approval-mode-item-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
           <!-- `D-2026-10-09-01` §4. On a phone the segmented toggle above is
                dropped by the chat bar's container query and NOTHING replaced
@@ -3166,6 +3199,11 @@
             <div id="adm-userList"><div class="lib-loading-row" role="status">Loading…</div></div>
           </div>
           <div class="admin-card">
+            <h2><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;opacity:0.6"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/></svg>Auto-approve in use</h2>
+            <div class="admin-toggle-sub" style="margin:0 0 10px 2px;">Chats and hired agents whose person accepted Auto-approve's warning, so steps run without asking. <em>Turn off</em> puts that chat back to Manual approve, or makes that hire ask again.</div>
+            <div id="adm-autoApproveList"><div class="lib-loading-row" role="status">Loading…</div></div>
+          </div>
+          <div class="admin-card">
             <h2><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;opacity:0.6"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>Add User</h2>
             <div class="admin-add-form">
               <input id="adm-newUsername" type="text" placeholder="Username">
@@ -3936,9 +3974,10 @@
           <div class="admin-card">
             <h2><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;opacity:0.6"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/><path d="m7 8 3 2-3 2"/><path d="M12 12h4"/></svg>Workstation</h2>
             <div class="admin-toggle-sub" style="margin-bottom:10px;line-height:1.5;">
-              A separate Ubuntu machine the agents work in &mdash; their shell, Python and
-              files, and a screen they can see and use. Each person has their own account and
-              home in it, kept between chats.
+              A virtual machine of your own that your agent works inside &mdash; its shell,
+              Python and files, and a desktop you can watch and take over. Each person gets their
+              own machine, kept between chats; <em>Reset</em> gives you a fresh one. The browser
+              does not need it: without a workstation your agent uses Pantheon&rsquo;s own.
             </div>
             <div id="ws-status" class="ws-status" data-state="checking" role="status" aria-live="polite">
               <span class="ws-status-dot" aria-hidden="true"></span>
@@ -4529,6 +4568,8 @@
 <script type="module" src="/static/app.js?v=20261009census"></script>  <!-- app.js must be LAST -->
   <script type="module" src="/static/js/init.js?v=20260918a11yfocus1"></script>
 <script type="module" src="/static/js/a11y.js"></script>
+<script type="module" src="/static/js/cockpit.js"></script>
+<script type="module" src="/static/js/cockpitWorkspace.js"></script>
 <!-- `P23-07` (PERF-M-1): scope '/' (the server sends Service-Worker-Allowed: /), so the worker controls the app; the
      registration the old scope left behind (/static/) is dropped. -->
 <script>if('serviceWorker' in navigator){navigator.serviceWorker.register('/static/sw.js',{scope:'/'}).then(()=>navigator.serviceWorker.getRegistrations()).then(rs=>rs.forEach(r=>{if(new URL(r.scope).pathname==='/static/')r.unregister();})).catch(()=>{});}</script>

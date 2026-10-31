@@ -20,7 +20,7 @@
       [
        "bash",
        {
-        "command": "cd \"$PANTHEON_PROJECTS\"/'drop' && mkdir -p converted && for f in *; do [ -f \"$f\" ] || continue; case \"${f##*.}\" in docx|odt|DOCX|ODT) [ -e \"converted/${f%.*}.pdf\" ] && continue; libreoffice --headless --convert-to pdf --outdir converted \"$f\" >/dev/null 2>&1 && echo \"OK $f -> converted/${f%.*}.pdf\" || echo \"FAIL $f\";; heic|HEIC) [ -e \"converted/${f%.*}.jpg\" ] && continue; heif-convert \"$f\" \"converted/${f%.*}.jpg\" >/dev/null 2>&1 && echo \"OK $f -> converted/${f%.*}.jpg\" || echo \"FAIL $f\";; mov|mkv|MOV|MKV) [ -e \"converted/${f%.*}.mp4\" ] && continue; ffmpeg -nostdin -loglevel error -i \"$f\" -c:v libx264 -c:a aac \"converted/${f%.*}.mp4\" && echo \"OK $f -> converted/${f%.*}.mp4\" || echo \"FAIL $f\";; *) echo \"SKIP $f\";; esac; done"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'drop' && mkdir -p converted && for f in *; do [ -f \"$f\" ] || continue; case \"${f##*.}\" in docx|odt|DOCX|ODT) [ -e \"converted/${f%.*}.pdf\" ] && continue; libreoffice --headless --convert-to pdf --outdir converted \"$f\" >/dev/null 2>&1 && echo \"OK $f -> converted/${f%.*}.pdf\" || echo \"FAIL $f\";; heic|HEIC) [ -e \"converted/${f%.*}.jpg\" ] && continue; [ -e \"converted/${f%.*}-1.jpg\" ] && continue; heif-convert \"$f\" \"converted/${f%.*}.jpg\" >/dev/null 2>&1 && echo \"OK $f ->\" $(ls -dv \"converted/${f%.*}.jpg\" \"converted/${f%.*}\"-[0-9]*.jpg 2>/dev/null) || echo \"FAIL $f\";; mov|mkv|MOV|MKV) [ -e \"converted/${f%.*}.mp4\" ] && continue; ffmpeg -nostdin -loglevel error -i \"$f\" -c:v libx264 -c:a aac \"converted/${f%.*}.mp4\" && echo \"OK $f -> converted/${f%.*}.mp4\" || echo \"FAIL $f\";; *) echo \"SKIP $f\";; esac; done"
        }
       ]
      ]
@@ -70,7 +70,7 @@
       [
        "bash",
        {
-        "command": "cd \"$PANTHEON_PROJECTS\"/'drop' && mkdir -p converted && for f in *; do [ -f \"$f\" ] || continue; case \"${f##*.}\" in docx|odt|DOCX|ODT) [ -e \"converted/${f%.*}.pdf\" ] && continue; libreoffice --headless --convert-to pdf --outdir converted \"$f\" >/dev/null 2>&1 && echo \"OK $f -> converted/${f%.*}.pdf\" || echo \"FAIL $f\";; heic|HEIC) [ -e \"converted/${f%.*}.jpg\" ] && continue; heif-convert \"$f\" \"converted/${f%.*}.jpg\" >/dev/null 2>&1 && echo \"OK $f -> converted/${f%.*}.jpg\" || echo \"FAIL $f\";; mov|mkv|MOV|MKV) [ -e \"converted/${f%.*}.mp4\" ] && continue; ffmpeg -nostdin -loglevel error -i \"$f\" -c:v libx264 -c:a aac \"converted/${f%.*}.mp4\" && echo \"OK $f -> converted/${f%.*}.mp4\" || echo \"FAIL $f\";; *) echo \"SKIP $f\";; esac; done"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'drop' && mkdir -p converted && for f in *; do [ -f \"$f\" ] || continue; case \"${f##*.}\" in docx|odt|DOCX|ODT) [ -e \"converted/${f%.*}.pdf\" ] && continue; libreoffice --headless --convert-to pdf --outdir converted \"$f\" >/dev/null 2>&1 && echo \"OK $f -> converted/${f%.*}.pdf\" || echo \"FAIL $f\";; heic|HEIC) [ -e \"converted/${f%.*}.jpg\" ] && continue; [ -e \"converted/${f%.*}-1.jpg\" ] && continue; heif-convert \"$f\" \"converted/${f%.*}.jpg\" >/dev/null 2>&1 && echo \"OK $f ->\" $(ls -dv \"converted/${f%.*}.jpg\" \"converted/${f%.*}\"-[0-9]*.jpg 2>/dev/null) || echo \"FAIL $f\";; mov|mkv|MOV|MKV) [ -e \"converted/${f%.*}.mp4\" ] && continue; ffmpeg -nostdin -loglevel error -i \"$f\" -c:v libx264 -c:a aac \"converted/${f%.*}.mp4\" && echo \"OK $f -> converted/${f%.*}.mp4\" || echo \"FAIL $f\";; *) echo \"SKIP $f\";; esac; done"
        }
       ]
      ]
@@ -102,6 +102,115 @@
    ]
   },
   {
+   "id": "a-burst-converted",
+   "about": "A HEIC file holding a burst of three photos is new: heif-convert writes it as converted/IMG_0007-1.jpg, -2.jpg and -3.jpg, and no IMG_0007.jpg, so the photo kind's OK line names the three copies that exist and the answer lists them, never a converted/IMG_0007.jpg that was not written.",
+   "inputs": {
+    "folder": "drop"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "convert-to pdf",
+      "output": "OK IMG_0007.heic -> converted/IMG_0007-1.jpg converted/IMG_0007-2.jpg converted/IMG_0007-3.jpg"
+     }
+    ],
+    "files": {
+     "drop/IMG_0007.heic": "a burst of three photos"
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"$PANTHEON_PROJECTS\"/'drop' && mkdir -p converted && for f in *; do [ -f \"$f\" ] || continue; case \"${f##*.}\" in docx|odt|DOCX|ODT) [ -e \"converted/${f%.*}.pdf\" ] && continue; libreoffice --headless --convert-to pdf --outdir converted \"$f\" >/dev/null 2>&1 && echo \"OK $f -> converted/${f%.*}.pdf\" || echo \"FAIL $f\";; heic|HEIC) [ -e \"converted/${f%.*}.jpg\" ] && continue; [ -e \"converted/${f%.*}-1.jpg\" ] && continue; heif-convert \"$f\" \"converted/${f%.*}.jpg\" >/dev/null 2>&1 && echo \"OK $f ->\" $(ls -dv \"converted/${f%.*}.jpg\" \"converted/${f%.*}\"-[0-9]*.jpg 2>/dev/null) || echo \"FAIL $f\";; mov|mkv|MOV|MKV) [ -e \"converted/${f%.*}.mp4\" ] && continue; ffmpeg -nostdin -loglevel error -i \"$f\" -c:v libx264 -c:a aac \"converted/${f%.*}.mp4\" && echo \"OK $f -> converted/${f%.*}.mp4\" || echo \"FAIL $f\";; *) echo \"SKIP $f\";; esac; done"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Converted**\n- IMG_0007.heic → converted/IMG_0007-1.jpg, converted/IMG_0007-2.jpg, converted/IMG_0007-3.jpg (a burst of 3 photos)\n\n**Skipped**\n- none\n\n**Failed**\n- none\n\n## Report\n- 1 command: converted 1 file, a burst of 3 photos\n\n## Carry forward\n- nothing failing"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "converted/IMG_0007-1.jpg",
+      "converted/IMG_0007-3.jpg"
+     ]
+    },
+    {
+     "answer_lacks": [
+      "converted/IMG_0007.jpg"
+     ]
+    },
+    {
+     "called": "bash"
+    },
+    {
+     "status": "success"
+    }
+   ]
+  },
+  {
+   "id": "a-burst-converted-before",
+   "about": "A HEIC burst an earlier run converted is in converted/ as its numbered copies, IMG_0007-1.jpg, -2.jpg and -3.jpg, and no IMG_0007.jpg: the photo kind's test of the first copy skips it, so the command runs under the hire's ask without a card and leaves the copies as they were.",
+   "inputs": {
+    "folder": "drop"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "convert-to pdf",
+      "output": ""
+     }
+    ],
+    "files": {
+     "drop/IMG_0007.heic": "a burst of three photos",
+     "drop/converted/IMG_0007-1.jpg": "the first photo, from the last run",
+     "drop/converted/IMG_0007-2.jpg": "the second photo, from the last run",
+     "drop/converted/IMG_0007-3.jpg": "the third photo, from the last run"
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"$PANTHEON_PROJECTS\"/'drop' && mkdir -p converted && for f in *; do [ -f \"$f\" ] || continue; case \"${f##*.}\" in docx|odt|DOCX|ODT) [ -e \"converted/${f%.*}.pdf\" ] && continue; libreoffice --headless --convert-to pdf --outdir converted \"$f\" >/dev/null 2>&1 && echo \"OK $f -> converted/${f%.*}.pdf\" || echo \"FAIL $f\";; heic|HEIC) [ -e \"converted/${f%.*}.jpg\" ] && continue; [ -e \"converted/${f%.*}-1.jpg\" ] && continue; heif-convert \"$f\" \"converted/${f%.*}.jpg\" >/dev/null 2>&1 && echo \"OK $f ->\" $(ls -dv \"converted/${f%.*}.jpg\" \"converted/${f%.*}\"-[0-9]*.jpg 2>/dev/null) || echo \"FAIL $f\";; mov|mkv|MOV|MKV) [ -e \"converted/${f%.*}.mp4\" ] && continue; ffmpeg -nostdin -loglevel error -i \"$f\" -c:v libx264 -c:a aac \"converted/${f%.*}.mp4\" && echo \"OK $f -> converted/${f%.*}.mp4\" || echo \"FAIL $f\";; *) echo \"SKIP $f\";; esac; done"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "**Converted**\n- nothing new\n\n**Skipped**\n- none\n\n**Failed**\n- none\n\n## Report\n- 1 command: nothing new\n\n## Carry forward\n- nothing failing"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "nothing new"
+     ]
+    },
+    {
+     "called": "bash"
+    },
+    {
+     "status": "success"
+    },
+    {
+     "file": {
+      "path": "drop/converted/IMG_0007-2.jpg",
+      "contains": [
+       "from the last run"
+      ]
+     }
+    }
+   ]
+  },
+  {
    "id": "a-converter-is-missing",
    "about": "libreoffice is not installed: the document waits under Failed with the tool to install, and the photo is still converted.",
    "inputs": {
@@ -121,7 +230,7 @@
       [
        "bash",
        {
-        "command": "cd \"$PANTHEON_PROJECTS\"/'drop' && mkdir -p converted && for f in *; do [ -f \"$f\" ] || continue; case \"${f##*.}\" in docx|odt|DOCX|ODT) [ -e \"converted/${f%.*}.pdf\" ] && continue; libreoffice --headless --convert-to pdf --outdir converted \"$f\" >/dev/null 2>&1 && echo \"OK $f -> converted/${f%.*}.pdf\" || echo \"FAIL $f\";; heic|HEIC) [ -e \"converted/${f%.*}.jpg\" ] && continue; heif-convert \"$f\" \"converted/${f%.*}.jpg\" >/dev/null 2>&1 && echo \"OK $f -> converted/${f%.*}.jpg\" || echo \"FAIL $f\";; mov|mkv|MOV|MKV) [ -e \"converted/${f%.*}.mp4\" ] && continue; ffmpeg -nostdin -loglevel error -i \"$f\" -c:v libx264 -c:a aac \"converted/${f%.*}.mp4\" && echo \"OK $f -> converted/${f%.*}.mp4\" || echo \"FAIL $f\";; *) echo \"SKIP $f\";; esac; done"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'drop' && mkdir -p converted && for f in *; do [ -f \"$f\" ] || continue; case \"${f##*.}\" in docx|odt|DOCX|ODT) [ -e \"converted/${f%.*}.pdf\" ] && continue; libreoffice --headless --convert-to pdf --outdir converted \"$f\" >/dev/null 2>&1 && echo \"OK $f -> converted/${f%.*}.pdf\" || echo \"FAIL $f\";; heic|HEIC) [ -e \"converted/${f%.*}.jpg\" ] && continue; [ -e \"converted/${f%.*}-1.jpg\" ] && continue; heif-convert \"$f\" \"converted/${f%.*}.jpg\" >/dev/null 2>&1 && echo \"OK $f ->\" $(ls -dv \"converted/${f%.*}.jpg\" \"converted/${f%.*}\"-[0-9]*.jpg 2>/dev/null) || echo \"FAIL $f\";; mov|mkv|MOV|MKV) [ -e \"converted/${f%.*}.mp4\" ] && continue; ffmpeg -nostdin -loglevel error -i \"$f\" -c:v libx264 -c:a aac \"converted/${f%.*}.mp4\" && echo \"OK $f -> converted/${f%.*}.mp4\" || echo \"FAIL $f\";; *) echo \"SKIP $f\";; esac; done"
        }
       ]
      ]
@@ -161,7 +270,7 @@
       [
        "bash",
        {
-        "command": "cd \"$PANTHEON_PROJECTS\"/'drop' && mkdir -p converted && for f in *; do [ -f \"$f\" ] || continue; case \"${f##*.}\" in docx|odt|DOCX|ODT) [ -e \"converted/${f%.*}.pdf\" ] && continue; libreoffice --headless --convert-to pdf --outdir converted \"$f\" >/dev/null 2>&1 && echo \"OK $f -> converted/${f%.*}.pdf\" || echo \"FAIL $f\";; heic|HEIC) [ -e \"converted/${f%.*}.jpg\" ] && continue; heif-convert \"$f\" \"converted/${f%.*}.jpg\" >/dev/null 2>&1 && echo \"OK $f -> converted/${f%.*}.jpg\" || echo \"FAIL $f\";; mov|mkv|MOV|MKV) [ -e \"converted/${f%.*}.mp4\" ] && continue; ffmpeg -nostdin -loglevel error -i \"$f\" -c:v libx264 -c:a aac \"converted/${f%.*}.mp4\" && echo \"OK $f -> converted/${f%.*}.mp4\" || echo \"FAIL $f\";; *) echo \"SKIP $f\";; esac; done"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'drop' && mkdir -p converted && for f in *; do [ -f \"$f\" ] || continue; case \"${f##*.}\" in docx|odt|DOCX|ODT) [ -e \"converted/${f%.*}.pdf\" ] && continue; libreoffice --headless --convert-to pdf --outdir converted \"$f\" >/dev/null 2>&1 && echo \"OK $f -> converted/${f%.*}.pdf\" || echo \"FAIL $f\";; heic|HEIC) [ -e \"converted/${f%.*}.jpg\" ] && continue; [ -e \"converted/${f%.*}-1.jpg\" ] && continue; heif-convert \"$f\" \"converted/${f%.*}.jpg\" >/dev/null 2>&1 && echo \"OK $f ->\" $(ls -dv \"converted/${f%.*}.jpg\" \"converted/${f%.*}\"-[0-9]*.jpg 2>/dev/null) || echo \"FAIL $f\";; mov|mkv|MOV|MKV) [ -e \"converted/${f%.*}.mp4\" ] && continue; ffmpeg -nostdin -loglevel error -i \"$f\" -c:v libx264 -c:a aac \"converted/${f%.*}.mp4\" && echo \"OK $f -> converted/${f%.*}.mp4\" || echo \"FAIL $f\";; *) echo \"SKIP $f\";; esac; done"
        }
       ]
      ]
@@ -208,7 +317,7 @@
       [
        "bash",
        {
-        "command": "cd \"$PANTHEON_PROJECTS\"/'drop' && mkdir -p converted && for f in *; do [ -f \"$f\" ] || continue; case \"${f##*.}\" in docx|odt|DOCX|ODT) [ -e \"converted/${f%.*}.pdf\" ] && continue; libreoffice --headless --convert-to pdf --outdir converted \"$f\" >/dev/null 2>&1 && echo \"OK $f -> converted/${f%.*}.pdf\" || echo \"FAIL $f\";; heic|HEIC) [ -e \"converted/${f%.*}.jpg\" ] && continue; heif-convert \"$f\" \"converted/${f%.*}.jpg\" >/dev/null 2>&1 && echo \"OK $f -> converted/${f%.*}.jpg\" || echo \"FAIL $f\";; mov|mkv|MOV|MKV) [ -e \"converted/${f%.*}.mp4\" ] && continue; ffmpeg -nostdin -loglevel error -i \"$f\" -c:v libx264 -c:a aac \"converted/${f%.*}.mp4\" && echo \"OK $f -> converted/${f%.*}.mp4\" || echo \"FAIL $f\";; *) echo \"SKIP $f\";; esac; done"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'drop' && mkdir -p converted && for f in *; do [ -f \"$f\" ] || continue; case \"${f##*.}\" in docx|odt|DOCX|ODT) [ -e \"converted/${f%.*}.pdf\" ] && continue; libreoffice --headless --convert-to pdf --outdir converted \"$f\" >/dev/null 2>&1 && echo \"OK $f -> converted/${f%.*}.pdf\" || echo \"FAIL $f\";; heic|HEIC) [ -e \"converted/${f%.*}.jpg\" ] && continue; [ -e \"converted/${f%.*}-1.jpg\" ] && continue; heif-convert \"$f\" \"converted/${f%.*}.jpg\" >/dev/null 2>&1 && echo \"OK $f ->\" $(ls -dv \"converted/${f%.*}.jpg\" \"converted/${f%.*}\"-[0-9]*.jpg 2>/dev/null) || echo \"FAIL $f\";; mov|mkv|MOV|MKV) [ -e \"converted/${f%.*}.mp4\" ] && continue; ffmpeg -nostdin -loglevel error -i \"$f\" -c:v libx264 -c:a aac \"converted/${f%.*}.mp4\" && echo \"OK $f -> converted/${f%.*}.mp4\" || echo \"FAIL $f\";; *) echo \"SKIP $f\";; esac; done"
        }
       ]
      ]
@@ -261,7 +370,7 @@
       [
        "bash",
        {
-        "command": "cd \"$PANTHEON_PROJECTS\"/'drop' && mkdir -p converted && for f in *; do [ -f \"$f\" ] || continue; case \"${f##*.}\" in docx|odt|DOCX|ODT) [ -e \"converted/${f%.*}.pdf\" ] && continue; libreoffice --headless --convert-to pdf --outdir converted \"$f\" >/dev/null 2>&1 && echo \"OK $f -> converted/${f%.*}.pdf\" || echo \"FAIL $f\";; heic|HEIC) [ -e \"converted/${f%.*}.jpg\" ] && continue; heif-convert \"$f\" \"converted/${f%.*}.jpg\" >/dev/null 2>&1 && echo \"OK $f -> converted/${f%.*}.jpg\" || echo \"FAIL $f\";; mov|mkv|MOV|MKV) [ -e \"converted/${f%.*}.mp4\" ] && continue; ffmpeg -nostdin -loglevel error -i \"$f\" -c:v libx264 -c:a aac \"converted/${f%.*}.mp4\" && echo \"OK $f -> converted/${f%.*}.mp4\" || echo \"FAIL $f\";; *) echo \"SKIP $f\";; esac; done"
+        "command": "cd \"$PANTHEON_PROJECTS\"/'drop' && mkdir -p converted && for f in *; do [ -f \"$f\" ] || continue; case \"${f##*.}\" in docx|odt|DOCX|ODT) [ -e \"converted/${f%.*}.pdf\" ] && continue; libreoffice --headless --convert-to pdf --outdir converted \"$f\" >/dev/null 2>&1 && echo \"OK $f -> converted/${f%.*}.pdf\" || echo \"FAIL $f\";; heic|HEIC) [ -e \"converted/${f%.*}.jpg\" ] && continue; [ -e \"converted/${f%.*}-1.jpg\" ] && continue; heif-convert \"$f\" \"converted/${f%.*}.jpg\" >/dev/null 2>&1 && echo \"OK $f ->\" $(ls -dv \"converted/${f%.*}.jpg\" \"converted/${f%.*}\"-[0-9]*.jpg 2>/dev/null) || echo \"FAIL $f\";; mov|mkv|MOV|MKV) [ -e \"converted/${f%.*}.mp4\" ] && continue; ffmpeg -nostdin -loglevel error -i \"$f\" -c:v libx264 -c:a aac \"converted/${f%.*}.mp4\" && echo \"OK $f -> converted/${f%.*}.mp4\" || echo \"FAIL $f\";; *) echo \"SKIP $f\";; esac; done"
        }
       ]
      ]

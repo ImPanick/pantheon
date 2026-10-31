@@ -61,6 +61,10 @@ LABEL org.opencontainers.image.licenses="AGPL-3.0-or-later"
 # launch inside Docker.
 # nodejs/npm provide npx for the built-in Browser MCP server.
 # chromium provides the actual browser binary used by that MCP server.
+# firefox-esr is the agent browser for a person without a workstation — their
+# own headless Firefox, which they watch and take over in the app and the
+# agent drives (`src/local_browser.py`, over WebDriver BiDi like the
+# workstation's); fonts-dejavu-core gives its pages letters to draw.
 # gosu lets the entrypoint drop privileges cleanly so signals still reach
 # uvicorn directly (no extra shell layer like `su`/`sudo` would add).
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -71,6 +75,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     nodejs \
     npm \
     chromium \
+    firefox-esr \
+    fonts-dejavu-core \
     tmux \
     openssh-client \
     gosu \
@@ -138,6 +144,27 @@ RUN pip install --no-cache-dir -r requirements-image.txt
 COPY --from=realesrgan-wheels /wheels/ /tmp/pantheon-wheels/
 RUN pip install --no-cache-dir --no-deps /tmp/pantheon-wheels/*.whl \
     && rm -rf /tmp/pantheon-wheels
+
+# `B1712`. The default local embedding model, fetched while the image is built
+# so that memory and document search are semantic on a fresh install. Without
+# it the in-process index had no model, Pantheon will not fetch one on its own
+# (`allow_model_download`, `Law 16`), and every search fell back to keywords.
+# Fetching here is the build reaching Hugging Face the way `pip install` reaches
+# PyPI: a running install still reaches nobody. Kept outside /app/data and
+# /app/.cache/huggingface, which compose bind-mounts over, and copied into the
+# data volume by `docker/entrypoint.sh` (`seed_model_cache`) when that holds
+# no model yet. The seed is fastembed's own cache layout, which it opens
+# offline first. `--build-arg BAKE_MODELS=false` leaves it out.
+ARG BAKE_MODELS=true
+ARG FASTEMBED_SEED_MODEL=sentence-transformers/all-MiniLM-L6-v2
+ENV PANTHEON_SEED_MODELS=/opt/pantheon/seed-models \
+    PANTHEON_FASTEMBED_SEED_MODEL=${FASTEMBED_SEED_MODEL}
+RUN if [ "$BAKE_MODELS" = "true" ]; then \
+        python -c "import sys; from fastembed import TextEmbedding; TextEmbedding(sys.argv[1], cache_dir=sys.argv[2])" \
+            "$FASTEMBED_SEED_MODEL" "$PANTHEON_SEED_MODELS/fastembed" \
+        && test -n "$(find "$PANTHEON_SEED_MODELS/fastembed" -name '*.onnx' -print -quit)" \
+        && chmod -R a+rX "$PANTHEON_SEED_MODELS"; \
+    fi
 
 # Copy app code
 COPY . .

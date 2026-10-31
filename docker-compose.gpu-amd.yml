@@ -30,6 +30,12 @@ services:
       # land under /app/.local for the pantheon user. Persist them so a
       # container recreate does not silently remove installed serve engines.
       - ${APP_DATA_DIR:-./data}/local:/app/.local:z
+      # The workstation's pairing token (`workstation-vm` below), read-only.
+      - workstation-vm-pairing:/workstation-vm-pairing:ro
+    # Pantheon's own browser (`src/local_browser.py`) is a headless Firefox,
+    # whose content processes share memory through /dev/shm; Docker's 64 MB
+    # default crashes tabs. A tmpfs limit, not memory set aside.
+    shm_size: "1gb"
     extra_hosts:
       # Lets the container reach local services on the Docker host, including
       # Ollama at http://host.docker.internal:11434.
@@ -121,6 +127,9 @@ services:
       # Find yours with:  id -u  /  id -g
       - PUID=${PUID:-1000}
       - PGID=${PGID:-1000}
+      # The workstation, a virtual machine per person (`workstation-vm` below).
+      - PANTHEON_WORKSTATION_VM_URL=http://workstation-vm:7040
+      - PANTHEON_WORKSTATION_VM_PAIRING=/workstation-vm-pairing
     depends_on:
       searxng:
         condition: service_healthy
@@ -263,7 +272,61 @@ services:
       - NTFY_BASE_URL=${NTFY_BASE_URL:-http://localhost:8091}
     restart: unless-stopped
 
+  # The workstation — a virtual machine of their own for each person, that the
+  # agent works inside: its shell, Python and files, a desktop the person can
+  # watch and take over, and a Firefox there. The owner (2026-10-31): *"We need
+  # to give this a proper VM to work inside for the workstation."* Until then it
+  # was an overlay to add to COMPOSE_FILE by hand, so Settings -> Workstation ->
+  # On had nothing to talk to. It is `docker/workstation-vm.yml`'s host under
+  # the name `docker/workstation-both.yml` gave it, with the same volume, so a
+  # machine made under either is kept.
+  #
+  # It costs nothing until it is used: no machine runs, and the Ubuntu image
+  # every machine is made from is made only when an admin first turns the
+  # workstation on (`PANTHEON_WORKSTATION_VM_IMAGE=on_first_use`) — minutes
+  # with KVM, much longer without. Each machine then takes up to
+  # PANTHEON_WORKSTATION_VM_MEMORY_MIB while it runs and is powered off after
+  # PANTHEON_WORKSTATION_VM_IDLE_MIN minutes unused (`B979`).
+  #
+  # Not privileged, no Docker socket, no capability added, no published port:
+  # one device-cgroup rule for /dev/kvm alone (QEMU's emulator when the host has
+  # none — the panel says which), its own volume, the pairing volume, and the
+  # projects folder (`B1427`: each person's machine sees its own folder in it).
+  # The browser does NOT need it: Pantheon has one of its own.
+  workstation-vm:
+    build:
+      context: ./workstation
+      dockerfile: vm.Dockerfile
+    hostname: workstation-vm
+    environment:
+      - PANTHEON_WORKSTATION_PAIRING_GID=${PGID:-1000}
+      - PANTHEON_WORKSTATION_VM_IMAGE=${PANTHEON_WORKSTATION_VM_IMAGE:-on_first_use}
+      - PANTHEON_WORKSTATION_VM_MEMORY_MIB=${PANTHEON_WORKSTATION_VM_MEMORY_MIB:-2048}
+      - PANTHEON_WORKSTATION_VM_CPUS=${PANTHEON_WORKSTATION_VM_CPUS:-2}
+      - PANTHEON_WORKSTATION_VM_DISK_GIB=${PANTHEON_WORKSTATION_VM_DISK_GIB:-20}
+      - PANTHEON_WORKSTATION_VM_ACCEL=${PANTHEON_WORKSTATION_VM_ACCEL:-auto}
+      - PANTHEON_WORKSTATION_VM_IDLE_MIN=${PANTHEON_WORKSTATION_VM_IDLE_MIN:-30}
+      - PANTHEON_WORKSTATION_VM_MAX_RUNNING=${PANTHEON_WORKSTATION_VM_MAX_RUNNING:-auto}
+    volumes:
+      - workstation-vm:/var/lib/pantheon-workstation-vm
+      - workstation-vm-pairing:/workstation-pairing
+      - ${APP_DATA_DIR:-./data}/projects:/projects:z
+    device_cgroup_rules:
+      - "c 10:232 rwm"
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import json,sys,urllib.request as u; sys.exit(0 if json.load(u.urlopen('http://127.0.0.1:7040/v1/health', timeout=5)).get('agent') == 'pantheon-workstation' else 1)"]
+      interval: 15s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    # Each machine is powered off cleanly (its disk is people's work), which
+    # takes longer than Docker's default ten seconds.
+    stop_grace_period: 2m
+    restart: unless-stopped
+
 volumes:
   searxng-data:
   chromadb-data:
   ntfy-cache:
+  workstation-vm:
+  workstation-vm-pairing:

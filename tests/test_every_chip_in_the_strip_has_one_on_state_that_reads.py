@@ -78,6 +78,21 @@ const BASE = process.argv[2];
       }
       // Fully transparent, in whatever space Chromium kept it (`oklab(0 0 0 / 0)`).
       if (/\/\s*0\)$/.test(s)) return { c: [0, 0, 0], a: 0 };
+      // The cockpit's glass mixes in OKLab, and Chromium keeps the space:
+      // `oklab(L a b / α)`, converted to sRGB by Ottosson's matrices.
+      m = s.match(/^oklab\(([^)]+)\)$/);
+      if (m) {
+        const p = m[1].split(/[\s/]+/).filter(Boolean).map(Number);
+        const [L, A, B] = p;
+        const l = (L + 0.3963377774 * A + 0.2158037573 * B) ** 3;
+        const mm = (L - 0.1055613458 * A - 0.0638541728 * B) ** 3;
+        const q = (L - 0.0894841775 * A - 1.2914855480 * B) ** 3;
+        const lin = [4.0767416621 * l - 3.3077115913 * mm + 0.2309699292 * q,
+                     -1.2684380046 * l + 2.6097574011 * mm - 0.3413193965 * q,
+                     -0.0041960863 * l - 0.7034186147 * mm + 1.7076147010 * q];
+        const enc = (v) => { v = Math.min(1, Math.max(0, v)); return 255 * (v <= 0.0031308 ? 12.92 * v : 1.055 * v ** (1 / 2.4) - 0.055); };
+        return { c: lin.map(enc), a: p.length > 3 ? p[3] : 1 };
+      }
       throw new Error('cannot read colour ' + s);
     };
     const over = (top, under) => top.c.map((v, i) => v * top.a + under[i] * (1 - top.a));
@@ -87,14 +102,25 @@ const BASE = process.argv[2];
     };
     const ratio = (a, b) => { const x = lum(a), y = lum(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
     const bar = document.querySelector('.chat-input-bar');
-    const chips = [...document.querySelectorAll('.chat-input-left .tool-chip')];
+    // `B1706`: the bottom row, not only its left strip — the approval-mode
+    // chip moved from the strip to the row's right and is the same chip
+    // (`.tool-chip`, its on-state Auto), so it is measured where it is.
+    // The cockpit (2026-10-30) keeps Plan, Web and Shell in the row and moves
+    // the indicator chips to the loadout under the text box: the same eleven.
+    const chips = [...document.querySelectorAll('.chat-input-bottom .tool-chip, .ck-loadout .tool-chip')];
     const res = {};
     for (const name of Object.keys(tm.THEMES)) {
       tm.applyColors(tm.THEMES[name]);
-      const row = { red: getComputedStyle(document.documentElement).getPropertyValue('--red').trim(), chips: {} };
+      const root = getComputedStyle(document.documentElement);
+      const row = { red: root.getPropertyValue('--red').trim(),
+                    chipOn: root.getPropertyValue('--chip-on-fg').trim(), chips: {} };
       for (const plan of [false, true]) {
         document.body.classList.toggle('plan-mode-active', plan);
-        const ground = parse(getComputedStyle(bar).backgroundColor);
+        // The cockpit's composer is glass: its tint is laid over the page's
+        // own `--bg`, which is what shows through it.
+        const page = parse(getComputedStyle(document.documentElement).backgroundColor);
+        const glass = parse(getComputedStyle(bar).backgroundColor);
+        const ground = { c: over(glass, page.c), a: 1 };
         for (const chip of chips) {
           const had = chip.classList.contains('active');
           chip.classList.add('active');
@@ -138,20 +164,29 @@ def _switches(row):
 
 def test_every_palette_and_every_chip_was_measured(measured):
     assert measured["errors"] == []
-    assert len(measured["palettes"]) == 23, sorted(measured["palettes"])
+    assert len(measured["palettes"]) == 20, sorted(measured["palettes"])  # three retired: theme.js `RETIRED_THEMES`
     for row in measured["palettes"].values():
         assert {"plan-toggle-btn", "web-toggle-btn", "bash-toggle-btn"} <= set(row["chips"]), sorted(row["chips"])
+        # Eleven still after `B1706`: ten in the strip and the approval-mode
+        # chip, which left the strip for the row's right and is measured there.
+        assert "approval-mode-btn" in row["chips"], sorted(row["chips"])
         assert len(_switches(row)) == 11, sorted(row["chips"])
 
 
 def test_every_chip_wears_one_on_state(measured):
     """The row's first half: Web and Shell are the same on-state as the rest,
-    on every palette — one colour, one tint, full opacity."""
+    on every palette — one colour, one tint, full opacity.
+
+    The cockpit gives Auto approval its own lamp: the warning colour, because
+    on means "steps run without asking" (`static/cockpit.css`). It is the one
+    chip outside the shared look, and the header badge says its colour."""
     for name, row in measured["palettes"].items():
-        looks = {(c["color"], c["background"], c["opacity"]) for c in _switches(row).values()}
+        switches = _switches(row)
+        auto = switches.pop("approval-mode-btn")
+        looks = {(c["color"], c["background"], c["opacity"]) for c in switches.values()}
         assert len(looks) == 1, (name, sorted(looks))
         # And the Auto-approve badge says the chip's colour (`D-2026-10-09-01` §2).
-        assert row["badge"] == next(iter(looks))[0], (name, row["badge"], looks)
+        assert row["badge"] == auto["color"], (name, row["badge"], auto)
 
 
 def test_the_on_label_clears_aa_on_its_tint_on_every_palette(measured):
@@ -166,14 +201,18 @@ def test_the_on_label_clears_aa_on_its_tint_on_every_palette(measured):
 def test_only_the_palettes_that_missed_moved(measured):
     """`--chip-on-fg` is the palette's red wherever the red already cleared:
     eleven keep it exactly, and these twelve moved the least that clears —
-    pinned, so a palette joining or leaving the set is seen."""
+    pinned, so a palette joining or leaving the set is seen.
+
+    Read from the token `applyColors` writes: the cockpit's switches label
+    their on-state in the text colour, so no chip paints it any more. Ten now,
+    `retrowave` and `cyberpunk` retired (theme.js `RETIRED_THEMES`)."""
     def rgb(s):
         return s.replace(" ", "")
     moved = set()
     for name, row in measured["palettes"].items():
         red = row["red"].lstrip("#")
         want = f"rgb({int(red[0:2], 16)},{int(red[2:4], 16)},{int(red[4:6], 16)})"
-        if rgb(row["chips"]["plan-toggle-btn"]["color"]) != want:
+        if rgb(row["chipOn"]).lower() not in (want, "#" + red.lower()):
             moved.add(name)
     assert moved == {"paper", "cute", "light", "claude", "lavender", "organs", "gpt",
-                     "retrowave", "dark", "midnight", "codehost", "cyberpunk"}, sorted(moved)
+                     "dark", "midnight", "codehost"}, sorted(moved)

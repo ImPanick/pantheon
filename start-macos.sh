@@ -162,7 +162,7 @@ if "$VENV_PY" -m pip show chromadb-client >/dev/null 2>&1; then
     "$VENV_PY" -m pip install --force-reinstall chromadb
 fi
 
-# 4. First-run setup: creates data dirs and prints an initial admin password
+# 4. First-run setup: creates data dirs and asks for the admin (or leaves it to the first browser visit)
 #    the first time (idempotent — does nothing if already set up). Suppress its
 #    manual run hint — we launch the server ourselves just below.
 echo "▶ Preparing Pantheon…"

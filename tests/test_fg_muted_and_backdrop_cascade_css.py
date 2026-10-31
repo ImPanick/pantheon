@@ -329,7 +329,7 @@ def test_fg_muted_resolves_on_all_sixteen_palettes():
         colour = _muted(theme)
         assert all(0 <= c <= 255 for c in colour), f"{name}: {colour}"
         seen[name] = tuple(round(c) for c in colour)
-    assert len(set(seen.values())) == 23, (
+    assert len(set(seen.values())) == css_colour.SHIPPED_PALETTES, (
         "--fg-muted resolves to the same colour on more than one palette, so "
         f"it is no longer derived from --fg: {sorted(seen.items())}"
     )
@@ -571,7 +571,7 @@ def test_muted_text_clears_the_floor_on_fourteen_palettes():
         + "\nA palette joining this set means secondary text got less legible "
         "somewhere; a palette leaving it means the B15 ceiling moved."
     )
-    assert len(against_panel) - len(under) == 23
+    assert len(against_panel) - len(under) == css_colour.SHIPPED_PALETTES
 
     # The hard floor holds everywhere, including on the two above.
     for name, ratio in sorted(against_panel.items()):
@@ -591,7 +591,8 @@ def test_the_two_palettes_under_the_floor_are_the_tokens_now_not_the_palettes():
     shortfall on them was the token's mix, not the palette's limit. `B1486`
     fixed the mix (4.29 → 4.89 on `cute`, 4.32 → 4.95 on `retrowave`, against
     `--panel`), and the two are pinned here so neither slips back under."""
-    for name, want in (("cute", 4.89), ("retrowave", 4.95)):
+    # `retrowave` (4.95) was retired with the cockpit (theme.js `RETIRED_THEMES`).
+    for name, want in (("cute", 4.89),):
         theme = _themes()[name]
         own = _contrast(_rgb(theme["fg"]), _rgb(theme["panel"]))
         assert own >= FLOOR, f"{name}'s own --fg fell under {FLOOR}:1 again ({own:.2f})"

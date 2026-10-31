@@ -379,11 +379,14 @@
 
      These are the shadow's **ink**, not whole shadows: every site keeps its
      own offsets and blur. Collapsing 236 geometries to four is the next step
-     and it needs eyes, which is a review and not a sweep. */
-  --shadow-ink-1: light-dark(rgba(0, 0, 0, 0.014), rgba(0, 0, 0, 0.07));
-  --shadow-ink-2: light-dark(rgba(0, 0, 0, 0.034), rgba(0, 0, 0, 0.17));
-  --shadow-ink-3: light-dark(rgba(0, 0, 0, 0.062), rgba(0, 0, 0, 0.31));
-  --shadow-ink-4: light-dark(rgba(0, 0, 0, 0.100), rgba(0, 0, 0, 0.50));
+     and it needs eyes, which is a review and not a sweep.
+
+     2026-10-30: re-derived at 0.22 of the dark arm when the cockpit retired
+     three dark palettes and moved the median dark panel. */
+  --shadow-ink-1: light-dark(rgba(0, 0, 0, 0.015), rgba(0, 0, 0, 0.07));
+  --shadow-ink-2: light-dark(rgba(0, 0, 0, 0.037), rgba(0, 0, 0, 0.17));
+  --shadow-ink-3: light-dark(rgba(0, 0, 0, 0.068), rgba(0, 0, 0, 0.31));
+  --shadow-ink-4: light-dark(rgba(0, 0, 0, 0.110), rgba(0, 0, 0, 0.50));
 }
 
 :root.light {
@@ -3237,10 +3240,15 @@ body.bg-pattern-ascii {
        that replaces it is smaller than it (124.5px → ~76px measured), says the
        mode without anything being opened, and opens `#turn-sheet` with the
        rest of what decides a turn. The typing area is on its own row above and
-       is not touched. */
+       is not touched.
+       `B1706`: the approval-mode chip goes with the toggle, for the same
+       reason — the sheet's Approval row is its 44px door there, and
+       `#turn-chip` already says *Auto* when it is on — so a phone's row keeps
+       its room. */
     .chat-input-bar { container-type: inline-size; container-name: chatbar; }
     @container chatbar (max-width: 420px) {
       .chat-input-right .mode-toggle { display: none !important; }
+      .chat-input-right .approval-mode-wrap { display: none !important; }
       .chat-input-right .turn-chip { display: inline-flex; }
     }
     @container chatbar (max-width: 260px) {
@@ -3339,9 +3347,7 @@ body.bg-pattern-ascii {
 	       tests/test_accent_fallback_semantics_css.py pins (814/553/562/181 →
 	       812/551/560/180). On every shipped palette `--accent` is the
 	       palette's red, so the chip's colour does not move; its tint goes
-	       14% → 12%, the strip's own.
-	       `P5-15` builds #pinned-tools-bar out of these two classes — no id in
-	       the geometry, so a second strip needs no second rule. */
+	       14% → 12%, the strip's own. */
 	    .tool-chip {
 	      height: 28px;
 	      padding: 0 8px 0 6px;
@@ -4470,13 +4476,96 @@ body.bg-pattern-ascii {
       border-color: color-mix(in srgb, var(--red) 75%, transparent);
     }
     .chat-auto-approve-badge[hidden] { display: none; }
-    /* The composer chip is a toggle while it is off and a clearable indicator
-       while it is on, so the clear affordance appears with the on-state —
-       measured in Chromium at 1400x900 on `dark` and `light`: the off chip was
-       drawing an X that cleared nothing. The chip is otherwise entirely
-       `.tool-chip` + `.tool-indicator` (`P5-12`), which is why this is two
-       lines and not a chip of its own. */
-    #approval-mode-btn:not(.active) > .tool-indicator-x { display: none; }
+    /* `B1706` — the approval-mode selector at the bottom right of the
+       composer. It was an on/off chip in the Plan / Web / Shell strip with a
+       clear X shown only while on; it is a chip naming the mode that opens a
+       menu, so the X and its rule went with it. The chip is `.tool-chip`
+       (`P5-12`'s geometry, and `.tool-chip.active`'s on-state for Auto — the
+       colour the header badge matches) with its own label class: on a phone
+       a `.tool-chip-label` is dropped to leave the icon, and this chip's word
+       IS the control. The menu is the model picker's — `.model-picker-menu`,
+       `.model-picker-list`, `.mp-section-label`, `.model-switch-item` — and
+       the rules below lay out a row that carries a line under its name and a
+       check, and keep each piece of text on a ground it clears 4.5:1 on, on
+       every palette (measured in
+       `tests/test_the_approval_mode_is_chosen_at_the_bottom_of_the_composer.py`).
+       No ring of its own: the one `:focus-visible` rule draws it (`B662`). The
+       description is the muted ladder (`check-contrast.py`'s
+       `LADDER_IDIOM`). */
+    .approval-mode-wrap {
+      position: relative;
+      display: flex;
+      align-items: center;
+      flex-shrink: 0;
+    }
+    .approval-mode-chip {
+      padding: 0 6px 0 8px;
+    }
+    /* Under the pointer the word keeps `--chip-off-fg`, which `applyColors`
+       clears against this very hover tint; `.input-icon-btn:hover`'s `--fg`
+       measures 4.24:1 on `retrowave` and 4.40:1 on `cute` there. Auto keeps
+       its on-state (`.tool-chip.active`) under the pointer, as every chip
+       does. */
+    .approval-mode-chip:hover:not(.active) {
+      color: var(--chip-off-fg, var(--fg));
+    }
+    .approval-mode-chip-label {
+      font-size: 11px;
+      font-weight: 600;
+      line-height: 1;
+      white-space: nowrap;
+    }
+    /* Compounded with the picker's own classes, which are written later in
+       this sheet at the same weight. */
+    .model-picker-menu.approval-mode-menu {
+      min-width: 300px;
+    }
+    /* Room for the one ring: an item here takes the focus (the model picker's
+       never do — its box keeps it), and a scrolling list clips whatever is
+       drawn outside its padding box. */
+    .model-picker-list.approval-mode-list {
+      padding: 4px;
+    }
+    .model-picker-list .model-switch-item.approval-mode-item {
+      align-items: flex-start;
+      gap: 10px;
+      padding: 7px 8px;
+    }
+    /* The picker's row highlights are a red tint under the text, and `--fg`
+       on `--panel` is as low as 4.51:1 (`retrowave`): under the 8% hover tint
+       a row's name measures 4.22:1 there and under the 14% keyboard tint
+       3.96:1 (`cute` 4.41 / 4.17). So a row here keeps its ground. The
+       keyboard's place is the one focus ring, which the focused row already
+       draws, and the pointer's is an edge. */
+    .model-picker-list .model-switch-item.approval-mode-item.kb-active {
+      background: none;
+    }
+    .model-picker-list .model-switch-item.approval-mode-item:hover {
+      background: none;
+      box-shadow: inset 2px 0 0 var(--red);
+    }
+    .approval-mode-item-text {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      flex: 1 1 auto;
+      min-width: 0;
+    }
+    .approval-mode-item-name {
+      font-weight: 600;
+    }
+    .approval-mode-item-desc {
+      line-height: 1.35;
+      color: color-mix(in oklab, var(--fg) 70%, var(--fg-muted));
+    }
+    .approval-mode-item-check {
+      flex: 0 0 auto;
+      margin-top: 1px;
+      visibility: hidden;
+    }
+    .approval-mode-item[aria-checked="true"] .approval-mode-item-check {
+      visibility: visible;
+    }
     /* Session cost indicator (next to chevron in header) */
     .session-cost-display {
       font-size: inherit;
@@ -21011,6 +21100,47 @@ body:not(.email-doc-split-active) #email-lib-modal.email-lib-fullscreen:not(.mod
   font-weight: normal;
 }
 .skill-card-section-hidden { display: none !important; }
+/* The skill library shelf: the vendored skills, added one at a time. */
+.skill-library-shelf {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 4px 4px 8px;
+}
+.doclib-grid:has(.doclib-card-expanded) > .skill-library-shelf { display: none; }
+.skill-library-lede {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--fg-muted);
+}
+.skill-library-rows {
+  display: flex;
+  flex-direction: column;
+  max-height: 420px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.skill-library-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px;
+  border-bottom: 1px solid color-mix(in oklab, var(--border) 60%, transparent);
+}
+.skill-library-row:last-child { border-bottom: 0; }
+.skill-library-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.skill-library-name { font-size: 12px; font-weight: 600; color: var(--fg); }
+.skill-library-desc {
+  font-size: 11px;
+  color: var(--fg-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.skill-library-add { flex-shrink: 0; }
 /* Warning banner shown when previewing/editing a built-in capability. */
 .skill-builtin-warn {
   font-size: 9.5px;

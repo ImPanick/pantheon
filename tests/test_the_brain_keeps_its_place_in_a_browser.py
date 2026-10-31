@@ -127,6 +127,11 @@ const KEYS = JSON.parse(process.argv[3]);
   out.heights = {};
   for (const t of ['browse', 'rag', 'add', 'settings']) {
     await toTab(t);
+    // The window's own opening animation (`modal-enter`) is not the height
+    // under test: measure where it lands. Under the cockpit's glass the first
+    // frame can come late enough that the first tab read the 95% start.
+    await page.evaluate(() => Promise.all(document.querySelector('#memory-modal .memory-modal-content')
+      .getAnimations().map((a) => a.finished.catch(() => null))));
     out.heights[t] = await rect('#memory-modal .memory-modal-content');
   }
   await toTab('rag');

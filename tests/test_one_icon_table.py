@@ -928,8 +928,9 @@ def test_the_shell_cannot_spell_a_chevron_the_table_does_not():
     table = _h("chevrons", "[]")["points"]
     found = _shell_chevrons()
     # Twelve since 2026-10-24: `P25-01` drew the + menu's button as a plus
-    # (the owner's references), so its up chevron is gone.
-    assert len(found) == 12, [(l, p) for l, p, _ in found]
+    # (the owner's references), so its up chevron is gone. Thirteen since
+    # `B1706`: the approval-mode chip's caret (its menu opens upward).
+    assert len(found) == 13, [(l, p) for l, p, _ in found]
     by_direction = collections.Counter()
     for line, points, attrs in found:
         matches = [d for d, p in table.items() if p == points]
@@ -947,7 +948,8 @@ def test_the_shell_cannot_spell_a_chevron_the_table_does_not():
     # Re-measured 2026-10-09: `+1 up` (`#turn-chip`'s caret) and `+3 right`
     # (the three turn-sheet rows that open another control).
     # 2026-10-24: `up` 4 -> 3, the + menu's button (above).
-    assert by_direction == {"down": 4, "up": 3, "left": 1, "right": 4}, by_direction
+    # 2026-10-30: `up` 3 -> 4, `B1706`'s approval-mode chip (above).
+    assert by_direction == {"down": 4, "up": 4, "left": 1, "right": 4}, by_direction
 
 
 def test_the_shell_is_the_only_place_left_that_spells_one():
@@ -963,7 +965,7 @@ def test_the_shell_is_the_only_place_left_that_spells_one():
     (`Law 6`): what moved it is recorded above `_shell_chevrons`.
     """
     assert _census(_chevron_polylines) == []
-    assert len(_shell_chevrons()) == 12
+    assert len(_shell_chevrons()) == 13   # twelve until `B1706`'s approval-mode chip
     login = ROOT / "static" / "login.html"
     assert _chevron_polylines(login.read_text(encoding="utf-8")) == [], (
         "the login page has grown a chevron; it is a third place to keep in step"
@@ -973,14 +975,17 @@ def test_the_shell_is_the_only_place_left_that_spells_one():
 # ── `B398`: the shell's chevrons are drawn from the table, not spelled ──────
 
 
-def test_the_shell_file_spells_no_chevron_and_asks_the_table_for_twelve():
+def test_the_shell_file_spells_no_chevron_and_asks_the_table_for_thirteen():
     """`B398`'s `Verify`, first clause. `B292` closed on pinning the shell's
     literals to `CHEVRON_POINTS`; this is the option that makes the count zero.
-    The file names a direction and the server draws it."""
+    The file names a direction and the server draws it.
+
+    Twelve until `B1706`, whose approval-mode chip opens its menu upward and
+    says so with a fourth `up`, as the model picker's and `#turn-chip` do."""
     raw = SHELL.read_text(encoding="utf-8")
     assert _chevron_polylines(raw) == [], "the shell spells a chevron again"
     asked = collections.Counter(re.findall(r'points="\{\{chevron:([a-z]+)\}\}"', raw))
-    assert asked == {"down": 4, "up": 3, "left": 1, "right": 4}, asked
+    assert asked == {"down": 4, "up": 4, "left": 1, "right": 4}, asked
 
 
 def test_the_server_draws_what_icons_js_draws_in_every_direction():
@@ -1021,7 +1026,7 @@ def test_the_page_the_route_serves_is_drawn_and_its_validators_describe_it():
     page = _read_page(str(SHELL))
     body = page.body.decode("utf-8")
     assert "{{chevron:" not in body.replace("{{chevron:<direction>}}", ""), "a placeholder reached the page"
-    assert len(_chevron_polylines(body)) == 12
+    assert len(_chevron_polylines(body)) == 13   # twelve until `B1706`
     assert page.etag == '"' + hashlib.sha256(page.body).hexdigest()[:32] + '"'
     assert page.hashes == inline_script_hashes(body)
 

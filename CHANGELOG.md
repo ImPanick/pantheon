@@ -108,6 +108,37 @@ the next one is cut.
 
 ### Added
 
+- **Skills ship with Pantheon again, and the library can be found** (2026-10-31). Eleven core
+  skills now ship published and on for everyone, beside the workstation's four: clarify the goal,
+  web research, browse a website, debug a failure, change code safely, review code changes,
+  analyze data, write a document, summarize for a reader, remember what matters, and schedule
+  recurring work. Each is handed to the model as the procedure to follow when a turn is about it and the tools it drives are allowed, and costs other turns nothing. They live in
+  `library/pantheon/skills/`, so an update brings new versions and never touches a person's own
+  copy. The 286 vendored skills, which the Skills window stopped listing once sign-in became
+  mandatory, are on a folded **Skill library** shelf there: **Add** copies one into your skills,
+  published, so the model can use it (`GET /api/skills/library`,
+  `POST /api/skills/library/{name}/add`). First-run setup now claims skill files left by an
+  earlier account at once instead of after the next restart.
+
+- **Plan mode gathers what it needs before it plans** (2026-10-31). Before drafting, the agent
+  checks it knows the outcome, what done looks like, the limits and the person's taste; whatever
+  the project cannot tell it, it asks on one card of up to five questions (`ask_user` with
+  `questions`), each with suggested answers and a line for the person's own words, plus *Plan
+  with what you have*. The answers come back as one message, and the plan opens with a `Goal:`
+  line that stays pinned while it executes. A plan-mode turn that asked instead of planning no
+  longer offers *Execute*.
+- **The browser runs without a workstation** (2026-10-31). A person the workstation would not
+  answer gets Pantheon's own headless Firefox (Debian's `firefox-esr`, now in the image; a desktop
+  install finds the Firefox it has, or `PANTHEON_BROWSER_FIREFOX`). It is the same browser as the
+  workstation's: the Browser window shows it, the person takes it over and points at pages, and
+  their agent drives it as `agent_browser`, which is now offered wherever there is a browser. It
+  reaches public web addresses only, through a proxy of Pantheon's own; the LAN and this machine
+  stay the workstation's. Who may use it is `can_use_browser`.
+- **The sign-in page makes accounts.** When sign-up is open, *Sign up* extends the card with
+  display name, email and phone; when it is closed, the card says to ask an admin rather than
+  showing nothing. Accounts keep a profile (display name, email, phone, bio, picture) through
+  `GET/PUT /api/auth/profile`, `POST/DELETE /api/auth/profile/avatar` and
+  `GET /api/auth/avatar/{username}`, each the caller's own but the picture.
 - **Settings → AI Defaults → Speech-to-text:** off, local Whisper, the browser's own recognition
   (in Chrome the audio goes to Google, and the card says so), or an endpoint (`B1564`).
 - **`read_chat`:** an agent reads one of its person's own chats in order, a page at a time
@@ -252,6 +283,41 @@ the next one is cut.
   button all close it. `/toggle mode [agent|chat]` is the same control, typed.
 
 ### Changed — read this before upgrading
+
+- **The workstation is a virtual machine in the stack** (2026-10-31). `docker-compose.yml` now
+  runs the VM backend as `workstation-vm`, so Settings → Workstation → On works with no overlay:
+  each person gets an Ubuntu VM of their own. Nothing is made until it is first switched on; then
+  the host makes the machine image once (minutes with KVM, much longer without), and the panel
+  says so until it is done. `docker compose up -d --build` builds it. `docker/workstation-vm.yml`
+  and `docker/workstation-both.yml` still load and add nothing; **an install that ran
+  `docker/workstation-vm.yml` runs `docker compose up -d --remove-orphans` once** to retire its old
+  `workstation` container (the machines are on the same volume and are kept; the new host refuses
+  to start while the old one holds it). With no container backend beside it, `auto` is the VM
+  whatever the host runs on.
+- **A fresh install's first visit makes the admin** (2026-10-31). The installer no longer makes an
+  `admin` with a random password printed only to a log, which had left most new instances with no
+  way in. With no account, the sign-in page opens on setup: the first account is the admin, and a
+  switch there lets people create their own accounts (on unless you turn it off). The empty account
+  store is the signal, so an update never asks again. `PANTHEON_ADMIN_PASSWORD` (with
+  `PANTHEON_ADMIN_USER`) still makes the admin ahead of time. **An existing install is untouched:**
+  its accounts and its sign-up switch stay as they are.
+
+- **The approval mode is chosen at the bottom of the composer** (`B1706`): a chip names the mode
+  and opens a menu of Manual approve and Auto-approve, each with a line saying what it does; it
+  replaces the Auto-approve button in the Plan / Web / Shell strip.
+
+- **Auto-approve is now a risk you accept on the record** (`B1703`, `B1704`): a chat's Auto, and a
+  hired agent's "without asking" after it reads outside content, turn on only when you choose
+  **Proceed to auto-approve** under a warning naming what the agent's reading can steer. Pantheon
+  records who accepted, when and for what. **Chats already set to Auto, and every existing hire, ask
+  again until their person accepts.** The warning opens on *Keep asking me*.
+
+- **A write onto a name a move, an archive or a git command just put in place is read where it
+  lands** (`B1698`), and File Converter's answer names a burst's copies (`B1699`; its version moved).
+
+- **File Converter skips a burst photo it converted before; a copied symbolic link is read where it
+  points; and `cp -l` onto an existing name is no longer asked about** (`B1695`–`B1697`). File
+  Converter's version moved.
 
 - **A write through a link the command itself made, and a converter's numbered copies, are read
   where they land** (`B1692`, `B1693`): over a file that was there before the run they ask where
