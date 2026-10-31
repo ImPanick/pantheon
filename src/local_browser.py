@@ -28,12 +28,14 @@ a desktop install finds the person's own (`browser.find_firefox`).
 its search engine and its vector store, so it is given a proxy of Pantheon's
 own and every connection it makes goes through it (the profile turns off
 direct connections, DNS of its own, WebRTC and QUIC). The proxy resolves each
-name once, refuses loopback, link-local (cloud metadata), private and LAN
-addresses (`outbound_fetch._is_private_address` with no LAN grant), and
+name once, always refuses loopback and link-local (cloud metadata), and
 connects to the address it checked, so a name cannot answer one address to the
-check and another to the connection. The LAN, `localhost` and a project's dev
-server are the workstation's: a machine of the person's own, whose network an
-admin chooses (`P20-06`).
+check and another to the connection. The LAN is reached exactly as `web_fetch`
+reaches it — the admin's *Agents may reach the local network* and the person's
+workstation privilege (`outbound_fetch.lan_reach_for`; the owner, 2026-10-31:
+*"Agents get FULL access"*) — and even then never Pantheon's own container
+network, where its unauthenticated services listen. `localhost` and a
+project's dev server are the workstation's.
 
 **One holder**, as on the workstation (`P20-05`): while the person has taken
 the browser over, the agent's actions are `busy`.
@@ -77,17 +79,49 @@ BUSY_SENTENCE = ("A person has taken over this browser. Wait for them to hand it
                  "them what they need.")
 REFUSED_PAGE = (b"<!doctype html><title>Not opened</title><body style='font:15px system-ui;"
                 b"margin:3em;max-width:36em'><h1 style='font-size:18px'>Not opened</h1><p>Pantheon's "
-                b"browser opens public web addresses only. This machine, its private network and "
-                b"the LAN are reached from a workstation.</p></body>")
+                b"browser does not open addresses on this machine or on Pantheon's own network, nor "
+                b"the LAN unless an admin lets agents reach it. A workstation reaches those."
+                b"</p></body>")
 
 
 # ── the proxy every connection goes through ──────────────────────────────────
 
-def _allowed_address(host: str, port: int) -> Tuple[Optional[str], str]:
+def _own_networks() -> List[ipaddress.IPv4Network]:
+    """The networks Pantheon's own container sits on — the compose network
+    with its database, search engine and vector store — read from the
+    kernel's routing table. Only inside a container: on a machine of its own,
+    the network it is on is the LAN."""
+    if not os.path.exists("/.dockerenv"):
+        return []
+    out: List[ipaddress.IPv4Network] = []
+    try:
+        with open("/proc/net/route", encoding="ascii") as f:
+            next(f, None)
+            for line in f:
+                cols = line.split()
+                if len(cols) < 8:
+                    continue
+                dest, mask = int(cols[1], 16), int(cols[7], 16)
+                if mask == 0:
+                    continue   # the default route is the way out, not a network here
+                net = ipaddress.IPv4Network(
+                    (socket.inet_ntoa(dest.to_bytes(4, "little")),
+                     socket.inet_ntoa(mask.to_bytes(4, "little"))), strict=False)
+                out.append(net)
+    except (OSError, ValueError):
+        pass  # no routing table to read: nothing beyond the always-refused set is added
+    return out
+
+
+def _allowed_address(host: str, port: int, *, allow_lan: bool = False) -> Tuple[Optional[str], str]:
     """`(address, "")` to connect to, or `(None, why)`. Resolved once here, and
-    the caller connects to the address that was checked."""
+    the caller connects to the address that was checked. `allow_lan`: the
+    admin's *Agents may reach the local network* for a person allowed the
+    workstation (`outbound_fetch.lan_reach_for`'s rule) — and even then never
+    this machine, cloud metadata, or Pantheon's own container network."""
     from src.outbound_fetch import _is_private_address
     host = host.strip("[]")
+    own = _own_networks() if allow_lan else []
     try:
         infos = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
     except (OSError, UnicodeError):
@@ -99,8 +133,10 @@ def _allowed_address(host: str, port: int) -> Tuple[Optional[str], str]:
             ip = ipaddress.ip_address(a.split("%", 1)[0])
         except ValueError:
             return None, f"{host} resolved to something that is not an address"
-        if _is_private_address(ip, allow_lan=False):
+        if _is_private_address(ip, allow_lan=allow_lan):
             return None, f"{host} is on this machine or a private network"
+        if own and any(ip in net for net in own if ip.version == net.version):
+            return None, f"{host} is on Pantheon's own network"
         addrs.append(a)
     if not addrs:
         return None, f"{host} does not resolve"
@@ -165,7 +201,8 @@ class _ProxyHandler(socketserver.BaseRequestHandler):
             host, port = parts.hostname, parts.port or 80
         if not host or not 1 <= port <= 65535:
             return self._refuse(conn, "no such address")
-        addr, why = _allowed_address(host, port)
+        allow_lan = getattr(self.server, "allow_lan", None)
+        addr, why = _allowed_address(host, port, allow_lan=bool(allow_lan and allow_lan()))
         if addr is None:
             logger.info("pantheon browser: refused %s:%s (%s)", host, port, why)
             return self._refuse(conn, why)
@@ -217,16 +254,19 @@ class _ThreadingProxy(socketserver.ThreadingTCPServer):
 
 
 class GuardProxy:
-    """The proxy, on this machine's loopback, started on first use."""
+    """The proxy, on this machine's loopback, started on first use. One per
+    person, so whether the LAN is theirs is asked of them (`allow_lan`)."""
 
-    def __init__(self) -> None:
+    def __init__(self, allow_lan=None) -> None:
         self._server: Optional[_ThreadingProxy] = None
         self._lock = threading.Lock()
+        self.allow_lan = allow_lan
 
     def port(self) -> int:
         with self._lock:
             if self._server is None:
                 self._server = _ThreadingProxy(("127.0.0.1", 0), _ProxyHandler)
+                self._server.allow_lan = self.allow_lan
                 threading.Thread(target=self._server.serve_forever, name="browser-proxy",
                                  daemon=True).start()
             return int(self._server.server_address[1])
@@ -318,15 +358,32 @@ class LocalBrowsers:
             from src.constants import DATA_DIR
             root = Path(DATA_DIR) / PROFILE_ROOT_NAME
         self.root = Path(root)
-        self.proxy = GuardProxy()
         self.browsers = Browsers(_LocalSystem(self.root))
+        self._proxies: Dict[str, GuardProxy] = {}
+        self._owners: Dict[str, Optional[str]] = {}
         self._holders: Dict[str, Dict[str, Any]] = {}
         self._used: Dict[str, float] = {}
         self._lock = threading.Lock()
 
+    def _lan_for(self, account: str) -> bool:
+        """Whether this person's browser may reach the LAN now: the admin's
+        switch and the person's workstation privilege, as `web_fetch` asks."""
+        try:
+            from src.outbound_fetch import _lan_reach_on, may_reach_lan
+            return _lan_reach_on() and may_reach_lan(self._owners.get(account))
+        except Exception:  # noqa: BLE001 — an unanswerable question is no LAN
+            return False
+
+    def proxy_for(self, account: str) -> GuardProxy:
+        with self._lock:
+            proxy = self._proxies.get(account)
+            if proxy is None:
+                proxy = self._proxies[account] = GuardProxy(allow_lan=lambda: self._lan_for(account))
+            return proxy
+
     def _browser(self, account: str):
         b = self.browsers.get(account)
-        b.extra_prefs = proxy_prefs(self.proxy.port())
+        b.extra_prefs = proxy_prefs(self.proxy_for(account).port())
         return b
 
     def holder(self, account: str) -> Dict[str, Any]:
@@ -353,9 +410,13 @@ class LocalBrowsers:
             logger.info("pantheon browser of %s stopped after %d minutes unused", a, IDLE_STOP_S // 60)
             self.browsers.stop(a)
 
-    def act(self, account: str, body: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    def act(self, account: str, body: Dict[str, Any],
+            owner: Optional[str] = None) -> Optional[Dict[str, Any]]:
         """`agentd.Workstation.browser`'s rules, here."""
         from workstation.browser import BrowserError
+        if owner is not None:
+            with self._lock:
+                self._owners[account] = owner
         action = body.get("action")
         if action not in P.BROWSER_ACTIONS:
             raise WorkstationError("bad_request", f"“action” is one of {', '.join(P.BROWSER_ACTIONS)}.")
@@ -384,7 +445,11 @@ class LocalBrowsers:
 
     def stop_all(self) -> None:
         self.browsers.stop_all()
-        self.proxy.stop()
+        with self._lock:
+            proxies = list(self._proxies.values())
+            self._proxies.clear()
+        for proxy in proxies:
+            proxy.stop()
 
 
 _host: Optional[LocalBrowsers] = None
@@ -407,8 +472,9 @@ class LocalBrowserClient:
 
     runs_in = RUNS_IN_PANTHEON
 
-    def __init__(self, browsers: Optional[LocalBrowsers] = None) -> None:
+    def __init__(self, browsers: Optional[LocalBrowsers] = None, owner: Optional[str] = None) -> None:
         self._browsers = browsers
+        self.owner = owner
 
     @property
     def browsers(self) -> LocalBrowsers:
@@ -418,7 +484,7 @@ class LocalBrowserClient:
                       **fields: Any) -> Optional[Dict[str, Any]]:
         body = {k: v for k, v in fields.items() if v is not None}
         body.update(action=action, holder=holder)
-        return await asyncio.to_thread(self.browsers.act, account, body)
+        return await asyncio.to_thread(self.browsers.act, account, body, self.owner)
 
     async def control(self, account: str, holder: str) -> Dict[str, Any]:
         return self.browsers.control(account, holder)
@@ -427,8 +493,54 @@ class LocalBrowserClient:
         return {"account": account, "holder": self.browsers.holder(account)["holder"]}
 
     async def names(self, account: str, names: Dict[str, str], pins: List[Dict[str, str]]) -> Dict:
-        # A mapped name is a LAN name, and this browser does not reach the LAN.
+        # A mapped name is the workstation's (its names proxy); this browser
+        # reaches the LAN by address when the admin lets it.
         return {}
+
+
+class FallbackBrowser:
+    """The workstation's browser, and Pantheon's own for any call the
+    workstation cannot take right now — its machine image still being made, a
+    machine that will not start, the workstation down. The owner (2026-10-31):
+    the browser runs *without needing a workstation/VM entirely*, so a
+    workstation that is on but not ready is not a reason to have none.
+    `last_runs_in` says which one answered the last call."""
+
+    def __init__(self, primary: Any, local: "LocalBrowserClient") -> None:
+        self.primary = primary
+        self.local = local
+        self.last_runs_in: Optional[str] = RUNS_IN_WORKSTATION
+
+    async def _either(self, name: str, *args: Any, **kwargs: Any) -> Any:
+        try:
+            out = await getattr(self.primary, name)(*args, **kwargs)
+        except WorkstationError as e:
+            if e.code != "unavailable":
+                raise
+            logger.info("browser: the workstation cannot take %s now (%s); Pantheon's own answers",
+                        name, e.message[:120])
+            self.last_runs_in = None
+            return await getattr(self.local, name)(*args, **kwargs)
+        self.last_runs_in = RUNS_IN_WORKSTATION
+        return out
+
+    async def browser(self, account: str, action: str, **kwargs: Any) -> Optional[Dict[str, Any]]:
+        return await self._either("browser", account, action, **kwargs)
+
+    async def control(self, account: str, holder: str) -> Dict[str, Any]:
+        return await self._either("control", account, holder)
+
+    async def ensure(self, account: str) -> Dict[str, Any]:
+        return await self._either("ensure", account)
+
+    async def names(self, account: str, names: Dict[str, str], pins: List[Dict[str, str]]) -> Dict:
+        # The workstation's alone: a refusal is raised, so nothing is
+        # remembered as sent (`vault_names.sync`) and it goes when it is ready.
+        return await self.primary.names(account, names, pins)
+
+
+def _local_usable(owner: Optional[str], auth_manager: Any = None) -> bool:
+    return firefox_here() and may_use(owner, auth_manager=auth_manager)
 
 
 def firefox_here() -> bool:
@@ -462,7 +574,7 @@ def browser_for(owner: Optional[str], *, auth_manager: Any = None):
     saying why there is neither."""
     from src import workstation_access as wa
     try:
-        return wa.workstation_for(owner, auth_manager=auth_manager)
+        client, account = wa.workstation_for(owner, auth_manager=auth_manager)
     except WorkstationError as ws_refusal:
         if not may_use(owner, auth_manager=auth_manager):
             raise WorkstationError("not_permitted", NOT_PERMITTED_SENTENCE) from None
@@ -470,7 +582,10 @@ def browser_for(owner: Optional[str], *, auth_manager: Any = None):
             if ws_refusal.code in ("off", "unconfigured"):
                 raise WorkstationError("unavailable", NO_FIREFOX_SENTENCE) from None
             raise
-        return LocalBrowserClient(), wa.account_of(owner)
+        return LocalBrowserClient(owner=owner), wa.account_of(owner)
+    if _local_usable(owner, auth_manager):
+        return FallbackBrowser(client, LocalBrowserClient(owner=owner)), account
+    return client, account
 
 
 async def ready_browser(owner: Optional[str], *, auth_manager: Any = None):
@@ -481,7 +596,16 @@ async def ready_browser(owner: Optional[str], *, auth_manager: Any = None):
     if isinstance(client, LocalBrowserClient):
         return client, account
     from src.workstation_access import ensure_ready
-    ready = await ensure_ready(owner, auth_manager=auth_manager)
+    try:
+        ready = await ensure_ready(owner, auth_manager=auth_manager)
+    except WorkstationError as e:
+        if e.code == "unavailable" and isinstance(client, FallbackBrowser):
+            client.last_runs_in = None
+            return client.local, account
+        raise
+    if isinstance(client, FallbackBrowser):
+        client.primary = ready.client
+        return client, ready.account
     return ready.client, ready.account
 
 
@@ -501,10 +625,12 @@ def unavailable_reason(owner: Optional[str], *, delegated_credential: bool = Fal
 
 def runs_in(client: Any) -> Optional[str]:
     """`ran_in` for a tool result: `workstation`, or None for Pantheon's own."""
+    if isinstance(client, FallbackBrowser):
+        return client.last_runs_in
     return None if isinstance(client, LocalBrowserClient) else RUNS_IN_WORKSTATION
 
 
-__all__ = ["BUSY_SENTENCE", "GuardProxy", "IDLE_STOP_S", "LocalBrowserClient", "LocalBrowsers",
+__all__ = ["BUSY_SENTENCE", "FallbackBrowser", "GuardProxy", "IDLE_STOP_S", "LocalBrowserClient", "LocalBrowsers",
            "NOT_PERMITTED_SENTENCE", "NO_FIREFOX_SENTENCE", "PRIVILEGE", "RUNS_IN_PANTHEON",
            "RUNS_IN_WORKSTATION", "browser_for", "firefox_here", "host", "may_use", "proxy_prefs",
            "ready_browser", "runs_in", "unavailable_reason"]

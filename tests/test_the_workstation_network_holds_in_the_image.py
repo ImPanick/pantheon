@@ -3,8 +3,8 @@
 to a public host and to a private address gives the answer the mode promises —
 as an account with `sudo` off, and as root with `sudo` on.
 
-Nothing is faked. The shipped overlay (`docker/workstation.yml`) is started by
-`docker compose` itself, so the gate's capabilities, the workstation's place in
+Nothing is faked. The shipped stack's workstation (`docker-compose.yml`) is
+started by `docker compose` itself, so the gate's capabilities, the workstation's place in
 the gate's network namespace and its missing CAP_NET_RAW are the file's, not a
 copy of them. A LAN stands beside it: a network on 192.168.x with a web server
 on it, joined to the namespace the way a host's LAN is reachable from a
@@ -91,7 +91,7 @@ def _compose(project: str, *argv: str, timeout: int = 300) -> subprocess.Complet
     env = {k: v for k, v in os.environ.items() if k not in ("COMPOSE_FILE",)}
     env["PGID"] = "4242"
     done = subprocess.run(["docker", "compose", "-p", project, "-f", "docker-compose.yml",
-                           "-f", "docker/workstation.yml", *argv],
+                           *argv],
                           cwd=ROOT, env=env, capture_output=True, text=True, timeout=timeout)
     if done.returncode != 0:
         raise AssertionError(f"docker compose {' '.join(argv)} failed: {done.stderr[-3000:]}")

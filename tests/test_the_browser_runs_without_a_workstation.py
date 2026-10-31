@@ -86,7 +86,7 @@ def test_the_proxy_refuses_this_machine_however_it_is_asked():
                     f"CONNECT [::1]:{target} HTTP/1.1\r\n\r\n"):
             answer = _ask(port, req.encode())
             assert answer.startswith(b"HTTP/1.1 403"), answer[:80]
-            assert b"public web addresses only" in answer
+            assert b"does not open addresses on this machine" in answer
         with pytest.raises(socket.timeout):
             srv.accept()
     finally:
@@ -231,7 +231,7 @@ def host(tmp_path, monkeypatch):
     fake = _FakeBrowser()
     monkeypatch.setattr(h.browsers, "get", lambda account: fake)
     yield h, fake
-    h.proxy.stop()
+    h.stop_all()
 
 
 def test_a_person_who_took_over_makes_the_agent_wait(host):
@@ -374,3 +374,105 @@ def test_a_second_vm_host_on_the_same_volume_does_not_start(tmp_path):
         assert subprocess.run([sys.executable, "-c", code], cwd=ROOT).returncode == 0
     finally:
         first.close()
+
+
+# ── a workstation that is on but not ready (2026-10-31, the owner's local test) ──
+
+class _NotReady:
+    """A workstation client whose machine cannot start yet."""
+
+    def __init__(self, code="unavailable"):
+        self.code = code
+        self.asked = []
+
+    async def _no(self, name):
+        self.asked.append(name)
+        raise WorkstationError(self.code, "The workstation is still making the machine image.")
+
+    async def browser(self, account, action, **kw):
+        return await self._no("browser")
+
+    async def control(self, account, holder):
+        return await self._no("control")
+
+    async def ensure(self, account):
+        return await self._no("ensure")
+
+    async def names(self, account, names, pins):
+        return await self._no("names")
+
+
+def test_a_workstation_still_making_its_image_leaves_the_browser_to_pantheons_own(host):
+    """The owner's screenshot: the workstation on and answering, its machine
+    image still being made — and *No browser to show*. Every call the
+    workstation cannot take now is Pantheon's own browser's."""
+    h, fake = host
+    ws = _NotReady()
+    client = LB.FallbackBrowser(ws, LB.LocalBrowserClient(h))
+    frame = run(client.browser("pws-alice", "frame"))
+    assert frame["digest"] == "0123456789abcdef" and LB.runs_in(client) is None
+    assert run(client.control("pws-alice", "person"))["holder"] == "person"
+    assert run(client.ensure("pws-alice"))["holder"] == "person"
+    assert ws.asked == ["browser", "control", "ensure"]
+    # Mapped names stay the workstation's: refused, so not remembered as sent.
+    with pytest.raises(WorkstationError):
+        run(client.names("pws-alice", {}, []))
+
+
+def test_a_refusal_that_is_not_about_readiness_is_not_papered_over(host):
+    h, _fake = host
+    client = LB.FallbackBrowser(_NotReady("bad_request"), LB.LocalBrowserClient(h))
+    with pytest.raises(WorkstationError) as caught:
+        run(client.browser("pws-alice", "open", url="https://example.org/"))
+    assert caught.value.code == "bad_request"
+
+
+def test_the_tool_uses_pantheons_browser_while_the_workstation_is_not_ready(monkeypatch):
+    import src.workstation_access as wa
+    ws = _NotReady()
+    monkeypatch.setattr(wa, "workstation_for", lambda owner, auth_manager=None: (ws, "pws-alice"))
+    monkeypatch.setattr(LB, "may_use", lambda owner, auth_manager=None: True)
+    monkeypatch.setattr(LB, "firefox_here", lambda: True)
+
+    async def not_ready(owner, auth_manager=None):
+        raise WorkstationError("unavailable", "The workstation is still making the machine image.")
+
+    monkeypatch.setattr(wa, "ensure_ready", not_ready)
+    client, account = run(LB.ready_browser("alice"))
+    assert isinstance(client, LB.LocalBrowserClient) and account == "pws-alice"
+    assert client.owner == "alice"
+
+
+# ── full access: the LAN, when the admin lets agents reach it ─────────────────
+
+def test_with_lan_reach_the_lan_opens_but_never_pantheons_own_network(monkeypatch):
+    monkeypatch.setattr(LB, "_own_networks", lambda: [__import__("ipaddress").ip_network("172.18.0.0/16")])
+
+    def answer(address):
+        monkeypatch.setattr(LB.socket, "getaddrinfo",
+                            lambda host, port, **kw: [(socket.AF_INET, socket.SOCK_STREAM, 6, "", (address, port))])
+
+    answer("192.168.1.20")
+    assert LB._allowed_address("nas.lan", 80, allow_lan=True)[0] == "192.168.1.20"
+    assert LB._allowed_address("nas.lan", 80, allow_lan=False)[0] is None
+    answer("172.18.0.4")
+    assert "Pantheon's own network" in LB._allowed_address("chromadb", 8000, allow_lan=True)[1]
+    for always in ("127.0.0.1", "169.254.169.254"):
+        answer(always)
+        assert LB._allowed_address("x", 80, allow_lan=True)[0] is None, always
+
+
+def test_the_lan_is_asked_of_each_person(tmp_path, monkeypatch):
+    import src.outbound_fetch as OF
+    h = LB.LocalBrowsers(tmp_path / "b")
+    try:
+        monkeypatch.setattr(OF, "_lan_reach_on", lambda: True)
+        monkeypatch.setattr(OF, "may_reach_lan", lambda owner: owner == "alice")
+        h._owners.update({"pws-alice": "alice", "pws-bob": "bob"})
+        assert h.proxy_for("pws-alice").allow_lan() is True
+        assert h.proxy_for("pws-bob").allow_lan() is False
+        assert h.proxy_for("pws-alice") is h.proxy_for("pws-alice")
+        monkeypatch.setattr(OF, "_lan_reach_on", lambda: False)
+        assert h.proxy_for("pws-alice").allow_lan() is False
+    finally:
+        h.stop_all()

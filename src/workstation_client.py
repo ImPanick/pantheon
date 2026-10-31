@@ -216,9 +216,12 @@ def effective_backend() -> str:
         return choice
     if not vm_configured():
         return "container"
-    # The owner (2026-10-31): the workstation is *a proper VM*. Pantheon's own
-    # stack ships the VM backend alone, so with no container beside it `auto`
-    # is the VM whatever it runs on — slow without KVM, and the panel says so.
+    # The owner (2026-10-31): the workstation is *a proper VM* — and, on a
+    # Docker with no KVM, *"Local test doesn't populate a VM at all"*: an
+    # emulated machine takes the better part of an hour to make its image.
+    # Pantheon's own stack ships both, so `auto` is the VM where it runs on KVM
+    # and the container (seconds to start) where it cannot, or has not said
+    # yet. An install with the VM host alone uses it whatever it runs on.
     if not parse_base(os.environ.get(URL_ENV, "")):
         return "vm"
     return "vm" if vm_accel() == "kvm" else "container"

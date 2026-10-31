@@ -278,15 +278,18 @@ def sudo_choice() -> Optional[bool]:
 
 
 def sudo_wanted(daemon_backend: Optional[str] = None) -> bool:
-    """`B1428`, `D-2026-10-25-04` §4. The admin's answer when they gave one;
-    otherwise ON in a VM — each person's machine is their own — and OFF in the
-    shared container, where root would read everyone's work. `daemon_backend`
-    is what the daemon that answered says it is; without it, the backend in
-    use."""
+    """`B1428`. The admin's answer when they gave one; otherwise ON.
+
+    The owner (2026-10-31): *"Agents get FULL access."* `D-2026-10-25-04` §4
+    had it on in a VM and off in the shared container, where root reads
+    everyone's work; the owner's word supersedes that, and an admin who shares
+    the container with people who should not see each other's homes turns it
+    off (the switch beside it says what root there can read). `daemon_backend`
+    is kept for callers that pass it."""
     choice = sudo_choice()
     if choice is not None:
         return choice
-    return (daemon_backend or wc.effective_backend()) == "vm"
+    return True
 
 
 def route_tools_wanted() -> bool:

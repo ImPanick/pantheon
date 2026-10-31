@@ -159,7 +159,9 @@ def test_a_backend_this_install_does_not_have_says_what_to_add(engine):
                     if c["Labels"][wctl.SERVICE_LABEL] not in ("workstation", "workstation-net")]
     with pytest.raises(wctl.DockerControlError) as caught:
         wctl.switch(api, PROJECT, "container")
-    assert "docker/workstation.yml" in str(caught.value)
+    # So is the container, since the owner's *"Local test doesn't populate a VM".*
+    assert "docker compose up -d --build" in str(caught.value)
+    assert "COMPOSE_FILE" not in str(caught.value)
 
 
 def test_logs_are_plain_text(engine):
@@ -196,10 +198,37 @@ def test_the_vm_is_in_the_stack_and_the_old_overlays_add_no_second_host():
     assert "PANTHEON_WORKSTATION_VM_PAIRING=/workstation-vm-pairing" in env
     assert "workstation-vm-pairing:/workstation-vm-pairing:ro" in stack["services"]["pantheon"]["volumes"]
     assert {"workstation-vm", "workstation-vm-pairing"} <= set(stack["volumes"])
-    for name in ("workstation-vm.yml", "workstation-both.yml"):
+    for name in ("workstation.yml", "workstation-vm.yml", "workstation-both.yml"):
         overlay = yaml.safe_load((ROOT / "docker" / name).read_text())
         assert set(overlay["services"]) == {"pantheon"}, name
         assert "volumes" not in overlay, name
+
+
+def test_the_container_is_in_the_stack_beside_the_vm():
+    """The owner, on Docker Desktop with no KVM (2026-10-31): *"Local test
+    doesn't populate a VM at all."* An emulated VM takes the better part of an
+    hour to make its image; the container starts in seconds. So the stack ships
+    both, `auto` picks (the VM on KVM), and the container keeps every wall it
+    had as an overlay: the gate holds the network, no NET_RAW, no socket, no
+    privilege, and of Pantheon's data the projects folder alone."""
+    stack = yaml.safe_load((ROOT / "docker-compose.yml").read_text())
+    ct = stack["services"]["workstation"]
+    gate = stack["services"]["workstation-net"]
+    assert ct["command"] == ["--system", "ubuntu", "--bind", "0.0.0.0", "--port", "7040"]
+    assert ct["network_mode"] == "service:workstation-net"
+    assert ct["cap_drop"] == ["NET_RAW"]
+    assert not ct.get("privileged") and not ct.get("cap_add") and not ct.get("ports")
+    assert ct["volumes"] == ["workstation-homes:/home", "workstation-pairing:/workstation-pairing",
+                             "${APP_DATA_DIR:-./data}/projects:/projects:z"]
+    assert gate["cap_drop"] == ["ALL"] and gate["cap_add"] == ["NET_ADMIN", "CHOWN"]
+    assert not gate.get("ports")
+    env = stack["services"]["pantheon"]["environment"]
+    assert "PANTHEON_WORKSTATION_URL=http://workstation:7040" in env
+    assert "PANTHEON_WORKSTATION_NET_URL=http://workstation:7041" in env
+    vols = stack["services"]["pantheon"]["volumes"]
+    assert "workstation-pairing:/workstation-pairing:ro" in vols
+    assert "workstation-net-pairing:/workstation-net-pairing:ro" in vols
+    assert {"workstation-homes", "workstation-pairing", "workstation-net-pairing"} <= set(stack["volumes"])
 
 
 def test_compose_resolves_both_backends_side_by_side():
@@ -283,11 +312,11 @@ def test_the_choice_decides_which_daemon_answers(both, monkeypatch, choice, acce
 
 
 @pytest.mark.parametrize("accel", ["kvm", "tcg", None])
-def test_the_stacks_vm_alone_is_the_workstation_whatever_it_runs_on(both, monkeypatch, accel):
-    """The stack ships the VM host and no container (2026-10-31): `auto` is the
-    VM even on TCG — with nothing else configured, any other answer is a
-    workstation that is "on but has no address", which is what *turning it on
-    does nothing* was."""
+def test_a_vm_host_alone_is_the_workstation_whatever_it_runs_on(both, monkeypatch, accel):
+    """An install with the VM host and no container: `auto` is the VM even on
+    TCG — with nothing else configured, any other answer is a workstation that
+    is "on but has no address", which is what *turning it on does nothing*
+    was."""
     wc, stored = both
     monkeypatch.delenv("PANTHEON_WORKSTATION_URL")
     monkeypatch.setattr(wc, "vm_accel", lambda: accel)
@@ -303,7 +332,8 @@ def test_an_address_typed_for_another_machine_still_wins(both, monkeypatch):
 
 
 @pytest.mark.parametrize("stored_sudo, backend, want", [
-    (None, "vm", True), (None, "container", False), (None, "remote", False),
+    # Unanswered: on everywhere (the owner, 2026-10-31: "Agents get FULL access").
+    (None, "vm", True), (None, "container", True), (None, "remote", True),
     (True, "container", True), (False, "vm", False),
 ])
 def test_sudo_by_backend_unless_the_admin_said(monkeypatch, stored_sudo, backend, want):

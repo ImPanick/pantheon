@@ -470,14 +470,17 @@ def test_the_stack_pairs_with_its_vm_and_the_old_overlays_change_nothing():
     assert p["environment"][P.VM_URL_ENV] == "http://workstation-vm:7040"
     assert ("workstation-vm-pairing", "/workstation-vm-pairing", True) in [
         (m["source"], m["target"], bool(m.get("read_only"))) for m in p["volumes"]]
-    for overlay in ("docker/workstation-vm.yml", "docker/workstation-both.yml"):
+    # The container is beside the VM in the stack itself (2026-10-31), for a
+    # Docker with no KVM; `auto` picks between them.
+    assert p["environment"][P.URL_ENV] == f"http://{P.DEFAULT_HOST}:{P.DEFAULT_PORT}"
+    assert {"workstation", "workstation-net", "workstation-vm"} <= set(stack["services"])
+    for overlay in ("docker/workstation.yml", "docker/workstation-vm.yml",
+                    "docker/workstation-both.yml"):
         cfg = json.loads(_compose(overlay).stdout)
         assert set(cfg["services"]) == set(stack["services"]), overlay
-        assert cfg["services"]["workstation-vm"] == stack["services"]["workstation-vm"], overlay
-    # The container's overlay puts it beside the VM: one line.
-    ct = json.loads(_compose("docker/workstation.yml").stdout)
-    assert ct["services"]["pantheon"]["environment"][P.URL_ENV] == f"http://{P.DEFAULT_HOST}:{P.DEFAULT_PORT}"
-    assert {"workstation", "workstation-vm"} <= set(ct["services"])
+        for name in ("workstation", "workstation-net", "workstation-vm"):
+            assert cfg["services"][name] == stack["services"][name], (overlay, name)
+        assert cfg["services"]["pantheon"]["environment"] == p["environment"], overlay
 
 
 def test_the_remote_overlay_starts_nothing_and_demands_what_it_needs():

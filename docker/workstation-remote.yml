@@ -17,9 +17,22 @@
 # that machine and not to whoever is in the way (`workstation/protocol.py`,
 # above `TLS_PIN_ENV`). Pantheon refuses to send the token over plain http to a
 # public address at all.
+#
+# Pantheon's own stack runs the local workstations (a container and a VM host,
+# 2026-10-31); with this overlay they are not started — each is put behind a
+# profile nobody enables — and Pantheon is told about neither, so `auto` is the
+# machine named here and nothing else.
 services:
+  workstation-net:
+    profiles: [local-workstation]
+  workstation:
+    profiles: [local-workstation]
+  workstation-vm:
+    profiles: [local-workstation]
   pantheon:
     environment:
+      - PANTHEON_WORKSTATION_NET_URL=
+      - PANTHEON_WORKSTATION_VM_URL=
       - PANTHEON_WORKSTATION_URL=${PANTHEON_WORKSTATION_URL:?set PANTHEON_WORKSTATION_URL to the address workstation/install.py printed}
       - PANTHEON_WORKSTATION_TOKEN=${PANTHEON_WORKSTATION_TOKEN:?set PANTHEON_WORKSTATION_TOKEN to the token workstation/install.py printed}
       - PANTHEON_WORKSTATION_CERT_SHA256=${PANTHEON_WORKSTATION_CERT_SHA256:-}

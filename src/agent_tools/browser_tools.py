@@ -290,19 +290,18 @@ class BrowserTool:
             client, account = await ready_browser(owner)
         except WorkstationError as e:
             return e.as_result()
-        ran_in = runs_in(client)
         await sync_names(client, account, owner)
         fields = {k: v for k, v in args.items()
                   if k in ("url", "ref", "x", "y", "text", "submit", "keys", "dx", "dy", "tab", "double",
                            "note", "notes", "said", "declined", "all", "pointed", "selector", "why")}
         if action == "login":
             return await _login(client, account, owner, args, session=(ctx or {}).get("session_id"),
-                                agent=(ctx or {}).get("agent_id"), ran_in=ran_in)
+                                agent=(ctx or {}).get("agent_id"))
         try:
             if action == SCREENSHOT:
                 shot = await client.browser(account, "frame")
                 return {"output": f"The page is attached ({shot.get('width')}×{shot.get('height')}). "
-                                  + _where_now(shot), "exit_code": 0, "ran_in": ran_in,
+                                  + _where_now(shot), "exit_code": 0, "ran_in": runs_in(client),
                         "images": [{"data": shot["data_b64"], "mimeType": shot.get("mime") or "image/png"}],
                         "screenshot_caption": f"Browser: {shot.get('title') or shot.get('url') or 'page'}"}
             answer = await client.browser(account, action, **fields)
@@ -312,33 +311,33 @@ class BrowserTool:
             return e.as_result()
         answer = answer or {}
         if action == "read":
-            return {"output": page_text(answer), "exit_code": 0, "ran_in": ran_in,
+            return {"output": page_text(answer), "exit_code": 0, "ran_in": runs_in(client),
                     "url": answer.get("url")}
         if action == "inspect":
-            return {"output": inspect_text(answer), "exit_code": 0, "ran_in": ran_in,
+            return {"output": inspect_text(answer), "exit_code": 0, "ran_in": runs_in(client),
                     "url": answer.get("url")}
         if action in ("notes", "note_done"):
             return {"output": notes_text(answer, closed=action == "note_done"), "exit_code": 0,
-                    "ran_in": ran_in, "url": answer.get("url")}
+                    "ran_in": runs_in(client), "url": answer.get("url")}
         if action == "tabs":
             tabs = answer.get("tabs") or []
             listing = "\n".join(f"{n}. {t.get('url')}{' (this one)' if t.get('current') else ''}"
                                 for n, t in enumerate(tabs, 1))
             return {"output": f"{len(tabs)} tab{'s' if len(tabs) != 1 else ''}:\n{listing}",
-                    "exit_code": 0, "ran_in": ran_in}
+                    "exit_code": 0, "ran_in": runs_in(client)}
         return {"output": f"Did: {describe(args)}. {_where_now(answer)} Read the page to see it.",
-                "exit_code": 0, "ran_in": ran_in, "url": answer.get("url")}
+                "exit_code": 0, "ran_in": runs_in(client), "url": answer.get("url")}
 
 
 async def _login(client, account: str, owner: Optional[str], args: Dict[str, Any], *,
-                 session: Optional[str] = None, agent: Optional[str] = None,
-                 ran_in: str = "workstation") -> Dict[str, Any]:
+                 session: Optional[str] = None, agent: Optional[str] = None) -> Dict[str, Any]:
     """`P27-06`. Sign in on the open page with a login from the person's
     vault, by its name. The values go from the vault to the daemon in one
     request and from there into the page's fields; what comes back to the
     model is which fields were filled and where the page went — never a value."""
     from core.database import SessionLocal
     from src import vault as V
+    from src.local_browser import runs_in
     from src.workstation_client import WorkstationError
 
     item = str(args.get("item") or args.get("login") or "").strip()
@@ -370,4 +369,4 @@ async def _login(client, account: str, owner: Optional[str], args: Dict[str, Any
             if answer.get("still_asking") else " Read the page to see where it went.")
     return {"output": V.scrub(f"Signed in with “{got['label']}”: filled the {filled} and sent the form. "
                               f"{_where_now(answer)}{tail}", values),
-            "exit_code": 0, "ran_in": ran_in, "url": answer.get("url")}
+            "exit_code": 0, "ran_in": runs_in(client), "url": answer.get("url")}

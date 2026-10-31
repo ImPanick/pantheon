@@ -64,7 +64,8 @@ DESTINATION_KEY = re.compile(
 # Hosts that are the operator's own machine or network by construction.
 LOCAL_NAMES = {
     "localhost", "host.docker.internal", "gateway.docker.internal",
-    "pantheon", "searxng", "chromadb", "chroma", "ntfy", "ollama", "workstation-vm",   # compose services
+    "pantheon", "searxng", "chromadb", "chroma", "ntfy", "ollama", "workstation",
+    "workstation-vm",   # compose services
 }
 LOCAL_SUFFIXES = (".local", ".lan", ".internal", ".localdomain", ".home.arpa")
 

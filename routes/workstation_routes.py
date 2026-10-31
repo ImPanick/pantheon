@@ -355,12 +355,14 @@ def setup_workstation_routes() -> APIRouter:
 
     def _control_target(request: Request):
         """Whose holder `/control` reads and sets: the workstation's screen
-        when it answers the caller; Pantheon's own browser when it does not
-        and that browser is theirs; otherwise the workstation's refusal."""
+        when it answers the caller (with Pantheon's own browser behind it for
+        a moment the workstation cannot take, `FallbackBrowser`); Pantheon's
+        own browser when the workstation does not answer and that browser is
+        theirs; otherwise the workstation's refusal."""
         from src.local_browser import LocalBrowserClient, browser_for
         owner = require_user(request)
         try:
-            return wa.workstation_for(owner, auth_manager=_auth_manager(request))
+            wa.workstation_for(owner, auth_manager=_auth_manager(request))
         except WorkstationError as refusal:
             try:
                 client, account = browser_for(owner, auth_manager=_auth_manager(request))
@@ -369,6 +371,11 @@ def setup_workstation_routes() -> APIRouter:
             if not isinstance(client, LocalBrowserClient):
                 raise _http_error(refusal)
             return client, account
+        try:
+            client, account = browser_for(owner, auth_manager=_auth_manager(request))
+        except WorkstationError as e:
+            raise _http_error(e)
+        return client, account
 
     def _watched(request: Request, person: str):
         """`B1424`. `(client, account)` for the screen being watched: the

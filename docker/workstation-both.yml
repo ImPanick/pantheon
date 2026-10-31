@@ -1,13 +1,10 @@
 # Both workstation backends side by side — `B1478`, `D-2026-10-25-04` §3–4.
 #
-# Since 2026-10-31 the VM backend is part of Pantheon's own docker-compose.yml
-# (service `workstation-vm`, the owner: *"We need to give this a proper VM to
-# work inside for the workstation"*), so the container's overlay alone puts the
-# two side by side:
-#
-#   COMPOSE_FILE=docker-compose.yml:docker/workstation.yml
-#
-# and Settings -> Workstation -> Backend chooses between them. This file is
+# Since 2026-10-31 both backends are part of Pantheon's own docker-compose.yml
+# (services `workstation` and `workstation-vm`; the owner: *"We need to give
+# this a proper VM to work inside for the workstation"*), so no overlay is
+# needed, and Settings -> Workstation -> Backend chooses between them (`auto`:
+# the VM where Docker can use KVM, the container where it cannot). This file is
 # kept so a COMPOSE_FILE line that still names it keeps working; it restates
 # the one line it used to add to Pantheon and defines no second VM host (two
 # hosts would share the `workstation-vm` volume, every person's machine).

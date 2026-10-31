@@ -731,15 +731,17 @@ def test_a_person_who_may_not_use_it_is_not_told_the_admins_network(tmp_path, se
     assert status["state"] == "not_permitted" and status["network"] is None
 
 
-# ── the overlay, as compose resolves it ──────────────────────────────────────
+# ── the stack, as compose resolves it ────────────────────────────────────────
 
 def _compose(pgid="1234"):
     if not shutil.which("docker"):
         pytest.skip("the docker CLI is not installed here")
     env = {k: v for k, v in os.environ.items() if k not in ("COMPOSE_FILE", "PGID")}
     env["PGID"] = pgid
-    done = subprocess.run(["docker", "compose", "-f", "docker-compose.yml", "-f",
-                           "docker/workstation.yml", "config", "--format", "json"],
+    # The container is in Pantheon's own stack since 2026-10-31
+    # (`docker/workstation.yml` is a shim that adds nothing).
+    done = subprocess.run(["docker", "compose", "-f", "docker-compose.yml",
+                           "config", "--format", "json"],
                           cwd=ROOT, env=env, capture_output=True, text=True, timeout=60)
     if done.returncode != 0 and "is not a docker command" in done.stderr:
         pytest.skip("docker compose is not installed here")

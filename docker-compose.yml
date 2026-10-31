@@ -18,7 +18,10 @@ services:
       # land under /app/.local for the pantheon user. Persist them so a
       # container recreate does not silently remove installed serve engines.
       - ${APP_DATA_DIR:-./data}/local:/app/.local:z
-      # The workstation's pairing token (`workstation-vm` below), read-only.
+      # The workstations' pairing tokens (`workstation` and `workstation-vm`
+      # below) and the container's network gate's, read-only.
+      - workstation-pairing:/workstation-pairing:ro
+      - workstation-net-pairing:/workstation-net-pairing:ro
       - workstation-vm-pairing:/workstation-vm-pairing:ro
     # Pantheon's own browser (`src/local_browser.py`) is a headless Firefox,
     # whose content processes share memory through /dev/shm; Docker's 64 MB
@@ -115,7 +118,10 @@ services:
       # Find yours with:  id -u  /  id -g
       - PUID=${PUID:-1000}
       - PGID=${PGID:-1000}
-      # The workstation, a virtual machine per person (`workstation-vm` below).
+      # The workstation: a virtual machine per person (`workstation-vm`
+      # below), or the container (`workstation`) where Docker has no KVM.
+      - PANTHEON_WORKSTATION_URL=http://workstation:7040
+      - PANTHEON_WORKSTATION_NET_URL=http://workstation:7041
       - PANTHEON_WORKSTATION_VM_URL=http://workstation-vm:7040
       - PANTHEON_WORKSTATION_VM_PAIRING=/workstation-vm-pairing
     depends_on:
@@ -253,6 +259,77 @@ services:
       - NTFY_BASE_URL=${NTFY_BASE_URL:-http://localhost:8091}
     restart: unless-stopped
 
+  # The workstation's other kind — an Ubuntu container beside Pantheon, a Unix
+  # account and a desktop per person in it — for a host whose Docker has no KVM.
+  # The owner (2026-10-31), testing on such a host: *"Local test doesn't
+  # populate a VM at all"* — an emulated VM takes the better part of an hour to
+  # make its image and runs everything about ten times slower. Settings ->
+  # Workstation -> Backend `auto` (the default) uses the VM below where Docker
+  # can use KVM and this container where it cannot; an admin can pick either.
+  # The two services are what `docker/workstation.yml` used to add; it is now
+  # a shim that adds nothing.
+  #
+  # `P20-06`. The network the workstation has is the one the admin chose, held
+  # where the workstation's root cannot reach. This container OWNS the network
+  # namespace the workstation runs in (`network_mode` below) and is the only one
+  # with CAP_NET_ADMIN — the one capability that writes the rules, argued in
+  # `workstation/gate.py`: it changes this namespace's firewall and nothing on
+  # the host, and every other capability is dropped. Recreate the workstation
+  # after restarting this (`docker compose up -d`): a new namespace leaves the
+  # old one with loopback only, which fails closed.
+  workstation-net:
+    build:
+      context: ./workstation
+    entrypoint: ["/usr/bin/tini", "--", "python3", "-m", "workstation.gate"]
+    command: ["--bind", "0.0.0.0", "--port", "7041"]
+    hostname: workstation
+    networks:
+      default:
+        aliases: [workstation]
+    environment:
+      - PANTHEON_WORKSTATION_PAIRING_GID=${PGID:-1000}
+    volumes:
+      - workstation-net-pairing:/workstation-net-pairing
+    cap_drop: [ALL]
+    # NET_ADMIN writes the rules; CHOWN gives the token to Pantheon's group.
+    cap_add: [NET_ADMIN, CHOWN]
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import json,sys,urllib.request as u; sys.exit(0 if json.load(u.urlopen('http://127.0.0.1:7041/v1/network', timeout=5)).get('mode') else 1)"]
+      interval: 15s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
+  # No Docker socket, not privileged, no added capability and CAP_NET_RAW taken
+  # away; no Pantheon volume but the pairing one and the projects folder
+  # (`B1417`: one folder per person in it, never `./data` itself).
+  workstation:
+    build:
+      context: ./workstation
+    command: ["--system", "ubuntu", "--bind", "0.0.0.0", "--port", "7040"]
+    network_mode: "service:workstation-net"
+    depends_on:
+      workstation-net:
+        condition: service_healthy
+    cap_drop: [NET_RAW]
+    environment:
+      - PANTHEON_WORKSTATION_PAIRING_GID=${PGID:-1000}
+    volumes:
+      - workstation-homes:/home
+      - workstation-pairing:/workstation-pairing
+      - ${APP_DATA_DIR:-./data}/projects:/projects:z
+    # Firefox's content processes share memory through /dev/shm, and Docker's
+    # 64 MB default crashes tabs. A tmpfs limit, not memory set aside.
+    shm_size: "2gb"
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import json,sys,urllib.request as u; sys.exit(0 if json.load(u.urlopen('http://127.0.0.1:7040/v1/health', timeout=5)).get('agent') == 'pantheon-workstation' else 1)"]
+      interval: 15s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    restart: unless-stopped
+
   # The workstation — a virtual machine of their own for each person, that the
   # agent works inside: its shell, Python and files, a desktop the person can
   # watch and take over, and a Firefox there. The owner (2026-10-31): *"We need
@@ -273,7 +350,8 @@ services:
   # one device-cgroup rule for /dev/kvm alone (QEMU's emulator when the host has
   # none — the panel says which), its own volume, the pairing volume, and the
   # projects folder (`B1427`: each person's machine sees its own folder in it).
-  # The browser does NOT need it: Pantheon has one of its own.
+  # The browser does NOT need it: Pantheon has one of its own, and uses it
+  # whenever the workstation cannot answer yet.
   workstation-vm:
     build:
       context: ./workstation
@@ -309,5 +387,8 @@ volumes:
   searxng-data:
   chromadb-data:
   ntfy-cache:
+  workstation-homes:
+  workstation-pairing:
+  workstation-net-pairing:
   workstation-vm:
   workstation-vm-pairing:

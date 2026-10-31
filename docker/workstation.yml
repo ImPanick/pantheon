@@ -1,128 +1,18 @@
-# The workstation — `P20-01`, `D-2026-09-30-03`. An Ubuntu machine beside
-# Pantheon that the agents work in: a Unix account and a desktop per person,
-# kept between chats, with "Reset to clean". Switch it on with one line in .env:
+# The workstation as an Ubuntu container — `P20-01`, `D-2026-09-30-03`.
 #
-#   COMPOSE_FILE=docker-compose.yml:docker/workstation.yml
+# Since 2026-10-31 this is part of Pantheon's own docker-compose.yml, with no
+# overlay: services `workstation-net` and `workstation`, beside the VM host
+# `workstation-vm`. The owner, testing on Docker Desktop with no KVM: *"Local
+# test doesn't populate a VM at all."* Settings -> Workstation -> Backend `auto`
+# (the default) uses a VM per person where Docker can use KVM and this
+# container where it cannot; an admin can pick either. Read those services'
+# comments for what each is given and what it is not.
 #
-# (on Windows the separator is `;` — or add COMPOSE_PATH_SEPARATOR=: as well),
-# then `docker compose up -d --build`, then Settings -> Workstation -> On.
-#
-# What it is given, and what it deliberately is not:
-#   * its own image, built from workstation/ and nothing else;
-#   * a volume of homes (one per person, kept) and a pairing volume that only
-#     these two services mount — Pantheon read-only, readable by Pantheon's
-#     PGID and by no workstation account;
-#   * the network the admin chose in Settings -> Workstation (full by default,
-#     the owner's answer), held by `workstation-net` below (`P20-06`);
-#   * NO Docker socket, NOT privileged, no added capabilities — and CAP_NET_RAW
-#     taken away — and no Pantheon volume but the pairing one **and the
-#     projects folder** (`B1417`, below). Its port is not published: only
-#     Pantheon, on the compose network, can reach it.
-#
-# `B1417`, the projects folder. The agent has to be able to run and test what
-# it builds, and the workstation is where that is safe to do — so the folder
-# projects are made in is shared, and ONLY that folder:
-#
-#   * `./data/projects` on the host is `/app/data/projects` to Pantheon (it is
-#     inside the existing `./data` mount) and `/projects` here. One folder,
-#     three views, and the owner can open it in an editor on their own disk.
-#   * **One folder per person inside it** (`B1424`): `/projects/<name>-<hash>`,
-#     made by the daemon on a person's first use, theirs, in Pantheon's group
-#     (`PANTHEON_WORKSTATION_PAIRING_GID`), `2770`. The daemon's jail admits a
-#     person to their own folder only; the root is `0771`, so nobody can even
-#     list who else works here. Admins (pushed by Pantheon) reach every
-#     folder through their file tools. With sudo on, every agent is root in
-#     this one container and none of that holds — the per-person wall with
-#     root is the VM backend (`docker/workstation-vm.yml`).
-#   * A bind mount of a SUBDIRECTORY exposes that subtree and nothing above
-#     it. `memory.json`, `app.db`, `auth.json` and `./data/ssh` stay out of
-#     reach: they are siblings of `projects/`, not its children. That is the
-#     whole reason the mount is `./data/projects` and never `./data`.
-#   * Root in here may write anything into /projects — the owner allows root
-#     in the sandbox, and the daemon's home jail is documented in
-#     `workstation/agentd.py` as fiction once `sudo` is on. The boundary was
-#     always this container, and it is unchanged by this line.
-#   * The one way this mount could cross back is a symlink root plants in
-#     /projects pointing at a Pantheon path, which Pantheon's own file tools
-#     then follow when the workstation is off. Inside this container such a
-#     link resolves in THIS filesystem, where no Pantheon file exists; on
-#     Pantheon's side `tests/test_projects_are_sandboxed.py` drives that
-#     escape and holds the tools inside the folder.
+# This file is kept so a COMPOSE_FILE line that still names it keeps working,
+# and defines nothing of its own: it restates the two lines it used to add to
+# Pantheon, which docker-compose.yml now sets the same way.
 services:
-  # `P20-06`. The network the workstation has is the one the admin chose, held
-  # where the workstation's root cannot reach. This container OWNS the network
-  # namespace the workstation runs in (`network_mode` below) and is the only one
-  # with CAP_NET_ADMIN — the one capability that writes the rules, argued in
-  # `workstation/gate.py`: it changes this namespace's firewall and nothing on
-  # the host, and every other capability is dropped. Pantheon sets the mode
-  # through it with a token in a volume the workstation never mounts.
-  # Recreate the workstation after restarting this (`docker compose up -d`): a
-  # new namespace leaves the old one with loopback only, which fails closed.
-  workstation-net:
-    build:
-      context: ./workstation
-    entrypoint: ["/usr/bin/tini", "--", "python3", "-m", "workstation.gate"]
-    command: ["--bind", "0.0.0.0", "--port", "7041"]
-    # The workstation shares this namespace, so its name and address are these.
-    hostname: workstation
-    networks:
-      default:
-        aliases: [workstation]
-    environment:
-      - PANTHEON_WORKSTATION_PAIRING_GID=${PGID:-1000}
-    volumes:
-      - workstation-net-pairing:/workstation-net-pairing
-    cap_drop: [ALL]
-    # NET_ADMIN writes the rules; CHOWN gives the token to Pantheon's group.
-    cap_add: [NET_ADMIN, CHOWN]
-    healthcheck:
-      test: ["CMD", "python3", "-c", "import json,sys,urllib.request as u; sys.exit(0 if json.load(u.urlopen('http://127.0.0.1:7041/v1/network', timeout=5)).get('mode') else 1)"]
-      interval: 15s
-      timeout: 10s
-      retries: 3
-      start_period: 10s
-    restart: unless-stopped
-
-  workstation:
-    build:
-      context: ./workstation
-    command: ["--system", "ubuntu", "--bind", "0.0.0.0", "--port", "7040"]
-    # `P20-06`: in the gate's namespace (its hostname and address are this
-    # one's), and without CAP_NET_RAW — with it, root here wrote its own
-    # Ethernet frames past the gate's rules (measured; `workstation/gate.py`).
-    network_mode: "service:workstation-net"
-    depends_on:
-      workstation-net:
-        condition: service_healthy
-    cap_drop: [NET_RAW]
-    environment:
-      # The group that may read the pairing token: the one Pantheon runs as.
-      - PANTHEON_WORKSTATION_PAIRING_GID=${PGID:-1000}
-    volumes:
-      - workstation-homes:/home
-      - workstation-pairing:/workstation-pairing
-      # `B1417`. The projects folder, and only it — see the header.
-      - ${APP_DATA_DIR:-./data}/projects:/projects:z
-    # Firefox's content processes share memory through /dev/shm, and Docker's
-    # 64 MB default crashes tabs. A tmpfs limit, not memory set aside.
-    shm_size: "2gb"
-    healthcheck:
-      test: ["CMD", "python3", "-c", "import json,sys,urllib.request as u; sys.exit(0 if json.load(u.urlopen('http://127.0.0.1:7040/v1/health', timeout=5)).get('agent') == 'pantheon-workstation' else 1)"]
-      interval: 15s
-      timeout: 10s
-      retries: 3
-      start_period: 20s
-    restart: unless-stopped
-
   pantheon:
     environment:
       - PANTHEON_WORKSTATION_URL=http://workstation:7040
       - PANTHEON_WORKSTATION_NET_URL=http://workstation:7041
-    volumes:
-      - workstation-pairing:/workstation-pairing:ro
-      - workstation-net-pairing:/workstation-net-pairing:ro
-
-volumes:
-  workstation-homes:
-  workstation-pairing:
-  workstation-net-pairing:

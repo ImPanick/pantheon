@@ -1289,7 +1289,7 @@ def no_projects_sentence(folder: str) -> str:
     return (f"Your projects folder, {folder}, is not in this workstation: nothing is mounted at "
             f"{posixpath.dirname(folder)}, so ${P.PROJECTS_ENV} names a folder that is not there "
             "and a command cannot go into it. An admin mounts Pantheon's projects folder there "
-            "(the workstation overlay, docker/workstation.yml, mounts it as /projects).")
+            "(Pantheon's docker-compose.yml mounts it as /projects).")
 
 
 def station_folder(owner: Optional[str], account: str, workspace: Optional[str],

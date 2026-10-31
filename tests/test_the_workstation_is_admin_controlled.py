@@ -566,8 +566,9 @@ def test_the_admins_sudo_reaches_the_daemon_both_ways(app, ws):
     assert ws.system.sudo is False, "precondition: the daemon starts with sudo off"
     switch_on(app, ws)
     status = as_user(app, ALLOWED).get("/api/workstation/status").json()
-    # `B1428`: unanswered, `sudo` is off in the shared container.
-    assert ws.system.sudo is False and status["daemon"]["sudo"] is False
+    # `B1428`: unanswered, `sudo` is on everywhere — the owner (2026-10-31):
+    # *"Agents get FULL access."*
+    assert ws.system.sudo is True and status["daemon"]["sudo"] is True
     admin = as_user(app, ADMIN)
     admin.post("/api/auth/settings", json={"workstation_sudo": True})
     assert admin.post("/api/workstation/check").json()["daemon"]["sudo"] is True
@@ -587,7 +588,8 @@ def test_ensure_ready_makes_the_account_and_hands_back_what_the_tools_need(app, 
     ready = run(wa.ensure_ready(ALSO, auth_manager=app.state.auth_manager))
     assert ready.account == account_for(ALSO)
     assert isinstance(ready.client, WorkstationClient) and ready.client.base == ws.url
-    assert ready.home["created"] is True and ready.daemon["sudo"] is False   # `B1428`: the container's default
+    # `B1428`: unanswered, on in the container too (the owner: "Agents get FULL access").
+    assert ready.home["created"] is True and ready.daemon["sudo"] is True
     assert account_for(ALSO) in ws.system.accounts()
     with pytest.raises(WorkstationError) as e:
         run(wa.ensure_ready(PLAIN, auth_manager=app.state.auth_manager))

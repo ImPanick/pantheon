@@ -410,13 +410,13 @@ function renderSudo(settings, daemon) {
   if (!why) return;
   if (why.dataset.shipped === undefined) why.dataset.shipped = why.textContent;
   why.textContent = SUDO_WORDS[machineKind(settings, daemon)] || why.dataset.shipped;
-  // `B1428`, `D-2026-10-25-04` §4: with no answer of the admin's own, sudo
-  // follows the backend — on in a VM, off in the shared container.
+  // `B1428`: with no answer of the admin's own, sudo is on — the owner
+  // (2026-10-31): *"Agents get FULL access."*
   const auto = $('ws-sudo-auto');
   if (auto) {
     const byBackend = settings && settings.sudo_choice === null;
     auto.textContent = byBackend
-      ? 'Automatic: on in a virtual machine, off in the shared container.'
+      ? 'Automatic: on — agents get full access. Turn it off to keep them out of root.'
       : 'Set by an admin.';
     const reset = $('ws-sudo-reset');
     if (reset) reset.hidden = byBackend;

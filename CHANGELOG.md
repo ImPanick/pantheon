@@ -313,16 +313,27 @@ the next one is cut.
   button under each reply*. Its button used to show whenever a voice was chosen; now choosing a
   voice for voice chat does not put it under every reply. **An install that had a voice chosen
   keeps its button**, and the first settings save records that.
-- **The workstation is a virtual machine in the stack** (2026-10-31). `docker-compose.yml` now
-  runs the VM backend as `workstation-vm`, so Settings → Workstation → On works with no overlay:
-  each person gets an Ubuntu VM of their own. Nothing is made until it is first switched on; then
-  the host makes the machine image once (minutes with KVM, much longer without), and the panel
-  says so until it is done. `docker compose up -d --build` builds it. `docker/workstation-vm.yml`
-  and `docker/workstation-both.yml` still load and add nothing; **an install that ran
-  `docker/workstation-vm.yml` runs `docker compose up -d --remove-orphans` once** to retire its old
-  `workstation` container (the machines are on the same volume and are kept; the new host refuses
-  to start while the old one holds it). With no container backend beside it, `auto` is the VM
-  whatever the host runs on.
+- **The workstation is in the stack, a VM where Docker has KVM and a container where it does
+  not** (2026-10-31). `docker-compose.yml` now runs both local backends — `workstation-vm`, an
+  Ubuntu VM per person, and `workstation` (with its network gate `workstation-net`), an Ubuntu
+  container with an account per person — so Settings → Workstation → On works with no overlay.
+  *Backend* `auto` (the default) uses the VM where it runs on KVM and the container otherwise: on
+  Docker Desktop for Windows or macOS an emulated VM took the better part of an hour to make its
+  image before anything showed. The VM host makes nothing until the workstation is first used on
+  it. `docker compose up -d --build` builds both. `docker/workstation.yml`,
+  `docker/workstation-vm.yml` and `docker/workstation-both.yml` still load and add nothing; an
+  install that used `docker/workstation-vm.yml` has its old VM host replaced by the container on
+  the next `up` (the machines are on the `workstation-vm` volume and are kept; the new VM host
+  refuses to start while another holds it).
+- **Agents get sudo in the workstation unless an admin turns it off** (2026-10-31). The owner:
+  *"Agents get FULL access."* Unanswered, *sudo* used to be off in the container; it is now on in
+  every backend. In the container that lets one person's agent read another's workstation home,
+  which the panel says beside the switch. An admin who already chose keeps their choice.
+- **The browser works while the workstation is off or still starting** (2026-10-31). The browser
+  window and `agent_browser` use the workstation's Firefox when it answers and Pantheon's own
+  headless Firefox when it does not, so the window no longer says *No browser to show* while a
+  machine is being made. Pantheon's browser reaches the local network too when an admin has turned
+  on agent LAN reach and the person may use the workstation; never Pantheon's own services.
 - **A fresh install's first visit makes the admin** (2026-10-31). The installer no longer makes an
   `admin` with a random password printed only to a log, which had left most new instances with no
   way in. With no account, the sign-in page opens on setup: the first account is the admin, and a

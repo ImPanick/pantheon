@@ -197,55 +197,75 @@ COMPOSE_FILE=docker-compose.yml:docker/gpu.nvidia.yml:docker/host-docker.yml
 COMPOSE_FILE=docker-compose.yml:docker/gpu.amd.yml:docker/host-docker.yml
 ```
 
-**A workstation for the agents (opt-in, `P20`).** An Ubuntu desktop beside
-Pantheon: a private account, home and desktop per person, kept between chats,
-with *Reset to clean*. When it is on, the agent's shell, Python and file tools
-run there instead of inside Pantheon, and a `computer` tool can see and work
-its screen. Turn it on with one line in `.env`, then rebuild:
+**A workstation for the agents (`P20`).** An Ubuntu desktop the agents work
+in: a private account, home and desktop per person, kept between chats, with
+*Reset to clean*. When it is on, the agent's shell, Python and file tools run
+there instead of inside Pantheon, a `computer` tool can see and work its
+screen, and the person can watch that screen and take over at any time. It is
+part of the default stack; turn it on in **Settings → Workstation → On**.
+Nothing to paste: Pantheon finds it and reads its keys from volumes only it and
+the workstation's containers share.
 
-```bash
-COMPOSE_FILE=docker-compose.yml:docker/workstation.yml     # Windows: separate with ; instead of :
-docker compose up -d --build
+The stack ships both local kinds, and *Backend* in the same panel chooses
+between them. *Automatic* (the default) picks the VM where Docker can use KVM
+and the container where it cannot:
+
+| | What it is |
+|---|---|
+| **Virtual machines** (`workstation-vm`) | An Ubuntu VM for each person: a hypervisor between people, and *Reset to clean* is a fresh machine. Needs KVM to be quick (Linux with `/dev/kvm`). The machine image is made when the workstation is first used on this backend (minutes with KVM); each person's machine then starts on their first use and takes up to 2 GB of RAM while it runs (`PANTHEON_WORKSTATION_VM_MEMORY_MIB`); one nobody has used for 30 minutes is powered off and starts again on the next use (`PANTHEON_WORKSTATION_VM_IDLE_MIN`), and no more run at once than the host's memory holds (`PANTHEON_WORKSTATION_VM_MAX_RUNNING`). Without KVM (Docker Desktop on Windows or macOS) the machines are emulated: the image takes an hour or more and everything runs several times slower, which is why *Automatic* uses the container there. |
+| **Container** (`workstation`) | An Ubuntu container beside Pantheon. Each person is a Unix account in it. Starts in seconds on any Docker. |
+| **Another machine** | Any Ubuntu 24.04 machine — a Proxmox or libvirt VM, a spare box. Copy the repository's `workstation/` folder to it and run `sudo python3 workstation/install.py`; it prints the four lines to put in Pantheon's `.env` (`COMPOSE_FILE=docker-compose.yml:docker/workstation-remote.yml`, the address, the token and the certificate's fingerprint). HTTPS with that one certificate pinned by default; `--no-tls` for a LAN or a VPN. Pantheon never sends the workstation's token over plain http to a public address. |
+
+**A real VM on Windows.** Docker Desktop runs inside WSL 2's own virtual
+machine, so a VM per person needs WSL 2 to pass virtualization through to it
+(nested virtualization). That is Windows 11 only. Put these lines in
+`%UserProfile%\.wslconfig`, run `wsl --shutdown`, start Docker Desktop again,
+then `docker compose up -d --force-recreate workstation-vm`:
+
+```ini
+[wsl2]
+nestedVirtualization=true
 ```
 
-Then **Settings → Workstation → On**. Nothing to paste: Pantheon finds it at
-`http://workstation:7040` and reads its keys from volumes only it and the
-workstation's containers share. It has full network access by default — an
-admin narrows it to *internet only* or *none* in the same panel, held by the
-small `workstation-net` container the overlay starts beside it, so an agent
-using *sudo* cannot lift it (`P20-06`) — and no access to Docker or to
-Pantheon's data, except each person's projects folder (`data/projects`,
-shared read-write so a project is the same folder on both sides, `B1417`). *sudo*
-is off in the container unless an admin turns it on — with it on, one person's
-agent can read another's workstation home, and the panel says so beside the
-switch — and on in a person's own VM (`B1428`). With a GPU
-overlay, list all three:
-`COMPOSE_FILE=docker-compose.yml:docker/gpu.nvidia.yml:docker/workstation.yml`.
+Settings → Workstation then says *KVM* instead of *emulated*, and *Automatic*
+moves to the VM. On Windows 10 and on macOS, Docker has no KVM to give, so the
+container is the fast workstation there.
 
-**Three kinds of workstation** (`P20-07`) — one line in `.env` each, then `docker compose up -d --build` and **Settings → Workstation → On**. Nothing else to type for the first two: Pantheon finds the workstation and pairs with it on its own.
+Agents have full access by default: *sudo* is on in every backend until an
+admin turns it off (the owner, 2026-10-31: *"Agents get FULL access"*). In the
+container that means one person's agent can read another's workstation home,
+and the panel says so beside the switch; in a person's own VM it reaches only
+their machine. The network is full by default too — an admin narrows it to
+*internet only* or *none* in the same panel, held by the small
+`workstation-net` container beside the container backend, so an agent using
+*sudo* cannot lift it (`P20-06`). Neither backend has access to Docker or to
+Pantheon's data, except the projects folder (`data/projects`, shared
+read-write so a project is the same folder on both sides, `B1417`; on the VM
+backend each person's machine is given their own folder and no other, `B1427`).
 
-| | `.env` | What it is |
-|---|---|---|
-| **Container** | `COMPOSE_FILE=docker-compose.yml:docker/workstation.yml` | An Ubuntu container beside Pantheon. Each person is a Unix account in it. Smallest and quickest. |
-| **Virtual machines** | `COMPOSE_FILE=docker-compose.yml:docker/workstation-vm.yml` | An Ubuntu VM for each person: a hypervisor between people, and *Reset to clean* is a fresh machine. Uses KVM when the host has it (Linux with `/dev/kvm`); without it the machines are emulated and slow, and the panel says so. The first start makes the machine image (minutes with KVM, an hour or more without); each person's machine then starts on their first use and takes up to 2 GB of RAM while it runs (`PANTHEON_WORKSTATION_VM_MEMORY_MIB`); one nobody has used for 30 minutes is powered off and starts again on the next use (`PANTHEON_WORKSTATION_VM_IDLE_MIN`), and no more run at once than the host's memory holds (`PANTHEON_WORKSTATION_VM_MAX_RUNNING`). |
-| **Another machine** | the lines `install.py` prints | Any Ubuntu 24.04 machine — a Proxmox or libvirt VM, a spare box. Copy the repository's `workstation/` folder to it and run `sudo python3 workstation/install.py`; it prints the four lines to put in Pantheon's `.env` (this overlay's `COMPOSE_FILE`, the address, the token and the certificate's fingerprint). HTTPS with that one certificate pinned by default; `--no-tls` for a LAN or a VPN. Pantheon never sends the workstation's token over plain http to a public address. |
+**The browser does not need a workstation.** Pantheon's image has a headless
+Firefox of its own. The agents' `agent_browser` tool and the browser window use
+the workstation's Firefox when the workstation answers, and Pantheon's whenever
+it does not (switched off, still starting, or not allowed for that person). The
+person watches and takes control of either from the same window. Pantheon's
+browser reaches public addresses only, plus the local network when an admin has
+turned on *agent LAN reach* and the person may use the workstation; never
+Pantheon's own services.
 
-On Windows, separate `COMPOSE_FILE` entries with `;` instead of `:`. With a GPU overlay, list both.
+**Starting and stopping the backends from Pantheon** (`B1478`, opt-in). Without
+the host's Docker both backends run (an idle VM host runs no machine) and
+*Backend* chooses which one answers. Add `docker/host-docker.yml` to
+`COMPOSE_FILE` and choosing one also starts that backend and stops the other,
+and the panel lists the workstation's containers with Start, Stop, Restart and
+Logs. That overlay gives Pantheon the host's Docker socket — broad control of
+the host, the same opt-in the Forge uses — and Pantheon uses it here only on its
+own compose project's workstation services: it lists, starts, stops, restarts
+and reads logs, and never creates, pulls or removes anything.
 
-**Both local backends, and a switch between them** (`B1478`, opt-in). Add
-`docker/workstation-both.yml` after the container's overlay —
-`COMPOSE_FILE=docker-compose.yml:docker/workstation.yml:docker/workstation-both.yml`
-— and the VM host runs beside the container. Settings → Workstation → *Backend*
-then chooses which one the agents use; *Automatic* is the VM where the host has
-KVM and the container otherwise. Add `docker/host-docker.yml` as well and the
-choice also starts that backend and stops the other, and the panel lists the
-workstation's containers with Start, Stop, Restart and Logs. That overlay gives
-Pantheon the host's Docker socket — broad control of the host, the same opt-in
-the Forge uses — and Pantheon uses it here only on its own compose project's
-workstation services: it lists, starts, stops, restarts and reads logs, and
-never creates, pulls or removes anything. Without it, both run and the choice is
-which one answers. On the VM backend each person's machine is given their own
-folder of `data/projects` and no other (`B1427`).
+`docker/workstation.yml`, `docker/workstation-vm.yml` and
+`docker/workstation-both.yml` used to add the workstation; they still load and
+add nothing. An install that used them should run
+`docker compose up -d --build --remove-orphans` once.
 
 **Docker GPU overlays.** CPU-only users can skip this section. Forge can
 only detect GPUs that Docker exposes to the container — if the host runtime or
