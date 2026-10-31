@@ -37,6 +37,9 @@ const ABBREVIATIONS = new Set([
 const THINK_OPEN = /<(?:mm:)?(?:think|thinking|thought)(?:\s[^>]*)?>/i;
 const THINK_BLOCK = /<(?:mm:)?(?:think|thinking|thought)(?:\s[^>]*)?>[\s\S]*?<\/(?:mm:)?(?:think|thinking|thought)>/gi;
 const FENCE_LINE = /^[ \t]{0,3}(```|~~~)/;
+// The entities a reply's HTML is written with, each read once: `&amp;lt;` is
+// the text `&lt;`, not a `<`.
+const ENTITIES = { nbsp: ' ', amp: '&', lt: '<', gt: '>', quot: '"', '#39': "'" };
 
 /**
  * The text up to the first construct that is still open at its end, so the
@@ -129,8 +132,7 @@ export function speakableText(markdown) {
   // HTML: a break is a line, other tags go and their words stay.
   s = s.replace(/<br\s*\/?>/gi, '\n');
   s = s.replace(/<\/?[A-Za-z][^>]*>/g, ' ');
-  s = s.replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"').replace(/&#39;/g, "'");
+  s = s.replace(/&(nbsp|amp|lt|gt|quot|#39);/g, (_m, name) => ENTITIES[name]);
   // Inline code: a short name is said, a long snippet is not.
   s = s.replace(/`([^`\n]*)`/g, (_m, c) => (c.length <= 40 ? c : ' '));
   // Line marks: headings, quotes, list bullets and numbers, task boxes.

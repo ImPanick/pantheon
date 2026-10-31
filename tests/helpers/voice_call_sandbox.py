@@ -211,7 +211,7 @@ def build(directory: Path) -> Path:
     return directory
 
 
-def run(box: Path, script: str) -> dict:
+def run(box: Path, script: str, timeout: float = 60) -> dict:
     case = box / "case.mjs"
     case.write_text(
         "import { setup, speaking, flush, makeTimers, SILENT, LOUD } from './harness.mjs';\n"
@@ -223,7 +223,10 @@ def run(box: Path, script: str) -> dict:
         + "\nconsole.log(JSON.stringify(out));\n",
         encoding="utf-8",
     )
-    proc = subprocess.run(["node", str(case)], cwd=box, capture_output=True, text=True, timeout=60)
+    try:
+        proc = subprocess.run(["node", str(case)], cwd=box, capture_output=True, text=True, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        raise AssertionError(f"node did not finish in {timeout:g} s") from None
     assert proc.returncode == 0, proc.stderr
     lines = [ln for ln in proc.stdout.splitlines() if ln.strip()]
     assert lines, "node produced no stdout"

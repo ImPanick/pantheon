@@ -125,6 +125,20 @@ def test_markup_in_a_reply_is_never_markup(box):
     assert o["ran"] is False
 
 
+def test_an_entity_is_read_once(box):
+    """Each entity in a reply is read once: `&amp;lt;` is the text `&lt;`.
+    Read twice, as chained replaces did, it became a `<` the reply never had
+    (CodeQL `js/double-escaping`; `markdown.js` decodes maths the same way)."""
+    o = run(box, """
+        out.said = ['Fish &amp; chips', 'Write &amp;lt;b&amp;gt; for bold', '5 &lt; 6 &amp;&amp; 7 &gt; 6',
+                    'She said &quot;hi&quot; &amp; it&#39;s done', 'one&nbsp;two'].map((t) => ST.speakableText(t));
+    """)
+    assert o["said"] == [
+        "Fish and chips", "Write &lt;b&gt; for bold", "5 < 6 && 7 > 6",
+        "She said \"hi\" and it's done", "one two",
+    ]
+
+
 def test_short_sentences_are_joined_and_lone_symbols_dropped(box):
     o = run(box, "out.pieces = ST.speechPieces('Yes. Done. — 🎉 Here is the longer explanation of the rest.');")
     assert o["pieces"] == ["Yes. Done. Here is the longer explanation of the rest."]

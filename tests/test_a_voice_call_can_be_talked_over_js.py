@@ -290,3 +290,27 @@ def test_the_text_tests_on_what_people_and_whisper_say(box):
     assert o["backchannel"] == [True] * 7 + [False] * 4
     assert o["echo"] == [True, False, False, False]
     assert o["clean"] == ["", "", "", "", "Hello there", "Thank you."]
+
+
+def test_a_long_hum_and_then_words_is_answered_at_once(box):
+    """Whisper writes a hum as long as it was. Asking whether a long hum and
+    then words is only listening tried every way the hum splits into "m"s:
+    twenty of them and ", no." took 23 seconds, with the page frozen. The
+    shapes after the first three are CodeQL's (`js/redos`), each made to fail
+    at its end."""
+    o = run(box, """
+        const phrases = [
+          'M' + 'm'.repeat(5000) + ', no.', 'H' + 'm'.repeat(5000) + ', let me think.',
+          'Mm-hmm, '.repeat(1000) + 'wait what?',
+          'm'.repeat(5000) + 'x', 'm' + 'mm'.repeat(2500) + 'x', 'h' + 'mmh'.repeat(1700) + 'x',
+          'u' + 'mmu'.repeat(1700) + 'x', 'u' + 'hhmu'.repeat(1250) + 'x', 'a' + 'hhma'.repeat(1250) + 'x',
+        ];
+        const started = performance.now();
+        out.listening = phrases.map((p) => VC.isBackchannel(p));
+        out.ms = performance.now() - started;
+        out.stillListening = ['M' + 'm'.repeat(5000) + '.', 'Hmmmmmmmmmmmmmmmmmmmmm.', 'Mmhmm', 'Uhm, okay.',
+                              'Uhuh.', 'Mm-mm.', 'Hm, hm. Right.'].map((p) => VC.isBackchannel(p));
+    """, timeout=20)
+    assert o["listening"] == [False] * 9
+    assert o["ms"] < 500
+    assert o["stillListening"] == [True] * 7

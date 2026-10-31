@@ -62,8 +62,13 @@ const STOP_WORDS = /^(?:stop|cancel|never ?mind|be quiet|quiet|shush|hold on|wai
 const STOP_REPLY = /^(?:stop|cancel|never ?mind)/i;
 const END_WORDS = /^(?:(?:please )?end (?:the |this )?(?:call|voice chat)|hang up|goodbye|bye(?: bye)?)(?: please| now)?[.!]*$/i;
 // What a person says to show they are listening, not to take a turn: while the
-// agent is talking or working it is let go, and the agent goes on.
-const BACKCHANNEL = /^(?:(?:m+(?:-?h?m+)?|uh[- ]?huh|h+m+|ok(?:ay)?|yeah|yep|yup|right|sure|cool|alright|all right|i see|got it|uh+|um+|ah+|oh)[ ,.!?-]*)+$/i;
+// agent is talking or working it is let go, and the agent goes on. The words
+// need a space or a mark between them, so a phrase reads one way only. When
+// they could run together, a long hum and then words ("Mmmmmmmmmmmmmmmmmmmm,
+// no.") was tried every way it splits into "m"s: 23 seconds, with the page
+// frozen for all of them.
+const LISTENING = '(?:m+(?:hm+)?|h+m+|uh(?:m+|[- ]?huh|uh|h*)|um+|ah+|oh|ok(?:ay)?|yeah|yep|yup|right|sure|cool|alright|all right|i see|got it)';
+const BACKCHANNEL = new RegExp(`^${LISTENING}(?:[ ,.!?-]+${LISTENING})*[ ,.!?-]*$`, 'i');
 // What Whisper writes for a noise it could not hear as words: the captions of
 // the videos it learned from, and sound tags.
 const PHANTOMS = /^(?:thanks? (?:you )?for watching|please subscribe|subtitles? by|transcri(?:bed|ption) by|you)[ .!]*$/i;
