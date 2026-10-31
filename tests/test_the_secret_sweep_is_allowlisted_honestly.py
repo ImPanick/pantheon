@@ -122,6 +122,7 @@ def test_no_allowlisted_literal_looks_like_a_real_credential(literal):
         "sekret-api-key-123",   # deliberately misspelled test key
         "0123456789abcdef0123456789abcdef",  # repeated ascending hex
         "tok-0123456789abcdef",  # ascending hex backup round-trip fixture
+        "ADA-SECRET-gitea-1",  # a test persona's key, named for what it is
     )
     assert any(m in literal for m in fake_markers), (
         f"{literal!r} does not carry any of the markers that make the existing "
