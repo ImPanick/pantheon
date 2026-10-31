@@ -1393,3 +1393,78 @@ html.cockpit .pan-source-offer a:hover { color: var(--ck-text) !important; opaci
 html.cockpit[data-ck-tone="light"] :is(.overflow-menu-item, .export-dropdown-item, .dropdown-item, .model-switch-item, .composer-submenu button):is(:hover, .active, [aria-selected="true"], .kb-active) {
   background: color-mix(in oklab, #fff 62%, transparent) !important; box-shadow: inset 0 0 0 1px var(--ck-edge-lo) !important;
 }
+
+/* ───────────────────────── 2026-10-31 · a layout pass: controls where they belong ─────────────────────────
+   Found by the owner's screenshots and an audit of every window, tab and menu
+   (each control measured for spill, overlap, clipping and off-centre rows). */
+
+/* The tucked workspace's tab: style.css gives every button 32px, which crushed
+   the upright label under the chevron. The pill is as tall as its words. */
+@media (min-width: 769px) {
+  html.cockpit #ck-ws-tab { height: auto !important; min-height: 0 !important; max-height: none !important; width: auto !important; padding: 12px 7px 14px !important; gap: 10px; }
+  html.cockpit #ck-ws-tab > .ck-i { width: 14px; height: 14px; flex: none; }
+  html.cockpit #ck-ws-tab .vert { line-height: 1; letter-spacing: .04em; white-space: nowrap; }
+}
+
+/* A window's title bar: its controls are one row of equal rounds, evenly
+   spaced, on the title's centre line, held clear of the rounded corner. */
+html.cockpit :is(.modal-header, .notes-pane-header, .research-pane-header) { padding: 11px 14px 11px 18px !important; gap: 4px; align-items: center !important; }
+html.cockpit :is(.modal-header, .notes-pane-header, .research-pane-header) > :is(.close-btn, .modal-close, .modal-minimize-btn, .minimize-btn, .modal-maximize-btn, .theme-opacity-toggle, .notes-header-text-btn) {
+  margin-top: 0 !important; margin-bottom: 0 !important; margin-right: 0 !important; align-self: center !important; flex: none;
+}
+html.cockpit :is(.modal-header, .notes-pane-header, .research-pane-header) > :is(.theme-opacity-toggle, .notes-header-text-btn) { margin-right: 6px !important; height: 28px !important; }
+html.cockpit .theme-opacity-toggle .theme-opacity-label { font-size: 12px !important; line-height: 1 !important; }
+html.cockpit :is(.modal-header, .notes-pane-header, .research-pane-header) > div:has(> :is(.close-btn, .modal-close, .modal-minimize-btn, .minimize-btn)) { gap: 4px !important; align-items: center !important; align-self: center !important; }
+/* minimise: one dash on the centre line. Its two drawings (style.css's dash
+   and the injected underscore) used to stack into "–_" and sat low. */
+html.cockpit :is(.modal-minimize-btn, .minimize-btn) { position: relative; display: inline-flex !important; align-items: center !important; justify-content: center !important; font-size: 0 !important; left: 0 !important; }
+html.cockpit :is(.modal-minimize-btn, .minimize-btn) > svg { display: none !important; }
+html.cockpit :is(.modal-minimize-btn, .minimize-btn)::before {
+  content: "" !important; display: block !important; width: 11px !important; height: 1.75px !important; border-radius: 999px; background: currentColor !important; transform: none !important; margin: 0 !important;
+}
+html.cockpit :is(.close-btn, .modal-close) { display: inline-flex !important; align-items: center !important; justify-content: center !important; }
+
+/* Agent / Chat: the base stylesheet's sliding half-width thumb stayed under
+   the cockpit's own active pill, a second lighter half beside it. */
+html.cockpit .mode-toggle { overflow: visible !important; position: relative; align-items: center; }
+html.cockpit .mode-toggle::before { display: none !important; }
+html.cockpit .mode-toggle-btn { justify-content: center; line-height: 1 !important; height: 24px !important; padding: 0 11px !important; }
+html.cockpit .mode-toggle-btn::before { display: block; }
+@container chatbar (max-width: 440px) { html.cockpit .mode-toggle-btn { padding: 0 9px !important; } }
+
+/* The context ring: with no figure yet, the empty label still held 3.4ch and
+   left the ring floating in a wide pill. Without one it is a round. */
+html.cockpit .chat-context-pill .ctx-ring-pct:empty, html.cockpit .chat-context-pill .ctx-ring-of:empty { display: none !important; }
+html.cockpit .chat-context-pill:not(:has(.ctx-ring-pct:not(:empty))) { padding: 0 4px !important; }
+
+/* The Brain's tab row: the four tabs and the Skills door share one track, one
+   height and one centre line; the door is a tab that leaves (↗). */
+html.cockpit .memory-tabs { align-items: center !important; }
+html.cockpit #memory-modal .memory-tablist { display: inline-flex !important; align-items: center; gap: 3px; flex: none; overflow: visible; }
+html.cockpit #memory-modal .memory-skills-door {
+  height: 30px !important; padding: 0 12px 0 13px !important; margin: 0 !important; border-radius: 999px !important; border: 0 !important;
+  background: transparent !important; color: var(--ck-text-3) !important; font: 500 12.5px/1 var(--ck-font-ui) !important; gap: 0; box-shadow: none !important; align-self: center;
+}
+html.cockpit #memory-modal .memory-skills-door:hover { color: var(--ck-text-2) !important; background: var(--ck-tint) !important; }
+html.cockpit #memory-modal .memory-skills-door > svg:first-child { width: 14px; height: 14px; margin-right: 7px !important; }
+html.cockpit #memory-modal .memory-skills-door > svg:last-child { opacity: .7; }
+html.cockpit .memory-count { line-height: 1 !important; align-self: center; }
+
+/* A list box (several choices) shows its rows; a file field's button is a pill. */
+html.cockpit :is(.modal-content, .notes-pane, .research-pane) select[multiple] { min-height: 84px !important; height: auto !important; padding: 4px !important; border-radius: 12px !important; }
+html.cockpit :is(.modal-content, .notes-pane, .research-pane) select[multiple] option { padding: 4px 8px; border-radius: 8px; }
+html.cockpit input[type="file"] { font: 400 12px/1.4 var(--ck-font-ui); color: var(--ck-text-2); }
+html.cockpit input[type="file"]::file-selector-button {
+  height: 28px; padding: 0 12px; margin-right: 10px; border-radius: 999px; border: 0; cursor: pointer;
+  background: var(--ck-tint); color: var(--ck-text); font: 500 12px/1 var(--ck-font-ui);
+}
+html.cockpit input[type="file"]::file-selector-button:hover { background: var(--ck-tint-2); }
+
+/* The chat's ⋯ sat two pixels past the panel's right edge. */
+html.cockpit #export-dl-btn { margin-right: 2px !important; }
+
+/* On a narrow bar the turn chip stands for Agent / Chat (style.css, `D-2026-10-09-01`
+   §4); the cockpit's own display rule had kept the toggle too, the mode said twice. */
+@container chatbar (max-width: 420px) {
+  html.cockpit .chat-input-right .mode-toggle { display: none !important; }
+}
