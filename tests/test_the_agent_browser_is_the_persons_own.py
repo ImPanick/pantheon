@@ -276,7 +276,7 @@ from test_the_workstation_is_admin_controlled import (  # noqa: E402,F401 — fi
 
 
 @needs_firefox
-def test_the_window_sees_and_drives_the_callers_own_browser(app, ws, site):
+def test_the_window_sees_and_drives_the_callers_own_browser(app, ws, site, monkeypatch):
     switch_on(app, ws)
     me = as_user(app, ALLOWED)
     opened = me.post("/api/workstation/browser", json={"action": "open", "url": site + "/two"})
@@ -297,5 +297,10 @@ def test_the_window_sees_and_drives_the_callers_own_browser(app, ws, site):
     bad = me.post("/api/workstation/browser", json={"action": "read"})
     assert bad.status_code == 400, "reading the page as text is the agent's, not the window's"
     assert me.post("/api/workstation/browser", json={"action": "open", "url": "file:///etc/passwd"}).status_code == 400
+    # A person the workstation does not answer is refused when Pantheon has no
+    # Firefox of its own; with one they get that browser instead
+    # (`src/local_browser.py`, `test_the_browser_runs_without_a_workstation.py`).
+    import src.local_browser as LB
+    monkeypatch.setattr(LB, "firefox_here", lambda: False)
     assert as_user(app, PLAIN).get("/api/workstation/browser").status_code == 403
     ws.station.browsers.stop_all()
