@@ -1,7 +1,7 @@
 ---
 name: workstation-desktop
 description: Drive the workstation's desktop with the computer tool — look at the screen, click, type, press keys, scroll and drag, checking every result before the next action.
-version: 1.0.0
+version: 1.1.0
 category: workstation
 tags: [workstation, computer, desktop, screen, mouse, click, keyboard, type, gui, vm, firefox, browser, screenshot]
 requires_toolsets: [computer]
@@ -18,7 +18,7 @@ A task needs the workstation's screen: clicking through a page or app, filling a
 
 1. Start with `computer` action `screenshot`. Never click from memory or an old picture.
 2. Coordinates are the screenshot's own pixels: x 0–1279 left to right, y 0–799 top to bottom, no scaling. Aim at the middle of a control.
-3. The tray is the bottom 32 pixels: **Terminal** button about (33, 784), **Firefox** about (99, 784), then one button per open window (click to bring it forward), then the clock. Right-click the empty desktop for the same programs.
+3. The panel is the bottom 40 pixels: **menu** (20, 780) — every program, `type` to search — **Terminal** (60, 780), **Firefox** (100, 780), **Files** (140, 780), a button per open window (click to bring it forward), the clock. Title bars end in minimise, maximise, close; double-click one to maximise.
 4. Click a field before `type` (text, up to 20,000 characters; it does not press Enter). Then `key` `Return` to submit.
 5. `key` takes xdotool names: `Return` `Escape` `Tab` `BackSpace` `Delete` `Up` `Down` `Page_Down` `End` `F5`, combos like `ctrl+a` `ctrl+c` `ctrl+v` `alt+Left`; several separated by spaces are pressed in turn (`ctrl+a BackSpace`).
 6. Firefox: `ctrl+l` address bar, then `type` the URL and `key` `Return`; `ctrl+t` / `ctrl+w` open / close a tab; `F5` reload, `ctrl+shift+r` without cache; `ctrl+shift+k` web console (page errors in red), `F12` closes it; `ctrl+f` find.

@@ -272,6 +272,29 @@ browser reaches public addresses only, plus the local network when an admin has
 turned on *agent LAN reach* and the person may use the workstation; never
 Pantheon's own services.
 
+**The screen is live** (`D-2026-10-31-01`). Each person's desktop is
+KasmVNC's X server, and the Workstation window shows it as it moves, with the
+mouse and keyboard yours while you hold it (*Take over*, *Hand back*). Text the
+workstation copies lands on your clipboard (or behind a *Copy* button where the
+browser wants a press first); *Paste* sends yours to the workstation. The
+stream reaches only the person whose desktop it is, from Pantheon's own pages,
+and an admin watching someone else's sees it view-only. After updating, run
+`docker compose up -d --build` once: the workstation's image gains KasmVNC, and
+the VM backend makes its machine image again on first use (minutes with KVM).
+Where there is no stream — a workstation not yet rebuilt, a native install
+without the client (`PANTHEON_DESKTOP_CLIENT_DIR`) — the window shows the
+screen as pictures, a few a second, and says why under it.
+
+**The desktop is XFCE, in the cockpit's look** (`D-2026-10-31-02`): Pantheon's
+window frames and wallpaper, and a panel along the bottom with the Pantheon
+menu (it searches every program), Terminal, Firefox, Files, the open windows
+and a clock. Every setting is a file in the person's home (`~/.config`), so
+*Reset to clean* brings the look back with the rest; a home from before the
+change is given those files on its next start, and keeps any of its own. The
+look is drawn by `scripts/make-workstation-theme.py` from the default theme's
+colours: change the colours there, run it, and rebuild. A workstation without
+XFCE installed starts the older JWM desktop instead.
+
 **Starting and stopping the backends from Pantheon** (`B1478`, opt-in). Without
 the host's Docker both backends run (an idle VM host runs no machine) and
 *Backend* chooses which one answers. Add `docker/host-docker.yml` to

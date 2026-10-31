@@ -2571,7 +2571,9 @@ has been pointing at) and D-03 (the VM station).
   dependency, and widening dependencies is its own decision. A person watches the same screenshots the
   agent sees, a few a second, unchanged frames skipped, and takes over by clicking and typing into
   them through the same input route. It needs nothing new on either side, and VNC stays open as a
-  later row if the frame rate is not enough.
+  later row if the frame rate is not enough. *Superseded 2026-10-31 by `D-2026-10-31-01`: the owner chose
+  KasmVNC's live stream, `websockets` is pinned for it, and the screenshot stream is now the
+  fallback where there is no stream.*
 - **Zero-config pairing.** The daemon writes its token into a volume only the two services mount; an
   environment variable overrides it. No token to paste.
 - **Admin-controlled, role-granted.** An admin turns it on; `can_use_workstation` (default off, on for
@@ -3482,3 +3484,92 @@ so the risk is the person's, knowingly. Turning a gate back on never asks. What 
 change: who may use Auto (`can_auto_approve`), and what is validated either way.
 
 What reopens it: the owner changing it.
+
+## D-2026-10-31-01 — the workstation's desktop streams live through KasmVNC, inside Pantheon
+
+*The owner, 2026-10-31, after the workstation worked end to end:* *"We need this to be something
+the agent can use *AND* the user can watch/take control if need be,"* and then, *"What about
+something like KASM?"* Kasm Workspaces itself was advised against (its control plane is a
+proprietary product of its own, it would duplicate the per-person desktops the workstation already
+makes, and each of its images would still need the daemon for the agent). **Decided by the owner,
+17:48, on the card: "KasmVNC inside Pantheon"** — KasmVNC's open-source X server and web client,
+shipped by Pantheon, in the container and in the VM alike.
+
+**What it is.** Each person's display is KasmVNC's X server (`Xkasmvnc`) in place of Xvfb: the same
+X display to the agent (the protocol's 1280×800, the account's cookie, `xdotool` and screenshots as
+before), plus a websocket stream on 127.0.0.1 only. The Workstation window frames KasmVNC's web
+client, which draws the screen as it moves; *Take over* and *Hand back* now also change what the
+open stream may do, live, at the workstation. The clipboard crosses through the window, both ways.
+The screenshot stream stays wherever there is no stream (another architecture, an older
+workstation, a native install without the client), and the window says why.
+
+**Calls made here, not by the owner, and why.**
+
+- **Pinned by version and checksum** — KasmVNC 1.5.2, Kasm Technologies' own Ubuntu 24.04
+  packages, sha256 per architecture in `workstation/provision.sh`; a mismatch is refused. Server
+  GPL-2.0-or-later, in the workstation image; client MPL-2.0 core, in Pantheon's (`CREDITS.md`).
+- **The client is Pantheon's, never the workstation's.** The workstation is where agents run as
+  root, so script a browser runs under Pantheon's origin never comes from there: Pantheon's image
+  unpacks the client from the same pinned package (`dpkg-deb -x`, nothing runs) and serves it under
+  `/api/` behind the session, with a policy of its own (framed by Pantheon only, its inline block by
+  hash, connections to this origin only). Only the RFB stream comes from the workstation.
+- **Two logins per display, in a file the agent cannot rewrite.** `person` (writes only while the
+  person holds the screen) and `watch` (an admin watching, never writes), checked by KasmVNC against
+  a root-owned 0640 file it re-reads when it changes; their secrets live only in the daemon, which
+  adds the login itself. Nothing the browser or Pantheon sends reaches the display but the stream.
+- **The relay authenticates for itself.** A websocket passes no HTTP middleware, so the route asks
+  what `AuthMiddleware` would: a session cookie (a bearer token is not a person, `B70`) and an
+  `Origin` that is this host. Then the same `_watched` door as the frames.
+- **No public lookups** (`Law 16`): `-publicIP 127.0.0.1`, or KasmVNC asks Google's STUN servers at
+  start; the client's WebRTC is off. KasmVNC's UDP listener binds every interface on the stream's
+  port number inside the workstation; the stream itself is loopback-only behind the logins.
+- **`websockets` 17.2 is pinned**, the dependency the 2026-09-30 call was waiting on: Uvicorn needs
+  it to serve any websocket, and the daemon's stream is opened with its client.
+
+**Not verified here.** The build sandbox refused to run the downloaded KasmVNC binary, so the stream
+was tested against a stand-in held to KasmVNC's source (`tests/test_the_workstation_desktop_is_live.py`)
+and the real server is covered by the opt-in image tests
+(`PANTHEON_WORKSTATION_E2E=1 tests/test_the_workstation_image_is_a_real_ubuntu_machine.py`).
+
+What reopens it: the owner changing it, or the real server not doing what its source says.
+
+## D-2026-10-31-02 — the workstation's desktop is XFCE, themed to the cockpit
+
+*The owner, 2026-10-31, 18:50:* *"Is there a way to have a - wee bit better looking VM in use? it
+does kinda clash with the over all "modernize" aesthetic -- I accept the hardware use off-sets.. I
+have PLENTY of compute here to spare.."* (production: a four-sled cluster, two Xeon Gold 6130 and
+256 GB per sled). **Decided by the owner, 18:50, on the card: "XFCE, themed to the cockpit"**, over
+staying on JWM with a new theme and over a heavier desktop.
+
+**What it is.** Each person's display runs `xfce4-session` in place of JWM: xfwm4 with Pantheon's
+own window frames and its compositor (shadows, the panel's glass), a 40 px panel along the bottom
+(the Pantheon menu with a search, Terminal, Firefox, Files, the open windows, the clock), the
+cockpit's light field as the wallpaper, xfce4-terminal and Thunar, on dark Adwaita with Papirus
+icons, Inter and JetBrains Mono. The agent's tools do not change: the same display, size, cookie,
+`xdotool` and screenshots; the skills now name the panel's buttons.
+
+**Calls made here, not by the owner, and why.**
+
+- **The look is drawn from the cockpit's tokens, by a script.** `scripts/make-workstation-theme.py`
+  draws the frames (a 30 px title bar of the glass, a lit top edge, rounded top corners, flat
+  buttons that light on hover, close in the accent) and the wallpaper from THEMES.dark, mixed in
+  OKLab as `static/cockpit.css` mixes them; a test holds the committed files to its output. No grain:
+  the desktop is a video stream, and grain is what an encoder cannot compress.
+- **Every setting is a file in the skeleton** (`workstation/skel/.config/`), so a new home and
+  "Reset to clean" get the look, and nothing is set at run time. A home made before this is given
+  the skeleton's `.config` once, as the account, never over a file it has and never through a link
+  — without it XFCE's panel opens on a question.
+- **Nothing in the desktop can end it or hide it**: the menu has no log out, shut down, lock or
+  switch user, the session saves nothing and starts no agents, and the screen saver is off.
+- **JWM stays the fallback.** A machine without XFCE (an image built before it, a native host whose
+  operator skipped the packages) starts JWM as before.
+- **The cost**, measured with apt on Ubuntu 24.04: about 300 MB more in the image, most of it
+  Papirus's icons. Start-up on an idle machine: the panel after 0.5 s, the session ready in 0.9 s.
+
+**Verified here:** the real `XDisplay.start` as an unprivileged account on Xvfb (2026-10-31), on a
+home made before the change: the settings added, the themed desktop, the panel's buttons where the
+skills say, and the damage watch (`B974`) still telling a still screen from a changed one with the
+compositor on. **Not verified here:** the same on KasmVNC's server (the build sandbox would not run
+it) and in the built images; the opt-in image tests cover both.
+
+What reopens it: the owner changing it, or the look not surviving the stream.

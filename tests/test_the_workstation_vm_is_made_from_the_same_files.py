@@ -79,9 +79,14 @@ def test_the_image_is_provisioned_with_the_container_images_own_files():
         data, mode, owner = files[f"{vm.PROVISION_DIR}/{rel}"]
         assert data == (PKG / rel).read_bytes(), rel
         assert owner == "root:root" and mode == ("0755" if rel.endswith(".sh") else "0644")
-    # Every file under the two folders, not a list someone keeps.
-    for path in (PKG / "skel").rglob("*"):
-        assert f"{vm.PROVISION_DIR}/skel/{path.name}" in files
+    # Every file under the folders, not a list someone keeps — the skeleton's
+    # desktop settings in their sub-folders and the desktop's theme among them
+    # (`D-2026-10-31-02`).
+    for folder in ("skel", "desktop"):
+        for path in (PKG / folder).rglob("*"):
+            if path.is_file():
+                rel = path.relative_to(PKG).as_posix()
+                assert files[f"{vm.PROVISION_DIR}/{rel}"][0] == path.read_bytes(), rel
 
 
 def test_the_container_image_runs_the_same_provisioning_script():

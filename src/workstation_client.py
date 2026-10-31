@@ -51,6 +51,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import contextlib
 import hashlib
 import hmac
 import ipaddress
@@ -797,6 +798,82 @@ class WorkstationClient:
                                    f"“{action}” is not one of {', '.join(P.NETWORK_ACTIONS)}.")
         body = {"action": action, **{k: v for k, v in fields.items() if v is not None}}
         return await self._call("network", account, body, timeout=30.0 + _TIMEOUT)
+
+
+    # -- `D-2026-10-31-01`: the live desktop ------------------------------------
+
+    async def desktop(self, account: str) -> Dict:
+        """`{"kind", "holder", "why"?}`: whether this account's display
+        streams (`protocol.ROUTES["desktop"]`). A daemon older than the route
+        answers `not_found` for the route itself; that comes back as a display
+        without a stream, with a sentence, never as a failure — the window
+        shows pictures, as it always did."""
+        try:
+            return await self._call("desktop", account, timeout=60.0)
+        except WorkstationError as e:
+            if e.status == 404:
+                return {"kind": None, "holder": None,
+                        "why": "This workstation is older than the live desktop, so its screen "
+                               "is shown as pictures. Rebuild it: docker compose up -d --build."}
+            raise
+
+    @contextlib.asynccontextmanager
+    async def desktop_stream(self, account: str, viewer: str):
+        """The account's live desktop, as a websocket to the daemon
+        (`protocol.ROUTES["desktop"]` with the upgrade) — the RFB stream,
+        byte for byte, for Pantheon to relay to the person's browser.
+
+        Under the same wire rule as every other call (`_wire`, before the
+        token goes anywhere): a pinned certificate for `https://`, a private
+        address for `http://`. Never through an environment proxy (`B982`'s
+        rule; `websockets` reads `HTTPS_PROXY` unless told not to). No pings
+        of its own: KasmVNC answers none (it ignores every control frame), so
+        a ping would only time the stream out; a dead stream ends when either
+        side's connection does. For the same reason the closing handshake is
+        not waited for long: KasmVNC stops reading at a close frame rather than
+        answering it with one (websocket.c, read at 1.5.2), so the connection
+        is dropped two seconds after asking."""
+        if viewer not in P.DESKTOP_VIEWERS:
+            raise WorkstationError("bad_request",
+                                   f"“viewer” is one of {', '.join(P.DESKTOP_VIEWERS)}.")
+        from websockets.asyncio.client import connect
+        from websockets.exceptions import InvalidStatus, WebSocketException
+
+        headers = self._headers()
+        verify = await self._wire()  # `P20-07`: before the token goes anywhere
+        _, url = self._url("desktop", account, {"viewer": viewer})
+        secure = url.startswith("https://")
+        ws_url = ("wss://" + url[len("https://"):]) if secure else ("ws://" + url[len("http://"):])
+        context = None
+        if secure:
+            context = verify if isinstance(verify, ssl.SSLContext) else ssl.create_default_context()
+        wait = self.timeout + self._grace("desktop", account)
+        try:
+            upstream = await connect(
+                ws_url, additional_headers=headers, subprotocols=[P.DESKTOP_SUBPROTOCOL],
+                ssl=context, proxy=None, compression=None, open_timeout=wait,
+                ping_interval=None, close_timeout=2.0, max_size=2 ** 20, max_queue=64,
+                user_agent_header=None)
+        except InvalidStatus as e:
+            raise self._error_from(_StatusResponse(e.response)) from e
+        except (OSError, asyncio.TimeoutError, WebSocketException) as e:
+            logger.info("workstation desktop unreachable at %s: %s", self.base, type(e).__name__)
+            raise self._unreachable(e) from e
+        try:
+            yield upstream
+        finally:
+            await upstream.close()
+
+
+class _StatusResponse:
+    """A `websockets` refusal, read the way `_error_from` reads an httpx answer."""
+
+    def __init__(self, response: Any) -> None:
+        self.status_code = getattr(response, "status_code", 0)
+        self._body = bytes(getattr(response, "body", b"") or b"")
+
+    def json(self) -> Any:
+        return json.loads(self._body.decode("utf-8"))
 
 
 # ── the network gate (`P20-06`) ───────────────────────────────────────────────

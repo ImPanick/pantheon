@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<!--
+  The session (D-2026-10-31-02): it starts the same every time — nothing is
+  saved on the way out, nothing asks, no splash, no agents of its own (no
+  ssh-agent or gpg-agent the account did not start) and no screen lock. This
+  file is in the account's home; "Reset to clean" puts it back.
+-->
+<channel name="xfce4-session" version="1.0">
+  <property name="general" type="empty">
+    <property name="SaveOnExit" type="bool" value="false"/>
+    <property name="AutoSave" type="bool" value="false"/>
+    <property name="PromptOnLogout" type="bool" value="false"/>
+  </property>
+  <property name="splash" type="empty">
+    <property name="Engine" type="string" value=""/>
+  </property>
+  <property name="startup" type="empty">
+    <property name="ssh-agent" type="empty">
+      <property name="enabled" type="bool" value="false"/>
+    </property>
+    <property name="gpg-agent" type="empty">
+      <property name="enabled" type="bool" value="false"/>
+    </property>
+  </property>
+  <property name="compat" type="empty">
+    <property name="LaunchGNOME" type="bool" value="false"/>
+    <property name="LaunchKDE" type="bool" value="false"/>
+  </property>
+  <property name="shutdown" type="empty">
+    <property name="LockScreen" type="bool" value="false"/>
+    <property name="ShowSuspend" type="bool" value="false"/>
+    <property name="ShowHibernate" type="bool" value="false"/>
+    <property name="ShowHybridSleep" type="bool" value="false"/>
+    <property name="ShowSwitchUser" type="bool" value="false"/>
+  </property>
+</channel>

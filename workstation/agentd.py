@@ -169,6 +169,25 @@ class Screen:
         """Whether the screen is still the frame taken at `mark`."""
         return False
 
+    # -- `D-2026-10-31-01`, added: the live desktop ------------------------
+    # A screen that streams itself (the Ubuntu display under KasmVNC) names
+    # its kind, gives a viewer's way in, and is told who drives; one that
+    # cannot says None, and the caller shows screenshots.
+
+    desktop_kind: Optional[str] = None
+
+    @property
+    def desktop_why(self) -> str:
+        return "This screen has no live desktop; it is shown as pictures."
+
+    def desktop(self, viewer: str) -> Tuple[int, str]:
+        """`(port, Authorization)`: where on 127.0.0.1 this screen's stream
+        is, and the header that logs `viewer` in there."""
+        raise WorkstationError("unavailable", self.desktop_why)
+
+    def set_driver(self, person: bool) -> None:
+        """Whether the person's viewer may drive (they hold the display)."""
+
 
 class NoScreen(Screen):
     """What a system without a display answers. Said, never faked."""
@@ -565,10 +584,11 @@ class Workstation:
         names = self._names.pop(account, None)
         if names is not None:
             names.stop()              # `P27-04`: its files go with the home too
-        self.system.reset(account)
         with self._lock:
             self._holders.pop(account, None)
             self._frames.pop(account, None)  # `B974`
+        self._set_driver(account, False)   # `D-2026-10-31-01`: the fresh desktop is the agent's
+        self.system.reset(account)
         return {"account": account, "reset": True}
 
     def stop_names(self) -> None:
@@ -607,7 +627,53 @@ class Workstation:
         with self._lock:
             rec = {"holder": who, "since": time.time()}
             self._holders[account] = rec
-            return dict(rec)
+        # `D-2026-10-31-01`: the person's viewer drives exactly while they hold it.
+        self._set_driver(account, who == "person")
+        return dict(rec)
+
+    def _set_driver(self, account: str, person: bool) -> None:
+        try:
+            screen = self.system.screen(account)
+        except WorkstationError:
+            return  # no account yet: its display, when it starts, starts as the agent's
+        screen.set_driver(person)
+
+    # -- `D-2026-10-31-01`: the live desktop ----------------------------------
+
+    def desktop(self, account: str) -> Dict:
+        """What `ROUTES["desktop"]` answers without an upgrade: whether this
+        account's display streams, and who holds it. Starts the display, as a
+        screenshot would, so the answer is about a display that is running."""
+        self.system.ensure(account)
+        self.system.wake(account)
+        screen = self.system.screen(account)
+        kind = screen.desktop_kind
+        out: Dict = {"kind": kind if kind in P.DESKTOP_KINDS else None,
+                     "holder": self.holder(account)["holder"]}
+        if out["kind"] is None:
+            out["why"] = screen.desktop_why
+        return out
+
+    @contextlib.contextmanager
+    def desktop_upstream(self, account: str, viewer: str):
+        """`(socket, path, authorization)`: a connection to where this
+        account's stream is served and how to ask for it there — the
+        display's own websocket here, with that viewer's login. The VM
+        backend's host answers with the person's machine instead
+        (`workstation/vm.py`), and `Handler._desktop` is the same for both."""
+        if viewer not in P.DESKTOP_VIEWERS:
+            raise WorkstationError("bad_request",
+                                   f"“viewer” is one of {', '.join(P.DESKTOP_VIEWERS)}.")
+        self.system.ensure(account)
+        port, authorization = self.system.screen(account).desktop(viewer)
+        try:
+            sock = socket.create_connection(("127.0.0.1", port), timeout=10.0)
+        except OSError as e:
+            raise WorkstationError("unavailable", f"The live desktop did not answer ({e}).")
+        try:
+            yield sock, "/websockify", authorization
+        finally:
+            _close(sock)
 
     # -- paths ------------------------------------------------------------------
 
@@ -1054,6 +1120,97 @@ def _os_error(e: OSError) -> WorkstationError:
                                         f"{e.strerror or type(e).__name__}{where}.")
 
 
+# ── `D-2026-10-31-01`: the live desktop's stream ─────────────────────────────
+
+_WS_KEY_RE = re.compile(r"^[A-Za-z0-9+/]{22}==$")   # 16 random bytes, base64 (RFC 6455 §4.1)
+_SPLICE_CHUNK = 65_536
+
+
+def _close(sock) -> None:
+    try:
+        sock.close()
+    except OSError:
+        pass
+
+
+def desktop_request(path: str, port: int, key: str, authorization: str) -> bytes:
+    """The upgrade the daemon sends where a stream is served: KasmVNC's own
+    websocket, or (from the VM backend's host) the daemon in the person's
+    machine. Written here rather than forwarded, so nothing the caller sent
+    reaches the server but the one value the answer has to be computed from —
+    the key — and every header KasmVNC requires is present in the spelling
+    it parses (websocket.c, `parse_handshake`, read at 1.5.2: Host, Origin,
+    Connection, the version, the key and a subprotocol, each `Name: value`)."""
+    if not _WS_KEY_RE.match(key or ""):
+        raise WorkstationError("bad_request", "Sec-WebSocket-Key is not a websocket key.")
+    host = f"127.0.0.1:{port}"
+    return ("GET {path} HTTP/1.1\r\n"
+            "Host: {host}\r\n"
+            "Origin: http://{host}\r\n"
+            "Upgrade: websocket\r\n"
+            "Connection: Upgrade\r\n"
+            "Sec-WebSocket-Version: 13\r\n"
+            "Sec-WebSocket-Key: {key}\r\n"
+            "Sec-WebSocket-Protocol: {proto}\r\n"
+            "Authorization: {auth}\r\n"
+            "\r\n").format(path=path, host=host, key=key, proto=P.DESKTOP_SUBPROTOCOL,
+                             auth=authorization).encode("ascii")
+
+
+def read_head(sock, limit: int = P.MAX_DESKTOP_HANDSHAKE_BYTES) -> Tuple[int, bytes, bytes]:
+    """`(status, head, rest)`: an HTTP answer's status, its head up to and
+    including the blank line, and whatever arrived after it in the same read
+    (the first bytes of the stream, which belong to the caller)."""
+    got = b""
+    while b"\r\n\r\n" not in got:
+        if len(got) > limit:
+            raise WorkstationError("unavailable", "The live desktop answered with too much.")
+        chunk = sock.recv(4096)
+        if not chunk:
+            raise WorkstationError("unavailable", "The live desktop closed the connection "
+                                                  "before it answered.")
+        got += chunk
+    end = got.index(b"\r\n\r\n") + 4
+    head, rest = got[:end], got[end:]
+    try:
+        status = int(head.split(b" ", 2)[1])
+    except (IndexError, ValueError):
+        raise WorkstationError("unavailable", "The live desktop's answer was not HTTP.")
+    return status, head, rest
+
+
+def splice(a, b, *, stop: Optional[threading.Event] = None) -> None:
+    """Bytes both ways between two connected sockets until either side
+    closes. TLS-aware: a record already decrypted sits in the TLS layer where
+    `select` cannot see it, so `pending()` is asked first. A write blocks
+    until the other side takes it, which carries a slow viewer's back-pressure
+    to the server — KasmVNC measures it and sends less (its congestion
+    control) rather than this buffering without end."""
+    for sock in (a, b):
+        sock.settimeout(None)
+    peers = {a: b, b: a}
+    while stop is None or not stop.is_set():
+        ready = [s for s in (a, b) if isinstance(s, ssl.SSLSocket) and s.pending()]
+        if not ready:
+            try:
+                ready, _, _ = select.select([a, b], [], [], 1.0)
+            except (OSError, ValueError):
+                return
+        for sock in ready:
+            try:
+                data = sock.recv(_SPLICE_CHUNK)
+            except ssl.SSLWantReadError:
+                continue
+            except OSError:
+                return
+            if not data:
+                return
+            try:
+                peers[sock].sendall(data)
+            except OSError:
+                return
+
+
 def _kill_group(proc: subprocess.Popen) -> None:
     try:
         os.killpg(proc.pid, signal.SIGKILL)
@@ -1128,6 +1285,12 @@ class Handler(BaseHTTPRequestHandler):
     def _dispatch(self, method: str) -> None:
         parts = urlsplit(self.path)
         path = parts.path.rstrip("/")
+        if "websocket" in (self.headers.get("Upgrade") or "").lower():
+            # `D-2026-10-31-01`. A websocket client reads only an HTTP/1.1
+            # answer, so a refusal of an upgrade — the token, the account, the
+            # desktop — is spelt as one; this connection ends after it either way.
+            self.protocol_version = "HTTP/1.1"
+            self.close_connection = True
         authorised = self.station.authorised(self.headers.get("Authorization", ""))
         try:
             if method == "GET" and path == P.ROUTES["health"][1]:
@@ -1158,6 +1321,13 @@ class Handler(BaseHTTPRequestHandler):
                          and "{account}" in tmpl), None)
             if name is None:
                 raise WorkstationError("not_found", "No such workstation route.")
+            if name == "desktop":  # `D-2026-10-31-01`
+                if "websocket" in (self.headers.get("Upgrade") or "").lower():
+                    q = parse_qs(parts.query)
+                    self._desktop(account, (q.get("viewer") or ["person"])[0])
+                    return
+                self._send(200, self.station.desktop(account))
+                return
             if name == "screenshot":
                 q = parse_qs(parts.query)
                 # `B974`: asked before a grab, not answered after one.
@@ -1200,6 +1370,47 @@ class Handler(BaseHTTPRequestHandler):
         except Exception as e:  # noqa: BLE001 — the caller gets a sentence, the log gets the trace
             logger.exception("workstation route %s failed", path)
             self._fail(WorkstationError("internal", f"The workstation failed: {type(e).__name__}."))
+
+    def _desktop(self, account: str, viewer: str) -> None:
+        """`D-2026-10-31-01`. The upgrade: checked, sent on to where the stream
+        is served with that viewer's login, its `101` handed back as it came
+        (its accept value is computed from the caller's own key), and then the
+        two connections joined until one ends. A refusal before the `101` is
+        the usual JSON error; after it the stream is all there is, so a failure
+        is a line in the log and the connection's end."""
+        if (self.headers.get("Sec-WebSocket-Version") or "").strip() != "13":
+            raise WorkstationError("bad_request", "The desktop speaks websocket version 13.")
+        offered = [p.strip() for p in (self.headers.get("Sec-WebSocket-Protocol") or "").split(",")]
+        if P.DESKTOP_SUBPROTOCOL not in offered:
+            raise WorkstationError("bad_request", f"The desktop's stream is the "
+                                                  f"“{P.DESKTOP_SUBPROTOCOL}” subprotocol.")
+        key = (self.headers.get("Sec-WebSocket-Key") or "").strip()
+        if not _WS_KEY_RE.match(key):
+            # Before anything is opened toward the display, like the two above.
+            raise WorkstationError("bad_request", "Sec-WebSocket-Key is not a websocket key.")
+        with self.station.desktop_upstream(account, viewer) as (upstream, path, authorization):
+            upstream.settimeout(30.0)
+            try:
+                port = upstream.getpeername()[1]
+                upstream.sendall(desktop_request(path, port, key, authorization))
+                status, head, rest = read_head(upstream)
+            except OSError as e:
+                raise WorkstationError("unavailable", f"The live desktop did not answer ({e}).")
+            if status != 101:
+                logger.warning("desktop for %s: the stream answered %s", account, status)
+                raise WorkstationError("unavailable", f"The live desktop refused the connection "
+                                                      f"(HTTP {status}). Reset the workstation if "
+                                                      "this keeps happening.")
+            self.close_connection = True
+            try:
+                self.wfile.write(head + rest)
+                self.wfile.flush()
+                logger.info("desktop for %s: %s viewer connected", account, viewer)
+                splice(self.connection, upstream)
+            except OSError as e:
+                logger.info("desktop for %s: the stream ended (%s)", account, e)
+            finally:
+                logger.info("desktop for %s: %s viewer gone", account, viewer)
 
     def _stream_exec(self, account: str, body: Dict) -> None:
         # Validated before the 200, so a bad request is still a plain error.
@@ -1291,4 +1502,5 @@ def server_context(cert: Path, key: Path) -> "ssl.SSLContext":
 __all__ = ["Handler", "NoScreen", "Screen", "SingleUserSystem", "System", "VERSION",
            "Workstation", "WorkstationError", "bearer", "load_or_create_token",
            "make_server", "mint_token", "server_context",
-           "FRAME_TRUST_S"]  # `B974`, added
+           "FRAME_TRUST_S",  # `B974`, added
+           "desktop_request", "read_head", "splice"]  # `D-2026-10-31-01`, added

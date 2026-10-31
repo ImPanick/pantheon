@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Files
+Comment=The files in this home
+Exec=thunar %U
+Icon=org.xfce.thunar
+Terminal=false
+StartupNotify=true

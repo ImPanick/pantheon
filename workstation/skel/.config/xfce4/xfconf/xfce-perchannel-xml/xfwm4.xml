@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<!--
+  The window manager (D-2026-10-31-02): Pantheon's frames
+  (/usr/share/themes/Pantheon, made by scripts/make-workstation-theme.py),
+  minimise, maximise and close on the right of a centred title, one
+  workspace, and xfwm4's own compositor for the shadows and the panel's glass
+  (no vsync: the screen is a stream, not a monitor). Double-click a title to
+  maximise; Alt and drag moves a window from anywhere in it.
+-->
+<channel name="xfwm4" version="1.0">
+  <property name="general" type="empty">
+    <property name="theme" type="string" value="Pantheon"/>
+    <property name="title_font" type="string" value="Inter Semi-Bold 10"/>
+    <property name="title_alignment" type="string" value="center"/>
+    <property name="button_layout" type="string" value="|HMC"/>
+    <property name="workspace_count" type="int" value="1"/>
+    <property name="workspace_names" type="array">
+      <value type="string" value="Desktop"/>
+    </property>
+    <property name="use_compositing" type="bool" value="true"/>
+    <property name="vblank_mode" type="string" value="off"/>
+    <property name="unredirect_overlays" type="bool" value="true"/>
+    <property name="show_frame_shadow" type="bool" value="true"/>
+    <property name="show_popup_shadow" type="bool" value="true"/>
+    <property name="show_dock_shadow" type="bool" value="false"/>
+    <property name="shadow_opacity" type="int" value="55"/>
+    <property name="shadow_delta_height" type="int" value="4"/>
+    <property name="shadow_delta_width" type="int" value="0"/>
+    <property name="shadow_delta_x" type="int" value="0"/>
+    <property name="shadow_delta_y" type="int" value="-3"/>
+    <property name="frame_opacity" type="int" value="100"/>
+    <property name="inactive_opacity" type="int" value="100"/>
+    <property name="move_opacity" type="int" value="100"/>
+    <property name="resize_opacity" type="int" value="100"/>
+    <property name="popup_opacity" type="int" value="100"/>
+    <property name="borderless_maximize" type="bool" value="true"/>
+    <property name="titleless_maximize" type="bool" value="false"/>
+    <property name="placement_mode" type="string" value="center"/>
+    <property name="placement_ratio" type="int" value="100"/>
+    <property name="double_click_action" type="string" value="maximize"/>
+    <property name="easy_click" type="string" value="Alt"/>
+    <property name="box_move" type="bool" value="false"/>
+    <property name="box_resize" type="bool" value="false"/>
+    <property name="snap_to_border" type="bool" value="true"/>
+    <property name="snap_to_windows" type="bool" value="false"/>
+    <property name="tile_on_move" type="bool" value="true"/>
+    <property name="wrap_windows" type="bool" value="false"/>
+    <property name="wrap_workspaces" type="bool" value="false"/>
+    <property name="zoom_desktop" type="bool" value="false"/>
+    <property name="cycle_preview" type="bool" value="true"/>
+    <property name="cycle_minimum" type="bool" value="true"/>
+    <property name="click_to_focus" type="bool" value="true"/>
+    <property name="raise_on_click" type="bool" value="true"/>
+    <property name="focus_new" type="bool" value="true"/>
+    <property name="prevent_focus_stealing" type="bool" value="false"/>
+    <property name="urgent_blink" type="bool" value="false"/>
+  </property>
+</channel>

@@ -101,10 +101,10 @@ PROVISION_DIR = "/opt/pantheon-workstation/provision"
 IMAGE_READY = "PANTHEON-WORKSTATION-IMAGE-READY"
 IMAGE_FAILED = "PANTHEON-WORKSTATION-IMAGE-FAILED"
 # What `vm-guest.sh` and `provision.sh` read from the payload directory: the
-# two scripts, and every file under these two folders (listed by walking them,
+# two scripts, and every file under these folders (listed by walking them,
 # so a file added to the skeleton is not one more list to remember).
 PAYLOAD_SCRIPTS = ("provision.sh", "vm-guest.sh")
-PAYLOAD_DIRS = ("firefox", "skel")
+PAYLOAD_DIRS = ("firefox", "skel", "desktop")  # `D-2026-10-31-02`: the desktop's look
 
 
 def payload_files(payload: Path) -> List[str]:
@@ -1480,6 +1480,37 @@ class VmStation(Workstation):
     def network(self, account: str, body: Dict) -> Dict:
         """`P16-20`: the check runs in the machine, on the machine's network."""
         return self.system.forward(account, "network", body, timeout=30.0)
+
+    def desktop(self, account: str) -> Dict:
+        """`D-2026-10-31-01`: the machine's own answer — its display is the one
+        that streams, under its own KasmVNC."""
+        return self.system.forward(account, "desktop", timeout=120.0)
+
+    @contextlib.contextmanager
+    def desktop_upstream(self, account: str, viewer: str):
+        """`D-2026-10-31-01`: the stream is the machine's. The upgrade goes to
+        the daemon there, over the forwarded port with the machine's token, and
+        that daemon goes on to its display; the `101` comes back through both.
+        While the stream is open the machine is in use, so a person watching is
+        never powered off for being idle (`B979`)."""
+        if viewer not in P.DESKTOP_VIEWERS:
+            raise WorkstationError("bad_request",
+                                   f"“viewer” is one of {', '.join(P.DESKTOP_VIEWERS)}.")
+        with self.system._using(account):
+            m = self.system.ready(account)
+            _, path = P.route_path("desktop", account)
+            try:
+                sock = socket.create_connection(("127.0.0.1", int(m.port or 0)), timeout=10.0)
+            except OSError as e:
+                raise WorkstationError("unavailable", f"Your workstation machine stopped "
+                                                      f"answering ({type(e).__name__}).")
+            try:
+                yield sock, f"{path}?{urlencode({'viewer': viewer})}", f"Bearer {m.token}"
+            finally:
+                try:
+                    sock.close()
+                except OSError:
+                    pass
 
 
 # ── the command line ──────────────────────────────────────────────────────────

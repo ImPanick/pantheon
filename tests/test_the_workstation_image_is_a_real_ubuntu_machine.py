@@ -49,11 +49,17 @@ BUILD_CA_ENV = "PANTHEON_WORKSTATION_BUILD_CA"
 MIRROR_ENV = "PANTHEON_WORKSTATION_APT_MIRROR"
 PAIRING_GID = 4242
 BUILT_TAG = "pantheon-workstation:e2e-test"
-# The tray's two buttons in `skel/.jwmrc`, in screenshot pixels: measured on
-# this image's own first screenshot (DejaVu Sans 10, tray 32 px high at the
-# bottom). A change to the tray moves them, and this test is where it shows.
-TRAY_TERMINAL = (31, 783)
-TRAY_FIREFOX = (94, 783)
+# The panel's buttons (`skel/.config/xfce4`, `D-2026-10-31-02`), in screenshot
+# pixels: the panel is 40 px high along the bottom and each button is 40 px
+# square from the left — the menu, Terminal, Firefox, Files. Measured on a
+# desktop built from these same files (2026-10-31, Xvfb): a click at each
+# opened what it names. A change to the panel moves them, and this test and the
+# `workstation-desktop` skill are where it shows.
+TRAY_MENU = (20, 780)
+TRAY_TERMINAL = (60, 780)
+TRAY_FIREFOX = (100, 780)
+TRAY_FILES = (140, 780)
+TERMINAL_CLASS = "xfce4-terminal"
 
 
 def _docker_answers() -> bool:
@@ -278,8 +284,9 @@ def test_sudo_is_a_switch_the_daemon_enforces(station):
 
 # ── the display ──────────────────────────────────────────────────────────────
 
-def _xterm_centre(client, account):
-    r = sh(client, account, "xdotool search --onlyvisible --class XTerm getwindowgeometry --shell")
+def _terminal_centre(client, account):
+    r = sh(client, account, f"xdotool search --onlyvisible --class {TERMINAL_CLASS} "
+                            "getwindowgeometry --shell")
     geo = dict(line.split("=", 1) for line in r["stdout"].split() if "=" in line)
     return int(geo["X"]) + int(geo["WIDTH"]) // 2, int(geo["Y"]) + int(geo["HEIGHT"]) // 2
 
@@ -294,8 +301,9 @@ def test_a_real_display_is_seen_typed_into_and_the_picture_changes(station):
     assert jpeg["mime"] == "image/jpeg" and base64.b64decode(jpeg["data_b64"])[:2] == b"\xff\xd8"
     assert run(client.screenshot(ann, if_none_match=shot["digest"])) is None  # nothing moved
 
-    x, y = _wait_for(lambda: _xterm_centre(client, ann) if sh(
-        client, ann, "xdotool search --onlyvisible --class XTerm")["stdout"].strip() else None)
+    x, y = _wait_for(lambda: _terminal_centre(client, ann) if sh(
+        client, ann, f"xdotool search --onlyvisible --class {TERMINAL_CLASS}")["stdout"].strip()
+        else None)
     run(client.input(ann, "click", x=x, y=y))
     run(client.input(ann, "type", text="echo typed-through-the-screen > ~/typed.txt"))
     after = run(client.input(ann, "key", keys="Return", screenshot_after=True))
@@ -307,19 +315,20 @@ def test_a_real_display_is_seen_typed_into_and_the_picture_changes(station):
 def test_every_input_action_reaches_the_display(station):
     client, ann = station.client(), account_for("e2e-typist")
     run(client.ensure(ann))
-    # On the bare desktop, right of the terminal: nothing here types into a shell.
+    # On the bare desktop, right of the terminal (centred, about 918 px wide, so
+    # it ends near x 1100): nothing here types into a shell.
     for action, fields in [
-        ("move", {"x": 1100, "y": 300}), ("click", {"x": 1100, "y": 300}),
-        ("double_click", {"x": 1100, "y": 300}), ("triple_click", {"x": 1100, "y": 300}),
-        ("middle_click", {"x": 1100, "y": 300}), ("right_click", {"x": 1100, "y": 300}),
-        ("key", {"keys": "Escape"}), ("drag", {"x": 1100, "y": 300, "to_x": 1150, "to_y": 350}),
-        ("mouse_down", {"x": 1100, "y": 400}), ("mouse_up", {"x": 1120, "y": 420}),
-        ("scroll", {"x": 1100, "y": 300, "dy": 2}), ("scroll", {"x": 1100, "y": 300, "dx": -1}),
+        ("move", {"x": 1200, "y": 300}), ("click", {"x": 1200, "y": 300}),
+        ("double_click", {"x": 1200, "y": 300}), ("triple_click", {"x": 1200, "y": 300}),
+        ("middle_click", {"x": 1200, "y": 300}), ("right_click", {"x": 1200, "y": 300}),
+        ("key", {"keys": "Escape"}), ("drag", {"x": 1200, "y": 300, "to_x": 1240, "to_y": 350}),
+        ("mouse_down", {"x": 1200, "y": 400}), ("mouse_up", {"x": 1220, "y": 420}),
+        ("scroll", {"x": 1200, "y": 300, "dy": 2}), ("scroll", {"x": 1200, "y": 300, "dx": -1}),
         ("wait", {"ms": 50}),
     ]:
         assert run(client.input(ann, action, **fields))["ok"] is True, action
     where = sh(client, ann, "xdotool getmouselocation --shell")["stdout"]
-    assert "X=1100" in where and "Y=300" in where  # the last pointer move landed
+    assert "X=1200" in where and "Y=300" in where  # the last pointer move landed
 
 
 def test_another_account_cannot_see_or_drive_my_display(station):
@@ -345,13 +354,129 @@ def test_a_person_holding_the_screen_keeps_the_agent_off_it(station):
         run(client.control(ann, "agent"))
 
 
+# ── `D-2026-10-31-01`: the live desktop ────────────────────────────────────────
+
+async def _rfb_session(client, account, viewer, then):
+    """A real RFB session with the person's display, through the daemon's
+    `desktop` route — the websocket Pantheon relays — as far as the server's
+    hello, then `then(ws)`. Security type None: the websocket's login, which
+    the daemon adds and nobody else holds, was the authentication."""
+    async with client.desktop_stream(account, viewer) as ws:
+        buf = bytearray()
+
+        async def need(n):
+            while len(buf) < n:
+                buf.extend(await asyncio.wait_for(ws.recv(), 20))
+            out = bytes(buf[:n])
+            del buf[:n]
+            return out
+
+        version = await need(12)
+        await ws.send(b"RFB 003.008\n")
+        types = list(await need((await need(1))[0]))
+        await ws.send(bytes([1]))
+        result = struct.unpack(">I", await need(4))[0]
+        await ws.send(bytes([1]))                           # shared: others stay
+        size = struct.unpack(">HH", await need(4))
+        return version, types, result, size, await then(ws)
+
+
+def _pointer_to(x, y):
+    return struct.pack(">BBHH", 5, 0, x, y)                 # PointerEvent, no button
+
+
+def test_the_desktop_streams_and_only_the_person_holding_it_drives_it(station):
+    client, ann = station.client(), account_for("e2e-live")
+    answer = run(client.desktop(ann))
+    assert answer["kind"] == "kasmvnc" and "why" not in answer, answer
+    assert answer["holder"] == "agent"
+
+    async def where():
+        r = await client.exec(ann, "xdotool getmouselocation --shell")
+        return r["stdout"]
+
+    async def drive(ws):
+        await client.input(ann, "move", x=10, y=10)
+        await ws.send(_pointer_to(500, 400))
+        await asyncio.sleep(1.0)
+        watching = await where()                              # the agent holds it: read-only
+        await client.control(ann, "person")
+        try:
+            await asyncio.sleep(1.5)                          # the logins file, re-read live
+            await ws.send(_pointer_to(600, 450))
+            await asyncio.sleep(1.0)
+            holding = await where()
+        finally:
+            await client.control(ann, "agent")
+        await asyncio.sleep(1.5)
+        await ws.send(_pointer_to(700, 500))
+        await asyncio.sleep(1.0)
+        return watching, holding, await where()
+
+    version, types, result, size, (watching, holding, back) = run(
+        _rfb_session(client, ann, "person", drive))
+    assert version == b"RFB 003.008\n" and 1 in types and result == 0
+    assert size == (P.SCREEN_WIDTH, P.SCREEN_HEIGHT)
+    assert "X=10" in watching and "Y=10" in watching, "the stream drove while the agent held it"
+    assert "X=600" in holding and "Y=450" in holding, "Take over did not let the stream drive"
+    assert "X=600" in back and "Y=450" in back, "Hand back left the stream driving"
+
+
+def test_a_watcher_sees_the_desktop_and_never_drives_it(station):
+    client, ann = station.client(), account_for("e2e-live")
+    run(client.control(ann, "person"))
+    try:
+        async def poke(ws):
+            await client.input(ann, "move", x=20, y=20, holder="person")
+            await ws.send(_pointer_to(800, 600))
+            await asyncio.sleep(1.0)
+            return (await client.exec(ann, "xdotool getmouselocation --shell"))["stdout"]
+
+        version, _types, result, size, where = run(_rfb_session(client, ann, "watch", poke))
+    finally:
+        run(client.control(ann, "agent"))
+    assert version == b"RFB 003.008\n" and result == 0 and size == (P.SCREEN_WIDTH, P.SCREEN_HEIGHT)
+    assert "X=20" in where and "Y=20" in where, "a watcher drove the desktop"
+
+
+def test_the_desktops_logins_are_not_the_accounts_to_read(station):
+    """The file the display reads its two logins from is root's, readable by
+    the display (the account's group) — so the agent, which runs as that
+    account, can read it but never rewrite who may drive; another account
+    cannot read it at all."""
+    client = station.client()
+    ann, bob = account_for("e2e-live"), account_for("e2e-bob")
+    run(client.desktop(ann))
+    uid = sh(client, ann, "id -u")["stdout"].strip()
+    path = f"/run/pantheon-desktop/{uid}/kasmpasswd"
+    assert sh(client, ann, f"stat -c '%U %a' {path}")["stdout"].split() == ["root", "640"]
+    assert sh(client, ann, f"echo x:y:rw >> {path}")["exit_code"] != 0
+    run(client.ensure(bob))
+    assert sh(client, bob, f"cat {path}")["exit_code"] != 0
+
+
 def test_the_tray_opens_a_terminal_and_firefox(station):
     client, ann = station.client(), account_for("e2e-browser")
     run(client.ensure(ann))
-    count = lambda: sh(client, ann, "pgrep -u $(id -u) -xc xterm")["stdout"].strip()  # noqa: E731
+    # The desktop is XFCE with Pantheon's frames (`D-2026-10-31-02`), not the fallback.
+    assert sh(client, ann, "pgrep -u $(id -u) -xc xfwm4")["stdout"].strip() == "1"
+    assert sh(client, ann, "pgrep -u $(id -u) -xc jwm")["stdout"].strip() == "0"
+    assert sh(client, ann, "test -f /usr/share/themes/Pantheon/xfwm4/themerc && echo theme"
+              )["stdout"].strip() == "theme"
+    # Windows, not processes: the panel's terminals share one process.
+    count = lambda: sh(client, ann, f"xdotool search --onlyvisible --class {TERMINAL_CLASS} "  # noqa: E731
+                                    "| wc -l")["stdout"].strip()
     before = int(count() or 0)
     run(client.input(ann, "click", x=TRAY_TERMINAL[0], y=TRAY_TERMINAL[1]))
     assert _wait_for(lambda: int(count() or 0) > before, limit=15)
+    run(client.input(ann, "click", x=TRAY_FILES[0], y=TRAY_FILES[1]))
+    assert _wait_for(lambda: sh(client, ann, "xdotool search --onlyvisible --class thunar "
+                                             "2>/dev/null | head -1")["stdout"].strip(), limit=30)
+    run(client.input(ann, "click", x=TRAY_MENU[0], y=TRAY_MENU[1]))
+    assert _wait_for(lambda: sh(client, ann, "xdotool search --onlyvisible --name "
+                                             "'^Whisker Menu$' 2>/dev/null | head -1")
+                     ["stdout"].strip(), limit=15), "the panel's menu did not open"
+    run(client.input(ann, "key", keys="Escape"))
     run(client.input(ann, "click", x=TRAY_FIREFOX[0], y=TRAY_FIREFOX[1]))
     window = _wait_for(lambda: sh(client, ann, "xdotool search --onlyvisible --class firefox "
                                                "2>/dev/null | head -1")["stdout"].strip(), limit=90)
@@ -380,10 +505,11 @@ def test_reset_puts_the_home_and_the_display_back(station):
     r = sh(client, carol, "ls -A ~; echo ---; pgrep -u $(id -u) -x sleep; stat -c %a ~")
     listing, rest = r["stdout"].split("---\n")
     names = set(listing.split())
-    assert "junk" not in names and {".bashrc", ".jwmrc", ".Xdefaults", ".profile"} <= names
+    assert "junk" not in names and {".bashrc", ".jwmrc", ".Xdefaults", ".profile",
+                                     ".config"} <= names
     assert rest.strip() == "700"  # and no sleep survived
     # The desktop is back without being asked for: the display restarted.
-    assert sh(client, carol, "pgrep -u $(id -u) -xc Xvfb")["stdout"].strip() == "1"
+    assert sh(client, carol, "pgrep -u $(id -u) -xc Xkasmvnc")["stdout"].strip() == "1"
     shot = run(client.screenshot(carol))
     assert _png_size(base64.b64decode(shot["data_b64"])) == (P.SCREEN_WIDTH, P.SCREEN_HEIGHT)
 
@@ -391,9 +517,9 @@ def test_reset_puts_the_home_and_the_display_back(station):
 def test_a_reset_brings_the_desktop_back_even_for_a_shell_only_person(station):
     client, frank = station.client(), account_for("e2e-frank")
     sh(client, frank, "true")  # exec makes the account and no display
-    assert sh(client, frank, "pgrep -u $(id -u) -xc Xvfb")["stdout"].strip() == "0"
+    assert sh(client, frank, "pgrep -u $(id -u) -xc Xkasmvnc")["stdout"].strip() == "0"
     run(client.reset(frank))
-    assert sh(client, frank, "pgrep -u $(id -u) -xc Xvfb")["stdout"].strip() == "1"
+    assert sh(client, frank, "pgrep -u $(id -u) -xc Xkasmvnc")["stdout"].strip() == "1"
 
 
 def test_accounts_their_files_and_the_sudo_choice_survive_the_container_being_replaced(station):

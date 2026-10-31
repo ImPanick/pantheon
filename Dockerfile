@@ -1,4 +1,4 @@
-# ---- the base: one Python patch release, for all three stages ----
+# ---- the base: one Python patch release, for every stage ----
 # `B1667`. Every stage read `python:3.14-slim`, a minor line rather than a
 # release, so a rebuild could swap the interpreter under the product with
 # nothing in the tree saying so — `B445`'s class, which the compose files had
@@ -7,8 +7,9 @@
 # `3.14.10-slim` named the same amd64 (sha256:ec6a14df…697f2d) and arm64
 # (sha256:29434a59…18ca1f) images, so this pins what a build was already
 # getting. Dependabot's docker ecosystem proposes the next patch as a pull
-# request; move all three `FROM`s together (`B1591`'s stage shares the base on
-# purpose). tests/test_searxng_image_pinned.py holds every Dockerfile to it.
+# request; move every `FROM` together (`B1591`'s stage and the desktop client's
+# share the base on purpose). tests/test_searxng_image_pinned.py holds every
+# Dockerfile to it.
 
 # ---- builder: patch + build wheels for Real-ESRGAN's broken-on-3.14 deps ----
 # basicsr/gfpgan/facexlib read their version via exec()+locals()['__version__'],
@@ -43,6 +44,30 @@ RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund
 COPY scripts/strip-js-comments.mjs scripts/
 COPY static/ static/
 RUN node scripts/strip-js-comments.mjs /build /out
+
+# ---- desktop-client: the live desktop's web client, unpacked, never run ----
+# `D-2026-10-31-01`. The Workstation window draws a person's desktop with
+# KasmVNC's web client, and Pantheon serves that client itself
+# (`src/desktop_client.py`): the workstation is where agents run as root, so
+# script a browser runs under Pantheon's origin never comes from there. This
+# stage takes it from the same KasmVNC package the workstation installs —
+# `workstation/provision.sh client`, which downloads the pinned release, refuses
+# it unless its sha256 matches the one committed there, and unpacks it with
+# `dpkg-deb -x` (files only: nothing in the package runs). Only the unpacked
+# web client and its licence texts reach the image: the client's own copyright
+# file from the package, and the licences its files name
+# (`docker/kasmvnc-client/`, read from the client's source at the commit that
+# release was cut from). The optional BuildKit secret `build-ca` is the
+# workstation image's (`workstation/Dockerfile`), for a builder whose proxy
+# re-signs TLS.
+FROM python:3.14.10-slim AS desktop-client
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl \
+    && rm -rf /var/lib/apt/lists/*
+COPY workstation/provision.sh /build/provision.sh
+COPY docker/kasmvnc-client/ /out/LICENSES/
+RUN --mount=type=secret,id=build-ca,required=false,mode=0444 \
+    sh /build/provision.sh client /out \
+    && rm -f /out/LICENSES/README.md
 
 FROM python:3.14.10-slim
 
@@ -199,6 +224,11 @@ RUN if [ "$BAKE_MODELS" = "true" ] && [ "$INSTALL_VOICE" = "true" ]; then \
         && chmod -R a+rX "$PANTHEON_SEED_MODELS"; \
     fi \
     && rm -f /tmp/bake_piper_voice.py
+
+# `D-2026-10-31-01`. The live desktop's web client and its licences, from the
+# `desktop-client` stage above, where `src/desktop_client.py` serves them.
+COPY --from=desktop-client /out/ /opt/pantheon/kasmvnc/
+ENV PANTHEON_DESKTOP_CLIENT_DIR=/opt/pantheon/kasmvnc/www
 
 # Copy app code
 COPY . .

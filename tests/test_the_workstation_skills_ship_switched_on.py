@@ -10,7 +10,9 @@ Four procedures under `library/pantheon/skills/`, published, read before the
 vendored ECC layer, and gated on the tools they drive (`requires_toolsets`), so
 they reach a turn exactly when the workstation would answer it. Every command
 in them was run on a live Xvfb + JWM + xdotool + Firefox desktop built from the
-workstation's own `.jwmrc` and Firefox policy before it was written down.
+workstation's own `.jwmrc` and Firefox policy before it was written down, and
+the desktop's lines again on XFCE built from the skeleton's `.config` when it
+replaced JWM (`D-2026-10-31-02`).
 
 Three things had to change for "by default" to be true, and each is asserted
 here through the path the model actually takes:

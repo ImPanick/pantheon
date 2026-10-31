@@ -108,6 +108,25 @@ the next one is cut.
 
 ### Added
 
+- **The workstation's desktop looks like Pantheon** (2026-10-31, `D-2026-10-31-02`). It is XFCE
+  now, themed to the cockpit: window frames of the cockpit's glass with a lit edge and rounded
+  corners, buttons that light on hover (close in the accent), the cockpit's light field as the
+  wallpaper, and a glass panel along the bottom with a Pantheon menu that searches every program,
+  Terminal, Firefox, Files, the open windows and a clock. Programs are dark, in Inter and
+  JetBrains Mono with Papirus icons; the terminal is the default theme's colours with nothing
+  around the text. Homes made before the change get the new desktop on their next start, without
+  losing a file of their own. It costs about 300 MB more in the workstation's image. Run
+  `docker compose up -d --build` once after updating; the VM backend remakes its machine image on
+  first use. A workstation without XFCE keeps the old desktop.
+- **The workstation's screen is live** (2026-10-31, `D-2026-10-31-01`). The Workstation window
+  shows the desktop as it moves, through KasmVNC, instead of a few screenshots a second: take over
+  and the mouse and keyboard are yours at once, hand back and the agent has them again. The
+  clipboard crosses both ways (*Copy*, *Paste*). Each person's display in the container and in the
+  VM is KasmVNC's X server now (pinned, checksummed; Xvfb where it cannot run), the stream goes
+  only to its person through Pantheon, and Pantheon serves the viewer from its own image. Anywhere
+  there is no stream the window shows pictures as before and says why. Run
+  `docker compose up -d --build` once after updating; the VM backend remakes its machine image on
+  first use. New pin: `websockets` 17.2, which Uvicorn needs to serve the stream.
 - **Voice chat with the agent, like a call** (2026-10-31, `B1718`). The sound-wave button beside
   Send starts a call in the open chat: say something, and when you stop it is heard and sent as your
   message to the same agent, with its tools, approvals and memory; the reply is spoken sentence by

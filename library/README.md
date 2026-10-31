@@ -56,7 +56,9 @@ Four are for the workstation:
 Each declares `requires_toolsets` for the tools it drives, so a turn gets them
 exactly when the loop offers those tools — for these, when the workstation is
 on and this person may use it. Every command in them was run on a desktop built
-from the workstation's own `.jwmrc` and Firefox policy before it was written.
+from the workstation's own `.jwmrc` and Firefox policy before it was written,
+and the desktop's again on the XFCE desktop built from its skeleton's
+`.config` when that replaced JWM (`D-2026-10-31-02`).
 
 This layer is read **before** `ecc/`, so a first-party skill shadows a vendored
 one of the same name, and a person's own skill of the same name shadows both,

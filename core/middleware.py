@@ -276,6 +276,9 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         # the vendored runtime it loads from an opaque origin.
         is_python_sandbox = path == "/python-sandbox"
         is_pyodide_asset = "/static/lib/pyodide/" in path
+        # `D-2026-10-31-01`. The live desktop's web client (KasmVNC's), framed
+        # by the Workstation window (`src/desktop_client.py`).
+        is_desktop_client = path.startswith("/api/workstation/desktop/client/")
 
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "no-referrer"
@@ -338,6 +341,34 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
                 "font-src data:; "
                 "media-src data: blob:; "
                 "sandbox allow-scripts; "
+                "frame-ancestors 'self'"
+            )
+        elif is_desktop_client:
+            # Pantheon's own copy of a vendored client, framed by Pantheon's own
+            # pages and nobody else's. Same-origin and not sandboxed, because
+            # the client keeps its settings in this origin's storage and runs a
+            # SharedWorker, and an opaque origin has neither; what keeps it
+            # honest is that every byte of it is the image's (no route writes
+            # under its folder), its inline block runs by its hash and nothing
+            # else inline does, and it connects to nothing but this origin —
+            # the desktop's stream, relayed. `'wasm-unsafe-eval'` is its frame
+            # decoder; workers are its own files.
+            inline_script_sources = " ".join(
+                getattr(request.state, "csp_script_hashes", ()) or ())
+            response.headers["X-Frame-Options"] = "SAMEORIGIN"
+            response.headers["Content-Security-Policy"] = (
+                "default-src 'self'; "
+                f"script-src 'self' {inline_script_sources} 'wasm-unsafe-eval'; ".replace("  ", " ")
+                + "style-src 'self' 'unsafe-inline'; "
+                "img-src 'self' data: blob:; "
+                "font-src 'self'; "
+                "media-src 'self' data: blob:; "
+                "connect-src 'self'; "
+                "worker-src 'self' blob:; "
+                "frame-src 'none'; "
+                "object-src 'none'; "
+                "base-uri 'none'; "
+                "form-action 'none'; "
                 "frame-ancestors 'self'"
             )
         elif is_tool_render:

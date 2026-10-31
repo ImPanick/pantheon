@@ -248,6 +248,22 @@ ROUTES: Dict[str, Tuple[str, str]] = {
     # (`src/networks.py`): a run's scope, and a network marked untrusted, whose
     # ranges ride along as `deny` and are checked after the name resolves here.
     "network": ("POST", "/v1/users/{account}/network"),
+    # `D-2026-10-31-01`, added: the account's live desktop — its display served
+    # by KasmVNC (`workstation/ubuntu.py`), so a person sees it move as it moves
+    # and takes it over without a frame's wait.
+    #   GET, no `Upgrade` -> {"kind": one of DESKTOP_KINDS | null, "holder": "agent"|"person",
+    #                         "why": str — only when "kind" is null}
+    #   GET with `Upgrade: websocket`, `Sec-WebSocket-Protocol: DESKTOP_SUBPROTOCOL`
+    #       and ?viewer=one of DESKTOP_VIEWERS -> `101`, then the display's RFB
+    #       stream on that websocket, both ways, byte for byte. `person` drives
+    #       only while the person holds the display (`control`) and watches
+    #       otherwise; `watch` — an admin looking on (`B1424`) — never drives.
+    # A "kind" of null is a display that has no live desktop (a machine without
+    # KasmVNC, a system without a display): the caller shows screenshots. An
+    # error before the `101` is the usual JSON one; after it there is only the
+    # stream, and the end of the stream is the end of the desktop. A daemon
+    # older than this answers `404 not_found`.
+    "desktop": ("GET", "/v1/users/{account}/desktop"),
 }
 
 # ── what the fields may hold ──────────────────────────────────────────────────
@@ -255,6 +271,14 @@ SHELLS = ("bash", "python")
 ENTRY_TYPES = ("file", "dir", "symlink", "other")
 SCREENSHOT_FORMATS = ("png", "jpeg")
 HOLDERS = ("agent", "person")
+# `D-2026-10-31-01`. What serves a live desktop (`ROUTES["desktop"]`), who may
+# look at one, and the websocket subprotocol its stream travels in — RFB is
+# binary, and KasmVNC's own web client asks for exactly this one.
+DESKTOP_KINDS = ("kasmvnc",)
+DESKTOP_VIEWERS = ("person", "watch")
+DESKTOP_SUBPROTOCOL = "binary"
+# The most a desktop handshake's answer may be before the stream starts.
+MAX_DESKTOP_HANDSHAKE_BYTES = 16_384
 # `P16-20` / `D-2026-10-25-03`. The network actions (`workstation/netcheck.py`):
 # one connection per `reach`, no ranges.
 NETWORK_ACTIONS = ("interfaces", "reach")
@@ -534,6 +558,8 @@ __all__ = [
     "MACHINE_STATES",
     # `B984`, added.
     "MAX_CLOCK_STEP_S",
+    # `D-2026-10-31-01`, added.
+    "DESKTOP_KINDS", "DESKTOP_SUBPROTOCOL", "DESKTOP_VIEWERS", "MAX_DESKTOP_HANDSHAKE_BYTES",
     "ACCOUNT_PREFIX", "ACCOUNT_RE", "AGENT_NAME", "BACKENDS", "DEFAULT_EXEC_TIMEOUT_S",
     "DEFAULT_HOST", "DEFAULT_PAIRING_DIR", "DEFAULT_PORT", "ENTRY_TYPES",
     "ERRORS", "HOLDERS", "INPUT_ACTIONS", "LOCAL_OWNER_SLUG", "MAX_BODY_BYTES",

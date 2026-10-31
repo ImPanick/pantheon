@@ -46855,6 +46855,27 @@ body.settings-sidebar-resize-active {
   color: color-mix(in oklab, var(--fg) 75%, var(--fg-muted));
 }
 .wsv-hint[hidden] { display: none; }
+/* `D-2026-10-31-01`: the live desktop. KasmVNC's client fills the stage and
+   scales the screen inside itself, keeping its shape; the stage's border and
+   the `--green` ring while the person holds it are the same as for pictures.
+   The note under it (the stream's state, the clipboard's last word, or why
+   this screen is pictures) is the hint's size, a step quieter. */
+.wsv-live {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  border-radius: 7px;
+  background: var(--panel);
+}
+.wsv-note {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: color-mix(in oklab, var(--fg) 65%, var(--fg-muted));
+}
+.wsv-note[hidden] { display: none; }
 /* The door on a workstation tool card: the *workstation* label's shape, as a
    button — a border and a hover, no fill until pointed at. */
 .agent-thread-ws-door {

@@ -19,10 +19,21 @@
 #              also drop apt's lists and the base image's `ubuntu` user (uid
 #              1000, Pantheon's default PGID: the pairing group). Never on a host
 #              an operator owns: that user may be them.
+#              It also installs KasmVNC's X server (`D-2026-10-31-01`), the
+#              display every person's desktop is: the package below, pinned by
+#              version and by checksum per architecture, refused on a mismatch.
+#   client DIR (Pantheon's image, not a workstation) KasmVNC's web client,
+#              unpacked from that same pinned package into DIR — Pantheon
+#              serves it itself (`src/desktop_client.py`), so the browser only
+#              ever runs the copy this file names. Nothing in the package runs.
 #   files      Firefox's no-phone-home policy (--policies DIR, default
-#              /etc/firefox/policies, where Firefox reads it), and the skeleton
+#              /etc/firefox/policies, where Firefox reads it), the skeleton
 #              new homes start from (--skel DIR, default
-#              /opt/pantheon-workstation/skel); with --code DIR also the
+#              /opt/pantheon-workstation/skel), and the desktop's look
+#              (`D-2026-10-31-02`): Pantheon's window frames (--themes DIR,
+#              default /usr/share/themes) and the wallpaper and the menu's mark
+#              (--share DIR, default /usr/share/pantheon-workstation, where the
+#              skeleton's settings name them); with --code DIR also the
 #              daemon's package (DIR/workstation/*.py).
 #
 # Optional, for a builder that cannot reach Ubuntu's mirrors directly — none of
@@ -41,12 +52,65 @@ STEP=${1:-}
 PACKAGES="ca-certificates curl git sudo tini procps less nano unzip xz-utils \
 python3 python3-venv python3-pip build-essential \
 xvfb jwm xterm xdotool scrot fonts-dejavu-core dbus-daemon dbus-bin \
-nftables"
+nftables \
+xfwm4 xfce4-panel xfdesktop4 xfce4-session xfce4-settings xfconf xfce4-terminal thunar \
+xfce4-whiskermenu-plugin papirus-icon-theme adwaita-icon-theme fonts-inter \
+fonts-jetbrains-mono librsvg2-common"
 # `nftables` (`P20-06`): the network gate, which runs from the same image, writes the
 # admin's mode with `nft`. In the workstation itself it does nothing: the overlay gives
 # the workstation no `CAP_NET_ADMIN`.
+# `xvfb` stays beside KasmVNC: it is the display where KasmVNC has no package (an
+# architecture other than these two), and the agent's screenshots work on it as before.
+# `D-2026-10-31-02`. The desktop is XFCE, themed to the cockpit (`files` below puts
+# the theme in place; the settings are the skeleton's `.config`): its window manager
+# with a compositor, the panel and its menu, the wallpaper, the session that starts
+# them, the terminal and the file manager, Papirus's icons over Adwaita's, Inter and
+# JetBrains Mono, and the SVG loader the wallpaper and the menu's mark need. About
+# 300 MB with the icons (apt's own figure on Ubuntu 24.04, 2026-10-31); the admin
+# chose the look over the size. `jwm` and `xterm` stay: they are the desktop a
+# machine without XFCE still gets (`ubuntu.py`).
+
+# `D-2026-10-31-01`. The live desktop: KasmVNC's X server for Ubuntu 24.04, from
+# Kasm Technologies' own release (GPL-2.0-or-later; https://github.com/kasmtech/KasmVNC).
+# The checksums were read from the two packages themselves when this was pinned
+# (2026-10-31); a package that does not match is refused, never installed. Moving the
+# version means downloading both, reading both sums, and changing all three lines.
+KASMVNC_VERSION=1.5.2
+KASMVNC_SHA256_AMD64=89a5d1fbe9e032b122202be158a2b25f15c97e0a5b8dcf92a5e6835c7b7b2acd
+KASMVNC_SHA256_ARM64=4d680f3d1eb77fb155ae67af7f9fa25d7fbd38a7f69ae146784c7f738e2eed1a
+KASMVNC_URL=https://github.com/kasmtech/KasmVNC/releases/download
 
 say() { printf 'provision: %s\n' "$*"; }
+
+# kasmvnc_deb ARCH OUT: the pinned KasmVNC package for ARCH (amd64 or arm64),
+# downloaded to OUT and checked against its sum; anything else stops the script.
+kasmvnc_deb() {
+    arch=$1
+    out=$2
+    case "$arch" in
+        amd64) sum=$KASMVNC_SHA256_AMD64 ;;
+        arm64) sum=$KASMVNC_SHA256_ARM64 ;;
+        *) say "KasmVNC builds no package for $arch"; exit 1 ;;
+    esac
+    url="$KASMVNC_URL/v$KASMVNC_VERSION/kasmvncserver_ubuntu_noble_${KASMVNC_VERSION}_$arch.deb"
+    cacert=
+    ca=${PROVISION_CA:-/run/secrets/build-ca}
+    if [ -s "$ca" ]; then
+        # The builder's CA beside the system's, never instead of it: a proxy that
+        # inspects TLS re-signs GitHub too, and one that does not leaves it alone.
+        cat /etc/ssl/certs/ca-certificates.crt "$ca" > /tmp/provision-ca.pem
+        cacert=/tmp/provision-ca.pem
+    fi
+    say "fetching KasmVNC $KASMVNC_VERSION ($arch)"
+    curl --fail --silent --show-error --location --retry 3 ${cacert:+--cacert "$cacert"} \
+        --output "$out" "$url"
+    rm -f /tmp/provision-ca.pem
+    if ! printf '%s  %s\n' "$sum" "$out" | sha256sum -c - >/dev/null 2>&1; then
+        rm -f "$out"
+        say "the KasmVNC package did not match its pinned checksum; refusing it"
+        exit 1
+    fi
+}
 
 packages() {
     image=no
@@ -85,6 +149,16 @@ packages() {
         > /etc/apt/preferences.d/mozilla
     apt-get update
     apt-get install -y --no-install-recommends firefox
+    # The live desktop (`D-2026-10-31-01`): KasmVNC's X server, installed from the
+    # pinned package with apt so its libraries come from Ubuntu.
+    arch=$(dpkg --print-architecture)
+    case "$arch" in
+        amd64|arm64)
+            kasmvnc_deb "$arch" /tmp/kasmvncserver.deb
+            apt-get install -y --no-install-recommends /tmp/kasmvncserver.deb
+            rm -f /tmp/kasmvncserver.deb ;;
+        *) say "KasmVNC builds no package for $arch; the desktop is shown as pictures (Xvfb)" ;;
+    esac
     rm -f /etc/apt/apt.conf.d/99-provision-ca /etc/apt/apt.conf.d/99-provision-proxy
     if [ "$image" = yes ]; then
         rm -rf /var/lib/apt/lists/*
@@ -97,11 +171,15 @@ files() {
     skel=/opt/pantheon-workstation/skel
     code=
     policies=/etc/firefox/policies
+    themes=/usr/share/themes
+    share=/usr/share/pantheon-workstation
     while [ $# -gt 0 ]; do
         case "$1" in
             --skel) skel=$2; shift ;;
             --code) code=$2; shift ;;
             --policies) policies=$2; shift ;;
+            --themes) themes=$2; shift ;;
+            --share) share=$2; shift ;;
             *) say "unknown option $1"; exit 2 ;;
         esac
         shift
@@ -122,15 +200,41 @@ files() {
         cp -a --remove-destination /etc/skel/. "$skel/"
     fi
     cp -a "$HERE/skel/." "$skel/"
+    # `D-2026-10-31-02`: what the skeleton's XFCE settings name — the window
+    # frames (made by scripts/make-workstation-theme.py, never edited by hand),
+    # the wallpaper and the menu button's mark. Replaced whole, so a part the
+    # theme no longer has does not linger.
+    rm -rf "$themes/Pantheon"
+    install -d -m 0755 "$themes/Pantheon/xfwm4" "$share"
+    install -m 0644 "$HERE"/desktop/themes/Pantheon/xfwm4/* "$themes/Pantheon/xfwm4/"
+    install -m 0644 "$HERE/desktop/pantheon-desktop.svg" "$HERE/desktop/pantheon-mark.svg" "$share/"
     if [ -n "$code" ]; then
         install -d -m 0755 "$code/workstation"
         install -m 0644 "$HERE"/*.py "$code/workstation/"
     fi
-    say "files in place (skeleton $skel${code:+, daemon $code/workstation})"
+    say "files in place (skeleton $skel, theme $themes/Pantheon${code:+, daemon $code/workstation})"
+}
+
+client() {
+    [ $# -eq 1 ] || { say "client takes one folder"; exit 2; }
+    # The web client is the same in both architectures' packages, so the amd64 one
+    # is read whatever this runs on. `dpkg-deb -x` unpacks files and runs nothing.
+    deb=/tmp/kasmvncserver.deb
+    kasmvnc_deb amd64 "$deb"
+    rm -rf /tmp/kasmvnc-unpacked
+    dpkg-deb -x "$deb" /tmp/kasmvnc-unpacked
+    install -d -m 0755 "$1"
+    cp -a /tmp/kasmvnc-unpacked/usr/share/kasmvnc/www "$1/www"
+    install -d -m 0755 "$1/LICENSES"
+    install -m 0644 /tmp/kasmvnc-unpacked/usr/share/doc/kasmvncserver/copyright "$1/LICENSES/kasmvncserver-copyright"
+    rm -rf /tmp/kasmvnc-unpacked "$deb"
+    chmod -R a+rX "$1"
+    say "KasmVNC $KASMVNC_VERSION web client in $1/www"
 }
 
 case "$STEP" in
     packages) packages "$@" ;;
     files) files "$@" ;;
-    *) echo "usage: provision.sh packages [--image] | files [--skel DIR] [--code DIR] [--policies DIR]" >&2; exit 2 ;;
+    client) client "$@" ;;
+    *) echo "usage: provision.sh packages [--image] | files [--skel DIR] [--code DIR] [--policies DIR] [--themes DIR] [--share DIR] | client DIR" >&2; exit 2 ;;
 esac

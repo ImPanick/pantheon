@@ -49,14 +49,60 @@ the agent is root-equivalent then, and the jail is lifted by the protocol.
 THE DISPLAY
 ===========
 
-`Xvfb` runs **as the account**, with `-displayfd` (the server picks a free
-number, so an account squatting another's number only moves it along) and an
-MIT cookie in the account's own `~/.Xauthority` (0600) — measured 2026-09-30 in
-the image: a second account without the cookie is refused (*Authorization
-required*). JWM draws a tray with a Terminal and a Firefox button and opens one
-terminal (`skel/.jwmrc`). The display starts on the first `ensure` or the
-first screenshot or input, not on every command: a person who only uses the
-shell does not pay for a desktop.
+The X server runs **as the account**, with `-displayfd` (the server picks a
+free number, so an account squatting another's number only moves it along) and
+an MIT cookie in the account's own `~/.Xauthority` (0600) — measured 2026-09-30
+in the image: a second account without the cookie is refused (*Authorization
+required*).
+
+**The server is KasmVNC's `Xkasmvnc` where the machine has it**
+(`D-2026-10-31-01`, `provision.sh` installs it), and `Xvfb` where it does not.
+Both are the same X server to everything on the display — `xdotool`, `scrot`,
+the damage watch — so the agent's tools do not change. What KasmVNC adds is a
+websocket that streams the display as it moves, which is how a person watches
+and takes over (`ROUTES["desktop"]`). It listens on 127.0.0.1 only, at a port
+chosen per display, behind HTTP Basic logins only the daemon knows:
+
+  * two logins per display, `person` and `watch` (`DESKTOP_VIEWERS`), each with
+    a random secret made when the display starts and held only in the
+    daemon's memory. The file KasmVNC checks them against
+    (`-KasmPasswordFile`) holds their `crypt(3)` SHA-256 hashes, and is root's:
+    `<desktop root>/<uid>/kasmpasswd`, 0640 to the account's group, in a 0750
+    directory, so the account's own programs can read it (the server is one
+    of them) and none can change it. Another account on the machine reaches
+    the port and has no secret to give it;
+  * who may drive is in that file too: `watch` is `r` always, and `person` is
+    `r` while the agent holds the display and `rw` once the person takes it
+    over (`set_driver`). KasmVNC reads the file again whenever it is written
+    and applies it to every viewer already connected, so a take-over is live
+    without a reconnect (VNCServerST.cxx, read at 1.5.2: an inotify watch,
+    then `recheckPerms` on each client);
+  * nothing else of KasmVNC is on: no web server (`-httpd` is not given — the
+    web client is Pantheon's, `src/desktop_client.py`), no TLS on loopback, no
+    owner API (no login has `o`), no failed-login lockout (the only client is
+    this daemon, at 127.0.0.1), and `-publicIP 127.0.0.1`, because without it
+    the server asks Google's STUN servers for its address at start — and exits
+    when a machine with no internet gets no answer (iceip.cxx, read at 1.5.2;
+    `Law 16` either way). It also opens a UDP port beside the websocket for a
+    WebRTC-style path the client only uses when told to, which Pantheon's
+    never is, and which answers nothing that has not logged in first.
+
+**The desktop is XFCE, themed to the cockpit** (`D-2026-10-31-02`; the admin
+chose it, 2026-10-31, over a lighter desktop that clashed with the rest of
+Pantheon). `xfce4-session` starts it as the account, under a session bus of
+its own: xfwm4 with Pantheon's window frames and its compositor, the panel
+along the bottom (the Pantheon menu, Terminal, Firefox, Files, the open
+windows, the clock), the wallpaper, and one terminal. Every setting is a file
+in the skeleton's `.config` (`skel/`), so "Reset to clean" restores the look
+with the home, and the theme's files are made by
+`scripts/make-workstation-theme.py`. A home made before this has none of those
+files, and XFCE's panel would open on a question; the display gives it the
+skeleton's `.config` once, as the account, before the session starts
+(`add_desktop_settings`). A machine without XFCE (an image built before it, a
+host whose operator skipped the packages) gets JWM, as before: a tray with a
+Terminal and a Firefox button and one terminal (`skel/.jwmrc`). The display
+starts on the first `ensure` or the first screenshot or input, not on every
+command: a person who only uses the shell does not pay for a desktop.
 
 **The grabber is `scrot`, measured** (2026-09-30, 1280x800 JWM desktop, three
 runs each): scrot PNG 64-70 ms and JPEG q75 20-24 ms; `xwd` plus a
@@ -76,7 +122,11 @@ asks it before running `scrot`. Measured 2026-10-01 in the image (Xvfb, JWM
 with its clock, the skeleton's terminal): 30 conditional screenshots of a still
 desktop ran `scrot` 0 times, at 0.17-0.43 ms each, against 60-120 ms for a
 grab at load 5; the mark it keeps adds about 10 ms to each grab (median 96 ms
-against 86 ms, taken in turn).
+against 86 ms, taken in turn). The XFCE desktop keeps it working, compositor
+and all (measured 2026-10-31, Xvfb, the skeleton's settings): an idle desktop
+drew nothing in 10 s (no blinking cursor, a clock that changes once a
+minute), and typing in the terminal or hovering a title-bar button was seen
+as a change.
 
 `xdotool` sends input. Not with `--sync`: `mousemove --sync` to where the
 pointer already is waits forever in the packaged 3.20160805 (measured), and
@@ -95,8 +145,10 @@ workstation`) — homes are in the volume and survive it.
 """
 from __future__ import annotations
 
+import base64
 import contextlib
 import ctypes
+import hashlib
 import grp
 import json
 import logging
@@ -106,6 +158,8 @@ import secrets
 import select
 import shutil
 import signal
+import socket
+import stat
 import struct
 import subprocess
 import threading
@@ -131,6 +185,27 @@ SYSTEM_PATH = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 XAUTH_NAME = b"MIT-MAGIC-COOKIE-1"
 _FAMILY_WILD = 0xFFFF
 _DISPLAY_START_S = 10.0
+# `D-2026-10-31-01`. KasmVNC's X server, when the machine has it, and where
+# each display's logins live (module docstring, THE DISPLAY).
+KASMVNC_SERVER = "Xkasmvnc"
+DESKTOP_ROOT = Path("/run/pantheon-desktop")
+DESKTOP_KIND = "kasmvnc"
+_KASM_SALT = "kasm"          # KasmVNC checks a login with crypt_r(secret, "$5$kasm$")
+_DESKTOP_READY_S = 5.0
+# `D-2026-10-31-02`. The desktop on the display: XFCE where the machine has it
+# (`provision.sh`), JWM where it has not (module docstring, THE DISPLAY).
+XFCE_SESSION = "xfce4-session"
+FALLBACK_WM = "jwm"
+# What `startxfce4` would set, which the session does not set for itself: the
+# menu (garcon reads `XDG_MENU_PREFIX`) and the autostart entries for XFCE.
+XFCE_ENV = {"XDG_CURRENT_DESKTOP": "XFCE", "XDG_SESSION_DESKTOP": "xfce",
+            "DESKTOP_SESSION": "xfce", "XDG_MENU_PREFIX": "xfce-"}
+# The skeleton's desktop settings, under the home: what a home made before the
+# desktop was XFCE is given once (`UbuntuSystem.add_desktop_settings`).
+DESKTOP_SETTINGS = ".config"
+DESKTOP_SETTINGS_MARK = ".config/xfce4"
+_WM_READY_S = 3.0
+_XFCE_READY_S = 10.0
 _INPUT_TIMEOUT_S = 15.0
 _JPEG_QUALITY = 75
 
@@ -464,6 +539,205 @@ def read_display_number(fd: int, timeout: float) -> str:
     return got.decode("ascii", "replace").strip()
 
 
+# ── the live desktop: KasmVNC's logins (`D-2026-10-31-01`) ────────────────────
+
+_CRYPT_ALPHABET = "./0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+# The order `crypt(3)`'s SHA-256 scheme writes the digest's bytes in, three at a time.
+_CRYPT_ORDER = ((0, 10, 20), (21, 1, 11), (12, 22, 2), (3, 13, 23), (24, 4, 14),
+                (15, 25, 5), (6, 16, 26), (27, 7, 17), (18, 28, 8), (9, 19, 29))
+
+
+def sha256_crypt(secret: str, salt: str = _KASM_SALT) -> str:
+    """`crypt(secret, "$5$<salt>$")` — glibc's SHA-256 scheme (Ulrich Drepper's
+    specification, 5000 rounds, the default), which is what KasmVNC computes
+    for a login and compares with the file (websocket.c, read at 1.5.2). Here
+    because the standard library's `crypt` is gone from Python 3.13, and the
+    daemon imports nothing outside it."""
+    key = secret.encode("utf-8")
+    salt_b = salt.encode("ascii")[:16]
+    h = hashlib.sha256
+    b = h(key + salt_b + key).digest()
+    a = h(key + salt_b)
+    n = len(key)
+    while n > 32:
+        a.update(b)
+        n -= 32
+    a.update(b[:n])
+    n = len(key)
+    while n:
+        a.update(b if n & 1 else key)
+        n >>= 1
+    c = a.digest()
+    p = (h(key * len(key)).digest() * (len(key) // 32 + 1))[:len(key)]
+    s = (h(salt_b * (16 + c[0])).digest() * (len(salt_b) // 32 + 1))[:len(salt_b)]
+    for i in range(5000):
+        x = h(p if i & 1 else c)
+        if i % 3:
+            x.update(s)
+        if i % 7:
+            x.update(p)
+        x.update(c if i & 1 else p)
+        c = x.digest()
+
+    def b64(b2: int, b1: int, b0: int, count: int) -> str:
+        w = (b2 << 16) | (b1 << 8) | b0
+        out = ""
+        for _ in range(count):
+            out += _CRYPT_ALPHABET[w & 0x3F]
+            w >>= 6
+        return out
+
+    text = "".join(b64(c[i], c[j], c[k], 4) for i, j, k in _CRYPT_ORDER) + b64(0, c[31], c[30], 3)
+    return f"$5${salt_b.decode('ascii')}${text}"
+
+
+class DesktopLogins:
+    """One display's two KasmVNC logins (module docstring, THE DISPLAY): the
+    secrets, held here and nowhere else, and the file KasmVNC checks them
+    against, which says who may drive."""
+
+    def __init__(self, path: Path, gid: int) -> None:
+        self.path = Path(path)
+        self.gid = gid
+        self._secrets = {viewer: secrets.token_urlsafe(24) for viewer in P.DESKTOP_VIEWERS}
+        self._hashes = {viewer: sha256_crypt(secret) for viewer, secret in self._secrets.items()}
+
+    def text(self, driving: bool) -> str:
+        """The file: `user:hash:perms`, one line a login. `person` writes only
+        while the person holds the display; `watch` never does."""
+        return "".join(
+            f"{viewer}:{self._hashes[viewer]}:{'rw' if viewer == 'person' and driving else 'r'}\n"
+            for viewer in P.DESKTOP_VIEWERS)
+
+    def write(self, driving: bool) -> None:
+        """Written in place (truncated and rewritten, then closed), not
+        replaced: KasmVNC watches the file for a write being closed, then
+        reads it again for every viewer. The folder is root's and 0750, so
+        nothing the account runs can put anything else at this path."""
+        folder = self.path.parent
+        folder.mkdir(parents=True, exist_ok=True)
+        os.chown(folder, 0, self.gid, follow_symlinks=False)
+        os.chmod(folder, 0o750)
+        fd = os.open(self.path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o640)
+        try:
+            os.fchown(fd, 0, self.gid)
+            os.fchmod(fd, 0o640)
+            os.write(fd, self.text(driving).encode("ascii"))
+        finally:
+            os.close(fd)
+
+    def authorization(self, viewer: str) -> str:
+        """The `Authorization` header that logs `viewer` in."""
+        if viewer not in self._secrets:
+            raise WorkstationError("bad_request",
+                                   f"“viewer” is one of {', '.join(P.DESKTOP_VIEWERS)}.")
+        token = base64.b64encode(f"{viewer}:{self._secrets[viewer]}".encode("ascii")).decode("ascii")
+        return f"Basic {token}"
+
+
+def free_port(host: str = "127.0.0.1") -> int:
+    """A port nothing listens on now. The server binds it a moment later; one
+    taken in between makes the server stop, and the start tries once more."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind((host, 0))
+        return s.getsockname()[1]
+
+
+def kasmvnc_argv(server: str, *, displayfd: int, auth: Path, port: int,
+                 logins: Path) -> List[str]:
+    """`Xkasmvnc`'s command line (module docstring, THE DISPLAY): the display
+    Xvfb would be — the protocol's size, 24 bits, no TCP, the account's
+    cookie, never reset — plus the stream on loopback behind the logins file,
+    and nothing else of KasmVNC switched on."""
+    return [server, "-displayfd", str(displayfd),
+            "-geometry", f"{P.SCREEN_WIDTH}x{P.SCREEN_HEIGHT}", "-depth", "24",
+            "-nolisten", "tcp", "-auth", str(auth), "-noreset", "-dpi", "96",
+            "-interface", "127.0.0.1", "-websocketPort", str(port),
+            "-KasmPasswordFile", str(logins),
+            # The websocket's Basic login is the gate; RFB's own is not asked for.
+            "-SecurityTypes", "None",
+            # The only client is this daemon, at 127.0.0.1: a lockout would lock it out.
+            "-BlacklistThreshold", "0",
+            # A person's two tabs and an admin watching are one desktop, not a fight.
+            "-AlwaysShared",
+            # The screen is the protocol's fixed size: the agent's coordinates depend on it.
+            "-AcceptSetDesktopSize=0",
+            # Without it the server asks Google's STUN servers for its address (`Law 16`).
+            "-publicIP", "127.0.0.1"]
+
+
+def xvfb_argv(*, displayfd: int, auth: Path) -> List[str]:
+    """The display without a stream, where the machine has no KasmVNC."""
+    return ["Xvfb", "-displayfd", str(displayfd), "-screen", "0",
+            f"{P.SCREEN_WIDTH}x{P.SCREEN_HEIGHT}x24", "-nolisten", "tcp",
+            "-auth", str(auth), "-noreset", "-dpi", "96"]
+
+
+def desktop_session(which: Optional[Callable[[str], Optional[str]]] = None
+                    ) -> Tuple[List[str], Dict[str, str]]:
+    """`(argv, environment)` of the desktop a display starts (`D-2026-10-31-02`):
+    XFCE's session where the machine has it, JWM where it has not."""
+    if (which or shutil.which)(XFCE_SESSION):
+        return [XFCE_SESSION], dict(XFCE_ENV)
+    return [FALLBACK_WM], {}
+
+
+def copy_missing(src: Path, dest: Path) -> int:
+    """Copy every file under `src` into `dest` that is not there yet, making
+    the folders it needs; returns how many files it wrote. Nothing in `dest`
+    is ever replaced, and nothing is reached through a link: a folder on the
+    way that is a link, or not a folder, is passed over with all it would have
+    held, and a file is opened with `O_NOFOLLOW | O_EXCL`. Run it as the
+    account that owns `dest` (`fs_identity`): a link swapped in mid-walk then
+    reaches only what the account could write anyway."""
+    written = 0
+    for root, dirs, files in os.walk(src):
+        rel = Path(root).relative_to(src)
+        here = dest / rel
+        try:
+            st = os.lstat(here)
+        except FileNotFoundError:
+            try:
+                os.mkdir(here, os.stat(root).st_mode & 0o777)
+            except OSError:
+                dirs[:] = []
+                continue
+        except OSError:
+            dirs[:] = []
+            continue
+        else:
+            if not stat.S_ISDIR(st.st_mode):
+                dirs[:] = []
+                continue
+        dirs.sort()
+        for name in sorted(files):
+            source = Path(root) / name
+            if source.is_symlink() or not source.is_file():
+                continue
+            try:
+                fd = os.open(here / name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+                             os.stat(source).st_mode & 0o777)
+            except OSError:
+                continue  # there already (never replaced), or not ours to make
+            with os.fdopen(fd, "wb") as f:
+                f.write(source.read_bytes())
+            written += 1
+    return written
+
+
+def _answers(port: int, timeout: float) -> bool:
+    """Whether something accepts a connection on 127.0.0.1:`port` within `timeout`."""
+    deadline = time.monotonic() + timeout
+    while True:
+        try:
+            with socket.create_connection(("127.0.0.1", port), timeout=0.5):
+                return True
+        except OSError:
+            if time.monotonic() >= deadline:
+                return False
+            time.sleep(0.05)
+
+
 _SETTLE = "0.05"
 _HOLD = "0.05"
 
@@ -473,8 +747,9 @@ def _press(button: str) -> List[str]:
 
 
 class XDisplay(Screen):
-    """One account's display: Xvfb, JWM and what JWM starts, all as the
-    account. Started lazily, restarted if it died."""
+    """One account's display: the X server (KasmVNC's, or Xvfb), the desktop
+    session (XFCE, or JWM) and what it starts, all as the account. Started
+    lazily, restarted if it died."""
 
     def __init__(self, system: "UbuntuSystem", account: str) -> None:
         self.system = system
@@ -487,6 +762,13 @@ class XDisplay(Screen):
         # conditional screenshot grabs).
         self._cookie: Optional[bytes] = None
         self._watch = None
+        # `D-2026-10-31-01`: the live desktop — the port KasmVNC streams on
+        # and its logins, while it runs (None: no stream, and `_desktop_why`
+        # says why); and whether the person drives, which outlives a restart
+        # of the display and is the agent's again only when `set_driver` says.
+        self._desktop: Optional[Tuple[int, DesktopLogins]] = None
+        self._desktop_why = ""
+        self._driving = False
 
     @property
     def name(self) -> Optional[str]:
@@ -522,52 +804,143 @@ class XDisplay(Screen):
             except OSError as e:
                 raise WorkstationError("unavailable", f"The display's key could not be written to "
                                                       f"{auth}: {e.strerror or e}.")
-            read_fd, write_fd = os.pipe()
-            try:
-                xvfb = subprocess.Popen(
-                    [*prefix, "Xvfb", "-displayfd", str(write_fd), "-screen", "0",
-                     f"{P.SCREEN_WIDTH}x{P.SCREEN_HEIGHT}x24", "-nolisten", "tcp",
-                     "-auth", str(auth), "-noreset", "-dpi", "96"],
-                    env=env, cwd=str(self.system.home(self.account)), pass_fds=(write_fd,),
-                    stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
-                    start_new_session=True)
-            except OSError as e:
-                os.close(read_fd)
-                os.close(write_fd)
-                raise WorkstationError("unavailable", f"The display could not be started: {e}.")
-            os.close(write_fd)
-            try:
-                text = read_display_number(read_fd, _DISPLAY_START_S)
-            finally:
-                os.close(read_fd)
-            if not text.isdigit():
-                why = _stop(xvfb, collect=True)
-                raise WorkstationError("unavailable", "The display did not start"
-                                       + (f": {why}" if why else "."))
-            if xvfb.stderr is not None:
-                # Nothing reads it after start-up; a full pipe would stall Xvfb.
-                threading.Thread(target=_drain, args=(xvfb.stderr, f"Xvfb {self.account}"),
-                                 daemon=True).start()
-            self.number = int(text)
-            self._procs = [xvfb]
+            server, number, desktop = self._start_server(prefix, env, auth, uid)
+            self.number = number
+            self._procs = [server]
+            self._desktop = desktop
             self._cookie = cookie  # `B974`
             _, denv = self.system.run_as(self.account)
+            # `D-2026-10-31-02`: XFCE, or JWM on a machine without it.
+            program, extra = desktop_session()
+            xfce = program == [XFCE_SESSION]
+            if xfce:
+                self.system.add_desktop_settings(self.account)
             # A session bus of the account's own, so a second Firefox launch
-            # finds the first one (without it: "Firefox is already running").
+            # finds the first one (without it: "Firefox is already running"),
+            # and XFCE's settings daemon (xfconfd) has a bus to be started on.
             session = ["dbus-run-session", "--"] if shutil.which("dbus-run-session") else []
             try:
                 self._procs.append(subprocess.Popen(
-                    [*prefix, *session, "jwm"], env=denv, cwd=str(self.system.home(self.account)),
+                    [*prefix, *session, *program], env={**denv, **extra},
+                    cwd=str(self.system.home(self.account)),
                     stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL, start_new_session=True))
             except OSError as e:
-                logger.warning("window manager for %s did not start: %s", self.account, e)
+                logger.warning("desktop for %s did not start: %s", self.account, e)
             else:
-                waited = self._wait_for_wm(prefix, denv)
-                logger.debug("window manager for %s ready after %.2f s", self.account, waited)
+                waited = self._wait_for_wm(prefix, denv, panel=xfce)
+                logger.debug("desktop (%s) for %s ready after %.2f s", program[0], self.account,
+                             waited)
             self._open_watch()  # `B974`
-            logger.info("display :%s started for %s", self.number, self.account)
+            logger.info("display :%s started for %s%s", self.number, self.account,
+                        f", live desktop on 127.0.0.1:{desktop[0]}" if desktop else "")
             return f":{self.number}"
+
+    def _start_server(self, prefix: List[str], env: Dict[str, str], auth: Path,
+                      uid: int) -> Tuple[subprocess.Popen, int, Optional[Tuple[int, DesktopLogins]]]:
+        """The X server, as the account: KasmVNC's when the machine has it —
+        tried twice, since the port it was given can be taken before it binds
+        it — and Xvfb when it has not, or when KasmVNC will not start (said in
+        the log and in `desktop`'s answer; the screen still works, as pictures)."""
+        kasm = shutil.which(KASMVNC_SERVER)
+        self._desktop_why = ""
+        if kasm:
+            logins = DesktopLogins(self.system.desktop_root / str(uid) / "kasmpasswd", uid)
+            try:
+                logins.write(self._driving)
+            except OSError as e:
+                self._desktop_why = f"The live desktop's logins could not be written: {e.strerror or e}."
+                logger.warning("display for %s: %s", self.account, self._desktop_why)
+            else:
+                why = ""
+                for _attempt in (1, 2):
+                    port = free_port()
+                    started, why = self._spawn(
+                        prefix, env, "Xkasmvnc",
+                        lambda fd, port=port: kasmvnc_argv(kasm, displayfd=fd, auth=auth, port=port,
+                                                           logins=logins.path))
+                    if started is not None:
+                        proc, number = started
+                        if _answers(port, _DESKTOP_READY_S):
+                            return proc, number, (port, logins)
+                        why = f"nothing answered on its port ({port})"
+                        _stop(proc)
+                self._desktop_why = ("The live desktop did not start (" + (why or "no reason given")
+                                     + "), so this screen is shown as pictures.")
+                logger.warning("display for %s: %s", self.account, self._desktop_why)
+        else:
+            self._desktop_why = ("This workstation has no KasmVNC, so its screen is shown as "
+                                 "pictures. Rebuild it to get the live desktop: docker compose "
+                                 "up -d --build.")
+        started, why = self._spawn(prefix, env, "Xvfb",
+                                   lambda fd: xvfb_argv(displayfd=fd, auth=auth))
+        if started is None:
+            raise WorkstationError("unavailable", "The display did not start"
+                                   + (f": {why}" if why else "."))
+        return started[0], started[1], None
+
+    def _spawn(self, prefix: List[str], env: Dict[str, str], label: str,
+               argv: Callable[[int], List[str]]) -> Tuple[Optional[Tuple[subprocess.Popen, int]], str]:
+        """Start one X server as the account — `argv(fd)` is its command line
+        for the pipe it writes its number to — and read that number:
+        `((proc, number), "")`, or `(None, what it said)` when it did not start."""
+        read_fd, write_fd = os.pipe()
+        try:
+            proc = subprocess.Popen(
+                [*prefix, *argv(write_fd)],
+                env=env, cwd=str(self.system.home(self.account)), pass_fds=(write_fd,),
+                stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
+                start_new_session=True)
+        except OSError as e:
+            os.close(read_fd)
+            os.close(write_fd)
+            return None, str(e)
+        os.close(write_fd)
+        try:
+            text = read_display_number(read_fd, _DISPLAY_START_S)
+        finally:
+            os.close(read_fd)
+        if not text.isdigit():
+            return None, _stop(proc, collect=True)
+        if proc.stderr is not None:
+            # Nothing reads it after start-up; a full pipe would stall the server.
+            threading.Thread(target=_drain, args=(proc.stderr, f"{label} {self.account}"),
+                             daemon=True).start()
+        return (proc, int(text)), ""
+
+    # -- `D-2026-10-31-01`: the live desktop ----------------------------------
+
+    @property
+    def desktop_kind(self) -> Optional[str]:
+        return DESKTOP_KIND if self._desktop is not None and self.running() else None
+
+    @property
+    def desktop_why(self) -> str:
+        return self._desktop_why or "This screen has no live desktop; it is shown as pictures."
+
+    def desktop(self, viewer: str) -> Tuple[int, str]:
+        """`(port, Authorization)` for `viewer` on this display's stream,
+        starting the display first if it is not running."""
+        self.start()
+        desktop = self._desktop
+        if desktop is None or not self.running():
+            raise WorkstationError("unavailable", self.desktop_why)
+        port, logins = desktop
+        return port, logins.authorization(viewer)
+
+    def set_driver(self, person: bool) -> None:
+        """Whether the person drives: their login may write while they hold
+        the display, and only watches otherwise. Kept for the display's next
+        start too, so a restart does not hand a person's mouse back to them
+        or take it away."""
+        with self._lock:
+            self._driving = bool(person)
+            if self._desktop is not None:
+                try:
+                    self._desktop[1].write(self._driving)
+                except OSError as e:
+                    logger.warning("display for %s: who drives could not be written: %s",
+                                   self.account, e)
 
     # -- `B974`: whether the screen moved, without a grab ---------------------
 
@@ -600,19 +973,31 @@ class XDisplay(Screen):
         # that is closed, and is never unchanged (`DamageWatch.unchanged`).
         return bool(watch is not None and self.running() and watch.unchanged(mark))
 
-    def _wait_for_wm(self, prefix: List[str], env: Dict[str, str], limit: float = 3.0) -> float:
+    def _wait_for_wm(self, prefix: List[str], env: Dict[str, str], *, panel: bool = False,
+                     limit: Optional[float] = None) -> float:
         """Until the window manager has taken the screen, so the first click
         after a start lands on a tray rather than a bare root window —
         measured 2026-09-30: an input sent as the display started missed the
         tray every time. The probe is the EWMH desktop count, which the root
         window has only once a manager set it: `xdotool get_num_desktops`
-        fails before JWM and answers 1 about 100 ms after it starts."""
+        fails before JWM and answers 1 about 100 ms after it starts.
+
+        With XFCE (`panel`, `D-2026-10-31-02`) also until its panel is on the
+        screen: xfwm4 sets the count before the panel maps, and the panel is
+        what a first click is for. Measured 2026-10-31 on an idle Xvfb: the
+        count after 0.3 s, the panel after 0.5 s, the terminal after 0.8 s; the
+        limit is 10 s for a loaded machine."""
+        if limit is None:
+            limit = _XFCE_READY_S if panel else _WM_READY_S
+        probes = [["xdotool", "get_num_desktops"]]
+        if panel:
+            probes.append(["xdotool", "search", "--onlyvisible", "--class", "xfce4-panel"])
         started = time.monotonic()
         while time.monotonic() - started < limit:
-            probe = subprocess.run([*prefix, "xdotool", "get_num_desktops"],
-                                   env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                                   cwd=str(self.system.home(self.account)))
-            if probe.returncode == 0:
+            if all(subprocess.run([*prefix, *probe], env=env, stdout=subprocess.DEVNULL,
+                                  stderr=subprocess.DEVNULL,
+                                  cwd=str(self.system.home(self.account))).returncode == 0
+                   for probe in probes):
                 time.sleep(0.2)  # the tray is drawn just after the check window
                 break
             time.sleep(0.05)
@@ -630,6 +1015,7 @@ class XDisplay(Screen):
             _stop(proc)
         self._procs = []
         self.number = None
+        self._desktop = None  # its logins die with it; the next start makes new ones
 
     def _run(self, argv: Sequence[str], stdin: Optional[bytes], timeout: float) -> bytes:
         """Run an X client as the account on this display. If the server
@@ -717,9 +1103,12 @@ class UbuntuSystem(System):
     def __init__(self, homes: Path = Path("/home"), *, skeleton: Path = Path("/etc/skel"),
                  sudo_default: bool = True, network: str = "full",
                  reserved_ids: Iterable[int] = (), sudoers_path: Path = SUDOERS_PATH,
-                 runtime_root: Path = RUNTIME_ROOT, prepare: bool = True) -> None:
+                 runtime_root: Path = RUNTIME_ROOT, desktop_root: Path = DESKTOP_ROOT,
+                 prepare: bool = True) -> None:
         super().__init__()
         self.homes = Path(homes)
+        # `D-2026-10-31-01`: where each display's KasmVNC logins are kept, root's.
+        self.desktop_root = Path(desktop_root)
         self.skeleton = Path(skeleton)
         self.network = network if network in P.NETWORK_MODES else "full"
         self.state_dir = self.homes / STATE_DIRNAME
@@ -760,6 +1149,9 @@ class UbuntuSystem(System):
         os.chown(X_SOCKET_DIR, 0, 0)
         os.chmod(X_SOCKET_DIR, 0o1777)
         self.runtime_root.mkdir(parents=True, exist_ok=True)
+        self.desktop_root.mkdir(mode=0o755, parents=True, exist_ok=True)
+        os.chown(self.desktop_root, 0, 0)
+        os.chmod(self.desktop_root, 0o755)
         os.setgroups([])
         # `B1424`. What anyone here makes is the maker's and its group's, and
         # nobody else's: a person's projects folder is setgid to Pantheon's
@@ -857,6 +1249,32 @@ class UbuntuSystem(System):
                            getattr(e, "message", None) or e)
             return None
 
+    def add_desktop_settings(self, account: str) -> int:
+        """Give a home made before the desktop was XFCE the skeleton's
+        `.config` (`D-2026-10-31-02`): once, while the home has no
+        `.config/xfce4` at all, so a person who later changes or removes a
+        setting keeps their change. Without it XFCE's panel opens on a question
+        ("the default config, or one empty panel?") and the rest is stock.
+        Copied as the account, never over a file it already has
+        (`copy_missing`); returns how many files were added."""
+        src = self.skeleton / DESKTOP_SETTINGS
+        if not src.is_dir():
+            return 0
+        home = self.home(account)
+        uid = self.uid(account)
+        try:
+            with fs_identity(uid, uid):
+                if (home.is_symlink() or not home.is_dir()
+                        or os.path.lexists(home / DESKTOP_SETTINGS_MARK)):
+                    return 0
+                added = copy_missing(src, home / DESKTOP_SETTINGS)
+        except OSError as e:
+            logger.warning("desktop settings for %s could not be added: %s", account, e)
+            return 0
+        if added:
+            logger.info("gave %s's home the desktop's settings (%d files)", account, added)
+        return added
+
     def reset(self, account: str) -> None:
         self.ensure(account)
         display = self._displays.get(account)
@@ -877,6 +1295,7 @@ class UbuntuSystem(System):
             self._fill_home(home, uid)
             runtime = self.runtime_root / str(uid)
             shutil.rmtree(runtime, ignore_errors=True)
+            shutil.rmtree(self.desktop_root / str(uid), ignore_errors=True)
             self.runtime_dir(account)
         # The protocol says a reset restarts the display (`ROUTES["reset"]`),
         # so it does, whether or not one was running: "Reset to clean" ends on
@@ -1083,4 +1502,10 @@ def _run_root(argv: List[str]) -> None:
 
 __all__ = ["AGENTS_GID", "AGENTS_GROUP", "AccountRegistry", "UID_MAX", "UID_MIN",
            "UbuntuSystem", "XDisplay", "fs_identity", "kill_processes", "read_display_number",
-           "sudoers_text", "write_sudoers", "xauthority_entry", "xdotool_argv"]
+           "sudoers_text", "write_sudoers", "xauthority_entry", "xdotool_argv",
+           # `D-2026-10-31-01`, added.
+           "DESKTOP_KIND", "DESKTOP_ROOT", "DesktopLogins", "KASMVNC_SERVER", "free_port",
+           "kasmvnc_argv", "sha256_crypt", "xvfb_argv",
+           # `D-2026-10-31-02`, added.
+           "DESKTOP_SETTINGS", "FALLBACK_WM", "XFCE_ENV", "XFCE_SESSION", "copy_missing",
+           "desktop_session"]

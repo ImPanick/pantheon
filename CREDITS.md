@@ -85,11 +85,11 @@ file. Stated plainly, so nothing has to be inferred:
    with permissively-licensed work is not blocked by a *dependency*. It never
    meant Pantheon is distributable under MIT, and this file no longer says
    anything that could be read that way.
-4. **Seven third-party components are copyleft.** Two ship in every install,
-   four more are in the Docker image by default and can be built out of it, and
-   one ships in neither. Each is copyleft in a *different* way, which is the
-   part worth reading — "copyleft" on its own tells you almost nothing about
-   what you owe.
+4. **Nine third-party components are copyleft.** Two ship in every install,
+   five more are in the Docker image by default (four of which can be built out
+   of it), one is in the workstation's image, and one ships in neither. Each is
+   copyleft in a *different* way, which is the part worth reading — "copyleft"
+   on its own tells you almost nothing about what you owe.
 
    - **OpenMoji** — the emoji artwork, **CC BY-SA 4.0**, in
      [`library/emoji/`](library/emoji/). **Ships by default**: it is what every
@@ -140,6 +140,17 @@ file. Stated plainly, so nothing has to be inferred:
      unmodified in the image by default; what is owed is their notices and
      the source of that build, from the same scripts. `INSTALL_VOICE=false`
      leaves them out with the rest of PyAV.
+   - **KasmVNC's web client** — the live desktop's viewer
+     (`D-2026-10-31-01`), noVNC's terms: **MPL-2.0** for its JavaScript core
+     (file-level, like Pyodide) and **CC BY-SA 3.0** for its images, with the
+     package it comes from declaring **GPL-2.0-or-later** for all its files.
+     **In the Docker image by default**, unpacked unmodified from the pinned
+     package and served to the browser as a separate program. What is owed is
+     its notices, which the image carries beside it, and its source. See
+     [the live workstation desktop](#docker-images--the-live-workstation-desktop).
+   - **KasmVNC's X server** — **GPL-2.0-or-later**, in the **workstation's**
+     image (and the VM's), not Pantheon's: a separate program on a separate
+     machine, installed unmodified by apt with its own `copyright` file.
 
    This numbered point said "the one copyleft dependency is optional" until
    2026-09-01, and by then it had been wrong for as long as the product had been
@@ -996,6 +1007,7 @@ read the same way on 2026-10-31, with what its wheels carry inside them.
 |---|---|---|
 | FastAPI | core | MIT |
 | Uvicorn | core | BSD-3-Clause |
+| websockets | core — Uvicorn's WebSocket server, and the live desktop's stream from the workstation (`D-2026-10-31-01`) | BSD-3-Clause |
 | python-multipart | core | Apache-2.0 |
 | python-dotenv | core | BSD-3-Clause |
 | HTTPX | core | BSD-3-Clause |
@@ -1133,6 +1145,60 @@ into the data volume. Neither is modified.
 refuses Hugging Face, so the image build that fetches both has not run here.
 The voice's model card is baked with it so the terms travel with the copy; the
 first build should read it against this row.*
+
+---
+
+## Docker images — the live workstation desktop
+
+`D-2026-10-31-01`. The Workstation window shows a person's desktop live through
+[KasmVNC](https://github.com/kasmtech/KasmVNC) 1.5.2, Kasm Technologies' own
+Ubuntu 24.04 packages, pinned by version and by sha256 per architecture in
+`workstation/provision.sh` and refused on a mismatch. Two parts of it ship, in
+two different images, and neither is modified.
+
+| Part | Where it ships | Licence |
+|---|---|---|
+| The X server (`Xkasmvnc`, package `kasmvncserver`) — each person's display | The **workstation's** image and the VM's base image, installed by apt from the pinned package, with the package's own `copyright` file at `/usr/share/doc/kasmvncserver/` | GPL-2.0-or-later (KasmVNC, from TigerVNC, TightVNC and RealVNC; the file also lists the libraries the build links statically) |
+| The web client (KasmVNC's fork of [noVNC](https://github.com/kasmtech/noVNC), built into the same package at `usr/share/kasmvnc/www`) | **Pantheon's** Docker image, unpacked from the pinned package in the `desktop-client` stage (`Dockerfile`) to `/opt/pantheon/kasmvnc/www` and served by Pantheon itself (`src/desktop_client.py`) | noVNC's own terms: the JavaScript core MPL-2.0; HTML and CSS BSD-2-Clause; the Orbitron font OFL-1.1; the images CC BY-SA 3.0. The package's `copyright` file declares GPL-2.0-or-later for every file it holds, the client included |
+
+**What travels with the client.** Pantheon's image carries, beside it at
+`/opt/pantheon/kasmvnc/LICENSES/`, the package's `copyright` file as it came and
+the licence texts the client's own `LICENSE.txt` names, read from
+[kasmtech/noVNC](https://github.com/kasmtech/noVNC) at commit `402c0c59` (the
+one KasmVNC 1.5.2 was built from) and committed in
+[`docker/kasmvnc-client/`](docker/kasmvnc-client/): `noVNC-LICENSE.txt`,
+`noVNC-AUTHORS.txt`, and the MPL-2.0, BSD-2-Clause, BSD-3-Clause and OFL-1.1
+texts. The source of both parts is KasmVNC's
+[v1.5.2 release](https://github.com/kasmtech/KasmVNC/releases/tag/v1.5.2) and that
+commit of the client.
+
+**Why neither reaches Pantheon's licence, nor Pantheon theirs.** The server runs
+in the workstation, a separate program that Pantheon only talks to over a
+socket; the client is a separate program that Pantheon serves to a browser,
+unchanged, and that talks to Pantheon over a websocket. Both are aggregation in
+AGPLv3 §5's sense, like the composed services above. The client's images
+include Kasm Technologies' logo, which is theirs; it is shown as part of their
+client and nothing of Pantheon's uses it.
+
+*Read on 2026-10-31 from the two pinned packages themselves (`dpkg-deb -x`) and
+from the client's repository at that commit. `vendor/pako/LICENSE`, which the
+client's `LICENSE.txt` also lists, is not in that commit; pako is MIT.*
+
+### The workstation's desktop
+
+`D-2026-10-31-02`. The desktop on that display is [XFCE](https://xfce.org/), with
+[Papirus](https://github.com/PapirusDevelopmentTeam/papirus-icon-theme) icons
+and the [Inter](https://rsms.me/inter/) and
+[JetBrains Mono](https://www.jetbrains.com/lp/mono/) typefaces. All of them are
+Ubuntu 24.04's own packages, installed by apt in the **workstation's** image
+like the rest of its userland (`workstation/provision.sh`), each with its own
+`copyright` file under `/usr/share/doc/`; Pantheon ships none of their files.
+Their licences, for a reader: XFCE GPL-2.0-or-later and LGPL-2.0-or-later,
+Papirus GPL-3.0, Inter and JetBrains Mono OFL-1.1. What Pantheon adds — the
+window frames and the wallpaper that `scripts/make-workstation-theme.py` draws,
+and the settings in the skeleton (`workstation/skel/.config/`) — is Pantheon's
+own, AGPL-3.0-or-later, and the wallpaper's mark is Pantheon's
+(`docs/brand/`).
 
 ---
 

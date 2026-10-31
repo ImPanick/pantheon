@@ -78,18 +78,47 @@ keyboard, which is the one thing the daemon cannot tell from the wire. The
 bridge is refused every `POST` here by the prefix above, so an agent cannot
 reach this route to type as the person past its own `busy`.
 
+`D-2026-10-31-01` — the live desktop. The screen as it moves, through KasmVNC,
+in place of frames — the window falls back to frames wherever there is no
+stream:
+
+  GET  /api/workstation/desktop  whether the caller's screen (or, for an admin,
+                                 `?person=`'s, to watch) streams, who holds it,
+                                 and the page the window frames to show it —
+                                 Pantheon's own copy of KasmVNC's web client
+                                 (`src/desktop_client.py`); or why not.
+  WS   /api/workstation/desktop/websockify
+                                 the stream itself, relayed: browser to
+                                 Pantheon to the workstation's daemon to the
+                                 display, RFB byte for byte. The caller's own
+                                 desktop as `person` — who drives exactly while
+                                 they hold the screen, set by POST /control as
+                                 before, at the workstation, live — or, with
+                                 `?person=` and only for an admin, someone
+                                 else's as `watch`, which never drives.
+
+A websocket passes no HTTP middleware, `AuthMiddleware` included, so the
+stream route asks for itself what the middleware would: a session cookie that
+`validate_token` accepts (a bearer token is not a person, `B70`), and an
+`Origin` whose host is this request's own `Host` — a page on another site
+cannot open a person's desktop with their cookie. Then `_watched`, the same
+door the frames go through.
+
 **The token never reaches the browser**: a frame is the daemon's picture
-re-sent, and nothing else of its answer passes through. JPEG because it is
+re-sent, and nothing else of its answer passes through; the stream is the
+display's bytes and nothing of the daemon's. JPEG because it is
 real in the image and about 20 ms a grab there against 65–70 ms for PNG
 (measured in `P20-01`).
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
-from typing import Any, Dict
+from typing import Any, Dict, Optional
+from urllib.parse import urlsplit
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, WebSocket
 from fastapi.responses import JSONResponse, Response
 
 from core.middleware import require_admin, require_operator
@@ -455,6 +484,83 @@ def setup_workstation_routes() -> APIRouter:
         return {**_holder_answer(answer.get("holder"), changed=True),
                 "since": answer.get("since")}
 
+    # ── `D-2026-10-31-01`: the live desktop ────────────────────────────────────
+
+    @router.get("/desktop")
+    async def workstation_desktop(request: Request, person: str = ""):
+        """Whether the caller's screen streams, and the page that shows it —
+        or, for an admin, the screen of the `person` they watch (`B1424`)."""
+        from src import desktop_client
+        client, account = _watched(request, person)
+        try:
+            answer = await client.desktop(account)
+        except WorkstationError as e:
+            raise _http_error(e)
+        kind = answer.get("kind") if answer.get("kind") in P.DESKTOP_KINDS else None
+        out: Dict[str, Any] = {"kind": kind, **_holder_answer(answer.get("holder")),
+                               "watching": bool((person or "").strip())}
+        if kind and not desktop_client.available():
+            kind = out["kind"] = None
+            out["why"] = desktop_client.UNAVAILABLE_SENTENCE
+        elif kind:
+            out["client"] = desktop_client.page_url(
+                watch_person=(person or "").strip().lower() or None)
+        else:
+            out["why"] = str(answer.get("why") or "This screen is shown as pictures.")[:500]
+        return JSONResponse(out, headers=_NO_STORE)
+
+    def _socket_person(websocket: WebSocket) -> Optional[str]:
+        """The signed-in person a desktop websocket comes from, or None —
+        what `AuthMiddleware` decides for a request, decided here because a
+        websocket passes no HTTP middleware (module docstring). The person is
+        stamped where `require_user` reads it, so `_watched` works unchanged."""
+        from routes.auth_routes import SESSION_COOKIE
+        manager = _auth_manager(websocket)
+        if manager is None:
+            return None
+        if websocket.headers.get("authorization"):
+            return None  # a bearer token is a delegated credential, not a person (`B70`)
+        origin = websocket.headers.get("origin") or ""
+        host = (websocket.headers.get("host") or "").strip().lower()
+        if not origin or not host or urlsplit(origin).netloc.lower() != host:
+            return None
+        token = websocket.cookies.get(SESSION_COOKIE)
+        if not token or not manager.validate_token(token):
+            return None
+        user = manager.get_username_for_token(token)
+        if not user:
+            return None
+        websocket.state.current_user = user
+        websocket.state.api_token = False
+        return user
+
+    @router.websocket("/desktop/websockify")
+    async def workstation_desktop_stream(websocket: WebSocket, person: str = ""):
+        """The live desktop's stream, relayed (module docstring)."""
+        if _socket_person(websocket) is None:
+            await websocket.close(code=4401)
+            return
+        try:
+            client, account = _watched(websocket, person)  # type: ignore[arg-type]
+        except HTTPException as e:
+            await websocket.close(code=4403, reason=_close_reason(str(e.detail)))
+            return
+        if P.DESKTOP_SUBPROTOCOL not in (websocket.scope.get("subprotocols") or []):
+            await websocket.close(code=1002)
+            return
+        viewer = "watch" if (person or "").strip() else "person"
+        try:
+            async with client.desktop_stream(account, viewer) as upstream:
+                await websocket.accept(subprotocol=P.DESKTOP_SUBPROTOCOL)
+                logger.info("workstation desktop of %s: %s viewer connected", account, viewer)
+                await _relay(websocket, upstream)
+        except WorkstationError as e:
+            logger.info("workstation desktop of %s: %s", account, e.message)
+            await _close_quietly(websocket, 1011, e.message)
+            return
+        await _close_quietly(websocket, 1000, "")
+        logger.info("workstation desktop of %s: %s viewer gone", account, viewer)
+
     # ── `P25-06`: the agent browser's window ───────────────────────────────────
 
     @router.get("/browser")
@@ -509,6 +615,58 @@ def setup_workstation_routes() -> APIRouter:
         return out
 
     return router
+
+
+async def _relay(websocket: WebSocket, upstream: Any) -> None:
+    """`D-2026-10-31-01`. Messages both ways between the person's browser and
+    the workstation's stream until either side ends; whichever ends first ends
+    the other. Bytes are passed as they came — RFB is the client's and the
+    display's business, and the workstation already decided who may drive."""
+
+    async def down() -> None:
+        async for message in upstream:
+            if isinstance(message, (bytes, bytearray)):
+                await websocket.send_bytes(bytes(message))
+            else:
+                await websocket.send_text(message)
+
+    async def up() -> None:
+        while True:
+            message = await websocket.receive()
+            if message.get("type") == "websocket.disconnect":
+                return
+            if message.get("bytes") is not None:
+                await upstream.send(message["bytes"])
+            elif message.get("text") is not None:
+                await upstream.send(message["text"])
+
+    tasks = [asyncio.create_task(down()), asyncio.create_task(up())]
+    try:
+        done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+    finally:
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+    for result in results:
+        if isinstance(result, Exception) and not isinstance(result, asyncio.CancelledError):
+            logger.debug("workstation desktop relay ended: %s", type(result).__name__)
+
+
+def _close_reason(text: str) -> str:
+    """A close frame's reason is at most 123 bytes of UTF-8 (RFC 6455 §5.5)."""
+    raw = (text or "").encode("utf-8")[:120]
+    return raw.decode("utf-8", "ignore")
+
+
+async def _close_quietly(websocket: WebSocket, code: int, reason: str) -> None:
+    """Close a desktop websocket that may already be closed, or never accepted."""
+    from starlette.websockets import WebSocketState
+    try:
+        if websocket.application_state != WebSocketState.DISCONNECTED:
+            await websocket.close(code=code, reason=_close_reason(reason))
+    except (RuntimeError, OSError):
+        pass
 
 
 def _activity(a: Dict[str, Any]) -> Dict[str, Any]:
