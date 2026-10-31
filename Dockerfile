@@ -123,9 +123,20 @@ WORKDIR /app
 # Install Python deps first (layer cache). Optional extras (PyMuPDF AGPL, etc.)
 # are opt-in so the default image stays MIT-core; see requirements-optional.txt.
 ARG INSTALL_OPTIONAL=false
-COPY requirements.txt requirements-optional.txt requirements-image.txt ./
+# `B1716`, `B1717`. Speech on this server's own processor, installed by
+# default: Whisper hears (faster-whisper, CTranslate2) and Piper speaks (ONNX
+# Runtime), so a voice chat works on a fresh install with no GPU and no
+# service linked. Both are wheels on this Python; Kokoro, the GPU voice, is
+# not (see requirements-optional.txt). `--build-arg INSTALL_VOICE=false`
+# leaves them out, and a voice chat then uses the browser's own speech or an
+# endpoint added under Added Models. Installed in the same step as the core
+# requirements, after them: it adds five packages and moves no core pin
+# (measured on this image's base; `pip check` clean).
+ARG INSTALL_VOICE=true
+COPY requirements.txt requirements-optional.txt requirements-image.txt requirements-voice.txt ./
 RUN pip install --no-cache-dir -r requirements.txt \
-    && if [ "$INSTALL_OPTIONAL" = "true" ]; then pip install --no-cache-dir -r requirements-optional.txt; fi
+    && if [ "$INSTALL_OPTIONAL" = "true" ]; then pip install --no-cache-dir -r requirements-optional.txt; fi \
+    && if [ "$INSTALL_VOICE" = "true" ]; then pip install --no-cache-dir -r requirements-voice.txt; fi
 
 # python-magic powers content-based MIME sniffing in src/upload_handler.py.
 # Image-only (not in requirements.txt) because it needs the libmagic1 system
@@ -165,6 +176,29 @@ RUN if [ "$BAKE_MODELS" = "true" ]; then \
         && test -n "$(find "$PANTHEON_SEED_MODELS/fastembed" -name '*.onnx' -print -quit)" \
         && chmod -R a+rX "$PANTHEON_SEED_MODELS"; \
     fi
+
+# `B1716`, `B1717`. The voice chat's two models, baked the same way and for
+# the same reason: Whisper `base` in CTranslate2's format (OpenAI's weights,
+# MIT) and the Piper voice `en_US-ljspeech-medium` (trained on LJ Speech, which
+# its authors put in the public domain), with the voice's model card. Unlike
+# the embedding model they are read where they are — `PANTHEON_SEED_MODELS/
+# whisper/<size>` by `services/stt/stt_service.py`, `PANTHEON_SEED_MODELS/
+# piper` by `services/tts/tts_service.py` — so the data volume holds only a
+# model someone chose to fetch. Only with the voice packages installed.
+ARG WHISPER_SEED_MODEL=base
+ARG PIPER_SEED_VOICE=en_US-ljspeech-medium
+COPY docker/bake_piper_voice.py /tmp/bake_piper_voice.py
+RUN if [ "$BAKE_MODELS" = "true" ] && [ "$INSTALL_VOICE" = "true" ]; then \
+        python -c "import sys; from faster_whisper.utils import download_model; download_model(sys.argv[1], output_dir=sys.argv[2])" \
+            "$WHISPER_SEED_MODEL" "$PANTHEON_SEED_MODELS/whisper/$WHISPER_SEED_MODEL" \
+        && test -f "$PANTHEON_SEED_MODELS/whisper/$WHISPER_SEED_MODEL/model.bin" \
+        && python /tmp/bake_piper_voice.py "$PIPER_SEED_VOICE" "$PANTHEON_SEED_MODELS/piper" \
+        && test -f "$PANTHEON_SEED_MODELS/piper/$PIPER_SEED_VOICE.onnx" \
+        && test -f "$PANTHEON_SEED_MODELS/piper/$PIPER_SEED_VOICE.onnx.json" \
+        && rm -rf "$PANTHEON_SEED_MODELS/whisper/$WHISPER_SEED_MODEL/.cache" \
+        && chmod -R a+rX "$PANTHEON_SEED_MODELS"; \
+    fi \
+    && rm -f /tmp/bake_piper_voice.py
 
 # Copy app code
 COPY . .

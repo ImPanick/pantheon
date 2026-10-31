@@ -252,8 +252,10 @@ def test_this_repositorys_requirements_files_are_all_covered():
     checker = _load(_CHECKER, "dep_real")
     assert checker.dependabot_problems() == []
     assert checker._dependabot_pip_directories() == ["/"]
+    # `B1716`/`B1717`: requirements-voice.txt is the image's speech set.
     assert {p.name for p in checker.requirement_files()} == {
-        "requirements.txt", "requirements-optional.txt", "requirements-image.txt"}
+        "requirements.txt", "requirements-optional.txt", "requirements-image.txt",
+        "requirements-voice.txt"}
 
 
 # --- The network half: partitioning a pip-audit report -----------------------

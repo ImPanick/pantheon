@@ -108,6 +108,23 @@ the next one is cut.
 
 ### Added
 
+- **Voice chat with the agent, like a call** (2026-10-31, `B1718`). The sound-wave button beside
+  Send starts a call in the open chat: say something, and when you stop it is heard and sent as your
+  message to the same agent, with its tools, approvals and memory; the reply is spoken sentence by
+  sentence while it is written, and the call goes back to listening. Talk over the agent to stop or
+  correct it (or switch that off to take turns); say *stop* to quiet it or *end the call* to hang
+  up. An approval is never given by voice: the call says one is needed and waits for the card. The
+  microphone button beside it is dictation, into the box. **Settings → Voice** sets up both:
+  *Speech to text* (off, local Whisper, the browser's own, or an endpoint, with a test
+  that records four seconds and shows the words) and *Voice chat* (on or off, how long a pause
+  ends your turn, interrupt by talking, the voice it answers in with a preview, and the read-aloud
+  button under replies). A member sees the call button once speech to text is set up.
+- **Speech on this server's own processor** (2026-10-31, `B1716`, `B1717`). The image carries
+  faster-whisper with the Whisper `base` model, and Piper with one voice
+  (`en_US-ljspeech-medium`), so choosing *Local Whisper, on this server* and *Piper, on this
+  server* in Settings → Voice works on a fresh install with no GPU, no service to link and nothing
+  fetched. Piper is a new voice provider; another voice is fetched once, and only with *Download
+  models from the internet* on. On a host, `pip install -r requirements-voice.txt`.
 - **Skills ship with Pantheon again, and the library can be found** (2026-10-31). Eleven core
   skills now ship published and on for everyone, beside the workstation's four: clarify the goal,
   web research, browse a website, debug a failure, change code safely, review code changes,
@@ -139,8 +156,9 @@ the next one is cut.
   showing nothing. Accounts keep a profile (display name, email, phone, bio, picture) through
   `GET/PUT /api/auth/profile`, `POST/DELETE /api/auth/profile/avatar` and
   `GET /api/auth/avatar/{username}`, each the caller's own but the picture.
-- **Settings → AI Defaults → Speech-to-text:** off, local Whisper, the browser's own recognition
-  (in Chrome the audio goes to Google, and the card says so), or an endpoint (`B1564`).
+- **Settings → Voice → Speech to text** (under AI Defaults until voice chat, `B1718`): off, local
+  Whisper, the browser's own recognition (in Chrome the audio goes to Google, and the card says
+  so), or an endpoint (`B1564`).
 - **`read_chat`:** an agent reads one of its person's own chats in order, a page at a time
   (`B1621`).
 - **`needs.programs` in an agent file:** a hire is refused, naming what to install, when the
@@ -284,6 +302,17 @@ the next one is cut.
 
 ### Changed — read this before upgrading
 
+- **The image carries speech, and is about half a gigabyte larger** (2026-10-31, `B1716`,
+  `B1717`): faster-whisper, Piper and their models (measured on x86-64: about 300 MB of packages,
+  145 MB for Whisper `base`, 63 MB for the voice). `docker compose build --build-arg
+  INSTALL_VOICE=false` leaves all of it out, and `BAKE_MODELS=false` the models alone (as it does
+  the embedding model). Piper is GPL-3.0-or-later, and the PyAV wheel faster-whisper decodes with
+  carries the x264 and x265 encoders, GPL-2.0-or-later; `CREDITS.md` says what is owed when the
+  image is passed on.
+- **Read-aloud has a switch of its own** (2026-10-31, `B1718`): Settings → Voice → *A read-aloud
+  button under each reply*. Its button used to show whenever a voice was chosen; now choosing a
+  voice for voice chat does not put it under every reply. **An install that had a voice chosen
+  keeps its button**, and the first settings save records that.
 - **The workstation is a virtual machine in the stack** (2026-10-31). `docker-compose.yml` now
   runs the VM backend as `workstation-vm`, so Settings → Workstation → On works with no overlay:
   each person gets an Ubuntu VM of their own. Nothing is made until it is first switched on; then
@@ -610,6 +639,12 @@ the next one is cut.
   arming that a non-empty memory store did on its own.
 
 ### Fixed
+
+- **Local speech-to-text can open a recording again** (2026-10-31, `B1716`). faster-whisper 1.2.1
+  opens audio with an argument PyAV 19 (released 2026-09-29) removed, so an install that took
+  faster-whisper since then turned every recording into an error and heard nothing. PyAV is held
+  at 18.1 (`requirements-voice.txt`, `requirements-optional.txt`) until a faster-whisper release
+  fixes it. On a native install, `pip install -r requirements-voice.txt` again.
 
 - **The PDF fallback draws box-drawing, block, maths and dingbat characters**, so a pasted `tree`
   listing comes out (`B1691`).

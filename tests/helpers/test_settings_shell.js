@@ -260,6 +260,8 @@ function buildFixture(document) {
     'added-models',
     'forge',   // `B1229`
     'ai',
+    // `B1718`, 2026-10-31. Settings → Voice: speech to text and voice chat.
+    'voice',
     'search',
     'integrations',
     'email',
@@ -401,6 +403,7 @@ function moduleSource(relativePath) {
       'added-models',
       'forge',   // `B1229` — see the fixture list above
       'ai',
+      'voice',      // `B1718` — see the fixture list above
       'search',
       'integrations',
       'email',
@@ -440,7 +443,7 @@ function moduleSource(relativePath) {
       // distinction the next check is named for and the reason it is listed
       // here rather than beside its neighbours: `settings.js` activates it
       // itself, and `admin.js` has no case for the tab.
-      && ['ai', 'search', 'email', 'reminders', 'appearance', 'shortcuts', 'account', 'networks']
+      && ['ai', 'voice', 'search', 'email', 'reminders', 'appearance', 'shortcuts', 'account', 'networks']
         .every(id => !context.isAdminManagedSettingsTab(id)),
   );
 
@@ -450,7 +453,7 @@ function moduleSource(relativePath) {
     // Reminders are admin-only now — every control in them saves to an
     // admin-only route. Integrations is still admin-controlled and not hidden.
     ['tools', 'users', 'embeddings', 'networks', 'system',
-      'services', 'added-models', 'ai', 'search', 'reminders',
+      'services', 'added-models', 'ai', 'voice', 'search', 'reminders',
       'forge'].every(id => context.isAdminOnlySettingsTab(id))
       && ['integrations', 'workstation', 'appearance', 'account']
         .every(id => !context.isAdminOnlySettingsTab(id)),

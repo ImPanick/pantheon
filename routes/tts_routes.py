@@ -1,12 +1,13 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # routes/tts_routes.py
 """
-TTS API routes — multi-provider (local Kokoro, API endpoint, browser).
+TTS API routes — multi-provider (Piper, local Kokoro, API endpoint, browser).
 """
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import Response
 from pydantic import BaseModel
+import asyncio
 import logging
 
 from core.middleware import require_operator
@@ -25,7 +26,9 @@ def setup_tts_routes(tts_service):
     async def get_tts_stats():
         """Get TTS service statistics"""
         try:
-            return tts_service.get_stats()
+            # `B1717`. Off the event loop: asking about Kokoro builds its
+            # pipeline, and asking about Piper reads the voice folders.
+            return await asyncio.to_thread(tts_service.get_stats)
         except Exception as e:
             logger.error(f"Failed to get TTS stats: {e}")
             raise HTTPException(status_code=500, detail=str(e))
@@ -33,28 +36,39 @@ def setup_tts_routes(tts_service):
     @router.post("/synthesize")
     async def synthesize_speech(request: TTSRequest):
         """Synthesize speech from text"""
+        # `B1717`. What this server says when it cannot speak: why, when it
+        # knows (the voice call shows it rather than going quiet).
+        def _said(default: str) -> str:
+            ask = getattr(tts_service, "failure_reason", None)
+            return (ask() if callable(ask) else None) or default
+
         try:
-            if not tts_service.available:
+            # `B1717`. Asked, and spoken, in a worker thread: synthesis ran on
+            # the server's event loop, so every sentence a voice call spoke
+            # stopped every other request for as long as it took.
+            if not await asyncio.to_thread(lambda: tts_service.available):
+                ask = getattr(tts_service, "unavailable_reason", None)
+                reason = await asyncio.to_thread(ask) if callable(ask) else None
                 raise HTTPException(
                     status_code=503,
-                    detail={"message": "TTS service not available"}
+                    detail={"message": reason or "TTS service not available"}
                 )
             
             if request.format == "base64":
-                audio_b64 = tts_service.synthesize_to_base64(request.text)
+                audio_b64 = await asyncio.to_thread(tts_service.synthesize_to_base64, request.text)
                 if not audio_b64:
                     raise HTTPException(
                         status_code=500,
-                        detail={"message": "Synthesis failed"}
+                        detail={"message": _said("Synthesis failed")}
                     )
                 return {"audio": audio_b64}
             
             else:  # audio format
-                audio_data = tts_service.synthesize(request.text)
+                audio_data = await asyncio.to_thread(tts_service.synthesize, request.text)
                 if not audio_data:
                     raise HTTPException(
                         status_code=500,
-                        detail={"message": "Synthesis failed"}
+                        detail={"message": _said("Synthesis failed")}
                     )
                 
                 # Detect format from magic bytes (MP3: ID3 tag or sync word ff e0+)

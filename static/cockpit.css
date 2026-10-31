@@ -1590,3 +1590,99 @@ html.cockpit .msg-ai > .role .role-provider-logo { color: var(--ck-text-2); opac
 /* A link reads as the text it sits in, marked by its underline. */
 html.cockpit .chat-container .msg .body a { color: var(--ck-text); text-decoration-color: var(--ck-accent-line); text-decoration-thickness: 1px; }
 html.cockpit .chat-container .msg .body a:hover { text-decoration-color: currentColor; }
+
+/* ───────────────────────── B1718 · voice: dictation, the call, and its capsule ─────────────────────────
+   Beside Send, the microphone (dictation) and the call button are the + button's
+   quiet rounds, each drawn only while its setting is on (Settings → Voice).
+   Pressed (dictating, or a call on) they take the accent wash and breathe on the
+   shared beat. */
+html.cockpit .composer-voice-btn {
+  width: 32px !important; height: 32px !important; min-width: 32px; border-radius: 50% !important; display: grid !important; place-items: center; padding: 0 !important; flex: none;
+  color: var(--ck-text-2) !important; background: var(--ck-tint) !important; border: 0 !important; box-shadow: none !important; cursor: pointer;
+  transition: background var(--ck-t) var(--ck-ease), color var(--ck-t) var(--ck-ease), transform var(--ck-t) var(--ck-spring);
+}
+html.cockpit .composer-voice-btn[hidden] { display: none !important; }
+html.cockpit .composer-voice-btn svg { width: 16px; height: 16px; }
+html.cockpit .composer-voice-btn:hover { background: var(--ck-tint-2) !important; color: var(--ck-text) !important; }
+html.cockpit .composer-voice-btn:active { transform: scale(.92); }
+html.cockpit .composer-voice-btn[aria-pressed="true"] {
+  background: var(--ck-accent-wash) !important; color: var(--ck-accent) !important; animation: ck-halo var(--ck-beat) var(--ck-ease) infinite;
+}
+/* the words are being written out after the microphone stopped */
+html.cockpit .composer-voice-btn[data-state="transcribing"] svg { animation: ck-pulse var(--ck-beat) var(--ck-ease) infinite; }
+html.cockpit .composer-voice-btn:disabled { opacity: .55; cursor: default; }
+
+/* The call, while one is on: a lit slab over the composer, its width. A lamp and
+   a word for what the call is doing, the microphone's level, the last thing said
+   (or why something cannot work), and the call's own rounds. The lamp is green
+   while the microphone is the person's, the accent while the agent has the turn,
+   amber when the chat needs them, dark when muted. */
+html.cockpit .voice-call-bar {
+  container: voicebar / inline-size;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; box-sizing: border-box; flex: none;
+  max-width: 760px; width: calc(100% - 36px); min-height: 46px; margin: 0 auto 10px; padding: 6px 6px 6px 16px;
+  border-radius: 22px; border: 1px solid var(--ck-edge-lo);
+  background: linear-gradient(135deg, var(--ck-sheen-hi) 0%, transparent 42%), var(--ck-glass);
+  box-shadow: inset 0 1px 0 var(--ck-edge-hi);
+  color: var(--ck-text); font: 400 13px/1.4 var(--ck-font-ui);
+  animation: ck-in 500ms var(--ck-ease) backwards;
+}
+html.cockpit .voice-call-bar[hidden] { display: none !important; }
+html.cockpit .voice-call-lamp {
+  width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--ck-lamp-off);
+  transition: background var(--ck-t) var(--ck-ease), box-shadow var(--ck-t) var(--ck-ease);
+}
+html.cockpit .voice-call-bar[data-phase="starting"] .voice-call-lamp { animation: ck-pulse var(--ck-beat) var(--ck-ease) infinite; }
+html.cockpit .voice-call-bar[data-phase="listening"] .voice-call-lamp { background: var(--ck-ok); box-shadow: 0 0 0 4px color-mix(in oklab, var(--ck-ok) 18%, transparent); }
+html.cockpit .voice-call-bar[data-phase="hearing"] .voice-call-lamp {
+  background: var(--ck-ok); box-shadow: 0 0 0 4px color-mix(in oklab, var(--ck-ok) 26%, transparent), 0 0 12px color-mix(in oklab, var(--ck-ok) 40%, transparent);
+}
+html.cockpit .voice-call-bar[data-phase="thinking"] .voice-call-lamp { background: var(--ck-accent); box-shadow: 0 0 0 4px var(--ck-accent-wash); animation: ck-pulse var(--ck-beat) var(--ck-ease) infinite; }
+html.cockpit .voice-call-bar[data-phase="speaking"] .voice-call-lamp { background: var(--ck-accent); box-shadow: 0 0 0 4px var(--ck-accent-wash), 0 0 12px var(--ck-accent-glow); }
+html.cockpit .voice-call-bar[data-phase="waiting"] .voice-call-lamp {
+  background: var(--ck-warn); box-shadow: 0 0 0 3px color-mix(in oklab, var(--ck-warn) 20%, transparent); animation: ck-pulse var(--ck-beat) var(--ck-ease) infinite;
+}
+html.cockpit .voice-call-state { font: 400 19px/1 var(--ck-font-display); letter-spacing: .005em; color: var(--ck-text); white-space: nowrap; flex: none; min-width: 5.2em; }
+/* five bars: the microphone's level while it is the person's turn, a slow wave
+   on the beat while the agent speaks */
+html.cockpit .voice-call-meter { display: inline-flex; align-items: center; gap: 3px; height: 18px; flex: none; }
+html.cockpit .voice-call-meter i {
+  display: block; width: 3px; height: 18px; border-radius: 3px; background: var(--ck-text-3); transform-origin: center;
+  transform: scaleY(calc(.18 + var(--vc-level, 0) * var(--k, .8)));
+  transition: transform 90ms linear, background var(--ck-t) var(--ck-ease);
+}
+html.cockpit .voice-call-meter i:nth-child(1), html.cockpit .voice-call-meter i:nth-child(5) { --k: .42; }
+html.cockpit .voice-call-meter i:nth-child(2), html.cockpit .voice-call-meter i:nth-child(4) { --k: .66; }
+html.cockpit .voice-call-meter i:nth-child(3) { --k: .82; }
+html.cockpit .voice-call-bar[data-phase="hearing"] .voice-call-meter i { background: var(--ck-ok); }
+html.cockpit .voice-call-bar[data-phase="speaking"] .voice-call-meter i { background: var(--ck-accent); animation: ck-vc-wave calc(var(--ck-beat) * .25) var(--ck-ease) infinite alternate; }
+html.cockpit .voice-call-bar[data-phase="speaking"] .voice-call-meter i:nth-child(2) { animation-delay: calc(var(--ck-beat) * -.0625); }
+html.cockpit .voice-call-bar[data-phase="speaking"] .voice-call-meter i:nth-child(3) { animation-delay: calc(var(--ck-beat) * -.125); }
+html.cockpit .voice-call-bar[data-phase="speaking"] .voice-call-meter i:nth-child(4) { animation-delay: calc(var(--ck-beat) * -.1875); }
+html.cockpit .voice-call-bar[data-phase="speaking"] .voice-call-meter i:nth-child(5) { animation-delay: calc(var(--ck-beat) * -.25); }
+@keyframes ck-vc-wave { from { transform: scaleY(.22); } to { transform: scaleY(.78); } }
+html.cockpit .voice-call-caption {
+  flex: 1 1 8em; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: 12.5px; color: var(--ck-text-3);
+}
+html.cockpit .voice-call-caption.is-note { color: var(--ck-warn-text); }
+html.cockpit .voice-call-actions { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; flex: none; }
+html.cockpit .voice-call-btn {
+  width: 32px; height: 32px; min-width: 32px; border-radius: 50%; display: grid; place-items: center; padding: 0; border: 0; box-shadow: none; cursor: pointer;
+  color: var(--ck-text-2); background: var(--ck-tint);
+  transition: background var(--ck-t) var(--ck-ease), color var(--ck-t) var(--ck-ease), transform var(--ck-t) var(--ck-spring);
+}
+html.cockpit .voice-call-btn[hidden] { display: none !important; }
+html.cockpit .voice-call-btn svg { width: 16px; height: 16px; }
+html.cockpit .voice-call-btn:hover { background: var(--ck-tint-2); color: var(--ck-text); }
+html.cockpit .voice-call-btn:active { transform: scale(.92); }
+html.cockpit .voice-call-btn[aria-pressed="true"] { background: color-mix(in oklab, var(--ck-danger) 16%, transparent); color: var(--ck-danger-text); }
+html.cockpit .voice-call-text-btn { width: auto; padding: 0 13px; border-radius: 999px; font: 500 12px/1 var(--ck-font-ui); color: var(--ck-text); white-space: nowrap; }
+html.cockpit .voice-call-end { color: #fff; background: color-mix(in oklab, #d24f45 86%, #000); box-shadow: inset 0 1px 0 color-mix(in oklab, #fff 25%, transparent); }
+html.cockpit .voice-call-end:hover { color: #fff; background: color-mix(in oklab, #d24f45 74%, #000); }
+/* a phone: the lamp, the word, the level and the rounds on one row, what was said under them */
+@container voicebar (max-width: 460px) {
+  html.cockpit .voice-call-caption { order: 5; flex-basis: 100%; white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; padding: 0 0 4px; }
+  html.cockpit .voice-call-caption:empty { display: none; }
+  html.cockpit .voice-call-state { min-width: 0; font-size: 17px; }
+}

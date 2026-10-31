@@ -489,6 +489,8 @@ function runLive(events, snaps, { runId = 'run-1', stopAfter = Infinity } = {}) 
   const _rememberGeneratedImage = () => {};
   const planWindow = { noteToolStart() {}, noteToolEnd() {} };
   const chatStream = { handleUIControl() {} };
+  // `B1718`: the reply as a voice chat hears it; nothing here is drawn by it.
+  const _announceReply = () => {};
   let _lastToolName = '';
   __ENSURE_LAYOUT__
   __ENSURE_VISIBLE__

@@ -272,6 +272,8 @@ def test_a_turn_paused_at_the_card_draws_no_reply_and_no_footer_live(card_sandbo
     out = _card(_LIVE_BUBBLE + """
         const chatRenderer = await import('./chatRenderer.js');
         const _isBg = false, _cancelThinkingTimer = () => {}, _removeThinkingSpinner = () => {};
+        // `B1718`: the arm tells a voice chat the agent asked; nothing here hears it.
+        const _announceReply = () => {}, streamSessionId = 's1';
         const json = { type: 'ask_user', data: %(payload)s };
         const holder = bubble('The survey is a CSV.', %(q)s);
         holder.dataset = {};

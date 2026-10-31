@@ -85,9 +85,11 @@ file. Stated plainly, so nothing has to be inferred:
    with permissively-licensed work is not blocked by a *dependency*. It never
    meant Pantheon is distributable under MIT, and this file no longer says
    anything that could be read that way.
-4. **Three third-party components are copyleft, and only one of them is
-   optional.** Each is copyleft in a *different* way, which is the part worth
-   reading — "copyleft" on its own tells you almost nothing about what you owe.
+4. **Seven third-party components are copyleft.** Two ship in every install,
+   four more are in the Docker image by default and can be built out of it, and
+   one ships in neither. Each is copyleft in a *different* way, which is the
+   part worth reading — "copyleft" on its own tells you almost nothing about
+   what you owe.
 
    - **OpenMoji** — the emoji artwork, **CC BY-SA 4.0**, in
      [`library/emoji/`](library/emoji/). **Ships by default**: it is what every
@@ -105,6 +107,39 @@ file. Stated plainly, so nothing has to be inferred:
      that file's source under MPL — the rest of Pantheon is unaffected.
    - **PyMuPDF** — **AGPL-3.0**, and ships in neither the default install nor
      the default image. See [PyMuPDF](#pymupdf--scope-and-licence).
+   - **Piper** (`piper-tts`) — the voice this server speaks with on its own
+     processor (`B1717`), **GPL-3.0-or-later**, because it carries espeak-ng
+     for pronunciation. **In the Docker image by default** (`INSTALL_VOICE`);
+     a native install has it only from `requirements-voice.txt`. Pantheon
+     imports it as a library, so the two are combined in one process: GPLv3
+     §13 and AGPLv3 §13 each expressly allow a GPLv3 work and an AGPLv3 work to
+     be combined, each part keeping its own licence, with the AGPL's network
+     clause applying to the combination. Piper is shipped unmodified from its
+     published wheel; what is owed with the image is its notice (the wheel's
+     `COPYING`) and its source, at
+     [OHF-Voice/piper1-gpl](https://github.com/OHF-Voice/piper1-gpl) for the
+     pinned version. `--build-arg INSTALL_VOICE=false` builds an image without
+     it.
+   - **FFmpeg**, inside PyAV (`av`, which faster-whisper decodes audio with) —
+     **LGPL-3.0-or-later**, measured from the libraries PyAV's wheel carries
+     (`avcodec_license()` answers *LGPL version 3 or later*; built
+     `--enable-version3`, without `--enable-gpl`). In the image by default with
+     the rest of speech, as shared libraries PyAV loads unmodified, so what is
+     owed is FFmpeg's notice and the source of that build: upstream FFmpeg's
+     release, built by PyAV's published scripts
+     ([PyAV-Org/pyav-ffmpeg](https://github.com/PyAV-Org/pyav-ffmpeg)).
+     `INSTALL_VOICE=false` leaves it out too.
+   - **x264** and **x265**, the H.264 and H.265 video encoders, inside the same
+     wheel — **GPL-2.0-or-later**. FFmpeg's own licence line does not say so,
+     but that build links both (`--enable-libx264 --enable-libx265` in
+     `avcodec_configuration()`; `libavcodec` names `libx264` and `libx265` as
+     libraries it needs, and the wheel carries them), measured on PyAV 18.1.0,
+     the version pinned. Speech never encodes video; they are loaded because
+     `libavcodec` is. They come under GPLv3 by their "or later", and are
+     combined with Pantheon as Piper is (GPLv3 §13, AGPLv3 §13). Shipped
+     unmodified in the image by default; what is owed is their notices and
+     the source of that build, from the same scripts. `INSTALL_VOICE=false`
+     leaves them out with the rest of PyAV.
 
    This numbered point said "the one copyleft dependency is optional" until
    2026-09-01, and by then it had been wrong for as long as the product had been
@@ -953,7 +988,9 @@ same reason: someone finally compared what is *on disk* against what this file
 
 Core (`requirements.txt`) and optional (`requirements-optional.txt`). Licences
 below were re-read from each distribution's own published metadata on
-2026-08-27 rather than carried from the inherited acknowledgements.
+2026-08-27 rather than carried from the inherited acknowledgements. Voice
+(`requirements-voice.txt`, which the Docker image installs by default) was
+read the same way on 2026-10-31, with what its wheels carry inside them.
 
 | Package | Where | Licence |
 |---|---|---|
@@ -986,7 +1023,11 @@ below were re-read from each distribution's own published metadata on
 | qrcode\[pil] | core | BSD-3-Clause |
 | croniter | core | MIT |
 | pytest / pytest-asyncio | core | MIT / Apache-2.0 |
-| faster-whisper | optional — local speech-to-text | MIT |
+| faster-whisper | voice (`requirements-voice.txt`, in the Docker image by default) and optional — local speech-to-text | MIT |
+| **CTranslate2** | voice — installed by faster-whisper; runs Whisper | MIT |
+| **PyAV** (`av`) | voice — installed by faster-whisper, pinned below 19 (`B1716`); decodes a recording | BSD-3-Clause; its wheel carries FFmpeg's libraries, LGPL-3.0-or-later, and the x264 and x265 encoders, **GPL-2.0-or-later** (see *Licence scope*) |
+| **piper-tts** | voice (`requirements-voice.txt`, in the Docker image by default) — the Piper voice | **GPL-3.0-or-later** (carries espeak-ng; see *Licence scope*) |
+| **pathvalidate** | voice — installed by piper-tts, for its command line | MIT |
 | kokoro | optional — local text-to-speech | Apache-2.0 |
 | `soundfile` (python-soundfile) | optional — audio I/O for kokoro | BSD-3-Clause |
 | **`ddgs`** | optional — DuckDuckGo search provider | MIT |
@@ -1073,6 +1114,25 @@ is installed on demand from the Forge's dependency list
 3.14. Its model weights (`realesr-general-x4v3`, `RealESRGAN_x4plus`) are
 downloaded at runtime from Real-ESRGAN's own GitHub releases and are likewise
 not redistributed here.
+
+---
+
+## Docker image — speech models
+
+The image bakes one speech-to-text model and one voice into
+`/opt/pantheon/seed-models` while it is built (`BAKE_MODELS` with
+`INSTALL_VOICE`, `B1716`, `B1717`), read in place at runtime and never copied
+into the data volume. Neither is modified.
+
+| Model | From | Licence |
+|---|---|---|
+| Whisper `base`, in CTranslate2's format (`WHISPER_SEED_MODEL`) | [`Systran/faster-whisper-base`](https://huggingface.co/Systran/faster-whisper-base), a conversion of OpenAI's [Whisper](https://github.com/openai/whisper) weights | MIT (OpenAI's weights, and the conversion) |
+| Piper voice `en_US-ljspeech-medium` (`PIPER_SEED_VOICE`) | [`rhasspy/piper-voices`](https://huggingface.co/rhasspy/piper-voices), `en/en_US/ljspeech/medium/` | Trained on the [LJ Speech](https://keithito.com/LJ-Speech-Dataset/) recordings, which their authors put in the public domain; the voice's own terms are in its model card, baked beside it as `en_US-ljspeech-medium.MODEL_CARD` |
+
+*Not re-read from the source at the time of writing: this sandbox's proxy
+refuses Hugging Face, so the image build that fetches both has not run here.
+The voice's model card is baked with it so the terms travel with the copy; the
+first build should read it against this row.*
 
 ---
 
