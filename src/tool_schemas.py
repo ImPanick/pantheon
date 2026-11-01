@@ -1124,8 +1124,8 @@ FUNCTION_TOOL_SCHEMAS = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "name": {"type": "string", "description": "Skill name."},
-                    "query": {"type": "string", "description": "Kind of work, e.g. 'QA a web app'."}
+                    "name": {"type": "string"},
+                    "query": {"type": "string", "description": "The kind of work."}
                 }
             }
         }
