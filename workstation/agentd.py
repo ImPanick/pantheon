@@ -75,7 +75,7 @@ FRAME_TRUST_S = 10.0
 _ENV_KEY_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,127}$")
 # xdotool key syntax: names joined by `+`, several combos separated by spaces.
 _KEYS_RE = re.compile(r"^[A-Za-z0-9_+\-]{1,64}( [A-Za-z0-9_+\-]{1,64}){0,15}$")
-_ROUTE_RE = re.compile(r"^/v1/users/(?P<account>[^/]+)/(?P<rest>[a-z/]+)$")
+_ROUTE_RE = re.compile(r"^/v1/users/(?P<account>[^/]+)/(?P<rest>[a-z/-]+)$")  # `B1733`: and `-`
 _ACCOUNT_PATH_RE = re.compile(r"^/v1/users/(?P<account>[^/]+)$")  # `B959`, `P20-07`
 
 
@@ -202,10 +202,110 @@ class NoScreen(Screen):
         raise WorkstationError("unavailable", self.why)
 
 
+# ── `B1733` · a starting point of the person's own ───────────────────────────
+#
+# `D-2026-11-01-02`. The owner: *"sandboxed and can be reset to zero again
+# (pre-configured like a golden image)"*. A person sets their workstation up
+# — the apps they want, signed in where they want — and saves it; `reset` then
+# puts that back instead of the image's own clean start. Kept by the daemon,
+# root's, beside the homes and never in one, so nothing the agent runs as the
+# account can read or change what it will be reset to.
+
+#: When it was saved, in epoch seconds — beside the copy, in the same folder.
+STARTING_POINT_STAMP = "saved-at"
+#: What a home's copy leaves out: caches rebuild themselves, and copying a
+#: browser's cache doubles the copy for nothing.
+STARTING_POINT_SKIP = frozenset({".cache"})
+#: And, anywhere in it, the locks a running program holds: restored, they
+#: would say a program is running that is not (Firefox's `.parentlock`, and
+#: its `lock` link, below).
+STARTING_POINT_LOCKS = frozenset({".parentlock", "SingletonLock", "SingletonSocket",
+                                  "SingletonCookie"})
+
+
+def _snapshot_ignore(top: Path):
+    """`shutil.copytree`'s `ignore` for a home: its top-level caches, and
+    anything that is not a file, a folder or a link (a socket, a pipe, a
+    device) — those cannot be copied and mean nothing once copied."""
+    import stat as _stat
+
+    def ignore(folder: str, names: List[str]) -> List[str]:
+        out = []
+        here = Path(folder)
+        for name in names:
+            if (here == top and name in STARTING_POINT_SKIP) or name in STARTING_POINT_LOCKS:
+                out.append(name)
+                continue
+            try:
+                mode = os.lstat(here / name).st_mode
+            except OSError:
+                out.append(name)  # gone already: nothing to copy
+                continue
+            if not (_stat.S_ISREG(mode) or _stat.S_ISDIR(mode) or _stat.S_ISLNK(mode)):
+                out.append(name)
+            elif name == "lock" and _stat.S_ISLNK(mode):
+                out.append(name)  # Firefox's profile lock: a running copy's, not the restored one's
+        return out
+    return ignore
+
+
+def _copy_quietly(src: str, dst: str) -> None:
+    """A file that went away between the listing and the copy (a running
+    program's temporary file) is not part of the starting point."""
+    try:
+        shutil.copy2(src, dst, follow_symlinks=False)
+    except FileNotFoundError:
+        pass
+
+
+def snapshot_tree(source: Path, dest: Path) -> int:
+    """Copy `source` to `dest` (which must not exist) as a starting point:
+    links as links, never followed, so a link in a home that points at a
+    root-owned file copies the link and not the file. Answers how many
+    entries could not be copied — a home that is in use changes while it is
+    copied — after logging them."""
+    try:
+        shutil.copytree(source, dest, symlinks=True, ignore=_snapshot_ignore(source),
+                        copy_function=_copy_quietly)
+    except shutil.Error as e:
+        skipped = e.args[0] if e.args and isinstance(e.args[0], list) else []
+        logger.warning("%d entr(y/ies) of %s were not copied into its starting point",
+                       len(skipped), source)
+        return len(skipped)
+    return 0
+
+
+def replace_folder(new: Path, final: Path) -> None:
+    """Put the folder `new` where `final` is, as one rename where the old one
+    is moved aside first — a reader never finds half of either."""
+    old = final.with_name(f".{final.name}.old")
+    shutil.rmtree(old, ignore_errors=True)
+    if final.exists():
+        os.replace(final, old)
+    os.replace(new, final)
+    shutil.rmtree(old, ignore_errors=True)
+
+
+def read_stamp(folder: Path) -> Optional[float]:
+    try:
+        at = float((folder / STARTING_POINT_STAMP).read_text(encoding="utf-8").strip())
+    except (OSError, ValueError):
+        return None
+    return at if math.isfinite(at) else None
+
+
+def write_stamp(folder: Path, at: float) -> None:
+    (folder / STARTING_POINT_STAMP).write_text(f"{at:.3f}\n", encoding="utf-8")
+
+
 # ── systems ───────────────────────────────────────────────────────────────────
 
 class System:
     """How accounts, commands and screens work on one backend."""
+
+    #: `B1733`. What a starting point holds on this backend
+    #: (`P.STARTING_POINT_SCOPES`): the home, unless the backend says more.
+    starting_point_scope = "home"
 
     backend = "remote"
     network = "full"
@@ -289,6 +389,64 @@ class System:
 
     def reset(self, account: str) -> None:  # pragma: no cover - interface
         raise NotImplementedError
+
+    # -- `B1733`: a starting point ------------------------------------------------
+
+    def starting_points_dir(self) -> Optional[Path]:
+        """Where this backend keeps starting points — root's, beside the
+        homes — or None for one that keeps none."""
+        return None
+
+    def starting_point_of(self, account: str) -> Optional[Path]:
+        """This account's starting point folder, whether or not one is saved."""
+        root = self.starting_points_dir()
+        return root / account if root is not None else None
+
+    def starting_home(self, account: str) -> Optional[Path]:
+        """The saved copy of the home that `reset` fills the home from, or
+        None: the image's own clean start."""
+        folder = self.starting_point_of(account)
+        if folder is None or read_stamp(folder) is None:
+            return None
+        home = folder / "home"
+        return home if home.is_dir() and not home.is_symlink() else None
+
+    def starting_point(self, account: str) -> Dict:
+        folder = self.starting_point_of(account)
+        at = read_stamp(folder) if folder is not None else None
+        return {"account": account, "saved": at is not None, "at": at,
+                "scope": self.starting_point_scope}
+
+    def save_starting_point(self, account: str) -> Dict:
+        """The home as it is now, as this account's starting point."""
+        root = self.starting_points_dir()
+        if root is None:
+            raise WorkstationError("unavailable", "This workstation keeps no starting point.")
+        home = self.home(account)
+        if not home.is_dir() or home.is_symlink():
+            raise WorkstationError("not_found", "There is nothing to save yet: your workstation "
+                                                "is made the first time you or your agent use it.")
+        root.mkdir(mode=0o700, parents=True, exist_ok=True)
+        os.chmod(root, 0o700)
+        work = root / f".{account}.new"
+        shutil.rmtree(work, ignore_errors=True)
+        work.mkdir(mode=0o700)
+        try:
+            skipped = snapshot_tree(home, work / "home")
+            write_stamp(work, time.time())
+            replace_folder(work, root / account)
+        except OSError as e:
+            shutil.rmtree(work, ignore_errors=True)
+            raise WorkstationError("unavailable", f"The starting point could not be saved: {e}.")
+        logger.info("saved %s's home as its starting point (%d entr(y/ies) skipped)",
+                    account, skipped)
+        return self.starting_point(account)
+
+    def forget_starting_point(self, account: str) -> Dict:
+        folder = self.starting_point_of(account)
+        if folder is not None:
+            shutil.rmtree(folder, ignore_errors=True)
+        return self.starting_point(account)
 
     def home(self, account: str) -> Path:  # pragma: no cover - interface
         raise NotImplementedError
@@ -418,11 +576,18 @@ class SingleUserSystem(System):
                 home.mkdir(parents=True)
         return {"home": str(home), "display": None, "created": created}
 
+    def starting_points_dir(self) -> Optional[Path]:
+        # `B1733`. A dot-name, so `accounts` never lists it.
+        return self.root / ".pantheon-starting-points"
+
     def reset(self, account: str) -> None:
         home = self.home(account)
         if home.exists():
             shutil.rmtree(home)
         self._screens.pop(account, None)
+        start = self.starting_home(account)   # `B1733`
+        if start is not None:
+            shutil.copytree(start, home, symlinks=True)
         self.ensure(account)
 
     def run_as(self, account: str) -> Tuple[List[str], Dict[str, str]]:
@@ -596,6 +761,19 @@ class Workstation:
         self._set_driver(account, False)   # `D-2026-10-31-01`: the fresh desktop is the agent's
         self.system.reset(account)
         return {"account": account, "reset": True}
+
+    def starting_point(self, account: str, body: Dict) -> Dict:
+        """`B1733`. `ROUTES["starting_point"]`: ask, save or forget the
+        account's starting point — what `reset` puts back."""
+        action = body.get("action")
+        if action not in P.STARTING_POINT_ACTIONS:
+            raise WorkstationError("bad_request", "A starting point is asked to "
+                                   + ", ".join(P.STARTING_POINT_ACTIONS) + ".")
+        if action == "save":
+            return self.system.save_starting_point(account)
+        if action == "forget":
+            return self.system.forget_starting_point(account)
+        return self.system.starting_point(account)
 
     def stop_names(self) -> None:
         """`P27-04`. Every account's names proxy, when the daemon stops."""
@@ -1425,7 +1603,9 @@ class Handler(BaseHTTPRequestHandler):
                        "input": lambda: self.station.input(account, body),
                        "browser": lambda: self.station.browser(account, body),
                        "names": lambda: self.station.names(account, body),
-                       "network": lambda: self.station.network(account, body)}[name]
+                       "network": lambda: self.station.network(account, body),
+                       # `B1733`
+                       "starting_point": lambda: self.station.starting_point(account, body)}[name]
             answer = handler()
             if answer is None:          # `P25-05`: a browser frame the caller has
                 self._send(304, None)

@@ -200,6 +200,49 @@ AUTO_WARNING_CHANGED_SENTENCE = (
 #: What an acceptance is for — `AutoApproveAcceptance.subject`.
 SUBJECT_CHAT = "chat"
 SUBJECT_HIRE = "hire"
+#: `B1725` / `D-2026-11-01-02`. A person's own workstation, run as a
+#: computer the agent uses: its `subject_id` is the person (`owner_key`),
+#: because a workstation is one person's (`workstation_access.account_of`).
+SUBJECT_WORKSTATION = "workstation"
+SUBJECTS = (SUBJECT_CHAT, SUBJECT_HIRE, SUBJECT_WORKSTATION)
+
+#: `B1725` / `D-2026-11-01-02`. **Computer Use**: no card for a step the
+#: agent takes inside the person's own workstation, after outside content
+#: too — the owner, verbatim: *"almost a full blown 'Computer Use' mode for
+#: that VM specifically - with restrictions lifted because its sandboxed and
+#: can be reset to zero again"*, and on the card, *"Full mode, no asks
+#: inside"*. Turned on as every lift is (`D-2026-10-30-01`): only by a
+#: person accepting these words, on record. They name what the ruling
+#: names: what the agent reads can steer it inside the workstation, which
+#: reaches the internet, so whatever is in it can be sent out — the projects
+#: folder Pantheon shares with it among them; and what still asks: a command
+#: that deletes or overwrites (`D-2026-10-17-01`'s one exception, kept,
+#: because Reset does not bring the shared projects folder back), and
+#: everything that is not the workstation.
+WORKSTATION_LABEL = "Computer Use"
+WORKSTATION_WARNING = (
+    "On your workstation, Pantheon will click, type, run commands and install software "
+    "without asking you — even after it has read a web page, a file or an email. What it "
+    "reads can steer what it does next there, and the workstation reaches the internet, so "
+    "a page could steer it into sending out anything the workstation holds: your projects "
+    "folder, files you put there, and logins saved in its browser. A command that deletes "
+    "or overwrites files still asks, because your projects folder is shared with Pantheon "
+    "and Reset does not bring it back. Steps that touch Pantheon itself — memory, skills, "
+    "messages, settings — still ask."
+)
+WORKSTATION_PROCEED_LABEL = "Turn on Computer Use"
+WORKSTATION_NOT_ALLOWED_SENTENCE = (
+    "Computer Use is held to the people who may use Auto-approve and the workstation. "
+    "An admin grants both in Settings › Users."
+)
+WORKSTATION_NOT_ACCEPTED_SENTENCE = (
+    "Computer Use turns on only when you accept its warning. Read it, and choose "
+    f"“{WORKSTATION_PROCEED_LABEL}” if you accept the risk."
+)
+WORKSTATION_WARNING_CHANGED_SENTENCE = (
+    "The warning changed since you read it. Read it again, and choose "
+    f"“{WORKSTATION_PROCEED_LABEL}” if you accept the risk."
+)
 
 #: What the header badge says it is. Short, and it names the scope, because the
 #: scope is the thing a person has to be able to see.
@@ -255,6 +298,11 @@ class AutoRefused(Exception):
         self.status = status
 
 
+def workstation_warning() -> dict:
+    """`B1725`. Computer Use's warning, as the route serves it and checks it."""
+    return {"text": WORKSTATION_WARNING, "id": warning_id(WORKSTATION_WARNING)}
+
+
 def check_acceptance(sent: Any, warning: dict) -> None:
     """`B1703`. Raise `AutoRefused` unless `sent` is the id of `warning` —
     the act of accepting the words the server says now.
@@ -263,10 +311,13 @@ def check_acceptance(sent: Any, warning: dict) -> None:
     warning*. An id of other words — a page open since a release reworded it,
     a hire whose effects changed under the form — is 409, *the warning
     changed*: accepting what one no longer reads is not informed."""
+    workstation = warning.get("id") == warning_id(WORKSTATION_WARNING)
     if not isinstance(sent, str) or not sent.strip():
-        raise AutoRefused(AUTO_NOT_ACCEPTED_SENTENCE, 400)
+        raise AutoRefused(WORKSTATION_NOT_ACCEPTED_SENTENCE if workstation
+                          else AUTO_NOT_ACCEPTED_SENTENCE, 400)
     if sent.strip() != warning["id"]:
-        raise AutoRefused(AUTO_WARNING_CHANGED_SENTENCE, 409)
+        raise AutoRefused(WORKSTATION_WARNING_CHANGED_SENTENCE if workstation
+                          else AUTO_WARNING_CHANGED_SENTENCE, 409)
 
 
 def acceptance_for(subject: str, subject_id: Any, owner: Optional[str], *, db: Any = None):
@@ -495,11 +546,19 @@ def open_acceptances(*, auth_manager: Any = None) -> list:
 
     records = open_auto_approve_acceptances()
     answers: dict = {}
+    stations: dict = {}
     for record in records:
         by = record.get("by")
         if by not in answers:
             answers[by] = may_use_auto(by, auth_manager=auth_manager)
         record["in_effect"] = answers[by]
+        if record.get("subject") == SUBJECT_WORKSTATION:
+            # `B1725`. Computer Use is held to the workstation's people too,
+            # and lifts only on the warning as it reads now.
+            if by not in stations:
+                stations[by] = may_use_computer_use(by, auth_manager=auth_manager)
+            record["in_effect"] = bool(
+                stations[by] and record.get("warning_id") == workstation_warning()["id"])
         # The hire form's words for what runs unasked (`Law 7`), not the ids.
         record["effect_words"] = [EFFECT_WORDS.get(e, e.replace("_", " "))
                                   for e in record.get("effects") or ()]
@@ -517,15 +576,20 @@ def withdraw_for(subject: Any, subject_id: Any) -> bool:
     from core.database import current_auto_approve_acceptance, withdraw_auto_approve_acceptance
 
     sid = str(subject_id or "").strip()
-    if subject not in (SUBJECT_CHAT, SUBJECT_HIRE) or not sid:
-        raise AutoRefused("Name a chat or a hire.", 400)
+    if subject not in SUBJECTS or not sid:
+        raise AutoRefused("Name a chat, a hire or a workstation.", 400)
+    if subject == SUBJECT_WORKSTATION:
+        # `B1725`. A workstation's acceptance is keyed by its person.
+        from src.owner_identity import owner_key
+
+        sid = owner_key(sid) or sid
     was_open = current_auto_approve_acceptance(subject, sid) is not None
     try:
         if subject == SUBJECT_CHAT:
             if not set_mode_for(sid, ApprovalMode.MANUAL):
                 raise AutoRefused("That did not save. Try again.", 500)
         else:
-            withdraw_auto_approve_acceptance(SUBJECT_HIRE, sid)
+            withdraw_auto_approve_acceptance(subject, sid)
     except AutoRefused:
         raise
     except Exception as exc:  # noqa: BLE001 — refused in a sentence
@@ -571,3 +635,125 @@ def turn_auto_on(session_id: Any, person: Optional[str], accepted_warning: Any) 
     logger.info("[approval] %s accepted Auto-approve's warning %s for chat %s",
                 by, warning["id"], session_id)
     return record
+
+
+# ── `B1725` / `D-2026-11-01-02` · Computer Use, on a person's own workstation ──
+
+
+def workstation_acceptance(owner: Optional[str], *, db: Any = None):
+    """`B1725`. This person's open acceptance of Computer Use's warning **as
+    it reads now**, or None. One accepted before a release reworded the
+    warning covers nothing — the words a person accepted are the risk they
+    took, and a new risk is a new acceptance (`D-2026-10-30-01`)."""
+    from src.owner_identity import owner_key
+
+    key = owner_key(owner)
+    if not key:
+        return None
+    record = acceptance_for(SUBJECT_WORKSTATION, key, owner, db=db)
+    if record is None or record.get("warning_id") != workstation_warning()["id"]:
+        return None
+    return record
+
+
+def may_use_computer_use(owner: Optional[str], *, auth_manager: Any = None) -> bool:
+    """`B1725`. Whether this person may turn Computer Use on: held to the
+    people Auto is held to (`can_auto_approve`, `D-2026-10-29-01`'s rule for
+    every lift) **and** who may use the workstation (`can_use_workstation`),
+    since it is their workstation it is about. Never raises."""
+    if not may_use_auto(owner, auth_manager=auth_manager):
+        return False
+    try:
+        from src.workstation_access import may_use
+
+        return may_use(owner, auth_manager=auth_manager)
+    except Exception:  # noqa: BLE001 — an unanswerable question is a no
+        return False
+
+
+def workstation_lift_for(
+    owner: Optional[str],
+    *,
+    delegated_credential: bool = False,
+    auth_manager: Any = None,
+) -> bool:
+    """`B1725` / `D-2026-11-01-02`. Whether a run's steps inside its person's
+    workstation run without a card.
+
+    All of, asked **per run** as `mode_for` asks Auto's (a privilege an admin
+    takes away ends the lift at the next turn):
+
+      1. a person, not a bearer token (`B70`: a token has nobody to have
+         accepted anything);
+      2. who may use Computer Use (`may_use_computer_use`);
+      3. whose acceptance of the warning as it reads now is on record
+         (`workstation_acceptance`) — none, and the gate asks as it always
+         did.
+
+    What the lift answers, and what it never does, is the gate's
+    (`ToolRunSecurityContext._workstation_decision_for`): only a step that
+    runs inside the workstation. Never raises."""
+    if delegated_credential:
+        return False
+    if not may_use_computer_use(owner, auth_manager=auth_manager):
+        return False
+    try:
+        return workstation_acceptance(owner) is not None
+    except Exception:  # noqa: BLE001 — no record read is no lift
+        logger.debug("Computer Use acceptance unreadable for %r", owner, exc_info=True)
+        return False
+
+
+def computer_use_state(owner: Optional[str], *, auth_manager: Any = None) -> dict:
+    """`B1725`. What the Workstation window shows: whether Computer Use is on
+    for this person, whether they may turn it on, its warning and labels,
+    and the record of their acceptance when there is one."""
+    allowed = may_use_computer_use(owner, auth_manager=auth_manager)
+    record = workstation_acceptance(owner) if owner else None
+    return {
+        "label": WORKSTATION_LABEL,
+        "on": bool(allowed and record is not None),
+        "allowed": allowed,
+        "not_allowed": None if allowed else WORKSTATION_NOT_ALLOWED_SENTENCE,
+        "warning": workstation_warning(),
+        "proceed_label": WORKSTATION_PROCEED_LABEL,
+        "keep_asking_label": KEEP_ASKING_LABEL,
+        "accepted": ({"by": record.get("by"), "at": record.get("at")} if record else None),
+    }
+
+
+def turn_computer_use_on(person: Optional[str], accepted_warning: Any, *,
+                         auth_manager: Any = None) -> dict:
+    """`B1725`. Turn Computer Use on for this person's workstation, on their
+    acceptance of the warning as it reads now. Raises `AutoRefused` for
+    someone who may not (403), without the acceptance (400 / 409), or when
+    the record cannot be written — it is never on with nothing on record."""
+    from core.database import record_auto_approve_acceptance
+    from src.owner_identity import normalize_owner, owner_key
+
+    by = normalize_owner(person)
+    if not by or not may_use_computer_use(by, auth_manager=auth_manager):
+        raise AutoRefused(WORKSTATION_NOT_ALLOWED_SENTENCE, 403)
+    warning = workstation_warning()
+    check_acceptance(accepted_warning, warning)
+    try:
+        record = record_auto_approve_acceptance(
+            SUBJECT_WORKSTATION, owner_key(by), by, warning["id"], warning["text"])
+    except Exception as exc:  # noqa: BLE001 — refused in a sentence, never on with no record
+        logger.warning("could not record the Computer Use acceptance of %s: %s", by, exc)
+        raise AutoRefused("That did not save. Try again.", 500) from None
+    logger.info("[approval] %s accepted Computer Use's warning %s for their workstation",
+                by, warning["id"])
+    return record
+
+
+def turn_computer_use_off(person: Optional[str]) -> bool:
+    """`B1725`. Turn the gate back on for this person's workstation — which
+    never asks. Answers whether it was on. Raises `AutoRefused` when the
+    write fails."""
+    from src.owner_identity import owner_key
+
+    key = owner_key(person)
+    if not key:
+        return False
+    return withdraw_for(SUBJECT_WORKSTATION, key)

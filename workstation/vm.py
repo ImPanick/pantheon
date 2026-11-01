@@ -78,7 +78,10 @@ from urllib.parse import urlencode
 
 from workstation import protocol as P
 from workstation import service
-from workstation.agentd import System, Workstation, WorkstationError, load_or_create_token, make_server
+from workstation.agentd import (
+    System, Workstation, WorkstationError, load_or_create_token, make_server, read_stamp,
+    replace_folder, write_stamp,
+)
 
 logger = logging.getLogger("pantheon.workstation.vm")
 
@@ -552,10 +555,18 @@ class QemuMachine(Machine):
         return self.proc is not None and self.proc.poll() is None
 
     def _create(self) -> None:
-        image = self.fleet.current_image()
         self.dir.mkdir(parents=True, exist_ok=True)
         os.chmod(self.dir, 0o700)
         tmp = self.dir / "disk.qcow2.tmp"
+        start = self.fleet.starting_disk(self.account)
+        if start is not None:
+            # `B1733`. The person's own starting point: a copy of the disk as
+            # they saved it, on the image it was made from (kept while a
+            # starting point is made from it, `_forget_unused_images`).
+            shutil.copyfile(start, tmp)
+            os.replace(tmp, self.disk)
+            return
+        image = self.fleet.current_image()
         self.fleet.run(["qemu-img", "create", "-q", "-f", "qcow2", "-F", "qcow2",
                         "-b", str(image), str(tmp)])
         os.replace(tmp, self.disk)
@@ -990,7 +1001,11 @@ class Fleet(System):
         """Images no machine is made from any more. Asked of `qemu-img` rather
         than remembered, because a disk's base is written in the disk."""
         used = {keep.resolve()}
-        for disk in (self.state / "machines").glob("*/disk.qcow2"):
+        # `B1733`: a starting point's disk is made from an image as surely as
+        # a machine's is.
+        disks = list((self.state / "machines").glob("*/disk.qcow2"))
+        disks += list((self.state / "starting-points").glob("*/disk.qcow2"))
+        for disk in disks:
             try:
                 info = json.loads(subprocess.run(
                     ["qemu-img", "info", "--output=json", str(disk)], capture_output=True,
@@ -1059,7 +1074,8 @@ class Fleet(System):
                 # Started under another network mode (`B992`): it boots again
                 # with this one.
                 m.stop(graceful=True)
-            if not m.exists() and self.image_state != "ready":
+            if (not m.exists() and self.image_state != "ready"
+                    and self.starting_disk(account) is None):   # `B1733`
                 sentence = self.image_sentence()
                 self.want_image()
                 raise WorkstationError("unavailable", sentence)
@@ -1110,6 +1126,56 @@ class Fleet(System):
         m.stop(graceful=False)
         raise WorkstationError("unavailable", f"Your workstation machine did not answer within "
                                               f"{self.start_timeout:.0f} s of starting.")
+
+    # -- `B1733`: a starting point — the machine's whole disk -------------------
+
+    starting_point_scope = "machine"
+
+    def starting_points_dir(self) -> Optional[Path]:
+        return self.state / "starting-points"
+
+    def starting_home(self, account: str) -> Optional[Path]:
+        return None   # the whole disk is the starting point (`starting_disk`)
+
+    def starting_disk(self, account: str) -> Optional[Path]:
+        """The saved disk a reset machine is made from, or None: the image."""
+        folder = self.starting_point_of(account)
+        if folder is None or read_stamp(folder) is None:
+            return None
+        disk = folder / "disk.qcow2"
+        return disk if disk.is_file() and not disk.is_symlink() else None
+
+    def save_starting_point(self, account: str) -> Dict:
+        """This person's machine, its whole disk, as their starting point —
+        everything installed in it, system-wide too. Copied with the machine
+        powered off (a disk copied while it is written is not one disk), and
+        the machine is left off: the next thing that uses it starts it
+        (`VmStation.starting_point` does, at once). Answers whether it
+        was running, as `was_running`."""
+        m = self.machine_for(account)
+        root = self.starting_points_dir()
+        with self._locks[account]:
+            if not m.exists():
+                raise WorkstationError("not_found", "There is nothing to save yet: your "
+                                                    "workstation machine is made the first time "
+                                                    "you or your agent use it.")
+            was_running = m.running()
+            m.stop(graceful=True)
+            root.mkdir(mode=0o700, parents=True, exist_ok=True)
+            os.chmod(root, 0o700)
+            work = root / f".{account}.new"
+            shutil.rmtree(work, ignore_errors=True)
+            work.mkdir(mode=0o700)
+            try:
+                shutil.copyfile(m.disk, work / "disk.qcow2")
+                write_stamp(work, time.time())
+                replace_folder(work, root / account)
+            except OSError as e:
+                shutil.rmtree(work, ignore_errors=True)
+                raise WorkstationError("unavailable",
+                                       f"The starting point could not be saved: {e}.")
+        logger.info("saved %s's machine disk as its starting point", account)
+        return {**self.starting_point(account), "was_running": was_running}
 
     def reset(self, account: str) -> None:
         """A fresh machine from the newest image (module docstring)."""
@@ -1426,6 +1492,14 @@ class VmStation(Workstation):
         # The protocol says a reset ends on a fresh desktop (`ROUTES["reset"]`).
         self.system.forward(account, "ensure", {}, timeout=120.0)
         return {"account": account, "reset": True}
+
+    def starting_point(self, account: str, body: Dict) -> Dict:
+        """`B1733`. Kept here, on the host, with the disks — never asked of
+        the machine. A machine powered off to be saved is started again."""
+        answer = super().starting_point(account, body)
+        if answer.pop("was_running", False):
+            self.system.forward(account, "ensure", {}, timeout=120.0)
+        return answer
 
     def control(self, account: str, body: Dict) -> Dict:
         return self.system.forward(account, "control", body)

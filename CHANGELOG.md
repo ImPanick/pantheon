@@ -108,6 +108,22 @@ the next one is cut.
 
 ### Added
 
+- **Computer Use: the agent uses the workstation like a computer** (2026-11-01, `B1725`,
+  `D-2026-11-01-02`). Settings → Workstation and the workstation's screen window have a
+  *Computer Use* switch. Turned on, after a warning you accept, the agent clicks, types, runs
+  commands and installs software inside your own workstation without an approval card — even after
+  it has read a web page there, which is what made every task's first click ask before. A command
+  that deletes or overwrites files still asks, because your projects folder is shared with Pantheon;
+  nothing outside the workstation is lifted (Pantheon's own tools, your network, your logins). With
+  it on, the agent is offered the screen on every turn and told to work it: look, do one thing, look
+  again. It needs *Auto-approve* and the workstation under Settings → Users, and an admin sees who
+  has it on beside Auto-approve.
+- **Reset puts back a starting point you saved** (2026-11-01, `B1733`). Set the workstation up the
+  way you want it — apps, files, sign-ins — and choose *Save starting point…*; Reset then puts
+  that back instead of a clean start, and *Forget starting point* gives the clean start again. On
+  the container it is your home (software installed system-wide stays until the workstation
+  container is made again); on a virtual machine it is the whole machine, which restarts while it
+  is saved. Your projects folder is not part of it. The workstation's image changed: rebuild it.
 - **Conversation: the agent says its replies out loud, in a voice each person chooses**
   (2026-11-01, `B1730`). The owner: *"This should be a "Conversation" switch not speak replies
   aloud - we make it personal-able"*. The speech-bubble switch in the composer, or

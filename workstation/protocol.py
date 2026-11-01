@@ -276,6 +276,20 @@ ROUTES: Dict[str, Tuple[str, str]] = {
     # of its own (no KasmVNC here: it runs headless, as before), shown as
     # `frame`s. A daemon older than this answers `404 not_found`.
     "browser_screen": ("GET", "/v1/users/{account}/browser/screen"),
+    # `B1733` (`D-2026-11-01-02`), added: the account's **starting point** —
+    # the workstation as its person set it up, which `reset` then puts back
+    # instead of the image's own clean start. On the container backend it is
+    # the home ("scope": "home": what was installed system-wide stays until
+    # the container is made again); on the VM backend, the machine's whole
+    # disk ("scope": "machine"), saved with the machine powered off and
+    # started again after.
+    #   {"action": one of STARTING_POINT_ACTIONS}
+    #   -> {"account", "saved": bool, "at": epoch seconds | null,
+    #       "scope": one of STARTING_POINT_SCOPES}
+    # `save` replaces any saved one; `forget` drops it, so `reset` is the
+    # image's clean start again. A daemon older than this answers
+    # `404 not_found`.
+    "starting_point": ("POST", "/v1/users/{account}/starting-point"),
 }
 
 # ── what the fields may hold ──────────────────────────────────────────────────
@@ -294,6 +308,10 @@ MAX_DESKTOP_HANDSHAKE_BYTES = 16_384
 # `P16-20` / `D-2026-10-25-03`. The network actions (`workstation/netcheck.py`):
 # one connection per `reach`, no ranges.
 NETWORK_ACTIONS = ("interfaces", "reach")
+# `B1733`. What a starting point may be asked (`ROUTES["starting_point"]`),
+# and what one holds.
+STARTING_POINT_ACTIONS = ("status", "save", "forget")
+STARTING_POINT_SCOPES = ("home", "machine")
 # Every action takes coordinates in the screenshot's own pixels; the screen is
 # a fixed size, so there is no scaling for either side to get wrong.
 INPUT_ACTIONS = (
@@ -597,4 +615,6 @@ __all__ = [
     "DEFAULT_GATE_PAIRING_DIR", "GATE_AGENT_NAME", "GATE_PAIRING_DIR_ENV", "GATE_PORT",
     "GATE_ROUTES", "GATE_SELF_TESTS", "GATE_URL_ENV", "INTERNET_EXCLUDED_V4",
     "INTERNET_EXCLUDED_V6", "NETWORK_ENFORCEMENT",
+    # `B1733`, added.
+    "STARTING_POINT_ACTIONS", "STARTING_POINT_SCOPES",
 ]

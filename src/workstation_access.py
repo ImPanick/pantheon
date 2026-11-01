@@ -607,6 +607,44 @@ async def reset_home(owner: Optional[str], *, auth_manager: Any = None) -> Dict[
     return await client.reset(account)
 
 
+#: `B1733`. What the person reads about their starting point, by its scope.
+STARTING_POINT_WORDS = {
+    "home": ("Reset puts back your workstation home as you saved it. Software installed "
+             "system-wide stays until the workstation container is made again."),
+    "machine": "Reset puts back your whole workstation machine as you saved it.",
+}
+STARTING_POINT_NONE_WORDS = ("No starting point saved: Reset gives you the workstation's own "
+                             "clean start.")
+STARTING_POINT_OLD_DAEMON = ("This workstation is older than starting points. Update it to "
+                             "save one.")
+
+
+def starting_point_view(answer: Dict[str, Any]) -> Dict[str, Any]:
+    """`B1733`. The daemon's answer, with the sentence the window shows."""
+    saved = bool(answer.get("saved"))
+    scope = answer.get("scope") if answer.get("scope") in P.STARTING_POINT_SCOPES else "home"
+    at = answer.get("at")
+    return {"saved": saved, "at": at if isinstance(at, (int, float)) else None, "scope": scope,
+            "sentence": STARTING_POINT_WORDS[scope] if saved else STARTING_POINT_NONE_WORDS}
+
+
+async def starting_point(owner: Optional[str], action: str = "status", *,
+                         auth_manager: Any = None) -> Dict[str, Any]:
+    """`B1733`. This person's starting point — asked, saved or forgotten —
+    and nobody else's: the account is derived from the caller, as for
+    `reset_home`."""
+    client, account = workstation_for(owner, auth_manager=auth_manager)
+    if action != "status":
+        await client.health()
+    try:
+        answer = await client.starting_point(account, action)
+    except WorkstationError as e:
+        if e.status == 404 and e.code == "not_found" and "route" in (e.message or "").lower():
+            raise WorkstationError("unavailable", STARTING_POINT_OLD_DAEMON)
+        raise
+    return starting_point_view(answer)
+
+
 def _daemon_view(daemon: Dict[str, Any]) -> Dict[str, Any]:
     """The daemon's own answer, in the fields the panel shows."""
     keep = ("agent", "protocol", "backend", "version", "sudo", "network", "screen", "accounts",

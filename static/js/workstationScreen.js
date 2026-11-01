@@ -56,7 +56,9 @@
 import * as Modals from './modalManager.js?v=20261009census';
 import uiModule from './ui.js';
 import { makeWindowDraggable } from './windowDrag.js';
-import { confirmAndResetMine } from './workstation.js';
+import {
+  changeStartingPoint, confirmAndResetMine, readComputerUse, setComputerUse,
+} from './workstation.js';
 
 export const MODAL_ID = 'workstation-screen-modal';
 
@@ -295,6 +297,18 @@ function _render() {
   _hidden(_win.take, !up || _holder !== 'agent' || !!_watching);
   _hidden(_win.give, !holding);
   _hidden(_win.reset, !up || !!_watching);
+  // `B1725`, `B1733`: this person's own switch and starting point — never
+  // on a screen they only watch.
+  _hidden(_win.save, !up || !!_watching);
+  const cu = _computerUse;
+  _hidden(_win.cu, !!_watching || !cu || (!cu.allowed && !cu.on));
+  if (cu) {
+    _win.cu.setAttribute('aria-pressed', cu.on ? 'true' : 'false');
+    _win.cu.textContent = cu.on ? 'Computer Use: on' : 'Computer Use: off';
+    _win.cu.title = cu.on
+      ? 'The agent clicks, types and runs commands here without asking. Click to make it ask again.'
+      : 'Let the agent act in this workstation without asking, after a warning.';
+  }
   // A picture is shown only while it is the screen as it is: when the
   // workstation stops answering, the last frame goes with it rather than
   // standing under a sentence that says it is down.
@@ -850,6 +864,39 @@ export async function handBack() {
   return ok;
 }
 
+// ── `B1725` / `B1733`: Computer Use and the starting point ───────────────────
+
+let _computerUse = null;   // `GET /api/workstation/computer-use`'s answer, or null
+
+async function _askComputerUse() {
+  _computerUse = await readComputerUse();
+  _render();
+}
+
+/** Computer Use on (behind its warning, the panel's own) or off. */
+export async function toggleComputerUse() {
+  const answer = await setComputerUse(!(_computerUse && _computerUse.on), _computerUse);
+  if (!answer) return false;
+  if (!answer.ok) { _sayError(answer.message); return false; }
+  _computerUse = answer.state;
+  _say(_computerUse.on
+    ? 'Computer Use is on: the agent acts here without asking.'
+    : 'Computer Use is off: steps here ask again.');
+  _render();
+  return true;
+}
+
+/** *Save starting point*, behind the panel's own confirmation. */
+export async function saveStartingPoint() {
+  _say('Saving your starting point…');
+  const answer = await changeStartingPoint('save');
+  if (!answer) { _kick(0); return false; }
+  if (answer.ok) _say('Saved. Reset now puts your workstation back to this.');
+  else _sayError(answer.message);
+  _kick(0);
+  return !!answer.ok;
+}
+
 /** *Reset to clean*, behind the Settings panel's own confirmation. */
 export async function resetToClean() {
   const answer = await confirmAndResetMine();
@@ -912,7 +959,14 @@ function _build() {
   const actions = _el('div', 'wsv-actions');
   const take = _button('wsv-take', 'Take over', () => { takeOver(); });
   const give = _button('wsv-give', 'Hand back', () => { handBack(); });
-  const reset = _button('wsv-reset', 'Reset to clean…', () => { resetToClean(); });
+  const reset = _button('wsv-reset', 'Reset…', () => { resetToClean(); });
+  reset.title = 'Put the workstation back to its starting point';
+  // `B1733`: what Reset puts back, saved from here.
+  const save = _button('wsv-save', 'Save starting point…', () => { saveStartingPoint(); });
+  save.title = 'Make the workstation as it is now what Reset puts back';
+  // `B1725`: Computer Use, as a switch.
+  const cu = _button('wsv-cu', 'Computer Use: off', () => { toggleComputerUse(); });
+  cu.setAttribute('aria-pressed', 'false');
   // The live desktop's clipboard, both ways (`_onMessage`).
   const paste = _button('wsv-paste', 'Paste', () => { pasteToDesktop(); });
   paste.title = 'Send your clipboard to the workstation';
@@ -921,12 +975,16 @@ function _build() {
   take.hidden = true;
   give.hidden = true;
   reset.hidden = true;
+  save.hidden = true;
+  cu.hidden = true;
   paste.hidden = true;
   copy.hidden = true;
+  actions.appendChild(cu);
   actions.appendChild(copy);
   actions.appendChild(paste);
   actions.appendChild(take);
   actions.appendChild(give);
+  actions.appendChild(save);
   actions.appendChild(reset);
   // `B1424`. For an admin: whose screen. Hidden until the user list answers,
   // which it does only for an admin (`GET /api/auth/users`).
@@ -988,8 +1046,8 @@ function _build() {
   screen.addEventListener('blur', () => { _flushTyped(); _render(); });
   img.addEventListener('dragstart', (e) => e.preventDefault());
 
-  return { modal, content, header, status, statusText, take, give, reset, paste, copy, stage,
-    screen, img, empty, hint, note, whoLabel, who };
+  return { modal, content, header, status, statusText, take, give, reset, save, cu, paste, copy,
+    stage, screen, img, empty, hint, note, whoLabel, who };
 }
 
 /** Everything the window started, stopped; the screen handed back if this
@@ -1059,6 +1117,7 @@ export function openWorkstationScreen({ focus = false } = {}) {
     _kick(0);
     _askDesktop();
     _offerPeople();
+    _askComputerUse();   // `B1725`
   }
   if (focus && _win) {
     // Opened from the keyboard somewhere `a11y.js` does not watch (a tool
@@ -1181,4 +1240,5 @@ export const _test = {
 };
 
 export default { openWorkstationScreen, closeWorkstationScreen, takeOver, handBack, resetToClean,
+  toggleComputerUse, saveStartingPoint,   // `B1725`, `B1733`
   watchPerson, pasteToDesktop, copyFromDesktop };

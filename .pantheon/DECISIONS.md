@@ -3469,6 +3469,9 @@ What reopens it: the owner changing any one of these.
 
 ## D-2026-10-30-01 — Auto-approve is a risk the person accepts, warned, by one deliberate act
 
+*Amended 2026-11-01 by `D-2026-11-01-02`:* a third subject — a person's own workstation, run as
+**Computer Use** — is turned on only the same way: their acceptance of its warning, on record.
+
 *The owner, 2026-10-30, after the sitrep named `B1605`'s cost:* *"Auto-Approve should be
 appropriately 'warned' and the user accepting that risk by enabling it (or 'proceed to
 auto-approve') — then that's on them."*
@@ -3665,3 +3668,76 @@ on a display with no window manager is set twice (its `xulstore.json`, then `xdo
 rebuild is the first real run.
 
 What reopens it: the owner changing it, or the real Firefox and KasmVNC not behaving as tested.
+
+## D-2026-11-01-02 — Computer Use: the workstation is a computer the agent uses, and Reset puts back the person's own starting point
+
+*The owner, 2026-11-01, 01:47:* *"So the VM isnt really meeting the mark. The LLM is more-so just kind
+of 'SSH'ing into the VM' - my intentions and vision was almost a full blown 'Computer Use' mode for
+that VM specifically - with restrictions lifted because its sandboxed and can be reset to zero again
+(pre-configured like a golden image)."* **Decided by the owner, 2026-11-01 03:58, on the card:
+"Full mode, no asks inside"** — a screen-first agent, a golden-image reset, and no approval cards for
+actions inside the workstation once the person accepts a warning; the card said a web page could then
+steer it to send project files out, and that anything touching Pantheon itself, memory, skills or
+messages still asks.
+
+**Why the agent behaved like SSH (measured on `80513b3c`).** Every `computer` result is outside content
+(`EXTERNAL_UNTRUSTED`), so after the first screenshot of every task the first click asked, at every
+rung; Auto was the only way round it, and Auto lifts it for everything a chat can do. The `computer`
+tool's own description, its line in the tool index and the desktop skill each sent the model to bash
+("Not for running commands…", "bash does those"); `computer` was offered only when a request said
+"workstation" or "desktop"; and Reset could only give the image's clean start.
+
+**What it is.**
+
+1. **Computer Use** (`B1725`) — the fourth amendment of the post-external gate (`FORBIDDEN.md` Part 2,
+   amended in the same commit). With it on, a step that runs **inside** the person's own workstation
+   — `computer`; `agent_browser` when the workstation's own browser answers it; the nine shell and file
+   tools when they are routed there — runs without a card, after outside content too and whatever the
+   rung (`ToolRunSecurityContext._workstation_decision_for`), and is recorded as `workstation_approved`
+   on the `tool_start`, the `tool_output` and the persisted `tool_event`. It is on only while the
+   person's acceptance of its warning is on record (`D-2026-10-30-01`, which this extends to a third
+   subject: `AutoApproveAcceptance.subject = "workstation"`, keyed by the person), turned on from the
+   Workstation panel or the screen window — *Turn on Computer Use* / *Keep asking me*, the words the
+   server's (`approval_mode.WORKSTATION_WARNING`). Held to the people Auto is held to and who may use
+   the workstation (`can_auto_approve` and `can_use_workstation`), asked per run, never for a bearer
+   token, never by the agent (`request_is_a_person`; `app_api` refuses `POST /api/workstation…`). An
+   admin sees each one in Settings › Users › Auto-approve and can turn it off.
+2. **Screen-first** — with Computer Use on, `computer` is offered on every turn however the request is
+   worded, and the prompt carries a look–act–look procedure (`agent_loop.COMPUTER_USE_RULES`) written
+   for small local models (the owner tested with a 12B). The tool's words, its index line and the
+   desktop skill (1.2.0) now say to use the screen for anything a person does at a computer, and
+   bash for commands and files because it is quicker — not *instead*.
+3. **A starting point** (`B1733`) — the person sets their workstation up and saves it; Reset then
+   puts that back instead of the image's clean start (`protocol.ROUTES["starting_point"]`, `save` /
+   `forget` / `status`). Kept by the daemon, root's, beside the homes and never in one. On the
+   container backend it is the home (caches and a running program's locks left out, links kept as
+   links); on the VM backend it is the machine's whole disk, copied with the machine powered off and
+   started again after, and the image it was made from is kept while it is.
+
+**Calls made here, not by the owner, and why.**
+
+- **A command that deletes or overwrites still asks** — Auto's one exception (`B1341` /
+  `D-2026-10-17-01`: *"Auto runs everything without asking, except what cannot be undone"*) kept inside
+  the workstation, because the person's projects folder is shared into it (`B1424`) and Reset does not
+  bring a file deleted there back. The warning says so. One line to drop if the owner wants it gone
+  (`_is_destructive_call` in `_workstation_decision_for`).
+- **What is not the workstation's keeps the gate**: `network` (its `reach` is the person's own network
+  beyond the workstation), `shell_with_login`, `git` and `api_call` (each carries a login or a
+  connection of the person's out of Pantheon), and every Pantheon tool. A vault login set to ask and a
+  hire's *ask* and *never* answer before the lift, and a self-escalation or an unclassifiable action
+  is never lifted.
+- **Cleared for the workstation, run there or not at all.** A step the lift cleared carries that to the
+  dispatcher, which refuses to run it anywhere else (`tool_execution.WORKSTATION_ONLY_SENTENCE`): a
+  workstation that stopped answering between the gate and the run never turns it into a step on
+  Pantheon's own machine that nobody was asked about.
+- **The container's starting point is the home.** What the agent installs system-wide with `sudo`
+  stays until the workstation container is made again; the window says so. The VM's is the whole
+  machine. A full system snapshot of a container from inside it is not possible without Docker on the
+  host, which Pantheon does not assume.
+
+**Not verified here.** The gate, the routes, the acceptance, the panel and the container starting point
+are driven against the real code and a real daemon on a port
+(`tests/test_the_workstation_is_a_computer_the_agent_uses.py`); the VM disk copy and the reboot after
+it are tested with stand-ins, and whether a 12B model drives the screen well is the owner's test.
+
+What reopens it: the owner changing it — the destructive exception above is the first thing to ask.

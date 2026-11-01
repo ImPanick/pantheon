@@ -46748,6 +46748,11 @@ body.settings-sidebar-resize-active {
 }
 .ws-actions { margin-top: 10px; flex-wrap: wrap; }
 .ws-settings .ws-actions { margin-top: 0; }
+/* `B1725`, `B1733`: Computer Use and the starting point, under the actions. */
+.ws-cu-row { margin-top: 12px; }
+.ws-cu-row[hidden], .ws-sp-row[hidden] { display: none; }
+.ws-sp-row { align-items: center; gap: 8px; }
+.ws-sp-text { flex: 1 1 260px; min-width: 0; line-height: 1.45; }
 .ws-settings { gap: 10px; }
 .ws-toggle { gap: 12px; align-items: flex-start; }
 .ws-toggle .admin-toggle-label { display: block; }
@@ -46798,6 +46803,13 @@ body.settings-sidebar-resize-active {
 }
 .wsv-status { flex: 1 1 240px; min-width: 0; }
 .wsv-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+/* `B1725`: Computer Use, as a switch on the window's bar — lit while the
+   agent acts in this workstation without asking. */
+.wsv-cu[aria-pressed="true"] {
+  border-color: var(--accent);
+  color: var(--accent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 40%, transparent);
+}
 .wsv-who { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; }
 .wsv-who[hidden] { display: none; }
 .wsv-who-select {

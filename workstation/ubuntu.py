@@ -1464,6 +1464,17 @@ class UbuntuSystem(System):
                         removed, account)
         return removed
 
+    def starting_points_dir(self) -> Optional[Path]:
+        """`B1733`. Root's, in the state folder beside the homes (`0700`), so
+        no account can read or change what it will be reset to."""
+        return self.state_dir / "starting-points"
+
+    def save_starting_point(self, account: str) -> Dict:
+        """`B1733`. The base class's copy of the home, asked as root: every
+        file in it, whatever its mode."""
+        self.ensure(account)
+        return super().save_starting_point(account)
+
     def reset(self, account: str) -> None:
         self.ensure(account)
         display = self._displays.get(account)
@@ -1484,7 +1495,8 @@ class UbuntuSystem(System):
                         shutil.rmtree(home)
                 except OSError as e:
                     raise WorkstationError("unavailable", f"The home could not be cleared: {e}.")
-            self._fill_home(home, uid)
+            # `B1733`: the person's own starting point, when they saved one.
+            self._fill_home(home, uid, source=self.starting_home(account))
             runtime = self.runtime_root / str(uid)
             shutil.rmtree(runtime, ignore_errors=True)
             shutil.rmtree(self.desktop_root / str(uid), ignore_errors=True)
@@ -1678,8 +1690,12 @@ class UbuntuSystem(System):
                    "-d", str(self.home(account)), "-s", SHELL, "-c", "Pantheon workstation",
                    account])
 
-    def _fill_home(self, home: Path, uid: int) -> None:
-        if self.skeleton.is_dir():
+    def _fill_home(self, home: Path, uid: int, *, source: Optional[Path] = None) -> None:
+        if source is not None:
+            # `B1733`. Links as links, as it was saved; owned by the account
+            # below, whoever owned what was copied.
+            shutil.copytree(source, home, symlinks=True)
+        elif self.skeleton.is_dir():
             shutil.copytree(self.skeleton, home, symlinks=True)
         else:
             home.mkdir(parents=True)

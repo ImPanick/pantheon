@@ -302,6 +302,26 @@ runs it as Pantheon's own user), so rebuild both images:
 `docker compose up -d --build`. A native install without KasmVNC, or a
 workstation not yet rebuilt, keeps showing the browser as pictures and says why.
 
+**Computer Use** (`D-2026-11-01-02`). In Settings → Workstation, or with the
+*Computer Use* button on the screen window, a person lets the agent act inside
+their own workstation without an approval card — clicking, typing, running
+commands, installing software — after accepting a warning: what the agent reads
+there can steer it, and the workstation reaches the internet. A command that
+deletes or overwrites files still asks (the projects folder is shared with
+Pantheon), and nothing outside the workstation is lifted. It is held to people
+with both *Auto-approve* and the workstation under Settings → Users; an admin
+sees who has it on, and can turn it off, under Auto-approve there.
+
+**A starting point of your own.** *Save starting point…* (in the panel and on the
+screen window) makes the workstation as it is now what *Reset* puts back;
+*Forget starting point* returns Reset to the image's clean start. On the
+container backend it is the person's home — what was installed system-wide with
+`sudo` stays until `docker compose up -d --force-recreate workstation`; on the
+VM backend it is the machine's whole disk, saved with the machine powered off
+and started again after. Starting points are kept by the workstation, beside
+the homes (`/home/.pantheon-workstation/starting-points` in the container,
+`starting-points/` in the VM host's state), out of every person's reach.
+
 **The desktop is XFCE, in the cockpit's look** (`D-2026-10-31-02`): Pantheon's
 window frames and wallpaper, and a panel along the bottom with the Pantheon
 menu (it searches every program), Terminal, Firefox, Files, the open windows

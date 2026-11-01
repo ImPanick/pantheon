@@ -1,7 +1,7 @@
 ---
 name: workstation-desktop
 description: Drive the workstation's desktop with the computer tool — look at the screen, click, type, press keys, scroll and drag, checking every result before the next action.
-version: 1.1.0
+version: 1.2.0
 category: workstation
 tags: [workstation, computer, desktop, screen, mouse, click, keyboard, type, gui, vm, firefox, browser, screenshot]
 requires_toolsets: [computer]
@@ -12,7 +12,7 @@ source: pantheon
 
 ## When to Use
 
-A task needs the workstation's screen: clicking through a page or app, filling a form, checking how something looks, reading text only on screen. The workstation is an Ubuntu machine separate from Pantheon, desktop 1280×800. Commands and files go through bash and the file tools instead — same machine, faster, exact.
+Anything a person does at a computer: a page or app, a form, a setting, how something looks, text only on screen. The workstation is an Ubuntu machine separate from Pantheon, desktop 1280×800. With Computer Use on, steps here run unasked: carry the task through. Commands and files are quicker in bash and the file tools.
 
 ## Procedure
 
@@ -31,7 +31,7 @@ A task needs the workstation's screen: clicking through a page or app, filling a
 
 - Clicking again because a slow page "did nothing" submits twice; wait and look first.
 - Typing before the field has focus sends the text elsewhere.
-- Launching programs, reading files or checking a URL by mouse — bash does those (workstation-apps-and-windows, workstation-shell).
+- Reading files or checking a URL by mouse — bash is faster (workstation-shell). Open programs to use from the menu or panel.
 - "Busy" means a person holds the screen and nothing was done: ask them, or stop and say you are waiting. Do not retry in a loop.
 - A dialog blocks the window behind it; handle it first.
 

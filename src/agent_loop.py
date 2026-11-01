@@ -104,7 +104,9 @@ from src.tool_approvals import (
 # says which question it answers, beside `resolve_trust_rung`'s, because this
 # module already has a `mode` ('agent'/'chat'/'research') and two things called
 # `mode` in one file is how one of them gets read for the other.
-from src.approval_mode import ApprovalMode, hire_lift_for, mode_for as approval_mode_for
+from src.approval_mode import (
+    ApprovalMode, hire_lift_for, mode_for as approval_mode_for, workstation_lift_for,
+)
 from src.tool_utils import _truncate, get_mcp_manager
 from src.agent_stops import (
     ROUNDS_WITHOUT_NEW_INFORMATION,
@@ -4316,6 +4318,28 @@ def pan_qwen_route_temperature(temperature, model, explicit_params=frozenset()):
     return temperature
 
 
+#: `B1725` / `D-2026-11-01-02`. What a turn is told when its person's
+#: Computer Use is on. Short and procedural, because the models it is for
+#: include small local ones (the owner tested with a 12B): look, do one thing,
+#: look again. It says what still asks, because that is true.
+COMPUTER_USE_RULES = (
+    "\n\n🖥️ COMPUTER USE IS ON. The workstation is a computer you operate yourself, like a "
+    "person sitting at it: its screen, mouse and keyboard through `computer`, its shell "
+    "through bash. Steps inside it run without asking the person; only a command that "
+    "deletes or overwrites files still asks.\n"
+    "Work screen-first:\n"
+    "1. Look: `computer` action `screenshot`.\n"
+    "2. Do one thing: click, type, press a key or scroll, at coordinates read from that "
+    "screenshot.\n"
+    "3. Look at the screenshot the action returns before the next one. Repeat until the "
+    "screen shows the task done.\n"
+    "Use the screen for anything a person does with a mouse: web pages in Firefox, apps, "
+    "forms, settings, dialogs. Use bash for commands, installs and files. Do not stop to ask "
+    "permission for steps inside the workstation — carry the task through, then say what the "
+    "last screenshot shows."
+)
+
+
 def _build_system_prompt(
     messages: List[Dict],
     model: str,
@@ -4335,8 +4359,12 @@ def _build_system_prompt(
     schema_offer: str = "native",
     tool_suite=None,
     approved_plan: Optional[str] = None,
+    computer_use: bool = False,
 ) -> List[Dict]:
     """Build agent system prompt, inject MCP/document context, merge consecutive system msgs.
+
+    `computer_use` (`B1725`): this person's Computer Use is on, so a turn
+    offered `computer` is told to work the workstation screen-first.
 
     `schema_offer` is `tool_schema_offer`'s answer for this route, and the MCP
     block below is the one part of the prompt that has to know it: that block
@@ -4765,6 +4793,12 @@ def _build_system_prompt(
     ):
         agent_prompt += prune_rules_to_available_tools(
             _local_computer_rules(), _avail_for_rules)
+    # `B1725` / `D-2026-11-01-02`. Computer Use: the workstation is a computer
+    # the agent operates — screen first — not a shell it reaches into.
+    if (computer_use and not suppress_local_context
+            and (relevant_tools is None or "computer" in relevant_tools)
+            and "computer" not in (disabled_tools or ())):
+        agent_prompt += COMPUTER_USE_RULES
 
     # When creating email documents, instruct the AI on the format
     if relevant_tools and not suppress_local_context and (_EMAIL_TOOL_HINTS & set(relevant_tools)):
@@ -7287,6 +7321,17 @@ async def stream_agent_loop(
             "[approval] hired run in session %s: what its hire allows runs after "
             "outside content without a card (D-2026-10-29-01)", session_id,
         )
+    # `B1725` / `D-2026-11-01-02`. **Computer Use**: this person accepted its
+    # warning, so a step inside their own workstation runs without a card.
+    # Resolved once, beside Auto and for Auto's reason, and never for a token.
+    _workstation_lift = await asyncio.to_thread(
+        workstation_lift_for, owner, delegated_credential=bool(delegated_credential),
+    )
+    if _workstation_lift:
+        logger.info(
+            "[approval] session %s: Computer Use is on, so steps inside the workstation "
+            "run without a card (D-2026-11-01-02)", session_id,
+        )
     # `B1660`. The files this run makes, so a `write_file` over one of them is
     # a plain write and one over a file that was there before the run began is
     # `destructive` (`src/run_files.py`). The gate holds it and each tool call
@@ -7327,6 +7372,13 @@ async def stream_agent_loop(
         # the post-external gate for this run.
         hire_allow_effects=frozenset(getattr(tool_policy, "allow_effects", ()) or ()),
         hire_allow_after_outside=_hire_lift,
+        # `B1725`. Computer Use, and the loop's own answer to where a call
+        # runs (`_runs_in`, the words `tool_start` already says it with).
+        workstation_lift=_workstation_lift,
+        workstation_lookup=(
+            (lambda tool: _runs_in(tool, owner) == RUNS_IN_WORKSTATION)
+            if _workstation_lift else None
+        ),
         # `P27-08`. A vault login set to ask asks, whatever the rung or Auto.
         vault_use_lookup=_vault_use_lookup(owner, session_id, getattr(tool_policy, "agent_id", None)),
         files=_run_files,   # `B1660`
@@ -8421,6 +8473,15 @@ async def stream_agent_loop(
         except Exception as _e:
             logger.debug(f"[tool-rag] skill-aware tool include skipped: {_e}")
 
+    # `B1725` / `D-2026-11-01-02`. With Computer Use on, the workstation's
+    # screen is offered on every turn, however the request is worded — the
+    # person asked for an agent that uses the computer, not one that has to
+    # be told the word "workstation" first. Capped below like every other
+    # addition: a workstation that would not answer withholds it
+    # (`WITHHELD_BY_WORKSTATION`).
+    if not guide_only and _relevant_tools is not None and _workstation_lift:
+        _relevant_tools.add("computer")
+
     # `B1350` (fx11-cap). **The invariant, in one place.** Everything above
     # widens `_relevant_tools` — the selector's floor, the intent's domains,
     # the cookbook and UI additions, the open document, uploads, forced tools,
@@ -8759,6 +8820,7 @@ async def stream_agent_loop(
             disabled_tools,
             needs_admin=_needs_admin,
             relevant_tools=route_tools,
+            computer_use=_workstation_lift,   # `B1725`
             mcp_disabled_map=_mcp_disabled_map,
             # `B39`. Was `is_api or is_native_ollama or is_ollama_compat`, and
             # those last two terms produced the only combination in the product
@@ -11285,6 +11347,10 @@ async def stream_agent_loop(
             # engine copies it onto the run's step log.
             if security_decision.hire_approved:
                 _auto_fields = {**_auto_fields, "hire_approved": True}
+            # `B1725`. A step inside the workstation that ran without its card
+            # because Computer Use is on, recorded the same way.
+            if security_decision.workstation_approved:
+                _auto_fields = {**_auto_fields, "workstation_approved": True}
             if security_decision.auto_approved:
                 logger.info(
                     "[agent] %s ran under Auto in session=%s without an approval "

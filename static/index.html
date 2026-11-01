@@ -4130,6 +4130,22 @@
                    `workstationScreen.js`'s one delegated listener. -->
               <button type="button" id="ws-open-screen" class="memory-toolbar-btn" data-open-workstation-screen hidden>Open the screen</button>
             </div>
+            <!-- `B1725` / `D-2026-11-01-02`. Computer Use: no card for a step
+                 inside this person's workstation, behind a warning the server
+                 words (`GET /api/workstation/computer-use`). -->
+            <div class="admin-toggle-row ws-toggle ws-cu-row" id="ws-cu-row" hidden>
+              <div>
+                <label class="admin-toggle-label" for="ws-cu">Computer Use</label>
+                <div class="admin-toggle-sub" id="ws-cu-why">Off: steps in the workstation ask, as everywhere else.</div>
+              </div>
+              <label class="admin-switch"><input type="checkbox" id="ws-cu" aria-describedby="ws-cu-why"><span class="admin-slider"></span></label>
+            </div>
+            <!-- `B1733`. What Reset puts back: the person's own starting point. -->
+            <div class="settings-row ws-actions ws-sp-row" id="ws-sp-row" hidden>
+              <span id="ws-sp-text" class="admin-toggle-sub ws-sp-text"></span>
+              <button type="button" id="ws-sp-save" class="memory-toolbar-btn">Save as starting point&hellip;</button>
+              <button type="button" id="ws-sp-forget" class="memory-toolbar-btn" hidden>Forget starting point</button>
+            </div>
             <div id="ws-result" class="networks-probe-result" role="status" aria-live="polite" hidden></div>
           </div>
 

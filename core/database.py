@@ -1920,7 +1920,8 @@ class AutoApproveAcceptance(Base):
     __tablename__ = "auto_approve_acceptances"
 
     id          = Column(String, primary_key=True)
-    #: `chat` or `hire` (`src.approval_mode.SUBJECT_CHAT` / `SUBJECT_HIRE`).
+    #: `chat`, `hire` or `workstation` (`src.approval_mode.SUBJECTS`; a
+    #: workstation's `subject_id` is its person, `B1725`).
     subject     = Column(String, nullable=False)
     subject_id  = Column(String, nullable=False)
     #: The person, as signed in.
@@ -4587,6 +4588,12 @@ def open_auto_approve_acceptances(*, db=None) -> list:
         out = []
         for row in rows:
             item = _auto_approve_acceptance_dict(row)
+            if row.subject == "workstation":
+                # `B1725`. A person's own workstation, keyed by its person.
+                item["name"] = None
+                item["owner"] = row.accepted_by
+                out.append(item)
+                continue
             thing = (chats if row.subject == "chat" else hires).get(row.subject_id)
             item["name"] = getattr(thing, "name", None) if thing is not None else None
             item["owner"] = getattr(thing, "owner", None) if thing is not None else None

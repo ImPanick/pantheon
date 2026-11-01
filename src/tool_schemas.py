@@ -717,10 +717,11 @@ FUNCTION_TOOL_SCHEMAS = [
                 "every other action returns a screenshot taken after it, so look at it "
                 "before the next action. Coordinates are pixels in the screenshot: the "
                 "screen is always {width}×{height}, x from 0 to {max_x} left to right "
-                "and y from 0 to {max_y} top to bottom. For work that does not need the "
-                "screen — running commands, reading and writing files — use bash, python "
-                "and the file tools instead. If a person has taken over the screen the "
-                "action is refused; ask them or wait."
+                "and y from 0 to {max_y} top to bottom. Use it for anything a person "
+                "does at a computer with a mouse and keyboard — web pages in its Firefox, "
+                "apps, forms, settings, dialogs. Running commands and reading or writing "
+                "files is quicker with bash, python and the file tools. If a person has "
+                "taken over the screen the action is refused; ask them or wait."
             ),
             "parameters": {
                 "type": "object",

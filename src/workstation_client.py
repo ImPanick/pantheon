@@ -678,6 +678,18 @@ class WorkstationClient:
     async def reset(self, account: str) -> Dict:
         return await self._call("reset", account, timeout=120.0)
 
+    async def starting_point(self, account: str, action: str = "status") -> Dict:
+        """`B1733`. `{"account", "saved", "at", "scope"}`: the account's
+        starting point — asked, saved or forgotten
+        (`protocol.ROUTES["starting_point"]`). Saving a VM machine powers it
+        off, copies its disk and starts it again, so it is given the time a
+        boot takes. A daemon older than the route answers `not_found`."""
+        if action not in P.STARTING_POINT_ACTIONS:
+            raise WorkstationError(
+                "bad_request", f"“{action}” is not one of {', '.join(P.STARTING_POINT_ACTIONS)}.")
+        return await self._call("starting_point", account, {"action": action},
+                                timeout=300.0 if action == "save" else 30.0 + _TIMEOUT)
+
     async def control(self, account: str, holder: str) -> Dict:
         return await self._call("control", account, {"holder": holder})
 

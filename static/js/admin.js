@@ -183,7 +183,7 @@ async function loadAutoApprove() {
   if (rows.length === 0) {
     uiModule.renderEmptyState(list, {
       kind: 'empty', className: 'admin-empty', title: 'Nobody has Auto-approve on',
-      message: 'Every chat and hired agent asks before a step that needs approval.',
+      message: 'Every chat, hired agent and workstation asks before a step that needs approval.',
     });
     return;
   }
@@ -191,8 +191,11 @@ async function loadAutoApprove() {
   rows.forEach(a => {
     const row = document.createElement('div');
     row.className = 'admin-user-row';
-    const kind = a.subject === 'hire' ? 'Hired agent' : 'Chat';
-    const name = a.name || (a.subject === 'hire' ? 'A removed hire' : 'A deleted chat');
+    // `B1725`: a person's own workstation, run as Computer Use.
+    const station = a.subject === 'workstation';
+    const kind = station ? 'Computer Use' : (a.subject === 'hire' ? 'Hired agent' : 'Chat');
+    const name = station ? `${a.owner || a.by || 'Someone'}'s workstation`
+      : (a.name || (a.subject === 'hire' ? 'A removed hire' : 'A deleted chat'));
     const when = a.at ? new Date(a.at).toLocaleString() : '';
     const effects = a.subject === 'hire' && Array.isArray(a.effect_words) && a.effect_words.length
       ? ` · may ${a.effect_words.join(', ')} without asking` : '';
@@ -220,9 +223,11 @@ async function loadAutoApprove() {
           uiModule.showError((await readRefusal(r, 'Not turned off.')).sentence);
           return;
         }
-        uiModule.showToast(a.subject === 'hire'
-          ? `${name} asks again after outside content.`
-          : `${name} is back on Manual approve.`);
+        uiModule.showToast(station
+          ? `${name} asks again before steps that need approval.`
+          : a.subject === 'hire'
+            ? `${name} asks again after outside content.`
+            : `${name} is back on Manual approve.`);
         loadAutoApprove();
       } catch (_) {
         btn.disabled = false;

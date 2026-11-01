@@ -2236,6 +2236,32 @@ class ToolGateDecision:
     # seeing them after outside content came in. `tripped_effects` rides on it
     # as on Auto's, naming what nobody was asked about.
     hire_approved: bool = False
+    # `B1725` / `D-2026-11-01-02`. True on an `allowed=True` decision that a
+    # stop condition would otherwise have refused, for a step that runs inside
+    # the person's own workstation with **Computer Use** on
+    # (`ToolRunSecurityContext._workstation_decision_for`). Recorded as
+    # `auto_approved` is, and only on the steps it changed. It also binds the
+    # step to the workstation: the dispatcher runs a step that carries it
+    # there or not at all (`tool_execution`), so a workstation that stopped
+    # answering between the gate and the run never turns it into a step on
+    # this machine that nobody was asked about.
+    workstation_approved: bool = False
+
+
+#: `B1725` / `D-2026-11-01-02`. The tools Computer Use lifts the gate for —
+#: each only when the run's `workstation_lookup` says this call runs inside
+#: the workstation. `computer` only ever acts there; `agent_browser` when the
+#: workstation's own browser answers it (not Pantheon's); the nine shell and
+#: file tools when they are routed there (`workstation_tools.WORKSTATION_TOOLS`,
+#: kept equal to this by a test). Not `network`: its `reach` is the person's
+#: own network beyond the workstation. Not `shell_with_login`, `git` or
+#: `api_call`: each carries a login or a connection of the person's out of
+#: Pantheon, which is not the workstation's to give.
+WORKSTATION_LIFTED_TOOLS = frozenset({
+    "computer", "agent_browser",
+    "bash", "python", "read_file", "write_file", "edit_file", "apply_patch",
+    "ls", "glob", "grep",
+})
 
 
 _EXTERNAL_MESSAGE_SOURCES = frozenset(
@@ -2405,6 +2431,17 @@ class ToolRunSecurityContext:
     # answers those exactly as before.
     hire_allow_effects: frozenset = frozenset()
     hire_allow_after_outside: bool = False
+    # `B1725` / `D-2026-11-01-02`. **Computer Use**: this run's person
+    # accepted its warning, so a step inside their own workstation runs
+    # without a card (`_workstation_decision_for`). Resolved once per run by
+    # the caller (`src.approval_mode.workstation_lift_for`), as
+    # `auto_approved` is. `workstation_lookup` is `(tool_name) -> bool`, the
+    # caller's answer to *does this call run inside the workstation* — a
+    # callable for `allow_rule_lookup`'s reason: this module reads no
+    # setting. False / None for every run without it, which the gate answers
+    # exactly as before.
+    workstation_lift: bool = False
+    workstation_lookup: Any = None
     # `P27-08`. `(tool_name, content) -> sentence | None`, supplied by the
     # caller (`src/vault.asks_before`, bound to the run's owner and chat): a
     # vault login this call signs in with is set to ask — each time, or once
@@ -2579,6 +2616,13 @@ class ToolRunSecurityContext:
             # An approved action never reaches here — an exact grant is claimed
             # by the dispatcher instead of asking (`tool_execution`).
             return hired
+        inside = self._workstation_decision_for(tool_name, content)
+        if inside is not None:
+            # `B1725` / `D-2026-11-01-02`. After the vault and a hire's table
+            # (each a standing answer of the person's that this lift is not),
+            # and before the ladder and Auto: a step inside the workstation
+            # with Computer Use on runs, and says so.
+            return inside
         decision = self._ladder_decision_for(tool_name, content)
         if decision.allowed or not self.auto_approved:
             return decision
@@ -2635,6 +2679,95 @@ class ToolRunSecurityContext:
             tripped_effects=decision.tripped_effects,
             classification=decision.classification,
             auto_approved=True,
+        )
+
+    def _runs_in_workstation(self, tool_name: Any) -> bool:
+        """`B1725`. The caller's answer to *does this call run inside the
+        workstation*. A lookup that is missing or fails is a no — the one
+        direction a failure here can go is *ask the person*."""
+        if self.workstation_lookup is None or tool_name not in WORKSTATION_LIFTED_TOOLS:
+            return False
+        try:
+            return bool(self.workstation_lookup(tool_name))
+        except Exception:  # noqa: BLE001 — unanswerable is "not inside"
+            logger.debug("could not tell whether %r runs in the workstation", tool_name,
+                         exc_info=True)
+            return False
+
+    def _workstation_decision_for(self, tool_name: Any, content: Any = None):
+        """`B1725` / `D-2026-11-01-02` — the fourth amendment of the
+        post-external gate: **Computer Use**, on a person's own workstation.
+
+        The owner: *"my intentions and vision was almost a full blown
+        'Computer Use' mode for that VM specifically - with restrictions
+        lifted because its sandboxed and can be reset to zero again"*, and on
+        the card, *"Full mode, no asks inside"*. With it on, a step the agent
+        takes **inside** the workstation — a click, a keystroke, a command, a
+        file it writes or deletes there — runs without a card, after outside
+        content too and whatever the rung. That is what makes the agent use
+        the computer rather than stop at its first click after every
+        screenshot: a screenshot is outside content (`EXTERNAL_UNTRUSTED`),
+        so before this every task's first action asked.
+
+        **The adversary (`Law 17`)** is the one the gate exists for: the
+        author of a page the agent reads in the workstation, steering it.
+        With this on, that author can steer it to do anything inside the
+        workstation — and the workstation reaches the internet, so to send
+        out whatever is in it. The owner was told that on the card and chose
+        it; the warning a person accepts says it again
+        (`approval_mode.WORKSTATION_WARNING`), and it is on only while that
+        acceptance is on record (`workstation_lift`).
+
+        What it never lifts, each answered as before:
+
+          * **a destructive call** — Auto's one exception (`B1341` /
+            `D-2026-10-17-01`: *"Auto runs everything without asking, except
+            what cannot be undone"*), kept here for the reason it was made:
+            the person's projects folder is shared into the workstation
+            (`B1424`), and Reset does not bring a file deleted there back;
+
+          * **anything not inside the workstation** — Pantheon's own files,
+            memory, skills, messages, settings, the person's network
+            (`network`), their logins and connections (`shell_with_login`,
+            `git`, `api_call`): the tool is not in
+            `WORKSTATION_LIFTED_TOOLS`, or the lookup says this call runs
+            here (`agent_browser` on Pantheon's own browser, a shell tool the
+            workstation is not routed for);
+          * **a self-escalation** (`D-2026-10-25-01`): more reach is the
+            person's to give;
+          * **an action it cannot classify**: its effects are a guess;
+          * **a vault login set to ask, and a hire's `ask` and `never`** —
+            asked before this, and final.
+
+        `None` means "not this amendment's": the ladder answers as before.
+        A step the ladder runs anyway is `None` too — nothing was lifted, so
+        nothing is recorded."""
+        if not self.workstation_lift or not self._runs_in_workstation(tool_name):
+            return None
+        if self_escalation_for(tool_name, content) is not None:
+            return None
+        capabilities = capabilities_for_action(tool_name, content, files=self.files)
+        if not capabilities.known:
+            return None
+        gated = self._ladder_decision_for(tool_name, content)
+        if gated.allowed:
+            return None
+        if _is_destructive_call(tool_name, content, self.files):
+            logger.info(
+                "[approval] %s is destructive; asking even with Computer Use on "
+                "(D-2026-10-17-01)", tool_name,
+            )
+            return None
+        logger.info(
+            "[approval] %s ran unasked inside the workstation: Computer Use is on "
+            "(D-2026-11-01-02; would have asked: %s)", tool_name, gated.reason,
+        )
+        return ToolGateDecision(
+            True,
+            None,
+            tripped_effects=gated.tripped_effects,
+            classification=gated.classification,
+            workstation_approved=True,
         )
 
     def _vault_use_decision_for(self, tool_name: Any, content: Any = None):

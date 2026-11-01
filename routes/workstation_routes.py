@@ -275,8 +275,90 @@ def setup_workstation_routes() -> APIRouter:
         except WorkstationError as e:
             raise _http_error(e)
         logger.info("workstation home reset for %s", answer.get("account"))
-        return {"ok": True, "account": answer.get("account"),
-                "sentence": "Your workstation home is back to a clean start."}
+        # `B1733`: back to the person's own starting point, when they saved one.
+        sentence = "Your workstation home is back to a clean start."
+        try:
+            point = await wa.starting_point(owner, auth_manager=_auth_manager(request))
+        except WorkstationError:
+            point = {}
+        if point.get("saved"):
+            sentence = "Your workstation is back at the starting point you saved."
+        return {"ok": True, "account": answer.get("account"), "sentence": sentence}
+
+    # `B1733` / `D-2026-11-01-02`. The caller's own starting point — what
+    # Reset puts back. Saving and forgetting are the person's (`POST
+    # /api/workstation…` is refused to the agent by `app_api` besides).
+    @router.get("/starting-point")
+    async def workstation_starting_point(request: Request):
+        """Have I saved a starting point, and what does Reset put back."""
+        owner = require_user(request)
+        try:
+            return await wa.starting_point(owner, auth_manager=_auth_manager(request))
+        except WorkstationError as e:
+            raise _http_error(e)
+
+    @router.post("/starting-point")
+    async def workstation_starting_point_set(request: Request):
+        """`{"action": "save"}`: my workstation as it is now is what Reset
+        puts back. `{"action": "forget"}`: Reset is the clean start again."""
+        from src.auth_helpers import request_is_a_person
+        owner = require_user(request)
+        if not request_is_a_person(request):
+            raise HTTPException(403, "Only you can save or forget your starting point.")
+        body = await _body(request)
+        action = body.get("action")
+        if action not in ("save", "forget"):
+            raise HTTPException(400, "A starting point is saved or forgotten.")
+        try:
+            answer = await wa.starting_point(owner, action, auth_manager=_auth_manager(request))
+        except WorkstationError as e:
+            raise _http_error(e)
+        logger.info("workstation starting point %s for %s", "saved" if action == "save"
+                    else "forgotten", owner)
+        return answer
+
+    # ── `B1725` / `D-2026-11-01-02`: Computer Use, on the caller's own workstation ──
+    #
+    # No card for a step the agent takes inside the caller's workstation, on
+    # their acceptance of the warning — a person's act, never the agent's
+    # (`request_is_a_person`; `app_api` refuses every `POST /api/workstation…`
+    # besides). Turning it off never asks.
+
+    @router.get("/computer-use")
+    async def workstation_computer_use(request: Request):
+        """Is Computer Use on for me, may I turn it on, and its warning."""
+        from src.approval_mode import computer_use_state
+        owner = require_user(request)
+        return await asyncio.to_thread(computer_use_state, owner,
+                                       auth_manager=_auth_manager(request))
+
+    @router.post("/computer-use")
+    async def workstation_computer_use_set(request: Request):
+        """`{"on": true, "accept_warning": <id>}` turns it on, on the
+        caller's acceptance of the warning `GET` serves now (400 with none,
+        409 for other words, 403 for someone who may not); `{"on": false}`
+        turns it off."""
+        from src.approval_mode import (
+            AutoRefused, computer_use_state, turn_computer_use_off, turn_computer_use_on,
+        )
+        from src.auth_helpers import request_is_a_person
+        owner = require_user(request)
+        if not request_is_a_person(request):
+            raise HTTPException(403, "Only you can turn Computer Use on or off.")
+        body = await _body(request)
+        on = body.get("on")
+        if not isinstance(on, bool):
+            raise HTTPException(400, "Say whether Computer Use is on: true or false.")
+        try:
+            if on:
+                await asyncio.to_thread(turn_computer_use_on, owner, body.get("accept_warning"),
+                                        auth_manager=_auth_manager(request))
+            else:
+                await asyncio.to_thread(turn_computer_use_off, owner)
+        except AutoRefused as refused:
+            raise HTTPException(refused.status, refused.sentence)
+        return await asyncio.to_thread(computer_use_state, owner,
+                                       auth_manager=_auth_manager(request))
 
     # ── `B1478`: the admin controls the workstation's containers ──────────────
     #
