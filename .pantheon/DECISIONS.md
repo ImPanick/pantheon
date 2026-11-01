@@ -2777,6 +2777,9 @@ alone. Recorded so the ruling is not read as resting on a fact that has since ch
    (never just "Integrations" for that room), and **Forge** (already `D-2026-09-18-04`). Library vs Documents was not
    chosen: unchanged. Names change where a person reads them; stored identifiers stay (`D-2026-09-18-04`'s rule).
 
+*Amended 2026-11-01 by `D-2026-11-01-03`:* **Conversation**, capitalised, is the name the owner gave the switch that
+has the agent say its replies out loud. It names a switch, not a chat, and a chat is still a chat.
+
 
 ## D-2026-10-07-01 — version up; Hugging Face is an admin switch; a reply's chat holds its draft
 
@@ -3741,3 +3744,55 @@ are driven against the real code and a real daemon on a port
 it are tested with stand-ins, and whether a 12B model drives the screen well is the owner's test.
 
 What reopens it: the owner changing it — the destructive exception above is the first thing to ask.
+
+
+## D-2026-11-01-03 — spoken replies: Kokoro for everyone, Chatterbox on a GPU, and each person's own Conversation switch
+
+*Written 2026-11-01, after `tests/test_one_name_per_thing.py` refused the switch's name on `dev`. The calls were made
+at 02:18 and 02:34 the same day and were recorded only in the tracker (`B1728`–`B1730`) and `CHANGELOG.md`, so the
+one-name rule (`D-2026-10-03-01` §3, which retired "conversation" for a chat) had no record that the owner had given
+the word to something that is not one.*
+
+*The owner, 2026-11-01, 01:43:* *"Need something for realistic voice synthesis for the LLM's response back to the
+user (toggleable). What are our options that are free?"* **Decided by the owner, 02:18, on the card: "Kokoro, plus
+Chatterbox for a GPU"**, and at 02:34, of the switch the plan had called *Speak replies aloud*: *"This should be a
+"Conversation" switch not speak replies aloud - we make it personal-able"*.
+
+**What it is.**
+
+1. **Kokoro for everyone** (`B1728`). Kokoro-82M (Apache-2.0) runs on the processor, in the ONNX Runtime and
+   espeak-ng that Piper already brings, from two files the image carries (about 350 MB, checked against their
+   hashes); without them it is fetched once from the `kokoro-onnx` release on GitHub, and only with *Download models
+   from the internet* on (`Law 16`).
+2. **Chatterbox Turbo on an NVIDIA GPU** (`B1729`), in a container of its own (`voice/chatterbox/`) that the NVIDIA
+   overlay starts with `COMPOSE_PROFILES=chatterbox`. Its weights are fetched while the image is built, and it runs
+   offline after that.
+3. **Conversation, each person's own** (`B1730`). The switch is called **Conversation**: the agent says each reply
+   out loud while it writes it, in the voice and at the speed that person chose, kept with their account (the
+   `conversation` and `conversation_voice` preferences). It is the composer's speech-bubble chip and Settings →
+   Conversation, one switch. Turning it on changes nobody else's Pantheon.
+4. **"Conversation" is that switch's name, not a word for a chat.** `D-2026-10-03-01` §3 stands: a chat is a chat.
+   `SWITCH_NAME` in `tests/test_one_name_per_thing.py` sets the capitalised name aside where it is plainly the
+   switch, and every other "conversation" a person reads still fails there.
+
+**Calls made here, not by the owner, and why.**
+
+- **The server's voice is *Automatic* as shipped**: Chatterbox while it answers, else Kokoro, else Piper. It was
+  *None* until an admin chose one, so a fresh install's voice chat answered in silence. A settings file holding only
+  the old default reads as *Automatic*; an admin who chose *None* or a voice keeps it. It is in `CHANGELOG.md` under
+  "Changed — read this before upgrading".
+- **Where the name is set aside, and nowhere else**: its state (*Conversation on*, *off*), the control (*the
+  Conversation chip*, *switch*), the chip's tooltip (*Conversation: the agent says…*) and the door to its tab
+  (*Settings → Conversation*), case-sensitively. A wider carve-out (any capitalised "Conversation") would let
+  "Delete Conversation" back in, which is what §3 was for.
+
+**What it costs.** The image is about 350 MB larger (`INSTALL_VOICE=false` or `BAKE_MODELS=false` leaves Kokoro out).
+An install that never chose a voice now speaks in a voice chat. And the one-name rule has one exception that the
+owner gave, which nobody should read as a licence for a chat.
+
+**Not verified here.** Kokoro and the switch were driven in Chromium against the real `app.py` and the real
+model. The Chatterbox image has not been built or run (no GPU, and this sandbox could not reach Hugging
+Face), and the Turbo weights' licence was not re-read at its source. The owner's own test is the one left.
+
+What reopens it: the owner renaming the switch (then `SWITCH_NAME` comes out, and
+`test_the_switch_name_is_still_the_switch` fails the day no phrase uses the name), or choosing other voices.
