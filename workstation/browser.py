@@ -133,15 +133,28 @@ READ_FN = r"""(maxChars, maxEls) => {
               '[role=button], [role=link], [role=tab], [role=menuitem], [role=checkbox], ' +
               '[contenteditable=""], [contenteditable=true], [onclick]';
   document.querySelectorAll('[data-pantheon-ref]').forEach((e) => e.removeAttribute('data-pantheon-ref'));
-  const out = [];
-  let n = 0;
+  // `G1` (`D-2026-11-01-04`): what is in view is always numbered — a long
+  // page's first elements no longer crowd out the ones on the screen — and
+  // the rest fill up to the limit in document order. Numbers stay in
+  // document order either way.
+  const shown = [];
   for (const el of document.querySelectorAll(sel)) {
-    if (out.length >= maxEls) break;
+    if (shown.length >= 4000) break;
     if (seen.has(el)) continue;
     seen.add(el);
     const r = el.getBoundingClientRect();
     const st = getComputedStyle(el);
     if (r.width < 2 || r.height < 2 || st.visibility === 'hidden' || st.display === 'none') continue;
+    const inView = r.bottom > 0 && r.right > 0 && r.top < innerHeight && r.left < innerWidth;
+    shown.push({ el, r, inView });
+  }
+  const inViewCount = shown.filter((s) => s.inView).length;
+  let room = Math.max(0, maxEls - inViewCount);
+  const picked = shown.filter((s) => s.inView || (room-- > 0));
+  const out = [];
+  let n = 0;
+  for (const { el, r, inView } of picked) {
+    if (out.length >= maxEls) break;
     n += 1;
     el.setAttribute('data-pantheon-ref', String(n));
     const tag = el.tagName.toLowerCase();
@@ -149,13 +162,19 @@ READ_FN = r"""(maxChars, maxEls) => {
     const label = (el.getAttribute('aria-label') || el.innerText || value || el.placeholder ||
                    el.title || el.alt || el.name || '').replace(/\s+/g, ' ').trim().slice(0, 80);
     const item = { ref: n, tag, label };
+    if (inView) {
+      // `G1`: where it is in the viewport — the page's screenshot's pixels.
+      const x = Math.max(0, r.left), y = Math.max(0, r.top);
+      item.box = [Math.round(x), Math.round(y), Math.round(Math.min(r.right, innerWidth) - x),
+                  Math.round(Math.min(r.bottom, innerHeight) - y)];
+    }
     if (tag === 'input') item.type = el.type || 'text';
     if (tag === 'a') item.href = el.href.slice(0, 200);
     if (el.disabled) item.disabled = true;
     out.push(item);
   }
   const text = (document.body ? document.body.innerText : '').replace(/\n{3,}/g, '\n\n');
-  return JSON.stringify({ title: document.title, url: location.href,
+  return JSON.stringify({ title: document.title, url: location.href, viewport: [innerWidth, innerHeight],
                           text: text.slice(0, maxChars), cut: text.length > maxChars, elements: out });
 }"""
 

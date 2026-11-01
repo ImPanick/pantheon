@@ -799,6 +799,13 @@ class WorkstationClient:
                                 query={"format": fmt, "if_none_match": if_none_match},
                                 allow_304=True)
 
+    async def marks(self, account: str) -> Dict:
+        """`G2` (`D-2026-11-01-04`). What on the screen can be clicked, from
+        the desktop's accessibility tree (`ROUTES["marks"]`). A daemon older
+        than the route raises `not_found`; one whose screen has no tree,
+        `unavailable` — the caller reads the picture instead either way."""
+        return await self._call("marks", account, timeout=30.0)
+
     async def input(self, account: str, action: str, *, holder: str = "agent",
                     screenshot_after: bool = False, **fields: Any) -> Dict:
         if action not in P.INPUT_ACTIONS:

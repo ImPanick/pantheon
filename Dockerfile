@@ -121,10 +121,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libxcb1 \
     libmagic1 \
     xdotool \
+    tesseract-ocr \
     /tmp/kasmvncserver.deb \
     && rm -rf /var/lib/apt/lists/* /tmp/kasmvncserver.deb \
     && install -d -m 1777 /tmp/.X11-unix
 
+# `G3` (`D-2026-11-01-04`). tesseract-ocr reads the text on a workstation
+# screenshot that the desktop's accessibility tree does not describe, so the
+# agent's numbered marks cover it too (`src/screen_marks.py`). Its English model
+# is the package's own (tesseract-ocr-eng, a dependency): nothing is fetched.
+#
 # libgl1/libglib2.0-0t64/libxcb1 are runtime shared libs (libGL.so.1,
 # libglib-2.0/libgthread, libxcb.so.1) that opencv-python (cv2) loads. The
 # slim base omits them, so the Forge's "install realesrgan" path imports cv2

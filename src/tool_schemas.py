@@ -536,7 +536,9 @@ FUNCTION_TOOL_SCHEMAS = [
                 "click an element by ref; type text into one (ref), with submit to press Enter "
                 "after; press keys such as Enter, Tab or ctrl+a; scroll (dy, positive is down); "
                 "back, forward, reload; tabs lists them, tab_new opens one (url), tab_switch and "
-                "tab_close take its number; screenshot shows the page. Read the page again after "
+                "tab_close take its number; screenshot shows the page with every element in view "
+                "boxed and numbered — the same numbers as read, so click a ref straight off it. "
+                "Read the page again after "
                 "anything that changes it: numbers belong to one reading. Use it for sites that "
                 "need clicking, logging in or forms; for plain reading, web_fetch is quicker. If "
                 "the person has taken over the browser, ask them or wait. To sign in, open the "
@@ -715,9 +717,11 @@ FUNCTION_TOOL_SCHEMAS = [
                 "separate from Pantheon — by looking at its screen and using its mouse "
                 "and keyboard. One call is one action. `screenshot` shows the screen; "
                 "every other action returns a screenshot taken after it, so look at it "
-                "before the next action. Coordinates are pixels in the screenshot: the "
-                "screen is always {width}×{height}, x from 0 to {max_x} left to right "
-                "and y from 0 to {max_y} top to bottom. Use it for anything a person "
+                "before the next action. Each screenshot has the things you can click "
+                "boxed and numbered, listed in words beside it: send \"mark\": N to act on "
+                "one — it is more exact than coordinates. Coordinates are pixels in the "
+                "screenshot: the screen is always {width}×{height}, x from 0 to {max_x} "
+                "left to right and y from 0 to {max_y} top to bottom. Use it for anything a person "
                 "does at a computer with a mouse and keyboard — web pages in its Firefox, "
                 "apps, forms, settings, dialogs. Running commands and reading or writing "
                 "files is quicker with bash, python and the file tools. If a person has "
@@ -728,6 +732,11 @@ FUNCTION_TOOL_SCHEMAS = [
                 "properties": {
                     "action": {"type": "string", "enum": ["screenshot"],
                                "description": "What to do."},
+                    "mark": {"type": "integer",
+                             "description": "The number of a mark on the last screenshot: "
+                                            "where to click, move, scroll or start a drag, or "
+                                            "the field to type into. Use it instead of x and y."},
+                    "to_mark": {"type": "integer", "description": "drag: the mark to release on."},
                     "x": {"type": "integer",
                           "description": "Pixel column in the screenshot: where to click, "
                                          "move, press, scroll or start a drag."},

@@ -108,6 +108,16 @@ the next one is cut.
 
 ### Added
 
+- **The agent clicks numbered marks instead of guessing pixels** (2026-11-01, `B1735`,
+  `D-2026-11-01-04`). Every screenshot of the workstation's screen the agent is shown has a
+  numbered box on each button, menu, field, tab and row, and a list of them in words beside it
+  (*[7] button “Terminal” at (20, 780)*); the agent says *click mark 7* and the click lands in the
+  middle of it. The desktop's apps describe themselves through its accessibility bus, so most
+  marks are exact; where an app says nothing, Pantheon reads the text and icons off the picture.
+  The agent browser's screenshot is numbered the same way, by the page's own elements. A model
+  that cannot see images still gets the list. `scripts/grounding_eval.py` measures it on your own
+  model: five desktop and browser tasks, with marks off and on. Rebuild both images: the
+  workstation gains the accessibility bus and Pantheon's image gains Tesseract.
 - **Reasoning effort for thinking models** (2026-11-01, `B1734`). A dial chip beside Agent / Chat
   sets how hard the model thinks: *Auto* (the model's own default, nothing sent), *Low*, *Medium*,
   *High*, *Extra* or *Max*. It shows only when the selected model can take it, and each menu row

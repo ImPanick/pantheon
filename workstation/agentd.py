@@ -188,6 +188,15 @@ class Screen:
     def set_driver(self, person: bool) -> None:
         """Whether the person's viewer may drive (they hold the display)."""
 
+    # -- `G2` (`D-2026-11-01-04`), added: what on the screen can be clicked --
+
+    def marks(self) -> Dict:
+        """`ROUTES["marks"]`'s answer for this screen: its controls, read from
+        the desktop's accessibility tree. A screen that cannot read one says
+        why, and the caller reads the picture instead (`src/screen_marks.py`)."""
+        raise WorkstationError("unavailable", "This screen cannot read what is on it; its "
+                                              "picture is all there is.")
+
 
 class NoScreen(Screen):
     """What a system without a display answers. Said, never faked."""
@@ -1214,6 +1223,26 @@ class Workstation:
             mark = frame["mark"]
         return bool(self.system.screen(account).unchanged(mark))
 
+    def marks(self, account: str) -> Dict:
+        """`G2` (`D-2026-11-01-04`). `ROUTES["marks"]`: what on the account's
+        screen can be clicked or typed into, as the desktop's accessibility
+        tree describes it — each with its role, its name and its box in the
+        screenshot's pixels — and its windows, so the caller knows which the
+        tree describes and which it must read from the picture. Only boxes
+        on the screen and only the fields the protocol names pass."""
+        self.system.ensure(account)
+        got = self.system.screen(account).marks()
+        why = got.get("why")
+        marks = [m for m in (_clean_mark(raw) for raw in (got.get("marks") or [])[:P.MAX_MARKS])
+                 if m is not None]
+        windows = [w for w in (_clean_window(raw) for raw in (got.get("windows") or [])[:64])
+                   if w is not None]
+        out: Dict = {"source": "a11y", "marks": marks, "windows": windows,
+                     "width": P.SCREEN_WIDTH, "height": P.SCREEN_HEIGHT}
+        if isinstance(why, str) and why.strip():
+            out["why"] = why.strip()[:300]
+        return out
+
     def input(self, account: str, body: Dict) -> Dict:
         action = _validated_action(body)
         who = body.get("holder") or "agent"
@@ -1292,6 +1321,52 @@ def _int(value, default: int, name: str) -> int:
     if isinstance(value, bool) or not isinstance(value, int):
         raise WorkstationError("bad_request", f"“{name}” is a whole number.")
     return value
+
+
+def _clean_box(raw) -> Optional[List[int]]:
+    """A box `[x, y, w, h]` of whole numbers on the screen, or None."""
+    if not isinstance(raw, (list, tuple)) or len(raw) != 4:
+        return None
+    if not all(isinstance(v, int) and not isinstance(v, bool) for v in raw):
+        return None
+    x, y, w, h = raw
+    if w < 1 or h < 1 or x < 0 or y < 0 or x + w > P.SCREEN_WIDTH or y + h > P.SCREEN_HEIGHT:
+        return None
+    return [x, y, w, h]
+
+
+def _text(raw, limit: int = P.MARK_NAME_MAX) -> str:
+    return " ".join(str(raw or "").split())[:limit] if isinstance(raw, str) else ""
+
+
+def _clean_mark(raw) -> Optional[Dict]:
+    """`G2`. One mark as the protocol says it, or None: what the reader
+    printed is the account's process's words, so only these fields, shaped."""
+    if not isinstance(raw, dict):
+        return None
+    box = _clean_box(raw.get("box"))
+    if box is None:
+        return None
+    out = {"role": _text(raw.get("role"), 40), "name": _text(raw.get("name")), "box": box,
+           "app": _text(raw.get("app"), 60)}
+    if raw.get("editable") is True:
+        out["editable"] = True
+    if isinstance(raw.get("window"), int) and not isinstance(raw.get("window"), bool):
+        out["window"] = raw["window"]
+    return out
+
+
+def _clean_window(raw) -> Optional[Dict]:
+    if not isinstance(raw, dict):
+        return None
+    box = _clean_box(raw.get("box"))
+    if box is None:
+        return None
+    marks = raw.get("marks")
+    return {"app": _text(raw.get("app"), 60), "name": _text(raw.get("name")), "box": box,
+            "role": _text(raw.get("role"), 40), "active": raw.get("active") is True,
+            "id": raw.get("id") if isinstance(raw.get("id"), int) else -1,
+            "marks": marks if isinstance(marks, int) and not isinstance(marks, bool) else 0}
 
 
 def _validated_action(body: Dict) -> Dict:
@@ -1601,6 +1676,7 @@ class Handler(BaseHTTPRequestHandler):
                        "write": lambda: self.station.write(account, body),
                        "list": lambda: self.station.list(account, body),
                        "input": lambda: self.station.input(account, body),
+                       "marks": lambda: self.station.marks(account),  # `G2`
                        "browser": lambda: self.station.browser(account, body),
                        "names": lambda: self.station.names(account, body),
                        "network": lambda: self.station.network(account, body),

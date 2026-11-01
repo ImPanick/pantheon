@@ -4338,6 +4338,15 @@ COMPUTER_USE_RULES = (
     "permission for steps inside the workstation — carry the task through, then say what the "
     "last screenshot shows."
 )
+#: `G4` (`D-2026-11-01-04`). Added to the rules while screen marks are on
+#: (`src/screen_marks.ENABLED`): the numbers are the easy, exact way to point,
+#: and a small model told so uses them.
+COMPUTER_USE_MARKS_RULE = (
+    "\nEvery screenshot has the things you can click boxed and numbered, with a list of them "
+    "in words. Point by number: {\"action\": \"click\", \"mark\": 7}, or "
+    "{\"action\": \"type\", \"mark\": 4, \"text\": \"hello\"} to type into field 4. Use x and y "
+    "only for a spot no mark covers. Numbers belong to the last screenshot only."
+)
 
 
 def _build_system_prompt(
@@ -4799,6 +4808,9 @@ def _build_system_prompt(
             and (relevant_tools is None or "computer" in relevant_tools)
             and "computer" not in (disabled_tools or ())):
         agent_prompt += COMPUTER_USE_RULES
+        from src import screen_marks as _screen_marks
+        if _screen_marks.ENABLED:
+            agent_prompt += COMPUTER_USE_MARKS_RULE
 
     # When creating email documents, instruct the AI on the format
     if relevant_tools and not suppress_local_context and (_EMAIL_TOOL_HINTS & set(relevant_tools)):

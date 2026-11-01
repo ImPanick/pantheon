@@ -326,8 +326,8 @@ def test_the_desktop_is_xfce_where_the_machine_has_it_and_jwm_where_it_has_not()
     argv, env = ubuntu.desktop_session(lambda name: "/usr/bin/" + name)
     assert argv == ["xfce4-session"]
     assert env == {"XDG_CURRENT_DESKTOP": "XFCE", "XDG_SESSION_DESKTOP": "xfce",
-                   "DESKTOP_SESSION": "xfce", "XDG_MENU_PREFIX": "xfce-"}
-    assert ubuntu.desktop_session(lambda name: None) == (["jwm"], {})
+                   "DESKTOP_SESSION": "xfce", "XDG_MENU_PREFIX": "xfce-", **ubuntu.A11Y_ENV}
+    assert ubuntu.desktop_session(lambda name: None) == (["jwm"], dict(ubuntu.A11Y_ENV))
 
 
 class _Proc:
