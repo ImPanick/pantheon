@@ -18,6 +18,7 @@
  */
 
 import { getAuthStatus } from './appConfig.js';
+import { prefersReducedMotion } from './motion.js';
 
 let mediaRecorder = null;
 let audioChunks = [];
@@ -77,13 +78,10 @@ let _boxInput = null;
 let _dot = FULL;
 let _dotTimer = null;
 
+// `B1726`. The page's one answer (`motion.js`, `P1-12`), read each time the
+// dots are drawn, so turning the preference on mid-dictation is believed.
 function _stillDots() {
-  try {
-    return !!(typeof window !== 'undefined' && window.matchMedia
-      && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
-  } catch (_) {
-    return false;   // as `motion.js` answers a webview whose matchMedia throws
-  }
+  return prefersReducedMotion();
 }
 
 /** `B1726`. The box's prompt and the pill, as dictation stands now. */

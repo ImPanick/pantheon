@@ -199,6 +199,9 @@ export const page = {
 
 def _box(tmp: Path) -> Path:
     shutil.copy(RECORDER, tmp / "voiceRecorder.js")
+    # The real reduced-motion guard the recorder imports (`motion.js`, which
+    # imports nothing), so the dots ask what the page asks.
+    shutil.copy(RECORDER.parent / "motion.js", tmp / "motion.js")
     (tmp / "appConfig.js").write_text(_APP_CONFIG, encoding="utf-8")
     (tmp / "shim.mjs").write_text(_SHIM, encoding="utf-8")
     return tmp
