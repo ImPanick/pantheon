@@ -740,6 +740,52 @@ def setup_history_routes(session_manager, upload_handler=None) -> APIRouter:
             logger.error(f"Edit message error {session_id}: {e}")
             raise HTTPException(500, str(e))
 
+    @router.post("/api/session/{session_id}/react")
+    async def react_to_message(request: Request, session_id: str):
+        """`B1736`. The person's emoji reaction on one of the model's replies,
+        by the reply's database id; ``emoji: null`` takes it off. The model
+        hears of it on its next turn (`src/message_reactions.reaction_note`)."""
+        from src import message_reactions
+        await asyncio.to_thread(_verify_session_owner, request, session_id)
+        try:
+            body = await request.json()
+        except (json.JSONDecodeError, ValueError):
+            raise HTTPException(400, "Send JSON: {\"msg_id\": …, \"emoji\": …}")
+        if not isinstance(body, dict):
+            raise HTTPException(400, "Send JSON: {\"msg_id\": …, \"emoji\": …}")
+        msg_id = str(body.get("msg_id") or "").strip()
+        raw = body.get("emoji")
+        emoji = None if raw in (None, "") else message_reactions.normalize(raw)
+        if not msg_id:
+            raise HTTPException(400, "Name the reply to react to (msg_id).")
+        if raw not in (None, "") and emoji is None:
+            raise HTTPException(
+                400, "Pick one of " + " ".join(message_reactions.USER_REACTIONS) + ".")
+
+        def _off_the_loop():
+            session = session_manager.get_session(session_id)
+            db = SessionLocal()
+            try:
+                row = db.query(DbChatMessage).filter(
+                    DbChatMessage.id == msg_id,
+                    DbChatMessage.session_id == session_id,
+                ).first()
+                if row is None:
+                    raise HTTPException(404, "That reply is no longer in this chat. Reload it to see what is.")
+                if row.role != "assistant":
+                    raise HTTPException(400, "Reactions go on the model's replies.")
+            finally:
+                db.close()
+            if not message_reactions.persist(session_id, msg_id, "user", emoji):
+                raise HTTPException(500, "Could not save that reaction. Try again.")
+            message_reactions.react_in_history(session.history, msg_id, "user", emoji)
+            return {"status": "ok", "msg_id": msg_id, "emoji": emoji}
+
+        try:
+            return await asyncio.to_thread(_off_the_loop)
+        except KeyError:
+            raise HTTPException(404, CHAT_GONE)
+
     @router.post("/api/session/{session_id}/mark-stopped")
     def mark_stopped(request: Request, session_id: str):
         """Mark the reply the person stopped as stopped (`_stoppable_reply`)."""

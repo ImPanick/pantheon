@@ -571,6 +571,48 @@ html.cockpit .msg-action-btn:hover, html.cockpit .footer-copy-btn:hover { backgr
 html.cockpit .msg-user .msg-footer { position: absolute; right: 2px; top: 100%; margin-top: 2px; justify-content: flex-end; }
 html.cockpit .msg-user .msg-footer:has(.msg-metrics) { position: static; }
 
+/* `B1736`. Reactions. The person's sits under a reply as a quiet pill that
+   stays when the actions fade; the model's is a small glass badge hung on the
+   bubble's lower-left corner, its glyph lit in the accent, because a lit lamp
+   means something. Glyphs are the product's monochrome line emoji. */
+html.cockpit .msg-react-btn svg { display: block; }
+html.cockpit .msg-reaction-pill {
+  display: inline-flex; align-items: center; gap: 6px; margin: 8px 0 0; padding: 3px 10px 3px 8px; height: 26px;
+  border: 0; border-radius: 999px; background: var(--ck-tint); color: var(--ck-text-2); cursor: pointer;
+  font: 500 11.5px/1 var(--ck-font-ui); box-shadow: inset 0 1px 0 var(--ck-edge-hi);
+  transition: background var(--ck-t) var(--ck-ease), color var(--ck-t) var(--ck-ease), transform var(--ck-t) var(--ck-spring);
+}
+html.cockpit .msg-reaction-pill:hover { background: var(--ck-tint-2); color: var(--ck-text); }
+html.cockpit .msg-reaction-pill:active { transform: scale(.96); }
+html.cockpit .msg-reaction-pill:focus-visible { outline: 2px solid var(--ck-accent-line); outline-offset: 2px; }
+html.cockpit .msg-reaction-glyph { display: inline-grid; place-items: center; font-size: 15px; color: var(--ck-text); }
+html.cockpit .msg-reaction-glyph .emoji { margin: 0; vertical-align: 0; }
+html.cockpit .msg-reaction-pill + .msg-footer { margin-top: 2px; }
+html.cockpit .msg-user { position: relative; }
+html.cockpit .msg-reaction-badge {
+  position: absolute; left: -10px; bottom: -11px; width: 26px; height: 26px; display: grid; place-items: center;
+  border-radius: 999px; font-size: 14px; color: var(--ck-accent-2); pointer-events: auto; cursor: default;
+  background: linear-gradient(135deg, var(--ck-sheen-hi) 0%, transparent 55%), var(--ck-glass-strong);
+  border: 1px solid var(--ck-edge); box-shadow: inset 0 1px 0 var(--ck-edge-hi), 0 0 0 3px var(--ck-accent-wash), 0 6px 14px -8px var(--ck-shade-deep);
+}
+html.cockpit .msg-reaction-badge .emoji { margin: 0; vertical-align: 0; }
+.reaction-palette {
+  position: fixed; z-index: var(--ck-z-float, 1001); display: flex; gap: 2px; padding: 4px !important; border-radius: 999px !important;
+  animation: ck-pop-in var(--ck-t-slow) var(--ck-spring) backwards; transform-origin: bottom center;
+}
+.reaction-option {
+  width: 34px; height: 34px; display: grid; place-items: center; border: 0; border-radius: 999px; cursor: pointer;
+  background: transparent; color: var(--ck-text-2); font-size: 18px;
+  transition: background var(--ck-t-fast) var(--ck-ease), color var(--ck-t-fast) var(--ck-ease), transform var(--ck-t) var(--ck-spring);
+  animation: ck-reaction-rise var(--ck-t-slow) var(--ck-spring) backwards; animation-delay: calc(var(--i, 0) * 22ms);
+}
+.reaction-option .emoji { margin: 0; vertical-align: 0; }
+.reaction-option:hover, .reaction-option:focus-visible { background: var(--ck-tint); color: var(--ck-text); transform: translateY(-2px) scale(1.12); outline: none; }
+.reaction-option.is-picked { background: var(--ck-accent-wash); color: var(--ck-accent-2); box-shadow: inset 0 0 0 1px var(--ck-accent-line); }
+.reaction-popping { animation: ck-reaction-pop 420ms var(--ck-spring); }
+@keyframes ck-reaction-rise { from { opacity: 0; transform: translateY(6px) scale(.8); } }
+@keyframes ck-reaction-pop { 0% { transform: scale(.4); opacity: 0; } 60% { transform: scale(1.15); opacity: 1; } 100% { transform: scale(1); } }
+
 /* "Thought for 12s ›" — a pill that opens */
 html.cockpit .thinking-section { margin: 0 0 10px !important; border: 0 !important; background: none !important; border-radius: 0 !important; overflow: visible; }
 html.cockpit .thinking-header {

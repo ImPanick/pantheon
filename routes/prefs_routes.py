@@ -165,6 +165,8 @@ def setup_prefs_routes():
             # which the voice service reads on every sentence it says to them.
             value = (checked_conversation(value) if key == CONVERSATION_PREF
                      else checked_voice(value))
+        elif key == "reactions_enabled":
+            value = value is not False   # `B1736`: a switch, on unless turned off
         prefs[key] = value
         _save_for_user(user, prefs)
         return {"key": key, "value": prefs[key]}

@@ -118,6 +118,12 @@ the next one is cut.
   that cannot see images still gets the list. `scripts/grounding_eval.py` measures it on your own
   model: five desktop and browser tasks, with marks off and on. Rebuild both images: the
   workstation gains the accessibility bus and Pantheon's image gains Tesseract.
+- **Reactions, both ways** (2026-11-01, `B1736`). Point at a reply and press the smile to react
+  with 👍 ❤️ 😂 🎉 🤔 or 👎; your reaction stays under the reply, and the model hears about it on its
+  next turn. The model can react to your messages too: a heart for a detailed, well-specified
+  idea, a thumbs-up for a steer it will follow, a laugh for a joke. Its reaction shows as a small
+  badge on your message. It works on any model, local or cloud, in Chat and Agent mode, with no
+  tool calling needed. Turn it off in Settings → Chat Area → Reactions.
 - **Reasoning effort for thinking models** (2026-11-01, `B1734`). A dial chip beside Agent / Chat
   sets how hard the model thinks: *Auto* (the model's own default, nothing sent), *Low*, *Medium*,
   *High*, *Extra* or *Max*. It shows only when the selected model can take it, and each menu row

@@ -61,6 +61,8 @@ import { loadPanel } from './panels.js';
 import planWindow from './planWindow.js';
 import summonModule from './summon.js';   // P24-26
 import reasoningEffortModule from './reasoningEffort.js';   // reasoning effort chip
+import reactionsModule from './reactions.js';   // `B1736` emoji reactions
+reactionsModule.useSessionId(() => sessionModule.getCurrentSessionId());
 import * as contextUsage from './contextUsage.js';
 // `P10-06`. The context panel closes through the one popup registry, like
 // every other popup appended to <body> (see `_openContextPanel`).
@@ -5099,6 +5101,14 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
                 // `B892`. The reply is stored now, and with it what its
                 // request was spent on — the wheel reads that back.
                 refreshChatContextHeader('saved');
+
+              } else if (json.type === 'reaction') {
+                // `B1736`. The model reacted to the person's message; the
+                // marker it wrote was lifted out of the stream by the server.
+                if (_isBg) continue;
+                const _reactedTo = _userMsgEl || _resendBubble
+                  || Array.from(document.querySelectorAll('#chat-history > .msg-user')).pop();
+                if (_reactedTo && _reactedTo.isConnected !== false) reactionsModule.showModelReaction(_reactedTo, json.emoji);
 
               } else if (json.type === 'user_message_saved') {
                 // `B1507`. The person's row, for the bubble this send stands

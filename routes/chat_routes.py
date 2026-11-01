@@ -33,6 +33,7 @@ from src.agent_loop import (
 )
 from src import agent_runs
 from src import reasoning_effort as _reasoning_effort
+from src import message_reactions as _message_reactions   # `B1736`
 from src.model_context import estimate_tokens
 from src.context_compactor import (
     apply_compaction_state,
@@ -2337,6 +2338,13 @@ def setup_chat_routes(
             ),
             persist_user_message=not tool_approval_continuation,
             invoked_skill=invoked_skill,   # `B1374`
+            # `B1736`. A fresh message may be reacted to; a continuation after
+            # an approval card answers a message the model already saw.
+            offer_reactions=not tool_approval_continuation,
+        )
+        _reactions_on = (
+            not tool_approval_continuation and not incognito
+            and _message_reactions.wanted(ctx.uprefs, compare_mode=compare_mode)
         )
 
         _research_flags = {"do": do_research}  # Mutable container for generator scope
@@ -4046,9 +4054,20 @@ def setup_chat_routes(
             """Wrapper that guarantees _active_streams cleanup even if stream_with_save
             raises before reaching a mode-specific finally block."""
             try:
-                with _reasoning_effort.turn_scope(_turn_reasoning_level):
+                # `B1736`. The model's reaction marker never reaches the
+                # screen: the filter sends it as a `reaction` event instead.
+                _reaction_filter = _message_reactions.ReactionStreamFilter() if _reactions_on else None
+                with _reasoning_effort.turn_scope(_turn_reasoning_level), \
+                        _message_reactions.turn_scope(_reactions_on):
                     async for chunk in stream_with_save():
-                        yield chunk
+                        if _reaction_filter is None:
+                            yield chunk
+                            continue
+                        for _out in _reaction_filter.feed(chunk):
+                            yield _out
+                    if _reaction_filter is not None:
+                        for _out in _reaction_filter.flush():
+                            yield _out
             finally:
                 _active_streams.pop(session, None)
                 # `B1653`. The memories this turn sent have their use count

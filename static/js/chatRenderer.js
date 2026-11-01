@@ -23,6 +23,7 @@ import { buildAllowRuleChooser } from './trustLadder.js';
 import { renderAgentStop, renderAgentNote, withdrawContinueOffers, compactionFromRecord, trimFromRecord } from './agentStops.js';
 import { scrollBehavior } from './motion.js';
 import { forkIcon } from './icons.js';
+import reactionsModule from './reactions.js';   // `B1736`
 import { buildReplyError } from './chatStreamErrors.js';   // `B1200`
 import { memoryConfidencePill } from './memoryFacts.js';
 import { applyAgentThreadNode, verifierCardOptions, approvalOutcome,
@@ -2350,6 +2351,9 @@ export function createMsgFooter(msgElement) {
     container.appendChild(btn);
   }
 
+  // `B1736`. React stays first and out of the recents order: it is how the
+  // person answers the reply, not a tool used on it.
+  actions.appendChild(reactionsModule.reactButton(msgElement));
   visible.forEach(a => _addBtn(a, actions));
 
   // Overflow "···" button
@@ -4481,6 +4485,7 @@ export function addMessage(role, content, modelName, metadata) {
         if (metadata?.auto_escalated) wrap._autoEscalated = metadata.auto_escalated;
         if (metadata?.fallback_chain) wrap._fallbackChain = metadata.fallback_chain;
         wrap.appendChild(createMsgFooter(wrap));
+        reactionsModule.drawSavedReactions(wrap, metadata);   // `B1736`
         if (figures) displayMetrics(wrap, figures);
       };
       let pendingAskUser = null;
@@ -5099,6 +5104,7 @@ export function addMessage(role, content, modelName, metadata) {
       if (metadata?.auto_escalated) wrap._autoEscalated = metadata.auto_escalated;
       if (metadata?.fallback_chain) wrap._fallbackChain = metadata.fallback_chain;
       wrap.appendChild(createMsgFooter(wrap));
+      reactionsModule.drawSavedReactions(wrap, metadata);   // `B1736`
       if (metadata) displayMetrics(wrap, metadata);
       // `B953`. The turn's context was summarised to fit before this reply was
       // asked for: the line above it, in the words the live toast used.
@@ -5113,6 +5119,7 @@ export function addMessage(role, content, modelName, metadata) {
       r.appendChild(roleTimestamp(metadata?.timestamp));
 
       wrap.appendChild(createUserMsgFooter(wrap));
+      reactionsModule.drawSavedReactions(wrap, metadata);   // `B1736`
     }
 
     box.appendChild(wrap);
