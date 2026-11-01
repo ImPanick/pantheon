@@ -126,6 +126,8 @@ def turn_scope(enabled: bool) -> Iterator[None]:
         try:
             _turn_on.reset(token)
         except ValueError:
+            # The scope ended in another context (a streamed reply's generator
+            # closed elsewhere); that context's copy goes with it.
             pass
 
 
