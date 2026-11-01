@@ -3249,6 +3249,7 @@ body.bg-pattern-ascii {
     @container chatbar (max-width: 420px) {
       .chat-input-right .mode-toggle { display: none !important; }
       .chat-input-right .approval-mode-wrap { display: none !important; }
+      .chat-input-right .reasoning-effort-wrap { display: none !important; }
       .chat-input-right .turn-chip { display: inline-flex; }
     }
     @container chatbar (max-width: 260px) {
@@ -4564,6 +4565,88 @@ body.bg-pattern-ascii {
       visibility: hidden;
     }
     .approval-mode-item[aria-checked="true"] .approval-mode-item-check {
+      visibility: visible;
+    }
+    /* Reasoning effort (`static/js/reasoningEffort.js`): the approval mode's
+       chip and menu, with the one difference that its row lines are the
+       server's words on how each level reaches the selected model. The dial's
+       needle sweeps with the level. */
+    /* Static, so the menu hangs from the composer's right edge as the model
+       picker's does; from the chip it ran off the chat's left edge. */
+    .reasoning-effort-wrap {
+      position: static;
+      display: flex;
+      align-items: center;
+      flex-shrink: 0;
+    }
+    .reasoning-effort-chip {
+      padding: 0 6px 0 7px;
+      gap: 4px;
+    }
+    .reasoning-effort-chip:hover:not(.active) {
+      color: var(--chip-off-fg, var(--fg));
+    }
+    .reasoning-effort-chip-label {
+      font-size: 11px;
+      font-weight: 600;
+      line-height: 1;
+      white-space: nowrap;
+    }
+    .reasoning-effort-needle {
+      transform-origin: 12px 14px;
+      transform: rotate(-20deg);
+      transition: transform 260ms cubic-bezier(.2, .8, .2, 1);
+    }
+    .reasoning-effort-chip[data-level="low"] .reasoning-effort-needle { transform: rotate(-60deg); }
+    .reasoning-effort-chip[data-level="high"] .reasoning-effort-needle { transform: rotate(20deg); }
+    .reasoning-effort-chip[data-level="extra"] .reasoning-effort-needle { transform: rotate(45deg); }
+    .reasoning-effort-chip[data-level="max"] .reasoning-effort-needle { transform: rotate(70deg); }
+    @media (prefers-reduced-motion: reduce) {
+      .reasoning-effort-needle { transition: none; }
+    }
+    .chat-input-bar:has(.reasoning-effort-wrap) { position: relative; }
+    .model-picker-menu.reasoning-effort-menu {
+      min-width: 300px;
+    }
+    .model-picker-list.reasoning-effort-list {
+      padding: 4px;
+      max-height: min(420px, 70dvh);
+    }
+    .model-picker-list .model-switch-item.reasoning-effort-item {
+      align-items: flex-start;
+      gap: 10px;
+      padding: 7px 8px;
+    }
+    .model-picker-list .model-switch-item.reasoning-effort-item.kb-active {
+      background: none;
+    }
+    .model-picker-list .model-switch-item.reasoning-effort-item:hover {
+      background: none;
+      box-shadow: inset 2px 0 0 var(--red);
+    }
+    .reasoning-effort-item-text {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      flex: 1 1 auto;
+      min-width: 0;
+    }
+    .reasoning-effort-item-name {
+      font-weight: 600;
+    }
+    .reasoning-effort-item-desc {
+      line-height: 1.35;
+      color: color-mix(in oklab, var(--fg) 70%, var(--fg-muted));
+    }
+    .reasoning-effort-item-desc:empty {
+      display: none;
+    }
+    .reasoning-effort-item-check {
+      flex: 0 0 auto;
+      margin-top: 1px;
+      visibility: hidden;
+    }
+    .reasoning-effort-item[aria-checked="true"] .reasoning-effort-item-check {
       visibility: visible;
     }
     /* Session cost indicator (next to chevron in header) */

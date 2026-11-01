@@ -108,6 +108,16 @@ the next one is cut.
 
 ### Added
 
+- **Reasoning effort for thinking models** (2026-11-01, `B1734`). A dial chip beside Agent / Chat
+  sets how hard the model thinks: *Auto* (the model's own default, nothing sent), *Low*, *Medium*,
+  *High*, *Extra* or *Max*. It shows only when the selected model can take it, and each menu row
+  says how that level reaches the model. Each model hears it through its own setting: Claude's
+  effort, `reasoning_effort` for OpenAI's reasoning models and gpt-oss (LM Studio, vLLM, Ollama,
+  Groq), OpenRouter's and the ChatGPT subscription's reasoning effort, Mistral's, and Qwen3's
+  thinking switch. Where a model has no setting, or its setting stops at High, a short note in the
+  system prompt asks it to think harder. Type `ultrathink` in a message to run that one turn at
+  Max. Titles, summaries and other background calls keep the model's default. The level is kept
+  in your browser.
 - **Computer Use: the agent uses the workstation like a computer** (2026-11-01, `B1725`,
   `D-2026-11-01-02`). Settings → Workstation and the workstation's screen window have a
   *Computer Use* switch. Turned on, after a warning you accept, the agent clicks, types, runs

@@ -1983,6 +1983,49 @@
                active mode (`style.css`), and it is the Agent button's
                description for a screen reader. -->
           <span class="agent-limits-hint" id="agent-limits-hint" hidden></span>
+          <!-- Reasoning effort: how hard a thinking model is asked to think
+               (Auto, Low … Max). Shown only while the selected model takes a
+               level (`GET /api/chat/reasoning-effort`); the menu is the model
+               picker's, as the approval mode's is. `static/js/reasoningEffort.js`,
+               `src/reasoning_effort.py`. -->
+          <div class="reasoning-effort-wrap" id="reasoning-effort-wrap" style="display:none;">
+            <button type="button" class="input-icon-btn tool-chip reasoning-effort-chip" id="reasoning-effort-btn" aria-haspopup="menu" aria-expanded="false" aria-controls="reasoning-effort-options" style="display:none;">
+              <svg class="reasoning-effort-dial" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.5 17a8.5 8.5 0 1 1 15 0"/><path class="reasoning-effort-needle" d="M12 14V8"/><circle cx="12" cy="14" r="1.2" fill="currentColor" stroke="none"/></svg>
+              <span class="reasoning-effort-chip-label" id="reasoning-effort-label">Auto</span>
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="{{chevron:up}}"/></svg>
+            </button>
+            <div class="model-picker-menu reasoning-effort-menu hidden" id="reasoning-effort-menu">
+              <div class="model-picker-list reasoning-effort-list">
+                <div class="mp-section-label" id="reasoning-effort-menu-title">Reasoning effort</div>
+                <div role="menu" id="reasoning-effort-options" aria-labelledby="reasoning-effort-menu-title">
+                  <div class="model-switch-item reasoning-effort-item" role="menuitemradio" tabindex="-1" aria-checked="false" data-effort="auto">
+                    <span class="reasoning-effort-item-text"><span class="reasoning-effort-item-name">Auto</span><span class="reasoning-effort-item-desc"></span></span>
+                    <svg class="reasoning-effort-item-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+                  </div>
+                  <div class="model-switch-item reasoning-effort-item" role="menuitemradio" tabindex="-1" aria-checked="false" data-effort="low">
+                    <span class="reasoning-effort-item-text"><span class="reasoning-effort-item-name">Low</span><span class="reasoning-effort-item-desc"></span></span>
+                    <svg class="reasoning-effort-item-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+                  </div>
+                  <div class="model-switch-item reasoning-effort-item" role="menuitemradio" tabindex="-1" aria-checked="false" data-effort="medium">
+                    <span class="reasoning-effort-item-text"><span class="reasoning-effort-item-name">Medium</span><span class="reasoning-effort-item-desc"></span></span>
+                    <svg class="reasoning-effort-item-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+                  </div>
+                  <div class="model-switch-item reasoning-effort-item" role="menuitemradio" tabindex="-1" aria-checked="false" data-effort="high">
+                    <span class="reasoning-effort-item-text"><span class="reasoning-effort-item-name">High</span><span class="reasoning-effort-item-desc"></span></span>
+                    <svg class="reasoning-effort-item-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+                  </div>
+                  <div class="model-switch-item reasoning-effort-item" role="menuitemradio" tabindex="-1" aria-checked="false" data-effort="extra">
+                    <span class="reasoning-effort-item-text"><span class="reasoning-effort-item-name">Extra</span><span class="reasoning-effort-item-desc"></span></span>
+                    <svg class="reasoning-effort-item-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+                  </div>
+                  <div class="model-switch-item reasoning-effort-item" role="menuitemradio" tabindex="-1" aria-checked="false" data-effort="max">
+                    <span class="reasoning-effort-item-text"><span class="reasoning-effort-item-name">Max</span><span class="reasoning-effort-item-desc"></span></span>
+                    <svg class="reasoning-effort-item-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
           <!-- Agent / Chat mode toggle -->
           <div class="mode-toggle">
             <button type="button" class="mode-toggle-btn active" id="mode-agent-btn" aria-pressed="true" aria-describedby="agent-limits-hint">Agent</button>

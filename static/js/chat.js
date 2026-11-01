@@ -60,6 +60,7 @@ import { createAgentMeter, presentMeterEvent, METER_EVENT_TYPES, renderLimitsHin
 import { loadPanel } from './panels.js';
 import planWindow from './planWindow.js';
 import summonModule from './summon.js';   // P24-26
+import reasoningEffortModule from './reasoningEffort.js';   // reasoning effort chip
 import * as contextUsage from './contextUsage.js';
 // `P10-06`. The context panel closes through the one popup registry, like
 // every other popup appended to <body> (see `_openContextPanel`).
@@ -1193,6 +1194,8 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
 
     // `P7-10`. The run limits beside the mode toggle.
     _wireAgentLimitsHint();
+    // Reasoning effort: shown for the selected model when it takes a level.
+    reasoningEffortModule.init(selectedRoute);
   }
 
   // addMessage, createMsgFooter, displayMetrics, hideWelcomeScreen, showWelcomeScreen
@@ -3281,6 +3284,8 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
       if (selectedRouteForSend.model) fd.append('selected_model', selectedRouteForSend.model);
       if (selectedRouteForSend.endpoint_url) fd.append('selected_endpoint_url', selectedRouteForSend.endpoint_url);
       if (selectedRouteForSend.endpoint_id) fd.append('selected_endpoint_id', selectedRouteForSend.endpoint_id);
+      const _effortForSend = reasoningEffortModule.levelForSend();
+      if (_effortForSend) fd.append('reasoning_effort', _effortForSend);
       if (ids.length) fd.append('attachments', JSON.stringify(ids));
       // Auto-save & send active doc ID so the backend sees latest content
       if (documentModule && activeDocIdForSend && shouldSaveActiveDoc) {

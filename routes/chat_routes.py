@@ -32,6 +32,7 @@ from src.agent_loop import (
     submit_steer,
 )
 from src import agent_runs
+from src import reasoning_effort as _reasoning_effort
 from src.model_context import estimate_tokens
 from src.context_compactor import (
     apply_compaction_state,
@@ -1897,6 +1898,12 @@ def setup_chat_routes(
         incognito = request_flag(form_data.get("incognito"))
         plan_mode = request_flag(form_data.get("plan_mode") or (body or {}).get("plan_mode"))
         chat_mode = str(form_data.get("mode", "")).lower()  # 'chat' or 'agent'
+        # The composer's reasoning effort (Auto, Low … Max); `ultrathink` in
+        # the message runs this one turn at Max. `src/reasoning_effort.py`.
+        _turn_reasoning_level = _reasoning_effort.turn_level(
+            form_data.get("reasoning_effort") or (body or {}).get("reasoning_effort"),
+            message,
+        )
         tool_approval_id = (
             form_data.get("tool_approval_id")
             or (body or {}).get("tool_approval_id")
@@ -4039,8 +4046,9 @@ def setup_chat_routes(
             """Wrapper that guarantees _active_streams cleanup even if stream_with_save
             raises before reaching a mode-specific finally block."""
             try:
-                async for chunk in stream_with_save():
-                    yield chunk
+                with _reasoning_effort.turn_scope(_turn_reasoning_level):
+                    async for chunk in stream_with_save():
+                        yield chunk
             finally:
                 _active_streams.pop(session, None)
                 # `B1653`. The memories this turn sent have their use count
@@ -4416,6 +4424,36 @@ def setup_chat_routes(
                 yield f'event: error\ndata: {json.dumps({"error": str(e), "status": 500})}\n\n'
 
         return StreamingResponse(stream_rewrite(), media_type="text/event-stream")
+
+    @router.get("/api/chat/reasoning-effort")
+    async def reasoning_effort_levels(
+        request: Request,
+        model: str = "",
+        endpoint_id: str = "",
+        endpoint_url: str = "",
+    ) -> Dict[str, Any]:
+        """Whether the selected model takes a reasoning effort, and how each
+        level reaches it — so the composer shows its selector only where it
+        does something. Resolves the selection as a send would; string
+        matching only, no request leaves (`Law 16`)."""
+        owner = effective_user(request)
+        selected_id = str(endpoint_id or "").strip()
+        selected_url = str(endpoint_url or "").strip()
+
+        def _support():
+            run_url = selected_url
+            if selected_id or selected_url:
+                try:
+                    resolved = _selected_registered_endpoint(selected_id, selected_url, owner=owner)
+                except Exception:
+                    logger.warning("reasoning effort: selected endpoint lookup failed", exc_info=True)
+                    resolved = None
+                if resolved:
+                    run_url = resolved[0]
+            return _reasoning_effort.effort_support(run_url, str(model or "").strip())
+
+        return await asyncio.to_thread(_support)
+
 
     # ------------------------------------------------------------------ #
     # P7-10 — how far an agent run may go, asked before it starts.

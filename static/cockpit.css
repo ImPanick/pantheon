@@ -939,6 +939,23 @@ html.cockpit .approval-mode-chip {
 html.cockpit .approval-mode-menu-title { color: var(--ck-text-2) !important; font-family: var(--ck-font-ui) !important; }
 html.cockpit .approval-mode-chip:hover { background: var(--ck-tint) !important; color: var(--ck-text-2) !important; }
 html.cockpit body.ck-auto-approve .approval-mode-chip { color: var(--ck-warn-text) !important; background: color-mix(in oklab, var(--ck-warn) 14%, transparent) !important; }
+/* reasoning effort: a quiet instrument until a level is set, then the accent */
+html.cockpit .reasoning-effort-chip {
+  height: 30px !important; padding: 0 10px 0 9px !important; border-radius: 999px !important; font: 400 12px/1 var(--ck-font-ui) !important;
+  color: var(--ck-text-2) !important; background: transparent !important; border: 0 !important; box-shadow: none !important; gap: 5px !important;
+}
+html.cockpit .reasoning-effort-chip-label { font: 400 12px/1 var(--ck-font-ui) !important; }
+html.cockpit .reasoning-effort-chip:hover { background: var(--ck-tint) !important; color: var(--ck-text-2) !important; }
+html.cockpit .reasoning-effort-chip.active { color: var(--ck-text) !important; background: var(--ck-tint) !important; }
+html.cockpit .reasoning-effort-chip.active .reasoning-effort-dial { color: var(--ck-accent, currentColor); }
+/* Inside the composer a popover's blur has nothing to sample (Chromium: the
+   composer's own backdrop-filter), so this menu takes the glass at full body:
+   its rows carry a line of small text each, which must not sit on the chat. */
+html.cockpit .model-picker-menu.reasoning-effort-menu {
+  background: linear-gradient(135deg, var(--ck-sheen-hi) 0%, transparent 42%, transparent 72%, var(--ck-sheen-lo) 100%), var(--ck-noise-soft) 0 0/240px 240px, var(--ck-glass-base) !important;
+}
+html.cockpit .reasoning-effort-item-desc { color: var(--ck-text-2) !important; font: 400 12px/1.35 var(--ck-font-ui) !important; }
+html.cockpit .reasoning-effort-item-name { color: var(--ck-text) !important; font: 500 13px/1.3 var(--ck-font-ui) !important; }
 html.cockpit .turn-chip {
   border-radius: 999px !important; background: var(--ck-tint) !important; border: 0 !important; color: var(--ck-text-2) !important; font: 400 12px/1 var(--ck-font-ui) !important; height: 30px;
 }
