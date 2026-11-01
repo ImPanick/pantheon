@@ -46804,11 +46804,15 @@ body.settings-sidebar-resize-active {
 .wsv-status { flex: 1 1 240px; min-width: 0; }
 .wsv-actions { display: flex; flex-wrap: wrap; gap: 6px; }
 /* `B1725`: Computer Use, as a switch on the window's bar — lit while the
-   agent acts in this workstation without asking. */
+   agent acts in this workstation without asking. It wears the one on-state
+   (`B1552`): the label is `--chip-on-fg`, the red moved only as far as 4.5:1
+   on its tint needs, since the bare accent misses that floor on seven
+   palettes. */
 .wsv-cu[aria-pressed="true"] {
-  border-color: var(--accent);
-  color: var(--accent);
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 40%, transparent);
+  border-color: var(--red);
+  color: var(--chip-on-fg, var(--red));
+  background: color-mix(in srgb, var(--red) 12%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--red) 40%, transparent);
 }
 .wsv-who { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; }
 .wsv-who[hidden] { display: none; }
