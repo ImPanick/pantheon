@@ -476,7 +476,11 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
       return false;
     }
     try {
-      const res = await fetch(`/api/session/${encodeURIComponent(sid)}/compact`, { method: 'POST' });
+      // `B1731`: the cut is sized to the window the wheel draws, so the
+      // compaction is asked in the same mode the wheel was.
+      const agentBtn = document.getElementById('mode-agent-btn');
+      const mode = agentBtn && agentBtn.classList.contains('active') ? 'agent' : 'chat';
+      const res = await fetch(`/api/session/${encodeURIComponent(sid)}/compact?mode=${mode}`, { method: 'POST' });
       if (!res.ok) {
         // `P23-04` (CHAT-M-20, C-ERR): the server's sentence, read once — it
         // was "Compact failed: {"detail":"Not enough messages to compact"}".
@@ -484,7 +488,18 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
         uiModule.showError(refusal.sentence);
         return false;
       }
-      uiModule.showToast('Context compacted');
+      // `B1731`: say what it did — the wheel's figure before and after, and
+      // when Pantheon had to condense the messages itself.
+      let done = null;
+      try { done = await res.json(); } catch (_) { done = null; }
+      let said = 'Context compacted';
+      if (done && Number.isFinite(Number(done.before)) && Number.isFinite(Number(done.after))) {
+        said = `Context compacted: ${Math.round(Number(done.before))}% → ${Math.round(Number(done.after))}%`;
+      }
+      if (done && done.summarized_by === 'pantheon') {
+        said += ' (the model did not answer, so Pantheon condensed the older messages itself)';
+      }
+      uiModule.showToast(said);
       _closeContextHeaderPopup();
       if (sm && sm.selectSession) await sm.selectSession(sid, { keepSidebar: true, showLoading: false });
       refreshChatContextHeader('compact');

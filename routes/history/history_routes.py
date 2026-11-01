@@ -240,6 +240,69 @@ def _resolve_user_message_cut(session, spec: Dict[str, Any]):
     return position, None
 
 
+def _last_request_breakdown(history) -> Optional[dict]:
+    """The `context_breakdown` the most recent reply was sent with, or None.
+    `B1731`: a compaction copies it onto its marker, so the wheel keeps
+    counting the system prompt, tools and retrieved context the next request
+    will carry, instead of drawing the chat alone until the next reply."""
+    for m in reversed(list(history or [])):
+        md = (m.get("metadata") if isinstance(m, dict) else getattr(m, "metadata", None)) or {}
+        role = m.get("role") if isinstance(m, dict) else getattr(m, "role", "")
+        if role == "assistant" and isinstance(md.get("context_breakdown"), dict):
+            return md["context_breakdown"]
+    return None
+
+
+def _window_used_tokens(session) -> int:
+    """What the wheel counts as used: the larger of the history's estimate and
+    the breakdown's total (overhead from the last request + history now)."""
+    from src.model_context import estimate_tokens
+    from src.context_budget import session_context_breakdown
+    messages = session.get_context_messages()
+    used = int(estimate_tokens(messages))
+    try:
+        breakdown = session_context_breakdown(messages, _last_request_breakdown(session.history))
+        return max(used, int(breakdown.get("total_tokens") or 0))
+    except Exception:
+        return used
+
+
+async def _wheel_window(request: Request, session, row) -> tuple:
+    """`(window, context_length, known, mode, agent_budget)` — the window the
+    context wheel draws a chat against, and how it got there.
+
+    `B1731`: one answer for the wheel and for *Compact*, which sizes its cut to
+    the same window the person is looking at.
+
+    `P23-04` (PERF-M-14): one lookup gives the window and whether it was
+    proven; the agent's budget reads the same answer rather than asking the
+    endpoint again. `B1588`: on a worker thread — it reads the endpoint table,
+    and may ask the server. `P23-04` (CHAT-M-4): the window the next request is
+    held to. In Agent mode that is the loop's input budget — 6,000 tokens when
+    the endpoint never said its window (#4122) — not the 128K fallback, which
+    is what the wheel drew while the loop trimmed. The composer says which mode
+    it is in; a caller that does not gets the chat's last mode.
+    """
+    from src.model_context import get_context_length_known
+    ctx_len, window_known = await asyncio.to_thread(
+        get_context_length_known, session.endpoint_url, session.model)
+    ctx_len = int(ctx_len or 0)
+    mode = str(request.query_params.get("mode") or "").strip().lower()
+    if mode not in ("agent", "chat"):
+        mode = "agent" if getattr(row, "mode", None) == "agent" else "chat"
+    agent_budget = 0
+    if mode == "agent":
+        from src.context_budget import agent_input_budget
+        from src.settings import get_setting
+        # `B751`: the budget this person's runs are trimmed to — their
+        # role's number when their role sets one.
+        agent_budget = int(agent_input_budget(
+            ctx_len if window_known else 0, get_setting,
+            owner=effective_user(request) or None) or 0)
+    window = min(ctx_len, agent_budget) if (agent_budget and ctx_len) else (agent_budget or ctx_len)
+    return window, ctx_len, window_known, mode, agent_budget
+
+
 def setup_history_routes(session_manager, upload_handler=None) -> APIRouter:
     router = APIRouter(tags=["history"])
 
@@ -968,37 +1031,12 @@ def setup_history_routes(session_manager, upload_handler=None) -> APIRouter:
             raise HTTPException(404, CHAT_GONE)
 
         try:
-            from src.model_context import estimate_tokens, get_context_length_known
+            from src.model_context import estimate_tokens
 
             messages = session.get_context_messages()
             used = int(estimate_tokens(messages))
-            # `P23-04` (PERF-M-14): one lookup gives the window and whether it
-            # was proven; the agent's budget below reads the same answer
-            # rather than asking the endpoint again.
-            # `B1588`: on a worker thread — it reads the endpoint table, and
-            # may ask the server.
-            ctx_len, window_known = await asyncio.to_thread(
-                get_context_length_known, session.endpoint_url, session.model)
-            ctx_len = int(ctx_len or 0)
-            # `P23-04` (CHAT-M-4). The window the next request is held to. In
-            # Agent mode that is the loop's input budget — 6,000 tokens when
-            # the endpoint never said its window (#4122) — not the 128K
-            # fallback, which is what the wheel drew while the loop trimmed.
-            # The composer says which mode it is in; a caller that does not
-            # gets the chat's last mode.
-            mode = str(request.query_params.get("mode") or "").strip().lower()
-            if mode not in ("agent", "chat"):
-                mode = "agent" if getattr(row, "mode", None) == "agent" else "chat"
-            agent_budget = 0
-            if mode == "agent":
-                from src.context_budget import agent_input_budget
-                from src.settings import get_setting
-                # `B751`: the budget this person's runs are trimmed to — their
-                # role's number when their role sets one.
-                agent_budget = int(agent_input_budget(
-                    ctx_len if window_known else 0, get_setting,
-                    owner=effective_user(request) or None) or 0)
-            window = min(ctx_len, agent_budget) if (agent_budget and ctx_len) else (agent_budget or ctx_len)
+            window, ctx_len, window_known, mode, agent_budget = await _wheel_window(
+                request, session, row)
             pct = round((used / window) * 100, 1) if window else 0.0
             pct = max(0.0, min(100.0, pct))
             visible_messages = sum(
@@ -1017,14 +1055,8 @@ def setup_history_routes(session_manager, upload_handler=None) -> APIRouter:
             # stored in history); attachments and the conversation are measured
             # from history as it stands now, so a compaction shows at once.
             from src.context_budget import session_context_breakdown
-            last_request = None
-            for m in reversed(session.history):
-                md = getattr(m, "metadata", None) or {}
-                if getattr(m, "role", "") == "assistant" and isinstance(
-                        md.get("context_breakdown"), dict):
-                    last_request = md["context_breakdown"]
-                    break
-            breakdown = session_context_breakdown(messages, last_request)
+            breakdown = session_context_breakdown(
+                messages, _last_request_breakdown(session.history))
             window_used = max(used, int(breakdown.get("total_tokens") or 0))
             breakdown["used_tokens"] = window_used
             breakdown["context_percent"] = (
@@ -1059,26 +1091,25 @@ def setup_history_routes(session_manager, upload_handler=None) -> APIRouter:
     async def compact_session(request: Request, session_id: str):
         """Summarize a chat's older messages; keep a recent tail verbatim.
 
-        `B1529`. Two handlers answered this path, and `app.py` includes
-        `session_routes` first, so its compact was the one that ran and this
-        one — `B1214`'s visible *Chat compacted* marker, `B1506`'s order — was
-        shadowed: a compacted chat lost its earlier messages with no line
-        saying why. One handler now, this one, keeping the better of each for
-        the person (the owner's blanket authority, coordinator's brief):
+        `B1529`. One handler answers this path (`session_routes`' copy was
+        shadowing this one): the summary is a `hidden` system row the model
+        reads first, then a visible marker saying what happened, then the kept
+        messages, written in that order through `replace_messages`; a chat too
+        short to compact is refused in words; the response carries both shapes,
+        `summarized`/`kept` (what `slashCommands.js` prints) and
+        `before`/`after`/`message`.
 
-          * from here: the summary is a `hidden` system row the model reads
-            first, then a visible marker saying what happened, then the kept
-            messages, written in that order through `replace_messages`;
-          * from `session_routes`: the adaptive tail — four messages on a short
-            chat, up to eight on a long one, because a fixed four "made manual
-            compaction look like it did nothing" there — and a refusal a person
-            can read for a chat too short to compact, where this one answered
-            200 and the composer said *Context compacted*;
-          * the response carries both shapes: `summarized`/`kept` (what
-            `slashCommands.js` prints) and `before`/`after`/`message`.
+        `B1731`. The cut is sized to the window the context wheel draws
+        (`_wheel_window`, `?mode=` as the wheel asks it): the conversation is
+        brought to about a tenth of it — a dense summary of everything older,
+        written from the messages' full text with any earlier summary merged,
+        plus the newest messages that still fit, word for word
+        (`context_compactor.plan_chat_compaction`). The summary is asked of the
+        utility model and then the chat's own, with the time a local reasoning
+        model needs; when neither answers, Pantheon condenses the older messages
+        itself and the response says so (`summarized_by`), rather than failing.
         """
-        await asyncio.to_thread(_verify_session_owner, request, session_id)
-        from src.auth_helpers import effective_user
+        row = await asyncio.to_thread(_verify_session_owner, request, session_id)
         try:
             session = session_manager.get_session(session_id)
         except KeyError:
@@ -1090,111 +1121,93 @@ def setup_history_routes(session_manager, upload_handler=None) -> APIRouter:
         owner = getattr(session, "owner", None) or effective_user(request)
 
         history = list(session.history or [])
-        if len(history) < 6:
-            raise HTTPException(400, "Not enough messages to compact yet — a chat needs six.")
-        keep_count = min(8, max(4, len(history) // 4))
-        older = history[:-keep_count]
-        recent = history[-keep_count:]
-
         try:
-            from src.model_context import estimate_tokens, get_context_length
-            from src.llm_core import llm_call_async
             from src.endpoint_resolver import resolve_endpoint
+            from src import context_compactor as cc
 
-            ctx_len = await asyncio.to_thread(   # `B1588`: off the event loop
-                get_context_length, session.endpoint_url, session.model)
-            used_before = estimate_tokens(session.get_context_messages())
-            pct_before = round((used_before / ctx_len) * 100, 1) if ctx_len else 0
+            window, _ctx_len, _known, _mode, _budget = await _wheel_window(request, session, row)
+            plan = cc.plan_chat_compaction(history, window)
+            if not plan["ok"]:
+                raise HTTPException(400, plan["reason"])
+            older, recent = plan["older"], plan["recent"]
+
+            used_before = _window_used_tokens(session)
+            last_request = _last_request_breakdown(history)
+            pct_before = round((used_before / window) * 100, 1) if window else 0
             msg_count_before = len(history)
 
-            # Build text to summarize
-            convo_text = "\n".join(
-                f"{_message_role(m).upper()}: "
-                f"{_message_text(m)[:2000]}"
-                for m in older
-                if not is_unanswered_reply(m)   # `B1200`: nothing to summarise
-            )
-
-            # Use utility model if available
             util_url, util_model, util_headers = await asyncio.to_thread(resolve_endpoint, "utility", owner=owner or None)
-            compact_url = util_url or session.endpoint_url
-            compact_model = util_model or session.model
-            compact_headers = util_headers if util_url else session.headers
-            if not compact_url or not compact_model:
+            candidates = [(util_url, util_model, util_headers),
+                          (session.endpoint_url, session.model, session.headers)]
+            if not any(url and model for url, model, _h in candidates):
                 raise HTTPException(400, "No model is set up to write the summary — choose "
                                          "a utility or chat model, then compact.")
+            written = await cc.summarize_for_compaction(older, plan["summary_tokens"], candidates)
+            summary = written["summary"]
+            by_model = written["by_model"]
+            summarized = sum(1 for m in older
+                             if not cc.is_compaction_marker(m) and not cc.is_compaction_summary(m))
 
-            from src.context_compactor import SELF_SUMMARY_SYSTEM_PROMPT, normalize_compaction_summary
-            compaction_count = sum(1 for m in history if isinstance(m, ChatMessage) and "[Conversation summary" in (m.content or ""))
-            sys_prompt = SELF_SUMMARY_SYSTEM_PROMPT.replace("{count}", str(len(older))).replace("{n}", str(compaction_count + 1))
-            try:
-                summary = await llm_call_async(
-                    compact_url, compact_model,
-                    [
-                        {"role": "system", "content": sys_prompt},
-                        {"role": "user", "content": convo_text},
-                    ],
-                    temperature=0.2, max_tokens=1024,
-                    headers=compact_headers, timeout=30,
-                )
-            except Exception as e:
-                logger.error(f"Manual compact error {session_id}: {e}")
-                raise HTTPException(502, "The model did not write a summary, so nothing was "
-                                         "compacted. Try again.")
-            summary = normalize_compaction_summary(summary)
-
-            # Replace session history: summary as system message + recent messages
-            # System message holds the full summary for AI context
+            # The row the model reads first. `B1731`: it says how it was made,
+            # so a condensed one is never mistaken for the model's own summary.
+            how = ("" if by_model else
+                   " (condensed by Pantheon — no model wrote a summary)")
             system_summary = ChatMessage(
                 role="system",
-                content=f"[Conversation summary — {len(older)} earlier messages were compacted]\n\n{summary}",
-                metadata={"compacted": True, "hidden": True},
+                content=f"{cc.SUMMARY_ROW_PREFIX} — {summarized} earlier messages were "
+                        f"compacted{how}]\n\n{summary}",
+                metadata={"compacted": True, "hidden": True,
+                          "summarized_by": by_model or "pantheon"},
             )
             # Visible assistant message just shows stats. `B1214`: a chat is
             # a chat (`D-2026-10-03-01` §3). The browser finds this marker by
             # its `compacted` flag (`chatRenderer.js`, `compactMarkerIn`), not
-            # by its words, so the chats that already say *Conversation
-            # compacted* are found the same way.
+            # by its words.
+            marker = f"**Chat compacted** — {summarized} messages summarized, {len(recent)} kept."
+            if not by_model:
+                marker += " The model did not answer in time, so Pantheon condensed them itself."
             summary_msg = ChatMessage(
                 role="assistant",
-                content=f"**Chat compacted** — {len(older)} messages summarized, {len(recent)} kept.",
-                metadata={"compacted": True, "messages_removed": len(older)},
+                content=marker,
+                metadata={"compacted": True, "messages_removed": len(older),
+                          **({"context_breakdown": last_request} if last_request else {})},
             )
             new_history = [system_summary, summary_msg] + list(recent)
 
-            # `B1506`. The stored order is the order in memory. This wrote the
-            # summary and the marker as two new rows stamped *now*, after the
-            # kept rows it left in place — so memory said [summary, marker,
-            # kept…] and the database [kept…, summary, marker], and after a
-            # reload the marker drew under the messages it introduced and the
-            # model was replayed its summary after them. `replace_messages` is
-            # the seam `context_compactor` persists through too: the whole
-            # history in one transaction, in order, each row's id set on the
-            # message it stores, and the cached session given the same list.
+            # `B1506`. The stored order is the order in memory: the whole
+            # history in one transaction, in order, through the seam
+            # `context_compactor` persists through too.
             if not session_manager.replace_messages(session_id, new_history):
                 raise HTTPException(500, "Could not save the compacted chat. Nothing was changed; try again.")
-            logger.info(f"Compact: session {session_id} history now has {len(new_history)} messages (was {msg_count_before})")
+            logger.info(f"Compact: session {session_id} history now has {len(new_history)} messages "
+                        f"(was {msg_count_before}); summary by {by_model or 'pantheon'}"
+                        + ("" if by_model else f" ({written['why_not']})"))
 
             session_manager.save_sessions()
 
-            used_after = estimate_tokens(session.get_context_messages())
-            pct_after = round((used_after / ctx_len) * 100, 1) if ctx_len else 0
+            used_after = _window_used_tokens(session)
+            pct_after = round((used_after / window) * 100, 1) if window else 0
 
             return {
                 "ok": True,
                 "status": "ok",
-                "summarized": len(older),
+                "summarized": summarized,
                 "kept": len(recent),
                 "message_count": len(new_history),
                 "message": f"Compacted: {msg_count_before} msgs → {len(new_history)} msgs ({pct_before}% → {pct_after}%)",
                 "before": pct_before,
                 "after": pct_after,
+                "chat_tokens_before": plan["chat_tokens"],
+                "chat_tokens_after": sum(cc._row_tokens(m) for m in new_history),
+                "window_tokens": window,
+                "summarized_by": by_model or "pantheon",
+                "model_error": None if by_model else written["why_not"],
             }
 
         except HTTPException:
             raise
         except Exception as e:
-            logger.error(f"Manual compact error {session_id}: {e}")
+            logger.error(f"Manual compact error {session_id}: {e}", exc_info=True)
             raise HTTPException(500, "Compaction failed. Nothing was changed; try again.")
 
     return router

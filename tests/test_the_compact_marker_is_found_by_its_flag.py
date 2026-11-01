@@ -121,6 +121,8 @@ def test_the_route_writes_chat_compacted(monkeypatch):
     monkeypatch.setattr(llm_core, "llm_call_async", summarise)
     monkeypatch.setattr(model_context, "estimate_tokens", lambda messages: 100)
     monkeypatch.setattr(model_context, "get_context_length", lambda url, model: 1000)
+    # `B1731`: the cut is sized to the window the wheel draws, read with its proof.
+    monkeypatch.setattr(model_context, "get_context_length_known", lambda url, model: (1000, True))
     history = [ChatMessage("user" if i % 2 == 0 else "assistant", f"line {i}") for i in range(8)]
     app = FastAPI()
     app.include_router(history_routes.setup_history_routes(_Manager(_Session(history))))
@@ -128,7 +130,9 @@ def test_the_route_writes_chat_compacted(monkeypatch):
     # `B1506`: the whole history is written now, kept rows too; the marker is
     # the assistant row that carries the flag.
     [visible] = [r for r in _Db.added if r.role == "assistant" and "compacted" in (json.loads(r.meta_data or "null") or {})]
-    assert visible.content == "**Chat compacted** — 4 messages summarized, 4 kept."
+    # `B1731`: eight rows of 100 tokens against a 1,000-token window are cut to
+    # a summary alone — the tail the window leaves room for holds none of them.
+    assert visible.content == "**Chat compacted** — 8 messages summarized, 0 kept."
     assert json.loads(visible.meta_data)["compacted"] is True
 
 

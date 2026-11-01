@@ -64,8 +64,11 @@ agent_runs.is_active = lambda sid: False
 
 manager = app_module.session_manager
 manager.create_session("c1", "Launch week", "http://model.test/v1", "m", owner=ADMIN)
-for i in range(12):
-    manager.add_message("c1", ChatMessage("user" if i % 2 == 0 else "assistant", f"line {i}"))
+# `B1731`: messages of a real length — a compaction sizes its cut to them.
+LINES = [f"line {i}: " + "the launch week plan " * 15 for i in range(12)]
+for i, line in enumerate(LINES):
+    manager.add_message("c1", ChatMessage("user" if i % 2 == 0 else "assistant", line))
+RESULT["lines"] = LINES
 manager.create_session("c2", "Short", "http://model.test/v1", "m", owner=ADMIN)
 for i in range(3):
     manager.add_message("c2", ChatMessage("user" if i % 2 == 0 else "assistant", f"short {i}"))
@@ -96,23 +99,35 @@ def test_one_handler_per_method_and_path(probe):
 
 def test_compacting_through_the_real_app_leaves_a_visible_marker_in_order(probe):
     assert probe["status"] == 200
-    # Twelve messages: the adaptive tail keeps four, at least, and up to eight.
-    assert (probe["answer"]["ok"], probe["answer"]["summarized"], probe["answer"]["kept"]) == (
-        True, 8, 4)
-    assert probe["drawn"] == ["**Chat compacted** — 8 messages summarized, 4 kept.",
-                              "line 8", "line 9", "line 10", "line 11"]
+    answer = probe["answer"]
+    # `B1731`: the conversation is cut to at most 40% of what it was — most of
+    # it a summary, the newest messages that still fit kept word for word.
+    assert answer["ok"] is True
+    assert answer["summarized"] + answer["kept"] == 12
+    assert 1 <= answer["kept"] < 4
+    assert answer["chat_tokens_after"] <= 0.45 * answer["chat_tokens_before"]
+    kept = probe["lines"][-answer["kept"]:]
+    assert probe["drawn"] == [
+        f"**Chat compacted** — {answer['summarized']} messages summarized, {answer['kept']} kept."
+    ] + kept
 
 
 def test_the_model_reads_the_summary_first(probe):
     first, *rest = probe["context"]
+    answer = probe["answer"]
     assert first[0] == "system"
-    assert first[1].startswith("[Conversation summary — 8 earlier messages were compacted]")
-    assert [content for _role, content in rest] == [
-        "**Chat compacted** — 8 messages summarized, 4 kept.",
-        "line 8", "line 9", "line 10", "line 11"]
+    assert first[1].startswith(
+        f"[Conversation summary — {answer['summarized']} earlier messages were compacted]")
+    marker = f"**Chat compacted** — {answer['summarized']} messages summarized, {answer['kept']} kept."
+    assert [content for _role, content in rest] == [marker[:60]] + [
+        line[:60] for line in probe["lines"][-answer["kept"]:]]
 
 
 def test_a_chat_too_short_to_compact_is_refused_in_words(probe):
     """The shadowed handler answered 200 *Not enough messages* here, which
-    the composer read as success and toasted *Context compacted*."""
-    assert probe["short"] == [400, "Not enough messages to compact yet — a chat needs six."]
+    the composer read as success and toasted *Context compacted*. `B1731`: the
+    refusal is about size now, not a count of messages."""
+    status, detail = probe["short"]
+    assert status == 400
+    assert detail.startswith("This conversation is only about ")
+    assert detail.endswith("tokens, so compacting it would not make it any smaller.")

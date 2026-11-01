@@ -2200,7 +2200,10 @@ async function _cmdCompact(args, ctx) {
   compactSpinner.destroy();
   if (res.ok) {
     const d = await res.json();
-    slashReply(`Compacted: ${d.summarized || 0} older messages summarised, ${d.kept || 0} kept.`);
+    // `B1731`: and the wheel's figure before and after.
+    const moved = (Number.isFinite(Number(d.before)) && Number.isFinite(Number(d.after)))
+      ? ` Context ${Math.round(Number(d.before))}% → ${Math.round(Number(d.after))}%.` : '';
+    slashReply(`Compacted: ${d.summarized || 0} older messages summarised, ${d.kept || 0} kept.${moved}`);
     if (sessionModule?.selectSession) await sessionModule.selectSession(ctx.sid);
   } else {
     let detail = 'Compaction failed';

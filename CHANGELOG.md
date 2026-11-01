@@ -714,6 +714,22 @@ the next one is cut.
 
 ### Fixed
 
+- **Compact cuts the chat hard and no longer fails on a slow local model** (2026-11-01, `B1731`).
+  The owner: *"Chat compaction does not actually do anything."* The summary was asked of the model
+  with 30 seconds and 1,024 tokens, which a local reasoning model such as gpt-oss runs out of, and
+  the button said *Compact failed*; when it did run it kept a fixed four to eight messages, so a
+  short chat hardly moved. A compaction now brings the conversation to about a tenth of the window
+  the context wheel draws (never more than 40% of what it was): a dense summary of everything older,
+  written from the messages' whole text with an earlier summary merged in, plus the newest messages
+  that still fit, word for word. The utility model is asked, then the chat's own, with up to three
+  minutes for a local one; if neither answers, Pantheon condenses the older messages itself and
+  says so. The toast says the wheel's figure before and after. What a compaction cannot reach —
+  the system prompt, tool definitions and retrieved context sent with every request — is unchanged.
+- **The context window of a model on LM Studio or Ollama is the one it was loaded with**
+  (2026-11-01, `B1732`). The wheel said *"The model's window is unknown, so the agent keeps 6K"* for
+  gpt-oss-20b on LM Studio. Pantheon now reads LM Studio's own model list (and Ollama's `/api/ps`)
+  for the context length the model was loaded with; a model LM Studio has not loaded yet stays
+  unknown until it has.
 - **Dictation and the voice chat say when they are turning speech into text** (2026-11-01,
   `B1726`). The owner: *"When the voice is being processed and transfered into text - it needs to
   also say "Transcribing . . ." so the user doesn't think it's hanging/crashing."* Dictation said
