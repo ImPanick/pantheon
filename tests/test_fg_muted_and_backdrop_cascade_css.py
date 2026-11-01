@@ -426,11 +426,14 @@ def test_the_three_populations_hold_at_their_counts():
     # approval picker's `.approval-mode-item-desc` (`B1706`, 6ac18e3f), and the
     # skill library's `.skill-library-lede` and `.skill-library-desc`
     # (`B1715`, cbde5992). All text that is secondary on purpose.
-    assert len(uses) == 884, f"expected 884 uses of --fg-muted, found {len(uses)}"
+    # 884 -> 885, 876 -> 877 bare: the reasoning-effort menu's
+    # `.reasoning-effort-item-desc` (`B1734`, ab406833), the same rung as the
+    # approval picker's line.
+    assert len(uses) == 885, f"expected 885 uses of --fg-muted, found {len(uses)}"
 
     bare = [expr for _, expr in uses if not _fallback(expr)]
-    assert len(bare) == 876, (
-        f"expected 876 bare `var(--fg-muted)` uses, found {len(bare)}. If a site "
+    assert len(bare) == 877, (
+        f"expected 877 bare `var(--fg-muted)` uses, found {len(bare)}. If a site "
         "was legitimately added or removed, move this number and say which in "
         "the commit — do not widen the assertion."
     )
@@ -491,7 +494,8 @@ def test_the_bare_uses_split_across_properties_as_measured():
     # `B1408` (above): `color` 147 -> 332, the 185 ladder rungs, all text.
     # `B1577` (above): `color` 332 -> 862, the opacity form moved onto it.
     # 862 -> 866: the four quiet lines counted above, all `color:`.
-    assert tally == {"color": 866, "border-color": 4, "background": 3, "--ctx-stroke": 3}, tally
+    # 866 -> 867: `B1734`'s `.reasoning-effort-item-desc`, `color:` too.
+    assert tally == {"color": 867, "border-color": 4, "background": 3, "--ctx-stroke": 3}, tally
 
 
 def test_the_javascript_uses_are_recorded_but_not_this_rows_work():

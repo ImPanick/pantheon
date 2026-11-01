@@ -3346,13 +3346,16 @@ async def _stream_llm_inner(url: str, model: str, messages: List[Dict], temperat
     else:
         messages_copy = non_sys
     # Reasoning effort said in words, where the model's own switch can't say it.
-    messages_copy = _reasoning_effort.apply_to_messages(messages_copy, url, model, reasoning_level)
+    # On a worker thread: telling a local server from a cloud one can read the
+    # endpoints table (`is_local_endpoint`, `B1588`).
+    messages_copy = await asyncio.to_thread(
+        _reasoning_effort.apply_to_messages, messages_copy, url, model, reasoning_level)
 
     if provider == "anthropic":
         target_url = _normalize_anthropic_url(url)
         h = _build_anthropic_headers(headers)
         payload = _build_anthropic_payload(model, messages_copy, temperature, max_tokens, stream=True, tools=tools)
-        _reasoning_effort.apply_to_payload(payload, url, model, reasoning_level)
+        await asyncio.to_thread(_reasoning_effort.apply_to_payload, payload, url, model, reasoning_level)
     elif provider == "ollama":
         target_url = _normalize_ollama_url(url)
         h = {"Content-Type": "application/json"}
@@ -3363,12 +3366,12 @@ async def _stream_llm_inner(url: str, model: str, messages: List[Dict], temperat
             model, messages_copy, temperature, max_tokens,
             stream=True, tools=tools, num_ctx=num_ctx,
         )
-        _reasoning_effort.apply_to_payload(payload, url, model, reasoning_level)
+        await asyncio.to_thread(_reasoning_effort.apply_to_payload, payload, url, model, reasoning_level)
     elif provider == "chatgpt-subscription":
         target_url = _normalize_chatgpt_subscription_url(url)
         h = _provider_headers(provider, headers)
         payload = _build_chatgpt_responses_payload(model, messages_copy, temperature, max_tokens, stream=True)
-        _reasoning_effort.apply_to_payload(payload, url, model, reasoning_level)
+        await asyncio.to_thread(_reasoning_effort.apply_to_payload, payload, url, model, reasoning_level)
     else:
         target_url = _normalize_openai_chat_url(url)
         payload = {
@@ -3404,7 +3407,7 @@ async def _stream_llm_inner(url: str, model: str, messages: List[Dict], temperat
         # The composer's level replaces the defaults above (Mistral's env
         # level, Ollama's `think: false`); the GPT-5 tools scrub still wins,
         # since the API refuses the pair.
-        _reasoning_effort.apply_to_payload(payload, url, model, reasoning_level)
+        await asyncio.to_thread(_reasoning_effort.apply_to_payload, payload, url, model, reasoning_level)
         _scrub_openai_chat_tool_reasoning(payload, target_url, model)
         h = _provider_headers(provider, headers)
         if provider == "copilot":
