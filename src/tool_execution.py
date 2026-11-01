@@ -1590,7 +1590,8 @@ async def _execute_tool_block_impl(
         # as whom, and in which folder are the whole question.
         from src.agent_tools.git_tools import command_line as _git_line, run_git
         desc = f"git: {_git_line(content)}"
-        result = await run_git(content, owner=owner, station_workspace=station_workspace)
+        result = await run_git(content, owner=owner, station_workspace=station_workspace,
+                               session_id=session_id, agent_id=getattr(tool_policy, "agent_id", None))
     elif tool == "manage_bg_jobs":
         # Inspect/kill detached `bash` jobs; needs session_id to scope to chat.
         desc = f"manage_bg_jobs: {content.split(chr(10))[0][:80]}"
@@ -1718,10 +1719,10 @@ async def _execute_tool_block_impl(
         result = await do_manage_contact(content, owner=owner)
     elif tool == "vault_search":
         desc = "vault_search"
-        result = await do_vault_search(content, owner=owner)
+        result = await do_vault_search(content, owner=owner, agent=getattr(tool_policy, "agent_id", None))
     elif tool == "vault_get":
         desc = "vault_get"
-        result = await do_vault_get(content, owner=owner)
+        result = await do_vault_get(content, owner=owner, agent=getattr(tool_policy, "agent_id", None))
     elif tool == "vault_unlock":
         desc = "vault_unlock"
         result = await do_vault_unlock(content, owner=owner)

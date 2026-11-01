@@ -637,7 +637,10 @@ FUNCTION_TOOL_SCHEMAS = [
                 "it has one) and $LOGIN_GRAFANA_AGENT_URL; with only one login, also "
                 "$LOGIN_USER, $LOGIN_PASSWORD, $LOGIN_OTP and $LOGIN_URL — and $LOGIN_HOST, "
                 "$LOGIN_HOST_IP (set when the person mapped the name to an address) and $LOGIN_PORT "
-                "for a tool that is not HTTP, such as psql -h. Write the variables, "
+                "for a tool that is not HTTP, such as psql -h. A key (an API token) is also "
+                "$LOGIN_<NAME>_TOKEN, and a token for GitHub or GitLab also sets $GH_TOKEN / "
+                "$GITHUB_TOKEN / $GITLAB_TOKEN and signs plain git in to that host, so gh and "
+                "git push work as they are. Write the variables, "
                 "never a value: curl -u \"$LOGIN_USER:$LOGIN_PASSWORD\" \"$LOGIN_URL/api/health\". "
                 "Output is scrubbed of the values. Never ask the person to paste a password into "
                 "the chat."
@@ -1993,9 +1996,12 @@ FUNCTION_TOOL_SCHEMAS = [
         "function": {
             "name": "vault_search",
             "description": (
-                "Search the credential vault by keyword. Returns matching entry "
-                "names and URLs and NEVER returns passwords. Use to find which "
-                "entry to sign in with (bw:<id>)."
+                "Search the person's vault (Settings → Vault: their logins, API "
+                "keys and tokens) by keyword — and the server's Bitwarden vault "
+                "when one is set up. Returns names, addresses and the $LOGIN_… "
+                "variable each one becomes in shell_with_login; NEVER a password "
+                "or token. Use it, then shell_with_login with the name, to use a "
+                "stored token (curl, gh, git)."
             ),
             "parameters": {
                 "type": "object",
@@ -2011,16 +2017,15 @@ FUNCTION_TOOL_SCHEMAS = [
         "function": {
             "name": "vault_get",
             "description": (
-                "Describe one vault entry by item ID from vault_search: its name, "
-                "user name and URLs, and whether a password is set — never the "
-                "password itself. To sign in with it, use agent_browser login or "
-                "shell_with_login with item \"bw:<id>\". Every access is logged; "
-                "requires a reason."
+                "Describe one vault entry by its name (or bw:<id> from "
+                "vault_search): its user name, addresses, and whether a password "
+                "or token is set — never the value itself. To use it, name it in "
+                "shell_with_login or agent_browser login. Requires a reason."
             ),
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "item_id": {"type": "string", "description": "Vault item ID, from vault_search"},
+                    "item_id": {"type": "string", "description": "The item's name, or bw:<id>, from vault_search"},
                     "reason": {"type": "string", "description": "Why this secret is needed — recorded with the access"},
                 },
                 "required": ["item_id", "reason"]

@@ -1851,8 +1851,9 @@ Blocked paths/routes (refused for safety): /api/auth/, /api/users/, /api/tokens/
         '{"logins": ["Grafana (agent)"], "command": "curl -su \\"$LOGIN_USER:$LOGIN_PASSWORD\\" \\"$LOGIN_URL/api/health\\""}\n'
         "```\n"
         "One shell command with logins from the person's vault in its environment — you name "
-        "them, you never see them: $LOGIN_<NAME>_USER, _PASSWORD, _OTP, _URL, _HOST, _HOST_IP, _PORT (and $LOGIN_USER… "
-        "when only one is named). Write the variables, never a value; the output is scrubbed."
+        "them, you never see them: $LOGIN_<NAME>_USER, _PASSWORD, _OTP, _URL, _HOST, _HOST_IP, _PORT, and _TOKEN for a key (and $LOGIN_USER… "
+        "when only one is named). A GitHub/GitLab token also sets $GH_TOKEN/$GITLAB_TOKEN and signs "
+        "plain git in to that host. Write the variables, never a value; the output is scrubbed."
     ),
     # `P25-03`. The fenced form of the `git` schema, for a model with no
     # native tool channel.

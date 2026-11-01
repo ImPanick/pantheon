@@ -400,7 +400,7 @@ def _where(place: _Place) -> Dict[str, Any]:
 
 
 async def run_git(content: Any, *, owner: Optional[str], station_workspace: Optional[str] = None,
-                  ) -> Dict[str, Any]:
+                  session_id: Optional[str] = None, agent_id: Optional[str] = None) -> Dict[str, Any]:
     """Run one `git` action for `owner`. Answers a tool result."""
     from core.database import SessionLocal
     from src import git_accounts as G
@@ -423,6 +423,7 @@ async def run_git(content: Any, *, owner: Optional[str], station_workspace: Opti
         env: Dict[str, str] = {}
         secret: Optional[str] = None
         host: Optional[str] = None
+        vault_hint = ""
         if args["action"] in REACHING_ACTIONS:
             if args["action"] == "clone":
                 host = host_of(args["url"])
@@ -434,6 +435,8 @@ async def run_git(content: Any, *, owner: Optional[str], station_workspace: Opti
                             "exit_code": 1, **_where(place)}
                 host = host_of(got.get("stdout", "").strip().splitlines()[0] if got.get("stdout") else "")
             cred = G.credential_for(db, owner, host) if host else None
+            if not cred and host:
+                cred, vault_hint = await _vault_credential(db, owner, host, session_id, agent_id, args["action"])
             if cred:
                 env = {"PANTHEON_GIT_HOST": host, "PANTHEON_GIT_USER": cred[0], "PANTHEON_GIT_TOKEN": cred[1]}
                 secret = cred[1]
@@ -457,8 +460,8 @@ async def run_git(content: Any, *, owner: Optional[str], station_workspace: Opti
             hint = ""
             if args["action"] in REACHING_ACTIONS and not secret and re.search(
                     r"Authentication failed|could not read Username|403|401|terminal prompts disabled", said):
-                hint = (f" You have no token for {host or 'that host'} in Settings → Git; add one, "
-                        "then try again.")
+                hint = vault_hint or (f" You have no token for {host or 'that host'} in Settings → Git "
+                                      "or in your vault; add one, then try again.")
             if args["action"] == "commit" and n == 1 and "nothing to commit" in (stdout + stderr):
                 return {"output": "Nothing to commit: the working tree is clean.", "exit_code": 0,
                         **_where(place)}
@@ -476,6 +479,38 @@ async def run_git(content: Any, *, owner: Optional[str], station_workspace: Opti
         result["host"] = host
         result["as"] = "your token" if secret else "no token"
     return result
+
+
+async def _vault_credential(db, owner: Optional[str], host: str, session_id: Optional[str],
+                            agent_id: Optional[str], action: str = "push"
+                            ) -> Tuple[Optional[Tuple[str, str]], str]:
+    """`B-vault-git`. With no token in Settings → Git, a token for this host
+    kept in the person's vault: `((username, token), "")`, or `(None, the
+    sentence a failure adds)`. The item's own *how it may be used* holds —
+    this tool raises no card of its own, so an item set to ask is left for
+    `shell_with_login`, which asks."""
+    from src import vault as V
+    try:
+        row = V.for_git_host(db, owner, host, agent_id)
+    except Exception as exc:  # noqa: BLE001 — an unreadable vault is no token, not a failed command
+        logger.warning("git: the vault could not be read for %s (%s)", host, type(exc).__name__)
+        db.rollback()
+        return None, ""
+    if row is None:
+        return None, ""
+    if not V.may_use_unasked(owner, session_id, row):
+        cmd = f"git {action}"
+        return None, (f" Your vault has “{row.label}” for {host}, which asks before an agent uses it: run "
+                      f"the same git command with shell_with_login {{\"logins\": [\"{row.label}\"], "
+                      f"\"command\": \"{cmd} …\"}} (git signs in with it there), or set it to "
+                      "“Agents may use it” in Settings → Vault.")
+    try:
+        got = await V.resolve(db, owner, row.id, by="git", session=session_id, agent=agent_id)
+    except V.VaultRefused as r:
+        return None, " " + r.sentence
+    if not got.get("secret"):
+        return None, ""
+    return (V.git_username(host, got.get("username")), got["secret"]), ""
 
 
 # ── the repositories a person has (`P25-04`'s *Git ›*) ──────────────────────

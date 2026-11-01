@@ -677,6 +677,19 @@ the next one is cut.
 
 ### Fixed
 
+- **The agent can use what you keep in your vault** (2026-11-01, `B1722`, `B1723`). The owner:
+  the agent *"can see the github token I put in the vault but can't access/use it. The vault is
+  locked to the agent."* Its `vault_search` and `vault_get` read only the server's Bitwarden vault
+  and, with none set up, said *"Vault is locked."* They now read your own vault (Settings → Vault)
+  and say how to use each item, and Bitwarden only when it is set up. A token for a git host —
+  one whose address is the host, or one kept with no address whose name names GitHub, GitLab,
+  Codeberg or Bitbucket — now signs in `gh` and plain `git` inside `shell_with_login`
+  (`$GH_TOKEN`, `$GITHUB_TOKEN`, a credential helper for that host alone, all in that one
+  command's environment), and any key is also `$LOGIN_<NAME>_TOKEN`. The `git` tool uses it when
+  Settings → Git has no token for the host and the item is set to *Agents may use it* (or *once per
+  chat* and already used in this chat); set to ask, the `git` tool says to run the command through
+  `shell_with_login`, which asks you. The value never reaches the chat.
+
 - **The workstation's desktop sits idle** (2026-10-31, `B1721`). The owner: it *"constantly opens
   and reopens firefox and the terminal... Let it be idle."* Every desktop session opened a
   terminal, so every restart of the display was a terminal opening again, and the agent's Firefox
