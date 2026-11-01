@@ -269,7 +269,8 @@ _INSTRUCTIONS = {
     "max": ("Reasoning effort: maximum. Take as long as you need. Reason "
             "exhaustively before answering: break the problem down, consider "
             "every plausible approach, test your reasoning against edge cases, "
-            "and double-check each step before giving your final answer."),
+            "and double-check each step. Before you reply, review your draft "
+            "answer for mistakes and fix them."),
 }
 
 

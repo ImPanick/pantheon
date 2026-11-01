@@ -66,8 +66,19 @@ function _items(n) {
   return n.options ? [...n.options.querySelectorAll(ITEM)] : [];
 }
 
+// What each level does for the person, in the owner's words (2026-11-01).
+// How it reaches this model (its own setting, or a note) is the row's tooltip.
+const WHAT = {
+  auto: "The model's own default.",
+  low: 'Light thinking. Quick replies.',
+  medium: 'Thinks a little harder. A bit more detail.',
+  high: 'Thinks hard. Takes longer to reply.',
+  extra: 'Thinks hardest. Fuller, longer answers.',
+  max: 'Ultrathink: checks its own work before you see it.',
+};
+
 function _howFor(level) {
-  if (level === AUTO) return "The model's own default. Nothing is sent.";
+  if (level === AUTO) return 'Nothing is sent.';
   const row = _support && Array.isArray(_support.levels)
     ? _support.levels.find((l) => l && l.id === level) : null;
   return row && row.how ? row.how : '';
@@ -104,7 +115,9 @@ export function render() {
     const level = item.getAttribute('data-effort');
     item.setAttribute('aria-checked', level === _level ? 'true' : 'false');
     const desc = item.querySelector('.reasoning-effort-item-desc');
-    if (desc) desc.textContent = _howFor(level);
+    if (desc) desc.textContent = WHAT[level] || '';
+    const how = _howFor(level);
+    if (how) item.title = how; else item.removeAttribute('title');
   }
   if (!shown) closeMenu();
   if (_chipShown !== null && _chipShown !== shown) {
