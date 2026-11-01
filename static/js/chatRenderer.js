@@ -1348,6 +1348,22 @@ export function roleTimestamp(when) {
   return ts;
 }
 
+// `B1727`. Other model families' own tool-call text: Qwen3-Coder's
+// `<function=…>`, Mistral's `[TOOL_CALLS]`, Llama's `<|python_tag|>`,
+// Granite/Phi's `<|tool_call|>`, Kimi's section tokens, gpt-oss's
+// `to=functions.…`. The server reads and hides every one
+// (`tool_parsing._normalize_foreign_tool_markup`); these keep them out of view
+// while a reply streams in, a closing tag not yet arrived included.
+const FOREIGN_TOOL_MARKUP_RES = [
+  /<tool_call>\s*<function=[\w.\-]+>[\s\S]*?(?:<\/tool_call>|$)/gi,
+  /<function=[\w.\-]+>[\s\S]*?(?:<\/function>|$)/gi,
+  /\[TOOL_CALLS\][\s\S]*$/g,
+  /<\|python_tag\|>\s*[[{][\s\S]*$/g,
+  /<\|tool_call\|>[\s\S]*?(?:<\|\/tool_call\|>|$)/g,
+  /<\|tool_calls_section_begin\|>[\s\S]*?(?:<\|tool_calls_section_end\|>|$)/g,
+  /(?:<\|start\|>assistant)?<\|channel\|>commentary to=functions\.[\s\S]*?(?:<\|call\|>|$)/g,
+];
+
 /**
  * Strip tool invocation blocks from text before rendering.
  */
@@ -1357,6 +1373,7 @@ export function stripToolBlocks(text) {
   cleaned = cleaned.replace(DSML_TOOL_RE, '');
   cleaned = cleaned.replace(DSML_INVOKE_RE, '');
   cleaned = cleaned.replace(DSML_STRAY_RE, '');
+  for (const re of FOREIGN_TOOL_MARKUP_RES) cleaned = cleaned.replace(re, '');
   cleaned = cleaned.replace(XML_TOOL_CALL_RE, '');
   cleaned = cleaned.replace(XML_INVOKE_RE, '');
   cleaned = cleaned.replace(RAW_OPENAI_TOOL_JSON_RE, '');

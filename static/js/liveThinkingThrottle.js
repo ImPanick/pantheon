@@ -42,7 +42,7 @@ const REASONING_PREFIX_CANDIDATES = [
   'they are ', 'the question ', 'i can ',
 ];
 
-const DISPLAY_FILTER_BOUNDARY_RE = /\[\/?TOOL_CALL\]|```(?:create_document|documen(?:t)?)(?:\s|$)|```[\w-]+[ \t]*[\[{]|<(?:[\w]+:)?(?:tool_call|function_call)>|<invoke\b|<\s*\/?\s*[｜|]+\s*DSML\s*[｜|]+|(?:\[\s*)?\{\s*"function"\s*:|<\/?\|(?:assistant|assistan|user|system|tool|end)\|?>|(?:^|[\r\n])\s*(?:stdout|stderr|exit_code):/i;
+const DISPLAY_FILTER_BOUNDARY_RE = /\[\/?TOOL_CALL\]|```(?:create_document|documen(?:t)?)(?:\s|$)|```[\w-]+[ \t]*[\[{]|<(?:[\w]+:)?(?:tool_call|function_call)>|<invoke\b|<function=|\[TOOL_CALLS\]|<\|(?:python_tag|tool_call|tool_calls_section_begin)\|>|to=functions\.|<\s*\/?\s*[｜|]+\s*DSML\s*[｜|]+|(?:\[\s*)?\{\s*"function"\s*:|<\/?\|(?:assistant|assistan|user|system|tool|end)\|?>|(?:^|[\r\n])\s*(?:stdout|stderr|exit_code):/i;
 
 function hasFreshMatch(text, regex, cursor, minStart = 0) {
   regex.lastIndex = 0;

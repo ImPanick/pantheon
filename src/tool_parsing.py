@@ -280,6 +280,473 @@ def _normalize_dsml(text: str) -> str:
     t = re.sub(rf"<\s*/\s*{_DSML_PIPES}\s*DSML\s*{_DSML_PIPES}\s*parameter\s*>", "</parameter>", t, flags=re.IGNORECASE)
     return t
 
+# `B1727`. Every model family's own tool-call text, read as one shape.
+#
+# The owner (2026-11-01): Qwen Coder 30B built a landing page "within a file
+# structure and referenced its own files numerous times but those files could
+# not be located", while Gemma made files fine — *"Ensure the Tools/MCP/Skills
+# etc are LLM agnostic — so that ALL LLMs can use them."* Measured on this
+# tree: Qwen3-Coder's native call — `<tool_call><function=write_file>
+# <parameter=path>…</parameter>…</function></tool_call>` — parsed to nothing,
+# and the stripper then removed it from the reply, so the call vanished: no
+# file, no card, and the model went on as if it had written it. The same held
+# for Llama 3's `<|python_tag|>` JSON, Mistral's `[TOOL_CALLS]`, GLM's
+# `<arg_key>/<arg_value>`, gpt-oss's `to=functions.x … <|message|>`, Kimi's
+# `<|tool_call_begin|>`, Granite's `<|tool_call|>`, Phi-4's `functools[…]` and
+# a whole reply that is Llama's bare `{"name": …, "parameters": …}`.
+#
+# A local server (LM Studio, Ollama, llama.cpp) is meant to turn these into
+# structured `tool_calls`, and when its template parser misses one the text
+# reaches Pantheon as content. So each family is rewritten here into the
+# Hermes form `<tool_call>{"name": …, "arguments": {…}}</tool_call>`, which
+# `parse_tool_blocks` already executes and `strip_tool_blocks` already hides —
+# one path, whatever the model (`Law 7`). Scans are literal `find` loops or
+# anchored patterns, never an open-ended backtracking regex over the reply.
+
+# Argument names whose value is text to pass on verbatim, never JSON to decode:
+# a file whose content is `{"a": 1}` or `42` must be written as those
+# characters.
+_VERBATIM_ARG_KEYS = frozenset({
+    "content", "code", "command", "text", "body", "query", "path", "file_path",
+    "filename", "old_string", "new_string", "old_str", "new_str", "old_text",
+    "new_text", "patch", "diff", "script", "message", "prompt", "url", "html",
+    "markdown", "title", "description", "pattern", "replacement", "input",
+    "queries", "search", "find", "replace",
+})
+_NUMBER_RE = re.compile(r"-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?")
+
+
+def _coerce_markup_value(key: str, raw: str):
+    """A parameter written as text inside markup, as the JSON value it means."""
+    value = raw
+    # Qwen3-Coder puts each value on its own lines; the newline after the tag
+    # and the one before the close are layout, not content.
+    if value.startswith("\r\n"):
+        value = value[2:]
+    elif value.startswith("\n"):
+        value = value[1:]
+    if value.endswith("\r\n"):
+        value = value[:-2]
+    elif value.endswith("\n"):
+        value = value[:-1]
+    if key.lower() in _VERBATIM_ARG_KEYS:
+        return value
+    t = value.strip()
+    if t in ("true", "false", "null"):
+        return json.loads(t)
+    if _NUMBER_RE.fullmatch(t):
+        return json.loads(t)
+    if t[:1] in ("{", "["):
+        try:
+            return json.loads(t)
+        except (ValueError, TypeError):
+            return value
+    return value
+
+
+def _clean_call_name(name: str) -> str:
+    """`functions.write_file:0` (gpt-oss, Kimi) → `write_file`."""
+    n = (name or "").strip()
+    if n.startswith("functions."):
+        n = n[len("functions."):]
+    if ":" in n and n.rsplit(":", 1)[1].isdigit():
+        n = n.rsplit(":", 1)[0]
+    return n.strip()
+
+
+def _hermes_call(name: str, args) -> str:
+    r"""One call in the Hermes wrapper the parser below already reads.
+
+    `</` is written `<\/` — the same JSON — so a file's own `</tool_call>`
+    text can never close the wrapper early."""
+    payload = json.dumps({"name": _clean_call_name(name), "arguments": args if isinstance(args, dict) else {}})
+    return "<tool_call>" + payload.replace("</", "<\\/") + "</tool_call>"
+
+
+def _json_calls_from(value):
+    """`[{"name", "arguments"|"parameters"}]` or one such object → [(name, args)]."""
+    items = value if isinstance(value, list) else [value]
+    calls = []
+    for item in items:
+        if not isinstance(item, dict):
+            return []
+        name = item.get("name")
+        if not isinstance(name, str) or not name.strip():
+            fn = item.get("function")
+            if isinstance(fn, dict) and isinstance(fn.get("name"), str):
+                name, item = fn["name"], fn
+            else:
+                return []
+        args = item.get("arguments", item.get("parameters", {}))
+        if isinstance(args, str):
+            try:
+                args = json.loads(args) if args.strip() else {}
+            except (ValueError, TypeError):
+                return []
+        if not isinstance(args, dict):
+            return []
+        calls.append((name, args))
+    return calls
+
+
+def _decode_json_before(text: str, j: int, stop: str):
+    """`raw_decode` of the JSON at `text[j]`, read only up to the next `stop`.
+
+    A failed `raw_decode` counts the newlines from the START of the string it
+    was given to report a line number, so decoding in place over a reply full
+    of markers was quadratic (measured: 20,000 `[TOOL_CALLS]a[ARGS]` took 3 s
+    against 0.05 s before this parser). Each call reads only its own stretch,
+    and the stretches never overlap."""
+    bound = text.find(stop, j + 1) if stop else -1
+    chunk = text[j:bound] if bound >= 0 else text[j:]
+    value, end = json.JSONDecoder().raw_decode(chunk)
+    return value, j + end
+
+
+_QWEN_CODER_FUNC_RE = re.compile(r"<function=([A-Za-z_][\w.\-]{0,127})>")
+_QWEN_CODER_PARAM_RE = re.compile(r"<parameter=([A-Za-z_][\w.\-]{0,127})>")
+
+
+def _qwen_coder_params(body: str):
+    """`<parameter=k>v</parameter>…` → dict, or None when the body is not that.
+
+    Each tag is matched where it must start (after whitespace), never searched
+    for, so a body that is not a call is rejected at its first character."""
+    params = {}
+    pos = 0
+    while True:
+        ws = pos
+        while ws < len(body) and body[ws] in " \t\r\n":
+            ws += 1
+        m = _QWEN_CODER_PARAM_RE.match(body, ws)
+        if not m:
+            break
+        close = body.find("</parameter>", m.end())
+        if close < 0:
+            # The model stopped on its stop token mid-value: the rest is the value.
+            params[m.group(1)] = _coerce_markup_value(m.group(1), body[m.end():])
+            pos = len(body)
+            break
+        params[m.group(1)] = _coerce_markup_value(m.group(1), body[m.end():close])
+        pos = close + len("</parameter>")
+    if body[pos:].strip():
+        return None
+    return params
+
+
+def _normalize_qwen_coder(text: str) -> str:
+    """Qwen3-Coder: `[<tool_call>] <function=NAME> <parameter=K>V</parameter>… </function> [</tool_call>]`."""
+    if "<function=" not in text:
+        return text
+    out = []
+    pos = 0
+    close = -2  # -2: not looked for yet; -1: there is none after this point
+    while True:
+        m = _QWEN_CODER_FUNC_RE.search(text, pos)
+        if not m:
+            out.append(text[pos:])
+            break
+        # One forward scan for the closer, reused by every opener before it, so
+        # a flood of openers stays linear (`test_redos_xml_tool_parsers`).
+        if close == -2 or (close >= 0 and close < m.end()):
+            close = text.find("</function>", m.end())
+        body_end = close if close >= 0 else len(text)
+        after = close + len("</function>") if close >= 0 else len(text)
+        params = _qwen_coder_params(text[m.end():body_end])
+        if params is None:
+            out.append(text[pos:m.end()])
+            pos = m.end()
+            continue
+        before = text[pos:m.start()]
+        trimmed = before.rstrip()
+        if trimmed.endswith("<tool_call>"):
+            before = trimmed[:-len("<tool_call>")]
+        rest = text[after:]
+        lead = len(rest) - len(rest.lstrip())
+        if rest.lstrip().startswith("</tool_call>"):
+            after += lead + len("</tool_call>")
+        out.append(before)
+        out.append(_hermes_call(m.group(1), params))
+        pos = after
+    return "".join(out)
+
+
+def _normalize_glm(text: str) -> str:
+    """GLM-4.5/4.6: `<tool_call>NAME <arg_key>k</arg_key><arg_value>v</arg_value>… </tool_call>`."""
+    if "<arg_key>" not in text:
+        return text
+    out = []
+    pos = 0
+    while True:
+        start = text.find("<tool_call>", pos)
+        if start < 0:
+            out.append(text[pos:])
+            break
+        end = text.find("</tool_call>", start)
+        if end < 0:
+            out.append(text[pos:])
+            break
+        body = text[start + len("<tool_call>"):end]
+        first = body.find("<arg_key>")
+        if first < 0:
+            out.append(text[pos:end + len("</tool_call>")])
+            pos = end + len("</tool_call>")
+            continue
+        name = body[:first].strip()
+        args = {}
+        ok = bool(re.fullmatch(r"[A-Za-z_][\w.\-]{0,127}", name))
+        i = first
+        while ok and i < len(body):
+            seg = body[i:]
+            if not seg.strip():
+                break
+            seg_lead = len(seg) - len(seg.lstrip())
+            i += seg_lead
+            if not body.startswith("<arg_key>", i):
+                ok = False
+                break
+            k_end = body.find("</arg_key>", i)
+            v_start = body.find("<arg_value>", k_end if k_end >= 0 else i)
+            v_end = body.find("</arg_value>", v_start if v_start >= 0 else i)
+            if min(k_end, v_start, v_end) < 0 or body[k_end + len("</arg_key>"):v_start].strip():
+                ok = False
+                break
+            key = body[i + len("<arg_key>"):k_end].strip()
+            args[key] = _coerce_markup_value(key, body[v_start + len("<arg_value>"):v_end])
+            i = v_end + len("</arg_value>")
+        if not ok:
+            out.append(text[pos:end + len("</tool_call>")])
+            pos = end + len("</tool_call>")
+            continue
+        out.append(text[pos:start])
+        out.append(_hermes_call(name, args))
+        pos = end + len("</tool_call>")
+    return "".join(out)
+
+
+def _replace_marker_json(text: str, marker: str, closers=()) -> str:
+    """`MARKER <json array or object>[closer]` → Hermes calls (Llama `<|python_tag|>`,
+    Granite `<|tool_call|>`, Phi-4 `functools`, Mistral v3 `[TOOL_CALLS]`)."""
+    if marker not in text:
+        return text
+    out = []
+    pos = 0
+    while True:
+        start = text.find(marker, pos)
+        if start < 0:
+            out.append(text[pos:])
+            break
+        j = start + len(marker)
+        while j < len(text) and text[j] in " \t\r\n":
+            j += 1
+        if j >= len(text) or text[j] not in "[{":
+            out.append(text[pos:j])
+            pos = j
+            continue
+        try:
+            value, end = _decode_json_before(text, j, marker)
+        except ValueError:
+            out.append(text[pos:j])
+            pos = j
+            continue
+        calls = _json_calls_from(value)
+        if not calls:
+            out.append(text[pos:end])
+            pos = end
+            continue
+        # Llama 3.1 may chain several objects with `;` after one python_tag.
+        while True:
+            k = end
+            while k < len(text) and text[k] in " \t\r\n":
+                k += 1
+            if k < len(text) and text[k] == ";":
+                k += 1
+                while k < len(text) and text[k] in " \t\r\n":
+                    k += 1
+                try:
+                    more, more_end = _decode_json_before(text, k, marker)
+                except ValueError:
+                    break
+                more_calls = _json_calls_from(more)
+                if not more_calls:
+                    break
+                calls += more_calls
+                end = more_end
+            else:
+                break
+        k = end
+        while k < len(text) and text[k] in " \t\r\n":
+            k += 1
+        for closer in closers:
+            if text.startswith(closer, k):
+                end = k + len(closer)
+                break
+        out.append(text[pos:start])
+        out.append("".join(_hermes_call(n, a) for n, a in calls))
+        pos = end
+    return "".join(out)
+
+
+_MISTRAL_V11_RE = re.compile(r"\[TOOL_CALLS\]\s*([A-Za-z_][\w.\-]{0,127})\s*(?:\[CALL_ID\]\s*[\w\-]{1,64}\s*)?\[ARGS\]")
+
+
+def _normalize_mistral_v11(text: str) -> str:
+    """Mistral (v11+): `[TOOL_CALLS]NAME[ARGS]{json}`, repeated per call."""
+    if "[ARGS]" not in text:
+        return text
+    out = []
+    pos = 0
+    while True:
+        m = _MISTRAL_V11_RE.search(text, pos)
+        if not m:
+            out.append(text[pos:])
+            break
+        j = m.end()
+        while j < len(text) and text[j] in " \t\r\n":
+            j += 1
+        if j >= len(text) or text[j] != "{":
+            out.append(text[pos:m.end()])
+            pos = m.end()
+            continue
+        try:
+            args, end = _decode_json_before(text, j, "[TOOL_CALLS]")
+        except ValueError:
+            out.append(text[pos:m.end()])
+            pos = m.end()
+            continue
+        if not isinstance(args, dict):
+            out.append(text[pos:end])
+            pos = end
+            continue
+        out.append(text[pos:m.start()])
+        out.append(_hermes_call(m.group(1), args))
+        pos = end
+    return "".join(out)
+
+
+_GPT_OSS_TO_RE = re.compile(r"to=functions\.([A-Za-z_][\w.\-]{0,127})")
+
+
+def _normalize_gpt_oss(text: str) -> str:
+    """gpt-oss (Harmony): `<|channel|>commentary to=functions.NAME … <|message|>{json}<|call|>`."""
+    if "to=functions." not in text or "<|message|>" not in text:
+        return text
+    out = []
+    pos = 0
+    msg_at = -2
+    while True:
+        m = _GPT_OSS_TO_RE.search(text, pos)
+        if not m:
+            out.append(text[pos:])
+            break
+        if msg_at == -2 or (msg_at >= 0 and msg_at < m.end()):
+            msg_at = text.find("<|message|>", m.end())
+        msg = msg_at
+        if msg < 0 or "\n" in text[m.end():msg]:
+            out.append(text[pos:m.end()])
+            pos = m.end()
+            continue
+        j = msg + len("<|message|>")
+        if j >= len(text) or text[j] != "{":
+            out.append(text[pos:m.end()])
+            pos = m.end()
+            continue
+        try:
+            args, end = _decode_json_before(text, j, "to=functions.")
+        except ValueError:
+            out.append(text[pos:m.end()])
+            pos = m.end()
+            continue
+        if not isinstance(args, dict):
+            out.append(text[pos:end])
+            pos = end
+            continue
+        if text.startswith("<|call|>", end):
+            end += len("<|call|>")
+        start = m.start()
+        for opener in ("<|start|>", "<|channel|>"):
+            o = text.rfind(opener, pos, m.start())
+            if o >= 0 and "\n" not in text[o:m.start()]:
+                start = min(start, o)
+        out.append(text[pos:start])
+        out.append(_hermes_call(m.group(1), args))
+        pos = end
+    return "".join(out)
+
+
+def _normalize_kimi(text: str) -> str:
+    """Kimi K2: `<|tool_call_begin|>functions.NAME:0<|tool_call_argument_begin|>{json}<|tool_call_end|>`."""
+    if "<|tool_call_begin|>" not in text:
+        return text
+    out = []
+    pos = 0
+    while True:
+        start = text.find("<|tool_call_begin|>", pos)
+        if start < 0:
+            out.append(text[pos:])
+            break
+        sep = text.find("<|tool_call_argument_begin|>", start)
+        end = text.find("<|tool_call_end|>", sep if sep >= 0 else start)
+        if sep < 0 or end < 0:
+            out.append(text[pos:])
+            break
+        name = text[start + len("<|tool_call_begin|>"):sep]
+        calls = []
+        try:
+            args = json.loads(text[sep + len("<|tool_call_argument_begin|>"):end] or "{}")
+            if isinstance(args, dict):
+                calls = [(name, args)]
+        except ValueError:
+            pass
+        out.append(text[pos:start])
+        out.append(_hermes_call(*calls[0]) if calls else text[start:end + len("<|tool_call_end|>")])
+        pos = end + len("<|tool_call_end|>")
+    joined = "".join(out)
+    return joined.replace("<|tool_calls_section_begin|>", "").replace("<|tool_calls_section_end|>", "")
+
+
+def _normalize_bare_json_reply(text: str) -> str:
+    """Llama 3.2 and others: a reply that is NOTHING but `{"name": …, "parameters"|"arguments": …}`.
+
+    Only the whole reply, and only for a name some tool answers to: a model
+    showing JSON in an explanation is prose, and stays prose."""
+    t = text.strip()
+    if not (t.startswith("{") and t.endswith("}") and '"name"' in t):
+        return text
+    try:
+        value = json.loads(t)
+    except ValueError:
+        return text
+    if not isinstance(value, dict) or not ({"parameters", "arguments"} & set(value)):
+        return text
+    calls = _json_calls_from(value)
+    if len(calls) != 1:
+        return text
+    from src.tool_schemas import dispatch_name_for
+    name = _clean_call_name(calls[0][0]).lower()
+    if dispatch_name_for(_TOOL_NAME_MAP.get(name, name)) is None:
+        return text
+    return _hermes_call(name, calls[0][1])
+
+
+def _normalize_foreign_tool_markup(text: str) -> str:
+    """Every family above, then DeepSeek's DSML, into forms the parser reads."""
+    if not isinstance(text, str):
+        return ""
+    t = _normalize_dsml(text)
+    t = _normalize_qwen_coder(t)
+    t = _normalize_glm(t)
+    t = _normalize_mistral_v11(t)
+    t = _replace_marker_json(t, "[TOOL_CALLS]")
+    t = _replace_marker_json(t, "<|python_tag|>", closers=("<|eom_id|>", "<|eot_id|>"))
+    t = _replace_marker_json(t, "<|tool_call|>", closers=("<|/tool_call|>",))
+    t = _replace_marker_json(t, "functools")
+    t = _normalize_gpt_oss(t)
+    t = _normalize_kimi(t)
+    t = _normalize_bare_json_reply(t)
+    return t
+
+
 # Map model tool names to our tool types
 _TOOL_NAME_MAP = {
     "shell": "bash",
@@ -1021,6 +1488,9 @@ def _parse_json_tool_call_body(body: str) -> Optional[ToolBlock]:
     name = parsed.get("name")
     if not isinstance(name, str) or not name.strip():
         return None
+    if "arguments" not in parsed and isinstance(parsed.get("parameters"), dict):
+        # Llama 3's key for the same thing.
+        parsed["arguments"] = parsed["parameters"]
     if "arguments" in parsed and not isinstance(parsed["arguments"], dict):
         return None
     args = parsed.get("arguments", {})
@@ -1044,6 +1514,15 @@ def _iter_stepfun_tool_calls(text: str):
             return
         raw_name = text[name_start:sep].strip()
         body = text[sep + len(_STEPFUN_CALL_SEP):end].strip()
+        if raw_name.lower() == "function" and body:
+            # DeepSeek V3/R1: `function<sep>NAME\n```json\n{…}\n````. `B1727`.
+            raw_name, _, body = body.partition("\n")
+            raw_name, body = raw_name.strip(), body.strip()
+            if body.startswith("```"):
+                body = body.split("\n", 1)[1] if "\n" in body else ""
+                if body.rstrip().endswith("```"):
+                    body = body.rstrip()[:-3]
+                body = body.strip()
         if raw_name and len(raw_name) <= 128:
             yield raw_name, body
         pos = end + len(_STEPFUN_CALL_END)
@@ -1368,7 +1847,7 @@ def parse_tool_blocks(text: str, skip_fenced: bool = False) -> List[ToolBlock]:
 
     # Normalize DeepSeek DSML markup into standard <invoke> form so the
     # XML patterns below catch it.
-    text = _normalize_dsml(text)
+    text = _normalize_foreign_tool_markup(text)
 
     # Pattern 1b: a fenced MCP call, ```mcp__{server}__{tool} + JSON body.
     # Not gated on `skip_fenced`'s illustrative-example reasoning the way
@@ -1580,7 +2059,7 @@ def strip_tool_blocks(text: str, skip_fenced: bool = False) -> str:
     """
     # Normalize DSML first so its markup gets stripped by the <invoke>
     # / <tool_call> removers below instead of leaking to the user.
-    text = _normalize_dsml(text)
+    text = _normalize_foreign_tool_markup(text)
     # Keep the executed-vs-illustrative fence distinction (only strip fences
     # that actually dispatched; leave example fences from native models inert
     # but visible), then remove [TOOL_CALL]{...}[/TOOL_CALL] markup.
