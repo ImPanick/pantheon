@@ -587,10 +587,31 @@ export function setAutoScroll(enabled) {
 /**
  * Auto-resize textarea based on content
  */
+// What decides how tall a run of text wraps to: the measuring copy takes
+// these from the box it measures. `getComputedStyle(…).cssText` was the copy
+// once, but Chromium returns an empty string for it now, so the copy measured
+// in the browser's default textarea font and the composer stopped growing a
+// line or more short of its words, the first ones scrolled out of sight.
+const _MEASURED_PROPS = [
+  'font-family', 'font-size', 'font-weight', 'font-style', 'font-stretch',
+  'font-variant', 'font-feature-settings', 'font-variation-settings',
+  'line-height', 'letter-spacing', 'word-spacing', 'text-transform', 'text-indent',
+  'tab-size', 'white-space', 'word-break', 'overflow-wrap', 'hyphens',
+  'box-sizing', 'padding-top', 'padding-right', 'padding-bottom', 'padding-left',
+  'border-top-width', 'border-right-width', 'border-bottom-width', 'border-left-width',
+  'border-top-style', 'border-right-style', 'border-bottom-style', 'border-left-style',
+];
+
 export function autoResize(textarea) {
-  const lineHeight = parseInt(getComputedStyle(textarea).lineHeight);
+  const cs = getComputedStyle(textarea);
+  const lineHeight = parseFloat(cs.lineHeight) || (parseFloat(cs.fontSize) || 15) * 1.5;
   const isMobile = window.innerWidth <= 768;
-  const maxHeight = isMobile ? 150 : lineHeight * 8;
+  // The stylesheet's own ceiling wins when it is lower: a box held at 160px
+  // by CSS while this thought it could reach 180 kept `overflow: hidden`, so
+  // a long message could not be scrolled back through.
+  const cssMax = parseFloat(cs.maxHeight);
+  let maxHeight = isMobile ? 150 : lineHeight * 8;
+  if (Number.isFinite(cssMax) && cssMax > 0) maxHeight = Math.min(maxHeight, cssMax);
 
   // Use a hidden clone to measure without disrupting the real textarea
   let clone = textarea._resizeClone;
@@ -609,7 +630,7 @@ export function autoResize(textarea) {
     }
     clone.setAttribute('aria-hidden', 'true');
     clone.tabIndex = -1;
-    clone.style.cssText = getComputedStyle(textarea).cssText;
+    clone.style.cssText = '';
     clone.style.position = 'absolute';
     clone.style.visibility = 'hidden';
     clone.style.height = '0';
@@ -620,10 +641,16 @@ export function autoResize(textarea) {
     textarea.parentNode.appendChild(clone);
     textarea._resizeClone = clone;
   }
+  // Re-read every time: a theme or the cockpit can change the font after the
+  // copy was made.
+  for (const prop of _MEASURED_PROPS) clone.style.setProperty(prop, cs.getPropertyValue(prop));
+  clone.style.minHeight = '0';
+  clone.style.maxHeight = 'none';
   clone.style.width = textarea.offsetWidth + 'px';
   clone.value = textarea.value;
   clone.style.height = '0';
-  const newHeight = Math.min(Math.max(clone.scrollHeight, lineHeight), maxHeight);
+  const minHeight = Math.max(lineHeight, parseFloat(cs.minHeight) || 0);
+  const newHeight = Math.min(Math.max(Math.ceil(clone.scrollHeight), minHeight), maxHeight);
   textarea.style.height = newHeight + 'px';
   textarea.style.overflow = newHeight >= maxHeight ? 'auto' : 'hidden';
 }

@@ -1914,3 +1914,23 @@ html.cockpit .preset-range:focus-visible { outline: none; }
 html.cockpit .preset-range:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 3px color-mix(in oklab, var(--ck-accent) 35%, transparent); }
 html.cockpit .preset-temp-hints { margin-top: 2px !important; margin-bottom: 14px !important; padding: 0 !important; color: var(--ck-text-3) !important; font-size: 10.5px !important; }
 html.cockpit .preset-slider-value { font-variant-numeric: tabular-nums; }
+
+/* ── Plan mode is one switch, and it lives with the others ────────────────
+   Panick (2026-11-01): the red "Plan mode" lever floated in the middle of the
+   message box. It was a second control for a state the Plan switch in the row
+   below already shows with its lamp, so the cockpit drops it. While plan mode
+   is on, the switch says so in words ("Plan mode"); where the row folds the
+   switches to icons it is the lit lamp and the wash, like the others, so the
+   row never runs out of room. The composer's accent edge
+   (above) still marks the whole box. app.js keeps toggling `hidden` on the old
+   pill, so the classic layout is unchanged. */
+html.cockpit .plan-mode-status { display: none !important; }
+html.cockpit #plan-toggle-btn:is(.active, [aria-pressed="true"]) .tool-chip-label::after { content: " mode"; }
+
+/* ── the strip's fold arrow sits in its circle, on the tabs' line ─────────
+   Panick (2026-11-01): the arrow at the right of the Plan / Queue strip was
+   misaligned. style.css gives every button `padding: 0 10px`; on this 24px
+   circle that left 4px for a 12px icon, which spilled 6px right, past its
+   circle and onto the strip's edge. It also sat 1px above the tabs' middle. */
+html.cockpit .ck-strip-fold { padding: 0 !important; width: 24px !important; height: 24px !important; min-width: 24px; min-height: 0; top: 6px; right: 6px; line-height: 0; }
+html.cockpit .ck-strip-fold svg { display: block; margin: 0; }
