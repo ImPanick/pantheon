@@ -50,6 +50,7 @@ const MEASURE = () => {
   const hit = document.elementFromPoint(b.left + b.width / 2, b.bottom - 3);
   return { h: Math.round(b.height * 10) / 10, w: Math.round(b.width), top: b.top, bottom: b.bottom,
            labelOffset: Math.round((l.top - b.top) * 10) / 10, text: label.textContent,
+           labelH: l.height, cockpit: document.documentElement.classList.contains('cockpit'),
            rowTop: row.top, hitIsPicker: !!(hit && btn.contains(hit)),
            shown: getComputedStyle(document.getElementById('model-picker-wrap')).display !== 'none' };
 };
@@ -103,7 +104,13 @@ def test_on_a_phone_the_picker_is_a_thumbs_height(measured, phone):
 @pytest.mark.parametrize("phone", ["390", "360"])
 def test_the_label_keeps_its_line_and_the_box_keeps_off_the_row_below(measured, phone):
     got, desk = measured[phone], measured["1440"]
-    assert got["labelOffset"] == desk["labelOffset"], (got, desk)
+    if got.get("cockpit"):
+        # The cockpit (2026-10-30) draws the picker as a pill, and a pill's
+        # word sits in its middle: on a phone the 44 px pill keeps the label
+        # centred, not on the 21 px box's top line.
+        assert abs(got["labelOffset"] - (got["h"] - got["labelH"]) / 2) <= 1, (got, desk)
+    else:
+        assert got["labelOffset"] == desk["labelOffset"], (got, desk)
     assert got["bottom"] <= got["rowTop"], "the 44px box reaches the controls under the message box"
 
 

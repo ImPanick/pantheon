@@ -31,6 +31,10 @@ import sessionModule from './js/sessions.js';
 import approvalModeModule from './js/approvalMode.js';   // `D-2026-10-09-01` §2
 import memoryModule from './js/memory.js?v=20261009census';
 import voiceRecorderModule from './js/voiceRecorder.js';
+// `B1718`. The voice chat, and the steer it sends a correction through while a
+// reply runs (the same specifier chat.js uses: one module, not two).
+import { initVoiceCall, isVoiceCallActive } from './js/voiceCall.js';
+import { canSteerNow, submitSteer } from './js/chatStream.js?v=20261009census';
 import censorModule from './js/censor.js';
 import galleryModule from './js/gallery.js?v=20260708match1';
 import { UI_VIS_DEFAULT_OFF, resolveVisibility, applyToolVisibility, guardRouteOpener, installToolDoorGuard, noteStatusAsked, noteStatusFailed, onToolVisibilityApplied, statusVisibility, toolShown, viewerMayRunInstance, whenToolVisibilityReady } from './js/ui_visibility.js';
@@ -72,6 +76,7 @@ import cookbookModule from './js/cookbook.js';
 import groupModule from './js/group.js';
 import * as researchPanelModule from './js/research/panel.js?v=20261009census';
 import ttsModule from './js/tts-ai.js';
+import { initConversation, toggleConversation } from './js/conversation.js';   // `B1730`
 import spinnerModule from './js/spinner.js';
 import { initKeyboardShortcuts, KEYBIND_DEFAULTS, formatKeybind, ariaKeyshortcuts } from './js/keyboard-shortcuts.js';
 import { getSettings, getAuthStatus, getAuthFeatures, getDefaultChat } from './js/appConfig.js';
@@ -1965,9 +1970,9 @@ function initializeEventListeners() {
 	    setMode(currentMode);
 	  })();
 
-  // `D-2026-10-09-01` §2. This chat's approval mode, wired beside Plan mode
-  // because it is the same shape of control: one composer chip, `aria-pressed`
-  // for the state, the server as the only place the state lives. The chat id
+  // `D-2026-10-09-01` §2. This chat's approval mode: one composer chip that
+  // names the mode and opens its menu (`B1706`; it was an `aria-pressed`
+  // toggle), the server the only place the state lives. The chat id
   // is passed as a getter rather than read from a global, so `sessions.js`
   // stays the one thing that knows which chat is open (`Law 7`).
   (function initApprovalMode() {
@@ -2174,7 +2179,10 @@ function initializeEventListeners() {
     const plusBtn = el('overflow-plus-btn');
     if (!plusBtn) return;
     const menu = el('overflow-menu');
-    const anyActive = menu ? Array.from(menu.querySelectorAll('.overflow-menu-item.active')).some(item => item.style.display !== 'none') : false;
+    // `B1730`: a row the menu does not show (`hidden`, as the old TTS Mode row
+    // is, which mirrors Conversation now) lights nothing: the dot points at
+    // something a person can see once the menu is open.
+    const anyActive = menu ? Array.from(menu.querySelectorAll('.overflow-menu-item.active')).some(item => item.style.display !== 'none' && !item.hidden) : false;
     plusBtn.classList.toggle('has-active', anyActive);
   }
   // External modules (compare) dispatch this when their overflow state changes
@@ -2192,6 +2200,9 @@ function initializeEventListeners() {
       if (e.target.closest('#overflow-attach-btn')) return;
       // Don't refocus for model picker button — focus should go to picker search input
       if (e.target.closest('.model-picker-btn')) return;
+      // `B1706`: nor for the approval-mode chip — its menu takes the focus,
+      // on the mode this chat is in, as the model picker's box does.
+      if (e.target.closest('#approval-mode-btn')) return;
       // Don't refocus when tapping the +/chevron tools button — the user
       // is explicitly trying to dismiss the keyboard and open the tools
       // menu. Without this, the textarea blurs (keyboard down), then this
@@ -2402,7 +2413,9 @@ function initializeEventListeners() {
     // `plan-toggle-btn` (P6-12) goes first so it collapses before Shell and Web
     // — their relative order is untouched — and lands in the overflow menu with
     // a text label rather than being silently clipped by the bar's overflow.
-    const collapsibleIds = ['plan-toggle-btn', 'bash-toggle-btn', 'web-toggle-btn'];
+    // `B1730`: Conversation first of all, a person's own mode the + menu's
+    // Modes lists with the others, so it is the first to fold away.
+    const collapsibleIds = ['conversation-toggle-btn', 'plan-toggle-btn', 'bash-toggle-btn', 'web-toggle-btn'];
     const collapsibleBtns = collapsibleIds.map(id => el(id)).filter(Boolean);
     // Map of toolbar btn id → overflow mirror element (created dynamically)
     const overflowMirrors = new Map();
@@ -2534,7 +2547,14 @@ function initializeEventListeners() {
 	    // swipe is in the Plan chip's tooltip now (`syncPlanToggle`).
 	    function setComposerPlaceholder(width) {
 	      if (!textarea) return;
-	      textarea.setAttribute('placeholder', width < PLACEHOLDER_COMPACT_WIDTH ? 'Message…' : 'Message Pantheon…');
+	      // `B1726`. While dictation says what it is doing in the box
+	      // ("Listening . . .", "Transcribing . . ."), the box's own prompt
+	      // waits; `voiceRecorder.js` gives it back, and says so (below).
+	      if (textarea.dataset.dictation) return;
+	      // The cockpit composer also names the two doors a person might not know.
+	      const wide = document.documentElement.classList.contains('cockpit')
+	        ? 'Message Pantheon  ·  / commands  ·  @ agents' : 'Message Pantheon…';
+	      textarea.setAttribute('placeholder', width < PLACEHOLDER_COMPACT_WIDTH ? 'Message…' : (width < 520 ? 'Message Pantheon…' : wide));
 	    }
 
 		    function checkPickerOverflow() {
@@ -2560,26 +2580,30 @@ function initializeEventListeners() {
 
     const ro = new ResizeObserver(() => requestAnimationFrame(checkPickerOverflow));
     ro.observe(inputTop);
+    // `B1726`. Dictation's pill takes the model picker's place while it shows,
+    // so the box is measured again for its width; and when dictation ends the
+    // prompt is the one for the width the box is now.
+    window.addEventListener('pantheon:dictation', (e) => {
+      const ended = !(e && e.detail && e.detail.state);
+      requestAnimationFrame(() => {
+        if (textarea) uiModule.autoResize(textarea);
+        if (ended) checkPickerOverflow();
+      });
+    });
     checkPickerOverflow();
   })();
 
-  // TTS Mode toggle (separate from overflow IIFE for safety)
+  // `B1730`. Conversation: each person's own switch for the agent saying its
+  // replies out loud (`js/conversation.js`), the composer's chip. The + menu's
+  // hidden "TTS Mode" row, which was this switch with no name and no home,
+  // is the same switch now: it flips Conversation and shows its state.
+  try { initConversation(); } catch (e) { console.warn('Conversation did not start', e); }
   (function initTTSToggle() {
     const ttsBtn = document.getElementById('overflow-tts-btn');
     if (!ttsBtn) return;
-    try {
-      const st = loadToggleState();
-      if (st.ttsMode) {
-        ttsBtn.classList.add('active');
-        if (window.aiTTSManager) window.aiTTSManager.autoPlay = true;
-      }
-    } catch(e) {}
-
-    ttsBtn.addEventListener('click', () => {
-      const isActive = !ttsBtn.classList.contains('active');
-      ttsBtn.classList.toggle('active', isActive);
-      if (window.aiTTSManager) window.aiTTSManager.autoPlay = isActive;
-      const s = loadToggleState(); s.ttsMode = isActive; saveToggleState(s);
+    ttsBtn.setAttribute('data-conversation-switch', '');
+    ttsBtn.addEventListener('click', async () => {
+      await toggleConversation();
       updatePlusDot();
     });
   })();
@@ -3970,7 +3994,11 @@ function startPantheonApp() {
   // Expose icons globally so chat.js updateSubmitButton can use them
   window._pantheonBtnIcons = { send: _sendIcon, mic: _micIcon, stop: _stopIcon, newChat: _newChatIcon };
 
-  function _isSttEnabled() {
+  // `B1718`. Dictation has its own button beside Send (`#composer-mic-btn`,
+  // `voiceRecorder.js`), so the send button is the microphone only in a page
+  // without that button; its states are unchanged (`FORBIDDEN.md`).
+  function _sendBtnIsMic() {
+    if (document.getElementById('composer-mic-btn')) return false;
     return voiceRecorderModule._sttProvider && voiceRecorderModule._sttProvider !== 'disabled';
   }
 
@@ -4009,14 +4037,14 @@ function startPantheonApp() {
     const hasText = messageInput && messageInput.value.trim().length > 0;
     const hasFiles = _hasAttachments();
     let newMode;
-    if (!hasText && !hasFiles && _isSttEnabled()) {
+    if (!hasText && !hasFiles && _sendBtnIsMic()) {
       clearTimeout(sendBtn._collapseTimer);
       sendBtn.innerHTML = _micIcon;
       sendBtn.title = 'Record voice';
       newMode = 'mic';
       sendBtn.classList.add('mic-mode');
       sendBtn.classList.remove('newchat-mode', 'newchat-expanded');
-    } else if (!hasText && !hasFiles && !_isSttEnabled()) {
+    } else if (!hasText && !hasFiles && !_sendBtnIsMic()) {
       clearTimeout(sendBtn._collapseTimer);
       // Group chat: always show send button, never newchat mode
       if (groupModule && groupModule.isActive()) {
@@ -4095,7 +4123,7 @@ function startPantheonApp() {
       }
 
       // If input is empty and STT is enabled, start recording
-      if (!hasText && !hasFiles && _isSttEnabled()) {
+      if (!hasText && !hasFiles && _sendBtnIsMic()) {
         sendBtn.innerHTML = _stopIcon;
         sendBtn.title = 'Stop recording';
         sendBtn.dataset.mode = 'recording';
@@ -4442,6 +4470,20 @@ function startPantheonApp() {
   }, 9000);
 	  runNonCriticalStartup(() => memoryModule.loadMemories(), 12000);
 
+	  // `B1718`. Speech beside Send: dictation into the box, and the voice chat
+	  // (its button, its capsule over the composer, the chat it talks in).
+	  initVoiceCall({
+	    chatModule, sessionModule, showToast: uiModule.showToast,
+	    steer: { canSteerNow, submitSteer },
+	    openSettings: (tab) => settingsModule.open(tab),
+	    beforeStart: () => { if (voiceRecorderModule.getIsRecording()) voiceRecorderModule.stopRecording(); },
+	  });
+	  voiceRecorderModule.initDictation({
+	    onFileCreated: (audioFile) => fileHandlerModule.addFiles([audioFile]),
+	    showToast: uiModule.showToast,
+	    showError: uiModule.showError,
+	    isCallOn: isVoiceCallActive,
+	  });
 	  // Ensure proper initial state
 	  voiceRecorderModule.init();
 	  if (censorModule) censorModule.init();

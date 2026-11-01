@@ -10,6 +10,7 @@ import contextvars
 import ipaddress
 import logging
 import sys
+import time
 from typing import Dict, List, Optional, Tuple
 
 from urllib.parse import urlparse
@@ -590,6 +591,27 @@ def _query_context_length(endpoint_url: str, model: str) -> Tuple[int, bool, str
         except Exception:
             pass
 
+    # `B1732`. LM Studio and Ollama's OpenAI-compatible door report no window
+    # on `/v1/models`, so a model they serve — gpt-oss-20b on LM Studio, measured
+    # in the owner's context wheel — read as "unknown" and the agent was held to
+    # 6,000 tokens. Both say what the model was LOADED with on their own API.
+    # Asked first only of a server known to be LM Studio or Ollama (their
+    # ports); any other local server is asked below, when its own
+    # `/v1/models` named no window.
+    if is_local_endpoint(endpoint_url):
+        served = _local_server_window(endpoint_url, model)
+        if served is not None:
+            served_ctx, server = served
+            if served_ctx:
+                logger.info(f"{server} reports {model} loaded with a {served_ctx}-token window")
+                return served_ctx, True, BASIS_REPORTED
+            # The server is LM Studio and has not loaded the model: it loads it
+            # on the next request with whatever its own default is (often 4,096),
+            # so the model's trained window from the table is not what will be
+            # served. Unknown it stays until the server has loaded it.
+            logger.info(f"{server} has not loaded {model}; its window is unknown until it does")
+            return DEFAULT_CONTEXT, False, BASIS_FALLBACK
+
     # GitHub Copilot's /models requires auth + X-GitHub-Api-Version headers that
     # aren't available here; an unauthenticated probe just 400s. All Copilot
     # picker models are major API models covered by the known-context table, so
@@ -636,11 +658,141 @@ def _query_context_length(endpoint_url: str, model: str) -> Tuple[int, bool, str
         return result, True, (BASIS_REPORTED if result == api_ctx else BASIS_KNOWN_TABLE)
     if api_ctx:
         return api_ctx, True, BASIS_REPORTED
+    # `B1732`. LM Studio on a port of its own choosing: asked once its OpenAI
+    # list has said nothing.
+    if is_local_endpoint(endpoint_url):
+        served = _local_server_window(endpoint_url, model, any_local_server=True)
+        if served is not None and served[0]:
+            logger.info(f"{served[1]} reports {model} loaded with a {served[0]}-token window")
+            return served[0], True, BASIS_REPORTED
+        if served is not None:
+            return DEFAULT_CONTEXT, False, BASIS_FALLBACK
     if known:
         logger.info(f"Using known context window for {model}: {known}")
         return known, True, BASIS_KNOWN_TABLE
 
     return DEFAULT_CONTEXT, False, BASIS_FALLBACK
+
+
+# ── `B1732` · what a local server LOADED the model with ─────────────────────
+#
+# LM Studio: its native list (`/api/v1/models`, LM Studio 0.4+) carries each
+# model's `loaded_instances[].config.context_length`; the older `/api/v0/models`
+# carries `loaded_context_length` and `state`. Ollama: `/api/ps` lists the
+# running models with the `context_length` they were loaded with — asked only
+# on Ollama's OpenAI-compatible door, because on its native door Pantheon sends
+# `num_ctx` itself (`_build_ollama_payload`) and the loaded number is our own.
+#
+# Answers are kept `_SERVED_WINDOW_TTL` seconds per (host, port): this lookup
+# runs several times a turn and local answers are otherwise never cached.
+
+_SERVED_WINDOW_TTL = 10.0
+_served_window_cache: Dict[Tuple[str, Optional[int], str], Tuple[Optional[Tuple[Optional[int], str]], float]] = {}
+
+
+def _same_model(a: str, b: str) -> bool:
+    a, b = (a or "").strip().lower(), (b or "").strip().lower()
+    if not a or not b:
+        return False
+    if a == b:
+        return True
+    return a.split("/")[-1] == b.split("/")[-1]
+
+
+def _lmstudio_loaded_window(models: list, model: str) -> Optional[Tuple[Optional[int], str]]:
+    """From LM Studio's native model list: (loaded window, "LM Studio"),
+    (None, "LM Studio") when it lists the model unloaded, None when it does not
+    list the model at all."""
+    from src.model_capability_readers.lmstudio import loaded_context_tokens
+    for m in models:
+        if not isinstance(m, dict):
+            continue
+        names = [str(m.get("key") or ""), str(m.get("id") or ""), str(m.get("display_name") or "")]
+        for inst in m.get("loaded_instances") or []:
+            if isinstance(inst, dict):
+                names.append(str(inst.get("id") or ""))
+        if any(_same_model(n, model) for n in names):
+            return loaded_context_tokens(m), "LM Studio"
+    return None
+
+
+def _local_server_window(endpoint_url: str, model: str, *,
+                         any_local_server: bool = False) -> Optional[Tuple[Optional[int], str]]:
+    """`(window, server)` when a local LM Studio or Ollama answers for `model`:
+    `window` is what it loaded the model with, or None when LM Studio lists the
+    model but has not loaded it. None when no such server answered.
+
+    Without `any_local_server` only an endpoint on LM Studio's or Ollama's own
+    port is asked; with it, any generic OpenAI-compatible local server is asked
+    LM Studio's question too."""
+    if not model:
+        return None
+    try:
+        from src.model_capability_readers import (VENDOR_GENERIC_OPENAI, VENDOR_LMSTUDIO,
+                                                  VENDOR_OLLAMA, detect_vendor)
+        vendor = detect_vendor(endpoint_url)
+    except Exception:
+        return None
+    parsed = urlparse(endpoint_url)
+    lmstudio_vendors = ((VENDOR_LMSTUDIO, VENDOR_GENERIC_OPENAI) if any_local_server
+                        else (VENDOR_LMSTUDIO,))
+    if vendor not in lmstudio_vendors and vendor != VENDOR_OLLAMA:
+        return None
+    key = (parsed.hostname or "", parsed.port, model)
+    now = time.monotonic()
+    hit = _served_window_cache.get(key)
+    if hit is not None and hit[1] > now:
+        return hit[0]
+
+    host = parsed.hostname or ""
+    if ":" in host:
+        host = f"[{host}]"
+    authority = host if parsed.port is None else f"{host}:{parsed.port}"
+    root = f"{parsed.scheme or 'http'}://{authority}"
+    auth = _endpoint_auth_headers(endpoint_url) or None
+    answer: Optional[Tuple[Optional[int], str]] = None
+
+    if vendor in lmstudio_vendors:
+        for path, field in (("/api/v1/models", "models"), ("/api/v0/models", "data")):
+            try:
+                r = paced_http.get_sync(f"{root}{path}", timeout=1.0, headers=auth,
+                                        follow_redirects=False, reuse=True)
+                payload = r.json() if r.is_success else None
+            except Exception:
+                payload = None
+            models = payload.get(field) if isinstance(payload, dict) else None
+            if not isinstance(models, list) or not models:
+                continue
+            # An LM Studio list, not some other server's `/api/...`: native
+            # entries carry `key`, v0 entries carry `state` / `max_context_length`.
+            first = models[0] if isinstance(models[0], dict) else {}
+            if not ({"key", "loaded_instances"} & set(first) or
+                    {"state", "max_context_length"} & set(first)):
+                continue
+            answer = _lmstudio_loaded_window(models, model)
+            if answer is not None:
+                break
+    elif vendor == VENDOR_OLLAMA and "/v1" in (parsed.path or ""):
+        try:
+            r = paced_http.get_sync(f"{root}/api/ps", timeout=1.0, headers=auth,
+                                    follow_redirects=False, reuse=True)
+            payload = r.json() if r.is_success else None
+        except Exception:
+            payload = None
+        running = payload.get("models") if isinstance(payload, dict) else None
+        for m in running if isinstance(running, list) else []:
+            if not isinstance(m, dict):
+                continue
+            names = {str(m.get("name") or ""), str(m.get("model") or "")}
+            names |= {n[:-len(":latest")] for n in names if n.endswith(":latest")}
+            if any(_same_model(n, model) for n in names):
+                ctx = m.get("context_length")
+                if isinstance(ctx, int) and ctx > 0:
+                    answer = (ctx, "Ollama")
+                break
+
+    _served_window_cache[key] = (answer, now + _SERVED_WINDOW_TTL)
+    return answer
 
 
 def estimate_tokens(messages: List[Dict]) -> int:

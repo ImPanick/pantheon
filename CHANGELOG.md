@@ -108,8 +108,151 @@ the next one is cut.
 
 ### Added
 
-- **Settings → AI Defaults → Speech-to-text:** off, local Whisper, the browser's own recognition
-  (in Chrome the audio goes to Google, and the card says so), or an endpoint (`B1564`).
+- **The agent clicks numbered marks instead of guessing pixels** (2026-11-01, `B1735`,
+  `D-2026-11-01-04`). Every screenshot of the workstation's screen the agent is shown has a
+  numbered box on each button, menu, field, tab and row, and a list of them in words beside it
+  (*[7] button “Terminal” at (20, 780)*); the agent says *click mark 7* and the click lands in the
+  middle of it. The desktop's apps describe themselves through its accessibility bus, so most
+  marks are exact; where an app says nothing, Pantheon reads the text and icons off the picture.
+  The agent browser's screenshot is numbered the same way, by the page's own elements. A model
+  that cannot see images still gets the list. `scripts/grounding_eval.py` measures it on your own
+  model: five desktop and browser tasks, with marks off and on. Rebuild both images: the
+  workstation gains the accessibility bus and Pantheon's image gains Tesseract.
+- **The agent picks its own skills** (2026-11-01, `B1737`). Every agent turn now lists the skills the
+  model may use, by category, and tells it to open the one for the work it is starting: QA and
+  testing, frontend and design, debugging, research, writing. A new read-only tool, `use_skill`,
+  opens a skill by name or searches by the kind of work, the bundled library of 286 included. Six
+  new skills ship: `qa-a-change`, `write-automated-tests`, `test-a-web-page`,
+  `design-a-web-interface`, `build-a-web-page` and `check-accessibility`.
+- **Reactions, both ways** (2026-11-01, `B1736`). Point at a reply and press the smile to react
+  with 👍 ❤️ 😂 🎉 🤔 or 👎; your reaction stays under the reply, and the model hears about it on its
+  next turn. The model can react to your messages too: a heart for a detailed, well-specified
+  idea, a thumbs-up for a steer it will follow, a laugh for a joke. Its reaction shows as a small
+  badge on your message. It works on any model, local or cloud, in Chat and Agent mode, with no
+  tool calling needed. Turn it off in Settings → Chat Area → Reactions.
+- **Reasoning effort for thinking models** (2026-11-01, `B1734`). A dial chip beside Agent / Chat
+  sets how hard the model thinks: *Auto* (the model's own default, nothing sent), *Low*, *Medium*,
+  *High*, *Extra* or *Max*. It shows only when the selected model can take it, and each menu row
+  says how that level reaches the model. Each model hears it through its own setting: Claude's
+  effort, `reasoning_effort` for OpenAI's reasoning models and gpt-oss (LM Studio, vLLM, Ollama,
+  Groq), OpenRouter's and the ChatGPT subscription's reasoning effort, Mistral's, and Qwen3's
+  thinking switch. Where a model has no setting, or its setting stops at High, a short note in the
+  system prompt asks it to think harder. Type `ultrathink` in a message to run that one turn at
+  Max. Titles, summaries and other background calls keep the model's default. The level is kept
+  in your browser.
+- **Computer Use: the agent uses the workstation like a computer** (2026-11-01, `B1725`,
+  `D-2026-11-01-02`). Settings → Workstation and the workstation's screen window have a
+  *Computer Use* switch. Turned on, after a warning you accept, the agent clicks, types, runs
+  commands and installs software inside your own workstation without an approval card — even after
+  it has read a web page there, which is what made every task's first click ask before. A command
+  that deletes or overwrites files still asks, because your projects folder is shared with Pantheon;
+  nothing outside the workstation is lifted (Pantheon's own tools, your network, your logins). With
+  it on, the agent is offered the screen on every turn and told to work it: look, do one thing, look
+  again. It needs *Auto-approve* and the workstation under Settings → Users, and an admin sees who
+  has it on beside Auto-approve.
+- **Reset puts back a starting point you saved** (2026-11-01, `B1733`). Set the workstation up the
+  way you want it — apps, files, sign-ins — and choose *Save starting point…*; Reset then puts
+  that back instead of a clean start, and *Forget starting point* gives the clean start again. On
+  the container it is your home (software installed system-wide stays until the workstation
+  container is made again); on a virtual machine it is the whole machine, which restarts while it
+  is saved. Your projects folder is not part of it. The workstation's image changed: rebuild it.
+- **Conversation: the agent says its replies out loud, in a voice each person chooses**
+  (2026-11-01, `B1730`). The owner: *"This should be a "Conversation" switch not speak replies
+  aloud - we make it personal-able"*. The speech-bubble switch in the composer, or
+  **Settings → Conversation**, turns it on, and every reply is then said sentence by sentence
+  while it is written. Each person chooses their own voice there (every Kokoro voice by language,
+  Chatterbox's when it runs, Piper's, or their own device's) and its speed, with *Hear it* to
+  listen first; the choice is kept with their account, follows them to every device, and is the
+  voice a voice chat answers them in and the read-aloud button reads in. Nobody else's Pantheon
+  changes. When the composer runs out of room the switch folds into the + menu's *Modes*, and the
+  + lights a lamp while it is on there. Turning it off stops a reply being said.
+- **Kokoro, a realistic voice on the server's own processor** (2026-11-01, `B1728`). The owner
+  asked for realistic speech that is free and chose *"Kokoro, plus Chatterbox for a GPU"*.
+  Kokoro-82M (Apache-2.0) runs as an ONNX model on the CPU, about three times faster than it
+  talks, in 41 voices across American and British English, Spanish, French, Hindi, Italian and
+  Brazilian Portuguese. The image carries it (about 350 MB, checked against its hashes), so it
+  speaks on a fresh install with nothing fetched; without the baked copy it is fetched once from
+  the `kokoro-onnx` release on GitHub, only with *Download models from the internet* on. The new
+  *Automatic* voice in **Settings → Voice** speaks with Chatterbox while it runs, else Kokoro,
+  else Piper, and says which it is using.
+- **Chatterbox Turbo for a server with an NVIDIA GPU** (2026-11-01, `B1729`). Resemble AI's
+  Chatterbox Turbo (MIT) runs beside Pantheon in a container of its own, started by the NVIDIA
+  overlay with `COMPOSE_PROFILES=chatterbox` in `.env`. Its weights are fetched while the image is
+  built, and the container then runs offline (about 3 GB of GPU memory). A recording of one person
+  speaking, put in `data/chatterbox-voices/`, becomes a voice to choose. Everything it says carries
+  Resemble AI's inaudible Perth watermark. Built and tested here against a stand-in for the model
+  only: the image has not been built or run on a GPU yet.
+
+- **The workstation's desktop looks like Pantheon** (2026-10-31, `D-2026-10-31-02`). It is XFCE
+  now, themed to the cockpit: window frames of the cockpit's glass with a lit edge and rounded
+  corners, buttons that light on hover (close in the accent), the cockpit's light field as the
+  wallpaper, and a glass panel along the bottom with a Pantheon menu that searches every program,
+  Terminal, Firefox, Files, the open windows and a clock. Programs are dark, in Inter and
+  JetBrains Mono with Papirus icons; the terminal is the default theme's colours with nothing
+  around the text. Homes made before the change get the new desktop on their next start, without
+  losing a file of their own. It costs about 300 MB more in the workstation's image. Run
+  `docker compose up -d --build` once after updating; the VM backend remakes its machine image on
+  first use. A workstation without XFCE keeps the old desktop.
+- **The workstation's screen is live** (2026-10-31, `D-2026-10-31-01`). The Workstation window
+  shows the desktop as it moves, through KasmVNC, instead of a few screenshots a second: take over
+  and the mouse and keyboard are yours at once, hand back and the agent has them again. The
+  clipboard crosses both ways (*Copy*, *Paste*). Each person's display in the container and in the
+  VM is KasmVNC's X server now (pinned, checksummed; Xvfb where it cannot run), the stream goes
+  only to its person through Pantheon, and Pantheon serves the viewer from its own image. Anywhere
+  there is no stream the window shows pictures as before and says why. Run
+  `docker compose up -d --build` once after updating; the VM backend remakes its machine image on
+  first use. New pin: `websockets` 17.2, which Uvicorn needs to serve the stream.
+- **Voice chat with the agent, like a call** (2026-10-31, `B1718`). The sound-wave button beside
+  Send starts a call in the open chat: say something, and when you stop it is heard and sent as your
+  message to the same agent, with its tools, approvals and memory; the reply is spoken sentence by
+  sentence while it is written, and the call goes back to listening. Talk over the agent to stop or
+  correct it (or switch that off to take turns); say *stop* to quiet it or *end the call* to hang
+  up. An approval is never given by voice: the call says one is needed and waits for the card. The
+  microphone button beside it is dictation, into the box. **Settings → Voice** sets up both:
+  *Speech to text* (off, local Whisper, the browser's own, or an endpoint, with a test
+  that records four seconds and shows the words) and *Voice chat* (on or off, how long a pause
+  ends your turn, interrupt by talking, the voice it answers in with a preview, and the read-aloud
+  button under replies). A member sees the call button once speech to text is set up.
+- **Speech on this server's own processor** (2026-10-31, `B1716`, `B1717`). The image carries
+  faster-whisper with the Whisper `base` model, and Piper with one voice
+  (`en_US-ljspeech-medium`), so choosing *Local Whisper, on this server* and *Piper, on this
+  server* in Settings → Voice works on a fresh install with no GPU, no service to link and nothing
+  fetched. Piper is a new voice provider; another voice is fetched once, and only with *Download
+  models from the internet* on. On a host, `pip install -r requirements-voice.txt`.
+- **Skills ship with Pantheon again, and the library can be found** (2026-10-31). Eleven core
+  skills now ship published and on for everyone, beside the workstation's four: clarify the goal,
+  web research, browse a website, debug a failure, change code safely, review code changes,
+  analyze data, write a document, summarize for a reader, remember what matters, and schedule
+  recurring work. Each is handed to the model as the procedure to follow when a turn is about it and the tools it drives are allowed, and costs other turns nothing. They live in
+  `library/pantheon/skills/`, so an update brings new versions and never touches a person's own
+  copy. The 286 vendored skills, which the Skills window stopped listing once sign-in became
+  mandatory, are on a folded **Skill library** shelf there: **Add** copies one into your skills,
+  published, so the model can use it (`GET /api/skills/library`,
+  `POST /api/skills/library/{name}/add`). First-run setup now claims skill files left by an
+  earlier account at once instead of after the next restart.
+
+- **Plan mode gathers what it needs before it plans** (2026-10-31). Before drafting, the agent
+  checks it knows the outcome, what done looks like, the limits and the person's taste; whatever
+  the project cannot tell it, it asks on one card of up to five questions (`ask_user` with
+  `questions`), each with suggested answers and a line for the person's own words, plus *Plan
+  with what you have*. The answers come back as one message, and the plan opens with a `Goal:`
+  line that stays pinned while it executes. A plan-mode turn that asked instead of planning no
+  longer offers *Execute*.
+- **The browser runs without a workstation** (2026-10-31). A person the workstation would not
+  answer gets Pantheon's own headless Firefox (Debian's `firefox-esr`, now in the image; a desktop
+  install finds the Firefox it has, or `PANTHEON_BROWSER_FIREFOX`). It is the same browser as the
+  workstation's: the Browser window shows it, the person takes it over and points at pages, and
+  their agent drives it as `agent_browser`, which is now offered wherever there is a browser. It
+  reaches public web addresses only, through a proxy of Pantheon's own; the LAN and this machine
+  stay the workstation's. Who may use it is `can_use_browser`.
+- **The sign-in page makes accounts.** When sign-up is open, *Sign up* extends the card with
+  display name, email and phone; when it is closed, the card says to ask an admin rather than
+  showing nothing. Accounts keep a profile (display name, email, phone, bio, picture) through
+  `GET/PUT /api/auth/profile`, `POST/DELETE /api/auth/profile/avatar` and
+  `GET /api/auth/avatar/{username}`, each the caller's own but the picture.
+- **Settings → Voice → Speech to text** (under AI Defaults until voice chat, `B1718`): off, local
+  Whisper, the browser's own recognition (in Chrome the audio goes to Google, and the card says
+  so), or an endpoint (`B1564`).
 - **`read_chat`:** an agent reads one of its person's own chats in order, a page at a time
   (`B1621`).
 - **`needs.programs` in an agent file:** a hire is refused, naming what to install, when the
@@ -252,6 +395,80 @@ the next one is cut.
   button all close it. `/toggle mode [agent|chat]` is the same control, typed.
 
 ### Changed — read this before upgrading
+
+- **The server speaks with *Automatic* unless you chose otherwise** (2026-11-01, `B1728`). The
+  voice in **Settings → Voice** was *None* until an admin chose one, so voice chat answered in
+  silence on a fresh install. It is *Automatic* now (Chatterbox on a GPU, else Kokoro, else Piper).
+  A settings file that holds the old default, written down by a save without anyone choosing a
+  voice, reads as *Automatic*; an admin who chose *None* (which also turns speech off) or a voice
+  keeps that choice. The image is about 350 MB larger for Kokoro; `INSTALL_VOICE=false` or
+  `BAKE_MODELS=false` leaves it out. The composer's hidden *TTS Mode* row in the + menu is the
+  Conversation switch now, and what it remembered in this browser gives way to each person's
+  Conversation setting.
+
+- **The workstation is on when the stack runs one** (2026-10-31, `B1720`, `D-2026-10-31-03`). It
+  was off until an admin found the switch, so a fresh install ran a workstation its agent could
+  not use. Now, until an admin answers *Settings → Workstation → On*, it is on whenever Pantheon's
+  environment carries the workstation's address — which the default compose files set — and off
+  when it does not. An admin's on or off still wins, and who may use it is still the
+  `can_use_workstation` privilege (on for admins). An install whose Settings were saved before
+  this change keeps the answer it had.
+- **The image carries speech, and is about half a gigabyte larger** (2026-10-31, `B1716`,
+  `B1717`): faster-whisper, Piper and their models (measured on x86-64: about 300 MB of packages,
+  145 MB for Whisper `base`, 63 MB for the voice). `docker compose build --build-arg
+  INSTALL_VOICE=false` leaves all of it out, and `BAKE_MODELS=false` the models alone (as it does
+  the embedding model). Piper is GPL-3.0-or-later, and the PyAV wheel faster-whisper decodes with
+  carries the x264 and x265 encoders, GPL-2.0-or-later; `CREDITS.md` says what is owed when the
+  image is passed on.
+- **Read-aloud has a switch of its own** (2026-10-31, `B1718`): Settings → Voice → *A read-aloud
+  button under each reply*. Its button used to show whenever a voice was chosen; now choosing a
+  voice for voice chat does not put it under every reply. **An install that had a voice chosen
+  keeps its button**, and the first settings save records that.
+- **The workstation is in the stack, a VM where Docker has KVM and a container where it does
+  not** (2026-10-31). `docker-compose.yml` now runs both local backends — `workstation-vm`, an
+  Ubuntu VM per person, and `workstation` (with its network gate `workstation-net`), an Ubuntu
+  container with an account per person — so Settings → Workstation → On works with no overlay.
+  *Backend* `auto` (the default) uses the VM where it runs on KVM and the container otherwise: on
+  Docker Desktop for Windows or macOS an emulated VM took the better part of an hour to make its
+  image before anything showed. The VM host makes nothing until the workstation is first used on
+  it. `docker compose up -d --build` builds both. `docker/workstation.yml`,
+  `docker/workstation-vm.yml` and `docker/workstation-both.yml` still load and add nothing; an
+  install that used `docker/workstation-vm.yml` has its old VM host replaced by the container on
+  the next `up` (the machines are on the `workstation-vm` volume and are kept; the new VM host
+  refuses to start while another holds it).
+- **Agents get sudo in the workstation unless an admin turns it off** (2026-10-31). The owner:
+  *"Agents get FULL access."* Unanswered, *sudo* used to be off in the container; it is now on in
+  every backend. In the container that lets one person's agent read another's workstation home,
+  which the panel says beside the switch. An admin who already chose keeps their choice.
+- **The browser works while the workstation is off or still starting** (2026-10-31). The browser
+  window and `agent_browser` use the workstation's Firefox when it answers and Pantheon's own
+  headless Firefox when it does not, so the window no longer says *No browser to show* while a
+  machine is being made. Pantheon's browser reaches the local network too when an admin has turned
+  on agent LAN reach and the person may use the workstation; never Pantheon's own services.
+- **A fresh install's first visit makes the admin** (2026-10-31). The installer no longer makes an
+  `admin` with a random password printed only to a log, which had left most new instances with no
+  way in. With no account, the sign-in page opens on setup: the first account is the admin, and a
+  switch there lets people create their own accounts (on unless you turn it off). The empty account
+  store is the signal, so an update never asks again. `PANTHEON_ADMIN_PASSWORD` (with
+  `PANTHEON_ADMIN_USER`) still makes the admin ahead of time. **An existing install is untouched:**
+  its accounts and its sign-up switch stay as they are.
+
+- **The approval mode is chosen at the bottom of the composer** (`B1706`): a chip names the mode
+  and opens a menu of Manual approve and Auto-approve, each with a line saying what it does; it
+  replaces the Auto-approve button in the Plan / Web / Shell strip.
+
+- **Auto-approve is now a risk you accept on the record** (`B1703`, `B1704`): a chat's Auto, and a
+  hired agent's "without asking" after it reads outside content, turn on only when you choose
+  **Proceed to auto-approve** under a warning naming what the agent's reading can steer. Pantheon
+  records who accepted, when and for what. **Chats already set to Auto, and every existing hire, ask
+  again until their person accepts.** The warning opens on *Keep asking me*.
+
+- **A write onto a name a move, an archive or a git command just put in place is read where it
+  lands** (`B1698`), and File Converter's answer names a burst's copies (`B1699`; its version moved).
+
+- **File Converter skips a burst photo it converted before; a copied symbolic link is read where it
+  points; and `cp -l` onto an existing name is no longer asked about** (`B1695`–`B1697`). File
+  Converter's version moved.
 
 - **A write through a link the command itself made, and a converter's numbered copies, are read
   where they land** (`B1692`, `B1693`): over a file that was there before the run they ask where
@@ -544,6 +761,77 @@ the next one is cut.
   arming that a non-empty memory store did on its own.
 
 ### Fixed
+
+- **Compact cuts the chat hard and no longer fails on a slow local model** (2026-11-01, `B1731`).
+  The owner: *"Chat compaction does not actually do anything."* The summary was asked of the model
+  with 30 seconds and 1,024 tokens, which a local reasoning model such as gpt-oss runs out of, and
+  the button said *Compact failed*; when it did run it kept a fixed four to eight messages, so a
+  short chat hardly moved. A compaction now brings the conversation to about a tenth of the window
+  the context wheel draws (never more than 40% of what it was): a dense summary of everything older,
+  written from the messages' whole text with an earlier summary merged in, plus the newest messages
+  that still fit, word for word. The utility model is asked, then the chat's own, with up to three
+  minutes for a local one; if neither answers, Pantheon condenses the older messages itself and
+  says so. The toast says the wheel's figure before and after. What a compaction cannot reach —
+  the system prompt, tool definitions and retrieved context sent with every request — is unchanged.
+- **The context window of a model on LM Studio or Ollama is the one it was loaded with**
+  (2026-11-01, `B1732`). The wheel said *"The model's window is unknown, so the agent keeps 6K"* for
+  gpt-oss-20b on LM Studio. Pantheon now reads LM Studio's own model list (and Ollama's `/api/ps`)
+  for the context length the model was loaded with; a model LM Studio has not loaded yet stays
+  unknown until it has.
+- **Dictation and the voice chat say when they are turning speech into text** (2026-11-01,
+  `B1726`). The owner: *"When the voice is being processed and transfered into text - it needs to
+  also say "Transcribing . . ." so the user doesn't think it's hanging/crashing."* Dictation said
+  so only in a toast that went after five seconds, the browser's own recognition said nothing
+  while its last words came, and a press in the meantime cleared what there was. Now the message
+  box says *Listening . . .* while the microphone records and *Transcribing . . .* until the words
+  are in it, in its prompt when it is empty and in a pill beside the words when it is not, with
+  the dots stepping (still under reduced motion). The pill takes the model picker's place while it
+  shows, so the words keep their room. A press while the words are on their way leaves it. The
+  call's bar says *Transcribing . . .* while the server writes out a turn, where it said *Hearing
+  you.*
+- **The Browser window is a live browser, not pictures of one** (2026-11-01, `B1724`,
+  `D-2026-11-01-01`). The owner: *"It's supposed to be a literal web-browser that the agent (llm)
+  can see the inside content inside of as well as navigate themselves."* The window showed a
+  screenshot of the workstation's Firefox about once a second under Pantheon's own address bar.
+  The agent's Firefox now runs alone on a screen of its own, separate from the desktop, streamed
+  live the way the desktop is: you see Firefox itself move, with its own tabs and address bar,
+  and use it as your browser while you hold it (a click while the agent is idle takes it, sending
+  a message hands it back, and Paste and Copy carry the clipboard across). The agent drives and
+  sees it as before. Where there is no workstation, Pantheon's own browser does the same, since
+  Pantheon's image now carries KasmVNC's server too. **To get it:** rebuild both images,
+  `docker compose up -d --build`; until then, and anywhere without KasmVNC, the window shows
+  pictures and says why.
+- **The agent can use what you keep in your vault** (2026-11-01, `B1722`, `B1723`). The owner:
+  the agent *"can see the github token I put in the vault but can't access/use it. The vault is
+  locked to the agent."* Its `vault_search` and `vault_get` read only the server's Bitwarden vault
+  and, with none set up, said *"Vault is locked."* They now read your own vault (Settings → Vault)
+  and say how to use each item, and Bitwarden only when it is set up. A token for a git host —
+  one whose address is the host, or one kept with no address whose name names GitHub, GitLab,
+  Codeberg or Bitbucket — now signs in `gh` and plain `git` inside `shell_with_login`
+  (`$GH_TOKEN`, `$GITHUB_TOKEN`, a credential helper for that host alone, all in that one
+  command's environment), and any key is also `$LOGIN_<NAME>_TOKEN`. The `git` tool uses it when
+  Settings → Git has no token for the host and the item is set to *Agents may use it* (or *once per
+  chat* and already used in this chat); set to ask, the `git` tool says to run the command through
+  `shell_with_login`, which asks you. The value never reaches the chat.
+
+- **The workstation's desktop sits idle** (2026-10-31, `B1721`). The owner: it *"constantly opens
+  and reopens firefox and the terminal... Let it be idle."* Every desktop session opened a
+  terminal, so every restart of the display was a terminal opening again, and the agent's Firefox
+  was started again as often as it stopped. The desktop now starts with nothing open (a home
+  still holding the old start-up entry unchanged loses it; one the person edited is kept); a
+  live-desktop server that stops within a minute of starting twice in a row is not started a
+  third time, the screen falls back to pictures and the log says what the server said; and the
+  agent's browser is not started more than three times in two minutes.
+- **The agent is told how to drive the workstation's screen on every turn it can** (2026-10-31,
+  `B1719`). A turn gets at most three matched skills, and which three turned on the wording:
+  *"open a terminal and write a file by typing in it"* got the shell, windows and self-test
+  procedures and not `workstation-desktop`, the one that says where the panel's buttons are and
+  to look before clicking. That procedure now rides with the `computer` tool, ahead of the three.
+- **Local speech-to-text can open a recording again** (2026-10-31, `B1716`). faster-whisper 1.2.1
+  opens audio with an argument PyAV 19 (released 2026-09-29) removed, so an install that took
+  faster-whisper since then turned every recording into an error and heard nothing. PyAV is held
+  at 18.1 (`requirements-voice.txt`, `requirements-optional.txt`) until a faster-whisper release
+  fixes it. On a native install, `pip install -r requirements-voice.txt` again.
 
 - **The PDF fallback draws box-drawing, block, maths and dingbat characters**, so a pasted `tree`
   listing comes out (`B1691`).

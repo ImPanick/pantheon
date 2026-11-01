@@ -347,10 +347,11 @@ def test_every_dockerfile_builds_from_a_release_or_a_digest():
 
 def test_the_apps_stages_share_one_pinned_base():
     """`B1591`'s comment-stripping stage runs on the base the other two use, on
-    purpose — one image to trust and keep current — so a pin moved in one stage
-    and not the others is a second base arriving by accident."""
+    purpose — one image to trust and keep current — and so does the live
+    desktop's client stage (`D-2026-10-31-01`), so a pin moved in one stage and
+    not the others is a second base arriving by accident."""
     refs = _from_refs((_ROOT / "Dockerfile").read_text(encoding="utf-8"))
-    assert len(refs) == 3 and len(set(refs)) == 1, refs
+    assert len(refs) == 4 and len(set(refs)) == 1, refs
     name, tag, digest = _split_image(refs[0])
     assert name == "python" and (digest or _RELEASE_TAG.match(tag)), refs[0]
 

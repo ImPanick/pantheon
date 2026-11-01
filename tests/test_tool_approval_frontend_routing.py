@@ -201,7 +201,13 @@ def test_every_approval_path_module_is_found_by_the_scan():
 # repaints the trust ladder's list of grants after an answer, and nothing
 # about where the click lands. It is imported with no buster at all
 # (`chatRenderer.js`: `from './trustLadder.js'`), so it has no string to move.
-_HEARS_THE_EVENT_OFF_THE_PATH = {"trustLadder.js": "repaints the grants list"}
+_HEARS_THE_EVENT_OFF_THE_PATH = {
+    "trustLadder.js": "repaints the grants list",
+    # `B1718`: a voice chat waits while a card is open, and goes back to
+    # listening once it is answered; it never touches the click. Imported by
+    # `app.js` with no buster, like `trustLadder.js`.
+    "voiceCall.js": "a voice chat goes back to listening once the card is answered",
+}
 
 # The approval event's two shapes in code (`Law 20`: the call, not the word —
 # comments name the event in prose).

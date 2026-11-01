@@ -67,6 +67,12 @@ ALLOWED = {
     # `B1474`. A page, not a fetch: `static/js/codeRunner.js` frames it
     # (`iframe.src`) to run a Python block in an opaque-origin sandbox.
     "/python-sandbox": "codeRunner.js frames it for a Python block (`B1474`)",
+    # `D-2026-10-31-01`. A websocket, not a fetch: the vendored KasmVNC client
+    # the Workstation window frames opens it, told the path in its page's query
+    # by `src/desktop_client.page_url` (`STREAM_PATH`), so no literal of it is
+    # in `static/`.
+    "/api/workstation/desktop/websockify": "the vendored KasmVNC client (src/desktop_client.page_url) connects to it",
+    "/api/workstation/browser/websockify": "the vendored KasmVNC client (src/desktop_client.page_url, BROWSER_STREAM_PATH) connects to it",
     "/api/diagnostics/": "the diagnostics panel plus `pantheon-*` CLI tooling",
     "/api/webhooks/incoming": "external senders — a receiver has no caller here by definition",
     # P18-01/P18-04. The browser no longer holds this path: it reads it from

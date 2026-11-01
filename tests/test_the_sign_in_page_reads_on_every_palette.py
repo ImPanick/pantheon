@@ -156,7 +156,8 @@ TEXT = ("label", "setupNote", "toggle", "toggleLink", "error", "version")
 
 def test_the_sign_in_pages_text_clears_4_5_to_1_on_every_palette(measured):
     """The row's `Verify:` — its labels clear 4.5:1 on every palette."""
-    assert len(measured["palettes"]) == 23, sorted(measured["palettes"])
+    # Twenty since the cockpit retired three presets (theme.js `RETIRED_THEMES`).
+    assert len(measured["palettes"]) == 20, sorted(measured["palettes"])
     misses = [f"{name}: {what} {row[what]}:1" for name, row in sorted(measured["palettes"].items())
               for what in TEXT if row[what] < 4.5]
     assert not misses, misses

@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
-<html lang="en">
+<html lang="en" class="cockpit">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, interactive-widget=resizes-content, viewport-fit=cover" />
@@ -20,6 +20,9 @@
   (function(){
     try {
       var t = JSON.parse(localStorage.getItem('pantheon-theme'));
+      // A retired preset (theme.js `RETIRED_THEMES`) paints nothing here; the
+      // module moves it to Dark on boot.
+      if (t && /^(terminal|retrowave|cyberpunk)$/.test(t.name)) t = null;
       if (t && t.colors) {
         var s = document.documentElement.style;
         var c = t.colors;
@@ -40,6 +43,8 @@
             light = (0.2126 * lin[0] + 0.7152 * lin[1] + 0.0722 * lin[2]) > 0.5;
           }
           s.setProperty('color-scheme', light ? 'light' : 'dark');
+          // The cockpit's material follows the same test (`static/cockpit.css`).
+          document.documentElement.setAttribute('data-ck-tone', light ? 'light' : 'dark');
         })();
         s.setProperty('--fg', c.fg);
         s.setProperty('--panel', c.panel);
@@ -339,6 +344,12 @@
   <link rel="preload" as="font" type="font/woff2" crossorigin href="/static/fonts/FiraCode-Regular.woff2">
   <link rel="preload" as="font" type="font/woff2" crossorigin href="/static/fonts/FiraCode-SemiBold.woff2">
   <link rel="stylesheet" href="/static/style.css?v=20261009census">
+  <!-- The cockpit shell (the accepted V4 study): every rule scoped to
+       `html.cockpit`, loaded after style.css so it restyles without editing it.
+       Its type is local (`static/fonts/Geist*`, `InstrumentSerif*`). -->
+  <link rel="preload" as="font" type="font/woff2" crossorigin href="/static/fonts/Geist-Regular.woff2">
+  <link rel="preload" as="font" type="font/woff2" crossorigin href="/static/fonts/InstrumentSerif-Regular.woff2">
+  <link rel="stylesheet" href="/static/cockpit.css">
   <link rel="modulepreload" href="/static/app.js?v=20261009census">
   <!-- B58. This must carry the SAME query as the <script> tag below, or the
        browser fetches chat.js twice: the cache and the module map are keyed on
@@ -1077,6 +1088,7 @@
           <div class="theme-fd-group">
             <label class="theme-fd-label">Font</label>
             <select id="theme-font-select" class="theme-fd-select" aria-label="Font">
+              <option value="geist">Geist</option>
               <option value="mono">Monospace</option>
               <option value="sans">Sans-serif</option>
               <option value="serif">Serif</option>
@@ -1533,7 +1545,6 @@
         </svg>
         <span class="incognito-label">Nobody</span>
       </button>
-      <div id="welcome-setup" style="display:none"></div>
     </div>
     <script>
     (function(){
@@ -1679,11 +1690,42 @@
     <input type="checkbox" id="incognito-toggle" style="display:none;">
     <input type="file" id="file-input" class="hidden" multiple />
 
+    <!-- `B1718`. The voice chat, while one is on: a lamp and a word for what
+         the call is doing ("Listening." / "Hearing you." / "Transcribing . . ."
+         (`B1726`) / "Thinking." / "Speaking."), the microphone's level, the last thing said or why
+         something cannot work, and the call's own buttons. Hidden until a
+         call starts from the composer's call button (`#composer-call-btn`);
+         drawn and driven by `static/js/voiceCall.js`. -->
+    <section id="voice-call-bar" class="voice-call-bar" role="region" aria-label="Voice chat" hidden>
+      <span class="voice-call-lamp" aria-hidden="true"></span>
+      <span id="voice-call-state" class="voice-call-state" role="status" aria-live="polite">Starting.</span>
+      <span class="voice-call-meter" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>
+      <span id="voice-call-caption" class="voice-call-caption"></span>
+      <span class="voice-call-actions">
+        <button type="button" id="voice-call-setup" class="voice-call-btn voice-call-text-btn" title="Open Settings → Voice" hidden>Voice settings</button>
+        <button type="button" id="voice-call-skip" class="voice-call-btn" title="Stop speaking" aria-label="Stop speaking" hidden>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 5.5v13l9-6.5z"/><path d="M18.5 5.5v13"/></svg>
+        </button>
+        <button type="button" id="voice-call-mute" class="voice-call-btn" title="Mute" aria-label="Mute" aria-pressed="false" data-icon="on">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="2.5" width="6" height="12" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0"/><path d="M12 17.5V21"/></svg>
+        </button>
+        <button type="button" id="voice-call-end" class="voice-call-btn voice-call-end" title="End voice chat" aria-label="End voice chat">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.6 14.6c4.6-4.4 12.2-4.4 16.8 0l-1.9 2.6-3.4-1.3.2-2.3a11 11 0 0 0-6.6 0l.2 2.3-3.4 1.3z"/></svg>
+        </button>
+      </span>
+    </section>
+
     <!-- Unified chat input bar -->
     <div class="chat-input-bar">
       <div class="chat-input-top">
         <div id="message-ghost" class="ghost-text-overlay" aria-hidden="true"></div>
         <textarea id="message" placeholder="Message Pantheon..." required autocomplete="off" aria-label="Message input" rows="1" autofocus></textarea>
+        <!-- `B1726`. What dictation is doing, while the box has words in it
+             (an empty box says it in its prompt): "Listening . . ." while the
+             microphone records, "Transcribing . . ." while what was said is
+             written out. Drawn by `static/js/voiceRecorder.js`; the toast and
+             the microphone button say it to a screen reader. -->
+        <div id="dictation-status" class="dictation-status" aria-hidden="true" hidden><span class="dictation-status-word">Listening</span> <span class="dictation-status-dots">. . .</span></div>
         <div id="plan-mode-status" class="plan-mode-status" hidden>
           <span class="plan-mode-status-label">Plan mode</span>
           <button type="button" id="plan-mode-status-toggle" class="plan-mode-status-toggle" aria-label="Turn off plan mode" aria-pressed="true">
@@ -1736,7 +1778,6 @@
         })();
         </script>
       </div>
-      <div id="pinned-tools-bar"></div>
       <div class="chat-input-bottom" style="visibility:hidden">
         <div class="chat-input-left">
           <!-- Overflow menu (+) — always first/left -->
@@ -1861,22 +1902,19 @@
             </svg>
             <span class="tool-chip-label">Shell</span>
           </button>
-          <!-- Auto-approve (`D-2026-10-09-01` §2). This chat's approval mode,
-               beside Plan / Web / Shell because it is the same kind of thing: a
-               switch that changes what this turn is allowed to do on its own.
-               `.tool-chip` for the strip's geometry, `.tool-indicator` for the
-               on-state colour and the clear affordance — the pattern `P5-12`
-               unified, extended rather than re-rolled (`Law 14`).
-
-               Hidden until `GET /api/session/{sid}/approval-mode` says this
-               person may set it (`may_set`): an admin grants `can_auto_approve`
-               and until then there is no dead control here (`Law 15`). Drawn and
-               driven by `static/js/approvalMode.js`. -->
-          <button type="button" class="input-icon-btn tool-indicator tool-chip" title="Auto-approve" id="approval-mode-btn" aria-pressed="false" style="display:none;">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h8l-1 8 10-12h-8z"/></svg>
-            <span class="tool-chip-label">Auto-approve</span>
-            <svg class="tool-indicator-x" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>
+          <!-- `B1730`. Conversation: the agent says each reply out loud while it
+               is written, in the voice this person chose (Settings →
+               Conversation). Each person's own switch (`js/conversation.js`);
+               hidden while this server does not speak at all. -->
+          <button type="button" class="input-icon-btn tool-chip conversation-chip" title="Conversation: the agent says its replies out loud" id="conversation-toggle-btn" data-conversation-switch aria-label="Conversation" aria-pressed="false" hidden style="display:none">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M8.5 9v2"/><path d="M12 7.5v5"/><path d="M15.5 9v2"/>
+            </svg>
+            <span class="tool-chip-label">Conversation</span>
           </button>
+          <!-- (`B1706`: the Auto-approve on/off chip that sat here, beside Plan /
+               Web / Shell, is now the approval-mode selector at the right of
+               this row, `#approval-mode-wrap` — one control, `Law 7`.) -->
           <!-- Workspace indicator (hidden until a folder is set) -->
           <button type="button" class="input-icon-btn tool-indicator tool-chip" title="Workspace" id="workspace-indicator-btn" aria-label="Clear workspace" style="display:none;">
             <svg class="workspace-indicator-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
@@ -1945,10 +1983,89 @@
                active mode (`style.css`), and it is the Agent button's
                description for a screen reader. -->
           <span class="agent-limits-hint" id="agent-limits-hint" hidden></span>
+          <!-- Reasoning effort: how hard a thinking model is asked to think
+               (Auto, Low … Max). Shown only while the selected model takes a
+               level (`GET /api/chat/reasoning-effort`); the menu is the model
+               picker's, as the approval mode's is. `static/js/reasoningEffort.js`,
+               `src/reasoning_effort.py`. -->
+          <div class="reasoning-effort-wrap" id="reasoning-effort-wrap" style="display:none;">
+            <button type="button" class="input-icon-btn tool-chip reasoning-effort-chip" id="reasoning-effort-btn" aria-haspopup="menu" aria-expanded="false" aria-controls="reasoning-effort-options" style="display:none;">
+              <svg class="reasoning-effort-dial" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.5 17a8.5 8.5 0 1 1 15 0"/><path class="reasoning-effort-needle" d="M12 14V8"/><circle cx="12" cy="14" r="1.2" fill="currentColor" stroke="none"/></svg>
+              <span class="reasoning-effort-chip-label" id="reasoning-effort-label">Auto</span>
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="{{chevron:up}}"/></svg>
+            </button>
+            <div class="model-picker-menu reasoning-effort-menu hidden" id="reasoning-effort-menu">
+              <div class="model-picker-list reasoning-effort-list">
+                <div class="mp-section-label" id="reasoning-effort-menu-title">Reasoning effort</div>
+                <div role="menu" id="reasoning-effort-options" aria-labelledby="reasoning-effort-menu-title">
+                  <div class="model-switch-item reasoning-effort-item" role="menuitemradio" tabindex="-1" aria-checked="false" data-effort="auto">
+                    <span class="reasoning-effort-item-text"><span class="reasoning-effort-item-name">Auto</span><span class="reasoning-effort-item-desc"></span></span>
+                    <svg class="reasoning-effort-item-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+                  </div>
+                  <div class="model-switch-item reasoning-effort-item" role="menuitemradio" tabindex="-1" aria-checked="false" data-effort="low">
+                    <span class="reasoning-effort-item-text"><span class="reasoning-effort-item-name">Low</span><span class="reasoning-effort-item-desc"></span></span>
+                    <svg class="reasoning-effort-item-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+                  </div>
+                  <div class="model-switch-item reasoning-effort-item" role="menuitemradio" tabindex="-1" aria-checked="false" data-effort="medium">
+                    <span class="reasoning-effort-item-text"><span class="reasoning-effort-item-name">Medium</span><span class="reasoning-effort-item-desc"></span></span>
+                    <svg class="reasoning-effort-item-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+                  </div>
+                  <div class="model-switch-item reasoning-effort-item" role="menuitemradio" tabindex="-1" aria-checked="false" data-effort="high">
+                    <span class="reasoning-effort-item-text"><span class="reasoning-effort-item-name">High</span><span class="reasoning-effort-item-desc"></span></span>
+                    <svg class="reasoning-effort-item-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+                  </div>
+                  <div class="model-switch-item reasoning-effort-item" role="menuitemradio" tabindex="-1" aria-checked="false" data-effort="extra">
+                    <span class="reasoning-effort-item-text"><span class="reasoning-effort-item-name">Extra</span><span class="reasoning-effort-item-desc"></span></span>
+                    <svg class="reasoning-effort-item-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+                  </div>
+                  <div class="model-switch-item reasoning-effort-item" role="menuitemradio" tabindex="-1" aria-checked="false" data-effort="max">
+                    <span class="reasoning-effort-item-text"><span class="reasoning-effort-item-name">Max</span><span class="reasoning-effort-item-desc"></span></span>
+                    <svg class="reasoning-effort-item-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
           <!-- Agent / Chat mode toggle -->
           <div class="mode-toggle">
             <button type="button" class="mode-toggle-btn active" id="mode-agent-btn" aria-pressed="true" aria-describedby="agent-limits-hint">Agent</button>
             <button type="button" class="mode-toggle-btn" id="mode-chat-btn" aria-pressed="false">Chat</button>
+          </div>
+          <!-- `B1706`. This chat's approval mode (`D-2026-10-09-01` §2), at the
+               bottom of the composer with the rest of what decides a turn: a
+               chip naming the mode in one word that opens a menu headed with
+               the setting's name, listing both modes with one line each and a
+               check on the one this chat is in. Every word is the server's
+               (`GET /api/session/{sid}/approval-mode`: `setting_label`,
+               `modes`), so the spans below are empty until it answers. The menu
+               is the model picker's — `.model-picker-menu`, `.model-switch-item`
+               and `pickerKeys.js` — not a second popover (`Law 14`). Choosing
+               Auto-approve opens its warning (`B1703`); Manual approve takes
+               effect at once. It replaced the on/off chip beside Plan / Web /
+               Shell: one control (`Law 7`). Hidden until the server says this
+               person may set it (`may_set`, `Law 15`), and on a phone-width bar,
+               where `#turn-chip`'s sheet carries it. Drawn and driven by
+               `static/js/approvalMode.js`. -->
+          <div class="approval-mode-wrap" id="approval-mode-wrap" style="display:none;">
+            <button type="button" class="input-icon-btn tool-chip approval-mode-chip" id="approval-mode-btn" aria-haspopup="menu" aria-expanded="false" aria-controls="approval-mode-options" style="display:none;">
+              <span class="approval-mode-chip-label" id="approval-mode-label"></span>
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="{{chevron:up}}"/></svg>
+            </button>
+            <div class="model-picker-menu approval-mode-menu hidden" id="approval-mode-menu">
+              <div class="model-picker-list approval-mode-list">
+                <div class="mp-section-label" id="approval-mode-menu-title"></div>
+                <div role="menu" id="approval-mode-options" aria-labelledby="approval-mode-menu-title">
+                  <div class="model-switch-item approval-mode-item" role="menuitemradio" tabindex="-1" aria-checked="false" data-approval-choice="manual">
+                    <span class="approval-mode-item-text"><span class="approval-mode-item-name"></span><span class="approval-mode-item-desc"></span></span>
+                    <svg class="approval-mode-item-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+                  </div>
+                  <div class="model-switch-item approval-mode-item" role="menuitemradio" tabindex="-1" aria-checked="false" data-approval-choice="auto">
+                    <span class="approval-mode-item-text"><span class="approval-mode-item-name"></span><span class="approval-mode-item-desc"></span></span>
+                    <svg class="approval-mode-item-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
           <!-- `D-2026-10-09-01` §4. On a phone the segmented toggle above is
                dropped by the chat bar's container query and NOTHING replaced
@@ -1963,6 +2080,16 @@
             <span class="turn-chip-mode" id="turn-chip-mode">Agent</span>
             <span class="turn-chip-flag" id="turn-chip-approval" hidden>Auto</span>
             <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="{{chevron:up}}"/></svg>
+          </button>
+          <!-- `B1718`. Speech to text and voice chat, beside Send, each shown
+               when its setting is on (Settings → Voice): the microphone types
+               what is said into the box (`voiceRecorder.js`), and the call
+               button talks with the agent (`voiceCall.js`). -->
+          <button type="button" class="composer-voice-btn" id="composer-mic-btn" title="Dictate" aria-label="Dictate" aria-pressed="false" hidden>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="2.5" width="6" height="12" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0"/><path d="M12 17.5V21"/></svg>
+          </button>
+          <button type="button" class="composer-voice-btn composer-call-btn" id="composer-call-btn" title="Voice chat" aria-label="Voice chat" aria-pressed="false" hidden>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 10v4"/><path d="M8 6.5v11"/><path d="M12 3.5v17"/><path d="M16 7.5v9"/><path d="M20 10.5v3"/></svg>
           </button>
           <button type="submit" form="chat-form" class="send-btn newchat-mode" data-mode="idle" title="Send message">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
@@ -2434,101 +2561,6 @@
               <div id="set-imgSettingsMsg" style="font-size:11px;color:color-mix(in oklab, var(--fg) 45%, var(--fg-muted));"></div>
             </div>
           </div>
-          <!-- `B1564` (`D-2026-10-29-01` §3, the owner: "Allow for both
-               local + browser. All options available."). The card the fork
-               arrived without: `initSttSettings` in `settings.js` had wired
-               these ids all along and returned on the missing select. One
-               control, the provider: "Off" saves `stt_enabled: false`, so the
-               switch and the list can never disagree. The browser's sentence
-               is on its own option and in the note under the list, where it is
-               chosen — the exception to `Law 16` the owner made with it in
-               front of them. Admin-only with the panel (`registry.js`), as
-               `POST /api/auth/settings` is. -->
-          <div class="admin-card">
-            <h2><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;opacity:0.6" aria-hidden="true"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>Speech to Text</h2>
-            <div class="admin-toggle-sub" style="margin-bottom:8px">Turns what you say into words in the message box. On, the chat's empty send button becomes a microphone.</div>
-            <div class="settings-col">
-              <div class="settings-row">
-                <label class="settings-label" for="set-sttProviderSelect">Provider</label>
-                <select id="set-sttProviderSelect" class="settings-select" aria-describedby="set-sttProviderNote">
-                  <option value="disabled">Off</option>
-                  <option value="local">Local Whisper, on this server</option>
-                  <option value="browser">The browser’s own — in Chrome, the audio goes to Google</option>
-                </select>
-              </div>
-              <div id="set-sttProviderNote" class="admin-toggle-sub" role="note"></div>
-              <div id="set-sttModelRow" class="settings-row" style="display:none">
-                <label class="settings-label" for="set-sttModelSelect">Model</label>
-                <select id="set-sttModelSelect" class="settings-select">
-                  <option value="tiny">tiny (fastest)</option>
-                  <option value="base" selected>base</option>
-                  <option value="small">small</option>
-                  <option value="medium">medium</option>
-                  <option value="large-v3">large-v3 (most accurate)</option>
-                </select>
-                <input id="set-sttModelInput" class="settings-select" type="text" placeholder="whisper-1" aria-label="Model the endpoint transcribes with" style="display:none">
-              </div>
-              <div id="set-sttLangRow" class="settings-row" style="display:none">
-                <label class="settings-label" for="set-sttLangInput">Language</label>
-                <input id="set-sttLangInput" class="settings-select" type="text" placeholder="Blank detects it, or e.g. en">
-              </div>
-              <div id="set-sttSettingsMsg" class="admin-toggle-sub" role="status" aria-live="polite"></div>
-            </div>
-          </div>
-          <!-- TTS panel hidden — user opted out of read-aloud entirely. Kept
-               in DOM so the JS that wires set-ttsProviderSelect etc. doesn't
-               throw on missing nodes; not visible to anyone. -->
-          <div class="admin-card" hidden style="display:none">
-            <h2 style="display:flex;align-items:center;gap:6px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;opacity:0.6"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>Text to Speech<span style="flex:1"></span><label class="admin-switch"><input type="checkbox" id="set-ttsEnabledToggle" checked><span class="admin-slider"></span></label></h2>
-            <div class="admin-toggle-sub" style="margin-bottom:8px">Reads replies aloud.</div>
-            <div style="display:flex;flex-direction:column;gap:0.5rem;">
-              <div style="display:flex;align-items:center;gap:0.75rem;">
-                <label class="settings-label">Provider</label>
-                <select id="set-ttsProviderSelect" class="settings-select">
-                  <option value="disabled">Disabled</option>
-                  <option value="browser">Browser (built-in)</option>
-                  <option value="local">Local (Kokoro-82M)</option>
-                </select>
-              </div>
-              <div id="set-ttsModelRow" style="display:flex;align-items:center;gap:0.75rem;">
-                <label class="settings-label">Model</label>
-                <select id="set-ttsModelSelect" class="settings-select">
-                  <option value="tts-1">tts-1 (fast)</option>
-                  <option value="tts-1-hd">tts-1-hd (quality)</option>
-                  <option value="gpt-4o-mini-tts">gpt-4o-mini-tts (steerable)</option>
-                </select>
-                <input id="set-ttsModelInput" type="text" placeholder="model name" style="flex:1;padding:5px;display:none;">
-              </div>
-              <div id="set-ttsVoiceRow" style="display:flex;align-items:center;gap:0.75rem;">
-                <label class="settings-label">Voice</label>
-                <select id="set-ttsVoiceSelect" class="settings-select">
-                  <option value="alloy">Alloy</option>
-                  <option value="ash">Ash</option>
-                  <option value="coral">Coral</option>
-                  <option value="echo">Echo</option>
-                  <option value="fable">Fable</option>
-                  <option value="nova">Nova</option>
-                  <option value="onyx">Onyx</option>
-                  <option value="sage">Sage</option>
-                  <option value="shimmer">Shimmer</option>
-                </select>
-                <input id="set-ttsVoiceInput" type="text" placeholder="af_heart" style="flex:1;padding:5px;display:none;">
-              </div>
-              <div id="set-ttsSpeedRow" style="display:flex;align-items:center;gap:0.75rem;">
-                <label class="settings-label">Speed</label>
-                <select id="set-ttsSpeedSelect" class="settings-select">
-                  <option value="0.5">0.5x</option>
-                  <option value="0.75">0.75x</option>
-                  <option value="1" selected>1x (normal)</option>
-                  <option value="1.25">1.25x</option>
-                  <option value="1.5">1.5x</option>
-                  <option value="2">2x</option>
-                </select>
-              </div>
-              <button type="button" id="set-ttsPreviewBtn" class="admin-btn-sm" style="margin-top:4px;padding:5px 16px;font-size:12px;">Preview</button>
-              <div id="set-ttsSettingsMsg" style="font-size:11px;color:color-mix(in oklab, var(--fg) 45%, var(--fg-muted));"></div>
-            </div>
-          </div>
           <!-- Teacher Model settings card hidden as part of the 2.0
                "harden the core" pass. The escalation flow is dormant when
                `teacher_model` is unset (its default), so the backend keeps
@@ -2560,6 +2592,153 @@
                 <span id="set-doc-style-msg" style="font-size:11px;"></span>
                 <button class="admin-btn-add" id="set-doc-style-save" style="margin-left:auto;">Save</button>
               </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ═══ VOICE TAB (`B1718`) ═══
+             Speaking with Pantheon. Speech to text, which the microphone
+             beside Send and a voice chat both hear with; and the voice chat,
+             with the voice it answers in, how long a pause ends a turn, and
+             whether talking over the agent stops it. Admin-only
+             (`registry.js`), as `POST /api/auth/settings` is; wired by
+             `initSttSettings` and `initTtsSettings` in `settings.js`. -->
+        <div data-settings-panel="voice" class="hidden">
+          <!-- `B1564` (`D-2026-10-29-01` §3, the owner: "Allow for both
+               local + browser. All options available."). The card the fork
+               arrived without: `initSttSettings` in `settings.js` had wired
+               these ids all along and returned on the missing select. One
+               control, the provider: "Off" saves `stt_enabled: false`, so the
+               switch and the list can never disagree. The browser's sentence
+               is on its own option and in the note under the list, where it is
+               chosen — the exception to `Law 16` the owner made with it in
+               front of them. Admin-only with the panel (`registry.js`), as
+               `POST /api/auth/settings` is. `B1718` moved it here from AI
+               Defaults, its ids unchanged. -->
+          <div class="admin-card">
+            <h2><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;opacity:0.6" aria-hidden="true"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>Speech to Text</h2>
+            <div class="admin-toggle-sub" style="margin-bottom:8px">Turns what you say into words: the microphone beside Send writes them in the message box, and a voice chat hears you with it.</div>
+            <div class="settings-col">
+              <div class="settings-row">
+                <label class="settings-label" for="set-sttProviderSelect">Provider</label>
+                <select id="set-sttProviderSelect" class="settings-select" aria-describedby="set-sttProviderNote">
+                  <option value="disabled">Off</option>
+                  <option value="local">Local Whisper, on this server</option>
+                  <option value="browser">The browser’s own — in Chrome, the audio goes to Google</option>
+                </select>
+              </div>
+              <div id="set-sttProviderNote" class="admin-toggle-sub" role="note"></div>
+              <div id="set-sttModelRow" class="settings-row" style="display:none">
+                <label class="settings-label" for="set-sttModelSelect">Model</label>
+                <select id="set-sttModelSelect" class="settings-select">
+                  <option value="tiny">tiny (fastest)</option>
+                  <option value="base" selected>base</option>
+                  <option value="small">small</option>
+                  <option value="medium">medium</option>
+                  <option value="large-v3">large-v3 (most accurate)</option>
+                </select>
+                <input id="set-sttModelInput" class="settings-select" type="text" placeholder="whisper-1" aria-label="Model the endpoint transcribes with" style="display:none">
+              </div>
+              <div id="set-sttLangRow" class="settings-row" style="display:none">
+                <label class="settings-label" for="set-sttLangInput">Language</label>
+                <input id="set-sttLangInput" class="settings-select" type="text" placeholder="Blank detects it, or e.g. en">
+              </div>
+              <!-- `B1718`. A few seconds of the microphone, heard by what is
+                   saved, and what it heard said back (or why not). -->
+              <div class="settings-row" style="gap:10px;flex-wrap:wrap">
+                <button type="button" id="set-sttTestBtn" class="admin-btn-sm">Test: say something</button>
+                <span id="set-sttTestResult" class="admin-toggle-sub" role="status" aria-live="polite" style="flex:1;min-width:12em"></span>
+              </div>
+              <div id="set-sttSettingsMsg" class="admin-toggle-sub" role="status" aria-live="polite"></div>
+            </div>
+          </div>
+          <!-- `B1718`. The card read-aloud hid (its ids kept): the voice is
+               the voice chat's now, and the read-aloud button under a reply
+               is a switch of its own here (`tts_read_aloud`: off as shipped,
+               on for an install that had a voice chosen before it existed).
+               "None" saves `tts_enabled: false` — one control, as speech to
+               text has. -->
+          <div class="admin-card">
+            <h2 style="display:flex;align-items:center;gap:6px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="margin-right:1px;opacity:0.6;flex-shrink:0" aria-hidden="true"><path d="M4 10v4"/><path d="M8 6.5v11"/><path d="M12 3.5v17"/><path d="M16 7.5v9"/><path d="M20 10.5v3"/></svg>Voice Chat<span style="flex:1"></span><label class="admin-switch" title="The call button beside Send"><input type="checkbox" id="set-voiceChatEnabledToggle" checked aria-label="Voice chat" aria-describedby="set-voiceChatSub"><span class="admin-slider"></span></label></h2>
+            <div class="admin-toggle-sub" id="set-voiceChatSub" style="margin-bottom:8px">Talk with the agent in the open chat, from the call button beside Send. It hears you with speech to text, sends what you said as your next message, and says the reply while it is being written. An approval is always given on its card in the chat, never by voice. The voice below is everyone’s unless they choose their own in Settings → Conversation.</div>
+            <div class="settings-col">
+              <div class="settings-row">
+                <label class="settings-label" for="set-ttsProviderSelect">Voice</label>
+                <select id="set-ttsProviderSelect" class="settings-select" aria-describedby="set-ttsProviderNote">
+                  <option value="disabled">None: replies are shown, not said</option>
+                  <!-- `B1728`, `B1729`. "Automatic" as shipped: Chatterbox on
+                       the GPU while it runs, else Kokoro on the processor. -->
+                  <option value="auto">Automatic: Chatterbox on a GPU, else Kokoro</option>
+                  <option value="kokoro">Kokoro, on this server</option>
+                  <option value="chatterbox">Chatterbox, on this server’s GPU</option>
+                  <option value="piper">Piper, on this server</option>
+                  <option value="browser">The browser’s own</option>
+                  <option value="local">Kokoro through PyTorch (needs a GPU)</option>
+                </select>
+              </div>
+              <div id="set-ttsProviderNote" class="admin-toggle-sub" role="note"></div>
+              <div id="set-ttsModelRow" class="settings-row" style="display:none">
+                <label class="settings-label" for="set-ttsModelSelect">Model</label>
+                <select id="set-ttsModelSelect" class="settings-select">
+                  <option value="tts-1">tts-1 (fast)</option>
+                  <option value="tts-1-hd">tts-1-hd (quality)</option>
+                  <option value="gpt-4o-mini-tts">gpt-4o-mini-tts (steerable)</option>
+                </select>
+                <input id="set-ttsModelInput" class="settings-select" type="text" placeholder="model name" aria-label="Model" style="display:none">
+              </div>
+              <div id="set-ttsVoiceRow" class="settings-row" style="display:none">
+                <label class="settings-label" for="set-ttsVoiceInput">Speaker</label>
+                <select id="set-ttsVoiceSelect" class="settings-select" aria-label="Speaker" style="display:none">
+                  <option value="alloy">Alloy</option>
+                  <option value="ash">Ash</option>
+                  <option value="coral">Coral</option>
+                  <option value="echo">Echo</option>
+                  <option value="fable">Fable</option>
+                  <option value="nova">Nova</option>
+                  <option value="onyx">Onyx</option>
+                  <option value="sage">Sage</option>
+                  <option value="shimmer">Shimmer</option>
+                </select>
+                <input id="set-ttsVoiceInput" class="settings-select" type="text" list="set-ttsVoiceList" autocomplete="off" placeholder="en_US-ljspeech-medium">
+                <datalist id="set-ttsVoiceList"></datalist>
+              </div>
+              <div id="set-ttsSpeedRow" class="settings-row" style="display:none">
+                <label class="settings-label" for="set-ttsSpeedSelect">Speed</label>
+                <select id="set-ttsSpeedSelect" class="settings-select">
+                  <option value="0.5">0.5×</option>
+                  <option value="0.75">0.75×</option>
+                  <option value="1" selected>1× (normal)</option>
+                  <option value="1.25">1.25×</option>
+                  <option value="1.5">1.5×</option>
+                  <option value="2">2×</option>
+                </select>
+              </div>
+              <div class="settings-row">
+                <label class="settings-label" for="set-voiceChatPauseSelect">A turn ends</label>
+                <select id="set-voiceChatPauseSelect" class="settings-select">
+                  <option value="short">after a short pause (half a second)</option>
+                  <option value="normal" selected>after a pause (under a second)</option>
+                  <option value="relaxed">after a long pause (a second and a half)</option>
+                </select>
+              </div>
+              <div class="admin-toggle-row">
+                <div>
+                  <div class="admin-toggle-label" id="set-voiceChatBargeInLabel">Talking over the agent stops it</div>
+                  <div class="admin-toggle-sub" id="set-voiceChatBargeInSub">Say “wait”, or start your next question, while it speaks. Off: it takes turns and does not listen while it talks, for a speaker the microphone hears too well.</div>
+                </div>
+                <label class="admin-switch"><input type="checkbox" id="set-voiceChatBargeInToggle" checked aria-labelledby="set-voiceChatBargeInLabel" aria-describedby="set-voiceChatBargeInSub"><span class="admin-slider"></span></label>
+              </div>
+              <div class="admin-toggle-row">
+                <div>
+                  <div class="admin-toggle-label" id="set-ttsReadAloudLabel">A read-aloud button under each reply</div>
+                  <div class="admin-toggle-sub" id="set-ttsReadAloudSub">Says a reply in this voice when pressed. Choosing a voice for voice chat does not turn it on.</div>
+                </div>
+                <label class="admin-switch"><input type="checkbox" id="set-ttsReadAloudToggle" aria-labelledby="set-ttsReadAloudLabel" aria-describedby="set-ttsReadAloudSub"><span class="admin-slider"></span></label>
+              </div>
+              <div class="settings-row" style="gap:10px;flex-wrap:wrap">
+                <button type="button" id="set-ttsPreviewBtn" class="admin-btn-sm">Hear the voice</button>
+              </div>
+              <div id="set-ttsSettingsMsg" class="admin-toggle-sub" role="status" aria-live="polite"></div>
             </div>
           </div>
         </div>
@@ -2805,6 +2984,11 @@
                 <input type="checkbox" checked data-ui-key="show-thinking"><span class="vis-switch"></span>
               </label>
               <label class="vis-row">
+                <span class="vis-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M8.5 14.5c.9 1.1 2.1 1.7 3.5 1.7s2.6-.6 3.5-1.7"/><path d="M9 9.5h.01M15 9.5h.01"/></svg></span>
+                <span class="vis-label">Reactions <span class="vis-hint">The agent can react to your messages, and hears how you react to its replies</span></span>
+                <input type="checkbox" checked id="reactions-toggle" aria-label="Reactions"><span class="vis-switch"></span>
+              </label>
+              <label class="vis-row">
                 <span class="vis-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/><path d="M4 4l16 16"/></svg></span>
                 <span class="vis-label">Sensitive Blur <span class="vis-hint">Blur emails, tokens, and secrets in AI output</span></span>
                 <input type="checkbox" data-privacy-key="sensitive-blur"><span class="vis-switch"></span>
@@ -2965,6 +3149,41 @@
           </div>
           <div class="admin-card">
             <div id="shortcuts-list"></div>
+          </div>
+        </div>
+
+        <!-- ═══ CONVERSATION TAB (`B1730`) ═══
+             Each person's own: the Conversation switch (the composer's chip,
+             the same switch) and the voice Pantheon speaks to them in, kept
+             with their account (`/api/prefs`). Drawn by
+             `static/js/conversationSettings.js` from `GET /api/tts/voices`. -->
+        <div data-settings-panel="conversation" class="hidden">
+          <div class="admin-card">
+            <h2 style="display:flex;align-items:center;gap:6px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:1px;opacity:0.6;flex-shrink:0" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M8.5 9v2"/><path d="M12 7.5v5"/><path d="M15.5 9v2"/></svg>Conversation<span style="flex:1"></span><label class="admin-switch" title="The Conversation chip beside Plan, Web and Shell"><input type="checkbox" id="conv-switch" data-conversation-switch aria-label="Conversation" aria-describedby="conv-sub"><span class="admin-slider"></span></label></h2>
+            <div class="admin-toggle-sub" id="conv-sub" style="margin-bottom:8px">The agent says each reply out loud while it writes it, in the voice you choose here. These are yours: nobody else's Pantheon changes, and they follow you to every device you sign in on. A voice chat answers you in this voice too.</div>
+            <div class="settings-col">
+              <div class="settings-row">
+                <label class="settings-label" for="conv-voice">Voice</label>
+                <select id="conv-voice" class="settings-select" aria-describedby="conv-voice-note"></select>
+              </div>
+              <div id="conv-voice-note" class="admin-toggle-sub" role="note"></div>
+              <div class="settings-row">
+                <label class="settings-label" for="conv-speed">Speed</label>
+                <select id="conv-speed" class="settings-select">
+                  <option value="">The voice’s own</option>
+                  <option value="0.75">0.75×</option>
+                  <option value="0.9">0.9×</option>
+                  <option value="1">1×</option>
+                  <option value="1.1">1.1×</option>
+                  <option value="1.25">1.25×</option>
+                  <option value="1.5">1.5×</option>
+                </select>
+              </div>
+              <div class="settings-row" style="gap:10px;flex-wrap:wrap">
+                <button type="button" id="conv-preview" class="admin-btn-sm">Hear it</button>
+                <span id="conv-status" class="admin-toggle-sub" role="status" aria-live="polite" style="flex:1;min-width:12em"></span>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -3164,6 +3383,11 @@
           <div class="admin-card">
             <h2><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;opacity:0.6"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>Users</h2>
             <div id="adm-userList"><div class="lib-loading-row" role="status">Loading…</div></div>
+          </div>
+          <div class="admin-card">
+            <h2><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;opacity:0.6"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/></svg>Auto-approve in use</h2>
+            <div class="admin-toggle-sub" style="margin:0 0 10px 2px;">Chats and hired agents whose person accepted Auto-approve's warning, so steps run without asking. <em>Turn off</em> puts that chat back to Manual approve, or makes that hire ask again.</div>
+            <div id="adm-autoApproveList"><div class="lib-loading-row" role="status">Loading…</div></div>
           </div>
           <div class="admin-card">
             <h2><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;opacity:0.6"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>Add User</h2>
@@ -3936,9 +4160,10 @@
           <div class="admin-card">
             <h2><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;opacity:0.6"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/><path d="m7 8 3 2-3 2"/><path d="M12 12h4"/></svg>Workstation</h2>
             <div class="admin-toggle-sub" style="margin-bottom:10px;line-height:1.5;">
-              A separate Ubuntu machine the agents work in &mdash; their shell, Python and
-              files, and a screen they can see and use. Each person has their own account and
-              home in it, kept between chats.
+              A virtual machine of your own that your agent works inside &mdash; its shell,
+              Python and files, and a desktop you can watch and take over. Each person gets their
+              own machine, kept between chats; <em>Reset</em> gives you a fresh one. The browser
+              does not need it: without a workstation your agent uses Pantheon&rsquo;s own.
             </div>
             <div id="ws-status" class="ws-status" data-state="checking" role="status" aria-live="polite">
               <span class="ws-status-dot" aria-hidden="true"></span>
@@ -3952,6 +4177,22 @@
               <!-- `P20-05`. A door to the workstation screen window, answered by
                    `workstationScreen.js`'s one delegated listener. -->
               <button type="button" id="ws-open-screen" class="memory-toolbar-btn" data-open-workstation-screen hidden>Open the screen</button>
+            </div>
+            <!-- `B1725` / `D-2026-11-01-02`. Computer Use: no card for a step
+                 inside this person's workstation, behind a warning the server
+                 words (`GET /api/workstation/computer-use`). -->
+            <div class="admin-toggle-row ws-toggle ws-cu-row" id="ws-cu-row" hidden>
+              <div>
+                <label class="admin-toggle-label" for="ws-cu">Computer Use</label>
+                <div class="admin-toggle-sub" id="ws-cu-why">Off: steps in the workstation ask, as everywhere else.</div>
+              </div>
+              <label class="admin-switch"><input type="checkbox" id="ws-cu" aria-describedby="ws-cu-why"><span class="admin-slider"></span></label>
+            </div>
+            <!-- `B1733`. What Reset puts back: the person's own starting point. -->
+            <div class="settings-row ws-actions ws-sp-row" id="ws-sp-row" hidden>
+              <span id="ws-sp-text" class="admin-toggle-sub ws-sp-text"></span>
+              <button type="button" id="ws-sp-save" class="memory-toolbar-btn">Save as starting point&hellip;</button>
+              <button type="button" id="ws-sp-forget" class="memory-toolbar-btn" hidden>Forget starting point</button>
             </div>
             <div id="ws-result" class="networks-probe-result" role="status" aria-live="polite" hidden></div>
           </div>
@@ -4529,6 +4770,8 @@
 <script type="module" src="/static/app.js?v=20261009census"></script>  <!-- app.js must be LAST -->
   <script type="module" src="/static/js/init.js?v=20260918a11yfocus1"></script>
 <script type="module" src="/static/js/a11y.js"></script>
+<script type="module" src="/static/js/cockpit.js"></script>
+<script type="module" src="/static/js/cockpitWorkspace.js"></script>
 <!-- `P23-07` (PERF-M-1): scope '/' (the server sends Service-Worker-Allowed: /), so the worker controls the app; the
      registration the old scope left behind (/static/) is dropped. -->
 <script>if('serviceWorker' in navigator){navigator.serviceWorker.register('/static/sw.js',{scope:'/'}).then(()=>navigator.serviceWorker.getRegistrations()).then(rs=>rs.forEach(r=>{if(new URL(r.scope).pathname==='/static/')r.unregister();})).catch(()=>{});}</script>

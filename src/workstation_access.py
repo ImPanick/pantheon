@@ -6,7 +6,8 @@ Three conditions, all of them, in this order, and a sentence for each that
 fails — because a tool that silently runs somewhere else is the one outcome
 this phase exists to prevent (`P20-03`: *a turn is never silently moved*):
 
-  1. an admin switched the workstation on (`workstation_enabled`);
+  1. it is on (`workstation_enabled`): an admin switched it on, or nobody
+     has answered and the stack runs one (`B1720`);
   2. it has an address (the setting, or the overlay's environment);
   3. the person may use it: auth is off (the single-user owner), or their
      privileges resolve `can_use_workstation` true — which every admin's do,
@@ -121,6 +122,13 @@ UNCONFIGURED_SENTENCE = ("The workstation is on but has no address. Start it wit
 NOT_PERMITTED_SENTENCE = ("Your account may not use the workstation. An admin can allow it "
                           "in Settings → Users.")
 UP_SENTENCE = "The workstation is answering."
+# The VM backend answers before its first machine can start: the Ubuntu image
+# every machine is made from is made once, the first time it is turned on.
+PREPARING_SENTENCE = ("The workstation is answering and is making its machine image — Ubuntu, a "
+                      "desktop, the tools and Firefox, once. With KVM that takes minutes; without "
+                      "it, much longer. Your machine starts when it is done.")
+IMAGE_FAILED_SENTENCE = ("The workstation is answering, but its machine image could not be made. "
+                         "Its container log says why; restarting the workstation tries again.")
 
 # `B956`. What undoes root: a new container on the same volumes. Turning `sudo`
 # off rewrites the daemon's rule from then on and cannot take back a setuid
@@ -271,15 +279,18 @@ def sudo_choice() -> Optional[bool]:
 
 
 def sudo_wanted(daemon_backend: Optional[str] = None) -> bool:
-    """`B1428`, `D-2026-10-25-04` §4. The admin's answer when they gave one;
-    otherwise ON in a VM — each person's machine is their own — and OFF in the
-    shared container, where root would read everyone's work. `daemon_backend`
-    is what the daemon that answered says it is; without it, the backend in
-    use."""
+    """`B1428`. The admin's answer when they gave one; otherwise ON.
+
+    The owner (2026-10-31): *"Agents get FULL access."* `D-2026-10-25-04` §4
+    had it on in a VM and off in the shared container, where root reads
+    everyone's work; the owner's word supersedes that, and an admin who shares
+    the container with people who should not see each other's homes turns it
+    off (the switch beside it says what root there can read). `daemon_backend`
+    is kept for callers that pass it."""
     choice = sudo_choice()
     if choice is not None:
         return choice
-    return (daemon_backend or wc.effective_backend()) == "vm"
+    return True
 
 
 def route_tools_wanted() -> bool:
@@ -307,6 +318,9 @@ def settings_view() -> Dict[str, Any]:
     stored_pin = stored_pin if isinstance(stored_pin, str) else ""
     return {
         "enabled": wc.enabled(),
+        # `B1720`. None while nobody has answered: then `enabled` is whether
+        # the stack runs one.
+        "enabled_choice": wc.enabled_choice(),
         "url": base or "",
         "url_source": base_source,
         "url_setting": stored_url if isinstance(stored_url, str) else "",
@@ -348,6 +362,8 @@ def validate_setting(key: str, value: Any) -> Any:
     are the same string."""
     if key == "workstation_sudo" and value is None:
         return None   # `B1428`: back to *by backend*
+    if key == "workstation_enabled" and value is None:
+        return None   # `B1720`: back to *on when the stack runs one*
     if key in _BOOL_KEYS:
         if not isinstance(value, bool):
             raise ValueError(f"{key} is true or false.")
@@ -452,6 +468,14 @@ async def sync_config(client: WorkstationClient) -> Dict[str, Any]:
     admins = admin_accounts()
     if daemon.get("admins") != admins:
         daemon.update(await client.config(admins=admins))
+    # A VM host that makes its machine image on first use (the default stack,
+    # `PANTHEON_WORKSTATION_VM_IMAGE=on_first_use`) starts on `config`: being
+    # here means the switch is on (or an admin pressed *Check now*), so it is
+    # sent even when nothing above differed.
+    machine = daemon.get("machine") if isinstance(daemon.get("machine"), dict) else None
+    if machine is not None and machine.get("image") == "waiting":
+        daemon.update(await client.config(sudo=want))
+        daemon["machine"] = {**machine, "image": "preparing"}
     gate = wc.gate_for(client)
     if gate is not None:
         held = await gate.health()
@@ -583,6 +607,44 @@ async def reset_home(owner: Optional[str], *, auth_manager: Any = None) -> Dict[
     return await client.reset(account)
 
 
+#: `B1733`. What the person reads about their starting point, by its scope.
+STARTING_POINT_WORDS = {
+    "home": ("Reset puts back your workstation home as you saved it. Software installed "
+             "system-wide stays until the workstation container is made again."),
+    "machine": "Reset puts back your whole workstation machine as you saved it.",
+}
+STARTING_POINT_NONE_WORDS = ("No starting point saved: Reset gives you the workstation's own "
+                             "clean start.")
+STARTING_POINT_OLD_DAEMON = ("This workstation is older than starting points. Update it to "
+                             "save one.")
+
+
+def starting_point_view(answer: Dict[str, Any]) -> Dict[str, Any]:
+    """`B1733`. The daemon's answer, with the sentence the window shows."""
+    saved = bool(answer.get("saved"))
+    scope = answer.get("scope") if answer.get("scope") in P.STARTING_POINT_SCOPES else "home"
+    at = answer.get("at")
+    return {"saved": saved, "at": at if isinstance(at, (int, float)) else None, "scope": scope,
+            "sentence": STARTING_POINT_WORDS[scope] if saved else STARTING_POINT_NONE_WORDS}
+
+
+async def starting_point(owner: Optional[str], action: str = "status", *,
+                         auth_manager: Any = None) -> Dict[str, Any]:
+    """`B1733`. This person's starting point — asked, saved or forgotten —
+    and nobody else's: the account is derived from the caller, as for
+    `reset_home`."""
+    client, account = workstation_for(owner, auth_manager=auth_manager)
+    if action != "status":
+        await client.health()
+    try:
+        answer = await client.starting_point(account, action)
+    except WorkstationError as e:
+        if e.status == 404 and e.code == "not_found" and "route" in (e.message or "").lower():
+            raise WorkstationError("unavailable", STARTING_POINT_OLD_DAEMON)
+        raise
+    return starting_point_view(answer)
+
+
 def _daemon_view(daemon: Dict[str, Any]) -> Dict[str, Any]:
     """The daemon's own answer, in the fields the panel shows."""
     keep = ("agent", "protocol", "backend", "version", "sudo", "network", "screen", "accounts",
@@ -657,7 +719,10 @@ async def status_for(owner: Optional[str], *, is_admin: bool, auth_manager: Any 
         return out
     out["probe"] = PROBE_OK
     if enabled:
-        out.update(state=STATE_UP, sentence=UP_SENTENCE)
+        image = ((daemon.get("machine") or {}) if isinstance(daemon.get("machine"), dict) else {}).get("image")
+        sentence = (PREPARING_SENTENCE if image in ("preparing", "waiting")
+                    else IMAGE_FAILED_SENTENCE if image == "failed" else UP_SENTENCE)
+        out.update(state=STATE_UP, sentence=sentence)
     return out
 
 
@@ -667,7 +732,8 @@ __all__ = [
     "PRIVILEGE", "PROBE_FAILED", "PROBE_NOT_CHECKED", "PROBE_OK", "RECREATE_COMMAND", "Ready",
     "SETTING_KEYS",
     "STATES", "STATE_DOWN", "STATE_NOT_PERMITTED", "STATE_OFF", "STATE_UNCONFIGURED",
-    "STATE_UP", "UNCONFIGURED_SENTENCE", "UP_SENTENCE", "account_of", "backend_setting",
+    "STATE_UP", "UNCONFIGURED_SENTENCE", "UP_SENTENCE", "PREPARING_SENTENCE",
+    "IMAGE_FAILED_SENTENCE", "account_of", "backend_setting",
     "ensure_ready", "may_use", "network_setting", "reset_home", "route_tools_wanted",
     "routes_tools", "settings_view", "status_for", "sudo_wanted", "sync_config",
     "validate_setting", "workstation_for", "workstation_owner",

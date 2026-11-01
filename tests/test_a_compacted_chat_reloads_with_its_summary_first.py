@@ -62,6 +62,8 @@ def world(monkeypatch, tmp_path):
     monkeypatch.setattr(llm_core, "llm_call_async", summarise)
     monkeypatch.setattr(model_context, "estimate_tokens", lambda messages: 100)
     monkeypatch.setattr(model_context, "get_context_length", lambda url, model: 1000)
+    # `B1731`: the cut is sized to the window the wheel draws, read with its proof.
+    monkeypatch.setattr(model_context, "get_context_length_known", lambda url, model: (8000, True))
 
     db = factory()
     db.add(DbSession(id="c1", owner="ann", name="Launch week", endpoint_url="http://model.test/v1", model="m"))
@@ -90,18 +92,17 @@ def test_the_compacted_chat_reloads_summary_marker_then_kept(world):
     fresh, session = _reloaded(smod)
     context = session.get_context_messages()
     assert context[0]["role"] == "system"
-    assert context[0]["content"].startswith("[Conversation summary — 6 earlier messages were compacted]")
+    assert context[0]["content"].startswith("[Conversation summary — 9 earlier messages were compacted]")
     assert [m["content"] for m in context[1:]] == [
-        "**Chat compacted** — 6 messages summarized, 4 kept.",
-        "line 6", "line 7", "line 8", "line 9"]
+        "**Chat compacted** — 9 messages summarized, 1 kept.", "line 9"]
 
     reload_app = FastAPI()
     reload_app.include_router(history_routes.setup_history_routes(fresh))
     reload_client = TestClient(reload_app)
     for url in ("/api/history/c1?limit=24", "/api/history/c1"):
         drawn = [e["content"] for e in reload_client.get(url).json()["history"]]
-        assert drawn == ["**Chat compacted** — 6 messages summarized, 4 kept.",
-                         "line 6", "line 7", "line 8", "line 9"], url
+        assert drawn == ["**Chat compacted** — 9 messages summarized, 1 kept.",
+                         "line 9"], url
 
 
 def test_with_both_routers_mounted_in_the_apps_order_the_marker_is_kept(world):
@@ -114,12 +115,11 @@ def test_with_both_routers_mounted_in_the_apps_order_the_marker_is_kept(world):
     app.include_router(session_routes.setup_session_routes(manager, {}))
     app.include_router(history_routes.setup_history_routes(manager))
     answer = TestClient(app).post("/api/session/c1/compact").json()
-    assert (answer["ok"], answer["summarized"], answer["kept"]) == (True, 6, 4)
+    assert (answer["ok"], answer["summarized"], answer["kept"]) == (True, 9, 1)
 
     _fresh, session = _reloaded(smod)
     context = session.get_context_messages()
     assert context[0]["role"] == "system"
-    assert context[0]["content"].startswith("[Conversation summary — 6 earlier messages were compacted]")
+    assert context[0]["content"].startswith("[Conversation summary — 9 earlier messages were compacted]")
     assert [m["content"] for m in context[1:]] == [
-        "**Chat compacted** — 6 messages summarized, 4 kept.",
-        "line 6", "line 7", "line 8", "line 9"]
+        "**Chat compacted** — 9 messages summarized, 1 kept.", "line 9"]

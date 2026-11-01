@@ -28,7 +28,14 @@ What is pinned, and why each is a defect if it breaks:
     slowly until it can;
   * **the doors** — a `[data-open-workstation-screen]` control anywhere opens
     it without folding the card it sits on; the palette offers it; a
-    workstation tool card draws the door, a card that ran here does not.
+    workstation tool card draws the door, a card that ran here does not;
+  * **live where it streams** (`D-2026-10-31-01`) — a screen the server says
+    streams is shown in a frame of Pantheon's own client page and no picture
+    is asked for; any other page, kind or failure is pictures, with the
+    server's reason; the frame is taken down while nobody sees it and while
+    the workstation refuses, and put back after; the picture's own inputs send
+    nothing while live; the clipboard crosses only from the stage's own frame
+    and this origin, both ways, and never from a screen being watched.
 """
 from __future__ import annotations
 
@@ -114,6 +121,11 @@ globalThis.fetch = async (url, opts = {}) => {
     return server.resetOk ? reply(200, { ok: true, sentence: 'Your workstation home is back to a clean start.' })
                           : reply(503, { detail: 'The workstation did not answer.' });
   }
+  // `D-2026-10-31-01`. A workstation with no live desktop answers as an older
+  // one does (404); a case that streams sets `server.desktop` to the answer.
+  if (path === '/api/workstation/desktop' && server.desktop) {
+    return reply(200, typeof server.desktop === 'function' ? server.desktop(url) : server.desktop);
+  }
   return reply(404, { detail: 'no such route' });
 };
 export const sent = () => server.calls.filter((c) => c.url === '/api/workstation/input').map((c) => c.body);
@@ -157,6 +169,8 @@ _STUBS.update({
         "    return globalThis.__confirmAnswer !== false;\n"
         "  },\n"
         "  copyToClipboard: (t) => { (globalThis.__copied = globalThis.__copied || []).push(t); },\n"
+        "  copyText: async (t) => { (globalThis.__copiedText = globalThis.__copiedText || []).push(t);\n"
+        "    return globalThis.__copyTextOk !== false; },\n"
         "  showToast: () => {}, showError: () => {},"),
     "appConfig.js": "export function invalidateSettings() {}\n",
 })
@@ -823,3 +837,334 @@ def test_the_panels_door_is_offered_on_the_terms_reset_is(panel_sandbox, case):
     """)
     assert out["door"] is shown and out["door"] == out["reset"]
 
+
+
+# ── `D-2026-10-31-01`: the live desktop ──────────────────────────────────────
+
+CLIENT = ("/api/workstation/desktop/client/vnc.html?autoconnect=true"
+          "&path=api%2Fworkstation%2Fdesktop%2Fwebsockify")
+NO_KASM = "This workstation has no KasmVNC, so its screen is shown as pictures."
+
+# Each case: what the server answers, a page origin, a clipboard the case can
+# read and write (its calls recorded), and a way to read the live state.
+_LIVE = """
+Object.defineProperty(globalThis, 'location',
+  { value: { origin: 'http://pantheon.test' }, configurable: true, writable: true });
+globalThis.isSecureContext = true;
+const clip = { text: 'from the person', writes: [], refuse: false };
+Object.defineProperty(globalThis, 'navigator', { configurable: true, writable: true, value: {
+  clipboard: {
+    readText: async () => clip.text,
+    writeText: async (t) => { if (clip.refuse) throw new Error('NotAllowedError'); clip.writes.push(t); },
+  } } });
+const streams = (o) => { server.desktop = Object.assign({ kind: 'kasmvnc', holder: server.holder,
+  sentence: '__WATCHING__', watching: false, client: '__CLIENT__' }, o || {}); };
+const live = () => mod._test.live();
+const posted = [];
+const giveWindow = () => { const f = live().frame;
+  if (f) f.contentWindow = { postMessage: (m, o) => posted.push({ m, o }) };
+  return f; };
+const say = (data, extra) => mod._test.onMessage(Object.assign(
+  { source: live().frame && live().frame.contentWindow, origin: 'http://pantheon.test', data },
+  extra || {}));
+const desktops = () => server.calls.filter((c) => c.url.startsWith('/api/workstation/desktop'));
+const holderReads = () => server.calls.filter((c) => c.url.startsWith('/api/workstation/control')
+  && c.method === 'GET');
+""".replace("__WATCHING__", WATCHING).replace("__CLIENT__", CLIENT)
+
+
+def _live(sandbox, script):
+    return _run(sandbox, _PREAMBLE + _LIVE, script)
+
+
+def test_a_screen_that_streams_is_shown_live_and_no_picture_is_asked_for(sandbox):
+    out = _live(sandbox, """
+        streams();
+        await open();
+        const w = mod._test.win();
+        const f = live().frame;
+        const atLive = frames().length;
+        const readsAtLive = holderReads().length;
+        await settle(200);
+        out({ framed: !!f && f.parentNode === w.screen, src: f && f.src, title: f && f.title,
+              tag: f && f.tagName, img: !w.img.hidden, empty: !w.empty.hidden,
+              before: atLive, after: frames().length, reads: holderReads().length - readsAtLive,
+              asked: desktops().map((c) => c.url), live: read(mod), note: live().note,
+              isLive: w.screen.classList.contains('wsv-is-live') });
+    """)
+    assert out["framed"] and out["tag"].lower() == "iframe"
+    assert out["src"] == CLIENT and out["title"] == "The workstation desktop"
+    assert out["img"] is False and out["empty"] is False and out["isLive"] is True
+    # At most the one picture asked for while the server was still answering.
+    assert out["before"] <= 1 and out["after"] == out["before"], "pictures were asked for while live"
+    assert out["reads"] >= 2, "who holds the screen stopped being read"
+    assert out["asked"] == ["/api/workstation/desktop"]
+    assert out["live"]["state"] == "up" and out["live"]["status"] == WATCHING
+    assert out["live"]["take"] is True and out["live"]["stage"] is True
+    assert out["note"] == "Connecting to the live desktop…"
+
+
+@pytest.mark.parametrize("answer", [
+    {"client": "https://elsewhere.example/vnc.html"},
+    {"client": "//elsewhere.example/api/workstation/desktop/client/vnc.html"},
+    {"client": "/static/vnc.html"},
+    {"client": 7},
+    {"kind": "vnc"},
+    {"kind": None},
+])
+def test_no_page_but_pantheons_own_client_is_ever_framed(sandbox, answer):
+    out = _live(sandbox, f"""
+        streams({json.dumps(answer)});
+        await open();
+        await settle(80);
+        out({{ frame: !!live().frame, client: live().client, pictures: frames().length,
+               src: read(mod).src }});
+    """)
+    assert out["frame"] is False and out["client"] == ""
+    assert out["pictures"] >= 2 and out["src"].startswith("data:image/jpeg;base64,")
+
+
+def test_why_a_screen_is_pictures_is_said_under_it(sandbox):
+    out = _live(sandbox, f"""
+        server.desktop = {{ kind: null, holder: 'agent', sentence: 'x', watching: false,
+                           why: {json.dumps(NO_KASM)} }};
+        await open();
+        await settle(60);
+        out({{ note: live().note, pictures: frames().length, frame: !!live().frame }});
+    """)
+    assert out["note"] == NO_KASM
+    assert out["pictures"] >= 2 and out["frame"] is False
+
+
+def test_an_older_workstation_is_pictures_and_says_nothing_under_them(sandbox):
+    out = _live(sandbox, """
+        await open();
+        await settle(60);
+        out({ note: live().note, pictures: frames().length, asked: desktops().length });
+    """)
+    assert out["note"] is None and out["pictures"] >= 2 and out["asked"] == 1
+
+
+def test_the_live_desktop_is_taken_down_while_hidden_or_minimized_and_comes_back(sandbox):
+    out = _live(sandbox, """
+        streams();
+        await open();
+        const shown = !!live().frame;
+        document.hidden = true;
+        fire(document, 'visibilitychange');
+        const hidden = !!live().frame;
+        document.hidden = false;
+        fire(document, 'visibilitychange');
+        await settle(10);
+        const visible = !!live().frame;
+        Modals.minimize(ID);
+        await settle(150);
+        const minimized = !!live().frame;
+        Modals.restore(ID);
+        await settle(20);
+        out({ shown, hidden, visible, minimized, restored: !!live().frame,
+              inStage: live().frame && live().frame.parentNode === mod._test.win().screen,
+              count: mod._test.win().screen.querySelectorAll('iframe').length,
+              pictures: frames().length });
+    """)
+    assert out["shown"] is True
+    assert out["hidden"] is False, "the stream ran on in a hidden page"
+    assert out["visible"] is True
+    assert out["minimized"] is False, "the stream ran on while minimized"
+    assert out["restored"] is True and out["inStage"] is True and out["count"] == 1
+    assert out["pictures"] <= 1
+
+
+def test_a_refusal_takes_the_live_desktop_down_and_it_comes_back_with_the_workstation(sandbox):
+    out = _live(sandbox, """
+        streams();
+        await open();
+        server.refuse = { status: 409, detail: 'The workstation is off.' };
+        await settle(150);
+        const refused = { frame: !!live().frame, ...read(mod) };
+        server.refuse = null;
+        await settle(150);
+        out({ refused, back: { frame: !!live().frame, ...read(mod) } });
+    """)
+    assert out["refused"]["frame"] is False
+    assert out["refused"]["state"] == "off" and out["refused"]["status"] == "The workstation is off."
+    assert out["refused"]["stage"] is False
+    assert out["back"]["frame"] is True and out["back"]["state"] == "up"
+
+
+def test_live_the_person_drives_through_the_client_and_the_picture_sends_nothing(sandbox):
+    out = _live(sandbox, """
+        streams();
+        await open();
+        await take();
+        const f = live().frame;
+        const holding = read(mod);
+        const focused = document.activeElement === f;
+        click(300, 200);
+        key('a'); key('Enter');
+        fire(screen(), 'wheel', { clientX: 300, clientY: 200, deltaY: 300, deltaMode: 0 });
+        fire(screen(), 'contextmenu', { clientX: 300, clientY: 200 });
+        fire(screen(), 'paste', { clipboardData: { getData: () => 'pasted' } });
+        await done();
+        const paste = !mod._test.win().paste.hidden;
+        await mod.handBack();
+        await settle(20);
+        out({ holding, focused, sent: sent(), paste, back: read(mod),
+              pasteAfter: !mod._test.win().paste.hidden, controls: controls().map((c) => c.body),
+              tab: mod._test.win().screen.tabIndex });
+    """)
+    assert out["holding"]["status"] == HOLDING and out["holding"]["give"] is True
+    assert out["holding"]["hint"].startswith("Click the desktop, then type")
+    assert out["holding"]["holdingRing"] is False   # the client draws the pointer
+    assert out["focused"] is True, "Take over did not put the keys in the live desktop"
+    assert out["sent"] == [], "the picture's inputs reached the workstation while live"
+    assert out["paste"] is True and out["pasteAfter"] is False
+    assert out["controls"] == [{"holder": "person"}, {"holder": "agent"}]
+    assert out["back"]["take"] is True and out["tab"] == -1
+
+
+def test_what_the_workstation_copies_lands_on_the_persons_clipboard(sandbox):
+    out = _live(sandbox, """
+        streams();
+        await open();
+        giveWindow();
+        say({ action: 'clipboardrx', value: 'from the workstation' });
+        await settle(10);
+        const first = { writes: clip.writes.slice(), note: live().note,
+                        copy: !mod._test.win().copy.hidden };
+        clip.refuse = true;
+        say({ action: 'clipboardrx', value: 'second' });
+        await settle(10);
+        const refused = { clip: live().clip, note: live().note, copy: !mod._test.win().copy.hidden };
+        clip.refuse = false;
+        const ok = await mod.copyFromDesktop();
+        out({ first, refused, ok, writes: clip.writes, helper: globalThis.__copiedText,
+              after: { clip: live().clip, copy: !mod._test.win().copy.hidden, note: live().note } });
+    """)
+    assert out["first"]["writes"] == ["from the workstation"] and out["first"]["copy"] is False
+    assert out["first"]["note"] == "Copied from the workstation to your clipboard."
+    # A browser that will not take it without a press: kept behind *Copy*.
+    assert out["refused"]["clip"] == "second" and out["refused"]["copy"] is True
+    assert out["refused"]["note"].startswith("The workstation copied text. Press Copy")
+    # The press goes through the one helper (`B59`), which works over plain http.
+    assert out["ok"] is True and out["helper"] == ["second"]
+    assert out["writes"] == ["from the workstation"]
+    assert out["after"] == {"clip": "", "copy": False, "note": "Copied to your clipboard."}
+
+
+def test_over_plain_http_what_the_workstation_copies_waits_behind_copy(sandbox):
+    """No asynchronous clipboard outside a secure context, and the helper's
+    synchronous path would take the keyboard from the live desktop: so the
+    text waits for a press."""
+    out = _live(sandbox, """
+        globalThis.isSecureContext = false;
+        streams();
+        await open();
+        giveWindow();
+        say({ action: 'clipboardrx', value: 'over http' });
+        await settle(10);
+        const waiting = { writes: clip.writes.slice(), copy: !mod._test.win().copy.hidden,
+                          helper: (globalThis.__copiedText || []).slice() };
+        await mod.copyFromDesktop();
+        out({ waiting, helper: globalThis.__copiedText });
+    """)
+    assert out["waiting"] == {"writes": [], "copy": True, "helper": []}
+    assert out["helper"] == ["over http"]
+
+
+@pytest.mark.parametrize("who", ["another frame", "another origin", "not an object", "no frame"])
+def test_the_clipboard_is_heard_only_from_the_stages_own_frame_on_this_origin(sandbox, who):
+    extra = {
+        "another frame": "{ source: { postMessage() {} } }",
+        "another origin": "{ origin: 'https://elsewhere.example' }",
+        "not an object": "{ data: 'clipboardrx' }",
+        "no frame": "{}",
+    }[who]
+    out = _live(sandbox, f"""
+        streams();
+        await open();
+        giveWindow();
+        if ({json.dumps(who)} === 'no frame') mod.closeWorkstationScreen();
+        say({{ action: 'clipboardrx', value: 'planted' }}, {extra});
+        say({{ action: 'connection_state', value: 'connected' }}, {extra});
+        await settle(10);
+        out({{ writes: clip.writes, clip: live().clip, state: live().state }});
+    """)
+    assert out["writes"] == [] and out["clip"] == ""
+    assert out["state"] in ("", "connecting")
+
+
+def test_the_streams_state_is_said_in_words_and_connected_says_nothing(sandbox):
+    out = _live(sandbox, """
+        streams();
+        await open();
+        giveWindow();
+        const notes = [];
+        for (const s of ['reconnecting', 'connected', 'disconnected']) {
+          say({ action: 'connection_state', value: s });
+          notes.push(live().note);
+        }
+        out({ notes });
+    """)
+    assert out["notes"] == ["The live desktop dropped; reconnecting…", None,
+                            "The live desktop is not connected; it tries again on its own."]
+
+
+def test_paste_sends_the_persons_clipboard_to_the_workstation_only_while_they_hold_it(sandbox):
+    out = _live(sandbox, """
+        streams();
+        await open();
+        giveWindow();
+        const watching = await mod.pasteToDesktop();
+        await take();
+        const ok = await mod.pasteToDesktop();
+        out({ watching, ok, posted, note: live().note,
+              focused: document.activeElement === live().frame });
+    """)
+    assert out["watching"] is False
+    assert out["ok"] is True
+    assert out["posted"] == [{"m": {"action": "clipboardsnd", "value": "from the person"},
+                              "o": "http://pantheon.test"}]
+    assert out["note"].startswith("Your clipboard is on the workstation now")
+    assert out["focused"] is True
+
+
+def test_watching_another_persons_live_screen_asks_for_theirs_and_takes_no_clipboard(sandbox):
+    out = _live(sandbox, """
+        server.desktop = (url) => ({ kind: 'kasmvnc', holder: 'agent', sentence: 'x',
+          watching: url.includes('person='),
+          client: url.includes('person=') ? '/api/workstation/desktop/client/vnc.html?who=bob'
+                                          : '/api/workstation/desktop/client/vnc.html' });
+        await open();
+        const mine = live().frame;
+        mod.watchPerson('bob');
+        await settle(30);
+        const theirs = live().frame;
+        giveWindow();
+        say({ action: 'clipboardrx', value: 'what bob copied' });
+        await settle(10);
+        out({ asked: desktops().map((c) => c.url), mineGone: !mine.parentNode,
+              src: theirs && theirs.src, title: theirs && theirs.title, writes: clip.writes,
+              take: read(mod).take, reset: read(mod).reset,
+              count: mod._test.win().screen.querySelectorAll('iframe').length });
+    """)
+    assert out["asked"] == ["/api/workstation/desktop", "/api/workstation/desktop?person=bob"]
+    assert out["mineGone"] is True and out["count"] == 1
+    assert out["src"].endswith("?who=bob") and out["title"].endswith("of bob")
+    assert out["writes"] == []
+    assert out["take"] is False and out["reset"] is False
+
+
+def test_closing_takes_the_live_desktop_down_with_the_window(sandbox):
+    out = _live(sandbox, """
+        streams();
+        await open();
+        const f = live().frame;
+        mod.closeWorkstationScreen();
+        await settle(100);
+        out({ gone: !f.parentNode, live: live(), asked: desktops().length,
+              inBody: !!document.getElementById(ID) });
+    """)
+    assert out["gone"] is True and out["inBody"] is False
+    assert out["live"]["client"] == "" and out["live"]["frame"] is None
+    assert out["asked"] == 1

@@ -72,6 +72,7 @@ RUN --mount=type=secret,id=build-ca,required=false,mode=0444 \
 COPY provision.sh vm-guest.sh /opt/pantheon-workstation/payload/
 COPY firefox/ /opt/pantheon-workstation/payload/firefox/
 COPY skel/ /opt/pantheon-workstation/payload/skel/
+COPY desktop/ /opt/pantheon-workstation/payload/desktop/
 # The daemon's code: this host runs `vm.py`, and every machine is given the
 # same files on its app disk at each start.
 COPY *.py /opt/pantheon-workstation/workstation/

@@ -51,6 +51,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import contextlib
 import hashlib
 import hmac
 import ipaddress
@@ -214,7 +215,17 @@ def effective_backend() -> str:
     choice = backend_choice()
     if choice != "auto":
         return choice
-    return "vm" if vm_configured() and vm_accel() == "kvm" else "container"
+    if not vm_configured():
+        return "container"
+    # The owner (2026-10-31): the workstation is *a proper VM* — and, on a
+    # Docker with no KVM, *"Local test doesn't populate a VM at all"*: an
+    # emulated machine takes the better part of an hour to make its image.
+    # Pantheon's own stack ships both, so `auto` is the VM where it runs on KVM
+    # and the container (seconds to start) where it cannot, or has not said
+    # yet. An install with the VM host alone uses it whatever it runs on.
+    if not parse_base(os.environ.get(URL_ENV, "")):
+        return "vm"
+    return "vm" if vm_accel() == "kvm" else "container"
 
 
 def resolve_base() -> tuple[Optional[str], str]:
@@ -276,10 +287,34 @@ def configured_token() -> str:
     return resolve_token()[0]
 
 
+def enabled_choice() -> Optional[bool]:
+    """The admin's own answer, or None when nobody has answered (`B1720`)."""
+    value = _setting("workstation_enabled", None)
+    return value if isinstance(value, bool) else None
+
+
+def stack_provides() -> bool:
+    """Whether the stack Pantheon was started in runs a workstation beside it:
+    the compose files set its address in Pantheon's environment
+    (`docker-compose.yml`, the GPU files, `docker/workstation-remote.yml`)."""
+    return bool(parse_base(os.environ.get(URL_ENV, ""))
+                or parse_base(os.environ.get(P.VM_URL_ENV, "")))
+
+
 def enabled() -> bool:
-    """The admin's switch. Off by default: a workstation nobody turned on does
-    nothing, even if the overlay is running."""
-    return _setting("workstation_enabled", False) is True
+    """The admin's switch, and — until an admin answers it — whether the stack
+    runs a workstation (`B1720`, `D-2026-10-31-03`).
+
+    It was off until an admin turned it on, which made sense while the
+    workstation was an overlay someone had to choose. Since `9687cdf` it is in
+    the default stack, so the off default meant a fresh install ran a
+    workstation its agent could not use until someone found the switch. An
+    admin's explicit on or off always wins; an install with no workstation
+    address in its environment is off exactly as before (`Law 1`)."""
+    choice = enabled_choice()
+    if choice is not None:
+        return choice
+    return stack_provides()
 
 
 def from_settings() -> Optional["WorkstationClient"]:
@@ -643,6 +678,18 @@ class WorkstationClient:
     async def reset(self, account: str) -> Dict:
         return await self._call("reset", account, timeout=120.0)
 
+    async def starting_point(self, account: str, action: str = "status") -> Dict:
+        """`B1733`. `{"account", "saved", "at", "scope"}`: the account's
+        starting point — asked, saved or forgotten
+        (`protocol.ROUTES["starting_point"]`). Saving a VM machine powers it
+        off, copies its disk and starts it again, so it is given the time a
+        boot takes. A daemon older than the route answers `not_found`."""
+        if action not in P.STARTING_POINT_ACTIONS:
+            raise WorkstationError(
+                "bad_request", f"“{action}” is not one of {', '.join(P.STARTING_POINT_ACTIONS)}.")
+        return await self._call("starting_point", account, {"action": action},
+                                timeout=300.0 if action == "save" else 30.0 + _TIMEOUT)
+
     async def control(self, account: str, holder: str) -> Dict:
         return await self._call("control", account, {"holder": holder})
 
@@ -752,6 +799,13 @@ class WorkstationClient:
                                 query={"format": fmt, "if_none_match": if_none_match},
                                 allow_304=True)
 
+    async def marks(self, account: str) -> Dict:
+        """`G2` (`D-2026-11-01-04`). What on the screen can be clicked, from
+        the desktop's accessibility tree (`ROUTES["marks"]`). A daemon older
+        than the route raises `not_found`; one whose screen has no tree,
+        `unavailable` — the caller reads the picture instead either way."""
+        return await self._call("marks", account, timeout=30.0)
+
     async def input(self, account: str, action: str, *, holder: str = "agent",
                     screenshot_after: bool = False, **fields: Any) -> Dict:
         if action not in P.INPUT_ACTIONS:
@@ -787,6 +841,104 @@ class WorkstationClient:
                                    f"“{action}” is not one of {', '.join(P.NETWORK_ACTIONS)}.")
         body = {"action": action, **{k: v for k, v in fields.items() if v is not None}}
         return await self._call("network", account, body, timeout=30.0 + _TIMEOUT)
+
+
+    # -- `D-2026-10-31-01`: the live desktop ------------------------------------
+
+    async def desktop(self, account: str) -> Dict:
+        """`{"kind", "holder", "why"?}`: whether this account's display
+        streams (`protocol.ROUTES["desktop"]`). A daemon older than the route
+        answers `not_found` for the route itself; that comes back as a display
+        without a stream, with a sentence, never as a failure — the window
+        shows pictures, as it always did."""
+        try:
+            return await self._call("desktop", account, timeout=60.0)
+        except WorkstationError as e:
+            if e.status == 404:
+                return {"kind": None, "holder": None,
+                        "why": "This workstation is older than the live desktop, so its screen "
+                               "is shown as pictures. Rebuild it: docker compose up -d --build."}
+            raise
+
+    async def browser_screen(self, account: str) -> Dict:
+        """`D-2026-11-01-01`. `{"kind", "holder", "why"?}`: whether this
+        account's browser runs on a screen of its own that streams
+        (`protocol.ROUTES["browser_screen"]`) — `desktop`'s answer, for the
+        browser. A daemon older than the route answers `not_found`; that is a
+        browser without a screen of its own, shown as frames, never a failure."""
+        try:
+            return await self._call("browser_screen", account, timeout=90.0)
+        except WorkstationError as e:
+            if e.status == 404:
+                return {"kind": None, "holder": None,
+                        "why": "This workstation is older than the live browser, so the browser "
+                               "is shown as pictures. Rebuild it: docker compose up -d --build."}
+            raise
+
+    def browser_screen_stream(self, account: str, viewer: str):
+        """`D-2026-11-01-01`. The browser's screen, as `desktop_stream` gives
+        the desktop: the same websocket, to `ROUTES["browser_screen"]`."""
+        return self.desktop_stream(account, viewer, route="browser_screen")
+
+    @contextlib.asynccontextmanager
+    async def desktop_stream(self, account: str, viewer: str, route: str = "desktop"):
+        """The account's live desktop, as a websocket to the daemon
+        (`protocol.ROUTES["desktop"]` with the upgrade) — the RFB stream,
+        byte for byte, for Pantheon to relay to the person's browser.
+
+        Under the same wire rule as every other call (`_wire`, before the
+        token goes anywhere): a pinned certificate for `https://`, a private
+        address for `http://`. Never through an environment proxy (`B982`'s
+        rule; `websockets` reads `HTTPS_PROXY` unless told not to). No pings
+        of its own: KasmVNC answers none (it ignores every control frame), so
+        a ping would only time the stream out; a dead stream ends when either
+        side's connection does. For the same reason the closing handshake is
+        not waited for long: KasmVNC stops reading at a close frame rather than
+        answering it with one (websocket.c, read at 1.5.2), so the connection
+        is dropped two seconds after asking."""
+        if viewer not in P.DESKTOP_VIEWERS:
+            raise WorkstationError("bad_request",
+                                   f"“viewer” is one of {', '.join(P.DESKTOP_VIEWERS)}.")
+        from websockets.asyncio.client import connect
+        from websockets.exceptions import InvalidStatus, WebSocketException
+
+        if route not in ("desktop", "browser_screen"):
+            raise WorkstationError("bad_request", "That is not a stream the workstation serves.")
+        headers = self._headers()
+        verify = await self._wire()  # `P20-07`: before the token goes anywhere
+        _, url = self._url(route, account, {"viewer": viewer})
+        secure = url.startswith("https://")
+        ws_url = ("wss://" + url[len("https://"):]) if secure else ("ws://" + url[len("http://"):])
+        context = None
+        if secure:
+            context = verify if isinstance(verify, ssl.SSLContext) else ssl.create_default_context()
+        wait = self.timeout + self._grace(route, account)
+        try:
+            upstream = await connect(
+                ws_url, additional_headers=headers, subprotocols=[P.DESKTOP_SUBPROTOCOL],
+                ssl=context, proxy=None, compression=None, open_timeout=wait,
+                ping_interval=None, close_timeout=2.0, max_size=2 ** 20, max_queue=64,
+                user_agent_header=None)
+        except InvalidStatus as e:
+            raise self._error_from(_StatusResponse(e.response)) from e
+        except (OSError, asyncio.TimeoutError, WebSocketException) as e:
+            logger.info("workstation desktop unreachable at %s: %s", self.base, type(e).__name__)
+            raise self._unreachable(e) from e
+        try:
+            yield upstream
+        finally:
+            await upstream.close()
+
+
+class _StatusResponse:
+    """A `websockets` refusal, read the way `_error_from` reads an httpx answer."""
+
+    def __init__(self, response: Any) -> None:
+        self.status_code = getattr(response, "status_code", 0)
+        self._body = bytes(getattr(response, "body", b"") or b"")
+
+    def json(self) -> Any:
+        return json.loads(self._body.decode("utf-8"))
 
 
 # ── the network gate (`P20-06`) ───────────────────────────────────────────────

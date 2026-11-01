@@ -39,7 +39,7 @@ are the numbers most likely to be quoted and least able to carry the weight.
 | The first scored run found three defects, which is what it was built for. | `0 measured` | **`3 defects on the first run`** | `measured` |
 | Ten thousand memories, under a millisecond a query, no service running. | `a service, or nothing` | **`0.82ms at 10,000 memories (15MB of index)`** | `measured` |
 | Twenty-nine checkers in CI, each one built from a defect that actually shipped. | `0` | **`29`** | `counted` |
-| Test files 792 -> 1994, and a suite of 20,309 passing with nothing red. | `792 test files` | **`1994 test files · 20,309`** | `diffed` |
+| Test files 792 -> 2036, and a suite of 20,309 passing with nothing red. | `792 test files` | **`2036 test files · 20,309`** | `diffed` |
 | One tracker, checked by a script, after it was silently wrong by nineteen. | `untracked` | **`every phase row recounted against its own ticks`** | `measured` |
 | Agents can run commands on the host. 52 rules they cannot reach say what never runs. | `no host reach` | **`52 compiled-in rules · 0 bypasses`** | `counted` |
 | Five of the 52 rules aren't about danger. They keep the other 47 enforceable. | `—` | **`5 opaque · 47 nuclear`** | `counted` |
@@ -52,7 +52,7 @@ are the numbers most likely to be quoted and least able to carry the weight.
 | Three trust rungs, a 13-value capability taxonomy, and 21,360 cases pinning it. | `taxonomy unused` | **`21,360 cases, 0 diverged`** | `measured` |
 | Four event types carried an approval flag no line of the frontend ever read. | `4 events lying` | **`0`** | `cited` |
 | Every file of program text now declares its licence, and no vendored file does. None did. | `0 files` | **`every file of program text`** | `measured` |
-| Every shipped third-party file attributed, checked against the bytes on disk — 110 licence texts. | `12 bundled packages with no notice` | **`110 licence texts, every shipped file attributed`** | `counted` |
+| Every shipped third-party file attributed, checked against the bytes on disk — 112 licence texts. | `12 bundled packages with no notice` | **`112 licence texts, every shipped file attributed`** | `counted` |
 | Unreachable UI 78 -> 120 -> 23 -> 0 and ratcheted, with 1,524 lines deleted against 340 added. | `78` | **`0`** | `measured` |
 | A 3,126-line module was parsed three times per page load. | `11 forked` | **`0`** | `measured` |
 | 440 silent exception handlers, 12 of them explained. The mutating ones are now zero. | `26 mutating-and-silent` | **`0`** | `measured` |
@@ -202,13 +202,13 @@ python3 .pantheon/release-gate.py --fast
 
 Argued in: `P1-10`, `P3-13`, `P3-14`, `P3-17`, `P3-23`, `P10-04`, `P11-02b`, `B74`, `B111`, `B161`, `B320`, `B330`, `D-2026-09-08-01`, `D-2026-09-10-03`.
 
-### Test files 792 -> 1994, and a suite of 20,309 passing with nothing red.
+### Test files 792 -> 2036, and a suite of 20,309 passing with nothing red.
 
-**`792 test files` → `1994 test files · 20,309`**  ·  provenance **`diffed`**
+**`792 test files` → `2036 test files · 20,309`**  ·  provenance **`diffed`**
 
 **Odysseus:** 792 test files.
 
-**Pantheon:** 1994 test files, and 20,309 tests passing, 0 failing, 113 skipped, 0 xfailed when the suite was last run whole — 2026-10-18, at `c66fe54`.
+**Pantheon:** 2036 test files, and 20,309 tests passing, 0 failing, 113 skipped, 0 xfailed when the suite was last run whole — 2026-10-18, at `c66fe54`.
 
 **How we got there.** Every row in this fork's tracker lands with tests **and** mutations: the change is made, then the code is deliberately broken in a dozen ways to check the new tests actually notice. Mutation runs have repeatedly found that a passing test was proving nothing — a window that matched the next block's code, a scan satisfied by a name inside `if False:`. **Proximity is not reachability**, and only a mutation run says so. **Re-measured 2026-10-17 and both figures were badly stale**: the claim said *1,182 test files and 14,154 passing*, last set when that was true, while the tree held **1,541** and the suite answered **20,092 passing, 113 skipped, 2 xfailed, nothing red** in 1h16m. 353 of those files had landed without the headline moving — `B44`'s defect one level up, in the one line whose whole job is to summarise the rest. The file count is a `git ls-files` away, so `check-ledger.py` now derives it and fails on drift. The passing count cannot be checked without running the suite (1h16m), so it is a **dated** measurement that names the commit it was taken at, and the checker holds it to carrying both. That is a weaker claim than the file count and deliberately so: adding one test file is a one-line edit and does not pretend to re-measure 20,092 tests, while a figure five waves old is visibly five waves old instead of silently wrong — which is the whole defect this row is about. **The suite carried 14 standing failures for the fork's whole life and now carries none** — and the accounting is worth more than the number: eight were this container missing dependencies the project already declares, so they were never defects; three were test stubs left behind by a `headers=` argument, each raising `TypeError` into a broad `except` so the probe returned `None` and the assertion read as a logic bug; one was a rule written as an allowlist of one name instead of the property it meant; and two were pinning upstream's README and wordmark against a decision this fork had already recorded.
 
@@ -444,9 +444,9 @@ python3 .pantheon/check-spdx.py
 
 Argued in: `P0-18`, `B411`.
 
-### Every shipped third-party file attributed, checked against the bytes on disk — 110 licence texts.
+### Every shipped third-party file attributed, checked against the bytes on disk — 112 licence texts.
 
-**`12 bundled packages with no notice` → `110 licence texts, every shipped file attributed`**  ·  provenance **`counted`**
+**`12 bundled packages with no notice` → `112 licence texts, every shipped file attributed`**  ·  provenance **`counted`**
 
 **Odysseus:** Bundled third-party code without its licence text; the desktop builds redistributed a dozen libraries with attribution stripped.
 

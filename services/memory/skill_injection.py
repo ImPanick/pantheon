@@ -38,10 +38,17 @@ _INDEX_DRAFT_NOTE = (
     "guidance; if you follow one and it works, that's a good signal the procedure "
     "is correct."
 )
+#: `B1737`, the owner's ask (2026-11-01): *"If it's entering a QA process, it
+#: needs to be able to call on the "QA" Skills... If its designing frontend or
+#: web design things, it needs to be able to call upon the skills itself."* So
+#: the catalogue tells the model to choose: open the procedure for the work it
+#: is starting, and search for one when nothing listed fits. `use_skill` is the
+#: read-only tool for both; `manage_skills` stays the editing surface.
 INDEX_PREAMBLE = (
-    "Procedures the assistant should consult before doing domain work. "
-    "Fetch the full procedure with `manage_skills` action=view name=<name> "
-    "when one looks relevant. " + _INDEX_DRAFT_NOTE
+    "Proven procedures. Before work one covers (QA, testing, frontend, "
+    "design, debugging…), open it with `use_skill` name=<name> and follow it; "
+    "if none fits, `use_skill` query=<kind of work> searches the bundled "
+    "library too. " + _INDEX_DRAFT_NOTE
 )
 
 #: `B1360`. The same catalogue, for a turn that cannot call `manage_skills`.
@@ -88,8 +95,7 @@ _MATCHED_LEAD = (
 )
 MATCHED_PREAMBLE = (
     _MATCHED_LEAD + " To see the full SKILL.md (more detail, pitfalls, "
-    "verification steps), call `manage_skills` with action='view' and the "
-    "skill name."
+    "verification steps), call `use_skill` with the skill name."
 )
 MATCHED_PREAMBLE_NO_FETCH = (
     _MATCHED_LEAD + " The full SKILL.md cannot be fetched on this turn, so "
@@ -108,7 +114,7 @@ MATCHED_CAP_PHRASE = ("the matched-skill text is capped so it cannot crowd out "
                       "the conversation")
 MATCHED_TRUNCATION_NOTE = (
     "\n_{what}: " + MATCHED_CAP_PHRASE
-    + ". Fetch one in full with `manage_skills` action=view name=<name>._"
+    + ". Fetch one in full with `use_skill` name=<name>._"
 )
 MATCHED_TRUNCATION_NOTE_NO_FETCH = "\n_{what}: " + MATCHED_CAP_PHRASE + "._"
 #: `Law 10`: "0 further procedures were left out" is not what happened when a
@@ -135,7 +141,7 @@ MATCHED_CUT_WHAT_SHORT = "The procedure above is cut short"
 #: is missing and how to get it. The procedure is a **list**, so these are real
 #: steps and the count is exact — not a character cut dressed up as steps.
 MATCHED_STEPS_ELIDED = ("  _…{remaining} more step(s) in the full SKILL.md. "
-                        "`manage_skills` action=view name={name}._")
+                        "`use_skill` name={name}._")
 MATCHED_STEPS_ELIDED_NO_FETCH = ("  _…{remaining} more step(s) not shown, and the "
                                  "full SKILL.md cannot be fetched on this turn._")
 #: And what the block-level note says when that is what happened. `Law 10`:
@@ -179,8 +185,9 @@ WITHHELD_FIELDS: tuple = _withheld_fields()
 #: concludes the other 260 do not exist, and stops asking.
 INDEX_TRUNCATION_NOTE = (
     "\n_{omitted} more skills are installed and not listed here — the catalogue "
-    "is capped so it cannot crowd out the conversation. Ask for the rest with "
-    "`manage_skills` action=list, or search them with action=search._"
+    "is capped so it cannot crowd out the conversation. Search them with "
+    "`use_skill` query=<the kind of work>, or list them with `use_skill` and "
+    "no arguments._"
 )
 
 
@@ -205,8 +212,19 @@ def _render(entries: Sequence[Dict], note: str = "", *, can_fetch: bool = True) 
     for s in entries:
         by_cat.setdefault(s.get("category") or "general", []).append(s)
     for cat in sorted(by_cat):
-        lines.append(f"\n**{cat}**")
-        for s in by_cat[cat]:
+        # `B1737`. The install's shipped skills are named, not described: their
+        # names say what they are for (`qa-a-change`, `design-a-web-interface`)
+        # and listing seventeen descriptions on every turn cost ~900 tokens —
+        # measured as a 9,000-token window's first request going over by ten.
+        # `use_skill` shows a description on request; a person's own skill keeps
+        # its line, since its name is whatever they called it.
+        shipped = [s for s in by_cat[cat] if s.get("shipped")]
+        own = [s for s in by_cat[cat] if not s.get("shipped")]
+        if shipped:
+            lines.append(f"\n**{cat}** — " + " · ".join(f"`{s['name']}`" for s in shipped))
+        else:
+            lines.append(f"\n**{cat}**")
+        for s in own:
             badge = " *(draft)*" if s.get("status") == "draft" else ""
             lines.append(f"- `{s['name']}` — {s.get('description') or ''}{badge}")
     if note:
@@ -347,6 +365,48 @@ def _render_one_body(sk: Dict, *, max_steps: Optional[int] = None,
 
 def _step_count(sk: Dict) -> int:
     return len(sk.get("procedure") or [])
+
+
+#: `B1719`. A tool whose use is a procedure, and the shipped skill that is that
+#: procedure. When the turn offers the tool, its manual is one of the matched
+#: skills whatever the request's wording, ahead of the matches.
+#:
+#: Measured on `e22fd4a` with Pantheon's own loop driving a real workstation:
+#: *"On the workstation, open a terminal and write a file by typing in it"*
+#: matched the other three workstation skills, and the default cap of three
+#: (`skill_max_injected`) left out `workstation-desktop` — the only one that
+#: says where the panel's buttons are, that every action returns a screenshot,
+#: and that you look before you click. The model was handed `computer` and no
+#: word on how to drive it. Which three won turned on the wording; a manual
+#: that rides with its tool does not.
+TOOL_MANUALS: Dict[str, str] = {"computer": "workstation-desktop"}
+
+
+def with_tool_manuals(matched: Optional[Sequence[Dict]],
+                      injectable: Optional[Sequence[Dict]],
+                      offered_tools) -> List[Dict]:
+    """`matched` with the manual of every offered tool in `TOOL_MANUALS` first.
+
+    A manual comes only from `injectable` — the one list the four gates have
+    already filtered (`B1361`) — so a skill the person switched off, or one
+    whose `requires_toolsets` this turn lacks, stays out. It is added on top
+    of the matches rather than in place of the weakest: the cap is how many
+    *guesses from the wording* a turn gets, and a manual is not a guess. The
+    body budget still applies to the lot (`render_matched_skills_block`), and
+    a manual placed first is the last to be shortened or dropped.
+    """
+    matched = list(matched or [])
+    offered = set(offered_tools or ())
+    by_name = {str(s.get("name")): s for s in (injectable or [])}
+    manuals: List[Dict] = []
+    for tool, name in TOOL_MANUALS.items():
+        if tool in offered and name in by_name and all(
+                str(m.get("name")) != name for m in manuals):
+            manuals.append(by_name[name])
+    if not manuals:
+        return matched
+    names = {str(m.get("name")) for m in manuals}
+    return manuals + [s for s in matched if str(s.get("name")) not in names]
 
 
 def render_matched_skills_block(skills: Optional[Sequence[Dict]],

@@ -75,7 +75,7 @@ FRAME_TRUST_S = 10.0
 _ENV_KEY_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,127}$")
 # xdotool key syntax: names joined by `+`, several combos separated by spaces.
 _KEYS_RE = re.compile(r"^[A-Za-z0-9_+\-]{1,64}( [A-Za-z0-9_+\-]{1,64}){0,15}$")
-_ROUTE_RE = re.compile(r"^/v1/users/(?P<account>[^/]+)/(?P<rest>[a-z/]+)$")
+_ROUTE_RE = re.compile(r"^/v1/users/(?P<account>[^/]+)/(?P<rest>[a-z/-]+)$")  # `B1733`: and `-`
 _ACCOUNT_PATH_RE = re.compile(r"^/v1/users/(?P<account>[^/]+)$")  # `B959`, `P20-07`
 
 
@@ -169,6 +169,34 @@ class Screen:
         """Whether the screen is still the frame taken at `mark`."""
         return False
 
+    # -- `D-2026-10-31-01`, added: the live desktop ------------------------
+    # A screen that streams itself (the Ubuntu display under KasmVNC) names
+    # its kind, gives a viewer's way in, and is told who drives; one that
+    # cannot says None, and the caller shows screenshots.
+
+    desktop_kind: Optional[str] = None
+
+    @property
+    def desktop_why(self) -> str:
+        return "This screen has no live desktop; it is shown as pictures."
+
+    def desktop(self, viewer: str) -> Tuple[int, str]:
+        """`(port, Authorization)`: where on 127.0.0.1 this screen's stream
+        is, and the header that logs `viewer` in there."""
+        raise WorkstationError("unavailable", self.desktop_why)
+
+    def set_driver(self, person: bool) -> None:
+        """Whether the person's viewer may drive (they hold the display)."""
+
+    # -- `G2` (`D-2026-11-01-04`), added: what on the screen can be clicked --
+
+    def marks(self) -> Dict:
+        """`ROUTES["marks"]`'s answer for this screen: its controls, read from
+        the desktop's accessibility tree. A screen that cannot read one says
+        why, and the caller reads the picture instead (`src/screen_marks.py`)."""
+        raise WorkstationError("unavailable", "This screen cannot read what is on it; its "
+                                              "picture is all there is.")
+
 
 class NoScreen(Screen):
     """What a system without a display answers. Said, never faked."""
@@ -183,10 +211,110 @@ class NoScreen(Screen):
         raise WorkstationError("unavailable", self.why)
 
 
+# ── `B1733` · a starting point of the person's own ───────────────────────────
+#
+# `D-2026-11-01-02`. The owner: *"sandboxed and can be reset to zero again
+# (pre-configured like a golden image)"*. A person sets their workstation up
+# — the apps they want, signed in where they want — and saves it; `reset` then
+# puts that back instead of the image's own clean start. Kept by the daemon,
+# root's, beside the homes and never in one, so nothing the agent runs as the
+# account can read or change what it will be reset to.
+
+#: When it was saved, in epoch seconds — beside the copy, in the same folder.
+STARTING_POINT_STAMP = "saved-at"
+#: What a home's copy leaves out: caches rebuild themselves, and copying a
+#: browser's cache doubles the copy for nothing.
+STARTING_POINT_SKIP = frozenset({".cache"})
+#: And, anywhere in it, the locks a running program holds: restored, they
+#: would say a program is running that is not (Firefox's `.parentlock`, and
+#: its `lock` link, below).
+STARTING_POINT_LOCKS = frozenset({".parentlock", "SingletonLock", "SingletonSocket",
+                                  "SingletonCookie"})
+
+
+def _snapshot_ignore(top: Path):
+    """`shutil.copytree`'s `ignore` for a home: its top-level caches, and
+    anything that is not a file, a folder or a link (a socket, a pipe, a
+    device) — those cannot be copied and mean nothing once copied."""
+    import stat as _stat
+
+    def ignore(folder: str, names: List[str]) -> List[str]:
+        out = []
+        here = Path(folder)
+        for name in names:
+            if (here == top and name in STARTING_POINT_SKIP) or name in STARTING_POINT_LOCKS:
+                out.append(name)
+                continue
+            try:
+                mode = os.lstat(here / name).st_mode
+            except OSError:
+                out.append(name)  # gone already: nothing to copy
+                continue
+            if not (_stat.S_ISREG(mode) or _stat.S_ISDIR(mode) or _stat.S_ISLNK(mode)):
+                out.append(name)
+            elif name == "lock" and _stat.S_ISLNK(mode):
+                out.append(name)  # Firefox's profile lock: a running copy's, not the restored one's
+        return out
+    return ignore
+
+
+def _copy_quietly(src: str, dst: str) -> None:
+    """A file that went away between the listing and the copy (a running
+    program's temporary file) is not part of the starting point."""
+    try:
+        shutil.copy2(src, dst, follow_symlinks=False)
+    except FileNotFoundError:
+        pass
+
+
+def snapshot_tree(source: Path, dest: Path) -> int:
+    """Copy `source` to `dest` (which must not exist) as a starting point:
+    links as links, never followed, so a link in a home that points at a
+    root-owned file copies the link and not the file. Answers how many
+    entries could not be copied — a home that is in use changes while it is
+    copied — after logging them."""
+    try:
+        shutil.copytree(source, dest, symlinks=True, ignore=_snapshot_ignore(source),
+                        copy_function=_copy_quietly)
+    except shutil.Error as e:
+        skipped = e.args[0] if e.args and isinstance(e.args[0], list) else []
+        logger.warning("%d entr(y/ies) of %s were not copied into its starting point",
+                       len(skipped), source)
+        return len(skipped)
+    return 0
+
+
+def replace_folder(new: Path, final: Path) -> None:
+    """Put the folder `new` where `final` is, as one rename where the old one
+    is moved aside first — a reader never finds half of either."""
+    old = final.with_name(f".{final.name}.old")
+    shutil.rmtree(old, ignore_errors=True)
+    if final.exists():
+        os.replace(final, old)
+    os.replace(new, final)
+    shutil.rmtree(old, ignore_errors=True)
+
+
+def read_stamp(folder: Path) -> Optional[float]:
+    try:
+        at = float((folder / STARTING_POINT_STAMP).read_text(encoding="utf-8").strip())
+    except (OSError, ValueError):
+        return None
+    return at if math.isfinite(at) else None
+
+
+def write_stamp(folder: Path, at: float) -> None:
+    (folder / STARTING_POINT_STAMP).write_text(f"{at:.3f}\n", encoding="utf-8")
+
+
 # ── systems ───────────────────────────────────────────────────────────────────
 
 class System:
     """How accounts, commands and screens work on one backend."""
+
+    #: `B1733`. What a starting point holds on this backend
+    #: (`P.STARTING_POINT_SCOPES`): the home, unless the backend says more.
+    starting_point_scope = "home"
 
     backend = "remote"
     network = "full"
@@ -271,6 +399,64 @@ class System:
     def reset(self, account: str) -> None:  # pragma: no cover - interface
         raise NotImplementedError
 
+    # -- `B1733`: a starting point ------------------------------------------------
+
+    def starting_points_dir(self) -> Optional[Path]:
+        """Where this backend keeps starting points — root's, beside the
+        homes — or None for one that keeps none."""
+        return None
+
+    def starting_point_of(self, account: str) -> Optional[Path]:
+        """This account's starting point folder, whether or not one is saved."""
+        root = self.starting_points_dir()
+        return root / account if root is not None else None
+
+    def starting_home(self, account: str) -> Optional[Path]:
+        """The saved copy of the home that `reset` fills the home from, or
+        None: the image's own clean start."""
+        folder = self.starting_point_of(account)
+        if folder is None or read_stamp(folder) is None:
+            return None
+        home = folder / "home"
+        return home if home.is_dir() and not home.is_symlink() else None
+
+    def starting_point(self, account: str) -> Dict:
+        folder = self.starting_point_of(account)
+        at = read_stamp(folder) if folder is not None else None
+        return {"account": account, "saved": at is not None, "at": at,
+                "scope": self.starting_point_scope}
+
+    def save_starting_point(self, account: str) -> Dict:
+        """The home as it is now, as this account's starting point."""
+        root = self.starting_points_dir()
+        if root is None:
+            raise WorkstationError("unavailable", "This workstation keeps no starting point.")
+        home = self.home(account)
+        if not home.is_dir() or home.is_symlink():
+            raise WorkstationError("not_found", "There is nothing to save yet: your workstation "
+                                                "is made the first time you or your agent use it.")
+        root.mkdir(mode=0o700, parents=True, exist_ok=True)
+        os.chmod(root, 0o700)
+        work = root / f".{account}.new"
+        shutil.rmtree(work, ignore_errors=True)
+        work.mkdir(mode=0o700)
+        try:
+            skipped = snapshot_tree(home, work / "home")
+            write_stamp(work, time.time())
+            replace_folder(work, root / account)
+        except OSError as e:
+            shutil.rmtree(work, ignore_errors=True)
+            raise WorkstationError("unavailable", f"The starting point could not be saved: {e}.")
+        logger.info("saved %s's home as its starting point (%d entr(y/ies) skipped)",
+                    account, skipped)
+        return self.starting_point(account)
+
+    def forget_starting_point(self, account: str) -> Dict:
+        folder = self.starting_point_of(account)
+        if folder is not None:
+            shutil.rmtree(folder, ignore_errors=True)
+        return self.starting_point(account)
+
     def home(self, account: str) -> Path:  # pragma: no cover - interface
         raise NotImplementedError
 
@@ -316,6 +502,12 @@ class System:
 
     def screen(self, account: str) -> Screen:
         return NoScreen("This workstation has no display.")
+
+    def browser_display(self, account: str) -> Optional[Screen]:
+        """`D-2026-11-01-01`. The account's browser screen — a display of its
+        own that its Firefox runs on and that streams like the desktop — or
+        None where this system has none, and the browser runs headless."""
+        return None
 
     # -- `P20-07`, added ----------------------------------------------------------
 
@@ -393,11 +585,18 @@ class SingleUserSystem(System):
                 home.mkdir(parents=True)
         return {"home": str(home), "display": None, "created": created}
 
+    def starting_points_dir(self) -> Optional[Path]:
+        # `B1733`. A dot-name, so `accounts` never lists it.
+        return self.root / ".pantheon-starting-points"
+
     def reset(self, account: str) -> None:
         home = self.home(account)
         if home.exists():
             shutil.rmtree(home)
         self._screens.pop(account, None)
+        start = self.starting_home(account)   # `B1733`
+        if start is not None:
+            shutil.copytree(start, home, symlinks=True)
         self.ensure(account)
 
     def run_as(self, account: str) -> Tuple[List[str], Dict[str, str]]:
@@ -565,11 +764,25 @@ class Workstation:
         names = self._names.pop(account, None)
         if names is not None:
             names.stop()              # `P27-04`: its files go with the home too
-        self.system.reset(account)
         with self._lock:
             self._holders.pop(account, None)
             self._frames.pop(account, None)  # `B974`
+        self._set_driver(account, False)   # `D-2026-10-31-01`: the fresh desktop is the agent's
+        self.system.reset(account)
         return {"account": account, "reset": True}
+
+    def starting_point(self, account: str, body: Dict) -> Dict:
+        """`B1733`. `ROUTES["starting_point"]`: ask, save or forget the
+        account's starting point — what `reset` puts back."""
+        action = body.get("action")
+        if action not in P.STARTING_POINT_ACTIONS:
+            raise WorkstationError("bad_request", "A starting point is asked to "
+                                   + ", ".join(P.STARTING_POINT_ACTIONS) + ".")
+        if action == "save":
+            return self.system.save_starting_point(account)
+        if action == "forget":
+            return self.system.forget_starting_point(account)
+        return self.system.starting_point(account)
 
     def stop_names(self) -> None:
         """`P27-04`. Every account's names proxy, when the daemon stops."""
@@ -607,7 +820,114 @@ class Workstation:
         with self._lock:
             rec = {"holder": who, "since": time.time()}
             self._holders[account] = rec
-            return dict(rec)
+        # `D-2026-10-31-01`: the person's viewer drives exactly while they hold it.
+        self._set_driver(account, who == "person")
+        return dict(rec)
+
+    def _set_driver(self, account: str, person: bool) -> None:
+        try:
+            screen = self.system.screen(account)
+        except WorkstationError:
+            return  # no account yet: its display, when it starts, starts as the agent's
+        screen.set_driver(person)
+        # `D-2026-11-01-01`: and the browser's screen, which has the same
+        # holder — one person at the wheel, on either screen.
+        browser_screen = self.system.browser_display(account)
+        if browser_screen is not None:
+            browser_screen.set_driver(person)
+
+    # -- `D-2026-10-31-01`: the live desktop ----------------------------------
+
+    def desktop(self, account: str) -> Dict:
+        """What `ROUTES["desktop"]` answers without an upgrade: whether this
+        account's display streams, and who holds it. Starts the display, as a
+        screenshot would, so the answer is about a display that is running."""
+        self.system.ensure(account)
+        self.system.wake(account)
+        screen = self.system.screen(account)
+        kind = screen.desktop_kind
+        out: Dict = {"kind": kind if kind in P.DESKTOP_KINDS else None,
+                     "holder": self.holder(account)["holder"]}
+        if out["kind"] is None:
+            out["why"] = screen.desktop_why
+        return out
+
+    @contextlib.contextmanager
+    def desktop_upstream(self, account: str, viewer: str):
+        """`(socket, path, authorization)`: a connection to where this
+        account's stream is served and how to ask for it there — the
+        display's own websocket here, with that viewer's login. The VM
+        backend's host answers with the person's machine instead
+        (`workstation/vm.py`), and `Handler._desktop` is the same for both."""
+        if viewer not in P.DESKTOP_VIEWERS:
+            raise WorkstationError("bad_request",
+                                   f"“viewer” is one of {', '.join(P.DESKTOP_VIEWERS)}.")
+        self.system.ensure(account)
+        port, authorization = self.system.screen(account).desktop(viewer)
+        try:
+            sock = socket.create_connection(("127.0.0.1", port), timeout=10.0)
+        except OSError as e:
+            raise WorkstationError("unavailable", f"The live desktop did not answer ({e}).")
+        try:
+            yield sock, "/websockify", authorization
+        finally:
+            _close(sock)
+
+    # -- `D-2026-11-01-01`: the browser's own screen ---------------------------
+
+    def browser_screen(self, account: str) -> Dict:
+        """What `ROUTES["browser_screen"]` answers without an upgrade: whether
+        the account's browser has a screen of its own that streams, and who
+        holds it. Starts the browser, as a `frame` would, so the answer is
+        about a browser that is running — and a person who opens the window
+        sees Firefox, not an empty screen."""
+        from workstation.browser import BrowserError
+        self.system.ensure(account)
+        why = ""
+        try:
+            self.browsers.get(account).ensure_running()
+        except BrowserError as e:
+            why = e.message
+        screen = self.system.browser_display(account)
+        kind = screen.desktop_kind if screen is not None and not why else None
+        out: Dict = {"kind": kind if kind in P.DESKTOP_KINDS else None,
+                     "holder": self.holder(account)["holder"]}
+        if out["kind"] is None:
+            out["why"] = why or (screen.desktop_why if screen is not None else
+                                 "This workstation's browser has no screen of its own; it is "
+                                 "shown as pictures.")
+        return out
+
+    @contextlib.contextmanager
+    def browser_screen_upstream(self, account: str, viewer: str):
+        """`desktop_upstream`, for the browser's screen: its display's own
+        websocket with that viewer's login. The browser is started first if it
+        is not running (a stream opened after a restart of the workstation
+        shows Firefox coming up, not a screen with nothing on it); one that
+        will not start is a line in the log, and the screen still streams."""
+        from workstation.browser import BrowserError
+        if viewer not in P.DESKTOP_VIEWERS:
+            raise WorkstationError("bad_request",
+                                   f"“viewer” is one of {', '.join(P.DESKTOP_VIEWERS)}.")
+        self.system.ensure(account)
+        screen = self.system.browser_display(account)
+        if screen is None:
+            raise WorkstationError("unavailable", "This workstation's browser has no screen of "
+                                                  "its own; it is shown as pictures.")
+        try:
+            self.browsers.get(account).ensure_running()
+        except BrowserError as e:
+            logger.warning("browser screen for %s: the browser did not start: %s", account,
+                           e.message)
+        port, authorization = screen.desktop(viewer)
+        try:
+            sock = socket.create_connection(("127.0.0.1", port), timeout=10.0)
+        except OSError as e:
+            raise WorkstationError("unavailable", f"The browser's screen did not answer ({e}).")
+        try:
+            yield sock, "/websockify", authorization
+        finally:
+            _close(sock)
 
     # -- paths ------------------------------------------------------------------
 
@@ -903,6 +1223,26 @@ class Workstation:
             mark = frame["mark"]
         return bool(self.system.screen(account).unchanged(mark))
 
+    def marks(self, account: str) -> Dict:
+        """`G2` (`D-2026-11-01-04`). `ROUTES["marks"]`: what on the account's
+        screen can be clicked or typed into, as the desktop's accessibility
+        tree describes it — each with its role, its name and its box in the
+        screenshot's pixels — and its windows, so the caller knows which the
+        tree describes and which it must read from the picture. Only boxes
+        on the screen and only the fields the protocol names pass."""
+        self.system.ensure(account)
+        got = self.system.screen(account).marks()
+        why = got.get("why")
+        marks = [m for m in (_clean_mark(raw) for raw in (got.get("marks") or [])[:P.MAX_MARKS])
+                 if m is not None]
+        windows = [w for w in (_clean_window(raw) for raw in (got.get("windows") or [])[:64])
+                   if w is not None]
+        out: Dict = {"source": "a11y", "marks": marks, "windows": windows,
+                     "width": P.SCREEN_WIDTH, "height": P.SCREEN_HEIGHT}
+        if isinstance(why, str) and why.strip():
+            out["why"] = why.strip()[:300]
+        return out
+
     def input(self, account: str, body: Dict) -> Dict:
         action = _validated_action(body)
         who = body.get("holder") or "agent"
@@ -935,7 +1275,7 @@ class Workstation:
         who = body.get("holder") or "agent"
         if who not in P.HOLDERS:
             raise WorkstationError("bad_request", "“holder” is “agent” or “person”.")
-        if (who == "agent" and action != "frame" and action not in P.NOTE_ACTIONS
+        if (who == "agent" and action not in P.WATCH_ACTIONS and action not in P.NOTE_ACTIONS
                 and self.holder(account)["holder"] == "person"):
             raise WorkstationError(
                 "busy", "A person has taken over this workstation's screen and its browser. Wait "
@@ -944,9 +1284,11 @@ class Workstation:
             b = self.browsers.get(account)
             if action in P.NOTE_ACTIONS:
                 return b.note(action, body, who=who)
-            if action == "frame":
+            if action in P.WATCH_ACTIONS:
                 since = body.get("since", 0)
                 since = since if isinstance(since, int) and not isinstance(since, bool) and since >= 0 else 0
+                if action == "activity":   # `D-2026-11-01-01`
+                    return b.live(since)
                 return b.frame(str(body.get("if_none_match") or ""), since)
             return b.act(action, body, who=who)
         except BrowserError as e:
@@ -979,6 +1321,52 @@ def _int(value, default: int, name: str) -> int:
     if isinstance(value, bool) or not isinstance(value, int):
         raise WorkstationError("bad_request", f"“{name}” is a whole number.")
     return value
+
+
+def _clean_box(raw) -> Optional[List[int]]:
+    """A box `[x, y, w, h]` of whole numbers on the screen, or None."""
+    if not isinstance(raw, (list, tuple)) or len(raw) != 4:
+        return None
+    if not all(isinstance(v, int) and not isinstance(v, bool) for v in raw):
+        return None
+    x, y, w, h = raw
+    if w < 1 or h < 1 or x < 0 or y < 0 or x + w > P.SCREEN_WIDTH or y + h > P.SCREEN_HEIGHT:
+        return None
+    return [x, y, w, h]
+
+
+def _text(raw, limit: int = P.MARK_NAME_MAX) -> str:
+    return " ".join(str(raw or "").split())[:limit] if isinstance(raw, str) else ""
+
+
+def _clean_mark(raw) -> Optional[Dict]:
+    """`G2`. One mark as the protocol says it, or None: what the reader
+    printed is the account's process's words, so only these fields, shaped."""
+    if not isinstance(raw, dict):
+        return None
+    box = _clean_box(raw.get("box"))
+    if box is None:
+        return None
+    out = {"role": _text(raw.get("role"), 40), "name": _text(raw.get("name")), "box": box,
+           "app": _text(raw.get("app"), 60)}
+    if raw.get("editable") is True:
+        out["editable"] = True
+    if isinstance(raw.get("window"), int) and not isinstance(raw.get("window"), bool):
+        out["window"] = raw["window"]
+    return out
+
+
+def _clean_window(raw) -> Optional[Dict]:
+    if not isinstance(raw, dict):
+        return None
+    box = _clean_box(raw.get("box"))
+    if box is None:
+        return None
+    marks = raw.get("marks")
+    return {"app": _text(raw.get("app"), 60), "name": _text(raw.get("name")), "box": box,
+            "role": _text(raw.get("role"), 40), "active": raw.get("active") is True,
+            "id": raw.get("id") if isinstance(raw.get("id"), int) else -1,
+            "marks": marks if isinstance(marks, int) and not isinstance(marks, bool) else 0}
 
 
 def _validated_action(body: Dict) -> Dict:
@@ -1052,6 +1440,97 @@ def _os_error(e: OSError) -> WorkstationError:
     logger.warning("filesystem error: %s", e)
     return WorkstationError("internal", f"The workstation's filesystem said: "
                                         f"{e.strerror or type(e).__name__}{where}.")
+
+
+# ── `D-2026-10-31-01`: the live desktop's stream ─────────────────────────────
+
+_WS_KEY_RE = re.compile(r"^[A-Za-z0-9+/]{22}==$")   # 16 random bytes, base64 (RFC 6455 §4.1)
+_SPLICE_CHUNK = 65_536
+
+
+def _close(sock) -> None:
+    try:
+        sock.close()
+    except OSError:
+        pass
+
+
+def desktop_request(path: str, port: int, key: str, authorization: str) -> bytes:
+    """The upgrade the daemon sends where a stream is served: KasmVNC's own
+    websocket, or (from the VM backend's host) the daemon in the person's
+    machine. Written here rather than forwarded, so nothing the caller sent
+    reaches the server but the one value the answer has to be computed from —
+    the key — and every header KasmVNC requires is present in the spelling
+    it parses (websocket.c, `parse_handshake`, read at 1.5.2: Host, Origin,
+    Connection, the version, the key and a subprotocol, each `Name: value`)."""
+    if not _WS_KEY_RE.match(key or ""):
+        raise WorkstationError("bad_request", "Sec-WebSocket-Key is not a websocket key.")
+    host = f"127.0.0.1:{port}"
+    return ("GET {path} HTTP/1.1\r\n"
+            "Host: {host}\r\n"
+            "Origin: http://{host}\r\n"
+            "Upgrade: websocket\r\n"
+            "Connection: Upgrade\r\n"
+            "Sec-WebSocket-Version: 13\r\n"
+            "Sec-WebSocket-Key: {key}\r\n"
+            "Sec-WebSocket-Protocol: {proto}\r\n"
+            "Authorization: {auth}\r\n"
+            "\r\n").format(path=path, host=host, key=key, proto=P.DESKTOP_SUBPROTOCOL,
+                             auth=authorization).encode("ascii")
+
+
+def read_head(sock, limit: int = P.MAX_DESKTOP_HANDSHAKE_BYTES) -> Tuple[int, bytes, bytes]:
+    """`(status, head, rest)`: an HTTP answer's status, its head up to and
+    including the blank line, and whatever arrived after it in the same read
+    (the first bytes of the stream, which belong to the caller)."""
+    got = b""
+    while b"\r\n\r\n" not in got:
+        if len(got) > limit:
+            raise WorkstationError("unavailable", "The live desktop answered with too much.")
+        chunk = sock.recv(4096)
+        if not chunk:
+            raise WorkstationError("unavailable", "The live desktop closed the connection "
+                                                  "before it answered.")
+        got += chunk
+    end = got.index(b"\r\n\r\n") + 4
+    head, rest = got[:end], got[end:]
+    try:
+        status = int(head.split(b" ", 2)[1])
+    except (IndexError, ValueError):
+        raise WorkstationError("unavailable", "The live desktop's answer was not HTTP.")
+    return status, head, rest
+
+
+def splice(a, b, *, stop: Optional[threading.Event] = None) -> None:
+    """Bytes both ways between two connected sockets until either side
+    closes. TLS-aware: a record already decrypted sits in the TLS layer where
+    `select` cannot see it, so `pending()` is asked first. A write blocks
+    until the other side takes it, which carries a slow viewer's back-pressure
+    to the server — KasmVNC measures it and sends less (its congestion
+    control) rather than this buffering without end."""
+    for sock in (a, b):
+        sock.settimeout(None)
+    peers = {a: b, b: a}
+    while stop is None or not stop.is_set():
+        ready = [s for s in (a, b) if isinstance(s, ssl.SSLSocket) and s.pending()]
+        if not ready:
+            try:
+                ready, _, _ = select.select([a, b], [], [], 1.0)
+            except (OSError, ValueError):
+                return
+        for sock in ready:
+            try:
+                data = sock.recv(_SPLICE_CHUNK)
+            except ssl.SSLWantReadError:
+                continue
+            except OSError:
+                return
+            if not data:
+                return
+            try:
+                peers[sock].sendall(data)
+            except OSError:
+                return
 
 
 def _kill_group(proc: subprocess.Popen) -> None:
@@ -1128,6 +1607,12 @@ class Handler(BaseHTTPRequestHandler):
     def _dispatch(self, method: str) -> None:
         parts = urlsplit(self.path)
         path = parts.path.rstrip("/")
+        if "websocket" in (self.headers.get("Upgrade") or "").lower():
+            # `D-2026-10-31-01`. A websocket client reads only an HTTP/1.1
+            # answer, so a refusal of an upgrade — the token, the account, the
+            # desktop — is spelt as one; this connection ends after it either way.
+            self.protocol_version = "HTTP/1.1"
+            self.close_connection = True
         authorised = self.station.authorised(self.headers.get("Authorization", ""))
         try:
             if method == "GET" and path == P.ROUTES["health"][1]:
@@ -1153,11 +1638,22 @@ class Handler(BaseHTTPRequestHandler):
             if not m:
                 raise WorkstationError("not_found", "No such workstation route.")
             account = self.station.check_account(m.group("account"))
+            # The whole template, not its tail: `D-2026-11-01-01`'s
+            # `browser/screen` ends in `/screen`, which is another route.
             name = next((n for n, (verb, tmpl) in P.ROUTES.items()
-                         if verb == method and tmpl.endswith("/" + m.group("rest"))
-                         and "{account}" in tmpl), None)
+                         if verb == method and tmpl == "/v1/users/{account}/" + m.group("rest")),
+                        None)
             if name is None:
                 raise WorkstationError("not_found", "No such workstation route.")
+            if name in ("desktop", "browser_screen"):  # `D-2026-10-31-01`, `D-2026-11-01-01`
+                if "websocket" in (self.headers.get("Upgrade") or "").lower():
+                    q = parse_qs(parts.query)
+                    self._desktop(account, (q.get("viewer") or ["person"])[0],
+                                  browser=name == "browser_screen")
+                    return
+                self._send(200, self.station.desktop(account) if name == "desktop"
+                           else self.station.browser_screen(account))
+                return
             if name == "screenshot":
                 q = parse_qs(parts.query)
                 # `B974`: asked before a grab, not answered after one.
@@ -1180,9 +1676,12 @@ class Handler(BaseHTTPRequestHandler):
                        "write": lambda: self.station.write(account, body),
                        "list": lambda: self.station.list(account, body),
                        "input": lambda: self.station.input(account, body),
+                       "marks": lambda: self.station.marks(account),  # `G2`
                        "browser": lambda: self.station.browser(account, body),
                        "names": lambda: self.station.names(account, body),
-                       "network": lambda: self.station.network(account, body)}[name]
+                       "network": lambda: self.station.network(account, body),
+                       # `B1733`
+                       "starting_point": lambda: self.station.starting_point(account, body)}[name]
             answer = handler()
             if answer is None:          # `P25-05`: a browser frame the caller has
                 self._send(304, None)
@@ -1200,6 +1699,52 @@ class Handler(BaseHTTPRequestHandler):
         except Exception as e:  # noqa: BLE001 — the caller gets a sentence, the log gets the trace
             logger.exception("workstation route %s failed", path)
             self._fail(WorkstationError("internal", f"The workstation failed: {type(e).__name__}."))
+
+    def _desktop(self, account: str, viewer: str, *, browser: bool = False) -> None:
+        """`D-2026-10-31-01`. The upgrade: checked, sent on to where the stream
+        is served with that viewer's login, its `101` handed back as it came
+        (its accept value is computed from the caller's own key), and then the
+        two connections joined until one ends. A refusal before the `101` is
+        the usual JSON error; after it the stream is all there is, so a failure
+        is a line in the log and the connection's end. `D-2026-11-01-01`: with
+        `browser`, the browser's screen instead of the desktop, the same way."""
+        if (self.headers.get("Sec-WebSocket-Version") or "").strip() != "13":
+            raise WorkstationError("bad_request", "The desktop speaks websocket version 13.")
+        offered = [p.strip() for p in (self.headers.get("Sec-WebSocket-Protocol") or "").split(",")]
+        if P.DESKTOP_SUBPROTOCOL not in offered:
+            raise WorkstationError("bad_request", f"The desktop's stream is the "
+                                                  f"“{P.DESKTOP_SUBPROTOCOL}” subprotocol.")
+        key = (self.headers.get("Sec-WebSocket-Key") or "").strip()
+        if not _WS_KEY_RE.match(key):
+            # Before anything is opened toward the display, like the two above.
+            raise WorkstationError("bad_request", "Sec-WebSocket-Key is not a websocket key.")
+        upstream_of = (self.station.browser_screen_upstream if browser
+                       else self.station.desktop_upstream)
+        what = "browser screen" if browser else "desktop"
+        noun = "The browser's screen" if browser else "The live desktop"
+        with upstream_of(account, viewer) as (upstream, path, authorization):
+            upstream.settimeout(30.0)
+            try:
+                port = upstream.getpeername()[1]
+                upstream.sendall(desktop_request(path, port, key, authorization))
+                status, head, rest = read_head(upstream)
+            except OSError as e:
+                raise WorkstationError("unavailable", f"{noun} did not answer ({e}).")
+            if status != 101:
+                logger.warning("%s for %s: the stream answered %s", what, account, status)
+                raise WorkstationError("unavailable", f"{noun} refused the connection "
+                                                      f"(HTTP {status}). Reset the workstation if "
+                                                      "this keeps happening.")
+            self.close_connection = True
+            try:
+                self.wfile.write(head + rest)
+                self.wfile.flush()
+                logger.info("%s for %s: %s viewer connected", what, account, viewer)
+                splice(self.connection, upstream)
+            except OSError as e:
+                logger.info("%s for %s: the stream ended (%s)", what, account, e)
+            finally:
+                logger.info("%s for %s: %s viewer gone", what, account, viewer)
 
     def _stream_exec(self, account: str, body: Dict) -> None:
         # Validated before the 200, so a bad request is still a plain error.
@@ -1291,4 +1836,5 @@ def server_context(cert: Path, key: Path) -> "ssl.SSLContext":
 __all__ = ["Handler", "NoScreen", "Screen", "SingleUserSystem", "System", "VERSION",
            "Workstation", "WorkstationError", "bearer", "load_or_create_token",
            "make_server", "mint_token", "server_context",
-           "FRAME_TRUST_S"]  # `B974`, added
+           "FRAME_TRUST_S",  # `B974`, added
+           "desktop_request", "read_head", "splice"]  # `D-2026-10-31-01`, added

@@ -38,7 +38,8 @@ TEXT = ("keyword", "string", "comment", "function", "number", "builtin", "variab
 
 # What the fixed lightnesses left under the floor before this row, per token —
 # `B395`'s count, which is also the set the walk had to move.
-WAS_UNDER = {"comment": 16, "number": 8, "string": 7, "builtin": 5, "keyword": 3}
+# Less the three presets the cockpit retired (theme.js `RETIRED_THEMES`).
+WAS_UNDER = {"comment": 13, "number": 8, "string": 7, "builtin": 5, "keyword": 3}
 
 
 @pytest.fixture(scope="module")
@@ -81,7 +82,7 @@ def _hue(hexv):
 
 
 def test_all_shipped_palettes_were_derived(syntax):
-    assert len(syntax) == 23 and set(syntax) == set(THEME_NAMES), sorted(syntax)
+    assert len(syntax) == 20 and set(syntax) == set(THEME_NAMES), sorted(syntax)  # three retired: theme.js `RETIRED_THEMES`
 
 
 def test_every_syntax_colour_clears_the_code_block_on_every_palette(syntax):

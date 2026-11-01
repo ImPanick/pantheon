@@ -251,9 +251,14 @@ def test_a_pinned_file_outside_every_configured_directory_is_refused(tmp_path):
 def test_this_repositorys_requirements_files_are_all_covered():
     checker = _load(_CHECKER, "dep_real")
     assert checker.dependabot_problems() == []
-    assert checker._dependabot_pip_directories() == ["/"]
+    # `B1729`: the Chatterbox sidecar's image has requirements of its own,
+    # pinned and bumped in their own folder (`tests/test_chatterbox_serves_pantheon.py`
+    # holds them to the same exact pins).
+    assert checker._dependabot_pip_directories() == ["/", "/voice/chatterbox"]
+    # `B1716`/`B1717`: requirements-voice.txt is the image's speech set.
     assert {p.name for p in checker.requirement_files()} == {
-        "requirements.txt", "requirements-optional.txt", "requirements-image.txt"}
+        "requirements.txt", "requirements-optional.txt", "requirements-image.txt",
+        "requirements-voice.txt"}
 
 
 # --- The network half: partitioning a pip-audit report -----------------------

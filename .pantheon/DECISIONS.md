@@ -2571,7 +2571,9 @@ has been pointing at) and D-03 (the VM station).
   dependency, and widening dependencies is its own decision. A person watches the same screenshots the
   agent sees, a few a second, unchanged frames skipped, and takes over by clicking and typing into
   them through the same input route. It needs nothing new on either side, and VNC stays open as a
-  later row if the frame rate is not enough.
+  later row if the frame rate is not enough. *Superseded 2026-10-31 by `D-2026-10-31-01`: the owner chose
+  KasmVNC's live stream, `websockets` is pinned for it, and the screenshot stream is now the
+  fallback where there is no stream.*
 - **Zero-config pairing.** The daemon writes its token into a volume only the two services mount; an
   environment variable overrides it. No token to paste.
 - **Admin-controlled, role-granted.** An admin turns it on; `can_use_workstation` (default off, on for
@@ -2774,6 +2776,9 @@ alone. Recorded so the ruling is not read as resting on a fact that has since ch
 3. **One name per thing:** **Brain** (not Memory), **chat** (not session or conversation), **MCP & Integrations**
    (never just "Integrations" for that room), and **Forge** (already `D-2026-09-18-04`). Library vs Documents was not
    chosen: unchanged. Names change where a person reads them; stored identifiers stay (`D-2026-09-18-04`'s rule).
+
+*Amended 2026-11-01 by `D-2026-11-01-03`:* **Conversation**, capitalised, is the name the owner gave the switch that
+has the agent say its replies out loud. It names a switch, not a chat, and a chat is still a chat.
 
 
 ## D-2026-10-07-01 — version up; Hugging Face is an admin switch; a reply's chat holds its draft
@@ -3462,3 +3467,377 @@ going.* Each is ruled as it was put:
    (`D-2026-10-29-02` §6).
 
 What reopens it: the owner changing any one of these.
+
+---
+
+## D-2026-10-30-01 — Auto-approve is a risk the person accepts, warned, by one deliberate act
+
+*Amended 2026-11-01 by `D-2026-11-01-02`:* a third subject — a person's own workstation, run as
+**Computer Use** — is turned on only the same way: their acceptance of its warning, on record.
+
+*The owner, 2026-10-30, after the sitrep named `B1605`'s cost:* *"Auto-Approve should be
+appropriately 'warned' and the user accepting that risk by enabling it (or 'proceed to
+auto-approve') — then that's on them."*
+
+**Decided:** every way a step stops being asked about — a chat set to Auto (`D-2026-10-09-01`), and
+a hire whose effects run unasked after outside content because its person holds
+`can_auto_approve` (`D-2026-10-29-01` §1) — is turned on only by an explicit acceptance after a
+warning that names the risk in plain words: a page, file or email the agent reads can steer what
+it does next, within everything that is set to run without asking (and, for a hire, including
+deleting or overwriting where its *destructive* row is set to allow). The control says what it is
+— *Proceed to auto-approve* — and the acceptance is recorded (who, when, for which chat or hire),
+so the risk is the person's, knowingly. Turning a gate back on never asks. What this does not
+change: who may use Auto (`can_auto_approve`), and what is validated either way.
+
+What reopens it: the owner changing it.
+
+## D-2026-10-31-01 — the workstation's desktop streams live through KasmVNC, inside Pantheon
+
+*The owner, 2026-10-31, after the workstation worked end to end:* *"We need this to be something
+the agent can use *AND* the user can watch/take control if need be,"* and then, *"What about
+something like KASM?"* Kasm Workspaces itself was advised against (its control plane is a
+proprietary product of its own, it would duplicate the per-person desktops the workstation already
+makes, and each of its images would still need the daemon for the agent). **Decided by the owner,
+17:48, on the card: "KasmVNC inside Pantheon"** — KasmVNC's open-source X server and web client,
+shipped by Pantheon, in the container and in the VM alike.
+
+**What it is.** Each person's display is KasmVNC's X server (`Xkasmvnc`) in place of Xvfb: the same
+X display to the agent (the protocol's 1280×800, the account's cookie, `xdotool` and screenshots as
+before), plus a websocket stream on 127.0.0.1 only. The Workstation window frames KasmVNC's web
+client, which draws the screen as it moves; *Take over* and *Hand back* now also change what the
+open stream may do, live, at the workstation. The clipboard crosses through the window, both ways.
+The screenshot stream stays wherever there is no stream (another architecture, an older
+workstation, a native install without the client), and the window says why.
+
+**Calls made here, not by the owner, and why.**
+
+- **Pinned by version and checksum** — KasmVNC 1.5.2, Kasm Technologies' own Ubuntu 24.04
+  packages, sha256 per architecture in `workstation/provision.sh`; a mismatch is refused. Server
+  GPL-2.0-or-later, in the workstation image; client MPL-2.0 core, in Pantheon's (`CREDITS.md`).
+- **The client is Pantheon's, never the workstation's.** The workstation is where agents run as
+  root, so script a browser runs under Pantheon's origin never comes from there: Pantheon's image
+  unpacks the client from the same pinned package (`dpkg-deb -x`, nothing runs) and serves it under
+  `/api/` behind the session, with a policy of its own (framed by Pantheon only, its inline block by
+  hash, connections to this origin only). Only the RFB stream comes from the workstation.
+- **Two logins per display, in a file the agent cannot rewrite.** `person` (writes only while the
+  person holds the screen) and `watch` (an admin watching, never writes), checked by KasmVNC against
+  a root-owned 0640 file it re-reads when it changes; their secrets live only in the daemon, which
+  adds the login itself. Nothing the browser or Pantheon sends reaches the display but the stream.
+- **The relay authenticates for itself.** A websocket passes no HTTP middleware, so the route asks
+  what `AuthMiddleware` would: a session cookie (a bearer token is not a person, `B70`) and an
+  `Origin` that is this host. Then the same `_watched` door as the frames.
+- **No public lookups** (`Law 16`): `-publicIP 127.0.0.1`, or KasmVNC asks Google's STUN servers at
+  start; the client's WebRTC is off. KasmVNC's UDP listener binds every interface on the stream's
+  port number inside the workstation; the stream itself is loopback-only behind the logins.
+- **`websockets` 17.2 is pinned**, the dependency the 2026-09-30 call was waiting on: Uvicorn needs
+  it to serve any websocket, and the daemon's stream is opened with its client.
+
+**Not verified here.** The build sandbox refused to run the downloaded KasmVNC binary, so the stream
+was tested against a stand-in held to KasmVNC's source (`tests/test_the_workstation_desktop_is_live.py`)
+and the real server is covered by the opt-in image tests
+(`PANTHEON_WORKSTATION_E2E=1 tests/test_the_workstation_image_is_a_real_ubuntu_machine.py`).
+
+What reopens it: the owner changing it, or the real server not doing what its source says.
+
+*Amended 2026-11-01 by `D-2026-11-01-01`:* Pantheon's image now carries KasmVNC's server as well as
+its client, for the browser's own screen where there is no workstation. The client rule above is
+unchanged: the page a person's browser runs is still Pantheon's copy, and only an RFB stream comes
+from a display.
+
+## D-2026-10-31-02 — the workstation's desktop is XFCE, themed to the cockpit
+
+*The owner, 2026-10-31, 18:50:* *"Is there a way to have a - wee bit better looking VM in use? it
+does kinda clash with the over all "modernize" aesthetic -- I accept the hardware use off-sets.. I
+have PLENTY of compute here to spare.."* (production: a four-sled cluster, two Xeon Gold 6130 and
+256 GB per sled). **Decided by the owner, 18:50, on the card: "XFCE, themed to the cockpit"**, over
+staying on JWM with a new theme and over a heavier desktop.
+
+**What it is.** Each person's display runs `xfce4-session` in place of JWM: xfwm4 with Pantheon's
+own window frames and its compositor (shadows, the panel's glass), a 40 px panel along the bottom
+(the Pantheon menu with a search, Terminal, Firefox, Files, the open windows, the clock), the
+cockpit's light field as the wallpaper, xfce4-terminal and Thunar, on dark Adwaita with Papirus
+icons, Inter and JetBrains Mono. The agent's tools do not change: the same display, size, cookie,
+`xdotool` and screenshots; the skills now name the panel's buttons.
+
+**Calls made here, not by the owner, and why.**
+
+- **The look is drawn from the cockpit's tokens, by a script.** `scripts/make-workstation-theme.py`
+  draws the frames (a 30 px title bar of the glass, a lit top edge, rounded top corners, flat
+  buttons that light on hover, close in the accent) and the wallpaper from THEMES.dark, mixed in
+  OKLab as `static/cockpit.css` mixes them; a test holds the committed files to its output. No grain:
+  the desktop is a video stream, and grain is what an encoder cannot compress.
+- **Every setting is a file in the skeleton** (`workstation/skel/.config/`), so a new home and
+  "Reset to clean" get the look, and nothing is set at run time. A home made before this is given
+  the skeleton's `.config` once, as the account, never over a file it has and never through a link
+  — without it XFCE's panel opens on a question.
+- **Nothing in the desktop can end it or hide it**: the menu has no log out, shut down, lock or
+  switch user, the session saves nothing and starts no agents, and the screen saver is off.
+- **JWM stays the fallback.** A machine without XFCE (an image built before it, a native host whose
+  operator skipped the packages) starts JWM as before.
+- **The cost**, measured with apt on Ubuntu 24.04: about 300 MB more in the image, most of it
+  Papirus's icons. Start-up on an idle machine: the panel after 0.5 s, the session ready in 0.9 s.
+
+**Verified here:** the real `XDisplay.start` as an unprivileged account on Xvfb (2026-10-31), on a
+home made before the change: the settings added, the themed desktop, the panel's buttons where the
+skills say, and the damage watch (`B974`) still telling a still screen from a changed one with the
+compositor on. **Not verified here:** the same on KasmVNC's server (the build sandbox would not run
+it) and in the built images; the opt-in image tests cover both.
+
+What reopens it: the owner changing it, or the look not surviving the stream.
+
+## D-2026-10-31-03 — unanswered, the workstation is on when the stack runs one
+
+*The owner, 2026-10-31, 20:24:* *"Ensure the LLM can actually no shit reach the VM and use the
+VM..."* Proved here with Pantheon's own agent loop and tools (only the model scripted) against a
+real workstation daemon running XFCE: the agent took a screenshot, was asked once for *Allow for
+this task* (the trust rung, by design), opened a terminal from the panel, typed a command, and the
+file it wrote was on disk. Two things stood between that and a fresh install, and this entry is the
+second (`B1719` is the first: the desktop's procedure now rides with the `computer` tool).
+
+**The gap.** `workstation_enabled` shipped off (`D-2026-09-30-03`: *an admin turns it on*). That
+was right while the workstation was an overlay someone chose to start. Since `9687cdf` it is in the
+default stack, so a fresh install ran a workstation its agent could not reach until an admin found
+the switch.
+
+**Asked on a card, 2026-10-31; recommended *on by default*; built on that answer while the card
+waits.** Undoing it is `src/workstation_client.enabled()` returning to the stored value alone; this
+entry is updated with the owner's answer.
+
+**What it is.** The setting ships unanswered (`None`), as `workstation_sudo` does. Unanswered means
+on when Pantheon's environment carries a workstation address (`PANTHEON_WORKSTATION_URL` or
+`PANTHEON_WORKSTATION_VM_URL`, which the compose files set), off when it does not. An admin's on or
+off wins, and `null` hands it back to the default. Who may use it is unchanged: the
+`can_use_workstation` privilege, on for admins only.
+
+**Calls made here, not by the owner, and why.**
+
+- **The environment, not a stored address, is "the stack runs one".** An admin who typed an
+  address in Settings has the switch beside it; the environment is what the stack itself says.
+- **An upgraded install keeps its answer.** The settings save path writes every default into
+  `settings.json`, so an install that saved Settings while the default was off has `false` stored,
+  and that cannot be told from an admin's off. It stays off; the setup notes say to turn it on.
+- **Not changed:** an unknown model window still trims a request to 6,000 tokens (`H18`, #4122).
+  Measured on the same run: with a model Pantheon cannot size, the trim dropped the skills and
+  most of the instructions. Local servers report their window and the common models are in the
+  table, so this is noted for the owner rather than reopened.
+
+What reopens it: the owner choosing *keep off* on the card.
+
+## D-2026-11-01-01 — the agent's browser runs on a screen of its own, streamed live
+
+*The owner, 2026-10-31, 23:30, after rebuilding:* *"VM works beautifully. The browser however, has
+missed the mark completely. It's supposed to be a literal web-browser that the agent (llm) can
+*see* the inside content inside of as well as navigate themselves."* The Browser window showed still
+frames of the workstation's Firefox under Pantheon's own address bar and tabs. **Decided by the
+owner, 2026-11-01 01:14, on the card: "A live browser of its own"**: a real Firefox on its own
+screen, separate from the desktop, streamed live like it, with its own tabs and address bar, which
+the person and the agent both use, with or without a workstation.
+
+**What it is.** Each person's browser runs alone on a second display: KasmVNC's X server with no
+desktop session and no window manager on it (`workstation/ubuntu.py`, `XDisplay` role "browser",
+its own X cookie and its own logins). Firefox starts there, not headless, its window over the whole
+screen. The agent drives it through BiDi exactly as before and still sees its screenshots; the
+window frames Pantheon's copy of KasmVNC's client on that screen, so the person sees Firefox itself
+move and uses it while they hold it. The stream is the desktop's design (`D-2026-10-31-01`, which this amends) one display over: the
+daemon's `browser_screen` route (`workstation/protocol.py`), the VM host's forward, Pantheon's
+`/api/workstation/browser/websockify` relay, the same `person` login that writes only while the
+person holds it. One holder covers both screens. Where there is no workstation, Pantheon's own
+browser does the same on Pantheon's own KasmVNC (`src/local_browser.py`).
+
+**Calls made here, not by the owner, and why.**
+
+- **KasmVNC or nothing.** Without KasmVNC the browser's screen does not start (`unavailable`, with
+  why) and Firefox runs headless as before; an Xvfb nobody can watch would only cost memory.
+- **Pantheon's image carries KasmVNC's server**, the same pinned 1.5.2 release, as Kasm's Debian
+  trixie package (Pantheon's base image is Debian; the workstation's packages are Ubuntu's), sha256
+  per architecture in `workstation/provision.sh`. It runs as Pantheon's own user and owns its own
+  logins file; no root is involved.
+- **Firefox's own chrome, not Pantheon's.** Live, the window hides its address bar and tabs: there is
+  one browser, and its own bar is the one that matches what it shows. New windows open as tabs, and
+  closing the last tab keeps the window, so a page cannot leave the agent without a browser.
+- **The agent's tab is the one on the screen.** A person can switch tabs in Firefox; the agent's
+  next action is on what is shown (`document.visibilityState`), not on a tab nobody sees.
+- **Points are the page's own pixels.** A click is checked against the page's size on the screen,
+  and a frame says where the page sits on the screen (`view`), so the agent's hand, outlines, notes
+  and *Point at…* land where they would on a frame.
+- **Watching costs no pictures.** Live, the window asks `?live=1` (`activity`: what the agent did and
+  where the page is, no screenshot), never busy while a person holds it; a note or a pointing takes
+  one picture for its crop.
+
+**Not verified here.** The build sandbox may not run the downloaded KasmVNC binary and has no
+Firefox, so the screen, the stream and the window were tested against stand-ins held to what each
+does (`tests/test_the_browser_is_live_on_a_screen_of_its_own.py`). How Firefox sizes its window
+on a display with no window manager is set twice (its `xulstore.json`, then `xdotool`); the owner's
+rebuild is the first real run.
+
+What reopens it: the owner changing it, or the real Firefox and KasmVNC not behaving as tested.
+
+## D-2026-11-01-02 — Computer Use: the workstation is a computer the agent uses, and Reset puts back the person's own starting point
+
+*The owner, 2026-11-01, 01:47:* *"So the VM isnt really meeting the mark. The LLM is more-so just kind
+of 'SSH'ing into the VM' - my intentions and vision was almost a full blown 'Computer Use' mode for
+that VM specifically - with restrictions lifted because its sandboxed and can be reset to zero again
+(pre-configured like a golden image)."* **Decided by the owner, 2026-11-01 03:58, on the card:
+"Full mode, no asks inside"** — a screen-first agent, a golden-image reset, and no approval cards for
+actions inside the workstation once the person accepts a warning; the card said a web page could then
+steer it to send project files out, and that anything touching Pantheon itself, memory, skills or
+messages still asks.
+
+**Why the agent behaved like SSH (measured on `80513b3c`).** Every `computer` result is outside content
+(`EXTERNAL_UNTRUSTED`), so after the first screenshot of every task the first click asked, at every
+rung; Auto was the only way round it, and Auto lifts it for everything a chat can do. The `computer`
+tool's own description, its line in the tool index and the desktop skill each sent the model to bash
+("Not for running commands…", "bash does those"); `computer` was offered only when a request said
+"workstation" or "desktop"; and Reset could only give the image's clean start.
+
+**What it is.**
+
+1. **Computer Use** (`B1725`) — the fourth amendment of the post-external gate (`FORBIDDEN.md` Part 2,
+   amended in the same commit). With it on, a step that runs **inside** the person's own workstation
+   — `computer`; `agent_browser` when the workstation's own browser answers it; the nine shell and file
+   tools when they are routed there — runs without a card, after outside content too and whatever the
+   rung (`ToolRunSecurityContext._workstation_decision_for`), and is recorded as `workstation_approved`
+   on the `tool_start`, the `tool_output` and the persisted `tool_event`. It is on only while the
+   person's acceptance of its warning is on record (`D-2026-10-30-01`, which this extends to a third
+   subject: `AutoApproveAcceptance.subject = "workstation"`, keyed by the person), turned on from the
+   Workstation panel or the screen window — *Turn on Computer Use* / *Keep asking me*, the words the
+   server's (`approval_mode.WORKSTATION_WARNING`). Held to the people Auto is held to and who may use
+   the workstation (`can_auto_approve` and `can_use_workstation`), asked per run, never for a bearer
+   token, never by the agent (`request_is_a_person`; `app_api` refuses `POST /api/workstation…`). An
+   admin sees each one in Settings › Users › Auto-approve and can turn it off.
+2. **Screen-first** — with Computer Use on, `computer` is offered on every turn however the request is
+   worded, and the prompt carries a look–act–look procedure (`agent_loop.COMPUTER_USE_RULES`) written
+   for small local models (the owner tested with a 12B). The tool's words, its index line and the
+   desktop skill (1.2.0) now say to use the screen for anything a person does at a computer, and
+   bash for commands and files because it is quicker — not *instead*.
+3. **A starting point** (`B1733`) — the person sets their workstation up and saves it; Reset then
+   puts that back instead of the image's clean start (`protocol.ROUTES["starting_point"]`, `save` /
+   `forget` / `status`). Kept by the daemon, root's, beside the homes and never in one. On the
+   container backend it is the home (caches and a running program's locks left out, links kept as
+   links); on the VM backend it is the machine's whole disk, copied with the machine powered off and
+   started again after, and the image it was made from is kept while it is.
+
+**Calls made here, not by the owner, and why.**
+
+- **A command that deletes or overwrites still asks** — Auto's one exception (`B1341` /
+  `D-2026-10-17-01`: *"Auto runs everything without asking, except what cannot be undone"*) kept inside
+  the workstation, because the person's projects folder is shared into it (`B1424`) and Reset does not
+  bring a file deleted there back. The warning says so. One line to drop if the owner wants it gone
+  (`_is_destructive_call` in `_workstation_decision_for`).
+- **What is not the workstation's keeps the gate**: `network` (its `reach` is the person's own network
+  beyond the workstation), `shell_with_login`, `git` and `api_call` (each carries a login or a
+  connection of the person's out of Pantheon), and every Pantheon tool. A vault login set to ask and a
+  hire's *ask* and *never* answer before the lift, and a self-escalation or an unclassifiable action
+  is never lifted.
+- **Cleared for the workstation, run there or not at all.** A step the lift cleared carries that to the
+  dispatcher, which refuses to run it anywhere else (`tool_execution.WORKSTATION_ONLY_SENTENCE`): a
+  workstation that stopped answering between the gate and the run never turns it into a step on
+  Pantheon's own machine that nobody was asked about.
+- **The container's starting point is the home.** What the agent installs system-wide with `sudo`
+  stays until the workstation container is made again; the window says so. The VM's is the whole
+  machine. A full system snapshot of a container from inside it is not possible without Docker on the
+  host, which Pantheon does not assume.
+
+**Not verified here.** The gate, the routes, the acceptance, the panel and the container starting point
+are driven against the real code and a real daemon on a port
+(`tests/test_the_workstation_is_a_computer_the_agent_uses.py`); the VM disk copy and the reboot after
+it are tested with stand-ins, and whether a 12B model drives the screen well is the owner's test.
+
+What reopens it: the owner changing it — the destructive exception above is the first thing to ask.
+
+
+## D-2026-11-01-03 — spoken replies: Kokoro for everyone, Chatterbox on a GPU, and each person's own Conversation switch
+
+*Written 2026-11-01, after `tests/test_one_name_per_thing.py` refused the switch's name on `dev`. The calls were made
+at 02:18 and 02:34 the same day and were recorded only in the tracker (`B1728`–`B1730`) and `CHANGELOG.md`, so the
+one-name rule (`D-2026-10-03-01` §3, which retired "conversation" for a chat) had no record that the owner had given
+the word to something that is not one.*
+
+*The owner, 2026-11-01, 01:43:* *"Need something for realistic voice synthesis for the LLM's response back to the
+user (toggleable). What are our options that are free?"* **Decided by the owner, 02:18, on the card: "Kokoro, plus
+Chatterbox for a GPU"**, and at 02:34, of the switch the plan had called *Speak replies aloud*: *"This should be a
+"Conversation" switch not speak replies aloud - we make it personal-able"*.
+
+**What it is.**
+
+1. **Kokoro for everyone** (`B1728`). Kokoro-82M (Apache-2.0) runs on the processor, in the ONNX Runtime and
+   espeak-ng that Piper already brings, from two files the image carries (about 350 MB, checked against their
+   hashes); without them it is fetched once from the `kokoro-onnx` release on GitHub, and only with *Download models
+   from the internet* on (`Law 16`).
+2. **Chatterbox Turbo on an NVIDIA GPU** (`B1729`), in a container of its own (`voice/chatterbox/`) that the NVIDIA
+   overlay starts with `COMPOSE_PROFILES=chatterbox`. Its weights are fetched while the image is built, and it runs
+   offline after that.
+3. **Conversation, each person's own** (`B1730`). The switch is called **Conversation**: the agent says each reply
+   out loud while it writes it, in the voice and at the speed that person chose, kept with their account (the
+   `conversation` and `conversation_voice` preferences). It is the composer's speech-bubble chip and Settings →
+   Conversation, one switch. Turning it on changes nobody else's Pantheon.
+4. **"Conversation" is that switch's name, not a word for a chat.** `D-2026-10-03-01` §3 stands: a chat is a chat.
+   `SWITCH_NAME` in `tests/test_one_name_per_thing.py` sets the capitalised name aside where it is plainly the
+   switch, and every other "conversation" a person reads still fails there.
+
+**Calls made here, not by the owner, and why.**
+
+- **The server's voice is *Automatic* as shipped**: Chatterbox while it answers, else Kokoro, else Piper. It was
+  *None* until an admin chose one, so a fresh install's voice chat answered in silence. A settings file holding only
+  the old default reads as *Automatic*; an admin who chose *None* or a voice keeps it. It is in `CHANGELOG.md` under
+  "Changed — read this before upgrading".
+- **Where the name is set aside, and nowhere else**: its state (*Conversation on*, *off*), the control (*the
+  Conversation chip*, *switch*), the chip's tooltip (*Conversation: the agent says…*) and the door to its tab
+  (*Settings → Conversation*), case-sensitively. A wider carve-out (any capitalised "Conversation") would let
+  "Delete Conversation" back in, which is what §3 was for.
+
+**What it costs.** The image is about 350 MB larger (`INSTALL_VOICE=false` or `BAKE_MODELS=false` leaves Kokoro out).
+An install that never chose a voice now speaks in a voice chat. And the one-name rule has one exception that the
+owner gave, which nobody should read as a licence for a chat.
+
+**Not verified here.** Kokoro and the switch were driven in Chromium against the real `app.py` and the real
+model. The Chatterbox image has not been built or run (no GPU, and this sandbox could not reach Hugging
+Face), and the Turbo weights' licence was not re-read at its source. The owner's own test is the one left.
+
+What reopens it: the owner renaming the switch (then `SWITCH_NAME` comes out, and
+`test_the_switch_name_is_still_the_switch` fails the day no phrase uses the name), or choosing other voices.
+
+## D-2026-11-01-04 — screen grounding: every screenshot carries numbered marks, and the agent clicks a number
+
+*The owner, 2026-11-01, 09:02, on the frontier game plan:* *"Let's form a game plan for these. All of these are great
+add-ons and road map items. Those top 3 you selected should be first up because that's really good."* **Decided by the
+owner, 09:07, on the card: "Start Phase 1 now"** — Phase 1 being screen grounding (`G1`–`G4`), the first of the three.
+
+**What it is.**
+
+1. **Marks, best source first.** A page in the agent's browser is numbered by its own elements, the numbers `read`
+   gives (`G1`). The desktop is numbered from its accessibility tree, which the apps fill in themselves (`G2`,
+   `ROUTES["marks"]`, read as the account). What neither describes is read off the picture (`G3`).
+2. **What the model gets** (`G4`): the screenshot with the marks drawn on it, and their list in words with each mark's
+   role, name and middle point. `computer` takes `"mark": N` (and `to_mark` for a drag) wherever it takes a point,
+   and `type` with a mark clicks that field first. A number is looked up in the marks of the last screenshot *that
+   person's* agent was shown, and refused, with nothing sent, when it is not on it.
+3. **Measured on the owner's model.** `scripts/grounding_eval.py` runs five scripted tasks (three in the desktop's
+   apps, one on a page in the desktop's Firefox, one in the agent browser) with marks off and then on, judged by what
+   the workstation holds afterwards, and reports both rates.
+
+**Calls made here, not by the owner, and why.**
+
+- **No neural detector.** The plan named OmniParser. Its detector is YOLO weights that need Torch, which Pantheon's
+  image does not carry and would grow by gigabytes; the fallback is Tesseract for text (its English model is the
+  Debian package's own, nothing is fetched, `Law 16`) and NumPy for compact, edge-dense shapes on a quiet ground.
+  It is labelled *seen* in the list so the model knows those marks are guesses. A real detector can replace
+  `screen_marks.seen` without touching anything else.
+- **The tree is read on demand, not kept.** One walk per screenshot (about 50–200 ms on the desktop measured here),
+  as the account, by a reader fed on stdin, so nothing the agent runs can change what the daemon executes.
+- **Marks are on by default** while Computer Use is offered; `screen_marks.ENABLED` is the switch, used by the
+  evaluation's "before" pass. There is no per-person setting yet.
+- **Every app the desktop starts is asked to describe itself** (`GNOME_ACCESSIBILITY=1`, `QT_ACCESSIBILITY=1`), so
+  Firefox on the desktop exposes the page it shows. It costs those apps a little memory and start-up time.
+
+**What it costs.** Each `computer` screenshot takes up to about a second longer (the tree, then Tesseract). The
+workstation image gains the accessibility bus and PyGObject (a few MB); Pantheon's image gains Tesseract (about
+30 MB). The boxes cover a little of the picture they mark.
+
+**Not verified here.** Driven against the real daemon, the real XFCE with Pantheon's skeleton and real AT-SPI (a
+mark opened the Terminal and a mark typed into it), and the evaluation end to end with a scripted model. This
+sandbox has no Firefox, no KasmVNC, no VM and no model of the owner's: `G1` live, the desktop Firefox's tree and both
+success rates are the owner's to run.
+
+What reopens it: the before/after showing marks do not help the owner's model, or a detector worth its weight.
+

@@ -88,7 +88,7 @@ TOOL_TOGGLE_ALIASES: Mapping[str, tuple[str, ...]] = MappingProxyType({
     "doc": _DOCUMENT_TOOLS,
     "memory": ("manage_memory",),
     "rag": ("manage_rag",),  # `B66`
-    "skills": ("manage_skills",),
+    "skills": ("manage_skills", "use_skill"),  # `B1737`
     "images": ("generate_image",),
     "image": ("generate_image",),
     "tasks": ("manage_tasks",),

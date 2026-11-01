@@ -153,3 +153,45 @@ def test_the_environment_variable_is_the_same_consent(hub, settings, monkeypatch
     client, _ = _client()
     assert _send(client).status_code == 200
     assert hub.fetched == ["base"]
+
+
+def _seed(tmp_path, size="base"):
+    folder = tmp_path / "seed" / "whisper" / size
+    folder.mkdir(parents=True)
+    (folder / "model.bin").write_bytes(b"ctranslate2")
+    (folder / "config.json").write_text("{}")
+    return folder
+
+
+def test_the_model_the_image_carries_is_used_with_the_gate_off(hub, settings, monkeypatch, tmp_path):
+    """`B1716`. The image bakes Whisper `base` into
+    `PANTHEON_SEED_MODELS/whisper/base` (the Dockerfile's `BAKE_MODELS`): a
+    fresh install transcribes with it, fetching nothing and asking nothing."""
+    folder = _seed(tmp_path)
+    monkeypatch.setenv("PANTHEON_SEED_MODELS", str(tmp_path / "seed"))
+    client, service = _client()
+    r = _send(client)
+    assert r.status_code == 200 and r.json() == {"text": "hello"}
+    assert hub.fetched == []
+    assert hub.built == [str(folder)], "built from the image's folder"
+    assert service.unavailable_reason() is None
+
+
+def test_a_size_the_image_was_not_baked_with_still_asks(hub, settings, monkeypatch, tmp_path):
+    _seed(tmp_path, "base")
+    monkeypatch.setenv("PANTHEON_SEED_MODELS", str(tmp_path / "seed"))
+    settings["stt_model"] = "small"
+    client, _ = _client()
+    r = _send(client)
+    assert r.status_code == 503
+    assert "Whisper “small” model, which is not downloaded" in r.json()["detail"]["message"]
+    assert hub.fetched == []
+
+
+@pytest.mark.parametrize("size", ["../base", "base/../../x", ".hidden", "/abs/base"])
+def test_a_size_that_is_not_a_name_is_never_looked_for_in_the_image(size, monkeypatch, tmp_path):
+    from services.stt.stt_service import whisper_seed_dir
+    _seed(tmp_path)
+    monkeypatch.setenv("PANTHEON_SEED_MODELS", str(tmp_path / "seed"))
+    assert whisper_seed_dir(size) is None
+    assert whisper_seed_dir("") == str(tmp_path / "seed" / "whisper" / "base"), "blank is the default size"

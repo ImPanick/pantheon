@@ -42,6 +42,13 @@
 
 fastapi==0.141.1
 uvicorn==0.54.0
+# `D-2026-10-31-01`. The live desktop is a WebSocket both ways: Uvicorn serves
+# the browser's end with it (plain `uvicorn`, not `uvicorn[standard]`, brings no
+# WebSocket library, and refuses every upgrade without one), and
+# `src/workstation_client.py` opens the workstation's end with its client.
+# 17.2 (2026-10-03) rather than the newest, a release from the day before this
+# was pinned; it supports Python 3.11 onward, as CI and the image run.
+websockets==17.2
 # Not imported: FastAPI imports it (as `python_multipart`) to parse every
 # `Form`/`File` body, and refuses to register an upload route without it.
 python-multipart==0.0.32

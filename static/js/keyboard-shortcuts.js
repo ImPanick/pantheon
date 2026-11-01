@@ -67,6 +67,10 @@ export const KEYBIND_DEFAULTS = {
   // viewer only). On a Mac it is Control+Option+P: Cmd+Option+P is Chrome's
   // Page Setup and stays the browser's (see `_matchesCombo`).
   plan_mode: 'ctrl+alt+p',
+  // The cockpit's workspace column (`cockpitWorkspace.js`): tuck it to a tab at
+  // the right edge, or bring it back. Ctrl+\\ is in no published browser page
+  // shortcut, and the backslash types nothing a chat would miss.
+  toggle_workspace: 'ctrl+\\',
   // Open-tool shortcuts (Calendar bound by default; rest unbound).
   open_calendar: 'ctrl+alt+c', open_compare: '', open_cookbook: '',
   open_research: '', open_gallery: '', open_library: '', open_memory: '',
@@ -114,6 +118,7 @@ export const KEYBIND_LABELS = {
   tts: 'Play/stop TTS',
   incognito: 'Toggle Nobody',
   plan_mode: 'Toggle Plan mode',
+  toggle_workspace: 'Tuck or show the workspace',
   // `P23-01` (NAV-M-10, NAV-U-14). It was "Toggle Window" and closed the
   // first window in a fixed list. It opens Settings, and raises it when open.
   settings: 'Settings',
@@ -459,6 +464,12 @@ export function initKeyboardShortcuts(modules) {
       if (e.repeat) return;
       const btn = el('plan-toggle-btn');
       if (btn) btn.click();
+      return;
+    }
+    if (_matchesCombo(e, kb.toggle_workspace)) {
+      e.preventDefault();
+      if (e.repeat) return;
+      document.dispatchEvent(new CustomEvent('pantheon:toggle-workspace'));
       return;
     }
     if (_matchesCombo(e, kb.settings)) {

@@ -2,9 +2,8 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 <!--
   The workstation's desktop (P20-01): one tray along the bottom with a
-  Terminal and a Firefox button, a task list and a clock, and one terminal
-  open at start so the first screenshot already shows somewhere to type.
-  Right-click the desktop for the same two programs. This file is in the
+  Terminal and a Firefox button, a task list and a clock, and nothing open
+  at start: an idle desktop stays idle (B1721). Right-click the desktop for the same two programs. This file is in the
   account's home; "Reset to clean" puts it back.
 -->
 <JWM>
@@ -33,5 +32,4 @@
         <Background type="solid">#2b3440</Background>
     </Desktops>
     <FocusModel>click</FocusModel>
-    <StartupCommand>xterm</StartupCommand>
 </JWM>

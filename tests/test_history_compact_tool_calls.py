@@ -117,6 +117,7 @@ def _compact_prompt_for(monkeypatch, history):
     monkeypatch.setattr(llm_core, "llm_call_async", fake_llm_call_async)
     monkeypatch.setattr(model_context, "estimate_tokens", lambda messages: 100)
     monkeypatch.setattr(model_context, "get_context_length", lambda endpoint_url, model: 1000)
+    monkeypatch.setattr(model_context, "get_context_length_known", lambda endpoint_url, model: (1000, True))
 
     session = _FakeSession(history)
     manager = _FakeSessionManager(session)
@@ -158,6 +159,11 @@ def _registered_compact_response(monkeypatch, history, active_run=False):
 
     monkeypatch.setattr(endpoint_resolver, "resolve_endpoint", fake_resolve_endpoint)
     monkeypatch.setattr(llm_core, "llm_call_async", fake_llm_call_async)
+    # `B1731`: a compaction measures the chat against the window the wheel
+    # draws; six short rows are given a size worth compacting.
+    import src.model_context as model_context
+    monkeypatch.setattr(model_context, "estimate_tokens", lambda messages: 100)
+    monkeypatch.setattr(model_context, "get_context_length_known", lambda url, model: (1000, True))
 
     session = _FakeSession(history)
     manager = _FakeSessionManager(session)

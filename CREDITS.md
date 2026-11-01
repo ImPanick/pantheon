@@ -85,9 +85,11 @@ file. Stated plainly, so nothing has to be inferred:
    with permissively-licensed work is not blocked by a *dependency*. It never
    meant Pantheon is distributable under MIT, and this file no longer says
    anything that could be read that way.
-4. **Three third-party components are copyleft, and only one of them is
-   optional.** Each is copyleft in a *different* way, which is the part worth
-   reading — "copyleft" on its own tells you almost nothing about what you owe.
+4. **Nine third-party components are copyleft.** Two ship in every install,
+   five more are in the Docker image by default (four of which can be built out
+   of it), one is in the workstation's image, and one ships in neither. Each is
+   copyleft in a *different* way, which is the part worth reading — "copyleft"
+   on its own tells you almost nothing about what you owe.
 
    - **OpenMoji** — the emoji artwork, **CC BY-SA 4.0**, in
      [`library/emoji/`](library/emoji/). **Ships by default**: it is what every
@@ -105,6 +107,50 @@ file. Stated plainly, so nothing has to be inferred:
      that file's source under MPL — the rest of Pantheon is unaffected.
    - **PyMuPDF** — **AGPL-3.0**, and ships in neither the default install nor
      the default image. See [PyMuPDF](#pymupdf--scope-and-licence).
+   - **Piper** (`piper-tts`) — the voice this server speaks with on its own
+     processor (`B1717`), **GPL-3.0-or-later**, because it carries espeak-ng
+     for pronunciation. **In the Docker image by default** (`INSTALL_VOICE`);
+     a native install has it only from `requirements-voice.txt`. Pantheon
+     imports it as a library, so the two are combined in one process: GPLv3
+     §13 and AGPLv3 §13 each expressly allow a GPLv3 work and an AGPLv3 work to
+     be combined, each part keeping its own licence, with the AGPL's network
+     clause applying to the combination. Piper is shipped unmodified from its
+     published wheel; what is owed with the image is its notice (the wheel's
+     `COPYING`) and its source, at
+     [OHF-Voice/piper1-gpl](https://github.com/OHF-Voice/piper1-gpl) for the
+     pinned version. `--build-arg INSTALL_VOICE=false` builds an image without
+     it.
+   - **FFmpeg**, inside PyAV (`av`, which faster-whisper decodes audio with) —
+     **LGPL-3.0-or-later**, measured from the libraries PyAV's wheel carries
+     (`avcodec_license()` answers *LGPL version 3 or later*; built
+     `--enable-version3`, without `--enable-gpl`). In the image by default with
+     the rest of speech, as shared libraries PyAV loads unmodified, so what is
+     owed is FFmpeg's notice and the source of that build: upstream FFmpeg's
+     release, built by PyAV's published scripts
+     ([PyAV-Org/pyav-ffmpeg](https://github.com/PyAV-Org/pyav-ffmpeg)).
+     `INSTALL_VOICE=false` leaves it out too.
+   - **x264** and **x265**, the H.264 and H.265 video encoders, inside the same
+     wheel — **GPL-2.0-or-later**. FFmpeg's own licence line does not say so,
+     but that build links both (`--enable-libx264 --enable-libx265` in
+     `avcodec_configuration()`; `libavcodec` names `libx264` and `libx265` as
+     libraries it needs, and the wheel carries them), measured on PyAV 18.1.0,
+     the version pinned. Speech never encodes video; they are loaded because
+     `libavcodec` is. They come under GPLv3 by their "or later", and are
+     combined with Pantheon as Piper is (GPLv3 §13, AGPLv3 §13). Shipped
+     unmodified in the image by default; what is owed is their notices and
+     the source of that build, from the same scripts. `INSTALL_VOICE=false`
+     leaves them out with the rest of PyAV.
+   - **KasmVNC's web client** — the live desktop's viewer
+     (`D-2026-10-31-01`), noVNC's terms: **MPL-2.0** for its JavaScript core
+     (file-level, like Pyodide) and **CC BY-SA 3.0** for its images, with the
+     package it comes from declaring **GPL-2.0-or-later** for all its files.
+     **In the Docker image by default**, unpacked unmodified from the pinned
+     package and served to the browser as a separate program. What is owed is
+     its notices, which the image carries beside it, and its source. See
+     [the live workstation desktop](#docker-images--the-live-workstation-desktop).
+   - **KasmVNC's X server** — **GPL-2.0-or-later**, in the **workstation's**
+     image (and the VM's), not Pantheon's: a separate program on a separate
+     machine, installed unmodified by apt with its own `copyright` file.
 
    This numbered point said "the one copyleft dependency is optional" until
    2026-09-01, and by then it had been wrong for as long as the product had been
@@ -870,6 +916,8 @@ and whose Reserved Font Name the subset does not use.
 | Font | Files | Licence | Author | Reserved Font Name |
 |---|---|---|---|---|
 | [Fira Code](https://github.com/tonsky/FiraCode) | `static/fonts/FiraCode-{Light,Regular,SemiBold}.woff2` | SIL Open Font License 1.1 ([`licenses/FiraCode-OFL.txt`](licenses/FiraCode-OFL.txt)) | Nikita Prokopov & contributors | none declared |
+| [Geist](https://github.com/vercel/geist-font) via Fontsource 5.3.0 | `static/fonts/Geist-{Regular,Medium,SemiBold}.woff2`, `static/fonts/GeistMono-{Regular,Medium}.woff2` | SIL Open Font License 1.1 ([`licenses/Geist-OFL.txt`](licenses/Geist-OFL.txt)) | Vercel, with basement.studio | none declared |
+| [Instrument Serif](https://github.com/Instrument/instrument-serif) via Fontsource 5.3.0 | `static/fonts/InstrumentSerif-Regular.woff2` | SIL Open Font License 1.1 ([`licenses/InstrumentSerif-OFL.txt`](licenses/InstrumentSerif-OFL.txt)) | The Instrument Serif Project Authors | none declared |
 | [Inter](https://github.com/rsms/inter) v4.1 | `static/fonts/Inter-{Regular,Medium,SemiBold}.woff2`, `static/lib/pdf-fonts/Inter-{Regular,Bold,Italic,BoldItalic}.ttf` | SIL Open Font License 1.1 ([`licenses/Inter-OFL.txt`](licenses/Inter-OFL.txt)) | Rasmus Andersson | none declared |
 | [Noto Sans CJK](https://github.com/notofonts/noto-cjk) SC v2.004, two subsets | `static/lib/pdf-fonts/NotoSansCJKsc-{Regular,Symbols}.subset.ttf` | SIL Open Font License 1.1 ([`licenses/NotoSansCJK-OFL.txt`](licenses/NotoSansCJK-OFL.txt)) | Adobe, for Google's Noto project | **yes — `Source`**, which the subset's name does not use |
 | [OpenDyslexic](https://opendyslexic.org/) | `static/fonts/OpenDyslexic-{Regular,Bold}.woff2` | SIL Open Font License 1.1 ([`licenses/OpenDyslexic-OFL.txt`](licenses/OpenDyslexic-OFL.txt)) | Abbie Gonzalez | **yes — `OpenDyslexic`** |
@@ -951,12 +999,15 @@ same reason: someone finally compared what is *on disk* against what this file
 
 Core (`requirements.txt`) and optional (`requirements-optional.txt`). Licences
 below were re-read from each distribution's own published metadata on
-2026-08-27 rather than carried from the inherited acknowledgements.
+2026-08-27 rather than carried from the inherited acknowledgements. Voice
+(`requirements-voice.txt`, which the Docker image installs by default) was
+read the same way on 2026-10-31, with what its wheels carry inside them.
 
 | Package | Where | Licence |
 |---|---|---|
 | FastAPI | core | MIT |
 | Uvicorn | core | BSD-3-Clause |
+| websockets | core — Uvicorn's WebSocket server, and the live desktop's stream from the workstation (`D-2026-10-31-01`) | BSD-3-Clause |
 | python-multipart | core | Apache-2.0 |
 | python-dotenv | core | BSD-3-Clause |
 | HTTPX | core | BSD-3-Clause |
@@ -984,7 +1035,11 @@ below were re-read from each distribution's own published metadata on
 | qrcode\[pil] | core | BSD-3-Clause |
 | croniter | core | MIT |
 | pytest / pytest-asyncio | core | MIT / Apache-2.0 |
-| faster-whisper | optional — local speech-to-text | MIT |
+| faster-whisper | voice (`requirements-voice.txt`, in the Docker image by default) and optional — local speech-to-text | MIT |
+| **CTranslate2** | voice — installed by faster-whisper; runs Whisper | MIT |
+| **PyAV** (`av`) | voice — installed by faster-whisper, pinned below 19 (`B1716`); decodes a recording | BSD-3-Clause; its wheel carries FFmpeg's libraries, LGPL-3.0-or-later, and the x264 and x265 encoders, **GPL-2.0-or-later** (see *Licence scope*) |
+| **piper-tts** | voice (`requirements-voice.txt`, in the Docker image by default) — the Piper voice | **GPL-3.0-or-later** (carries espeak-ng; see *Licence scope*) |
+| **pathvalidate** | voice — installed by piper-tts, for its command line | MIT |
 | kokoro | optional — local text-to-speech | Apache-2.0 |
 | `soundfile` (python-soundfile) | optional — audio I/O for kokoro | BSD-3-Clause |
 | **`ddgs`** | optional — DuckDuckGo search provider | MIT |
@@ -1071,6 +1126,99 @@ is installed on demand from the Forge's dependency list
 3.14. Its model weights (`realesr-general-x4v3`, `RealESRGAN_x4plus`) are
 downloaded at runtime from Real-ESRGAN's own GitHub releases and are likewise
 not redistributed here.
+
+---
+
+## Docker image — speech models
+
+The image bakes one speech-to-text model and one voice into
+`/opt/pantheon/seed-models` while it is built (`BAKE_MODELS` with
+`INSTALL_VOICE`, `B1716`, `B1717`), read in place at runtime and never copied
+into the data volume. Neither is modified.
+
+| Model | From | Licence |
+|---|---|---|
+| Whisper `base`, in CTranslate2's format (`WHISPER_SEED_MODEL`) | [`Systran/faster-whisper-base`](https://huggingface.co/Systran/faster-whisper-base), a conversion of OpenAI's [Whisper](https://github.com/openai/whisper) weights | MIT (OpenAI's weights, and the conversion) |
+| Piper voice `en_US-ljspeech-medium` (`PIPER_SEED_VOICE`) | [`rhasspy/piper-voices`](https://huggingface.co/rhasspy/piper-voices), `en/en_US/ljspeech/medium/` | Trained on the [LJ Speech](https://keithito.com/LJ-Speech-Dataset/) recordings, which their authors put in the public domain; the voice's own terms are in its model card, baked beside it as `en_US-ljspeech-medium.MODEL_CARD` |
+| Kokoro-82M v1.0 exported to ONNX, `kokoro-v1.0.onnx` (`B1728`), baked into `seed-models/kokoro/` | [`hexgrad/Kokoro-82M`](https://huggingface.co/hexgrad/Kokoro-82M)'s weights, as the [`kokoro-onnx`](https://github.com/thewh1teagle/kokoro-onnx) project exports and publishes them in its GitHub release `model-files-v1.0` | Apache-2.0 (the weights; the README of [`hexgrad/kokoro`](https://github.com/hexgrad/kokoro), Kokoro's own code: *"Apache-licensed weights"*). `kokoro-onnx`, which made the export, is MIT. Checked against its SHA-256 (`services/tts/kokoro_cpu.py` `KOKORO_FILES`) wherever it arrives |
+| Kokoro's voices, `voices-v1.0.bin` (`B1728`) | the same release; Kokoro-82M's voice styles | Apache-2.0, as above; the same SHA-256 check |
+
+*Not re-read from the source at the time of writing: this sandbox's proxy
+refuses Hugging Face, so the image build that fetches both has not run here.
+The voice's model card is baked with it so the terms travel with the copy; the
+first build should read it against this row.*
+
+*Kokoro's two files come from GitHub, which this sandbox can reach: they were
+fetched, hashed and spoken with here on 2026-11-01, and `hexgrad/kokoro`'s
+README and `kokoro-onnx`'s licence were read then.*
+
+### Chatterbox, the voice for an NVIDIA GPU
+
+Built from `voice/chatterbox/` (`B1729`) only by an operator who opts in with
+`COMPOSE_PROFILES=chatterbox` beside the NVIDIA overlay; not part of
+Pantheon's image, and not modified.
+
+| Component | From | Licence |
+|---|---|---|
+| `chatterbox-tts` 0.1.7, the Chatterbox models' code | [`resemble-ai/chatterbox`](https://github.com/resemble-ai/chatterbox) (PyPI `chatterbox-tts`) | MIT |
+| Chatterbox Turbo's weights, fetched while the image is built | [`ResembleAI/chatterbox-turbo`](https://huggingface.co/ResembleAI/chatterbox-turbo) | MIT, as Resemble AI publishes them (*not re-read here: the sandbox's proxy refuses Hugging Face; the first build should read the model card against this row*) |
+| `resemble-perth`, the inaudible watermark every sentence carries | [`resemble-ai/Perth`](https://github.com/resemble-ai/Perth) (PyPI `resemble-perth`) | MIT |
+| The base image, PyTorch 2.6.0 with CUDA 12.4 and cuDNN 9 | [`pytorch/pytorch`](https://hub.docker.com/r/pytorch/pytorch), pinned by digest in `voice/chatterbox/Dockerfile` | BSD-3-Clause (PyTorch); NVIDIA's CUDA and cuDNN libraries inside it are under NVIDIA's own licences |
+| FastAPI, uvicorn and `huggingface-hub`, at the pins in `voice/chatterbox/requirements.txt` | PyPI | MIT, BSD-3-Clause and Apache-2.0 |
+
+---
+
+## Docker images — the live workstation desktop
+
+`D-2026-10-31-01`. The Workstation window shows a person's desktop live through
+[KasmVNC](https://github.com/kasmtech/KasmVNC) 1.5.2, Kasm Technologies' own
+Ubuntu 24.04 packages, pinned by version and by sha256 per architecture in
+`workstation/provision.sh` and refused on a mismatch. Two parts of it ship, in
+two different images, and neither is modified.
+
+| Part | Where it ships | Licence |
+|---|---|---|
+| The X server (`Xkasmvnc`, package `kasmvncserver`) — each person's display | The **workstation's** image and the VM's base image, installed by apt from the pinned package, with the package's own `copyright` file at `/usr/share/doc/kasmvncserver/` | GPL-2.0-or-later (KasmVNC, from TigerVNC, TightVNC and RealVNC; the file also lists the libraries the build links statically) |
+| The web client (KasmVNC's fork of [noVNC](https://github.com/kasmtech/noVNC), built into the same package at `usr/share/kasmvnc/www`) | **Pantheon's** Docker image, unpacked from the pinned package in the `desktop-client` stage (`Dockerfile`) to `/opt/pantheon/kasmvnc/www` and served by Pantheon itself (`src/desktop_client.py`) | noVNC's own terms: the JavaScript core MPL-2.0; HTML and CSS BSD-2-Clause; the Orbitron font OFL-1.1; the images CC BY-SA 3.0. The package's `copyright` file declares GPL-2.0-or-later for every file it holds, the client included |
+
+**What travels with the client.** Pantheon's image carries, beside it at
+`/opt/pantheon/kasmvnc/LICENSES/`, the package's `copyright` file as it came and
+the licence texts the client's own `LICENSE.txt` names, read from
+[kasmtech/noVNC](https://github.com/kasmtech/noVNC) at commit `402c0c59` (the
+one KasmVNC 1.5.2 was built from) and committed in
+[`docker/kasmvnc-client/`](docker/kasmvnc-client/): `noVNC-LICENSE.txt`,
+`noVNC-AUTHORS.txt`, and the MPL-2.0, BSD-2-Clause, BSD-3-Clause and OFL-1.1
+texts. The source of both parts is KasmVNC's
+[v1.5.2 release](https://github.com/kasmtech/KasmVNC/releases/tag/v1.5.2) and that
+commit of the client.
+
+**Why neither reaches Pantheon's licence, nor Pantheon theirs.** The server runs
+in the workstation, a separate program that Pantheon only talks to over a
+socket; the client is a separate program that Pantheon serves to a browser,
+unchanged, and that talks to Pantheon over a websocket. Both are aggregation in
+AGPLv3 §5's sense, like the composed services above. The client's images
+include Kasm Technologies' logo, which is theirs; it is shown as part of their
+client and nothing of Pantheon's uses it.
+
+*Read on 2026-10-31 from the two pinned packages themselves (`dpkg-deb -x`) and
+from the client's repository at that commit. `vendor/pako/LICENSE`, which the
+client's `LICENSE.txt` also lists, is not in that commit; pako is MIT.*
+
+### The workstation's desktop
+
+`D-2026-10-31-02`. The desktop on that display is [XFCE](https://xfce.org/), with
+[Papirus](https://github.com/PapirusDevelopmentTeam/papirus-icon-theme) icons
+and the [Inter](https://rsms.me/inter/) and
+[JetBrains Mono](https://www.jetbrains.com/lp/mono/) typefaces. All of them are
+Ubuntu 24.04's own packages, installed by apt in the **workstation's** image
+like the rest of its userland (`workstation/provision.sh`), each with its own
+`copyright` file under `/usr/share/doc/`; Pantheon ships none of their files.
+Their licences, for a reader: XFCE GPL-2.0-or-later and LGPL-2.0-or-later,
+Papirus GPL-3.0, Inter and JetBrains Mono OFL-1.1. What Pantheon adds — the
+window frames and the wallpaper that `scripts/make-workstation-theme.py` draws,
+and the settings in the skeleton (`workstation/skel/.config/`) — is Pantheon's
+own, AGPL-3.0-or-later, and the wallpaper's mark is Pantheon's
+(`docs/brand/`).
 
 ---
 

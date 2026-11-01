@@ -6,6 +6,8 @@ from fastapi import APIRouter, HTTPException, Request
 from core.atomic_io import atomic_write_json
 from src.auth_helpers import get_current_user
 from src.constants import USER_PREFS_FILE
+from services.tts.personal_voice import (
+    CONVERSATION_PREF, CONVERSATION_VOICE_PREF, checked_conversation, checked_voice)
 
 PREFS_FILE = USER_PREFS_FILE
 _FOREGROUND_POLICY_KEYS = (
@@ -158,6 +160,13 @@ def setup_prefs_routes():
         value = body.get("value")
         if key == KEYBINDS_PREF:
             value = _checked_keybinds(value)   # `B1196`
+        elif key in (CONVERSATION_PREF, CONVERSATION_VOICE_PREF):
+            # `B1730`. Each person's Conversation switch and their own voice,
+            # which the voice service reads on every sentence it says to them.
+            value = (checked_conversation(value) if key == CONVERSATION_PREF
+                     else checked_voice(value))
+        elif key == "reactions_enabled":
+            value = value is not False   # `B1736`: a switch, on unless turned off
         prefs[key] = value
         _save_for_user(user, prefs)
         return {"key": key, "value": prefs[key]}

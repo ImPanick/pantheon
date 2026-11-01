@@ -39,6 +39,20 @@ def _loaded_instance_contexts(raw: Mapping[str, Any]) -> tuple[int, ...]:
     return tuple(contexts)
 
 
+def loaded_context_tokens(raw: Mapping[str, Any]) -> int | None:
+    """`B1732`. The window LM Studio LOADED this model with — the smallest of
+    its loaded instances (native `/api/v1/models`), or `loaded_context_length`
+    (`/api/v0/models`) — or None when it is not loaded. Never the model's
+    `max_context_length`: that is what it could be loaded with, not what is
+    being served."""
+    loaded = _loaded_instance_contexts(raw)
+    if loaded:
+        return min(loaded)
+    if str(raw.get("state") or "").lower() in ("", "loaded"):
+        return int_limit(raw.get("loaded_context_length"))
+    return None
+
+
 def _limits_from_model(raw: Mapping[str, Any]) -> dict[str, Any]:
     limits: dict[str, Any] = {}
     loaded_contexts = _loaded_instance_contexts(raw)

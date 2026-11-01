@@ -149,6 +149,7 @@ const ACCEL_WORDS = {
 };
 const IMAGE_WORDS = {
   preparing: 'preparing the machine image (first start)',
+  waiting: 'the machine image is made when the workstation is first turned on',
   failed: 'the machine image could not be prepared',
 };
 
@@ -270,18 +271,41 @@ function render(status) {
   // `P20-05`. The window onto the screen, on the same terms. It is a
   // `[data-open-workstation-screen]` door, answered by `workstationScreen.js`.
   show($('ws-open-screen'), !!status.may_use && status.state === 'up');
+  // `B1725`, `B1733`: Computer Use and the starting point, for a person who
+  // may use it — the starting point only while it answers.
+  if (status.may_use) loadComputerUse(); else renderComputerUse(null);
+  if (status.may_use && status.state === 'up') loadStartingPoint(); else renderStartingPoint(null);
 
   show($('ws-admin'), !!status.settings);
 }
 
 /** One status answer, everywhere it goes: the first card, and for an admin
  *  the controls and the sentences under them. */
+// While the VM host makes its machine image (the first time the workstation is
+// switched on), the panel asks again on its own, so "ready" arrives without a
+// click. Only while the panel is on screen.
+const IMAGE_POLL_MS = 20000;
+let _imageTimer = null;
+
+function _pollWhilePreparing(status) {
+  if (_imageTimer) { clearTimeout(_imageTimer); _imageTimer = null; }
+  const image = status && status.daemon && status.daemon.machine && status.daemon.machine.image;
+  if (image !== 'preparing' && image !== 'waiting') return;
+  const onScreen = () => { const panel = $('ws-status'); return !!(panel && panel.offsetParent) && !document.hidden; };
+  if (!onScreen()) return;
+  _imageTimer = setTimeout(() => {
+    _imageTimer = null;
+    if (onScreen()) load();
+  }, IMAGE_POLL_MS);
+}
+
 function apply(status) {
   render(status);
   if (status.settings) {
     fillSettings(status.settings);
     renderEffects(status.settings, status.daemon, status.network);
   }
+  _pollWhilePreparing(status);
   return status;
 }
 
@@ -390,13 +414,13 @@ function renderSudo(settings, daemon) {
   if (!why) return;
   if (why.dataset.shipped === undefined) why.dataset.shipped = why.textContent;
   why.textContent = SUDO_WORDS[machineKind(settings, daemon)] || why.dataset.shipped;
-  // `B1428`, `D-2026-10-25-04` §4: with no answer of the admin's own, sudo
-  // follows the backend — on in a VM, off in the shared container.
+  // `B1428`: with no answer of the admin's own, sudo is on — the owner
+  // (2026-10-31): *"Agents get FULL access."*
   const auto = $('ws-sudo-auto');
   if (auto) {
     const byBackend = settings && settings.sudo_choice === null;
     auto.textContent = byBackend
-      ? 'Automatic: on in a virtual machine, off in the shared container.'
+      ? 'Automatic: on — agents get full access. Turn it off to keep them out of root.'
       : 'Set by an admin.';
     const reset = $('ws-sudo-reset');
     if (reset) reset.hidden = byBackend;
@@ -605,8 +629,13 @@ function _typed(input) {
  * server's sentence either way.
  */
 export async function confirmAndResetMine() {
-  const message = 'Everything in your workstation home is erased — files, settings, anything '
-    + 'installed into it — and it starts clean. Nobody else\'s home is touched.';
+  // `B1733`: back to the person's own starting point, when they saved one.
+  const point = await readStartingPoint();
+  const message = point && point.saved
+    ? 'Your workstation goes back to the starting point you saved — anything changed in it '
+      + 'since is erased. Your projects folder is not touched, nor anybody else\'s workstation.'
+    : 'Everything in your workstation home is erased — files, settings, anything '
+      + 'installed into it — and it starts clean. Nobody else\'s home is touched.';
   let ok = false;
   try {
     ok = uiModule && uiModule.styledConfirm
@@ -620,6 +649,157 @@ export async function confirmAndResetMine() {
   if (!res.ok) return { ok: false, message: await readError(res) };
   const body = await res.json().catch(() => ({}));
   return { ok: true, message: body.sentence || 'Your workstation home is back to a clean start.' };
+}
+
+// ── `B1725` / `D-2026-11-01-02`: Computer Use ─────────────────────────────────
+//
+// No card for a step the agent takes inside this person's workstation, once
+// they accept the warning — whose words, and whose id, come from the server
+// (`GET /api/workstation/computer-use`), so the page never shows a copy that
+// could drift from what is recorded. Turning it off never asks.
+
+/** The server's answer, or `null` when it could not be read. */
+export async function readComputerUse() {
+  try {
+    const res = await fetch('/api/workstation/computer-use', { credentials: 'same-origin' });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch (_) { return null; }
+}
+
+/**
+ * Turn Computer Use on (behind its warning) or off. Resolves `null` when the
+ * person kept asking, else `{ ok, state?, message? }`.
+ */
+export async function setComputerUse(on, state) {
+  const now = state || await readComputerUse();
+  if (!now) return { ok: false, message: 'Pantheon did not answer. Try again.' };
+  const body = { on: !!on };
+  if (on) {
+    if (!now.allowed) return { ok: false, message: now.not_allowed || 'Not allowed.' };
+    let ok = false;
+    try {
+      ok = uiModule && uiModule.styledConfirm
+        ? await uiModule.styledConfirm(now.warning.text, {
+          title: 'Turn on Computer Use?', confirmText: now.proceed_label,
+          cancelText: now.keep_asking_label, danger: true, focusCancel: true,
+        })
+        : window.confirm(`Turn on Computer Use?\n\n${now.warning.text}`);
+    } catch (_) { ok = false; }
+    if (!ok) return null;
+    body.accept_warning = now.warning.id;
+  }
+  try {
+    const res = await fetch('/api/workstation/computer-use', {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    });
+    if (!res.ok) return { ok: false, message: await readError(res) };
+    return { ok: true, state: await res.json() };
+  } catch (_) {
+    return { ok: false, message: 'Pantheon did not answer. Try again.' };
+  }
+}
+
+function renderComputerUse(state) {
+  const row = $('ws-cu-row');
+  const box = $('ws-cu');
+  const why = $('ws-cu-why');
+  show(row, !!state);
+  if (!state) return;
+  if (box) {
+    box.checked = !!state.on;
+    box.disabled = !state.allowed && !state.on;
+  }
+  if (why) {
+    why.textContent = state.on
+      ? 'On: the agent clicks, types and runs commands in your workstation without asking. '
+        + 'A command that deletes or overwrites files still asks.'
+      : (state.allowed ? 'Off: steps in the workstation ask, as everywhere else.'
+        : (state.not_allowed || ''));
+  }
+}
+
+async function loadComputerUse() {
+  renderComputerUse(await readComputerUse());
+}
+
+async function toggleComputerUse(on) {
+  const answer = await setComputerUse(on);
+  if (answer && !answer.ok) say('ws-result', answer.message, false);
+  await loadComputerUse();
+}
+
+// ── `B1733`: a starting point of the person's own ─────────────────────────────
+//
+// What Reset puts back: the workstation as the person set it up, saved here.
+// On the container it is the home; on a VM, the whole machine.
+
+/** `{ saved, at, scope, sentence }`, or `null`. */
+export async function readStartingPoint() {
+  try {
+    const res = await fetch('/api/workstation/starting-point', { credentials: 'same-origin' });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch (_) { return null; }
+}
+
+/** Save (behind a confirmation) or forget. Resolves `null` when the person
+ *  said no, else `{ ok, state?, message? }`. */
+export async function changeStartingPoint(action) {
+  if (action === 'save') {
+    const message = 'Your workstation as it is right now becomes what Reset puts back: the '
+      + 'apps, files and sign-ins in it. On a virtual machine it restarts while it is saved. '
+      + 'Your projects folder is not part of it.';
+    let ok = false;
+    try {
+      ok = uiModule && uiModule.styledConfirm
+        ? await uiModule.styledConfirm(message, {
+          title: 'Save as the starting point?', confirmText: 'Save',
+        })
+        : window.confirm(`Save as the starting point?\n\n${message}`);
+    } catch (_) { ok = false; }
+    if (!ok) return null;
+  }
+  try {
+    const res = await fetch('/api/workstation/starting-point', {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action }),
+    });
+    if (!res.ok) return { ok: false, message: await readError(res) };
+    return { ok: true, state: await res.json() };
+  } catch (_) {
+    return { ok: false, message: 'Pantheon did not answer. Try again.' };
+  }
+}
+
+function renderStartingPoint(state) {
+  show($('ws-sp-row'), !!state);
+  if (!state) return;
+  const text = $('ws-sp-text');
+  if (text) {
+    const when = state.saved && state.at ? ` Saved ${new Date(state.at * 1000).toLocaleString()}.` : '';
+    text.textContent = `${state.sentence || ''}${when}`;
+  }
+  show($('ws-sp-forget'), !!state.saved);
+}
+
+async function loadStartingPoint() {
+  renderStartingPoint(await readStartingPoint());
+}
+
+async function startingPoint(action) {
+  const button = $(action === 'save' ? 'ws-sp-save' : 'ws-sp-forget');
+  if (button) button.disabled = true;
+  if (action === 'save') say('ws-result', 'Saving your starting point…', true);
+  const answer = await changeStartingPoint(action);
+  if (button) button.disabled = false;
+  if (!answer) { say('ws-result', '', true); return; }
+  say('ws-result', answer.ok
+    ? (action === 'save' ? 'Saved. Reset now puts your workstation back to this.'
+      : 'Forgotten. Reset gives you the clean start again.')
+    : answer.message, answer.ok);
+  renderStartingPoint(answer.ok ? answer.state : await readStartingPoint());
 }
 
 async function resetMine() {
@@ -636,6 +816,9 @@ function wire() {
   _wired = true;
   $('ws-check')?.addEventListener('click', () => { check(); });
   $('ws-reset')?.addEventListener('click', () => { resetMine(); });
+  $('ws-cu')?.addEventListener('change', () => { toggleComputerUse(!!$('ws-cu').checked); });  // `B1725`
+  $('ws-sp-save')?.addEventListener('click', () => { startingPoint('save'); });          // `B1733`
+  $('ws-sp-forget')?.addEventListener('click', () => { startingPoint('forget'); });
   // Each switch and select saves the moment it changes, like the email
   // approval switch does; the two text fields wait for their button, because a
   // half-typed address is not a choice.
@@ -680,4 +863,5 @@ export const _test = {
   describeMachines,  // `B979`
   describeDaemon, describeYou, render, apply, fillSettings, renderEffects, networkStateSentence,
   renderRecreate, renderSudo, machineKind, renderMachines,
+  renderComputerUse, renderStartingPoint,   // `B1725`, `B1733`
 };

@@ -85,6 +85,8 @@ def listing_text(items, hosts, agent: Optional[str]) -> str:
                 facts.append("an account made for the agent")
             if it.get("has_totp"):
                 facts.append("one-time codes")
+            if it.get("forge"):
+                facts.append(f"a token git and gh use for {it['forge']}")
             where = ", ".join(it.get("addresses") or []) or "no address"
             lines.append(f"- “{it['label']}” ({it.get('kind') or 'login'}) — {where} — {'; '.join(facts)}")
         lines.append("Use: agent_browser login {item}, or shell_with_login {logins, command} with $LOGIN_… "
@@ -114,6 +116,8 @@ async def run_connections(content: Any, *, owner: Optional[str], agent_id: Optio
             listing = V.listing(db, owner)
             mine = {r.id: r for r in V._rows(db, V.account(owner))}
             items = [it for it in listing["items"] if it["id"] in mine and V.may_use(mine[it["id"]], agent_id)]
+            for it in items:
+                it["forge"] = V.git_host_of(it.get("kind"), it["label"], it.get("addresses") or [], it.get("username"))
             text = listing_text(items, G.hosts(db, owner), agent_id)
             if listing.get("locked"):
                 text += "\n(The vault is locked: signing in will be refused until the person unlocks it.)"

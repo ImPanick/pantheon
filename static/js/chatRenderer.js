@@ -23,6 +23,7 @@ import { buildAllowRuleChooser } from './trustLadder.js';
 import { renderAgentStop, renderAgentNote, withdrawContinueOffers, compactionFromRecord, trimFromRecord } from './agentStops.js';
 import { scrollBehavior } from './motion.js';
 import { forkIcon } from './icons.js';
+import reactionsModule from './reactions.js';   // `B1736`
 import { buildReplyError } from './chatStreamErrors.js';   // `B1200`
 import { memoryConfidencePill } from './memoryFacts.js';
 import { applyAgentThreadNode, verifierCardOptions, approvalOutcome,
@@ -1348,6 +1349,22 @@ export function roleTimestamp(when) {
   return ts;
 }
 
+// `B1727`. Other model families' own tool-call text: Qwen3-Coder's
+// `<function=…>`, Mistral's `[TOOL_CALLS]`, Llama's `<|python_tag|>`,
+// Granite/Phi's `<|tool_call|>`, Kimi's section tokens, gpt-oss's
+// `to=functions.…`. The server reads and hides every one
+// (`tool_parsing._normalize_foreign_tool_markup`); these keep them out of view
+// while a reply streams in, a closing tag not yet arrived included.
+const FOREIGN_TOOL_MARKUP_RES = [
+  /<tool_call>\s*<function=[\w.\-]+>[\s\S]*?(?:<\/tool_call>|$)/gi,
+  /<function=[\w.\-]+>[\s\S]*?(?:<\/function>|$)/gi,
+  /\[TOOL_CALLS\][\s\S]*$/g,
+  /<\|python_tag\|>\s*[[{][\s\S]*$/g,
+  /<\|tool_call\|>[\s\S]*?(?:<\|\/tool_call\|>|$)/g,
+  /<\|tool_calls_section_begin\|>[\s\S]*?(?:<\|tool_calls_section_end\|>|$)/g,
+  /(?:<\|start\|>assistant)?<\|channel\|>commentary to=functions\.[\s\S]*?(?:<\|call\|>|$)/g,
+];
+
 /**
  * Strip tool invocation blocks from text before rendering.
  */
@@ -1357,6 +1374,7 @@ export function stripToolBlocks(text) {
   cleaned = cleaned.replace(DSML_TOOL_RE, '');
   cleaned = cleaned.replace(DSML_INVOKE_RE, '');
   cleaned = cleaned.replace(DSML_STRAY_RE, '');
+  for (const re of FOREIGN_TOOL_MARKUP_RES) cleaned = cleaned.replace(re, '');
   cleaned = cleaned.replace(XML_TOOL_CALL_RE, '');
   cleaned = cleaned.replace(XML_INVOKE_RE, '');
   cleaned = cleaned.replace(RAW_OPENAI_TOOL_JSON_RE, '');
@@ -2333,6 +2351,9 @@ export function createMsgFooter(msgElement) {
     container.appendChild(btn);
   }
 
+  // `B1736`. React stays first and out of the recents order: it is how the
+  // person answers the reply, not a tool used on it.
+  actions.appendChild(reactionsModule.reactButton(msgElement));
   visible.forEach(a => _addBtn(a, actions));
 
   // Overflow "···" button
@@ -3738,6 +3759,7 @@ export function loweredForAQuestion(labels) {
 export function renderAskUserCard(payload, options) {
   const aq = payload || {};
   if (aq.resolved) return null;
+  if (Array.isArray(aq.questions) && aq.questions.length) return renderBriefCard(aq, options || {});
   const opts = Array.isArray(aq.options) ? aq.options : [];
   const renderOptions = options || {};
   const chatBox = renderOptions.root || document.getElementById('chat-history');
@@ -4001,6 +4023,12 @@ export function renderAskUserCard(payload, options) {
   other.appendChild(otherSend);
   if (!isToolApproval) card.appendChild(other);
 
+  return mountQuestionCard(card, chatBox, renderOptions);
+}
+
+/** Put a question card on the page: announced, scrolled to, focused. One
+ *  tail for the single question and the brief. */
+function mountQuestionCard(card, chatBox, renderOptions) {
   chatBox.appendChild(card);
   // `B1586`. The question is announced to the window manager, which lowers any
   // window lying over it (`modalManager.questionAsked`) and brings it back when
@@ -4022,6 +4050,209 @@ export function renderAskUserCard(payload, options) {
     try { card.focus(); } catch (_) {}
   }
   return card;
+}
+
+/** What the brief's skip button sends. */
+export const BRIEF_SKIP_TEXT = 'Plan with what you have. Use your judgement on anything I left open, and say what you assumed.';
+
+/**
+ * The message a brief's answers become: each question beside its answer, so
+ * the model reads them together and the transcript keeps the person's vision
+ * in one place. `answers[i]` is `{ picked: [labels], own: 'typed text' }`; a
+ * question left blank is said to be the model's call rather than dropped, so
+ * the model does not ask it again.
+ */
+export function briefAnswerText(aq, answers) {
+  const questions = Array.isArray(aq && aq.questions) ? aq.questions : [];
+  const lines = ['Here is what I have in mind:'];
+  questions.forEach((q, i) => {
+    const a = (answers && answers[i]) || {};
+    const parts = [...(Array.isArray(a.picked) ? a.picked : []), String(a.own || '').trim()]
+      .map((v) => String(v).trim()).filter(Boolean);
+    lines.push(`${i + 1}. ${String((q && q.question) || '').trim()}`);
+    lines.push(`   → ${parts.length ? parts.join('; ') : 'No preference: your call.'}`);
+  });
+  return lines.join('\n');
+}
+
+/**
+ * Plan mode's brief: several questions on one card (`ask_user` with
+ * `questions`, `src/agent_tools/interaction_tools.py` `_brief`). Each question
+ * offers its suggestions as pills and a line for the person's own words; one
+ * Send carries every answer back as a single message (`briefAnswerText`).
+ * "Plan with what you have" is always there, so the questions never stand
+ * between a person and their plan.
+ *
+ * Everything the model wrote reaches the card as text (`textContent`), never
+ * as markup.
+ */
+function renderBriefCard(aq, renderOptions) {
+  const chatBox = renderOptions.root || document.getElementById('chat-history');
+  const onSubmit = typeof renderOptions.onSubmit === 'function' ? renderOptions.onSubmit : null;
+  const questions = aq.questions.filter((q) => q && String(q.question || '').trim());
+  if (!chatBox || !questions.length) return null;
+
+  removeAskUserCards(chatBox);
+
+  const card = document.createElement('div');
+  card.className = 'ask-user-card ask-brief';
+  card.setAttribute('role', 'group');
+  card.tabIndex = -1;
+  card.dataset.askUserKind = 'brief';
+
+  const head = document.createElement('div');
+  head.className = 'ask-user-head';
+  const eyebrow = document.createElement('span');
+  eyebrow.className = 'ask-brief-eyebrow';
+  eyebrow.textContent = questions.length === 1 ? 'Before the plan · 1 question' : `Before the plan · ${questions.length} questions`;
+  head.appendChild(eyebrow);
+  const closeBtn = document.createElement('button');
+  closeBtn.type = 'button';
+  closeBtn.className = 'modal-close ask-user-close';
+  closeBtn.setAttribute('aria-label', 'Dismiss questions');
+  closeBtn.addEventListener('click', () => {
+    card.remove();
+    const input = uiModule.el('message');
+    if (input) input.focus();
+  });
+  head.appendChild(closeBtn);
+  card.appendChild(head);
+
+  const lead = document.createElement('div');
+  lead.className = 'ask-user-question';
+  lead.id = `ask-user-q-${Date.now()}-${Math.floor(Math.random() * 1e4)}`;
+  lead.textContent = String(aq.question || '').trim() || 'A few things before I plan this.';
+  card.appendChild(lead);
+  card.setAttribute('aria-labelledby', lead.id);
+
+  const answers = questions.map(() => ({ picked: [], own: '' }));
+  const inputs = [];
+  const items = [];
+
+  const list = document.createElement('ol');
+  list.className = 'ask-brief-list';
+  card.appendChild(list);
+
+  const foot = document.createElement('div');
+  foot.className = 'ask-brief-foot';
+  const count = document.createElement('span');
+  count.className = 'ask-brief-count';
+  count.setAttribute('aria-live', 'polite');
+  const skip = document.createElement('button');
+  skip.type = 'button';
+  skip.className = 'ask-brief-skip';
+  skip.textContent = 'Plan with what you have';
+  const sendBtn = document.createElement('button');
+  sendBtn.type = 'button';
+  sendBtn.className = 'confirm-btn confirm-btn-primary ask-brief-send';
+  sendBtn.textContent = 'Send answers';
+
+  const answered = (a) => a.picked.length > 0 || !!a.own.trim();
+  const paint = () => {
+    const n = answers.filter(answered).length;
+    count.textContent = `${n} of ${questions.length} answered`;
+    sendBtn.disabled = n === 0;
+    items.forEach((item, i) => item.classList.toggle('answered', answered(answers[i])));
+  };
+
+  const send = (text) => {
+    if (!text) return;
+    if (onSubmit) {
+      const accepted = onSubmit({ kind: 'answer', text, label: text, payload: aq, card });
+      if (accepted !== false) card.remove();
+      return;
+    }
+    card.remove();
+    const input = uiModule.el('message');
+    if (input) input.value = text;
+    const sendButton = document.querySelector('.send-btn');
+    if (sendButton) sendButton.click();
+  };
+  const submit = () => {
+    if (answers.some(answered)) send(briefAnswerText({ questions }, answers));
+  };
+
+  questions.forEach((q, i) => {
+    const item = document.createElement('li');
+    item.className = 'ask-brief-item';
+    const qText = document.createElement('div');
+    qText.className = 'ask-brief-q';
+    qText.id = `${lead.id}-${i + 1}`;
+    const num = document.createElement('span');
+    num.className = 'ask-brief-n';
+    num.setAttribute('aria-hidden', 'true');
+    num.textContent = String(i + 1);
+    qText.appendChild(num);
+    const words = document.createElement('span');
+    words.textContent = String(q.question).trim();
+    qText.appendChild(words);
+    item.appendChild(qText);
+
+    const opts = Array.isArray(q.options) ? q.options : [];
+    if (opts.length) {
+      const pills = document.createElement('div');
+      pills.className = 'ask-brief-options';
+      pills.setAttribute('role', 'group');
+      pills.setAttribute('aria-labelledby', qText.id);
+      opts.forEach((opt) => {
+        const label = String((opt && opt.label) || opt || '').trim();
+        if (!label) return;
+        const pill = document.createElement('button');
+        pill.type = 'button';
+        pill.className = 'ask-brief-option';
+        pill.setAttribute('aria-pressed', 'false');
+        pill.textContent = label;
+        const descr = opt && opt.description ? String(opt.description).trim() : '';
+        if (descr) pill.title = descr;
+        pill.addEventListener('click', () => {
+          const picked = answers[i].picked;
+          const at = picked.indexOf(label);
+          if (at >= 0) picked.splice(at, 1);
+          else if (q.multi) picked.push(label);
+          else picked.splice(0, picked.length, label);
+          pills.querySelectorAll('.ask-brief-option').forEach((b) => {
+            b.setAttribute('aria-pressed', picked.includes(b.textContent) ? 'true' : 'false');
+          });
+          paint();
+        });
+        pills.appendChild(pill);
+      });
+      item.appendChild(pills);
+    }
+
+    const own = document.createElement('input');
+    own.type = 'text';
+    own.className = 'styled-prompt-input ask-brief-own';
+    own.placeholder = String(q.placeholder || '').trim()
+      || (opts.length ? 'Or say it in your own words…' : 'Your answer…');
+    own.setAttribute('aria-label', `Your answer to: ${String(q.question).trim()}`);
+    own.addEventListener('input', () => { answers[i].own = own.value; paint(); });
+    // Enter walks down the card; on the last line it sends, as a form would.
+    own.addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter' || event.shiftKey || event.isComposing) return;
+      event.preventDefault();
+      answers[i].own = own.value;
+      if (event.ctrlKey || event.metaKey || i === questions.length - 1) submit();
+      else if (inputs[i + 1]) inputs[i + 1].focus();
+    });
+    inputs.push(own);
+    item.appendChild(own);
+    items.push(item);
+    list.appendChild(item);
+  });
+
+  skip.addEventListener('click', () => send(BRIEF_SKIP_TEXT));
+  sendBtn.addEventListener('click', submit);
+  const actions = document.createElement('div');
+  actions.className = 'ask-brief-actions';
+  actions.appendChild(skip);
+  actions.appendChild(sendBtn);
+  foot.appendChild(count);
+  foot.appendChild(actions);
+  card.appendChild(foot);
+  paint();
+
+  return mountQuestionCard(card, chatBox, renderOptions);
 }
 
 /** `P23-04` (CHAT-U-18). The line under a reply the person stopped: one
@@ -4254,6 +4485,7 @@ export function addMessage(role, content, modelName, metadata) {
         if (metadata?.auto_escalated) wrap._autoEscalated = metadata.auto_escalated;
         if (metadata?.fallback_chain) wrap._fallbackChain = metadata.fallback_chain;
         wrap.appendChild(createMsgFooter(wrap));
+        reactionsModule.drawSavedReactions(wrap, metadata);   // `B1736`
         if (figures) displayMetrics(wrap, figures);
       };
       let pendingAskUser = null;
@@ -4872,6 +5104,7 @@ export function addMessage(role, content, modelName, metadata) {
       if (metadata?.auto_escalated) wrap._autoEscalated = metadata.auto_escalated;
       if (metadata?.fallback_chain) wrap._fallbackChain = metadata.fallback_chain;
       wrap.appendChild(createMsgFooter(wrap));
+      reactionsModule.drawSavedReactions(wrap, metadata);   // `B1736`
       if (metadata) displayMetrics(wrap, metadata);
       // `B953`. The turn's context was summarised to fit before this reply was
       // asked for: the line above it, in the words the live toast used.
@@ -4886,6 +5119,7 @@ export function addMessage(role, content, modelName, metadata) {
       r.appendChild(roleTimestamp(metadata?.timestamp));
 
       wrap.appendChild(createUserMsgFooter(wrap));
+      reactionsModule.drawSavedReactions(wrap, metadata);   // `B1736`
     }
 
     box.appendChild(wrap);

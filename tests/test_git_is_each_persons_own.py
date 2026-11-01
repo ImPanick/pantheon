@@ -46,7 +46,8 @@ def db(tmp_path, monkeypatch):
     import src.secret_storage as ss
     engine = create_engine(f"sqlite:///{tmp_path / 'git.db'}", connect_args={"check_same_thread": False},
                            poolclass=NullPool)
-    cdb.Base.metadata.create_all(engine, tables=[cdb.GitIdentity.__table__, cdb.GitCredential.__table__])
+    cdb.Base.metadata.create_all(engine, tables=[cdb.GitIdentity.__table__, cdb.GitCredential.__table__,
+                                                 cdb.VaultKey.__table__, cdb.VaultItem.__table__])
     factory = sessionmaker(bind=engine, autoflush=False, autocommit=False)
     monkeypatch.setattr(cdb, "SessionLocal", factory)
     monkeypatch.setattr(ss, "_KEY_PATH", tmp_path / ".app_key")
@@ -303,6 +304,80 @@ def test_a_push_goes_out_with_the_token_for_that_host_only(db, repo, tmp_path, m
     assert not (repo / ".git" / "config").read_text().count("tok_"), "nothing was written to the repository"
     cfg = Path.home() / ".git-credentials"
     assert not cfg.exists() or "tok_PUSH_ME" not in cfg.read_text()
+
+
+# ── `B-vault-git`: a token kept in the person's vault ───────────────────────
+#
+# The owner (2026-11-01): *"The agent can see the github token I put in the
+# vault but can't access/use it."* A token kept in Settings → Vault is the one
+# git pushes with when Settings → Git has none for that host — within how the
+# person set the item to be used — and plain git (and gh) inside
+# `shell_with_login` sign in with it there.
+
+def _vault_token(s, host, use, owner="alice"):
+    from src import vault as V
+    V._unlocked_until.clear()
+    return V.create(s, owner, {"kind": "key", "label": "Forge token", "addresses": f"https://{host}",
+                                 "username": "alice", "secret": "tok_PUSH_ME", "use": use})
+
+
+@needs_git
+def test_a_push_uses_a_vault_token_for_that_host_the_way_the_person_allows(
+        db, repo, tmp_path, monkeypatch, https_remote):
+    from src import vault as V
+    url, host, served = https_remote
+    s = db()
+    G.change(s, "alice", {"identity": {"name": "Alice", "email": "alice@example.org"}})
+    _call({"action": "commit", "repo": "proj", "message": "First"}, monkeypatch, tmp_path)
+    _run([GIT, "remote", "add", "origin", url], repo)
+
+    item = _vault_token(s, host, "ask")
+    asked = _call({"action": "push", "repo": "proj"}, monkeypatch, tmp_path)
+    assert asked["exit_code"] != 0 and all(a == "" for a in _SmartHTTP.seen), \
+        "set to ask: the git tool raises no card of its own, so it does not use it"
+    assert "“Forge token”" in asked["error"] and "shell_with_login" in asked["error"], asked
+
+    V.update(s, "alice", item["id"], {"use": "allowed"})
+    _SmartHTTP.seen = []
+    pushed = _call({"action": "push", "repo": "proj", "set_upstream": True}, monkeypatch, tmp_path)
+    assert pushed["exit_code"] == 0 and pushed["as"] == "your token", pushed
+    assert "tok_PUSH_ME" not in json.dumps(pushed)
+    assert _run([GIT, "log", "-1", "--pretty=%s", "main"], served / "proj.git").strip() == "First"
+    assert not (repo / ".git" / "config").read_text().count("tok_"), "nothing was written to the repository"
+
+
+@needs_git
+def test_plain_git_in_shell_with_login_signs_in_with_the_vault_token(db, repo, tmp_path, monkeypatch, https_remote):
+    from src.agent_tools import login_shell_tools as L
+    url, host, served = https_remote
+    s = db()
+    _vault_token(s, host, "ask", owner="root")
+    _run([GIT, "-c", "user.name=A", "-c", "user.email=a@b.c", "commit", "-qam", "x", "--allow-empty"], repo)
+    _SmartHTTP.seen = []
+    out = asyncio.run(L.run_with_login(json.dumps({
+        "logins": ["Forge token"],
+        "command": f"cd {repo} && git push -q {url} main:main && echo pushed; echo tok=$LOGIN_TOKEN"}),
+        owner="root"))
+    assert out["exit_code"] == 0 and "pushed" in out["output"], out
+    assert "tok=••••" in out["output"] and "tok_PUSH_ME" not in json.dumps(out)
+    assert f"git signed in to {host}" in out["output"]
+    assert any(a for a in _SmartHTTP.seen), "the token went to the host"
+
+
+def test_a_token_kept_with_no_address_is_known_by_the_forge_it_names():
+    from src import vault as V
+    from src.agent_tools import login_shell_tools as L
+    assert V.git_host_of("key", "GitHub token", []) == "github.com"
+    assert V.git_host_of("key", "My GitLab PAT", []) == "gitlab.com"
+    assert V.git_host_of("key", "Grafana", []) is None
+    assert V.git_host_of("login", "GitHub", ["https://grafana.lan"]) is None, "an address says what it is for"
+    assert V.git_host_of("key", "x", ["https://git.example.org:8443"]) == "git.example.org:8443"
+    env, names = L.environment([{"label": "GitHub token", "kind": "key", "username": "", "secret": "ghp_x1",
+                                 "otp": "", "origins": []}])
+    assert env["GH_TOKEN"] == env["GITHUB_TOKEN"] == env["LOGIN_TOKEN"] == "ghp_x1"
+    assert env["PANTHEON_GIT_USER"] == "x-access-token" and env["GIT_CONFIG_KEY_1"] == \
+        "credential.https://github.com.helper"
+    assert "ghp_x1" in L.secret_values(env) and T._HELPER not in L.secret_values(env)
 
 
 # ── over HTTP ───────────────────────────────────────────────────────────────

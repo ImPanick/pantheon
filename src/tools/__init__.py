@@ -6,7 +6,7 @@ re-exports from here for backward compatibility.
 """
 from src.tools._common import _parse_tool_args  # noqa: F401
 from src.tools.system import (  # noqa: F401
-    do_manage_skills, _skill_dump, do_manage_tasks,
+    do_manage_skills, do_use_skill, _skill_dump, do_manage_tasks,
     do_api_call, do_app_api,
 )
 from src.tools.cookbook import (  # noqa: F401

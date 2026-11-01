@@ -16,6 +16,11 @@ an attached file, because the transcript was read the moment it was asked for.
 A browser with no recognition at all (Firefox) ended the same way, saying
 nothing about why.
 
+`B1718` moved the card to its own page, Settings → Voice, beside the voice
+chat it now also serves, and gave dictation its own button beside Send
+(`#composer-mic-btn`, pressed while it records) in place of Send turning into
+a microphone when the message box is empty. This drive follows both.
+
 Driven (`Law 20`) in the real app (`app_url` boots `app.py`), in headless
 Chromium with a fake microphone: the card as an admin draws it; each provider
 chosen, saved, read back from the server (`GET /api/auth/settings`,
@@ -103,13 +108,13 @@ const HEARD = %(heard)s;
     await context.request.post(BASE + '/api/auth/login', { data: { ...who, remember: true } });
     return context;
   };
-  // The card, as a person reaches it: the gear, then AI Defaults; drawn once
-  // it has read what is saved (its note says something) and the switch the
+  // The card, as a person reaches it: the gear, then Voice; drawn once it
+  // has read what is saved (its note says something) and the switch the
   // local choice is behind.
   const openCard = async (page) => {
     await page.click('#user-bar-settings');
-    await page.click('#settings-modal .settings-nav-item[data-settings-tab="ai"]');
-    await page.waitForSelector('[data-settings-panel="ai"]:not(.hidden) #set-sttProviderSelect', { state: 'visible' });
+    await page.click('#settings-modal .settings-nav-item[data-settings-tab="voice"]');
+    await page.waitForSelector('[data-settings-panel="voice"]:not(.hidden) #set-sttProviderSelect', { state: 'visible' });
     await page.waitForFunction(() => (document.getElementById('set-sttProviderNote') || {}).textContent);
     // Every word the card's message says, kept: "Saved" clears itself after
     // two seconds, which a loaded machine can spend between two polls.
@@ -195,20 +200,21 @@ const HEARD = %(heard)s;
       new MutationObserver(() => { if (toast.textContent) window.__said.push(toast.textContent); })
         .observe(toast, { childList: true, subtree: true, characterData: true });
     });
-    await page.waitForFunction(() => {
-      const b = document.querySelector('.send-btn');
-      return b && b.dataset.mode === 'mic';
-    });
-    await page.click('.send-btn');
+    // The dictation button beside Send, shown once a provider is chosen.
+    await page.waitForSelector('#composer-mic-btn', { state: 'visible' });
+    const pressed = () => page.evaluate(() =>
+      document.getElementById('composer-mic-btn').getAttribute('aria-pressed') === 'true');
+    await page.click('#composer-mic-btn');
     // Recording, or the sentence that says why not — never a wait on a state
     // a refused microphone leaves within one frame.
     await page.waitForFunction(() => window.__said.some((s) =>
       /^(Recording|This browser has no speech|Microphone|No microphone)/.test(s)));
     await page.waitForTimeout(1200);
-    if (await page.evaluate(() => document.querySelector('.send-btn').dataset.mode === 'recording')) {
-      await page.click('.send-btn');
-    }
-    await page.waitForFunction(() => document.querySelector('.send-btn').dataset.mode !== 'recording');
+    if (await pressed()) await page.click('#composer-mic-btn');
+    await page.waitForFunction(() => {
+      const b = document.getElementById('composer-mic-btn');
+      return b.getAttribute('aria-pressed') !== 'true' && b.dataset.state !== 'transcribing';
+    });
     await page.waitForFunction(() => document.getElementById('message').value
       || (window.fileHandlerModule && window.fileHandlerModule.getPendingCount() > 0)
       || window.__said.some((s) => /^Microphone|^No microphone/.test(s)));
@@ -292,7 +298,8 @@ GOOGLE = "In Chrome, the audio goes to Google"
 
 
 def test_ai_defaults_has_a_speech_to_text_card_offering_every_provider(drive):
-    """The row's `Verify:`, as the owner ruled it: all options available."""
+    """The row's `Verify:`, as the owner ruled it: all options available (on
+    Settings → Voice since `B1718`)."""
     fresh = drive["fresh"]
     assert fresh["heading"] == "Speech to Text"
     values = [v for v, _ in fresh["options"]]

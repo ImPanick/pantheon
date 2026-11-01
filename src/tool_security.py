@@ -375,6 +375,10 @@ PLAN_MODE_READONLY_TOOLS = {
     # `ask_user` mutates nothing — it pauses and waits for a person — so it
     # belongs here on the same grounds as every other read-only entry.
     "ask_user",
+    # `B1737`. Opens or searches skill files and writes nothing (its one
+    # side effect is the open counter `manage_skills view` also keeps), so a
+    # plan can be written from the procedure for the work it plans.
+    "use_skill",
 }
 
 

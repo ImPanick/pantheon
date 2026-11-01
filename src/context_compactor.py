@@ -478,6 +478,11 @@ async def maybe_compact(
     ).replace(
         "{n}", str(compaction_count + 1)
     )
+    # `B1731`. gpt-oss reads its reasoning effort from the system message, and
+    # its reasoning comes out of the same `max_tokens` as the summary.
+    _reasons = "gpt-oss" in (compact_model or "").lower()
+    if _reasons:
+        prompt = "Reasoning: low\n\n" + prompt
     summary_messages = [
         {"role": "system", "content": prompt},
         {"role": "user", "content": convo_text},
@@ -489,7 +494,7 @@ async def maybe_compact(
             compact_model,
             summary_messages,
             temperature=0.2,
-            max_tokens=SUMMARY_MAX_TOKENS,
+            max_tokens=SUMMARY_MAX_TOKENS + (1024 if _reasons else 0),
             headers=compact_headers,
             timeout=30,
         )
@@ -499,7 +504,12 @@ async def maybe_compact(
         # silently dropping the older half. was_compacted=False signals the
         # caller nothing was summarized; trim_for_context handles length.
         return messages, context_length, False
-    summary = normalize_compaction_summary(summary)
+    summary = clean_model_summary(summary if isinstance(summary, str) else "")
+    if not summary.strip():
+        # `B1731`. A model that spent its whole reply reasoning answers with no
+        # summary; replacing the older half with nothing would lose it.
+        logger.error("Compaction summary was empty; keeping the conversation as it was")
+        return messages, context_length, False
 
     summary_msg = {
         "role": "system",
@@ -818,3 +828,364 @@ def _update_session_history(session, split_point: int, summary: str,
         if manager.replace_messages(session.id, new_history):
             return
     session.history = new_history
+
+
+# ── `B1731` · compacting a chat when the person asks ────────────────────────
+#
+# Measured from the owner's context wheel, 2026-11-01: gpt-oss-20b on LM
+# Studio, a 6,000-token window, seven messages, the chat 1.1K of it (18%), and
+# *Compacting* ending in *Compact failed*. Three things made the button do
+# nothing or fail:
+#
+#   1. the summary was asked of a local reasoning model with 30 seconds and
+#      1,024 tokens, retried three times — a gpt-oss that reasons first runs
+#      out of either, and the route answered 502 with nothing changed;
+#   2. the tail it kept was a fixed four to eight messages, so a short chat
+#      kept four of its seven verbatim and the share hardly moved;
+#   3. the summary template asked for up to 1,000 tokens whatever it replaced,
+#      so three short messages could come back LONGER than they were.
+#
+# Now the cut is sized to the window: the conversation is brought down to
+# `CHAT_TARGET_SHARE` of the window the wheel draws (and never above
+# `CHAT_TARGET_OF_CHAT` of what it was, so a press always cuts). Most of that
+# goes to a dense summary of everything older, written from the messages'
+# FULL text (the old path cut each to 2,000 characters before the summariser
+# saw it), with any earlier summary merged rather than lost; the rest keeps the
+# newest messages word for word. If the model cannot write the summary in time,
+# Pantheon condenses the older messages itself and says so — the button never
+# answers "failed" because a local model was slow.
+
+#: The conversation's size after a compaction, as a share of the window.
+CHAT_TARGET_SHARE = 0.10
+#: …and never more than this share of what the conversation was.
+CHAT_TARGET_OF_CHAT = 0.40
+#: Of that target, the share the summary may use; the rest is the verbatim tail.
+SUMMARY_SHARE_OF_TARGET = 0.65
+SUMMARY_MIN_TOKENS = 160
+SUMMARY_CAP_TOKENS = 4000
+#: A summary is never asked to be more than this share of what it replaces.
+SUMMARY_OF_SOURCE = 0.5
+#: Below this many conversation tokens a compaction cannot make it smaller.
+COMPACT_MIN_CHAT_TOKENS = 240
+#: The summariser's window when nothing proves it (the agent's own floor).
+UNKNOWN_SUMMARIZER_WINDOW = 6000
+#: What one tool result may put in front of the summariser when the whole does
+#: not fit; tool output is the bulk of an agent chat and the least of its sense.
+TOOL_RESULT_SOURCE_CHARS = 1200
+#: How long one summary call may take: a local model reasons first.
+SUMMARY_TIMEOUT_LOCAL = 180
+SUMMARY_TIMEOUT_REMOTE = 90
+
+#: The words the summary row starts with; `maybe_compact` counts them.
+SUMMARY_ROW_PREFIX = "[Conversation summary"
+
+CHAT_SUMMARY_SYSTEM_PROMPT = """You compact a conversation so it can continue in a much smaller context window. Everything you leave out is lost, so keep every fact that matters and drop only wording.
+
+Write in this format:
+
+### User Goal
+What the user is trying to accomplish, in one or two sentences.
+
+### Key Facts and Decisions
+- Exact names, file paths, commands, URLs, numbers, versions, settings and identifiers — copied exactly.
+- Decisions made and the user's stated preferences or constraints.
+- Errors met and how they were resolved.
+
+### What Was Done
+- Completed actions and their results, in order.
+
+### Current State and Next Steps
+Where things stand at the end, what was last discussed, and what remains open.
+
+Rules:
+- If the transcript begins with an EARLIER SUMMARY, merge it in: keep every fact from it that still matters.
+- Prefer terse bullet points to prose. No greetings, no commentary about summarizing.
+- Stay under {budget} tokens."""
+
+
+def _row_metadata(row) -> Dict[str, Any]:
+    meta = row.get("metadata") if isinstance(row, dict) else getattr(row, "metadata", None)
+    return meta if isinstance(meta, dict) else {}
+
+
+def _row_role(row) -> str:
+    role = row.get("role") if isinstance(row, dict) else getattr(row, "role", "")
+    return str(role or "")
+
+
+def _row_content(row) -> Any:
+    return row.get("content") if isinstance(row, dict) else getattr(row, "content", None)
+
+
+def _row_dict(row) -> Dict[str, Any]:
+    if isinstance(row, dict):
+        return row
+    out = {"role": _row_role(row), "content": _row_content(row)}
+    meta = _row_metadata(row)
+    if meta:
+        out["metadata"] = meta
+    return out
+
+
+def _row_reaches_the_model(row) -> bool:
+    """`Session.get_context_messages`' rule: slash chatter and replies that
+    never said a word are not sent."""
+    from core.models import is_unanswered_reply
+    if _row_metadata(row).get("source") == "slash":
+        return False
+    try:
+        return not is_unanswered_reply(row)
+    except Exception:
+        return True
+
+
+def _row_tokens(row) -> int:
+    if not _row_reaches_the_model(row):
+        return 0
+    from src import model_context
+    return int(model_context.estimate_tokens([_row_dict(row)]) or 0)
+
+
+def is_compaction_summary(row) -> bool:
+    meta = _row_metadata(row)
+    return bool(meta.get("compacted")) and _row_role(row) == "system"
+
+
+def is_compaction_marker(row) -> bool:
+    meta = _row_metadata(row)
+    return bool(meta.get("compacted")) and _row_role(row) != "system"
+
+
+def plan_chat_compaction(history: List[Any], window: int) -> Dict[str, Any]:
+    """Where to cut `history` for a compaction against `window` tokens.
+
+    Returns `{"ok": True, "older": [...], "recent": [...], "summary_tokens": N,
+    "chat_tokens": N, "target_tokens": N}` or `{"ok": False, "reason": ...}`
+    with a sentence a person can read."""
+    rows = list(history or [])
+    costs = [_row_tokens(r) for r in rows]
+    chat_tokens = sum(costs)
+    if chat_tokens < COMPACT_MIN_CHAT_TOKENS:
+        return {"ok": False, "reason": (
+            f"This conversation is only about {chat_tokens} tokens, so compacting it "
+            "would not make it any smaller.")}
+    window = int(window or 0) or UNKNOWN_SUMMARIZER_WINDOW
+    target = min(int(window * CHAT_TARGET_SHARE), int(chat_tokens * CHAT_TARGET_OF_CHAT))
+    target = max(target, SUMMARY_MIN_TOKENS)
+    summary_budget = max(SUMMARY_MIN_TOKENS, min(SUMMARY_CAP_TOKENS,
+                                                 int(target * SUMMARY_SHARE_OF_TARGET)))
+    tail_budget = max(0, target - summary_budget)
+
+    # The newest messages that fit the tail, word for word, contiguous.
+    cut = len(rows)
+    spent = 0
+    while cut > 0:
+        cost = costs[cut - 1]
+        if spent + cost > tail_budget:
+            break
+        spent += cost
+        cut -= 1
+    # A tool result never starts the tail without the call it answers, and the
+    # last compaction's own rows are never "recent".
+    while cut < len(rows) and (_row_role(rows[cut]) == "tool"
+                               or is_compaction_summary(rows[cut])
+                               or is_compaction_marker(rows[cut])):
+        cut += 1
+    older, recent = rows[:cut], rows[cut:]
+    fresh = [r for r in older
+             if not is_compaction_summary(r) and not is_compaction_marker(r)
+             and _row_reaches_the_model(r) and _content_as_text(_row_content(r)).strip()]
+    if not fresh:
+        return {"ok": False, "reason": (
+            "Nothing new to compact: everything before the last few messages is "
+            "already summarized.")}
+    older_tokens = sum(costs[:cut])
+    summary_budget = max(SUMMARY_MIN_TOKENS // 2,
+                         min(summary_budget, int(older_tokens * SUMMARY_OF_SOURCE)))
+    return {"ok": True, "older": older, "recent": recent,
+            "summary_tokens": summary_budget, "chat_tokens": chat_tokens,
+            "target_tokens": target}
+
+
+def _tool_call_lines(row) -> List[str]:
+    calls = row.get("tool_calls") if isinstance(row, dict) else getattr(row, "tool_calls", None)
+    out = []
+    for tc in calls or []:
+        fn = tc.get("function") if isinstance(tc, dict) else None
+        if not isinstance(fn, dict):
+            continue
+        args = str(fn.get("arguments") or "")
+        if len(args) > 400:
+            args = args[:300] + " … " + args[-80:]
+        out.append(f"(called {fn.get('name') or 'a tool'} {args})")
+    return out
+
+
+def _cap_text(text: str, cap: int) -> str:
+    if cap <= 0 or len(text) <= cap:
+        return text
+    head = max(1, int(cap * 0.7))
+    tail = max(0, cap - head)
+    return text[:head].rstrip() + " […] " + (text[-tail:].lstrip() if tail else "")
+
+
+def build_summary_source(older: List[Any], room_tokens: int) -> str:
+    """The transcript the summariser reads: every older message in full when it
+    fits `room_tokens`; otherwise tool results are cut first, then the longest
+    messages, each keeping its beginning and end. An earlier summary is never
+    cut — it is everything the chat already remembers."""
+    entries = []   # [label, text, cappable]
+    for row in older:
+        if is_compaction_marker(row) or not _row_reaches_the_model(row):
+            continue
+        text = _content_as_text(_row_content(row)).strip()
+        if is_compaction_summary(row):
+            text = re.sub(r"^\[Conversation summary[^\]]*\]\s*", "", text)
+            if text:
+                entries.append(["EARLIER SUMMARY", text, False])
+            continue
+        role = _row_role(row) or "user"
+        calls = _tool_call_lines(row)
+        if calls:
+            text = (text + "\n" if text else "") + "\n".join(calls)
+        if not text:
+            continue
+        label = "TOOL RESULT" if role == "tool" else role.upper()
+        entries.append([label, text, True])
+
+    def total(items):
+        return sum(len(label) + len(text) + 3 for label, text, _ in items)
+
+    room_chars = max(2000, int(room_tokens / 0.3))
+    if total(entries) > room_chars:
+        for e in entries:
+            if e[0] == "TOOL RESULT":
+                e[1] = _cap_text(e[1], TOOL_RESULT_SOURCE_CHARS)
+    if total(entries) > room_chars:
+        fixed = sum(len(label) + 3 + (0 if cappable else len(text))
+                    for label, text, cappable in entries)
+        lengths = [len(text) for _l, text, cappable in entries if cappable]
+        spare = max(0, room_chars - fixed)
+        # The largest per-message cap whose total fits: binary search.
+        lo, hi = 0, max(lengths or [0])
+        while lo < hi:
+            mid = (lo + hi + 1) // 2
+            if sum(min(n, mid) for n in lengths) <= spare:
+                lo = mid
+            else:
+                hi = mid - 1
+        cap = max(200, lo)
+        for e in entries:
+            if e[2]:
+                e[1] = _cap_text(e[1], cap)
+    return "\n\n".join(f"{label}: {text}" for label, text, _ in entries)
+
+
+def condense_without_model(older: List[Any], budget_tokens: int) -> str:
+    """The older messages condensed by Pantheon itself, for when no model wrote
+    a summary: an earlier summary first (cut to half the room if it must be),
+    then each message's opening, in order, sharing what is left."""
+    room = max(400, int(budget_tokens / 0.3))
+    parts: List[str] = []
+    rows = []
+    for row in older:
+        if is_compaction_marker(row) or not _row_reaches_the_model(row):
+            continue
+        text = " ".join(_content_as_text(_row_content(row)).split())
+        if not text:
+            continue
+        if is_compaction_summary(row):
+            text = re.sub(r"^\[Conversation summary[^\]]*\]\s*", "", text)
+            parts.append(_cap_text(text, room // 2))
+            continue
+        rows.append(((_row_role(row) or "user").capitalize(), text))
+    left = max(0, room - sum(len(p) for p in parts))
+    share = max(60, left // max(1, len(rows))) if rows else 0
+    for role, text in rows:
+        snippet = text if len(text) <= share else text[:share].rstrip() + " …"
+        parts.append(f"- {role}: {snippet}")
+    return "\n".join(parts)
+
+
+_HARMONY_FINAL = re.compile(r"<\|channel\|>\s*final\s*<\|message\|>", re.IGNORECASE)
+_THINK_BLOCK = re.compile(r"<think>.*?</think>", re.IGNORECASE | re.DOTALL)
+
+
+def clean_model_summary(text: str) -> str:
+    """A summary as a model returned it, without what is not the summary: a
+    harmony analysis channel left inline, a `<think>` block, the title."""
+    text = text or ""
+    found = list(_HARMONY_FINAL.finditer(text))
+    if found:
+        text = text[found[-1].end():]
+    text = _THINK_BLOCK.sub("", text)
+    text = re.sub(r"<\|[a-z_]+\|>", "", text)
+    return normalize_compaction_summary(text)
+
+
+def _fit_to_tokens(text: str, budget_tokens: int) -> str:
+    """At most ~1.5× the budget, cut at a line, so a model that overran its
+    word limit cannot undo the compaction."""
+    limit = int(budget_tokens * 1.5 / 0.3)
+    if len(text) <= limit:
+        return text
+    cut = text.rfind("\n", 0, limit)
+    return text[: cut if cut > limit // 2 else limit].rstrip() + "\n…"
+
+
+async def summarize_for_compaction(
+    older: List[Any],
+    summary_tokens: int,
+    candidates: List[tuple],
+) -> Dict[str, Any]:
+    """Ask each `(url, model, headers)` in turn for the summary of `older`.
+
+    Returns `{"summary": text, "by_model": model or None, "why_not": reason or
+    None}`: `by_model` is None when no candidate answered and the text is
+    `condense_without_model`'s."""
+    from src import llm_core, model_context
+
+    why_not = None
+    seen = set()
+    for url, model, headers in candidates:
+        if not url or not model or (url, model) in seen:
+            continue
+        seen.add((url, model))
+        try:
+            ctx, known = await asyncio.to_thread(model_context.get_context_length_known, url, model)
+        except Exception:
+            ctx, known = 0, False
+        window = int(ctx) if known and ctx else UNKNOWN_SUMMARIZER_WINDOW
+        reasoning = llm_core._is_harmony_model(model)
+        # Room for the reply: the summary, and for a model that reasons first,
+        # its reasoning too.
+        max_tokens = int(summary_tokens * 1.5) + (1024 if reasoning else 256)
+        prompt = CHAT_SUMMARY_SYSTEM_PROMPT.replace("{budget}", str(summary_tokens))
+        if reasoning:
+            # gpt-oss reads its reasoning effort from the system message.
+            prompt = "Reasoning: low\n\n" + prompt
+        room = window - max_tokens - int(len(prompt) * 0.3) - 128
+        source = build_summary_source(older, max(500, room))
+        local = await asyncio.to_thread(model_context.is_local_endpoint, url)   # reads the endpoint table
+        try:
+            raw = await llm_core.llm_call_async(
+                url, model,
+                [{"role": "system", "content": prompt},
+                 {"role": "user", "content": "Transcript to compact:\n\n" + source}],
+                temperature=0.2, max_tokens=max_tokens, headers=headers,
+                timeout=SUMMARY_TIMEOUT_LOCAL if local else SUMMARY_TIMEOUT_REMOTE,
+                max_retries=1,
+            )
+        except Exception as e:
+            why_not = getattr(e, "detail", None) or str(e) or type(e).__name__
+            logger.warning("Compaction summary by %s failed: %s", model, why_not)
+            continue
+        summary = clean_model_summary(raw if isinstance(raw, str) else "")
+        if not summary.strip():
+            why_not = f"{model} returned no summary"
+            logger.warning("Compaction summary by %s was empty", model)
+            continue
+        return {"summary": _fit_to_tokens(summary, summary_tokens),
+                "by_model": model, "why_not": None}
+    return {"summary": condense_without_model(older, summary_tokens),
+            "by_model": None, "why_not": why_not or "no model is set up"}

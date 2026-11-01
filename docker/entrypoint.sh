@@ -120,6 +120,30 @@ chown "$PUID:$PGID" /app/.cache/huggingface 2>/dev/null || true
 # it back. Made in /app/data rather than beside it so it inherits that
 # volume's persistence and its place in a backup.
 mkdir -p /app/data/projects 2>/dev/null || true
+# `B1712`. Models the image was built with (`Dockerfile`, `BAKE_MODELS`),
+# copied into the app's own cache on the data volume when it holds none yet,
+# so a fresh install has them without reaching anyone. Never overwrites: a
+# cache with any model file in it is left exactly as it is. Before the
+# ownership repair below, which hands the copy to the app user.
+#   seed_model_cache SRC DEST PATTERN
+seed_model_cache() {
+    src="$1"; dest="$2"; pattern="$3"
+    [ -d "$src" ] || return 0
+    if [ -d "$dest" ] && [ -n "$(find "$dest" -name "$pattern" -print -quit 2>/dev/null)" ]; then
+        return 0
+    fi
+    mkdir -p "$dest" && cp -a "$src/." "$dest/" && chown -R "$PUID:$PGID" "$dest" \
+        && echo "Seeded $dest from the image's $src" >&2 \
+        || echo "Could not seed $dest from $src; the app says what is missing" >&2
+}
+# The embedding cache counts any .onnx as the model being there
+# (`embedding_lanes.fastembed_model_is_cached`), so a seed of a different
+# model would let fastembed fetch the chosen one unasked. Seed only the model
+# the app will load.
+if [ "${FASTEMBED_MODEL:-sentence-transformers/all-MiniLM-L6-v2}" = "${PANTHEON_FASTEMBED_SEED_MODEL:-}" ]; then
+    seed_model_cache "${PANTHEON_SEED_MODELS:-/opt/pantheon/seed-models}/fastembed" \
+        "${FASTEMBED_CACHE_PATH:-/app/data/fastembed_cache}" '*.onnx'
+fi
 for dir in /app/data /app/logs /app/.ssh /app/.local; do
     repair_bind_mount_ownership "$dir"
 done

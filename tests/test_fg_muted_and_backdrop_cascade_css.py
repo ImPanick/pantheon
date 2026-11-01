@@ -329,7 +329,7 @@ def test_fg_muted_resolves_on_all_sixteen_palettes():
         colour = _muted(theme)
         assert all(0 <= c <= 255 for c in colour), f"{name}: {colour}"
         seen[name] = tuple(round(c) for c in colour)
-    assert len(set(seen.values())) == 23, (
+    assert len(set(seen.values())) == css_colour.SHIPPED_PALETTES, (
         "--fg-muted resolves to the same colour on more than one palette, so "
         f"it is no longer derived from --fg: {sorted(seen.items())}"
     )
@@ -421,11 +421,19 @@ def test_the_three_populations_hold_at_their_counts():
     # of the same ladder now — the `opacity` let the background through
     # exactly as the mix toward `transparent` did, under 4.5:1 at every alpha
     # under 0.82, and `check-contrast.py`'s ratchet on it fell 965 -> 407.
-    assert len(uses) == 880, f"expected 880 uses of --fg-muted, found {len(uses)}"
+    # 880 -> 884, 872 -> 876 bare: four quiet lines, all `color:` and all bare
+    # or a rung of the ladder — the workstation's `.wsv-note` (e22fd4a6), the
+    # approval picker's `.approval-mode-item-desc` (`B1706`, 6ac18e3f), and the
+    # skill library's `.skill-library-lede` and `.skill-library-desc`
+    # (`B1715`, cbde5992). All text that is secondary on purpose.
+    # 884 -> 885, 876 -> 877 bare: the reasoning-effort menu's
+    # `.reasoning-effort-item-desc` (`B1734`, ab406833), the same rung as the
+    # approval picker's line.
+    assert len(uses) == 885, f"expected 885 uses of --fg-muted, found {len(uses)}"
 
     bare = [expr for _, expr in uses if not _fallback(expr)]
-    assert len(bare) == 872, (
-        f"expected 872 bare `var(--fg-muted)` uses, found {len(bare)}. If a site "
+    assert len(bare) == 877, (
+        f"expected 877 bare `var(--fg-muted)` uses, found {len(bare)}. If a site "
         "was legitimately added or removed, move this number and say which in "
         "the commit — do not widen the assertion."
     )
@@ -485,7 +493,9 @@ def test_the_bare_uses_split_across_properties_as_measured():
     # and cleared by the token's 4.5.
     # `B1408` (above): `color` 147 -> 332, the 185 ladder rungs, all text.
     # `B1577` (above): `color` 332 -> 862, the opacity form moved onto it.
-    assert tally == {"color": 862, "border-color": 4, "background": 3, "--ctx-stroke": 3}, tally
+    # 862 -> 866: the four quiet lines counted above, all `color:`.
+    # 866 -> 867: `B1734`'s `.reasoning-effort-item-desc`, `color:` too.
+    assert tally == {"color": 867, "border-color": 4, "background": 3, "--ctx-stroke": 3}, tally
 
 
 def test_the_javascript_uses_are_recorded_but_not_this_rows_work():
@@ -522,9 +532,13 @@ def test_the_javascript_uses_are_recorded_but_not_this_rows_work():
     # and declares `--fg-muted` itself; its labels, setup note, sign-up line
     # and eye button are ladder rungs, and its remember-me switch and version
     # line paint the token.
-    assert len(found) == 61, f"expected 61 --fg-muted uses outside the sheet, found {len(found)}"
+    # 61 -> 62, 59 -> 60 bare: the sign-up form (fe57e464) added two to the
+    # sign-in page, the *optional* tag on a label (bare) and the sign-up line
+    # (a rung); voice chat (`B1716`, 44235702) removed one rung with the old
+    # Settings speech message line.
+    assert len(found) == 62, f"expected 62 --fg-muted uses outside the sheet, found {len(found)}"
     bare = [e for e in found if e == "var(--fg-muted)"]
-    assert len(bare) == 59, f"expected 59 of them bare, found {len(bare)}"
+    assert len(bare) == 60, f"expected 60 of them bare, found {len(bare)}"
     # Nothing under `static/js/theme.js` may declare it — that is the mirror
     # `B21` is about, and the reason this row put the token in `:root`.
     assert "--fg-muted" not in THEME_JS.read_text(encoding="utf-8"), (
@@ -571,7 +585,7 @@ def test_muted_text_clears_the_floor_on_fourteen_palettes():
         + "\nA palette joining this set means secondary text got less legible "
         "somewhere; a palette leaving it means the B15 ceiling moved."
     )
-    assert len(against_panel) - len(under) == 23
+    assert len(against_panel) - len(under) == css_colour.SHIPPED_PALETTES
 
     # The hard floor holds everywhere, including on the two above.
     for name, ratio in sorted(against_panel.items()):
@@ -591,7 +605,8 @@ def test_the_two_palettes_under_the_floor_are_the_tokens_now_not_the_palettes():
     shortfall on them was the token's mix, not the palette's limit. `B1486`
     fixed the mix (4.29 → 4.89 on `cute`, 4.32 → 4.95 on `retrowave`, against
     `--panel`), and the two are pinned here so neither slips back under."""
-    for name, want in (("cute", 4.89), ("retrowave", 4.95)):
+    # `retrowave` (4.95) was retired with the cockpit (theme.js `RETIRED_THEMES`).
+    for name, want in (("cute", 4.89),):
         theme = _themes()[name]
         own = _contrast(_rgb(theme["fg"]), _rgb(theme["panel"]))
         assert own >= FLOOR, f"{name}'s own --fg fell under {FLOOR}:1 again ({own:.2f})"

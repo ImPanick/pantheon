@@ -39,6 +39,12 @@ UNWRITTEN_BY_DESIGN = {
         "predates Pantheon, and Law 1 says we do not subtract. Named here so "
         "the next person finds the answer instead of the question."
     ),
+    "cockpit": (
+        "Written in markup, not by code: `static/index.html` ships "
+        "`<html class=\"cockpit\">`, so the class is there before any script "
+        "runs and every `static/cockpit.css` rule applies on first paint. "
+        "`static/js/cockpit.js` reads it to decide whether to build the shell."
+    ),
 }
 
 # A root class that code writes and no CSS reads. Empty, and it should stay
@@ -62,7 +68,7 @@ def _css_sources():
     """(label, css) for every stylesheet this app actually ships, inline ones
     included. `static/lib/` is vendored and not ours to reason about."""
     out = []
-    for name in ("static/style.css",):
+    for name in ("static/style.css", "static/cockpit.css"):
         out.append((name, (ROOT / name).read_text(encoding="utf-8")))
     for page in ("static/index.html", "static/login.html"):
         text = (ROOT / page).read_text(encoding="utf-8")

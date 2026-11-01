@@ -79,9 +79,14 @@ def test_the_image_is_provisioned_with_the_container_images_own_files():
         data, mode, owner = files[f"{vm.PROVISION_DIR}/{rel}"]
         assert data == (PKG / rel).read_bytes(), rel
         assert owner == "root:root" and mode == ("0755" if rel.endswith(".sh") else "0644")
-    # Every file under the two folders, not a list someone keeps.
-    for path in (PKG / "skel").rglob("*"):
-        assert f"{vm.PROVISION_DIR}/skel/{path.name}" in files
+    # Every file under the folders, not a list someone keeps — the skeleton's
+    # desktop settings in their sub-folders and the desktop's theme among them
+    # (`D-2026-10-31-02`).
+    for folder in ("skel", "desktop"):
+        for path in (PKG / folder).rglob("*"):
+            if path.is_file():
+                rel = path.relative_to(PKG).as_posix()
+                assert files[f"{vm.PROVISION_DIR}/{rel}"][0] == path.read_bytes(), rel
 
 
 def test_the_container_image_runs_the_same_provisioning_script():
@@ -436,11 +441,13 @@ def _compose(*overlays, env=None):
     return done
 
 
-def test_the_vm_overlay_asks_for_one_device_and_nothing_else_of_the_host():
-    done = _compose("docker/workstation-vm.yml", env={"PGID": "1234"})
+def test_the_stacks_vm_host_asks_for_one_device_and_nothing_else_of_the_host():
+    """Since 2026-10-31 the VM host is Pantheon's own docker-compose.yml's
+    `workstation-vm` — no overlay (the owner: *"a proper VM to work inside"*)."""
+    done = _compose(env={"PGID": "1234"})
     assert done.returncode == 0, done.stderr
     cfg = json.loads(done.stdout)
-    ws = cfg["services"]["workstation"]
+    ws = cfg["services"]["workstation-vm"]
     assert ws["build"] == {"context": str(PKG), "dockerfile": "vm.Dockerfile"}
     assert ws["device_cgroup_rules"] == [f"c {vm.KVM_MAJOR}:{vm.KVM_MINOR} rwm"]
     assert not ws.get("privileged") and not ws.get("cap_add") and not ws.get("ports")
@@ -450,26 +457,35 @@ def test_the_vm_overlay_asks_for_one_device_and_nothing_else_of_the_host():
     # `B1427`: and the projects folder — the one host folder, which the host
     # shares into each person's machine one person's folder at a time.
     assert mounts[:2] == [("volume", "workstation-vm", str(vm.DEFAULT_STATE), False),
-                          ("volume", "workstation-pairing", P.DEFAULT_PAIRING_DIR, False)]
+                          ("volume", "workstation-vm-pairing", P.DEFAULT_PAIRING_DIR, False)]
     assert len(mounts) == 3 and mounts[2][0] == "bind" and mounts[2][2] == "/projects"
     assert mounts[2][1].endswith("/projects") and mounts[2][3] is False
     assert not any("docker.sock" in str(m) for m in ws["volumes"])
     assert ws["environment"]["PANTHEON_WORKSTATION_PAIRING_GID"] == "1234"
     assert ws["environment"][vm.ENV["accel"]] == "auto"
+    assert ws["environment"][vm.ENV["image_when"]] == "on_first_use"
     # Long enough for every machine to power off cleanly.
     assert ws["stop_grace_period"] in ("2m0s", "120s") and vm.STOP_GRACE_S < 120
     assert ws["healthcheck"]["test"]
 
 
-def test_switching_backends_is_one_line_because_pantheon_sees_no_difference():
-    vm_cfg = json.loads(_compose("docker/workstation-vm.yml").stdout)
-    ct_cfg = json.loads(_compose("docker/workstation.yml").stdout)
-    for cfg in (vm_cfg, ct_cfg):
-        p = cfg["services"]["pantheon"]
-        assert p["environment"][P.URL_ENV] == f"http://{P.DEFAULT_HOST}:{P.DEFAULT_PORT}"
-        assert ("workstation-pairing", P.DEFAULT_PAIRING_DIR, True) in [
-            (m["source"], m["target"], bool(m.get("read_only"))) for m in p["volumes"]]
-        assert "workstation" in cfg["services"]
+def test_the_stack_pairs_with_its_vm_and_the_old_overlays_change_nothing():
+    stack = json.loads(_compose().stdout)
+    p = stack["services"]["pantheon"]
+    assert p["environment"][P.VM_URL_ENV] == "http://workstation-vm:7040"
+    assert ("workstation-vm-pairing", "/workstation-vm-pairing", True) in [
+        (m["source"], m["target"], bool(m.get("read_only"))) for m in p["volumes"]]
+    # The container is beside the VM in the stack itself (2026-10-31), for a
+    # Docker with no KVM; `auto` picks between them.
+    assert p["environment"][P.URL_ENV] == f"http://{P.DEFAULT_HOST}:{P.DEFAULT_PORT}"
+    assert {"workstation", "workstation-net", "workstation-vm"} <= set(stack["services"])
+    for overlay in ("docker/workstation.yml", "docker/workstation-vm.yml",
+                    "docker/workstation-both.yml"):
+        cfg = json.loads(_compose(overlay).stdout)
+        assert set(cfg["services"]) == set(stack["services"]), overlay
+        for name in ("workstation", "workstation-net", "workstation-vm"):
+            assert cfg["services"][name] == stack["services"][name], (overlay, name)
+        assert cfg["services"]["pantheon"]["environment"] == p["environment"], overlay
 
 
 def test_the_remote_overlay_starts_nothing_and_demands_what_it_needs():

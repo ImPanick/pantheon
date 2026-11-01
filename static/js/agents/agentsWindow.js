@@ -558,6 +558,77 @@ function _effectsList(effects) {
   return ul;
 }
 
+/**
+ * `B1703` / `D-2026-10-30-01`. The hire form's warning and its control, added
+ * to `form`: the server's words (`hires.ALLOWED_AFTER_OUTSIDE`, naming what the
+ * hire would run unasked after outside content) and *Proceed to
+ * auto-approve*, unticked — the server's label too. Nothing when the server
+ * offers nothing: a person without `can_auto_approve`, an agent with nothing
+ * to lift. The browser holds no copy of either (`Law 7`).
+ */
+function _autoApproveField(form, offer) {
+  if (!offer || !offer.warning || !offer.id || !offer.proceed_label) return;
+  const warn = _el('p', 'agents-small agents-after-outside', offer.warning);
+  warn.setAttribute('role', 'note');
+  form.appendChild(warn);
+  const row = _el('label', 'agents-field agents-auto-accept');
+  const tick = document.createElement('input');
+  tick.type = 'checkbox';
+  tick.className = 'agents-input agents-auto-accept-tick';
+  row.appendChild(tick);
+  row.appendChild(_el('span', 'agents-field-label', offer.proceed_label));
+  form.appendChild(row);
+}
+
+/** `B1703`. `{accept_warning}` for the hire request when the person ticked
+ *  *Proceed to auto-approve*, `{}` otherwise — then the hire lifts nothing. */
+function _acceptedWarning(form, offer) {
+  if (!offer || !offer.id) return {};
+  const tick = form.querySelector('.agents-auto-accept-tick');
+  return tick && tick.checked ? { accept_warning: offer.id } : {};
+}
+
+/**
+ * `B1703`. A hire's auto-approve, on its page: whether its person accepted the
+ * warning (who, when), and the act either way — *Proceed to auto-approve*
+ * under the warning when they have not (the hire's effects changed, it was
+ * made before acceptances were recorded, its person was granted
+ * `can_auto_approve` after), *Stop auto-approving* when they have. Stopping
+ * never asks: it puts a gate back. The acts are its person's; anyone else
+ * reading the page sees the state only.
+ */
+function _autoApproveOnHire(h, mine) {
+  const state = h.auto_approve;
+  if (!state || !state.warning) return null;
+  const box = _el('section', 'agents-auto-approve');
+  box.appendChild(_el('h5', 'agents-h', 'Auto-approve after outside content'));
+  const accepted = state.accepted;
+  if (accepted) {
+    box.appendChild(_el('p', 'agents-small agents-auto-approve-state',
+      `On — accepted by ${accepted.by}${accepted.at ? `, ${_when(accepted.at)}` : ''}.`));
+  } else {
+    box.appendChild(_el('p', 'agents-small agents-auto-approve-state',
+      'Off — its runs ask you after it reads something from outside.'));
+  }
+  const warn = _el('p', 'agents-small agents-after-outside', state.warning);
+  warn.setAttribute('role', 'note');
+  box.appendChild(warn);
+  if (mine) {
+    const bar = _el('div', 'agents-actions');
+    if (accepted) {
+      bar.appendChild(_button('agents-btn', 'Stop auto-approving', () => _act(
+        () => Api.changeHire(h.id, { auto_approve: 'off' }),
+        { sentence: `${h.name} asks you again after it reads something from outside.` })));
+    } else {
+      bar.appendChild(_button('agents-btn agents-danger', state.proceed_label, () => _act(
+        () => Api.changeHire(h.id, { accept_warning: state.id }),
+        { sentence: `Auto-approve is on for ${h.name}.` })));
+    }
+    box.appendChild(bar);
+  }
+  return box;
+}
+
 function _inputField(spec, value) {
   const row = _el('label', 'agents-field');
   row.appendChild(_el('span', 'agents-field-label', spec.label + (spec.optional ? ' (optional)' : '')));
@@ -718,11 +789,12 @@ function _renderAgent(a) {
   // `D-2026-10-29-01` §1 (`B1605`). Before the hire, in the server's words:
   // what is set to *without asking* runs after the agent has read the web.
   // Only for a person whose hire it is true of (`can_auto_approve`).
-  if (a.after_outside) {
-    const warn = _el('p', 'agents-small agents-after-outside', a.after_outside);
-    warn.setAttribute('role', 'note');
-    form.appendChild(warn);
-  }
+  // `B1703` / `D-2026-10-30-01`: a warning to accept, not only to read — the
+  // hire lifts the gate only when *Proceed to auto-approve* is ticked, and
+  // its id goes with the hire (`accept_warning`). Unticked, the hire is made
+  // and its runs ask after outside content, as they always did.
+  _autoApproveField(form, a.auto_approve);
+  const accepted = () => _acceptedWarning(form, a.auto_approve);
   const buttons = _el('div', 'agents-actions');
   const go = _el('button', 'agents-primary', 'Summon');
   go.type = 'submit';
@@ -734,7 +806,7 @@ function _renderAgent(a) {
     _busy = true;
     tryBtn.disabled = true;
     const res = await Api.tryAgent(a.id, { inputs: readInputs(a.inputs, form), tz_name: tz || null,
-      project: _readProject(form) || null });
+      project: _readProject(form) || null, ...accepted() });
     _busy = false;
     tryBtn.disabled = false;
     if (!_win) return;
@@ -752,7 +824,7 @@ function _renderAgent(a) {
     _busy = true;
     go.disabled = true;
     const res = await Api.hireAgent(a.id, { inputs: readInputs(a.inputs, form), tz_name: tz || null,
-      project: _readProject(form) || null });
+      project: _readProject(form) || null, ...accepted() });
     _busy = false;
     go.disabled = false;
     if (!_win) return;
@@ -1211,6 +1283,9 @@ function _renderHire(h) {
     page.appendChild(_el('h5', 'agents-h', 'What it may do'));
     page.appendChild(_effectsList(h.effects));
   }
+  // `B1703` / `D-2026-10-30-01`. Under the rows it is about.
+  const auto = _autoApproveOnHire(h, !_everyone && h.owner === (_data && _data.me));
+  if (auto) page.appendChild(auto);
   if ((h.lacking || []).length) {
     page.appendChild(_el('p', 'agents-small agents-refused',
       `Its runs lack: ${h.lacking.map((x) => x.tool).join(', ')}.`));

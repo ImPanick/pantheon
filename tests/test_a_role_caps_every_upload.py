@@ -99,7 +99,9 @@ def test_speech_to_text(roles, monkeypatch):
     class _Stt:
         available = True
 
-        def transcribe(self, audio):
+        # `B1716`: the route passes the name the recording came with, as
+        # `STTService.transcribe` takes it.
+        def transcribe(self, audio, filename=""):
             return "heard"
 
     client = _client(_app(setup_stt_routes(_Stt())))

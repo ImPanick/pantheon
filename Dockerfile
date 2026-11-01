@@ -1,4 +1,4 @@
-# ---- the base: one Python patch release, for all three stages ----
+# ---- the base: one Python patch release, for every stage ----
 # `B1667`. Every stage read `python:3.14-slim`, a minor line rather than a
 # release, so a rebuild could swap the interpreter under the product with
 # nothing in the tree saying so — `B445`'s class, which the compose files had
@@ -7,8 +7,9 @@
 # `3.14.10-slim` named the same amd64 (sha256:ec6a14df…697f2d) and arm64
 # (sha256:29434a59…18ca1f) images, so this pins what a build was already
 # getting. Dependabot's docker ecosystem proposes the next patch as a pull
-# request; move all three `FROM`s together (`B1591`'s stage shares the base on
-# purpose). tests/test_searxng_image_pinned.py holds every Dockerfile to it.
+# request; move every `FROM` together (`B1591`'s stage and the desktop client's
+# share the base on purpose). tests/test_searxng_image_pinned.py holds every
+# Dockerfile to it.
 
 # ---- builder: patch + build wheels for Real-ESRGAN's broken-on-3.14 deps ----
 # basicsr/gfpgan/facexlib read their version via exec()+locals()['__version__'],
@@ -44,6 +45,36 @@ COPY scripts/strip-js-comments.mjs scripts/
 COPY static/ static/
 RUN node scripts/strip-js-comments.mjs /build /out
 
+# ---- desktop-client: the live desktop's web client, unpacked, never run ----
+# `D-2026-10-31-01`. The Workstation window draws a person's desktop with
+# KasmVNC's web client, and Pantheon serves that client itself
+# (`src/desktop_client.py`): the workstation is where agents run as root, so
+# script a browser runs under Pantheon's origin never comes from there. This
+# stage takes it from the same KasmVNC package the workstation installs —
+# `workstation/provision.sh client`, which downloads the pinned release, refuses
+# it unless its sha256 matches the one committed there, and unpacks it with
+# `dpkg-deb -x` (files only: nothing in the package runs). Only the unpacked
+# web client and its licence texts reach the image: the client's own copyright
+# file from the package, and the licences its files name
+# (`docker/kasmvnc-client/`, read from the client's source at the commit that
+# release was cut from). The optional BuildKit secret `build-ca` is the
+# workstation image's (`workstation/Dockerfile`), for a builder whose proxy
+# re-signs TLS.
+# `D-2026-11-01-01`: the stage also fetches that release's X server for Debian
+# 13, this base's own, into /server (`provision.sh server`: pinned, checked,
+# refused on a mismatch), for the final stage to install — the screen Pantheon's
+# own browser runs on for a person without a workstation, which the same
+# client draws.
+FROM python:3.14.10-slim AS desktop-client
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl \
+    && rm -rf /var/lib/apt/lists/*
+COPY workstation/provision.sh /build/provision.sh
+COPY docker/kasmvnc-client/ /out/LICENSES/
+RUN --mount=type=secret,id=build-ca,required=false,mode=0444 \
+    sh /build/provision.sh client /out \
+    && sh /build/provision.sh server /server \
+    && rm -f /out/LICENSES/README.md
+
 FROM python:3.14.10-slim
 
 # P0-18. A published image is a distribution, and this one declared no licence
@@ -61,8 +92,17 @@ LABEL org.opencontainers.image.licenses="AGPL-3.0-or-later"
 # launch inside Docker.
 # nodejs/npm provide npx for the built-in Browser MCP server.
 # chromium provides the actual browser binary used by that MCP server.
+# firefox-esr is the agent browser for a person without a workstation — their
+# own headless Firefox, which they watch and take over in the app and the
+# agent drives (`src/local_browser.py`, over WebDriver BiDi like the
+# workstation's); fonts-dejavu-core gives its pages letters to draw.
+# `D-2026-11-01-01`: KasmVNC's X server (the package the `desktop-client` stage
+# fetched and checked) gives that browser a screen of its own, which the person
+# watches live and takes over, and xdotool fits Firefox's window to it; the
+# browser runs headless where neither is.
 # gosu lets the entrypoint drop privileges cleanly so signals still reach
 # uvicorn directly (no extra shell layer like `su`/`sudo` would add).
+COPY --from=desktop-client /server/kasmvncserver.deb /tmp/kasmvncserver.deb
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     cmake \
@@ -71,6 +111,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     nodejs \
     npm \
     chromium \
+    firefox-esr \
+    fonts-dejavu-core \
     tmux \
     openssh-client \
     gosu \
@@ -78,8 +120,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libglib2.0-0t64 \
     libxcb1 \
     libmagic1 \
-    && rm -rf /var/lib/apt/lists/*
+    xdotool \
+    tesseract-ocr \
+    /tmp/kasmvncserver.deb \
+    && rm -rf /var/lib/apt/lists/* /tmp/kasmvncserver.deb \
+    && install -d -m 1777 /tmp/.X11-unix
 
+# `G3` (`D-2026-11-01-04`). tesseract-ocr reads the text on a workstation
+# screenshot that the desktop's accessibility tree does not describe, so the
+# agent's numbered marks cover it too (`src/screen_marks.py`). Its English model
+# is the package's own (tesseract-ocr-eng, a dependency): nothing is fetched.
+#
 # libgl1/libglib2.0-0t64/libxcb1 are runtime shared libs (libGL.so.1,
 # libglib-2.0/libgthread, libxcb.so.1) that opencv-python (cv2) loads. The
 # slim base omits them, so the Forge's "install realesrgan" path imports cv2
@@ -117,9 +168,20 @@ WORKDIR /app
 # Install Python deps first (layer cache). Optional extras (PyMuPDF AGPL, etc.)
 # are opt-in so the default image stays MIT-core; see requirements-optional.txt.
 ARG INSTALL_OPTIONAL=false
-COPY requirements.txt requirements-optional.txt requirements-image.txt ./
+# `B1716`, `B1717`. Speech on this server's own processor, installed by
+# default: Whisper hears (faster-whisper, CTranslate2) and Piper speaks (ONNX
+# Runtime), so a voice chat works on a fresh install with no GPU and no
+# service linked. Both are wheels on this Python; Kokoro, the GPU voice, is
+# not (see requirements-optional.txt). `--build-arg INSTALL_VOICE=false`
+# leaves them out, and a voice chat then uses the browser's own speech or an
+# endpoint added under Added Models. Installed in the same step as the core
+# requirements, after them: it adds five packages and moves no core pin
+# (measured on this image's base; `pip check` clean).
+ARG INSTALL_VOICE=true
+COPY requirements.txt requirements-optional.txt requirements-image.txt requirements-voice.txt ./
 RUN pip install --no-cache-dir -r requirements.txt \
-    && if [ "$INSTALL_OPTIONAL" = "true" ]; then pip install --no-cache-dir -r requirements-optional.txt; fi
+    && if [ "$INSTALL_OPTIONAL" = "true" ]; then pip install --no-cache-dir -r requirements-optional.txt; fi \
+    && if [ "$INSTALL_VOICE" = "true" ]; then pip install --no-cache-dir -r requirements-voice.txt; fi
 
 # python-magic powers content-based MIME sniffing in src/upload_handler.py.
 # Image-only (not in requirements.txt) because it needs the libmagic1 system
@@ -138,6 +200,73 @@ RUN pip install --no-cache-dir -r requirements-image.txt
 COPY --from=realesrgan-wheels /wheels/ /tmp/pantheon-wheels/
 RUN pip install --no-cache-dir --no-deps /tmp/pantheon-wheels/*.whl \
     && rm -rf /tmp/pantheon-wheels
+
+# `B1712`. The default local embedding model, fetched while the image is built
+# so that memory and document search are semantic on a fresh install. Without
+# it the in-process index had no model, Pantheon will not fetch one on its own
+# (`allow_model_download`, `Law 16`), and every search fell back to keywords.
+# Fetching here is the build reaching Hugging Face the way `pip install` reaches
+# PyPI: a running install still reaches nobody. Kept outside /app/data and
+# /app/.cache/huggingface, which compose bind-mounts over, and copied into the
+# data volume by `docker/entrypoint.sh` (`seed_model_cache`) when that holds
+# no model yet. The seed is fastembed's own cache layout, which it opens
+# offline first. `--build-arg BAKE_MODELS=false` leaves it out.
+ARG BAKE_MODELS=true
+ARG FASTEMBED_SEED_MODEL=sentence-transformers/all-MiniLM-L6-v2
+ENV PANTHEON_SEED_MODELS=/opt/pantheon/seed-models \
+    PANTHEON_FASTEMBED_SEED_MODEL=${FASTEMBED_SEED_MODEL}
+RUN if [ "$BAKE_MODELS" = "true" ]; then \
+        python -c "import sys; from fastembed import TextEmbedding; TextEmbedding(sys.argv[1], cache_dir=sys.argv[2])" \
+            "$FASTEMBED_SEED_MODEL" "$PANTHEON_SEED_MODELS/fastembed" \
+        && test -n "$(find "$PANTHEON_SEED_MODELS/fastembed" -name '*.onnx' -print -quit)" \
+        && chmod -R a+rX "$PANTHEON_SEED_MODELS"; \
+    fi
+
+# `B1716`, `B1717`. The voice chat's two models, baked the same way and for
+# the same reason: Whisper `base` in CTranslate2's format (OpenAI's weights,
+# MIT) and the Piper voice `en_US-ljspeech-medium` (trained on LJ Speech, which
+# its authors put in the public domain), with the voice's model card. Unlike
+# the embedding model they are read where they are — `PANTHEON_SEED_MODELS/
+# whisper/<size>` by `services/stt/stt_service.py`, `PANTHEON_SEED_MODELS/
+# piper` by `services/tts/tts_service.py` — so the data volume holds only a
+# model someone chose to fetch. Only with the voice packages installed.
+ARG WHISPER_SEED_MODEL=base
+ARG PIPER_SEED_VOICE=en_US-ljspeech-medium
+COPY docker/bake_piper_voice.py /tmp/bake_piper_voice.py
+RUN if [ "$BAKE_MODELS" = "true" ] && [ "$INSTALL_VOICE" = "true" ]; then \
+        python -c "import sys; from faster_whisper.utils import download_model; download_model(sys.argv[1], output_dir=sys.argv[2])" \
+            "$WHISPER_SEED_MODEL" "$PANTHEON_SEED_MODELS/whisper/$WHISPER_SEED_MODEL" \
+        && test -f "$PANTHEON_SEED_MODELS/whisper/$WHISPER_SEED_MODEL/model.bin" \
+        && python /tmp/bake_piper_voice.py "$PIPER_SEED_VOICE" "$PANTHEON_SEED_MODELS/piper" \
+        && test -f "$PANTHEON_SEED_MODELS/piper/$PIPER_SEED_VOICE.onnx" \
+        && test -f "$PANTHEON_SEED_MODELS/piper/$PIPER_SEED_VOICE.onnx.json" \
+        && rm -rf "$PANTHEON_SEED_MODELS/whisper/$WHISPER_SEED_MODEL/.cache" \
+        && chmod -R a+rX "$PANTHEON_SEED_MODELS"; \
+    fi \
+    && rm -f /tmp/bake_piper_voice.py
+
+# `B1728`. Kokoro, the realistic voice on this server's own processor
+# (Kokoro-82M exported to ONNX, Apache-2.0, weights and voices), baked the
+# same way and read where it is (`PANTHEON_SEED_MODELS/kokoro`, by
+# `services/tts/kokoro_cpu.py`), so the "Automatic" voice speaks with it on a
+# fresh install with nothing fetched at run time. About 350 MB. Each file is
+# checked against the size and SHA-256 that module holds, which is copied
+# beside the script for it. It speaks through ONNX Runtime and the espeak-ng
+# Piper carries, so only with the voice packages installed.
+COPY docker/bake_kokoro.py /tmp/kokoro-bake/bake_kokoro.py
+COPY services/tts/kokoro_cpu.py /tmp/kokoro-bake/kokoro_cpu.py
+RUN if [ "$BAKE_MODELS" = "true" ] && [ "$INSTALL_VOICE" = "true" ]; then \
+        python /tmp/kokoro-bake/bake_kokoro.py "$PANTHEON_SEED_MODELS/kokoro" \
+        && test -f "$PANTHEON_SEED_MODELS/kokoro/kokoro-v1.0.onnx" \
+        && test -f "$PANTHEON_SEED_MODELS/kokoro/voices-v1.0.bin" \
+        && chmod -R a+rX "$PANTHEON_SEED_MODELS"; \
+    fi \
+    && rm -rf /tmp/kokoro-bake
+
+# `D-2026-10-31-01`. The live desktop's web client and its licences, from the
+# `desktop-client` stage above, where `src/desktop_client.py` serves them.
+COPY --from=desktop-client /out/ /opt/pantheon/kasmvnc/
+ENV PANTHEON_DESKTOP_CLIENT_DIR=/opt/pantheon/kasmvnc/www
 
 # Copy app code
 COPY . .

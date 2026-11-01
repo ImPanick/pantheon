@@ -1,0 +1,65 @@
+/* SPDX-License-Identifier: AGPL-3.0-or-later */
+/*
+ * The workstation desktop's touches over the dark Adwaita (D-2026-10-31-02):
+ * the cockpit's surfaces and its accent (THEMES.dark in Pantheon's
+ * static/js/theme.js), and the panel's buttons as the cockpit's rail draws
+ * them — flat, rounded, lit on hover, and the open window marked in the
+ * accent. This file is in the account's home; "Reset to clean" puts it back.
+ */
+@define-color ck_canvas #1b1f23;
+@define-color ck_view #15181c;
+@define-color ck_raised #23292c;
+@define-color ck_edge #303d41;
+@define-color ck_text #d4dee2;
+@define-color ck_accent #e06c75;
+@define-color ck_accent_deep #a9545c;
+
+/* Adwaita's own names, for whatever reads them */
+@define-color theme_selected_bg_color @ck_accent_deep;
+@define-color theme_selected_fg_color #ffffff;
+@define-color accent_bg_color @ck_accent_deep;
+@define-color accent_color @ck_accent;
+
+/* the surfaces: windows on the canvas, lists and text on the view */
+window.background, dialog.background, .background:not(.xfce4-panel) { background-color: @ck_canvas; color: @ck_text; }
+.view, treeview.view, iconview.view, textview text, .sidebar, placessidebar, placessidebar list,
+.thunar .standard-view, scrolledwindow viewport { background-color: @ck_view; }
+headerbar, .titlebar { background: @ck_raised; border-color: @ck_edge; box-shadow: none; }
+menu, .menu, popover.background, .csd menu, tooltip.background {
+  background-color: @ck_raised; border: 1px solid @ck_edge;
+}
+tooltip.background { border-radius: 8px; }
+
+/* the accent where Adwaita uses its blue */
+selection, *:selected, row:selected, treeview.view:selected, iconview:selected,
+menu menuitem:hover, .menu menuitem:hover, menubar > menuitem:hover {
+  background-color: @ck_accent_deep; color: #ffffff;
+}
+entry:focus, spinbutton:focus, textview:focus { border-color: @ck_accent; box-shadow: inset 0 0 0 1px @ck_accent; }
+check:checked, radio:checked, switch:checked { background-color: @ck_accent_deep; border-color: @ck_accent_deep; color: #ffffff; }
+scale highlight, progressbar progress, levelbar block.filled { background-color: @ck_accent; border-color: @ck_accent; }
+button.suggested-action { background: @ck_accent_deep; border-color: @ck_accent_deep; color: #ffffff; }
+
+/* the panel: its glass is the panel's own background (xfce4-panel.xml) */
+.xfce4-panel button {
+  background: transparent; border: none; box-shadow: none; border-radius: 8px;
+  margin: 4px 2px; padding: 0 6px; color: @ck_text; transition: background-color 120ms ease;
+}
+.xfce4-panel button:hover { background-color: alpha(#9cdef2, 0.10); }
+.xfce4-panel button:active, .xfce4-panel button:checked {
+  background-color: alpha(@ck_accent, 0.16); box-shadow: inset 0 -2px @ck_accent;
+}
+.xfce4-panel button label { color: @ck_text; }
+.xfce4-panel #tasklist-button label { font-weight: 500; }
+
+/* the menu: one slab of glass with the search on top */
+#whiskermenu-window { background-color: @ck_raised; border: 1px solid @ck_edge; border-radius: 10px; }
+#whiskermenu-window entry { border-radius: 8px; }
+#whiskermenu-window button { border-radius: 8px; }
+#whiskermenu-window treeview.view, #whiskermenu-window iconview.view { background-color: transparent; }
+
+/* the terminal: nothing between the text and the frame */
+.xfce4-terminal notebook header { background: @ck_canvas; border: none; }
+vte-terminal { padding: 6px 8px; }
+
+scrollbar slider { border-radius: 8px; min-width: 6px; min-height: 6px; }

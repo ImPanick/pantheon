@@ -26,16 +26,9 @@ class AskUserTool:
         if isinstance(parsed, dict):
             question = str(parsed.get("question", "")).strip()
             multi = bool(parsed.get("multi") or parsed.get("multiSelect"))
-            for opt in (parsed.get("options") or []):
-                if isinstance(opt, dict):
-                    label = str(opt.get("label", "")).strip()
-                    descr = str(opt.get("description", "")).strip()
-                elif isinstance(opt, str):
-                    label, descr = opt.strip(), ""
-                else:
-                    continue
-                if label:
-                    options.append({"label": label, "description": descr})
+            options = _options(parsed.get("options"))
+            if parsed.get("questions"):
+                return _brief(question, parsed.get("questions"))
         else:
             question = raw
 
@@ -58,6 +51,83 @@ class AskUserTool:
         }
         logger.info("Tool executed: %s (%d options, multi=%s)", desc, len(options), multi)
         return desc, result
+
+def _options(raw) -> list:
+    """`[{label, description}]` out of whatever the model sent for options."""
+    options = []
+    for opt in (raw if isinstance(raw, list) else []):
+        if isinstance(opt, dict):
+            label = str(opt.get("label", "")).strip()
+            descr = str(opt.get("description", "")).strip()
+        elif isinstance(opt, str):
+            label, descr = opt.strip(), ""
+        else:
+            continue
+        if label:
+            options.append({"label": label, "description": descr})
+    return options[:6]
+
+
+#: How many questions one brief may carry. A plan needs the few things that
+#: change its steps, and a form longer than this is a questionnaire nobody
+#: finishes on a phone.
+BRIEF_MAX_QUESTIONS = 5
+
+#: The card's lead-in when the model gave none.
+BRIEF_DEFAULT_LEAD = "A few things before I plan this."
+
+
+def _brief(lead: str, raw_questions) -> tuple:
+    """Several questions on one card, each with suggested answers or none.
+
+    Plan mode's way to gather what a plan rests on (the outcome, what done
+    looks like, the limits, the taste) in one round trip rather than one
+    question per turn. Every question takes a typed answer as well as its
+    suggestions, so a question with no options is a plain prompt for the
+    person's own words. The answers come back as one message that repeats each
+    question beside its answer, so the model reads them together.
+    """
+    questions = []
+    for item in (raw_questions if isinstance(raw_questions, list) else []):
+        if isinstance(item, str):
+            item = {"question": item}
+        if not isinstance(item, dict):
+            continue
+        text = str(item.get("question", "")).strip()
+        if not text:
+            continue
+        questions.append({
+            "id": f"q{len(questions) + 1}",
+            "question": text,
+            "options": _options(item.get("options")),
+            "multi": bool(item.get("multi") or item.get("multiSelect")),
+            "placeholder": str(item.get("placeholder", "")).strip()[:120],
+        })
+    if not questions:
+        return "ask_user: invalid", {
+            "error": (
+                "ask_user with `questions` needs at least one entry, each an object "
+                "with a non-empty `question` (and optional `options`, `multi`)."
+            ),
+            "exit_code": 1,
+        }
+    dropped = len(questions) - BRIEF_MAX_QUESTIONS
+    questions = questions[:BRIEF_MAX_QUESTIONS]
+    lead = lead or BRIEF_DEFAULT_LEAD
+    listed = "\n".join(f"{i}. {q['question']}" for i, q in enumerate(questions, 1))
+    output = (f"Asked the user {len(questions)} question(s): {lead}\n{listed}\n"
+              f"Awaiting their answers.")
+    if dropped > 0:
+        output += (f"\n{dropped} more question(s) were not shown: one card holds "
+                   f"{BRIEF_MAX_QUESTIONS}. Ask the rest only if the answers leave them open.")
+    logger.info("Tool executed: ask_user brief (%d questions)", len(questions))
+    return f"ask_user: {len(questions)} question(s)", {
+        "ask_user": {"kind": "brief", "question": lead, "questions": questions,
+                     "options": [], "multi": False},
+        "output": output,
+        "exit_code": 0,
+    }
+
 
 class UpdatePlanTool:
     async def execute(self, content, ctx):

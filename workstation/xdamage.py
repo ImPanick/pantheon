@@ -15,11 +15,13 @@ root window at the `BoundingBox` level, so the server sends an event whenever
 the box around everything drawn since the last clear grows — a handful of
 events, not one per drawing.
 
-**Drawn is not changed — measured.** On the shipped desktop the tray's clock
+**Drawn is not changed — measured.** On the JWM desktop the tray's clock
 (`skel/.jwmrc`, `%H:%M`) is redrawn about three times a second with the same
 pixels (2026-10-01, the workstation image, Xvfb: 16 damage reports in 5 s of an
 idle desktop, every one the clock's 45x30 box). Damage alone would call that
-screen changed every time. So a mark also keeps the screen's own pixels
+screen changed every time. (The XFCE desktop that replaced it, `D-2026-10-31-02`,
+drew nothing in 10 s idle, compositor and all — measured 2026-10-31 — but a
+desktop is free to redraw, so the check stays.) So a mark also keeps the screen's own pixels
 (`GetImage`, 4 MB raw, 4.5 ms measured, against 50 ms for the `scrot` JPEG
 on the same host at load 2.3), and a question about a screen that was drawn on
 compares only the drawn box with them (0.06 ms for the clock's box).

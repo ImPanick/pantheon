@@ -11,10 +11,12 @@ inside **Settings**. Only edit `.env` for deployment-level overrides like
 `APP_BIND`, `APP_PORT`, `DATABASE_URL`, or a pre-seeded admin password. (Sign-in is always on;
 there is no `.env` switch for it since 0.2.0.)
 
-On first setup, Pantheon creates an admin account (`admin` unless
-`PANTHEON_ADMIN_USER` is set) and prints a temporary password in the terminal.
-For Docker installs, the same line is in `docker compose logs pantheon`.
-Use that for the first login, then change it in **Settings**.
+On first setup, open Pantheon in a browser: with no account yet, the sign-in page
+asks you to make the admin (and whether people may create their own accounts).
+Running `setup.py` in a terminal asks for it there instead. To have it made ahead
+of time, set `PANTHEON_ADMIN_PASSWORD` (and `PANTHEON_ADMIN_USER`, `admin` if
+unset) in `.env`. An update never asks again: the setup appears only while the
+account store is empty.
 
 Contributing? See [CONTRIBUTING.md](../CONTRIBUTING.md) for setup, testing, and
 pull request guidelines.
@@ -27,6 +29,14 @@ cp .env.example .env       # optional, but recommended for explicit defaults
 docker compose up -d --build
 ```
 To include optional extras in the image (PDF viewer, Office extraction; includes AGPL PyMuPDF), build with `docker compose build --build-arg INSTALL_OPTIONAL=true` before `up`.
+
+The image carries the default local embedding model (about 90 MB), fetched while it is built and copied into `./data/fastembed_cache` on first start, so memory and document search work by meaning without anything being downloaded at run time. `--build-arg BAKE_MODELS=false` builds without it.
+
+The image also carries speech for voice chat and dictation (about half a gigabyte): faster-whisper with the Whisper `base` model, and Piper with the `en_US-ljspeech-medium` voice, both running on the CPU. Turn them on in **Settings → Voice**: *Speech to text* → *Local Whisper, on this server*, and the voice chat's voice → *Piper, on this server*; each has a test button. `--build-arg INSTALL_VOICE=false` builds without speech; `BAKE_MODELS=false` leaves out its models too, and they are then fetched on first use only with *Download models from the internet* on (Settings → System). `WHISPER_SEED_MODEL` and `PIPER_SEED_VOICE` choose which model and voice are baked. After an update, hard-refresh the browser once so it loads the new page.
+
+It carries a realistic voice as well: Kokoro (Kokoro-82M exported to ONNX, Apache-2.0, about 350 MB), which speaks on the CPU about three times faster than it talks, in 41 voices across American and British English, Spanish, French, Hindi, Italian and Brazilian Portuguese. The server's voice is *Automatic* out of the box (**Settings → Voice**): Chatterbox while it runs on an NVIDIA GPU (below), else Kokoro, else Piper. Each person turns on **Conversation** for themselves, the speech-bubble switch in the composer or **Settings → Conversation**, and the agent then says every reply out loud while it writes it; there they choose their own voice and speed, with *Hear it* to listen first, and that voice also answers them in a voice chat and reads aloud for them. Nobody else's Pantheon changes. An install that never chose a voice speaks with *Automatic* after this update; one that chose a voice, or chose *None*, keeps its choice. `INSTALL_VOICE=false` or `BAKE_MODELS=false` leaves Kokoro out too; it is then fetched on first use from the `kokoro-onnx` release on GitHub, only with *Download models from the internet* on, or you put `kokoro-v1.0.onnx` and `voices-v1.0.bin` in `data/models/kokoro/` yourself.
+
+**Chatterbox on an NVIDIA GPU (optional).** Chatterbox Turbo (Resemble AI, MIT) is a more natural voice for a server with an NVIDIA GPU, and it runs beside Pantheon in a container of its own, because it needs PyTorch on CUDA. With the NVIDIA overlay in use (`docker/gpu.nvidia.yml`, or `docker-compose.gpu-nvidia.yml`), add `COMPOSE_PROFILES=chatterbox` to `.env` and run `docker compose up -d --build`. The build fetches its weights from Hugging Face once (a few gigabytes), and the container then runs offline and needs about 3 GB of GPU memory. While it answers, *Automatic* speaks with it, and people can choose it in **Settings → Conversation**. To give it more voices, put a recording of one person speaking (WAV or FLAC, longer than five seconds) in `data/chatterbox-voices/`, named for the voice (`Grandad.wav` becomes "Grandad"); it speaks in the voice it hears, so use only a voice you have the right to use. Everything it says carries Resemble AI's inaudible Perth watermark.
 
 Open `http://localhost:7000` when the containers are healthy. Docker Compose
 binds the web UI to `127.0.0.1` by default. If the port is taken, set
@@ -191,55 +201,151 @@ COMPOSE_FILE=docker-compose.yml:docker/gpu.nvidia.yml:docker/host-docker.yml
 COMPOSE_FILE=docker-compose.yml:docker/gpu.amd.yml:docker/host-docker.yml
 ```
 
-**A workstation for the agents (opt-in, `P20`).** An Ubuntu desktop beside
-Pantheon: a private account, home and desktop per person, kept between chats,
-with *Reset to clean*. When it is on, the agent's shell, Python and file tools
-run there instead of inside Pantheon, and a `computer` tool can see and work
-its screen. Turn it on with one line in `.env`, then rebuild:
+**A workstation for the agents (`P20`).** An Ubuntu desktop the agents work
+in: a private account, home and desktop per person, kept between chats, with
+*Reset to clean*. When it is on, the agent's shell, Python and file tools run
+there instead of inside Pantheon, a `computer` tool can see and work its
+screen, and the person can watch that screen and take over at any time. It is
+part of the default stack and on from the first start: the agent can use it
+as soon as the admin account exists. **Settings → Workstation → On** switches
+it off or back on, and a stack without a workstation leaves it off. Nothing to
+paste: Pantheon finds it and reads its keys from volumes only it and the
+workstation's containers share. Upgrading an install whose Settings were saved
+before this change keeps the answer it had; if the switch reads off, turn it on.
 
-```bash
-COMPOSE_FILE=docker-compose.yml:docker/workstation.yml     # Windows: separate with ; instead of :
-docker compose up -d --build
+The stack ships both local kinds, and *Backend* in the same panel chooses
+between them. *Automatic* (the default) picks the VM where Docker can use KVM
+and the container where it cannot:
+
+| | What it is |
+|---|---|
+| **Virtual machines** (`workstation-vm`) | An Ubuntu VM for each person: a hypervisor between people, and *Reset to clean* is a fresh machine. Needs KVM to be quick (Linux with `/dev/kvm`). The machine image is made when the workstation is first used on this backend (minutes with KVM); each person's machine then starts on their first use and takes up to 2 GB of RAM while it runs (`PANTHEON_WORKSTATION_VM_MEMORY_MIB`); one nobody has used for 30 minutes is powered off and starts again on the next use (`PANTHEON_WORKSTATION_VM_IDLE_MIN`), and no more run at once than the host's memory holds (`PANTHEON_WORKSTATION_VM_MAX_RUNNING`). Without KVM (Docker Desktop on Windows or macOS) the machines are emulated: the image takes an hour or more and everything runs several times slower, which is why *Automatic* uses the container there. |
+| **Container** (`workstation`) | An Ubuntu container beside Pantheon. Each person is a Unix account in it. Starts in seconds on any Docker. |
+| **Another machine** | Any Ubuntu 24.04 machine — a Proxmox or libvirt VM, a spare box. Copy the repository's `workstation/` folder to it and run `sudo python3 workstation/install.py`; it prints the four lines to put in Pantheon's `.env` (`COMPOSE_FILE=docker-compose.yml:docker/workstation-remote.yml`, the address, the token and the certificate's fingerprint). HTTPS with that one certificate pinned by default; `--no-tls` for a LAN or a VPN. Pantheon never sends the workstation's token over plain http to a public address. |
+
+**A real VM on Windows.** Docker Desktop runs inside WSL 2's own virtual
+machine, so a VM per person needs WSL 2 to pass virtualization through to it
+(nested virtualization). That is Windows 11 only. Put these lines in
+`%UserProfile%\.wslconfig`, run `wsl --shutdown`, start Docker Desktop again,
+then `docker compose up -d --force-recreate workstation-vm`:
+
+```ini
+[wsl2]
+nestedVirtualization=true
 ```
 
-Then **Settings → Workstation → On**. Nothing to paste: Pantheon finds it at
-`http://workstation:7040` and reads its keys from volumes only it and the
-workstation's containers share. It has full network access by default — an
-admin narrows it to *internet only* or *none* in the same panel, held by the
-small `workstation-net` container the overlay starts beside it, so an agent
-using *sudo* cannot lift it (`P20-06`) — and no access to Docker or to
-Pantheon's data, except each person's projects folder (`data/projects`,
-shared read-write so a project is the same folder on both sides, `B1417`). *sudo*
-is off in the container unless an admin turns it on — with it on, one person's
-agent can read another's workstation home, and the panel says so beside the
-switch — and on in a person's own VM (`B1428`). With a GPU
-overlay, list all three:
-`COMPOSE_FILE=docker-compose.yml:docker/gpu.nvidia.yml:docker/workstation.yml`.
+Settings → Workstation then says *KVM* instead of *emulated*, and *Automatic*
+moves to the VM. On Windows 10 and on macOS, Docker has no KVM to give, so the
+container is the fast workstation there.
 
-**Three kinds of workstation** (`P20-07`) — one line in `.env` each, then `docker compose up -d --build` and **Settings → Workstation → On**. Nothing else to type for the first two: Pantheon finds the workstation and pairs with it on its own.
+**A real VM per person on Proxmox.** Run Pantheon in a Proxmox VM (not an
+LXC container) and let that VM use KVM itself (nested virtualization). Docker
+in it then has `/dev/kvm`, and each person's machine runs at close to native
+speed:
 
-| | `.env` | What it is |
-|---|---|---|
-| **Container** | `COMPOSE_FILE=docker-compose.yml:docker/workstation.yml` | An Ubuntu container beside Pantheon. Each person is a Unix account in it. Smallest and quickest. |
-| **Virtual machines** | `COMPOSE_FILE=docker-compose.yml:docker/workstation-vm.yml` | An Ubuntu VM for each person: a hypervisor between people, and *Reset to clean* is a fresh machine. Uses KVM when the host has it (Linux with `/dev/kvm`); without it the machines are emulated and slow, and the panel says so. The first start makes the machine image (minutes with KVM, an hour or more without); each person's machine then starts on their first use and takes up to 2 GB of RAM while it runs (`PANTHEON_WORKSTATION_VM_MEMORY_MIB`); one nobody has used for 30 minutes is powered off and starts again on the next use (`PANTHEON_WORKSTATION_VM_IDLE_MIN`), and no more run at once than the host's memory holds (`PANTHEON_WORKSTATION_VM_MAX_RUNNING`). |
-| **Another machine** | the lines `install.py` prints | Any Ubuntu 24.04 machine — a Proxmox or libvirt VM, a spare box. Copy the repository's `workstation/` folder to it and run `sudo python3 workstation/install.py`; it prints the four lines to put in Pantheon's `.env` (this overlay's `COMPOSE_FILE`, the address, the token and the certificate's fingerprint). HTTPS with that one certificate pinned by default; `--no-tls` for a LAN or a VPN. Pantheon never sends the workstation's token over plain http to a public address. |
+1. On the Proxmox host, `cat /sys/module/kvm_intel/parameters/nested`
+   (`kvm_amd` on AMD) prints `Y` or `1`. It usually does on a current Proxmox;
+   if not, put `options kvm_intel nested=Y` (or `options kvm_amd nested=1`) in
+   a file under `/etc/modprobe.d/` and reboot the host.
+2. Pantheon's VM: Hardware → Processors → Type `host` (`qm set <vmid> --cpu
+   host`), then stop and start it from Proxmox; a reboot from inside does not
+   pick up the change. A `host` CPU cannot live-migrate to a node with a
+   different CPU.
+3. Inside it, `ls /dev/kvm` shows the device; then `docker compose up -d
+   --force-recreate workstation-vm`.
 
-On Windows, separate `COMPOSE_FILE` entries with `;` instead of `:`. With a GPU overlay, list both.
+Size the VM for the people who work at once: each running machine takes up to
+`PANTHEON_WORKSTATION_VM_MEMORY_MIB` (2 GB) and `PANTHEON_WORKSTATION_VM_CPUS`
+(2), on top of Pantheon itself.
 
-**Both local backends, and a switch between them** (`B1478`, opt-in). Add
-`docker/workstation-both.yml` after the container's overlay —
-`COMPOSE_FILE=docker-compose.yml:docker/workstation.yml:docker/workstation-both.yml`
-— and the VM host runs beside the container. Settings → Workstation → *Backend*
-then chooses which one the agents use; *Automatic* is the VM where the host has
-KVM and the container otherwise. Add `docker/host-docker.yml` as well and the
-choice also starts that backend and stops the other, and the panel lists the
-workstation's containers with Start, Stop, Restart and Logs. That overlay gives
-Pantheon the host's Docker socket — broad control of the host, the same opt-in
-the Forge uses — and Pantheon uses it here only on its own compose project's
-workstation services: it lists, starts, stops, restarts and reads logs, and
-never creates, pulls or removes anything. Without it, both run and the choice is
-which one answers. On the VM backend each person's machine is given their own
-folder of `data/projects` and no other (`B1427`).
+Agents have full access by default: *sudo* is on in every backend until an
+admin turns it off (the owner, 2026-10-31: *"Agents get FULL access"*). In the
+container that means one person's agent can read another's workstation home,
+and the panel says so beside the switch; in a person's own VM it reaches only
+their machine. The network is full by default too — an admin narrows it to
+*internet only* or *none* in the same panel, held by the small
+`workstation-net` container beside the container backend, so an agent using
+*sudo* cannot lift it (`P20-06`). Neither backend has access to Docker or to
+Pantheon's data, except the projects folder (`data/projects`, shared
+read-write so a project is the same folder on both sides, `B1417`; on the VM
+backend each person's machine is given their own folder and no other, `B1427`).
+
+**The browser does not need a workstation.** Pantheon's image has a headless
+Firefox of its own. The agents' `agent_browser` tool and the browser window use
+the workstation's Firefox when the workstation answers, and Pantheon's whenever
+it does not (switched off, still starting, or not allowed for that person). The
+person watches and takes control of either from the same window. Pantheon's
+browser reaches public addresses only, plus the local network when an admin has
+turned on *agent LAN reach* and the person may use the workstation; never
+Pantheon's own services.
+
+**The screen is live** (`D-2026-10-31-01`). Each person's desktop is
+KasmVNC's X server, and the Workstation window shows it as it moves, with the
+mouse and keyboard yours while you hold it (*Take over*, *Hand back*). Text the
+workstation copies lands on your clipboard (or behind a *Copy* button where the
+browser wants a press first); *Paste* sends yours to the workstation. The
+stream reaches only the person whose desktop it is, from Pantheon's own pages,
+and an admin watching someone else's sees it view-only. After updating, run
+`docker compose up -d --build` once: the workstation's image gains KasmVNC, and
+the VM backend makes its machine image again on first use (minutes with KVM).
+Where there is no stream — a workstation not yet rebuilt, a native install
+without the client (`PANTHEON_DESKTOP_CLIENT_DIR`) — the window shows the
+screen as pictures, a few a second, and says why under it.
+
+**The browser is live too, on a screen of its own** (`D-2026-11-01-01`). The
+agent's Firefox runs alone on a second KasmVNC screen, apart from the desktop,
+and the Browser window shows it as it moves: Firefox's own tabs and address
+bar, yours to use while you hold it, with the same *Paste* and *Copy*. The
+agent drives and sees it as before. This holds for the workstation's browser
+and for Pantheon's own (Pantheon's image carries KasmVNC's server as well, and
+runs it as Pantheon's own user), so rebuild both images:
+`docker compose up -d --build`. A native install without KasmVNC, or a
+workstation not yet rebuilt, keeps showing the browser as pictures and says why.
+
+**Computer Use** (`D-2026-11-01-02`). In Settings → Workstation, or with the
+*Computer Use* button on the screen window, a person lets the agent act inside
+their own workstation without an approval card — clicking, typing, running
+commands, installing software — after accepting a warning: what the agent reads
+there can steer it, and the workstation reaches the internet. A command that
+deletes or overwrites files still asks (the projects folder is shared with
+Pantheon), and nothing outside the workstation is lifted. It is held to people
+with both *Auto-approve* and the workstation under Settings → Users; an admin
+sees who has it on, and can turn it off, under Auto-approve there.
+
+**A starting point of your own.** *Save starting point…* (in the panel and on the
+screen window) makes the workstation as it is now what *Reset* puts back;
+*Forget starting point* returns Reset to the image's clean start. On the
+container backend it is the person's home — what was installed system-wide with
+`sudo` stays until `docker compose up -d --force-recreate workstation`; on the
+VM backend it is the machine's whole disk, saved with the machine powered off
+and started again after. Starting points are kept by the workstation, beside
+the homes (`/home/.pantheon-workstation/starting-points` in the container,
+`starting-points/` in the VM host's state), out of every person's reach.
+
+**The desktop is XFCE, in the cockpit's look** (`D-2026-10-31-02`): Pantheon's
+window frames and wallpaper, and a panel along the bottom with the Pantheon
+menu (it searches every program), Terminal, Firefox, Files, the open windows
+and a clock. Every setting is a file in the person's home (`~/.config`), so
+*Reset to clean* brings the look back with the rest; a home from before the
+change is given those files on its next start, and keeps any of its own. The
+look is drawn by `scripts/make-workstation-theme.py` from the default theme's
+colours: change the colours there, run it, and rebuild. A workstation without
+XFCE installed starts the older JWM desktop instead.
+
+**Starting and stopping the backends from Pantheon** (`B1478`, opt-in). Without
+the host's Docker both backends run (an idle VM host runs no machine) and
+*Backend* chooses which one answers. Add `docker/host-docker.yml` to
+`COMPOSE_FILE` and choosing one also starts that backend and stops the other,
+and the panel lists the workstation's containers with Start, Stop, Restart and
+Logs. That overlay gives Pantheon the host's Docker socket — broad control of
+the host, the same opt-in the Forge uses — and Pantheon uses it here only on its
+own compose project's workstation services: it lists, starts, stops, restarts
+and reads logs, and never creates, pulls or removes anything.
+
+`docker/workstation.yml`, `docker/workstation-vm.yml` and
+`docker/workstation-both.yml` used to add the workstation; they still load and
+add nothing. An install that used them should run
+`docker compose up -d --build --remove-orphans` once.
 
 **Docker GPU overlays.** CPU-only users can skip this section. Forge can
 only detect GPUs that Docker exposes to the container — if the host runtime or
@@ -558,13 +664,24 @@ A grab-bag of small gotchas that otherwise turn into long debugging sessions.
 - **Local mail (Dovecot) login fails: "Plaintext authentication disallowed on non-encrypted connections."** Your IMAP/SMTP server is refusing cleartext auth over an unencrypted link. Prefer enabling TLS on the mail server; on a trusted LAN only, you can allow cleartext (Dovecot: `disable_plaintext_auth = no`).
 - **Calendar/contacts (Radicale) won't sync.** Point Pantheon at the **full collection URL** with its trailing slash — e.g. `http://host:5232/<user>/<collection-id>/` — not just the server root. Radicale shows this address for each calendar/address book in its web UI.
 
+### Speech on a native install
+The Docker image installs `requirements-voice.txt` for you. On a native install, install it to use local Whisper and the Piper voice:
+
+```bash
+pip install -r requirements-voice.txt
+```
+
+Both install from wheels on Python 3.11–3.14, x86-64 and ARM64. With nothing baked, the Whisper model and the Piper voice are fetched from Hugging Face on first use, and only once *Download models from the internet* is on; or put a voice's `.onnx` and `.onnx.json` in `data/models/piper/` yourself. Piper is GPL-3.0-or-later (see `CREDITS.md`). The browser's own speech recognition and voice, and any OpenAI-compatible speech endpoint you add, need none of this.
+
+The same packages speak with Kokoro on the CPU: its phonemes come from the espeak-ng Piper carries and it runs on Piper's ONNX Runtime. Its model is fetched on first use from the `kokoro-onnx` release on GitHub, only once *Download models from the internet* is on, and checked against the hashes Pantheon holds; or put `kokoro-v1.0.onnx` and `voices-v1.0.bin` in `data/models/kokoro/` yourself. Chatterbox needs Docker and an NVIDIA GPU (see *Chatterbox on an NVIDIA GPU* above).
+
 ### Optional Dependencies
 `requirements-optional.txt` contains packages that unlock extra features. It is not installed by default.
 
 | Package | Feature unlocked |
 |---------|-----------------|
 | `faster-whisper` | Local speech-to-text (microphone -> text) via the "local" STT provider. |
-| `kokoro`, `soundfile` | Local Kokoro-82M text-to-speech on a CUDA GPU. The pinned Kokoro release supports Pantheon installs on Python 3.11-3.12; these packages are intentionally skipped on Python 3.13+ (including the Python 3.14 container image). |
+| `kokoro`, `soundfile` | Local Kokoro-82M text-to-speech on a CUDA GPU (the voice *Kokoro through PyTorch*). The pinned Kokoro release supports Pantheon installs on Python 3.11-3.12; these packages are intentionally skipped on Python 3.13+ (including the Python 3.14 container image). Kokoro on the CPU needs none of them: it comes with `requirements-voice.txt`. |
 | `ddgs` | DuckDuckGo as a search provider option. |
 | `PyMuPDF` | PDF page rendering in the side viewer panel and form-filling. (Note: AGPL-3.0) |
 | `markitdown` | Office/EPUB document text extraction (converts .docx/.xlsx/.pptx/.xls/.epub to Markdown). |
@@ -575,7 +692,7 @@ Install the optional set only when you need these features:
 pip install -r requirements-optional.txt
 ```
 
-The default Docker image currently uses Python 3.14, while Kokoro 0.9.4 declares Python `>=3.10,<3.13`. Pantheon itself continues to support Python 3.11+, but this pinned optional local-TTS feature requires a native Python 3.11 or 3.12 environment. Kokoro declares `torch`, but the local provider only activates when that torch build has CUDA and a GPU is visible; install the CUDA build appropriate for your host. Browser and configured endpoint TTS remain available on Python 3.13+ and in the container image.
+The default Docker image currently uses Python 3.14, while Kokoro 0.9.4 declares Python `>=3.10,<3.13`. Pantheon itself continues to support Python 3.11+, but this pinned optional local-TTS feature requires a native Python 3.11 or 3.12 environment. Kokoro declares `torch`, but the local provider only activates when that torch build has CUDA and a GPU is visible; install the CUDA build appropriate for your host. Browser and configured endpoint TTS remain available on Python 3.13+ and in the container image, and so does Piper, which speaks on the CPU (`requirements-voice.txt`, in the image by default).
 
 ### Faster, reproducible installs with uv (optional)
 [uv](https://docs.astral.sh/uv/) works as a drop-in replacement for the

@@ -24,7 +24,8 @@ version: 2
 updates:
   # Python dependencies. Directory "/" covers every requirements*.txt at the top
   # of the tree: requirements.txt (core), requirements-optional.txt (opt-in
-  # features) and requirements-image.txt (installed by the Dockerfile only).
+  # features), requirements-image.txt (installed by the Dockerfile only) and
+  # requirements-voice.txt (speech, installed by the Dockerfile by default).
   # `.pantheon/check-pins.py` fails if a pinned requirements file ever lands
   # outside a directory listed here.
   - package-ecosystem: pip
@@ -35,8 +36,16 @@ updates:
     # A new major of the MCP SDK is a migration of the built-in servers and the
     # client together, not a bump — `B621` was 1.x -> 2.x. Keep Dependabot to
     # minors and patches on the current line.
+    #
+    # PyAV 19 removed an argument faster-whisper 1.2.1 opens every recording
+    # with, and local speech-to-text then hears nothing (`B1716`): its majors
+    # wait for a faster-whisper release that does without it. The reason, and
+    # the test that fails on the bump, are beside the pin in
+    # requirements-voice.txt.
     ignore:
       - dependency-name: mcp
+        update-types: ["version-update:semver-major"]
+      - dependency-name: av
         update-types: ["version-update:semver-major"]
     groups:
       python:
@@ -76,6 +85,24 @@ updates:
   # is not an image reference, and is moved by hand with its hash.
   - package-ecosystem: docker
     directory: "/workstation"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+
+  # `B1729`. Chatterbox, the voice for an NVIDIA GPU (`voice/chatterbox/`):
+  # its pinned requirements and its PyTorch base image, pinned to a tag and
+  # its digest. torch and torchaudio come with that image, at the versions
+  # chatterbox-tts pins, so they move with it and never on their own.
+  - package-ecosystem: pip
+    directory: "/voice/chatterbox"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      chatterbox:
+        patterns: ["*"]
+  - package-ecosystem: docker
+    directory: "/voice/chatterbox"
     schedule:
       interval: weekly
     open-pull-requests-limit: 5

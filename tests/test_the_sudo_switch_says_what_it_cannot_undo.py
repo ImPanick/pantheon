@@ -47,7 +47,7 @@ node_only = pytest.mark.skipif(not shutil.which("node"), reason="node binary not
 
 def test_the_command_is_the_overlays_own_service():
     assert wa.RECREATE_COMMAND == COMMAND
-    overlay = yaml.safe_load((ROOT / "docker" / "workstation.yml").read_text(encoding="utf-8"))
+    overlay = yaml.safe_load((ROOT / "docker-compose.yml").read_text(encoding="utf-8"))
     assert P.DEFAULT_HOST in overlay["services"], "the command names a service nothing defines"
     assert "--force-recreate" in wa.RECREATE_COMMAND.split()
 
