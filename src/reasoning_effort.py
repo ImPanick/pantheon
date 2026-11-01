@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Reasoning effort: how hard a thinking model is asked to think.
 
 The composer offers one ladder for every model — Low, Medium, High, Extra,
