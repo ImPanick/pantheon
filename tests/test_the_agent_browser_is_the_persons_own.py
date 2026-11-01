@@ -318,7 +318,10 @@ def test_the_window_sees_and_drives_the_callers_own_browser(app, ws, site, monke
     assert frame.status_code == 200 and frame.headers["cache-control"] == "no-store"
     f = frame.json()
     assert set(f) == {"mime", "data_b64", "width", "height", "digest", "url", "title", "tabs",
-                      "activity", "seq", "runs_in"}
+                      "activity", "seq", "runs_in", "view"}
+    # `D-2026-11-01-01`: where the page sits on the browser's own screen, or
+    # None for a headless browser (no KasmVNC here), whose picture is the page.
+    assert f["view"] is None or set(f["view"]) == {"x", "y", "w", "h"}
     assert f["runs_in"] == "workstation"   # not Pantheon's own (`src/local_browser.py`)
     assert f["url"] == site + "/two" and f["tabs"] == [{"tab": 1, "url": site + "/two", "current": True}]
     assert ws.token not in frame.text

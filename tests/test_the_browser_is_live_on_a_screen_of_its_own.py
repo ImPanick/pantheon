@@ -782,12 +782,37 @@ def test_the_stream_relays_the_callers_own_browser_and_take_over_changes_it(live
     (PLAIN, STREAM, ORIGIN, 4403),                                      # no browser of their own
 ])
 def test_the_stream_is_refused_to_anyone_but_the_person_from_pantheons_pages(
-        live, who, path, headers, code):
+        live, who, path, headers, code, monkeypatch):
     from starlette.websockets import WebSocketDisconnect
+    # "No browser of their own" holds only where Pantheon carries no Firefox:
+    # with one (its image, a CI runner), PLAIN has Pantheon's own browser —
+    # the case below. Pinned so this reads the same on every machine.
+    monkeypatch.setattr("src.local_browser.firefox_here", lambda: False)
     with pytest.raises(WebSocketDisconnect) as e:
         with _connect(as_user(live, who), path, headers, subprotocols=["binary"]):
             pass
     assert e.value.code == code
+
+
+def test_pantheons_own_browser_without_a_screen_closes_the_stream_saying_why(live, monkeypatch):
+    """A person with no workstation whose browser is Pantheon's own, where
+    Pantheon has no KasmVNC: `/browser/screen` sends the window to frames, so
+    the stream is never asked for; asked anyway, it closes with the reason
+    rather than a refusal of who they are."""
+    from starlette.websockets import WebSocketDisconnect
+    from routes.workstation_routes import _close_reason
+    from src import local_browser
+
+    def no_screen(self, account, viewer):   # what a Pantheon with no KasmVNC answers
+        raise WorkstationError("unavailable", local_browser.NO_LIVE_SCREEN_SENTENCE)
+
+    monkeypatch.setattr(local_browser, "firefox_here", lambda: True)
+    monkeypatch.setattr(local_browser.LocalBrowsers, "screen_login", no_screen)
+    with pytest.raises(WebSocketDisconnect) as e:
+        with _connect(as_user(live, PLAIN), STREAM, ORIGIN, subprotocols=["binary"]):
+            pass
+    assert e.value.code == 1011
+    assert e.value.reason == _close_reason(local_browser.NO_LIVE_SCREEN_SENTENCE)
 
 
 def test_a_stream_that_does_not_speak_the_clients_subprotocol_is_refused(live):
