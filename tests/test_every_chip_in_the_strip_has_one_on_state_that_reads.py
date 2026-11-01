@@ -173,7 +173,10 @@ def test_every_palette_and_every_chip_was_measured(measured):
         # Twelve since `B1730`: Conversation is the row's fourth switch, and
         # wears the same on-state as Plan, Web and Shell on every palette.
         assert "conversation-toggle-btn" in row["chips"], sorted(row["chips"])
-        assert len(_switches(row)) == 12, sorted(row["chips"])
+        # Thirteen since `B1734`: the reasoning-effort dial, beside the
+        # approval mode, is on while a level is set and wears the same on-state.
+        assert "reasoning-effort-btn" in row["chips"], sorted(row["chips"])
+        assert len(_switches(row)) == 13, sorted(row["chips"])
 
 
 def test_every_chip_wears_one_on_state(measured):

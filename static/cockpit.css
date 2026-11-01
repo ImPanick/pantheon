@@ -945,8 +945,10 @@ html.cockpit .reasoning-effort-chip {
   color: var(--ck-text-2) !important; background: transparent !important; border: 0 !important; box-shadow: none !important; gap: 5px !important;
 }
 html.cockpit .reasoning-effort-chip-label { font: 400 12px/1 var(--ck-font-ui) !important; }
-html.cockpit .reasoning-effort-chip:hover { background: var(--ck-tint) !important; color: var(--ck-text-2) !important; }
-html.cockpit .reasoning-effort-chip.active { color: var(--ck-text) !important; background: var(--ck-tint) !important; }
+html.cockpit .reasoning-effort-chip:hover:not(.active) { background: var(--ck-tint) !important; color: var(--ck-text-2) !important; }
+/* A level set is a switch that is on: the strip's one on-state (`B1552`). */
+html.cockpit .reasoning-effort-chip.active { color: var(--ck-text) !important; background: var(--ck-accent-wash) !important; }
+html.cockpit[data-ck-tone="light"] .reasoning-effort-chip.active { color: color-mix(in oklab, var(--ck-text) 80%, #000) !important; }
 html.cockpit .reasoning-effort-chip.active .reasoning-effort-dial { color: var(--ck-accent, currentColor); }
 /* Inside the composer a popover's blur has nothing to sample (Chromium: the
    composer's own backdrop-filter), so this menu takes the glass at full body:
