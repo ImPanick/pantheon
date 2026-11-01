@@ -217,6 +217,15 @@ FALLBACK_WM = "jwm"
 # menu (garcon reads `XDG_MENU_PREFIX`) and the autostart entries for XFCE.
 XFCE_ENV = {"XDG_CURRENT_DESKTOP": "XFCE", "XDG_SESSION_DESKTOP": "xfce",
             "DESKTOP_SESSION": "xfce", "XDG_MENU_PREFIX": "xfce-"}
+# `G2` (`D-2026-11-01-04`). Every app the desktop starts is asked to tell the
+# accessibility bus what it shows: GTK does anyway, Firefox only when asked
+# (`GNOME_ACCESSIBILITY`), Qt only when asked (`QT_ACCESSIBILITY`). That tree
+# is where the agent's numbered marks come from (`workstation/a11y_marks.py`).
+A11Y_ENV = {"GNOME_ACCESSIBILITY": "1", "QT_ACCESSIBILITY": "1"}
+# The system's own Python, the one PyGObject is installed for, which reads
+# the tree as the account (`XDisplay.marks`).
+A11Y_PYTHON = "/usr/bin/python3"
+_A11Y_TIMEOUT_S = 8.0
 # The skeleton's desktop settings, under the home: what a home made before the
 # desktop was XFCE is given once (`UbuntuSystem.add_desktop_settings`).
 DESKTOP_SETTINGS = ".config"
@@ -746,8 +755,8 @@ def desktop_session(which: Optional[Callable[[str], Optional[str]]] = None
     """`(argv, environment)` of the desktop a display starts (`D-2026-10-31-02`):
     XFCE's session where the machine has it, JWM where it has not."""
     if (which or shutil.which)(XFCE_SESSION):
-        return [XFCE_SESSION], dict(XFCE_ENV)
-    return [FALLBACK_WM], {}
+        return [XFCE_SESSION], {**XFCE_ENV, **A11Y_ENV}
+    return [FALLBACK_WM], dict(A11Y_ENV)
 
 
 def copy_missing(src: Path, dest: Path) -> int:
@@ -1178,6 +1187,27 @@ class XDisplay(Screen):
         if not data:
             raise WorkstationError("unavailable", "The display gave back an empty picture.")
         return data, mime
+
+    def marks(self) -> Dict:
+        """`G2` (`D-2026-11-01-04`). What on this display can be clicked or
+        typed into, read from its accessibility tree as the account — the
+        reader is fed on stdin, so the account needs to read nothing of the
+        daemon's (`workstation/a11y_marks.py`). The browser's own screen has
+        no desktop session and no tree: its marks come from its page."""
+        if self.role == "browser":
+            raise WorkstationError("unavailable", "The browser's screen is marked from its page.")
+        from workstation import a11y_marks
+        source = Path(a11y_marks.__file__).read_bytes()
+        python = A11Y_PYTHON if os.path.exists(A11Y_PYTHON) else (shutil.which("python3") or "python3")
+        raw = self._run([python, "-I", "-"], source, _A11Y_TIMEOUT_S)
+        try:
+            got = json.loads(raw.decode("utf-8", "replace") or "{}")
+        except ValueError:
+            raise WorkstationError("unavailable", "The accessibility tree answered in a way that "
+                                                  "could not be read.")
+        if not isinstance(got, dict):
+            raise WorkstationError("unavailable", "The accessibility tree answered nothing.")
+        return got
 
     def send(self, action: Dict) -> None:
         argv, stdin = xdotool_argv(action)

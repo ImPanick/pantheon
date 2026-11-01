@@ -77,6 +77,12 @@ def parse_args(content: Any) -> Tuple[Dict[str, Any], Optional[str]]:
     if action not in ACTIONS:
         return {}, f"“{a.get('action')}” is not an `agent_browser` action. It is one of {', '.join(ACTIONS)}."
     a["action"] = action
+    if a.get("ref") is None and a.get("mark") is not None:
+        # `G1`: a mark on the page's screenshot is its `read` number.
+        a["ref"] = a.pop("mark")
+    if isinstance(a.get("ref"), str):
+        digits = "".join(ch for ch in a["ref"] if ch.isdigit())
+        a["ref"] = digits or a["ref"]
     for key in ("ref", "x", "y", "dx", "dy", "tab"):
         v = a.get(key)
         if isinstance(v, str) and v.strip().lstrip("-").isdigit():
@@ -301,8 +307,10 @@ class BrowserTool:
         try:
             if action == SCREENSHOT:
                 shot = await client.browser(account, "frame")
+                shot, listed = await _marked_page(client, account, shot, args)
                 return {"output": f"The page is attached ({shot.get('width')}×{shot.get('height')}). "
-                                  + _where_now(shot), "exit_code": 0, "ran_in": runs_in(client),
+                                  + _where_now(shot) + (f"\n{listed}" if listed else ""),
+                        "exit_code": 0, "ran_in": runs_in(client),
                         "images": [{"data": shot["data_b64"], "mimeType": shot.get("mime") or "image/png"}],
                         "screenshot_caption": f"Browser: {shot.get('title') or shot.get('url') or 'page'}"}
             answer = await client.browser(account, action, **fields)
@@ -328,6 +336,53 @@ class BrowserTool:
                     "exit_code": 0, "ran_in": runs_in(client)}
         return {"output": f"Did: {describe(args)}. {_where_now(answer)} Read the page to see it.",
                 "exit_code": 0, "ran_in": runs_in(client), "url": answer.get("url")}
+
+
+async def _marked_page(client, account: str, shot: Dict[str, Any], args: Dict[str, Any]
+                       ) -> Tuple[Dict[str, Any], str]:
+    """`G1` (`D-2026-11-01-04`). The page's screenshot with each element in
+    view boxed and numbered — numbered by a fresh `read`, so a mark *is* the
+    `ref` a click takes — and the list in words. The page itself is the
+    describer here: nothing is guessed from the picture. Anything that fails
+    leaves the plain screenshot."""
+    import asyncio
+    import base64
+    from src import screen_marks
+    from src.workstation_client import WorkstationError
+
+    if not screen_marks.ENABLED or args.get("marks") is False:
+        return shot, ""
+    png = screen_marks.picture(shot)
+    if not png:
+        return shot, ""
+    try:
+        page = await client.browser(account, "read") or {}
+    except WorkstationError as e:
+        logger.debug("page not read for marks: %s", e.message)
+        return shot, ""
+    width = int(shot.get("width") or P.BROWSER_WIDTH)
+    height = int(shot.get("height") or P.BROWSER_HEIGHT)
+    vw, vh = (page.get("viewport") or [width, height])[:2] if isinstance(page.get("viewport"), list) \
+        else (width, height)
+    sx = width / vw if isinstance(vw, (int, float)) and vw > 0 else 1.0
+    sy = height / vh if isinstance(vh, (int, float)) and vh > 0 else 1.0
+    raw = []
+    for e in page.get("elements") or []:
+        box = e.get("box")
+        if not isinstance(box, list) or len(box) != 4:
+            continue
+        raw.append({"role": "", "tag": e.get("tag"), "type": e.get("type"), "name": e.get("label") or "",
+                    "ref": e.get("ref"), "box": [box[0] * sx, box[1] * sy, box[2] * sx, box[3] * sy]})
+    marks = screen_marks.normalise(raw, width, height, "page")
+    marks.sort(key=lambda m: m.get("ref") or 0)
+    for m in marks:
+        m["n"] = m.get("ref")
+    marks = [m for m in marks if isinstance(m.get("n"), int)][:screen_marks.MAX_MARKS]
+    if not marks:
+        return shot, ""
+    data, mime = await asyncio.to_thread(screen_marks.draw, png, marks)
+    return (dict(shot, data_b64=base64.b64encode(data).decode(), mime=mime),
+            screen_marks.listing(marks, verb='"ref": N with click or type'))
 
 
 async def _login(client, account: str, owner: Optional[str], args: Dict[str, Any], *,

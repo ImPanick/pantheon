@@ -3796,3 +3796,48 @@ Face), and the Turbo weights' licence was not re-read at its source. The owner's
 
 What reopens it: the owner renaming the switch (then `SWITCH_NAME` comes out, and
 `test_the_switch_name_is_still_the_switch` fails the day no phrase uses the name), or choosing other voices.
+
+## D-2026-11-01-04 — screen grounding: every screenshot carries numbered marks, and the agent clicks a number
+
+*The owner, 2026-11-01, 09:02, on the frontier game plan:* *"Let's form a game plan for these. All of these are great
+add-ons and road map items. Those top 3 you selected should be first up because that's really good."* **Decided by the
+owner, 09:07, on the card: "Start Phase 1 now"** — Phase 1 being screen grounding (`G1`–`G4`), the first of the three.
+
+**What it is.**
+
+1. **Marks, best source first.** A page in the agent's browser is numbered by its own elements, the numbers `read`
+   gives (`G1`). The desktop is numbered from its accessibility tree, which the apps fill in themselves (`G2`,
+   `ROUTES["marks"]`, read as the account). What neither describes is read off the picture (`G3`).
+2. **What the model gets** (`G4`): the screenshot with the marks drawn on it, and their list in words with each mark's
+   role, name and middle point. `computer` takes `"mark": N` (and `to_mark` for a drag) wherever it takes a point,
+   and `type` with a mark clicks that field first. A number is looked up in the marks of the last screenshot *that
+   person's* agent was shown, and refused, with nothing sent, when it is not on it.
+3. **Measured on the owner's model.** `scripts/grounding_eval.py` runs five scripted tasks (three in the desktop's
+   apps, one on a page in the desktop's Firefox, one in the agent browser) with marks off and then on, judged by what
+   the workstation holds afterwards, and reports both rates.
+
+**Calls made here, not by the owner, and why.**
+
+- **No neural detector.** The plan named OmniParser. Its detector is YOLO weights that need Torch, which Pantheon's
+  image does not carry and would grow by gigabytes; the fallback is Tesseract for text (its English model is the
+  Debian package's own, nothing is fetched, `Law 16`) and NumPy for compact, edge-dense shapes on a quiet ground.
+  It is labelled *seen* in the list so the model knows those marks are guesses. A real detector can replace
+  `screen_marks.seen` without touching anything else.
+- **The tree is read on demand, not kept.** One walk per screenshot (about 50–200 ms on the desktop measured here),
+  as the account, by a reader fed on stdin, so nothing the agent runs can change what the daemon executes.
+- **Marks are on by default** while Computer Use is offered; `screen_marks.ENABLED` is the switch, used by the
+  evaluation's "before" pass. There is no per-person setting yet.
+- **Every app the desktop starts is asked to describe itself** (`GNOME_ACCESSIBILITY=1`, `QT_ACCESSIBILITY=1`), so
+  Firefox on the desktop exposes the page it shows. It costs those apps a little memory and start-up time.
+
+**What it costs.** Each `computer` screenshot takes up to about a second longer (the tree, then Tesseract). The
+workstation image gains the accessibility bus and PyGObject (a few MB); Pantheon's image gains Tesseract (about
+30 MB). The boxes cover a little of the picture they mark.
+
+**Not verified here.** Driven against the real daemon, the real XFCE with Pantheon's skeleton and real AT-SPI (a
+mark opened the Terminal and a mark typed into it), and the evaluation end to end with a scripted model. This
+sandbox has no Firefox, no KasmVNC, no VM and no model of the owner's: `G1` live, the desktop Firefox's tree and both
+success rates are the owner's to run.
+
+What reopens it: the before/after showing marks do not help the owner's model, or a detector worth its weight.
+

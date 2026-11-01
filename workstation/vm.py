@@ -1539,6 +1539,10 @@ class VmStation(Workstation):
         return self.system.forward(account, "screenshot", allow_304=True,
                                    query={"format": fmt, "if_none_match": if_none_match or None})
 
+    def marks(self, account: str) -> Dict:
+        """`G2`: the tree is the machine's desktop's; read there, as the account."""
+        return self.system.forward(account, "marks", timeout=30.0)
+
     def input(self, account: str, body: Dict) -> Dict:
         return self.system.forward(account, "input", body,
                                    timeout=P.MAX_WAIT_MS / 1000 + 120.0)

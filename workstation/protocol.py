@@ -221,7 +221,10 @@ ROUTES: Dict[str, Tuple[str, str]] = {
     # driven over WebDriver BiDi (`workstation/browser.py`).
     #   {"action": one of BROWSER_ACTIONS, ...its fields, "holder": "agent"|"person"="agent"}
     #   -> {"ok": true, "action", "url", "title", "tabs": [{"tab", "url", "current"}]}
-    #      `read` adds {"text", "cut", "elements": [{"ref", "tag", "label", "type"?, "href"?}]};
+    #      `read` adds {"text", "cut", "elements": [{"ref", "tag", "label", "type"?, "href"?,
+    #      "box"?}], "viewport"?}; `G1` (`D-2026-11-01-04`), added: every element in view is
+    #      numbered and carries "box", [x, y, w, h] in the viewport's CSS pixels — the page's
+    #      screenshot's — and "viewport" is [width, height], so marks can be drawn on it;
     #      `frame` is {"mime", "data_b64", "digest", "width", "height", "url", "title", "tabs",
     #      "activity": [{"id", "seq", "at", "who", "action", "label", "x"?, "y"?,
     #                    "phase": "doing"|"done"|"failed"}], "seq"} — what the browser did
@@ -290,6 +293,22 @@ ROUTES: Dict[str, Tuple[str, str]] = {
     # image's clean start again. A daemon older than this answers
     # `404 not_found`.
     "starting_point": ("POST", "/v1/users/{account}/starting-point"),
+    # `G2` (`D-2026-11-01-04`), added: what on the account's screen can be
+    # clicked or typed into, as the desktop's accessibility tree describes it
+    # (`workstation/a11y_marks.py`, read as the account on its display) — so
+    # the agent is shown the screenshot with each control numbered on it and
+    # clicks a number rather than guessing a pixel.
+    #   -> {"source": "a11y", "width", "height",
+    #       "marks": [{"role", "name", "box": [x, y, w, h], "app", "window"?, "editable"?}],
+    #       "windows": [{"app", "name", "box", "role", "active", "id", "marks"}],
+    #       "why"?: str — when the tree could not be read (then "marks" is empty)}
+    # Boxes are in the screenshot's own pixels, on the screen, at most
+    # MAX_MARKS of them, in reading order; a control a window covers is left
+    # out. `windows` says which windows the tree describes (their "marks"
+    # count), so the caller reads the picture for one it does not. A screen
+    # that has no tree answers `unavailable`; a daemon older than this answers
+    # `404 not_found`. Either way the caller reads the picture instead.
+    "marks": ("GET", "/v1/users/{account}/marks"),
 }
 
 # ── what the fields may hold ──────────────────────────────────────────────────
@@ -482,6 +501,10 @@ GATE_ROUTES: Dict[str, Tuple[str, str]] = {
 GATE_SELF_TESTS = ("refused", "not_needed")
 
 # ── the bounds, stated once ───────────────────────────────────────────────────
+# `G2` (`D-2026-11-01-04`). The most marks one screen answers, and the most of
+# a control's name that travels with it.
+MAX_MARKS = 80
+MARK_NAME_MAX = 80
 SCREEN_WIDTH = 1280
 SCREEN_HEIGHT = 800
 DEFAULT_EXEC_TIMEOUT_S = 120.0
@@ -604,7 +627,7 @@ __all__ = [
     "DESKTOP_KINDS", "DESKTOP_SUBPROTOCOL", "DESKTOP_VIEWERS", "MAX_DESKTOP_HANDSHAKE_BYTES",
     "ACCOUNT_PREFIX", "ACCOUNT_RE", "AGENT_NAME", "BACKENDS", "DEFAULT_EXEC_TIMEOUT_S",
     "DEFAULT_HOST", "DEFAULT_PAIRING_DIR", "DEFAULT_PORT", "ENTRY_TYPES",
-    "ERRORS", "HOLDERS", "INPUT_ACTIONS", "LOCAL_OWNER_SLUG", "MAX_BODY_BYTES",
+    "ERRORS", "HOLDERS", "INPUT_ACTIONS", "LOCAL_OWNER_SLUG", "MARK_NAME_MAX", "MAX_MARKS", "MAX_BODY_BYTES",
     "MAX_EXEC_TIMEOUT_S", "MAX_FILE_BYTES", "MAX_LIST_ENTRIES", "MAX_OUTPUT_BYTES",
     "MAX_SCROLL_CLICKS", "MAX_TYPE_CHARS", "MAX_WAIT_MS", "NETWORK_ACTIONS", "NETWORK_MODES", "PAIRING_DIR_ENV", "PROTOCOL_VERSION",
     "PROJECTS_DIR", "PROJECTS_DIR_ENV", "PROJECTS_ENV", "ROUTES", "SCREEN_HEIGHT", "SCREEN_WIDTH", "SCREENSHOT_FORMATS", "SHELLS", "TOKEN_ENTROPY_BYTES",

@@ -60,7 +60,11 @@ xvfb jwm xterm xdotool scrot fonts-dejavu-core dbus-daemon dbus-bin \
 nftables \
 xfwm4 xfce4-panel xfdesktop4 xfce4-session xfce4-settings xfconf xfce4-terminal thunar \
 xfce4-whiskermenu-plugin papirus-icon-theme adwaita-icon-theme fonts-inter \
-fonts-jetbrains-mono librsvg2-common"
+fonts-jetbrains-mono librsvg2-common \
+at-spi2-core python3-gi gir1.2-atspi-2.0"
+# `G2` (`D-2026-11-01-04`). The accessibility bus the desktop's apps describe what they
+# show on, and the system Python's binding to read it (`workstation/a11y_marks.py`):
+# the agent's screenshots carry a numbered mark on every control from it.
 # `nftables` (`P20-06`): the network gate, which runs from the same image, writes the
 # admin's mode with `nft`. In the workstation itself it does nothing: the overlay gives
 # the workstation no `CAP_NET_ADMIN`.
