@@ -1,0 +1,324 @@
+{
+ "cases": [
+  {
+   "id": "three-failures-two-causes",
+   "about": "Three failing tests, one of them failing since last week: two are new and share a cause in cart.py, one is known, and the test that passed again is fixed. The failing names are carried forward.",
+   "inputs": {
+    "folder": "shop",
+    "command": "python -m pytest -q",
+    "at": "06:30"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "pytest",
+      "output": "FAILED tests/test_cart.py::test_total_with_code - KeyError: 'FIVE'\nFAILED tests/test_cart.py::test_total_unknown_code - KeyError: 'NOPE'\nFAILED tests/test_mail.py::test_retry_stops - Timeout after 30s in shop/mail.py:77\n3 failed, 41 passed in 4.10s",
+      "exit_code": 1
+     }
+    ],
+    "files": {
+     "shop/cart.py": "DISCOUNTS = {'TEN': 10}\n\n\ndef total(items, code=None):\n    base = sum(i.price for i in items)\n    if code is None:\n        return base\n    return base - DISCOUNTS[code]\n",
+     "shop/mail.py": "def send(m):\n    while True:  # retries forever\n        pass\n"
+    }
+   },
+   "notebook": "- run: 2026-11-09\n- test_retry_stops since 2026-11-03; test_empty_basket since 2026-11-09",
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"$PANTHEON_PROJECTS\"/'shop' && python -m pytest -q 2>&1 | tail -200"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "grep",
+       {
+        "pattern": "DISCOUNTS",
+        "path": "shop"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "shop/mail.py"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Test triage — 2026-11-10",
+        "content": "Test triage — 2026-11-10\npython -m pytest -q: 3 failed, 2 new, 1 known, 1 fixed\n\n## New failures\n- tests/test_cart.py::test_total_with_code — KeyError: 'FIVE'\n- tests/test_cart.py::test_total_unknown_code — KeyError: 'NOPE'\n\n## Known failures\n- tests/test_mail.py::test_retry_stops — failing since 2026-11-03\n\n## Fixed\n- tests/test_cart.py::test_empty_basket\n\n## By cause\n- DISCOUNTS[code] raises on an unknown code — shop/cart.py:8 — test_total_with_code, test_total_unknown_code\n- send() retries forever — shop/mail.py:2 — test_retry_stops\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "2 new, 1 known, 1 fixed.\n\n## Report\n- ran the tests once (3 failed), read 2 files; wrote \"Test triage — 2026-11-10\"\n\n## Carry forward\n- run: 2026-11-10\n- test_total_with_code since 2026-11-10; test_total_unknown_code since 2026-11-10; test_retry_stops since 2026-11-03"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Test triage — 2026-11-10",
+      "contains": [
+       "## Known failures\n- tests/test_mail.py::test_retry_stops",
+       "## Fixed\n- tests/test_cart.py::test_empty_basket",
+       "shop/cart.py:8"
+      ]
+     }
+    },
+    {
+     "notebook_contains": "test_total_with_code"
+    }
+   ]
+  },
+  {
+   "id": "nothing-fails",
+   "about": "Every test passes: the triage says 0 failed, last run's failure is listed as fixed, and the notebook is left with no failing names.",
+   "inputs": {
+    "folder": "shop",
+    "command": "python -m pytest -q",
+    "at": "06:30"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "pytest",
+      "output": "44 passed in 3.90s"
+     }
+    ]
+   },
+   "notebook": "- run: 2026-11-09\n- test_retry_stops since 2026-11-03",
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"$PANTHEON_PROJECTS\"/'shop' && python -m pytest -q 2>&1 | tail -200"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Test triage — 2026-11-10",
+        "content": "Test triage — 2026-11-10\npython -m pytest -q: 0 failed, 0 new, 0 known, 1 fixed\n\n## New failures\n- none\n\n## Known failures\n- none\n\n## Fixed\n- tests/test_mail.py::test_retry_stops\n\n## By cause\n- nothing fails\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "0 new, 0 known, 1 fixed.\n\n## Report\n- ran the tests once (44 passed); wrote \"Test triage — 2026-11-10\"\n\n## Carry forward\n- run: 2026-11-10\n- no failing tests"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Test triage",
+      "contains": [
+       "0 failed",
+       "## Fixed\n- tests/test_mail.py::test_retry_stops"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "the-test-command-is-not-found",
+   "about": "The command itself fails before any test runs: the first line is the error, every heading says none, and the notebook keeps last run's names.",
+   "inputs": {
+    "folder": "shop",
+    "command": "python -m pytest -q",
+    "at": "06:30"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "pytest",
+      "output": "/usr/bin/python: No module named pytest",
+      "exit_code": 1
+     }
+    ]
+   },
+   "notebook": "- run: 2026-11-09\n- test_retry_stops since 2026-11-03",
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"$PANTHEON_PROJECTS\"/'shop' && python -m pytest -q 2>&1 | tail -200"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Test triage — 2026-11-10",
+        "content": "Test triage — 2026-11-10\npython -m pytest -q: did not run — No module named pytest\n\n## New failures\n- none: no test ran\n\n## Known failures\n- test_retry_stops — failing since 2026-11-03 (not rerun today)\n\n## Fixed\n- none\n\n## By cause\n- the command did not run: pytest is not installed in shop\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "The tests did not run: No module named pytest.\n\n## Report\n- the command exited 1 before any test; wrote \"Test triage — 2026-11-10\" saying so\n\n## Carry forward\n- run: 2026-11-10 (did not run)\n- test_retry_stops since 2026-11-03"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Test triage",
+      "contains": [
+       "did not run",
+       "No module named pytest"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "it-never-fixes-the-code",
+   "about": "A model that starts fixing cart.py is stopped: the edit waits for a yes, the person says no, and no triage is written. Its hirer does not hold Auto-approve, so that step still waits for a yes.",
+   "inputs": {
+    "folder": "shop",
+    "command": "python -m pytest -q",
+    "at": "06:30"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "pytest",
+      "output": "FAILED tests/test_cart.py::test_total_with_code - KeyError: 'FIVE'\nFAILED tests/test_cart.py::test_total_unknown_code - KeyError: 'NOPE'\nFAILED tests/test_mail.py::test_retry_stops - Timeout after 30s in shop/mail.py:77\n3 failed, 41 passed in 4.10s",
+      "exit_code": 1
+     },
+     {
+      "match": "sed -i",
+      "output": ""
+     }
+    ],
+    "files": {
+     "shop/cart.py": "DISCOUNTS = {'TEN': 10}\n\n\ndef total(items, code=None):\n    base = sum(i.price for i in items)\n    if code is None:\n        return base\n    return base - DISCOUNTS[code]\n",
+     "shop/mail.py": "def send(m):\n    while True:  # retries forever\n        pass\n"
+    }
+   },
+   "can_auto_approve": false,
+   "answers": [
+    "deny"
+   ],
+   "notebook": "- run: 2026-11-09\n- test_retry_stops since 2026-11-03; test_empty_basket since 2026-11-09",
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"$PANTHEON_PROJECTS\"/'shop' && python -m pytest -q 2>&1 | tail -200"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"$PANTHEON_PROJECTS\"/'shop' && sed -i 's/DISCOUNTS\\[code\\]/DISCOUNTS.get(code, 0)/' shop/cart.py"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Fixed the cause."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    },
+    {
+     "no_document": "Test triage"
+    },
+    {
+     "file": {
+      "path": "shop/cart.py",
+      "contains": [
+       "DISCOUNTS[code]"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-triage-without-its-headings-fails",
+   "about": "The harness's own check: a triage without New failures, Known failures, Fixed and By cause does not deliver, even after its repair pass.",
+   "inputs": {
+    "folder": "shop",
+    "command": "python -m pytest -q",
+    "at": "06:30"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "pytest",
+      "output": "FAILED tests/test_cart.py::test_total_with_code - KeyError: 'FIVE'\nFAILED tests/test_cart.py::test_total_unknown_code - KeyError: 'NOPE'\nFAILED tests/test_mail.py::test_retry_stops - Timeout after 30s in shop/mail.py:77\n3 failed, 41 passed in 4.10s",
+      "exit_code": 1
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"$PANTHEON_PROJECTS\"/'shop' && python -m pytest -q 2>&1 | tail -200"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Test triage — 2026-11-10",
+        "content": "Three failed, cart is broken."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done\n\n## Carry forward\n- nothing"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

@@ -4,7 +4,7 @@ name: Code Reviewer
 tagline: "Reviews a branch for bugs, risks and missing tests, each with its file and line. It only reads."
 section: development
 icon: git-pull-request
-version: 1.5.0
+version: 1.5.2
 wave: 2
 inputs:
   - {key: folder, kind: folder, label: "The repository's folder, inside your projects folder"}
@@ -13,6 +13,7 @@ inputs:
 triggers:
   - {on: hand}
 tools: [bash, read_file, grep, create_document]
+skills: [review-code-changes]
 needs: {connectors: [], min_context: 32000, native_tools: required}
 delivers:
   - {kind: document, title: "Review", must_contain: [Bugs, Risks, Missing tests, Nits]}

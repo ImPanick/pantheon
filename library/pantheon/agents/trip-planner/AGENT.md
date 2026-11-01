@@ -4,14 +4,14 @@ name: Trip Planner
 tagline: "Builds an itinerary from the bookings in your mail — flights, stays, check-ins and a packing list."
 section: personal-home
 icon: luggage
-version: 1.2.0
+version: 1.2.1
 wave: 2
 inputs:
   - {key: trip, kind: text, label: "The trip (where and when, e.g. Lisbon, 4-9 November)"}
 triggers:
   - {on: hand}
 tools: [search_emails, read_email, web_search, create_document]
-needs: {connectors: [], min_context: 16000, native_tools: preferred}
+needs: {connectors: [mail], min_context: 16000, native_tools: preferred}
 delivers:
   - {kind: document, title: "Itinerary", must_contain: [Day by day, Bookings, Missing, Packing]}
 effects: {read_private: allow, brokered_network_read: allow, write_private: allow}

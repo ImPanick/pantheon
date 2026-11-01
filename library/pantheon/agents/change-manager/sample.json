@@ -1,0 +1,28 @@
+{
+ "case": "a-database-move-with-a-backup-in-its-radius",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read \"Runbook — backups\"; booked the window; wrote \"Change record — move the database to the new disk\"",
+ "read": [
+  "manage_documents",
+  "manage_calendar"
+ ],
+ "wrote": [
+  "manage_calendar",
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Change record”",
+   "ok": true,
+   "detail": "“Change record — move the database to the new disk” is there."
+  }
+ ],
+ "answer": "2026-11-14 22:00–23:00; 3 systems in the blast radius.\n\n## Report\n- read \"Runbook — backups\"; booked the window; wrote \"Change record — move the database to the new disk\"",
+ "documents": [
+  {
+   "title": "Change record — move the database to the new disk",
+   "content": "Change record — move the database to the new disk\n2026-11-14 22:00–23:00: 3 systems in the blast radius\n\n## Summary\nMove PostgreSQL's data folder from /var/lib/pg to /mnt/fast/pg on db1, because the old disk is 91% full. Asked by the person.\n\n## Blast radius\n- db1 (PostgreSQL) — stopped for the copy, about 10 minutes\n- the shop (web) — every page that reads orders errors while db1 is down\n- the nightly backup at 23:30 — must see the new path (Runbook — backups)\n\n## Rollback\n1. Stop PostgreSQL.\n2. Point data_directory back at /var/lib/pg (the old folder is kept until 21 Nov).\n3. Start PostgreSQL; run the Checks.\nNo simple return after 21 Nov, when the old folder is removed.\n\n## Window\n- 2026-11-14 22:00 to 23:00 — booked; nothing else on the calendar that evening.\n\n## Checks\n- before: free space on /mnt/fast ≥ 2× the data folder; after: `SELECT 1` answers and the shop's orders page loads.\n\n## Approvals\n- the person (db1 and the shop); nobody else named. None marked as given."
+  }
+ ]
+}

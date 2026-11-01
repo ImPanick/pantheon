@@ -1,0 +1,28 @@
+{
+ "case": "a-shell-bug-that-shows-first-time",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- ran the command once, read cart.py; wrote the test and \"Reproduction — total() crashes on an empty basket\"",
+ "read": [
+  "read_file"
+ ],
+ "wrote": [
+  "bash",
+  "write_file",
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Reproduction”",
+   "ok": true,
+   "detail": "“Reproduction — total() crashes on an empty basket” is there."
+  }
+ ],
+ "answer": "reproduced; test at shop/tests/test_repro_empty_basket.py\n\n## Report\n- ran the command once, read cart.py; wrote the test and \"Reproduction — total() crashes on an empty basket\"",
+ "documents": [
+  {
+   "title": "Reproduction — total() crashes on an empty basket",
+   "content": "Reproduction — total() crashes on an empty basket\nreproduced\n\n## Steps\n1. `python -c \"from shop.cart import total; print(total([]))\"` in shop\n\n## Observed\n- `IndexError: list index out of range` at shop/cart.py:6\n\n## Expected\n- 0 (the report: \"an empty basket should total zero\")\n\n## Failing test\n- shop/tests/test_repro_empty_basket.py — `assert total([]) == 0`"
+  }
+ ]
+}

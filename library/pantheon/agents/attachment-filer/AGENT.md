@@ -4,14 +4,14 @@ name: Attachment Filer
 tagline: "Saves new mail's attachments into the project folder your rules name — each save waits for your yes, and nothing is ever overwritten."
 section: email
 icon: paperclip
-version: 1.1.0
+version: 1.1.1
 wave: 2
 inputs:
   - {key: rules, kind: long_text, label: "One rule per line: words in the sender or subject -> a folder"}
 triggers:
   - {on: event, event: email_received, every: 5, label: Every five new messages}
 tools: [list_emails, read_email, download_attachment, ls]
-needs: {connectors: [], min_context: 16000, native_tools: preferred}
+needs: {connectors: [mail], min_context: 16000, native_tools: preferred}
 delivers:
   - {kind: answer, must_contain: [Filed, Not filed]}
 effects: {read_private: allow, write_workspace: ask, read_workspace: allow}

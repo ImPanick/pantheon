@@ -4,13 +4,13 @@ name: Home Maintenance
 tagline: "Filters, services and warranties: says what is due this month and who to call."
 section: personal-home
 icon: wrench
-version: 1.1.0
+version: 1.1.1
 wave: 2
 inputs: []
 triggers:
   - {on: cron, cron: "40 8 1 * *", label: The first of each month}
 tools: [manage_notes, manage_calendar]
-needs: {connectors: [], min_context: 16000, native_tools: preferred}
+needs: {connectors: [calendar], min_context: 16000, native_tools: preferred}
 delivers:
   - {kind: answer, must_contain: [Due, Coming up, Warranties ending]}
 effects: {read_private: allow, write_private: allow, destructive: never}

@@ -4,7 +4,7 @@ name: Topic Watcher
 tagline: Watches the topics you name and reports only what is new since its last run, each with its source.
 section: research
 icon: radar
-version: 1.2.0
+version: 1.2.1
 wave: 1
 starred: true
 inputs:
@@ -13,6 +13,7 @@ inputs:
 triggers:
   - {on: daily, at: "{at}"}
 tools: [web_search, web_fetch]
+skills: [web-research]
 needs: {connectors: [], min_context: 16000, native_tools: preferred}
 delivers:
   - {kind: answer, must_contain: [New since last run, Checked]}

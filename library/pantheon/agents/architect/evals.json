@@ -1,0 +1,366 @@
+{
+ "cases": [
+  {
+   "id": "a-goal-with-three-options",
+   "about": "The tree has a quota service with no limit: the design weighs three options, picks the router dependency, maps three modules and names the in-memory counter as a risk. Nothing is edited.",
+   "inputs": {
+    "folder": "api",
+    "goal": "Rate limits on the public API"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "git ls-files",
+      "output": "routes/public.py\nroutes/admin.py\nservices/quota.py\nservices/billing.py\ntests/test_quota.py\n==\n      2 routes\n      2 services\n      1 tests"
+     }
+    ],
+    "files": {
+     "api/routes/public.py": "from fastapi import APIRouter\nfrom services.quota import count\n\nrouter = APIRouter()\n\n@router.get('/items')\ndef items(key: str):\n    count(key)\n    return []\n",
+     "api/services/quota.py": "COUNTS = {}\n\ndef count(key):\n    COUNTS[key] = COUNTS.get(key, 0) + 1\n    # no limit is applied anywhere\n",
+     "api/routes/admin.py": "# admin\n",
+     "api/tests/test_quota.py": "def test_count(): pass\n"
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"$PANTHEON_PROJECTS\"/'api' && git ls-files | head -300 && echo == && git ls-files | sed 's#/[^/]*$##' | sort | uniq -c | sort -rn | head -40"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "glob",
+       {
+        "pattern": "api/**/*.py"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "grep",
+       {
+        "pattern": "quota",
+        "path": "api"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "api/routes/public.py"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "api/services/quota.py"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Design — rate limits on the public API",
+        "content": "Design — rate limits on the public API\napi: 3 modules touched\n\n## Context\nRequests pass routes/public.py → services/quota.py (counts per key, no limit) → the handlers. No middleware layer.\n\n## Options\n- A. A check in each handler — changes 2 route files, easy to miss one.\n- B. One dependency in routes/public.py that reads services/quota.py — changes 2 files, every route covered.\n- C. A proxy in front — nothing in the tree changes, but a new process to run.\n\n## Decision\nB. Smallest radius that covers every route. A would change if routes needed different limits.\n\n## Module map\n- routes/public.py — gains require_quota on the router.\n- services/quota.py — gains over_limit(key) -> bool.\n- tests/test_quota.py — gains the 429 case.\n\n## Migration path\n1. Add over_limit with a limit of 0 meaning \"no limit\".\n2. Add the dependency; set the limit from config, default 0.\n3. Turn the limit on per environment.\n\n## Risks\n- services/quota.py:1 counts in memory; two workers will not share counts. Not read: routes/admin.py.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "B: one router dependency reading the quota service; 3 modules touched.\n\n## Report\n- listed the tree, read 2 files and 2 searches; wrote \"Design — rate limits on the public API\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Design — rate limits on the public API",
+      "contains": [
+       "## Options",
+       "- B.",
+       "## Migration path",
+       "services/quota.py"
+      ]
+     }
+    },
+    {
+     "file": {
+      "path": "api/services/quota.py",
+      "contains": [
+       "no limit is applied anywhere"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "nothing-in-the-tree-matches",
+   "about": "No file or search hits the goal's nouns: the design says so under Context, offers one new module, and marks the map proposed.",
+   "inputs": {
+    "folder": "api",
+    "goal": "Export invoices as PDF"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "git ls-files",
+      "output": "routes/public.py\nroutes/admin.py\nservices/quota.py\nservices/billing.py\ntests/test_quota.py\n==\n      2 routes\n      2 services\n      1 tests"
+     }
+    ],
+    "files": {
+     "api/routes/public.py": "from fastapi import APIRouter\nfrom services.quota import count\n\nrouter = APIRouter()\n\n@router.get('/items')\ndef items(key: str):\n    count(key)\n    return []\n",
+     "api/services/quota.py": "COUNTS = {}\n\ndef count(key):\n    COUNTS[key] = COUNTS.get(key, 0) + 1\n    # no limit is applied anywhere\n",
+     "api/routes/admin.py": "# admin\n",
+     "api/tests/test_quota.py": "def test_count(): pass\n"
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"$PANTHEON_PROJECTS\"/'api' && git ls-files | head -300 && echo == && git ls-files | sed 's#/[^/]*$##' | sort | uniq -c | sort -rn | head -40"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "grep",
+       {
+        "pattern": "invoice|pdf",
+        "path": "api"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Design — export invoices as PDF",
+        "content": "Design — export invoices as PDF\napi: 1 module touched\n\n## Context\nNothing in the tree mentions invoices or PDF; the goal is new ground.\n\n## Options\n- A. A new module services/exports.py with one route in routes/public.py.\n\n## Decision\nA, the only option; a tree with no invoices needs the module first.\n\n## Module map (proposed)\n- services/exports.py — new: render_pdf(invoice) -> bytes.\n\n## Migration path\n1. Add the module with a test.\n2. Add the route.\n\n## Risks\n- A PDF library is a new dependency.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "A: a new exports module; 1 module touched.\n\n## Report\n- listed the tree and 1 search found nothing; wrote \"Design — export invoices as PDF\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Design — export invoices as PDF",
+      "contains": [
+       "Nothing in the tree",
+       "proposed",
+       "new dependency"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "the-folder-is-not-a-repository",
+   "about": "The command fails: the document's first line is the error, Options and Decision say not designed, and nothing else is read.",
+   "inputs": {
+    "folder": "api",
+    "goal": "Rate limits on the public API"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "git ls-files",
+      "output": "fatal: not a git repository (or any of the parent directories): .git",
+      "exit_code": 128
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"$PANTHEON_PROJECTS\"/'api' && git ls-files | head -300 && echo == && git ls-files | sed 's#/[^/]*$##' | sort | uniq -c | sort -rn | head -40"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Design — rate limits on the public API",
+        "content": "Design — rate limits on the public API\nfatal: not a git repository — api is not a repository on this machine\n\n## Context\nNot read.\n\n## Options\nnot designed\n\n## Decision\nnot designed\n\n## Module map\nnone\n\n## Migration path\nnone\n\n## Risks\nnone\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Not designed: api is not a git repository.\n\n## Report\n- the listing failed; read nothing; wrote \"Design — rate limits on the public API\" saying so"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Design",
+      "contains": [
+       "not a git repository",
+       "not designed"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "it-never-edits-the-tree",
+   "about": "A model that starts editing the code is stopped: the command waits for a yes, the person says no, and the run ends without a design. Its hirer does not hold Auto-approve, so that step still waits for a yes.",
+   "inputs": {
+    "folder": "api",
+    "goal": "Rate limits on the public API"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "git ls-files",
+      "output": "routes/public.py\nroutes/admin.py\nservices/quota.py\nservices/billing.py\ntests/test_quota.py\n==\n      2 routes\n      2 services\n      1 tests"
+     },
+     {
+      "match": "sed -i",
+      "output": ""
+     }
+    ],
+    "files": {
+     "api/routes/public.py": "from fastapi import APIRouter\nfrom services.quota import count\n\nrouter = APIRouter()\n\n@router.get('/items')\ndef items(key: str):\n    count(key)\n    return []\n",
+     "api/services/quota.py": "COUNTS = {}\n\ndef count(key):\n    COUNTS[key] = COUNTS.get(key, 0) + 1\n    # no limit is applied anywhere\n",
+     "api/routes/admin.py": "# admin\n",
+     "api/tests/test_quota.py": "def test_count(): pass\n"
+    }
+   },
+   "can_auto_approve": false,
+   "answers": [
+    "deny"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"$PANTHEON_PROJECTS\"/'api' && git ls-files | head -300 && echo == && git ls-files | sed 's#/[^/]*$##' | sort | uniq -c | sort -rn | head -40"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"$PANTHEON_PROJECTS\"/'api' && sed -i 's/no limit/limit/' services/quota.py"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Fixed it while I was there."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    },
+    {
+     "no_document": "Design"
+    },
+    {
+     "file": {
+      "path": "api/services/quota.py",
+      "contains": [
+       "no limit is applied anywhere"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-design-without-its-headings-fails",
+   "about": "The harness's own check: a design without Context, Options, Decision, Module map, Migration path and Risks does not deliver, even after its repair pass.",
+   "inputs": {
+    "folder": "api",
+    "goal": "Rate limits on the public API"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "git ls-files",
+      "output": "routes/public.py\nroutes/admin.py\nservices/quota.py\nservices/billing.py\ntests/test_quota.py\n==\n      2 routes\n      2 services\n      1 tests"
+     }
+    ],
+    "files": {
+     "api/routes/public.py": "from fastapi import APIRouter\nfrom services.quota import count\n\nrouter = APIRouter()\n\n@router.get('/items')\ndef items(key: str):\n    count(key)\n    return []\n",
+     "api/services/quota.py": "COUNTS = {}\n\ndef count(key):\n    COUNTS[key] = COUNTS.get(key, 0) + 1\n    # no limit is applied anywhere\n",
+     "api/routes/admin.py": "# admin\n",
+     "api/tests/test_quota.py": "def test_count(): pass\n"
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"$PANTHEON_PROJECTS\"/'api' && git ls-files | head -300 && echo == && git ls-files | sed 's#/[^/]*$##' | sort | uniq -c | sort -rn | head -40"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Design — rate limits on the public API",
+        "content": "Just add a limit in the quota service."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

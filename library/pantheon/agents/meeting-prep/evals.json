@@ -1,0 +1,550 @@
+{
+ "cases": [
+  {
+   "id": "one-real-meeting-between-a-standup-and-a-focus-block",
+   "about": "Three events, two routine: one brief, with the person from the event's title, the thread that caused it, the last message each way, the open items both ways and one ask.",
+   "inputs": {
+    "at": "07:45",
+    "skip": "standup, lunch, focus"
+   },
+   "world": {
+    "calendar": [
+     {
+      "summary": "Standup",
+      "start": "2026-11-10T09:30:00",
+      "end": "2026-11-10T09:45:00"
+     },
+     {
+      "summary": "Acme renewal call — Ana Reyes (ana@acme.example)",
+      "start": "2026-11-10T11:00:00",
+      "end": "2026-11-10T11:30:00"
+     },
+     {
+      "summary": "Focus",
+      "start": "2026-11-10T14:00:00",
+      "end": "2026-11-10T16:00:00"
+     }
+    ],
+    "emails": [
+     {
+      "id": "m41",
+      "from": "ana@acme.example",
+      "subject": "Re: proposal v2",
+      "date": "2026-11-07",
+      "body": "Can you do the same for 10% less if we sign for two years? Let's find 30 minutes next week to close this out."
+     },
+     {
+      "id": "m38",
+      "from": "me@example.com",
+      "to": "ana@acme.example",
+      "subject": "Proposal v2",
+      "date": "2026-11-04",
+      "body": "Same scope, £12,000 a year. Could you confirm the warehouse team's seat count?"
+     }
+    ],
+    "documents": [
+     {
+      "id": "p2",
+      "title": "Proposal — Acme v2",
+      "content": "Proposal — Acme v2\n4 Nov. Same scope, £12,000 a year. Open: the warehouse team's five extra seats.\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_calendar",
+       {
+        "action": "list_events",
+        "start": "2026-11-10",
+        "end": "2026-11-10"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "ana@acme.example",
+        "max_results": 5
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "m41"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "m38"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Acme"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "p2"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Meeting brief — Acme renewal call — 2026-11-10",
+        "content": "Meeting brief — Acme renewal call — 2026-11-10\n11:00 with Ana Reyes (Acme): agree the two-year price or the one-year renewal\n\n## Who\n- Ana Reyes — Acme — \"can you do the same for 10% less if we sign for two years?\" (7 Nov)\n\n## Why now\n- Ana's message of 7 Nov: \"Let's find 30 minutes next week to close this out\".\n\n## Last time\n- from Ana, 7 Nov: the two-year, 10% question above.\n- from you, 4 Nov: \"Same scope, £12,000 a year\" and the seat-count question.\n- document: Proposal — Acme v2 (4 Nov) — open point: the warehouse team's five extra seats.\n\n## Open items\n- you owe Ana an answer on the two-year price — since 7 Nov\n- Ana owes you the seat count for the warehouse team — since 4 Nov\n\n## Your ask\n- Leave with either a two-year term at a price you have chosen before the call, or the one-year renewal at £12,000 and a date for the seat count.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "3 meetings today, 1 briefed, 2 skipped (Standup, Focus): \"Meeting brief — Acme renewal call — 2026-11-10\".\n\n## Report\n- read today's calendar, 2 messages and 1 document; wrote \"Meeting brief — Acme renewal call — 2026-11-10\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Meeting brief — Acme renewal call — 2026-11-10",
+      "contains": [
+       "## Who\n- Ana Reyes",
+       "## Open items",
+       "## Your ask"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "no-meetings-to-brief",
+   "about": "Every event is routine: one empty brief says nothing to brief and what was skipped, no mail is searched, and the answer says 0 to brief.",
+   "inputs": {
+    "at": "07:45",
+    "skip": "standup, lunch, focus"
+   },
+   "world": {
+    "calendar": [
+     {
+      "summary": "Standup",
+      "start": "2026-11-10T09:30:00",
+      "end": "2026-11-10T09:45:00"
+     },
+     {
+      "summary": "Focus",
+      "start": "2026-11-10T14:00:00",
+      "end": "2026-11-10T16:00:00"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_calendar",
+       {
+        "action": "list_events",
+        "start": "2026-11-10",
+        "end": "2026-11-10"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Meeting brief — nothing to brief — 2026-11-10",
+        "content": "Meeting brief — nothing to brief — 2026-11-10\nnothing to brief: skipped Standup, Focus\n\n## Who\n- none\n\n## Why now\n- none\n\n## Last time\n- none\n\n## Open items\n- none\n\n## Your ask\n- none: no meeting with anyone else today\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "2 meetings today, 0 to brief, 2 skipped (Standup, Focus).\n\n## Report\n- read today's calendar; nothing to brief; wrote \"Meeting brief — nothing to brief — 2026-11-10\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Meeting brief — nothing to brief",
+      "contains": [
+       "nothing to brief"
+      ]
+     }
+    },
+    {
+     "answer_contains": [
+      "0 to brief"
+     ]
+    },
+    {
+     "not_called": "search_emails"
+    }
+   ]
+  },
+  {
+   "id": "no-mail-with-the-person",
+   "about": "The search finds nobody: Last time says no mail found and Why now falls back to the event's own words.",
+   "inputs": {
+    "at": "07:45",
+    "skip": "standup, lunch, focus"
+   },
+   "world": {
+    "calendar": [
+     {
+      "summary": "Standup",
+      "start": "2026-11-10T09:30:00",
+      "end": "2026-11-10T09:45:00"
+     },
+     {
+      "summary": "Acme renewal call — Ana Reyes (ana@acme.example)",
+      "start": "2026-11-10T11:00:00",
+      "end": "2026-11-10T11:30:00"
+     },
+     {
+      "summary": "Focus",
+      "start": "2026-11-10T14:00:00",
+      "end": "2026-11-10T16:00:00"
+     }
+    ],
+    "documents": [
+     {
+      "id": "p2",
+      "title": "Proposal — Acme v2",
+      "content": "Proposal — Acme v2\n4 Nov. Same scope, £12,000 a year. Open: the warehouse team's five extra seats.\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_calendar",
+       {
+        "action": "list_events",
+        "start": "2026-11-10",
+        "end": "2026-11-10"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "ana@acme.example",
+        "max_results": 5
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Acme"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "p2"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Meeting brief — Acme renewal call — 2026-11-10",
+        "content": "Meeting brief — Acme renewal call — 2026-11-10\n11:00 with Ana Reyes (Acme): agree the two-year price or the one-year renewal\n\n## Who\n- Ana Reyes — Acme — no mail found\n\n## Why now\n- no thread found: the event's own title, \"Acme renewal call\"; ask at the start\n\n## Last time\n- no mail found either way.\n- document: Proposal — Acme v2 (4 Nov) — open point: the warehouse team's five extra seats.\n\n## Open items\n- Ana owes you the seat count for the warehouse team — since 4 Nov\n\n## Your ask\n- Leave with either a two-year term at a price you have chosen before the call, or the one-year renewal at £12,000 and a date for the seat count.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "3 meetings today, 1 briefed (no mail found with Ana), 2 skipped.\n\n## Report\n- read today's calendar, 0 messages and 1 document; wrote \"Meeting brief — Acme renewal call — 2026-11-10\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Meeting brief",
+      "contains": [
+       "no mail found"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "it-never-adds-a-person-the-event-does-not-name",
+   "about": "Only the people in the event or the thread are under Who; nobody else is named, and nothing is sent.",
+   "inputs": {
+    "at": "07:45",
+    "skip": "standup, lunch, focus"
+   },
+   "world": {
+    "calendar": [
+     {
+      "summary": "Standup",
+      "start": "2026-11-10T09:30:00",
+      "end": "2026-11-10T09:45:00"
+     },
+     {
+      "summary": "Acme renewal call — Ana Reyes (ana@acme.example)",
+      "start": "2026-11-10T11:00:00",
+      "end": "2026-11-10T11:30:00"
+     },
+     {
+      "summary": "Focus",
+      "start": "2026-11-10T14:00:00",
+      "end": "2026-11-10T16:00:00"
+     }
+    ],
+    "emails": [
+     {
+      "id": "m41",
+      "from": "ana@acme.example",
+      "subject": "Re: proposal v2",
+      "date": "2026-11-07",
+      "body": "Can you do the same for 10% less if we sign for two years? Let's find 30 minutes next week to close this out."
+     },
+     {
+      "id": "m38",
+      "from": "me@example.com",
+      "to": "ana@acme.example",
+      "subject": "Proposal v2",
+      "date": "2026-11-04",
+      "body": "Same scope, £12,000 a year. Could you confirm the warehouse team's seat count?"
+     }
+    ],
+    "documents": [
+     {
+      "id": "p2",
+      "title": "Proposal — Acme v2",
+      "content": "Proposal — Acme v2\n4 Nov. Same scope, £12,000 a year. Open: the warehouse team's five extra seats.\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_calendar",
+       {
+        "action": "list_events",
+        "start": "2026-11-10",
+        "end": "2026-11-10"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "ana@acme.example",
+        "max_results": 5
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "m41"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "m38"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Acme"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "p2"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Meeting brief — Acme renewal call — 2026-11-10",
+        "content": "Meeting brief — Acme renewal call — 2026-11-10\n11:00 with Ana Reyes (Acme): agree the two-year price or the one-year renewal\n\n## Who\n- Ana Reyes — Acme — \"can you do the same for 10% less if we sign for two years?\" (7 Nov)\n\n## Why now\n- Ana's message of 7 Nov: \"Let's find 30 minutes next week to close this out\".\n\n## Last time\n- from Ana, 7 Nov: the two-year, 10% question above.\n- from you, 4 Nov: \"Same scope, £12,000 a year\" and the seat-count question.\n- document: Proposal — Acme v2 (4 Nov) — open point: the warehouse team's five extra seats.\n\n## Open items\n- you owe Ana an answer on the two-year price — since 7 Nov\n- Ana owes you the seat count for the warehouse team — since 4 Nov\n\n## Your ask\n- Leave with either a two-year term at a price you have chosen before the call, or the one-year renewal at £12,000 and a date for the seat count.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "3 meetings today, 1 briefed, 2 skipped (Standup, Focus): \"Meeting brief — Acme renewal call — 2026-11-10\".\n\n## Report\n- read today's calendar, 2 messages and 1 document; wrote \"Meeting brief — Acme renewal call — 2026-11-10\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Meeting brief — Acme renewal call — 2026-11-10",
+      "contains": [
+       "## Who\n- Ana Reyes"
+      ],
+      "lacks": [
+       "Ben",
+       "Dana"
+      ]
+     }
+    },
+    {
+     "drafts_at_most": 0
+    }
+   ]
+  },
+  {
+   "id": "a-brief-without-its-headings-fails",
+   "about": "The harness's own check: a brief without Who, Why now, Last time, Open items and Your ask does not deliver, even after its repair pass.",
+   "inputs": {
+    "at": "07:45",
+    "skip": "standup, lunch, focus"
+   },
+   "world": {
+    "calendar": [
+     {
+      "summary": "Standup",
+      "start": "2026-11-10T09:30:00",
+      "end": "2026-11-10T09:45:00"
+     },
+     {
+      "summary": "Acme renewal call — Ana Reyes (ana@acme.example)",
+      "start": "2026-11-10T11:00:00",
+      "end": "2026-11-10T11:30:00"
+     },
+     {
+      "summary": "Focus",
+      "start": "2026-11-10T14:00:00",
+      "end": "2026-11-10T16:00:00"
+     }
+    ],
+    "emails": [
+     {
+      "id": "m41",
+      "from": "ana@acme.example",
+      "subject": "Re: proposal v2",
+      "date": "2026-11-07",
+      "body": "Can you do the same for 10% less if we sign for two years? Let's find 30 minutes next week to close this out."
+     },
+     {
+      "id": "m38",
+      "from": "me@example.com",
+      "to": "ana@acme.example",
+      "subject": "Proposal v2",
+      "date": "2026-11-04",
+      "body": "Same scope, £12,000 a year. Could you confirm the warehouse team's seat count?"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_calendar",
+       {
+        "action": "list_events",
+        "start": "2026-11-10",
+        "end": "2026-11-10"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Meeting brief — Acme renewal call — 2026-11-10",
+        "content": "Ana wants a discount."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

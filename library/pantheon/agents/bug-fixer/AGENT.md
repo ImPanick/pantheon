@@ -4,7 +4,7 @@ name: Bug Fixer
 tagline: "Reproduces an issue with a failing test, then puts the smallest fix beside it on a branch of its own."
 section: development
 icon: bug
-version: 1.5.0
+version: 1.5.2
 wave: 2
 inputs:
   - {key: folder, kind: folder, label: "The repository's folder, inside your projects folder"}
@@ -13,6 +13,7 @@ inputs:
 triggers:
   - {on: hand}
 tools: [bash, read_file, edit_file, grep, ls]
+skills: [change-code-safely, debug-a-failure]
 needs: {connectors: [], min_context: 32000, native_tools: required}
 delivers:
   - {kind: answer, must_contain: [Reproduced, Fix, Tests, branch]}

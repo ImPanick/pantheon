@@ -4,13 +4,14 @@ name: Firmware Watcher
 tagline: "Each week, new firmware for your router, NAS and cameras from each maker's own pages, security fixes first — installing is yours."
 section: home-lab
 icon: cpu
-version: 1.1.0
+version: 1.1.1
 wave: 2
 inputs:
   - {key: devices, kind: list, label: "Devices (make, model and current version)"}
 triggers:
   - {on: weekly, day: thu, at: "08:00"}
 tools: [web_search, web_fetch]
+skills: [web-research]
 needs: {connectors: [], min_context: 16000, native_tools: preferred}
 delivers:
   - {kind: answer, must_contain: [Newer firmware, Up to date, Could not find]}

@@ -4,11 +4,12 @@ name: Contact Keeper
 tagline: Keeps your contacts current from the signatures in your mail, and lists the duplicates to merge.
 section: sales
 icon: address-book
-version: 1.1.0
+version: 1.1.1
 wave: 1
 triggers:
   - {on: event, event: email_received, every: 10, label: Every ten new messages}
 tools: [list_emails, read_email, resolve_contact, manage_contact]
+needs: {connectors: [mail]}
 delivers:
   - {kind: answer, must_contain: [Added, Updated, Maybe the same person]}
 effects: {read_private: allow, write_private: ask, destructive: never}

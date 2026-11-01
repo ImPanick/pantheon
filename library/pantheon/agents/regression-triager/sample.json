@@ -1,0 +1,28 @@
+{
+ "case": "three-failures-two-causes",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- ran the tests once (3 failed), read 2 files; wrote \"Test triage — 2026-11-10\"",
+ "read": [
+  "grep",
+  "read_file"
+ ],
+ "wrote": [
+  "bash",
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Test triage”",
+   "ok": true,
+   "detail": "“Test triage — 2026-11-10” is there."
+  }
+ ],
+ "answer": "2 new, 1 known, 1 fixed.\n\n## Report\n- ran the tests once (3 failed), read 2 files; wrote \"Test triage — 2026-11-10\"\n\n## Carry forward\n- run: 2026-11-10\n- test_total_with_code since 2026-11-10; test_total_unknown_code since 2026-11-10; test_retry_stops since 2026-11-03",
+ "documents": [
+  {
+   "title": "Test triage — 2026-11-10",
+   "content": "Test triage — 2026-11-10\npython -m pytest -q: 3 failed, 2 new, 1 known, 1 fixed\n\n## New failures\n- tests/test_cart.py::test_total_with_code — KeyError: 'FIVE'\n- tests/test_cart.py::test_total_unknown_code — KeyError: 'NOPE'\n\n## Known failures\n- tests/test_mail.py::test_retry_stops — failing since 2026-11-03\n\n## Fixed\n- tests/test_cart.py::test_empty_basket\n\n## By cause\n- DISCOUNTS[code] raises on an unknown code — shop/cart.py:8 — test_total_with_code, test_total_unknown_code\n- send() retries forever — shop/mail.py:2 — test_retry_stops"
+  }
+ ]
+}

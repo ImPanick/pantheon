@@ -4,7 +4,7 @@ name: UX Auditor
 tagline: "Walks your site's flows in the workstation's browser as a first-time visitor and writes down the friction, step by step."
 section: design
 icon: scan-eye
-version: 1.3.0
+version: 1.3.1
 wave: 2
 inputs:
   - {key: site, kind: url, label: Your site}
@@ -12,7 +12,8 @@ inputs:
 triggers:
   - {on: hand}
 tools: [computer, create_document]
-needs: {connectors: [], min_context: 32000, native_tools: required}
+skills: [workstation-desktop]
+needs: {connectors: [workstation], min_context: 32000, native_tools: required}
 delivers:
   - {kind: document, title: "UX audit", must_contain: [Steps walked, Friction, Fix first]}
 effects: {execute_code: allow, network_egress: allow, write_private: allow, read_workspace: allow}

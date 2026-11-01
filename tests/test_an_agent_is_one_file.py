@@ -139,7 +139,7 @@ def test_every_shipped_agent_passes_its_lint_and_the_starters_are_all_there(tmp_
     assert broken == []
     assert {m.id for m in agents if m.wave == 1} == STARTERS
     # `P24-23`: wave 2 ships beside them (`test_the_roster_is_shipped.py`).
-    assert all(m.wave in (1, 2) and m.section in SECTION_IDS and m.source == "shipped" for m in agents)
+    assert all(m.wave in (1, 2, 3) and m.section in SECTION_IDS and m.source == "shipped" for m in agents)
     assert {m.id for m in agents if m.starred} == {
         "inbox-triage", "morning-brief", "topic-watcher", "site-builder", "server-health"}
 

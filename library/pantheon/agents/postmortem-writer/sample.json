@@ -1,0 +1,27 @@
+{
+ "case": "a-timeline-with-a-change-record-behind-it",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read \"Post-mortem — orders down on 9 Nov\" and 1 change record; set 3 reminders; wrote \"Postmortem — orders down on 9 Nov\"",
+ "read": [
+  "manage_documents"
+ ],
+ "wrote": [
+  "create_document",
+  "manage_notes"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Postmortem”",
+   "ok": true,
+   "detail": "“Postmortem — orders down on 9 Nov” is there."
+  }
+ ],
+ "answer": "Orders down 42 minutes; 3 actions.\n\n## Report\n- read \"Post-mortem — orders down on 9 Nov\" and 1 change record; set 3 reminders; wrote \"Postmortem — orders down on 9 Nov\"",
+ "documents": [
+  {
+   "title": "Postmortem — orders down on 9 Nov",
+   "content": "Postmortem — orders down on 9 Nov\nOrders could not be placed for 42 minutes; 3 actions\n\n## Summary\nThe database's disk filled at 14:02 and PostgreSQL stopped accepting writes. The shop showed an error on every order page until the old logs were removed at 14:44. Nothing was lost.\n\n## Impact\n- 42 minutes without orders; about 120 customers saw an error (web log count); revenue not measured.\n\n## Timeline\n- 14:02 — disk at 100% on db1 — evidence (journal: \"No space left on device\")\n- 14:05 — first customer report — evidence (support mail)\n- 14:30 — cause found — inference (no log line; the responder's note)\n- 14:44 — old logs removed, writes resume — evidence (journal)\n\n## Root causes\n- No alert on disk use for db1.\n- Log rotation was never set up after the move to the new disk (Change record — move the database).\n\n## What went well\n- The support mail reached the responder within three minutes.\n\n## Actions\n- Add a disk alert at 85% on db1 — the person — 2026-11-21 — reminder set\n- Set up log rotation on db1 — the person — 2026-11-21 — reminder set\n- Add \"check free space\" to Runbook — backups — the person — 2026-11-28 — reminder set"
+  }
+ ]
+}

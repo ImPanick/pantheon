@@ -4,7 +4,7 @@ name: Trend Spotter
 tagline: "Trends in your field worth a post, each with an angle."
 section: social
 icon: flame
-version: 1.2.0
+version: 1.2.1
 wave: 2
 inputs:
   - {key: field, kind: text, label: Your field}
@@ -12,6 +12,7 @@ inputs:
 triggers:
   - {on: daily, at: "08:05"}
 tools: [web_search, web_fetch]
+skills: [web-research]
 needs: {connectors: [], min_context: 16000, native_tools: preferred}
 delivers:
   - {kind: answer, must_contain: [Trends, Checked]}

@@ -1,0 +1,477 @@
+{
+ "cases": [
+  {
+   "id": "a-timeline-with-a-change-record-behind-it",
+   "about": "The timeline names an earlier change record: it is read, the causes are conditions, three actions get dates and reminders, and the impact is in the first line.",
+   "inputs": {
+    "timeline": "Post-mortem — orders down on 9 Nov"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "tl1",
+      "title": "Post-mortem — orders down on 9 Nov",
+      "content": "Post-mortem — orders down on 9 Nov\n\n## Timeline\n- 14:02 — disk at 100% on db1 — journal: \"No space left on device\"\n- 14:05 — first customer report — support mail\n- 14:30 — Ben found the cause — no log line; Ben's note\n- 14:44 — old logs removed by Ben, writes resume — journal\n\n## Notes\n- log rotation was never set up after Change record — move the database\n- 120 customers saw an error (web log count)\n"
+     },
+     {
+      "id": "cr1",
+      "title": "Change record — move the database",
+      "content": "Change record — move the database\nMoved /var/lib/pg to /mnt/fast/pg on 2 Nov.\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Post-mortem — orders down on 9 Nov"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "tl1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Change record — move the database"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "cr1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Postmortem — orders down on 9 Nov",
+        "content": "Postmortem — orders down on 9 Nov\nOrders could not be placed for 42 minutes; 3 actions\n\n## Summary\nThe database's disk filled at 14:02 and PostgreSQL stopped accepting writes. The shop showed an error on every order page until the old logs were removed at 14:44. Nothing was lost.\n\n## Impact\n- 42 minutes without orders; about 120 customers saw an error (web log count); revenue not measured.\n\n## Timeline\n- 14:02 — disk at 100% on db1 — evidence (journal: \"No space left on device\")\n- 14:05 — first customer report — evidence (support mail)\n- 14:30 — cause found — inference (no log line; the responder's note)\n- 14:44 — old logs removed, writes resume — evidence (journal)\n\n## Root causes\n- No alert on disk use for db1.\n- Log rotation was never set up after the move to the new disk (Change record — move the database).\n\n## What went well\n- The support mail reached the responder within three minutes.\n\n## Actions\n- Add a disk alert at 85% on db1 — the person — 2026-11-21 — reminder set\n- Set up log rotation on db1 — the person — 2026-11-21 — reminder set\n- Add \"check free space\" to Runbook — backups — the person — 2026-11-28 — reminder set\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "add",
+        "title": "Add a disk alert at 85% on db1 — the person",
+        "due_date": "2026-11-21T09:00:00"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "add",
+        "title": "Set up log rotation on db1 — the person",
+        "due_date": "2026-11-21T09:00:00"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "add",
+        "title": "Add \"check free space\" to Runbook — backups — the person",
+        "due_date": "2026-11-28T09:00:00"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Orders down 42 minutes; 3 actions.\n\n## Report\n- read \"Post-mortem — orders down on 9 Nov\" and 1 change record; set 3 reminders; wrote \"Postmortem — orders down on 9 Nov\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Postmortem — orders down on 9 Nov",
+      "contains": [
+       "## Root causes\n- No alert",
+       "## Actions\n- Add a disk alert",
+       "reminder set"
+      ]
+     }
+    },
+    {
+     "called": "manage_notes"
+    }
+   ]
+  },
+  {
+   "id": "no-numbers-in-the-timeline",
+   "about": "The timeline has times but no counts: Impact says not measured for each number it lacks, and the first line carries the duration only.",
+   "inputs": {
+    "timeline": "Post-mortem — orders down on 9 Nov"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "tl1",
+      "title": "Post-mortem — orders down on 9 Nov",
+      "content": "Post-mortem — orders down on 9 Nov\n\n## Timeline\n- 14:02 — disk at 100% on db1 — journal: \"No space left on device\"\n- 14:05 — first customer report — support mail\n- 14:30 — Ben found the cause — no log line; Ben's note\n- 14:44 — old logs removed by Ben, writes resume — journal\n\n## Notes\n- log rotation was never set up after Change record — move the database\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Post-mortem — orders down on 9 Nov"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "tl1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Postmortem — orders down on 9 Nov",
+        "content": "Postmortem — orders down on 9 Nov\nOrders could not be placed for 42 minutes; 3 actions\n\n## Summary\nThe database's disk filled at 14:02 and PostgreSQL stopped accepting writes. The shop showed an error on every order page until the old logs were removed at 14:44. Nothing was lost.\n\n## Impact\n- 42 minutes without orders; customers affected not measured; revenue not measured.\n\n## Timeline\n- 14:02 — disk at 100% on db1 — evidence (journal: \"No space left on device\")\n- 14:05 — first customer report — evidence (support mail)\n- 14:30 — cause found — inference (no log line; the responder's note)\n- 14:44 — old logs removed, writes resume — evidence (journal)\n\n## Root causes\n- No alert on disk use for db1.\n- Log rotation was never set up after the move to the new disk (Change record — move the database).\n\n## What went well\n- The support mail reached the responder within three minutes.\n\n## Actions\n- Add a disk alert at 85% on db1 — the person — 2026-11-21 — reminder set\n- Set up log rotation on db1 — the person — 2026-11-21 — reminder set\n- Add \"check free space\" to Runbook — backups — the person — 2026-11-28 — reminder set\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "add",
+        "title": "Add a disk alert at 85% on db1 — the person",
+        "due_date": "2026-11-21T09:00:00"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "add",
+        "title": "Set up log rotation on db1 — the person",
+        "due_date": "2026-11-21T09:00:00"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "add",
+        "title": "Add \"check free space\" to Runbook — backups — the person",
+        "due_date": "2026-11-28T09:00:00"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Orders down 42 minutes; 3 actions.\n\n## Report\n- read \"Post-mortem — orders down on 9 Nov\" and 1 change record; set 3 reminders; wrote \"Postmortem — orders down on 9 Nov\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Postmortem",
+      "contains": [
+       "not measured"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "the-timeline-cannot-be-found",
+   "about": "No document matches: the postmortem is not written from nothing; the document says so in its first line with every heading empty, and no reminder is set.",
+   "inputs": {
+    "timeline": "Post-mortem — orders down on 9 Nov"
+   },
+   "world": {
+    "documents": [
+     {
+      "title": "Notes",
+      "content": "Notes\nnothing"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Post-mortem — orders down on 9 Nov"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Postmortem — orders down on 9 Nov",
+        "content": "Postmortem — orders down on 9 Nov\nnot written: no timeline found; 0 actions\n\n## Summary\nNo document is titled \"Post-mortem — orders down on 9 Nov\". Nothing to write from.\n\n## Impact\n- not measured\n\n## Timeline\n- none read\n\n## Root causes\n- none named\n\n## What went well\n- nothing to say yet\n\n## Actions\n- none: give the timeline's title as Documents lists it\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Not written: no timeline found; 0 actions.\n\n## Report\n- searched Documents once, found nothing; wrote \"Postmortem — orders down on 9 Nov\" saying so"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Postmortem",
+      "contains": [
+       "no timeline found"
+      ]
+     }
+    },
+    {
+     "not_called": "manage_notes"
+    }
+   ]
+  },
+  {
+   "id": "it-never-names-a-person-as-a-cause",
+   "about": "The timeline says who removed the logs and who found the cause; the root causes are conditions, and the name is nowhere under them.",
+   "inputs": {
+    "timeline": "Post-mortem — orders down on 9 Nov"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "tl1",
+      "title": "Post-mortem — orders down on 9 Nov",
+      "content": "Post-mortem — orders down on 9 Nov\n\n## Timeline\n- 14:02 — disk at 100% on db1 — journal: \"No space left on device\"\n- 14:05 — first customer report — support mail\n- 14:30 — Ben found the cause — no log line; Ben's note\n- 14:44 — old logs removed by Ben, writes resume — journal\n\n## Notes\n- log rotation was never set up after Change record — move the database\n- 120 customers saw an error (web log count)\n"
+     },
+     {
+      "id": "cr1",
+      "title": "Change record — move the database",
+      "content": "Change record — move the database\nMoved /var/lib/pg to /mnt/fast/pg on 2 Nov.\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Post-mortem — orders down on 9 Nov"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "tl1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Change record — move the database"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "cr1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Postmortem — orders down on 9 Nov",
+        "content": "Postmortem — orders down on 9 Nov\nOrders could not be placed for 42 minutes; 3 actions\n\n## Summary\nThe database's disk filled at 14:02 and PostgreSQL stopped accepting writes. The shop showed an error on every order page until the old logs were removed at 14:44. Nothing was lost.\n\n## Impact\n- 42 minutes without orders; about 120 customers saw an error (web log count); revenue not measured.\n\n## Timeline\n- 14:02 — disk at 100% on db1 — evidence (journal: \"No space left on device\")\n- 14:05 — first customer report — evidence (support mail)\n- 14:30 — cause found — inference (no log line; the responder's note)\n- 14:44 — old logs removed, writes resume — evidence (journal)\n\n## Root causes\n- No alert on disk use for db1.\n- Log rotation was never set up after the move to the new disk (Change record — move the database).\n\n## What went well\n- The support mail reached the responder within three minutes.\n\n## Actions\n- Add a disk alert at 85% on db1 — the person — 2026-11-21 — reminder set\n- Set up log rotation on db1 — the person — 2026-11-21 — reminder set\n- Add \"check free space\" to Runbook — backups — the person — 2026-11-28 — reminder set\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "add",
+        "title": "Add a disk alert at 85% on db1 — the person",
+        "due_date": "2026-11-21T09:00:00"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "add",
+        "title": "Set up log rotation on db1 — the person",
+        "due_date": "2026-11-21T09:00:00"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "add",
+        "title": "Add \"check free space\" to Runbook — backups — the person",
+        "due_date": "2026-11-28T09:00:00"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Orders down 42 minutes; 3 actions.\n\n## Report\n- read \"Post-mortem — orders down on 9 Nov\" and 1 change record; set 3 reminders; wrote \"Postmortem — orders down on 9 Nov\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Postmortem — orders down on 9 Nov",
+      "contains": [
+       "## Root causes"
+      ],
+      "lacks": [
+       "Ben"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-postmortem-without-its-headings-fails",
+   "about": "The harness's own check: a postmortem without Summary, Impact, Timeline, Root causes, What went well and Actions does not deliver, even after its repair pass.",
+   "inputs": {
+    "timeline": "Post-mortem — orders down on 9 Nov"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "tl1",
+      "title": "Post-mortem — orders down on 9 Nov",
+      "content": "Post-mortem — orders down on 9 Nov\n\n## Timeline\n- 14:02 — disk at 100% on db1 — journal: \"No space left on device\"\n- 14:05 — first customer report — support mail\n- 14:30 — Ben found the cause — no log line; Ben's note\n- 14:44 — old logs removed by Ben, writes resume — journal\n\n## Notes\n- log rotation was never set up after Change record — move the database\n- 120 customers saw an error (web log count)\n"
+     },
+     {
+      "id": "cr1",
+      "title": "Change record — move the database",
+      "content": "Change record — move the database\nMoved /var/lib/pg to /mnt/fast/pg on 2 Nov.\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Post-mortem — orders down on 9 Nov"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Postmortem — orders down on 9 Nov",
+        "content": "The disk filled up. Add an alert."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

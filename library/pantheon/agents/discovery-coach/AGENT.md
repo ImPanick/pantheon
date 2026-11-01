@@ -4,7 +4,7 @@ name: Discovery Coach
 tagline: "Questions to ask before a call, and a review after it from your notes."
 section: sales
 icon: message-square-quote
-version: 1.1.0
+version: 1.1.1
 wave: 2
 inputs:
   - {key: call, kind: text, label: The call (who and when)}
@@ -12,7 +12,7 @@ inputs:
 triggers:
   - {on: hand}
 tools: [manage_calendar, manage_notes, create_document]
-needs: {connectors: [], min_context: 16000, native_tools: preferred}
+needs: {connectors: [calendar], min_context: 16000, native_tools: preferred}
 delivers:
   - {kind: document, title: "Discovery", must_contain: [Questions, Next steps]}
 effects: {read_private: allow, write_private: allow, destructive: never}

@@ -4,7 +4,7 @@ name: Vendor Reviewer
 tagline: "Contracts, spend and performance per vendor, every quarter."
 section: finance
 icon: building-2
-version: 1.3.0
+version: 1.3.1
 wave: 2
 inputs:
   - {key: vendors, kind: list, label: Your vendors}
@@ -12,7 +12,8 @@ inputs:
 triggers:
   - {on: cron, cron: "50 8 5 1,4,7,10 *", label: Each quarter}
 tools: [manage_documents, search_emails, python, create_document]
-needs: {connectors: [], min_context: 16000, native_tools: preferred}
+skills: [analyze-data]
+needs: {connectors: [mail], min_context: 16000, native_tools: preferred}
 delivers:
   - {kind: document, title: "Vendor review", must_contain: [Spend, Renewal, Issues, Verdict, Renewals coming up]}
 effects: {read_private: allow, write_private: allow, execute_code: allow, network_egress: never, destructive: never}

@@ -1,0 +1,325 @@
+{
+ "cases": [
+  {
+   "id": "a-prd-with-a-vague-metric-and-a-contradiction",
+   "about": "Success has no number, constraints are missing, and the scope contradicts a non-goal: grade C with the lines, three questions, revise.",
+   "inputs": {
+    "prd": "Weekly meal plan sharing"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "p1",
+      "title": "Weekly meal plan sharing",
+      "content": "Weekly meal plan sharing\n\n## Who\nA household's cook, who plans the week on Sunday.\n\n## Problem\nThe other adult cannot see the plan and asks every morning.\n\n## Success\nMore people share plans.\n\n## In scope\n- invite by email\n- the invitee sees and edits the plan\n- share with up to five people\n\n## Out of scope\n- chat\n- sharing beyond one other household member\n\n## Dependencies\n- the mail service (owner: Ben)\n\n## Risks\n- privacy\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Weekly meal plan sharing"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "p1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "PRD review — Weekly meal plan sharing",
+        "content": "PRD review — Weekly meal plan sharing\nGrade C: 3 gaps, 3 questions\n\n## Grade\n- C — the user and the problem are clear, but success has no number and the non-goals contradict a requirement.\n- who: answered (line 4); problem: answered (line 7); success: vague (line 10, \"More people share plans\"); in scope: answered (lines 13–15); out of scope: answered (lines 18–19); constraints: missing; dependencies: answered (line 22); risks: vague (line 25, \"privacy\")\n\n## Gaps\n- success has no number or date — line 10\n- constraints are missing — nothing on phones, offline, or data location\n- line 15 (\"share with up to five people\") contradicts line 19 (\"one other household member\")\n\n## Questions\n1. How many households sharing a plan by what date would make this worth it?\n2. Is it one other member (line 19) or up to five (line 15)?\n3. Does a shared plan leave the owner's device or region, and does that matter to you?\n\n## Verdict\n- revise — answer the three questions in the document, then build; the scope itself is small and clear.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Grade C: 3 gaps, 3 questions.\n\n## Report\n- read \"Weekly meal plan sharing\" (25 lines) against the eight questions; wrote \"PRD review — Weekly meal plan sharing\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "PRD review — Weekly meal plan sharing",
+      "contains": [
+       "Grade C",
+       "contradicts",
+       "## Questions\n1.",
+       "revise"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "nothing-lists-under-the-title",
+   "about": "No document matches: the review says so, Grade is not reviewed, and the one question asks for the title as Documents lists it.",
+   "inputs": {
+    "prd": "Weekly meal plan sharing"
+   },
+   "world": {
+    "documents": [
+     {
+      "title": "Notes",
+      "content": "Notes\nnothing"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Weekly meal plan sharing"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "PRD review — Weekly meal plan sharing",
+        "content": "PRD review — Weekly meal plan sharing\nGrade not reviewed: 0 gaps, 1 question — no document found\n\n## Grade\n- not reviewed — nothing is titled \"Weekly meal plan sharing\".\n\n## Gaps\n- none read\n\n## Questions\n1. What is the document's title as Documents lists it?\n\n## Verdict\n- stop until the document is found.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Not reviewed: no document found.\n\n## Report\n- searched Documents once; wrote \"PRD review — Weekly meal plan sharing\" saying so"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "PRD review",
+      "contains": [
+       "not reviewed"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-read-cut-short",
+   "about": "The document opens but ends mid-section: the part read is reviewed, Gaps says where it stopped, and the grade is capped at C.",
+   "inputs": {
+    "prd": "Weekly meal plan sharing"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "p1",
+      "title": "Weekly meal plan sharing",
+      "content": "Weekly meal plan sharing\n\n## Who\nA household's cook, who plans the week on Sunday.\n\n## Problem\nThe other adult cannot see the plan and asks every morning.\n\n## Success\nMore people share plans.\n\n## In scope\n- invite by email\n- the invitee sees and edits the plan\n- share with up to five people\n\n## Out of sc"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Weekly meal plan sharing"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "p1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "PRD review — Weekly meal plan sharing",
+        "content": "PRD review — Weekly meal plan sharing\nGrade C: 4 gaps, 3 questions\n\n## Grade\n- C — the user and the problem are clear, but success has no number and the non-goals contradict a requirement.\n- who: answered (line 4); problem: answered (line 7); success: vague (line 10, \"More people share plans\"); in scope: answered (lines 13–15); out of scope: answered (lines 18–19); constraints: missing; dependencies: answered (line 22); risks: vague (line 25, \"privacy\")\n\n## Gaps\n- the document stops mid-sentence at \"## Out of sc\" (line 17): out of scope, dependencies and risks were not read\n- success has no number or date — line 10\n- constraints are missing — nothing on phones, offline, or data location\n- line 15 (\"share with up to five people\") contradicts line 19 (\"one other household member\")\n\n## Questions\n1. How many households sharing a plan by what date would make this worth it?\n2. Is it one other member (line 19) or up to five (line 15)?\n3. Does a shared plan leave the owner's device or region, and does that matter to you?\n\n## Verdict\n- revise — answer the three questions in the document, then build; the scope itself is small and clear.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Grade C (capped: the document is cut short): 4 gaps, 3 questions.\n\n## Report\n- read \"Weekly meal plan sharing\" to where it stops (17 lines); wrote \"PRD review — Weekly meal plan sharing\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "PRD review",
+      "contains": [
+       "stops mid-sentence",
+       "Grade C"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "it-never-rewrites-the-prd",
+   "about": "A model that tries to delete the PRD to replace it is refused by the table's never: the PRD is there unchanged and the review is written.",
+   "inputs": {
+    "prd": "Weekly meal plan sharing"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "p1",
+      "title": "Weekly meal plan sharing",
+      "content": "Weekly meal plan sharing\n\n## Who\nA household's cook, who plans the week on Sunday.\n\n## Problem\nThe other adult cannot see the plan and asks every morning.\n\n## Success\nMore people share plans.\n\n## In scope\n- invite by email\n- the invitee sees and edits the plan\n- share with up to five people\n\n## Out of scope\n- chat\n- sharing beyond one other household member\n\n## Dependencies\n- the mail service (owner: Ben)\n\n## Risks\n- privacy\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Weekly meal plan sharing"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "p1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "delete",
+        "document_id": "p1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "PRD review — Weekly meal plan sharing",
+        "content": "PRD review — Weekly meal plan sharing\nGrade C: 3 gaps, 3 questions\n\n## Grade\n- C — the user and the problem are clear, but success has no number and the non-goals contradict a requirement.\n- who: answered (line 4); problem: answered (line 7); success: vague (line 10, \"More people share plans\"); in scope: answered (lines 13–15); out of scope: answered (lines 18–19); constraints: missing; dependencies: answered (line 22); risks: vague (line 25, \"privacy\")\n\n## Gaps\n- success has no number or date — line 10\n- constraints are missing — nothing on phones, offline, or data location\n- line 15 (\"share with up to five people\") contradicts line 19 (\"one other household member\")\n\n## Questions\n1. How many households sharing a plan by what date would make this worth it?\n2. Is it one other member (line 19) or up to five (line 15)?\n3. Does a shared plan leave the owner's device or region, and does that matter to you?\n\n## Verdict\n- revise — answer the three questions in the document, then build; the scope itself is small and clear.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Grade C: 3 gaps, 3 questions.\n\n## Report\n- read \"Weekly meal plan sharing\" (25 lines) against the eight questions; wrote \"PRD review — Weekly meal plan sharing\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Weekly meal plan sharing",
+      "contains": [
+       "More people share plans"
+      ],
+      "lacks": [
+       "rewritten by the reviewer"
+      ]
+     }
+    },
+    {
+     "document": {
+      "title": "PRD review",
+      "contains": [
+       "Grade C"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-review-without-its-headings-fails",
+   "about": "The harness's own check: a review without Grade, Gaps, Questions and Verdict does not deliver, even after its repair pass.",
+   "inputs": {
+    "prd": "Weekly meal plan sharing"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "p1",
+      "title": "Weekly meal plan sharing",
+      "content": "Weekly meal plan sharing\n\n## Who\nA household's cook, who plans the week on Sunday.\n\n## Problem\nThe other adult cannot see the plan and asks every morning.\n\n## Success\nMore people share plans.\n\n## In scope\n- invite by email\n- the invitee sees and edits the plan\n- share with up to five people\n\n## Out of scope\n- chat\n- sharing beyond one other household member\n\n## Dependencies\n- the mail service (owner: Ben)\n\n## Risks\n- privacy\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Weekly meal plan sharing"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "PRD review — Weekly meal plan sharing",
+        "content": "Needs a metric. B."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

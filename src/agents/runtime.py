@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import json
 import os
+import logging
 import re
 from dataclasses import dataclass, field
 from datetime import timedelta
@@ -744,4 +745,33 @@ def record_report(db, task, run_id: Optional[str], answer: str, steps: List[dict
     if report["carried"]:
         hire.notebook = report["carried"]
     db.commit()
+    # `P24-28`. The report is the signal: a hire waiting on `report_filed`
+    # wakes with who ran, which hire, which run and the delivered document's
+    # title. Fired after the commit, so the waker reads what was kept; a bus
+    # that is not up (a script, a test) never fails the run.
+    try:
+        from src.event_bus import EVENT_REPORT_FILED, fire_event
+        fire_event(EVENT_REPORT_FILED, getattr(hire, "owner", None),
+                   {"agent": hire.agent_id, "hire": hire.name, "run_id": run_id,
+                    "title": delivered_title(report["checks"])})
+    except Exception:
+        logging.getLogger(__name__).debug("report_filed event dispatch failed", exc_info=True)
     return report
+
+
+_DELIVERED_TITLE_RE = re.compile(r"“(.+?)” is there\.$")
+
+
+def delivered_title(checks) -> str:
+    """`P24-28`. The title of the document a run delivered, read from its
+    contract checks (`check_contract` says “<title>” is there), or "" when the
+    deliverable was an answer, a draft, a file or a memory."""
+    for c in checks or ():
+        if not isinstance(c, dict) or not c.get("ok"):
+            continue
+        if not str(c.get("check") or "").startswith("a document"):
+            continue
+        m = _DELIVERED_TITLE_RE.search(str(c.get("detail") or ""))
+        if m:
+            return m.group(1)
+    return ""

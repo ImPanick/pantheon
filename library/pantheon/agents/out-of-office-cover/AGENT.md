@@ -4,7 +4,7 @@ name: Out-of-Office Cover
 tagline: "While you are away, drafts answers to routine questions from your notes and holds the rest for your return."
 section: email
 icon: plane
-version: 1.1.0
+version: 1.1.1
 wave: 2
 inputs:
   - {key: back_on, kind: text, label: The day you are back (e.g. 3 November)}
@@ -12,7 +12,8 @@ inputs:
 triggers:
   - {on: cron, cron: "10 9,15 * * *", label: Twice a day}
 tools: [list_emails, read_email, manage_notes, manage_memory, draft_email_reply, create_document]
-needs: {connectors: [], min_context: 16000, native_tools: preferred}
+skills: [remember-what-matters]
+needs: {connectors: [mail], min_context: 16000, native_tools: preferred}
 delivers:
   - {kind: document, title: "While you were away", must_contain: [Drafted, Held]}
   - {kind: email_draft, max: 15}

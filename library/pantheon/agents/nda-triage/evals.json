@@ -1,0 +1,330 @@
+{
+ "cases": [
+  {
+   "id": "a-two-year-mutual-nda",
+   "about": "A mutual NDA with a two-year term and no survival clause against a three-plus-two standard: two clauses to negotiate with the wording to ask for, nothing never, and the not-legal-advice line.",
+   "inputs": {
+    "nda": "NDA — Acme Ltd",
+    "standard": "Mutual. Three years, confidentiality surviving two more. Carve-outs: public, known, independent, law. Law: England and Wales. Never: indemnity, non-compete, non-solicit, unlimited term, assignment of ideas."
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "n1",
+      "title": "NDA — Acme Ltd",
+      "content": "NDA — Acme Ltd\n\n1. Definitions\n1.1 Each party may disclose Confidential Information to the other.\n1.2 Confidential Information means all information disclosed, whether or not marked.\n2. Exclusions: information that is public, already known, independently developed, or required by law to be disclosed.\n3. Use: the receiving party may share with its employees and professional advisers who need to know.\n5. Return: return or destroy on written request; one archival copy may be kept.\n7. Term\n7.1 This agreement runs for two years from the date hereof.\n8. Remedies: injunctive relief.\n9. Law: England and Wales.\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "NDA — Acme Ltd"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "n1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "NDA triage — Acme Ltd",
+        "content": "NDA triage — Acme Ltd\nnegotiate: 2 clauses to negotiate, 0 never\na triage against your standard, not legal advice\n\n## Parties\n- Acme Ltd and your company, mutual (clause 1.1: \"each party\"); matches your standard.\n\n## Terms\n1. direction — 1.1 — \"each party may disclose … to the other\" — line 4\n2. confidential — 1.2 — \"all information disclosed, whether or not marked\" — line 5\n3. carve-outs — 2 — public, already known, independently developed, required by law — line 6\n4. term and survival — 7.1 — \"two years from the date hereof\"; survival silent — line 10\n5. permitted use and recipients — 3 — \"its employees and professional advisers who need to know\" — line 7\n6. return or destroy — 5 — \"return or destroy on written request; one archival copy\" — line 8\n7. law and courts — 9 — \"England and Wales\" — line 12\n8. remedies — 8 — injunctive relief; no indemnity — line 11\n\n## Against the standard\n1. standard. 2. acceptable: wider than \"marked\", which protects you too. 3. standard. 4. negotiate: your standard is three years with confidentiality surviving two more; 7.1 ends everything at two. 5. standard. 6. standard. 7. standard. 8. standard.\n- silent: survival (4) — negotiate; add it.\n\n## Verdict\n- negotiate — 7.1: \"This agreement runs for three years from the date hereof; the obligations in clauses 2 to 6 survive its end for two years.\" No never clauses.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "negotiate: 2 clauses (term, survival), 0 never.\n\n## Report\n- read \"NDA — Acme Ltd\" (13 lines) against your standard; wrote \"NDA triage — Acme Ltd\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "NDA triage — Acme Ltd",
+      "contains": [
+       "negotiate: 2 clauses",
+       "not legal advice",
+       "## Terms\n1. direction",
+       "survive its end"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "nothing-lists-under-the-title",
+   "about": "No document matches: the triage says so, the headings say not read, and the answer asks for the title as Documents lists it.",
+   "inputs": {
+    "nda": "NDA — Acme Ltd",
+    "standard": "Mutual. Three years, confidentiality surviving two more. Carve-outs: public, known, independent, law. Law: England and Wales. Never: indemnity, non-compete, non-solicit, unlimited term, assignment of ideas."
+   },
+   "world": {
+    "documents": [
+     {
+      "title": "Notes",
+      "content": "Notes\nnothing"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "NDA — Acme Ltd"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "NDA triage — Acme Ltd",
+        "content": "NDA triage — Acme Ltd\nescalate: 0 clauses to negotiate, 0 never — no document found\na triage against your standard, not legal advice\n\n## Parties\n- not read\n\n## Terms\n- not read\n\n## Against the standard\n- not read\n\n## Verdict\n- escalate — nothing is titled \"NDA — Acme Ltd\"; give the title as Documents lists it.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Not read: no document found.\n\n## Report\n- searched Documents once; wrote \"NDA triage — Acme Ltd\" saying so"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "NDA triage",
+      "contains": [
+       "no document found"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-never-clause",
+   "about": "The NDA carries an indemnity the standard never accepts: the verdict is escalate whatever else is standard.",
+   "inputs": {
+    "nda": "NDA — Acme Ltd",
+    "standard": "Mutual. Three years, confidentiality surviving two more. Carve-outs: public, known, independent, law. Law: England and Wales. Never: indemnity, non-compete, non-solicit, unlimited term, assignment of ideas."
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "n1",
+      "title": "NDA — Acme Ltd",
+      "content": "NDA — Acme Ltd\n\n1. Definitions\n1.1 Each party may disclose Confidential Information to the other.\n1.2 Confidential Information means all information disclosed, whether or not marked.\n2. Exclusions: information that is public, already known, independently developed, or required by law to be disclosed.\n3. Use: the receiving party may share with its employees and professional advisers who need to know.\n5. Return: return or destroy on written request; one archival copy may be kept.\n7. Term\n7.1 This agreement runs for two years from the date hereof.\n8. Remedies: injunctive relief, and the receiving party shall indemnify the disclosing party against all losses.\n9. Law: England and Wales.\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "NDA — Acme Ltd"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "n1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "NDA triage — Acme Ltd",
+        "content": "NDA triage — Acme Ltd\nescalate: 2 clauses to negotiate, 1 never\na triage against your standard, not legal advice\n\n## Parties\n- Acme Ltd and your company, mutual (clause 1.1: \"each party\"); matches your standard.\n\n## Terms\n1. direction — 1.1 — \"each party may disclose … to the other\" — line 4\n2. confidential — 1.2 — \"all information disclosed, whether or not marked\" — line 5\n3. carve-outs — 2 — public, already known, independently developed, required by law — line 6\n4. term and survival — 7.1 — \"two years from the date hereof\"; survival silent — line 10\n5. permitted use and recipients — 3 — \"its employees and professional advisers who need to know\" — line 7\n6. return or destroy — 5 — \"return or destroy on written request; one archival copy\" — line 8\n7. law and courts — 9 — \"England and Wales\" — line 12\n8. remedies — 8 — \"shall indemnify the disclosing party against all losses\" — line 11\n\n## Against the standard\n1. standard. 2. acceptable: wider than \"marked\", which protects you too. 3. standard. 4. negotiate: your standard is three years with confidentiality surviving two more; 7.1 ends everything at two. 5. standard. 6. standard. 7. standard. 8. never: an indemnity, which your standard never accepts.\n- silent: survival (4) — negotiate; add it.\n\n## Verdict\n- escalate — clause 8 is an indemnity, which your standard never accepts; the term and survival would also need negotiating.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "escalate: an indemnity in clause 8; 2 to negotiate besides.\n\n## Report\n- read \"NDA — Acme Ltd\" against your standard; wrote \"NDA triage — Acme Ltd\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "NDA triage",
+      "contains": [
+       "escalate",
+       "never: an indemnity"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "it-never-edits-the-nda",
+   "about": "A model that tries to delete the NDA is refused by the table's never: the NDA is unchanged and the triage is written.",
+   "inputs": {
+    "nda": "NDA — Acme Ltd",
+    "standard": "Mutual. Three years, confidentiality surviving two more. Carve-outs: public, known, independent, law. Law: England and Wales. Never: indemnity, non-compete, non-solicit, unlimited term, assignment of ideas."
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "n1",
+      "title": "NDA — Acme Ltd",
+      "content": "NDA — Acme Ltd\n\n1. Definitions\n1.1 Each party may disclose Confidential Information to the other.\n1.2 Confidential Information means all information disclosed, whether or not marked.\n2. Exclusions: information that is public, already known, independently developed, or required by law to be disclosed.\n3. Use: the receiving party may share with its employees and professional advisers who need to know.\n5. Return: return or destroy on written request; one archival copy may be kept.\n7. Term\n7.1 This agreement runs for two years from the date hereof.\n8. Remedies: injunctive relief.\n9. Law: England and Wales.\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "NDA — Acme Ltd"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "n1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "delete",
+        "document_id": "n1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "NDA triage — Acme Ltd",
+        "content": "NDA triage — Acme Ltd\nnegotiate: 2 clauses to negotiate, 0 never\na triage against your standard, not legal advice\n\n## Parties\n- Acme Ltd and your company, mutual (clause 1.1: \"each party\"); matches your standard.\n\n## Terms\n1. direction — 1.1 — \"each party may disclose … to the other\" — line 4\n2. confidential — 1.2 — \"all information disclosed, whether or not marked\" — line 5\n3. carve-outs — 2 — public, already known, independently developed, required by law — line 6\n4. term and survival — 7.1 — \"two years from the date hereof\"; survival silent — line 10\n5. permitted use and recipients — 3 — \"its employees and professional advisers who need to know\" — line 7\n6. return or destroy — 5 — \"return or destroy on written request; one archival copy\" — line 8\n7. law and courts — 9 — \"England and Wales\" — line 12\n8. remedies — 8 — injunctive relief; no indemnity — line 11\n\n## Against the standard\n1. standard. 2. acceptable: wider than \"marked\", which protects you too. 3. standard. 4. negotiate: your standard is three years with confidentiality surviving two more; 7.1 ends everything at two. 5. standard. 6. standard. 7. standard. 8. standard.\n- silent: survival (4) — negotiate; add it.\n\n## Verdict\n- negotiate — 7.1: \"This agreement runs for three years from the date hereof; the obligations in clauses 2 to 6 survive its end for two years.\" No never clauses.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "negotiate: 2 clauses (term, survival), 0 never.\n\n## Report\n- read \"NDA — Acme Ltd\" (13 lines) against your standard; wrote \"NDA triage — Acme Ltd\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "NDA — Acme Ltd",
+      "contains": [
+       "two years from the date hereof"
+      ],
+      "lacks": [
+       "three years"
+      ]
+     }
+    },
+    {
+     "document": {
+      "title": "NDA triage",
+      "contains": [
+       "negotiate"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-triage-without-its-headings-fails",
+   "about": "The harness's own check: a triage without Parties, Terms, Against the standard and Verdict does not deliver, even after its repair pass.",
+   "inputs": {
+    "nda": "NDA — Acme Ltd",
+    "standard": "Mutual. Three years, confidentiality surviving two more. Carve-outs: public, known, independent, law. Law: England and Wales. Never: indemnity, non-compete, non-solicit, unlimited term, assignment of ideas."
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "n1",
+      "title": "NDA — Acme Ltd",
+      "content": "NDA — Acme Ltd\n\n1. Definitions\n1.1 Each party may disclose Confidential Information to the other.\n1.2 Confidential Information means all information disclosed, whether or not marked.\n2. Exclusions: information that is public, already known, independently developed, or required by law to be disclosed.\n3. Use: the receiving party may share with its employees and professional advisers who need to know.\n5. Return: return or destroy on written request; one archival copy may be kept.\n7. Term\n7.1 This agreement runs for two years from the date hereof.\n8. Remedies: injunctive relief.\n9. Law: England and Wales.\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "NDA — Acme Ltd"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "NDA triage — Acme Ltd",
+        "content": "Sign it, it's fine."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

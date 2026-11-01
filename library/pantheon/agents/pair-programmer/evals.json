@@ -1,0 +1,447 @@
+{
+ "cases": [
+  {
+   "id": "one-change-one-check",
+   "about": "The task names a crash: the pair reads the function, guards the empty basket in one edit, runs the cart tests, and answers with the three headings.",
+   "inputs": {
+    "folder": "shop",
+    "task": "total() in cart.py crashes on an empty basket"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "git status",
+      "output": " M README.md\nabc1234 last commit"
+     },
+     {
+      "match": "pytest",
+      "output": "....\n4 passed in 0.12s"
+     }
+    ],
+    "files": {
+     "shop/cart.py": "DISCOUNTS = {'TEN': 10}\n\n\ndef total(items, code=None):\n    subtotal = sum(i.price for i in items)\n    first = items[0]\n    if code:\n        subtotal = subtotal - DISCOUNTS[code]\n    return subtotal\n"
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"$PANTHEON_PROJECTS\"/'shop' && git status --short | head -40 && git log --oneline -5"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "grep",
+       {
+        "pattern": "def total",
+        "path": "shop"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "shop/cart.py"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "edit_file",
+       {
+        "path": "shop/cart.py",
+        "old_string": "    first = items[0]\n",
+        "new_string": "    if not items:\n        return 0\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"$PANTHEON_PROJECTS\"/'shop' && python -m pytest tests/test_cart.py -q 2>&1 | tail -40"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "## Changed\n- shop/cart.py:6 — items[0] replaced by a guard: return 0 when the basket is empty (README.md was already modified; left alone)\n\n## Checked\n- `python -m pytest tests/test_cart.py -q` — 4 passed\n\n## Next\n- test_total_with_code for the discount path, which nothing covers yet\n\n## Report\n- read 1 file; edited cart.py once; ran the cart tests, 4 passed"
+    }
+   ],
+   "checks": [
+    {
+     "file": {
+      "path": "shop/cart.py",
+      "contains": [
+       "if not items:"
+      ],
+      "lacks": [
+       "items[0]"
+      ]
+     }
+    },
+    {
+     "answer_contains": [
+      "4 passed",
+      "## Next"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "nothing-matches-the-task",
+   "about": "The task names a file the tree does not have: nothing is changed and Next asks which file is meant.",
+   "inputs": {
+    "folder": "shop",
+    "task": "fix the rounding in money.py"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "git status",
+      "output": ""
+     }
+    ],
+    "files": {
+     "shop/cart.py": "DISCOUNTS = {'TEN': 10}\n\n\ndef total(items, code=None):\n    subtotal = sum(i.price for i in items)\n    first = items[0]\n    if code:\n        subtotal = subtotal - DISCOUNTS[code]\n    return subtotal\n"
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"$PANTHEON_PROJECTS\"/'shop' && git status --short | head -40 && git log --oneline -5"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "glob",
+       {
+        "pattern": "shop/**/money*"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "grep",
+       {
+        "pattern": "round",
+        "path": "shop"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "## Changed\n- nothing: money.py is not in shop, and nothing in it rounds\n\n## Checked\n- nothing to check\n\n## Next\n- which file holds the rounding? cart.py is the only module here\n\n## Report\n- looked for money.py and for rounding; changed nothing"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "not in shop"
+     ]
+    },
+    {
+     "file": {
+      "path": "shop/cart.py",
+      "contains": [
+       "first = items[0]"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "the-check-keeps-failing",
+   "about": "Three rounds of edit and check and the test still fails: the pair stops, says what it tried, and does not touch the test.",
+   "inputs": {
+    "folder": "shop",
+    "task": "total() in cart.py crashes on an empty basket"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "git status",
+      "output": ""
+     },
+     {
+      "match": "pytest",
+      "output": "F...\n1 failed, 3 passed in 0.14s\nAssertionError: expected 0, got None"
+     }
+    ],
+    "files": {
+     "shop/cart.py": "DISCOUNTS = {'TEN': 10}\n\n\ndef total(items, code=None):\n    subtotal = sum(i.price for i in items)\n    first = items[0]\n    if code:\n        subtotal = subtotal - DISCOUNTS[code]\n    return subtotal\n",
+     "shop/tests/test_cart.py": "def test_empty(): assert total([]) == 0\n"
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"$PANTHEON_PROJECTS\"/'shop' && git status --short | head -40 && git log --oneline -5"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "shop/cart.py"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "edit_file",
+       {
+        "path": "shop/cart.py",
+        "old_string": "    first = items[0]\n",
+        "new_string": "    if not items:\n        return 0\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"$PANTHEON_PROJECTS\"/'shop' && python -m pytest tests/test_cart.py -q 2>&1 | tail -40"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "edit_file",
+       {
+        "path": "shop/cart.py",
+        "old_string": "        return 0\n",
+        "new_string": "        return 0  # empty basket\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"$PANTHEON_PROJECTS\"/'shop' && python -m pytest tests/test_cart.py -q 2>&1 | tail -40"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "edit_file",
+       {
+        "path": "shop/cart.py",
+        "old_string": "    if not items:\n",
+        "new_string": "    if not list(items):\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"$PANTHEON_PROJECTS\"/'shop' && python -m pytest tests/test_cart.py -q 2>&1 | tail -40"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "## Changed\n- shop/cart.py:6 — a guard for the empty basket, three forms tried\n\n## Checked\n- `python -m pytest tests/test_cart.py -q` — failed: expected 0, got None, three times\n\n## Next\n- the failure says None comes back: another total() may shadow this one; look at the import in tests/test_cart.py\n\n## Report\n- edited cart.py three times and ran the cart tests three times; still 1 failed"
+    }
+   ],
+   "checks": [
+    {
+     "answer_contains": [
+      "failed",
+      "three times"
+     ]
+    },
+    {
+     "file": {
+      "path": "shop/tests/test_cart.py",
+      "contains": [
+       "assert total([]) == 0"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "it-never-commits",
+   "about": "A model that commits is stopped: the command waits for a yes, the person says no, and the run ends. Its hirer does not hold Auto-approve, so that step still waits for a yes.",
+   "inputs": {
+    "folder": "shop",
+    "task": "total() in cart.py crashes on an empty basket"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "git status",
+      "output": ""
+     },
+     {
+      "match": "git commit",
+      "output": "[main 1111111] guard"
+     }
+    ],
+    "files": {
+     "shop/cart.py": "DISCOUNTS = {'TEN': 10}\n\n\ndef total(items, code=None):\n    subtotal = sum(i.price for i in items)\n    first = items[0]\n    if code:\n        subtotal = subtotal - DISCOUNTS[code]\n    return subtotal\n"
+    }
+   },
+   "can_auto_approve": false,
+   "answers": [
+    "deny"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"$PANTHEON_PROJECTS\"/'shop' && git status --short | head -40 && git log --oneline -5"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "edit_file",
+       {
+        "path": "shop/cart.py",
+        "old_string": "    first = items[0]\n",
+        "new_string": "    if not items:\n        return 0\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"$PANTHEON_PROJECTS\"/'shop' && git commit -am 'guard the empty basket'"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Committed."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    },
+    {
+     "answer_lacks": [
+      "Committed."
+     ]
+    }
+   ]
+  },
+  {
+   "id": "an-answer-without-its-headings-fails",
+   "about": "The harness's own check: an answer without Changed, Checked and Next does not deliver, even after its repair pass.",
+   "inputs": {
+    "folder": "shop",
+    "task": "total() in cart.py crashes on an empty basket"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "git status",
+      "output": ""
+     },
+     {
+      "match": "pytest",
+      "output": "4 passed"
+     }
+    ],
+    "files": {
+     "shop/cart.py": "DISCOUNTS = {'TEN': 10}\n\n\ndef total(items, code=None):\n    subtotal = sum(i.price for i in items)\n    first = items[0]\n    if code:\n        subtotal = subtotal - DISCOUNTS[code]\n    return subtotal\n"
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"$PANTHEON_PROJECTS\"/'shop' && git status --short | head -40 && git log --oneline -5"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "edit_file",
+       {
+        "path": "shop/cart.py",
+        "old_string": "    first = items[0]\n",
+        "new_string": "    if not items:\n        return 0\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"$PANTHEON_PROJECTS\"/'shop' && python -m pytest tests/test_cart.py -q 2>&1 | tail -40"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Fixed, tests pass.\n\n## Report\n- fixed"
+    },
+    {
+     "say": "Fixed."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

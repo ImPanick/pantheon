@@ -4,7 +4,7 @@ name: Campaign Strategist
 tagline: "A campaign plan: audience, channels, calendar and budget. It spends nothing."
 section: marketing
 icon: megaphone
-version: 1.3.0
+version: 1.3.2
 wave: 2
 inputs:
   - {key: goal, kind: long_text, label: The campaign goal}
@@ -13,6 +13,7 @@ inputs:
 triggers:
   - {on: hand}
 tools: [web_search, web_fetch, create_document]
+skills: [web-research]
 needs: {connectors: [], min_context: 16000, native_tools: preferred}
 delivers:
   - {kind: document, title: "Campaign plan", must_contain: [Audience, Channels, Calendar, Budget, Measuring]}

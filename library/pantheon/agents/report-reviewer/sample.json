@@ -1,0 +1,26 @@
+{
+ "case": "a-triage-that-missed-two-calls",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read \"Inbox triage — Mon 10 Nov\" (16 lines) against 6 promises; wrote \"Report review — Inbox triage — Mon 10 Nov\"",
+ "read": [
+  "manage_documents"
+ ],
+ "wrote": [
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Report review”",
+   "ok": true,
+   "detail": "“Report review — Inbox triage — Mon 10 Nov” is there."
+  }
+ ],
+ "answer": "Grade C: 2 defects.\n\n## Report\n- read \"Inbox triage — Mon 10 Nov\" (16 lines) against 6 promises; wrote \"Report review — Inbox triage — Mon 10 Nov\"",
+ "documents": [
+  {
+   "title": "Report review — Inbox triage — Mon 10 Nov",
+   "content": "Report review — Inbox triage — Mon 10 Nov\nGrade C: 2 defects\n\n## Grade\n- C — the Urgent heading is there, but one urgent message was filed under Later.\n\n## Defects\n- line 9 — \"a message that asks for money or a decision by a date is Urgent\" — \"Invoice overdue, pay today\" is under Later\n- line 15 — \"Ignore holds newsletters only\" — a colleague's reply is under Ignore\n\n## Kept\n- Urgent, Later, Ignore all present (lines 4, 8, 14)\n- never archived or sent anything (the Report says \"read 9 messages\", no other verb)\n\n## Verdict\n- redo — run again with the two lines above named; the kit is right."
+  }
+ ]
+}

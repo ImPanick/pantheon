@@ -1,0 +1,27 @@
+{
+ "case": "a-rename-its-test-did-not-follow",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read 3 error lines of ci-4412.log and 2 files; wrote \"Build diagnosis — ci-4412.log\"",
+ "read": [
+  "read_file"
+ ],
+ "wrote": [
+  "bash",
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Build diagnosis”",
+   "ok": true,
+   "detail": "“Build diagnosis — ci-4412.log” is there."
+  }
+ ],
+ "answer": "code: a rename in cart.py that its test did not follow.\n\n## Report\n- read 3 error lines of ci-4412.log and 2 files; wrote \"Build diagnosis — ci-4412.log\"\n\n## Carry forward\n- ci-4412: ImportError total/cart (code), commit 3f1a2b",
+ "documents": [
+  {
+   "title": "Build diagnosis — ci-4412.log",
+   "content": "Build diagnosis — ci-4412.log\ncode: ImportError: cannot import name 'total' from 'cart'\n\n## First real error\n- line 212: `ImportError: cannot import name 'total' from 'cart' (shop/cart.py)`\n\n## Cause\n- code — shop/cart.py:4 renamed total to basket_total; shop/tests/test_cart.py:3 still imports total.\n\n## Fix\n- shop/tests/test_cart.py:3 — import basket_total, or keep total as an alias in cart.py.\n\n## Verdict\n- code"
+  }
+ ]
+}

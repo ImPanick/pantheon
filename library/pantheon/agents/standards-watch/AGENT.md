@@ -4,7 +4,7 @@ name: Standards Watch
 tagline: "New filings, regulations and standard revisions in your field, monthly."
 section: research
 icon: landmark
-version: 1.3.0
+version: 1.3.1
 wave: 2
 inputs:
   - {key: field, kind: text, label: Your field}
@@ -12,6 +12,7 @@ inputs:
 triggers:
   - {on: cron, cron: "15 8 2 * *", label: The second of each month}
 tools: [web_search, web_fetch, create_document]
+skills: [web-research]
 needs: {connectors: [], min_context: 16000, native_tools: preferred}
 delivers:
   - {kind: document, title: "Standards watch", must_contain: [Not legal advice, New this month, Checked]}

@@ -4,13 +4,14 @@ name: Lead Researcher
 tagline: A one-page brief on a company and person before a call.
 section: sales
 icon: user-search
-version: 1.3.0
+version: 1.3.1
 wave: 2
 inputs:
   - {key: who, kind: text, label: The person and company}
 triggers:
   - {on: hand}
 tools: [web_search, web_fetch, create_document]
+skills: [web-research]
 needs: {connectors: [], min_context: 16000, native_tools: preferred}
 delivers:
   - {kind: document, title: "Brief", must_contain: [The company, The person, Worth mentioning, Questions to ask]}

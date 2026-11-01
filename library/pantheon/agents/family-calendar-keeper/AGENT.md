@@ -4,14 +4,14 @@ name: Family Calendar Keeper
 tagline: "Puts school, club and work dates from your mail into one calendar and flags the clashes."
 section: personal-home
 icon: calendar-heart
-version: 1.1.0
+version: 1.1.1
 wave: 2
 inputs:
   - {key: senders, kind: list, label: "Schools, clubs and people whose dates matter"}
 triggers:
   - {on: event, event: email_received, every: 5, label: Every five new messages}
 tools: [list_emails, read_email, manage_calendar]
-needs: {connectors: [], min_context: 16000, native_tools: preferred}
+needs: {connectors: [mail, calendar], min_context: 16000, native_tools: preferred}
 delivers:
   - {kind: answer, must_contain: [Added, Clashes, Skipped]}
 effects: {read_private: allow, write_private: allow, destructive: never}

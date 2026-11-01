@@ -1,0 +1,356 @@
+{
+ "cases": [
+  {
+   "id": "a-rename-its-test-did-not-follow",
+   "about": "The log's first real error is an ImportError; the code shows the rename and the test still importing the old name: verdict code, with the line to change, and the error carried forward.",
+   "inputs": {
+    "folder": "shop",
+    "log": "ci-4412.log"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "grep -n -i -E",
+      "output": "212:ImportError: cannot import name 'total' from 'cart' (shop/cart.py)\n240:FAILED tests/test_cart.py - ImportError\n241:1 error in 0.40s\n==\nrun 4412 on commit 3f1a2b\ncollecting ..."
+     }
+    ],
+    "files": {
+     "shop/cart.py": "DISCOUNTS = {'TEN': 10}\n\n\ndef basket_total(items, code=None):\n    return sum(i.price for i in items)\n",
+     "shop/tests/test_cart.py": "import pytest\n\nfrom cart import total\n"
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"$PANTHEON_PROJECTS\"/'shop' && grep -n -i -E 'error|failed|fatal|traceback|exception|not found|timed? ?out' 'ci-4412.log' | head -40 && echo == && sed -n '1,20p' 'ci-4412.log'"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "shop/tests/test_cart.py"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "shop/cart.py"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Build diagnosis — ci-4412.log",
+        "content": "Build diagnosis — ci-4412.log\ncode: ImportError: cannot import name 'total' from 'cart'\n\n## First real error\n- line 212: `ImportError: cannot import name 'total' from 'cart' (shop/cart.py)`\n\n## Cause\n- code — shop/cart.py:4 renamed total to basket_total; shop/tests/test_cart.py:3 still imports total.\n\n## Fix\n- shop/tests/test_cart.py:3 — import basket_total, or keep total as an alias in cart.py.\n\n## Verdict\n- code\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "code: a rename in cart.py that its test did not follow.\n\n## Report\n- read 3 error lines of ci-4412.log and 2 files; wrote \"Build diagnosis — ci-4412.log\"\n\n## Carry forward\n- ci-4412: ImportError total/cart (code), commit 3f1a2b"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Build diagnosis — ci-4412.log",
+      "contains": [
+       "ImportError",
+       "shop/tests/test_cart.py:3",
+       "## Verdict\n- code"
+      ]
+     }
+    },
+    {
+     "notebook_contains": "ci-4412"
+    }
+   ]
+  },
+  {
+   "id": "a-log-sent-by-a-webhook",
+   "about": "A CI webhook delivers the log: the error lines are read from the body, no file is opened, and a missing program makes the verdict environment.",
+   "inputs": {
+    "folder": "shop",
+    "log": ""
+   },
+   "world": {
+    "files": {
+     "shop/cart.py": "DISCOUNTS = {'TEN': 10}\n\n\ndef basket_total(items, code=None):\n    return sum(i.price for i in items)\n",
+     "shop/tests/test_cart.py": "import pytest\n\nfrom cart import total\n"
+    }
+   },
+   "trigger": {
+    "webhook": {
+     "body": "run 4413 on commit 3f1a2b\n+ ssh deploy@staging ./deploy.sh\n/bin/sh: 1: ssh: not found\nstep failed\njob failed with exit code 127\n"
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Build diagnosis — run 4413",
+        "content": "Build diagnosis — run 4413\nenvironment: ssh: command not found\n\n## First real error\n- line 3 of the webhook's log: `/bin/sh: 1: ssh: not found`\n\n## Cause\n- environment — the step `ssh deploy@staging` needs openssh-client, which the runner image does not have; no line names the repository's code.\n\n## Fix\n- install openssh-client in the runner image, or in the job before that step.\n\n## Verdict\n- environment\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "environment: the runner has no ssh.\n\n## Report\n- read the webhook's log (6 lines), opened no file; wrote \"Build diagnosis — run 4413\"\n\n## Carry forward\n- run 4413: ssh not found (environment)"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Build diagnosis — run 4413",
+      "contains": [
+       "environment",
+       "openssh-client"
+      ]
+     }
+    },
+    {
+     "not_called": "bash"
+    }
+   ]
+  },
+  {
+   "id": "no-failure-in-the-log",
+   "about": "Nothing in the log is an error and its head shows a passing run: the diagnosis says so and the verdict is passed.",
+   "inputs": {
+    "folder": "shop",
+    "log": "ci-4412.log"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "grep -n -i -E",
+      "output": "==\nrun 4412 on commit 3f1a2b\n48 passed in 3.2s"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"$PANTHEON_PROJECTS\"/'shop' && grep -n -i -E 'error|failed|fatal|traceback|exception|not found|timed? ?out' 'ci-4412.log' | head -40 && echo == && sed -n '1,20p' 'ci-4412.log'"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Build diagnosis — ci-4412.log",
+        "content": "Build diagnosis — ci-4412.log\npassed: no failure found in ci-4412.log\n\n## First real error\n- none\n\n## Cause\n- none: 48 passed\n\n## Fix\n- none\n\n## Verdict\n- passed\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "passed: no failure found in ci-4412.log.\n\n## Report\n- read the log's error lines (none) and its head; wrote \"Build diagnosis — ci-4412.log\"\n\n## Carry forward\n- ci-4412: passed"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Build diagnosis",
+      "contains": [
+       "no failure found",
+       "## Verdict\n- passed"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "the-log-file-is-missing",
+   "about": "The path named is not there: the document's first line is the error and the verdict is not diagnosed.",
+   "inputs": {
+    "folder": "shop",
+    "log": "ci-4412.log"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "grep -n -i -E",
+      "output": "grep: ci-4412.log: No such file or directory",
+      "exit_code": 2
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"$PANTHEON_PROJECTS\"/'shop' && grep -n -i -E 'error|failed|fatal|traceback|exception|not found|timed? ?out' 'ci-4412.log' | head -40 && echo == && sed -n '1,20p' 'ci-4412.log'"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Build diagnosis — ci-4412.log",
+        "content": "Build diagnosis — ci-4412.log\nnot diagnosed: grep: ci-4412.log: No such file or directory\n\n## First real error\n- none read: the log is not at shop/ci-4412.log\n\n## Cause\n- not diagnosed\n\n## Fix\n- give the log's path inside shop\n\n## Verdict\n- not diagnosed\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "not diagnosed: shop/ci-4412.log is not there.\n\n## Report\n- the log could not be read; wrote \"Build diagnosis — ci-4412.log\" saying so\n\n## Carry forward\n- nothing"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Build diagnosis",
+      "contains": [
+       "not diagnosed",
+       "No such file"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "it-never-reruns-the-build",
+   "about": "A model that reruns the tests to see is stopped: the command waits for a yes, the person says no, and no diagnosis is written. Its hirer does not hold Auto-approve, so that step still waits for a yes.",
+   "inputs": {
+    "folder": "shop",
+    "log": "ci-4412.log"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "grep -n -i -E",
+      "output": "212:ImportError: cannot import name 'total' from 'cart' (shop/cart.py)\n240:FAILED tests/test_cart.py - ImportError\n241:1 error in 0.40s\n==\nrun 4412 on commit 3f1a2b\ncollecting ..."
+     },
+     {
+      "match": "pytest",
+      "output": "1 error"
+     }
+    ],
+    "files": {
+     "shop/cart.py": "DISCOUNTS = {'TEN': 10}\n\n\ndef basket_total(items, code=None):\n    return sum(i.price for i in items)\n",
+     "shop/tests/test_cart.py": "import pytest\n\nfrom cart import total\n"
+    }
+   },
+   "can_auto_approve": false,
+   "answers": [
+    "deny"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"$PANTHEON_PROJECTS\"/'shop' && grep -n -i -E 'error|failed|fatal|traceback|exception|not found|timed? ?out' 'ci-4412.log' | head -40 && echo == && sed -n '1,20p' 'ci-4412.log'"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"$PANTHEON_PROJECTS\"/'shop' && python -m pytest -q"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Reran it; same error."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    },
+    {
+     "no_document": "Build diagnosis"
+    }
+   ]
+  },
+  {
+   "id": "a-diagnosis-without-its-headings-fails",
+   "about": "The harness's own check: a diagnosis without First real error, Cause, Fix and Verdict does not deliver, even after its repair pass.",
+   "inputs": {
+    "folder": "shop",
+    "log": "ci-4412.log"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "grep -n -i -E",
+      "output": "212:ImportError: cannot import name 'total' from 'cart' (shop/cart.py)\n240:FAILED tests/test_cart.py - ImportError\n241:1 error in 0.40s\n==\nrun 4412 on commit 3f1a2b\ncollecting ..."
+     }
+    ],
+    "files": {
+     "shop/cart.py": "DISCOUNTS = {'TEN': 10}\n\n\ndef basket_total(items, code=None):\n    return sum(i.price for i in items)\n",
+     "shop/tests/test_cart.py": "import pytest\n\nfrom cart import total\n"
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"$PANTHEON_PROJECTS\"/'shop' && grep -n -i -E 'error|failed|fatal|traceback|exception|not found|timed? ?out' 'ci-4412.log' | head -40 && echo == && sed -n '1,20p' 'ci-4412.log'"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Build diagnosis — ci-4412.log",
+        "content": "An import error, fix the test."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done\n\n## Carry forward\n- nothing"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

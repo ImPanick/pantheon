@@ -1,0 +1,28 @@
+{
+ "case": "a-shell-join-and-a-dropped-owner-check",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read the diff (2 files) and 2 call sites; wrote \"Security review — origin/main..HEAD in shop\"",
+ "read": [
+  "grep",
+  "read_file"
+ ],
+ "wrote": [
+  "bash",
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Security review”",
+   "ok": true,
+   "detail": "“Security review — origin/main..HEAD in shop” is there."
+  }
+ ],
+ "answer": "1 high, 1 medium, 0 low: fix first.\n\n## Report\n- read the diff (2 files) and 2 call sites; wrote \"Security review — origin/main..HEAD in shop\"",
+ "documents": [
+  {
+   "title": "Security review — origin/main..HEAD in shop",
+   "content": "Security review — origin/main..HEAD in shop\n1 high, 1 medium, 0 low: fix first\n\n## Findings\n1. high — shop/export.py:30 — the request's `fmt` field is joined into a shell command — injection\n2. medium — shop/routes/public.py:30 — GET /orders/{id} no longer filters by the signed-in user — missing authorisation\n\n## Fixes\n1. shop/export.py:30 — `subprocess.run([\"zip\", \"-r\", f\"out.{fmt}\", path], check=True)` after `if fmt not in {\"zip\", \"tar\"}: raise ValueError(fmt)`\n2. shop/routes/public.py:30 — restore `user_id=current_user.id` in the filter\n\n## Safe\n- shop/routes/admin.py:2 — `fmt` comes from a form field behind the admin login; the login is intact, which is why finding 1 is high and not critical\n\n## Verdict\n- fix first — finding 1 is reachable by any admin with the export page; finding 2 by any signed-in user. Not covered: nothing; the diff is 2 files."
+  }
+ ]
+}

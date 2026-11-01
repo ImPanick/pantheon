@@ -76,7 +76,7 @@ def test_every_effect_a_shipped_table_asks_about_is_carried_by_some_call_of_its_
     """The kit and the calls its `never`s leave, as a hired run gets them
     (`hires.kit`, `tool_capabilities.reach_left`)."""
     agents, broken = catalogue(None)
-    assert broken == [] and len(agents) == 173
+    assert broken == [] and len(agents) == 201
     dead = {}
     for m in agents:
         t = H.effective_effects(m, {})

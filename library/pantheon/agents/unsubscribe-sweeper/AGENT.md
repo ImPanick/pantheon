@@ -4,7 +4,7 @@ name: Unsubscribe Sweeper
 tagline: Finds the senders you never open and lists the unsubscribe link for each — unsubscribing only when you say.
 section: email
 icon: mail-x
-version: 1.2.0
+version: 1.2.1
 wave: 2
 inputs:
   - {key: months, kind: number, label: Never opened for this many months, default: 3}
@@ -12,7 +12,7 @@ inputs:
 triggers:
   - {on: cron, cron: "20 9 1 * *", label: The first of each month}
 tools: [scan_email_unsubscribes, search_emails, create_document, unsubscribe_email]
-needs: {connectors: [], min_context: 16000, native_tools: preferred}
+needs: {connectors: [mail], min_context: 16000, native_tools: preferred}
 delivers:
   - {kind: document, title: "Unsubscribe list", must_contain: [Never opened, Unsubscribed, Kept]}
 effects: {read_private: allow, write_private: allow, external_side_effect: ask}

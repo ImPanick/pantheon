@@ -34,13 +34,14 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
 from src.agents.manifest import (
-    ManifestRefused, parse_frontmatter, split_manifest,
+    HANDOFF_VIA_RE, ManifestRefused, parse_frontmatter, split_manifest,
 )
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 SHIPPED_TEAMS = os.path.join(os.path.dirname(os.path.dirname(_HERE)), "library", "pantheon", "teams")
 TEAM_FILE = "TEAM.md"
 TEAM_MAX_MEMBERS = 12
+FLOW_MAX_EDGES = 24
 _ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{1,47}$")
 
 
@@ -52,12 +53,16 @@ class Team:
     members: Tuple[str, ...]
     about: str
     source: str = "shipped"
+    #: `P24-28`. Who hands to whom inside the team, `{from, to, via}` each;
+    #: documentation today (the hall draws it), the triggers *Hire all*
+    #: compiles between members once delegation lands (the plan's D4).
+    flow: Tuple[Dict[str, str], ...] = ()
 
 
 def parse_team(text: str, *, source: str = "shipped") -> Team:
     fm_text, about = split_manifest(text)
     fm = parse_frontmatter(fm_text)
-    extra = set(fm) - {"id", "name", "tagline", "members"}
+    extra = set(fm) - {"id", "name", "tagline", "members", "flow"}
     if extra:
         raise ManifestRefused(f"The team has a field nothing reads: {', '.join(sorted(extra))}.")
     tid = str(fm.get("id") or "")
@@ -74,8 +79,21 @@ def parse_team(text: str, *, source: str = "shipped") -> Team:
         raise ManifestRefused(f"A team has 2 to {TEAM_MAX_MEMBERS} members.")
     if len(set(members)) != len(members) or not all(isinstance(m, str) and _ID_RE.match(m) for m in members):
         raise ManifestRefused("A team's members are agent ids, each once.")
+    flow = fm.get("flow", [])
+    if not isinstance(flow, list) or len(flow) > FLOW_MAX_EDGES:
+        raise ManifestRefused(f"A team's flow is a list of at most {FLOW_MAX_EDGES} edges like "
+                              f"{{from: inbox-triage, to: follow-up-chaser, via: \"document:Inbox triage\"}}.")
+    edges = []
+    for n, e in enumerate(flow, start=1):
+        if not (isinstance(e, dict) and set(e) == {"from", "to", "via"}):
+            raise ManifestRefused(f"Flow edge {n} is {{from: <member>, to: <member>, via: event:<name> | document:<title> | delegate}}.")
+        if e["from"] not in members or e["to"] not in members or e["from"] == e["to"]:
+            raise ManifestRefused(f"Flow edge {n} joins two different members of the team.")
+        if not (isinstance(e["via"], str) and HANDOFF_VIA_RE.match(e["via"])):
+            raise ManifestRefused(f"Flow edge {n}'s via is event:<name>, document:<title> or delegate.")
+        edges.append({"from": e["from"], "to": e["to"], "via": e["via"]})
     return Team(id=tid, name=name, tagline=tagline, members=tuple(members),
-                about=(about or "").strip(), source=source)
+                about=(about or "").strip(), source=source, flow=tuple(edges))
 
 
 def _layer(root: str, source: str):
@@ -194,4 +212,5 @@ def to_public(team: Team, manifests: Dict[str, Any], hired_ids=()) -> Dict[str, 
         "inputs": team_inputs(team, manifests),
         "hired": sum(1 for mid in team.members if mid in hired),
         "source": team.source,
+        "flow": [dict(e) for e in team.flow],
     }

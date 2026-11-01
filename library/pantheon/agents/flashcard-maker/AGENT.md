@@ -4,14 +4,14 @@ name: Flashcard Maker
 tagline: Turns a document or chapter into flashcards and spaces the reviews on your calendar.
 section: learning
 icon: layers
-version: 1.1.0
+version: 1.1.1
 wave: 2
 inputs:
   - {key: document, kind: text, label: The document or chapter title}
 triggers:
   - {on: hand}
 tools: [manage_documents, create_document, manage_calendar]
-needs: {connectors: [], min_context: 16000, native_tools: preferred}
+needs: {connectors: [calendar], min_context: 16000, native_tools: preferred}
 delivers:
   - {kind: document, title: "Flashcards", must_contain: [Cards, Review dates]}
 effects: {read_private: allow, write_private: allow, destructive: never}

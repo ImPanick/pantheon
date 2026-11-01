@@ -1,0 +1,629 @@
+{
+ "cases": [
+  {
+   "id": "two-moved-one-quiet",
+   "about": "Four deals: a price question moves one to negotiating, a purchase order moves one to closing, one unanswered for 19 days is quiet, and every stage is carried forward.",
+   "inputs": {
+    "deals": "Acme — ana@acme.example — proposal\nBirch & Co — bo@birch.example — proposal\nCedar Ltd — cal@cedar.example — negotiating\nDune — dee@dune.example — lead",
+    "at": "08:30"
+   },
+   "world": {
+    "emails": [
+     {
+      "id": "m41",
+      "from": "ana@acme.example",
+      "subject": "Re: proposal v2",
+      "date": "2026-11-07",
+      "body": "Thanks. Can you do the same for 10% less if we sign for two years?"
+     },
+     {
+      "id": "m38",
+      "from": "me@example.com",
+      "to": "bo@birch.example",
+      "subject": "Proposal for Birch & Co",
+      "date": "2026-11-04",
+      "body": "Attached is the proposal; let me know what you think."
+     },
+     {
+      "id": "m44",
+      "from": "cal@cedar.example",
+      "subject": "PO raised",
+      "date": "2026-11-09",
+      "body": "PO raised, number 4471, signing Friday."
+     },
+     {
+      "id": "m20",
+      "from": "me@example.com",
+      "to": "dee@dune.example",
+      "subject": "Following up",
+      "date": "2026-10-22",
+      "body": "Did you get a chance to look?"
+     }
+    ]
+   },
+   "notebook": "- run: 2026-11-03\n- Acme proposal 2026-11-04; Birch & Co proposal 2026-11-04; Cedar Ltd negotiating 2026-11-01; Dune lead 2026-10-22",
+   "script": [
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "ana@acme.example",
+        "max_results": 10
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "bo@birch.example",
+        "max_results": 10
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "cal@cedar.example",
+        "max_results": 10
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "dee@dune.example",
+        "max_results": 10
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "m41"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "m44"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Pipeline"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Pipeline — 2026-11-10",
+        "content": "Pipeline — 2026-11-10\n4 deals: 2 moved, 1 quiet, since 2026-11-03\n\n## Stages\n- Acme — negotiating — 2026-11-07, Ana (Acme)\n- Birch & Co — proposal — 2026-11-04, you\n- Cedar Ltd — closing — 2026-11-09, Cal (Cedar)\n- Dune — lead — 2026-10-22, you\n\n## Moved\n- Acme: proposal → negotiating — \"can you do the same for 10% less if we sign for two years?\"\n- Cedar Ltd: negotiating → closing — \"PO raised, number 4471, signing Friday\"\n\n## Quiet\n- Dune — 19 days — their turn (your message of 22 Oct is unanswered)\n\n## Next steps\n- Acme — answer the two-year price — you — 2026-11-12\n- Birch & Co — wait for their review; nudge on 14 Nov — you — 2026-11-14\n- Cedar Ltd — countersign — you — 2026-11-14\n- Dune — one short follow-up or close as lost — you — 2026-11-11\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "4 deals: 2 moved, 1 quiet.\n\n## Report\n- 4 searches, read 2 messages since 3 Nov; wrote \"Pipeline — 2026-11-10\"\n\n## Carry forward\n- run: 2026-11-10\n- Acme negotiating 2026-11-07; Birch & Co proposal 2026-11-04; Cedar Ltd closing 2026-11-09; Dune lead 2026-10-22"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Pipeline — 2026-11-10",
+      "contains": [
+       "## Moved\n- Acme: proposal → negotiating",
+       "Cedar Ltd: negotiating → closing",
+       "## Quiet\n- Dune"
+      ]
+     }
+    },
+    {
+     "notebook_contains": "Cedar Ltd closing"
+    }
+   ]
+  },
+  {
+   "id": "nothing-new",
+   "about": "No deal has mail since last run: Moved says none, quiet is judged from the dates, and the first line says no new mail.",
+   "inputs": {
+    "deals": "Acme — ana@acme.example — proposal\nBirch & Co — bo@birch.example — proposal\nCedar Ltd — cal@cedar.example — negotiating\nDune — dee@dune.example — lead",
+    "at": "08:30"
+   },
+   "world": {
+    "emails": [
+     {
+      "id": "m38",
+      "from": "me@example.com",
+      "to": "bo@birch.example",
+      "subject": "Proposal for Birch & Co",
+      "date": "2026-11-04",
+      "body": "Attached is the proposal; let me know what you think."
+     },
+     {
+      "id": "m20",
+      "from": "me@example.com",
+      "to": "dee@dune.example",
+      "subject": "Following up",
+      "date": "2026-10-22",
+      "body": "Did you get a chance to look?"
+     }
+    ]
+   },
+   "notebook": "- run: 2026-11-03\n- Acme proposal 2026-11-04; Birch & Co proposal 2026-11-04; Cedar Ltd negotiating 2026-11-01; Dune lead 2026-10-22",
+   "script": [
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "ana@acme.example",
+        "max_results": 10
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "bo@birch.example",
+        "max_results": 10
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "cal@cedar.example",
+        "max_results": 10
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "dee@dune.example",
+        "max_results": 10
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Pipeline"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Pipeline — 2026-11-10",
+        "content": "Pipeline — 2026-11-10\n4 deals: 0 moved, 2 quiet, since 2026-11-03 — no new mail\n\n## Stages\n- Acme — proposal — 2026-11-04, you\n- Birch & Co — proposal — 2026-11-04, you\n- Cedar Ltd — negotiating — 2026-11-01, you\n- Dune — lead — 2026-10-22, you\n\n## Moved\n- none\n\n## Quiet\n- Cedar Ltd — 9 days, your message unanswered 7+ — their turn\n- Dune — 19 days — their turn\n\n## Next steps\n- Acme — nudge on 14 Nov — you — 2026-11-14\n- Birch & Co — nudge on 14 Nov — you — 2026-11-14\n- Cedar Ltd — ask for a decision date — you — 2026-11-11\n- Dune — one short follow-up or close as lost — you — 2026-11-11\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "4 deals: 0 moved, 2 quiet; no new mail.\n\n## Report\n- 4 searches, nothing since 3 Nov; wrote \"Pipeline — 2026-11-10\"\n\n## Carry forward\n- run: 2026-11-10\n- Acme proposal 2026-11-04; Birch & Co proposal 2026-11-04; Cedar Ltd negotiating 2026-11-01; Dune lead 2026-10-22"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Pipeline",
+      "contains": [
+       "no new mail",
+       "## Moved\n- none"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-message-will-not-open",
+   "about": "A read errors: the deal is listed at its notebook stage as not read this run, and the rest of the pipeline is written.",
+   "inputs": {
+    "deals": "Acme — ana@acme.example — proposal\nBirch & Co — bo@birch.example — proposal\nCedar Ltd — cal@cedar.example — negotiating\nDune — dee@dune.example — lead",
+    "at": "08:30"
+   },
+   "world": {
+    "emails": [
+     {
+      "id": "m38",
+      "from": "me@example.com",
+      "to": "bo@birch.example",
+      "subject": "Proposal for Birch & Co",
+      "date": "2026-11-04",
+      "body": "Attached is the proposal; let me know what you think."
+     },
+     {
+      "id": "m44",
+      "from": "cal@cedar.example",
+      "subject": "PO raised",
+      "date": "2026-11-09",
+      "body": "PO raised, number 4471, signing Friday."
+     },
+     {
+      "id": "m20",
+      "from": "me@example.com",
+      "to": "dee@dune.example",
+      "subject": "Following up",
+      "date": "2026-10-22",
+      "body": "Did you get a chance to look?"
+     }
+    ]
+   },
+   "notebook": "- run: 2026-11-03\n- Acme proposal 2026-11-04; Birch & Co proposal 2026-11-04; Cedar Ltd negotiating 2026-11-01; Dune lead 2026-10-22",
+   "script": [
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "ana@acme.example",
+        "max_results": 10
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "bo@birch.example",
+        "max_results": 10
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "cal@cedar.example",
+        "max_results": 10
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "dee@dune.example",
+        "max_results": 10
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "m41"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "m44"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Pipeline"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Pipeline — 2026-11-10",
+        "content": "Pipeline — 2026-11-10\n4 deals: 1 moved, 1 quiet, since 2026-11-03\n\n## Stages\n- Acme — proposal — not read this run: the message would not open\n- Birch & Co — proposal — 2026-11-04, you\n- Cedar Ltd — closing — 2026-11-09, Cal (Cedar)\n- Dune — lead — 2026-10-22, you\n\n## Moved\n- Cedar Ltd: negotiating → closing — \"PO raised, number 4471, signing Friday\"\n\n## Quiet\n- Dune — 19 days — their turn (your message of 22 Oct is unanswered)\n\n## Next steps\n- Acme — answer the two-year price — you — 2026-11-12\n- Birch & Co — wait for their review; nudge on 14 Nov — you — 2026-11-14\n- Cedar Ltd — countersign — you — 2026-11-14\n- Dune — one short follow-up or close as lost — you — 2026-11-11\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "4 deals: 1 moved, 1 quiet; one message would not open.\n\n## Report\n- 4 searches, read 1 of 2 messages; wrote \"Pipeline — 2026-11-10\"\n\n## Carry forward\n- run: 2026-11-10\n- Acme proposal 2026-11-04; Birch & Co proposal 2026-11-04; Cedar Ltd closing 2026-11-09; Dune lead 2026-10-22"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Pipeline",
+      "contains": [
+       "not read this run"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "it-never-moves-a-deal-to-won-from-silence",
+   "about": "No message says won or lost: no deal is written as won or lost, and nothing is sent.",
+   "inputs": {
+    "deals": "Acme — ana@acme.example — proposal\nBirch & Co — bo@birch.example — proposal\nCedar Ltd — cal@cedar.example — negotiating\nDune — dee@dune.example — lead",
+    "at": "08:30"
+   },
+   "world": {
+    "emails": [
+     {
+      "id": "m41",
+      "from": "ana@acme.example",
+      "subject": "Re: proposal v2",
+      "date": "2026-11-07",
+      "body": "Thanks. Can you do the same for 10% less if we sign for two years?"
+     },
+     {
+      "id": "m38",
+      "from": "me@example.com",
+      "to": "bo@birch.example",
+      "subject": "Proposal for Birch & Co",
+      "date": "2026-11-04",
+      "body": "Attached is the proposal; let me know what you think."
+     },
+     {
+      "id": "m44",
+      "from": "cal@cedar.example",
+      "subject": "PO raised",
+      "date": "2026-11-09",
+      "body": "PO raised, number 4471, signing Friday."
+     },
+     {
+      "id": "m20",
+      "from": "me@example.com",
+      "to": "dee@dune.example",
+      "subject": "Following up",
+      "date": "2026-10-22",
+      "body": "Did you get a chance to look?"
+     }
+    ]
+   },
+   "notebook": "- run: 2026-11-03\n- Acme proposal 2026-11-04; Birch & Co proposal 2026-11-04; Cedar Ltd negotiating 2026-11-01; Dune lead 2026-10-22",
+   "script": [
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "ana@acme.example",
+        "max_results": 10
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "bo@birch.example",
+        "max_results": 10
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "cal@cedar.example",
+        "max_results": 10
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "dee@dune.example",
+        "max_results": 10
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "m41"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "m44"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Pipeline"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Pipeline — 2026-11-10",
+        "content": "Pipeline — 2026-11-10\n4 deals: 2 moved, 1 quiet, since 2026-11-03\n\n## Stages\n- Acme — negotiating — 2026-11-07, Ana (Acme)\n- Birch & Co — proposal — 2026-11-04, you\n- Cedar Ltd — closing — 2026-11-09, Cal (Cedar)\n- Dune — lead — 2026-10-22, you\n\n## Moved\n- Acme: proposal → negotiating — \"can you do the same for 10% less if we sign for two years?\"\n- Cedar Ltd: negotiating → closing — \"PO raised, number 4471, signing Friday\"\n\n## Quiet\n- Dune — 19 days — their turn (your message of 22 Oct is unanswered)\n\n## Next steps\n- Acme — answer the two-year price — you — 2026-11-12\n- Birch & Co — wait for their review; nudge on 14 Nov — you — 2026-11-14\n- Cedar Ltd — countersign — you — 2026-11-14\n- Dune — one short follow-up or close as lost — you — 2026-11-11\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "4 deals: 2 moved, 1 quiet.\n\n## Report\n- 4 searches, read 2 messages since 3 Nov; wrote \"Pipeline — 2026-11-10\"\n\n## Carry forward\n- run: 2026-11-10\n- Acme negotiating 2026-11-07; Birch & Co proposal 2026-11-04; Cedar Ltd closing 2026-11-09; Dune lead 2026-10-22"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Pipeline — 2026-11-10",
+      "contains": [
+       "## Stages"
+      ],
+      "lacks": [
+       "— won —",
+       "— lost —"
+      ]
+     }
+    },
+    {
+     "drafts_at_most": 0
+    }
+   ]
+  },
+  {
+   "id": "a-pipeline-without-its-headings-fails",
+   "about": "The harness's own check: a pipeline without Stages, Moved, Quiet and Next steps does not deliver, even after its repair pass.",
+   "inputs": {
+    "deals": "Acme — ana@acme.example — proposal\nBirch & Co — bo@birch.example — proposal\nCedar Ltd — cal@cedar.example — negotiating\nDune — dee@dune.example — lead",
+    "at": "08:30"
+   },
+   "world": {
+    "emails": [
+     {
+      "id": "m41",
+      "from": "ana@acme.example",
+      "subject": "Re: proposal v2",
+      "date": "2026-11-07",
+      "body": "Thanks. Can you do the same for 10% less if we sign for two years?"
+     },
+     {
+      "id": "m38",
+      "from": "me@example.com",
+      "to": "bo@birch.example",
+      "subject": "Proposal for Birch & Co",
+      "date": "2026-11-04",
+      "body": "Attached is the proposal; let me know what you think."
+     },
+     {
+      "id": "m44",
+      "from": "cal@cedar.example",
+      "subject": "PO raised",
+      "date": "2026-11-09",
+      "body": "PO raised, number 4471, signing Friday."
+     },
+     {
+      "id": "m20",
+      "from": "me@example.com",
+      "to": "dee@dune.example",
+      "subject": "Following up",
+      "date": "2026-10-22",
+      "body": "Did you get a chance to look?"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "ana@acme.example",
+        "max_results": 10
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Pipeline — 2026-11-10",
+        "content": "Acme is negotiating, Cedar is closing."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done\n\n## Carry forward\n- nothing"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

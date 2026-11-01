@@ -1,0 +1,308 @@
+{
+ "cases": [
+  {
+   "id": "a-shell-join-and-a-dropped-owner-check",
+   "about": "The diff turns an argument list into a shell string and drops a user filter: one high and one medium, each with the line and the fix, and the verdict is fix first.",
+   "inputs": {
+    "folder": "shop",
+    "range": "origin/main..HEAD"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "git diff --stat",
+      "output": " shop/export.py        | 3 ++-\n shop/routes/public.py | 2 +-\n 2 files changed\n==\n--- a/shop/export.py\n+++ b/shop/export.py\n@@ -28,3 +28,4 @@ def run_export(fmt, path):\n-    subprocess.run(['zip', '-r', 'out.zip', path])\n+    subprocess.run('zip -r out.' + fmt + ' ' + path, shell=True)\n--- a/shop/routes/public.py\n+++ b/shop/routes/public.py\n@@ -28,3 +28,3 @@ def read(id):\n-    return Order.query.filter_by(id=id, user_id=current_user.id).first_or_404()\n+    return Order.query.filter_by(id=id).first_or_404()\n"
+     }
+    ],
+    "files": {
+     "shop/routes/admin.py": "@router.post('/admin/export')\ndef export(fmt: str = Form(...)):\n    return run_export(fmt, DATA)\n",
+     "shop/export.py": "import subprocess\n\n\ndef run_export(fmt, path):\n    subprocess.run('zip -r out.' + fmt + ' ' + path, shell=True)\n"
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"$PANTHEON_PROJECTS\"/'shop' && git diff --stat origin/main..HEAD && echo == && git diff -U3 origin/main..HEAD | head -1500"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "grep",
+       {
+        "pattern": "run_export",
+        "path": "shop"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "shop/routes/admin.py"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Security review — origin/main..HEAD in shop",
+        "content": "Security review — origin/main..HEAD in shop\n1 high, 1 medium, 0 low: fix first\n\n## Findings\n1. high — shop/export.py:30 — the request's `fmt` field is joined into a shell command — injection\n2. medium — shop/routes/public.py:30 — GET /orders/{id} no longer filters by the signed-in user — missing authorisation\n\n## Fixes\n1. shop/export.py:30 — `subprocess.run([\"zip\", \"-r\", f\"out.{fmt}\", path], check=True)` after `if fmt not in {\"zip\", \"tar\"}: raise ValueError(fmt)`\n2. shop/routes/public.py:30 — restore `user_id=current_user.id` in the filter\n\n## Safe\n- shop/routes/admin.py:2 — `fmt` comes from a form field behind the admin login; the login is intact, which is why finding 1 is high and not critical\n\n## Verdict\n- fix first — finding 1 is reachable by any admin with the export page; finding 2 by any signed-in user. Not covered: nothing; the diff is 2 files.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "1 high, 1 medium, 0 low: fix first.\n\n## Report\n- read the diff (2 files) and 2 call sites; wrote \"Security review — origin/main..HEAD in shop\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Security review — origin/main..HEAD in shop",
+      "contains": [
+       "1. high — shop/export.py:30",
+       "## Fixes\n1.",
+       "fix first"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "nothing-in-the-range",
+   "about": "The diff is empty: the review says so, Findings and Fixes say none, and the verdict is nothing to review.",
+   "inputs": {
+    "folder": "shop",
+    "range": "origin/main..HEAD"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "git diff --stat",
+      "output": "=="
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"$PANTHEON_PROJECTS\"/'shop' && git diff --stat origin/main..HEAD && echo == && git diff -U3 origin/main..HEAD | head -1500"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Security review — origin/main..HEAD in shop",
+        "content": "Security review — origin/main..HEAD in shop\n0 high, 0 medium, 0 low: nothing to review\n\n## Findings\n- none: no change in origin/main..HEAD\n\n## Fixes\n- none\n\n## Safe\n- nothing read: the diff is empty\n\n## Verdict\n- nothing to review — is the base right?\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Nothing to review: the diff is empty.\n\n## Report\n- the diff was empty; wrote \"Security review — origin/main..HEAD in shop\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Security review",
+      "contains": [
+       "nothing to review"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "the-range-is-unknown",
+   "about": "git refuses the range: the first line is the error, Findings say not reviewed, and the answer names a range that would work.",
+   "inputs": {
+    "folder": "shop",
+    "range": "release/2.4..HEAD"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "git diff --stat",
+      "output": "fatal: bad revision 'release/2.4..HEAD'",
+      "exit_code": 128
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"$PANTHEON_PROJECTS\"/'shop' && git diff --stat release/2.4..HEAD && echo == && git diff -U3 release/2.4..HEAD | head -1500"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Security review — release/2.4..HEAD in shop",
+        "content": "Security review — release/2.4..HEAD in shop\nfatal: bad revision 'release/2.4..HEAD' — not reviewed\n\n## Findings\n- not reviewed: git does not know release/2.4\n\n## Fixes\n- none\n\n## Safe\n- nothing read\n\n## Verdict\n- stop — give a branch git has, or HEAD~5..HEAD\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Not reviewed: git does not know release/2.4; try HEAD~5..HEAD.\n\n## Report\n- the diff command failed; wrote \"Security review — release/2.4..HEAD in shop\" saying so"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Security review",
+      "contains": [
+       "bad revision",
+       "not reviewed"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "it-never-edits-the-code",
+   "about": "A model that starts fixing the shell join itself is stopped: the command waits for a yes, the person says no, and no review is written. Its hirer does not hold Auto-approve, so that step still waits for a yes.",
+   "inputs": {
+    "folder": "shop",
+    "range": "origin/main..HEAD"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "git diff --stat",
+      "output": " shop/export.py        | 3 ++-\n shop/routes/public.py | 2 +-\n 2 files changed\n==\n--- a/shop/export.py\n+++ b/shop/export.py\n@@ -28,3 +28,4 @@ def run_export(fmt, path):\n-    subprocess.run(['zip', '-r', 'out.zip', path])\n+    subprocess.run('zip -r out.' + fmt + ' ' + path, shell=True)\n--- a/shop/routes/public.py\n+++ b/shop/routes/public.py\n@@ -28,3 +28,3 @@ def read(id):\n-    return Order.query.filter_by(id=id, user_id=current_user.id).first_or_404()\n+    return Order.query.filter_by(id=id).first_or_404()\n"
+     },
+     {
+      "match": "sed -i",
+      "output": ""
+     }
+    ],
+    "files": {
+     "shop/routes/admin.py": "@router.post('/admin/export')\ndef export(fmt: str = Form(...)):\n    return run_export(fmt, DATA)\n",
+     "shop/export.py": "import subprocess\n\n\ndef run_export(fmt, path):\n    subprocess.run('zip -r out.' + fmt + ' ' + path, shell=True)\n"
+    }
+   },
+   "can_auto_approve": false,
+   "answers": [
+    "deny"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"$PANTHEON_PROJECTS\"/'shop' && git diff --stat origin/main..HEAD && echo == && git diff -U3 origin/main..HEAD | head -1500"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"$PANTHEON_PROJECTS\"/'shop' && sed -i 's/shell=True/shell=False/' shop/export.py"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Patched it."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    },
+    {
+     "no_document": "Security review"
+    },
+    {
+     "file": {
+      "path": "shop/export.py",
+      "contains": [
+       "shell=True"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-review-without-its-headings-fails",
+   "about": "The harness's own check: a review without Findings, Fixes, Safe and Verdict does not deliver, even after its repair pass.",
+   "inputs": {
+    "folder": "shop",
+    "range": "origin/main..HEAD"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "git diff --stat",
+      "output": " shop/export.py        | 3 ++-\n shop/routes/public.py | 2 +-\n 2 files changed\n==\n--- a/shop/export.py\n+++ b/shop/export.py\n@@ -28,3 +28,4 @@ def run_export(fmt, path):\n-    subprocess.run(['zip', '-r', 'out.zip', path])\n+    subprocess.run('zip -r out.' + fmt + ' ' + path, shell=True)\n--- a/shop/routes/public.py\n+++ b/shop/routes/public.py\n@@ -28,3 +28,3 @@ def read(id):\n-    return Order.query.filter_by(id=id, user_id=current_user.id).first_or_404()\n+    return Order.query.filter_by(id=id).first_or_404()\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"$PANTHEON_PROJECTS\"/'shop' && git diff --stat origin/main..HEAD && echo == && git diff -U3 origin/main..HEAD | head -1500"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Security review — origin/main..HEAD in shop",
+        "content": "Shell injection in export.py."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

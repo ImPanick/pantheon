@@ -4,11 +4,12 @@ name: Meeting Catcher
 tagline: Turns meetings it finds in your mail into calendar entries linked to the message.
 section: email
 icon: calendar
-version: 1.1.0
+version: 1.1.1
 wave: 1
 triggers:
   - {on: event, event: email_received, every: 3, label: Every three new messages}
 tools: [list_emails, read_email, manage_calendar]
+needs: {connectors: [mail, calendar]}
 delivers:
   - {kind: answer, must_contain: [Added, Skipped]}
 effects: {read_private: allow, write_private: allow, destructive: never}

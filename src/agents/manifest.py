@@ -103,6 +103,24 @@ DAY_NAMES = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
 DAYS_SETS = ("every", "weekdays", "weekends")
 
 MEMORY_MODES = ("own", "shared", "none")
+
+#: `P24-28`. The company's departments — a second grouping over the hall's
+#: sections, so a roster that staffs a whole company can be read by desk as
+#: well as by section. Optional on a manifest; the hall shows it when set.
+DEPARTMENTS = (
+    "management", "engineering", "qa", "ai", "devops", "security", "data", "design", "product",
+    "marketing", "sales", "support", "finance", "legal-people", "operations",
+)
+#: `P24-28`. What an agent is to the agents around it. `worker` (the default)
+#: does one job; `lead` may hand work to others once a delegate tool exists;
+#: `reviewer` reads another agent's report. Nothing in the runtime reads the
+#: role yet: it is declared now so the files are right when delegation lands.
+ROLES = ("worker", "lead", "reviewer")
+#: How one agent hands work to another: an event the next one's trigger
+#: starts on, a document the next one reads by title, or a delegate call.
+HANDOFF_VIA_RE = re.compile(r"^(event:[a-z][a-z0-9_]*|document:.{1,80}|delegate)$")
+HANDS_TO_MAX = 8
+ACCEPTS_MAX = 12
 EFFECT_RULES = ("allow", "ask", "never")
 BUDGET_KEYS = ("runs_per_day", "max_steps", "max_minutes")
 DELIVER_KINDS = ("answer", "document", "email_draft", "file")
@@ -310,6 +328,13 @@ class Manifest:
     runbook: str
     source: str = "shipped"           # shipped | own
     path: str = ""
+    # `P24-28`. The company fields, all optional and read by nothing in the
+    # runtime yet (see `DEPARTMENTS`, `ROLES`).
+    department: str = ""
+    role: str = "worker"
+    hands_to: Tuple[Dict[str, str], ...] = ()
+    accepts: Tuple[str, ...] = ()
+    reports_to: str = ""
 
     def section_label(self) -> str:
         return next((label for sid, label, _f in SECTIONS if sid == self.section), self.section)
@@ -329,6 +354,9 @@ class Manifest:
             "delivers": [dict(d) for d in self.delivers],
             "effects": dict(self.effects), "budget": dict(self.budget),
             "memory": self.memory, "runbook": self.runbook, "source": self.source,
+            "department": self.department, "role": self.role,
+            "hands_to": [dict(h) for h in self.hands_to], "accepts": list(self.accepts),
+            "reports_to": self.reports_to,
             "starts_on": describe_triggers(
                 self.triggers, {i["key"]: i.get("default") for i in self.inputs}),
         }
@@ -667,7 +695,44 @@ def _check_needs(raw: dict, inputs: Tuple[Dict[str, Any], ...] = ()) -> Dict[str
 
 
 _FIELDS = {"id", "name", "tagline", "section", "version", "wave", "starred", "icon", "inputs",
-           "triggers", "tools", "skills", "needs", "delivers", "effects", "budget", "memory"}
+           "triggers", "tools", "skills", "needs", "delivers", "effects", "budget", "memory",
+           "department", "role", "hands_to", "accepts", "reports_to"}
+
+
+def _check_company(fm: Dict[str, Any]) -> Dict[str, Any]:
+    """`P24-28`. The company fields: each optional, each refused in a sentence
+    when it is not what it says. None of them changes what a run does today."""
+    out: Dict[str, Any] = {"department": "", "role": "worker", "hands_to": (), "accepts": (), "reports_to": ""}
+    dep = fm.get("department", "")
+    _need(isinstance(dep, str) and (not dep or dep in DEPARTMENTS),
+          f"“department” is one of: {', '.join(DEPARTMENTS)}.")
+    out["department"] = dep
+    role = fm.get("role", "worker")
+    _need(role in ROLES, f"“role” is one of: {', '.join(ROLES)}.")
+    out["role"] = role
+    hands = fm.get("hands_to", [])
+    _need(isinstance(hands, list) and len(hands) <= HANDS_TO_MAX,
+          f"“hands_to” is a list of at most {HANDS_TO_MAX} entries like {{agent: spec-writer, via: \"document:Design\"}}.")
+    kept = []
+    for n, h in enumerate(hands, start=1):
+        _need(isinstance(h, dict) and set(h) == {"agent", "via"},
+              f"hands_to entry {n} is {{agent: <id>, via: event:<name> | document:<title> | delegate}}.")
+        _need(isinstance(h["agent"], str) and bool(_ID_RE.match(h["agent"])),
+              f"hands_to entry {n}'s agent “{h.get('agent')}” is not an agent id.")
+        _need(isinstance(h["via"], str) and bool(HANDOFF_VIA_RE.match(h["via"])),
+              f"hands_to entry {n}'s via is event:<name>, document:<title> or delegate.")
+        kept.append({"agent": h["agent"], "via": h["via"]})
+    out["hands_to"] = tuple(kept)
+    accepts = fm.get("accepts", [])
+    _need(isinstance(accepts, list) and len(accepts) <= ACCEPTS_MAX
+          and all(isinstance(a, str) and 1 <= len(a.strip()) <= 60 for a in accepts),
+          f"“accepts” is a list of at most {ACCEPTS_MAX} words or headings a brief handed to this agent must carry.")
+    out["accepts"] = tuple(a.strip() for a in accepts)
+    rep = fm.get("reports_to", "")
+    _need(isinstance(rep, str) and (not rep or bool(_ID_RE.match(rep))),
+          "“reports_to” is the id of the agent that reviews this one's reports.")
+    out["reports_to"] = rep
+    return out
 
 
 def lint(fm: Dict[str, Any], runbook: str, *, source: str = "shipped", path: str = "") -> Manifest:
@@ -701,6 +766,7 @@ def lint(fm: Dict[str, Any], runbook: str, *, source: str = "shipped", path: str
     _need(memory in MEMORY_MODES, f"“memory” is one of: {', '.join(MEMORY_MODES)}.")
     if memory == "shared":
         _need("manage_memory" in tools, "“memory: shared” needs manage_memory among the tools.")
+    company = _check_company(fm)
     body = (runbook or "").strip()
     _need(len(body) >= 40, "The runbook under the frontmatter is empty — it is what the model is told to do.")
     _need(len(body) <= RUNBOOK_MAX_CHARS, f"The runbook is longer than {RUNBOOK_MAX_CHARS} characters.")
@@ -708,7 +774,7 @@ def lint(fm: Dict[str, Any], runbook: str, *, source: str = "shipped", path: str
         id=aid, name=name, tagline=tagline, section=section, version=version, wave=wave,
         starred=starred, icon=icon, inputs=inputs, triggers=triggers, tools=tools,
         skills=skills, needs=needs, delivers=delivers, effects=effects, budget=budget,
-        memory=memory, runbook=body, source=source, path=path,
+        memory=memory, runbook=body, source=source, path=path, **company,
     )
 
 
@@ -729,6 +795,7 @@ _EVENT_WORDS = {
     "document_updated": "an edited document", "session_created": "a new chat",
     "message_sent": "a message you send", "memory_added": "a new memory",
     "research_completed": "finished research", "skill_added": "a new skill",
+    "report_filed": "another agent's report",
 }
 
 

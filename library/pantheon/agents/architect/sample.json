@@ -1,0 +1,29 @@
+{
+ "case": "a-goal-with-three-options",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- listed the tree, read 2 files and 2 searches; wrote \"Design — rate limits on the public API\"",
+ "read": [
+  "glob",
+  "grep",
+  "read_file"
+ ],
+ "wrote": [
+  "bash",
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Design”",
+   "ok": true,
+   "detail": "“Design — rate limits on the public API” is there."
+  }
+ ],
+ "answer": "B: one router dependency reading the quota service; 3 modules touched.\n\n## Report\n- listed the tree, read 2 files and 2 searches; wrote \"Design — rate limits on the public API\"",
+ "documents": [
+  {
+   "title": "Design — rate limits on the public API",
+   "content": "Design — rate limits on the public API\napi: 3 modules touched\n\n## Context\nRequests pass routes/public.py → services/quota.py (counts per key, no limit) → the handlers. No middleware layer.\n\n## Options\n- A. A check in each handler — changes 2 route files, easy to miss one.\n- B. One dependency in routes/public.py that reads services/quota.py — changes 2 files, every route covered.\n- C. A proxy in front — nothing in the tree changes, but a new process to run.\n\n## Decision\nB. Smallest radius that covers every route. A would change if routes needed different limits.\n\n## Module map\n- routes/public.py — gains require_quota on the router.\n- services/quota.py — gains over_limit(key) -> bool.\n- tests/test_quota.py — gains the 429 case.\n\n## Migration path\n1. Add over_limit with a limit of 0 meaning \"no limit\".\n2. Add the dependency; set the limit from config, default 0.\n3. Turn the limit on per environment.\n\n## Risks\n- services/quota.py:1 counts in memory; two workers will not share counts. Not read: routes/admin.py."
+  }
+ ]
+}

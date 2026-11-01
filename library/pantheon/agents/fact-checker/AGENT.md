@@ -4,13 +4,14 @@ name: Fact Checker
 tagline: "Marks each claim in a document supported, contradicted or unclear — with the source."
 section: research
 icon: check-check
-version: 1.2.0
+version: 1.2.1
 wave: 2
 inputs:
   - {key: document, kind: text, label: The document title}
 triggers:
   - {on: hand}
 tools: [manage_documents, web_search, web_fetch, create_document]
+skills: [web-research]
 needs: {connectors: [], min_context: 16000, native_tools: preferred}
 delivers:
   - {kind: document, title: "Fact check", must_contain: [Contradicted, Unclear, Supported]}

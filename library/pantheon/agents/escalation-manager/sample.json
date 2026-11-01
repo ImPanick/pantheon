@@ -1,0 +1,29 @@
+{
+ "case": "two-new-one-carried",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- 1 search (4 messages), read 3; 2 drafts; set 1 note; wrote \"Escalations — 2026-11-10\"",
+ "read": [
+  "search_emails",
+  "read_email"
+ ],
+ "wrote": [
+  "draft_email_reply",
+  "create_document",
+  "manage_notes"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Escalations”",
+   "ok": true,
+   "detail": "“Escalations — 2026-11-10” is there."
+  }
+ ],
+ "answer": "3 open, 2 new, 2 drafted.\n\n## Report\n- 1 search (4 messages), read 3; 2 drafts; set 1 note; wrote \"Escalations — 2026-11-10\"\n\n## Carry forward\n- run: 2026-11-10\n- Acme m41 S2 since 2026-11-10; Birch & Co m44 S2 since 2026-11-10; Cedar Ltd m37 S1 since 2026-11-06",
+ "documents": [
+  {
+   "title": "Escalations — 2026-11-10",
+   "content": "Escalations — 2026-11-10\n3 open: 2 new, 2 drafted, next check 2026-11-10 14:00\n\n## Open\n- Acme — \"Export broken again — third time asking\" — 2026-11-10 — engineering — third message, no reply since 7 Nov\n- Birch & Co — \"Cancel our account\" — 2026-11-10 — the account's contact — \"cancel\" in the newest message\n- Cedar Ltd — \"Invoice charged twice\" — 2026-11-06 — billing — money wrong; open since last run\n\n## Severity\n- Acme — S2: one customer cannot export; three messages unanswered.\n- Birch & Co — S2: cancellation threatened.\n- Cedar Ltd — S1: money wrong; carried from 6 Nov, refund not yet confirmed.\n\n## Replies drafted\n- Acme — today by 17:00\n- Birch & Co — today by 17:00\n- Cedar Ltd — not drafted: drafted on 6 Nov, no new message from them\n\n## Next check\n- 2026-11-10 14:00 — Acme closes when the export runs for them; Birch & Co when the contact has spoken to them; Cedar Ltd when billing confirms the refund in the thread."
+  }
+ ]
+}

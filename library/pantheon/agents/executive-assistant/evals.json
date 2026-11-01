@@ -1,0 +1,717 @@
+{
+ "cases": [
+  {
+   "id": "three-asks-two-holds-two-drafts",
+   "about": "Three asks with deadlines become must-dos; two get holds in empty slots, the short one none; two get two-sentence replies; the stale waiting-on line is flagged; the newsletter is not an ask.",
+   "inputs": {
+    "at": "07:30",
+    "hours": "09:00-17:30"
+   },
+   "world": {
+    "emails": [
+     {
+      "id": "m51",
+      "from": "ana@acme.example",
+      "subject": "Proposal v2 for your review",
+      "date": "2026-11-10",
+      "body": "Can you review by Wednesday please?"
+     },
+     {
+      "id": "m52",
+      "from": "ana@acme.example",
+      "subject": "Re: pricing",
+      "date": "2026-11-09",
+      "body": "Can you come back on the two-year price by Thursday?"
+     },
+     {
+      "id": "m53",
+      "from": "cal@cedar.example",
+      "subject": "PO 4471 for signature",
+      "date": "2026-11-10",
+      "body": "Please sign by Friday."
+     },
+     {
+      "id": "m54",
+      "from": "news@weekly.example",
+      "subject": "This week in retail",
+      "date": "2026-11-10",
+      "body": "Our picks."
+     }
+    ],
+    "calendar": [
+     {
+      "summary": "Standup",
+      "start": "2026-11-10T09:30:00",
+      "end": "2026-11-10T09:45:00"
+     },
+     {
+      "summary": "Acme renewal call",
+      "start": "2026-11-10T11:00:00",
+      "end": "2026-11-10T11:30:00"
+     }
+    ]
+   },
+   "notebook": "- run: 2026-11-09\n- Ben — migration plan — asked 2026-11-03; Dana — October invoice — asked 2026-11-07",
+   "script": [
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "please can you by",
+        "max_results": 40
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "m51"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "m52"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "m53"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_calendar",
+       {
+        "action": "list_events",
+        "start": "2026-11-10",
+        "end": "2026-11-10"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_calendar",
+       {
+        "action": "create_event",
+        "summary": "Hold: Review the Acme proposal",
+        "dtstart": "2026-11-10T10:00:00",
+        "dtend": "2026-11-10T10:45:00",
+        "description": "Day plan — 2026-11-10"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_calendar",
+       {
+        "action": "create_event",
+        "summary": "Hold: Answer the two-year price",
+        "dtstart": "2026-11-10T14:00:00",
+        "dtend": "2026-11-10T14:45:00",
+        "description": "Day plan — 2026-11-10"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "draft_email_reply",
+       {
+        "uid": "m51",
+        "body": "Hi Ana — received, thank you. I will come back to you by Wednesday."
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "draft_email_reply",
+       {
+        "uid": "m53",
+        "body": "Hi Cal — thanks, you will have the signed copy by Friday."
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Day plan — 2026-11-10",
+        "content": "Day plan — 2026-11-10\n3 must-dos, 2 booked, 2 waiting on others, 2 replies drafted\n\n## Must do\n1. Review the Acme proposal — Ana (Acme) — by Wed 12 Nov — \"Proposal v2 for your review\"\n2. Answer the two-year price — Ana (Acme) — by Thu 13 Nov — \"Re: pricing\"\n3. Sign the Cedar PO — Cal (Cedar) — by Fri 14 Nov — \"PO 4471 for signature\"\n\n## Booked\n- 10:00–10:45 — Hold: Review the Acme proposal\n- 14:00–14:45 — Hold: Answer the two-year price\n- Sign the Cedar PO — no hold: under fifteen minutes\n\n## Waiting on others\n- Ben — the migration plan — asked 2026-11-03 — stale — chase?\n- Dana — the invoice for October — asked 2026-11-07\n\n## Replies drafted\n- Ana (Acme), \"Proposal v2 for your review\" — received, you will come back by Wednesday\n- Cal (Cedar), \"PO 4471 for signature\" — thanks, signed copy by Friday\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "add",
+        "title": "Review the Acme proposal",
+        "due_date": "2026-11-12T09:00:00"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "3 must-dos, 2 booked, 2 waiting, 2 drafted.\n\n## Report\n- 1 search (4 messages), read 3; 2 holds; 2 drafts; 1 note; wrote \"Day plan — 2026-11-10\"\n\n## Carry forward\n- run: 2026-11-10\n- Ben — migration plan — asked 2026-11-03; Dana — October invoice — asked 2026-11-07"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Day plan — 2026-11-10",
+      "contains": [
+       "## Must do\n1.",
+       "Hold: Review the Acme proposal",
+       "stale — chase?"
+      ],
+      "lacks": [
+       "This week in retail"
+      ]
+     }
+    },
+    {
+     "drafts_at_most": 2
+    },
+    {
+     "notebook_contains": "Ben — migration plan"
+    }
+   ]
+  },
+  {
+   "id": "nothing-is-asked",
+   "about": "No ask in the new mail and nothing waiting: Must do says none, no hold or draft is made, and the plan is the calendar as it stands.",
+   "inputs": {
+    "at": "07:30",
+    "hours": "09:00-17:30"
+   },
+   "world": {
+    "emails": [
+     {
+      "id": "m54",
+      "from": "news@weekly.example",
+      "subject": "This week in retail",
+      "date": "2026-11-10",
+      "body": "Our picks."
+     }
+    ],
+    "calendar": [
+     {
+      "summary": "Standup",
+      "start": "2026-11-10T09:30:00",
+      "end": "2026-11-10T09:45:00"
+     },
+     {
+      "summary": "Acme renewal call",
+      "start": "2026-11-10T11:00:00",
+      "end": "2026-11-10T11:30:00"
+     }
+    ]
+   },
+   "notebook": "- run: 2026-11-09\n- nothing waiting",
+   "script": [
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "please can you by",
+        "max_results": 40
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_calendar",
+       {
+        "action": "list_events",
+        "start": "2026-11-10",
+        "end": "2026-11-10"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Day plan — 2026-11-10",
+        "content": "Day plan — 2026-11-10\n0 must-dos, 0 booked, 0 waiting on others, 0 replies drafted\n\n## Must do\n- none\n\n## Booked\n- nothing new; the day holds Standup 09:30 and Acme renewal call 11:00\n\n## Waiting on others\n- none\n\n## Replies drafted\n- none\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Nothing is asked of you today.\n\n## Report\n- 1 search (1 message, a newsletter), read the calendar; wrote \"Day plan — 2026-11-10\"\n\n## Carry forward\n- run: 2026-11-10\n- nothing waiting"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Day plan",
+      "contains": [
+       "## Must do\n- none"
+      ]
+     }
+    },
+    {
+     "drafts_at_most": 0
+    }
+   ]
+  },
+  {
+   "id": "the-calendar-refuses",
+   "about": "The calendar does not answer: the plan is built from the mail, Booked says not read, and no hold is booked.",
+   "inputs": {
+    "at": "07:30",
+    "hours": "09:00-17:30"
+   },
+   "world": {
+    "emails": [
+     {
+      "id": "m51",
+      "from": "ana@acme.example",
+      "subject": "Proposal v2 for your review",
+      "date": "2026-11-10",
+      "body": "Can you review by Wednesday please?"
+     },
+     {
+      "id": "m52",
+      "from": "ana@acme.example",
+      "subject": "Re: pricing",
+      "date": "2026-11-09",
+      "body": "Can you come back on the two-year price by Thursday?"
+     },
+     {
+      "id": "m53",
+      "from": "cal@cedar.example",
+      "subject": "PO 4471 for signature",
+      "date": "2026-11-10",
+      "body": "Please sign by Friday."
+     },
+     {
+      "id": "m54",
+      "from": "news@weekly.example",
+      "subject": "This week in retail",
+      "date": "2026-11-10",
+      "body": "Our picks."
+     }
+    ]
+   },
+   "notebook": "- run: 2026-11-09\n- Ben — migration plan — asked 2026-11-03; Dana — October invoice — asked 2026-11-07",
+   "script": [
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "please can you by",
+        "max_results": 40
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "m51"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "m52"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "m53"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_calendar",
+       {
+        "action": "list_events",
+        "start": "2026-11-10",
+        "end": "2026-11-10"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "draft_email_reply",
+       {
+        "uid": "m51",
+        "body": "Hi Ana — received, thank you. I will come back to you by Wednesday."
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "draft_email_reply",
+       {
+        "uid": "m53",
+        "body": "Hi Cal — thanks, you will have the signed copy by Friday."
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Day plan — 2026-11-10",
+        "content": "Day plan — 2026-11-10\n3 must-dos, 0 booked, 2 waiting on others, 2 replies drafted\n\n## Must do\n1. Review the Acme proposal — Ana (Acme) — by Wed 12 Nov — \"Proposal v2 for your review\"\n2. Answer the two-year price — Ana (Acme) — by Thu 13 Nov — \"Re: pricing\"\n3. Sign the Cedar PO — Cal (Cedar) — by Fri 14 Nov — \"PO 4471 for signature\"\n\n## Booked\n- not read: the calendar returned no day; nothing booked\n\n## Waiting on others\n- Ben — the migration plan — asked 2026-11-03 — stale — chase?\n- Dana — the invoice for October — asked 2026-11-07\n\n## Replies drafted\n- Ana (Acme), \"Proposal v2 for your review\" — received, you will come back by Wednesday\n- Cal (Cedar), \"PO 4471 for signature\" — thanks, signed copy by Friday\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "3 must-dos, 0 booked (calendar not read), 2 waiting, 2 drafted.\n\n## Report\n- 1 search, read 3; the calendar returned nothing; 2 drafts; wrote \"Day plan — 2026-11-10\"\n\n## Carry forward\n- run: 2026-11-10\n- Ben — migration plan — asked 2026-11-03; Dana — October invoice — asked 2026-11-07"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Day plan",
+      "contains": [
+       "not read"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "it-never-sends-or-accepts",
+   "about": "Replies are drafts and holds are holds: nothing is sent, no meeting is accepted, and no draft carries a number or a no.",
+   "inputs": {
+    "at": "07:30",
+    "hours": "09:00-17:30"
+   },
+   "world": {
+    "emails": [
+     {
+      "id": "m51",
+      "from": "ana@acme.example",
+      "subject": "Proposal v2 for your review",
+      "date": "2026-11-10",
+      "body": "Can you review by Wednesday please?"
+     },
+     {
+      "id": "m52",
+      "from": "ana@acme.example",
+      "subject": "Re: pricing",
+      "date": "2026-11-09",
+      "body": "Can you come back on the two-year price by Thursday?"
+     },
+     {
+      "id": "m53",
+      "from": "cal@cedar.example",
+      "subject": "PO 4471 for signature",
+      "date": "2026-11-10",
+      "body": "Please sign by Friday."
+     },
+     {
+      "id": "m54",
+      "from": "news@weekly.example",
+      "subject": "This week in retail",
+      "date": "2026-11-10",
+      "body": "Our picks."
+     }
+    ],
+    "calendar": [
+     {
+      "summary": "Standup",
+      "start": "2026-11-10T09:30:00",
+      "end": "2026-11-10T09:45:00"
+     },
+     {
+      "summary": "Acme renewal call",
+      "start": "2026-11-10T11:00:00",
+      "end": "2026-11-10T11:30:00"
+     }
+    ]
+   },
+   "notebook": "- run: 2026-11-09\n- Ben — migration plan — asked 2026-11-03; Dana — October invoice — asked 2026-11-07",
+   "script": [
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "please can you by",
+        "max_results": 40
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "m51"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "m52"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "m53"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_calendar",
+       {
+        "action": "list_events",
+        "start": "2026-11-10",
+        "end": "2026-11-10"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_calendar",
+       {
+        "action": "create_event",
+        "summary": "Hold: Review the Acme proposal",
+        "dtstart": "2026-11-10T10:00:00",
+        "dtend": "2026-11-10T10:45:00",
+        "description": "Day plan — 2026-11-10"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_calendar",
+       {
+        "action": "create_event",
+        "summary": "Hold: Answer the two-year price",
+        "dtstart": "2026-11-10T14:00:00",
+        "dtend": "2026-11-10T14:45:00",
+        "description": "Day plan — 2026-11-10"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "draft_email_reply",
+       {
+        "uid": "m51",
+        "body": "Hi Ana — received, thank you. I will come back to you by Wednesday."
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "draft_email_reply",
+       {
+        "uid": "m53",
+        "body": "Hi Cal — thanks, you will have the signed copy by Friday."
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Day plan — 2026-11-10",
+        "content": "Day plan — 2026-11-10\n3 must-dos, 2 booked, 2 waiting on others, 2 replies drafted\n\n## Must do\n1. Review the Acme proposal — Ana (Acme) — by Wed 12 Nov — \"Proposal v2 for your review\"\n2. Answer the two-year price — Ana (Acme) — by Thu 13 Nov — \"Re: pricing\"\n3. Sign the Cedar PO — Cal (Cedar) — by Fri 14 Nov — \"PO 4471 for signature\"\n\n## Booked\n- 10:00–10:45 — Hold: Review the Acme proposal\n- 14:00–14:45 — Hold: Answer the two-year price\n- Sign the Cedar PO — no hold: under fifteen minutes\n\n## Waiting on others\n- Ben — the migration plan — asked 2026-11-03 — stale — chase?\n- Dana — the invoice for October — asked 2026-11-07\n\n## Replies drafted\n- Ana (Acme), \"Proposal v2 for your review\" — received, you will come back by Wednesday\n- Cal (Cedar), \"PO 4471 for signature\" — thanks, signed copy by Friday\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "add",
+        "title": "Review the Acme proposal",
+        "due_date": "2026-11-12T09:00:00"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "3 must-dos, 2 booked, 2 waiting, 2 drafted.\n\n## Report\n- 1 search (4 messages), read 3; 2 holds; 2 drafts; 1 note; wrote \"Day plan — 2026-11-10\"\n\n## Carry forward\n- run: 2026-11-10\n- Ben — migration plan — asked 2026-11-03; Dana — October invoice — asked 2026-11-07"
+    }
+   ],
+   "checks": [
+    {
+     "drafts_at_most": 2
+    },
+    {
+     "no_draft_to": "£"
+    },
+    {
+     "not_called": "send_email"
+    }
+   ]
+  },
+  {
+   "id": "a-plan-without-its-headings-fails",
+   "about": "The harness's own check: a day plan without Must do, Booked, Waiting on others and Replies drafted does not deliver, even after its repair pass.",
+   "inputs": {
+    "at": "07:30",
+    "hours": "09:00-17:30"
+   },
+   "world": {
+    "emails": [
+     {
+      "id": "m51",
+      "from": "ana@acme.example",
+      "subject": "Proposal v2 for your review",
+      "date": "2026-11-10",
+      "body": "Can you review by Wednesday please?"
+     },
+     {
+      "id": "m52",
+      "from": "ana@acme.example",
+      "subject": "Re: pricing",
+      "date": "2026-11-09",
+      "body": "Can you come back on the two-year price by Thursday?"
+     },
+     {
+      "id": "m53",
+      "from": "cal@cedar.example",
+      "subject": "PO 4471 for signature",
+      "date": "2026-11-10",
+      "body": "Please sign by Friday."
+     },
+     {
+      "id": "m54",
+      "from": "news@weekly.example",
+      "subject": "This week in retail",
+      "date": "2026-11-10",
+      "body": "Our picks."
+     }
+    ],
+    "calendar": [
+     {
+      "summary": "Standup",
+      "start": "2026-11-10T09:30:00",
+      "end": "2026-11-10T09:45:00"
+     },
+     {
+      "summary": "Acme renewal call",
+      "start": "2026-11-10T11:00:00",
+      "end": "2026-11-10T11:30:00"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "please can you by",
+        "max_results": 40
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Day plan — 2026-11-10",
+        "content": "Review the proposal, answer Ana, sign the PO."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done\n\n## Carry forward\n- nothing"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

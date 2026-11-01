@@ -4,7 +4,7 @@ name: Applicant Screener
 tagline: "Scores applications against your rubric only, with reasons — it turns no one down."
 section: legal-people
 icon: user-check
-version: 1.1.0
+version: 1.1.1
 wave: 2
 inputs:
   - {key: rubric, kind: text, label: The rubric document title}
@@ -12,7 +12,7 @@ inputs:
 triggers:
   - {on: event, event: email_received, every: 3, label: Every three new messages}
 tools: [list_emails, read_email, manage_documents, create_document]
-needs: {connectors: [], min_context: 16000, native_tools: preferred}
+needs: {connectors: [mail], min_context: 16000, native_tools: preferred}
 delivers:
   - {kind: answer, must_contain: [Scored, Not scored]}
 effects: {read_private: allow, write_private: allow, destructive: never}

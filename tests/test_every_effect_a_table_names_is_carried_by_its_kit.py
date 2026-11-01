@@ -70,7 +70,7 @@ def test_every_effect_a_shipped_table_names_is_carried_by_some_call_of_its_kit()
     something; an `allow` or an `ask` names what some call its run can make
     carries — so it lets something through or asks something."""
     agents, broken = catalogue(None)
-    assert broken == [] and len(agents) == 173
+    assert broken == [] and len(agents) == 201
     dead = {}
     for m in agents:
         tools, run = _carried(m)
@@ -127,9 +127,9 @@ def test_a_hire_that_tightened_the_dead_row_updates_without_it(client, wf_db):
     finally:
         db.close()
     shown = call(client, "GET", f"/api/agents/hires/{h['id']}").json()
-    assert shown["update_to"] == get_agent(None, "topic-watcher").version == "1.2.0"
+    assert shown["update_to"] == get_agent(None, "topic-watcher").version == "1.2.1"
     updated = call(client, "PUT", f"/api/agents/hires/{h['id']}", json={"update": True})
     assert updated.status_code == 200, updated.text
     body = updated.json()
-    assert body["version"] == "1.2.0" and body["grants"] == {"network_egress": "ask"}
+    assert body["version"] == "1.2.1" and body["grants"] == {"network_egress": "ask"}
     assert body["effects"] == {"brokered_network_read": "allow", "network_egress": "ask"}

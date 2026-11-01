@@ -4,7 +4,7 @@ name: Test Writer
 tagline: "Adds tests for the behaviour your named files promise and no test checks — every new test passing, on a branch of its own."
 section: testing
 icon: flask-conical
-version: 1.5.0
+version: 1.5.1
 wave: 2
 inputs:
   - {key: folder, kind: folder, label: "The repository's folder, inside your projects folder"}
@@ -13,6 +13,7 @@ inputs:
 triggers:
   - {on: hand}
 tools: [bash, read_file, write_file, edit_file, grep]
+skills: [change-code-safely, debug-a-failure]
 needs: {connectors: [], min_context: 32000, native_tools: required}
 delivers:
   - {kind: answer, must_contain: [Added, Found, Tests, branch]}

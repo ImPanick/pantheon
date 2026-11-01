@@ -4,12 +4,13 @@ name: Memory Auditor
 tagline: "Each month, lists the memories that conflict, have gone out of date, repeat or read like a guess — for you to confirm. It cannot change one."
 section: knowledge
 icon: brain
-version: 1.1.0
+version: 1.1.1
 wave: 2
 inputs: []
 triggers:
   - {on: cron, cron: "5 10 15 * *", label: The fifteenth of each month}
 tools: [manage_memory]
+skills: [remember-what-matters]
 needs: {connectors: [], min_context: 16000, native_tools: preferred}
 delivers:
   - {kind: answer, must_contain: [Conflicts, Out of date, Duplicates, Unsure]}

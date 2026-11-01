@@ -4,7 +4,7 @@ name: Migration Runner
 tagline: "Moves a codebase between versions or frameworks in small steps on a branch, the tests green at every commit."
 section: development
 icon: arrow-right-left
-version: 1.4.0
+version: 1.4.1
 wave: 2
 inputs:
   - {key: folder, kind: folder, label: "The repository's folder, inside your projects folder"}
@@ -13,6 +13,7 @@ inputs:
 triggers:
   - {on: hand}
 tools: [bash, read_file, edit_file, grep, web_fetch]
+skills: [change-code-safely, debug-a-failure]
 needs: {connectors: [], min_context: 32000, native_tools: required}
 delivers:
   - {kind: answer, must_contain: [Plan, Done, Left, branch]}

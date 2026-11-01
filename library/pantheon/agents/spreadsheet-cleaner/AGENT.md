@@ -4,7 +4,7 @@ name: Spreadsheet Cleaner
 tagline: "De-duplicates, normalises and validates a CSV, writing a clean copy beside the original."
 section: data-analytics
 icon: sheet
-version: 1.4.0
+version: 1.4.1
 wave: 2
 inputs:
   - {key: file, kind: text, label: "The CSV, inside your projects folder"}
@@ -12,6 +12,7 @@ inputs:
 triggers:
   - {on: hand}
 tools: [python]
+skills: [analyze-data]
 needs: {connectors: [], min_context: 16000, native_tools: preferred}
 delivers:
   - {kind: answer, must_contain: [Clean copy, Fixed, Near-duplicates, Invalid rows]}

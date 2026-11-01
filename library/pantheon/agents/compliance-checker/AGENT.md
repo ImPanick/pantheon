@@ -4,7 +4,7 @@ name: Compliance Checker
 tagline: Checks a policy or process against a standard you name.
 section: legal-people
 icon: badge-check
-version: 1.3.0
+version: 1.3.2
 wave: 2
 inputs:
   - {key: subject, kind: text, label: The policy or process document title}
@@ -12,6 +12,7 @@ inputs:
 triggers:
   - {on: hand}
 tools: [manage_documents, web_search, web_fetch, create_document]
+skills: [web-research]
 needs: {connectors: [], min_context: 32000, native_tools: preferred}
 delivers:
   - {kind: document, title: "Compliance check", must_contain: [Not legal advice, Missing, Partly met, Met]}

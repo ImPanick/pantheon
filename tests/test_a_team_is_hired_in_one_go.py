@@ -70,7 +70,7 @@ def test_every_shipped_team_reads_and_names_only_agents_the_hall_has():
     agents, _ = catalogue(None)
     found, broken = T.teams(None, [m.id for m in agents])
     assert broken == []
-    assert len(found) == 14
+    assert len(found) == 15    # `P24-28` added Engineering Desk
     for team in found:
         assert 2 <= len(team.members) <= T.TEAM_MAX_MEMBERS
 

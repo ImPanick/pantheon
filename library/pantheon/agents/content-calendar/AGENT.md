@@ -4,7 +4,7 @@ name: Content Calendar
 tagline: "Next month's content calendar from your themes and dates."
 section: marketing
 icon: calendar-range
-version: 1.1.0
+version: 1.1.1
 wave: 2
 inputs:
   - {key: themes, kind: list, label: Your themes}
@@ -12,7 +12,7 @@ inputs:
 triggers:
   - {on: cron, cron: "0 10 20 * *", label: The twentieth of each month}
 tools: [manage_calendar, create_document]
-needs: {connectors: [], min_context: 16000, native_tools: preferred}
+needs: {connectors: [calendar], min_context: 16000, native_tools: preferred}
 delivers:
   - {kind: document, title: "Content calendar", must_contain: [Dates that matter, Slots]}
 effects: {read_private: allow, write_private: allow, destructive: never}

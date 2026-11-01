@@ -4,7 +4,7 @@ name: Course Builder
 tagline: A course outline with readings and exercises for a subject and an audience.
 section: learning
 icon: library
-version: 1.3.0
+version: 1.3.1
 wave: 2
 inputs:
   - {key: subject, kind: text, label: The subject}
@@ -13,6 +13,7 @@ inputs:
 triggers:
   - {on: hand}
 tools: [web_search, web_fetch, create_document]
+skills: [web-research]
 needs: {connectors: [], min_context: 16000, native_tools: preferred}
 delivers:
   - {kind: document, title: "Course", must_contain: [Week 1, Readings, Exercise]}

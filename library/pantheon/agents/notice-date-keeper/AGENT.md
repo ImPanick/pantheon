@@ -4,14 +4,14 @@ name: Notice Date Keeper
 tagline: Puts contract notice and renewal dates on your calendar.
 section: legal-people
 icon: calendar-x
-version: 1.1.0
+version: 1.1.1
 wave: 2
 inputs:
   - {key: documents, kind: list, label: Contract document titles}
 triggers:
   - {on: hand}
 tools: [manage_documents, manage_calendar]
-needs: {connectors: [], min_context: 16000, native_tools: preferred}
+needs: {connectors: [calendar], min_context: 16000, native_tools: preferred}
 delivers:
   - {kind: answer, must_contain: [Dates added, Could not work out]}
 effects: {read_private: allow, write_private: allow, destructive: never}

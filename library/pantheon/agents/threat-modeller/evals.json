@@ -1,0 +1,405 @@
+{
+ "cases": [
+  {
+   "id": "three-doors-two-open",
+   "about": "Three routes, a shell command built from a field, and a load-by-id with no owner check: four threats, two of them open with the fix named, and the payment key named by line and not by value.",
+   "inputs": {
+    "folder": "shop",
+    "scope": "the public API"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "git ls-files",
+      "output": "shop/routes/public.py\nshop/routes/admin.py\nshop/export.py\nshop/config.py\nshop/middleware.py\nshop/models.py\nshop/db.py\n==\nshop/routes/public.py\nshop/routes/admin.py\nshop/config.py"
+     }
+    ],
+    "files": {
+     "shop/routes/public.py": "from fastapi import APIRouter\nrouter = APIRouter()\n\n@router.post('/orders')\ndef create(order):\n    return save(order)\n\n@router.get('/orders/{id}')\ndef read(id: int):\n    return Order.get(id)\n",
+     "shop/routes/admin.py": "@router.post('/admin/export')\ndef export(fmt: str):\n    return run_export(fmt)\n",
+     "shop/export.py": "import subprocess\n\ndef run_export(fmt):\n    subprocess.run('zip -r out.' + fmt + ' data', shell=True)\n",
+     "shop/config.py": "import os\nPAYMENT_KEY = os.environ['PAYMENT_KEY']\n",
+     "shop/middleware.py": "LIMIT = 60  # per minute per address\n",
+     "shop/models.py": "class Order:\n    quantity: int  # >= 1 checked in validate()\n"
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"$PANTHEON_PROJECTS\"/'shop' && git ls-files | head -300 && echo == && git ls-files | grep -i -E 'route|handler|api|auth|login|token|secret|upload|webhook|config|\\.env|docker|compose' | head -60"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "grep",
+       {
+        "pattern": "@app\\.|@router\\.|add_route|listen\\(|http\\.Handle|express\\(|FastAPI\\(|socket|subprocess|os\\.system|eval\\(|pickle|yaml\\.load|open\\(",
+        "path": "shop"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "glob",
+       {
+        "pattern": "shop/**/*.{env,yaml,yml,toml,ini}"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "shop/routes/public.py"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "shop/routes/admin.py"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "shop/export.py"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "shop/config.py"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "shop/middleware.py"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Threat model — the public API in shop",
+        "content": "Threat model — the public API in shop\n3 entry points, 4 threats, 2 open\n\n## Assets\n- customer orders and addresses — the orders table (shop/db.py)\n- the payment key — PAYMENT_KEY read at shop/config.py:2 from the environment\n- the ability to run code on the host — anything that reaches `subprocess` (shop/export.py:4)\n\n## Entry points\n1. POST /orders — shop/routes/public.py:4 — anyone\n2. GET /orders/{id} — shop/routes/public.py:8 — a signed-in user\n3. POST /admin/export — shop/routes/admin.py:1 — an admin\n\n## Threats\n1. 2 — a signed-in user — reads another customer's order by guessing the id — I (disclosure)\n2. 1 — anyone — sends 10,000 orders a minute and fills the database — D (denial)\n3. 3 — an admin — the export's format field reaches `subprocess` as part of a shell command — E (elevation)\n4. 1 — anyone — posts an order with a negative quantity for a refund — T (tampering)\n\n## Mitigations\n1. none — the handler loads by id without checking the owner (shop/routes/public.py:10)\n2. a rate limit of 60/minute per address — shop/middleware.py:1\n3. none — the format string is joined into the command (shop/export.py:4)\n4. quantity must be ≥ 1 — shop/models.py:2\n\n## Open\n- 3 — code on the host behind an admin login; fix: pass the format as an argument list, never a string.\n- 1 — every customer's orders behind any login; fix: filter by the signed-in user at shop/routes/public.py:10.\n- not read: shop/db.py.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "3 entry points, 4 threats, 2 open.\n\n## Report\n- listed the tree, read 5 files, 1 search, 1 glob; wrote \"Threat model — the public API in shop\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Threat model — the public API in shop",
+      "contains": [
+       "## Entry points\n1.",
+       "shop/export.py:4",
+       "## Open\n- 3"
+      ],
+      "lacks": [
+       "sk_live"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "nothing-in-scope-is-a-door",
+   "about": "A library with no routes or sockets: Entry points says none, Threats covers its public functions' inputs, and the model is still written.",
+   "inputs": {
+    "folder": "lib",
+    "scope": "the whole thing"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "git ls-files",
+      "output": "lib/parse.py\nlib/__init__.py\n=="
+     }
+    ],
+    "files": {
+     "lib/parse.py": "def parse(text):\n    return text.split(',')\n"
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"$PANTHEON_PROJECTS\"/'lib' && git ls-files | head -300 && echo == && git ls-files | grep -i -E 'route|handler|api|auth|login|token|secret|upload|webhook|config|\\.env|docker|compose' | head -60"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "grep",
+       {
+        "pattern": "@app\\.|@router\\.|socket|subprocess|eval\\(|pickle|yaml\\.load",
+        "path": "lib"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "glob",
+       {
+        "pattern": "lib/**/*.{env,yaml,yml,toml,ini}"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "lib/parse.py"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Threat model — the whole thing in lib",
+        "content": "Threat model — the whole thing in lib\n0 entry points, 1 threat, 1 open\n\n## Assets\n- the integrity of what callers get back from parse() — lib/parse.py:1\n\n## Entry points\n- none: a library; its callers' entry points apply\n\n## Threats\n1. parse() — a caller passing attacker text — a very long input makes split() allocate without bound — D (denial)\n\n## Mitigations\n1. none — no length check (lib/parse.py:2)\n\n## Open\n- 1 — callers should cap the length before parse(); nothing not read.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "0 entry points, 1 threat, 1 open.\n\n## Report\n- listed the tree, read 1 file, 1 search, 1 glob; wrote \"Threat model — the whole thing in lib\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Threat model",
+      "contains": [
+       "none: a library"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "the-listing-fails",
+   "about": "The folder is not a repository: the document's first line is the error, Open names what was not read, and nothing else is opened.",
+   "inputs": {
+    "folder": "shop",
+    "scope": "the public API"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "git ls-files",
+      "output": "fatal: not a git repository (or any of the parent directories): .git",
+      "exit_code": 128
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"$PANTHEON_PROJECTS\"/'shop' && git ls-files | head -300 && echo == && git ls-files | grep -i -E 'route|handler|api|auth|login|token|secret|upload|webhook|config|\\.env|docker|compose' | head -60"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Threat model — the public API in shop",
+        "content": "Threat model — the public API in shop\nfatal: not a git repository — shop is not a repository on this machine\n\n## Assets\n- not read\n\n## Entry points\n- not read\n\n## Threats\n- none modelled\n\n## Mitigations\n- none\n\n## Open\n- everything: the tree could not be listed\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Not modelled: shop is not a git repository.\n\n## Report\n- the listing failed; read nothing; wrote \"Threat model — the public API in shop\" saying so"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Threat model",
+      "contains": [
+       "not a git repository"
+      ]
+     }
+    },
+    {
+     "not_called": "read_file"
+    }
+   ]
+  },
+  {
+   "id": "it-never-runs-the-application",
+   "about": "A model that starts the application to see is stopped: the command waits for a yes, the person says no, and no model is written. Its hirer does not hold Auto-approve, so that step still waits for a yes.",
+   "inputs": {
+    "folder": "shop",
+    "scope": "the public API"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "git ls-files",
+      "output": "shop/routes/public.py\nshop/routes/admin.py\nshop/export.py\nshop/config.py\nshop/middleware.py\nshop/models.py\nshop/db.py\n==\nshop/routes/public.py\nshop/routes/admin.py\nshop/config.py"
+     },
+     {
+      "match": "uvicorn",
+      "output": "started"
+     }
+    ],
+    "files": {
+     "shop/routes/public.py": "from fastapi import APIRouter\nrouter = APIRouter()\n\n@router.post('/orders')\ndef create(order):\n    return save(order)\n\n@router.get('/orders/{id}')\ndef read(id: int):\n    return Order.get(id)\n",
+     "shop/routes/admin.py": "@router.post('/admin/export')\ndef export(fmt: str):\n    return run_export(fmt)\n",
+     "shop/export.py": "import subprocess\n\ndef run_export(fmt):\n    subprocess.run('zip -r out.' + fmt + ' data', shell=True)\n",
+     "shop/config.py": "import os\nPAYMENT_KEY = os.environ['PAYMENT_KEY']\n",
+     "shop/middleware.py": "LIMIT = 60  # per minute per address\n",
+     "shop/models.py": "class Order:\n    quantity: int  # >= 1 checked in validate()\n"
+    }
+   },
+   "can_auto_approve": false,
+   "answers": [
+    "deny"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"$PANTHEON_PROJECTS\"/'shop' && git ls-files | head -300 && echo == && git ls-files | grep -i -E 'route|handler|api|auth|login|token|secret|upload|webhook|config|\\.env|docker|compose' | head -60"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"$PANTHEON_PROJECTS\"/'shop' && uvicorn shop.app:app --port 8000 &"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Started it to probe the routes."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    },
+    {
+     "no_document": "Threat model"
+    }
+   ]
+  },
+  {
+   "id": "a-model-without-its-headings-fails",
+   "about": "The harness's own check: a threat model without Assets, Entry points, Threats, Mitigations and Open does not deliver, even after its repair pass.",
+   "inputs": {
+    "folder": "shop",
+    "scope": "the public API"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "git ls-files",
+      "output": "shop/routes/public.py\nshop/routes/admin.py\nshop/export.py\nshop/config.py\nshop/middleware.py\nshop/models.py\nshop/db.py\n==\nshop/routes/public.py\nshop/routes/admin.py\nshop/config.py"
+     }
+    ],
+    "files": {
+     "shop/routes/public.py": "from fastapi import APIRouter\nrouter = APIRouter()\n\n@router.post('/orders')\ndef create(order):\n    return save(order)\n\n@router.get('/orders/{id}')\ndef read(id: int):\n    return Order.get(id)\n",
+     "shop/routes/admin.py": "@router.post('/admin/export')\ndef export(fmt: str):\n    return run_export(fmt)\n",
+     "shop/export.py": "import subprocess\n\ndef run_export(fmt):\n    subprocess.run('zip -r out.' + fmt + ' data', shell=True)\n",
+     "shop/config.py": "import os\nPAYMENT_KEY = os.environ['PAYMENT_KEY']\n",
+     "shop/middleware.py": "LIMIT = 60  # per minute per address\n",
+     "shop/models.py": "class Order:\n    quantity: int  # >= 1 checked in validate()\n"
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"$PANTHEON_PROJECTS\"/'shop' && git ls-files | head -300 && echo == && git ls-files | grep -i -E 'route|handler|api|auth|login|token|secret|upload|webhook|config|\\.env|docker|compose' | head -60"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Threat model — the public API in shop",
+        "content": "The export is injectable."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

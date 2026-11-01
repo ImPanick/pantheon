@@ -1,0 +1,29 @@
+{
+ "case": "one-real-meeting-between-a-standup-and-a-focus-block",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read today's calendar, 2 messages and 1 document; wrote \"Meeting brief — Acme renewal call — 2026-11-10\"",
+ "read": [
+  "manage_calendar",
+  "search_emails",
+  "read_email",
+  "manage_documents"
+ ],
+ "wrote": [
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Meeting brief”",
+   "ok": true,
+   "detail": "“Meeting brief — Acme renewal call — 2026-11-10” is there."
+  }
+ ],
+ "answer": "3 meetings today, 1 briefed, 2 skipped (Standup, Focus): \"Meeting brief — Acme renewal call — 2026-11-10\".\n\n## Report\n- read today's calendar, 2 messages and 1 document; wrote \"Meeting brief — Acme renewal call — 2026-11-10\"",
+ "documents": [
+  {
+   "title": "Meeting brief — Acme renewal call — 2026-11-10",
+   "content": "Meeting brief — Acme renewal call — 2026-11-10\n11:00 with Ana Reyes (Acme): agree the two-year price or the one-year renewal\n\n## Who\n- Ana Reyes — Acme — \"can you do the same for 10% less if we sign for two years?\" (7 Nov)\n\n## Why now\n- Ana's message of 7 Nov: \"Let's find 30 minutes next week to close this out\".\n\n## Last time\n- from Ana, 7 Nov: the two-year, 10% question above.\n- from you, 4 Nov: \"Same scope, £12,000 a year\" and the seat-count question.\n- document: Proposal — Acme v2 (4 Nov) — open point: the warehouse team's five extra seats.\n\n## Open items\n- you owe Ana an answer on the two-year price — since 7 Nov\n- Ana owes you the seat count for the warehouse team — since 4 Nov\n\n## Your ask\n- Leave with either a two-year term at a price you have chosen before the call, or the one-year renewal at £12,000 and a date for the seat count."
+  }
+ ]
+}

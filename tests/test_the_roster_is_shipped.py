@@ -36,7 +36,8 @@ from src.agents.teams import teams
 
 PLAN_TEAMS = {"inbox-zero", "chief-of-staff", "household", "home-lab", "ship-a-website", "code-health",
               "security-watch", "research-desk", "model-lab", "content-studio", "growth", "sales-desk",
-              "support-desk", "the-books"}
+              "support-desk", "the-books",
+              "engineering-desk"}    # `P24-28`: the first team with a flow
 
 
 @pytest.fixture(scope="module")
@@ -50,7 +51,7 @@ def test_the_roster_has_its_starters_and_wave_two(hall):
     waves = {}
     for m in hall:
         waves[m.wave] = waves.get(m.wave, 0) + 1
-    assert waves == {1: 18, 2: 155}
+    assert waves == {1: 18, 2: 155, 3: 28}    # wave 3: the company slice (`P24-28`)
     assert sum(1 for m in hall if m.starred) == 5
 
 
@@ -78,7 +79,7 @@ def test_every_effect_of_a_wave_two_tool_is_in_the_table(hall):
                 assert effect.value in m.effects, (m.id, tool, effect.value)
 
 
-def test_the_teams_are_the_plans_fourteen(hall):
+def test_the_teams_are_the_plans_fourteen_and_the_engineering_desk(hall):
     found, broken = teams(None, [m.id for m in hall])
     assert broken == []
     assert {t.id for t in found} == PLAN_TEAMS

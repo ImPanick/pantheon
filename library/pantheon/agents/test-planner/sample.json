@@ -1,0 +1,27 @@
+{
+ "case": "a-spec-with-three-requirements-and-a-non-goal",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read \"Spec — weekly meal plan sharing\" and 1 test file; wrote \"Test plan — weekly meal plan sharing\"",
+ "read": [
+  "manage_documents",
+  "read_file"
+ ],
+ "wrote": [
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Test plan”",
+   "ok": true,
+   "detail": "“Test plan — weekly meal plan sharing” is there."
+  }
+ ],
+ "answer": "4 cases: 3 automated, 1 by hand.\n\n## Report\n- read \"Spec — weekly meal plan sharing\" and 1 test file; wrote \"Test plan — weekly meal plan sharing\"",
+ "documents": [
+  {
+   "title": "Test plan — weekly meal plan sharing",
+   "content": "Test plan — weekly meal plan sharing\n4 cases: 3 automated, 1 by hand\n\n## Cases\n1. Invite by email — owner invites ana@example.com — Ana sees the plan — data: plan-1, ana\n2. Invite an invalid address — owner invites \"ana\" — a clear error, no invite — data: plan-1\n3. Second household refused — Ana invites a third person — refused (Non-goal) — data: plan-1, ana, ben\n4. Both edit the same meal — owner and Ana change Tuesday — last change shown with who — data: plan-1, ana\n\n## Data\n- plan-1: one week, seven meals, owned by the owner\n- ana, ben: two accounts with no plans\n\n## Automated\n- 1, 2, 3 — to write\n- 4 — exists: tests/test_sharing.py::test_last_writer_shown\n\n## By hand\n- 4 — how the \"changed by\" line reads on a phone\n\n## Out of scope\n- chat; sharing beyond one household (Non-goals)"
+  }
+ ]
+}

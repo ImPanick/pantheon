@@ -4,7 +4,7 @@ name: Content Gap Finder
 tagline: Topics your competitors cover and you do not.
 section: seo
 icon: puzzle
-version: 1.3.0
+version: 1.3.1
 wave: 2
 inputs:
   - {key: site, kind: url, label: Your site}
@@ -12,6 +12,7 @@ inputs:
 triggers:
   - {on: cron, cron: "25 6 12 * *", label: The twelfth of each month}
 tools: [web_fetch, web_search, create_document]
+skills: [web-research]
 needs: {connectors: [], min_context: 16000, native_tools: preferred}
 delivers:
   - {kind: document, title: "Content gaps", must_contain: [Gaps, Watching, Checked]}

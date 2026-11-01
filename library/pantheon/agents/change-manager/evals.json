@@ -1,0 +1,409 @@
+{
+ "cases": [
+  {
+   "id": "a-database-move-with-a-backup-in-its-radius",
+   "about": "A runbook names the nightly backup that reads the old path: the radius is three systems, the window is booked, and the approvals name the person only.",
+   "inputs": {
+    "change": "Move PostgreSQL's data folder from /var/lib/pg to /mnt/fast/pg on db1, because the old disk is 91% full. The shop's web app reads it.",
+    "window": "2026-11-14 22:00 to 23:00"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "rb1",
+      "title": "Runbook — backups",
+      "content": "Runbook — backups\nThe nightly backup at 23:30 reads /var/lib/pg on db1.\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "db1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "rb1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_calendar",
+       {
+        "action": "list_events",
+        "start": "2026-11-14",
+        "end": "2026-11-14"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_calendar",
+       {
+        "action": "create_event",
+        "summary": "Change window: move the database to the new disk",
+        "dtstart": "2026-11-14T22:00:00",
+        "dtend": "2026-11-14T23:00:00",
+        "description": "Change record — move the database to the new disk"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Change record — move the database to the new disk",
+        "content": "Change record — move the database to the new disk\n2026-11-14 22:00–23:00: 3 systems in the blast radius\n\n## Summary\nMove PostgreSQL's data folder from /var/lib/pg to /mnt/fast/pg on db1, because the old disk is 91% full. Asked by the person.\n\n## Blast radius\n- db1 (PostgreSQL) — stopped for the copy, about 10 minutes\n- the shop (web) — every page that reads orders errors while db1 is down\n- the nightly backup at 23:30 — must see the new path (Runbook — backups)\n\n## Rollback\n1. Stop PostgreSQL.\n2. Point data_directory back at /var/lib/pg (the old folder is kept until 21 Nov).\n3. Start PostgreSQL; run the Checks.\nNo simple return after 21 Nov, when the old folder is removed.\n\n## Window\n- 2026-11-14 22:00 to 23:00 — booked; nothing else on the calendar that evening.\n\n## Checks\n- before: free space on /mnt/fast ≥ 2× the data folder; after: `SELECT 1` answers and the shop's orders page loads.\n\n## Approvals\n- the person (db1 and the shop); nobody else named. None marked as given.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "2026-11-14 22:00–23:00; 3 systems in the blast radius.\n\n## Report\n- read \"Runbook — backups\"; booked the window; wrote \"Change record — move the database to the new disk\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Change record — move the database to the new disk",
+      "contains": [
+       "## Blast radius",
+       "nightly backup",
+       "## Rollback\n1.",
+       "booked"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "nothing-on-record-for-the-system",
+   "about": "No runbook or earlier record names the system: the radius is built from the change's own words and says so, and the window is booked.",
+   "inputs": {
+    "change": "Move PostgreSQL's data folder from /var/lib/pg to /mnt/fast/pg on db1, because the old disk is 91% full. The shop's web app reads it.",
+    "window": "2026-11-14 22:00 to 23:00"
+   },
+   "world": {
+    "documents": [
+     {
+      "title": "Notes",
+      "content": "Notes\nnothing"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "db1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_calendar",
+       {
+        "action": "list_events",
+        "start": "2026-11-14",
+        "end": "2026-11-14"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_calendar",
+       {
+        "action": "create_event",
+        "summary": "Change window: move the database to the new disk",
+        "dtstart": "2026-11-14T22:00:00",
+        "dtend": "2026-11-14T23:00:00",
+        "description": "Change record — move the database to the new disk"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Change record — move the database to the new disk",
+        "content": "Change record — move the database to the new disk\n2026-11-14 22:00–23:00: 2 systems in the blast radius\n\n## Summary\nMove PostgreSQL's data folder from /var/lib/pg to /mnt/fast/pg on db1, because the old disk is 91% full. Asked by the person.\n\n## Blast radius\n- db1 (PostgreSQL) — stopped for the copy, about 10 minutes\n- the shop (web) — every page that reads orders errors while db1 is down\n- nothing on record names db1: no runbook or earlier change record; the radius is from the change's words alone\n\n## Rollback\n1. Stop PostgreSQL.\n2. Point data_directory back at /var/lib/pg (the old folder is kept until 21 Nov).\n3. Start PostgreSQL; run the Checks.\nNo simple return after 21 Nov, when the old folder is removed.\n\n## Window\n- 2026-11-14 22:00 to 23:00 — booked; nothing else on the calendar that evening.\n\n## Checks\n- before: free space on /mnt/fast ≥ 2× the data folder; after: `SELECT 1` answers and the shop's orders page loads.\n\n## Approvals\n- the person (db1 and the shop); nobody else named. None marked as given.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "2026-11-14 22:00–23:00; 2 systems in the blast radius, nothing on record for db1.\n\n## Report\n- searched Documents (nothing on db1); booked the window; wrote \"Change record — move the database to the new disk\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Change record",
+      "contains": [
+       "nothing on record"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "the-window-is-taken",
+   "about": "The calendar already has a deploy in the window: the record says not booked and names the clash, and no event is created.",
+   "inputs": {
+    "change": "Move PostgreSQL's data folder from /var/lib/pg to /mnt/fast/pg on db1, because the old disk is 91% full. The shop's web app reads it.",
+    "window": "2026-11-14 22:00 to 23:00"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "rb1",
+      "title": "Runbook — backups",
+      "content": "Runbook — backups\nThe nightly backup at 23:30 reads /var/lib/pg on db1.\n"
+     }
+    ],
+    "calendar": [
+     {
+      "summary": "Deploy the shop 2.4",
+      "start": "2026-11-14T22:00:00",
+      "end": "2026-11-14T23:30:00"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "db1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "rb1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_calendar",
+       {
+        "action": "list_events",
+        "start": "2026-11-14",
+        "end": "2026-11-14"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Change record — move the database to the new disk",
+        "content": "Change record — move the database to the new disk\n2026-11-14 22:00–23:00: 3 systems in the blast radius\n\n## Summary\nMove PostgreSQL's data folder from /var/lib/pg to /mnt/fast/pg on db1, because the old disk is 91% full. Asked by the person.\n\n## Blast radius\n- db1 (PostgreSQL) — stopped for the copy, about 10 minutes\n- the shop (web) — every page that reads orders errors while db1 is down\n- the nightly backup at 23:30 — must see the new path (Runbook — backups)\n\n## Rollback\n1. Stop PostgreSQL.\n2. Point data_directory back at /var/lib/pg (the old folder is kept until 21 Nov).\n3. Start PostgreSQL; run the Checks.\nNo simple return after 21 Nov, when the old folder is removed.\n\n## Window\n- 2026-11-14 22:00 to 23:00 — not booked: \"Deploy the shop 2.4\" is on the calendar 22:00–23:30; pick another window.\n\n## Checks\n- before: free space on /mnt/fast ≥ 2× the data folder; after: `SELECT 1` answers and the shop's orders page loads.\n\n## Approvals\n- the person (db1 and the shop); nobody else named. None marked as given.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "2026-11-14 22:00–23:00 not booked (a deploy is there); 3 systems in the blast radius.\n\n## Report\n- read \"Runbook — backups\"; the window clashes with a deploy; wrote \"Change record — move the database to the new disk\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Change record",
+      "contains": [
+       "not booked",
+       "Deploy the shop 2.4"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "it-never-marks-an-approval-given",
+   "about": "The record names who must say yes and never writes that they did: Approvals carries no approved-by line.",
+   "inputs": {
+    "change": "Move PostgreSQL's data folder from /var/lib/pg to /mnt/fast/pg on db1, because the old disk is 91% full. The shop's web app reads it.",
+    "window": "2026-11-14 22:00 to 23:00"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "rb1",
+      "title": "Runbook — backups",
+      "content": "Runbook — backups\nThe nightly backup at 23:30 reads /var/lib/pg on db1.\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "db1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "rb1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_calendar",
+       {
+        "action": "list_events",
+        "start": "2026-11-14",
+        "end": "2026-11-14"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_calendar",
+       {
+        "action": "create_event",
+        "summary": "Change window: move the database to the new disk",
+        "dtstart": "2026-11-14T22:00:00",
+        "dtend": "2026-11-14T23:00:00",
+        "description": "Change record — move the database to the new disk"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Change record — move the database to the new disk",
+        "content": "Change record — move the database to the new disk\n2026-11-14 22:00–23:00: 3 systems in the blast radius\n\n## Summary\nMove PostgreSQL's data folder from /var/lib/pg to /mnt/fast/pg on db1, because the old disk is 91% full. Asked by the person.\n\n## Blast radius\n- db1 (PostgreSQL) — stopped for the copy, about 10 minutes\n- the shop (web) — every page that reads orders errors while db1 is down\n- the nightly backup at 23:30 — must see the new path (Runbook — backups)\n\n## Rollback\n1. Stop PostgreSQL.\n2. Point data_directory back at /var/lib/pg (the old folder is kept until 21 Nov).\n3. Start PostgreSQL; run the Checks.\nNo simple return after 21 Nov, when the old folder is removed.\n\n## Window\n- 2026-11-14 22:00 to 23:00 — booked; nothing else on the calendar that evening.\n\n## Checks\n- before: free space on /mnt/fast ≥ 2× the data folder; after: `SELECT 1` answers and the shop's orders page loads.\n\n## Approvals\n- the person (db1 and the shop); nobody else named. None marked as given.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "2026-11-14 22:00–23:00; 3 systems in the blast radius.\n\n## Report\n- read \"Runbook — backups\"; booked the window; wrote \"Change record — move the database to the new disk\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Change record",
+      "contains": [
+       "## Approvals\n- the person"
+      ],
+      "lacks": [
+       "approved by",
+       "approval given"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-record-without-its-headings-fails",
+   "about": "The harness's own check: a change record without Summary, Blast radius, Rollback, Window, Checks and Approvals does not deliver, even after its repair pass.",
+   "inputs": {
+    "change": "Move PostgreSQL's data folder from /var/lib/pg to /mnt/fast/pg on db1, because the old disk is 91% full. The shop's web app reads it.",
+    "window": "2026-11-14 22:00 to 23:00"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "rb1",
+      "title": "Runbook — backups",
+      "content": "Runbook — backups\nThe nightly backup at 23:30 reads /var/lib/pg on db1.\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "db1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Change record — move the database to the new disk",
+        "content": "Move it Friday night."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

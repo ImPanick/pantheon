@@ -277,6 +277,7 @@ const _EVENT_WORDS = Object.freeze({
   research_completed: ['finished research run', 'finished research runs'],
   email_received: ['email received', 'emails received'],
   skill_added: ['new skill', 'new skills'],
+  report_filed: ['agent report filed', 'agent reports filed'],
 });
 
 const _DAY_WORDS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];

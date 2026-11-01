@@ -4,13 +4,13 @@ name: Bill & Renewal Tracker
 tagline: "Lists the bills, subscriptions and renewals due in the next 30 days, from your mail and notes."
 section: personal-home
 icon: calendar-clock
-version: 1.1.0
+version: 1.1.1
 wave: 2
 inputs: []
 triggers:
   - {on: weekly, day: mon, at: "08:30"}
 tools: [search_emails, read_email, manage_notes, create_document]
-needs: {connectors: [], min_context: 16000, native_tools: preferred}
+needs: {connectors: [mail], min_context: 16000, native_tools: preferred}
 delivers:
   - {kind: document, title: "Due in the next 30 days", must_contain: [This week, Next 30 days, Check these]}
 effects: {read_private: allow, write_private: allow, destructive: never}
