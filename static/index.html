@@ -1691,8 +1691,8 @@
     <input type="file" id="file-input" class="hidden" multiple />
 
     <!-- `B1718`. The voice chat, while one is on: a lamp and a word for what
-         the call is doing ("Listening." / "Hearing you." / "Thinking." /
-         "Speaking."), the microphone's level, the last thing said or why
+         the call is doing ("Listening." / "Hearing you." / "Transcribing . . ."
+         (`B1726`) / "Thinking." / "Speaking."), the microphone's level, the last thing said or why
          something cannot work, and the call's own buttons. Hidden until a
          call starts from the composer's call button (`#composer-call-btn`);
          drawn and driven by `static/js/voiceCall.js`. -->
@@ -1720,6 +1720,12 @@
       <div class="chat-input-top">
         <div id="message-ghost" class="ghost-text-overlay" aria-hidden="true"></div>
         <textarea id="message" placeholder="Message Pantheon..." required autocomplete="off" aria-label="Message input" rows="1" autofocus></textarea>
+        <!-- `B1726`. What dictation is doing, while the box has words in it
+             (an empty box says it in its prompt): "Listening . . ." while the
+             microphone records, "Transcribing . . ." while what was said is
+             written out. Drawn by `static/js/voiceRecorder.js`; the toast and
+             the microphone button say it to a screen reader. -->
+        <div id="dictation-status" class="dictation-status" aria-hidden="true" hidden><span class="dictation-status-word">Listening</span> <span class="dictation-status-dots">. . .</span></div>
         <div id="plan-mode-status" class="plan-mode-status" hidden>
           <span class="plan-mode-status-label">Plan mode</span>
           <button type="button" id="plan-mode-status-toggle" class="plan-mode-status-toggle" aria-label="Turn off plan mode" aria-pressed="true">

@@ -2541,6 +2541,10 @@ function initializeEventListeners() {
 	    // swipe is in the Plan chip's tooltip now (`syncPlanToggle`).
 	    function setComposerPlaceholder(width) {
 	      if (!textarea) return;
+	      // `B1726`. While dictation says what it is doing in the box
+	      // ("Listening . . .", "Transcribing . . ."), the box's own prompt
+	      // waits; `voiceRecorder.js` gives it back, and says so (below).
+	      if (textarea.dataset.dictation) return;
 	      // The cockpit composer also names the two doors a person might not know.
 	      const wide = document.documentElement.classList.contains('cockpit')
 	        ? 'Message Pantheon  ·  / commands  ·  @ agents' : 'Message Pantheon…';
@@ -2570,6 +2574,16 @@ function initializeEventListeners() {
 
     const ro = new ResizeObserver(() => requestAnimationFrame(checkPickerOverflow));
     ro.observe(inputTop);
+    // `B1726`. Dictation's pill takes the model picker's place while it shows,
+    // so the box is measured again for its width; and when dictation ends the
+    // prompt is the one for the width the box is now.
+    window.addEventListener('pantheon:dictation', (e) => {
+      const ended = !(e && e.detail && e.detail.state);
+      requestAnimationFrame(() => {
+        if (textarea) uiModule.autoResize(textarea);
+        if (ended) checkPickerOverflow();
+      });
+    });
     checkPickerOverflow();
   })();
 

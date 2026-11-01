@@ -1617,6 +1617,30 @@ html.cockpit .composer-voice-btn[aria-pressed="true"] {
 /* the words are being written out after the microphone stopped */
 html.cockpit .composer-voice-btn[data-state="transcribing"] svg { animation: ck-pulse var(--ck-beat) var(--ck-ease) infinite; }
 html.cockpit .composer-voice-btn:disabled { opacity: .55; cursor: default; }
+/* B1726 · dictation says what it is doing in the box: in the prompt's place
+   while the box is empty ("Listening . . .", "Transcribing . . ."), and in this
+   pill beside the words once it has some. It is the model picker's pill, and
+   its lamp is the call's: green while the microphone is the person's, the
+   accent breathing on the beat while what they said is written out. */
+html.cockpit .dictation-status {
+  display: inline-flex; align-items: center; gap: 7px; flex: none; order: 2; align-self: center;
+  font: 400 12px/1.4 var(--ck-font-ui); color: var(--ck-text-2); white-space: nowrap;
+  padding: 4px 10px; border-radius: 999px; background: var(--ck-tint);
+}
+html.cockpit .dictation-status[hidden] { display: none; }
+html.cockpit .dictation-status::before {
+  content: ""; width: 6px; height: 6px; border-radius: 50%; flex: none;
+  background: var(--ck-ok); box-shadow: 0 0 0 3px color-mix(in oklab, var(--ck-ok) 18%, transparent);
+}
+html.cockpit .dictation-status[data-state="transcribing"]::before {
+  background: var(--ck-accent); box-shadow: 0 0 0 3px var(--ck-accent-wash); animation: ck-pulse var(--ck-beat) var(--ck-ease) infinite;
+}
+/* the dots step in place: the pill keeps its width while they do */
+html.cockpit .dictation-status-dots { display: inline-block; min-width: 1.7em; margin-left: -3px; }
+/* while it shows it takes the model picker's place, so the words keep their room
+   (beside both, a narrow box had none left, and a phone's hidden picker still
+   held its width) */
+html.cockpit .chat-input-top:has(> .dictation-status:not([hidden])) > .model-picker-wrap { display: none !important; }
 
 /* The call, while one is on: a lit slab over the composer, its width. A lamp and
    a word for what the call is doing, the microphone's level, the last thing said
@@ -1644,6 +1668,8 @@ html.cockpit .voice-call-bar[data-phase="hearing"] .voice-call-lamp {
   background: var(--ck-ok); box-shadow: 0 0 0 4px color-mix(in oklab, var(--ck-ok) 26%, transparent), 0 0 12px color-mix(in oklab, var(--ck-ok) 40%, transparent);
 }
 html.cockpit .voice-call-bar[data-phase="thinking"] .voice-call-lamp { background: var(--ck-accent); box-shadow: 0 0 0 4px var(--ck-accent-wash); animation: ck-pulse var(--ck-beat) var(--ck-ease) infinite; }
+/* B1726 · what was said is being written out: the person's turn is over, the words not yet back */
+html.cockpit .voice-call-bar[data-phase="transcribing"] .voice-call-lamp { background: var(--ck-accent); box-shadow: 0 0 0 4px var(--ck-accent-wash); animation: ck-pulse var(--ck-beat) var(--ck-ease) infinite; }
 html.cockpit .voice-call-bar[data-phase="speaking"] .voice-call-lamp { background: var(--ck-accent); box-shadow: 0 0 0 4px var(--ck-accent-wash), 0 0 12px var(--ck-accent-glow); }
 html.cockpit .voice-call-bar[data-phase="waiting"] .voice-call-lamp {
   background: var(--ck-warn); box-shadow: 0 0 0 3px color-mix(in oklab, var(--ck-warn) 20%, transparent); animation: ck-pulse var(--ck-beat) var(--ck-ease) infinite;

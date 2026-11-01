@@ -677,6 +677,17 @@ the next one is cut.
 
 ### Fixed
 
+- **Dictation and the voice chat say when they are turning speech into text** (2026-11-01,
+  `B1726`). The owner: *"When the voice is being processed and transfered into text - it needs to
+  also say "Transcribing . . ." so the user doesn't think it's hanging/crashing."* Dictation said
+  so only in a toast that went after five seconds, the browser's own recognition said nothing
+  while its last words came, and a press in the meantime cleared what there was. Now the message
+  box says *Listening . . .* while the microphone records and *Transcribing . . .* until the words
+  are in it, in its prompt when it is empty and in a pill beside the words when it is not, with
+  the dots stepping (still under reduced motion). The pill takes the model picker's place while it
+  shows, so the words keep their room. A press while the words are on their way leaves it. The
+  call's bar says *Transcribing . . .* while the server writes out a turn, where it said *Hearing
+  you.*
 - **The Browser window is a live browser, not pictures of one** (2026-11-01, `B1724`,
   `D-2026-11-01-01`). The owner: *"It's supposed to be a literal web-browser that the agent (llm)
   can see the inside content inside of as well as navigate themselves."* The window showed a

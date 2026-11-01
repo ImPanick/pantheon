@@ -47,11 +47,15 @@ const SILENT_WAV = 'data:audio/wav;base64,UklGRhQBAABXQVZFZm10IBAAAAABAAEAQB8AAE
   + 'gICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICA'
   + 'gICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIA=';
 
-/** What the bar says the call is doing: a word and a stop, as "Ready." does. */
+/** What the bar says the call is doing: a word and a stop, as "Ready." does.
+ *  `B1726`: and while what the person said is turned into words by the
+ *  server, the owner's own *"Transcribing . . ."* (2026-11-01: *"so the user
+ *  doesn't think it's hanging/crashing"*), not "Hearing you." */
 export const PHASE_WORDS = Object.freeze({
   starting: 'Starting.',
   listening: 'Listening.',
   hearing: 'Hearing you.',
+  transcribing: 'Transcribing . . .',
   thinking: 'Thinking.',
   speaking: 'Speaking.',
   waiting: 'Waiting for you.',
@@ -566,11 +570,15 @@ export function createVoiceCall(deps) {
   function settle() {
     if (!call.on) return;
     let phase;
+    // `B1726`: still talking is hearing; stopped, with the words not back
+    // from the server yet, is transcribing.
+    const talking = !call.muted && !!call.detector && call.detector.state === 'speech';
     if (call.phase === 'waiting' || call.phase === 'starting') phase = call.phase;
-    else if (call.bargedIn) phase = 'hearing';
+    else if (call.bargedIn) phase = !talking && call.pendingHearing > 0 ? 'transcribing' : 'hearing';
     else if (audible()) phase = 'speaking';
-    else if (!call.muted && call.detector && call.detector.state === 'speech') phase = 'hearing';
-    else if (call.pendingHearing > 0 || call.held) phase = 'hearing';
+    else if (talking) phase = 'hearing';
+    else if (call.pendingHearing > 0) phase = 'transcribing';
+    else if (call.held) phase = 'hearing';
     else if (call.awaitingReply || (!call.replyDone && chat.isBusy())) phase = 'thinking';
     else phase = 'listening';
     call.phase = phase;

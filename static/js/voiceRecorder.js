@@ -44,6 +44,109 @@ let _sttLanguage = '';
 // `B1718`. The dictation button and what it calls, once `initDictation` ran.
 let _micBtn = null;
 let _dictation = null;
+// `B1726`. What was said is being written out (the server's Whisper, or the
+// browser's last words after its `stop()`): the microphone is closed, and the
+// words are not in the box yet.
+let _transcribing = false;
+
+/**
+ * `B1726`. What dictation is doing, said in the message box itself. The owner,
+ * 2026-11-01: *"When the "Transcribing" is on - and listening, the textbox
+ * needs to say so.. When the voice is being processed and transfered into
+ * text - it needs to also say "Transcribing . . ." so the user doesn't think
+ * it's hanging/crashing."* An empty box says it where its prompt is; a box
+ * with words in it says it in a pill beside them (`#dictation-status`). The
+ * dots step while it lasts, and stand still under reduced motion.
+ */
+export const DICTATION_WORDS = Object.freeze({ listening: 'Listening', transcribing: 'Transcribing' });
+export const DICTATION_DOTS = Object.freeze(['.', '. .', '. . .']);
+const DOT_MS = 420;
+const FULL = DICTATION_DOTS.length - 1;
+
+/** `B1726`. The words for `state` at dot `step` ("Transcribing . . ."), or '' when dictation is idle. */
+export function dictationWords(state, step = FULL) {
+  const word = DICTATION_WORDS[state];
+  if (!word) return '';
+  const n = DICTATION_DOTS.length;
+  return `${word} ${DICTATION_DOTS[((Math.trunc(Number(step)) || 0) % n + n) % n]}`;
+}
+
+let _boxState = '';
+let _boxPrompt = null;   // the box's own prompt, given back when dictation ends
+let _boxInput = null;
+let _dot = FULL;
+let _dotTimer = null;
+
+function _stillDots() {
+  try {
+    return !!(typeof window !== 'undefined' && window.matchMedia
+      && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  } catch (_) {
+    return false;   // as `motion.js` answers a webview whose matchMedia throws
+  }
+}
+
+/** `B1726`. The box's prompt and the pill, as dictation stands now. */
+function _drawBoxState() {
+  const input = _boxInput;
+  const pill = typeof document !== 'undefined' ? document.getElementById('dictation-status') : null;
+  if (input && _boxState) input.setAttribute('placeholder', dictationWords(_boxState, _dot));
+  if (!pill) return;
+  // A prompt shows only while the box is empty; once it has words, the pill says it.
+  const show = !!_boxState && !!(input && input.value);
+  if (show) {
+    pill.dataset.state = _boxState;
+    const word = pill.querySelector('.dictation-status-word');
+    const dots = pill.querySelector('.dictation-status-dots');
+    if (word) word.textContent = DICTATION_WORDS[_boxState];
+    if (dots) dots.textContent = DICTATION_DOTS[_dot];
+  } else {
+    delete pill.dataset.state;
+  }
+  if (pill.hidden === show) pill.hidden = !show;
+}
+
+/** `B1726`. Dictation is `listening`, `transcribing`, or idle (''); the box says which. */
+function _setBoxState(state) {
+  const next = DICTATION_WORDS[state] ? state : '';
+  if (next === _boxState) return;
+  const input = typeof document !== 'undefined' ? document.getElementById('message') : null;
+  if (next && !_boxState && input) {
+    _boxInput = input;
+    _boxPrompt = input.getAttribute('placeholder');
+    // Words typed while it lasts move the saying from the prompt to the pill.
+    input.addEventListener('input', _drawBoxState);
+  }
+  _boxState = next;
+  if (_dotTimer) { clearInterval(_dotTimer); _dotTimer = null; }
+  if (next) {
+    if (_boxInput) _boxInput.dataset.dictation = next;
+    _dot = _stillDots() ? FULL : 0;
+    // Drawn again on a beat: the dots step (held still while reduced motion
+    // is asked for, read each time, as `motion.js` reads it), and a box a
+    // script emptied with no `input` (a message sent) shows its prompt again.
+    _dotTimer = setInterval(() => {
+      _dot = _stillDots() ? FULL : (_dot + 1) % DICTATION_DOTS.length;
+      _drawBoxState();
+    }, DOT_MS);
+    _drawBoxState();
+  } else if (_boxInput) {
+    const box = _boxInput;
+    box.removeEventListener('input', _drawBoxState);
+    delete box.dataset.dictation;
+    if (_boxPrompt === null) box.removeAttribute('placeholder');
+    else box.setAttribute('placeholder', _boxPrompt);
+    _boxInput = null;
+    _boxPrompt = null;
+    _drawBoxState();
+  }
+  // `app.js` keeps the box's own prompt to its width, and waits while this says it.
+  try {
+    if (typeof window !== 'undefined' && typeof CustomEvent !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('pantheon:dictation', { detail: { state: next } }));
+    }
+  } catch (_) { /* a listener that throws is its own problem */ }
+}
 
 /**
  * `B1564`. The browser's own speech recognition (the Web Speech API), or
@@ -158,11 +261,13 @@ function formatTime(seconds) {
  */
 function _resetRecordingUI() {
   isRecording = false;
+  _transcribing = false;
   if (recordingInterval) {
     clearInterval(recordingInterval);
     recordingInterval = null;
   }
   _syncMicButton('');
+  _setBoxState('');
   // Reset send button via global callback. `B1718`: only from its own
   // recording state; dictation from its own button can end while a reply
   // streams, and that Stop is not this module's to reset.
@@ -338,7 +443,16 @@ export function startRecording(onFileCreated, showToast, showError) {
 
         if (provider === 'browser') {
           const heard = _recognitionEnded !== null;   // this browser has recognition
+          if (heard) {
+            // `B1726`: its last words come after `stop()`, a few seconds at most.
+            _transcribing = true;
+            _syncMicButton('transcribing');
+            _setBoxState('transcribing');
+          }
           const transcript = await stopBrowserSTT();
+          // `B1726`: the box is given back before the words go into it, so it
+          // is measured for them as it will stand.
+          _setBoxState('');
           if (transcript) {
             insertTranscription(transcript, showToast);
           } else {
@@ -351,17 +465,22 @@ export function startRecording(onFileCreated, showToast, showError) {
             if (onFileCreated) onFileCreated(audioFile);
           }
         } else if (provider === 'local' || provider.startsWith('endpoint:')) {
-          // Show "Transcribing..." feedback
+          // Show "Transcribing..." feedback. `B1726`: and the box says
+          // "Transcribing . . ." for as long as it takes, not the toast's 5 s.
+          _transcribing = true;
           if (showToast) showToast('Transcribing...', 5000);
           _syncMicButton('transcribing');
+          _setBoxState('transcribing');
           try {
             const transcript = await transcribeOnServer(audioBlob);
+            _setBoxState('');
             if (transcript) {
               insertTranscription(transcript, showToast);
             } else {
               if (showToast) showToast('No speech detected');
             }
           } catch (e) {
+            _setBoxState('');
             console.error('STT transcription error:', e);
             if (showError) showError('Transcription failed: ' + e.message);
             // Fallback: attach as file
@@ -381,6 +500,9 @@ export function startRecording(onFileCreated, showToast, showError) {
       isRecording = true;
       recordingStartTime = new Date();
       _syncMicButton('recording');
+      // `B1726`: once the microphone is really recording, not while the
+      // browser still asks for it.
+      _setBoxState('listening');
 
       // Start browser STT if that's the provider. `B1564`: in a browser with
       // none, said now, before anyone speaks to it — in place of
@@ -420,6 +542,11 @@ export function stopRecording() {
   if (mediaRecorder && mediaRecorder.state === 'recording') {
     mediaRecorder.stop();
     // isRecording will be set to false in _resetRecordingUI called from onstop
+  } else if (_transcribing) {
+    // `B1726`: the microphone is already closed and the words are on their
+    // way; a press now (the dictation button, Send) took "Transcribing . . ."
+    // out of the box while they were, and they arrived anyway.
+    return;
   } else {
     // `B1718`: still waiting on the browser; the microphone is closed when it answers.
     if (_starting) _cancelStart = true;
