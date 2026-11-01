@@ -762,6 +762,13 @@ the next one is cut.
 
 ### Fixed
 
+- **KasmVNC is credited as the step it is, and QEMU and KVM are credited at all** (2026-11-01).
+  The owner: *"Ensure the credits for KASM's KVM is credited appropriately. This is HUGE leap for
+  Pantheon."* `CREDITS.md` had KasmVNC's licences in its Docker section only; it now opens, after
+  Odysseus, with a section on KasmVNC and Kasm Technologies — what the live desktop, take-over and
+  the live browser owe it, and the TigerVNC, TightVNC, RealVNC and noVNC work it stands on — and the
+  README says so where it says where Pantheon came from. The VM workstation's QEMU, Linux's KVM,
+  `genisoimage` and Ubuntu's cloud image were not credited anywhere; they have their own section now.
 - **Compact cuts the chat hard and no longer fails on a slow local model** (2026-11-01, `B1731`).
   The owner: *"Chat compaction does not actually do anything."* The summary was asked of the model
   with 30 seconds and 1,024 tokens, which a local reasoning model such as gpt-oss runs out of, and

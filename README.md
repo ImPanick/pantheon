@@ -167,6 +167,13 @@ Odysseus goes by two names. We cloned `pewdiepie-archdaemon/odysseus`; its own c
 at `odysseus-dev/odysseus`. Both are the same upstream project and we credit both — see
 [`NOTICE`](NOTICE).
 
+The workstation's live desktop and the agent's live browser are
+[KasmVNC](https://github.com/kasmtech/KasmVNC), open source from
+[Kasm Technologies](https://kasmweb.com): it is why you can watch the agent's screen as it works and
+take over the mouse and keyboard, instead of looking at screenshots. A VM workstation runs on
+[QEMU](https://www.qemu.org/) with Linux's KVM. Both are credited in
+[`CREDITS.md`](CREDITS.md#kasmvnc--the-live-workstation).
+
 Then we tried to change something small and ended up reading all 42,739 lines of the stylesheet.
 
 `--accent` — the colour behind every highlight, hover state and drag handle — was referenced 813
