@@ -1701,6 +1701,8 @@ Generate an image. Line 1 = description, line 2 = model name, line 3 = WxH (e.g.
     "manage_session": "- ```manage_session``` — Rename, archive, delete, fork, switch, or `list` chats (the UI calls them 'chats'; 'session' is internal). Line 1 = action (list/switch/rename/archive/unarchive/delete/important/unimportant/truncate/fork), Line 2 = exact chat id from a `list` result (or `current` where supported). For delete/archive/truncate, always list first and reuse the exact id; never invent placeholder ids. `switch`/`open` returns a clickable anchor link the user can tap to open the chat — use for \"open my X chat\".\n  `list_sessions` returns the same chat ids, most recent first.",
     "manage_memory": "- ```manage_memory``` — Manage the user's persistent memory (facts about the USER themselves, their preferences, context that persists across chats). Line 1 = action (list/add/edit/delete/search), rest = content. Use when user says 'remember this' about themselves, states identity facts like 'my name is <name>' / 'call me <name>' / 'I live in <place>', or asks about stored memories. DO NOT use for info about another person (their address, phone, email, birthday).\n  Info about another person goes in `manage_contact`: if the user pastes an address/phone with a name and says 'save this for <person>', use `manage_contact add` with the address arg, NOT manage_memory.",
     "manage_skills": "- ```manage_skills``` — Skill registry (SKILL.md format). Args (JSON): {\"action\": \"list|view|view_ref|search|add|edit|patch|publish|delete\", ...}. `list` returns the index of available skills (published + teacher-escalation drafts); `view name=foo` fetches the full SKILL.md; `view_ref name=foo path=...` loads a reference file under the skill directory. For `add`, provide an explicit kebab-case `name` and only report the exact returned name, because storage may normalize or dedupe it. Use this BEFORE doing domain work — there may already be a procedure (published or draft) that prescribes the correct steps. Drafts written by the teacher loop are authoritative guidance even though they're not yet published.",
+    # `B1737`. How the model acts on the skills catalogue itself.
+    "use_skill": "- ```use_skill``` — Open a skill by `name` (JSON: {\"name\": \"qa-a-change\"}) to get its full procedure, or search by the kind of work with `query` (JSON: {\"query\": \"QA a web app\"}). Before QA, testing, frontend or design work, or any task a listed skill covers, open the matching skill and follow it; search when none is listed.",
     "manage_tasks": "- ```manage_tasks``` — Create and manage scheduled background tasks (recurring AI jobs). Args (JSON): {\"action\": \"list|create|edit|delete|pause|resume|run|dry_run|draft_workflow\", ...}. For steps that run one after another, draft_workflow with {\"description\": \"<the user's words>\"} drafts a workflow, switched off, that a person checks in the Workbench.",
     "manage_endpoints": "- ```manage_endpoints``` — Add, remove, or configure AI model API endpoints. Args (JSON): {\"action\": \"list|add|delete|enable|disable\", ...}. Use when user wants to add a new AI provider.",
     # `B1398`, second instance. The narrowing sentence below ended `` (`B871`) ``
@@ -5255,15 +5257,28 @@ def _skills_for_turn(sm, owner, disabled_tools=None) -> list:
     `5a7c75c`). A shipped skill counts only where the catalogue would list it:
     `injectable_skills`, gated on this turn's tools when they are known.
     """
-    from services.memory.skills import arrives_when_matched
-
-    own = [s for s in sm.load_active(owner=owner) if not s.get("bundled")]
-    active = _skill_active_toolsets(disabled_tools) if disabled_tools is not None else None
     # `B1715`. The core set arrives as a matched body, which needs no tool to
     # open — so it is not a reason to offer `manage_skills` either.
-    shipped = [s for s in sm.injectable_skills(owner=owner, active_toolsets=active)
-               if s.get("bundled") and not arrives_when_matched(s)]
-    return own + shipped
+    # `B1737`. Nor is any shipped skill now: `use_skill` opens them
+    # (`_skills_to_open`), and `manage_skills` — the tool that edits — rides
+    # only with skills that are the person's own to edit.
+    # `disabled_tools` is kept for the callers: the person's own count on
+    # every turn, whatever its tools.
+    return [s for s in sm.load_active(owner=owner) if not s.get("bundled")]
+
+
+def _skills_to_open(sm, owner, disabled_tools=None) -> bool:
+    """Whether `use_skill` has anything to open on this turn. `B1737`.
+
+    The catalogue this turn would list (`index_for`, gated on its tools), or
+    the bundled library the tool's search reaches."""
+    try:
+        active = _skill_active_toolsets(disabled_tools) if disabled_tools is not None else None
+        return bool(sm.index_for(owner=owner, active_toolsets=active)
+                    or sm.library_count(owner=owner))
+    except Exception:
+        logger.debug("use_skill offer: skills unreadable", exc_info=True)
+        return False
 
 
 def _skill_query(last_user: str, approved_plan: Optional[str] = None) -> str:
@@ -5373,8 +5388,13 @@ def skill_toolsets_for_owner(owner) -> list:
     return _skill_active_toolsets(withheld)
 
 
-def _skill_body_tool_in_prompt(relevant_tools, disabled_tools, needs_admin: bool) -> bool:
-    """Would a `manage_skills action=view` issued on this turn actually run?
+def _skill_body_tool_in_prompt(relevant_tools, disabled_tools, needs_admin: bool,
+                               tool: str = "use_skill") -> bool:
+    """Would a call to open a skill, issued on this turn, actually run?
+
+    `B1737`. The skills message tells the model to open a procedure with
+    `use_skill`, so that is the name asked about by default; `tool` names
+    another (`manage_skills`) for a caller that still means that one.
 
     `B1360` (`fx9-skills`, 2026-10-14). Both halves of the skills message told
     the model to fetch a procedure with `manage_skills action=view`, and neither
@@ -5393,14 +5413,14 @@ def _skill_body_tool_in_prompt(relevant_tools, disabled_tools, needs_admin: bool
     predicate, called from the index renderer's call site and the matched
     renderer's with the same three arguments (`Law 7`).
     """
-    if turn_tool_access(disabled_tools).blocks("manage_skills"):
+    if turn_tool_access(disabled_tools).blocks(tool):
         return False
-    if needs_admin and "manage_skills" in _ADMIN_PROMPT_FORCE_INCLUDE:
+    if needs_admin and tool in _ADMIN_PROMPT_FORCE_INCLUDE:
         return True
     if relevant_tools is None:
         # The fallback prompt names every tool that has a section.
-        return "manage_skills" in TOOL_SECTIONS
-    return "manage_skills" in set(relevant_tools)
+        return tool in TOOL_SECTIONS
+    return tool in set(relevant_tools)
 
 
 def _record_fenced_channel(tool_names, disabled, compact, owner) -> None:
@@ -8443,6 +8463,15 @@ async def stream_agent_loop(
             _skills_on = _skills_pref_enabled(owner)
             _sm = SkillsManager(DATA_DIR)
             _owner_skills = _skills_for_turn(_sm, owner, disabled_tools) if _skills_on else []
+            # `B1737`. The catalogue now lists the core set and points at the
+            # library, and `use_skill` is how the model acts on it — offered
+            # whenever there is anything to open, the core set included, so
+            # the model picks a QA or frontend procedure itself instead of
+            # waiting for the request's words to match one. Read-only and two
+            # arguments, so it is not `manage_skills`' cost on every turn
+            # (`B1426`), which still rides only with the person's own skills.
+            if _skills_on and _skills_to_open(_sm, owner, disabled_tools):
+                _relevant_tools.add("use_skill")
             if _owner_skills:
                 _relevant_tools.add("manage_skills")
                 if _retrieval_query:

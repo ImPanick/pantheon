@@ -220,14 +220,17 @@ def test_first_run_setup_claims_skills_left_by_the_old_account(tmp_path, monkeyp
     assert [s["name"] for s in SkillsManager(str(tmp_path)).load(owner="panick")] == ["my-old-skill"]
 
 
-# ── 4. the core set arrives as a matched procedure, not a catalogue line ────
+# ── 4. the core set arrives as a matched procedure, and is catalogued ──────
 
-def test_the_core_set_is_not_catalogued_and_does_not_offer_the_skills_tool(store):
-    """`B1426`, eleven times over: a catalogue line per core skill, and
-    `manage_skills`' schema, in every turn — a note or a greeting included."""
+def test_the_core_set_is_catalogued_and_does_not_offer_the_skills_editor(store):
+    """`B1426`, eleven times over, was `manage_skills`' whole editing schema in
+    every turn. `B1737` (the owner, 2026-11-01: the agent must be able to pick
+    skills itself) lists the core set so the model can choose one, and opens it
+    with the read-only `use_skill` — so the core set is in the catalogue and is
+    still no reason to offer `manage_skills`."""
     from src import agent_loop
     listed = {s["name"] for s in store.index_for(owner="alice", active_toolsets=None)}
-    assert not (listed & set(CORE))
+    assert set(CORE) <= listed
     counted = {s["name"] for s in agent_loop._skills_for_turn(store, "alice", {"computer"})}
     assert not (counted & set(CORE))
 

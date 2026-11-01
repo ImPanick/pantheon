@@ -445,6 +445,7 @@ def test_no_skill_tells_the_model_to_use_a_background_job_the_workstation_refuse
 
 
 # ── `B1426`: a shipped skill puts `manage_skills` in a turn only where it shows ─
+# `B1737`: and now nowhere — `use_skill` is the tool that opens a shipped one.
 
 def test_the_vendored_drafts_do_not_put_the_skills_tool_in_every_turn(store):
     """286 drafts nobody is shown, and four procedures gated on the screen: on a
@@ -457,11 +458,15 @@ def test_the_vendored_drafts_do_not_put_the_skills_tool_in_every_turn(store):
 
 
 def test_a_turn_that_can_show_them_offers_the_tool_to_open_them(store):
-    rows = agent_loop._skills_for_turn(store, "alice", set())
-    assert {r["name"] for r in rows} == set(SHIPPED)
+    """`B1737`. The tool that opens a shipped skill is `use_skill` now, so a
+    turn that can show the workstation's four offers that and not the editor."""
+    listed = {r["name"] for r in store.index_for(owner="alice", active_toolsets=None)}
+    assert set(SHIPPED) <= listed
+    assert agent_loop._skills_to_open(store, "alice", set()) is True
+    assert agent_loop._skills_for_turn(store, "alice", set()) == []
     assert agent_loop._skill_body_tool_offered(
         BUILD_REQUEST, suppress_skills=False, owner="alice",
-        data_dir=constants.DATA_DIR, disabled_tools=set()) is True
+        data_dir=constants.DATA_DIR, disabled_tools=set()) is False
 
 
 def test_a_persons_own_drafts_still_count(store):

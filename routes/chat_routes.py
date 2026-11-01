@@ -2506,7 +2506,8 @@ def setup_chat_routes(
                 "bash", "host_shell", "python", "computer", "shell_with_login",
                 # `P16-20`: a network check is the same drift one tool wider.
                 "network",
-                "search_chats", "read_chat", "manage_skills", "manage_memory",
+                "search_chats", "read_chat", "manage_skills", "use_skill",
+                "manage_memory",
                 "read_file", "write_file", "edit_file",
                 "create_document", "edit_document", "update_document",
                 "send_email", "reply_to_email",
@@ -2533,6 +2534,7 @@ def setup_chat_routes(
                 "search_chats",       # past chat history
                 "read_chat",          # a past chat, read through (`B1621`)
                 "manage_skills",      # skill presets tied to user
+                "use_skill",          # the same, read (`B1737`)
                 "create_session",
                 "list_sessions",
                 "manage_session",

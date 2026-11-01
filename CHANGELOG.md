@@ -118,6 +118,12 @@ the next one is cut.
   that cannot see images still gets the list. `scripts/grounding_eval.py` measures it on your own
   model: five desktop and browser tasks, with marks off and on. Rebuild both images: the
   workstation gains the accessibility bus and Pantheon's image gains Tesseract.
+- **The agent picks its own skills** (2026-11-01, `B1737`). Every agent turn now lists the skills the
+  model may use, by category, and tells it to open the one for the work it is starting: QA and
+  testing, frontend and design, debugging, research, writing. A new read-only tool, `use_skill`,
+  opens a skill by name or searches by the kind of work, the bundled library of 286 included. Six
+  new skills ship: `qa-a-change`, `write-automated-tests`, `test-a-web-page`,
+  `design-a-web-interface`, `build-a-web-page` and `check-accessibility`.
 - **Reactions, both ways** (2026-11-01, `B1736`). Point at a reply and press the smile to react
   with 👍 ❤️ 😂 🎉 🤔 or 👎; your reaction stays under the reply, and the model hears about it on its
   next turn. The model can react to your messages too: a heart for a detailed, well-specified

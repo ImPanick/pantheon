@@ -1111,6 +1111,25 @@ FUNCTION_TOOL_SCHEMAS = [
             }
         }
     },
+    # `B1737`. The model's own way to a skill, apart from `manage_skills`'
+    # editing surface: two optional arguments and nothing it can write.
+    {
+        "type": "function",
+        "function": {
+            "name": "use_skill",
+            "description": (
+                "Open a listed skill (a proven procedure) by name and follow it, "
+                "or search skills by the kind of work. Read-only."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string", "description": "Skill name."},
+                    "query": {"type": "string", "description": "Kind of work, e.g. 'QA a web app'."}
+                }
+            }
+        }
+    },
     {
         "type": "function",
         "function": {

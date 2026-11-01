@@ -38,10 +38,17 @@ _INDEX_DRAFT_NOTE = (
     "guidance; if you follow one and it works, that's a good signal the procedure "
     "is correct."
 )
+#: `B1737`, the owner's ask (2026-11-01): *"If it's entering a QA process, it
+#: needs to be able to call on the "QA" Skills... If its designing frontend or
+#: web design things, it needs to be able to call upon the skills itself."* So
+#: the catalogue tells the model to choose: open the procedure for the work it
+#: is starting, and search for one when nothing listed fits. `use_skill` is the
+#: read-only tool for both; `manage_skills` stays the editing surface.
 INDEX_PREAMBLE = (
-    "Procedures the assistant should consult before doing domain work. "
-    "Fetch the full procedure with `manage_skills` action=view name=<name> "
-    "when one looks relevant. " + _INDEX_DRAFT_NOTE
+    "Proven procedures. Before work one covers (QA, testing, frontend, "
+    "design, debugging…), open it with `use_skill` name=<name> and follow it; "
+    "if none fits, `use_skill` query=<kind of work> searches the bundled "
+    "library too. " + _INDEX_DRAFT_NOTE
 )
 
 #: `B1360`. The same catalogue, for a turn that cannot call `manage_skills`.
@@ -88,8 +95,7 @@ _MATCHED_LEAD = (
 )
 MATCHED_PREAMBLE = (
     _MATCHED_LEAD + " To see the full SKILL.md (more detail, pitfalls, "
-    "verification steps), call `manage_skills` with action='view' and the "
-    "skill name."
+    "verification steps), call `use_skill` with the skill name."
 )
 MATCHED_PREAMBLE_NO_FETCH = (
     _MATCHED_LEAD + " The full SKILL.md cannot be fetched on this turn, so "
@@ -108,7 +114,7 @@ MATCHED_CAP_PHRASE = ("the matched-skill text is capped so it cannot crowd out "
                       "the conversation")
 MATCHED_TRUNCATION_NOTE = (
     "\n_{what}: " + MATCHED_CAP_PHRASE
-    + ". Fetch one in full with `manage_skills` action=view name=<name>._"
+    + ". Fetch one in full with `use_skill` name=<name>._"
 )
 MATCHED_TRUNCATION_NOTE_NO_FETCH = "\n_{what}: " + MATCHED_CAP_PHRASE + "._"
 #: `Law 10`: "0 further procedures were left out" is not what happened when a
@@ -135,7 +141,7 @@ MATCHED_CUT_WHAT_SHORT = "The procedure above is cut short"
 #: is missing and how to get it. The procedure is a **list**, so these are real
 #: steps and the count is exact — not a character cut dressed up as steps.
 MATCHED_STEPS_ELIDED = ("  _…{remaining} more step(s) in the full SKILL.md. "
-                        "`manage_skills` action=view name={name}._")
+                        "`use_skill` name={name}._")
 MATCHED_STEPS_ELIDED_NO_FETCH = ("  _…{remaining} more step(s) not shown, and the "
                                  "full SKILL.md cannot be fetched on this turn._")
 #: And what the block-level note says when that is what happened. `Law 10`:
@@ -179,8 +185,9 @@ WITHHELD_FIELDS: tuple = _withheld_fields()
 #: concludes the other 260 do not exist, and stops asking.
 INDEX_TRUNCATION_NOTE = (
     "\n_{omitted} more skills are installed and not listed here — the catalogue "
-    "is capped so it cannot crowd out the conversation. Ask for the rest with "
-    "`manage_skills` action=list, or search them with action=search._"
+    "is capped so it cannot crowd out the conversation. Search them with "
+    "`use_skill` query=<the kind of work>, or list them with `use_skill` and "
+    "no arguments._"
 )
 
 
@@ -205,8 +212,19 @@ def _render(entries: Sequence[Dict], note: str = "", *, can_fetch: bool = True) 
     for s in entries:
         by_cat.setdefault(s.get("category") or "general", []).append(s)
     for cat in sorted(by_cat):
-        lines.append(f"\n**{cat}**")
-        for s in by_cat[cat]:
+        # `B1737`. The install's shipped skills are named, not described: their
+        # names say what they are for (`qa-a-change`, `design-a-web-interface`)
+        # and listing seventeen descriptions on every turn cost ~900 tokens —
+        # measured as a 9,000-token window's first request going over by ten.
+        # `use_skill` shows a description on request; a person's own skill keeps
+        # its line, since its name is whatever they called it.
+        shipped = [s for s in by_cat[cat] if s.get("shipped")]
+        own = [s for s in by_cat[cat] if not s.get("shipped")]
+        if shipped:
+            lines.append(f"\n**{cat}** — " + " · ".join(f"`{s['name']}`" for s in shipped))
+        else:
+            lines.append(f"\n**{cat}**")
+        for s in own:
             badge = " *(draft)*" if s.get("status") == "draft" else ""
             lines.append(f"- `{s['name']}` — {s.get('description') or ''}{badge}")
     if note:

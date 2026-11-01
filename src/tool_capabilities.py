@@ -148,6 +148,18 @@ _register(
     result_integrity=ResultIntegrity.EXTERNAL_UNTRUSTED,
 )
 _register(
+    # `B1737`. Opens or searches skills: the person's own saved procedures and
+    # the install's shipped ones, which is private reading. Its result is
+    # `SYSTEM`, not `EXTERNAL_UNTRUSTED`, on the ruling the matched-skill block
+    # already carries (`D-2026-10-09-01` §1, `B1328`): an installed skill is the
+    # person's own saved material, so opening one must not arm the
+    # post-external gate any more than having it pasted in does — the
+    # laundering path is gated where a skill is written (`manage_skills add`).
+    # A run already tainted still asks before it, as before any private read.
+    {"use_skill"},
+    ToolEffect.READ_PRIVATE,
+)
+_register(
     # `B66`. Both halves are real: `add_directory` indexes files off disk, and
     # `search` hands their contents back to the next model round, so results are
     # workspace-untrusted for the same reason `read_file`'s are.

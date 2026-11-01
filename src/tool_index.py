@@ -107,6 +107,8 @@ BUILTIN_TOOL_DESCRIPTIONS: Dict[str, str] = {
     "agent_browser": "A real web browser — in the person's workstation when they have one, in Pantheon otherwise — which they can watch and take over in the app: open a page, read its text and numbered elements, click, type, press keys, scroll, go back, manage tabs, take a screenshot, sign in with a login from the person's vault without seeing its password, inspect a page's design — colours, fonts, spacing, an element's styles — or the element the person pointed at. For sites that need clicking, logging in or forms, and for \"this page\".",
     "manage_rag": "RAG document index: list indexed files, add or remove a directory, store arbitrary text (add_text), or search the vector store (search). Use add_text to offload a large tool result you must retain and search to get it back, instead of holding it all in context. NOT for durable facts about the user — those go in manage_memory.",
     "manage_skills": "Skill management: add, update, publish, or search reusable skills/presets.",
+    # `B1737`. The model's own way to a procedure: read-only, two arguments.
+    "use_skill": "Open a skill (a proven step-by-step procedure) by name to follow it, or search the skills — Pantheon's, the person's own and the bundled library — by the kind of work about to start: QA and testing, frontend and web design, accessibility, debugging, research, writing.",
     "manage_tasks": "Scheduled task management: list, create, edit, delete, pause, resume, or run cron tasks — or dry_run one to say what a run would do without running it, or draft_workflow to draft a workflow of several steps that run one after another.",
     "manage_endpoints": "Endpoint management: list, add, delete, enable, or disable model API endpoints.",
     "manage_mcp": "MCP server management: list, add, delete, reconnect servers, or list available tools.",
@@ -611,7 +613,7 @@ class ToolIndex:
         frozenset({"skill", "skills", "is there a skill", "procedure for",
                    "runbook", "how do we usually", "add this to my skills",
                    "save this as a skill"}):
-            {"manage_skills"},
+            {"manage_skills", "use_skill"},
         # Chat/session management. "rename" alone maps to documents below, so a
         # request like "rename the last 12 sessions/chats" needs these session
         # keywords to surface the right tools (NOT app_api — /api/sessions is

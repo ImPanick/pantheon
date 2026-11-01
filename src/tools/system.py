@@ -30,6 +30,109 @@ logger = logging.getLogger(__name__)
 _SKILL_EXPORT_MAX_CHARS = 60_000
 
 
+#: `B1737`. Said above a vendored skill's text when the model opens one. The
+#: 286 were written for other agent harnesses, so their tool names are often
+#: not this product's.
+USE_SKILL_LIBRARY_NOTE = (
+    "_From Pantheon's bundled skill library, written for another agent "
+    "harness. Follow its method; where it names a tool you were not offered, "
+    "use the closest tool you have, and skip a step no tool of yours can do._"
+)
+
+#: `B1737`. The most rows one `use_skill query=…` returns.
+USE_SKILL_SEARCH_LIMIT = 8
+
+
+def _use_skill_toolsets(owner) -> Optional[List[str]]:
+    """The tools every turn of this person may call, for the search's gates."""
+    try:
+        from src.agent_loop import skill_toolsets_for_owner
+        return skill_toolsets_for_owner(owner)
+    except Exception:
+        logger.debug("use_skill: standing toolsets unreadable", exc_info=True)
+        return None
+
+
+async def do_use_skill(content: str, owner: Optional[str] = None) -> Dict:
+    """`B1737`. Open a skill, or search for one, chosen by the model itself.
+
+    The owner, 2026-11-01: *"If it's entering a QA process, it needs to be able
+    to call on the "QA" Skills... If its designing frontend or web design
+    things, it needs to be able to call upon the skills itself."* The catalogue
+    in the prompt lists the skills a turn is offered; this is how the model
+    acts on it, read-only, with two arguments:
+
+    * `name` — the skill's whole SKILL.md (the person's own, Pantheon's, or the
+      bundled library's, which is marked as such). Counted as an open
+      (`record_open`), the signal `P8-21` ranks on.
+    * `query` — what kind of work it is about to do (*"QA a web app"*); up to
+      eight skills that fit, from the catalogue and the library
+      (`SkillsManager.find_skills`).
+
+    Neither — the catalogue again, and how many more the library holds.
+    Writes nothing; editing skills stays `manage_skills`.
+    """
+    try:
+        args = _parse_tool_args(content)
+    except ValueError:
+        args = {"name": str(content or "").strip()} if str(content or "").strip() else {}
+    if not isinstance(args, dict):
+        args = {}
+    from services.memory.skills import SkillsManager, VENDORED_LIBRARY
+    from src.constants import DATA_DIR
+    sm = SkillsManager(DATA_DIR)
+    name = str(args.get("name") or args.get("skill") or "").strip()
+    query = str(args.get("query") or "").strip()
+
+    if name:
+        md = sm.read_skill_md(name, owner=owner, include_library=True)
+        if md is None:
+            # Ungated: a near name is a spelling question, not an offer.
+            near = sm.find_skills(name.replace("-", " "), owner=owner, limit=5)
+            hint = (" Closest: " + ", ".join(f"`{r['name']}`" for r in near) + ".") if near else ""
+            return {"error": f"No skill is called {name!r}.{hint} "
+                             "Search with use_skill query=<the kind of work>.",
+                    "exit_code": 1}
+        row: Dict[str, Any] = {}
+        try:
+            row = {s.get("name"): s for s in sm.load_active(owner=owner)}.get(name) or {}
+        except Exception:
+            logger.debug("use_skill: layer unreadable", exc_info=True)
+        vendored = row.get("library") == VENDORED_LIBRARY
+        try:
+            # A shipped skill's counters are read under no owner (its file
+            # has none), so its open is written there too — under the
+            # person's name it would be counted where nothing reads it.
+            sm.record_open(name, owner=None if row.get("bundled") else owner)
+        except Exception:
+            logger.debug("skill open not recorded", exc_info=True)
+        text = (USE_SKILL_LIBRARY_NOTE + "\n\n" + md) if vendored else md
+        return {"results": text, "skill": name}
+
+    toolsets = _use_skill_toolsets(owner)
+    if query:
+        rows = sm.find_skills(query, owner=owner, active_toolsets=toolsets,
+                              limit=USE_SKILL_SEARCH_LIMIT)
+        if not rows:
+            return {"results": f"No skill fits {query!r}. Carry on without one, "
+                               "or try other words for the kind of work."}
+        lines = [f"Skills for {query!r} — open one with use_skill name=<name>:"]
+        for r in rows:
+            mark = " (library)" if r["source"] == "library" else ""
+            lines.append(f"- `{r['name']}`{mark} [{r['category']}] — {r['description']}")
+        return {"results": "\n".join(lines)}
+
+    idx = sm.index_for(owner=owner, active_toolsets=toolsets)
+    lines = ["Skills you can open with use_skill name=<name>:"]
+    for r in idx:
+        lines.append(f"- `{r['name']}` [{r.get('category') or 'general'}] — {r.get('description') or ''}")
+    more = sm.library_count(owner=owner)
+    if more:
+        lines.append(f"\n{more} more are in the bundled library: search them with "
+                     "use_skill query=<the kind of work>.")
+    return {"results": "\n".join(lines) if len(lines) > 1 else "No skills are installed."}
+
+
 async def do_manage_skills(content: str, owner: Optional[str] = None) -> Dict:
     """Handle manage_skills tool calls.
 

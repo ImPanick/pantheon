@@ -705,8 +705,11 @@ def test_the_same_skill_library_capped_for_this_person_is_not(monkeypatch):
     """And the cap decides it. `manage_skills` is in the non-admin blocklist,
     so the same turn at that privilege has nothing to look with and the card
     ships at once — which is what a non-admin turn measured on `b4e5fe1` was
-    doing while the gate counted the tool anyway."""
-    _patch_common(monkeypatch, skills=True, blocked={"manage_skills"})
+    doing while the gate counted the tool anyway.
+
+    `B1737`: `use_skill` reads the same library, so the cap that leaves this
+    person nothing to look with withholds both."""
+    _patch_common(monkeypatch, skills=True, blocked={"manage_skills", "use_skill"})
     requests, events = _run(
         monkeypatch,
         [ASK_BLOCK],
