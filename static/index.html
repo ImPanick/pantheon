@@ -1902,6 +1902,16 @@
             </svg>
             <span class="tool-chip-label">Shell</span>
           </button>
+          <!-- `B1730`. Conversation: the agent says each reply out loud while it
+               is written, in the voice this person chose (Settings →
+               Conversation). Each person's own switch (`js/conversation.js`);
+               hidden while this server does not speak at all. -->
+          <button type="button" class="input-icon-btn tool-chip conversation-chip" title="Conversation: the agent says its replies out loud" id="conversation-toggle-btn" data-conversation-switch aria-label="Conversation" aria-pressed="false" hidden style="display:none">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M8.5 9v2"/><path d="M12 7.5v5"/><path d="M15.5 9v2"/>
+            </svg>
+            <span class="tool-chip-label">Conversation</span>
+          </button>
           <!-- (`B1706`: the Auto-approve on/off chip that sat here, beside Plan /
                Web / Shell, is now the approval-mode selector at the right of
                this row, `#approval-mode-wrap` — one control, `Law 7`.) -->
@@ -2607,15 +2617,20 @@
                text has. -->
           <div class="admin-card">
             <h2 style="display:flex;align-items:center;gap:6px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="margin-right:1px;opacity:0.6;flex-shrink:0" aria-hidden="true"><path d="M4 10v4"/><path d="M8 6.5v11"/><path d="M12 3.5v17"/><path d="M16 7.5v9"/><path d="M20 10.5v3"/></svg>Voice Chat<span style="flex:1"></span><label class="admin-switch" title="The call button beside Send"><input type="checkbox" id="set-voiceChatEnabledToggle" checked aria-label="Voice chat" aria-describedby="set-voiceChatSub"><span class="admin-slider"></span></label></h2>
-            <div class="admin-toggle-sub" id="set-voiceChatSub" style="margin-bottom:8px">Talk with the agent in the open chat, from the call button beside Send. It hears you with speech to text, sends what you said as your next message, and says the reply while it is being written. An approval is always given on its card in the chat, never by voice.</div>
+            <div class="admin-toggle-sub" id="set-voiceChatSub" style="margin-bottom:8px">Talk with the agent in the open chat, from the call button beside Send. It hears you with speech to text, sends what you said as your next message, and says the reply while it is being written. An approval is always given on its card in the chat, never by voice. The voice below is everyone’s unless they choose their own in Settings → Conversation.</div>
             <div class="settings-col">
               <div class="settings-row">
                 <label class="settings-label" for="set-ttsProviderSelect">Voice</label>
                 <select id="set-ttsProviderSelect" class="settings-select" aria-describedby="set-ttsProviderNote">
                   <option value="disabled">None: replies are shown, not said</option>
+                  <!-- `B1728`, `B1729`. "Automatic" as shipped: Chatterbox on
+                       the GPU while it runs, else Kokoro on the processor. -->
+                  <option value="auto">Automatic: Chatterbox on a GPU, else Kokoro</option>
+                  <option value="kokoro">Kokoro, on this server</option>
+                  <option value="chatterbox">Chatterbox, on this server’s GPU</option>
                   <option value="piper">Piper, on this server</option>
                   <option value="browser">The browser’s own</option>
-                  <option value="local">Kokoro, on this server (needs a GPU)</option>
+                  <option value="local">Kokoro through PyTorch (needs a GPU)</option>
                 </select>
               </div>
               <div id="set-ttsProviderNote" class="admin-toggle-sub" role="note"></div>
@@ -3086,6 +3101,41 @@
           </div>
           <div class="admin-card">
             <div id="shortcuts-list"></div>
+          </div>
+        </div>
+
+        <!-- ═══ CONVERSATION TAB (`B1730`) ═══
+             Each person's own: the Conversation switch (the composer's chip,
+             the same switch) and the voice Pantheon speaks to them in, kept
+             with their account (`/api/prefs`). Drawn by
+             `static/js/conversationSettings.js` from `GET /api/tts/voices`. -->
+        <div data-settings-panel="conversation" class="hidden">
+          <div class="admin-card">
+            <h2 style="display:flex;align-items:center;gap:6px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:1px;opacity:0.6;flex-shrink:0" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M8.5 9v2"/><path d="M12 7.5v5"/><path d="M15.5 9v2"/></svg>Conversation<span style="flex:1"></span><label class="admin-switch" title="The Conversation chip beside Plan, Web and Shell"><input type="checkbox" id="conv-switch" data-conversation-switch aria-label="Conversation" aria-describedby="conv-sub"><span class="admin-slider"></span></label></h2>
+            <div class="admin-toggle-sub" id="conv-sub" style="margin-bottom:8px">The agent says each reply out loud while it writes it, in the voice you choose here. These are yours: nobody else's Pantheon changes, and they follow you to every device you sign in on. A voice chat answers you in this voice too.</div>
+            <div class="settings-col">
+              <div class="settings-row">
+                <label class="settings-label" for="conv-voice">Voice</label>
+                <select id="conv-voice" class="settings-select" aria-describedby="conv-voice-note"></select>
+              </div>
+              <div id="conv-voice-note" class="admin-toggle-sub" role="note"></div>
+              <div class="settings-row">
+                <label class="settings-label" for="conv-speed">Speed</label>
+                <select id="conv-speed" class="settings-select">
+                  <option value="">The voice’s own</option>
+                  <option value="0.75">0.75×</option>
+                  <option value="0.9">0.9×</option>
+                  <option value="1">1×</option>
+                  <option value="1.1">1.1×</option>
+                  <option value="1.25">1.25×</option>
+                  <option value="1.5">1.5×</option>
+                </select>
+              </div>
+              <div class="settings-row" style="gap:10px;flex-wrap:wrap">
+                <button type="button" id="conv-preview" class="admin-btn-sm">Hear it</button>
+                <span id="conv-status" class="admin-toggle-sub" role="status" aria-live="polite" style="flex:1;min-width:12em"></span>
+              </div>
+            </div>
           </div>
         </div>
 

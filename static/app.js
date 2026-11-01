@@ -76,6 +76,7 @@ import cookbookModule from './js/cookbook.js';
 import groupModule from './js/group.js';
 import * as researchPanelModule from './js/research/panel.js?v=20261009census';
 import ttsModule from './js/tts-ai.js';
+import { initConversation, toggleConversation } from './js/conversation.js';   // `B1730`
 import spinnerModule from './js/spinner.js';
 import { initKeyboardShortcuts, KEYBIND_DEFAULTS, formatKeybind, ariaKeyshortcuts } from './js/keyboard-shortcuts.js';
 import { getSettings, getAuthStatus, getAuthFeatures, getDefaultChat } from './js/appConfig.js';
@@ -2178,7 +2179,10 @@ function initializeEventListeners() {
     const plusBtn = el('overflow-plus-btn');
     if (!plusBtn) return;
     const menu = el('overflow-menu');
-    const anyActive = menu ? Array.from(menu.querySelectorAll('.overflow-menu-item.active')).some(item => item.style.display !== 'none') : false;
+    // `B1730`: a row the menu does not show (`hidden`, as the old TTS Mode row
+    // is, which mirrors Conversation now) lights nothing: the dot points at
+    // something a person can see once the menu is open.
+    const anyActive = menu ? Array.from(menu.querySelectorAll('.overflow-menu-item.active')).some(item => item.style.display !== 'none' && !item.hidden) : false;
     plusBtn.classList.toggle('has-active', anyActive);
   }
   // External modules (compare) dispatch this when their overflow state changes
@@ -2409,7 +2413,9 @@ function initializeEventListeners() {
     // `plan-toggle-btn` (P6-12) goes first so it collapses before Shell and Web
     // — their relative order is untouched — and lands in the overflow menu with
     // a text label rather than being silently clipped by the bar's overflow.
-    const collapsibleIds = ['plan-toggle-btn', 'bash-toggle-btn', 'web-toggle-btn'];
+    // `B1730`: Conversation first of all, a person's own mode the + menu's
+    // Modes lists with the others, so it is the first to fold away.
+    const collapsibleIds = ['conversation-toggle-btn', 'plan-toggle-btn', 'bash-toggle-btn', 'web-toggle-btn'];
     const collapsibleBtns = collapsibleIds.map(id => el(id)).filter(Boolean);
     // Map of toolbar btn id → overflow mirror element (created dynamically)
     const overflowMirrors = new Map();
@@ -2587,23 +2593,17 @@ function initializeEventListeners() {
     checkPickerOverflow();
   })();
 
-  // TTS Mode toggle (separate from overflow IIFE for safety)
+  // `B1730`. Conversation: each person's own switch for the agent saying its
+  // replies out loud (`js/conversation.js`), the composer's chip. The + menu's
+  // hidden "TTS Mode" row, which was this switch with no name and no home,
+  // is the same switch now: it flips Conversation and shows its state.
+  try { initConversation(); } catch (e) { console.warn('Conversation did not start', e); }
   (function initTTSToggle() {
     const ttsBtn = document.getElementById('overflow-tts-btn');
     if (!ttsBtn) return;
-    try {
-      const st = loadToggleState();
-      if (st.ttsMode) {
-        ttsBtn.classList.add('active');
-        if (window.aiTTSManager) window.aiTTSManager.autoPlay = true;
-      }
-    } catch(e) {}
-
-    ttsBtn.addEventListener('click', () => {
-      const isActive = !ttsBtn.classList.contains('active');
-      ttsBtn.classList.toggle('active', isActive);
-      if (window.aiTTSManager) window.aiTTSManager.autoPlay = isActive;
-      const s = loadToggleState(); s.ttsMode = isActive; saveToggleState(s);
+    ttsBtn.setAttribute('data-conversation-switch', '');
+    ttsBtn.addEventListener('click', async () => {
+      await toggleConversation();
       updatePlusDot();
     });
   })();

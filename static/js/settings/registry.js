@@ -179,6 +179,19 @@ export const SETTINGS_PANELS = Object.freeze([
     group: 'experience',
     keywords: ['shortcuts', 'keyboard', 'hotkeys'],
   }),
+  definePanel({
+    id: 'conversation',
+    icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M8.5 9v2"/><path d="M12 7.5v5"/><path d="M15.5 9v2"/></svg>',
+    // `B1730`. Each person's own: the Conversation switch and the voice
+    // Pantheon speaks to them in (`/api/prefs`). `settings.js` lazy-imports
+    // `conversationSettings.js`. The words are the ones a person would type
+    // for it, the voices' names among them.
+    label: 'Conversation',
+    group: 'experience',
+    keywords: ['conversation', 'voice', 'my voice', 'speak', 'spoken', 'say', 'out loud', 'aloud',
+               'read aloud', 'talk', 'tts', 'text to speech', 'kokoro', 'chatterbox', 'piper',
+               'speed', 'accent'],
+  }),
 
   definePanel({
     id: 'account',

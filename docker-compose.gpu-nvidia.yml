@@ -138,6 +138,7 @@ services:
       # NVIDIA overlay (from docker/gpu.nvidia.yml).
       - NVIDIA_VISIBLE_DEVICES=all
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      - PANTHEON_CHATTERBOX_URL=${PANTHEON_CHATTERBOX_URL:-http://chatterbox:8004}
     depends_on:
       searxng:
         condition: service_healthy
@@ -403,6 +404,26 @@ services:
     # Each machine is powered off cleanly (its disk is people's work), which
     # takes longer than Docker's default ten seconds.
     stop_grace_period: 2m
+    restart: unless-stopped
+
+  # NVIDIA overlay (from docker/gpu.nvidia.yml). `B1729`: Chatterbox Turbo,
+  # the voice for the GPU, opt-in with COMPOSE_PROFILES=chatterbox in .env;
+  # docker/gpu.nvidia.yml says what it is and holds.
+  chatterbox:
+    profiles: ["chatterbox"]
+    build:
+      context: ./voice/chatterbox
+    environment:
+      - CHATTERBOX_DEVICE=${CHATTERBOX_DEVICE:-cuda}
+    volumes:
+      - ${APP_DATA_DIR:-./data}/chatterbox-voices:/voices:z
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
     restart: unless-stopped
 
 volumes:

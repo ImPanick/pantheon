@@ -34,4 +34,8 @@ av==18.1.0
 # espeak-ng for pronunciation), which an AGPL-3.0-or-later program may use;
 # see CREDITS.md. Kokoro, the GPU voice in requirements-optional.txt, cannot
 # install on the image's Python at all.
+# `B1728`: the same package speaks Kokoro on the CPU too, with no package of
+# Kokoro's: its ONNX export runs on the ONNX Runtime Piper brings, and its
+# phonemes come from the espeak-ng Piper carries (`services/tts/kokoro_cpu.py`).
+# The model is baked into the image or fetched once (`kokoro-onnx`'s release).
 piper-tts==1.8.0

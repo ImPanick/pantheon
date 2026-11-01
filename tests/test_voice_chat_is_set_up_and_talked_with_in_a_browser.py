@@ -795,10 +795,15 @@ def test_a_press_with_nothing_set_up_says_why_and_opens_the_voice_page(drive):
     page = drive["page"]
     assert page["headings"] == ["Speech to Text", "Voice Chat"]
     assert page["nav"] == "Voice"
-    assert [v for v, _ in page["voices"]] == ["disabled", "piper", "browser", "local"]
+    # `B1728`: "Automatic" (Chatterbox on a GPU, else Kokoro), Kokoro and
+    # Chatterbox join the voices this server can speak with.
+    assert [v for v, _ in page["voices"]] == ["disabled", "auto", "kokoro", "chatterbox",
+                                              "piper", "browser", "local"]
     assert [v for v, _ in page["pauses"]] == ["short", "normal", "relaxed"]
     assert (page["voiceChat"], page["bargeIn"], page["readAloud"]) == (True, True, False)
-    assert (page["voice"], page["stt"]) == ("disabled", "disabled")
+    # `B1728`: a fresh server speaks with "Automatic", which never reaches the
+    # internet for a model (`Law 16`); hearing stays off until it is chosen.
+    assert (page["voice"], page["stt"]) == ("auto", "disabled")
 
 
 def test_every_control_on_the_voice_page_saves_and_reads_back(drive):

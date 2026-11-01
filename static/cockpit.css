@@ -824,11 +824,21 @@ html.cockpit .overflow-plus-btn[aria-expanded="true"],
 html.cockpit .overflow-plus-btn.active,
 html.cockpit .overflow-plus-btn.open { transform: rotate(135deg); background: var(--ck-accent-wash) !important; color: var(--ck-accent) !important; }
 html.cockpit .overflow-plus-btn .plus-active-dot { display: none !important; }
+/* `B1730`. A switch that is on but folded into the + menu for room
+   (Conversation folds first, `app.js`) lights a lamp on the + itself, the
+   switches' own accent lamp, so a person sees it is on without opening the
+   menu. While the menu is open the + turns, and the Modes row says it there. */
+html.cockpit .overflow-plus-btn { position: relative; }
+html.cockpit .overflow-plus-btn.has-active:not([aria-expanded="true"]):not(.active):not(.open) .plus-active-dot {
+  display: block !important; position: absolute; top: 3px; right: 3px; width: 6px; height: 6px; border-radius: 50%;
+  background: var(--ck-accent); box-shadow: 0 0 0 2px var(--ck-accent-wash);
+}
 html.cockpit .ck-vsep { width: 1px; height: 18px; background: var(--ck-edge); margin: 0 4px; flex: none; }
 /* Plan, Web and Shell: three fixed switches with a lamp for on */
 html.cockpit #plan-toggle-btn,
 html.cockpit #web-toggle-btn,
-html.cockpit #bash-toggle-btn {
+html.cockpit #bash-toggle-btn,
+html.cockpit #conversation-toggle-btn {
   display: inline-flex !important; align-items: center; gap: 6px; height: 30px !important; padding: 0 11px 0 9px !important; border-radius: 999px !important;
   font: 400 12.5px/1 var(--ck-font-ui) !important; color: var(--ck-text-3) !important; background: transparent !important; border: 0 !important; box-shadow: none !important;
   min-width: 0; width: auto !important; flex: none; opacity: 1 !important;
@@ -836,20 +846,21 @@ html.cockpit #bash-toggle-btn {
 }
 html.cockpit #plan-toggle-btn::before,
 html.cockpit #web-toggle-btn::before,
-html.cockpit #bash-toggle-btn::before {
+html.cockpit #bash-toggle-btn::before,
+html.cockpit #conversation-toggle-btn::before {
   content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--ck-edge); flex: none; transition: all var(--ck-t) var(--ck-ease);
 }
-html.cockpit #plan-toggle-btn svg, html.cockpit #web-toggle-btn svg, html.cockpit #bash-toggle-btn svg { width: 16px !important; height: 16px !important; stroke-width: 1.6; }
-html.cockpit #plan-toggle-btn .tool-chip-label, html.cockpit #web-toggle-btn .tool-chip-label, html.cockpit #bash-toggle-btn .tool-chip-label {
+html.cockpit #plan-toggle-btn svg, html.cockpit #web-toggle-btn svg, html.cockpit #bash-toggle-btn svg, html.cockpit #conversation-toggle-btn svg { width: 16px !important; height: 16px !important; stroke-width: 1.6; }
+html.cockpit #plan-toggle-btn .tool-chip-label, html.cockpit #web-toggle-btn .tool-chip-label, html.cockpit #bash-toggle-btn .tool-chip-label, html.cockpit #conversation-toggle-btn .tool-chip-label {
   display: inline !important; font: inherit !important; color: inherit !important; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: none !important; opacity: 1 !important;
 }
-html.cockpit #plan-toggle-btn:hover, html.cockpit #web-toggle-btn:hover, html.cockpit #bash-toggle-btn:hover { background: var(--ck-tint) !important; color: var(--ck-text-2) !important; }
-html.cockpit #plan-toggle-btn[aria-pressed="true"], html.cockpit #web-toggle-btn[aria-pressed="true"], html.cockpit #bash-toggle-btn[aria-pressed="true"],
-html.cockpit #plan-toggle-btn.active, html.cockpit #web-toggle-btn.active, html.cockpit #bash-toggle-btn.active {
+html.cockpit #plan-toggle-btn:hover, html.cockpit #web-toggle-btn:hover, html.cockpit #bash-toggle-btn:hover, html.cockpit #conversation-toggle-btn:hover { background: var(--ck-tint) !important; color: var(--ck-text-2) !important; }
+html.cockpit #plan-toggle-btn[aria-pressed="true"], html.cockpit #web-toggle-btn[aria-pressed="true"], html.cockpit #bash-toggle-btn[aria-pressed="true"], html.cockpit #conversation-toggle-btn[aria-pressed="true"],
+html.cockpit #plan-toggle-btn.active, html.cockpit #web-toggle-btn.active, html.cockpit #bash-toggle-btn.active, html.cockpit #conversation-toggle-btn.active {
   color: var(--ck-text) !important; background: var(--ck-accent-wash) !important;
 }
-html.cockpit #plan-toggle-btn[aria-pressed="true"]::before, html.cockpit #web-toggle-btn[aria-pressed="true"]::before, html.cockpit #bash-toggle-btn[aria-pressed="true"]::before,
-html.cockpit #plan-toggle-btn.active::before, html.cockpit #web-toggle-btn.active::before, html.cockpit #bash-toggle-btn.active::before { background: var(--ck-accent); }
+html.cockpit #plan-toggle-btn[aria-pressed="true"]::before, html.cockpit #web-toggle-btn[aria-pressed="true"]::before, html.cockpit #bash-toggle-btn[aria-pressed="true"]::before, html.cockpit #conversation-toggle-btn[aria-pressed="true"]::before,
+html.cockpit #plan-toggle-btn.active::before, html.cockpit #web-toggle-btn.active::before, html.cockpit #bash-toggle-btn.active::before, html.cockpit #conversation-toggle-btn.active::before { background: var(--ck-accent); }
 /* One on-state for every switch, in the row and in the loadout (`B1552`):
    full text on the accent wash. On a light page the wash darkens the ground,
    so the label steps a little toward black to keep 4.5:1 (`cute` was 4.11).
@@ -857,8 +868,16 @@ html.cockpit #plan-toggle-btn.active::before, html.cockpit #web-toggle-btn.activ
    repeats, because that lamp means "steps run without asking". */
 html.cockpit .ck-loadout .tool-chip.active:not(#workspace-indicator-btn),
 html.cockpit .ck-loadout .tool-indicator.active { color: var(--ck-text) !important; background: var(--ck-accent-wash) !important; }
-html.cockpit[data-ck-tone="light"] :is(#plan-toggle-btn, #web-toggle-btn, #bash-toggle-btn):is(.active, [aria-pressed="true"]),
+html.cockpit[data-ck-tone="light"] :is(#plan-toggle-btn, #web-toggle-btn, #bash-toggle-btn, #conversation-toggle-btn):is(.active, [aria-pressed="true"]),
 html.cockpit[data-ck-tone="light"] .ck-loadout :is(.tool-chip, .tool-indicator).active:not(#workspace-indicator-btn) { color: color-mix(in oklab, var(--ck-text) 80%, #000) !important; }
+/* `B1730`. Conversation is the row's fourth switch (above), and the only one
+   that can be absent: hidden while this server does not speak at all, folded
+   away first when the row runs out of room (`app.js`), and its lamp ringed in
+   the warning colour when no voice can speak to this person yet (its title
+   says why, as Settings → Conversation does). */
+html.cockpit #conversation-toggle-btn[hidden],
+html.cockpit #conversation-toggle-btn.toolbar-collapsed { display: none !important; }
+html.cockpit #conversation-toggle-btn.conversation-cannot::before { background: transparent; box-shadow: inset 0 0 0 1.5px var(--ck-warn); }
 html.cockpit .approval-mode-chip.active { color: var(--ck-warn-text) !important; background: color-mix(in oklab, var(--ck-warn) 14%, transparent) !important; }
 /* indicator chips that used to crowd the switch row now live in the loadout */
 html.cockpit .chat-input-left > .tool-indicator { display: none !important; }
@@ -943,8 +962,8 @@ html.cockpit .ck-hints { display: flex; gap: 16px; justify-content: center; font
 html.cockpit .ck-hints span { display: inline-flex; gap: 5px; align-items: center; }
 @container chatbar (max-width: 680px) { html.cockpit .chat-context-pill .ctx-ring-of { display: none; } }
 @container chatbar (max-width: 580px) {
-  html.cockpit #plan-toggle-btn .tool-chip-label, html.cockpit #web-toggle-btn .tool-chip-label, html.cockpit #bash-toggle-btn .tool-chip-label { display: none !important; }
-  html.cockpit #plan-toggle-btn, html.cockpit #web-toggle-btn, html.cockpit #bash-toggle-btn { padding: 0 9px !important; }
+  html.cockpit #plan-toggle-btn .tool-chip-label, html.cockpit #web-toggle-btn .tool-chip-label, html.cockpit #bash-toggle-btn .tool-chip-label, html.cockpit #conversation-toggle-btn .tool-chip-label { display: none !important; }
+  html.cockpit #plan-toggle-btn, html.cockpit #web-toggle-btn, html.cockpit #bash-toggle-btn, html.cockpit #conversation-toggle-btn { padding: 0 9px !important; }
 }
 @container chatbar (max-width: 440px) {
   html.cockpit .mode-toggle-btn { padding: 4px 8px !important; }
@@ -1326,6 +1345,12 @@ html.cockpit :is(.settings-nav, .settings-sidebar) { border-color: var(--ck-edge
 /* switches: a lamp, not a neon pill */
 html.cockpit :is(.admin-switch, .toggle-switch, .switch) :is(.slider, .admin-switch-slider, .toggle-slider) { background: var(--ck-tint-2) !important; border: 1px solid var(--ck-edge-lo) !important; box-shadow: none !important; }
 html.cockpit :is(.admin-switch, .toggle-switch, .switch) input:checked + :is(.slider, .admin-switch-slider, .toggle-slider) { background: linear-gradient(135deg, var(--ck-accent), var(--ck-accent-2)) !important; border-color: transparent !important; }
+/* `B1730`. A Settings control that cannot be used looks it (Settings →
+   Conversation while this server says nothing, for one): dimmed, with no
+   hover, rather than drawn as if a press would do something. */
+html.cockpit #settings-modal :is(.admin-btn-sm, .admin-btn, .settings-select):disabled,
+html.cockpit #settings-modal input:disabled + :is(.admin-slider, .slider, .admin-switch-slider, .toggle-slider) { opacity: .5 !important; cursor: default !important; }
+html.cockpit #settings-modal :is(.admin-btn-sm, .admin-btn):disabled:hover { background: var(--ck-tint) !important; color: var(--ck-text-2) !important; border-color: var(--ck-edge-lo) !important; }
 
 /* the palette */
 html.cockpit .search-overlay { background: color-mix(in srgb, #000 28%, transparent) !important; -webkit-backdrop-filter: blur(6px) saturate(1.1); backdrop-filter: blur(6px) saturate(1.1); }

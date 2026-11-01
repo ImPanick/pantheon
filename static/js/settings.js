@@ -170,6 +170,13 @@ function onSettingsPanelActivated(tab) {
       .catch((e) => console.error('My networks panel failed to load', e));
   }
 
+  // `B1730`. Same shape: the person's own Conversation switch and voice.
+  if (tab === 'conversation') {
+    import('./conversationSettings.js')
+      .then((mod) => mod.open())
+      .catch((e) => console.error('Conversation panel failed to load', e));
+  }
+
   // `P27-03`. Same shape: the person's own vault, read on activation.
   if (tab === 'vault') {
     import('./vaultSettings.js')
@@ -1088,6 +1095,12 @@ async function initTtsSettings() {
     var names = [];
     if (prov === 'piper') names = (stats && stats.provider === 'piper' && Array.isArray(stats.voices)) ? stats.voices : [];
     else if (prov === 'local') names = _KOKORO_VOICES;
+    // `B1728`, `B1729`: every voice the engine speaking now has; Kokoro's
+    // short list until the server has said.
+    else if (prov === 'kokoro' || prov === 'auto' || prov === 'chatterbox') {
+      names = (stats && Array.isArray(stats.voices) && (stats.provider === prov || stats.chosen === prov))
+        ? stats.voices : (prov === 'chatterbox' ? ['default'] : _KOKORO_VOICES);
+    }
     else if (prov === 'browser' && window.speechSynthesis) {
       try { names = window.speechSynthesis.getVoices().map(function(v) { return v.name; }); } catch (_) { names = []; }
     }
@@ -1097,14 +1110,34 @@ async function initTtsSettings() {
       opt.value = name;
       voiceList.appendChild(opt);
     });
+    // `B1728`. An endpoint's speaker (`alloy`, the stored default) is no voice
+    // of Kokoro's, Chatterbox's or Piper's, and the server says those with
+    // the engine's own voice instead: the field shows that one, its
+    // placeholder, rather than a name nothing here speaks with.
+    var typed = voiceInput ? voiceInput.value.trim() : '';
+    if (typed && prov !== 'browser' && !isEndpoint() && _endpointSpeakers.indexOf(typed) >= 0 && names.indexOf(typed) < 0) {
+      voiceInput.value = '';
+    }
   }
+  var _endpointSpeakers = voiceSelect ? Array.from(voiceSelect.options).map(function(o) { return o.value; }) : [];
 
   function describe() {
     var prov = provSel.value;
     note.textContent = '';
-    var current = stats && stats.provider === prov;
+    // `B1728`: "Automatic" is told by what it chose (`chosen`), and speaks
+    // with what it found (`provider`).
+    var current = stats && (stats.provider === prov || stats.chosen === prov);
     if (prov === 'disabled') {
       _voiceNoteLine(note, 'A voice chat shows the reply and says nothing.');
+    } else if (prov === 'auto') {
+      _voiceNoteLine(note, 'Chatterbox while it runs on this server’s GPU, else Kokoro on its processor, else Piper. '
+        + 'Each speaks here, so a reply’s words stay on this machine.');
+    } else if (prov === 'kokoro') {
+      _voiceNoteLine(note, 'Kokoro speaks on this server’s own processor, about three times faster than it talks, '
+        + 'so a reply’s words stay here.');
+    } else if (prov === 'chatterbox') {
+      _voiceNoteLine(note, 'Chatterbox speaks on this server’s GPU, in a container beside Pantheon '
+        + '(COMPOSE_PROFILES=chatterbox with the NVIDIA overlay), so a reply’s words stay here.');
     } else if (prov === 'piper') {
       _voiceNoteLine(note, 'Piper speaks on this server’s own processor, so a reply’s words stay here.');
     } else if (prov === 'browser') {
@@ -1122,8 +1155,15 @@ async function initTtsSettings() {
     if (!current || prov === 'disabled' || prov === 'browser') return;
     if (stats.unavailable_reason) {
       _voiceNoteLine(note, stats.unavailable_reason).classList.add('settings-voice-why');
-    } else if (prov === 'piper') {
+    } else if (stats.provider === 'piper') {
       _voiceNoteLine(note, stats.voice_loaded ? 'Ready: ' + stats.voice + '.' : 'Loading ' + stats.voice + '…');
+    } else if (stats.provider === 'kokoro') {
+      var label = (stats.labels && stats.labels[stats.voice]) || stats.voice;
+      _voiceNoteLine(note, (prov === 'auto' ? 'Speaking with Kokoro now: ' : 'Ready: ') + label + '. '
+        + (stats.voice_loaded ? '' : 'It loads with the first sentence it says, a few seconds.'));
+    } else if (stats.provider === 'chatterbox') {
+      _voiceNoteLine(note, (prov === 'auto' ? 'Speaking with Chatterbox now' : 'Ready')
+        + (stats.device ? ', on ' + stats.device : '') + '.');
     }
   }
 
@@ -1137,7 +1177,8 @@ async function initTtsSettings() {
     voiceSelect.style.display = isEndpoint() ? '' : 'none';
     voiceInput.style.display = isEndpoint() ? 'none' : '';
     voiceInput.placeholder = prov === 'piper' ? ((stats && stats.default_voice) || 'en_US-ljspeech-medium')
-      : (prov === 'local' ? 'af_heart' : 'The system’s own voice');
+      : (prov === 'local' || prov === 'kokoro' || prov === 'auto' ? 'af_heart'
+        : (prov === 'chatterbox' ? 'default' : 'The system’s own voice'));
     fillVoiceList();
     describe();
   }
@@ -1172,7 +1213,9 @@ async function initTtsSettings() {
 
   async function readStats() {
     try {
-      var res = await fetch('/api/tts/stats', { credentials: 'same-origin' });
+      // `B1730`: the server's own voice, not the one this admin chose for
+      // themselves in Settings → Conversation.
+      var res = await fetch('/api/tts/stats?for=server', { credentials: 'same-origin' });
       stats = res.ok ? await res.json() : null;
     } catch (_) { stats = null; }
   }
@@ -1228,7 +1271,9 @@ async function initTtsSettings() {
     var prov = provSel.value;
     // The speaker belongs to the voice: Kokoro's and Piper's names are not
     // each other's, and the browser's are the system's.
-    if (prov === 'local') voiceInput.value = 'af_heart';
+    if (prov === 'local' || prov === 'kokoro') voiceInput.value = 'af_heart';
+    else if (prov === 'auto') voiceInput.value = '';
+    else if (prov === 'chatterbox') voiceInput.value = 'default';
     else if (prov === 'piper') voiceInput.value = '';
     else if (isEndpoint()) { voiceSelect.value = 'alloy'; modelSelect.value = 'tts-1'; }
     else if (prov === 'browser') voiceInput.value = '';
@@ -1295,7 +1340,9 @@ async function initTtsSettings() {
           var res = await fetch('/api/tts/synthesize', {
             method: 'POST', credentials: 'same-origin',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ text: _VOICE_PREVIEW, format: 'audio' })
+            // `B1730`: `engine: ''` is the server's voice, which this card
+            // sets, never the one this admin chose for themselves.
+            body: JSON.stringify({ text: _VOICE_PREVIEW, format: 'audio', engine: '' })
           });
           if (!res.ok) {
             var err = await res.json().catch(function() { return {}; });

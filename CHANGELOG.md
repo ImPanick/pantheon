@@ -108,6 +108,33 @@ the next one is cut.
 
 ### Added
 
+- **Conversation: the agent says its replies out loud, in a voice each person chooses**
+  (2026-11-01, `B1730`). The owner: *"This should be a "Conversation" switch not speak replies
+  aloud - we make it personal-able"*. The speech-bubble switch in the composer, or
+  **Settings → Conversation**, turns it on, and every reply is then said sentence by sentence
+  while it is written. Each person chooses their own voice there (every Kokoro voice by language,
+  Chatterbox's when it runs, Piper's, or their own device's) and its speed, with *Hear it* to
+  listen first; the choice is kept with their account, follows them to every device, and is the
+  voice a voice chat answers them in and the read-aloud button reads in. Nobody else's Pantheon
+  changes. When the composer runs out of room the switch folds into the + menu's *Modes*, and the
+  + lights a lamp while it is on there. Turning it off stops a reply being said.
+- **Kokoro, a realistic voice on the server's own processor** (2026-11-01, `B1728`). The owner
+  asked for realistic speech that is free and chose *"Kokoro, plus Chatterbox for a GPU"*.
+  Kokoro-82M (Apache-2.0) runs as an ONNX model on the CPU, about three times faster than it
+  talks, in 41 voices across American and British English, Spanish, French, Hindi, Italian and
+  Brazilian Portuguese. The image carries it (about 350 MB, checked against its hashes), so it
+  speaks on a fresh install with nothing fetched; without the baked copy it is fetched once from
+  the `kokoro-onnx` release on GitHub, only with *Download models from the internet* on. The new
+  *Automatic* voice in **Settings → Voice** speaks with Chatterbox while it runs, else Kokoro,
+  else Piper, and says which it is using.
+- **Chatterbox Turbo for a server with an NVIDIA GPU** (2026-11-01, `B1729`). Resemble AI's
+  Chatterbox Turbo (MIT) runs beside Pantheon in a container of its own, started by the NVIDIA
+  overlay with `COMPOSE_PROFILES=chatterbox` in `.env`. Its weights are fetched while the image is
+  built, and the container then runs offline (about 3 GB of GPU memory). A recording of one person
+  speaking, put in `data/chatterbox-voices/`, becomes a voice to choose. Everything it says carries
+  Resemble AI's inaudible Perth watermark. Built and tested here against a stand-in for the model
+  only: the image has not been built or run on a GPU yet.
+
 - **The workstation's desktop looks like Pantheon** (2026-10-31, `D-2026-10-31-02`). It is XFCE
   now, themed to the cockpit: window frames of the cockpit's glass with a lit edge and rounded
   corners, buttons that light on hover (close in the accent), the cockpit's light field as the
@@ -320,6 +347,16 @@ the next one is cut.
   button all close it. `/toggle mode [agent|chat]` is the same control, typed.
 
 ### Changed — read this before upgrading
+
+- **The server speaks with *Automatic* unless you chose otherwise** (2026-11-01, `B1728`). The
+  voice in **Settings → Voice** was *None* until an admin chose one, so voice chat answered in
+  silence on a fresh install. It is *Automatic* now (Chatterbox on a GPU, else Kokoro, else Piper).
+  A settings file that holds the old default, written down by a save without anyone choosing a
+  voice, reads as *Automatic*; an admin who chose *None* (which also turns speech off) or a voice
+  keeps that choice. The image is about 350 MB larger for Kokoro; `INSTALL_VOICE=false` or
+  `BAKE_MODELS=false` leaves it out. The composer's hidden *TTS Mode* row in the + menu is the
+  Conversation switch now, and what it remembered in this browser gives way to each person's
+  Conversation setting.
 
 - **The workstation is on when the stack runs one** (2026-10-31, `B1720`, `D-2026-10-31-03`). It
   was off until an admin found the switch, so a fresh install ran a workstation its agent could

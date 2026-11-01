@@ -946,7 +946,9 @@ export function createVoiceCall(deps) {
     let stt;
     let tts;
     try {
-      [stt, tts] = await Promise.all([getJson('/api/stt/stats'), getJson('/api/tts/stats')]);
+      // `B1728`: `warm` loads the voice now (Kokoro takes a few seconds the
+      // first time), so the call's first reply is not the one that waits.
+      [stt, tts] = await Promise.all([getJson('/api/stt/stats'), getJson('/api/tts/stats?warm=1')]);
     } catch (e) {
       end(`Voice chat could not ask this server about speech (${(e && e.message) || e}).`);
       return false;

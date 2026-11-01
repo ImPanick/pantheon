@@ -17,6 +17,16 @@ class AITTSManager {
         this.playbackSpeed = 1;
         this._provider = 'disabled';
         this.autoPlay = false;
+        // `B1730`. Whether a voice can speak to this person at all (`speaks`),
+        // apart from the read-aloud button under each reply (`available`,
+        // which an admin switches): Conversation needs only the first. `off`
+        // is speech turned off on the server; `reason` says why it cannot;
+        // `checked` is that the server has been asked once.
+        this.speaks = false;
+        this.off = false;
+        this.reason = '';
+        this.checked = false;
+        this.voiceKey = '';
         this.cache = new Map(); // Client-side audio cache
 
         // Queue for sequential auto-play
@@ -34,47 +44,74 @@ class AITTSManager {
         this.checkAvailability();
     }
 
-    async checkAvailability() {
+    async checkAvailability({ warm = false } = {}) {
+        let readAloud = false;
         try {
             // Check user setting first — if TTS is disabled in settings, don't show buttons.
             // settings.js re-calls this right after saving TTS settings; it invalidates
             // the shared cache before doing so, so this still sees the new value.
             try {
                 const settings = await getSettings();
-                // `B1718`: and only while the read-aloud button is on
-                // (Settings → Voice). A voice chosen for voice chat is not
-                // the owner asking for read-aloud back.
-                if (settings.tts_enabled === false || settings.tts_read_aloud !== true) {
+                if (settings.tts_enabled === false || settings.tts_provider === 'disabled') {
                     this.available = false;
+                    this.speaks = false;
+                    this.off = true;
+                    this.reason = 'Speech is turned off on this server (Settings → Voice).';
                     this._provider = 'disabled';
                     return;
                 }
+                // `B1718`: the button under each reply only while the
+                // read-aloud switch is on (Settings → Voice). A voice chosen
+                // for voice chat is not the owner asking for read-aloud back.
+                // `B1730`: the voice is asked about either way, for
+                // Conversation, which is each person's own.
+                readAloud = settings.tts_read_aloud === true;
             } catch {}
+            this.off = false;
 
-            const response = await markUnreached(fetch('/api/tts/stats'));
+            // `B1730`: the voice this person hears, theirs when they chose
+            // one; `warm` loads it now, for a reply about to be said.
+            const response = await markUnreached(fetch('/api/tts/stats' + ((warm || this.autoPlay) ? '?warm=1' : ''),
+                                                       { credentials: 'same-origin' }));
             const stats = await response.json();
-            this.available = stats.available && stats.ready;
+            this.speaks = !!(stats.available && stats.ready);
+            this.reason = String(stats.unavailable_reason || '');
             this.playbackSpeed = stats.speed || 1;
             this._provider = stats.provider || 'disabled';
 
             if (stats.provider === 'browser') {
                 this.useBrowserTTS = true;
                 this.browserVoice = stats.voice || '';
-                this.available = 'speechSynthesis' in window;
-                if (!this.available) {
+                this.speaks = 'speechSynthesis' in window;
+                if (!this.speaks) {
+                    this.reason = 'This browser cannot speak.';
                     console.warn('TTS: browser mode selected but speechSynthesis not supported');
                 }
-            } else if (this.available) {
+            } else if (this.speaks) {
                 this.useBrowserTTS = false;
             } else {
                 console.warn('TTS: not available');
             }
+            // A clip said in another voice is not this voice's.
+            const key = [stats.provider, stats.voice, stats.speed].join('|');
+            if (this.voiceKey && key !== this.voiceKey) this.clearCache();
+            this.voiceKey = key;
+            this.available = this.speaks && readAloud;
         } catch (error) {
             // `B1256`: offline is the page's news, said once (`presets.js`).
             if (!quietIfUnreached(error, 'Speech')) {
                 console.error('Failed to check TTS availability:', error);
             }
             this.available = false;
+            this.speaks = false;
+        } finally {
+            this.checked = true;
+            // `B1730`. The Conversation chip and Settings → Conversation hear it.
+            try {
+                window.dispatchEvent(new CustomEvent('pantheon:speech', {
+                    detail: { speaks: this.speaks, off: this.off, reason: this.reason, provider: this._provider },
+                }));
+            } catch (_) { /* no window to tell */ }
         }
     }
 
@@ -98,8 +135,10 @@ class AITTSManager {
     }
 
     async synthesize(text, onProgress = null) {
-        if (!this.available) {
-            throw new Error('AI TTS service not available');
+        // `B1730`: whenever a voice can speak, read-aloud button or not
+        // (Conversation says replies without one).
+        if (!this.speaks) {
+            throw new Error(this.reason || 'AI TTS service not available');
         }
 
         const plainText = this.extractPlainText(text);
@@ -343,7 +382,7 @@ class AITTSManager {
     }
 
     streamingUpdate(accumulatedText) {
-        if (!this._streamActive || !this.available || !this.autoPlay) return;
+        if (!this._streamActive || !this.speaks || !this.autoPlay) return;
         if (this._streamDebounceTimer) return;
         this._streamDebounceTimer = setTimeout(() => {
             this._streamDebounceTimer = null;
@@ -394,6 +433,13 @@ class AITTSManager {
         }
 
         this._streamSentencesSent += advancedChars;
+    }
+
+    /** `B1730`. A button for a reply that has no read-aloud button of its
+     *  own (the switch for it is off), so Conversation's queue has something
+     *  to show its state on and stop with. */
+    placeholderButton() {
+        return this._createPlaceholderButton();
     }
 
     _createPlaceholderButton() {

@@ -239,6 +239,24 @@ RUN if [ "$BAKE_MODELS" = "true" ] && [ "$INSTALL_VOICE" = "true" ]; then \
     fi \
     && rm -f /tmp/bake_piper_voice.py
 
+# `B1728`. Kokoro, the realistic voice on this server's own processor
+# (Kokoro-82M exported to ONNX, Apache-2.0, weights and voices), baked the
+# same way and read where it is (`PANTHEON_SEED_MODELS/kokoro`, by
+# `services/tts/kokoro_cpu.py`), so the "Automatic" voice speaks with it on a
+# fresh install with nothing fetched at run time. About 350 MB. Each file is
+# checked against the size and SHA-256 that module holds, which is copied
+# beside the script for it. It speaks through ONNX Runtime and the espeak-ng
+# Piper carries, so only with the voice packages installed.
+COPY docker/bake_kokoro.py /tmp/kokoro-bake/bake_kokoro.py
+COPY services/tts/kokoro_cpu.py /tmp/kokoro-bake/kokoro_cpu.py
+RUN if [ "$BAKE_MODELS" = "true" ] && [ "$INSTALL_VOICE" = "true" ]; then \
+        python /tmp/kokoro-bake/bake_kokoro.py "$PANTHEON_SEED_MODELS/kokoro" \
+        && test -f "$PANTHEON_SEED_MODELS/kokoro/kokoro-v1.0.onnx" \
+        && test -f "$PANTHEON_SEED_MODELS/kokoro/voices-v1.0.bin" \
+        && chmod -R a+rX "$PANTHEON_SEED_MODELS"; \
+    fi \
+    && rm -rf /tmp/kokoro-bake
+
 # `D-2026-10-31-01`. The live desktop's web client and its licences, from the
 # `desktop-client` stage above, where `src/desktop_client.py` serves them.
 COPY --from=desktop-client /out/ /opt/pantheon/kasmvnc/

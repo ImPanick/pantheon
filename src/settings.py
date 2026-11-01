@@ -670,7 +670,13 @@ DEFAULT_SETTINGS = {
     # (e.g., urgency alert email). Example: "https://chat.example.com"
     "app_public_url": "",
     "tts_enabled": True,
-    "tts_provider": "disabled",
+    # `B1728`. "Automatic": Chatterbox while its GPU sidecar answers, else
+    # Kokoro on this server's processor (baked into the image), else Piper
+    # (`services/tts/tts_service.py` `AUTO_ORDER`). It was "disabled", and no
+    # page could choose another until `B1718`, where "None" also turns
+    # `tts_enabled` off; a file holding the old default is read as this one
+    # (`_tts_provider_as_it_was`).
+    "tts_provider": "auto",
     "tts_model": "tts-1",
     "tts_voice": "alloy",
     "tts_speed": "1",
@@ -1358,6 +1364,17 @@ def _read_aloud_as_it_was(saved: dict) -> bool:
     return saved.get("tts_enabled", True) is not False and provider != "disabled"
 
 
+def _tts_provider_as_it_was(saved: dict) -> Optional[str]:
+    """`B1728`. The voice a settings file written before "Automatic" means:
+    "disabled" with speech left on is the old default written down by a save
+    of the whole dict, never a choice (no page could choose a voice before
+    `B1718`, and its "None" saves `tts_enabled: false`), so it reads as
+    "auto". `None` when the file says what it means."""
+    if saved.get("tts_provider") == "disabled" and saved.get("tts_enabled", True) is not False:
+        return "auto"
+    return None
+
+
 def _cached_settings() -> dict:
     """The merged settings this process is serving — **never returned to a
     caller outside this module.** `load_settings` copies it; `get_setting`
@@ -1374,6 +1391,8 @@ def _cached_settings() -> dict:
         merged = {**DEFAULT_SETTINGS, **saved}
         if "tts_read_aloud" not in saved:
             merged["tts_read_aloud"] = _read_aloud_as_it_was(saved)
+        if _tts_provider_as_it_was(saved):
+            merged["tts_provider"] = _tts_provider_as_it_was(saved)
     except FileNotFoundError:
         merged = dict(DEFAULT_SETTINGS)
     except (PermissionError, json.JSONDecodeError, ValueError) as exc:

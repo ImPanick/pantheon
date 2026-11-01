@@ -88,3 +88,21 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+
+  # `B1729`. Chatterbox, the voice for an NVIDIA GPU (`voice/chatterbox/`):
+  # its pinned requirements and its PyTorch base image, pinned to a tag and
+  # its digest. torch and torchaudio come with that image, at the versions
+  # chatterbox-tts pins, so they move with it and never on their own.
+  - package-ecosystem: pip
+    directory: "/voice/chatterbox"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      chatterbox:
+        patterns: ["*"]
+  - package-ecosystem: docker
+    directory: "/voice/chatterbox"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5

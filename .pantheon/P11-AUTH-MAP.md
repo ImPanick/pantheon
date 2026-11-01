@@ -515,12 +515,13 @@ routes: 2
 
 #### `routes/tts_routes.py`
 
-routes: 3
+routes: 4
 
 | route | handler | gate | intended |
 |---|---|---|---|
-| `GET /api/tts/stats` | `get_tts_stats` | `middleware` | yes — counters for a local service. |
-| `POST /api/tts/synthesize` | `synthesize_speech` | `middleware` | yes — a signed-in user synthesising their own text. |
+| `GET /api/tts/stats` | `get_tts_stats` | `middleware + get_current_user` | yes — counters for a local service, and which voice the caller will hear. `B1728`: `get_current_user` finds the caller's own Conversation voice (`personal_voice.choice_for`), never anyone else's, and `?warm=1` loads only that voice. `?for=server` is the server's voice, which Settings → Voice shows: a provider, a model and a voice, nothing kept per person. |
+| `GET /api/tts/voices` | `get_tts_voices` | `middleware` | yes — `B1730`. The voices on this server a person may choose for their own, whether each speaks here now and why not, and the server's voice. Names and labels only: it reads no person's choice, and Chatterbox's list is the sidecar's voices folder, which the operator fills. |
+| `POST /api/tts/synthesize` | `synthesize_speech` | `middleware + get_current_user` | yes — a signed-in user synthesising their own text, in the voice they chose for themselves (`B1728`): `get_current_user` finds whose choice to read. A "Hear it" preview names its own voice in the body and keeps nothing. |
 | `POST /api/tts/clear-cache` | `clear_tts_cache` | `middleware + require_operator` | yes — `B540`. An instance-wide mutation, so the operator's (`B683`), at the height of the same act on uploads (`POST /api/upload/cleanup`). There is no owner to scope it to — nothing records whose clip is whose — and the product's one caller runs it after an admin-only voice change. |
 
 #### `routes/workspace_routes.py`

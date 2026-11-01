@@ -114,7 +114,8 @@ export function setup({ stt = {}, tts = {}, transcripts = [], chat = {}, sttStat
   const fetchImpl = async (url, opts = {}) => {
     log.push(url);
     if (url === '/api/stt/stats') return json(sttStats);
-    if (url === '/api/tts/stats') return json({ provider: 'piper', available: true, ...tts });
+    // `B1728`: the call asks with `?warm=1`, which loads the voice.
+    if (url.split('?')[0] === '/api/tts/stats') return json({ provider: 'piper', available: true, ...tts });
     if (url === '/api/stt/transcribe') {
       if (sttStatus !== 200) return json({ detail: { message: 'Whisper is not installed on this server.' } }, sttStatus);
       if (sttDelays) return new Promise((resolve) => pendingStt.push(resolve));

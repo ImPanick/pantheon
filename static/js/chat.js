@@ -3613,7 +3613,9 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
       let thinkingStartTime = null;
       // Streaming TTS: synthesize sentence-by-sentence during streaming
       // `B1718`: not in a voice chat, which speaks the reply itself.
-      streamingTTS = !!(window.aiTTSManager && window.aiTTSManager.autoPlay && window.aiTTSManager.available
+      // `B1730`: Conversation (`autoPlay`) needs a voice that speaks, not
+      // the read-aloud button (`available`), which is a switch of its own.
+      streamingTTS = !!(window.aiTTSManager && window.aiTTSManager.autoPlay && window.aiTTSManager.speaks
                         && !window.__pantheonVoiceCall);
       if (streamingTTS) window.aiTTSManager.streamingStart();
       _announceReply('start', streamSessionId);
@@ -5735,7 +5737,10 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
         // TTS auto-play: streaming mode flushes remaining text, non-streaming enqueues full message
         // `B1718`: never in a voice chat, which has said the reply already.
         if (accumulated && window.aiTTSManager && window.aiTTSManager.autoPlay && !window.__pantheonVoiceCall) {
-          const ttsBtn = holder.querySelector('.ai-tts-button');
+          // `B1730`: a reply with no read-aloud button (that switch is off)
+          // is said all the same, on a button nobody sees.
+          const ttsBtn = footerTarget.querySelector('.ai-tts-button') || holder.querySelector('.ai-tts-button')
+            || (window.aiTTSManager.speaks ? window.aiTTSManager.placeholderButton() : null);
           if (ttsBtn) {
             var ICON_PLAY_TTS = playIcon({ size: 14 });
             var ICON_STOP_TTS = stopIcon({ size: 14 });

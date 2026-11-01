@@ -170,7 +170,10 @@ def test_every_palette_and_every_chip_was_measured(measured):
         # Eleven still after `B1706`: ten in the strip and the approval-mode
         # chip, which left the strip for the row's right and is measured there.
         assert "approval-mode-btn" in row["chips"], sorted(row["chips"])
-        assert len(_switches(row)) == 11, sorted(row["chips"])
+        # Twelve since `B1730`: Conversation is the row's fourth switch, and
+        # wears the same on-state as Plan, Web and Shell on every palette.
+        assert "conversation-toggle-btn" in row["chips"], sorted(row["chips"])
+        assert len(_switches(row)) == 12, sorted(row["chips"])
 
 
 def test_every_chip_wears_one_on_state(measured):

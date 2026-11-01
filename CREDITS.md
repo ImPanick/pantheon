@@ -1140,11 +1140,31 @@ into the data volume. Neither is modified.
 |---|---|---|
 | Whisper `base`, in CTranslate2's format (`WHISPER_SEED_MODEL`) | [`Systran/faster-whisper-base`](https://huggingface.co/Systran/faster-whisper-base), a conversion of OpenAI's [Whisper](https://github.com/openai/whisper) weights | MIT (OpenAI's weights, and the conversion) |
 | Piper voice `en_US-ljspeech-medium` (`PIPER_SEED_VOICE`) | [`rhasspy/piper-voices`](https://huggingface.co/rhasspy/piper-voices), `en/en_US/ljspeech/medium/` | Trained on the [LJ Speech](https://keithito.com/LJ-Speech-Dataset/) recordings, which their authors put in the public domain; the voice's own terms are in its model card, baked beside it as `en_US-ljspeech-medium.MODEL_CARD` |
+| Kokoro-82M v1.0 exported to ONNX, `kokoro-v1.0.onnx` (`B1728`), baked into `seed-models/kokoro/` | [`hexgrad/Kokoro-82M`](https://huggingface.co/hexgrad/Kokoro-82M)'s weights, as the [`kokoro-onnx`](https://github.com/thewh1teagle/kokoro-onnx) project exports and publishes them in its GitHub release `model-files-v1.0` | Apache-2.0 (the weights; the README of [`hexgrad/kokoro`](https://github.com/hexgrad/kokoro), Kokoro's own code: *"Apache-licensed weights"*). `kokoro-onnx`, which made the export, is MIT. Checked against its SHA-256 (`services/tts/kokoro_cpu.py` `KOKORO_FILES`) wherever it arrives |
+| Kokoro's voices, `voices-v1.0.bin` (`B1728`) | the same release; Kokoro-82M's voice styles | Apache-2.0, as above; the same SHA-256 check |
 
 *Not re-read from the source at the time of writing: this sandbox's proxy
 refuses Hugging Face, so the image build that fetches both has not run here.
 The voice's model card is baked with it so the terms travel with the copy; the
 first build should read it against this row.*
+
+*Kokoro's two files come from GitHub, which this sandbox can reach: they were
+fetched, hashed and spoken with here on 2026-11-01, and `hexgrad/kokoro`'s
+README and `kokoro-onnx`'s licence were read then.*
+
+### Chatterbox, the voice for an NVIDIA GPU
+
+Built from `voice/chatterbox/` (`B1729`) only by an operator who opts in with
+`COMPOSE_PROFILES=chatterbox` beside the NVIDIA overlay; not part of
+Pantheon's image, and not modified.
+
+| Component | From | Licence |
+|---|---|---|
+| `chatterbox-tts` 0.1.7, the Chatterbox models' code | [`resemble-ai/chatterbox`](https://github.com/resemble-ai/chatterbox) (PyPI `chatterbox-tts`) | MIT |
+| Chatterbox Turbo's weights, fetched while the image is built | [`ResembleAI/chatterbox-turbo`](https://huggingface.co/ResembleAI/chatterbox-turbo) | MIT, as Resemble AI publishes them (*not re-read here: the sandbox's proxy refuses Hugging Face; the first build should read the model card against this row*) |
+| `resemble-perth`, the inaudible watermark every sentence carries | [`resemble-ai/Perth`](https://github.com/resemble-ai/Perth) (PyPI `resemble-perth`) | MIT |
+| The base image, PyTorch 2.6.0 with CUDA 12.4 and cuDNN 9 | [`pytorch/pytorch`](https://hub.docker.com/r/pytorch/pytorch), pinned by digest in `voice/chatterbox/Dockerfile` | BSD-3-Clause (PyTorch); NVIDIA's CUDA and cuDNN libraries inside it are under NVIDIA's own licences |
+| FastAPI, uvicorn and `huggingface-hub`, at the pins in `voice/chatterbox/requirements.txt` | PyPI | MIT, BSD-3-Clause and Apache-2.0 |
 
 ---
 

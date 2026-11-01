@@ -268,6 +268,9 @@ function buildFixture(document) {
     'reminders',
     'appearance',
     'shortcuts',
+    // `B1730`, 2026-11-01. Settings → Conversation: each person's own switch
+    // and the voice Pantheon speaks to them in.
+    'conversation',
     'account',
     // `P25-02`, 2026-10-24. Settings → Git: everyone's own identity and tokens.
     'git',
@@ -410,6 +413,7 @@ function moduleSource(relativePath) {
       'reminders',
       'appearance',
       'shortcuts',
+      'conversation', // `B1730` — see the fixture list above
       'account',
       'git',        // `P25-02` — see the fixture list above
       'vault',      // `P27-03` — see the fixture list above

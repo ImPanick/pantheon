@@ -34,6 +34,10 @@ The image carries the default local embedding model (about 90 MB), fetched while
 
 The image also carries speech for voice chat and dictation (about half a gigabyte): faster-whisper with the Whisper `base` model, and Piper with the `en_US-ljspeech-medium` voice, both running on the CPU. Turn them on in **Settings → Voice**: *Speech to text* → *Local Whisper, on this server*, and the voice chat's voice → *Piper, on this server*; each has a test button. `--build-arg INSTALL_VOICE=false` builds without speech; `BAKE_MODELS=false` leaves out its models too, and they are then fetched on first use only with *Download models from the internet* on (Settings → System). `WHISPER_SEED_MODEL` and `PIPER_SEED_VOICE` choose which model and voice are baked. After an update, hard-refresh the browser once so it loads the new page.
 
+It carries a realistic voice as well: Kokoro (Kokoro-82M exported to ONNX, Apache-2.0, about 350 MB), which speaks on the CPU about three times faster than it talks, in 41 voices across American and British English, Spanish, French, Hindi, Italian and Brazilian Portuguese. The server's voice is *Automatic* out of the box (**Settings → Voice**): Chatterbox while it runs on an NVIDIA GPU (below), else Kokoro, else Piper. Each person turns on **Conversation** for themselves, the speech-bubble switch in the composer or **Settings → Conversation**, and the agent then says every reply out loud while it writes it; there they choose their own voice and speed, with *Hear it* to listen first, and that voice also answers them in a voice chat and reads aloud for them. Nobody else's Pantheon changes. An install that never chose a voice speaks with *Automatic* after this update; one that chose a voice, or chose *None*, keeps its choice. `INSTALL_VOICE=false` or `BAKE_MODELS=false` leaves Kokoro out too; it is then fetched on first use from the `kokoro-onnx` release on GitHub, only with *Download models from the internet* on, or you put `kokoro-v1.0.onnx` and `voices-v1.0.bin` in `data/models/kokoro/` yourself.
+
+**Chatterbox on an NVIDIA GPU (optional).** Chatterbox Turbo (Resemble AI, MIT) is a more natural voice for a server with an NVIDIA GPU, and it runs beside Pantheon in a container of its own, because it needs PyTorch on CUDA. With the NVIDIA overlay in use (`docker/gpu.nvidia.yml`, or `docker-compose.gpu-nvidia.yml`), add `COMPOSE_PROFILES=chatterbox` to `.env` and run `docker compose up -d --build`. The build fetches its weights from Hugging Face once (a few gigabytes), and the container then runs offline and needs about 3 GB of GPU memory. While it answers, *Automatic* speaks with it, and people can choose it in **Settings → Conversation**. To give it more voices, put a recording of one person speaking (WAV or FLAC, longer than five seconds) in `data/chatterbox-voices/`, named for the voice (`Grandad.wav` becomes "Grandad"); it speaks in the voice it hears, so use only a voice you have the right to use. Everything it says carries Resemble AI's inaudible Perth watermark.
+
 Open `http://localhost:7000` when the containers are healthy. Docker Compose
 binds the web UI to `127.0.0.1` by default. If the port is taken, set
 `APP_PORT=7001` in `.env` and recreate the container. Set `APP_BIND=0.0.0.0`
@@ -649,13 +653,15 @@ pip install -r requirements-voice.txt
 
 Both install from wheels on Python 3.11–3.14, x86-64 and ARM64. With nothing baked, the Whisper model and the Piper voice are fetched from Hugging Face on first use, and only once *Download models from the internet* is on; or put a voice's `.onnx` and `.onnx.json` in `data/models/piper/` yourself. Piper is GPL-3.0-or-later (see `CREDITS.md`). The browser's own speech recognition and voice, and any OpenAI-compatible speech endpoint you add, need none of this.
 
+The same packages speak with Kokoro on the CPU: its phonemes come from the espeak-ng Piper carries and it runs on Piper's ONNX Runtime. Its model is fetched on first use from the `kokoro-onnx` release on GitHub, only once *Download models from the internet* is on, and checked against the hashes Pantheon holds; or put `kokoro-v1.0.onnx` and `voices-v1.0.bin` in `data/models/kokoro/` yourself. Chatterbox needs Docker and an NVIDIA GPU (see *Chatterbox on an NVIDIA GPU* above).
+
 ### Optional Dependencies
 `requirements-optional.txt` contains packages that unlock extra features. It is not installed by default.
 
 | Package | Feature unlocked |
 |---------|-----------------|
 | `faster-whisper` | Local speech-to-text (microphone -> text) via the "local" STT provider. |
-| `kokoro`, `soundfile` | Local Kokoro-82M text-to-speech on a CUDA GPU. The pinned Kokoro release supports Pantheon installs on Python 3.11-3.12; these packages are intentionally skipped on Python 3.13+ (including the Python 3.14 container image). |
+| `kokoro`, `soundfile` | Local Kokoro-82M text-to-speech on a CUDA GPU (the voice *Kokoro through PyTorch*). The pinned Kokoro release supports Pantheon installs on Python 3.11-3.12; these packages are intentionally skipped on Python 3.13+ (including the Python 3.14 container image). Kokoro on the CPU needs none of them: it comes with `requirements-voice.txt`. |
 | `ddgs` | DuckDuckGo as a search provider option. |
 | `PyMuPDF` | PDF page rendering in the side viewer panel and form-filling. (Note: AGPL-3.0) |
 | `markitdown` | Office/EPUB document text extraction (converts .docx/.xlsx/.pptx/.xls/.epub to Markdown). |
