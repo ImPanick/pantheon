@@ -44,7 +44,8 @@ SCREENSHOT = "screenshot"
 # `P26-03`. The agent reads the person's notes and closes them; making,
 # changing and removing a note, and marking notes sent, are the person's.
 # `P25-10`. Pointing is how the person says which page or element they mean.
-PERSON_ONLY = ("frame", "note_add", "note_edit", "note_remove", "notes_sent", "point")
+# `D-2026-11-01-01`. `activity` is the window's, drawing the browser live.
+PERSON_ONLY = ("frame", "note_add", "note_edit", "note_remove", "notes_sent", "point", "activity")
 ACTIONS: Tuple[str, ...] = tuple(a for a in P.BROWSER_ACTIONS if a not in PERSON_ONLY) + (SCREENSHOT,)
 READ_TEXT_MAX = 8_000
 

@@ -50507,6 +50507,36 @@ body.plan-mode-active .chat-input-top > .model-picker-wrap:has(> .model-picker-m
 .abw-page.abw-holding { cursor: pointer; }
 .abw-frame { display: block; max-width: 100%; max-height: 100%; user-select: none; -webkit-user-drag: none; }
 .abw-frame[hidden], .abw-empty[hidden], .abw-hint[hidden] { display: none; }
+/* `D-2026-11-01-01`. The browser's own screen, live: KasmVNC's client fills
+   the stage and scales the screen inside itself, as the workstation's desktop
+   does (`.wsv-live`). The page's picture becomes a clear stand-in laid over
+   the page on that screen (`browserWindow.js`, `_placeView`), so the hand, an
+   outline and the notes land where they would on a frame; the glass over it
+   takes the clicks the browser should not get — the agent's turn, pointing, a
+   note — and steps aside while the person holds it. Firefox shows its own
+   address bar and tabs, so Pantheon's step aside. */
+.abw-live-frame {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  border-radius: 7px;
+  background: var(--panel);
+}
+.abw-page.abw-live .abw-frame {
+  position: absolute;
+  max-width: none;
+  max-height: none;
+  opacity: 0;
+  pointer-events: none;
+}
+.abw-glass { display: none; }
+.abw-page.abw-live .abw-glass { display: block; position: absolute; inset: 0; pointer-events: none; }
+.abw-page.abw-live:not(.abw-holding) .abw-glass,
+.abw-page.abw-live.abw-pointing .abw-glass,
+.abw-page.abw-live.abw-noting .abw-glass { pointer-events: auto; }
+.abw-bar[hidden], .abw-tabs[hidden] { display: none; }
 .abw-empty { padding: 24px; font-size: 13px; text-align: center; }
 .abw-hint { margin: 0; font-size: 12px; line-height: 1.45; }
 /* `P25-07`. The agent's hand, gliding to where it acts; its words beside it;

@@ -1486,19 +1486,33 @@ class VmStation(Workstation):
         that streams, under its own KasmVNC."""
         return self.system.forward(account, "desktop", timeout=120.0)
 
-    @contextlib.contextmanager
+    def browser_screen(self, account: str) -> Dict:
+        """`D-2026-11-01-01`: the machine's own answer — its browser runs there,
+        on a screen of its own under the machine's KasmVNC."""
+        return self.system.forward(account, "browser_screen", timeout=120.0)
+
     def desktop_upstream(self, account: str, viewer: str):
+        return self._machine_stream(account, viewer, "desktop")
+
+    def browser_screen_upstream(self, account: str, viewer: str):
+        """`D-2026-11-01-01`: the browser's screen, from the machine, the
+        desktop's way."""
+        return self._machine_stream(account, viewer, "browser_screen")
+
+    @contextlib.contextmanager
+    def _machine_stream(self, account: str, viewer: str, route: str):
         """`D-2026-10-31-01`: the stream is the machine's. The upgrade goes to
         the daemon there, over the forwarded port with the machine's token, and
         that daemon goes on to its display; the `101` comes back through both.
         While the stream is open the machine is in use, so a person watching is
-        never powered off for being idle (`B979`)."""
+        never powered off for being idle (`B979`). `route` is the desktop's or
+        (`D-2026-11-01-01`) the browser screen's."""
         if viewer not in P.DESKTOP_VIEWERS:
             raise WorkstationError("bad_request",
                                    f"“viewer” is one of {', '.join(P.DESKTOP_VIEWERS)}.")
         with self.system._using(account):
             m = self.system.ready(account)
-            _, path = P.route_path("desktop", account)
+            _, path = P.route_path(route, account)
             try:
                 sock = socket.create_connection(("127.0.0.1", int(m.port or 0)), timeout=10.0)
             except OSError as e:

@@ -264,6 +264,18 @@ ROUTES: Dict[str, Tuple[str, str]] = {
     # stream, and the end of the stream is the end of the desktop. A daemon
     # older than this answers `404 not_found`.
     "desktop": ("GET", "/v1/users/{account}/desktop"),
+    # `D-2026-11-01-01`, added: the account's browser on a screen of its own —
+    # Firefox alone on a second display of the account's, served by KasmVNC
+    # like the desktop (`workstation/ubuntu.py`, an `XDisplay` of role
+    # "browser"), so a person sees the browser the agent drives as it moves,
+    # apart from the desktop, with Firefox's own tabs and address bar, and
+    # takes it over. `ROUTES["desktop"]`'s two shapes and its rules exactly —
+    # the same viewers and subprotocol, `person` driving exactly while the
+    # person holds `control` — for that screen; the GET without the upgrade
+    # also starts the browser. A "kind" of null is a browser without a screen
+    # of its own (no KasmVNC here: it runs headless, as before), shown as
+    # `frame`s. A daemon older than this answers `404 not_found`.
+    "browser_screen": ("GET", "/v1/users/{account}/browser/screen"),
 }
 
 # ── what the fields may hold ──────────────────────────────────────────────────
@@ -311,7 +323,16 @@ INPUT_ACTIONS = (
 BROWSER_ACTIONS = ("open", "read", "click", "type", "press", "scroll", "back", "forward",
                    "reload", "tabs", "tab_new", "tab_switch", "tab_close", "frame", "login",
                    "note_add", "note_edit", "note_remove", "notes", "note_done", "notes_sent",
-                   "inspect", "point")
+                   "inspect", "point", "activity")
+# `D-2026-11-01-01`, added. activity {since} -> `frame`'s answer without the
+# picture — {"ok", "action", "url", "title", "tabs", "activity", "seq", "view"} —
+# for a window that shows the browser live (`ROUTES["browser_screen"]`), so it
+# can draw the agent's hand without a screenshot a second. Asking is watching,
+# as for `frame`. Both now carry "view": where the page sits on the browser's
+# screen, {"x", "y", "w", "h"} in its pixels (under Firefox's tabs and address
+# bar), or null for a headless browser, whose page is the whole picture.
+# The two a window asks while it watches: never `busy`, whoever holds the screen.
+WATCH_ACTIONS = ("frame", "activity")
 # `P25-10` / `P25-11`, added. inspect {ref | pointed | selector | x, y | nothing: the page}
 #   -> {"ok", "action", "title", "url", "element": {tag, selector, role, text, box, styles,
 #      on_background, children, href?, src?, alt?, natural?} | "page": {…counted…},
@@ -462,7 +483,10 @@ MAX_TYPE_CHARS = 20_000
 MAX_SCROLL_CLICKS = 50
 MAX_WAIT_MS = 30_000
 # `P25-05`. The agent browser's page, in CSS pixels: the screen's size, so a
-# frame and a screenshot read the same.
+# frame and a screenshot read the same. `D-2026-11-01-01`: that is the page of
+# a headless browser; on a screen of its own the page is the window's content,
+# under Firefox's tabs and address bar, so a little shorter — every frame says
+# its own size, and a point is checked against the page as it is.
 BROWSER_WIDTH = SCREEN_WIDTH
 BROWSER_HEIGHT = SCREEN_HEIGHT
 # `P20-07`, added. How much longer than its own bound a per-account route may

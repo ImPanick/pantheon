@@ -72,6 +72,7 @@ ALLOWED = {
     # by `src/desktop_client.page_url` (`STREAM_PATH`), so no literal of it is
     # in `static/`.
     "/api/workstation/desktop/websockify": "the vendored KasmVNC client (src/desktop_client.page_url) connects to it",
+    "/api/workstation/browser/websockify": "the vendored KasmVNC client (src/desktop_client.page_url, BROWSER_STREAM_PATH) connects to it",
     "/api/diagnostics/": "the diagnostics panel plus `pantheon-*` CLI tooling",
     "/api/webhooks/incoming": "external senders — a receiver has no caller here by definition",
     # P18-01/P18-04. The browser no longer holds this path: it reads it from

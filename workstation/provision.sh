@@ -26,6 +26,11 @@
 #              unpacked from that same pinned package into DIR — Pantheon
 #              serves it itself (`src/desktop_client.py`), so the browser only
 #              ever runs the copy this file names. Nothing in the package runs.
+#   server DIR (Pantheon's image, not a workstation) KasmVNC's X server for
+#              Debian 13, the image's own base, for this machine's architecture:
+#              the pinned package, checked, left in DIR for the image to install
+#              (`D-2026-11-01-01`) — the screen Pantheon's own browser runs on for
+#              a person without a workstation, streamed like a workstation's.
 #   files      Firefox's no-phone-home policy (--policies DIR, default
 #              /etc/firefox/policies, where Firefox reads it), the skeleton
 #              new homes start from (--skel DIR, default
@@ -78,21 +83,31 @@ fonts-jetbrains-mono librsvg2-common"
 KASMVNC_VERSION=1.5.2
 KASMVNC_SHA256_AMD64=89a5d1fbe9e032b122202be158a2b25f15c97e0a5b8dcf92a5e6835c7b7b2acd
 KASMVNC_SHA256_ARM64=4d680f3d1eb77fb155ae67af7f9fa25d7fbd38a7f69ae146784c7f738e2eed1a
+# `D-2026-11-01-01`. The same release's Debian 13 (trixie) build, for Pantheon's own
+# image (`python:3.14.10-slim` is trixie): the X server its browser screen runs on.
+# Read from the two packages on 2026-11-01, as above.
+KASMVNC_SHA256_TRIXIE_AMD64=6ed957163275088a5ce52b525f82f145014e3289699d576ce26745a4249407f8
+KASMVNC_SHA256_TRIXIE_ARM64=904615b506c517242f3da3ff2eacd349013fc8cdb2dc205e5e4dad4ec6f62fa9
 KASMVNC_URL=https://github.com/kasmtech/KasmVNC/releases/download
 
 say() { printf 'provision: %s\n' "$*"; }
 
-# kasmvnc_deb ARCH OUT: the pinned KasmVNC package for ARCH (amd64 or arm64),
-# downloaded to OUT and checked against its sum; anything else stops the script.
+# kasmvnc_deb ARCH OUT [DIST]: the pinned KasmVNC package for ARCH (amd64 or
+# arm64) and DIST (ubuntu_noble, the workstation's, or debian_trixie, Pantheon's
+# own image's), downloaded to OUT and checked against its sum; anything else
+# stops the script.
 kasmvnc_deb() {
     arch=$1
     out=$2
-    case "$arch" in
-        amd64) sum=$KASMVNC_SHA256_AMD64 ;;
-        arm64) sum=$KASMVNC_SHA256_ARM64 ;;
-        *) say "KasmVNC builds no package for $arch"; exit 1 ;;
+    dist=${3:-ubuntu_noble}
+    case "$dist:$arch" in
+        ubuntu_noble:amd64) sum=$KASMVNC_SHA256_AMD64 ;;
+        ubuntu_noble:arm64) sum=$KASMVNC_SHA256_ARM64 ;;
+        debian_trixie:amd64) sum=$KASMVNC_SHA256_TRIXIE_AMD64 ;;
+        debian_trixie:arm64) sum=$KASMVNC_SHA256_TRIXIE_ARM64 ;;
+        *) say "KasmVNC builds no package for $dist on $arch"; exit 1 ;;
     esac
-    url="$KASMVNC_URL/v$KASMVNC_VERSION/kasmvncserver_ubuntu_noble_${KASMVNC_VERSION}_$arch.deb"
+    url="$KASMVNC_URL/v$KASMVNC_VERSION/kasmvncserver_${dist}_${KASMVNC_VERSION}_$arch.deb"
     cacert=
     ca=${PROVISION_CA:-/run/secrets/build-ca}
     if [ -s "$ca" ]; then
@@ -232,9 +247,18 @@ client() {
     say "KasmVNC $KASMVNC_VERSION web client in $1/www"
 }
 
+server() {
+    [ $# -eq 1 ] || { say "server takes one folder"; exit 2; }
+    arch=$(dpkg --print-architecture)
+    install -d -m 0755 "$1"
+    kasmvnc_deb "$arch" "$1/kasmvncserver.deb" debian_trixie
+    say "KasmVNC $KASMVNC_VERSION X server for Debian 13 ($arch) in $1"
+}
+
 case "$STEP" in
     packages) packages "$@" ;;
     files) files "$@" ;;
     client) client "$@" ;;
-    *) echo "usage: provision.sh packages [--image] | files [--skel DIR] [--code DIR] [--policies DIR] [--themes DIR] [--share DIR] | client DIR" >&2; exit 2 ;;
+    server) server "$@" ;;
+    *) echo "usage: provision.sh packages [--image] | files [--skel DIR] [--code DIR] [--policies DIR] [--themes DIR] [--share DIR] | client DIR | server DIR" >&2; exit 2 ;;
 esac

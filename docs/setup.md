@@ -288,6 +288,16 @@ Where there is no stream — a workstation not yet rebuilt, a native install
 without the client (`PANTHEON_DESKTOP_CLIENT_DIR`) — the window shows the
 screen as pictures, a few a second, and says why under it.
 
+**The browser is live too, on a screen of its own** (`D-2026-11-01-01`). The
+agent's Firefox runs alone on a second KasmVNC screen, apart from the desktop,
+and the Browser window shows it as it moves: Firefox's own tabs and address
+bar, yours to use while you hold it, with the same *Paste* and *Copy*. The
+agent drives and sees it as before. This holds for the workstation's browser
+and for Pantheon's own (Pantheon's image carries KasmVNC's server as well, and
+runs it as Pantheon's own user), so rebuild both images:
+`docker compose up -d --build`. A native install without KasmVNC, or a
+workstation not yet rebuilt, keeps showing the browser as pictures and says why.
+
 **The desktop is XFCE, in the cockpit's look** (`D-2026-10-31-02`): Pantheon's
 window frames and wallpaper, and a panel along the bottom with the Pantheon
 menu (it searches every program), Terminal, Firefox, Files, the open windows

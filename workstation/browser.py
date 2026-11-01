@@ -9,6 +9,15 @@ Mozilla's build, phoning nowhere), started for the account **as the account**
 (`P20-06`) — on the account's own display when it has one, so the desktop and
 the in-app window show the same browser, and headless when it has none.
 
+`D-2026-11-01-01`: **on a screen of its own** where the system has one
+(`System.browser_display`: KasmVNC with nothing else on it, apart from the
+desktop), streamed live to the in-app window as the desktop is, so a person
+sees Firefox itself — its tabs, its address bar, the page as it moves — and
+uses it while they hold it. The agent drives it here exactly as before; what
+changes for it is that a page's size is the window's content on that screen
+(`_page_size`), a frame says where the page sits on it (`_view`), and its tab is
+the one the screen shows. Headless where the screen will not start.
+
 **Why nobody else can drive it.** Firefox's remote agent listens on this
 machine's loopback, which every account here can reach. WebDriver BiDi allows
 **one** session per browser (measured: a second `session.new` answers *session
@@ -38,11 +47,12 @@ import logging
 import os
 import re
 import shutil
+import struct
 import subprocess
 import threading
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from workstation import protocol as P
 from workstation.bidi import BidiError, Session
@@ -83,6 +93,36 @@ user_pref("datareporting.policy.dataSubmissionPolicyBypassNotification", true);
 user_pref("browser.tabs.warnOnClose", false);
 user_pref("browser.sessionstore.resume_from_crash", false);
 """
+
+# `D-2026-11-01-01`. Written after the shipped preferences for a browser on a
+# screen of its own, where a person watches and uses it as their browser: its
+# tabs at the top of a screen that has no window manager and so no title bar
+# (Firefox draws none in its tab strip), a page's new window opened as a tab of
+# this one rather than a second window over it, closing the last tab keeping the
+# window (closing it would stop the browser under the agent), and no bookmarks
+# bar taking the page's room.
+SCREEN_JS = """// The browser's own screen (`D-2026-11-01-01`).
+user_pref("browser.tabs.inTitlebar", 0);
+user_pref("browser.link.open_newwindow", 3);
+user_pref("browser.link.open_newwindow.restriction", 0);
+user_pref("browser.tabs.closeWindowWithLastTab", false);
+user_pref("browser.toolbars.bookmarks.visibility", "never");
+"""
+# Where Firefox keeps its window's place and size: written before each start
+# on a screen of its own, so the window covers the screen exactly — there is no
+# window manager to maximize it — and kept the rest of the file as it was.
+XULSTORE = "xulstore.json"
+_MAIN_WINDOW = ("chrome://browser/content/browser.xhtml", "main-window")
+# How long `_ctx` waits for a tab to say whether it is the one on the screen.
+_VISIBLE_ASK_S = 2.0
+
+# Where the page sits on the browser's screen (`P.BROWSER_ACTIONS`' "view"):
+# `mozInnerScreenX/Y` is Firefox's own word for the viewport's corner in screen
+# pixels; the fallback is the window's place plus its chrome.
+VIEW_FN = r"""() => JSON.stringify({
+  x: Math.round(typeof mozInnerScreenX === 'number' ? mozInnerScreenX : screenX + (outerWidth - innerWidth) / 2),
+  y: Math.round(typeof mozInnerScreenY === 'number' ? mozInnerScreenY : screenY + (outerHeight - innerHeight)),
+  w: innerWidth, h: innerHeight })"""
 
 # The page as the agent reads it: its text, and the elements a person could
 # click or type into, numbered in document order and marked so the number
@@ -461,12 +501,17 @@ class AccountBrowser:
     extra_prefs = ""
 
     def __init__(self, launch_prefix: List[str], env: Dict[str, str], profile: Path,
-                 headless: bool, own=None):
+                 headless: bool, own=None, screen=None):
         self.launch_prefix = launch_prefix
         self.env = env
         self.profile = profile
         self.headless = headless
         self.own = own
+        # `D-2026-11-01-01`. The browser's own screen (`System.browser_display`):
+        # started with the browser, which runs on it when it starts and
+        # headless when it will not. `on_screen` says which the running one is.
+        self.screen = screen
+        self.on_screen = False
         self.proc: Optional[subprocess.Popen] = None
         self.session: Optional[Session] = None
         self.current: Optional[str] = None
@@ -489,6 +534,70 @@ class AccountBrowser:
         return (self.proc is not None and self.proc.poll() is None
                 and self.session is not None and not self.session.closed)
 
+    def ensure_running(self) -> None:
+        """Started if it is not running (`D-2026-11-01-01`: a window that
+        streams the browser's screen wants Firefox on it)."""
+        with self.lock:
+            if not self.running():
+                self.stop()
+                self.start()
+
+    def _on_screen_env(self) -> Optional[Dict[str, str]]:
+        """The environment for Firefox on its own screen, starting the screen;
+        None where there is no screen or it will not start (said in the log,
+        and the browser runs headless)."""
+        if self.screen is None:
+            return None
+        try:
+            display = self.screen.start()
+        except Exception as e:  # noqa: BLE001 — a screen that will not start: headless
+            logger.info("browser: no screen of its own (%s); it runs headless",
+                        getattr(e, "message", None) or e)
+            return None
+        return {**self.env, "DISPLAY": display, "XAUTHORITY": str(self.screen.auth_path())}
+
+    def _write_profile_file(self, name: str, text: str) -> Path:
+        """One file of the profile, written whole and never through a link at
+        its own name (the profile is in the account's home)."""
+        path = self.profile / name
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(text)
+        return path
+
+    def _xulstore_text(self) -> str:
+        """`XULSTORE` with the main window over the whole screen, everything
+        else in it as Firefox left it."""
+        try:
+            fd = os.open(self.profile / XULSTORE, os.O_RDONLY | os.O_NOFOLLOW)
+            with os.fdopen(fd, "r", encoding="utf-8") as f:
+                store = json.load(f)
+        except (OSError, ValueError):
+            store = {}
+        if not isinstance(store, dict):
+            store = {}
+        doc, win = _MAIN_WINDOW
+        page = store.get(doc) if isinstance(store.get(doc), dict) else {}
+        page[win] = {"screenX": "0", "screenY": "0", "width": str(P.SCREEN_WIDTH),
+                     "height": str(P.SCREEN_HEIGHT), "sizemode": "normal"}
+        store[doc] = page
+        return json.dumps(store)
+
+    def _fit_window(self, env: Dict[str, str]) -> None:
+        """Firefox's window moved to the corner and sized to the screen, once
+        it is on it — the window manager's job, and there is none. Best
+        effort: `XULSTORE` already asked Firefox for this size."""
+        if not shutil.which("xdotool"):
+            return
+        argv = self.launch_prefix + [
+            "xdotool", "search", "--sync", "--onlyvisible", "--class", "firefox",
+            "windowmove", "%@", "0", "0", "windowsize", "%@", str(P.SCREEN_WIDTH), str(P.SCREEN_HEIGHT)]
+        try:
+            subprocess.run(argv, env=env, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                           stderr=subprocess.DEVNULL, timeout=10)
+        except (OSError, subprocess.SubprocessError) as e:
+            logger.info("browser: its window could not be fitted to its screen: %s", e)
+
     def start(self) -> None:
         firefox = find_firefox()
         if not firefox:
@@ -504,11 +613,17 @@ class AccountBrowser:
                 "failing, the workstation's log says why."))
         self._starts.append(now)
         self.profile.mkdir(parents=True, exist_ok=True)
+        env = self._on_screen_env()
+        self.on_screen = env is not None
+        headless = self.headless if self.screen is None else not self.on_screen
         names = self.names() if callable(getattr(self, "names", None)) else None
-        (self.profile / "user.js").write_text(USER_JS + (names.browser_prefs() if names else "")
-                                              + self.extra_prefs, encoding="utf-8")
+        written = [self._write_profile_file(
+            "user.js", USER_JS + (SCREEN_JS if self.on_screen else "")
+            + (names.browser_prefs() if names else "") + self.extra_prefs)]
+        if self.on_screen:
+            written.append(self._write_profile_file(XULSTORE, self._xulstore_text()))
         if self.own:
-            self.own([self.profile.parent, self.profile, self.profile / "user.js"])
+            self.own([self.profile.parent, self.profile, *written])
         if names:
             # `P27-04`. The pinned certificates, each trusted as its own
             # server's only; what could not be done is logged, not fatal.
@@ -516,10 +631,10 @@ class AccountBrowser:
                 logger.warning("browser: %s", problem)
         argv = self.launch_prefix + [firefox, "--remote-debugging-port=0", "--no-remote",
                                      "--profile", str(self.profile)]
-        if self.headless:
+        if headless:
             argv.append("--headless")
         argv.append("about:blank")
-        self.proc = subprocess.Popen(argv, env=self.env, stdout=subprocess.PIPE,
+        self.proc = subprocess.Popen(argv, env=env or self.env, stdout=subprocess.PIPE,
                                      stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
                                      start_new_session=True)
         port = self._listening_port()
@@ -532,6 +647,8 @@ class AccountBrowser:
         threading.Thread(target=self._drain, daemon=True).start()
         ctx = self._contexts()[0]["context"]
         self.current = ctx
+        if env is not None:
+            self._fit_window(env)
         self._viewport(ctx)
 
     def _listening_port(self) -> int:
@@ -598,6 +715,11 @@ class AccountBrowser:
         return self._call("browsingContext.getTree", {"maxDepth": 0}).get("contexts") or []
 
     def _viewport(self, ctx: str) -> None:
+        if self.on_screen:
+            # `D-2026-11-01-01`: on its own screen the page is the window's
+            # content, which a person sees; a viewport set larger would be
+            # drawn past the screen's edge.
+            return
         try:
             self._call("browsingContext.setViewport",
                        {"context": ctx, "viewport": {"width": P.BROWSER_WIDTH, "height": P.BROWSER_HEIGHT}})
@@ -609,14 +731,69 @@ class AccountBrowser:
         if not ids:
             got = self._call("browsingContext.create", {"type": "tab"})
             ids = [got["context"]]
+        if self.on_screen and len(ids) > 1:
+            # `D-2026-11-01-01`: on its own screen a person can pick a tab in
+            # Firefox itself, so the agent's tab is the one on the screen.
+            shown = self._shown_tab(ids)
+            if shown:
+                self.current = shown
         if self.current not in ids:
             self.current = ids[0]
         return self.current
 
-    def _eval(self, ctx: str, fn: str, *args: Any) -> Any:
+    def _shown_tab(self, ids: List[str]) -> Optional[str]:
+        """The tab the screen shows, the current one asked first; None when
+        none says so in time."""
+        order = ([self.current] if self.current in ids else []) + [i for i in ids if i != self.current]
+        for ctx in order:
+            try:
+                if self._eval(ctx, "() => document.visibilityState", timeout=_VISIBLE_ASK_S) == "visible":
+                    return ctx
+            except BrowserError:
+                continue  # a tab between pages says nothing yet; the next is asked
+        return None
+
+    def _page_size(self, ctx: str) -> Tuple[int, int]:
+        """The page's size in CSS pixels: the protocol's for a headless
+        browser, whose viewport is set to it; the window's content on a screen
+        of its own (`D-2026-11-01-01`)."""
+        if not self.on_screen:
+            return P.BROWSER_WIDTH, P.BROWSER_HEIGHT
+        try:
+            w, h = json.loads(self._eval(ctx, "() => JSON.stringify([innerWidth, innerHeight])",
+                                         timeout=5.0) or "[]")
+        except (BrowserError, ValueError, TypeError):
+            return P.BROWSER_WIDTH, P.BROWSER_HEIGHT
+        if not all(isinstance(v, int) and not isinstance(v, bool) and 0 < v <= 10_000 for v in (w, h)):
+            return P.BROWSER_WIDTH, P.BROWSER_HEIGHT
+        return w, h
+
+    def _view(self, ctx: str) -> Optional[Dict[str, int]]:
+        """Where the page sits on the browser's screen, in its pixels; None
+        for a headless browser, whose picture is the page (`P.BROWSER_ACTIONS`)."""
+        if not self.on_screen:
+            return None
+        try:
+            got = json.loads(self._eval(ctx, VIEW_FN, timeout=5.0) or "{}")
+        except (BrowserError, ValueError, TypeError):
+            return None
+        if not isinstance(got, dict):
+            return None
+        try:
+            x, y = int(got.get("x")), int(got.get("y"))
+            w, h = int(got.get("w")), int(got.get("h"))
+        except (TypeError, ValueError):
+            return None
+        x = max(0, min(x, P.SCREEN_WIDTH - 1))
+        y = max(0, min(y, P.SCREEN_HEIGHT - 1))
+        w = max(1, min(w, P.SCREEN_WIDTH - x))
+        h = max(1, min(h, P.SCREEN_HEIGHT - y))
+        return {"x": x, "y": y, "w": w, "h": h}
+
+    def _eval(self, ctx: str, fn: str, *args: Any, timeout: float = 30.0) -> Any:
         got = self._call("script.callFunction", {
             "functionDeclaration": fn, "awaitPromise": False, "target": {"context": ctx},
-            "arguments": [_arg(a) for a in args]})
+            "arguments": [_arg(a) for a in args]}, timeout=timeout)
         if got.get("type") == "exception":
             raise BrowserError("refused", "The page would not answer that.")
         res = got.get("result") or {}
@@ -738,7 +915,8 @@ class AccountBrowser:
             x, y = at["x"], at["y"]
             what = at.get("label") or f"element {body.get('ref')}"
         elif action == "click":
-            x, y = _xy(body)
+            with self.lock:
+                x, y = _xy(body, self._page_size(self._ctx()))
             what = "the page"
         if action == "click":
             return f"Clicking “{what}”", x, y
@@ -787,7 +965,7 @@ class AccountBrowser:
                     where = self._where(ctx, body.get("ref"))
                     x, y = where["x"], where["y"]
                 else:
-                    x, y = _xy(body)
+                    x, y = _xy(body, self._page_size(ctx))
                 self._point(ctx, x, y, clicks=2 if body.get("double") else 1)
                 time.sleep(0.4)
             elif action == "type":
@@ -889,7 +1067,7 @@ class AccountBrowser:
                     raise BrowserError("bad_request", "“selector” is at most 300 characters.")
                 target = {"selector": sel}
             elif body.get("x") is not None or body.get("y") is not None:
-                x, y = _xy(body)
+                x, y = _xy(body, self._page_size(ctx))
                 target = {"x": x, "y": y}
         if elsewhere is not None:
             # The person pointed on another page: what was kept then, said so.
@@ -947,7 +1125,7 @@ class AccountBrowser:
                 label = f"Pointed at the page {st.get('title') or url}"
                 box = None
             else:
-                x, y = _xy(body)
+                x, y = _xy(body, self._page_size(ctx))
                 raw = self._eval(ctx, ANCHOR_FN, x, y)
                 if not raw:
                     raise BrowserError("refused", "There is nothing on the page there to point at.")
@@ -990,7 +1168,7 @@ class AccountBrowser:
                 if action == "note_add":
                     if who != "person":
                         raise BrowserError("refused", "Notes are the person's to make.")
-                    x, y = _xy(body)
+                    x, y = _xy(body, self._page_size(ctx))
                     raw = self._eval(ctx, ANCHOR_FN, x, y)
                     if not raw:
                         raise BrowserError("refused", "There is nothing on the page there to pin a note to.")
@@ -1111,9 +1289,28 @@ class AccountBrowser:
             activity = self.activity_since(since)
             if if_none_match and digest == if_none_match and not activity:
                 return None
+            # `D-2026-11-01-01`: the picture's own size — the page on a screen
+            # of its own is the window's content, not the protocol's size.
+            width, height = png_size(data) or (P.BROWSER_WIDTH, P.BROWSER_HEIGHT)
             out = {"mime": "image/png", "data_b64": shot.get("data") or "", "digest": digest,
-                   "width": P.BROWSER_WIDTH, "height": P.BROWSER_HEIGHT,
+                   "width": width, "height": height, "view": self._view(ctx),
                    "activity": activity, "seq": self.seq}
+            out.update(self.state(ctx))
+            return out
+
+    def live(self, since: int = 0) -> Dict:
+        """`activity` (`D-2026-11-01-01`): what `frame` answers, without the
+        picture, for a window that shows the browser's screen live. Asking is
+        watching, as for a frame."""
+        self.watched_at = time.monotonic()
+        with self.lock:
+            if not self.running():
+                self.stop()
+                self.start()
+            ctx = self._ctx()
+            out: Dict[str, Any] = {"ok": True, "action": "activity",
+                                   "activity": self.activity_since(since), "seq": self.seq,
+                                   "view": self._view(ctx)}
             out.update(self.state(ctx))
             return out
 
@@ -1145,13 +1342,25 @@ def _arg(a: Any) -> Dict:
     return {"type": "string", "value": str(a)}
 
 
-def _xy(body: Dict):
+def _xy(body: Dict, size: Optional[Tuple[int, int]] = None):
+    """A point on the page, checked against the page's size — the protocol's
+    for a headless browser, the window's content on a screen of its own
+    (`D-2026-11-01-01`)."""
+    width, height = size or (P.BROWSER_WIDTH, P.BROWSER_HEIGHT)
     x, y = body.get("x"), body.get("y")
     if not all(isinstance(v, int) and not isinstance(v, bool) for v in (x, y)):
         raise BrowserError("bad_request", "A click names an element (“ref”) or a point (“x”, “y”).")
-    if not (0 <= x < P.BROWSER_WIDTH and 0 <= y < P.BROWSER_HEIGHT):
-        raise BrowserError("bad_request", f"The page is {P.BROWSER_WIDTH}×{P.BROWSER_HEIGHT}; that point is off it.")
+    if not (0 <= x < width and 0 <= y < height):
+        raise BrowserError("bad_request", f"The page is {width}×{height}; that point is off it.")
     return x, y
+
+
+def png_size(data: bytes) -> Optional[Tuple[int, int]]:
+    """A PNG's width and height, from its header; None for anything else."""
+    if len(data) >= 24 and data[:8] == b"\x89PNG\r\n\x1a\n" and data[12:16] == b"IHDR":
+        width, height = struct.unpack(">II", data[16:24])
+        return int(width), int(height)
+    return None
 
 
 def _bounded(v: Any, name: str, limit: int) -> int:
@@ -1174,13 +1383,28 @@ class Browsers:
             b = self._by_account.get(account)
             if b is None:
                 self.system.ensure(account)
+                # `D-2026-11-01-01`: a screen of the browser's own where the
+                # system has one — apart from the desktop, streamed like it —
+                # and the desktop's display only where it has none.
+                screen = None
+                display_of = getattr(self.system, "browser_display", None)
+                if callable(display_of):
+                    try:
+                        screen = display_of(account)
+                    except Exception:  # noqa: BLE001 — no screen of its own: as before
+                        screen = None
                 display = None
-                try:
-                    display = self.system.wake(account)
-                except Exception:  # noqa: BLE001 — a desktop that will not start: headless
-                    display = None
+                if screen is None:
+                    try:
+                        display = self.system.wake(account)
+                    except Exception:  # noqa: BLE001 — a desktop that will not start: headless
+                        display = None
                 prefix, env = self.system.run_as(account)
                 env = dict(env)
+                if screen is not None:
+                    # Never the desktop's: the browser's screen is its own.
+                    env.pop("DISPLAY", None)
+                    env.pop("XAUTHORITY", None)
                 headless = not (display or env.get("DISPLAY"))
                 if display and not env.get("DISPLAY"):
                     env["DISPLAY"] = display
@@ -1188,7 +1412,8 @@ class Browsers:
                 env["MOZ_CRASHREPORTER_DISABLE"] = "1"
                 profile = Path(self.system.home(account)) / PROFILE_DIR
                 b = AccountBrowser(prefix, env, profile, headless,
-                                   own=lambda paths, a=account: self.system.own(a, paths))
+                                   own=lambda paths, a=account: self.system.own(a, paths),
+                                   screen=screen)
                 b.names = lambda a=account: self.names_of(a)   # `P27-04`
                 self._by_account[account] = b
             return b

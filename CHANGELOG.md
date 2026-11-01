@@ -677,6 +677,18 @@ the next one is cut.
 
 ### Fixed
 
+- **The Browser window is a live browser, not pictures of one** (2026-11-01, `B1724`,
+  `D-2026-11-01-01`). The owner: *"It's supposed to be a literal web-browser that the agent (llm)
+  can see the inside content inside of as well as navigate themselves."* The window showed a
+  screenshot of the workstation's Firefox about once a second under Pantheon's own address bar.
+  The agent's Firefox now runs alone on a screen of its own, separate from the desktop, streamed
+  live the way the desktop is: you see Firefox itself move, with its own tabs and address bar,
+  and use it as your browser while you hold it (a click while the agent is idle takes it, sending
+  a message hands it back, and Paste and Copy carry the clipboard across). The agent drives and
+  sees it as before. Where there is no workstation, Pantheon's own browser does the same, since
+  Pantheon's image now carries KasmVNC's server too. **To get it:** rebuild both images,
+  `docker compose up -d --build`; until then, and anywhere without KasmVNC, the window shows
+  pictures and says why.
 - **The agent can use what you keep in your vault** (2026-11-01, `B1722`, `B1723`). The owner:
   the agent *"can see the github token I put in the vault but can't access/use it. The vault is
   locked to the agent."* Its `vault_search` and `vault_get` read only the server's Bitwarden vault

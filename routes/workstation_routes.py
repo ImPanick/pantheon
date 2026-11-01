@@ -97,12 +97,32 @@ stream:
                                  `?person=` and only for an admin, someone
                                  else's as `watch`, which never drives.
 
+`D-2026-11-01-01` — the browser on a screen of its own. The browser the agent
+drives runs alone on a second display of the person's (the workstation's, or
+Pantheon's own where there is none), streamed through the same client:
+
+  GET  /api/workstation/browser/screen
+                                 whether the caller's browser streams, who
+                                 holds it, and the client's page pointed at the
+                                 stream below; or why not, and the window shows
+                                 frames as before.
+  WS   /api/workstation/browser/websockify
+                                 that screen's stream, relayed like the
+                                 desktop's: the caller's own browser only, as
+                                 `person`, who drives exactly while they hold
+                                 it. No `?person=`: an admin watches a person's
+                                 desktop, not their browser.
+  GET  /api/workstation/browser?live=1
+                                 a frame's answer without the picture — the
+                                 agent's hand and where the page sits on the
+                                 screen — for the window drawing it live.
+
 A websocket passes no HTTP middleware, `AuthMiddleware` included, so the
-stream route asks for itself what the middleware would: a session cookie that
-`validate_token` accepts (a bearer token is not a person, `B70`), and an
+stream routes ask for themselves what the middleware would: a session cookie
+that `validate_token` accepts (a bearer token is not a person, `B70`), and an
 `Origin` whose host is this request's own `Host` — a page on another site
-cannot open a person's desktop with their cookie. Then `_watched`, the same
-door the frames go through.
+cannot open a person's desktop with their cookie. Then `_watched` (the
+browser's: `_browser_mine`), the same door the frames go through.
 
 **The token never reaches the browser**: a frame is the daemon's picture
 re-sent, and nothing else of its answer passes through; the stream is the
@@ -564,12 +584,22 @@ def setup_workstation_routes() -> APIRouter:
     # ── `P25-06`: the agent browser's window ───────────────────────────────────
 
     @router.get("/browser")
-    async def workstation_browser(request: Request, if_none_match: str = "", since: int = 0):
+    async def workstation_browser(request: Request, if_none_match: str = "", since: int = 0,
+                                  live: bool = False):
         """The caller's own browser: one frame of the page, its address, title
         and tabs, and what it did after `since` (`P25-07`); `304` when none
-        of that changed."""
+        of that changed. `D-2026-11-01-01`: with `live`, the same without the
+        picture — the window draws the browser's own screen live and wants only
+        the agent's hand and where the page sits on that screen."""
         from src.local_browser import runs_in
         client, account = _browser_mine(request)
+        if live:
+            try:
+                answer = await client.browser(account, "activity", since=max(0, int(since or 0))) or {}
+            except WorkstationError as e:
+                raise _http_error(e)
+            return JSONResponse({**_browser_state(answer), "live": True,
+                                 "runs_in": runs_in(client) or "pantheon"}, headers=_NO_STORE)
         try:
             shot = await client.browser(account, "frame", if_none_match=if_none_match or None,
                                         since=max(0, int(since or 0)))
@@ -578,17 +608,64 @@ def setup_workstation_routes() -> APIRouter:
             frame = _frame(shot)
         except WorkstationError as e:
             raise _http_error(e)
-        tabs = [{"tab": n, "url": str(t.get("url") or "")[:2000], "current": bool(t.get("current"))}
-                for n, t in enumerate(shot.get("tabs") or [], start=1) if isinstance(t, dict)]
-        activity = [_activity(a) for a in (shot.get("activity") or []) if isinstance(a, dict)]
-        seq = shot.get("seq") if isinstance(shot.get("seq"), int) and not isinstance(shot.get("seq"), bool) else 0
-        return JSONResponse({**frame, "url": str(shot.get("url") or "")[:4000],
-                             "title": str(shot.get("title") or "")[:300], "tabs": tabs,
-                             "activity": activity, "seq": seq,
+        return JSONResponse({**frame, **_browser_state(shot),
                              # Which browser this is: the workstation's, or
                              # Pantheon's own (`src/local_browser.py`).
                              "runs_in": runs_in(client) or "pantheon"},
                             headers=_NO_STORE)
+
+    # ── `D-2026-11-01-01`: the browser's own screen, live ─────────────────────
+
+    @router.get("/browser/screen")
+    async def workstation_browser_screen(request: Request):
+        """Whether the caller's browser runs on a screen of its own that
+        streams, who holds it, and the page the window frames to show it —
+        Pantheon's own copy of KasmVNC's client, pointed at the stream below;
+        or why not, and the window shows frames."""
+        from src import desktop_client
+        client, account = _browser_mine(request)
+        try:
+            answer = await client.browser_screen(account)
+        except WorkstationError as e:
+            raise _http_error(e)
+        kind = answer.get("kind") if answer.get("kind") in P.DESKTOP_KINDS else None
+        out: Dict[str, Any] = {"kind": kind, **_holder_answer(answer.get("holder"))}
+        if kind and not desktop_client.available():
+            kind = out["kind"] = None
+            out["why"] = desktop_client.UNAVAILABLE_SENTENCE
+        elif kind:
+            out["client"] = desktop_client.page_url(stream=desktop_client.BROWSER_STREAM_PATH)
+        else:
+            out["why"] = str(answer.get("why") or "The browser is shown as pictures.")[:500]
+        return JSONResponse(out, headers=_NO_STORE)
+
+    @router.websocket("/browser/websockify")
+    async def workstation_browser_stream(websocket: WebSocket):
+        """The browser screen's stream, relayed as the desktop's is (module
+        docstring): the caller's own browser only, as `person` — who drives
+        exactly while they hold it."""
+        if _socket_person(websocket) is None:
+            await websocket.close(code=4401)
+            return
+        try:
+            client, account = _browser_mine(websocket)  # type: ignore[arg-type]
+        except HTTPException as e:
+            await websocket.close(code=4403, reason=_close_reason(str(e.detail)))
+            return
+        if P.DESKTOP_SUBPROTOCOL not in (websocket.scope.get("subprotocols") or []):
+            await websocket.close(code=1002)
+            return
+        try:
+            async with client.browser_screen_stream(account, "person") as upstream:
+                await websocket.accept(subprotocol=P.DESKTOP_SUBPROTOCOL)
+                logger.info("browser screen of %s: viewer connected", account)
+                await _relay(websocket, upstream)
+        except WorkstationError as e:
+            logger.info("browser screen of %s: %s", account, e.message)
+            await _close_quietly(websocket, 1011, e.message)
+            return
+        await _close_quietly(websocket, 1000, "")
+        logger.info("browser screen of %s: viewer gone", account)
 
     @router.post("/browser")
     async def workstation_browser_act(request: Request):
@@ -667,6 +744,33 @@ async def _close_quietly(websocket: WebSocket, code: int, reason: str) -> None:
             await websocket.close(code=code, reason=_close_reason(reason))
     except (RuntimeError, OSError):
         pass
+
+
+def _browser_state(answer: Dict[str, Any]) -> Dict[str, Any]:
+    """The page's address, title and tabs, what the browser did, and
+    (`D-2026-11-01-01`) where the page sits on its own screen — as the window
+    is given them, each its own type."""
+    tabs = [{"tab": n, "url": str(t.get("url") or "")[:2000], "current": bool(t.get("current"))}
+            for n, t in enumerate(answer.get("tabs") or [], start=1) if isinstance(t, dict)]
+    activity = [_activity(a) for a in (answer.get("activity") or []) if isinstance(a, dict)]
+    seq = answer.get("seq") if isinstance(answer.get("seq"), int) and not isinstance(answer.get("seq"), bool) else 0
+    return {"url": str(answer.get("url") or "")[:4000], "title": str(answer.get("title") or "")[:300],
+            "tabs": tabs, "activity": activity, "seq": seq, "view": _view(answer.get("view"))}
+
+
+def _view(v: Any) -> Optional[Dict[str, int]]:
+    """`D-2026-11-01-01`. Where the page sits on the browser's screen, in its
+    pixels, or None (a headless browser: the picture is the page)."""
+    if not isinstance(v, dict):
+        return None
+    out = {}
+    for key, limit in (("x", P.SCREEN_WIDTH), ("y", P.SCREEN_HEIGHT), ("w", P.SCREEN_WIDTH),
+                       ("h", P.SCREEN_HEIGHT)):
+        n = v.get(key)
+        if not isinstance(n, int) or isinstance(n, bool) or not 0 <= n <= limit:
+            return None
+        out[key] = n
+    return out if out["w"] > 0 and out["h"] > 0 else None
 
 
 def _activity(a: Dict[str, Any]) -> Dict[str, Any]:

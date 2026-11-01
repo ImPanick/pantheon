@@ -336,6 +336,12 @@ class System:
     def screen(self, account: str) -> Screen:
         return NoScreen("This workstation has no display.")
 
+    def browser_display(self, account: str) -> Optional[Screen]:
+        """`D-2026-11-01-01`. The account's browser screen — a display of its
+        own that its Firefox runs on and that streams like the desktop — or
+        None where this system has none, and the browser runs headless."""
+        return None
+
     # -- `P20-07`, added ----------------------------------------------------------
 
     def has_home(self, account: str) -> bool:
@@ -637,6 +643,11 @@ class Workstation:
         except WorkstationError:
             return  # no account yet: its display, when it starts, starts as the agent's
         screen.set_driver(person)
+        # `D-2026-11-01-01`: and the browser's screen, which has the same
+        # holder — one person at the wheel, on either screen.
+        browser_screen = self.system.browser_display(account)
+        if browser_screen is not None:
+            browser_screen.set_driver(person)
 
     # -- `D-2026-10-31-01`: the live desktop ----------------------------------
 
@@ -670,6 +681,62 @@ class Workstation:
             sock = socket.create_connection(("127.0.0.1", port), timeout=10.0)
         except OSError as e:
             raise WorkstationError("unavailable", f"The live desktop did not answer ({e}).")
+        try:
+            yield sock, "/websockify", authorization
+        finally:
+            _close(sock)
+
+    # -- `D-2026-11-01-01`: the browser's own screen ---------------------------
+
+    def browser_screen(self, account: str) -> Dict:
+        """What `ROUTES["browser_screen"]` answers without an upgrade: whether
+        the account's browser has a screen of its own that streams, and who
+        holds it. Starts the browser, as a `frame` would, so the answer is
+        about a browser that is running — and a person who opens the window
+        sees Firefox, not an empty screen."""
+        from workstation.browser import BrowserError
+        self.system.ensure(account)
+        why = ""
+        try:
+            self.browsers.get(account).ensure_running()
+        except BrowserError as e:
+            why = e.message
+        screen = self.system.browser_display(account)
+        kind = screen.desktop_kind if screen is not None and not why else None
+        out: Dict = {"kind": kind if kind in P.DESKTOP_KINDS else None,
+                     "holder": self.holder(account)["holder"]}
+        if out["kind"] is None:
+            out["why"] = why or (screen.desktop_why if screen is not None else
+                                 "This workstation's browser has no screen of its own; it is "
+                                 "shown as pictures.")
+        return out
+
+    @contextlib.contextmanager
+    def browser_screen_upstream(self, account: str, viewer: str):
+        """`desktop_upstream`, for the browser's screen: its display's own
+        websocket with that viewer's login. The browser is started first if it
+        is not running (a stream opened after a restart of the workstation
+        shows Firefox coming up, not a screen with nothing on it); one that
+        will not start is a line in the log, and the screen still streams."""
+        from workstation.browser import BrowserError
+        if viewer not in P.DESKTOP_VIEWERS:
+            raise WorkstationError("bad_request",
+                                   f"“viewer” is one of {', '.join(P.DESKTOP_VIEWERS)}.")
+        self.system.ensure(account)
+        screen = self.system.browser_display(account)
+        if screen is None:
+            raise WorkstationError("unavailable", "This workstation's browser has no screen of "
+                                                  "its own; it is shown as pictures.")
+        try:
+            self.browsers.get(account).ensure_running()
+        except BrowserError as e:
+            logger.warning("browser screen for %s: the browser did not start: %s", account,
+                           e.message)
+        port, authorization = screen.desktop(viewer)
+        try:
+            sock = socket.create_connection(("127.0.0.1", port), timeout=10.0)
+        except OSError as e:
+            raise WorkstationError("unavailable", f"The browser's screen did not answer ({e}).")
         try:
             yield sock, "/websockify", authorization
         finally:
@@ -1001,7 +1068,7 @@ class Workstation:
         who = body.get("holder") or "agent"
         if who not in P.HOLDERS:
             raise WorkstationError("bad_request", "“holder” is “agent” or “person”.")
-        if (who == "agent" and action != "frame" and action not in P.NOTE_ACTIONS
+        if (who == "agent" and action not in P.WATCH_ACTIONS and action not in P.NOTE_ACTIONS
                 and self.holder(account)["holder"] == "person"):
             raise WorkstationError(
                 "busy", "A person has taken over this workstation's screen and its browser. Wait "
@@ -1010,9 +1077,11 @@ class Workstation:
             b = self.browsers.get(account)
             if action in P.NOTE_ACTIONS:
                 return b.note(action, body, who=who)
-            if action == "frame":
+            if action in P.WATCH_ACTIONS:
                 since = body.get("since", 0)
                 since = since if isinstance(since, int) and not isinstance(since, bool) and since >= 0 else 0
+                if action == "activity":   # `D-2026-11-01-01`
+                    return b.live(since)
                 return b.frame(str(body.get("if_none_match") or ""), since)
             return b.act(action, body, who=who)
         except BrowserError as e:
@@ -1316,17 +1385,21 @@ class Handler(BaseHTTPRequestHandler):
             if not m:
                 raise WorkstationError("not_found", "No such workstation route.")
             account = self.station.check_account(m.group("account"))
+            # The whole template, not its tail: `D-2026-11-01-01`'s
+            # `browser/screen` ends in `/screen`, which is another route.
             name = next((n for n, (verb, tmpl) in P.ROUTES.items()
-                         if verb == method and tmpl.endswith("/" + m.group("rest"))
-                         and "{account}" in tmpl), None)
+                         if verb == method and tmpl == "/v1/users/{account}/" + m.group("rest")),
+                        None)
             if name is None:
                 raise WorkstationError("not_found", "No such workstation route.")
-            if name == "desktop":  # `D-2026-10-31-01`
+            if name in ("desktop", "browser_screen"):  # `D-2026-10-31-01`, `D-2026-11-01-01`
                 if "websocket" in (self.headers.get("Upgrade") or "").lower():
                     q = parse_qs(parts.query)
-                    self._desktop(account, (q.get("viewer") or ["person"])[0])
+                    self._desktop(account, (q.get("viewer") or ["person"])[0],
+                                  browser=name == "browser_screen")
                     return
-                self._send(200, self.station.desktop(account))
+                self._send(200, self.station.desktop(account) if name == "desktop"
+                           else self.station.browser_screen(account))
                 return
             if name == "screenshot":
                 q = parse_qs(parts.query)
@@ -1371,13 +1444,14 @@ class Handler(BaseHTTPRequestHandler):
             logger.exception("workstation route %s failed", path)
             self._fail(WorkstationError("internal", f"The workstation failed: {type(e).__name__}."))
 
-    def _desktop(self, account: str, viewer: str) -> None:
+    def _desktop(self, account: str, viewer: str, *, browser: bool = False) -> None:
         """`D-2026-10-31-01`. The upgrade: checked, sent on to where the stream
         is served with that viewer's login, its `101` handed back as it came
         (its accept value is computed from the caller's own key), and then the
         two connections joined until one ends. A refusal before the `101` is
         the usual JSON error; after it the stream is all there is, so a failure
-        is a line in the log and the connection's end."""
+        is a line in the log and the connection's end. `D-2026-11-01-01`: with
+        `browser`, the browser's screen instead of the desktop, the same way."""
         if (self.headers.get("Sec-WebSocket-Version") or "").strip() != "13":
             raise WorkstationError("bad_request", "The desktop speaks websocket version 13.")
         offered = [p.strip() for p in (self.headers.get("Sec-WebSocket-Protocol") or "").split(",")]
@@ -1388,29 +1462,33 @@ class Handler(BaseHTTPRequestHandler):
         if not _WS_KEY_RE.match(key):
             # Before anything is opened toward the display, like the two above.
             raise WorkstationError("bad_request", "Sec-WebSocket-Key is not a websocket key.")
-        with self.station.desktop_upstream(account, viewer) as (upstream, path, authorization):
+        upstream_of = (self.station.browser_screen_upstream if browser
+                       else self.station.desktop_upstream)
+        what = "browser screen" if browser else "desktop"
+        noun = "The browser's screen" if browser else "The live desktop"
+        with upstream_of(account, viewer) as (upstream, path, authorization):
             upstream.settimeout(30.0)
             try:
                 port = upstream.getpeername()[1]
                 upstream.sendall(desktop_request(path, port, key, authorization))
                 status, head, rest = read_head(upstream)
             except OSError as e:
-                raise WorkstationError("unavailable", f"The live desktop did not answer ({e}).")
+                raise WorkstationError("unavailable", f"{noun} did not answer ({e}).")
             if status != 101:
-                logger.warning("desktop for %s: the stream answered %s", account, status)
-                raise WorkstationError("unavailable", f"The live desktop refused the connection "
+                logger.warning("%s for %s: the stream answered %s", what, account, status)
+                raise WorkstationError("unavailable", f"{noun} refused the connection "
                                                       f"(HTTP {status}). Reset the workstation if "
                                                       "this keeps happening.")
             self.close_connection = True
             try:
                 self.wfile.write(head + rest)
                 self.wfile.flush()
-                logger.info("desktop for %s: %s viewer connected", account, viewer)
+                logger.info("%s for %s: %s viewer connected", what, account, viewer)
                 splice(self.connection, upstream)
             except OSError as e:
-                logger.info("desktop for %s: the stream ended (%s)", account, e)
+                logger.info("%s for %s: the stream ended (%s)", what, account, e)
             finally:
-                logger.info("desktop for %s: %s viewer gone", account, viewer)
+                logger.info("%s for %s: %s viewer gone", what, account, viewer)
 
     def _stream_exec(self, account: str, body: Dict) -> None:
         # Validated before the 200, so a bad request is still a plain error.

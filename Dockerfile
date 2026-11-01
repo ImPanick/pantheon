@@ -60,6 +60,11 @@ RUN node scripts/strip-js-comments.mjs /build /out
 # release was cut from). The optional BuildKit secret `build-ca` is the
 # workstation image's (`workstation/Dockerfile`), for a builder whose proxy
 # re-signs TLS.
+# `D-2026-11-01-01`: the stage also fetches that release's X server for Debian
+# 13, this base's own, into /server (`provision.sh server`: pinned, checked,
+# refused on a mismatch), for the final stage to install — the screen Pantheon's
+# own browser runs on for a person without a workstation, which the same
+# client draws.
 FROM python:3.14.10-slim AS desktop-client
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl \
     && rm -rf /var/lib/apt/lists/*
@@ -67,6 +72,7 @@ COPY workstation/provision.sh /build/provision.sh
 COPY docker/kasmvnc-client/ /out/LICENSES/
 RUN --mount=type=secret,id=build-ca,required=false,mode=0444 \
     sh /build/provision.sh client /out \
+    && sh /build/provision.sh server /server \
     && rm -f /out/LICENSES/README.md
 
 FROM python:3.14.10-slim
@@ -90,8 +96,13 @@ LABEL org.opencontainers.image.licenses="AGPL-3.0-or-later"
 # own headless Firefox, which they watch and take over in the app and the
 # agent drives (`src/local_browser.py`, over WebDriver BiDi like the
 # workstation's); fonts-dejavu-core gives its pages letters to draw.
+# `D-2026-11-01-01`: KasmVNC's X server (the package the `desktop-client` stage
+# fetched and checked) gives that browser a screen of its own, which the person
+# watches live and takes over, and xdotool fits Firefox's window to it; the
+# browser runs headless where neither is.
 # gosu lets the entrypoint drop privileges cleanly so signals still reach
 # uvicorn directly (no extra shell layer like `su`/`sudo` would add).
+COPY --from=desktop-client /server/kasmvncserver.deb /tmp/kasmvncserver.deb
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     cmake \
@@ -109,7 +120,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libglib2.0-0t64 \
     libxcb1 \
     libmagic1 \
-    && rm -rf /var/lib/apt/lists/*
+    xdotool \
+    /tmp/kasmvncserver.deb \
+    && rm -rf /var/lib/apt/lists/* /tmp/kasmvncserver.deb \
+    && install -d -m 1777 /tmp/.X11-unix
 
 # libgl1/libglib2.0-0t64/libxcb1 are runtime shared libs (libGL.so.1,
 # libglib-2.0/libgthread, libxcb.so.1) that opencv-python (cv2) loads. The

@@ -3533,6 +3533,11 @@ and the real server is covered by the opt-in image tests
 
 What reopens it: the owner changing it, or the real server not doing what its source says.
 
+*Amended 2026-11-01 by `D-2026-11-01-01`:* Pantheon's image now carries KasmVNC's server as well as
+its client, for the browser's own screen where there is no workstation. The client rule above is
+unchanged: the page a person's browser runs is still Pantheon's copy, and only an RFB stream comes
+from a display.
+
 ## D-2026-10-31-02 — the workstation's desktop is XFCE, themed to the cockpit
 
 *The owner, 2026-10-31, 18:50:* *"Is there a way to have a - wee bit better looking VM in use? it
@@ -3611,3 +3616,52 @@ off wins, and `null` hands it back to the default. Who may use it is unchanged: 
   table, so this is noted for the owner rather than reopened.
 
 What reopens it: the owner choosing *keep off* on the card.
+
+## D-2026-11-01-01 — the agent's browser runs on a screen of its own, streamed live
+
+*The owner, 2026-10-31, 23:30, after rebuilding:* *"VM works beautifully. The browser however, has
+missed the mark completely. It's supposed to be a literal web-browser that the agent (llm) can
+*see* the inside content inside of as well as navigate themselves."* The Browser window showed still
+frames of the workstation's Firefox under Pantheon's own address bar and tabs. **Decided by the
+owner, 2026-11-01 01:14, on the card: "A live browser of its own"**: a real Firefox on its own
+screen, separate from the desktop, streamed live like it, with its own tabs and address bar, which
+the person and the agent both use, with or without a workstation.
+
+**What it is.** Each person's browser runs alone on a second display: KasmVNC's X server with no
+desktop session and no window manager on it (`workstation/ubuntu.py`, `XDisplay` role "browser",
+its own X cookie and its own logins). Firefox starts there, not headless, its window over the whole
+screen. The agent drives it through BiDi exactly as before and still sees its screenshots; the
+window frames Pantheon's copy of KasmVNC's client on that screen, so the person sees Firefox itself
+move and uses it while they hold it. The stream is the desktop's design (`D-2026-10-31-01`, which this amends) one display over: the
+daemon's `browser_screen` route (`workstation/protocol.py`), the VM host's forward, Pantheon's
+`/api/workstation/browser/websockify` relay, the same `person` login that writes only while the
+person holds it. One holder covers both screens. Where there is no workstation, Pantheon's own
+browser does the same on Pantheon's own KasmVNC (`src/local_browser.py`).
+
+**Calls made here, not by the owner, and why.**
+
+- **KasmVNC or nothing.** Without KasmVNC the browser's screen does not start (`unavailable`, with
+  why) and Firefox runs headless as before; an Xvfb nobody can watch would only cost memory.
+- **Pantheon's image carries KasmVNC's server**, the same pinned 1.5.2 release, as Kasm's Debian
+  trixie package (Pantheon's base image is Debian; the workstation's packages are Ubuntu's), sha256
+  per architecture in `workstation/provision.sh`. It runs as Pantheon's own user and owns its own
+  logins file; no root is involved.
+- **Firefox's own chrome, not Pantheon's.** Live, the window hides its address bar and tabs: there is
+  one browser, and its own bar is the one that matches what it shows. New windows open as tabs, and
+  closing the last tab keeps the window, so a page cannot leave the agent without a browser.
+- **The agent's tab is the one on the screen.** A person can switch tabs in Firefox; the agent's
+  next action is on what is shown (`document.visibilityState`), not on a tab nobody sees.
+- **Points are the page's own pixels.** A click is checked against the page's size on the screen,
+  and a frame says where the page sits on the screen (`view`), so the agent's hand, outlines, notes
+  and *Point at…* land where they would on a frame.
+- **Watching costs no pictures.** Live, the window asks `?live=1` (`activity`: what the agent did and
+  where the page is, no screenshot), never busy while a person holds it; a note or a pointing takes
+  one picture for its crop.
+
+**Not verified here.** The build sandbox may not run the downloaded KasmVNC binary and has no
+Firefox, so the screen, the stream and the window were tested against stand-ins held to what each
+does (`tests/test_the_browser_is_live_on_a_screen_of_its_own.py`). How Firefox sizes its window
+on a display with no window manager is set twice (its `xulstore.json`, then `xdotool`); the owner's
+rebuild is the first real run.
+
+What reopens it: the owner changing it, or the real Firefox and KasmVNC not behaving as tested.

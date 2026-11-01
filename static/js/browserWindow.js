@@ -38,12 +38,31 @@
 // and the reply's live reasoning (`chat.js`, `pantheon:live-thinking`) runs in
 // a strip under the page while the window is open.
 //
+// `D-2026-11-01-01`. **Live, on a screen of its own.** The owner (2026-10-31):
+// *"It's supposed to be a literal web-browser that the agent (llm) can see the
+// inside content inside of as well as navigate themselves."* Where the
+// browser runs alone on a screen of its own (`GET /api/workstation/browser/
+// screen` says so), the stage holds KasmVNC's client on that screen —
+// Pantheon's own copy, from Pantheon's origin, as the workstation window's
+// desktop (`workstationScreen.js`) — so the person sees Firefox itself as it
+// moves, its own tabs and address bar, and uses it as their browser while
+// they hold it. Pantheon's address bar and tabs step aside for Firefox's. The
+// frames stop; the loop asks only what the agent did (`?live=1`) and where the
+// page sits on the screen (`view`), and the page's picture becomes a clear
+// stand-in laid over the page there, so the agent's hand, an outline, a pin
+// and *Point at…* land where they would on a frame. A glass over the client
+// takes the clicks the browser should not get — the agent's turn (the first
+// click while it is idle takes the browser, as on a frame), pointing, a note —
+// and steps aside while the person holds it. Anywhere there is no live screen,
+// the window is frames, as above, and says why.
+//
 // **Every rule is the server's.** Whose browser, whether this person may use
 // one, every bound on an action: `routes/workstation_routes.py` and the
 // daemon behind it. A refusal is shown in their words. Markup is built with
 // `createElement`; no server string is parsed as HTML.
 
 import * as Modals from './modalManager.js?v=20261009census';
+import uiModule from './ui.js';
 import { makeWindowDraggable } from './windowDrag.js';
 import { keyAction, mapPoint, wheelClicks } from './workstationScreen.js';
 import { createNotes, cropBox } from './pageNotes.js';
@@ -79,7 +98,20 @@ const HINT = {
   watching: 'Browse here yourself: click or scroll the page whenever the agent is idle. Point at… or This page tells the agent which one you mean.',
   busy: 'The agent is using the browser. Take over or Stop to use it yourself.',
   holding: 'You have the browser: click the page, then type. Sending a message hands it back to the agent. Shift+Esc gives the keyboard back to this page.',
+  holdingLive: 'You have the browser: use it as your own — its tabs, its address bar, the page. Sending a message hands it back to the agent.',
   pointing: 'Click what you mean on the page — or press This page.',
+};
+
+// `D-2026-11-01-01`. The only page the stage frames for a live browser —
+// Pantheon's own copy of the client — and the screen it draws, which the
+// client scales into the stage keeping its shape (the protocol's size).
+const LIVE_CLIENT = '/api/workstation/desktop/client/';
+const SCREEN = { w: 1280, h: 800 };
+const LIVE_NOTE = {
+  connecting: 'Connecting to your browser…',
+  reconnecting: 'Your browser’s screen dropped; reconnecting…',
+  disconnecting: 'Your browser’s screen is closing…',
+  disconnected: 'Your browser’s screen is not connected; it tries again on its own.',
 };
 const THINKING_SHOWN = 1200;   // `P25-12`: the tail of the live reasoning shown
 
@@ -153,6 +185,17 @@ let _chatBusy = false;       // `P25-10`: a reply is running (`chat.js`)
 let _pointing = false;       // `P25-10`: the next click on the page says *this*
 let _thinking = '';          // `P25-12`: the reply's live reasoning
 let _boxTimer = null;
+// `D-2026-11-01-01`. The live screen: the client page the server offered (null:
+// not asked yet; '': frames), its <iframe> while it is up and seen, the
+// stream's state, where the page sits on the screen, why there is no live
+// screen, the latest ask, and text the browser copied that waits for *Copy*.
+let _live = null;
+let _frame = null;
+let _liveState = '';
+let _view = null;
+let _why = '';
+let _screenAsk = 0;
+let _clip = '';
 
 function _el(tag, cls, text) {
   const n = document.createElement(tag);
@@ -212,8 +255,15 @@ function _render() {
   _win.page.setAttribute('aria-label', holding ? 'The page. You have the mouse and keyboard.' : 'The page the agent is on.');
   [_win.back, _win.forward, _win.reload, _win.go].forEach((b) => { b.disabled = !up; });
   _win.address.disabled = !up;
+  // `D-2026-11-01-01`: live, the address bar and the tabs are Firefox's own.
+  const live = !!_frame;
+  _win.tabs.hidden = live;
+  _win.bar.hidden = live;
+  _win.paste.hidden = !(live && holding && _canReadClipboard());
+  _win.copy.hidden = !(live && _clip);
   _win.hint.textContent = !up ? '' : (_pointing ? HINT.pointing
-    : (holding ? HINT.holding : (agentIdle() || _stopped ? HINT.watching : HINT.busy)));
+    : (holding ? (live ? HINT.holdingLive : HINT.holding)
+      : (agentIdle() || _stopped ? HINT.watching : HINT.busy)));
   _win.hint.hidden = !up;
   _win.point.disabled = !up;
   _win.pointPage.disabled = !up;
@@ -255,6 +305,218 @@ function _showFrame(f) {
   _lastUrl = f.url || '';
   _win.title.textContent = f.title || 'Agent browser';
   _drawTabs(f.tabs);
+}
+
+// ── `D-2026-11-01-01`: the browser's own screen, live ────────────────────────
+
+/** Where the page is drawn in the stage, relative to the page box: the screen
+ *  scaled into the frame keeping its shape and centred (the client's
+ *  `resize=scale`), and the page's place on that screen (`view`, its pixels). */
+export function viewRegion(frameRect, pageRect, screen, view) {
+  if (!frameRect || !pageRect || !screen || !view) return null;
+  if (!(frameRect.width > 0) || !(frameRect.height > 0) || !(screen.w > 0) || !(screen.h > 0)) return null;
+  const k = Math.min(frameRect.width / screen.w, frameRect.height / screen.h);
+  const left = frameRect.left - pageRect.left + (frameRect.width - screen.w * k) / 2;
+  const top = frameRect.top - pageRect.top + (frameRect.height - screen.h * k) / 2;
+  return { left: left + view.x * k, top: top + view.y * k, width: view.w * k, height: view.h * k };
+}
+
+function _okView(v) {
+  if (!v || typeof v !== 'object') return null;
+  const ok = ['x', 'y', 'w', 'h'].every((k) => Number.isInteger(v[k]) && v[k] >= 0);
+  return ok && v.w > 0 && v.h > 0 ? { x: v.x, y: v.y, w: v.w, h: v.h } : null;
+}
+
+function _origin() {
+  return (typeof location !== 'undefined' && location && location.origin) || '';
+}
+
+/** Whether the browser streams, asked of the server; its answer picks the
+ *  live screen or frames. Anything but a clear yes is frames, with why. */
+async function _askScreen() {
+  const win = _win;
+  if (!win) return;
+  const ask = ++_screenAsk;
+  let answer = null;
+  try {
+    const res = await fetch('/api/workstation/browser/screen', { credentials: 'same-origin', cache: 'no-store' });
+    if (res.ok) answer = await res.json();
+  } catch (_) {
+    answer = null;
+  }
+  if (ask !== _screenAsk || _win !== win) return;   // closed, or asked again since
+  const client = answer && answer.kind === 'kasmvnc' && typeof answer.client === 'string'
+    && answer.client.startsWith(LIVE_CLIENT) ? answer.client : '';
+  if (answer && (answer.holder === 'agent' || answer.holder === 'person')) {
+    _holder = answer.holder;
+    _holderAt = Date.now();
+  }
+  _why = client ? '' : ((answer && typeof answer.why === 'string') ? answer.why : '');
+  if (client !== _live) { _dropFrame(); _live = client; }
+}
+
+/** The client's page in the stage — only while somebody can see it. */
+function _mountFrame() {
+  if (!_win || !_live || _frame || !_shouldPoll()) return;
+  const frame = document.createElement('iframe');
+  frame.className = 'abw-live-frame';
+  frame.title = 'Your browser, live';
+  frame.setAttribute('referrerpolicy', 'no-referrer');
+  frame.src = _live;
+  _frame = frame;
+  _liveState = 'connecting';
+  _win.page.insertBefore(frame, _win.page.firstChild);
+  _win.page.classList.add('abw-live');
+  _win.empty.hidden = true;
+  _win.img.hidden = false;   // the clear stand-in for the page (`_placeView`)
+}
+
+/** The frame taken down: its page is gone, and with it the stream. */
+function _dropFrame() {
+  if (!_frame) return;
+  const frame = _frame;
+  _frame = null;
+  _liveState = '';
+  if (frame.parentNode) frame.parentNode.removeChild(frame);
+  if (_win) {
+    _win.page.classList.remove('abw-live');
+    _win.img.style.cssText = '';
+  }
+}
+
+/** The page's picture laid over the page on the live screen, at its size —
+ *  what the hand, the outline, the notes and *Point at…* measure against. */
+function _placeView() {
+  if (!_win || !_frame) return;
+  const view = _view || { x: 0, y: 0, w: SCREEN.w, h: SCREEN.h };
+  // The page's own size, whether or not the stage is laid out yet: a point
+  // on the stand-in is a point on the page, never on the whole screen.
+  _size = { w: view.w, h: view.h };
+  const r = viewRegion(_frame.getBoundingClientRect(), _win.page.getBoundingClientRect(), SCREEN, view);
+  if (!r) return;
+  const st = _win.img.style;
+  st.left = `${r.left}px`;
+  st.top = `${r.top}px`;
+  st.width = `${r.width}px`;
+  st.height = `${r.height}px`;
+}
+
+function _showLive(f) {
+  if (!_win) return;
+  _view = _okView(f.view);
+  _mountFrame();
+  _placeView();
+  if (_notes) _notes.onFrame();
+  _lastUrl = f.url || '';
+  _win.title.textContent = f.title || 'Agent browser';
+}
+
+/** One picture of the page into the stand-in, for a crop of it (a note's, a
+ *  pointing's): the live screen has no frames of its own. */
+async function _freshPicture() {
+  if (!_win || !_frame) return;
+  try {
+    const res = await fetch('/api/workstation/browser', { credentials: 'same-origin', cache: 'no-store' });
+    if (!res.ok) return;
+    const f = await res.json();
+    if (!f || typeof f.data_b64 !== 'string' || (f.mime !== 'image/png' && f.mime !== 'image/jpeg') || !_win) return;
+    await new Promise((resolve) => {
+      const img = _win.img;
+      const done = () => { img.removeEventListener('load', done); img.removeEventListener('error', done); resolve(); };
+      img.addEventListener('load', done);
+      img.addEventListener('error', done);
+      img.src = `data:${f.mime};base64,${f.data_b64}`;
+      setTimeout(done, 1500);
+    });
+  } catch (_) { /* no picture: the words still go */ }
+}
+
+function _focusFrame() {
+  if (!_frame) return;
+  try { _frame.focus(); } catch (_) {}
+  try { if (_frame.contentWindow) _frame.contentWindow.focus(); } catch (_) {}
+}
+
+function _canReadClipboard() {
+  return typeof navigator !== 'undefined' && !!navigator && !!navigator.clipboard
+    && typeof navigator.clipboard.readText === 'function';
+}
+
+/** Text onto the person's clipboard without a press, or false (only the
+ *  asynchronous clipboard, in a secure context: `workstationScreen.js`'s rule). */
+async function _placeQuietly(text) {
+  try {
+    if (typeof isSecureContext === 'undefined' || !isSecureContext) return false;
+    if (!navigator || !navigator.clipboard || typeof navigator.clipboard.writeText !== 'function') return false;
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+/** What the client says to this window — only the stage's own frame, only
+ *  from this origin: its stream's state, and text the browser copied. */
+function _onMessage(ev) {
+  if (!_frame || !ev || ev.source !== _frame.contentWindow) return;
+  if (ev.origin !== _origin()) return;
+  const data = ev.data;
+  if (!data || typeof data !== 'object' || typeof data.action !== 'string') return;
+  if (data.action === 'connection_state' && typeof data.value === 'string') {
+    _liveState = data.value;
+    if (LIVE_NOTE[data.value]) _say(LIVE_NOTE[data.value]);
+    else if (data.value === 'connected') _say(_upSentence());
+  } else if (data.action === 'clipboardrx' && typeof data.value === 'string' && data.value) {
+    _fromBrowser(data.value);
+  }
+}
+
+async function _fromBrowser(text) {
+  if (await _placeQuietly(text)) {
+    _clip = '';
+    _say('Copied from your browser to your clipboard.');
+  } else {
+    _clip = text;
+    _say('Your browser copied text. Press Copy to put it on your clipboard.');
+  }
+  _render();
+}
+
+/** *Copy*: what the browser copied, onto the person's clipboard, inside the press. */
+export async function copyFromBrowser() {
+  if (!_clip) return false;
+  const text = _clip;
+  const ok = await uiModule.copyText(text);
+  if (ok && _clip === text) _clip = '';
+  _say(ok ? 'Copied to your clipboard.' : 'This browser would not let the page use your clipboard.');
+  _render();
+  return ok;
+}
+
+/** *Paste*: the person's clipboard onto the browser's, then they paste there. */
+export async function pasteToBrowser() {
+  if (!_frame || !_holding() || !_canReadClipboard()) return false;
+  let text = '';
+  try {
+    text = await navigator.clipboard.readText();
+  } catch (_) {
+    _say('This browser would not let the page read your clipboard.');
+    return false;
+  }
+  if (!text || !_frame || !_holding()) return false;
+  try {
+    _frame.contentWindow.postMessage({ action: 'clipboardsnd', value: text }, _origin());
+  } catch (_) {
+    return false;
+  }
+  _say('Your clipboard is in your browser now: paste there as usual.');
+  _focusFrame();
+  return true;
+}
+
+function _upSentence() {
+  const where = _where === 'pantheon' ? 'in Pantheon' : 'in your workstation';
+  return _frame ? `Your browser, live ${where}.` : `Your browser, ${where}.`;
 }
 
 // ── `P25-07`: the agent's hand, its words, its trail ──────────────────────────
@@ -407,27 +669,38 @@ async function _readHolder() {
 
 async function _tick() {
   _timer = null;
-  if (_inFlight || !_shouldPoll()) return;
+  if (!_shouldPoll()) { _dropFrame(); return; }   // minimized or hidden: nothing streams
+  if (_inFlight) return;
   _inFlight = true;
   const started = Date.now();
   let wait = TIMING.FRAME_MS;
   try {
+    // `D-2026-11-01-01`: live or frames, asked once a time the window opens.
+    if (_live === null) await _askScreen();
+    if (!_win) return;
     const q = [`since=${_since}`];
-    if (_digest) q.push(`if_none_match=${encodeURIComponent(_digest)}`);
+    if (_live) q.push('live=1');
+    else if (_digest) q.push(`if_none_match=${encodeURIComponent(_digest)}`);
     const url = `/api/workstation/browser?${q.join('&')}`;
     const res = await fetch(url, { credentials: 'same-origin', cache: 'no-store' });
+    if (!_win) return;
     if (res.status === 304 || res.ok) {
       if (res.ok) {
         const f = await res.json();
         if (f.runs_in === 'pantheon' || f.runs_in === 'workstation') _where = f.runs_in;
-        _showFrame(f);
+        if (_live) _showLive(f);
+        else _showFrame(f);
         applyActivity(f.activity);
       }
       if (Date.now() - _lastAgentAt < TIMING.BUSY_FOR_MS) wait = TIMING.BUSY_FRAME_MS;
-      if (_state !== 'up') { _state = 'up'; _say(_where === 'pantheon' ? 'Your browser, in Pantheon.' : 'Your browser, in your workstation.'); }
+      if (_state !== 'up') {
+        _state = 'up';
+        _say(_live || !_why ? _upSentence() : `${_upSentence()} ${_why}`);
+      }
     } else {
       _state = res.status === 403 ? 'not_permitted' : 'down';
       _say(await _detail(res), { error: true });
+      _dropFrame();
       _win.img.hidden = true;
       _win.empty.hidden = false;
       _win.empty.textContent = 'No browser to show.';
@@ -510,8 +783,11 @@ async function _onClick(ev) {
     if (!p) return;
     ev.preventDefault();
     if (!(await _takeIfIdle())) return;
+    // `D-2026-11-01-01`: live, the glass steps aside and the browser is
+    // theirs; the clicks from here go to it directly.
+    if (_frame) { _focusFrame(); return; }
   }
-  if (!p) return;
+  if (!p || _frame) return;
   ev.preventDefault();
   try { _win.page.focus(); } catch (_) {}
   _flushTyped();
@@ -519,6 +795,7 @@ async function _onClick(ev) {
 }
 
 function _onWheel(ev) {
+  if (_holding() && _frame) return;   // live: the browser scrolls itself
   if (!_holding()) {
     // `P25-10`: a scroll while the agent is idle takes the page; this
     // wheel's distance is the first of what follows.
@@ -536,7 +813,7 @@ function _onWheel(ev) {
 }
 
 function _onKeyDown(ev) {
-  if (!_holding()) return;
+  if (!_holding() || _frame) return;   // live: the keys go to the browser itself
   if (ev.key === 'Escape' && ev.shiftKey) {
     ev.preventDefault();
     _flushTyped();
@@ -581,7 +858,10 @@ async function _control(holder) {
 
 export async function takeOver() {
   const ok = await _control('person');
-  if (ok && _win) try { _win.page.focus(); } catch (_) {}
+  if (ok && _win) {
+    if (_frame) _focusFrame();
+    else try { _win.page.focus(); } catch (_) {}
+  }
   return ok;
 }
 
@@ -608,6 +888,7 @@ export function pointMessage(p) {
 async function _intoComposer(p) {
   const box = document.getElementById('message');
   if (!box) { _say('There is no chat to point the agent from.', { error: true }); return false; }
+  if (_frame) await _freshPicture();   // `D-2026-11-01-01`: live has no frames of its own
   try {
     if (_win && _win.img.naturalWidth > 0 && typeof document.createElement('canvas').getContext === 'function') {
       const c = cropBox(p.page ? null : p.box, _win.img.naturalWidth, _win.img.naturalHeight);
@@ -794,9 +1075,18 @@ function _build() {
     'Point at something on the page to tell the agent that is what you mean');
   const pointPage = _button('abw-point-page', 'This page', () => { pointAt({ page: true }); },
     'Tell the agent this page is the one you mean');
+  // `D-2026-11-01-01`: the clipboard, across to the live browser and back.
+  const paste = _button('abw-paste', 'Paste', () => { pasteToBrowser(); },
+    'Put your clipboard in your browser, then paste there');
+  const copy = _button('abw-copy', 'Copy', () => { copyFromBrowser(); },
+    'Put what your browser copied on your clipboard');
+  paste.hidden = true;
+  copy.hidden = true;
   strip.appendChild(status);
   strip.appendChild(point);
   strip.appendChild(pointPage);
+  strip.appendChild(paste);
+  strip.appendChild(copy);
   strip.appendChild(stop);
   strip.appendChild(take);
   strip.appendChild(give);
@@ -811,6 +1101,10 @@ function _build() {
   const empty = _el('div', 'abw-empty', 'Starting your browser — the first time takes a few seconds…');
   page.appendChild(img);
   page.appendChild(empty);
+  // `D-2026-11-01-01`: over the live browser, the clicks it should not get.
+  const glass = _el('div', 'abw-glass');
+  glass.setAttribute('aria-hidden', 'true');
+  page.appendChild(glass);
   // `P25-07`. The agent's hand and its words, over the page.
   const hand = _el('span', 'abw-hand');
   hand.setAttribute('aria-hidden', 'true');
@@ -863,9 +1157,9 @@ function _build() {
   page.addEventListener('blur', _flushTyped);
   img.addEventListener('dragstart', (e) => e.preventDefault());
 
-  return { modal, content, header, title, tabs, back, forward, reload, address, go, status, statusText,
+  return { modal, content, header, title, tabs, bar, back, forward, reload, address, go, status, statusText,
     take, give, stop, stage, page, img, empty, hint, hand, caption, feed, notesBar, notesList,
-    point, pointPage, outline, thinking, thinkingHead, thinkingText };
+    point, pointPage, outline, thinking, thinkingHead, thinkingText, glass, paste, copy };
 }
 
 /** `P26-03`. Write the notes into the chat as one message, with their
@@ -891,6 +1185,7 @@ function _startNotes() {
   _notes = createNotes({
     win: _win, size: () => _size, say: (t, o) => _say(t, o), send: _sendToChat, mapPoint,
     frameInfo: () => ({ title: _win ? _win.title.textContent : '', url: _lastUrl }),
+    freshPicture: () => (_frame ? _freshPicture() : Promise.resolve()),
   });
   _win.notesBar.appendChild(_notes.bar);
   _win.notesList.appendChild(_notes.list);
@@ -907,6 +1202,12 @@ function _teardown() {
       headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ holder: 'agent' }),
     }).catch(() => {});
   }
+  _dropFrame();
+  _screenAsk += 1;   // an answer still on its way finds nothing to change
+  _live = null;
+  _view = null;
+  _why = '';
+  _clip = '';
   const modal = _win.modal;
   if (_captionTimer) { clearTimeout(_captionTimer); _captionTimer = null; }
   if (_boxTimer) { clearTimeout(_boxTimer); _boxTimer = null; }
@@ -925,6 +1226,7 @@ function _teardown() {
 
 function _resume() {
   _holderAt = 0;
+  _live = null;   // `D-2026-11-01-01`: asked again — the workstation may have changed
   _kick(0);
 }
 
@@ -980,20 +1282,25 @@ function _onDoor(ev) {
 
 if (typeof document !== 'undefined' && document && typeof document.addEventListener === 'function') {
   document.addEventListener('click', _onDoor, true);
-  document.addEventListener('visibilitychange', () => { if (_shouldPoll()) _resume(); });
+  // Hidden, the live screen is taken down at once; visible again, it comes back.
+  document.addEventListener('visibilitychange', () => { if (_shouldPoll()) _resume(); else _dropFrame(); });
 }
 const _global = typeof window !== 'undefined' ? window : globalThis;
 if (_global && typeof _global.addEventListener === 'function') {
   _global.addEventListener('pantheon:live-thinking', _onLiveThinking);
   _global.addEventListener('pantheon:chat-busy-change', _onChatBusy);
   _global.addEventListener('pantheon:message-sent', _onMessageSent);
+  _global.addEventListener('message', _onMessage);   // `D-2026-11-01-01`
 }
 
 export const _test = {
-  TIMING, tick: _tick, win: () => _win, settled: () => _sendChain,
+  TIMING, tick: _tick, win: () => _win, settled: () => _sendChain, onMessage: _onMessage,
+  live: () => ({ client: _live, frame: _frame, state: _liveState, view: _view, why: _why, clip: _clip,
+    size: { ..._size } }),
   state: () => ({ open: !!_win, state: _state, holder: _holder, digest: _digest, since: _since,
     feed: _feed.map((f) => ({ ...f })), hand: { ..._hand }, stopped: _stopped,
     pointing: _pointing, chatBusy: _chatBusy, thinking: _thinking }),
 };
 
-export default { openAgentBrowser, closeAgentBrowser, takeOver, handBack, openAddress, emergencyStop };
+export default { openAgentBrowser, closeAgentBrowser, takeOver, handBack, openAddress, emergencyStop,
+  pasteToBrowser, copyFromBrowser };

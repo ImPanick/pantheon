@@ -87,6 +87,16 @@ chosen per display, behind HTTP Basic logins only the daemon knows:
     WebRTC-style path the client only uses when told to, which Pantheon's
     never is, and which answers nothing that has not logged in first.
 
+**The browser has a display of its own** (`D-2026-11-01-01`): `XDisplay` with
+the role "browser", made by `UbuntuSystem.browser_display` and started by the
+agent's browser (`workstation/browser.py`), never by `wake`. The same KasmVNC
+server and the same two logins, in its own files (`.Xauthority-browser`,
+`<desktop root>/<uid>/browser-kasmpasswd`), with nothing on it but Firefox: no
+desktop session, no window manager, no damage watch. It streams through
+`ROUTES["browser_screen"]`, and one holder covers both displays. Without
+KasmVNC it does not start (`unavailable`, with why), and the browser runs
+headless: a screen nobody can watch is no use to anyone.
+
 **The desktop is XFCE, themed to the cockpit** (`D-2026-10-31-02`; the admin
 chose it, 2026-10-31, over a lighter desktop that clashed with the rest of
 Pantheon). `xfce4-session` starts it as the account, under a session bus of
@@ -227,6 +237,37 @@ RETIRED_HOME_FILES = {
 # keeps opening itself again.
 _QUICK_DEATH_S = 60.0
 _QUICK_DEATHS_MAX = 2
+# `D-2026-11-01-01`. What a display is for: the account's desktop, or its
+# browser's own screen — Firefox alone, with no desktop session around it
+# (`workstation/browser.py`), streamed like the desktop. Each has its own X
+# cookie and its own KasmVNC logins, so neither display's clients reach the
+# other's.
+DISPLAY_ROLES = ("desktop", "browser")
+_AUTH_FILE = {"desktop": ".Xauthority", "browser": ".Xauthority-browser"}
+_LOGINS_FILE = {"desktop": "kasmpasswd", "browser": "browser-kasmpasswd"}
+# What each kind of display says when it does not stream, and why.
+_DISPLAY_SAYS = {
+    "desktop": {
+        "stopping": ("The live desktop stopped {times} times within a minute of starting{said}, "
+                     "so this screen is shown as pictures until the workstation restarts."),
+        "logins": "The live desktop's logins could not be written: {why}.",
+        "failed": "The live desktop did not start ({why}), so this screen is shown as pictures.",
+        "missing": ("This workstation has no KasmVNC, so its screen is shown as pictures. Rebuild "
+                    "it to get the live desktop: docker compose up -d --build."),
+        "none": "This screen has no live desktop; it is shown as pictures.",
+    },
+    "browser": {
+        "stopping": ("The browser's live screen stopped {times} times within a minute of "
+                     "starting{said}, so the browser is shown as pictures until the workstation "
+                     "restarts."),
+        "logins": "The logins of the browser's live screen could not be written: {why}.",
+        "failed": ("The browser's live screen did not start ({why}), so the browser is shown "
+                   "as pictures."),
+        "missing": ("This workstation has no KasmVNC, so its browser is shown as pictures. "
+                    "Rebuild it to see the browser live: docker compose up -d --build."),
+        "none": "This browser has no live screen; it is shown as pictures.",
+    },
+}
 _WM_READY_S = 3.0
 _XFCE_READY_S = 10.0
 _INPUT_TIMEOUT_S = 15.0
@@ -619,9 +660,13 @@ class DesktopLogins:
     secrets, held here and nowhere else, and the file KasmVNC checks them
     against, which says who may drive."""
 
-    def __init__(self, path: Path, gid: int) -> None:
+    def __init__(self, path: Path, gid: int, *, owner: int = 0) -> None:
         self.path = Path(path)
         self.gid = gid
+        # Root's here (the daemon), so nothing the account runs can rewrite who
+        # may drive. `D-2026-11-01-01`: Pantheon's own browser screen runs as
+        # Pantheon itself (`src/local_browser.py`), which owns its own logins.
+        self.owner = owner
         self._secrets = {viewer: secrets.token_urlsafe(24) for viewer in P.DESKTOP_VIEWERS}
         self._hashes = {viewer: sha256_crypt(secret) for viewer, secret in self._secrets.items()}
 
@@ -639,11 +684,11 @@ class DesktopLogins:
         nothing the account runs can put anything else at this path."""
         folder = self.path.parent
         folder.mkdir(parents=True, exist_ok=True)
-        os.chown(folder, 0, self.gid, follow_symlinks=False)
+        os.chown(folder, self.owner, self.gid, follow_symlinks=False)
         os.chmod(folder, 0o750)
         fd = os.open(self.path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o640)
         try:
-            os.fchown(fd, 0, self.gid)
+            os.fchown(fd, self.owner, self.gid)
             os.fchmod(fd, 0o640)
             os.write(fd, self.text(driving).encode("ascii"))
         finally:
@@ -772,11 +817,19 @@ def _press(button: str) -> List[str]:
 class XDisplay(Screen):
     """One account's display: the X server (KasmVNC's, or Xvfb), the desktop
     session (XFCE, or JWM) and what it starts, all as the account. Started
-    lazily, restarted if it died."""
+    lazily, restarted if it died.
 
-    def __init__(self, system: "UbuntuSystem", account: str) -> None:
+    `D-2026-11-01-01`: or, of role "browser", the browser's own screen — the
+    same X server under KasmVNC and nothing else on it: no desktop session, no
+    window manager, only the Firefox `workstation/browser.py` starts there.
+    Without KasmVNC it does not start at all (`unavailable`, with why), and the
+    browser runs headless as it did before it had a screen: a screen nobody can
+    watch is no use to anyone."""
+
+    def __init__(self, system: "UbuntuSystem", account: str, role: str = "desktop") -> None:
         self.system = system
         self.account = account
+        self.role = role if role in DISPLAY_ROLES else "desktop"
         self.number: Optional[int] = None
         self._procs: List[subprocess.Popen] = []
         self._lock = threading.Lock()
@@ -807,7 +860,17 @@ class XDisplay(Screen):
         return bool(self._procs) and self._procs[0].poll() is None
 
     def auth_path(self) -> Path:
-        return self.system.home(self.account) / ".Xauthority"
+        return self.system.home(self.account) / _AUTH_FILE[self.role]
+
+    def _files_as(self, uid: int):
+        """Where the cookie is written as the account: `fs_identity`, unless
+        the system says otherwise (Pantheon's own, which is one user)."""
+        hook = getattr(self.system, "files_as", None)
+        return hook(self.account) if callable(hook) else fs_identity(uid, uid)
+
+    def _said(self, key: str, **fields: str) -> str:
+        """A sentence about this display's stream, in its role's words."""
+        return _DISPLAY_SAYS[self.role][key].format(**fields)
 
     def start(self) -> str:
         with self._lock:
@@ -833,7 +896,7 @@ class XDisplay(Screen):
             auth = self.auth_path()
             uid = self.system.uid(self.account)
             try:
-                with fs_identity(uid, uid):
+                with self._files_as(uid):
                     fd = os.open(auth, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW,
                                  0o600)
                     cookie = secrets.token_bytes(16)
@@ -849,6 +912,12 @@ class XDisplay(Screen):
             self._procs = [server]
             self._desktop = desktop
             self._cookie = cookie  # `B974`
+            if self.role == "browser":
+                # `D-2026-11-01-01`: nothing more on the browser's screen;
+                # its Firefox is started there by `workstation/browser.py`.
+                logger.info("browser screen :%s started for %s, live on 127.0.0.1:%s",
+                            self.number, self.account, desktop[0] if desktop else "-")
+                return f":{self.number}"
             _, denv = self.system.run_as(self.account)
             # `D-2026-10-31-02`: XFCE, or JWM on a machine without it.
             program, extra = desktop_session()
@@ -882,22 +951,28 @@ class XDisplay(Screen):
         """The X server, as the account: KasmVNC's when the machine has it —
         tried twice, since the port it was given can be taken before it binds
         it — and Xvfb when it has not, or when KasmVNC will not start (said in
-        the log and in `desktop`'s answer; the screen still works, as pictures)."""
+        the log and in `desktop`'s answer; the screen still works, as pictures).
+        `D-2026-11-01-01`: the browser's screen is KasmVNC's or nothing — where
+        it would be Xvfb this raises `unavailable` with why, and the browser
+        runs headless."""
         kasm = shutil.which(KASMVNC_SERVER)
         self._desktop_why = ""
         if kasm and self._quick_deaths >= _QUICK_DEATHS_MAX:
             # `B1721`. Not a third time: each start was a new desktop session.
-            self._desktop_why = (
-                f"The live desktop stopped {self._quick_deaths} times within a minute of starting"
-                + (f" (it said: {self._last_words})" if self._last_words else "")
-                + ", so this screen is shown as pictures until the workstation restarts.")
+            self._desktop_why = self._said(
+                "stopping", times=str(self._quick_deaths),
+                said=f" (it said: {self._last_words})" if self._last_words else "")
             logger.warning("display for %s: %s", self.account, self._desktop_why)
         elif kasm:
-            logins = DesktopLogins(self.system.desktop_root / str(uid) / "kasmpasswd", uid)
+            path_of = getattr(self.system, "logins_path", None)
+            logins = DesktopLogins(path_of(self.account, self.role) if callable(path_of)
+                                   else self.system.desktop_root / str(uid) / _LOGINS_FILE[self.role],
+                                   getattr(self.system, "logins_gid", uid),
+                                   owner=getattr(self.system, "logins_owner", 0))
             try:
                 logins.write(self._driving)
             except OSError as e:
-                self._desktop_why = f"The live desktop's logins could not be written: {e.strerror or e}."
+                self._desktop_why = self._said("logins", why=str(e.strerror or e))
                 logger.warning("display for %s: %s", self.account, self._desktop_why)
             else:
                 why = ""
@@ -913,13 +988,13 @@ class XDisplay(Screen):
                             return proc, number, (port, logins)
                         why = f"nothing answered on its port ({port})"
                         _stop(proc)
-                self._desktop_why = ("The live desktop did not start (" + (why or "no reason given")
-                                     + "), so this screen is shown as pictures.")
+                self._desktop_why = self._said("failed", why=why or "no reason given")
                 logger.warning("display for %s: %s", self.account, self._desktop_why)
         else:
-            self._desktop_why = ("This workstation has no KasmVNC, so its screen is shown as "
-                                 "pictures. Rebuild it to get the live desktop: docker compose "
-                                 "up -d --build.")
+            self._desktop_why = (getattr(self.system, "no_kasmvnc_why", None)
+                                 or self._said("missing"))
+        if self.role == "browser":
+            raise WorkstationError("unavailable", self._desktop_why)
         started, why = self._spawn(prefix, env, "Xvfb",
                                    lambda fd: xvfb_argv(displayfd=fd, auth=auth))
         if started is None:
@@ -965,7 +1040,7 @@ class XDisplay(Screen):
 
     @property
     def desktop_why(self) -> str:
-        return self._desktop_why or "This screen has no live desktop; it is shown as pictures."
+        return self._desktop_why or self._said("none")
 
     def desktop(self, viewer: str) -> Tuple[int, str]:
         """`(port, Authorization)` for `viewer` on this display's stream,
@@ -1207,6 +1282,8 @@ class UbuntuSystem(System):
         self._accounts_lock = threading.Lock()
         self._ready: set = set()
         self._displays: Dict[str, XDisplay] = {}
+        # `D-2026-11-01-01`: each account's browser screen, started by its browser.
+        self._browser_displays: Dict[str, XDisplay] = {}
         self._acting = threading.local()
         self.sudo = self._persisted_sudo(sudo_default)
         # `P20-06`: the last mode Pantheon set, kept like `sudo`; what is in
@@ -1392,6 +1469,9 @@ class UbuntuSystem(System):
         display = self._displays.get(account)
         if display:
             display.stop()
+        screen = self._browser_displays.get(account)  # `D-2026-11-01-01`
+        if screen:
+            screen.stop()
         uid = self.uid(account)
         with self._accounts_lock:
             kill_processes(uid)
@@ -1559,6 +1639,13 @@ class UbuntuSystem(System):
         # Making an XDisplay starts nothing, so the loser's costs nothing.
         return self._displays.setdefault(account, XDisplay(self, account))
 
+    def browser_display(self, account: str) -> XDisplay:
+        """`D-2026-11-01-01`. The account's browser screen, made on first ask
+        and started by the browser that runs on it (`workstation/browser.py`)
+        — never by `wake`: a person who never opens the browser has none."""
+        self.uid(account)
+        return self._browser_displays.setdefault(account, XDisplay(self, account, role="browser"))
+
     # -- helpers ----------------------------------------------------------------
 
     def runtime_dir(self, account: str) -> Path:
@@ -1622,4 +1709,6 @@ __all__ = ["AGENTS_GID", "AGENTS_GROUP", "AccountRegistry", "UID_MAX", "UID_MIN"
            "DESKTOP_SETTINGS", "FALLBACK_WM", "XFCE_ENV", "XFCE_SESSION", "copy_missing",
            "desktop_session",
            # `B1721`, added.
-           "RETIRED_HOME_FILES"]
+           "RETIRED_HOME_FILES",
+           # `D-2026-11-01-01`, added.
+           "DISPLAY_ROLES"]

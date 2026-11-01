@@ -841,8 +841,28 @@ class WorkstationClient:
                                "is shown as pictures. Rebuild it: docker compose up -d --build."}
             raise
 
+    async def browser_screen(self, account: str) -> Dict:
+        """`D-2026-11-01-01`. `{"kind", "holder", "why"?}`: whether this
+        account's browser runs on a screen of its own that streams
+        (`protocol.ROUTES["browser_screen"]`) — `desktop`'s answer, for the
+        browser. A daemon older than the route answers `not_found`; that is a
+        browser without a screen of its own, shown as frames, never a failure."""
+        try:
+            return await self._call("browser_screen", account, timeout=90.0)
+        except WorkstationError as e:
+            if e.status == 404:
+                return {"kind": None, "holder": None,
+                        "why": "This workstation is older than the live browser, so the browser "
+                               "is shown as pictures. Rebuild it: docker compose up -d --build."}
+            raise
+
+    def browser_screen_stream(self, account: str, viewer: str):
+        """`D-2026-11-01-01`. The browser's screen, as `desktop_stream` gives
+        the desktop: the same websocket, to `ROUTES["browser_screen"]`."""
+        return self.desktop_stream(account, viewer, route="browser_screen")
+
     @contextlib.asynccontextmanager
-    async def desktop_stream(self, account: str, viewer: str):
+    async def desktop_stream(self, account: str, viewer: str, route: str = "desktop"):
         """The account's live desktop, as a websocket to the daemon
         (`protocol.ROUTES["desktop"]` with the upgrade) — the RFB stream,
         byte for byte, for Pantheon to relay to the person's browser.
@@ -863,15 +883,17 @@ class WorkstationClient:
         from websockets.asyncio.client import connect
         from websockets.exceptions import InvalidStatus, WebSocketException
 
+        if route not in ("desktop", "browser_screen"):
+            raise WorkstationError("bad_request", "That is not a stream the workstation serves.")
         headers = self._headers()
         verify = await self._wire()  # `P20-07`: before the token goes anywhere
-        _, url = self._url("desktop", account, {"viewer": viewer})
+        _, url = self._url(route, account, {"viewer": viewer})
         secure = url.startswith("https://")
         ws_url = ("wss://" + url[len("https://"):]) if secure else ("ws://" + url[len("http://"):])
         context = None
         if secure:
             context = verify if isinstance(verify, ssl.SSLContext) else ssl.create_default_context()
-        wait = self.timeout + self._grace("desktop", account)
+        wait = self.timeout + self._grace(route, account)
         try:
             upstream = await connect(
                 ws_url, additional_headers=headers, subprotocols=[P.DESKTOP_SUBPROTOCOL],

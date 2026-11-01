@@ -48,6 +48,7 @@ from __future__ import annotations
 
 import asyncio
 import atexit
+import contextlib
 import ipaddress
 import logging
 import os
@@ -77,6 +78,11 @@ NOT_PERMITTED_SENTENCE = "Your account may not use the browser. An admin can all
 TOKEN_SENTENCE = "An API token cannot drive the browser."
 BUSY_SENTENCE = ("A person has taken over this browser. Wait for them to hand it back, or ask "
                  "them what they need.")
+# `D-2026-11-01-01`. Where Pantheon keeps a person's browser screen's logins,
+# inside their browser's home, and what it says where it cannot stream one.
+SCREEN_DIR = ".screen"
+NO_LIVE_SCREEN_SENTENCE = ("Pantheon has no KasmVNC, so its browser is shown as pictures. Its Docker "
+                           "image has it: docker compose up -d --build.")
 REFUSED_PAGE = (b"<!doctype html><title>Not opened</title><body style='font:15px system-ui;"
                 b"margin:3em;max-width:36em'><h1 style='font-size:18px'>Not opened</h1><p>Pantheon's "
                 b"browser does not open addresses on this machine or on Pantheon's own network, nor "
@@ -315,10 +321,53 @@ def proxy_prefs(port: int) -> str:
 
 class _LocalSystem:
     """What `workstation.browser.Browsers` asks of a host, answered for this
-    process: no accounts to make, no desktop (headless), Pantheon's own user."""
+    process: no accounts to make, no desktop, Pantheon's own user — and
+    (`D-2026-11-01-01`) each person's browser on a screen of its own, served
+    by KasmVNC as the workstation's is, where Pantheon has it (its Docker image
+    does), so the person watches it live; headless where it has not."""
+
+    #: `workstation.ubuntu.XDisplay`'s questions of a system, answered for one
+    #: user: the logins are Pantheon's own, and so is every file.
+    no_kasmvnc_why = NO_LIVE_SCREEN_SENTENCE
 
     def __init__(self, root: Path) -> None:
         self.root = root
+        self._screens: Dict[str, Any] = {}
+        self._screens_lock = threading.Lock()
+        self.logins_owner = os.getuid() if hasattr(os, "getuid") else 0
+        self.logins_gid = os.getgid() if hasattr(os, "getgid") else 0
+
+    def uid(self, account: str) -> int:
+        return self.logins_owner
+
+    def files_as(self, account: str):
+        return contextlib.nullcontext()
+
+    def logins_path(self, account: str, role: str) -> Path:
+        return self.home(account) / SCREEN_DIR / "kasmpasswd"
+
+    def browser_display(self, account: str):
+        """The person's browser screen (`workstation.ubuntu.XDisplay`, role
+        "browser"), made on first ask and started by their browser; None where
+        Pantheon has no KasmVNC, or is not on Linux."""
+        if not live_screens_here():
+            return None
+        from workstation.ubuntu import XDisplay
+        with self._screens_lock:
+            screen = self._screens.get(account)
+            if screen is None:
+                screen = self._screens[account] = XDisplay(self, account, role="browser")
+            return screen
+
+    def screen_of(self, account: str):
+        """The screen already made for this person, or None — never makes one."""
+        with self._screens_lock:
+            return self._screens.get(account)
+
+    def stop_screen(self, account: str) -> None:
+        screen = self.screen_of(account)
+        if screen is not None:
+            screen.stop()
 
     def ensure(self, account: str) -> Dict:
         home = self.home(account)
@@ -332,7 +381,7 @@ class _LocalSystem:
     def wake(self, account: str) -> None:
         return None
 
-    def run_as(self, account: str) -> Tuple[List[str], Dict[str, str]]:
+    def run_as(self, account: str, *, with_display: bool = True) -> Tuple[List[str], Dict[str, str]]:
         keep = ("PATH", "LANG", "LC_ALL", "TZ", "TMPDIR", "SYSTEMROOT", "WINDIR", "TEMP", "TMP",
                 "LOCALAPPDATA", "APPDATA", "USERPROFILE", "FONTCONFIG_PATH", "FONTCONFIG_FILE",
                 "XDG_RUNTIME_DIR")
@@ -396,7 +445,54 @@ class LocalBrowsers:
         rec = {"holder": holder, "since": time.time()}
         with self._lock:
             self._holders[account] = rec
+        # `D-2026-11-01-01`: the person's viewer drives exactly while they hold it.
+        screen = self.browsers.system.browser_display(account)
+        if screen is not None:
+            screen.set_driver(holder == "person")
         return dict(rec)
+
+    # -- `D-2026-11-01-01`: the browser's own screen ----------------------------
+
+    def screen(self, account: str, owner: Optional[str] = None) -> Dict[str, Any]:
+        """`agentd.Workstation.browser_screen`, here: whether this person's
+        browser streams, and who holds it. Starts the browser."""
+        from workstation.browser import BrowserError
+        if owner is not None:
+            with self._lock:
+                self._owners[account] = owner
+        self._sweep(account)
+        why = ""
+        try:
+            self._browser(account).ensure_running()
+        except BrowserError as e:
+            why = NO_FIREFOX_SENTENCE if "no Firefox" in e.message else e.message
+        screen = self.browsers.system.browser_display(account)
+        kind = screen.desktop_kind if screen is not None and not why else None
+        out: Dict[str, Any] = {"kind": kind if kind in P.DESKTOP_KINDS else None,
+                               "holder": self.holder(account)["holder"]}
+        if out["kind"] is None:
+            out["why"] = why or (screen.desktop_why if screen is not None else NO_LIVE_SCREEN_SENTENCE)
+        return out
+
+    def screen_login(self, account: str, viewer: str) -> Tuple[int, str]:
+        """`(port, Authorization)` on this person's browser screen."""
+        from workstation.browser import BrowserError
+        from workstation.agentd import WorkstationError as DaemonError
+        if viewer not in P.DESKTOP_VIEWERS:
+            raise WorkstationError("bad_request", f"“viewer” is one of {', '.join(P.DESKTOP_VIEWERS)}.")
+        screen = self.browsers.system.browser_display(account)
+        if screen is None:
+            raise WorkstationError("unavailable", NO_LIVE_SCREEN_SENTENCE)
+        self._sweep(account)
+        try:
+            self._browser(account).ensure_running()
+        except BrowserError as e:
+            logger.warning("pantheon browser screen of %s: the browser did not start: %s",
+                           account, e.message)
+        try:
+            return screen.desktop(viewer)
+        except DaemonError as e:
+            raise WorkstationError(e.code if e.code in P.ERRORS else "unavailable", e.message)
 
     def _sweep(self, keep: str) -> None:
         """`IDLE_STOP_S`: stop the browsers nobody has used for that long."""
@@ -409,6 +505,7 @@ class LocalBrowsers:
         for a in idle:
             logger.info("pantheon browser of %s stopped after %d minutes unused", a, IDLE_STOP_S // 60)
             self.browsers.stop(a)
+            self.browsers.system.stop_screen(a)   # `D-2026-11-01-01`: and its screen
 
     def act(self, account: str, body: Dict[str, Any],
             owner: Optional[str] = None) -> Optional[Dict[str, Any]]:
@@ -423,7 +520,7 @@ class LocalBrowsers:
         who = body.get("holder") or "agent"
         if who not in P.HOLDERS:
             raise WorkstationError("bad_request", "“holder” is “agent” or “person”.")
-        if (who == "agent" and action != "frame" and action not in P.NOTE_ACTIONS
+        if (who == "agent" and action not in P.WATCH_ACTIONS and action not in P.NOTE_ACTIONS
                 and self.holder(account)["holder"] == "person"):
             raise WorkstationError("busy", BUSY_SENTENCE)
         self._sweep(account)
@@ -431,9 +528,11 @@ class LocalBrowsers:
             b = self._browser(account)
             if action in P.NOTE_ACTIONS:
                 return b.note(action, body, who=who)
-            if action == "frame":
+            if action in P.WATCH_ACTIONS:
                 since = body.get("since", 0)
                 since = since if isinstance(since, int) and not isinstance(since, bool) and since >= 0 else 0
+                if action == "activity":   # `D-2026-11-01-01`
+                    return b.live(since)
                 return b.frame(str(body.get("if_none_match") or ""), since)
             return b.act(action, body, who=who)
         except BrowserError as e:
@@ -445,6 +544,10 @@ class LocalBrowsers:
 
     def stop_all(self) -> None:
         self.browsers.stop_all()
+        with self.browsers.system._screens_lock:
+            screens = list(self.browsers.system._screens.values())
+        for screen in screens:
+            screen.stop()
         with self._lock:
             proxies = list(self._proxies.values())
             self._proxies.clear()
@@ -497,6 +600,41 @@ class LocalBrowserClient:
         # reaches the LAN by address when the admin lets it.
         return {}
 
+    async def browser_screen(self, account: str) -> Dict[str, Any]:
+        """`D-2026-11-01-01`: `WorkstationClient.browser_screen`'s answer."""
+        return await asyncio.to_thread(self.browsers.screen, account, self.owner)
+
+    @contextlib.asynccontextmanager
+    async def browser_screen_stream(self, account: str, viewer: str):
+        """`D-2026-11-01-01`. This person's browser screen, as a websocket to
+        its KasmVNC on this machine's loopback with the viewer's login — the
+        stream `WorkstationClient.desktop_stream` hands back for a
+        workstation's, with that function's rules: no proxy, no pings (KasmVNC
+        answers none), a short close. KasmVNC wants an `Origin`, as the daemon
+        gives it one (`agentd.desktop_request`)."""
+        from websockets.asyncio.client import connect
+        from websockets.exceptions import InvalidStatus, WebSocketException
+        port, authorization = await asyncio.to_thread(self.browsers.screen_login, account, viewer)
+        origin = f"http://127.0.0.1:{port}"
+        try:
+            upstream = await connect(
+                f"ws://127.0.0.1:{port}/websockify", origin=origin,
+                additional_headers={"Authorization": authorization},
+                subprotocols=[P.DESKTOP_SUBPROTOCOL], proxy=None, compression=None,
+                open_timeout=15.0, ping_interval=None, close_timeout=2.0, max_size=2 ** 20,
+                max_queue=64, user_agent_header=None)
+        except InvalidStatus as e:
+            status = getattr(getattr(e, "response", None), "status_code", 0)
+            raise WorkstationError("unavailable", f"The browser's screen refused the connection "
+                                                  f"(HTTP {status}).") from e
+        except (OSError, asyncio.TimeoutError, WebSocketException) as e:
+            raise WorkstationError("unavailable", f"The browser's screen did not answer "
+                                                  f"({type(e).__name__}).") from e
+        try:
+            yield upstream
+        finally:
+            await upstream.close()
+
 
 class FallbackBrowser:
     """The workstation's browser, and Pantheon's own for any call the
@@ -538,6 +676,31 @@ class FallbackBrowser:
         # remembered as sent (`vault_names.sync`) and it goes when it is ready.
         return await self.primary.names(account, names, pins)
 
+    async def browser_screen(self, account: str) -> Dict[str, Any]:
+        return await self._either("browser_screen", account)
+
+    @contextlib.asynccontextmanager
+    async def browser_screen_stream(self, account: str, viewer: str):
+        """The workstation's browser screen, or Pantheon's own where the
+        workstation cannot open its stream now — decided before the stream
+        starts; once it has, its end is the end."""
+        stack = contextlib.AsyncExitStack()
+        try:
+            upstream = await stack.enter_async_context(
+                self.primary.browser_screen_stream(account, viewer))
+            self.last_runs_in = RUNS_IN_WORKSTATION
+        except WorkstationError as e:
+            await stack.aclose()
+            if e.code != "unavailable":
+                raise
+            logger.info("browser: the workstation cannot stream its screen now (%s); Pantheon's "
+                        "own answers", e.message[:120])
+            self.last_runs_in = None
+            upstream = await stack.enter_async_context(
+                self.local.browser_screen_stream(account, viewer))
+        async with stack:
+            yield upstream
+
 
 def _local_usable(owner: Optional[str], auth_manager: Any = None) -> bool:
     return firefox_here() and may_use(owner, auth_manager=auth_manager)
@@ -546,6 +709,21 @@ def _local_usable(owner: Optional[str], auth_manager: Any = None) -> bool:
 def firefox_here() -> bool:
     from workstation.browser import find_firefox
     return find_firefox() is not None
+
+
+def live_screens_here() -> bool:
+    """`D-2026-11-01-01`. Whether Pantheon can give a person's browser a
+    screen that streams: KasmVNC's X server on a Linux machine (the Docker
+    image has both). Anywhere else the browser runs headless, as before."""
+    import shutil
+    import sys
+    if not sys.platform.startswith("linux"):
+        return False
+    try:
+        from workstation.ubuntu import KASMVNC_SERVER
+    except Exception:  # noqa: BLE001 — a host that cannot load the display code has none
+        return False
+    return shutil.which(KASMVNC_SERVER) is not None
 
 
 def may_use(owner: Optional[str], *, auth_manager: Any = None) -> bool:
@@ -632,5 +810,6 @@ def runs_in(client: Any) -> Optional[str]:
 
 __all__ = ["BUSY_SENTENCE", "FallbackBrowser", "GuardProxy", "IDLE_STOP_S", "LocalBrowserClient", "LocalBrowsers",
            "NOT_PERMITTED_SENTENCE", "NO_FIREFOX_SENTENCE", "PRIVILEGE", "RUNS_IN_PANTHEON",
-           "RUNS_IN_WORKSTATION", "browser_for", "firefox_here", "host", "may_use", "proxy_prefs",
+           "RUNS_IN_WORKSTATION", "browser_for", "firefox_here", "host", "live_screens_here",
+           "may_use", "proxy_prefs",
            "ready_browser", "runs_in", "unavailable_reason"]

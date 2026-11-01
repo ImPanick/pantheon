@@ -55,6 +55,8 @@ PAGE = "vnc.html"
 #: The stream the client connects to, relative to the origin's root (the
 #: client builds `ws(s)://<this host>/<path>`).
 STREAM_PATH = "api/workstation/desktop/websockify"
+#: `D-2026-11-01-01`. The browser's own screen, which the same client draws.
+BROWSER_STREAM_PATH = "api/workstation/browser/websockify"
 
 UNAVAILABLE_SENTENCE = ("This install has no live-desktop client — it comes with Pantheon's "
                         "Docker image — so the screen is shown as pictures.")
@@ -69,7 +71,7 @@ def available() -> bool:
     return (client_dir() / PAGE).is_file()
 
 
-def page_url(*, watch_person: Optional[str] = None) -> str:
+def page_url(*, watch_person: Optional[str] = None, stream: str = STREAM_PATH) -> str:
     """The client's page for the window's frame, told everything it needs in
     its own query (KasmVNC's client reads its settings there first): connect
     at once to Pantheon's stream — the caller's own desktop, or for an admin
@@ -79,8 +81,13 @@ def page_url(*, watch_person: Optional[str] = None) -> str:
     (`static/js/workstationScreen.js` bridges it to the person's own). A watcher
     is view-only here as well as at the workstation, which never lets a
     `watch` login drive, and is handed no clipboard: what another person copied
-    is theirs, not something watching their screen shows."""
-    path = STREAM_PATH
+    is theirs, not something watching their screen shows.
+
+    `stream` is where the client connects: the desktop's, or
+    (`D-2026-11-01-01`) the browser screen's, `BROWSER_STREAM_PATH`."""
+    if stream not in (STREAM_PATH, BROWSER_STREAM_PATH):
+        raise ValueError("not a stream Pantheon relays")
+    path = stream
     if watch_person:
         path += "?" + urlencode({"person": watch_person})
     query = {
@@ -143,5 +150,5 @@ class DesktopClientFiles(StaticFiles):
         return super().file_response(full_path, stat_result, scope, status_code)
 
 
-__all__ = ["DEFAULT_DIR", "DIR_ENV", "DesktopClientFiles", "PAGE", "PREFIX", "STREAM_PATH",
+__all__ = ["BROWSER_STREAM_PATH", "DEFAULT_DIR", "DIR_ENV", "DesktopClientFiles", "PAGE", "PREFIX", "STREAM_PATH",
            "UNAVAILABLE_SENTENCE", "available", "client_dir", "page_url"]
