@@ -421,11 +421,16 @@ def test_the_three_populations_hold_at_their_counts():
     # of the same ladder now — the `opacity` let the background through
     # exactly as the mix toward `transparent` did, under 4.5:1 at every alpha
     # under 0.82, and `check-contrast.py`'s ratchet on it fell 965 -> 407.
-    assert len(uses) == 880, f"expected 880 uses of --fg-muted, found {len(uses)}"
+    # 880 -> 884, 872 -> 876 bare: four quiet lines, all `color:` and all bare
+    # or a rung of the ladder — the workstation's `.wsv-note` (e22fd4a6), the
+    # approval picker's `.approval-mode-item-desc` (`B1706`, 6ac18e3f), and the
+    # skill library's `.skill-library-lede` and `.skill-library-desc`
+    # (`B1715`, cbde5992). All text that is secondary on purpose.
+    assert len(uses) == 884, f"expected 884 uses of --fg-muted, found {len(uses)}"
 
     bare = [expr for _, expr in uses if not _fallback(expr)]
-    assert len(bare) == 872, (
-        f"expected 872 bare `var(--fg-muted)` uses, found {len(bare)}. If a site "
+    assert len(bare) == 876, (
+        f"expected 876 bare `var(--fg-muted)` uses, found {len(bare)}. If a site "
         "was legitimately added or removed, move this number and say which in "
         "the commit — do not widen the assertion."
     )
@@ -485,7 +490,8 @@ def test_the_bare_uses_split_across_properties_as_measured():
     # and cleared by the token's 4.5.
     # `B1408` (above): `color` 147 -> 332, the 185 ladder rungs, all text.
     # `B1577` (above): `color` 332 -> 862, the opacity form moved onto it.
-    assert tally == {"color": 862, "border-color": 4, "background": 3, "--ctx-stroke": 3}, tally
+    # 862 -> 866: the four quiet lines counted above, all `color:`.
+    assert tally == {"color": 866, "border-color": 4, "background": 3, "--ctx-stroke": 3}, tally
 
 
 def test_the_javascript_uses_are_recorded_but_not_this_rows_work():
@@ -522,9 +528,13 @@ def test_the_javascript_uses_are_recorded_but_not_this_rows_work():
     # and declares `--fg-muted` itself; its labels, setup note, sign-up line
     # and eye button are ladder rungs, and its remember-me switch and version
     # line paint the token.
-    assert len(found) == 61, f"expected 61 --fg-muted uses outside the sheet, found {len(found)}"
+    # 61 -> 62, 59 -> 60 bare: the sign-up form (fe57e464) added two to the
+    # sign-in page, the *optional* tag on a label (bare) and the sign-up line
+    # (a rung); voice chat (`B1716`, 44235702) removed one rung with the old
+    # Settings speech message line.
+    assert len(found) == 62, f"expected 62 --fg-muted uses outside the sheet, found {len(found)}"
     bare = [e for e in found if e == "var(--fg-muted)"]
-    assert len(bare) == 59, f"expected 59 of them bare, found {len(bare)}"
+    assert len(bare) == 60, f"expected 60 of them bare, found {len(bare)}"
     # Nothing under `static/js/theme.js` may declare it — that is the mirror
     # `B21` is about, and the reason this row put the token in `:root`.
     assert "--fg-muted" not in THEME_JS.read_text(encoding="utf-8"), (
