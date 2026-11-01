@@ -1978,3 +1978,58 @@ html.cockpit #plan-toggle-btn:is(.active, [aria-pressed="true"]) .tool-chip-labe
    circle and onto the strip's edge. It also sat 1px above the tabs' middle. */
 html.cockpit .ck-strip-fold { padding: 0 !important; width: 24px !important; height: 24px !important; min-width: 24px; min-height: 0; top: 6px; right: 6px; line-height: 0; }
 html.cockpit .ck-strip-fold svg { display: block; margin: 0; }
+
+/* ── `/` skills, `@` agents, and the next step (B1738, B1739) ────────────
+   Panick (2026-11-01): `/` opens the skills to look up, `@` the agents to
+   summon, and after a reply the next most valuable step waits in the box for
+   Tab. The `/` and `@` popovers take the floating glass recipe (`.ck-pop`
+   above) at full body, like the effort menu: they sit over the chat, and each
+   row is a line of small text. Names are the UI face, never the red mono of
+   the classic popup. */
+html.cockpit :is(.slash-autocomplete-popup, .agent-mention-popup) {
+  background: linear-gradient(135deg, var(--ck-sheen-hi) 0%, transparent 42%, transparent 72%, var(--ck-sheen-lo) 100%), var(--ck-noise-soft) 0 0/240px 240px, var(--ck-glass-base) !important;
+  font-size: 13px !important; scrollbar-width: thin;
+}
+html.cockpit :is(.slash-autocomplete-popup, .agent-mention-popup)[style*="display: block"] { animation: ck-pop-in var(--ck-t-slow) var(--ck-spring) backwards; transform-origin: bottom left; }
+html.cockpit .slash-ac-cat { color: var(--ck-text-3) !important; font: 500 10.5px/1.2 var(--ck-font-ui) !important; letter-spacing: .08em; padding: 10px 10px 4px !important; }
+html.cockpit .slash-ac-row { align-items: center !important; gap: 10px !important; padding: 7px 10px !important; border-radius: 12px; transition: background var(--ck-t-fast) var(--ck-ease); }
+html.cockpit .slash-ac-row:hover { background: var(--ck-tint) !important; }
+html.cockpit .slash-ac-row.slash-ac-row-sel { background: color-mix(in oklab, var(--ck-text) 11%, transparent) !important; box-shadow: inset 0 0 0 1px var(--ck-edge-lo); }
+/* A skill or an agent is looked up by what it does: its name and shelf on
+   the first line, what it is for under it (two lines at most). */
+html.cockpit .slash-ac-row:is(.slash-ac-skill, .agent-mention-row) { flex-wrap: wrap; white-space: normal !important; row-gap: 2px !important; padding: 8px 10px !important; }
+html.cockpit .slash-ac-row:is(.slash-ac-skill, .agent-mention-row) .slash-ac-shelf { margin-left: auto; }
+html.cockpit .slash-ac-row:is(.slash-ac-skill, .agent-mention-row) .slash-ac-help {
+  order: 3; flex: 1 0 100% !important; white-space: normal; font-size: 12px !important; color: var(--ck-text-3) !important;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+html.cockpit .slash-ac-row.slash-ac-row-sel:is(.slash-ac-skill, .agent-mention-row) .slash-ac-help { color: var(--ck-text-2) !important; }
+html.cockpit .slash-ac-token { color: var(--ck-text) !important; font: 500 13px/1.35 var(--ck-font-ui) !important; }
+html.cockpit .slash-ac-row:not(.agent-mention-row) .slash-ac-token { font-family: var(--ck-font-mono, ui-monospace, monospace) !important; font-size: 12.5px !important; }
+html.cockpit .slash-ac-help { color: var(--ck-text-2) !important; opacity: 1 !important; font: 400 12.5px/1.35 var(--ck-font-ui) !important; }
+html.cockpit .slash-ac-usage { color: var(--ck-text-3) !important; font-size: 11px !important; }
+html.cockpit .slash-ac-shelf {
+  font: 500 10.5px/1 var(--ck-font-ui) !important; letter-spacing: .02em; padding: 4px 7px; border-radius: 999px; background: var(--ck-tint); color: var(--ck-text-2) !important;
+}
+html.cockpit .slash-ac-empty { color: var(--ck-text-3) !important; font-style: normal !important; padding: 8px 10px 10px !important; }
+html.cockpit .slash-ac-empty code { color: var(--ck-text-2) !important; }
+
+/* The next step: ghost words where the person's words go, and a key cap
+   that says Tab (a button on touch screens). The box's own prompt steps back
+   while it shows. */
+.next-step-host { position: relative; }
+.next-step-ghost {
+  position: absolute; display: none; pointer-events: none; z-index: 1; box-sizing: border-box;
+  white-space: pre-wrap; overflow-wrap: break-word; color: color-mix(in srgb, var(--fg) 42%, transparent);
+}
+.next-step-cap {
+  pointer-events: auto; display: inline-flex; align-items: center; vertical-align: 1px; margin-left: 8px;
+  height: 18px; padding: 0 6px; border-radius: 6px; font-weight: 600; font-size: 10px; line-height: 1; font-family: inherit; letter-spacing: .04em;
+  border: 1px solid color-mix(in srgb, var(--fg) 22%, transparent); background: transparent; color: color-mix(in srgb, var(--fg) 60%, transparent); cursor: pointer;
+}
+#message.next-step-on::placeholder, html.cockpit #message.next-step-on::placeholder { color: transparent !important; }
+html.cockpit .next-step-ghost { color: var(--ck-text-3) !important; }
+html.cockpit .next-step-cap {
+  padding: 0 7px !important; height: 19px !important; min-height: 0 !important; font: 600 10px/1 var(--ck-font-ui) !important; color: var(--ck-text-2) !important;
+  background: var(--ck-tint) !important; border: 1px solid var(--ck-edge) !important; border-radius: 6px !important; box-shadow: inset 0 -1px 0 var(--ck-edge-lo) !important;
+}

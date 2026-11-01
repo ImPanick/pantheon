@@ -118,6 +118,12 @@ the next one is cut.
   that cannot see images still gets the list. `scripts/grounding_eval.py` measures it on your own
   model: five desktop and browser tasks, with marks off and on. Rebuild both images: the
   workstation gains the accessibility bus and Pantheon's image gains Tesseract.
+- **`/` skills, `@` agents, and the next step on Tab** (2026-11-01, `B1738`, `B1739`). Typing `/` in
+  the message box now opens on your skills (name, shelf and what each is for), with the slash commands
+  after them, and Enter takes the highlighted one. Typing `@` opens the Agents hall; pick one and it is
+  summoned into the chat (Agent mode turns on). When a reply finishes, the chat's model suggests the
+  most valuable next step as faded text in the empty box: Tab puts it there ready to send, Escape or
+  typing puts it away.
 - **The agent picks its own skills** (2026-11-01, `B1737`). Every agent turn now lists the skills the
   model may use, by category, and tells it to open the one for the work it is starting: QA and
   testing, frontend and design, debugging, research, writing. A new read-only tool, `use_skill`,

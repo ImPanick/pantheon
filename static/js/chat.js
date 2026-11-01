@@ -1176,6 +1176,16 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
       const ta = document.getElementById('message');
       if (ta && mod.initSlashAutocomplete) mod.initSlashAutocomplete(ta);
     }).catch(() => {});
+    // `B1738`. `@` in the box opens the agent picker (summons the one picked).
+    import('./agentMention.js').then(mod => {
+      const ta = document.getElementById('message');
+      if (ta && mod.initAgentMention) mod.initAgentMention(ta);
+    }).catch(() => {});
+    // `B1739`. After a reply, the next step waits in the empty box; Tab takes it.
+    import('./nextStepGhost.js').then(mod => {
+      const ta = document.getElementById('message');
+      if (ta && mod.initNextStepGhost) mod.initNextStepGhost(ta);
+    }).catch(() => {});
 
     // ArrowUp on the composer recalls previous user prompts from this chat.
     const _wireArrowUpRecall = (composer) =>
