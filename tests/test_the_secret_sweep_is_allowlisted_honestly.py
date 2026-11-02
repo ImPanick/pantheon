@@ -123,6 +123,7 @@ def test_no_allowlisted_literal_looks_like_a_real_credential(literal):
         "0123456789abcdef0123456789abcdef",  # repeated ascending hex
         "tok-0123456789abcdef",  # ascending hex backup round-trip fixture
         "ADA-SECRET-gitea-1",  # a test persona's key, named for what it is
+        "boxer-pass-123",  # a browser drive's throwaway login, persona + pass + 123
     )
     assert any(m in literal for m in fake_markers), (
         f"{literal!r} does not carry any of the markers that make the existing "
@@ -197,9 +198,16 @@ def test_the_new_token_exceptions_do_not_cover_longer_credentials():
         assert not re.search(pattern, literal + "X")
 
 
-def test_the_backup_fixture_exception_does_not_cover_other_tokens():
-    """Only the fixed backup fixture is exempt, not a longer credential."""
-    literal = "tok-0123456789abcdef"
+@pytest.mark.parametrize("literal", [
+    "tok-0123456789abcdef",
+    "ADA-SECRET-gitea-1",
+    "boxer-pass-123",
+])
+def test_the_backup_fixture_exception_does_not_cover_other_tokens(literal):
+    """Only the fixed fixture is exempt, not a longer credential on either
+    side of it. The first case was the backup round-trip token; the per-account
+    connection key and the browser drive's throwaway password are bounded the
+    same way."""
     pattern = rf"\b{literal}\b"
     assert "'''" + pattern + "'''" in _config()
     assert re.search(pattern, f'webhook_token="{literal}"')
