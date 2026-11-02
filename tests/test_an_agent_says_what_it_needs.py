@@ -56,12 +56,15 @@ def test_route_facts_reads_the_known_window_and_the_schema_offer(monkeypatch):
     monkeypatch.setattr(MC, "get_context_length_known", lambda url, model: (8192, True))
     monkeypatch.setattr(AL, "_agent_route_schema_offer", lambda url, model, owner=None: "fenced")
     f = NE.route_facts("http://gpu.lan:8000/v1", "small", "ada")
-    assert f == {"model": "small", "context": 8192, "tools": "fenced"}
+    # `P24-30`: and what nothing has said about the model — see, think, hear — is None.
+    assert f == {"model": "small", "context": 8192, "tools": "fenced",
+                 "vision": None, "reasoning": None, "audio": None}
     # a fallback window is not a fact
     monkeypatch.setattr(MC, "get_context_length_known", lambda url, model: (131072, False))
     assert NE.route_facts("http://gpu.lan:8000/v1", "small")["context"] is None
     # no route, no facts
-    assert NE.route_facts(None, None) == {"model": None, "context": None, "tools": None}
+    assert NE.route_facts(None, None) == {"model": None, "context": None, "tools": None,
+                                          "vision": None, "reasoning": None, "audio": None}
 
 
 # ── a shipped agent, end to end through the hall's check and the run's lines ──
@@ -100,3 +103,97 @@ def test_the_scheduler_and_the_hall_both_ask():
     assert "run_warnings" in sched
     assert routes.count("needs_check") >= 2
     assert "needs_check" in ui
+
+
+# ── `P24-30` · what the model must be: see, think, hear ──────────────────────
+#
+# The owner, 2026-11-02: *"If an agent would need vision capabilities, or
+# reasoning etc... it should state that to the user.. 'This agent requires
+# {model capability} in order to perform its job. Consider loading a model
+# that meets this specification.'"* `needs.model` names it; the hall says it
+# on the agent's page, and says the owner's sentence when the model this
+# person's hires run on is known not to have it. A model nothing has described
+# warns nothing, as the window and tool checks already hold.
+
+def test_a_model_known_not_to_see_is_told_in_the_owners_words():
+    short = NE.shortfall({"model": ["vision"]},
+                         {"model": "text-only-7b", "context": None, "tools": None,
+                          "vision": False, "reasoning": None, "audio": None})
+    assert short == ["This agent requires vision (a model that can see pictures) in order to "
+                     "perform its job. text-only-7b does not have it. Consider loading a model "
+                     "that meets this specification."]
+
+
+def test_a_model_nothing_has_described_warns_nothing_and_one_that_sees_warns_nothing():
+    facts = {"model": "m", "context": None, "tools": None, "vision": None, "reasoning": None, "audio": None}
+    assert NE.shortfall({"model": ["vision", "reasoning", "audio"]}, facts) == []
+    assert NE.shortfall({"model": ["vision"]}, dict(facts, vision=True)) == []
+
+
+def test_each_need_has_its_own_sentence():
+    facts = {"model": "m", "vision": False, "reasoning": False, "audio": False}
+    short = NE.shortfall({"model": ["vision", "reasoning", "audio"]}, facts)
+    assert len(short) == 3
+    assert "thinks before it answers" in short[1] and "hear recordings" in short[2]
+
+
+def test_the_page_states_the_requirement_before_any_model_is_looked_at():
+    from src.agents.catalogue import get_agent
+    m = get_agent(None, "browser-runner")
+    assert m.needs["model"] == ["vision"]
+    got = NE.check(m, {"model": None, "context": None, "tools": None,
+                       "vision": None, "reasoning": None, "audio": None})
+    assert got["requires"] == ["This agent requires vision (a model that can see pictures) "
+                               "in order to perform its job."]
+    assert got["short"] == []
+
+
+def test_the_manifest_refuses_a_need_no_model_can_be_asked_for():
+    import pytest
+    from src.agents.manifest import ManifestRefused, parse_manifest
+    from src.agents.catalogue import get_agent
+    text = get_agent(None, "browser-runner").source_text if hasattr(get_agent(None, "browser-runner"), "source_text") else None
+    if text is None:
+        from pathlib import Path
+        text = (Path(__file__).resolve().parent.parent / "library/pantheon/agents/browser-runner/AGENT.md").read_text(encoding="utf-8")
+    with pytest.raises(ManifestRefused, match="needs.model"):
+        parse_manifest(text.replace("model: [vision]", "model: [telepathy]"))
+    assert parse_manifest(text.replace("model: [vision]", "model: [vision, reasoning]")).needs["model"] == ["vision", "reasoning"]
+
+
+def test_route_facts_asks_the_three_questions_the_chat_already_answers(monkeypatch):
+    import src.chat_helpers as CH
+    import src.model_context as MC
+    import src.agent_loop as AL
+    monkeypatch.setattr(MC, "get_context_length_known", lambda url, model: (8192, True))
+    monkeypatch.setattr(AL, "_agent_route_schema_offer", lambda url, model, owner=None: "both")
+    monkeypatch.setattr(CH, "vision_answer", lambda model, url="": False)
+    monkeypatch.setattr(CH, "reasoning_answer", lambda model, url="": True)
+    monkeypatch.setattr(CH, "audio_answer", lambda model, url="": None)
+    f = NE.route_facts("http://gpu.lan:11434/v1", "small", "ada")
+    assert (f["vision"], f["reasoning"], f["audio"]) == (False, True, None)
+
+
+def test_reasoning_is_read_from_ollama_or_the_family(monkeypatch):
+    """`chat_helpers.reasoning_answer`: Ollama's `thinking` capability where it
+    lists capabilities; otherwise the family the effort dial already drives."""
+    import src.chat_helpers as CH
+    monkeypatch.setattr(CH, "ollama_thinks", lambda url, model: None)
+    assert CH.reasoning_answer("qwq:32b", "http://box:11434") is True       # a family that thinks
+    assert CH.reasoning_answer("plain-7b", "http://box:11434") is None       # nothing knows
+    monkeypatch.setattr(CH, "ollama_thinks", lambda url, model: False)
+    assert CH.reasoning_answer("qwq:32b", "http://box:11434") is False      # Ollama's word wins
+    monkeypatch.setattr(CH, "ollama_thinks", lambda url, model: True)
+    assert CH.reasoning_answer("plain-7b", "http://box:11434") is True
+
+
+def test_the_shipped_agents_that_see_or_reason_say_so():
+    from src.agents.catalogue import get_agent
+    see = {"browser-qa", "browser-runner", "bug-reproducer", "conversion-auditor", "desktop-app-driver",
+           "exploratory-tester", "form-filler", "site-builder", "ux-auditor"}
+    think = {"forecaster", "experiment-analyst", "pricing-analyst", "capacity-planner",
+             "threat-modeller", "architect", "security-reviewer"}
+    for aid in see:
+        assert get_agent(None, aid).needs["model"] == ["vision"], aid
+    for aid in think:
+        assert get_agent(None, aid).needs["model"] == ["reasoning"], aid

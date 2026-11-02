@@ -6,6 +6,7 @@ section: finance
 icon: folder-check
 version: 1.1.1
 wave: 2
+accepts: ["document:Tax pack"]
 inputs:
   - {key: year, kind: number, label: The tax year}
   - {key: folder, kind: folder, label: "Where to build it, inside your projects folder"}

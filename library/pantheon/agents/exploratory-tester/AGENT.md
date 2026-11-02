@@ -19,7 +19,7 @@ triggers:
   - {on: hand}
 tools: [computer, create_document]
 skills: [workstation-desktop]
-needs: {connectors: [workstation], min_context: 32000, native_tools: required}
+needs: {connectors: [workstation], min_context: 32000, native_tools: required, model: [vision]}
 delivers:
   - {kind: document, title: "Exploratory session", must_contain: [Charter, Found, Tried, "Not reached"]}
 effects: {execute_code: allow, network_egress: allow, write_private: allow, read_workspace: allow}

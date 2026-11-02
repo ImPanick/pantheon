@@ -8,7 +8,7 @@ version: 1.0.0
 wave: 4
 department: marketing
 role: lead
-accepts: ["document:Content calendar", "document:Launch announcement", "document:Voice review", "document:Social performance"]
+accepts: ["document:Content calendar", "document:Launch announcement", "document:Voice review", "document:Social performance", "document:Posts", "document:Thread", "document:Captions", "document:Video script", "document:Carousel", "document:Visuals"]
 hands_to:
   - {agent: brand-voice-keeper, via: "document:Social drafts"}
   - {agent: community-manager, via: "document:Social drafts"}

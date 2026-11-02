@@ -6,6 +6,7 @@ section: writing
 icon: file-minus
 version: 1.1.0
 wave: 2
+accepts: ["document:Budget vs actuals", "document:Cash-flow forecast"]
 inputs:
   - {key: document, kind: text, label: The document title}
 triggers:

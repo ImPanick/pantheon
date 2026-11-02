@@ -13,7 +13,7 @@ triggers:
   - {on: daily, at: "{at}"}
 tools: [computer]
 skills: [workstation-desktop]
-needs: {connectors: [workstation], min_context: 32000, native_tools: required}
+needs: {connectors: [workstation], min_context: 32000, native_tools: required, model: [vision]}
 delivers:
   - {kind: answer, must_contain: [Done, Stopped at, Last screen]}
 effects: {execute_code: allow, network_egress: ask, read_workspace: allow}

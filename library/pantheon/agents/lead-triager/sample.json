@@ -1,0 +1,28 @@
+{
+ "case": "five-mails-one-hot",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read 4 mails, resolved 4 senders; wrote \"Lead triage — 2026-11-10\"",
+ "read": [
+  "list_emails",
+  "read_email",
+  "resolve_contact"
+ ],
+ "wrote": [
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Lead triage”",
+   "ok": true,
+   "detail": "“Lead triage — 2026-11-10” is there."
+  }
+ ],
+ "answer": "1 hot (Cedar, 40 seats before January), 1 warm (Elm demo), 1 cold; Acme's mail is an account question.\n\n## Report\n- read 4 mails, resolved 4 senders; wrote \"Lead triage — 2026-11-10\"\n\n## Carry forward\n- triaged: m101, m102, m103, m104, m105",
+ "documents": [
+  {
+   "title": "Lead triage — 2026-11-10",
+   "content": "Lead triage — 2026-11-10\n1 hot, 1 warm, 1 cold; 2 not leads\n\n## Hot\n- Priya Nair, Cedar Ltd — asked for a quote for 40 seats: \"we need this live before our January audit; I own the budget.\" Timeline, budget and need all in the mail.\n\n## Warm\n- Leo Brandt, Elm — asked for a demo: \"keen to see it; we're not buying this year.\" A real need, a stated timeline beyond a quarter.\n\n## Cold\n- s.okafor@student.example — \"doing a project on tools like yours, can I get a free account?\"\n\n## Not a lead\n- Acme Ltd (Ana Ruiz) — existing contact asking about SSO; for the account owner.\n- newsletter@saasweekly.example — newsletter.\n\n## Next step\n| Lead | Step | By when |\n| --- | --- | --- |\n| Priya Nair, Cedar Ltd | Reply with the 40-seat quote and offer a call this week | 2026-11-11 |\n| Leo Brandt, Elm | Book a demo; note the \"not this year\" timeline | 2026-11-14 |\n| s.okafor | Point to the free tier | 2026-11-17 |"
+  }
+ ]
+}

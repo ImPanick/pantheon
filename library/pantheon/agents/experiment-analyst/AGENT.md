@@ -19,7 +19,7 @@ triggers:
   - {on: hand}
 tools: [bash, read_file, create_document]
 skills: []
-needs: {connectors: [], min_context: 32000, native_tools: preferred}
+needs: {connectors: [], min_context: 32000, native_tools: preferred, model: [reasoning]}
 delivers:
   - {kind: document, title: "Experiment readout", must_contain: [Result, Numbers, Caveats, Decision]}
 effects: {execute_code: allow, network_egress: never, read_workspace: allow, write_private: allow, destructive: never}

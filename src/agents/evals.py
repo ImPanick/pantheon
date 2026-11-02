@@ -21,13 +21,17 @@ own `delivers`:
         "chats": [{"title": "Trip to Lisbon", "messages": [{"role": "user", "content": "..."}]}],
         "screens": [{"screen": "Shop home — a [Basket] button at (1180, 40)"},
                     {"after": "click at (1180, 40)", "screen": "Basket — 1 item, £12.00"}],
-        "models":  {"qwen3-8b": [{"match": "bakery", "reply": "..."}], "llama-3.1-8b": "..."}
+        "models":  {"qwen3-8b": [{"match": "bakery", "reply": "..."}], "llama-3.1-8b": "..."},
+        "ledger":  [{"date": "2026-11-01", "kind": "bill", "amount": 120.5, "counterparty": "Hetzner",
+                     "category": "hosting", "due": "2026-11-15"}],
+        "images":  [{"match": "56 / 5", "path": "images/card-1.png"}, {"match": "chart", "error": "Image generation is off."}]
       },
       "answers": ["deny"],
       "notebook": "- sorted: m0",
       "script": [ {"call": [["list_emails", {"unread_only": true}]]}, {"say": "..."} ],
       "checks": [ {"document": {"title": "Inbox triage", "contains": ["Urgent", "Ana"]}},
-                  {"not_called": "send_email"} ]
+                  {"not_called": "send_email"},
+                  {"ledger": {"contains": ["Hetzner"], "lacks": ["void"], "count": 1}} ]
     }]}
 
 **One harness, two models.** `run_case` drives the real scheduler —
@@ -129,9 +133,10 @@ OUTSIDE_EFFECTS = frozenset({"network_egress", "brokered_network_read", "externa
 
 CHECK_KINDS = ("answer_contains", "answer_lacks", "document", "no_document", "called",
                "not_called", "drafts_at_most", "draft_to", "no_draft_to", "status",
-               "file", "notebook_contains", "memory")
+               "file", "notebook_contains", "memory", "ledger")
 WORLD_KEYS = ("emails", "web", "search", "shell", "documents", "notes", "calendar", "files", "accounts",
-              "research", "memories", "chats", "screens", "models", "served", "cached", "hub", "rag")
+              "research", "memories", "chats", "screens", "models", "served", "cached", "hub", "rag",
+              "ledger", "images")
 #: `P24-27`. A script's word for the world's projects folder — its full path,
 #: which a model reads off `ls` and a script cannot know before the world is made.
 WORLD_PROJECTS = "$WORLD_PROJECTS"
@@ -261,6 +266,15 @@ def _lint_screens_and_models(cid: str, world: Dict[str, Any]) -> None:
                 and (isinstance(r.get("reply"), str) != isinstance(r.get("error"), str)) for r in rules)),
                 f"Case “{cid}”'s model “{name}” answers with one reply, or a list of "
                 f"{{\"match\": words in the message, \"reply\": its answer}} (or \"error\": why it failed).")
+    if "images" in world:
+        # `P24-30`. The image model `generate_image` asks: each rule makes the
+        # image at `path`, or refuses with `error`, when its words are in the prompt.
+        rules = world["images"]
+        _need(isinstance(rules, list) and all(
+            isinstance(r, dict) and set(r) <= {"match", "path", "error"} and isinstance(r.get("match"), str)
+            and (isinstance(r.get("path"), str) != isinstance(r.get("error"), str)) for r in rules),
+            f"Case “{cid}”'s images are a list of {{\"match\": words in the prompt, \"path\": the image made}} "
+            f"(or \"error\": why it was not made).")
 
 
 def agent_dir(manifest) -> str:
@@ -299,6 +313,7 @@ class World:
     drafts: List[Dict[str, Any]] = field(default_factory=list)
     sent: List[Dict[str, Any]] = field(default_factory=list)
     research: List[str] = field(default_factory=list)
+    images: List[str] = field(default_factory=list)
     #: `B1602`. Every request a case made to the install's own address —
     #: refused, so none reached a running install; kept so a test can say so.
     loopback: List[str] = field(default_factory=list)
@@ -382,11 +397,27 @@ class World:
                         out.append({"email": addr, "name": part.split("<")[0].strip().strip('"') or addr})
         return out[:10]
 
+    def _image(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        """`P24-30`. `generate_image`, answered by the world's image model:
+        the first `images` rule whose `match` is in the prompt gives its
+        `path` (the image made) or its `error` (the model refused or is off);
+        a prompt no rule matches is made at the next free path."""
+        prompt = str(args.get("prompt") or "")
+        self.images.append(prompt)
+        for rule in self.fixture.get("images") or []:
+            if str(rule.get("match") or "").lower() in prompt.lower():
+                if rule.get("error"):
+                    return {"error": str(rule["error"]), "exit_code": 1}
+                return {"path": str(rule.get("path") or ""), "prompt": prompt, "exit_code": 0}
+        return {"path": f"images/generated-{len(self.images)}.png", "prompt": prompt, "exit_code": 0}
+
     def _outside(self, tool: str, args: Dict[str, Any]) -> Dict[str, Any]:
         """`P24-27`. A tool that leaves the install and is not one of the
         world's own: deep research the world can start, or a refusal."""
         if tool == "chat_with_model" and "models" in self.fixture:
             return self._model(args)
+        if tool == "generate_image" and "images" in self.fixture:
+            return self._image(args)
         if tool == "trigger_research" and "research" in self.fixture:
             topic = str(args.get("topic") or args.get("query") or "").strip()
             self.research.append(topic)
@@ -942,6 +973,18 @@ def _seed(db, owner: str, world: Dict[str, Any], data_dir: str) -> Dict[str, str
     for n in world.get("notes") or []:
         db.add(Note(id=str(n.get("id") or uuid.uuid4()), owner=owner, title=n.get("title", ""), content=n.get("content", ""),
                     due_date=n.get("due")))
+    for n, row in enumerate(world.get("ledger") or [], start=1):
+        # `P24-30`. The person's ledger as the run finds it, where `ledger_table`
+        # reads it: each row a line of money (date, kind, amount, counterparty…).
+        from core.database import LedgerEntry
+        kind = str(row.get("kind") or "expense")
+        db.add(LedgerEntry(id=str(row.get("id") or uuid.uuid4()), owner=owner, source="user",
+                           date=str(row.get("date") or "2026-01-01"), kind=kind,
+                           account=str(row.get("account") or ""), category=str(row.get("category") or ""),
+                           counterparty=str(row.get("counterparty") or ""), amount=float(row.get("amount") or 0),
+                           currency=str(row.get("currency") or ""), memo=row.get("memo"),
+                           status=str(row.get("status") or ("open" if kind in ("invoice", "bill") else "posted")),
+                           due=row.get("due"), ref=row.get("ref")))
     if world.get("calendar"):
         cal = CalendarCal(id=str(uuid.uuid4()), owner=owner, name="Personal")
         db.add(cal)
@@ -1106,6 +1149,22 @@ def _check(kind: str, want: Any, *, db, owner, answer, status, world: World, not
     if kind == "notebook_contains":
         return {"check": f"its notebook keeps {want}", "ok": want.lower() in (notebook or "").lower(),
                 "detail": "It does." if want.lower() in (notebook or "").lower() else "It does not."}
+    if kind == "ledger":
+        # `P24-30`. The person's ledger as the run left it: what its lines must
+        # say (date, kind, counterparty, category, amount, status, due, ref,
+        # memo), what they must not, and how many there are.
+        from core.database import LedgerEntry
+        rows = db.query(LedgerEntry).filter(LedgerEntry.owner == owner).all()
+        lines = [" ".join(str(x) for x in (r.date, r.kind, r.counterparty, r.category, f"{(r.amount or 0):.2f}",
+                                            r.status, r.due or "", r.ref or "", r.memo or "")) for r in rows]
+        hay = "\n".join(lines).lower()
+        miss = [w for w in want.get("contains", []) if w.lower() not in hay]
+        bad = [w for w in want.get("lacks", []) if w.lower() in hay]
+        count_ok = ("count" not in want) or len(rows) == int(want["count"])
+        detail = "; ".join(filter(None, [miss and f"it has no {', '.join(miss)}", bad and f"it holds {', '.join(bad)}",
+                                         (not count_ok) and f"it has {len(rows)} lines, not {want['count']}"]))
+        return {"check": "the ledger", "ok": not miss and not bad and count_ok,
+                "detail": _said(detail) if detail else f"It holds {len(rows)} lines, as it should."}
     return {"check": kind, "ok": False, "detail": "Pantheon cannot run this check."}
 
 
@@ -1211,6 +1270,19 @@ async def run_case(manifest, case: Dict[str, Any], *, factory, data_dir: str,
 
         p.set(contacts_tools, "mail_history", world_mail_history)
         _refuse_loopback(p, world)
+        # `P24-30`. A world with `images` is an install with image generation
+        # turned on (`image_gen_enabled`, off by default): without it every
+        # `generate_image` is withheld from the turn before the world answers.
+        if "images" in world.fixture:
+            import src.tool_security as tool_security
+            real_disabled = tool_security.setting_disabled_tools
+
+            def world_setting_disabled(get_setting_fn=None):
+                return set(real_disabled(get_setting_fn)) - {"generate_image"}
+
+            p.set(tool_security, "setting_disabled_tools", world_setting_disabled)
+            import src.agent_loop as agent_loop_mod
+            p.set(agent_loop_mod, "setting_disabled_tools", world_setting_disabled)
         # `P24-27`. A world's model servers are the ones it names (`served`):
         # `list_served_models` also scanned the processes of the machine running
         # the evaluation, so a case's answer was whatever that machine served.

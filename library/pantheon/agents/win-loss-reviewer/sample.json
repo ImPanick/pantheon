@@ -1,0 +1,26 @@
+{
+ "case": "seven-closed-deals-two-patterns",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read \"Pipeline\" (7 closed deals) and 1 deal notes; wrote \"Win-loss review — 2026-11\"",
+ "read": [
+  "manage_documents"
+ ],
+ "wrote": [
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Win-loss review”",
+   "ok": true,
+   "detail": "“Win-loss review — 2026-11” is there."
+  }
+ ],
+ "answer": "43% won by count, 44% by value; outbound lost 4 of 4 and every loss ran past 50 days — qualify outbound harder and add a 45-day check.\n\n## Report\n- read \"Pipeline\" (7 closed deals) and 1 deal notes; wrote \"Win-loss review — 2026-11\"",
+ "documents": [
+  {
+   "title": "Win-loss review — 2026-11",
+   "content": "Win-loss review — 2026-11\n43% won by count (3 of 7), 44% by value; pattern: outbound lost 4 of 4 and every loss ran past 50 days\n\n## Won\n| Account | Value | Source | Days | Reason |\n| --- | --- | --- | --- | --- |\n| Yew | 24000 | referral | 30 | fit |\n| Ash | 18000 | inbound | 35 | fit |\n| Fir | 9000 | inbound | 28 | price ok |\n\n## Lost\n| Account | Value | Source | Days | Reason |\n| --- | --- | --- | --- | --- |\n| Oak | 30000 | outbound | 60 | price |\n| Pine | 12000 | outbound | 72 | no decision |\n| Teak | 15000 | outbound | 55 | competitor |\n| Maple | 8000 | outbound | 51 | price |\n\n## Patterns\n- By source: outbound lost 4 of 4; inbound and referral won 3 of 3.\n- By length: every loss ran over 50 days; every win closed under 36.\n\n## Do differently\n- Qualify outbound harder before Proposal sent; add a 45-day check that asks for a decision date.\n\n## Too few to say\n- By reason: price 2, no decision 1, competitor 1 — no reason reaches three."
+  }
+ ]
+}

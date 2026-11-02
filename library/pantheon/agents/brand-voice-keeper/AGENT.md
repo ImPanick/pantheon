@@ -8,7 +8,7 @@ version: 1.0.0
 wave: 4
 department: marketing
 role: reviewer
-accepts: ["document:Social drafts", "document:Launch announcement"]
+accepts: ["document:Social drafts", "document:Launch announcement", "document:Posts", "document:Thread", "document:Captions", "document:Video script", "document:Carousel"]
 hands_to:
   - {agent: social-media-manager, via: "document:Voice review"}
 inputs:

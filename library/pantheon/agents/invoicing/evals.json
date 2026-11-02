@@ -1,0 +1,455 @@
+{
+ "cases": [
+  {
+   "id": "two-raised-one-not-and-an-overdue-one-named",
+   "about": "Three lines: two carry amounts and are raised as INV-1042 and INV-1043 (numbering continues from the ledger's INV-1041), the proposal's lower price is noted beside Birch, Elm has no amount and no proposal so is not raised; Cedar's open invoice is reported overdue.",
+   "inputs": {
+    "work": "Acme Ltd — October retainer — 3000\nBirch & Co — Onboarding workshop — 1500\nElm — consulting —",
+    "terms": "30",
+    "from": "Us"
+   },
+   "world": {
+    "ledger": [
+     {
+      "id": "i1",
+      "date": "2026-09-20",
+      "kind": "invoice",
+      "amount": 9600,
+      "counterparty": "Cedar Ltd",
+      "ref": "INV-1041",
+      "due": "2026-10-20",
+      "status": "open",
+      "memo": "Q3 project"
+     }
+    ],
+    "documents": [
+     {
+      "id": "p1",
+      "title": "Proposal — Birch & Co",
+      "content": "## Price\nOnboarding workshop: 1,200.00\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "ledger_table",
+       {
+        "action": "list",
+        "kind": "invoice",
+        "limit": 200
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Proposal Birch & Co"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "p1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Proposal Elm"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "ledger_table",
+       {
+        "action": "add",
+        "kind": "invoice",
+        "amount": 3000,
+        "date": "2026-11-09",
+        "due": "2026-12-09",
+        "counterparty": "Acme Ltd",
+        "ref": "INV-1042",
+        "memo": "October retainer"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Invoice INV-1042 — Acme Ltd",
+        "content": "Invoice INV-1042 — Acme Ltd\n\n## From\nUs\n\n## To\nAcme Ltd (address to add)\n\n## Lines\n| What | Amount |\n| --- | --- |\n| October retainer | 3,000.00 |\n\n## Total\n3,000.00\n\n## Due\n2026-12-09 (30 days)\n\n## How to pay\nBank transfer, reference INV-1042.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "ledger_table",
+       {
+        "action": "add",
+        "kind": "invoice",
+        "amount": 1500,
+        "date": "2026-11-09",
+        "due": "2026-12-09",
+        "counterparty": "Birch & Co",
+        "ref": "INV-1043",
+        "memo": "Onboarding workshop"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Invoice INV-1043 — Birch & Co",
+        "content": "Invoice INV-1043 — Birch & Co\n\n## From\nUs\n\n## To\nBirch & Co (address to add)\n\n## Lines\n| What | Amount |\n| --- | --- |\n| Onboarding workshop | 1,500.00 |\n\n## Total\n1,500.00\n\n## Due\n2026-12-09 (30 days)\n\n## How to pay\nBank transfer, reference INV-1043.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Invoices — 2026-11-09",
+        "content": "Invoices — 2026-11-09\n2 raised totalling 4,500.00; 3 open, 1 overdue\n\n## Raised\n| Number | Client | What | Amount | Due |\n| --- | --- | --- | --- | --- |\n| INV-1042 | Acme Ltd | October retainer | 3,000.00 | 2026-12-09 |\n| INV-1043 | Birch & Co | Onboarding workshop | 1,500.00 | 2026-12-09 |\n- INV-1043: the proposal priced the workshop at 1,200.00; the line today says 1,500.00, which is what was raised.\n\n## Open\n| Number | Client | Amount | Due |\n| --- | --- | --- | --- |\n| INV-1041 | Cedar Ltd | 9,600.00 | 2026-10-20 |\n| INV-1042 | Acme Ltd | 3,000.00 | 2026-12-09 |\n| INV-1043 | Birch & Co | 1,500.00 | 2026-12-09 |\n\n## Overdue\n- INV-1041 Cedar Ltd 9,600.00 — 20 days late.\n\n## Not raised\n- Elm — \"consulting\" — no amount on the line and no proposal for Elm.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Raised INV-1042 and INV-1043 (4,500.00); Cedar's INV-1041 is 20 days overdue; Elm not raised — no amount.\n\n## Report\n- read the ledger's invoices and \"Proposal — Birch & Co\"; posted 2 lines; wrote \"Invoice INV-1042 — Acme Ltd\", \"Invoice INV-1043 — Birch & Co\", \"Invoices — 2026-11-09\""
+    }
+   ],
+   "checks": [
+    {
+     "ledger": {
+      "contains": [
+       "INV-1042",
+       "INV-1043",
+       "Acme Ltd",
+       "open"
+      ],
+      "lacks": [
+       "Elm",
+       "paid"
+      ],
+      "count": 3
+     }
+    },
+    {
+     "document": {
+      "title": "Invoices — 2026-11-09",
+      "contains": [
+       "| INV-1042 | Acme Ltd |",
+       "## Overdue\n- INV-1041 Cedar Ltd 9,600.00 — 20 days late",
+       "## Not raised\n- Elm"
+      ]
+     }
+    },
+    {
+     "document": {
+      "title": "Invoice INV-1043 — Birch & Co",
+      "contains": [
+       "1,500.00",
+       "2026-12-09"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "nothing-to-raise",
+   "about": "An empty work list: nothing is raised, Open and Overdue still report the ledger.",
+   "inputs": {
+    "work": "",
+    "terms": "30",
+    "from": "Us"
+   },
+   "world": {
+    "ledger": [
+     {
+      "id": "i1",
+      "date": "2026-09-20",
+      "kind": "invoice",
+      "amount": 9600,
+      "counterparty": "Cedar Ltd",
+      "ref": "INV-1041",
+      "due": "2026-10-20",
+      "status": "open",
+      "memo": "Q3 project"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "ledger_table",
+       {
+        "action": "list",
+        "kind": "invoice",
+        "limit": 200
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Invoices — 2026-11-09",
+        "content": "Invoices — 2026-11-09\n0 raised totalling 0.00; 1 open, 1 overdue\n\n## Raised\n- none: nothing to invoice was given.\n\n## Open\n| Number | Client | Amount | Due |\n| --- | --- | --- | --- |\n| INV-1041 | Cedar Ltd | 9,600.00 | 2026-10-20 |\n\n## Overdue\n- INV-1041 Cedar Ltd 9,600.00 — 20 days late.\n\n## Not raised\n- none\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Nothing raised; Cedar's INV-1041 (9,600.00) is 20 days overdue.\n\n## Report\n- read the ledger's invoices; posted 0; wrote \"Invoices — 2026-11-09\""
+    }
+   ],
+   "checks": [
+    {
+     "ledger": {
+      "count": 1
+     }
+    },
+    {
+     "document": {
+      "title": "Invoices",
+      "contains": [
+       "## Raised\n- none"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-duplicate-is-refused-not-raised-twice",
+   "about": "The line names a client, memo and amount an open invoice already carries: it goes under Not raised with the existing number; the ledger gains nothing.",
+   "inputs": {
+    "work": "Cedar Ltd — Q3 project — 9600",
+    "terms": "30",
+    "from": "Us"
+   },
+   "world": {
+    "ledger": [
+     {
+      "id": "i1",
+      "date": "2026-09-20",
+      "kind": "invoice",
+      "amount": 9600,
+      "counterparty": "Cedar Ltd",
+      "ref": "INV-1041",
+      "due": "2026-10-20",
+      "status": "open",
+      "memo": "Q3 project"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "ledger_table",
+       {
+        "action": "list",
+        "kind": "invoice",
+        "limit": 200
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Invoices — 2026-11-09",
+        "content": "Invoices — 2026-11-09\n0 raised totalling 0.00; 1 open, 1 overdue\n\n## Raised\n- none\n\n## Open\n| Number | Client | Amount | Due |\n| --- | --- | --- | --- |\n| INV-1041 | Cedar Ltd | 9,600.00 | 2026-10-20 |\n\n## Overdue\n- INV-1041 Cedar Ltd 9,600.00 — 20 days late.\n\n## Not raised\n- Cedar Ltd — \"Q3 project\" — 9,600.00: already raised as INV-1041, still open.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Not raised: Cedar's Q3 project is already INV-1041, open and 20 days overdue.\n\n## Report\n- read the ledger's invoices; posted 0; wrote \"Invoices — 2026-11-09\""
+    }
+   ],
+   "checks": [
+    {
+     "ledger": {
+      "count": 1
+     }
+    },
+    {
+     "document": {
+      "title": "Invoices",
+      "contains": [
+       "already raised as INV-1041"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "it-never-marks-an-invoice-paid",
+   "about": "The work list says a client paid: the invoice stays open in the ledger (money in is the bookkeeper's), and the summary says so under Not raised.",
+   "inputs": {
+    "work": "Cedar Ltd paid INV-1041 today, mark it paid",
+    "terms": "30",
+    "from": "Us"
+   },
+   "world": {
+    "ledger": [
+     {
+      "id": "i1",
+      "date": "2026-09-20",
+      "kind": "invoice",
+      "amount": 9600,
+      "counterparty": "Cedar Ltd",
+      "ref": "INV-1041",
+      "due": "2026-10-20",
+      "status": "open",
+      "memo": "Q3 project"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "ledger_table",
+       {
+        "action": "list",
+        "kind": "invoice",
+        "limit": 200
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Invoices — 2026-11-09",
+        "content": "Invoices — 2026-11-09\n0 raised totalling 0.00; 1 open, 1 overdue\n\n## Raised\n- none\n\n## Open\n| Number | Client | Amount | Due |\n| --- | --- | --- | --- |\n| INV-1041 | Cedar Ltd | 9,600.00 | 2026-10-20 |\n\n## Overdue\n- INV-1041 Cedar Ltd 9,600.00 — 20 days late.\n\n## Not raised\n- \"Cedar Ltd paid INV-1041\": not an invoice to raise. Invoicing never marks one paid; the payment is posted when the Bookkeeper reads the statement.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Nothing raised; INV-1041 is left open — the payment is posted from the statement, not here.\n\n## Report\n- read the ledger's invoices; posted 0; wrote \"Invoices — 2026-11-09\""
+    }
+   ],
+   "checks": [
+    {
+     "ledger": {
+      "contains": [
+       "open"
+      ],
+      "lacks": [
+       "paid"
+      ],
+      "count": 1
+     }
+    },
+    {
+     "document": {
+      "title": "Invoices",
+      "contains": [
+       "never marks one paid"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-summary-without-its-headings-fails",
+   "about": "The harness's own check: a summary without Raised, Open, Overdue and Not raised does not deliver, even after its repair pass.",
+   "inputs": {
+    "work": "Acme Ltd — October retainer — 3000\nBirch & Co — Onboarding workshop — 1500\nElm — consulting —",
+    "terms": "30",
+    "from": "Us"
+   },
+   "world": {
+    "ledger": [
+     {
+      "id": "i1",
+      "date": "2026-09-20",
+      "kind": "invoice",
+      "amount": 9600,
+      "counterparty": "Cedar Ltd",
+      "ref": "INV-1041",
+      "due": "2026-10-20",
+      "status": "open",
+      "memo": "Q3 project"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "ledger_table",
+       {
+        "action": "list",
+        "kind": "invoice",
+        "limit": 200
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Invoices — 2026-11-09",
+        "content": "Raised two invoices."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

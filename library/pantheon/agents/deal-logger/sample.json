@@ -1,0 +1,26 @@
+{
+ "case": "three-new-sources-one-deal-moves",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read \"Pipeline\" and 3 new sources; wrote \"Deal notes — 2026-11-10\"",
+ "read": [
+  "manage_documents"
+ ],
+ "wrote": [
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Deal notes”",
+   "ok": true,
+   "detail": "“Deal notes — 2026-11-10” is there."
+  }
+ ],
+ "answer": "Acme moves to Negotiating (two-year pricing, Okta condition, DPA); Birch parked until January; Fir is not in the pipeline yet.\n\n## Report\n- read \"Pipeline\" and 3 new sources; wrote \"Deal notes — 2026-11-10\"\n\n## Carry forward\n- logged: cs-acme-1103, cs-acme-1110, min-birch-1109, cs-elm-1110",
+ "documents": [
+  {
+   "title": "Deal notes — 2026-11-10",
+   "content": "Deal notes — 2026-11-10\n1 deal moved, 1 unchanged, 1 not logged\n\n## Deal\n- Acme Ltd — \"Call summary — Acme Ltd, 2026-11-10\".\n- Birch & Co — \"Minutes — Birch & Co check-in, 2026-11-09\".\n\n## What changed\n- Acme Ltd: Ana asked for two-year pricing; Tom made Okta SSO a condition; Ana is introducing legal for the DPA this week. Reading: moving toward terms, with one technical condition.\n- Birch & Co: \"no change until the new CFO starts in January\". Reading: unchanged, parked by them.\n\n## Stage\n| Account | Stage now | Stage proposed | Why |\n| --- | --- | --- | --- |\n| Acme Ltd | Proposal sent | Negotiating | pricing terms and a DPA are being worked |\n| Birch & Co | Proposal sent | Proposal sent | parked until January, their words |\n\n## Next step\n| Account | What | Owner | Date |\n| --- | --- | --- | --- |\n| Acme Ltd | Send two-year pricing | Sam | 2026-11-12 |\n| Birch & Co | Check in after the CFO starts | Sam | 2027-01-12 |\n\n## Not logged\n- \"Call summary — Fir, 2026-11-10\": Fir is not in the pipeline. Line to add: Fir — Discovery — first call 2026-11-10 — next: send the deck."
+  }
+ ]
+}

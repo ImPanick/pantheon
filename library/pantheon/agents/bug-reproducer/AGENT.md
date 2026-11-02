@@ -17,7 +17,7 @@ triggers:
   - {on: hand}
 tools: [computer, bash, read_file, write_file, create_document]
 skills: [workstation-desktop]
-needs: {connectors: [workstation], min_context: 32000, native_tools: required}
+needs: {connectors: [workstation], min_context: 32000, native_tools: required, model: [vision]}
 delivers:
   - {kind: document, title: "Reproduction", must_contain: [Steps, Observed, Expected, Failing test]}
 effects: {execute_code: allow, network_egress: allow, read_workspace: allow, write_workspace: allow, write_private: allow, destructive: never}

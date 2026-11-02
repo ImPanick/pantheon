@@ -1391,7 +1391,7 @@ async def _execute_tool_block_impl(
     """
     from src.tool_implementations import (
         do_search_chats, do_manage_tasks,
-        do_manage_skills, do_use_skill, do_api_call, do_manage_notes,
+        do_manage_skills, do_use_skill, do_api_call, do_manage_notes, do_ledger_table,
         do_manage_calendar,
         do_download_model, do_serve_model, do_list_served_models, do_stop_served_model,
         do_tail_serve_output,
@@ -1703,6 +1703,10 @@ async def _execute_tool_block_impl(
     elif tool == "manage_notes":
         desc = "manage_notes"
         result = await do_manage_notes(content, owner=owner)
+    elif tool == "ledger_table":
+        # `P24-30`. The finance agents' table: add, list, sum, update, delete, import.
+        desc = "ledger_table"
+        result = await do_ledger_table(content, owner=owner)
     elif tool == "manage_calendar":
         desc = "manage_calendar"
         result = await do_manage_calendar(content, owner=owner)

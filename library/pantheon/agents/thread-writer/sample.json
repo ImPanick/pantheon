@@ -1,0 +1,26 @@
+{
+ "case": "four-posts-not-eight",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read \"Brand voice\" and the hooks; wrote \"Thread — the five that went back\"",
+ "read": [
+  "manage_documents"
+ ],
+ "wrote": [
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Thread”",
+   "ok": true,
+   "detail": "“Thread — the five that went back” is there."
+  }
+ ],
+ "answer": "4 posts; hook: \"61 companies tried a four-day week. Everyone writes about the 56 that kept it.\" Post 4 is our view.\n\n## Report\n- read \"Brand voice\" and the hooks; wrote \"Thread — the five that went back\"",
+ "documents": [
+  {
+   "title": "Thread — the five that went back",
+   "content": "Thread — the five that went back\n4 posts; hook: \"61 companies tried a four-day week. Everyone writes about the 56 that kept it.\"\n\n## Hook\n61 companies tried a four-day week. Everyone writes about the 56 that kept it. Here is what the other 5 saw. (106)\n\n## Posts\n2. They did not fail on output. Revenue was flat for all 61. [1] (59)\n3. The teams that stayed cut 14 standing meetings to 5. [2] (54)\n4. Our view: a four-day week is a meeting cull with a day off attached. (view) (68)\n\n## Close\nPiloting it? Count your standing meetings first. Reply \"meetings\" and we will send how. (88)\n\n## Sources\n1. example.org/pilot — \"56 of 61 companies will continue\"; \"revenue flat\".\n2. blog.example/fifth-day — \"14 standing meetings cut to 5.\"\n- Post 4: view.\n\n## Not written\n- none"
+  }
+ ]
+}

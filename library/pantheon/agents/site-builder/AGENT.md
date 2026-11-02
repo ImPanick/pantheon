@@ -14,7 +14,7 @@ triggers:
   - {on: hand}
 tools: [bash, computer, ls, read_file, write_file, edit_file]
 skills: [workstation-shell, workstation-desktop, workstation-self-test]
-needs: {connectors: [workstation], min_context: 32000, native_tools: required}
+needs: {connectors: [workstation], min_context: 32000, native_tools: required, model: [vision]}
 delivers:
   - {kind: answer, must_contain: [Address, Files, Checked, http]}
 effects: {read_workspace: allow, write_workspace: allow, execute_code: allow, network_egress: ask, destructive: never}

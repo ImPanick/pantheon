@@ -13,7 +13,7 @@ triggers:
   - {on: hand}
 tools: [computer, create_document]
 skills: [workstation-desktop]
-needs: {connectors: [workstation], min_context: 32000, native_tools: required}
+needs: {connectors: [workstation], min_context: 32000, native_tools: required, model: [vision]}
 delivers:
   - {kind: document, title: "UX audit", must_contain: [Steps walked, Friction, Fix first]}
 effects: {execute_code: allow, network_egress: allow, write_private: allow, read_workspace: allow}

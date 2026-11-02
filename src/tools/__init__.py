@@ -9,6 +9,7 @@ from src.tools.system import (  # noqa: F401
     do_manage_skills, do_use_skill, _skill_dump, do_manage_tasks,
     do_api_call, do_app_api,
 )
+from src.tools.ledger import do_ledger_table  # noqa: F401  (`P24-30`)
 from src.tools.cookbook import (  # noqa: F401
     do_download_model, do_serve_model, do_list_served_models,
     do_stop_served_model, do_tail_serve_output, do_list_downloads,

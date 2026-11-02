@@ -93,6 +93,9 @@ TOOL_TOGGLE_ALIASES: Mapping[str, tuple[str, ...]] = MappingProxyType({
     "image": ("generate_image",),
     "tasks": ("manage_tasks",),
     "notes": ("manage_notes",),
+    "ledger": ("ledger_table",),  # `P24-30`
+    "finance": ("ledger_table",),
+    "bookkeeping": ("ledger_table",),
     "calendar": ("manage_calendar",),
     # The full built-in email tool set, in BOTH spellings: the qualified
     # mcp__email__* names drive MCP schema hiding, the bare names drive

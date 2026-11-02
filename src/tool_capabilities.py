@@ -267,6 +267,7 @@ _register(
         "manage_documents",
         "manage_memory",
         "manage_notes",
+        "ledger_table",      # `P24-30`: the person's ledger, read and written by its actions below
         "manage_research",
         "manage_session",
         "manage_skills",
@@ -828,6 +829,7 @@ _PRIVATE_ACTION_READS: Mapping[str, frozenset[str]] = MappingProxyType(
                                        "list_folders"}),
         "manage_memory": frozenset({"list", "search"}),
         "manage_notes": frozenset({"list", "search", "find", "view"}),
+        "ledger_table": frozenset({"list", "sum"}),      # `P24-30`
         "manage_research": frozenset({"list", "read", "open", "view", "get"}),
         "manage_session": frozenset({"list", "switch", "open", "select", "view"}),
         "manage_skills": frozenset({"list", "index", "view", "view_ref", "search",
@@ -850,6 +852,7 @@ _PRIVATE_ACTION_WRITES: Mapping[str, frozenset[str]] = MappingProxyType(
                                        "remove_folder", "reorganise", "apply_plan"}),
         "manage_memory": frozenset({"add", "edit", "delete"}),
         "manage_notes": frozenset({"add", "update", "delete", "toggle_item"}),
+        "ledger_table": frozenset({"add", "update", "delete", "import"}),      # `P24-30`
         "manage_research": frozenset({"delete"}),
         "manage_session": frozenset(
             {
@@ -887,6 +890,7 @@ _ACTION_DESTRUCTIVE: Mapping[str, frozenset[str]] = MappingProxyType(
         "manage_memory": frozenset({"delete"}),
         "manage_mcp": frozenset({"delete"}),
         "manage_notes": frozenset({"delete"}),
+        "ledger_table": frozenset({"delete"}),      # `P24-30`
         "manage_research": frozenset({"delete"}),
         "manage_session": frozenset({"delete", "truncate"}),
         "manage_settings": frozenset({"delete", "reset"}),
@@ -901,6 +905,7 @@ _ACTION_DEFAULTS: Mapping[str, str] = MappingProxyType(
     {
         "manage_calendar": "list_events",
         "manage_documents": "list",
+        "ledger_table": "list",      # `P24-30`
         "manage_research": "list",
         "manage_tasks": "list",
     }
@@ -930,6 +935,14 @@ _ACTION_ALIASES: Mapping[str, Mapping[str, str]] = MappingProxyType(
         "git": MappingProxyType({"st": "status", "show": "diff", "history": "log",
                                  "checkout": "branch", "switch": "branch", "ci": "commit",
                                  "fetch": "pull", "publish": "push"}),
+        # `P24-30`. `ledger_table`'s spellings, as `src/tools/ledger.py` maps them.
+        "ledger_table": MappingProxyType(
+            {"create": "add", "new": "add", "post": "add", "record": "add",
+             "remove": "delete", "void": "delete",
+             "total": "sum", "totals": "sum", "summary": "sum", "summarise": "sum", "summarize": "sum",
+             "query": "list", "search": "list", "find": "list", "show": "list",
+             "bulk_add": "import", "import_rows": "import"}
+        ),
         "manage_notes": MappingProxyType(
             {
                 "create": "add",

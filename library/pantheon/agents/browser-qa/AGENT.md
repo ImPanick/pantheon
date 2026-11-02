@@ -13,7 +13,7 @@ triggers:
   - {on: daily, at: "04:30"}
 tools: [computer, create_document]
 skills: [workstation-desktop]
-needs: {connectors: [workstation], min_context: 32000, native_tools: required}
+needs: {connectors: [workstation], min_context: 32000, native_tools: required, model: [vision]}
 delivers:
   - {kind: document, title: "Browser QA", must_contain: [Failed, Passed, Fixed since last run]}
 effects: {execute_code: allow, network_egress: allow, write_private: allow, read_workspace: allow}

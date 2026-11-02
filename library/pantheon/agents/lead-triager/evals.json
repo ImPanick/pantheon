@@ -1,0 +1,446 @@
+{
+ "cases": [
+  {
+   "id": "five-mails-one-hot",
+   "about": "Five new mails: a quote request with timeline and budget is hot, a demo with no timeline is warm, a student is cold, a known contact and a newsletter are not leads. Nothing is sent.",
+   "inputs": {
+    "at": "08:10",
+    "hours": "24"
+   },
+   "world": {
+    "emails": [
+     {
+      "id": "m101",
+      "from": "Priya Nair <priya@cedar.example>",
+      "subject": "Quote for 40 seats",
+      "body": "We need this live before our January audit; I own the budget. Can you quote 40 seats?",
+      "date": "2026-11-10"
+     },
+     {
+      "id": "m102",
+      "from": "Leo Brandt <leo@elm.example>",
+      "subject": "Demo?",
+      "body": "Keen to see it; we're not buying this year though.",
+      "date": "2026-11-10"
+     },
+     {
+      "id": "m103",
+      "from": "s.okafor@student.example",
+      "subject": "Free account",
+      "body": "Doing a project on tools like yours, can I get a free account?",
+      "date": "2026-11-10"
+     },
+     {
+      "id": "m104",
+      "from": "Ana Ruiz <ana@acme.example>",
+      "subject": "SSO question",
+      "body": "Our team asks when Okta SSO lands.",
+      "date": "2026-11-10"
+     },
+     {
+      "id": "m105",
+      "from": "newsletter@saasweekly.example",
+      "subject": "SaaS Weekly #212",
+      "body": "This week in SaaS.",
+      "date": "2026-11-10",
+      "unsubscribe": "mailto:u@saasweekly.example"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "list_emails",
+       {
+        "max_results": 40
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "m101"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "m102"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "m103"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "m104"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "resolve_contact",
+       {
+        "name": "priya@cedar.example"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "resolve_contact",
+       {
+        "name": "leo@elm.example"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "resolve_contact",
+       {
+        "name": "s.okafor@student.example"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "resolve_contact",
+       {
+        "name": "ana@acme.example"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Lead triage — 2026-11-10",
+        "content": "Lead triage — 2026-11-10\n1 hot, 1 warm, 1 cold; 2 not leads\n\n## Hot\n- Priya Nair, Cedar Ltd — asked for a quote for 40 seats: \"we need this live before our January audit; I own the budget.\" Timeline, budget and need all in the mail.\n\n## Warm\n- Leo Brandt, Elm — asked for a demo: \"keen to see it; we're not buying this year.\" A real need, a stated timeline beyond a quarter.\n\n## Cold\n- s.okafor@student.example — \"doing a project on tools like yours, can I get a free account?\"\n\n## Not a lead\n- Acme Ltd (Ana Ruiz) — existing contact asking about SSO; for the account owner.\n- newsletter@saasweekly.example — newsletter.\n\n## Next step\n| Lead | Step | By when |\n| --- | --- | --- |\n| Priya Nair, Cedar Ltd | Reply with the 40-seat quote and offer a call this week | 2026-11-11 |\n| Leo Brandt, Elm | Book a demo; note the \"not this year\" timeline | 2026-11-14 |\n| s.okafor | Point to the free tier | 2026-11-17 |\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "1 hot (Cedar, 40 seats before January), 1 warm (Elm demo), 1 cold; Acme's mail is an account question.\n\n## Report\n- read 4 mails, resolved 4 senders; wrote \"Lead triage — 2026-11-10\"\n\n## Carry forward\n- triaged: m101, m102, m103, m104, m105"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Lead triage",
+      "contains": [
+       "## Hot\n- Priya Nair",
+       "I own the budget",
+       "newsletter"
+      ]
+     }
+    },
+    {
+     "not_called": "send_email"
+    },
+    {
+     "drafts_at_most": 0
+    },
+    {
+     "notebook_contains": "m105"
+    }
+   ]
+  },
+  {
+   "id": "no-new-mail",
+   "about": "Every mail is already in the notebook: the document is written with every heading saying none, and the answer says the inbox had no leads.",
+   "inputs": {
+    "at": "08:10",
+    "hours": "24"
+   },
+   "world": {
+    "emails": [
+     {
+      "id": "m101",
+      "from": "Priya Nair <priya@cedar.example>",
+      "subject": "Quote for 40 seats",
+      "body": "We need this live before our January audit; I own the budget. Can you quote 40 seats?",
+      "date": "2026-11-10"
+     }
+    ]
+   },
+   "notebook": "- triaged: m101",
+   "script": [
+    {
+     "call": [
+      [
+       "list_emails",
+       {
+        "max_results": 40
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Lead triage — 2026-11-10",
+        "content": "Lead triage — 2026-11-10\n0 hot, 0 warm, 0 cold; 0 not leads\n\n## Hot\n- none\n\n## Warm\n- none\n\n## Cold\n- none\n\n## Not a lead\n- none: no new mail since yesterday.\n\n## Next step\n- none\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "No leads: nothing new arrived since yesterday.\n\n## Report\n- listed 1 mail, already triaged; wrote \"Lead triage — 2026-11-10\"\n\n## Carry forward\n- triaged: m101"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Lead triage",
+      "contains": [
+       "## Hot\n- none"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "the-mailbox-is-unreachable",
+   "about": "No mailbox answers: the document is written with every heading saying not read, and the answer says to run again.",
+   "inputs": {
+    "at": "08:10",
+    "hours": "24"
+   },
+   "notebook": "- triaged: m101",
+   "script": [
+    {
+     "call": [
+      [
+       "list_emails",
+       {
+        "max_results": 40
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Lead triage — 2026-11-10",
+        "content": "Lead triage — 2026-11-10\n0 hot, 0 warm, 0 cold; 0 not leads — mailbox unreachable\n\n## Hot\n- not read — mailbox unreachable\n\n## Warm\n- not read — mailbox unreachable\n\n## Cold\n- not read — mailbox unreachable\n\n## Not a lead\n- not read — mailbox unreachable\n\n## Next step\n- run again when mail is back\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "The mailbox could not be read (list_emails answered an error); nothing was triaged. Run again when mail is back.\n\n## Report\n- list_emails failed; wrote \"Lead triage — 2026-11-10\" with nothing in it\n\n## Carry forward\n- triaged: m101"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Lead triage",
+      "contains": [
+       "not read — mailbox unreachable"
+      ]
+     }
+    },
+    {
+     "answer_contains": [
+      "could not be read"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "a-sender-contradicts-themselves",
+   "about": "Asks for a demo and says not buying this year: warm, both lines quoted, and the next step is the demo with the timeline noted.",
+   "inputs": {
+    "at": "08:10",
+    "hours": "24"
+   },
+   "world": {
+    "emails": [
+     {
+      "id": "m102",
+      "from": "Leo Brandt <leo@elm.example>",
+      "subject": "Demo?",
+      "body": "Keen to see it; we're not buying this year though.",
+      "date": "2026-11-10"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "list_emails",
+       {
+        "max_results": 40
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "m102"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "resolve_contact",
+       {
+        "name": "leo@elm.example"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Lead triage — 2026-11-10",
+        "content": "Lead triage — 2026-11-10\n0 hot, 1 warm, 0 cold; 0 not leads\n\n## Hot\n- none\n\n## Warm\n- Leo Brandt, Elm — \"keen to see it\" and \"we're not buying this year though\": a real ask with a timeline past a quarter.\n\n## Cold\n- none\n\n## Not a lead\n- none\n\n## Next step\n| Lead | Step | By when |\n| --- | --- | --- |\n| Leo Brandt, Elm | Book the demo; note the \"not this year\" timeline | 2026-11-14 |\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "1 warm: Elm wants a demo but says not this year.\n\n## Report\n- read 1 mail, resolved 1 sender; wrote \"Lead triage — 2026-11-10\"\n\n## Carry forward\n- triaged: m102"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Lead triage",
+      "contains": [
+       "keen to see it",
+       "not buying this year"
+      ],
+      "lacks": [
+       "## Hot\n- Leo"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-triage-without-its-headings-fails",
+   "about": "The harness's own check: a lead triage without Hot, Warm, Cold, Not a lead and Next step does not deliver, even after its repair pass.",
+   "inputs": {
+    "at": "08:10",
+    "hours": "24"
+   },
+   "world": {
+    "emails": [
+     {
+      "id": "m101",
+      "from": "Priya Nair <priya@cedar.example>",
+      "subject": "Quote for 40 seats",
+      "body": "We need this live before our January audit; I own the budget. Can you quote 40 seats?",
+      "date": "2026-11-10"
+     },
+     {
+      "id": "m102",
+      "from": "Leo Brandt <leo@elm.example>",
+      "subject": "Demo?",
+      "body": "Keen to see it; we're not buying this year though.",
+      "date": "2026-11-10"
+     },
+     {
+      "id": "m103",
+      "from": "s.okafor@student.example",
+      "subject": "Free account",
+      "body": "Doing a project on tools like yours, can I get a free account?",
+      "date": "2026-11-10"
+     },
+     {
+      "id": "m104",
+      "from": "Ana Ruiz <ana@acme.example>",
+      "subject": "SSO question",
+      "body": "Our team asks when Okta SSO lands.",
+      "date": "2026-11-10"
+     },
+     {
+      "id": "m105",
+      "from": "newsletter@saasweekly.example",
+      "subject": "SaaS Weekly #212",
+      "body": "This week in SaaS.",
+      "date": "2026-11-10",
+      "unsubscribe": "mailto:u@saasweekly.example"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "list_emails",
+       {
+        "max_results": 40
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Lead triage — 2026-11-10",
+        "content": "Some leads."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done\n\n## Carry forward\n- none"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

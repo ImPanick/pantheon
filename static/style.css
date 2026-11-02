@@ -50443,6 +50443,17 @@ body.plan-mode-active .chat-input-top > .model-picker-wrap:has(> .model-picker-m
   background: color-mix(in srgb, var(--warn) 10%, transparent);
 }
 .agents-needs-warn p { margin: 4px 0 0; }
+/* `P24-30`. What an agent asks of the model — a quiet note, not a warning,
+   until the model this person runs is known to lack it (then `-warn`). */
+.agents-requires {
+  margin: 8px 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--text) 4%, transparent);
+}
+.agents-requires p { margin: 0; }
+.agents-requires p + p { margin-top: 4px; }
 /* `.settings-select` grows to fill its row; a number of runs is two digits. */
 #agents-maxInput { flex: 0 0 72px; width: 72px; }
 #agents-settingsResult.agents-settings-error { color: var(--red); }

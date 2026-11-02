@@ -162,6 +162,14 @@ AT_THE_BAR = frozenset({
     "exploratory-tester", "capacity-planner", "analytics-engineer", "forecaster", "experiment-analyst",
     "design-system-keeper", "interaction-prototyper", "usability-test-runner", "interview-synthesiser",
     "pricing-analyst", "backlog-groomer",
+    # Wave 5 (2026-11-02, `P24-30`): the finance seven on the ledger table,
+    # the CRM eight, and the creator room's seven, each built at this bar.
+    "bookkeeper", "invoicing", "ap-and-bills", "budget-vs-actuals", "cash-flow-forecaster", "tax-prep",
+    "payroll-prep",
+    "call-summariser", "deal-logger", "lead-triager", "quiet-deal-chaser", "stakeholder-mapper",
+    "account-planner", "win-loss-reviewer", "crm-hygienist",
+    "hook-and-hashtag-researcher", "post-writer", "thread-writer", "caption-writer", "short-video-scripter",
+    "carousel-writer", "visual-creator",
 })
 
 SECTIONS = ("Steps", "Judgement calls", "Edge cases", "Deliverable", "Example")
@@ -197,10 +205,10 @@ def fenced(text: str) -> str:
 
 
 def _negative(check: dict) -> bool:
-    """A check of what must never happen: a never-kind, or a document or file
-    that must lack something."""
+    """A check of what must never happen: a never-kind, or a document, file,
+    memory or ledger (`P24-30`) that must lack something."""
     kind, want = next(iter(check.items()))
-    return kind in NEGATIVE_CHECKS or (kind in ("document", "file", "memory") and isinstance(want, dict)
+    return kind in NEGATIVE_CHECKS or (kind in ("document", "file", "memory", "ledger") and isinstance(want, dict)
                                        and bool(want.get("lacks")))
 
 

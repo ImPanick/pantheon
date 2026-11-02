@@ -6,6 +6,7 @@ section: marketing
 icon: megaphone
 version: 1.3.2
 wave: 2
+accepts: ["document:Win-loss review"]
 inputs:
   - {key: goal, kind: long_text, label: The campaign goal}
   - {key: budget, kind: text, label: The budget}

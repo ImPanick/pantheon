@@ -1,0 +1,521 @@
+{
+ "cases": [
+  {
+   "id": "four-people-from-two-documents-and-three-mails",
+   "about": "Two documents and three mails name four people on their side: roles with sources, stances in their words, and the gap is the signer nobody has met.",
+   "inputs": {
+    "account": "Acme Ltd",
+    "domain": "acme.example"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "cs-acme-1110",
+      "title": "Call summary — Acme Ltd, 2026-11-10",
+      "content": "Call summary — Acme Ltd, 2026-11-10\n3 commitments, 2 objections; next step: send the two-year pricing, Sam, 2026-11-12\n\n## Who\n- Them: Ana (Head of Finance), Tom (IT lead). Us: Sam. Stage in the pipeline: Proposal sent (2026-11-03).\n\n## What they said\n- Ana: \"The retainer works for us; the question is whether two years gets us a better rate.\"\n- Tom: \"Single sign-on is a must before IT signs off; Okta specifically.\"\n- Ana: \"Legal needs the data processing addendum before anything is signed.\"\n\n## Objections\n- Price over a two-year term — \"whether two years gets us a better rate\" — Sam said a two-year quote would follow.\n- Single sign-on missing — \"Okta specifically\" — Sam said Okta is in the next release; Tom asked for a date in writing.\n\n## Commitments\n| Who | What | When | Side |\n| --- | --- | --- | --- |\n| Sam | Send two-year pricing | 2026-11-12 | us |\n| Sam | Okta release date in writing | not said | us |\n| Ana | Introduce legal for the DPA | this week | them |\n\n## Next step\n- Send the two-year pricing by 2026-11-12 (Sam); ask Tom for a date to confirm the Okta plan, since none was agreed.\n"
+     },
+     {
+      "id": "dn-1110",
+      "title": "Deal notes — 2026-11-10",
+      "content": "Deal notes — 2026-11-10\n1 deal moved, 1 unchanged, 1 not logged\n\n## Deal\n- Acme Ltd — \"Call summary — Acme Ltd, 2026-11-10\".\n- Birch & Co — \"Minutes — Birch & Co check-in, 2026-11-09\".\n\n## What changed\n- Acme Ltd: Ana asked for two-year pricing; Tom made Okta SSO a condition; Ana is introducing legal for the DPA this week. Reading: moving toward terms, with one technical condition.\n- Birch & Co: \"no change until the new CFO starts in January\". Reading: unchanged, parked by them.\n\n## Stage\n| Account | Stage now | Stage proposed | Why |\n| --- | --- | --- | --- |\n| Acme Ltd | Proposal sent | Negotiating | pricing terms and a DPA are being worked |\n| Birch & Co | Proposal sent | Proposal sent | parked until January, their words |\n\n## Next step\n| Account | What | Owner | Date |\n| --- | --- | --- | --- |\n| Acme Ltd | Send two-year pricing | Sam | 2026-11-12 |\n| Birch & Co | Check in after the CFO starts | Sam | 2027-01-12 |\n\n## Not logged\n- \"Call summary — Fir, 2026-11-10\": Fir is not in the pipeline. Line to add: Fir — Discovery — first call 2026-11-10 — next: send the deck.\n"
+     }
+    ],
+    "emails": [
+     {
+      "id": "s1",
+      "from": "Ana Ruiz <ana@acme.example>",
+      "subject": "Re: pricing",
+      "body": "Tom needs to be happy with SSO before I take it to our CEO, Mark, who signs.",
+      "date": "2026-11-09"
+     },
+     {
+      "id": "s2",
+      "from": "Tom Reyes <tom@acme.example>",
+      "subject": "SSO",
+      "body": "Until Okta is in, IT will not approve.",
+      "date": "2026-11-08"
+     },
+     {
+      "id": "s3",
+      "from": "Ana Ruiz <ana@acme.example>",
+      "subject": "DPA",
+      "body": "Our counsel, Dee, will send comments on the DPA.",
+      "date": "2026-11-10"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Acme Ltd"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "cs-acme-1110"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "dn-1110"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "acme.example",
+        "max_results": 20
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "s1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "s2"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "s3"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Stakeholder map — Acme Ltd",
+        "content": "Stakeholder map — Acme Ltd\n4 people mapped; biggest gap: the signer is named but has never been in a conversation\n\n## People\n- Ana Ruiz — Head of Finance (call summary 2026-11-10) — champion.\n- Tom Reyes — IT lead (call summary) — blocker until Okta SSO.\n- Mark — CEO, signs (Ana's mail 2026-11-09) — never in a thread.\n- Dee — counsel (Ana's mail 2026-11-10) — reviewing the DPA.\n\n## Roles\n| Person | Role | Source |\n| --- | --- | --- |\n| Ana Ruiz | budget owner, champion | call summary; mail s1 |\n| Tom Reyes | technical approver | mail s2 |\n| Mark | signer | mail s1 |\n| Dee | legal | mail s3 |\n\n## Stance\n- Ana: for — \"the retainer works for us\".\n- Tom: against until SSO — \"until Okta is in, IT will not approve\".\n- Mark: unknown — no words of his.\n- Dee: neutral — reviewing.\n\n## Gaps\n- The signer (Mark) has never been spoken to: ask Ana for ten minutes with him.\n- No procurement contact named.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "4 people mapped (Ana for, Tom against until SSO); the signer Mark has never been in a conversation — ask Ana for time with him.\n\n## Report\n- read 2 documents and 3 mails; wrote \"Stakeholder map — Acme Ltd\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Stakeholder map — Acme Ltd",
+      "contains": [
+       "| Mark | signer | mail s1 |",
+       "until Okta is in",
+       "## Gaps\n- The signer"
+      ]
+     }
+    },
+    {
+     "not_called": "send_email"
+    }
+   ]
+  },
+  {
+   "id": "no-mail-with-the-account",
+   "about": "Nothing in the mailbox or the documents names the account: the map is written from the inputs alone, People says none found, Gaps lists every role.",
+   "inputs": {
+    "account": "Nimbus",
+    "domain": "nimbus.example"
+   },
+   "world": {
+    "documents": [],
+    "emails": [
+     {
+      "id": "s1",
+      "from": "Ana Ruiz <ana@acme.example>",
+      "subject": "Re: pricing",
+      "body": "Tom needs to be happy with SSO before I take it to our CEO, Mark, who signs.",
+      "date": "2026-11-09"
+     },
+     {
+      "id": "s2",
+      "from": "Tom Reyes <tom@acme.example>",
+      "subject": "SSO",
+      "body": "Until Okta is in, IT will not approve.",
+      "date": "2026-11-08"
+     },
+     {
+      "id": "s3",
+      "from": "Ana Ruiz <ana@acme.example>",
+      "subject": "DPA",
+      "body": "Our counsel, Dee, will send comments on the DPA.",
+      "date": "2026-11-10"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Nimbus"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "nimbus.example",
+        "max_results": 20
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Stakeholder map — Nimbus",
+        "content": "Stakeholder map — Nimbus\n0 people mapped; biggest gap: everything\n\n## People\n- none found: no mail with nimbus.example and no document names Nimbus.\n\n## Roles\n- none known\n\n## Stance\n- none known\n\n## Gaps\n- budget owner, technical approver, signer, legal, procurement — all unknown. Start with a first call and a call summary.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Nobody mapped yet: the mailbox and the documents hold nothing on Nimbus; every role is a gap.\n\n## Report\n- 0 documents, 0 mails; wrote \"Stakeholder map — Nimbus\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Stakeholder map — Nimbus",
+      "contains": [
+       "## People\n- none found"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "the-mailbox-is-unreachable",
+   "about": "No mailbox answers: the map is built from the documents alone and says so under People.",
+   "inputs": {
+    "account": "Acme Ltd",
+    "domain": "acme.example"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "cs-acme-1110",
+      "title": "Call summary — Acme Ltd, 2026-11-10",
+      "content": "Call summary — Acme Ltd, 2026-11-10\n3 commitments, 2 objections; next step: send the two-year pricing, Sam, 2026-11-12\n\n## Who\n- Them: Ana (Head of Finance), Tom (IT lead). Us: Sam. Stage in the pipeline: Proposal sent (2026-11-03).\n\n## What they said\n- Ana: \"The retainer works for us; the question is whether two years gets us a better rate.\"\n- Tom: \"Single sign-on is a must before IT signs off; Okta specifically.\"\n- Ana: \"Legal needs the data processing addendum before anything is signed.\"\n\n## Objections\n- Price over a two-year term — \"whether two years gets us a better rate\" — Sam said a two-year quote would follow.\n- Single sign-on missing — \"Okta specifically\" — Sam said Okta is in the next release; Tom asked for a date in writing.\n\n## Commitments\n| Who | What | When | Side |\n| --- | --- | --- | --- |\n| Sam | Send two-year pricing | 2026-11-12 | us |\n| Sam | Okta release date in writing | not said | us |\n| Ana | Introduce legal for the DPA | this week | them |\n\n## Next step\n- Send the two-year pricing by 2026-11-12 (Sam); ask Tom for a date to confirm the Okta plan, since none was agreed.\n"
+     },
+     {
+      "id": "dn-1110",
+      "title": "Deal notes — 2026-11-10",
+      "content": "Deal notes — 2026-11-10\n1 deal moved, 1 unchanged, 1 not logged\n\n## Deal\n- Acme Ltd — \"Call summary — Acme Ltd, 2026-11-10\".\n- Birch & Co — \"Minutes — Birch & Co check-in, 2026-11-09\".\n\n## What changed\n- Acme Ltd: Ana asked for two-year pricing; Tom made Okta SSO a condition; Ana is introducing legal for the DPA this week. Reading: moving toward terms, with one technical condition.\n- Birch & Co: \"no change until the new CFO starts in January\". Reading: unchanged, parked by them.\n\n## Stage\n| Account | Stage now | Stage proposed | Why |\n| --- | --- | --- | --- |\n| Acme Ltd | Proposal sent | Negotiating | pricing terms and a DPA are being worked |\n| Birch & Co | Proposal sent | Proposal sent | parked until January, their words |\n\n## Next step\n| Account | What | Owner | Date |\n| --- | --- | --- | --- |\n| Acme Ltd | Send two-year pricing | Sam | 2026-11-12 |\n| Birch & Co | Check in after the CFO starts | Sam | 2027-01-12 |\n\n## Not logged\n- \"Call summary — Fir, 2026-11-10\": Fir is not in the pipeline. Line to add: Fir — Discovery — first call 2026-11-10 — next: send the deck.\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Acme Ltd"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "cs-acme-1110"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "dn-1110"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "acme.example",
+        "max_results": 20
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Stakeholder map — Acme Ltd",
+        "content": "Stakeholder map — Acme Ltd\n2 people mapped from documents alone — the mailbox was unreachable; biggest gap: who signs\n\n## People\n- Ana Ruiz — Head of Finance (call summary 2026-11-10) — champion.\n- Tom Reyes — IT lead (call summary) — blocker until Okta SSO.\n- (mail not read this run: search_emails answered an error)\n\n## Roles\n| Person | Role | Source |\n| --- | --- | --- |\n| Ana Ruiz | budget owner, champion | call summary; mail s1 |\n| Tom Reyes | technical approver | mail s2 |\n| Mark | signer | mail s1 |\n| Dee | legal | mail s3 |\n\n## Stance\n- Ana: for — \"the retainer works for us\".\n- Tom: against until SSO — \"until Okta is in, IT will not approve\".\n- Mark: unknown — no words of his.\n- Dee: neutral — reviewing.\n\n## Gaps\n- The signer (Mark) has never been spoken to: ask Ana for ten minutes with him.\n- No procurement contact named.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "2 people mapped from the documents alone (Ana for, Tom against until SSO); the mailbox was unreachable — rerun when mail is back.\n\n## Report\n- read 2 documents; search_emails failed; wrote \"Stakeholder map — Acme Ltd\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Stakeholder map — Acme Ltd",
+      "contains": [
+       "mail not read this run"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "two-threads-disagree-on-who-decides",
+   "about": "One mail says the CFO signs, another says the CEO: both shown with dates, the signer is unconfirmed under Gaps.",
+   "inputs": {
+    "account": "Acme Ltd",
+    "domain": "acme.example"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "cs-acme-1110",
+      "title": "Call summary — Acme Ltd, 2026-11-10",
+      "content": "Call summary — Acme Ltd, 2026-11-10\n3 commitments, 2 objections; next step: send the two-year pricing, Sam, 2026-11-12\n\n## Who\n- Them: Ana (Head of Finance), Tom (IT lead). Us: Sam. Stage in the pipeline: Proposal sent (2026-11-03).\n\n## What they said\n- Ana: \"The retainer works for us; the question is whether two years gets us a better rate.\"\n- Tom: \"Single sign-on is a must before IT signs off; Okta specifically.\"\n- Ana: \"Legal needs the data processing addendum before anything is signed.\"\n\n## Objections\n- Price over a two-year term — \"whether two years gets us a better rate\" — Sam said a two-year quote would follow.\n- Single sign-on missing — \"Okta specifically\" — Sam said Okta is in the next release; Tom asked for a date in writing.\n\n## Commitments\n| Who | What | When | Side |\n| --- | --- | --- | --- |\n| Sam | Send two-year pricing | 2026-11-12 | us |\n| Sam | Okta release date in writing | not said | us |\n| Ana | Introduce legal for the DPA | this week | them |\n\n## Next step\n- Send the two-year pricing by 2026-11-12 (Sam); ask Tom for a date to confirm the Okta plan, since none was agreed.\n"
+     }
+    ],
+    "emails": [
+     {
+      "id": "s1",
+      "from": "Ana Ruiz <ana@acme.example>",
+      "subject": "Re: pricing",
+      "body": "Our CEO Mark signs.",
+      "date": "2026-11-09"
+     },
+     {
+      "id": "s4",
+      "from": "Tom Reyes <tom@acme.example>",
+      "subject": "Re: pricing",
+      "body": "The CFO, Lena, signs anything over 50k.",
+      "date": "2026-11-10"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Acme Ltd"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "cs-acme-1110"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "acme.example",
+        "max_results": 20
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "s1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "s4"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Stakeholder map — Acme Ltd",
+        "content": "Stakeholder map — Acme Ltd\n4 people mapped; biggest gap: who signs is unconfirmed\n\n## People\n- Ana Ruiz — Head of Finance. Tom Reyes — IT lead. Mark — CEO (named by Ana). Lena — CFO (named by Tom).\n\n## Roles\n| Person | Role | Source |\n| --- | --- | --- |\n| Mark | signer, per Ana | mail s1, 2026-11-09 |\n| Lena | signer over 50k, per Tom | mail s4, 2026-11-10 |\n\n## Stance\n- Ana: for. Tom: conditional on SSO. Mark, Lena: unknown.\n\n## Gaps\n- Signer: unconfirmed — Ana says Mark, Tom says Lena over 50k. Ask Ana: \"At this value, who signs — Mark or Lena?\"\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "4 people; who signs is unconfirmed (Ana says Mark, Tom says Lena over 50k) — ask Ana which.\n\n## Report\n- read 1 document and 2 mails; wrote \"Stakeholder map — Acme Ltd\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Stakeholder map — Acme Ltd",
+      "contains": [
+       "Signer: unconfirmed",
+       "mail s4, 2026-11-10"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-map-without-its-headings-fails",
+   "about": "The harness's own check: a stakeholder map without People, Roles, Stance and Gaps does not deliver, even after its repair pass.",
+   "inputs": {
+    "account": "Acme Ltd",
+    "domain": "acme.example"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "cs-acme-1110",
+      "title": "Call summary — Acme Ltd, 2026-11-10",
+      "content": "Call summary — Acme Ltd, 2026-11-10\n3 commitments, 2 objections; next step: send the two-year pricing, Sam, 2026-11-12\n\n## Who\n- Them: Ana (Head of Finance), Tom (IT lead). Us: Sam. Stage in the pipeline: Proposal sent (2026-11-03).\n\n## What they said\n- Ana: \"The retainer works for us; the question is whether two years gets us a better rate.\"\n- Tom: \"Single sign-on is a must before IT signs off; Okta specifically.\"\n- Ana: \"Legal needs the data processing addendum before anything is signed.\"\n\n## Objections\n- Price over a two-year term — \"whether two years gets us a better rate\" — Sam said a two-year quote would follow.\n- Single sign-on missing — \"Okta specifically\" — Sam said Okta is in the next release; Tom asked for a date in writing.\n\n## Commitments\n| Who | What | When | Side |\n| --- | --- | --- | --- |\n| Sam | Send two-year pricing | 2026-11-12 | us |\n| Sam | Okta release date in writing | not said | us |\n| Ana | Introduce legal for the DPA | this week | them |\n\n## Next step\n- Send the two-year pricing by 2026-11-12 (Sam); ask Tom for a date to confirm the Okta plan, since none was agreed.\n"
+     },
+     {
+      "id": "dn-1110",
+      "title": "Deal notes — 2026-11-10",
+      "content": "Deal notes — 2026-11-10\n1 deal moved, 1 unchanged, 1 not logged\n\n## Deal\n- Acme Ltd — \"Call summary — Acme Ltd, 2026-11-10\".\n- Birch & Co — \"Minutes — Birch & Co check-in, 2026-11-09\".\n\n## What changed\n- Acme Ltd: Ana asked for two-year pricing; Tom made Okta SSO a condition; Ana is introducing legal for the DPA this week. Reading: moving toward terms, with one technical condition.\n- Birch & Co: \"no change until the new CFO starts in January\". Reading: unchanged, parked by them.\n\n## Stage\n| Account | Stage now | Stage proposed | Why |\n| --- | --- | --- | --- |\n| Acme Ltd | Proposal sent | Negotiating | pricing terms and a DPA are being worked |\n| Birch & Co | Proposal sent | Proposal sent | parked until January, their words |\n\n## Next step\n| Account | What | Owner | Date |\n| --- | --- | --- | --- |\n| Acme Ltd | Send two-year pricing | Sam | 2026-11-12 |\n| Birch & Co | Check in after the CFO starts | Sam | 2027-01-12 |\n\n## Not logged\n- \"Call summary — Fir, 2026-11-10\": Fir is not in the pipeline. Line to add: Fir — Discovery — first call 2026-11-10 — next: send the deck.\n"
+     }
+    ],
+    "emails": [
+     {
+      "id": "s1",
+      "from": "Ana Ruiz <ana@acme.example>",
+      "subject": "Re: pricing",
+      "body": "Tom needs to be happy with SSO before I take it to our CEO, Mark, who signs.",
+      "date": "2026-11-09"
+     },
+     {
+      "id": "s2",
+      "from": "Tom Reyes <tom@acme.example>",
+      "subject": "SSO",
+      "body": "Until Okta is in, IT will not approve.",
+      "date": "2026-11-08"
+     },
+     {
+      "id": "s3",
+      "from": "Ana Ruiz <ana@acme.example>",
+      "subject": "DPA",
+      "body": "Our counsel, Dee, will send comments on the DPA.",
+      "date": "2026-11-10"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Acme Ltd"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Stakeholder map — Acme Ltd",
+        "content": "Ana and Tom."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

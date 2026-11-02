@@ -8,7 +8,7 @@ version: 1.0.0
 wave: 4
 department: product
 role: worker
-accepts: ["document:Competitors", "document:Proposal"]
+accepts: ["document:Competitors", "document:Proposal", "document:Win-loss review"]
 hands_to:
   - {agent: decision-desk, via: "document:Pricing analysis"}
 inputs:
@@ -19,7 +19,7 @@ triggers:
   - {on: hand}
 tools: [manage_documents, web_search, web_fetch, create_document]
 skills: [web-research]
-needs: {connectors: [], min_context: 32000, native_tools: preferred}
+needs: {connectors: [], min_context: 32000, native_tools: preferred, model: [reasoning]}
 delivers:
   - {kind: document, title: "Pricing analysis", must_contain: ["Our prices", Market, Options, Risks]}
 effects: {read_private: allow, write_private: allow, brokered_network_read: allow, network_egress: allow, destructive: never}
