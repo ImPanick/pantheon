@@ -1077,19 +1077,32 @@ export function mdToHtml(src, opts) {
 
     let html = '<table style="border-collapse: collapse; width: 100%; margin: 10px 0;">';
 
+    // A column of sentences keeps a readable width, and the table scrolls
+    // sideways instead (Panick, 2026-11-02: on a phone, a four-column plan
+    // squeezed each column to a word or two and the last one was cut off).
+    // The longest cell in each column decides: `md-col-mid` and
+    // `md-col-wide` set a floor in style.css; short columns stay tight.
+    const rowCells = rows.map((row, idx) => (idx === 1 && /^[\s|:\-]+$/.test(row)) ? null : splitTableRow(row));
+    const colLen = [];
+    rowCells.forEach(cells => (cells || []).forEach((cell, c) => {
+      const n = cell.replace(/<[^>]*>|___[A-Z_]+_\d+___|[*_`~]/g, '').trim().length;
+      colLen[c] = Math.max(colLen[c] || 0, n);
+    }));
+    const colClass = (c) => (colLen[c] >= 48 ? ' class="md-col-wide"' : colLen[c] >= 20 ? ' class="md-col-mid"' : '');
+
     rows.forEach((row, idx) => {
       if (idx === 1 && /^[\s|:\-]+$/.test(row)) {
         html += '<tbody>';
         return;
       }
-      const cells = splitTableRow(row);
+      const cells = rowCells[idx];
       if (cells.length === 0) return;
 
       html += '<tr>';
 
-      cells.forEach(cell => {
+      cells.forEach((cell, c) => {
         const tag = idx === 0 ? 'th' : 'td';
-        html += `<${tag} style="padding: 8px; text-align: left; border-bottom: 1px solid var(--border);">${cell.trim()}</${tag}>`;
+        html += `<${tag}${colClass(c)} style="padding: 8px; text-align: left; border-bottom: 1px solid var(--border);">${cell.trim()}</${tag}>`;
       });
 
       html += '</tr>';
@@ -1256,9 +1269,28 @@ export function renderMermaid(container) {
       // is a diagram on the page, watch for that switch.
       _stashDiagramSource(nodes, _mermaidScheme);
       _watchScheme();
-      return mermaid.run({ nodes });
+      return Promise.resolve(mermaid.run({ nodes })).then(() => _keepDiagramWidth(nodes));
     })
     .catch((e) => { console.warn('Mermaid render error:', e); });
+}
+
+/**
+ * A drawn diagram keeps its own width and its frame scrolls sideways, like a
+ * wide table (Panick, 2026-11-02). Mermaid caps each SVG at its own width and
+ * otherwise shrinks it to the column, so on a phone a left-to-right flowchart
+ * came out with 8px labels. The floor is the width Mermaid drew it at, never
+ * more than 560px: a small diagram is not blown up, a large one is drawn at a
+ * readable scale with a short scroll, and a desktop column (wider than the
+ * floor) shows every diagram exactly as before.
+ */
+const _DIAGRAM_MAX_FLOOR = 560;
+function _keepDiagramWidth(nodes) {
+  nodes.forEach((node) => {
+    const svg = node && node.querySelector && node.querySelector('svg');
+    const box = svg && svg.viewBox && svg.viewBox.baseVal;
+    if (!box || !(box.width > 0)) return;
+    svg.style.minWidth = Math.round(Math.min(box.width, _DIAGRAM_MAX_FLOOR)) + 'px';
+  });
 }
 
 /**

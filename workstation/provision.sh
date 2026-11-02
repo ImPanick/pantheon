@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 #
 # Make an Ubuntu 24.04 machine the workstation's userland — `P20-07`. Since
-# `B1744` also Debian 13, Fedora 44 and Rocky Linux 9 (the RHEL 9 family): the
+# `B1747` also Debian 13, Fedora 44 and Rocky Linux 9 (the RHEL 9 family): the
 # same workstation on each, which system read from /etc/os-release. Ubuntu and
 # Debian share one apt list; Fedora and Rocky one dnf list (`DNF_PACKAGES`),
 # the same things under their names there, with the differences named where
@@ -101,7 +101,7 @@ KASMVNC_URL=https://github.com/kasmtech/KasmVNC/releases/download
 
 say() { printf 'provision: %s\n' "$*"; }
 
-# `B1744`. Which system this is: `ID` from /etc/os-release (ubuntu, debian,
+# `B1747`. Which system this is: `ID` from /etc/os-release (ubuntu, debian,
 # fedora, rocky). Anything else is refused: the lists below are for these.
 # (`OS_RELEASE` names another file, for the tests.)
 os_id() {
@@ -123,7 +123,7 @@ kasmvnc_dist() {
     esac
 }
 
-# `B1744`. The same workstation under Fedora's and Rocky's names (`PACKAGES`
+# `B1747`. The same workstation under Fedora's and Rocky's names (`PACKAGES`
 # above is the list; this is it again for dnf). `curl` is not named: Rocky's
 # image has curl-minimal, which conflicts with it, and either gives `curl`.
 # Python's venv is part of `python3` there. On Rocky the desktop, xdotool and
@@ -143,7 +143,7 @@ at-spi2-core python3-gobject"
 DNF_OPTIONAL="xfce4-whiskermenu-plugin papirus-icon-theme rsms-inter-fonts \
 jetbrains-mono-fonts-all jetbrains-mono-fonts jwm"
 
-# `B1744`. KasmVNC's EL9 build (`oracle_9`), read from the two packages on
+# `B1747`. KasmVNC's EL9 build (`oracle_9`), read from the two packages on
 # 2026-11-02 like the others: what Rocky 9 runs, and what Fedora tries.
 KASMVNC_SHA256_EL9_X86_64=2420eb3a179144fe7a87af279c8d87d37b3b93ecb96ce16bc4af95f7096e303e
 KASMVNC_SHA256_EL9_AARCH64=0d541aa31093d745bcb16b5bee00c28524417dae6e4d766b09489f8c927247ab
@@ -280,7 +280,7 @@ packages_apt() {
     fi
 }
 
-# `B1744`. Fedora 44 and Rocky Linux 9: the same workstation with dnf.
+# `B1747`. Fedora 44 and Rocky Linux 9: the same workstation with dnf.
 packages_dnf() {
     os=$1
     image=$2

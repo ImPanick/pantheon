@@ -541,7 +541,7 @@ class System:
                                                   f"{e.strerror or e}.")
 
     def os_release(self) -> Dict:
-        """`B1744`: `health`'s `system` — which system this machine is
+        """`B1747`: `health`'s `system` — which system this machine is
         (`machine.os_release`). Read once, like `machine`."""
         cached = getattr(self, "_os_release", None)
         if cached is None:
@@ -699,7 +699,7 @@ class Workstation:
             out.update(self.settings())
             out["accounts"] = len(self.system.accounts())
             out["machine"] = self.system.machine()  # `P20-07`
-            out["system"] = self.system.os_release()  # `B1744`
+            out["system"] = self.system.os_release()  # `B1747`
             out["run"] = self.run  # `B1661`
         return out
 

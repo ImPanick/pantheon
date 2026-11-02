@@ -77,7 +77,7 @@ def facts(word: Optional[str] = None) -> Dict[str, Optional[str]]:
 
 
 def os_release(path: Path = Path("/etc/os-release")) -> Dict[str, Optional[str]]:
-    """`B1744`. Which system this is, from the file every one of them ships:
+    """`B1747`. Which system this is, from the file every one of them ships:
     `{"id", "name"}` — `ID` (`ubuntu`, `debian`, `kali`, `parrot`, …) and
     `PRETTY_NAME` — or Nones when there is no such file (a macOS host, say).
     Read, never assumed from the image's name: it is what the panel shows a

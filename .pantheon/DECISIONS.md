@@ -3850,7 +3850,7 @@ Kali and Parrot build: *"We can leave this as a private security driven branch..
 automated hack-tools is the move to the public.. lol. Still cool that we can offer more. Replace kali and parrot with
 other Linux forms or other os's of great value."*
 
-**What it is.** Beside Ubuntu 24.04 (`B1744`): Debian 13, Fedora 44 and Rocky Linux 9, each a container in its own
+**What it is.** Beside Ubuntu 24.04 (`B1747`): Debian 13, Fedora 44 and Rocky Linux 9, each a container in its own
 compose profile behind the same network gate, each person's own pick in Settings → Workstation → System. Kali and
 Parrot, with their toolsets, are kept on the branch `security/kali-parrot-workstations`, not shipped.
 

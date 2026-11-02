@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""`B1744` — the workstation can be Ubuntu, Debian, Fedora or Rocky Linux,
+"""`B1747` — the workstation can be Ubuntu, Debian, Fedora or Rocky Linux,
 each person's own pick.
 
 The owner, 2026-11-02, on a choice of golden images: *"I think that would be a

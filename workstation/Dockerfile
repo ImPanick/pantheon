@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # The Pantheon workstation — `P20-01`, `D-2026-09-30-03`.
 #
-# An Ubuntu 24.04 userland (or Debian 13, Fedora 44 or Rocky Linux 9: `WORKSTATION_OS`, `B1744`) the agents work in: one Unix account and one X
+# An Ubuntu 24.04 userland (or Debian 13, Fedora 44 or Rocky Linux 9: `WORKSTATION_OS`, `B1747`) the agents work in: one Unix account and one X
 # display per person, a desktop (XFCE themed to the cockpit, `D-2026-10-31-02`:
 # a terminal, Firefox, a file manager), the tools a
 # task usually needs, and `agentd` answering `workstation/protocol.py` on 7040.
@@ -20,7 +20,7 @@
 # pointed at that day) is what the builder pulls. `vm.Dockerfile` builds from the
 # same one; `.github/dependabot.yml`'s `/workstation` entry is what moves both.
 #
-# `B1744`. One Dockerfile, four systems: `WORKSTATION_OS` picks the base, and
+# `B1747`. One Dockerfile, four systems: `WORKSTATION_OS` picks the base, and
 # everything after it — `provision.sh`, the desktop, the daemon — is the same
 # file for all of them (`Law 14`). BuildKit pulls and builds only the stage the
 # chosen system needs. Ubuntu is the workstation every install has; the other

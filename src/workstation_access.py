@@ -207,7 +207,7 @@ def may_use(owner: Optional[str], *, auth_manager: Any = None) -> bool:
         return False
 
 
-# ── which system (`B1744`) ─────────────────────────────────────────────────────
+# ── which system (`B1747`) ─────────────────────────────────────────────────────
 
 SYSTEM_PREF = "workstation_system"
 
@@ -285,7 +285,7 @@ def workstation_for(owner: Optional[str], *, auth_manager: Any = None
     which judge a folder by the home whatever the jail (`B968`)."""
     if not wc.enabled():
         raise WorkstationError("off", OFF_SENTENCE)
-    # `B1744`: on the system this person picked, when the stack runs it.
+    # `B1747`: on the system this person picked, when the stack runs it.
     system = system_for(owner)
     client = wc.from_settings(system) if system != P.DEFAULT_SYSTEM else wc.from_settings()
     if client is None:
@@ -710,7 +710,7 @@ def _daemon_view(daemon: Dict[str, Any]) -> Dict[str, Any]:
     keep = ("agent", "protocol", "backend", "version", "sudo", "network", "screen", "accounts",
             "machine",   # `P20-07`: what it runs on, and for a VM whether it is emulated
             "machines",  # `B979`: on the VM backend, how many run and when one stops
-            "system")    # `B1744`: which system answered (its /etc/os-release)
+            "system")    # `B1747`: which system answered (its /etc/os-release)
     return {k: daemon.get(k) for k in keep if k in daemon}
 
 
@@ -724,7 +724,7 @@ async def status_for(owner: Optional[str], *, is_admin: bool, auth_manager: Any 
     *Check now*: it asks a workstation that is switched off whether it would
     answer, so an admin can start the overlay, check, and then turn it on."""
     enabled = wc.enabled()
-    # `B1744`: the person's system; Ubuntu's is asked for the way it always was.
+    # `B1747`: the person's system; Ubuntu's is asked for the way it always was.
     system = system_for(owner)
     other = system != P.DEFAULT_SYSTEM
     base, _source = wc.resolve_base(system) if other else wc.resolve_base()
@@ -743,7 +743,7 @@ async def status_for(owner: Optional[str], *, is_admin: bool, auth_manager: Any 
         # `P20-06`: replaced by what the daemon said once it answers. Nothing
         # for a person who may not use it — the admin's choice is not theirs.
         "network": network_view(network_setting(), None) if (permitted or is_admin) else None,
-        # `B1744`: which system this person's workstation is, and the others.
+        # `B1747`: which system this person's workstation is, and the others.
         "system": systems_view(owner) if (permitted or is_admin) else None,
     }
     if is_admin:
@@ -810,6 +810,6 @@ __all__ = [
     "NETWORK_UNRESTRICTED", "network_view",
     # `B977`, `B978`
     "GATE_UP_SENTENCE", "network_held",
-    # `B1744`
+    # `B1747`
     "SYSTEM_PREF", "checked_system", "system_choice", "system_for", "systems_view",
 ]

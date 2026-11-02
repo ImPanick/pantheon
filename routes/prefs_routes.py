@@ -166,7 +166,7 @@ def setup_prefs_routes():
             value = (checked_conversation(value) if key == CONVERSATION_PREF
                      else checked_voice(value))
         elif key == "workstation_system":
-            # `B1744`. Which system this person's workstation is: Ubuntu,
+            # `B1747`. Which system this person's workstation is: Ubuntu,
             # Debian, Kali or Parrot (`workstation_access.checked_system`).
             from src.workstation_access import checked_system
             try:

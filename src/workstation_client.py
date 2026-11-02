@@ -228,7 +228,7 @@ def effective_backend() -> str:
     return "vm" if vm_accel() == "kvm" else "container"
 
 
-# ── which system (`B1744`) ─────────────────────────────────────────────────────
+# ── which system (`B1747`) ─────────────────────────────────────────────────────
 
 def system_pairing_token_path(system: str) -> Path:
     return (Path(os.environ.get(P.system_pairing_dir_env(system)) or P.system_pairing_dir(system))
@@ -281,7 +281,7 @@ def resolve_base(system: Optional[str] = None) -> tuple[Optional[str], str]:
     one the effective backend names — the VM's address for `vm`, the
     container's otherwise. A stored address (another machine) still wins.
 
-    `B1744`: `system` is the one a person picked (`system_in_use`); a system
+    `B1747`: `system` is the one a person picked (`system_in_use`); a system
     other than Ubuntu is its own container's address, whatever the backend."""
     stored = parse_base(str(_setting("workstation_url", "") or ""))
     if stored:
@@ -304,7 +304,7 @@ def configured_base(system: Optional[str] = None) -> Optional[str]:
 def pairing_token_path(system: Optional[str] = None) -> Path:
     """The pairing token of the daemon `resolve_base` names: the VM backend's
     own folder when that is the one in use (`B1478`), or the picked system's
-    (`B1744`)."""
+    (`B1747`)."""
     if system and system != P.DEFAULT_SYSTEM \
             and not parse_base(str(_setting("workstation_url", "") or "")):
         return system_pairing_token_path(system)
@@ -317,7 +317,7 @@ def pairing_token_path(system: Optional[str] = None) -> Path:
 def resolve_token(system: Optional[str] = None) -> tuple[str, str]:
     """`(token, source)`. The value never leaves the server: the panel is told
     the source and whether there is one, and nothing else (`P20-02`).
-    `B1744`: another system's daemon has its own token, in its own pairing
+    `B1747`: another system's daemon has its own token, in its own pairing
     volume — the setting and the environment are Ubuntu's (or a remote's)."""
     other = bool(system and system != P.DEFAULT_SYSTEM
                  and not parse_base(str(_setting("workstation_url", "") or "")))
@@ -374,7 +374,7 @@ def from_settings(system: Optional[str] = None) -> Optional["WorkstationClient"]
     """The configured client, or None when the workstation is off or has no
     address. A missing token is not None — it is a client whose calls say
     what is missing, because "off" and "misconfigured" are different answers.
-    `B1744`: `system` is the one the person uses (`system_in_use`)."""
+    `B1747`: `system` is the one the person uses (`system_in_use`)."""
     if not enabled():
         return None
     base = configured_base(system)
@@ -1078,5 +1078,5 @@ __all__ = ["display_pin", "resolve_pin",  # `B980`
            "account_for", "cert_fingerprint", "configured_base", "configured_pin", "configured_token",
            "enabled", "from_settings", "gate_for", "gate_token_path", "normalise_pin",
            "pairing_token_path", "parse_base", "resolve_base", "resolve_gate", "resolve_token",
-           # `B1744`, added.
+           # `B1747`, added.
            "system_in_use", "system_pairing_token_path", "system_runs", "systems_offered"]

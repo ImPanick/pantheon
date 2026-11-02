@@ -73,7 +73,7 @@ DEFAULT_PAIRING_DIR = "/workstation-pairing"
 # Settings → Workstation → Backend.
 VM_URL_ENV = "PANTHEON_WORKSTATION_VM_URL"
 VM_PAIRING_DIR_ENV = "PANTHEON_WORKSTATION_VM_PAIRING"
-# `B1744`. The systems a workstation can be: Ubuntu, Debian, Fedora and Rocky
+# `B1747`. The systems a workstation can be: Ubuntu, Debian, Fedora and Rocky
 # Linux (the RHEL 9 family) — the owner's ask for a choice of golden images,
 # 2026-11-02, general-purpose systems only (`D-2026-11-02-01`). Ubuntu is the workstation above, the
 # container or the VM, at `URL_ENV`. Each of the others is a container of its
@@ -671,7 +671,7 @@ __all__ = [
     "INTERNET_EXCLUDED_V6", "NETWORK_ENFORCEMENT",
     # `B1733`, added.
     "STARTING_POINT_ACTIONS", "STARTING_POINT_SCOPES",
-    # `B1744`, added.
+    # `B1747`, added.
     "DEFAULT_SYSTEM", "SYSTEMS", "SYSTEM_NAMES", "SYSTEM_PORTS", "system_pairing_dir",
     "system_pairing_dir_env", "system_url_env",
 ]

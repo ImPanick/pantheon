@@ -160,6 +160,43 @@ export function labelOverrides(themeVariables) {
 }
 
 /**
+ * The colours a chart's series are told apart by.
+ *
+ * Panick, 2026-11-02: the model should draw charts and graphs in chat, and
+ * Mermaid's `xychart-beta` and `pie` are how it does (the shipped
+ * `chart-the-numbers` skill). Measured on the vendored 11.17.2 bundle, both
+ * schemes drew them badly out of the box:
+ *
+ *     neutral  xyChart.plotColorPalette starts "#EEE" — the first series, the
+ *              only one in most charts, is near-white bars on a white plot;
+ *              pie1..pie8 are greys including #F4F4F4 and #FFF.
+ *     dark     pie1..pie8 run #0b0000, #4d1037, #3f5258 … — near-black slices
+ *              on a dark panel; the chart drew its own #333 slab over the
+ *              cockpit's glass.
+ *
+ * Nothing invented, as above: the palette is the scheme's own
+ * `xyChart.plotColorPalette`, with any entry that is the theme's own node fill
+ * or page background (the "#EEE" on `neutral`) moved out of first place, and
+ * the pie slices take that same list. The chart's own slab is dropped so it
+ * sits on the frame like every other diagram.
+ */
+/** Mermaid's pie theme reads twelve slice colours, named one by one. */
+const PIE_KEYS = Object.freeze(['pie1', 'pie2', 'pie3', 'pie4', 'pie5', 'pie6', 'pie7', 'pie8', 'pie9', 'pie10', 'pie11', 'pie12']);
+
+export function chartOverrides(themeVariables) {
+  const xy = themeVariables && themeVariables.xyChart;
+  const raw = xy && typeof xy.plotColorPalette === 'string' ? xy.plotColorPalette : '';
+  if (!raw) return {};
+  const same = (a, b) => String(a || '').trim().toLowerCase() === String(b || '').trim().toLowerCase();
+  const blank = (c) => same(c, themeVariables.primaryColor) || same(c, themeVariables.background);
+  const all = raw.split(',').map((c) => c.trim()).filter(Boolean);
+  const palette = all.filter((c) => !blank(c)).concat(all.filter(blank));
+  const out = { xyChart: { ...xy, backgroundColor: 'transparent', plotColorPalette: palette.join(',') } };
+  PIE_KEYS.forEach((key, i) => { if (palette[i]) out[key] = palette[i]; });
+  return out;
+}
+
+/**
  * Tell a loaded Mermaid which theme to draw in, and answer what it decided.
  *
  * Takes the library rather than reaching for a global, so the test harness
@@ -186,7 +223,7 @@ export function applyMermaidTheme(mermaid, scheme) {
   mermaid.initialize(first);
   const api = mermaid.mermaidAPI;
   const vars = (api && typeof api.getConfig === 'function' && api.getConfig().themeVariables) || null;
-  const overrides = { ...strokeOverrides(vars), ...labelOverrides(vars) };
+  const overrides = { ...strokeOverrides(vars), ...labelOverrides(vars), ...chartOverrides(vars) };
   if (!Object.keys(overrides).length) return first;
   const final = mermaidConfig(scheme, overrides);
   mermaid.initialize(final);
@@ -195,5 +232,5 @@ export function applyMermaidTheme(mermaid, scheme) {
 
 export default {
   SCHEME_THEMES, DEFAULT_SCHEME, mermaidTheme, documentScheme, mermaidConfig,
-  strokeOverrides, labelOverrides, applyMermaidTheme,
+  strokeOverrides, labelOverrides, chartOverrides, applyMermaidTheme,
 };

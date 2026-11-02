@@ -127,7 +127,7 @@ services:
       - PANTHEON_WORKSTATION_NET_URL=http://workstation:7041
       - PANTHEON_WORKSTATION_VM_URL=http://workstation-vm:7040
       - PANTHEON_WORKSTATION_VM_PAIRING=/workstation-vm-pairing
-      # `B1744`: the other systems a person may pick, each where its profile
+      # `B1747`: the other systems a person may pick, each where its profile
       # starts it (below); one that is not running is never routed to.
       - PANTHEON_WORKSTATION_DEBIAN_URL=http://workstation:7042
       - PANTHEON_WORKSTATION_FEDORA_URL=http://workstation:7043
@@ -338,7 +338,7 @@ services:
       start_period: 20s
     restart: unless-stopped
 
-  # `B1744`. The workstation as another system: Debian 13, Fedora 44 or Rocky
+  # `B1747`. The workstation as another system: Debian 13, Fedora 44 or Rocky
   # Linux 9 (the RHEL 9 family) beside the Ubuntu one above, for the people who
   # pick it (Settings -> Workstation -> System, each person's own) — the
   # owner's ask for a choice of golden images, 2026-11-02. Built from the same
