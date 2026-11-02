@@ -547,7 +547,7 @@ html.cockpit .code-block-header {
 html.cockpit .code-block-actions button { border-radius: 8px !important; color: var(--ck-text-3) !important; background: transparent !important; border: 0 !important; height: 24px; }
 html.cockpit .code-block-actions button:hover { background: var(--ck-tint-2) !important; color: var(--ck-text) !important; }
 html.cockpit .msg .body table {
-  border-collapse: separate !important; border-spacing: 0; margin: 4px 0 14px; width: auto; border-radius: 12px; overflow: hidden;
+  border-collapse: separate !important; border-spacing: 0; margin: 4px 0 14px; width: auto; border-radius: 12px; overflow: auto hidden; overscroll-behavior-x: contain;
   border: 1px solid var(--ck-edge-lo) !important; font-size: 13.5px; background: var(--ck-glass-soft);
 }
 html.cockpit .msg .body th, html.cockpit .msg .body td { border: 0 !important; border-bottom: 1px solid var(--ck-edge-lo) !important; padding: 7px 12px !important; text-align: left; }
@@ -2104,4 +2104,27 @@ html.cockpit .next-step-ghost { color: var(--ck-text-3) !important; }
 html.cockpit .next-step-cap {
   padding: 0 7px !important; height: 19px !important; min-height: 0 !important; font: 600 10px/1 var(--ck-font-ui) !important; color: var(--ck-text-2) !important;
   background: var(--ck-tint) !important; border: 1px solid var(--ck-edge) !important; border-radius: 6px !important; box-shadow: inset 0 -1px 0 var(--ck-edge-lo) !important;
+}
+
+/* ── a tucked-away model chip gives its row back ──
+   Typing tucks the chip away (`app.js`: on a phone with any text, elsewhere
+   from 23 characters; plan mode too), but in the cockpit it sat in the flex
+   row, so its empty slot kept a third of the box and the message wrapped in
+   the rest (Panick, 2026-11-02, phone). Tucked away it leaves the row and
+   waits in its corner, so an open menu still hangs from the same place. */
+html.cockpit .chat-input-top > .model-picker-wrap:is(.model-picker-autohide, .picker-auto-hidden),
+html.cockpit body.plan-mode-active .chat-input-top > .model-picker-wrap {
+  position: absolute !important; top: 14px !important; right: 12px !important; left: auto !important; bottom: auto !important;
+}
+
+/* ── a diagram sits in one frame, and scrolls sideways when it is wide ──
+   The cockpit's code-block card also dressed the <pre> Mermaid draws into, so
+   each diagram had a frame inside a frame and an empty band beneath. */
+html.cockpit .msg .body .mermaid-container {
+  background: var(--ck-glass-soft) !important; border: 1px solid var(--ck-edge-lo) !important; border-radius: 12px;
+  box-shadow: inset 0 1px 0 var(--ck-edge-hi); padding: 14px; margin: 4px 0 14px; overflow: auto hidden; overscroll-behavior-x: contain;
+}
+html.cockpit .msg .body pre.mermaid {
+  background: transparent !important; border: 0 !important; box-shadow: none !important; padding: 0 !important; margin: 0 !important;
+  border-radius: 0 !important; overflow: visible !important; white-space: normal;
 }

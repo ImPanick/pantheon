@@ -10846,6 +10846,11 @@ button.hamburger {
   word-break: normal;
   overflow-wrap: break-word;
 }
+/* A column of sentences keeps a readable width and the table scrolls sideways
+   (`markdown.js` marks the column by its longest cell). Without a floor a
+   narrow chat squeezed every column to a word or two. */
+.msg :is(th, td).md-col-mid { min-width: 15ch; }
+.msg :is(th, td).md-col-wide { min-width: 24ch; }
 
 /* Agent UI Styling */
 .agent-controls {
