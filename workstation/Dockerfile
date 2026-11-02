@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # The Pantheon workstation — `P20-01`, `D-2026-09-30-03`.
 #
-# An Ubuntu 24.04 userland (or Debian 13, Kali or Parrot: `WORKSTATION_OS`, `B1744`) the agents work in: one Unix account and one X
+# An Ubuntu 24.04 userland (or Debian 13, Fedora 44 or Rocky Linux 9: `WORKSTATION_OS`, `B1744`) the agents work in: one Unix account and one X
 # display per person, a desktop (XFCE themed to the cockpit, `D-2026-10-31-02`:
 # a terminal, Firefox, a file manager), the tools a
 # task usually needs, and `agentd` answering `workstation/protocol.py` on 7040.
@@ -28,21 +28,18 @@
 # way Ubuntu is: a tag for a reader, a digest for the builder (each read
 # 2026-11-02 from Docker Hub's record of the multi-platform index).
 #   debian  Debian 13 (trixie), Debian's own official image, a dated build.
-#   kali    Kali Linux rolling, Offensive Security's official image. Kali
-#           publishes no dated tag, so the digest alone says which build.
-#   parrot  Parrot Security 7 (echo, on Debian 13), Parrot's official `core`.
-# `TOOLSET` is how much of Kali's or Parrot's own toolset goes in on top
-# (`provision.sh tools`); the other two systems have none and ignore it.
+#   fedora  Fedora 44, Fedora's official image (Fedora publishes no dated
+#           tag, so the digest alone says which build).
+#   rocky   Rocky Linux 9 (the RHEL 9 family), the Rocky project's own image,
+#           a dated build.
 ARG WORKSTATION_OS=ubuntu
-ARG TOOLSET=default
 FROM ubuntu:noble-20261024.1@sha256:fe81560990fae86dc4743202b2cb4d3df98d0bcf949173cecef15ce1127ef852 AS base-ubuntu
 FROM debian:trixie-20261027@sha256:2dc419c6d7fe3dad0a2f9fd469c34cc90b0f9ba642d8fde837fe3d7d34a0e7f1 AS base-debian
-FROM kalilinux/kali-rolling:latest@sha256:7997e0581c4f5c185cfe6773d5cae8fcc7c6b79798726ccaabf843af4bcd2013 AS base-kali
-FROM parrotsec/core:latest@sha256:2dcefa48d3c4ae6b1a1a1391ae2a0ae6115a3c194b3677b3f0487f0e3996c9cd AS base-parrot
+FROM fedora:44@sha256:43b29f65a41eb9c35e1cd5323e3bdf3b655c2357a9f4f1ff2f9c2798e5045d80 AS base-fedora
+FROM rockylinux/rockylinux:9.8.20260525.0@sha256:8101994123cf3d0a8fee517bee7f39e555c7d92bd2d9eb3303cc988a0eeed00f AS base-rocky
 
 FROM base-${WORKSTATION_OS}
 ARG WORKSTATION_OS
-ARG TOOLSET
 
 ARG DEBIAN_FRONTEND=noninteractive
 # Optional, and empty by default, so a plain build uses Ubuntu's own sources
@@ -70,10 +67,6 @@ COPY firefox/packages.mozilla.org.asc /opt/pantheon-workstation/provision/firefo
 
 RUN --mount=type=secret,id=build-ca,required=false,mode=0444 \
     sh /opt/pantheon-workstation/provision/provision.sh packages --image
-# `B1744`. Kali's or Parrot's own tools, in a layer of their own so changing
-# `TOOLSET` does not re-run the desktop's. Nothing on Ubuntu or Debian.
-RUN --mount=type=secret,id=build-ca,required=false,mode=0444 \
-    sh /opt/pantheon-workstation/provision/provision.sh tools --image --toolset "$TOOLSET"
 
 # `Law 16` — nothing phones home. `firefox/policies.json` is the list: telemetry,
 # studies, updates (app, add-ons, system add-ons, OpenH264 and Widevine, both

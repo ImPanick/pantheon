@@ -2,9 +2,11 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 #
 # Make an Ubuntu 24.04 machine the workstation's userland — `P20-07`. Since
-# `B1744` also Debian 13, Kali Linux (rolling) and Parrot Security 7: the same
-# list on each, read from /etc/os-release, with the few differences named where
-# they are (the mirror's file, KasmVNC's build, the toolset).
+# `B1744` also Debian 13, Fedora 44 and Rocky Linux 9 (the RHEL 9 family): the
+# same workstation on each, which system read from /etc/os-release. Ubuntu and
+# Debian share one apt list; Fedora and Rocky one dnf list (`DNF_PACKAGES`),
+# the same things under their names there, with the differences named where
+# they are (EPEL on Rocky, KasmVNC's EL9 build, Firefox from the system).
 #
 # ONE list of what a workstation has, for every backend (`Law 14`). Before this
 # file the list lived inline in `Dockerfile`; a VM provisioned by cloud-init or a
@@ -17,7 +19,7 @@
 #   install.py (another machine)       sh provision.sh packages
 #                                      sh provision.sh files --code /opt/pantheon-workstation
 #
-#   packages   apt: the desktop, the tools and Mozilla's Firefox (below).
+#   packages   apt or dnf: the desktop, the tools and Firefox (below).
 #              --image: this is an image being built, not somebody's machine —
 #              also drop apt's lists and the base image's `ubuntu` user (uid
 #              1000, Pantheon's default PGID: the pairing group). Never on a host
@@ -34,9 +36,6 @@
 #              the pinned package, checked, left in DIR for the image to install
 #              (`D-2026-11-01-01`) — the screen Pantheon's own browser runs on for
 #              a person without a workstation, streamed like a workstation's.
-#   tools      `B1744`. Kali's or Parrot's own toolset on top, as much as
-#              --toolset says: `none`, `top10`, `default` (what the distro's own
-#              installer ships) or `everything`. Nothing on Ubuntu or Debian.
 #   files      Firefox's no-phone-home policy (--policies DIR, default
 #              /etc/firefox/policies, where Firefox reads it), the skeleton
 #              new homes start from (--skel DIR, default
@@ -103,27 +102,76 @@ KASMVNC_URL=https://github.com/kasmtech/KasmVNC/releases/download
 say() { printf 'provision: %s\n' "$*"; }
 
 # `B1744`. Which system this is: `ID` from /etc/os-release (ubuntu, debian,
-# kali, parrot). Anything else Debian-like is tried as Debian; anything else at
-# all is refused, because the list below is apt's.
+# fedora, rocky). Anything else is refused: the lists below are for these.
 # (`OS_RELEASE` names another file, for the tests.)
 os_id() {
     release=${OS_RELEASE:-/etc/os-release}
     id=$(sed -n 's/^ID=//p' "$release" 2>/dev/null | tr -d '"' | head -n 1)
     case "$id" in
-        ubuntu|debian|kali|parrot) printf '%s' "$id" ;;
-        *)
-            if grep -qs '^ID_LIKE=.*debian' "$release"; then printf 'debian'
-            else say "this is not a system the workstation is made from (${id:-no $release})" >&2; exit 1; fi ;;
+        ubuntu|debian|fedora|rocky) printf '%s' "$id" ;;
+        *) say "this is not a system the workstation is made from (${id:-no $release})" >&2; exit 1 ;;
     esac
 }
 
-# KasmVNC's build for this system: Ubuntu 24.04's, or Debian 13's for Debian,
-# Parrot 7 (Debian 13 underneath) and Kali (Debian testing, nearest to 13).
+# KasmVNC's build for this system: Ubuntu 24.04's, Debian 13's, or the EL9
+# build (Kasm names it `oracle_9`) for Rocky 9 and, the nearest it has, Fedora.
 kasmvnc_dist() {
     case "$(os_id)" in
         ubuntu) printf 'ubuntu_noble' ;;
-        *) printf 'debian_trixie' ;;
+        debian) printf 'debian_trixie' ;;
+        *) printf 'oracle_9' ;;
     esac
+}
+
+# `B1744`. The same workstation under Fedora's and Rocky's names (`PACKAGES`
+# above is the list; this is it again for dnf). `curl` is not named: Rocky's
+# image has curl-minimal, which conflicts with it, and either gives `curl`.
+# Python's venv is part of `python3` there. On Rocky the desktop, xdotool and
+# scrot come from EPEL (`epel-release`, from Rocky's own extras repository,
+# signed by Rocky), which needs CRB enabled.
+DNF_PACKAGES="ca-certificates git sudo procps-ng less nano unzip xz tar findutils which \
+hostname util-linux shadow-utils python3 python3-pip gcc gcc-c++ make \
+xorg-x11-server-Xvfb xterm xdotool scrot dejavu-sans-fonts dbus-daemon dbus-tools \
+nftables \
+xfwm4 xfce4-panel xfdesktop xfce4-session xfce4-settings xfconf xfce4-terminal Thunar \
+adwaita-icon-theme librsvg2 \
+at-spi2-core python3-gobject"
+# The desktop's finishing touches, each installed when the system has it and
+# said when it does not (the theme still loads; a missing font falls back):
+# the menu, Papirus's icons, Inter and JetBrains Mono, and JWM, the desktop a
+# machine without XFCE gets.
+DNF_OPTIONAL="xfce4-whiskermenu-plugin papirus-icon-theme rsms-inter-fonts \
+jetbrains-mono-fonts-all jetbrains-mono-fonts jwm"
+
+# `B1744`. KasmVNC's EL9 build (`oracle_9`), read from the two packages on
+# 2026-11-02 like the others: what Rocky 9 runs, and what Fedora tries.
+KASMVNC_SHA256_EL9_X86_64=2420eb3a179144fe7a87af279c8d87d37b3b93ecb96ce16bc4af95f7096e303e
+KASMVNC_SHA256_EL9_AARCH64=0d541aa31093d745bcb16b5bee00c28524417dae6e4d766b09489f8c927247ab
+# tini, the image's PID 1 (`Dockerfile`'s ENTRYPOINT), which neither Fedora's
+# nor Rocky's archive carries under one name on both: the static build from its
+# own release, its sums the ones the release publishes (checked 2026-11-02).
+TINI_VERSION=0.19.0
+TINI_SHA256_AMD64=c5b0666b4cb676901f90dfcb37106783c5fe2077b04590973b885950611b30ee
+TINI_SHA256_ARM64=eae1d3aa50c48fb23b8cbdf4e369d0910dfc538566bfd09df89a774aa84a48b9
+
+# fetch_checked URL OUT SUM: download URL to OUT and refuse it unless it hashes to SUM.
+fetch_checked() {
+    cacert=
+    ca=${PROVISION_CA:-/run/secrets/build-ca}
+    if [ -s "$ca" ]; then
+        bundle=/etc/ssl/certs/ca-certificates.crt
+        [ -s "$bundle" ] || bundle=/etc/pki/tls/certs/ca-bundle.crt
+        cat "$bundle" "$ca" > /tmp/provision-ca.pem
+        cacert=/tmp/provision-ca.pem
+    fi
+    curl --fail --silent --show-error --location --retry 3 ${cacert:+--cacert "$cacert"} \
+        --output "$2" "$1"
+    rm -f /tmp/provision-ca.pem
+    if ! printf '%s  %s\n' "$3" "$2" | sha256sum -c - >/dev/null 2>&1; then
+        rm -f "$2"
+        say "$1 did not match its pinned checksum; refusing it"
+        exit 1
+    fi
 }
 
 # kasmvnc_deb ARCH OUT [DIST]: the pinned KasmVNC package for ARCH (amd64 or
@@ -170,18 +218,26 @@ packages() {
         esac
         shift
     done
-    export DEBIAN_FRONTEND=noninteractive
     os=$(os_id)
     say "making a $os workstation"
+    case "$os" in
+        ubuntu|debian) packages_apt "$os" "$image" ;;
+        *) packages_dnf "$os" "$image" ;;
+    esac
+    say "packages installed"
+}
+
+packages_apt() {
+    os=$1
+    image=$2
+    export DEBIAN_FRONTEND=noninteractive
     if [ -n "${APT_MIRROR:-}" ]; then
-        # The mirror replaces the system's own archive, wherever that system
-        # keeps it (deb822 for Ubuntu, Debian and Kali; Parrot's one-line list).
+        # The mirror replaces the system's own archive (Debian's security
+        # archive is left alone).
         say "using the mirror $APT_MIRROR"
         case "$os" in
             ubuntu) sed -i -E "s#^URIs: .*#URIs: ${APT_MIRROR}#" /etc/apt/sources.list.d/ubuntu.sources ;;
             debian) sed -i -E "s#^URIs: .*debian/?\$#URIs: ${APT_MIRROR}#" /etc/apt/sources.list.d/debian.sources ;;
-            kali) sed -i -E "s#^URIs: .*#URIs: ${APT_MIRROR}#" /etc/apt/sources.list.d/kali.sources ;;
-            parrot) sed -i -E "s#^deb https://deb.parrot.sh/parrot #deb ${APT_MIRROR} #" /etc/apt/sources.list.d/parrot.list ;;
         esac
     fi
     ca=${PROVISION_CA:-/run/secrets/build-ca}
@@ -209,19 +265,11 @@ packages() {
     apt-get install -y --no-install-recommends firefox
     # The live desktop (`D-2026-10-31-01`): KasmVNC's X server, installed from the
     # pinned package with apt so its libraries come from the system's archive.
-    # `B1744`: Kali is rolling, so a library KasmVNC's Debian 13 build names
-    # can move out from under it there; then the desktop is shown as pictures
-    # (Xvfb, as on an architecture KasmVNC does not build for) and the build
-    # says so, rather than the whole image failing. A wrong checksum still stops
-    # the build everywhere.
     arch=$(dpkg --print-architecture)
     case "$arch" in
         amd64|arm64)
             kasmvnc_deb "$arch" /tmp/kasmvncserver.deb "$(kasmvnc_dist)"
-            if ! apt-get install -y --no-install-recommends /tmp/kasmvncserver.deb; then
-                [ "$os" = kali ] || exit 1
-                say "KasmVNC's Debian 13 build does not install on this Kali; the desktop is shown as pictures (Xvfb)"
-            fi
+            apt-get install -y --no-install-recommends /tmp/kasmvncserver.deb
             rm -f /tmp/kasmvncserver.deb ;;
         *) say "KasmVNC builds no package for $arch; the desktop is shown as pictures (Xvfb)" ;;
     esac
@@ -230,61 +278,75 @@ packages() {
         rm -rf /var/lib/apt/lists/*
         userdel -r ubuntu 2>/dev/null || true
     fi
-    say "packages installed"
 }
 
-# `B1744`. The security distros' own tools, on top of the workstation.
-# The metapackages are each distro's own names for its sets: Kali's
-# (`kali-tools-top10`, `kali-linux-default` — what Kali's installer selects —
-# and `kali-linux-everything`) and Parrot's (`parrot-tools-full`, what the
-# Security edition ships, and three of the categories it is made of for the
-# smaller set — the same names `parrotsec/security`'s own image installs).
-# Installed WITH recommends, unlike the desktop: that is how the distros
-# install them, and a tool missing its recommended helpers is not the tool a
-# model trained on that distro expects.
-tools() {
-    image=no
-    toolset=default
-    while [ $# -gt 0 ]; do
-        case "$1" in
-            --image) image=yes ;;
-            --toolset) toolset=$2; shift ;;
-            *) say "unknown option $1"; exit 2 ;;
-        esac
-        shift
-    done
-    os=$(os_id)
-    case "$toolset" in
-        none|top10|default|everything) ;;
-        *) say "the toolset is none, top10, default or everything, not $toolset"; exit 2 ;;
-    esac
-    case "$os:$toolset" in
-        kali:top10) metas=kali-tools-top10 ;;
-        kali:default) metas=kali-linux-default ;;
-        kali:everything) metas=kali-linux-everything ;;
-        parrot:top10) metas="parrot-tools-infogathering parrot-tools-web parrot-tools-password" ;;
-        parrot:default|parrot:everything) metas=parrot-tools-full ;;
-        *) say "no toolset for $os ($toolset)"; return 0 ;;
-    esac
-    export DEBIAN_FRONTEND=noninteractive
+# `B1744`. Fedora 44 and Rocky Linux 9: the same workstation with dnf.
+packages_dnf() {
+    os=$1
+    image=$2
+    if [ -n "${APT_MIRROR:-}" ]; then
+        say "APT_MIRROR is for Ubuntu and Debian; $os uses its own mirrors"
+    fi
     ca=${PROVISION_CA:-/run/secrets/build-ca}
     if [ -s "$ca" ]; then
-        echo "Acquire::https::CAInfo \"$ca\";" > /etc/apt/apt.conf.d/99-provision-ca
+        # The builder's CA beside the system's, for dnf, for the build only.
+        cp "$ca" /etc/pki/ca-trust/source/anchors/provision-ca.pem
+        update-ca-trust
     fi
     if [ -n "${APT_PROXY:-}" ]; then
-        printf 'Acquire::http::Proxy "%s";\nAcquire::https::Proxy "%s";\n' "$APT_PROXY" "$APT_PROXY" \
-            > /etc/apt/apt.conf.d/99-provision-proxy
+        echo "proxy=$APT_PROXY" >> /etc/dnf/dnf.conf
     fi
-    say "installing $os's $toolset toolset ($metas)"
-    apt-get update
+    dnf="dnf -y --setopt=install_weak_deps=False"
+    if [ "$os" = rocky ]; then
+        # EPEL holds XFCE, xdotool, scrot and KasmVNC's Perl modules on EL9.
+        $dnf install dnf-plugins-core epel-release
+        dnf config-manager --set-enabled crb
+    fi
     # shellcheck disable=SC2086 # the list is words on purpose
-    apt-get install -y -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold $metas
-    rm -f /etc/apt/apt.conf.d/99-provision-ca /etc/apt/apt.conf.d/99-provision-proxy
-    if [ "$image" = yes ]; then
-        apt-get clean
-        rm -rf /var/lib/apt/lists/*
+    $dnf install $DNF_PACKAGES
+    for pkg in $DNF_OPTIONAL; do
+        $dnf install "$pkg" >/dev/null 2>&1 || say "$os has no $pkg; going on without it"
+    done
+    # Firefox is the system's own here (Fedora's current release, Rocky's
+    # ESR): an rpm, not a snap, so Mozilla's apt repository is not needed.
+    # The no-phone-home policy is the same file (`files`).
+    $dnf install firefox
+    case "$(uname -m)" in
+        x86_64) karch=x86_64; ksum=$KASMVNC_SHA256_EL9_X86_64; tarch=amd64; tsum=$TINI_SHA256_AMD64 ;;
+        aarch64) karch=aarch64; ksum=$KASMVNC_SHA256_EL9_AARCH64; tarch=arm64; tsum=$TINI_SHA256_ARM64 ;;
+        *) karch=; tarch= ;;
+    esac
+    if [ -n "$tarch" ]; then
+        fetch_checked "https://github.com/krallin/tini/releases/download/v$TINI_VERSION/tini-static-$tarch" \
+            /usr/bin/tini "$tsum"
+        chmod 0755 /usr/bin/tini
+    else
+        say "no tini for $(uname -m)"; exit 1
     fi
-    say "toolset installed"
+    # KasmVNC's EL9 build. On Rocky 9 it is the system it was built for, and a
+    # failure stops the build. Fedora is newer than EL9: when the build's
+    # libraries are not there, the desktop is shown as pictures (Xvfb, as on
+    # an architecture KasmVNC does not build for) and the build says so.
+    if [ -n "$karch" ]; then
+        fetch_checked "$KASMVNC_URL/v$KASMVNC_VERSION/kasmvncserver_oracle_9_${KASMVNC_VERSION}_$karch.rpm" \
+            /tmp/kasmvncserver.rpm "$ksum"
+        if ! $dnf install /tmp/kasmvncserver.rpm; then
+            [ "$os" = fedora ] || exit 1
+            say "KasmVNC's EL9 build does not install on this Fedora; the desktop is shown as pictures (Xvfb)"
+        fi
+        rm -f /tmp/kasmvncserver.rpm
+    fi
+    if [ -s "$ca" ]; then
+        rm -f /etc/pki/ca-trust/source/anchors/provision-ca.pem
+        update-ca-trust
+    fi
+    if [ -n "${APT_PROXY:-}" ]; then
+        sed -i '/^proxy=/d' /etc/dnf/dnf.conf
+    fi
+    if [ "$image" = yes ]; then
+        dnf clean all
+        rm -rf /var/cache/dnf
+    fi
 }
 
 files() {
@@ -362,9 +424,8 @@ server() {
 
 case "$STEP" in
     packages) packages "$@" ;;
-    tools) tools "$@" ;;
     files) files "$@" ;;
     client) client "$@" ;;
     server) server "$@" ;;
-    *) echo "usage: provision.sh packages [--image] | tools [--image] [--toolset none|top10|default|everything] | files [--skel DIR] [--code DIR] [--policies DIR] [--themes DIR] [--share DIR] | client DIR | server DIR" >&2; exit 2 ;;
+    *) echo "usage: provision.sh packages [--image] | files [--skel DIR] [--code DIR] [--policies DIR] [--themes DIR] [--share DIR] | client DIR | server DIR" >&2; exit 2 ;;
 esac
