@@ -75,6 +75,12 @@ _INT_FIELDS = ("x", "y", "to_x", "to_y", "dx", "dy", "ms", "mark", "to_mark")
 MARK_ACTIONS = ("click", "double_click", "triple_click", "right_click", "middle_click", "move",
                 "drag", "scroll", "mouse_down", "mouse_up", "type")
 SURFACE = "desktop"
+#: `B1747`. The screens the tool works: the desktop, and the person's phone —
+#: a real Android device on a screen of its own (`workstation/phone.py`), where
+#: a click is a tap, a drag a swipe and the wheel a fling. Each keeps its own
+#: marks (`screen_marks`' surface), since a number means a place on one screen.
+SCREENS = ("desktop", "phone")
+PHONE_SURFACE = "phone"
 _NUMBER_RE = re.compile(r"^\s*-?\d+(?:\.\d+)?\s*$")
 _SCROLL_DIRECTIONS = {"down": (0, 1), "up": (0, -1), "right": (1, 0), "left": (-1, 0)}
 
@@ -126,6 +132,12 @@ def parse_args(content: Any) -> Tuple[Dict[str, Any], Optional[str]]:
         return {}, (f"“{args.get('action')}” is not an action `{TOOL_NAME}` knows. It is one "
                     f"of {', '.join(ACTIONS)}.")
     args["action"] = action
+    screen = str(args.get("screen") or "desktop").strip().lower()
+    if screen in ("android", "mobile", "device"):
+        screen = "phone"
+    if screen not in SCREENS:
+        return {}, f"“screen” is one of {', '.join(SCREENS)}."
+    args["screen"] = screen
     for pair, (kx, ky) in (("coordinate", ("x", "y")), ("to_coordinate", ("to_x", "to_y"))):
         point = args.get(pair)
         if isinstance(point, (list, tuple)) and len(point) == 2:
@@ -160,6 +172,8 @@ def describe_action(args: Dict[str, Any]) -> str:
     card's command line and the screenshot's summary are both this, so the card
     says what was done without the raw arguments (they stay one click away)."""
     action = args.get("action")
+    if args.get("screen") == "phone":  # `B1747`
+        return "phone: " + describe_action({k: v for k, v in args.items() if k != "screen"})
     if action == SCREENSHOT:
         return "screenshot"
     if args.get("mark") is not None:
@@ -232,9 +246,18 @@ def unavailable_reason(owner: Optional[str], *, delegated_credential: bool = Fal
     return None
 
 
-def _shot_line(shot: Dict[str, Any]) -> str:
+def _shot_line(shot: Dict[str, Any], screen: str = "desktop") -> str:
     width = shot.get("width") or P.SCREEN_WIDTH
     height = shot.get("height") or P.SCREEN_HEIGHT
+    if screen == "phone" and shot.get("mode") == "mobile_view":  # `B1749`
+        return (f"The phone's screen is attached: {width}×{height} pixels, and the coordinates "
+                "you send are in those pixels. It is a mobile view, not Android: a "
+                "phone-shaped browser (this workstation has no KVM), so web pages only; the "
+                "wheel scrolls, and the phone action's Back and Home buttons work.")
+    if screen == "phone":
+        return (f"The phone's screen is attached: {width}×{height} pixels, and the coordinates "
+                "you send are in those pixels. A click is a tap, a drag a swipe; right_click "
+                "is Back and middle_click is Home.")
     return (f"The screen is attached: {width}×{height} pixels, and the coordinates you send are "
             f"in those pixels.")
 
@@ -251,10 +274,11 @@ def _place_marks(args: Dict[str, Any], owner: Optional[str]) -> Optional[str]:
         return "Marks are off: use x and y read from the screenshot."
     if args["action"] not in MARK_ACTIONS:
         return f"“mark” goes with a click, move, drag, scroll or type, not {args['action']}."
+    surface = PHONE_SURFACE if args.get("screen") == "phone" else SURFACE
     for key, (kx, ky) in (("mark", ("x", "y")), ("to_mark", ("to_x", "to_y"))):
         if args.get(key) is None or args.get(kx) is not None:
             continue
-        mark, problem = screen_marks.resolve(owner, SURFACE, args[key])
+        mark, problem = screen_marks.resolve(owner, surface, args[key])
         if problem:
             return problem
         args[kx], args[ky] = screen_marks.center(mark)
@@ -263,8 +287,8 @@ def _place_marks(args: Dict[str, Any], owner: Optional[str]) -> Optional[str]:
     return None
 
 
-async def _marked(client, account: str, shot: Dict[str, Any], owner: Optional[str]
-                  ) -> Tuple[Dict[str, Any], str]:
+async def _marked(client, account: str, shot: Dict[str, Any], owner: Optional[str],
+                  screen: str = "desktop") -> Tuple[Dict[str, Any], str]:
     """`G1`–`G4`. The screenshot with its marks drawn on and the list in
     words, and the marks kept for `mark`: the desktop's accessibility tree
     first (`ROUTES["marks"]`), then what the picture shows that the tree left
@@ -281,8 +305,10 @@ async def _marked(client, account: str, shot: Dict[str, Any], owner: Optional[st
     height = shot.get("height") or P.SCREEN_HEIGHT
     described: list = []
     windows: list = []
+    surface = PHONE_SURFACE if screen == "phone" else SURFACE
     try:
-        got = await client.marks(account)
+        # `B1747`: the phone's marks are its own UI tree's.
+        got = await (client.phone(account, "marks") if screen == "phone" else client.marks(account))
         described = screen_marks.normalise(got.get("marks") or [], width, height, "a11y")
         windows = got.get("windows") or []
     except WorkstationError as e:
@@ -296,12 +322,40 @@ async def _marked(client, account: str, shot: Dict[str, Any], owner: Optional[st
         logger.info("screen not read for marks: %s", e)
         seen = []
     marks = screen_marks.merge(described, seen, windows)
-    screen_marks.remember(owner, SURFACE, marks)
+    screen_marks.remember(owner, surface, marks)
     if not marks:
         return shot, ""
     data, mime = await asyncio.to_thread(screen_marks.draw, png, marks)
     import base64
     return dict(shot, data_b64=base64.b64encode(data).decode(), mime=mime), screen_marks.listing(marks)
+
+
+async def _phone_on(client, account: str) -> Optional[Dict[str, Any]]:
+    """`B1747`. None when the phone is on and the action can go ahead; else
+    what the model is told — the phone turned on and booting (so it waits and
+    looks again), or why there is no phone here."""
+    from src.workstation_client import WorkstationError
+    try:
+        state = await client.phone(account, "status")
+        if state.get("state") == "off":
+            state = await client.phone(account, "start")
+    except WorkstationError as e:
+        return e.as_result()
+    if state.get("state") == "on":
+        return None
+    if state.get("state") == "starting":
+        name = next((d.get("name") for d in state.get("devices") or []
+                     if d.get("id") == state.get("device")), state.get("device"))
+        if state.get("mode") == "mobile_view":  # `B1749`
+            return {"output": (f"The phone ({name}) is opening as a mobile view: this "
+                               "workstation has no KVM for Android, so it is a browser shaped "
+                               "and identified as that device. Wait a few seconds (`wait` with "
+                               "ms) and take a screenshot of the phone."), "exit_code": 0}
+        return {"output": (f"The phone ({name}) is booting; Android takes a minute or two the "
+                           "first time. Wait (`wait` with ms) and take a screenshot of the "
+                           "phone again."), "exit_code": 0}
+    return {"error": state.get("why") or "There is no phone on this workstation.",
+            "exit_code": 1, "workstation_error": "unavailable"}
 
 
 class ComputerTool:
@@ -328,8 +382,34 @@ class ComputerTool:
         client, account = ready.client, ready.account
 
         what = describe_action(args)
+        on_phone = args.get("screen") == "phone"
+        if on_phone:
+            if action == "wait":
+                # Waiting is what a booting phone needs, so it is done here,
+                # and the phone looked at after it.
+                import asyncio
+                ms = args.get("ms", 1000)
+                ms = ms if isinstance(ms, int) and not isinstance(ms, bool) else 1000
+                await asyncio.sleep(max(0, min(ms, P.MAX_WAIT_MS)) / 1000)
+                action = args["action"] = SCREENSHOT
+            started = await _phone_on(client, account)
+            if started:
+                return started
         try:
-            if action == SCREENSHOT:
+            if on_phone:
+                # `B1747`: the same actions on the phone's screen.
+                if action == SCREENSHOT:
+                    shot = await client.phone(account, "screenshot")
+                else:
+                    if action == "type" and args.get("mark") is not None:
+                        await client.phone(account, "input", input="click", x=args["x"], y=args["y"])
+                    fields = {k: args[k] for k in _INPUT_FIELDS if args.get(k) is not None}
+                    if action == "type":
+                        fields = {k: v for k, v in fields.items() if k not in ("x", "y")}
+                    answer = await client.phone(account, "input", input=action,
+                                                screenshot_after=True, **fields)
+                    shot = answer.get("screenshot")
+            elif action == SCREENSHOT:
                 shot = await client.screenshot(account)
             else:
                 if action == "type" and args.get("mark") is not None:
@@ -352,14 +432,15 @@ class ComputerTool:
             # so the model takes another screenshot rather than assuming.
             return {"output": f"{did} No screenshot came back after it — take one before the "
                               "next action.", "exit_code": 0}
-        caption = "Screen" if action == SCREENSHOT else f"Screen after {what}"
+        caption = (("Phone" if on_phone else "Screen") if action == SCREENSHOT
+                   else f"{'Phone' if on_phone else 'Screen'} after {what}")
         from src import screen_marks
         listed = ""
         if screen_marks.ENABLED and args.get("marks") is not False:
-            shot, listed = await _marked(client, account, shot, owner)
+            shot, listed = await _marked(client, account, shot, owner, args["screen"])
         else:
-            screen_marks.forget(owner, SURFACE)
-        output = f"{did} {_shot_line(shot)}"
+            screen_marks.forget(owner, PHONE_SURFACE if on_phone else SURFACE)
+        output = f"{did} {_shot_line(shot, args['screen'])}"
         if listed:
             output += "\n" + listed
         return {

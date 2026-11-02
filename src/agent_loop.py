@@ -1886,7 +1886,9 @@ Blocked paths/routes (refused for safety): /api/auth/, /api/users/, /api/tokens/
         "dy (wheel clicks, positive is down) or dx; type takes text; key takes keys in "
         "xdotool names such as \"ctrl+l\" or \"Return\"; wait takes ms. Every action "
         "but screenshot returns a screenshot of the result — look at it before the next "
-        "action. For commands and files use bash, python and the file tools instead."
+        "action. Add \"screen\": \"phone\" to work the person's Android phone instead: a "
+        "click is a tap, a drag a swipe, right_click is Back and middle_click is Home. "
+        "For commands and files use bash, python and the file tools instead."
     ),
 }
 

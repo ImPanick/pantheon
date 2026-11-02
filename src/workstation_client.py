@@ -828,6 +828,42 @@ class WorkstationClient:
         return await self._call("browser", account, body, timeout=120.0 + _TIMEOUT, allow_304=True)
 
 
+    async def phone(self, account: str, action: str, *, holder: str = "agent",
+                    **fields: Any) -> Dict:
+        """`B1747`. One action on the account's phone (`ROUTES["phone"]`). A
+        daemon older than the phone answers `not_found`; that comes back as a
+        phone that is not there, with a sentence, never as a failure."""
+        if action not in P.PHONE_ACTIONS:
+            raise WorkstationError("bad_request",
+                                   f"“{action}” is not one of {', '.join(P.PHONE_ACTIONS)}.")
+        body = {"action": action, "holder": holder, **{k: v for k, v in fields.items() if v is not None}}
+        try:
+            # A screenshot after an input waits for the screen to settle, and
+            # stopping a phone saves it first.
+            return await self._call("phone", account, body, timeout=90.0 + _TIMEOUT)
+        except WorkstationError as e:
+            if e.status == 404:
+                raise WorkstationError(
+                    "unavailable", "This workstation is older than the phone. Rebuild it: "
+                                   "docker compose up -d --build.") from e
+            raise
+
+    async def phone_screen(self, account: str) -> Dict:
+        """`B1747`. `{"kind", "holder", "why"?}` for the phone's screen —
+        `browser_screen`'s answer, for the phone."""
+        try:
+            return await self._call("phone_screen", account, timeout=60.0)
+        except WorkstationError as e:
+            if e.status == 404:
+                return {"kind": None, "holder": None,
+                        "why": "This workstation is older than the phone. Rebuild it: "
+                               "docker compose up -d --build."}
+            raise
+
+    def phone_screen_stream(self, account: str, viewer: str):
+        """`B1747`. The phone's screen, as `desktop_stream` gives the desktop."""
+        return self.desktop_stream(account, viewer, route="phone_screen")
+
     async def names(self, account: str, names: Dict[str, str], pins: List[Dict[str, str]]) -> Dict:
         """`P27-04`. The account's whole set of mapped names and pinned
         certificates; answers what a command there is given."""
@@ -902,7 +938,7 @@ class WorkstationClient:
         from websockets.asyncio.client import connect
         from websockets.exceptions import InvalidStatus, WebSocketException
 
-        if route not in ("desktop", "browser_screen"):
+        if route not in ("desktop", "browser_screen", "phone_screen"):
             raise WorkstationError("bad_request", "That is not a stream the workstation serves.")
         headers = self._headers()
         verify = await self._wire()  # `P20-07`: before the token goes anywhere

@@ -1564,6 +1564,21 @@ class VmStation(Workstation):
         that streams, under its own KasmVNC."""
         return self.system.forward(account, "desktop", timeout=120.0)
 
+    # `B1747`. The phone runs in the container workstation only: a machine
+    # here would need KVM inside KVM to boot Android, and its image has no SDK.
+    PHONE_ELSEWHERE = ("The phone runs in the container workstation, not in a VM. In Settings -> "
+                       "Workstation, set Backend to Container to use it.")
+
+    def phone(self, account: str, body: Dict) -> Dict:
+        raise WorkstationError("unavailable", self.PHONE_ELSEWHERE)
+
+    def phone_screen(self, account: str) -> Dict:
+        return {"kind": None, "holder": self.holder(account)["holder"],
+                "why": self.PHONE_ELSEWHERE}
+
+    def phone_screen_upstream(self, account: str, viewer: str):
+        raise WorkstationError("unavailable", self.PHONE_ELSEWHERE)
+
     def browser_screen(self, account: str) -> Dict:
         """`D-2026-11-01-01`: the machine's own answer — its browser runs there,
         on a screen of its own under the machine's KasmVNC."""

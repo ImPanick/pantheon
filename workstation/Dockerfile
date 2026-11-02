@@ -61,6 +61,24 @@ RUN --mount=type=secret,id=build-ca,required=false,mode=0444 \
 # `provision.sh files` puts it at /etc/firefox/policies/policies.json, and the
 # skeleton every home starts from and "Reset to clean" returns to in /etc/skel,
 # and the desktop's window frames, wallpaper and menu mark (`D-2026-10-31-02`).
+# `B1747`. The phone — Google's Android Emulator with one real Android system
+# image, adb and scrcpy (`provision.sh phone`, `workstation/phone.py`) — only
+# when asked for: about 4 GB, x86_64 only, and building it accepts the Android
+# SDK License. `docker-compose.yml` passes WORKSTATION_PHONE through; set it to
+# `on` in `.env` and rebuild. The image name is kept in the environment, where
+# the daemon reads which system image this build has.
+ARG WORKSTATION_PHONE=off
+ARG WORKSTATION_PHONE_IMAGE="system-images;android-35;google_apis;x86_64"
+ARG ANDROID_CMDLINE_TOOLS_SHA256=
+RUN --mount=type=secret,id=build-ca,required=false,mode=0444 \
+    if [ "$WORKSTATION_PHONE" = "on" ]; then \
+        PHONE_IMAGE="$WORKSTATION_PHONE_IMAGE" \
+        ANDROID_CMDLINE_TOOLS_SHA256="$ANDROID_CMDLINE_TOOLS_SHA256" \
+        sh /opt/pantheon-workstation/provision/provision.sh phone /opt/android-sdk; \
+    fi
+ENV ANDROID_SDK_ROOT=/opt/android-sdk \
+    PANTHEON_PHONE_IMAGE=${WORKSTATION_PHONE_IMAGE}
+
 COPY firefox/policies.json /opt/pantheon-workstation/provision/firefox/policies.json
 COPY skel/ /opt/pantheon-workstation/provision/skel/
 COPY desktop/ /opt/pantheon-workstation/provision/desktop/

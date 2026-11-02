@@ -58,6 +58,7 @@ import { initTurnSheet } from './js/turnSheet.js';
 // screen*. It builds nothing until one is pressed.
 import './js/workstationScreen.js';
 import './js/browserWindow.js';   // `P25-06`: the agent browser's doors
+import './js/phoneWindow.js';     // `B1747`: the phone's doors
 // `P25-07`. The agent browser's emergency stop also stops the reply on screen —
 // the Stop button's own path, asked for by event so the window needs no copy
 // of the chat module.

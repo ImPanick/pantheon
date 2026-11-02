@@ -57,6 +57,8 @@ PAGE = "vnc.html"
 STREAM_PATH = "api/workstation/desktop/websockify"
 #: `D-2026-11-01-01`. The browser's own screen, which the same client draws.
 BROWSER_STREAM_PATH = "api/workstation/browser/websockify"
+# `B1747`: the phone's screen, relayed the same way.
+PHONE_STREAM_PATH = "api/workstation/phone/websockify"
 
 UNAVAILABLE_SENTENCE = ("This install has no live-desktop client — it comes with Pantheon's "
                         "Docker image — so the screen is shown as pictures.")
@@ -84,8 +86,9 @@ def page_url(*, watch_person: Optional[str] = None, stream: str = STREAM_PATH) -
     is theirs, not something watching their screen shows.
 
     `stream` is where the client connects: the desktop's, or
-    (`D-2026-11-01-01`) the browser screen's, `BROWSER_STREAM_PATH`."""
-    if stream not in (STREAM_PATH, BROWSER_STREAM_PATH):
+    (`D-2026-11-01-01`) the browser screen's, `BROWSER_STREAM_PATH`, or (`B1747`) the
+    phone's, `PHONE_STREAM_PATH`."""
+    if stream not in (STREAM_PATH, BROWSER_STREAM_PATH, PHONE_STREAM_PATH):
         raise ValueError("not a stream Pantheon relays")
     path = stream
     if watch_person:

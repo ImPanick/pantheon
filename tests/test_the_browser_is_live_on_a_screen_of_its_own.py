@@ -237,7 +237,8 @@ def test_the_workstation_makes_one_browser_screen_per_account_and_a_reset_stops_
     reset = source[source.index("    def reset(self, account: str) -> None:"):]
     reset = reset[:reset.index("kill_processes")]
     assert "self._browser_displays.get(account)" in reset and "screen.stop()" in reset
-    assert ubuntu.DISPLAY_ROLES == ("desktop", "browser")
+    # `B1747`: and the phone's, the third, made the same way.
+    assert ubuntu.DISPLAY_ROLES == ("desktop", "browser", "phone")
 
 
 class _Proc:
