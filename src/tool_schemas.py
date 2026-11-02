@@ -530,13 +530,15 @@ FUNCTION_TOOL_SCHEMAS = [
             # `P25-05`. The agent browser (`src/agent_tools/browser_tools.py`).
             "name": "agent_browser",
             "description": (
-                "A real web browser — Firefox in the person's workstation — that the person can "
-                "watch and take over in the app. One call is one action. open a url; read the "
+                "A real web browser — Firefox, in the person's workstation when they have one and "
+                "in Pantheon otherwise — that the person can watch and take over in the app. One call is one action. open a url; read the "
                 "page to get its text and its clickable and typable elements numbered [1], [2]…; "
                 "click an element by ref; type text into one (ref), with submit to press Enter "
                 "after; press keys such as Enter, Tab or ctrl+a; scroll (dy, positive is down); "
                 "back, forward, reload; tabs lists them, tab_new opens one (url), tab_switch and "
-                "tab_close take its number; screenshot shows the page. Read the page again after "
+                "tab_close take its number; screenshot shows the page with every element in view "
+                "boxed and numbered — the same numbers as read, so click a ref straight off it. "
+                "Read the page again after "
                 "anything that changes it: numbers belong to one reading. Use it for sites that "
                 "need clicking, logging in or forms; for plain reading, web_fetch is quicker. If "
                 "the person has taken over the browser, ask them or wait. To sign in, open the "
@@ -637,7 +639,10 @@ FUNCTION_TOOL_SCHEMAS = [
                 "it has one) and $LOGIN_GRAFANA_AGENT_URL; with only one login, also "
                 "$LOGIN_USER, $LOGIN_PASSWORD, $LOGIN_OTP and $LOGIN_URL — and $LOGIN_HOST, "
                 "$LOGIN_HOST_IP (set when the person mapped the name to an address) and $LOGIN_PORT "
-                "for a tool that is not HTTP, such as psql -h. Write the variables, "
+                "for a tool that is not HTTP, such as psql -h. A key (an API token) is also "
+                "$LOGIN_<NAME>_TOKEN, and a token for GitHub or GitLab also sets $GH_TOKEN / "
+                "$GITHUB_TOKEN / $GITLAB_TOKEN and signs plain git in to that host, so gh and "
+                "git push work as they are. Write the variables, "
                 "never a value: curl -u \"$LOGIN_USER:$LOGIN_PASSWORD\" \"$LOGIN_URL/api/health\". "
                 "Output is scrubbed of the values. Never ask the person to paste a password into "
                 "the chat."
@@ -712,18 +717,26 @@ FUNCTION_TOOL_SCHEMAS = [
                 "separate from Pantheon — by looking at its screen and using its mouse "
                 "and keyboard. One call is one action. `screenshot` shows the screen; "
                 "every other action returns a screenshot taken after it, so look at it "
-                "before the next action. Coordinates are pixels in the screenshot: the "
-                "screen is always {width}×{height}, x from 0 to {max_x} left to right "
-                "and y from 0 to {max_y} top to bottom. For work that does not need the "
-                "screen — running commands, reading and writing files — use bash, python "
-                "and the file tools instead. If a person has taken over the screen the "
-                "action is refused; ask them or wait."
+                "before the next action. Each screenshot has the things you can click "
+                "boxed and numbered, listed in words beside it: send \"mark\": N to act on "
+                "one — it is more exact than coordinates. Coordinates are pixels in the "
+                "screenshot: the screen is always {width}×{height}, x from 0 to {max_x} "
+                "left to right and y from 0 to {max_y} top to bottom. Use it for anything a person "
+                "does at a computer with a mouse and keyboard — web pages in its Firefox, "
+                "apps, forms, settings, dialogs. Running commands and reading or writing "
+                "files is quicker with bash, python and the file tools. If a person has "
+                "taken over the screen the action is refused; ask them or wait."
             ),
             "parameters": {
                 "type": "object",
                 "properties": {
                     "action": {"type": "string", "enum": ["screenshot"],
                                "description": "What to do."},
+                    "mark": {"type": "integer",
+                             "description": "The number of a mark on the last screenshot: "
+                                            "where to click, move, scroll or start a drag, or "
+                                            "the field to type into. Use it instead of x and y."},
+                    "to_mark": {"type": "integer", "description": "drag: the mark to release on."},
                     "x": {"type": "integer",
                           "description": "Pixel column in the screenshot: where to click, "
                                          "move, press, scroll or start a drag."},
@@ -795,7 +808,7 @@ FUNCTION_TOOL_SCHEMAS = [
         "type": "function",
         "function": {
             "name": "ui_control",
-            "description": "Control the user interface. Actions: toggle (turn tools on/off), open_panel (open a modal: documents/library, gallery, email, sessions, notes, memories/brain, skills, settings, forge (alias: cookbook)), open_email_reply (open an email reply draft document; DOES NOT send. For 'write/draft a reply saying X', include body with the drafted reply), set_mode, switch_model, set_theme (built-in presets: dark, light, midnight, paper, cyberpunk, retrowave, forest, ocean, ume, copper, terminal, organs, lavender, gpt, claude, cute, guild, codehost, grove, notebook, channel, video, mintchat), create_theme (CREATE any custom theme with a name + colors object — pick distinctive, evocative hex colors that match the requested aesthetic, NOT generic defaults. The theme auto-applies after creation). When a user asks for ANY theme not in the built-in preset list, ALWAYS use create_theme.",
+            "description": "Control the user interface. Actions: toggle (turn tools on/off), open_panel (open a modal: documents/library, gallery, email, sessions, notes, memories/brain, skills, settings, forge (alias: cookbook)), open_email_reply (open an email reply draft document; DOES NOT send. For 'write/draft a reply saying X', include body with the drafted reply), set_mode, switch_model, set_theme (built-in presets: dark, light, midnight, paper, forest, ocean, ume, copper, organs, lavender, gpt, claude, cute, guild, codehost, grove, notebook, channel, video, mintchat), create_theme (CREATE any custom theme with a name + colors object — pick distinctive, evocative hex colors that match the requested aesthetic, NOT generic defaults. The theme auto-applies after creation). When a user asks for ANY theme not in the built-in preset list, ALWAYS use create_theme.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -831,7 +844,7 @@ FUNCTION_TOOL_SCHEMAS = [
         "type": "function",
         "function": {
             "name": "ask_user",
-            "description": "Ask the user a multiple-choice question to get a decision or clarification when the task is genuinely ambiguous and the answer changes what you do next (e.g. pick between approaches, confirm an assumption, choose a target). The user sees clickable option buttons; calling this ENDS your turn and their selection arrives as your next message. LOOK BEFORE YOU ASK: if any tool offered this turn would answer the question, call it instead — a question whose answer a tool would have printed is the defect, not the caution. Never use it to ask permission for a step the user already asked for; take the step. Do NOT use it to confirm irreversible/destructive actions that have a dedicated confirmation flow — the approval gate holds those.",
+            "description": "Ask the user a multiple-choice question (or, with `questions`, several at once) to get a decision or clarification when the task is genuinely ambiguous and the answer changes what you do next (e.g. pick between approaches, confirm an assumption, choose a target). The user sees clickable option buttons; calling this ENDS your turn and their selection arrives as your next message. LOOK BEFORE YOU ASK: if any tool offered this turn would answer the question, call it instead — a question whose answer a tool would have printed is the defect, not the caution. Never use it to ask permission for a step the user already asked for; take the step. Do NOT use it to confirm irreversible/destructive actions that have a dedicated confirmation flow — the approval gate holds those.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -848,9 +861,28 @@ FUNCTION_TOOL_SCHEMAS = [
                             "required": ["label"]
                         }
                     },
-                    "multi": {"type": "boolean", "description": "Set true ONLY when the question explicitly allows choosing more than one option. Otherwise omit it or set false. Default false."}
+                    "multi": {"type": "boolean", "description": "Set true ONLY when the question explicitly allows choosing more than one option. Otherwise omit it or set false. Default false."},
+                    # Plan mode's brief: several questions on one card, so the
+                    # model gathers what a plan rests on in one round trip.
+                    "questions": {
+                        "type": "array",
+                        "description": "Ask several things at once (up to 5) instead of one — how plan mode gathers what a plan needs before drafting it. When set, `question` is a one-line lead-in and `options` is not needed. The person can always type their own answer to each.",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "question": {"type": "string", "description": "One short, specific question."},
+                                "options": {"type": "array", "description": "0-6 suggested answers; leave out for an open question.",
+                                            "items": {"type": "object",
+                                                      "properties": {"label": {"type": "string"}, "description": {"type": "string"}},
+                                                      "required": ["label"]}},
+                                "multi": {"type": "boolean", "description": "True only when more than one suggestion may be picked."},
+                                "placeholder": {"type": "string", "description": "Optional hint shown in the answer box, e.g. an example answer."}
+                            },
+                            "required": ["question"]
+                        }
+                    }
                 },
-                "required": ["question", "options"]
+                "required": ["question"]
             }
         }
     },
@@ -1076,6 +1108,25 @@ FUNCTION_TOOL_SCHEMAS = [
                     "query": {"type": "string", "description": "Search query (for search)."}
                 },
                 "required": ["action"]
+            }
+        }
+    },
+    # `B1737`. The model's own way to a skill, apart from `manage_skills`'
+    # editing surface: two optional arguments and nothing it can write.
+    {
+        "type": "function",
+        "function": {
+            "name": "use_skill",
+            "description": (
+                "Open a listed skill (a proven procedure) by name and follow it, "
+                "or search skills by the kind of work. Read-only."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string"},
+                    "query": {"type": "string", "description": "The kind of work."}
+                }
             }
         }
     },
@@ -1974,9 +2025,12 @@ FUNCTION_TOOL_SCHEMAS = [
         "function": {
             "name": "vault_search",
             "description": (
-                "Search the credential vault by keyword. Returns matching entry "
-                "names and URLs and NEVER returns passwords. Use to find which "
-                "entry to sign in with (bw:<id>)."
+                "Search the person's vault (Settings → Vault: their logins, API "
+                "keys and tokens) by keyword — and the server's Bitwarden vault "
+                "when one is set up. Returns names, addresses and the $LOGIN_… "
+                "variable each one becomes in shell_with_login; NEVER a password "
+                "or token. Use it, then shell_with_login with the name, to use a "
+                "stored token (curl, gh, git)."
             ),
             "parameters": {
                 "type": "object",
@@ -1992,16 +2046,15 @@ FUNCTION_TOOL_SCHEMAS = [
         "function": {
             "name": "vault_get",
             "description": (
-                "Describe one vault entry by item ID from vault_search: its name, "
-                "user name and URLs, and whether a password is set — never the "
-                "password itself. To sign in with it, use agent_browser login or "
-                "shell_with_login with item \"bw:<id>\". Every access is logged; "
-                "requires a reason."
+                "Describe one vault entry by its name (or bw:<id> from "
+                "vault_search): its user name, addresses, and whether a password "
+                "or token is set — never the value itself. To use it, name it in "
+                "shell_with_login or agent_browser login. Requires a reason."
             ),
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "item_id": {"type": "string", "description": "Vault item ID, from vault_search"},
+                    "item_id": {"type": "string", "description": "The item's name, or bw:<id>, from vault_search"},
                     "reason": {"type": "string", "description": "Why this secret is needed — recorded with the access"},
                 },
                 "required": ["item_id", "reason"]

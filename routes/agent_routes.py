@@ -7,6 +7,8 @@
     POST   /api/agents/{agent_id}/hire         hire it
     GET    /api/agents/hires/{hire_id}         one hire: its runs and their reports
     PUT    /api/agents/hires/{hire_id}         change it, or {update: true} to its new version
+                                               (`B1703`: {accept_warning: id} accepts its
+                                               auto-approve warning, {auto_approve: "off"} stops it)
     POST   /api/agents/hires/{hire_id}/status  {status: on | paused}
     DELETE /api/agents/hires/{hire_id}         fire it, and every task it made
     POST   /api/agents/{agent_id}/try          `P24-13`: Try it once — hired as a trial,
@@ -286,10 +288,15 @@ def setup_agent_routes(task_scheduler=None) -> APIRouter:
                 if m is None:
                     return _refused("This agent's file is gone or broken, so the hire cannot be changed. "
                                     "Dismiss it, or put the file back.", 409)
+                # `B1703`: `accept_warning` is *Proceed to auto-approve* on the
+                # hire's page; `auto_approve: "off"` stops it, and never asks.
                 H.update_hire(db, hire, m, inputs=body.get("inputs"), grants=body.get("grants"),
                               tz_name=body["tz_name"] if "tz_name" in body else ...,
                               project=body["project"] if "project" in body else ...,
-                              name=body.get("name"), to_version=bool(body.get("update")))
+                              name=body.get("name"), to_version=bool(body.get("update")),
+                              accept_warning=body.get("accept_warning"),
+                              auto_approve=body.get("auto_approve"),
+                              auth_manager=getattr(request.app.state, "auth_manager", None))
                 if body.get("update") and hire.status == "attention":
                     H.set_status(db, hire, m, "on")
                 db.commit()
@@ -454,7 +461,8 @@ def setup_agent_routes(task_scheduler=None) -> APIRouter:
                 hire = H.make_hire(db, owner=user, manifest=m, inputs=body.get("inputs"),
                                    grants=body.get("grants"), tz_name=body.get("tz_name"),
                                    project=body.get("project"), name=body.get("name"),
-                                   status="trial")
+                                   status="trial", accept_warning=body.get("accept_warning"),
+                                   auth_manager=getattr(request.app.state, "auth_manager", None))
                 db.commit()
                 return H.task_ids_of(db, hire.id)[0], H.hire_to_dict(db, hire, m), None
             except H.HireRefused as r:
@@ -481,8 +489,10 @@ def setup_agent_routes(task_scheduler=None) -> APIRouter:
         out["lacking"] = H.lacking_tools(m, user)
         out["effects"] = H.manifest_effects(m)
         # `D-2026-10-29-01` §1 (`B1605`). Said on the hire form, before the
-        # hire: what *without asking* means once the agent has read the web.
-        out["after_outside"] = H.allowed_after_outside(
+        # hire: what *without asking* means once the agent has read the web —
+        # and, `B1703` / `D-2026-10-30-01`, a warning to accept with *Proceed
+        # to auto-approve* (its id comes back as the hire's `accept_warning`).
+        out["auto_approve"] = H.auto_approve_offer(
             m, user, auth_manager=getattr(request.app.state, "auth_manager", None))
         # `P24-18` / `P24-17`. Its measurement on this person's model, how many
         # cases its evaluation set has, and its sample report.
@@ -518,9 +528,13 @@ def setup_agent_routes(task_scheduler=None) -> APIRouter:
         def _db_work():
             db = SessionLocal()
             try:
+                # `B1703`: `accept_warning` is the form's *Proceed to
+                # auto-approve*; without it the hire lifts nothing.
                 hire = H.make_hire(db, owner=user, manifest=m, inputs=body.get("inputs"),
                                    grants=body.get("grants"), tz_name=body.get("tz_name"),
-                                   project=body.get("project"), name=body.get("name"))
+                                   project=body.get("project"), name=body.get("name"),
+                                   accept_warning=body.get("accept_warning"),
+                                   auth_manager=getattr(request.app.state, "auth_manager", None))
                 db.commit()
                 return H.hire_to_dict(db, hire, m)
             except H.HireRefused as r:

@@ -1,0 +1,31 @@
+{
+ "case": "three-asks-two-holds-two-drafts",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- 1 search (4 messages), read 3; 2 holds; 2 drafts; 1 note; wrote \"Day plan — 2026-11-10\"",
+ "read": [
+  "search_emails",
+  "read_email",
+  "manage_calendar"
+ ],
+ "wrote": [
+  "manage_calendar",
+  "draft_email_reply",
+  "create_document",
+  "manage_notes"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Day plan”",
+   "ok": true,
+   "detail": "“Day plan — 2026-11-10” is there."
+  }
+ ],
+ "answer": "3 must-dos, 2 booked, 2 waiting, 2 drafted.\n\n## Report\n- 1 search (4 messages), read 3; 2 holds; 2 drafts; 1 note; wrote \"Day plan — 2026-11-10\"\n\n## Carry forward\n- run: 2026-11-10\n- Ben — migration plan — asked 2026-11-03; Dana — October invoice — asked 2026-11-07",
+ "documents": [
+  {
+   "title": "Day plan — 2026-11-10",
+   "content": "Day plan — 2026-11-10\n3 must-dos, 2 booked, 2 waiting on others, 2 replies drafted\n\n## Must do\n1. Review the Acme proposal — Ana (Acme) — by Wed 12 Nov — \"Proposal v2 for your review\"\n2. Answer the two-year price — Ana (Acme) — by Thu 13 Nov — \"Re: pricing\"\n3. Sign the Cedar PO — Cal (Cedar) — by Fri 14 Nov — \"PO 4471 for signature\"\n\n## Booked\n- 10:00–10:45 — Hold: Review the Acme proposal\n- 14:00–14:45 — Hold: Answer the two-year price\n- Sign the Cedar PO — no hold: under fifteen minutes\n\n## Waiting on others\n- Ben — the migration plan — asked 2026-11-03 — stale — chase?\n- Dana — the invoice for October — asked 2026-11-07\n\n## Replies drafted\n- Ana (Acme), \"Proposal v2 for your review\" — received, you will come back by Wednesday\n- Cal (Cedar), \"PO 4471 for signature\" — thanks, signed copy by Friday"
+  }
+ ]
+}

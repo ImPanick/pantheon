@@ -221,7 +221,10 @@ ROUTES: Dict[str, Tuple[str, str]] = {
     # driven over WebDriver BiDi (`workstation/browser.py`).
     #   {"action": one of BROWSER_ACTIONS, ...its fields, "holder": "agent"|"person"="agent"}
     #   -> {"ok": true, "action", "url", "title", "tabs": [{"tab", "url", "current"}]}
-    #      `read` adds {"text", "cut", "elements": [{"ref", "tag", "label", "type"?, "href"?}]};
+    #      `read` adds {"text", "cut", "elements": [{"ref", "tag", "label", "type"?, "href"?,
+    #      "box"?}], "viewport"?}; `G1` (`D-2026-11-01-04`), added: every element in view is
+    #      numbered and carries "box", [x, y, w, h] in the viewport's CSS pixels — the page's
+    #      screenshot's — and "viewport" is [width, height], so marks can be drawn on it;
     #      `frame` is {"mime", "data_b64", "digest", "width", "height", "url", "title", "tabs",
     #      "activity": [{"id", "seq", "at", "who", "action", "label", "x"?, "y"?,
     #                    "phase": "doing"|"done"|"failed"}], "seq"} — what the browser did
@@ -248,6 +251,64 @@ ROUTES: Dict[str, Tuple[str, str]] = {
     # (`src/networks.py`): a run's scope, and a network marked untrusted, whose
     # ranges ride along as `deny` and are checked after the name resolves here.
     "network": ("POST", "/v1/users/{account}/network"),
+    # `D-2026-10-31-01`, added: the account's live desktop — its display served
+    # by KasmVNC (`workstation/ubuntu.py`), so a person sees it move as it moves
+    # and takes it over without a frame's wait.
+    #   GET, no `Upgrade` -> {"kind": one of DESKTOP_KINDS | null, "holder": "agent"|"person",
+    #                         "why": str — only when "kind" is null}
+    #   GET with `Upgrade: websocket`, `Sec-WebSocket-Protocol: DESKTOP_SUBPROTOCOL`
+    #       and ?viewer=one of DESKTOP_VIEWERS -> `101`, then the display's RFB
+    #       stream on that websocket, both ways, byte for byte. `person` drives
+    #       only while the person holds the display (`control`) and watches
+    #       otherwise; `watch` — an admin looking on (`B1424`) — never drives.
+    # A "kind" of null is a display that has no live desktop (a machine without
+    # KasmVNC, a system without a display): the caller shows screenshots. An
+    # error before the `101` is the usual JSON one; after it there is only the
+    # stream, and the end of the stream is the end of the desktop. A daemon
+    # older than this answers `404 not_found`.
+    "desktop": ("GET", "/v1/users/{account}/desktop"),
+    # `D-2026-11-01-01`, added: the account's browser on a screen of its own —
+    # Firefox alone on a second display of the account's, served by KasmVNC
+    # like the desktop (`workstation/ubuntu.py`, an `XDisplay` of role
+    # "browser"), so a person sees the browser the agent drives as it moves,
+    # apart from the desktop, with Firefox's own tabs and address bar, and
+    # takes it over. `ROUTES["desktop"]`'s two shapes and its rules exactly —
+    # the same viewers and subprotocol, `person` driving exactly while the
+    # person holds `control` — for that screen; the GET without the upgrade
+    # also starts the browser. A "kind" of null is a browser without a screen
+    # of its own (no KasmVNC here: it runs headless, as before), shown as
+    # `frame`s. A daemon older than this answers `404 not_found`.
+    "browser_screen": ("GET", "/v1/users/{account}/browser/screen"),
+    # `B1733` (`D-2026-11-01-02`), added: the account's **starting point** —
+    # the workstation as its person set it up, which `reset` then puts back
+    # instead of the image's own clean start. On the container backend it is
+    # the home ("scope": "home": what was installed system-wide stays until
+    # the container is made again); on the VM backend, the machine's whole
+    # disk ("scope": "machine"), saved with the machine powered off and
+    # started again after.
+    #   {"action": one of STARTING_POINT_ACTIONS}
+    #   -> {"account", "saved": bool, "at": epoch seconds | null,
+    #       "scope": one of STARTING_POINT_SCOPES}
+    # `save` replaces any saved one; `forget` drops it, so `reset` is the
+    # image's clean start again. A daemon older than this answers
+    # `404 not_found`.
+    "starting_point": ("POST", "/v1/users/{account}/starting-point"),
+    # `G2` (`D-2026-11-01-04`), added: what on the account's screen can be
+    # clicked or typed into, as the desktop's accessibility tree describes it
+    # (`workstation/a11y_marks.py`, read as the account on its display) — so
+    # the agent is shown the screenshot with each control numbered on it and
+    # clicks a number rather than guessing a pixel.
+    #   -> {"source": "a11y", "width", "height",
+    #       "marks": [{"role", "name", "box": [x, y, w, h], "app", "window"?, "editable"?}],
+    #       "windows": [{"app", "name", "box", "role", "active", "id", "marks"}],
+    #       "why"?: str — when the tree could not be read (then "marks" is empty)}
+    # Boxes are in the screenshot's own pixels, on the screen, at most
+    # MAX_MARKS of them, in reading order; a control a window covers is left
+    # out. `windows` says which windows the tree describes (their "marks"
+    # count), so the caller reads the picture for one it does not. A screen
+    # that has no tree answers `unavailable`; a daemon older than this answers
+    # `404 not_found`. Either way the caller reads the picture instead.
+    "marks": ("GET", "/v1/users/{account}/marks"),
 }
 
 # ── what the fields may hold ──────────────────────────────────────────────────
@@ -255,9 +316,21 @@ SHELLS = ("bash", "python")
 ENTRY_TYPES = ("file", "dir", "symlink", "other")
 SCREENSHOT_FORMATS = ("png", "jpeg")
 HOLDERS = ("agent", "person")
+# `D-2026-10-31-01`. What serves a live desktop (`ROUTES["desktop"]`), who may
+# look at one, and the websocket subprotocol its stream travels in — RFB is
+# binary, and KasmVNC's own web client asks for exactly this one.
+DESKTOP_KINDS = ("kasmvnc",)
+DESKTOP_VIEWERS = ("person", "watch")
+DESKTOP_SUBPROTOCOL = "binary"
+# The most a desktop handshake's answer may be before the stream starts.
+MAX_DESKTOP_HANDSHAKE_BYTES = 16_384
 # `P16-20` / `D-2026-10-25-03`. The network actions (`workstation/netcheck.py`):
 # one connection per `reach`, no ranges.
 NETWORK_ACTIONS = ("interfaces", "reach")
+# `B1733`. What a starting point may be asked (`ROUTES["starting_point"]`),
+# and what one holds.
+STARTING_POINT_ACTIONS = ("status", "save", "forget")
+STARTING_POINT_SCOPES = ("home", "machine")
 # Every action takes coordinates in the screenshot's own pixels; the screen is
 # a fixed size, so there is no scaling for either side to get wrong.
 INPUT_ACTIONS = (
@@ -287,7 +360,16 @@ INPUT_ACTIONS = (
 BROWSER_ACTIONS = ("open", "read", "click", "type", "press", "scroll", "back", "forward",
                    "reload", "tabs", "tab_new", "tab_switch", "tab_close", "frame", "login",
                    "note_add", "note_edit", "note_remove", "notes", "note_done", "notes_sent",
-                   "inspect", "point")
+                   "inspect", "point", "activity")
+# `D-2026-11-01-01`, added. activity {since} -> `frame`'s answer without the
+# picture — {"ok", "action", "url", "title", "tabs", "activity", "seq", "view"} —
+# for a window that shows the browser live (`ROUTES["browser_screen"]`), so it
+# can draw the agent's hand without a screenshot a second. Asking is watching,
+# as for `frame`. Both now carry "view": where the page sits on the browser's
+# screen, {"x", "y", "w", "h"} in its pixels (under Firefox's tabs and address
+# bar), or null for a headless browser, whose page is the whole picture.
+# The two a window asks while it watches: never `busy`, whoever holds the screen.
+WATCH_ACTIONS = ("frame", "activity")
 # `P25-10` / `P25-11`, added. inspect {ref | pointed | selector | x, y | nothing: the page}
 #   -> {"ok", "action", "title", "url", "element": {tag, selector, role, text, box, styles,
 #      on_background, children, href?, src?, alt?, natural?} | "page": {…counted…},
@@ -319,7 +401,9 @@ BACKEND_CHOICES = ("auto",) + BACKENDS
 # one of `MACHINE_IMAGE_STATES`, whether the Ubuntu image every person's
 # machine starts from is ready (`workstation/vm.py`).
 ACCELS = ("kvm", "tcg")
-MACHINE_IMAGE_STATES = ("ready", "preparing", "failed")
+# `waiting` (added 2026-10-31): a host that makes its image on first use
+# (`PANTHEON_WORKSTATION_VM_IMAGE=on_first_use`) and has not been asked yet.
+MACHINE_IMAGE_STATES = ("ready", "preparing", "failed", "waiting")
 # `B979`, added. The VM backend's host powers off a machine nobody has used for
 # a while and caps how many run (`workstation/vm.py`). Its `health`, for a
 # caller with the token, also answers
@@ -417,6 +501,10 @@ GATE_ROUTES: Dict[str, Tuple[str, str]] = {
 GATE_SELF_TESTS = ("refused", "not_needed")
 
 # ── the bounds, stated once ───────────────────────────────────────────────────
+# `G2` (`D-2026-11-01-04`). The most marks one screen answers, and the most of
+# a control's name that travels with it.
+MAX_MARKS = 80
+MARK_NAME_MAX = 80
 SCREEN_WIDTH = 1280
 SCREEN_HEIGHT = 800
 DEFAULT_EXEC_TIMEOUT_S = 120.0
@@ -436,7 +524,10 @@ MAX_TYPE_CHARS = 20_000
 MAX_SCROLL_CLICKS = 50
 MAX_WAIT_MS = 30_000
 # `P25-05`. The agent browser's page, in CSS pixels: the screen's size, so a
-# frame and a screenshot read the same.
+# frame and a screenshot read the same. `D-2026-11-01-01`: that is the page of
+# a headless browser; on a screen of its own the page is the window's content,
+# under Firefox's tabs and address bar, so a little shorter — every frame says
+# its own size, and a point is checked against the page as it is.
 BROWSER_WIDTH = SCREEN_WIDTH
 BROWSER_HEIGHT = SCREEN_HEIGHT
 # `P20-07`, added. How much longer than its own bound a per-account route may
@@ -532,9 +623,11 @@ __all__ = [
     "MACHINE_STATES",
     # `B984`, added.
     "MAX_CLOCK_STEP_S",
+    # `D-2026-10-31-01`, added.
+    "DESKTOP_KINDS", "DESKTOP_SUBPROTOCOL", "DESKTOP_VIEWERS", "MAX_DESKTOP_HANDSHAKE_BYTES",
     "ACCOUNT_PREFIX", "ACCOUNT_RE", "AGENT_NAME", "BACKENDS", "DEFAULT_EXEC_TIMEOUT_S",
     "DEFAULT_HOST", "DEFAULT_PAIRING_DIR", "DEFAULT_PORT", "ENTRY_TYPES",
-    "ERRORS", "HOLDERS", "INPUT_ACTIONS", "LOCAL_OWNER_SLUG", "MAX_BODY_BYTES",
+    "ERRORS", "HOLDERS", "INPUT_ACTIONS", "LOCAL_OWNER_SLUG", "MARK_NAME_MAX", "MAX_MARKS", "MAX_BODY_BYTES",
     "MAX_EXEC_TIMEOUT_S", "MAX_FILE_BYTES", "MAX_LIST_ENTRIES", "MAX_OUTPUT_BYTES",
     "MAX_SCROLL_CLICKS", "MAX_TYPE_CHARS", "MAX_WAIT_MS", "NETWORK_ACTIONS", "NETWORK_MODES", "PAIRING_DIR_ENV", "PROTOCOL_VERSION",
     "PROJECTS_DIR", "PROJECTS_DIR_ENV", "PROJECTS_ENV", "ROUTES", "SCREEN_HEIGHT", "SCREEN_WIDTH", "SCREENSHOT_FORMATS", "SHELLS", "TOKEN_ENTROPY_BYTES",
@@ -545,4 +638,6 @@ __all__ = [
     "DEFAULT_GATE_PAIRING_DIR", "GATE_AGENT_NAME", "GATE_PAIRING_DIR_ENV", "GATE_PORT",
     "GATE_ROUTES", "GATE_SELF_TESTS", "GATE_URL_ENV", "INTERNET_EXCLUDED_V4",
     "INTERNET_EXCLUDED_V6", "NETWORK_ENFORCEMENT",
+    # `B1733`, added.
+    "STARTING_POINT_ACTIONS", "STARTING_POINT_SCOPES",
 ]

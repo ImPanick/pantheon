@@ -258,9 +258,41 @@ def _copy_skill_dict(d: Dict) -> Dict:
 FIRST_PARTY_LIBRARY = "pantheon"
 VENDORED_LIBRARY = "ecc"
 
+# `B1715`. Pantheon's core skills — research, debugging, writing, memory and
+# the rest — are about what nearly every turn could be about, so listing them
+# with `manage_skills`' schema would put that whole editing tool into every
+# prompt, a note included (`B1426`'s complaint, eleven times over). They reach
+# a turn as its matched procedure when its words match (`get_relevant_skills`).
+#
+# `B1737`, the owner's ask (2026-11-01): *"We need to ensure the skills can be
+# selected by the LLM... If it's entering a QA process, it needs to be able to
+# call on the "QA" Skills."* Matching by the request's words alone left the
+# choice to keyword luck, so the core set is now **catalogued too** — one line
+# each — and opened with `use_skill`, a read-only tool with two arguments,
+# rather than `manage_skills`. They still never offer `manage_skills`; that
+# stays the person's-own-skills tool (`agent_loop._skills_for_turn`).
+CORE_CATEGORY = "core"
+
+
+def arrives_when_matched(s: Dict) -> bool:
+    """A shipped core skill: never a reason to offer `manage_skills`.
+
+    `B1737`: catalogued like any other skill now (`index_for`), and still
+    pasted whole when the turn's words match it."""
+    return (s.get("library") == FIRST_PARTY_LIBRARY
+            and s.get("category") == CORE_CATEGORY
+            and bool(s.get("bundled")))
+
 
 def _first_party_library_root() -> str:
-    """`<repo>/library/pantheon/skills` — resolved like the vendored root."""
+    """`<repo>/library/pantheon/skills` — resolved like the vendored root.
+
+    `PANTHEON_FIRST_PARTY_SKILLS` names another folder, and set empty ships
+    none (`B1715`: a test that measures a prompt's exact size, against a
+    server it starts, has no other way to hold the shipped set out)."""
+    override = os.environ.get("PANTHEON_FIRST_PARTY_SKILLS")
+    if override is not None:
+        return override
     here = os.path.dirname(os.path.abspath(__file__))
     repo = os.path.dirname(os.path.dirname(here))
     return os.path.join(repo, "library", FIRST_PARTY_LIBRARY, "skills")
@@ -285,6 +317,61 @@ def _default_library_root() -> str:
 
 def _tokenize(text: str) -> set:
     return {w.strip('.,!?";:()[]') for w in (text or "").lower().split() if len(w) > 1}
+
+
+#: `B1737`. Words a person and a skill use for the same kind of work. Kept
+#: short on purpose: each line is a family the owner named or that the shipped
+#: skills are filed under, not a thesaurus.
+_FIND_SYNONYMS: Dict[str, tuple] = {
+    "qa": ("qa", "test", "verify", "regression", "quality"),
+    "quality": ("qa", "test", "verify"),
+    "test": ("qa", "test", "verify"),
+    "frontend": ("frontend", "ui", "web", "css", "html", "design", "component"),
+    "front": ("frontend", "ui", "web"),
+    "ui": ("frontend", "ui", "ux", "design", "interface"),
+    "ux": ("ui", "ux", "design", "usability"),
+    "design": ("design", "ui", "ux", "layout", "visual"),
+    "web": ("web", "frontend", "page", "site"),
+    "website": ("web", "frontend", "page", "site"),
+    "a11y": ("accessibility", "a11y", "wcag"),
+    "accessibility": ("accessibility", "a11y", "wcag"),
+    "debug": ("debug", "failure", "error", "fix"),
+    "bug": ("debug", "failure", "fix", "test"),
+}
+
+#: `B1737`. The least a skill must score to be named: one of the query's own
+#: words in its description, or two synonyms in its name, category or tags.
+_FIND_FLOOR = 0.5
+
+_FIND_STOP = frozenset({
+    "a", "an", "and", "the", "for", "to", "of", "in", "on", "with", "my",
+    "this", "that", "it", "is", "do", "how", "i", "me", "we", "our", "skill",
+    "skills", "some", "any", "about", "doing", "work", "task",
+})
+
+
+def _find_stem(w: str) -> str:
+    for suffix in ("ing", "ies", "es", "ed", "s"):
+        if len(w) > len(suffix) + 2 and w.endswith(suffix):
+            return w[: -len(suffix)] + ("y" if suffix == "ies" else "")
+    return w
+
+
+def _find_tokens(text: str, *, expand: bool = False) -> set:
+    """`B1737`. Lower-case, stemmed words, minus filler; with `expand`, the
+    synonyms of each word too (`_FIND_SYNONYMS`)."""
+    import re as _re
+    words = [w for w in _re.split(r"[^a-z0-9]+", (text or "").lower()) if w]
+    out: set = set()
+    for w in words:
+        if w in _FIND_STOP or len(w) < 2:
+            continue
+        stem = _find_stem(w)
+        out.add(stem)
+        if expand:
+            for syn in _FIND_SYNONYMS.get(w, ()) + _FIND_SYNONYMS.get(stem, ()):
+                out.add(_find_stem(syn))
+    return out
 
 
 def _jaccard(a: set, b: set) -> float:
@@ -1509,6 +1596,94 @@ class SkillsManager:
         return out
 
     # ----------------------------------------------------------------------
+    # The vendored library as a shelf — browse it, take a skill off it
+    # ----------------------------------------------------------------------
+
+    def library_catalogue(self, owner: Optional[str] = None) -> List[Dict]:
+        """The vendored skills a person can add, as light rows.
+
+        The 286 stay out of the model's catalogue (`D-2026-10-26-01` §8) and
+        out of the Workshop's card list (`B1421`'s 3 s bound), which left them
+        with no way to be found at all: the owner read that as every skill
+        gone. This is the shelf — name, description, category and tags only, no
+        usage or similarity pass — and a skill the person already holds under
+        that name is marked rather than offered twice.
+        """
+        own = {s.get("name") for s in self.load(owner=owner)} if owner is not None else {
+            s.get("name") for s in self.load_all() if not s.get("bundled")}
+        out: List[Dict] = []
+        seen: set = set()
+        for lib, path in self._iter_library_layers():
+            if lib != VENDORED_LIBRARY:
+                continue
+            d = self._read_skill_dict(path)
+            name = (d or {}).get("name")
+            if not name or name in seen:
+                continue
+            seen.add(name)
+            out.append({
+                "name": name,
+                "description": d.get("description") or "",
+                "category": d.get("category") or "",
+                "tags": list(d.get("tags") or []),
+                "added": name in own,
+            })
+        out.sort(key=lambda r: r["name"])
+        return out
+
+    def adopt_library_skill(self, name: str, owner: Optional[str] = None) -> Optional[Dict]:
+        """Copy a vendored skill into the person's store, published.
+
+        Under its own name where it can, so it shadows the library entry for
+        them alone (the fork mechanism `load_all` describes); the copy is
+        theirs to edit, and the model is shown it from the next turn. Another
+        person's skill already at that path gets a suffixed name rather than
+        being overwritten. Returns None when no vendored skill has the name.
+        """
+        own_path = self._find_skill_path(name, owner)
+        if own_path is not None:
+            existing = self._read_skill(own_path)
+            return existing.to_dict() if existing else None
+        path = None
+        for lib, p in self._iter_library_layers():
+            if lib != VENDORED_LIBRARY:
+                continue
+            d = self._read_skill_dict(p)
+            if d and d.get("name") == name:
+                path = p
+                break
+        if path is None:
+            return None
+        src = self._read_skill(path)
+        if src is None:
+            return None
+        from core.atomic_io import atomic_write_text
+        from .skill_importer import _safe_relpath
+
+        cat = src.category or "general"
+        local, i = name, 2
+        while os.path.exists(self._skill_file(cat, local)):
+            local, i = f"{name}-{i}", i + 1
+        target_dir = self._skill_dir(cat, local)
+        for rel, text in self._files_under(os.path.dirname(path)).items():
+            if rel == "SKILL.md":
+                continue
+            dest = os.path.join(target_dir, _safe_relpath(rel))
+            os.makedirs(os.path.dirname(dest), exist_ok=True)
+            atomic_write_text(dest, text)
+        sk = src
+        sk.name, sk.owner, sk.source = local, owner, "library"
+        sk.status = "published"
+        sk.confidence = max(_to_float(sk.confidence, 0.0), 0.9)
+        dest = self._skill_file(cat, local)
+        os.makedirs(os.path.dirname(dest), exist_ok=True)
+        atomic_write_text(dest, sk.to_markdown())
+        sk.path = dest
+        out = sk.to_dict()
+        out["adopted_from"] = name
+        return out
+
+    # ----------------------------------------------------------------------
     # CRUD — disk-backed
     # ----------------------------------------------------------------------
 
@@ -2011,6 +2186,9 @@ class SkillsManager:
         out = []
         for s in self.injectable_skills(owner=owner, active_toolsets=active_toolsets,
                                         platform=platform):
+            # `B1737`. The core set is listed too, so the model chooses a
+            # procedure by its description rather than waiting for the
+            # request's words to match one (`arrives_when_matched`).
             status = s.get("status")
             out.append({
                 "name": s["name"],
@@ -2032,6 +2210,9 @@ class SkillsManager:
                 # `teacher_model` already have for `P4-16`'s receipt.
                 "uses": int(s.get("uses") or 0),
                 "opens": int(s.get("opens") or 0),
+                # `B1737`. The install's own read-only skill: the catalogue
+                # names it and leaves its description to `use_skill`.
+                "shipped": bool(s.get("bundled")),
             })
         out.sort(key=lambda x: (x["category"], x["name"]))
         return out
@@ -2129,3 +2310,84 @@ class SkillsManager:
                 scored.append((score, sk))
         scored.sort(key=lambda x: x[0], reverse=True)
         return [sk for _, sk in scored[:max_items]]
+
+    # ----------------------------------------------------------------------
+    # `B1737`. The model's own search — `use_skill query=…`
+    # ----------------------------------------------------------------------
+
+    def find_skills(
+        self,
+        query: str,
+        owner: Optional[str] = None,
+        *,
+        active_toolsets: Optional[List[str]] = None,
+        limit: int = 8,
+    ) -> List[Dict]:
+        """Skills for a kind of work, chosen by the model rather than matched.
+
+        `B1737`, the owner's ask (2026-11-01): when the agent starts QA it
+        should be able to call on the QA skills, and on the frontend skills when
+        it designs for the web. The catalogue lists what this turn is offered;
+        this searches that **and** the vendored library, which stays out of
+        every catalogue (`D-2026-10-26-01` §8: *"they remain searchable and
+        viewable"*) and until now had no search the model could reach.
+
+        Ranked on the words of the query against each skill's name, category
+        and tags (counted double) and its description and *when to use*, with
+        a crude stem so *testing* finds *test* and a short list of synonyms,
+        counted half, so *QA* finds testing and *frontend* finds UI
+        (`_FIND_SYNONYMS`). A skill this turn is offered wins a tie, because
+        it is written for Pantheon's own tools; library rows are marked.
+        Rows: `{name, description, category, source}` with `source` one of
+        `pantheon` (shipped here), `yours` (the person's own) or `library`.
+        """
+        orig = _find_tokens(query)
+        if not orig:
+            return []
+        syn = _find_tokens(query, expand=True) - orig
+        offered = self.injectable_skills(owner=owner, active_toolsets=active_toolsets)
+        offered_names = {s.get("name") for s in offered}
+        library = [s for s in self.load_active(owner=owner)
+                   if s.get("library") == VENDORED_LIBRARY
+                   and s.get("name") not in offered_names]
+
+        def score(sk: Dict) -> float:
+            strong = _find_tokens(" ".join([
+                str(sk.get("name") or "").replace("-", " "),
+                str(sk.get("category") or ""),
+                " ".join(str(t) for t in (sk.get("tags") or [])),
+            ]))
+            weak = _find_tokens(" ".join([
+                str(sk.get("description") or ""), str(sk.get("when_to_use") or "")])) - strong
+            total = 0.0
+            for words, weight in ((orig, 1.0), (syn, 0.5)):
+                total += weight * (2.0 * len(words & strong) + len(words & weak))
+            # One original word in a description is 1 / len(orig); a skill
+            # filed under the query's own word (name, category, tag) twice that.
+            value = total / len(orig)
+            # Pantheon's own procedures name Pantheon's tools; a library one
+            # was written for another harness, so a tie goes to ours.
+            return value * (1.15 if sk.get("name") in offered_names else 1.0)
+
+        scored = [(score(sk), sk) for sk in offered + library]
+        scored = [(v, sk) for v, sk in scored if v >= _FIND_FLOOR]
+        scored.sort(key=lambda r: (-r[0], str(r[1].get("name") or "")))
+        rows: List[Dict] = []
+        for _, sk in scored[:max(1, int(limit))]:
+            if sk.get("name") in offered_names:
+                source = "pantheon" if sk.get("bundled") else "yours"
+            else:
+                source = "library"
+            rows.append({"name": sk["name"],
+                         "description": sk.get("description") or "",
+                         "category": sk.get("category") or "general",
+                         "source": source})
+        return rows
+
+    def library_count(self, owner: Optional[str] = None) -> int:
+        """How many vendored skills `find_skills` can reach. `B1737`."""
+        try:
+            return sum(1 for s in self.load_active(owner=owner)
+                       if s.get("library") == VENDORED_LIBRARY)
+        except Exception:
+            return 0

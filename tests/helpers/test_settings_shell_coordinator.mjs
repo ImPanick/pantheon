@@ -824,6 +824,9 @@ const STUBS = new Map([
       browserSpeechRecognition: () => null,
       NO_BROWSER_SPEECH: 'This browser has no speech recognition of its own.',
       browserSpeechRefusal: () => '',
+      // `B1718`: Settings → Voice's test records in a kind the browser makes.
+      recordingType: () => '',
+      recordingExtension: () => 'webm',
     },
   ],
   [

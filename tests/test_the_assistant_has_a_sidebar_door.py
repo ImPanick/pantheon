@@ -80,8 +80,10 @@ const BASE = process.argv[2];
   const asked = [];
   page.on('request', (r) => { if (r.url().endsWith('/api/assistant/session')) asked.push(r.url()); });
   desk.before = await current(page);
-  if (desk.rowShown) {
-    await page.click('#tool-assistant-btn');
+  // The cockpit keeps the rail on a desktop and the Tools list in the phone
+  // drawer, so whichever door is in sight is the one a person presses.
+  if (desk.rowShown || desk.railShown) {
+    await page.click(desk.rowShown ? '#tool-assistant-btn' : '#rail-assistant');
     await page.waitForTimeout(1500);
   }
   desk.asked = asked.length;
@@ -110,7 +112,7 @@ const BASE = process.argv[2];
   desk.stored = await page.evaluate(() => JSON.parse(localStorage.getItem('pantheon-ui-visibility') || '{}')['tool-assistant']);
   desk.rowHidden = await display('tool-assistant-btn');
   desk.railHidden = await display('rail-assistant');
-  desk.brainStill = await shown(page, 'tool-memory-btn');
+  desk.brainStill = (await shown(page, 'tool-memory-btn')) || (await shown(page, 'rail-memory'));
   // Across a reload the choice holds.
   await page.reload({ waitUntil: 'load' });
   await page.waitForFunction(() => window.__pantheonAppStarted === true, null, { timeout: 90000 });
@@ -163,10 +165,13 @@ def doors(app_url, tmp_path_factory):  # noqa: F811
     return json.loads(lines[-1])
 
 
-def test_with_the_sidebar_open_the_rail_is_hidden_and_the_row_is_not(doors):
-    # The premise, measured in the run: the rail's door is the one nobody sees.
-    assert doors["desk"]["railShown"] is False
-    assert doors["desk"]["rowShown"] is True
+def test_with_the_sidebar_open_one_door_is_in_sight(doors):
+    # The premise, measured in the run. Before the cockpit the rail hid while
+    # the sidebar was open and the row was the door; the cockpit (2026-10-30)
+    # keeps the rail on a desktop and the Tools list in the phone drawer, so
+    # the rail is the door and the row is not drawn. One door either way.
+    assert doors["desk"]["railShown"] is True
+    assert doors["desk"]["rowShown"] is False
     assert doors["desk"]["rowText"] == "Assistant"
     # A before B, as on the rail — and `P24-12`'s Agents before the Assistant
     # (Ag before As), the one row added above it since.

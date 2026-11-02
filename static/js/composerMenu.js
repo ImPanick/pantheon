@@ -43,6 +43,8 @@ export const MODES = [
   { id: 'web-toggle-btn', label: 'Web search', hint: 'Search and read the web' },
   { id: 'bash-toggle-btn', label: 'Shell', hint: 'Run commands' },
   { id: 'overflow-rag-btn', label: 'RAG', hint: 'Answer from your indexed files' },
+  // `B1730`: the agent says its replies out loud, in your voice of choice.
+  { id: 'conversation-toggle-btn', label: 'Conversation', hint: 'Replies said out loud' },
 ];
 
 function _modeOn(node) {

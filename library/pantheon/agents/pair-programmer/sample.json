@@ -1,0 +1,22 @@
+{
+ "case": "one-change-one-check",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read 1 file; edited cart.py once; ran the cart tests, 4 passed",
+ "read": [
+  "grep",
+  "read_file"
+ ],
+ "wrote": [
+  "bash",
+  "edit_file"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "the answer",
+   "ok": true,
+   "detail": "It answered, with Changed, Checked, Next."
+  }
+ ],
+ "answer": "## Changed\n- shop/cart.py:6 — items[0] replaced by a guard: return 0 when the basket is empty (README.md was already modified; left alone)\n\n## Checked\n- `python -m pytest tests/test_cart.py -q` — 4 passed\n\n## Next\n- test_total_with_code for the discount path, which nothing covers yet\n\n## Report\n- read 1 file; edited cart.py once; ran the cart tests, 4 passed"
+}

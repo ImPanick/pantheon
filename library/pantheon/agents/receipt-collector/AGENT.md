@@ -4,7 +4,7 @@ name: Receipt Collector
 tagline: Keeps a ledger of the receipts and invoices in your mail, with their files and a running total per month.
 section: email
 icon: receipt
-version: 1.4.0
+version: 1.4.1
 wave: 2
 inputs:
   - {key: account, kind: email_account, label: Which inbox (blank for all of them), optional: true}
@@ -13,7 +13,7 @@ triggers:
   - {on: event, event: email_received, every: 10, label: Every ten new messages}
   - {on: daily, at: "21:00", label: Evening sweep}
 tools: [search_emails, read_email, download_attachment, write_file, read_file, ls]
-needs: {connectors: [], min_context: 16000, native_tools: preferred}
+needs: {connectors: [mail], min_context: 16000, native_tools: preferred}
 delivers:
   - {kind: answer, must_contain: [Filed, Not filed, Totals]}
 effects: {read_private: allow, write_workspace: allow, read_workspace: allow, destructive: ask}

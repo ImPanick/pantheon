@@ -78,7 +78,10 @@ from urllib.parse import urlencode
 
 from workstation import protocol as P
 from workstation import service
-from workstation.agentd import System, Workstation, WorkstationError, load_or_create_token, make_server
+from workstation.agentd import (
+    System, Workstation, WorkstationError, load_or_create_token, make_server, read_stamp,
+    replace_folder, write_stamp,
+)
 
 logger = logging.getLogger("pantheon.workstation.vm")
 
@@ -101,10 +104,10 @@ PROVISION_DIR = "/opt/pantheon-workstation/provision"
 IMAGE_READY = "PANTHEON-WORKSTATION-IMAGE-READY"
 IMAGE_FAILED = "PANTHEON-WORKSTATION-IMAGE-FAILED"
 # What `vm-guest.sh` and `provision.sh` read from the payload directory: the
-# two scripts, and every file under these two folders (listed by walking them,
+# two scripts, and every file under these folders (listed by walking them,
 # so a file added to the skeleton is not one more list to remember).
 PAYLOAD_SCRIPTS = ("provision.sh", "vm-guest.sh")
-PAYLOAD_DIRS = ("firefox", "skel")
+PAYLOAD_DIRS = ("firefox", "skel", "desktop")  # `D-2026-10-31-02`: the desktop's look
 
 
 def payload_files(payload: Path) -> List[str]:
@@ -126,6 +129,11 @@ ENV = {
     # never), and how many may run at once (`auto`: what the memory holds).
     "idle": "PANTHEON_WORKSTATION_VM_IDLE_MIN",
     "max_running": "PANTHEON_WORKSTATION_VM_MAX_RUNNING",
+    # `at_start` (the default): the image is made when this host starts.
+    # `on_first_use`: only once Pantheon asks for a machine — the switch
+    # turned on (its `config`) or a person's first call — so an install that
+    # ships this host and never turns the workstation on never makes one.
+    "image_when": "PANTHEON_WORKSTATION_VM_IMAGE",
     # Build-time knobs for making the image, like the container image's
     # `APT_MIRROR` and `build-ca` (`provision.sh`). None stays in the image.
     "apt_mirror": "PANTHEON_WORKSTATION_VM_APT_MIRROR",
@@ -547,10 +555,18 @@ class QemuMachine(Machine):
         return self.proc is not None and self.proc.poll() is None
 
     def _create(self) -> None:
-        image = self.fleet.current_image()
         self.dir.mkdir(parents=True, exist_ok=True)
         os.chmod(self.dir, 0o700)
         tmp = self.dir / "disk.qcow2.tmp"
+        start = self.fleet.starting_disk(self.account)
+        if start is not None:
+            # `B1733`. The person's own starting point: a copy of the disk as
+            # they saved it, on the image it was made from (kept while a
+            # starting point is made from it, `_forget_unused_images`).
+            shutil.copyfile(start, tmp)
+            os.replace(tmp, self.disk)
+            return
+        image = self.fleet.current_image()
         self.fleet.run(["qemu-img", "create", "-q", "-f", "qcow2", "-F", "qcow2",
                         "-b", str(image), str(tmp)])
         os.replace(tmp, self.disk)
@@ -639,6 +655,7 @@ class Fleet(System):
                  disk_gib: int = DEFAULT_DISK_GIB,
                  machine_factory: Optional[Callable[["Fleet", str], Machine]] = None,
                  image_options: Optional[Dict] = None, need_image: bool = True,
+                 image_on_first_use: bool = False,
                  start_timeout: float = P.MACHINE_START_S - 30.0,
                  idle_stop_s: Optional[float] = DEFAULT_IDLE_STOP_MIN * 60.0,
                  max_running: Optional[int] = None,
@@ -659,8 +676,10 @@ class Fleet(System):
         self._restricted: Dict[str, bool] = {}
         self._guest_net: Dict[str, Dict] = {}
         self._retiring: List[threading.Thread] = []
-        self.image_state = "preparing" if need_image else "ready"
+        self.image_state = ("ready" if not need_image
+                            else "waiting" if image_on_first_use else "preparing")
         self.image_why = ""
+        self._image_asked = threading.Lock()
         self._image: Optional[Path] = None
         self._machines: Dict[str, Machine] = {}
         self._locks: Dict[str, threading.Lock] = collections.defaultdict(threading.Lock)
@@ -867,6 +886,9 @@ class Fleet(System):
             return ("The workstation's machine image could not be made, so no machine can start: "
                     f"{self.image_why or 'see the workstation container log'}. Restart the "
                     "workstation container to try again.")
+        if self.image_state == "waiting":
+            return ("The workstation has not made its machine image yet; it starts making it now. "
+                    "With KVM that takes minutes; without it, much longer. Try again shortly.")
         return ("The workstation is still making the machine image every person's machine starts "
                 "from — Ubuntu, the desktop, the tools and Firefox, once, on its first start. With "
                 "KVM that takes minutes; without it, much longer. Try again shortly.")
@@ -889,6 +911,17 @@ class Fleet(System):
                 h.update(chunk)
         cache.write_text(f"{key} {h.hexdigest()}\n")
         return h.hexdigest()
+
+    def want_image(self) -> bool:
+        """Start making the image if it waits for its first use (`image_when`
+        `on_first_use`); True when this call started it."""
+        with self._image_asked:
+            if self.image_state != "waiting":
+                return False
+            self.image_state = "preparing"
+        logger.info("the workstation was asked for: making the machine image now")
+        threading.Thread(target=self.prepare_image, name="image", daemon=True).start()
+        return True
 
     def prepare_image(self) -> None:
         """The image for this payload: found, or made (module docstring). Sets
@@ -968,7 +1001,11 @@ class Fleet(System):
         """Images no machine is made from any more. Asked of `qemu-img` rather
         than remembered, because a disk's base is written in the disk."""
         used = {keep.resolve()}
-        for disk in (self.state / "machines").glob("*/disk.qcow2"):
+        # `B1733`: a starting point's disk is made from an image as surely as
+        # a machine's is.
+        disks = list((self.state / "machines").glob("*/disk.qcow2"))
+        disks += list((self.state / "starting-points").glob("*/disk.qcow2"))
+        for disk in disks:
             try:
                 info = json.loads(subprocess.run(
                     ["qemu-img", "info", "--output=json", str(disk)], capture_output=True,
@@ -1037,8 +1074,11 @@ class Fleet(System):
                 # Started under another network mode (`B992`): it boots again
                 # with this one.
                 m.stop(graceful=True)
-            if not m.exists() and self.image_state != "ready":
-                raise WorkstationError("unavailable", self.image_sentence())
+            if (not m.exists() and self.image_state != "ready"
+                    and self.starting_disk(account) is None):   # `B1733`
+                sentence = self.image_sentence()
+                self.want_image()
+                raise WorkstationError("unavailable", sentence)
             started = time.monotonic()
             with self._start_lock:  # `B979`: counted and started as one step
                 others = [a for a in self.running_accounts() if a != account]
@@ -1087,12 +1127,64 @@ class Fleet(System):
         raise WorkstationError("unavailable", f"Your workstation machine did not answer within "
                                               f"{self.start_timeout:.0f} s of starting.")
 
+    # -- `B1733`: a starting point — the machine's whole disk -------------------
+
+    starting_point_scope = "machine"
+
+    def starting_points_dir(self) -> Optional[Path]:
+        return self.state / "starting-points"
+
+    def starting_home(self, account: str) -> Optional[Path]:
+        return None   # the whole disk is the starting point (`starting_disk`)
+
+    def starting_disk(self, account: str) -> Optional[Path]:
+        """The saved disk a reset machine is made from, or None: the image."""
+        folder = self.starting_point_of(account)
+        if folder is None or read_stamp(folder) is None:
+            return None
+        disk = folder / "disk.qcow2"
+        return disk if disk.is_file() and not disk.is_symlink() else None
+
+    def save_starting_point(self, account: str) -> Dict:
+        """This person's machine, its whole disk, as their starting point —
+        everything installed in it, system-wide too. Copied with the machine
+        powered off (a disk copied while it is written is not one disk), and
+        the machine is left off: the next thing that uses it starts it
+        (`VmStation.starting_point` does, at once). Answers whether it
+        was running, as `was_running`."""
+        m = self.machine_for(account)
+        root = self.starting_points_dir()
+        with self._locks[account]:
+            if not m.exists():
+                raise WorkstationError("not_found", "There is nothing to save yet: your "
+                                                    "workstation machine is made the first time "
+                                                    "you or your agent use it.")
+            was_running = m.running()
+            m.stop(graceful=True)
+            root.mkdir(mode=0o700, parents=True, exist_ok=True)
+            os.chmod(root, 0o700)
+            work = root / f".{account}.new"
+            shutil.rmtree(work, ignore_errors=True)
+            work.mkdir(mode=0o700)
+            try:
+                shutil.copyfile(m.disk, work / "disk.qcow2")
+                write_stamp(work, time.time())
+                replace_folder(work, root / account)
+            except OSError as e:
+                shutil.rmtree(work, ignore_errors=True)
+                raise WorkstationError("unavailable",
+                                       f"The starting point could not be saved: {e}.")
+        logger.info("saved %s's machine disk as its starting point", account)
+        return {**self.starting_point(account), "was_running": was_running}
+
     def reset(self, account: str) -> None:
         """A fresh machine from the newest image (module docstring)."""
         m = self.machine_for(account)
         with self._locks[account]:
             if self.image_state != "ready":
-                raise WorkstationError("unavailable", self.image_sentence())
+                sentence = self.image_sentence()
+                self.want_image()
+                raise WorkstationError("unavailable", sentence)
             m.destroy()
             with self._registry:
                 self._machines.pop(account, None)
@@ -1363,6 +1455,14 @@ class VmStation(Workstation):
             out["machines"] = self.system.machines()  # `B979`
         return out
 
+    def config(self, body: Dict) -> Dict:
+        # Pantheon pushes `config` once the admin's switch is on
+        # (`workstation_access.sync_config`), which is what `on_first_use`
+        # waits for.
+        out = super().config(body)
+        self.system.want_image()
+        return out
+
     def account(self, account: str) -> Dict:
         """`B959`: from the machine itself when it is already running (the
         exact home it has), else from its disk — and never by starting it.
@@ -1392,6 +1492,14 @@ class VmStation(Workstation):
         # The protocol says a reset ends on a fresh desktop (`ROUTES["reset"]`).
         self.system.forward(account, "ensure", {}, timeout=120.0)
         return {"account": account, "reset": True}
+
+    def starting_point(self, account: str, body: Dict) -> Dict:
+        """`B1733`. Kept here, on the host, with the disks — never asked of
+        the machine. A machine powered off to be saved is started again."""
+        answer = super().starting_point(account, body)
+        if answer.pop("was_running", False):
+            self.system.forward(account, "ensure", {}, timeout=120.0)
+        return answer
 
     def control(self, account: str, body: Dict) -> Dict:
         return self.system.forward(account, "control", body)
@@ -1431,6 +1539,10 @@ class VmStation(Workstation):
         return self.system.forward(account, "screenshot", allow_304=True,
                                    query={"format": fmt, "if_none_match": if_none_match or None})
 
+    def marks(self, account: str) -> Dict:
+        """`G2`: the tree is the machine's desktop's; read there, as the account."""
+        return self.system.forward(account, "marks", timeout=30.0)
+
     def input(self, account: str, body: Dict) -> Dict:
         return self.system.forward(account, "input", body,
                                    timeout=P.MAX_WAIT_MS / 1000 + 120.0)
@@ -1446,6 +1558,51 @@ class VmStation(Workstation):
     def network(self, account: str, body: Dict) -> Dict:
         """`P16-20`: the check runs in the machine, on the machine's network."""
         return self.system.forward(account, "network", body, timeout=30.0)
+
+    def desktop(self, account: str) -> Dict:
+        """`D-2026-10-31-01`: the machine's own answer — its display is the one
+        that streams, under its own KasmVNC."""
+        return self.system.forward(account, "desktop", timeout=120.0)
+
+    def browser_screen(self, account: str) -> Dict:
+        """`D-2026-11-01-01`: the machine's own answer — its browser runs there,
+        on a screen of its own under the machine's KasmVNC."""
+        return self.system.forward(account, "browser_screen", timeout=120.0)
+
+    def desktop_upstream(self, account: str, viewer: str):
+        return self._machine_stream(account, viewer, "desktop")
+
+    def browser_screen_upstream(self, account: str, viewer: str):
+        """`D-2026-11-01-01`: the browser's screen, from the machine, the
+        desktop's way."""
+        return self._machine_stream(account, viewer, "browser_screen")
+
+    @contextlib.contextmanager
+    def _machine_stream(self, account: str, viewer: str, route: str):
+        """`D-2026-10-31-01`: the stream is the machine's. The upgrade goes to
+        the daemon there, over the forwarded port with the machine's token, and
+        that daemon goes on to its display; the `101` comes back through both.
+        While the stream is open the machine is in use, so a person watching is
+        never powered off for being idle (`B979`). `route` is the desktop's or
+        (`D-2026-11-01-01`) the browser screen's."""
+        if viewer not in P.DESKTOP_VIEWERS:
+            raise WorkstationError("bad_request",
+                                   f"“viewer” is one of {', '.join(P.DESKTOP_VIEWERS)}.")
+        with self.system._using(account):
+            m = self.system.ready(account)
+            _, path = P.route_path(route, account)
+            try:
+                sock = socket.create_connection(("127.0.0.1", int(m.port or 0)), timeout=10.0)
+            except OSError as e:
+                raise WorkstationError("unavailable", f"Your workstation machine stopped "
+                                                      f"answering ({type(e).__name__}).")
+            try:
+                yield sock, f"{path}?{urlencode({'viewer': viewer})}", f"Bearer {m.token}"
+            finally:
+                try:
+                    sock.close()
+                except OSError:
+                    pass
 
 
 # ── the command line ──────────────────────────────────────────────────────────
@@ -1475,6 +1632,26 @@ def parser() -> argparse.ArgumentParser:
     return ap
 
 
+HOST_LOCK = ".host.lock"
+
+
+def hold_state(state: Path):
+    """An exclusive lock on the state folder for this host's whole life, or
+    None when another host holds it. Two hosts on one volume — the VM overlay
+    left running beside the stack's own `workstation-vm` — would start the same
+    person's machine twice on one disk. A lock on the volume itself holds across
+    containers, which share the kernel."""
+    import fcntl
+    state.mkdir(parents=True, exist_ok=True)
+    f = open(state / HOST_LOCK, "a+")
+    try:
+        fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        f.close()
+        return None
+    return f
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     from workstation.__main__ import PAIRING_GID_ENV, _gid, secure_pairing
 
@@ -1486,10 +1663,20 @@ def main(argv: Optional[List[str]] = None) -> int:
     disk = _int_env(ENV["disk"], DEFAULT_DISK_GIB, 8, 4096)
     idle = idle_stop_from_env(os.environ.get(ENV["idle"], ""))  # `B979`
     cap = max_running_from_env(os.environ.get(ENV["max_running"], ""), memory, host_memory_mib())
+    image_when = (os.environ.get(ENV["image_when"]) or "at_start").strip().lower()
+    if image_when not in ("at_start", "on_first_use"):
+        logger.error("%s is at_start or on_first_use.", ENV["image_when"])
+        return 2
     want = (os.environ.get(ENV["accel"]) or "auto").strip().lower()
     if want not in ("auto", "kvm", "tcg"):
         logger.error("%s is auto, kvm or tcg.", ENV["accel"])
         return 2
+    lock = hold_state(Path(args.state))
+    if lock is None:
+        logger.error("another workstation VM host is using %s (an old docker/workstation-vm.yml "
+                     "container?). Stop it — `docker compose up -d --remove-orphans` — and this "
+                     "one starts.", args.state)
+        return 3
     try:
         gid = _gid(os.environ.get(PAIRING_GID_ENV, ""))
         accel, why = choose_accel(want=want)
@@ -1502,14 +1689,19 @@ def main(argv: Optional[List[str]] = None) -> int:
         fleet = Fleet(Path(args.state), accel=accel, accel_why=why,
                       base_image=Path(args.base_image), payload=Path(args.payload),
                       memory_mib=memory, cpus=cpus, disk_gib=disk, image_options=options,
-                      idle_stop_s=idle, max_running=cap)
+                      idle_stop_s=idle, max_running=cap,
+                      image_on_first_use=image_when == "on_first_use")
     except (WorkstationError, argparse.ArgumentTypeError) as e:
         logger.error("%s", getattr(e, "message", None) or e)
         return 2
     logger.info("%s", why)
     station = VmStation(fleet, token)
     server = make_server(fleet, token, bind=args.bind, port=args.port, station=station)
-    threading.Thread(target=fleet.prepare_image, name="image", daemon=True).start()
+    if image_when == "at_start":
+        threading.Thread(target=fleet.prepare_image, name="image", daemon=True).start()
+    else:
+        logger.info("the machine image is made when the workstation is first asked for (%s)",
+                    ENV["image_when"])
     done = threading.Event()
     threading.Thread(target=fleet.housekeeping, args=(done,), name="housekeeping",
                      daemon=True).start()  # `B979`
@@ -1541,7 +1733,7 @@ if __name__ == "__main__":
 
 __all__ = ["CLOCK_MAX_RTT_S", "CLOCK_STEP_S", "CLOCK_SYNC_S",  # `B984`
            "DEFAULT_IDLE_STOP_MIN", "MEMORY_RESERVE_MIB", "host_memory_mib",  # `B979`
-           "idle_stop_from_env", "max_running_from_env",
+           "idle_stop_from_env", "max_running_from_env", "HOST_LOCK", "hold_state",
            "Fleet", "Machine", "QemuMachine", "VmStation", "choose_accel", "guest_unit",
            "image_meta_data", "image_user_data", "make_iso", "payload_digest", "payload_files",
            "qemu_argv", "read_verdict"]

@@ -10,6 +10,7 @@ import spinnerModule from './spinner.js';
 import { chevronIcon } from './icons.js';
 import { getDefaultChat } from './appConfig.js';   // `B1228`
 import { whenShut } from './motion.js';   // `B1638`
+import { handlePickerKeydown } from './pickerKeys.js';   // `B1706`
 
 const API_BASE = window.location.origin;
 
@@ -61,28 +62,9 @@ function _pickerModelKey(m) {
   return `${m.endpointId || m.url || m.epName || 'model'}::${m.mid || ''}`;
 }
 
-// ── Shared keyboard nav for model pickers ──
-function _handlePickerKeydown(e, listEl, itemSelector, closeFn) {
-  if (e.key === 'Escape') { closeFn(); return; }
-  if (e.key === 'Enter') {
-    e.preventDefault();
-    const active = listEl.querySelector(itemSelector + '.kb-active') || listEl.querySelector(itemSelector);
-    if (active) active.click();
-    return;
-  }
-  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-    e.preventDefault();
-    const items = [...listEl.querySelectorAll(itemSelector)].filter(el => el.style.display !== 'none');
-    if (!items.length) return;
-    const cur = items.findIndex(el => el.classList.contains('kb-active'));
-    items.forEach(el => el.classList.remove('kb-active'));
-    let next;
-    if (e.key === 'ArrowDown') next = cur < items.length - 1 ? cur + 1 : 0;
-    else next = cur > 0 ? cur - 1 : items.length - 1;
-    items[next].classList.add('kb-active');
-    items[next].scrollIntoView({ block: 'nearest' });
-  }
-}
+// ── Shared keyboard nav for the composer's pickers ──
+// `B1706`: `_handlePickerKeydown` lived here; it is `pickerKeys.js` now, shared
+// with the approval-mode menu, and called below exactly as it was.
 
 // Dependencies injected via initModelPicker()
 let _deps = null;
@@ -992,7 +974,7 @@ async function _pick(m) {
     });
   }
   search.addEventListener('keydown', (e) => {
-    _handlePickerKeydown(e, listEl, '.model-switch-item', _close);
+    handlePickerKeydown(e, listEl, '.model-switch-item', _close);
   });
   const addModelsBtn = document.getElementById('model-picker-add-models-btn');
   if (addModelsBtn) {

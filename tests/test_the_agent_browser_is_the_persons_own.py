@@ -114,6 +114,38 @@ def test_the_tool_is_registered_and_offered_only_with_a_workstation():
     assert "is not an `agent_browser` action" in B.parse_args('{"action": "hack"}')[1]
 
 
+def test_a_browser_that_keeps_stopping_is_not_reopened_on_every_ask(tmp_path, monkeypatch):
+    """`B1721`. The owner, 2026-10-31: the desktop *"constantly opens and
+    reopens firefox"*. The browser is on the person's desktop, and whatever
+    asks for it — the in-app window asks for a frame about once a second —
+    started it again as often as it stopped. Three starts in two minutes, then
+    a sentence instead of a fourth window, until the oldest start ages out."""
+    from workstation import browser as WB
+
+    class Launched(Exception):
+        pass
+
+    def launch(*a, **k):
+        raise Launched()
+
+    now = [1000.0]
+    monkeypatch.setattr(WB, "find_firefox", lambda: "/bin/true")
+    monkeypatch.setattr(WB.subprocess, "Popen", launch)
+    monkeypatch.setattr(WB.time, "monotonic", lambda: now[0])
+    b = WB.AccountBrowser([], {}, tmp_path / "profile", True)
+    for _ in range(WB.RESTARTS_MAX):
+        with pytest.raises(Launched):
+            b.start()
+        now[0] += 10
+    with pytest.raises(WB.BrowserError) as e:
+        b.start()
+    assert e.value.code == "unavailable"
+    assert "stopped 3 times in the last 120 seconds" in e.value.message
+    now[0] += WB.RESTART_WINDOW_S
+    with pytest.raises(Launched):
+        b.start()
+
+
 def test_a_page_reads_as_text_then_numbered_elements():
     out = B.page_text({"title": "Shop", "url": "https://x.org/", "text": "Hello", "cut": True,
                        "elements": [{"ref": 1, "tag": "a", "label": "Next", "href": "https://x.org/2"},
@@ -276,7 +308,7 @@ from test_the_workstation_is_admin_controlled import (  # noqa: E402,F401 — fi
 
 
 @needs_firefox
-def test_the_window_sees_and_drives_the_callers_own_browser(app, ws, site):
+def test_the_window_sees_and_drives_the_callers_own_browser(app, ws, site, monkeypatch):
     switch_on(app, ws)
     me = as_user(app, ALLOWED)
     opened = me.post("/api/workstation/browser", json={"action": "open", "url": site + "/two"})
@@ -286,7 +318,11 @@ def test_the_window_sees_and_drives_the_callers_own_browser(app, ws, site):
     assert frame.status_code == 200 and frame.headers["cache-control"] == "no-store"
     f = frame.json()
     assert set(f) == {"mime", "data_b64", "width", "height", "digest", "url", "title", "tabs",
-                      "activity", "seq"}
+                      "activity", "seq", "runs_in", "view"}
+    # `D-2026-11-01-01`: where the page sits on the browser's own screen, or
+    # None for a headless browser (no KasmVNC here), whose picture is the page.
+    assert f["view"] is None or set(f["view"]) == {"x", "y", "w", "h"}
+    assert f["runs_in"] == "workstation"   # not Pantheon's own (`src/local_browser.py`)
     assert f["url"] == site + "/two" and f["tabs"] == [{"tab": 1, "url": site + "/two", "current": True}]
     assert ws.token not in frame.text
     assert f["activity"][-1]["label"] == f"Opening {site}/two" and f["activity"][-1]["who"] == "person"
@@ -296,5 +332,10 @@ def test_the_window_sees_and_drives_the_callers_own_browser(app, ws, site):
     bad = me.post("/api/workstation/browser", json={"action": "read"})
     assert bad.status_code == 400, "reading the page as text is the agent's, not the window's"
     assert me.post("/api/workstation/browser", json={"action": "open", "url": "file:///etc/passwd"}).status_code == 400
+    # A person the workstation does not answer is refused when Pantheon has no
+    # Firefox of its own; with one they get that browser instead
+    # (`src/local_browser.py`, `test_the_browser_runs_without_a_workstation.py`).
+    import src.local_browser as LB
+    monkeypatch.setattr(LB, "firefox_here", lambda: False)
     assert as_user(app, PLAIN).get("/api/workstation/browser").status_code == 403
     ws.station.browsers.stop_all()

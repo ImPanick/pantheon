@@ -92,13 +92,16 @@ class RunningWorkstation:
 
 @contextmanager
 def running_workstation(tmp_path: Path, *, token: str = TEST_TOKEN, with_screen: bool = True,
-                        sudo: bool = False, port: int = 0) -> Iterator[RunningWorkstation]:
+                        sudo: bool = False, port: int = 0,
+                        screen_factory=None) -> Iterator[RunningWorkstation]:
     """`port` 0 is any free one. `B1661`: a test that needs a daemon at the
     address an earlier one had — as the OS hands a freed port out again, which
-    in a long run it does — names that port."""
+    in a long run it does — names that port. `screen_factory` stands in a
+    display of the test's own for `PictureScreen` (`D-2026-10-31-01`: one that
+    streams)."""
     root = Path(tmp_path) / "workstation-homes"
-    system = SingleUserSystem(root, screen_factory=PictureScreen if with_screen else None,
-                              backend="container")
+    factory = (screen_factory or PictureScreen) if with_screen else None
+    system = SingleUserSystem(root, screen_factory=factory, backend="container")
     system.set_sudo(sudo)
     server = make_server(system, token, bind="127.0.0.1", port=port)
     thread = threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.05},

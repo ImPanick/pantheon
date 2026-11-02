@@ -111,12 +111,18 @@ def test_it_is_not_summarised_by_a_compaction(monkeypatch):
     monkeypatch.setattr(llm_core, "llm_call_async", summarise)
     monkeypatch.setattr(model_context, "estimate_tokens", lambda messages: 100)
     monkeypatch.setattr(model_context, "get_context_length", lambda url, model: 1000)
+    # `B1731`: the cut is sized to the window the wheel draws, read with its proof.
+    monkeypatch.setattr(model_context, "get_context_length_known", lambda url, model: (1000, True))
     history = [ChatMessage("user", "first"), saved[0]] + [
         ChatMessage("user" if i % 2 == 0 else "assistant", f"line {i}") for i in range(6)]
     app = FastAPI()
     app.include_router(history_routes.setup_history_routes(_Manager(_Session(history))))
     assert TestClient(app).post("/api/session/s-1/compact").status_code == 200
-    assert seen[0].splitlines() == ["USER: first", "USER: line 0", "ASSISTANT: line 1"]
+    # `B1731`: the transcript is headed and its messages set apart by a blank
+    # line; the failed reply between "first" and "line 0" is still not in it.
+    lines = [line for line in seen[0].splitlines() if line]
+    assert lines[0] == "Transcript to compact:"
+    assert lines[1:4] == ["USER: first", "USER: line 0", "ASSISTANT: line 1"]
 
 
 def test_incognito_keeps_no_record_of_it(monkeypatch):

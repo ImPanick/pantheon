@@ -216,10 +216,16 @@ def switch(api: DockerAPI, project: str, backend: str) -> Dict[str, Any]:
     have = {r["service"] for r in rows}
     wanted = SERVICES.get(backend, ())
     if wanted and not (set(wanted) & have):
-        overlay = "docker/workstation-both.yml" if backend == "vm" else "docker/workstation.yml"
+        if backend == "vm":
+            # The VM is in Pantheon's own docker-compose.yml (2026-10-31).
+            raise DockerControlError(
+                "This install has no vm workstation to switch to yet. Run `docker compose up -d "
+                "--build` where you start Pantheon to make it; then the switch can start it.")
+        # So is the container, since the same day (`docker/workstation.yml`
+        # is a shim): an install from before it has not been brought up again.
         raise DockerControlError(
-            f"This install has no {backend} workstation to switch to. Add {overlay} to COMPOSE_FILE "
-            "in .env and run `docker compose up -d --build`; then the switch can start it.")
+            f"This install has no {backend} workstation to switch to yet. Run `docker compose up "
+            "-d --build` where you start Pantheon to make it; then the switch can start it.")
     steps = []
     for other, group in SERVICES.items():
         if other == backend:

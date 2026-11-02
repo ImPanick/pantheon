@@ -359,6 +359,26 @@ Re-measured 2026-10-29, after the thirty-third wave: **36 filed, 43 closed**, op
 
 **Direction as of 2026-10-29, after the thirty-third wave: falling over the window; what is left is decisions, the redesign, what this sandbox cannot reach, and the shell reading's long tail.**
 
+Re-measured 2026-10-30, after the thirty-fourth wave: **37 filed, 41 closed**, open **40 → 36** — falling over the window, flat in this wave (three closed, three filed). The window moved on, so its start reads 40. The ship-line composition is unchanged — 0 of the last 40 `B` rows (`B1661`–`B1700`) block.
+
+**Direction as of 2026-10-30, after the thirty-fourth wave: falling over the window, flat at the tail; what is left is decisions, the redesign, what this sandbox cannot reach, and the shell reading's long tail.**
+
+Re-measured 2026-10-30, after the thirty-fifth wave: **39 filed, 42 closed**, open **39 → 36** — falling over the window, flat in this wave (three closed, three filed, one the owner's `B1703`). The window moved on, so its start reads 39. The ship-line composition is unchanged — 0 of the last 40 `B` rows (`B1664`–`B1703`) block.
+
+**Direction as of 2026-10-30, after the thirty-fifth wave: falling; what is left is decisions, the redesign, what this sandbox cannot reach, and the shell reading's long tail.**
+
+Re-measured 2026-10-30, after the thirty-sixth wave: **40 filed, 42 closed**, open **38 → 36** — flat in this wave (two closed, two filed, one closed in it). The window moved on, so its start reads 38. The ship-line composition is unchanged — 0 of the last 40 `B` rows (`B1666`–`B1705`) block.
+
+**Direction as of 2026-10-30, after the thirty-sixth wave: falling over the window; the system-and-function list is down to decisions, what this sandbox cannot reach, and small remainders, and the redesign is next.**
+
+Re-measured 2026-10-30, after the thirty-seventh wave: **34 filed, 36 closed**, open **42 → 40** — falling over the window, up by three in this wave (one closed, four filed for the revamp). The window moved on, so its start reads 42. The ship-line composition is unchanged — 0 of the last 40 `B` rows (`B1671`–`B1710`) block.
+
+**Direction as of 2026-10-30, after the thirty-seventh wave: the system-and-function list is done but for decisions, what this sandbox cannot reach and small remainders; the UI/UX revamp is next.**
+
+Re-measured 2026-10-31, after the forty-fifth wave: **25 filed, 23 closed**, open **36 → 38** — rising, by two over the window. The waves since the thirty-seventh were the UI/UX revamp, the fresh-install sign-in fix and the owner's ask that every partly wired system work in full; most filed and closed their own rows in the same wave, and the forty-fifth filed and closed one (`B1715`, the shipped core skills). The ship-line composition is unchanged — 0 of the last 40 `B` rows (`B1676`–`B1715`) block.
+
+**Direction as of 2026-10-31, after the forty-fifth wave: the open count is rising.**
+
 ### A second number, which is the one that moves
 
 Of the last 40 `B` rows filed — `B360` through `B455`, four waves of sweeps plus
@@ -859,6 +879,7 @@ weakest one in this document: it means nobody adjudicated them individually.
 | `B1488` | tracked | security | an install-wide switch for the eight Tools entries `B1191` gave a person's switch. Not a gate: each can already be refused to any person, admins excepted, with routes, agent tools and background work held (`src/tool_privileges.py`); an everyone switch is an admin's convenience over setting it per person, and nothing reaches a person it should not while it is missing |
 | `B1568` | tracked | security | the Knowledge index list is admin-only while its add, remove and reload are the operator's (`B683`'s split). Not a gate: it errs closed — an operator is refused a read, nobody is shown a file they should not see — and the instance's admin holds both halves |
 | `B1605` | tracked | security | **the third amendment of the post-external gate** (`D-2026-10-29-01` §1, built and closed 2026-10-29). In a hired agent's run whose person holds `can_auto_approve`, an action whose every effect the hire's table allows runs after outside content without a card; the rung's own clean-chat answer still stands, so a stricter rung still asks. What it gives up: a page, mail or tool result the agent reads can steer it, unseen, within what the hire allows — no effect excepted, `destructive` included if a hirer loosened it to allow — and because an admin holds `can_auto_approve` by construction (`B1342`), every admin's hires lift. What it keeps: *ask* asks, *never* is refused, a self-escalation asks every time, memory, skills and scheduled-task writes keep the gate, an unrecognised action is never lifted; anyone without the privilege, every chat, task and summoned agent, and Auto are untouched; every step run this way is recorded and the hire form says so before the hire. Not a gate for the same reason `B1338` is not: it is the owner's ruling with its cost in front of them, opt-in by privilege, and visible where it applies |
+| `B1729` | tracked | security | the rule reads *privilege* in "an unprivileged user": the Chatterbox container runs as a system user of its own (uid 10040), which narrows what it can do. Not a gate: nothing is opened. It is opt-in (`COMPOSE_PROFILES=chatterbox` beside the NVIDIA overlay), publishes no port, answers only on the compose network, and Pantheon sends it the text of a reply to say and nothing of the person's. Built and tested against a stand-in for the model; the image has not been built on a GPU (filed and claimed 2026-11-01) |
 | `P24-27` | tracked | supply | the owner's audit of the shipped agents' runbooks, worked a slice per wave (104 of 173 at the bar). The supply reading is its note that Web Performance ran `npx --yes lighthouse` — fixed in that agent's file in the same slice; the row is content work a stranger can use the product without, and no agent below the bar is unsafe, only thin |
 | `B01` | tracked | supply | `chromadb/chroma:latest` and an untagged `ntfy` in the three compose files — folded into `B445`, which states the same two images with the consequence measured. Restored as a row by `B831` (its marker had been glued onto `B54`'s line since 2026-10-03). Not a gate: a breaking upstream release stops a `--build` from starting cleanly, which the operator sees at once, and nothing a stranger relies on is exposed while it waits |
 

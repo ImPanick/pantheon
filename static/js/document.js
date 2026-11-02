@@ -428,6 +428,11 @@ import { PDF_FONT_COVERAGE } from './pdfFontCoverage.js';   // `B1687`
     html += `<button class="doc-tab-new" id="doc-tab-new-btn" title="New document"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>`;
     html += '</div>';
     html += '<button class="doc-tab-arrow doc-tab-arrow-right" id="doc-tab-right" title="Scroll right">&#x203A;</button>';
+    // Every other document is one press away: the Library, on its Documents
+    // tab. The tabs only ever hold this chat's documents, so without this an
+    // open editor had no road to the rest (the owner, 2026-10-31). Outside the
+    // scrolling strip, so a row of tabs never pushes it out of sight.
+    html += `<button class="doc-tab-new doc-tab-library" id="doc-tab-library-btn" title="All documents (Library)" aria-label="All documents"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg></button>`;
     tabBar.innerHTML = html;
 
     // Wire scroll arrows
@@ -528,6 +533,9 @@ import { PDF_FONT_COVERAGE } from './pdfFontCoverage.js';   // `B1687`
 
     // Wire drag-to-reorder
     initTabDragReorder(tabBar);
+
+    const libBtn = document.getElementById('doc-tab-library-btn');
+    if (libBtn) libBtn.addEventListener('click', () => openLibrary({ tab: 'documents' }));
 
     // Wire new doc button
     const newBtn = document.getElementById('doc-tab-new-btn');

@@ -101,6 +101,13 @@ globalThis.fetch = async (url, opts = {}) => {
 };
 export const settle = () => new Promise((r) => setTimeout(r, 30));
 
+// `B1725`, `B1733`: every drawing of the panel for a person who may use the
+// workstation reads their Computer Use switch and starting point. Reads, and
+// the same two each time, so `read().calls` is what the panel *did* — what
+// these cases assert — and `read().renderReads` is those reads.
+const RENDER_READS = new Set(['/api/workstation/computer-use', '/api/workstation/starting-point']);
+const isRenderRead = (c) => c.method === 'GET' && RENDER_READS.has(c.url);
+
 /** What a person reads off the panel. */
 export function read() {
   const t = (id) => (byId(id) ? byId(id).textContent : null);
@@ -131,7 +138,8 @@ export function read() {
     backendEffect: t('ws-backend-effect'),
     networkEffect: t('ws-network-effect'),
     sudoWhy: t('ws-sudo-why'),
-    calls,
+    calls: calls.filter((c) => !isRenderRead(c)),
+    renderReads: calls.filter(isRenderRead),
     invalidated: globalThis.__invalidated || 0,
     confirms: globalThis.__confirms || [],
   };

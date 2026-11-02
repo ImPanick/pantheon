@@ -98,6 +98,6 @@ def test_nothing_to_mount_or_nothing_safe_mounts_nothing(tmp_path, monkeypatch, 
 def test_the_vm_overlays_give_the_host_the_projects_folder():
     import yaml
     root = Path(__file__).resolve().parents[1]
-    for name, service in (("workstation-vm.yml", "workstation"), ("workstation-both.yml", "workstation-vm")):
-        svc = yaml.safe_load((root / "docker" / name).read_text())["services"][service]
-        assert "${APP_DATA_DIR:-./data}/projects:/projects:z" in svc["volumes"], name
+    # The VM host is the stack's own `workstation-vm` (2026-10-31).
+    svc = yaml.safe_load((root / "docker-compose.yml").read_text())["services"]["workstation-vm"]
+    assert "${APP_DATA_DIR:-./data}/projects:/projects:z" in svc["volumes"]

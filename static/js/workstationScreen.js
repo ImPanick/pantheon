@@ -2,14 +2,28 @@
 //
 // `P20-05`. A window onto the workstation: watch it, take it over, hand it back.
 //
-// The person's own workstation screen in a tool window, a few frames a second,
-// drawn from the same screenshots the agent sees (`D-2026-09-30-03`: a
-// screenshot stream, not VNC — Pantheon serves no websocket). *Take over* gives
-// the person the mouse and keyboard: from then on the agent's `computer` calls
-// are refused with the daemon's sentence (`busy`), and clicks, keys and the
-// wheel on the picture go to the workstation. *Hand back* returns them.
-// *Reset to clean* is the Settings panel's own reset, behind its own
-// confirmation (`workstation.js`, `confirmAndResetMine`).
+// The person's own workstation screen in a tool window. *Take over* gives the
+// person the mouse and keyboard: from then on the agent's `computer` calls are
+// refused with the daemon's sentence (`busy`), and the person's clicks, keys
+// and wheel go to the workstation. *Hand back* returns them. *Reset to clean*
+// is the Settings panel's own reset, behind its own confirmation
+// (`workstation.js`, `confirmAndResetMine`).
+//
+// **Live, where it can be** (`D-2026-10-31-01`, which replaced
+// `D-2026-09-30-03`'s screenshot stream). The window asks
+// `GET /api/workstation/desktop` whether this screen streams; where it does,
+// the stage holds a frame of KasmVNC's web client — Pantheon's own copy, from
+// Pantheon's origin (`src/desktop_client.py`) — which draws the display as it
+// moves and, while the person holds the screen, sends their mouse and keyboard
+// straight to it. Who may drive is still decided by *Take over* and *Hand
+// back*, at the workstation, which changes the stream's rights as they are
+// pressed; the frame only shows what it is allowed. The clipboard crosses
+// through this window (`_onMessage`): what the workstation copies is put on the
+// person's clipboard, and *Paste* sends theirs to the workstation. While the
+// window is minimized or the page hidden the frame is taken down, so nothing
+// streams that nobody sees. Anywhere there is no stream — no KasmVNC in the
+// workstation, no client in this install, a refusal — the window shows the
+// screenshots the agent sees, a few a second, as below, and says why.
 //
 // **Every rule is the server's.** Whose screen it is, whether this person may
 // see it, whether the workstation is on and answering, and every bound on an
@@ -18,7 +32,7 @@
 // their words, as plain status text, and the window keeps asking slowly so it
 // comes back on its own when the workstation does.
 //
-// **Only while someone is looking.** Frames are asked for one at a time, never
+// **Only while someone is looking.** Pictures are asked for one at a time, never
 // overlapping, at most every `FRAME_MS`, and only while the window is open, not
 // minimized, and the page is visible. A frame the person already has is not
 // sent again (`304` on the digest). Who holds the screen is read every
@@ -40,8 +54,11 @@
 // `createElement`, so no server string is ever parsed as HTML.
 
 import * as Modals from './modalManager.js?v=20261009census';
+import uiModule from './ui.js';
 import { makeWindowDraggable } from './windowDrag.js';
-import { confirmAndResetMine } from './workstation.js';
+import {
+  changeStartingPoint, confirmAndResetMine, readComputerUse, setComputerUse,
+} from './workstation.js';
 
 export const MODAL_ID = 'workstation-screen-modal';
 
@@ -74,7 +91,20 @@ const HINT = {
   holding: 'Click the picture, then type: your keys go to the workstation.',
   typing: 'Your keys go to the workstation. Shift+Esc gives the keyboard back to this page.',
   other: "You are watching another person's screen. Only they can take it over or reset it.",
+  live: 'Click the desktop, then type: your keys go to the workstation. Click outside it to give the keyboard back to this page.',
 };
+
+// What the live desktop's client says of its stream (`connection_state`),
+// in words under the stage. Connected says nothing: the moving screen says it.
+const LIVE_NOTE = {
+  connecting: 'Connecting to the live desktop…',
+  reconnecting: 'The live desktop dropped; reconnecting…',
+  disconnecting: 'The live desktop is closing…',
+  disconnected: 'The live desktop is not connected; it tries again on its own.',
+};
+const CLIP_NOTE_MS = 6000;     // how long a clipboard note stays under the stage
+// The only page the stage frames: Pantheon's own copy of the client.
+const DESKTOP_CLIENT = '/api/workstation/desktop/client/';
 
 // ── pure parts (exported for the tests) ──────────────────────────────────────
 
@@ -160,7 +190,7 @@ export function wheelClicks(delta, deltaMode) {
 // ── state ────────────────────────────────────────────────────────────────────
 
 let _win = null;          // { modal, content, header, status, statusText, take, give, reset,
-                          //   stage, screen, img, empty, hint }
+                          //   paste, copy, stage, screen, img, empty, hint, note, whoLabel, who }
 let _digest = '';         // the frame on screen
 let _size = { w: 1280, h: 800 };   // the screen's own pixels, from the last frame
 let _holder = null;       // 'agent' | 'person' | null (not known yet)
@@ -180,6 +210,15 @@ let _clicks = null;       // { point, cx, cy, count, timer }
 // `B1424`. Whose screen this window shows: '' is the caller's own; a name is
 // another person's, which only an admin can pick, and only to watch.
 let _watching = '';
+// `D-2026-10-31-01`. The live desktop.
+let _live = '';           // the client page the server offered for this screen, or '' (pictures)
+let _frame = null;        // the stage's <iframe> while it is up
+let _liveState = '';      // the client's word for its stream (`LIVE_NOTE`)
+let _why = '';            // why this screen is pictures, when the server said
+let _desktopAsk = 0;      // the latest ask; an older answer is dropped
+let _clip = '';           // text the workstation copied that the page could not place itself
+let _clipNote = '';
+let _clipNoteTimer = null;
 
 function _hidden(node, on) {
   if (node) node.hidden = !!on;
@@ -258,22 +297,47 @@ function _render() {
   _hidden(_win.take, !up || _holder !== 'agent' || !!_watching);
   _hidden(_win.give, !holding);
   _hidden(_win.reset, !up || !!_watching);
+  // `B1725`, `B1733`: this person's own switch and starting point — never
+  // on a screen they only watch.
+  _hidden(_win.save, !up || !!_watching);
+  const cu = _computerUse;
+  _hidden(_win.cu, !!_watching || !cu || (!cu.allowed && !cu.on));
+  if (cu) {
+    _win.cu.setAttribute('aria-pressed', cu.on ? 'true' : 'false');
+    _win.cu.textContent = cu.on ? 'Computer Use: on' : 'Computer Use: off';
+    _win.cu.title = cu.on
+      ? 'The agent clicks, types and runs commands here without asking. Click to make it ask again.'
+      : 'Let the agent act in this workstation without asking, after a warning.';
+  }
   // A picture is shown only while it is the screen as it is: when the
   // workstation stops answering, the last frame goes with it rather than
   // standing under a sentence that says it is down.
   _hidden(_win.stage, !up && _state !== 'checking');
-  _win.screen.classList.toggle('wsv-holding', holding);
+  // Live, the client draws the workstation's own pointer and takes the keys
+  // itself; the picture's crosshair and focus are for pictures only.
+  _win.screen.classList.toggle('wsv-holding', holding && !_live);
+  _win.screen.classList.toggle('wsv-is-live', !!_live);
+  _win.screen.tabIndex = _live ? -1 : 0;
   _win.stage.classList.toggle('wsv-held', holding);
   _win.screen.setAttribute('role', holding ? 'application' : 'img');
   _win.screen.setAttribute('aria-label', holding
     ? 'The workstation screen. You have the mouse and keyboard.'
     : 'The workstation screen.');
+  _hidden(_win.paste, !(holding && _frame && _canReadClipboard()));
+  _hidden(_win.copy, !_clip || !!_watching);
   let hint = '';
   if (up && _holder === 'agent') hint = HINT.watching;
   if (up && _watching) hint = `${HINT.other} (${_watching})`;
-  if (holding) hint = (document.activeElement === _win.screen) ? HINT.typing : HINT.holding;
+  if (holding && _live) hint = HINT.live;
+  else if (holding) hint = (document.activeElement === _win.screen) ? HINT.typing : HINT.holding;
   _win.hint.textContent = hint;
   _hidden(_win.hint, !hint);
+  let note = '';
+  if (up || _state === 'checking') {
+    note = _clipNote || (_live ? (LIVE_NOTE[_liveState] || '') : _why);
+  }
+  if (_win.note.textContent !== note) _win.note.textContent = note;
+  _hidden(_win.note, !note);
 }
 
 function _setUp() {
@@ -285,6 +349,8 @@ function _setUp() {
     _error = false;
     _holderAt = 0;
     _say(_holderSentence);
+    // The workstation may stream now where it did not (rebuilt, restarted).
+    if (!_live) _askDesktop();
   }
   _render();
 }
@@ -299,7 +365,7 @@ function _setRefused(state, sentence) {
 }
 
 function _showFrame(frame) {
-  if (!_win || !frame || typeof frame.data_b64 !== 'string') return;
+  if (!_win || _live || !frame || typeof frame.data_b64 !== 'string') return;
   if (frame.mime !== 'image/jpeg' && frame.mime !== 'image/png') return;
   _win.img.src = `data:${frame.mime};base64,${frame.data_b64}`;
   _digest = typeof frame.digest === 'string' ? frame.digest : '';
@@ -349,7 +415,9 @@ async function _readHolder() {
 
 async function _tick() {
   _timer = null;
-  if (_inFlight || !_shouldPoll()) return;
+  if (!_shouldPoll()) { _dropFrame(); return; }
+  if (_inFlight) return;
+  if (_live) { await _tickLive(); return; }
   _inFlight = true;
   const started = Date.now();
   let wait = TIMING.FRAME_MS;
@@ -378,6 +446,219 @@ async function _tick() {
   }
   if (_soon) { _soon = false; wait = Math.min(wait, TIMING.AFTER_INPUT_MS); }
   if (_shouldPoll()) _schedule(wait - (Date.now() - started));
+}
+
+/** Live, the stream is the client's own: the loop reads who holds the screen
+ *  every `HOLDER_MS`, takes the frame down while the workstation refuses (the
+ *  client would only knock again and again) and puts it back when it answers. */
+async function _tickLive() {
+  _inFlight = true;
+  const started = Date.now();
+  let wait = TIMING.HOLDER_MS;
+  try {
+    if (await _readHolder()) {
+      if (_state !== 'up') _setUp();
+      _mountFrame();
+    } else {
+      _dropFrame();
+      wait = TIMING.RETRY_MS;
+    }
+    _render();
+  } catch (e) {
+    _dropFrame();
+    _setRefused('down', `Pantheon could not reach the workstation: ${String((e && e.message) || e)}`);
+    wait = TIMING.RETRY_MS;
+  } finally {
+    _inFlight = false;
+  }
+  if (_soon) { _soon = false; wait = Math.min(wait, TIMING.AFTER_INPUT_MS); }
+  if (_shouldPoll()) _schedule(wait - (Date.now() - started));
+}
+
+// ── the live desktop (`D-2026-10-31-01`) ─────────────────────────────────────
+
+function _origin() {
+  return (typeof location !== 'undefined' && location && location.origin) || '';
+}
+
+function _canReadClipboard() {
+  return typeof navigator !== 'undefined' && !!navigator && !!navigator.clipboard
+    && typeof navigator.clipboard.readText === 'function';
+}
+
+/**
+ * Text onto the person's clipboard without a press, or false. Only the
+ * asynchronous clipboard, and only where the page is a secure context: the
+ * one helper's first path (`uiModule.copyText`, `B59`) selects a field of its
+ * own, which would take the keyboard away from the live desktop the person is
+ * typing into. Where this says no, the text waits behind *Copy*, and that
+ * press goes through `copyText`, inside the gesture, over plain http too.
+ */
+async function _placeQuietly(text) {
+  try {
+    if (typeof isSecureContext === 'undefined' || !isSecureContext) return false;
+    if (typeof navigator === 'undefined' || !navigator || !navigator.clipboard
+        || typeof navigator.clipboard.writeText !== 'function') return false;
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+/** A line about the clipboard under the stage, for a few seconds. */
+function _noteClip(text) {
+  _clipNote = String(text || '');
+  if (_clipNoteTimer) clearTimeout(_clipNoteTimer);
+  _clipNoteTimer = setTimeout(() => { _clipNoteTimer = null; _clipNote = ''; _render(); },
+    CLIP_NOTE_MS);
+}
+
+/**
+ * Whether this screen streams, asked of the server; its answer picks the live
+ * desktop or pictures. Anything but a clear yes — a refusal, an older
+ * workstation, an install without the client, a failure — is pictures, with
+ * the server's reason under the stage when it gave one.
+ */
+async function _askDesktop() {
+  const win = _win;
+  if (!win) return;
+  const ask = ++_desktopAsk;
+  let answer = null;
+  try {
+    const res = await fetch(`/api/workstation/desktop${_whose()}`,
+      { credentials: 'same-origin', cache: 'no-store' });
+    if (res.ok) answer = await res.json();
+  } catch (_) {
+    answer = null;
+  }
+  if (ask !== _desktopAsk || _win !== win) return;   // closed, or asked again since
+  const client = answer && answer.kind === 'kasmvnc' && typeof answer.client === 'string'
+    && answer.client.startsWith(DESKTOP_CLIENT) ? answer.client : '';
+  if (client) {
+    _goLive(client, answer);
+  } else {
+    _why = (answer && typeof answer.why === 'string') ? answer.why : '';
+    _goPictures();
+  }
+}
+
+function _goLive(client, answer) {
+  _why = '';
+  _digest = '';
+  if (_live !== client) { _dropFrame(); _live = client; }
+  _applyHolder(answer);
+  if (_state !== 'up') _setUp();
+  _mountFrame();
+  _render();
+  // From here the loop only reads who holds the screen.
+  if (!_inFlight && _shouldPoll()) _schedule(TIMING.HOLDER_MS);
+}
+
+function _goPictures() {
+  const was = !!_live;
+  _dropFrame();
+  _live = '';
+  if (was && _win) {
+    _hidden(_win.img, true);
+    _hidden(_win.empty, false);
+  }
+  _render();
+  _kick(0);
+}
+
+/** The client's page in the stage — only while somebody can see it. */
+function _mountFrame() {
+  if (!_win || !_live || _frame || !_shouldPoll()) return;
+  const frame = document.createElement('iframe');
+  frame.className = 'wsv-live';
+  frame.title = _watching ? `The workstation desktop of ${_watching}` : 'The workstation desktop';
+  frame.setAttribute('referrerpolicy', 'no-referrer');
+  frame.src = _live;
+  _frame = frame;
+  _liveState = 'connecting';
+  _hidden(_win.img, true);
+  _hidden(_win.empty, true);
+  _win.screen.appendChild(frame);
+}
+
+/** The frame taken down: its page is gone, and with it the stream. */
+function _dropFrame() {
+  if (!_frame) return;
+  const frame = _frame;
+  _frame = null;
+  _liveState = '';
+  if (frame.parentNode) frame.parentNode.removeChild(frame);
+}
+
+/**
+ * What the client says to this window. Only the stage's own frame is heard,
+ * and only from this origin (the client posts to any parent, `"*"`): its
+ * stream's state, and text the workstation copied.
+ */
+function _onMessage(ev) {
+  if (!_frame || !ev || ev.source !== _frame.contentWindow) return;
+  if (ev.origin !== _origin()) return;
+  const data = ev.data;
+  if (!data || typeof data !== 'object' || typeof data.action !== 'string') return;
+  if (data.action === 'connection_state' && typeof data.value === 'string') {
+    _liveState = data.value;
+    _render();
+  } else if (data.action === 'clipboardrx' && typeof data.value === 'string') {
+    _fromDesktop(data.value);
+  }
+}
+
+/** The workstation copied `text`: onto the person's clipboard, or, where the
+ *  browser will not have it without a press, behind *Copy*. Never from a
+ *  screen being watched — what another person copies is theirs. */
+async function _fromDesktop(text) {
+  if (_watching || !text) return;
+  if (await _placeQuietly(text)) {
+    _clip = '';
+    _noteClip('Copied from the workstation to your clipboard.');
+  } else {
+    _clip = text;
+    _noteClip('The workstation copied text. Press Copy to put it on your clipboard.');
+  }
+  _render();
+}
+
+/** *Copy*: what the workstation copied, onto the person's clipboard — the
+ *  one helper, inside the press (`B59`). */
+export async function copyFromDesktop() {
+  if (!_clip) return false;
+  const text = _clip;
+  const ok = await uiModule.copyText(text);
+  if (ok && _clip === text) _clip = '';
+  _noteClip(ok ? 'Copied to your clipboard.'
+    : 'This browser would not let the page use your clipboard.');
+  _render();
+  return ok;
+}
+
+/** *Paste*: the person's clipboard, onto the workstation's — then they paste
+ *  there as they would anywhere. Only while they hold the screen. */
+export async function pasteToDesktop() {
+  if (!_frame || !_holding() || !_canReadClipboard()) return false;
+  let text = '';
+  try {
+    text = await navigator.clipboard.readText();
+  } catch (_) {
+    _noteClip('This browser would not let the page read your clipboard.');
+    _render();
+    return false;
+  }
+  if (!text || !_frame || !_holding()) return false;
+  try {
+    _frame.contentWindow.postMessage({ action: 'clipboardsnd', value: text }, _origin());
+  } catch (_) {
+    return false;
+  }
+  _noteClip('Your clipboard is on the workstation now: paste there as usual.');
+  try { _frame.focus(); } catch (_) {}
+  _render();
+  return true;
 }
 
 // ── the person's input ───────────────────────────────────────────────────────
@@ -437,12 +718,18 @@ function _whose(params = []) {
   return q.length ? `?${q.join('&')}` : '';
 }
 
+/** The person drives the picture: they hold the screen, and it is pictures
+ *  (live, the client takes the mouse and keys itself). */
+function _drivesPicture() {
+  return _holding() && !_live;
+}
+
 function _pointAt(ev) {
   return mapPoint(ev.clientX, ev.clientY, _win.img.getBoundingClientRect(), _size.w, _size.h);
 }
 
 function _onPointerDown(ev) {
-  if (!_holding()) return;
+  if (!_drivesPicture()) return;
   if (ev.button === 1) { ev.preventDefault(); return; }   // no page autoscroll
   if (ev.button !== 0) return;
   const point = _pointAt(ev);
@@ -454,7 +741,7 @@ function _onPointerDown(ev) {
 }
 
 function _onPointerUp(ev) {
-  if (!_holding() || ev.button !== 0 || !_press) return;
+  if (!_drivesPicture() || ev.button !== 0 || !_press) return;
   const press = _press;
   _press = null;
   const moved = Math.hypot(ev.clientX - press.cx, ev.clientY - press.cy) > DRAG_PX;
@@ -478,7 +765,7 @@ function _onPointerUp(ev) {
 }
 
 function _onContextMenu(ev) {
-  if (!_holding()) return;
+  if (!_drivesPicture()) return;
   ev.preventDefault();
   const point = _pointAt(ev);
   if (!point) return;
@@ -488,14 +775,14 @@ function _onContextMenu(ev) {
 }
 
 function _onAuxClick(ev) {
-  if (!_holding() || ev.button !== 1) return;
+  if (!_drivesPicture() || ev.button !== 1) return;
   ev.preventDefault();
   const point = _pointAt(ev);
   if (point) _send({ action: 'middle_click', x: point.x, y: point.y });
 }
 
 function _onWheel(ev) {
-  if (!_holding()) return;
+  if (!_drivesPicture()) return;
   const point = _pointAt(ev);
   if (!point) return;
   ev.preventDefault();
@@ -506,7 +793,7 @@ function _onWheel(ev) {
 }
 
 function _onKeyDown(ev) {
-  if (!_holding()) return;
+  if (!_drivesPicture()) return;
   if (ev.key === 'Escape' && ev.shiftKey && !ev.ctrlKey && !ev.altKey && !ev.metaKey) {
     // The way out, said under the picture while it has the focus.
     ev.preventDefault();
@@ -531,7 +818,7 @@ function _onKeyDown(ev) {
 }
 
 function _onPaste(ev) {
-  if (!_holding()) return;
+  if (!_drivesPicture()) return;
   const text = ev.clipboardData && typeof ev.clipboardData.getData === 'function'
     ? ev.clipboardData.getData('text/plain') : '';
   ev.preventDefault();
@@ -562,7 +849,7 @@ async function _control(holder) {
 /** *Take over*: the person has the mouse and keyboard; the agent waits. */
 export async function takeOver() {
   const ok = await _control('person');
-  if (ok && _win) { try { _win.screen.focus(); } catch (_) {} _render(); }
+  if (ok && _win) { try { (_frame || _win.screen).focus(); } catch (_) {} _render(); }
   return ok;
 }
 
@@ -575,6 +862,39 @@ export async function handBack() {
   const ok = await _control('agent');
   if (ok && _win) { try { _win.take.focus(); } catch (_) {} }
   return ok;
+}
+
+// ── `B1725` / `B1733`: Computer Use and the starting point ───────────────────
+
+let _computerUse = null;   // `GET /api/workstation/computer-use`'s answer, or null
+
+async function _askComputerUse() {
+  _computerUse = await readComputerUse();
+  _render();
+}
+
+/** Computer Use on (behind its warning, the panel's own) or off. */
+export async function toggleComputerUse() {
+  const answer = await setComputerUse(!(_computerUse && _computerUse.on), _computerUse);
+  if (!answer) return false;
+  if (!answer.ok) { _sayError(answer.message); return false; }
+  _computerUse = answer.state;
+  _say(_computerUse.on
+    ? 'Computer Use is on: the agent acts here without asking.'
+    : 'Computer Use is off: steps here ask again.');
+  _render();
+  return true;
+}
+
+/** *Save starting point*, behind the panel's own confirmation. */
+export async function saveStartingPoint() {
+  _say('Saving your starting point…');
+  const answer = await changeStartingPoint('save');
+  if (!answer) { _kick(0); return false; }
+  if (answer.ok) _say('Saved. Reset now puts your workstation back to this.');
+  else _sayError(answer.message);
+  _kick(0);
+  return !!answer.ok;
 }
 
 /** *Reset to clean*, behind the Settings panel's own confirmation. */
@@ -639,12 +959,32 @@ function _build() {
   const actions = _el('div', 'wsv-actions');
   const take = _button('wsv-take', 'Take over', () => { takeOver(); });
   const give = _button('wsv-give', 'Hand back', () => { handBack(); });
-  const reset = _button('wsv-reset', 'Reset to clean…', () => { resetToClean(); });
+  const reset = _button('wsv-reset', 'Reset…', () => { resetToClean(); });
+  reset.title = 'Put the workstation back to its starting point';
+  // `B1733`: what Reset puts back, saved from here.
+  const save = _button('wsv-save', 'Save starting point…', () => { saveStartingPoint(); });
+  save.title = 'Make the workstation as it is now what Reset puts back';
+  // `B1725`: Computer Use, as a switch.
+  const cu = _button('wsv-cu', 'Computer Use: off', () => { toggleComputerUse(); });
+  cu.setAttribute('aria-pressed', 'false');
+  // The live desktop's clipboard, both ways (`_onMessage`).
+  const paste = _button('wsv-paste', 'Paste', () => { pasteToDesktop(); });
+  paste.title = 'Send your clipboard to the workstation';
+  const copy = _button('wsv-copy', 'Copy', () => { copyFromDesktop(); });
+  copy.title = 'Put what the workstation copied on your clipboard';
   take.hidden = true;
   give.hidden = true;
   reset.hidden = true;
+  save.hidden = true;
+  cu.hidden = true;
+  paste.hidden = true;
+  copy.hidden = true;
+  actions.appendChild(cu);
+  actions.appendChild(copy);
+  actions.appendChild(paste);
   actions.appendChild(take);
   actions.appendChild(give);
+  actions.appendChild(save);
   actions.appendChild(reset);
   // `B1424`. For an admin: whose screen. Hidden until the user list answers,
   // which it does only for an admin (`GET /api/auth/users`).
@@ -682,11 +1022,17 @@ function _build() {
   hint.id = 'wsv-hint';
   hint.hidden = true;
   screen.setAttribute('aria-describedby', 'wsv-hint');
+  // The live desktop's state, the clipboard's last word, or why this screen
+  // is pictures.
+  const note = _el('p', 'wsv-note');
+  note.hidden = true;
+  note.setAttribute('aria-live', 'polite');
 
   content.appendChild(header);
   content.appendChild(bar);
   content.appendChild(stage);
   content.appendChild(hint);
+  content.appendChild(note);
   modal.appendChild(content);
 
   screen.addEventListener('pointerdown', _onPointerDown);
@@ -700,8 +1046,8 @@ function _build() {
   screen.addEventListener('blur', () => { _flushTyped(); _render(); });
   img.addEventListener('dragstart', (e) => e.preventDefault());
 
-  return { modal, content, header, status, statusText, take, give, reset, stage, screen, img,
-    empty, hint, whoLabel, who };
+  return { modal, content, header, status, statusText, take, give, reset, save, cu, paste, copy,
+    stage, screen, img, empty, hint, note, whoLabel, who };
 }
 
 /** Everything the window started, stopped; the screen handed back if this
@@ -719,6 +1065,13 @@ function _teardown() {
   if (_holder === 'person') {
     _post('/api/workstation/control', { holder: 'agent' }, { keepalive: true }).catch(() => {});
   }
+  _dropFrame();
+  _live = '';
+  _why = '';
+  _clip = '';
+  _clipNote = '';
+  if (_clipNoteTimer) { clearTimeout(_clipNoteTimer); _clipNoteTimer = null; }
+  _desktopAsk += 1;     // an answer still on its way finds nothing to change
   const modal = _win.modal;
   _win = null;
   _digest = '';
@@ -733,6 +1086,8 @@ function _teardown() {
 
 function _resume() {
   _holderAt = 0;      // whoever held it may have changed while nobody looked
+  if (_live) _mountFrame();
+  else _askDesktop(); // it may stream now (a rebuilt workstation)
   _kick(0);
 }
 
@@ -760,7 +1115,9 @@ export function openWorkstationScreen({ focus = false } = {}) {
     });
     _render();
     _kick(0);
+    _askDesktop();
     _offerPeople();
+    _askComputerUse();   // `B1725`
   }
   if (focus && _win) {
     // Opened from the keyboard somewhere `a11y.js` does not watch (a tool
@@ -808,6 +1165,12 @@ export function watchPerson(name) {
   _holder = null;
   _holderAt = 0;
   _error = false;
+  // Another screen is another stream, asked for afresh — and nothing copied
+  // from the one before stays behind *Copy*.
+  _dropFrame();
+  _live = '';
+  _why = '';
+  _clip = '';
   if (_win) {
     if (_win.who.value !== next) _win.who.value = next;
     _hidden(_win.img, true);
@@ -816,6 +1179,7 @@ export function watchPerson(name) {
     _render();
   }
   _kick(0);
+  _askDesktop();
 }
 
 export function closeWorkstationScreen() {
@@ -845,7 +1209,12 @@ function _onDoor(ev) {
 
 if (typeof document !== 'undefined' && document && typeof document.addEventListener === 'function') {
   document.addEventListener('click', _onDoor, true);
-  document.addEventListener('visibilitychange', () => { if (_shouldPoll()) _resume(); });
+  // Hidden, the live desktop is taken down at once rather than at the loop's
+  // next turn; visible again, it comes back.
+  document.addEventListener('visibilitychange', () => {
+    if (_shouldPoll()) _resume();
+    else _dropFrame();
+  });
 }
 if (typeof window !== 'undefined' && window && typeof window.addEventListener === 'function') {
   // A person who leaves the page while holding the screen cannot hand it
@@ -855,6 +1224,7 @@ if (typeof window !== 'undefined' && window && typeof window.addEventListener ==
       _post('/api/workstation/control', { holder: 'agent' }, { keepalive: true }).catch(() => {});
     }
   });
+  window.addEventListener('message', _onMessage);
 }
 
 export const _test = {
@@ -864,7 +1234,11 @@ export const _test = {
   offerPeople: _offerPeople,
   win: () => _win,
   settled: () => _sendChain,
+  onMessage: _onMessage,
+  live: () => ({ client: _live, frame: _frame, state: _liveState, why: _why, clip: _clip,
+    note: _win && !_win.note.hidden ? _win.note.textContent : null }),
 };
 
 export default { openWorkstationScreen, closeWorkstationScreen, takeOver, handBack, resetToClean,
-  watchPerson };
+  toggleComputerUse, saveStartingPoint,   // `B1725`, `B1733`
+  watchPerson, pasteToDesktop, copyFromDesktop };

@@ -76,7 +76,10 @@ def pantheon(tmp_path_factory):
     data = tmp_path_factory.mktemp("b1029") / "data"
     data.mkdir()
     server = capture.Server(sys.executable, data, capture._free_port(),
-                            extra_env={"PANTHEON_DISABLE_MCP": "1"})
+                            extra_env={"PANTHEON_DISABLE_MCP": "1",
+                                      # `B1715`: these windows are measured without the
+                                      # shipped skills a design-document turn would be handed.
+                                      "PANTHEON_FIRST_PARTY_SKILLS": ""})
     try:
         server.start(timeout=150)
     except RuntimeError as e:
@@ -88,7 +91,12 @@ def pantheon(tmp_path_factory):
         server.stop()
 
 
-WINDOWS = {"vllm": WINDOW, "small": 9_000, "accepts": None}
+# `small` was 9,000 until `B1737`: the prompt this turn sends measured 8,943
+# tokens at `2503ea97`, so the window left 57 tokens and the next feature to
+# add a schema (`use_skill`) made it a window the prompt does not fit at all,
+# not one with less room than the preset. 11,000 keeps the case (room below
+# Brainstorm's 4,096, above nothing) with room for the prompt to grow.
+WINDOWS = {"vllm": WINDOW, "small": 11_000, "accepts": None}
 
 
 @pytest.fixture(scope="module")

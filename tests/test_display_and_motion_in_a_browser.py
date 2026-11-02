@@ -655,7 +655,7 @@ _CHAT_ROWS = """
   <div class="agent-thread-header"><span class="agent-thread-tool" id="denied-tool">shell</span></div></div>
 <div class="agent-thread-node waiting" id="waiting"><span class="agent-thread-dot" id="waiting-dot"></span>
   <div class="agent-thread-header" id="waiting-head"><span class="agent-thread-tool">shell</span></div></div>
-<div class="chat-input-bar" id="bar"></div>
+<div class="chat-input-bar"><div class="chat-input-box" id="bar"></div></div>
 <div class="preset-temp-hints" id="hints"><span>Precise</span><span>Balanced</span><span>Creative</span></div>
 """
 _CHAT_STEPS = r"""
@@ -679,6 +679,10 @@ def test_a_denied_or_waiting_tool_row_looks_its_own_and_plan_mode_leaves_the_com
     assert r["denied"][1] == "line-through" and r["denied"][0] != r["done"][0], r
     assert r["done"][1] == "none", r
     assert r["waiting"] == ["dashed", "italic"], r
+    # `B1740`: the composer's ground is `.chat-input-box` (the bar around it is
+    # a bare wrapper), so that is what plan mode must leave alone — and it must
+    # have a border to leave alone, or an element with no rules at all passes.
+    assert r["plain"]["style"] != "none", r
     assert r["plan"] == r["plain"], r          # CHAT-U-15: the chip and the pill say Plan; the composer does not
     assert r["hintsTop"] == "4px", r           # CHAT-U-21: the words clear the thumb
 

@@ -106,7 +106,7 @@ def test_the_model_is_told_the_list_is_partial_and_how_to_see_the_rest():
     skills do not exist. That is worse than a long list."""
     block = render_skill_index_block(_index(300), budget_chars=4000)
     assert INDEX_TRUNCATION_NOTE.split("{")[0].strip() in block
-    assert "manage_skills" in block
+    assert "use_skill" in block  # `B1737`: the read-only tool that lists and searches
     shown = block.count("\n- `")
     assert f"{300 - shown} more" in block, block[-400:]
 

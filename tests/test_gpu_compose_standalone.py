@@ -54,12 +54,18 @@ def _deep_merge(base: dict, overlay: dict) -> dict:
 
 
 def _merge_overlay_into_base(base: dict, overlay: dict) -> dict:
-    """Build the expected standalone config: base + overlay on pantheon only."""
+    """Build the expected standalone config: base + overlay on pantheon, plus
+    any service the overlay adds of its own (`B1729`: the NVIDIA overlay's
+    `chatterbox`), as compose adds one."""
     expected = copy.deepcopy(base)
     overlay_service = overlay["services"][SERVICE]
     expected["services"][SERVICE] = _deep_merge(
         expected["services"][SERVICE], overlay_service
     )
+    for name, definition in overlay["services"].items():
+        if name != SERVICE:
+            assert name not in base["services"], f"the overlay changes {name}, which this test does not merge"
+            expected["services"][name] = copy.deepcopy(definition)
     return expected
 
 
@@ -93,14 +99,17 @@ def test_amd_standalone_equals_base_plus_overlay(base):
 # --- Non-pantheon services and volumes untouched ---------------------------
 
 
-@pytest.mark.parametrize("standalone_path", [NVIDIA_STANDALONE, AMD_STANDALONE])
-def test_non_pantheon_services_match_base(base, standalone_path):
+@pytest.mark.parametrize("standalone_path, overlay_path", [(NVIDIA_STANDALONE, NVIDIA_OVERLAY),
+                                                            (AMD_STANDALONE, AMD_OVERLAY)])
+def test_non_pantheon_services_match_base(base, standalone_path, overlay_path):
     standalone = _load(standalone_path)
     for name, definition in base["services"].items():
         if name == SERVICE:
             continue
         assert standalone["services"][name] == definition
-    assert set(standalone["services"]) == set(base["services"])
+    # `B1729`: and the services the overlay adds, as it adds them.
+    added = set(_load(overlay_path)["services"]) - {SERVICE}
+    assert set(standalone["services"]) == set(base["services"]) | added
 
 
 @pytest.mark.parametrize("standalone_path", [NVIDIA_STANDALONE, AMD_STANDALONE])
@@ -117,13 +126,15 @@ def test_nvidia_pantheon_adds_only_overlay(base):
     svc = standalone["services"][SERVICE]
     base_svc = base["services"][SERVICE]
 
-    # Base environment preserved, plus exactly the two NVIDIA variables.
+    # Base environment preserved, plus exactly the two NVIDIA variables and
+    # where the GPU's voice answers (`B1729`).
     assert "NVIDIA_VISIBLE_DEVICES=all" in svc["environment"]
     assert "NVIDIA_DRIVER_CAPABILITIES=compute,utility" in svc["environment"]
     added_env = set(svc["environment"]) - set(base_svc["environment"])
     assert added_env == {
         "NVIDIA_VISIBLE_DEVICES=all",
         "NVIDIA_DRIVER_CAPABILITIES=compute,utility",
+        "PANTHEON_CHATTERBOX_URL=${PANTHEON_CHATTERBOX_URL:-http://chatterbox:8004}",
     }
 
     # deploy block is new and matches the overlay's GPU reservation exactly.
@@ -210,3 +221,24 @@ def test_amd_plus_host_docker_preserves_gpu_and_docker_groups(base):
     ]
     assert "/var/run/docker.sock:/var/run/docker.sock" in service["volumes"]
     assert "PANTHEON_ENABLE_HOST_DOCKER=true" in service["environment"]
+
+
+# --- `B1729`: the GPU's voice is opt-in and reaches nothing ----------------
+
+
+def test_chatterbox_starts_only_when_asked_for_and_only_on_the_gpu():
+    """Chatterbox comes with the NVIDIA overlay behind a profile: a plain
+    `docker compose up -d` neither builds nor starts it (its image could not
+    be built where it was written, so it waits to be asked for), and it holds
+    one GPU, never a published port."""
+    overlay = _load(NVIDIA_OVERLAY)
+    standalone = _load(NVIDIA_STANDALONE)
+    for svc in (overlay["services"]["chatterbox"], standalone["services"]["chatterbox"]):
+        assert svc["profiles"] == ["chatterbox"]
+        assert svc["build"] == {"context": "./voice/chatterbox"}
+        assert "ports" not in svc
+        assert svc["deploy"]["resources"]["reservations"]["devices"] == [
+            {"driver": "nvidia", "count": 1, "capabilities": ["gpu"]}]
+    assert "chatterbox" not in _load(BASE)["services"]
+    assert "chatterbox" not in _load(AMD_STANDALONE)["services"]
+    assert (ROOT / "voice" / "chatterbox" / "Dockerfile").is_file()

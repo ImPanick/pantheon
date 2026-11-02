@@ -90,6 +90,7 @@ def _real_sqlite(monkeypatch):
     db = _TS()
     try:
         db.query(DbSession).delete()
+        db.query(cdb.AutoApproveAcceptance).delete()   # `B1703`
         db.commit()
     finally:
         db.close()
@@ -106,6 +107,16 @@ def _chat(chat_id: str | None = None, owner: str = "joseph", **columns) -> str:
     finally:
         db.close()
     return sid
+
+
+def _auto(sid: str, owner: str = "joseph") -> dict:
+    """Turn a chat to Auto the one way there is (`B1703` / `D-2026-10-30-01`):
+    its person accepts the warning as it reads now, and that is recorded.
+    These cases set the column with `set_mode_for(sid, "auto")` until
+    `B1703`, which made a chat with no acceptance on record read as Manual
+    approve — `tests/test_auto_approve_is_a_risk_the_person_accepts.py`
+    drives that half."""
+    return am.turn_auto_on(sid, owner, am.chat_warning()["id"])
 
 
 class _Auth:
@@ -376,7 +387,7 @@ def test_a_turn_with_no_chat_to_read_is_manual_approve(missing):
 def test_auto_in_one_chat_does_not_reach_another():
     """The adversary is the other chat. Set A to Auto; B is still Manual."""
     a, b = _chat(), _chat()
-    assert am.set_mode_for(a, am.ApprovalMode.AUTO) is True
+    assert _auto(a)["by"] == "joseph"
 
     assert am.mode_for(a, "joseph", auth_manager=_allow()) is am.ApprovalMode.AUTO
     assert am.mode_for(b, "joseph", auth_manager=_allow()) is am.ApprovalMode.MANUAL
@@ -385,7 +396,7 @@ def test_auto_in_one_chat_does_not_reach_another():
 def test_auto_does_not_survive_into_a_new_chat():
     """A chat created after one was switched to Auto starts Manual."""
     old = _chat()
-    am.set_mode_for(old, "auto")
+    _auto(old)
 
     new = _chat()
     assert am.mode_for(new, "joseph", auth_manager=_allow()) is am.ApprovalMode.MANUAL
@@ -413,7 +424,7 @@ def test_the_mode_lives_on_the_chat_row_beside_the_chat_s_other_mode():
     assert hasattr(DbSession, "mode"), "the precedent is still there"
 
     sid = _chat()
-    am.set_mode_for(sid, "auto")
+    am.set_mode_for(sid, "auto")   # the store's door: the column, not the acceptance
     db = _TS()
     try:
         row = db.query(DbSession).filter(DbSession.id == sid).first()
@@ -442,7 +453,7 @@ def test_an_unreadable_mode_fails_closed(stored):
 def test_a_database_that_cannot_answer_is_manual_approve(monkeypatch):
     """A read that raises must not resolve to Auto."""
     sid = _chat()
-    am.set_mode_for(sid, "auto")
+    _auto(sid)
 
     def _boom(_session_id):
         raise RuntimeError("database is locked")
@@ -513,12 +524,14 @@ async def test_a_person_with_the_privilege_can_turn_auto_on_through_the_route(
     monkeypatch.setattr(routes.module, "request_is_a_person", lambda request: True)
     monkeypatch.setattr(routes.module, "is_delegated_credential", lambda request: False)
     sid = _chat()
-    request = _Request({"mode": "auto"},
+    # `B1703`: with the acceptance of the warning `GET` serves — refused
+    # without it (`tests/test_auto_approve_is_a_risk_the_person_accepts.py`).
+    request = _Request({"mode": "auto", "accept_warning": am.chat_warning()["id"]},
                        app_state=types.SimpleNamespace(auth_manager=_allow()))
 
     answer = await routes.post(request=request, sid=sid)
 
-    assert answer == {"mode": "auto", "auto": True}
+    assert (answer["mode"], answer["auto"], answer["accepted"]["by"]) == ("auto", True, "joseph")
     assert cdb.get_session_approval_mode(sid) == "auto"
     assert routes.get(request=request, sid=sid)["auto"] is True
 
@@ -602,7 +615,7 @@ def test_a_bearer_tokens_run_does_not_pick_up_a_chats_auto(monkeypatch):
     and a token driving the same chat still gets Manual approve — the rule
     `observe_messages` already applies to a chat-session grant."""
     sid = _chat()
-    am.set_mode_for(sid, "auto")
+    _auto(sid)
 
     assert am.mode_for(sid, "joseph", auth_manager=_allow()) is am.ApprovalMode.AUTO
     assert am.mode_for(
@@ -614,7 +627,7 @@ def test_revoking_the_privilege_puts_a_chat_already_on_auto_back_to_manual():
     """Asked per run, not once at the click: an admin taking the privilege away
     must not leave a chat running steps on an authority nobody holds."""
     sid = _chat()
-    am.set_mode_for(sid, "auto")
+    _auto(sid)
 
     assert am.mode_for(sid, "joseph", auth_manager=_allow()) is am.ApprovalMode.AUTO
     assert am.mode_for(sid, "joseph", auth_manager=_deny()) is am.ApprovalMode.MANUAL
@@ -624,7 +637,7 @@ def test_a_pre_setup_install_grants_nobody_auto():
     """Auth is on and nobody is an admin yet (`D-2026-10-07-02` §2). The same
     answer every other server-execution gate gives."""
     sid = _chat()
-    am.set_mode_for(sid, "auto")
+    _auto(sid)
     unconfigured = _Auth(dict(ADMIN_PRIVILEGES), configured=False)
 
     assert am.may_use_auto("joseph", auth_manager=unconfigured) is False
@@ -647,7 +660,7 @@ async def test_turning_auto_off_is_never_refused_by_the_privilege(routes, monkey
     monkeypatch.setattr(routes.module, "request_is_a_person", lambda request: True)
     monkeypatch.setattr(routes.module, "is_delegated_credential", lambda request: False)
     sid = _chat()
-    am.set_mode_for(sid, "auto")
+    _auto(sid)
     request = _Request({"mode": "manual"},
                        app_state=types.SimpleNamespace(auth_manager=_deny()))
 
@@ -655,6 +668,8 @@ async def test_turning_auto_off_is_never_refused_by_the_privilege(routes, monkey
 
     assert answer == {"mode": "manual", "auto": False}
     assert cdb.get_session_approval_mode(sid) == "manual"
+    assert am.acceptance_for(am.SUBJECT_CHAT, sid, "joseph") is None, (
+        "`B1703`: and what was accepted is withdrawn")
 
 
 @pytest.mark.asyncio
@@ -670,7 +685,7 @@ async def test_a_mode_this_product_does_not_have_is_refused_rather_than_coerced(
     monkeypatch.setattr(routes.module, "request_is_a_person", lambda request: True)
     monkeypatch.setattr(routes.module, "is_delegated_credential", lambda request: False)
     sid = _chat()
-    am.set_mode_for(sid, "auto")
+    _auto(sid)
     request = _Request(sent, app_state=types.SimpleNamespace(auth_manager=_allow()))
 
     with pytest.raises(HTTPException) as refused:

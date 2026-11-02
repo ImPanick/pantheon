@@ -211,7 +211,7 @@ function _applySectionCollapse(container) {
     h.classList.toggle('collapsed', _collapsedSections.has(h.dataset.section));
     h.setAttribute('aria-expanded', String(!_collapsedSections.has(h.dataset.section)));
   });
-  container.querySelectorAll('.doclib-card[data-skill-section]').forEach(c => {
+  container.querySelectorAll('.doclib-card[data-skill-section], .skill-library-shelf[data-skill-section]').forEach(c => {
     c.classList.toggle('skill-card-section-hidden', _collapsedSections.has(c.dataset.skillSection));
   });
 }
@@ -1251,8 +1251,10 @@ function renderSkillsList(m) {
   // search or filter narrows it, so "SKILLS 8" said the number a second time
   // (measured on `a936b5c`). The built-in head keeps its count — nothing else
   // counts the built-in capabilities, and that section ships folded.
+  // The library shelf below is always drawn, so this head is too: without it
+  // the person's skills would run straight into the shelf's head.
   if (cards.length) {
-    if (showBuiltin) container.appendChild(_mkSectionHeader('user', 'Skills', null));
+    container.appendChild(_mkSectionHeader('user', 'Skills', null));
     cards.forEach(c => { c.dataset.skillSection = 'user'; container.appendChild(c); });
   }
 
@@ -1262,6 +1264,10 @@ function renderSkillsList(m) {
     container.appendChild(_mkSectionHeader('builtin', 'Built-in capabilities', builtinCards.length));
     builtinCards.forEach(c => { c.dataset.skillSection = 'builtin'; container.appendChild(c); });
   }
+
+  // The vendored library as a shelf to add from — folded, and fetched only
+  // when it is opened, so the 286 rows cost the Brain nothing until asked for.
+  container.appendChild(_buildLibraryShelf(container, _mkSectionHeader));
 
   _applySectionCollapse(container);
 
@@ -1305,6 +1311,139 @@ function renderSkillsList(m) {
 // One of the two collapsible section headers in the Skills list ("Skills" /
 // "Built-in capabilities"). Lifted out of `renderSkillsList` by `P10-06` so a
 // test can build one and press it.
+// ---- The skill library shelf ----
+//
+// `GET /api/skills/library` lists the vendored skills (`library/ecc/`), which
+// the model is not shown by default (`D-2026-10-26-01` §8) and which the card
+// list leaves out (its cost is the Brain's 3 s bound). Before this they could
+// not be found from the UI at all, which read as every skill being gone. Add
+// copies one into the person's own skills, published, so their model is
+// offered it and they can edit it.
+let _libraryRows = null;
+let _libraryLoad = null;
+
+async function _fetchLibrary() {
+  if (_libraryRows) return _libraryRows;
+  if (_libraryLoad) return _libraryLoad;
+  _libraryLoad = (async () => {
+    try {
+      const res = await fetch(`${API}/api/skills/library`, { credentials: 'same-origin' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      _libraryRows = Array.isArray(data.skills) ? data.skills : [];
+      return _libraryRows;
+    } finally {
+      _libraryLoad = null;
+    }
+  })();
+  return _libraryLoad;
+}
+
+function _libraryRowEl(row) {
+  const el = document.createElement('div');
+  el.className = 'skill-library-row';
+  el.innerHTML =
+    `<div class="skill-library-text"><span class="skill-library-name">${esc(row.name)}</span>` +
+    `<span class="skill-library-desc">${esc(row.description || '')}</span></div>`;
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'memory-toolbar-btn skill-library-add';
+  const _mark = () => { btn.textContent = 'Added'; btn.disabled = true; };
+  if (row.added) _mark(); else btn.textContent = 'Add';
+  btn.setAttribute('aria-label', `Add ${row.name} to my skills`);
+  btn.addEventListener('click', async (e) => {
+    e.stopPropagation();
+    btn.disabled = true;
+    try {
+      const res = await fetch(`${API}/api/skills/library/${encodeURIComponent(row.name)}/add`,
+        { method: 'POST', credentials: 'same-origin' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      row.added = true;
+      _mark();
+      uiModule.showToast(`${row.name} added to your skills`);
+      loadSkills();
+    } catch (err) {
+      btn.disabled = false;
+      uiModule.showToast(`Could not add ${row.name}: ${err.message}`);
+    }
+  });
+  el.appendChild(btn);
+  return el;
+}
+
+function _buildLibraryShelf(container, mkHeader) {
+  const frag = document.createDocumentFragment();
+  if (!_collapsedSections.has('library') && !_collapsedSections.has('library-seen')) {
+    // Folded the first time it is seen; the person's choice persists after.
+    _collapsedSections.add('library');
+    _collapsedSections.add('library-seen');
+    _saveCollapsedSections();
+  }
+  const hdr = mkHeader('library', 'Skill library', _libraryRows ? _libraryRows.length : null);
+  hdr.title = 'Skills that ship with Pantheon, off until you add them';
+  frag.appendChild(hdr);
+
+  const shelf = document.createElement('div');
+  shelf.className = 'skill-library-shelf';
+  shelf.dataset.skillSection = 'library';
+  const lede = document.createElement('p');
+  lede.className = 'skill-library-lede';
+  lede.textContent = 'Ready-made skills you can switch on. Adding one copies it into your skills, '
+    + 'where the model can use it and you can edit it.';
+  const filter = document.createElement('input');
+  filter.type = 'search';
+  filter.className = 'memory-search-input skill-library-filter';
+  filter.placeholder = 'Filter the library…';
+  filter.setAttribute('aria-label', 'Filter the skill library');
+  const rowsEl = document.createElement('div');
+  rowsEl.className = 'skill-library-rows';
+  rowsEl.setAttribute('role', 'list');
+  shelf.appendChild(lede);
+  shelf.appendChild(filter);
+  shelf.appendChild(rowsEl);
+  const draw = () => {
+    const q = (filter.value || '').trim().toLowerCase();
+    const rows = (_libraryRows || []).filter(r => !q
+      || r.name.toLowerCase().includes(q)
+      || String(r.description || '').toLowerCase().includes(q)
+      || (r.tags || []).some(t => String(t).toLowerCase().includes(q)));
+    rowsEl.innerHTML = '';
+    if (!rows.length) {
+      uiModule.renderEmptyState(rowsEl, q
+        ? { kind: 'filtered', title: 'Nothing in the library matches',
+            message: 'Try another word, or clear the filter.',
+            action: { label: 'Clear', onClick: () => { filter.value = ''; draw(); } } }
+        : { kind: 'empty', title: 'The library is empty',
+            message: 'This install ships no vendored skills.' });
+      return;
+    }
+    // Drawn in one pass; 286 light rows, no per-row requests.
+    const f = document.createDocumentFragment();
+    rows.forEach(r => f.appendChild(_libraryRowEl(r)));
+    rowsEl.appendChild(f);
+  };
+  filter.addEventListener('input', draw);
+  const open = async () => {
+    if (_libraryRows) { draw(); return; }
+    rowsEl.textContent = 'Loading…';
+    try {
+      await _fetchLibrary();
+      const count = hdr.querySelector('.skills-section-count');
+      if (count) count.textContent = String(_libraryRows.length);
+      else hdr.insertAdjacentHTML('beforeend', `<span class="skills-section-count">${_libraryRows.length}</span>`);
+      draw();
+    } catch (err) {
+      rowsEl.innerHTML = '';
+      uiModule.renderEmptyState(rowsEl, { kind: 'error', title: 'Could not load the library',
+        reason: err.message, onRetry: open });
+    }
+  };
+  hdr.addEventListener('click', () => { if (!_collapsedSections.has('library')) open(); });
+  if (!_collapsedSections.has('library')) open();
+  frag.appendChild(shelf);
+  return frag;
+}
+
 function _skillsSectionHeader(container, sectionId, title, count) {
   const collapsed = _collapsedSections.has(sectionId);
   // `P10-06`. A `<button>`, not a `<div>`: the Built-in section ships

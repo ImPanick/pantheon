@@ -64,6 +64,13 @@ const STALE_MS = 24 * 60 * 60 * 1000;  // a plan older than a day is not "active
  */
 const STEP_LINE_RE = /^\s*(?:[-*]|\d+\.)\s+\[([ xX-])\]\s+(.*)$/;
 
+/**
+ * The `Goal:` line plan mode opens a plan with (`PLAN_MODE_DIRECTIVE`): the
+ * person's vision in their own words. It is kept with the steps it sits above,
+ * so the plan pinned on every execution turn still says what it is for.
+ */
+const GOAL_LINE_RE = /^\s*(?:[-*]\s+)?\**\s*(?:goal|vision)\s*\**\s*:/i;
+
 const PLAN_HEADING_RE = /^\s{0,3}#{1,4}\s+.*plan/i;
 const PLAN_LABEL_RE = /^\s*(?:plan|proposed plan)\s*:?$/i;
 
@@ -199,12 +206,25 @@ export function extractPlanText(text) {
     .trim();
   const lines = stripped.split('\n');
   const firstChecklist = lines.findIndex((line) => isPlanStepLine(line));
-  if (firstChecklist >= 0) return lines.slice(firstChecklist).join('\n').trim();
+  if (firstChecklist >= 0) {
+    const goal = lines.slice(0, firstChecklist).findIndex((line) => GOAL_LINE_RE.test(line));
+    return lines.slice(goal >= 0 ? goal : firstChecklist).join('\n').trim();
+  }
   const firstPlanHeading = lines.findIndex(
     (line) => PLAN_HEADING_RE.test(line) || PLAN_LABEL_RE.test(line),
   );
   if (firstPlanHeading >= 0) return lines.slice(firstPlanHeading).join('\n').trim();
   return stripped;
+}
+
+/**
+ * Whether a model turn proposed a plan at all: at least one checklist step.
+ * A plan-mode turn that ended on questions instead (`ask_user`'s brief, or a
+ * question in prose) has none, and offering to execute it would run the
+ * question as if it were the plan.
+ */
+export function hasPlanSteps(text) {
+  return parsePlan(extractPlanText(text)).length > 0;
 }
 
 /** The stored plan markdown, or '' — the exact contract `chat.js` relied on. */
@@ -907,6 +927,7 @@ const planWindow = {
   parsePlan,
   stepIdFor,
   extractPlanText,
+  hasPlanSteps,
   getPlan,
   setPlan,
   clearPlan,

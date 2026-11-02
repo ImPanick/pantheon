@@ -27,7 +27,44 @@ and the obligation was not new.
 ## `pantheon/` — Pantheon's own skills
 
 Procedures written for this product's own tools, **published and switched on**
-(`B1419`). Today they are four, for the workstation:
+(`B1419`, `B1715`, `B1737`). Eleven are the core set (`category: core`), each offered
+when the tools it drives are allowed:
+
+| Skill | Teaches | Needs |
+| --- | --- | --- |
+| `clarify-the-goal` | look first, ask only what changes the work, restate the vision, then plan | `ask_user` |
+| `web-research` | several searches, read the sources, cross-check, cite | `web_search`, `web_fetch` |
+| `browse-a-website` | the real browser by numbered elements, vault sign-in, stop before anything irreversible | `agent_browser` |
+| `debug-a-failure` | reproduce, read the whole error, one hypothesis, smallest fix, rerun | `bash`, `read_file` |
+| `change-code-safely` | read the project's conventions, small edits, its own tests | `read_file`, `edit_file`, `bash` |
+| `review-code-changes` | read the change and its callers, findings with file and line | `bash`, `read_file` |
+| `analyze-data` | inspect before computing, sanity-check, show the derivation | `python` |
+| `write-a-document` | reader and purpose, outline, draft in the editor, revise by edits | `create_document` |
+| `summarize-for-a-reader` | answer first, exact numbers, attribution, what was left out | — |
+| `remember-what-matters` | search before adding, edit not duplicate, no secrets | `manage_memory` |
+| `schedule-recurring-work` | a task rather than a one-off, UTC times, dry run | `manage_tasks` |
+
+Six are for QA and the frontend (`B1737`, the owner's ask that the agent can
+call on the QA skills when it enters QA, and the design skills when it works on
+the web):
+
+| Skill | Category | Teaches | Needs |
+| --- | --- | --- | --- |
+| `qa-a-change` | `qa` | acceptance list first, the project's own checks, the real thing, the edges, a result with evidence per line | `bash`, `read_file` |
+| `write-automated-tests` | `qa` | the project's framework, behaviour not internals, every test seen failing then passing | `bash`, `read_file`, `edit_file` |
+| `test-a-web-page` | `qa` | smoke, every journey, bad input, two widths, keyboard, a screenshot per failure | `agent_browser` |
+| `design-a-web-interface` | `frontend` | reader and one job, hierarchy, tokens, every state, phone width, calm motion | — |
+| `build-a-web-page` | `frontend` | semantic HTML, CSS from tokens, mobile first, every state, opened before done | `read_file`, `edit_file` |
+| `check-accessibility` | `frontend` | contrast, keyboard, focus, names, structure, errors, motion and zoom against WCAG AA | — |
+
+**The model picks them itself** (`B1737`). Every skill above is listed in the
+turn's *Available skills* catalogue — name, category, description — when the
+tools it drives are allowed, and the catalogue tells the model to open the one
+for the work it is starting with `use_skill` (`name` opens one, `query`
+searches by the kind of work, the bundled library included). A skill whose
+words match the request is still pasted in whole as before.
+
+Four are for the workstation:
 
 | Skill | Teaches |
 | --- | --- |
@@ -39,7 +76,9 @@ Procedures written for this product's own tools, **published and switched on**
 Each declares `requires_toolsets` for the tools it drives, so a turn gets them
 exactly when the loop offers those tools — for these, when the workstation is
 on and this person may use it. Every command in them was run on a desktop built
-from the workstation's own `.jwmrc` and Firefox policy before it was written.
+from the workstation's own `.jwmrc` and Firefox policy before it was written,
+and the desktop's again on the XFCE desktop built from its skeleton's
+`.config` when that replaced JWM (`D-2026-10-31-02`).
 
 This layer is read **before** `ecc/`, so a first-party skill shadows a vendored
 one of the same name, and a person's own skill of the same name shadows both,
@@ -58,6 +97,14 @@ From [ECC](https://github.com/affaan-m/ECC) by Affaan Mustafa, **MIT licensed**
 They needed no conversion. ECC writes `name:` / `description:` YAML frontmatter
 in `SKILL.md`; that is exactly what `services/memory/skill_format.py` reads, so
 all 286 parse with the reader Pantheon already had.
+
+The model is not shown them by default (`D-2026-10-26-01` §8), and the
+Workshop's card list leaves them out. They are searchable, as the ruling keeps
+them: `use_skill` with a `query` reaches them, marked *library*, and opening one
+says it was written for another agent harness (`B1737`). They are on the **Skill library** shelf
+at the bottom of the Skills window instead (`GET /api/skills/library`): **Add**
+copies one into the person's own skills, published, and from then on their
+model is offered it and they can edit it (`B1715`).
 
 **What is vendored:** the `SKILL.md` text. 286 files, about 2.5 MB.
 

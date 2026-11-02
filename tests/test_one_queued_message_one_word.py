@@ -44,6 +44,15 @@ subject picks the column, and a row declares its own subject rather than the
 renderer guessing from a source id. Nothing persisted is touched: the six
 status *values* are stored in rows and pinned by `FORBIDDEN.md`, and this file
 asserts they are still exactly those six.
+
+**2026-11-01 (`B1741`).** The docked panel no longer prints a word on a
+*queued* message at all. The owner: the message "should be unaccompanied —
+aside from an edit and a Steer now button, and a number assigned to position
+in queue". So an editable queued row is `N.` + the text + *Edit* + *Steer now*,
+with no dot and no label, and the panel's cell for `queued` is `None` here.
+That is not a third vocabulary: a surface that says nothing cannot disagree,
+and the two surfaces that still speak (Activity, bubble) still say *Waiting*.
+The five other panel words are untouched and still pinned below.
 """
 from __future__ import annotations
 
@@ -89,7 +98,12 @@ def test_one_queued_item_reads_the_same_on_every_surface():
     assert out["count"] == 1, (
         f"the same message is called {out['distinct']} on different surfaces"
     )
-    assert words["panel"] == words["activity"] == words["bubble"] == "Waiting"
+    # `B1741`: the docked row is the message, its number, Edit and Steer now —
+    # it prints no status word on a queued message, so it cannot disagree.
+    assert words["panel"] is None, (
+        f"the docked row grew a status word again: {words['panel']!r}"
+    )
+    assert words["activity"] == words["bubble"] == "Waiting"
     # The restored bubble keeps its extra instruction and loses the second
     # vocabulary: the word in front of it is the same word.
     assert words["bubbleRestored"].startswith("Waiting")
@@ -115,10 +129,14 @@ def test_the_row_declares_its_own_subject():
 
 
 def test_the_panel_still_speaks_the_panels_words():
-    """The fix moved the vocabulary; it did not rewrite it."""
+    """The fix moved the vocabulary; it did not rewrite it.
+
+    `B1741` (2026-11-01) took the word off the *queued* row only — a waiting
+    message is its text, its number and its two buttons. The five words a
+    message earns once it has left the queue are the panel's own, unchanged."""
     v = run("vocabularies")
     assert [v[s]["panel"] for s in SIX] == [
-        "Waiting", "Sending", "Sent", "Failed", "Skipped", "Stopped",
+        None, "Sending", "Sent", "Failed", "Skipped", "Stopped",
     ]
 
 

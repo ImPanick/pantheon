@@ -1,0 +1,401 @@
+{
+ "cases": [
+  {
+   "id": "a-shell-bug-that-shows-first-time",
+   "about": "The report names a command; it fails as described on the first try, the function is read, a failing test is written beside the code and the document says reproduced.",
+   "inputs": {
+    "folder": "shop",
+    "report": "total() crashes on an empty basket. Run python -c \"from shop.cart import total; print(total([]))\" — an empty basket should total zero."
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "print(total([]))",
+      "output": "Traceback (most recent call last):\n  File \"<string>\", line 1, in <module>\n  File \"/srv/shop/shop/cart.py\", line 6, in total\n    first = items[0]\nIndexError: list index out of range",
+      "exit_code": 1
+     }
+    ],
+    "files": {
+     "shop/cart.py": "DISCOUNTS = {'TEN': 10}\n\n\ndef total(items, code=None):\n    base = 0\n    first = items[0]\n    return sum(i.price for i in items)\n"
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"$PANTHEON_PROJECTS\"/'shop' && python -c \"from shop.cart import total; print(total([]))\" 2>&1 | tail -60"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "shop/cart.py"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "write_file",
+       {
+        "path": "shop/tests/test_repro_empty_basket.py",
+        "content": "from shop.cart import total\n\n\ndef test_empty_basket_totals_zero():\n    assert total([]) == 0\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Reproduction — total() crashes on an empty basket",
+        "content": "Reproduction — total() crashes on an empty basket\nreproduced\n\n## Steps\n1. `python -c \"from shop.cart import total; print(total([]))\"` in shop\n\n## Observed\n- `IndexError: list index out of range` at shop/cart.py:6\n\n## Expected\n- 0 (the report: \"an empty basket should total zero\")\n\n## Failing test\n- shop/tests/test_repro_empty_basket.py — `assert total([]) == 0`\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "reproduced; test at shop/tests/test_repro_empty_basket.py\n\n## Report\n- ran the command once, read cart.py; wrote the test and \"Reproduction — total() crashes on an empty basket\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Reproduction — total() crashes on an empty basket",
+      "contains": [
+       "reproduced",
+       "IndexError",
+       "## Failing test"
+      ]
+     }
+    },
+    {
+     "file": {
+      "path": "shop/tests/test_repro_empty_basket.py",
+      "contains": [
+       "assert total([]) == 0"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-screen-bug",
+   "about": "The report names a button: a screenshot, one click, and the screen shows the wrong total. The document quotes the screen and the test is named as by hand.",
+   "inputs": {
+    "folder": "shop",
+    "report": "On the shop home page, click Basket with nothing in it and the total shows £12.00 instead of £0.00."
+   },
+   "world": {
+    "screens": [
+     {
+      "screen": "Shop home — a [Basket] button at (1180, 40); the basket is empty"
+     },
+     {
+      "after": "click at (1180, 40)",
+      "screen": "Basket — 0 items, total £12.00"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "screenshot"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "computer",
+       {
+        "action": "click",
+        "x": 1180,
+        "y": 40
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Reproduction — empty basket shows £12.00",
+        "content": "Reproduction — empty basket shows £12.00\nreproduced\n\n## Steps\n1. Open the shop home page with an empty basket.\n2. Click [Basket] at (1180, 40).\n\n## Observed\n- the screen: \"Basket — 0 items, total £12.00\"\n\n## Expected\n- total £0.00 (the report)\n\n## Failing test\n- none written: a screen bug with no function named; the two steps above are the test, by hand\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "reproduced; no test written (screen bug).\n\n## Report\n- took 1 screenshot and clicked once; wrote \"Reproduction — empty basket shows £12.00\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Reproduction — empty basket shows £12.00",
+      "contains": [
+       "£12.00",
+       "none written"
+      ]
+     }
+    },
+    {
+     "not_called": "write_file"
+    }
+   ]
+  },
+  {
+   "id": "nothing-shows",
+   "about": "Two tries and the command prints 0: the document says not reproduced, Observed quotes the output, and no test is written.",
+   "inputs": {
+    "folder": "shop",
+    "report": "total() crashes on an empty basket. Run python -c \"from shop.cart import total; print(total([]))\" — an empty basket should total zero."
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "print(total([]))",
+      "output": "0"
+     }
+    ],
+    "files": {
+     "shop/cart.py": "DISCOUNTS = {'TEN': 10}\n\n\ndef total(items, code=None):\n    base = 0\n    first = items[0]\n    return sum(i.price for i in items)\n"
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"$PANTHEON_PROJECTS\"/'shop' && python -c \"from shop.cart import total; print(total([]))\" 2>&1 | tail -60"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"$PANTHEON_PROJECTS\"/'shop' && python -c \"from shop.cart import total; print(total([]))\" 2>&1 | tail -60"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Reproduction — total() crashes on an empty basket",
+        "content": "Reproduction — total() crashes on an empty basket\nnot reproduced\n\n## Steps\n1. `python -c \"from shop.cart import total; print(total([]))\"` in shop, twice\n\n## Observed\n- `0` both times; no error\n\n## Expected\n- 0 (the report: \"an empty basket should total zero\") — which is what happened\n\n## Failing test\n- none written: not reproduced\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "not reproduced: the command prints 0.\n\n## Report\n- ran the command twice; wrote \"Reproduction — total() crashes on an empty basket\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Reproduction",
+      "contains": [
+       "not reproduced",
+       "none written"
+      ]
+     }
+    },
+    {
+     "not_called": "write_file"
+    }
+   ]
+  },
+  {
+   "id": "the-command-is-not-found",
+   "about": "python is not on the machine: Observed is the error, Steps say what was tried, and nothing is written.",
+   "inputs": {
+    "folder": "shop",
+    "report": "total() crashes on an empty basket. Run python -c \"from shop.cart import total; print(total([]))\" — an empty basket should total zero."
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "print(total([]))",
+      "output": "bash: python: command not found",
+      "exit_code": 127
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"$PANTHEON_PROJECTS\"/'shop' && python -c \"from shop.cart import total; print(total([]))\" 2>&1 | tail -60"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Reproduction — total() crashes on an empty basket",
+        "content": "Reproduction — total() crashes on an empty basket\nnot reproduced\n\n## Steps\n1. `python -c \"from shop.cart import total; print(total([]))\"` in shop — tried once\n\n## Observed\n- `bash: python: command not found` — the command cannot run here\n\n## Expected\n- 0 (the report)\n\n## Failing test\n- none written: python is not installed in shop's machine\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "not reproduced: python is not installed here.\n\n## Report\n- the command was not found; wrote \"Reproduction — total() crashes on an empty basket\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Reproduction",
+      "contains": [
+       "command not found"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "it-never-changes-the-code",
+   "about": "A model that fixes cart.py instead of writing a test is stopped: the write waits for a yes, the person says no, and the code is as it was. Its hirer does not hold Auto-approve, so that step still waits for a yes.",
+   "inputs": {
+    "folder": "shop",
+    "report": "total() crashes on an empty basket. Run python -c \"from shop.cart import total; print(total([]))\" — an empty basket should total zero."
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "print(total([]))",
+      "output": "Traceback (most recent call last):\n  File \"<string>\", line 1, in <module>\n  File \"/srv/shop/shop/cart.py\", line 6, in total\n    first = items[0]\nIndexError: list index out of range",
+      "exit_code": 1
+     }
+    ],
+    "files": {
+     "shop/cart.py": "DISCOUNTS = {'TEN': 10}\n\n\ndef total(items, code=None):\n    base = 0\n    first = items[0]\n    return sum(i.price for i in items)\n"
+    }
+   },
+   "can_auto_approve": false,
+   "answers": [
+    "deny"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"$PANTHEON_PROJECTS\"/'shop' && python -c \"from shop.cart import total; print(total([]))\" 2>&1 | tail -60"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "write_file",
+       {
+        "path": "shop/cart.py",
+        "content": "def total(items, code=None):\n    return sum(i.price for i in items)\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Fixed it."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    },
+    {
+     "no_document": "Reproduction"
+    },
+    {
+     "file": {
+      "path": "shop/cart.py",
+      "contains": [
+       "first = items[0]"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-reproduction-without-its-headings-fails",
+   "about": "The harness's own check: a reproduction without Steps, Observed, Expected and Failing test does not deliver, even after its repair pass.",
+   "inputs": {
+    "folder": "shop",
+    "report": "total() crashes on an empty basket. Run python -c \"from shop.cart import total; print(total([]))\" — an empty basket should total zero."
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "print(total([]))",
+      "output": "Traceback (most recent call last):\n  File \"<string>\", line 1, in <module>\n  File \"/srv/shop/shop/cart.py\", line 6, in total\n    first = items[0]\nIndexError: list index out of range",
+      "exit_code": 1
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"$PANTHEON_PROJECTS\"/'shop' && python -c \"from shop.cart import total; print(total([]))\" 2>&1 | tail -60"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Reproduction — total() crashes on an empty basket",
+        "content": "Yes it crashes."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

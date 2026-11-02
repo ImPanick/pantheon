@@ -27,6 +27,14 @@ from tests.helpers.esc_stub import ui_default_stub  # B874
 from test_a_reload_keeps_the_turns_notes import _saved_through_route  # noqa: E402
 from test_tool_effect_surfaces_js import _CARD_SHIM, _CARD_STUBS, _make_sandbox, _run  # noqa: E402
 
+
+@pytest.fixture(autouse=True)
+def _no_shipped_skills(monkeypatch):
+    """`B1715`. These turns are measured by their size; the shipped core skill
+    a turn about a failure or a build would be handed is held out."""
+    monkeypatch.setenv("PANTHEON_FIRST_PARTY_SKILLS", "")
+
+
 ROOT = Path(__file__).resolve().parents[1]
 CHAT_RENDERER = ROOT / "static" / "js" / "chatRenderer.js"
 

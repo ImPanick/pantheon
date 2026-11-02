@@ -304,7 +304,7 @@ def test_the_sixteen_accents_are_not_one_colour(theme_sandbox):
     )
 
 
-@pytest.mark.parametrize("page,name", [("index", "ocean"), ("index", "cute"), ("login", "ocean"), ("login", "terminal")])
+@pytest.mark.parametrize("page,name", [("index", "ocean"), ("index", "cute"), ("login", "ocean"), ("login", "forest")])
 def test_the_first_paint_scripts_set_the_accent_before_the_module_boots(page, name, paint_sandbox):
     stored = _palette(name)
     out = _paint(page, stored, paint_sandbox)

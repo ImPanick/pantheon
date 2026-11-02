@@ -1894,6 +1894,52 @@ class AgentRunReport(Base):
     )
 
 
+class AutoApproveAcceptance(Base):
+    """`B1703` / `D-2026-10-30-01`. One person accepting Auto-approve's risk.
+
+    The owner: *"Auto-Approve should be appropriately 'warned' and the user
+    accepting that risk by enabling it (or 'proceed to auto-approve') — then
+    that's on them."* So every way a step stops being asked about — a chat
+    set to Auto, a hire whose *allow* effects run after outside content — is
+    on only while a row here says who accepted which warning, when, and for
+    which chat or hire (`src/approval_mode.py` reads it; no row, the gate
+    stays). One table for both subjects, because it is one act.
+
+    **A record, not a switch.** Turning a gate back on stamps `withdrawn_at`
+    rather than deleting the row, so what a person accepted stays answerable
+    after they stopped; a later acceptance is a new row. `warning` is the
+    words they read and `warning_id` their hash (`approval_mode.warning_id`),
+    so an acceptance names its warning even after a release rewords it.
+
+    No foreign key: `subject_id` is a chat (`sessions.id`) or a hire
+    (`agent_hires.id`), and a record of what someone accepted outliving the
+    thing it was for is the point of keeping it. A new table, so
+    `init_db`'s `create_all` is its whole migration (`Law 14`, as for
+    `agent_hires`).
+    """
+    __tablename__ = "auto_approve_acceptances"
+
+    id          = Column(String, primary_key=True)
+    #: `chat`, `hire` or `workstation` (`src.approval_mode.SUBJECTS`; a
+    #: workstation's `subject_id` is its person, `B1725`).
+    subject     = Column(String, nullable=False)
+    subject_id  = Column(String, nullable=False)
+    #: The person, as signed in.
+    accepted_by = Column(String, nullable=False)
+    accepted_at = Column(DateTime, default=utcnow_naive, nullable=False)
+    warning_id  = Column(String, nullable=False)
+    warning     = Column(Text, nullable=False)
+    #: A hire's: the effects the warning named, as a JSON list — what runs
+    #: unasked after outside content on this acceptance. `[]` for a chat,
+    #: whose warning is about everything the chat can do.
+    effects     = Column(Text, nullable=False, default="[]")
+    withdrawn_at = Column(DateTime, nullable=True)
+
+    __table_args__ = (
+        Index('ix_auto_approve_acceptances_subject', 'subject', 'subject_id', 'accepted_at'),
+    )
+
+
 class Event(Base):
     """One thing that happened, with the time it happened at (`P14-01`).
 
@@ -4431,6 +4477,133 @@ def set_session_approval_mode(session_id: str, mode: str) -> bool:
         logger.warning(
             "Failed to persist approval_mode %r for session %s", mode, session_id)
         return False
+
+def _auto_approve_acceptance_dict(row) -> dict:
+    """`B1703`. One `AutoApproveAcceptance` as the routes and the gate read it."""
+    import json as _json
+    try:
+        effects = _json.loads(row.effects or "[]")
+    except (TypeError, ValueError):
+        effects = []
+    return {
+        "subject": row.subject, "subject_id": row.subject_id,
+        "by": row.accepted_by,
+        "at": row.accepted_at.isoformat() + "Z" if row.accepted_at else None,
+        "warning_id": row.warning_id, "warning": row.warning,
+        "effects": [e for e in effects if isinstance(e, str)] if isinstance(effects, list) else [],
+        "withdrawn_at": row.withdrawn_at.isoformat() + "Z" if row.withdrawn_at else None,
+    }
+
+def _withdraw_auto_approve(db, subject: str, subject_id: str) -> int:
+    rows = db.query(AutoApproveAcceptance).filter(
+        AutoApproveAcceptance.subject == subject,
+        AutoApproveAcceptance.subject_id == str(subject_id),
+        AutoApproveAcceptance.withdrawn_at.is_(None)).all()
+    now = utcnow_naive()
+    for row in rows:
+        row.withdrawn_at = now
+    return len(rows)
+
+def record_auto_approve_acceptance(subject: str, subject_id: str, accepted_by: str,
+                                   warning_id: str, warning: str, effects=(), *, db=None) -> dict:
+    """`B1703`. Record that `accepted_by` accepted `warning` for one chat or
+    hire, ending any acceptance of it still open (one current acceptance per
+    subject; the old one stays, withdrawn, as the record of what was).
+
+    Raises on a failed write — the caller refuses the act rather than turn a
+    gate off with nothing on record. `db`: the caller's session, so a hire and
+    its acceptance are one commit (`make_hire` writes nothing on a refusal);
+    without one, its own."""
+    import json as _json
+    import uuid as _uuid
+
+    def _write(session):
+        _withdraw_auto_approve(session, subject, subject_id)
+        row = AutoApproveAcceptance(
+            id=str(_uuid.uuid4()), subject=subject, subject_id=str(subject_id),
+            accepted_by=accepted_by, accepted_at=utcnow_naive(),
+            warning_id=warning_id, warning=warning,
+            effects=_json.dumps(sorted({str(e) for e in effects or ()})))
+        session.add(row)
+        session.flush()
+        return _auto_approve_acceptance_dict(row)
+
+    if db is not None:
+        return _write(db)
+    with get_db_session() as session:
+        return _write(session)
+
+def withdraw_auto_approve_acceptance(subject: str, subject_id: str, *, db=None) -> int:
+    """`B1703`. Turning a gate back on: stamp the open acceptance withdrawn.
+    Answers how many were open. Raises on a failed write, like the record."""
+    if db is not None:
+        return _withdraw_auto_approve(db, subject, subject_id)
+    with get_db_session() as session:
+        return _withdraw_auto_approve(session, subject, subject_id)
+
+def current_auto_approve_acceptance(subject: str, subject_id: str, *, db=None):
+    """`B1703`. The open acceptance for one chat or hire, or None.
+
+    Never raises: a table that cannot be read — a locked database, an install
+    whose `create_all` has not run — is None, and None is *no acceptance on
+    record*, which keeps the gate. The one direction a failure here can go is
+    "ask the person", as for `get_session_approval_mode`."""
+    if not subject_id:
+        return None
+
+    def _read(session):
+        row = session.query(AutoApproveAcceptance).filter(
+            AutoApproveAcceptance.subject == subject,
+            AutoApproveAcceptance.subject_id == str(subject_id),
+            AutoApproveAcceptance.withdrawn_at.is_(None),
+        ).order_by(AutoApproveAcceptance.accepted_at.desc()).first()
+        return _auto_approve_acceptance_dict(row) if row is not None else None
+
+    try:
+        if db is not None:
+            return _read(db)
+        with get_db_session() as session:
+            return _read(session)
+    except Exception:
+        logger.warning("Failed to read the Auto-approve acceptance for %s %s", subject, subject_id)
+        return None
+
+def open_auto_approve_acceptances(*, db=None) -> list:
+    """`B1705`. Every acceptance still open, across chats and hires, newest
+    first — what an admin reads to see who accepted Auto where.
+
+    Each is `_auto_approve_acceptance_dict` plus `name` (the chat's title or
+    the hire's name, `None` when the chat or hire is gone — the record
+    outlives it on purpose) and `owner` (whose chat or hire it is). Raises on
+    a failed read: the admin's list says it could not load rather than
+    showing nobody, which would read as *no one has Auto on*."""
+    def _read(session):
+        rows = session.query(AutoApproveAcceptance).filter(
+            AutoApproveAcceptance.withdrawn_at.is_(None),
+        ).order_by(AutoApproveAcceptance.accepted_at.desc()).all()
+        chat_ids = [r.subject_id for r in rows if r.subject == "chat"]
+        hire_ids = [r.subject_id for r in rows if r.subject == "hire"]
+        chats = {c.id: c for c in session.query(Session).filter(Session.id.in_(chat_ids))} if chat_ids else {}
+        hires = {h.id: h for h in session.query(AgentHire).filter(AgentHire.id.in_(hire_ids))} if hire_ids else {}
+        out = []
+        for row in rows:
+            item = _auto_approve_acceptance_dict(row)
+            if row.subject == "workstation":
+                # `B1725`. A person's own workstation, keyed by its person.
+                item["name"] = None
+                item["owner"] = row.accepted_by
+                out.append(item)
+                continue
+            thing = (chats if row.subject == "chat" else hires).get(row.subject_id)
+            item["name"] = getattr(thing, "name", None) if thing is not None else None
+            item["owner"] = getattr(thing, "owner", None) if thing is not None else None
+            out.append(item)
+        return out
+
+    if db is not None:
+        return _read(db)
+    with get_db_session() as session:
+        return _read(session)
 
 def get_session_by_id(session_id: str):
     """Get a session by ID"""

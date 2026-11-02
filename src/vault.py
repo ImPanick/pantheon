@@ -577,6 +577,75 @@ def scrub(text: str, values: List[str]) -> str:
     return out
 
 
+# ── a token for a git host (`B-vault-git`) ──────────────────────────────────
+#
+# The owner (2026-11-01): *"The agent can see the github token I put in the
+# vault but can't access/use it."* A token kept in the vault is used the way
+# a login is — by name, in a command's environment — and a token for a git
+# host is also the one `git` and `gh` reach that host with. Which host an item
+# is for: an address it carries, or — for a key kept with no address, which is
+# how a token is usually added — a forge its name or user name names.
+
+#: forge host → the words that name it, and the user name its tokens sign in
+#: with when the item carries none (any non-empty name works with a token on
+#: these, so the conventional one is used).
+FORGES = {
+    "github.com": (("github", "gh_token", "gh token"), "x-access-token"),
+    "gitlab.com": (("gitlab",), "oauth2"),
+    "codeberg.org": (("codeberg",), ""),
+    "bitbucket.org": (("bitbucket",), "x-token-auth"),
+}
+
+
+def git_host_of(kind: Any, label: Any, origins: List[str], username: Any = "") -> Optional[str]:
+    """The git host (`host[:port]`, as git names it) an item is a token for,
+    or None: a forge among its https addresses; a key's own https address; or
+    — for an item kept with no address — a forge its name or user name names."""
+    netlocs = [o.split("://", 1)[1] for o in (origins or []) if str(o).startswith("https://")]
+    for n in netlocs:
+        if n in FORGES:
+            return n
+    if origins:
+        return netlocs[0] if kind == "key" and netlocs else None
+    text = f"{label or ''} {username or ''}".lower()
+    for host, (words, _) in FORGES.items():
+        if any(w in text for w in words):
+            return host
+    return None
+
+
+def git_username(host: Optional[str], username: Any) -> str:
+    u = str(username or "").strip()
+    if u:
+        return u
+    return (FORGES.get(host or "", ((), ""))[1]) or "git"
+
+
+def for_git_host(db, owner: Optional[str], host: str, agent: Optional[str] = None):
+    """The vault item this agent may use for `host` (a git host, `host[:port]`),
+    or None. An item whose address is that host wins over one that only names it."""
+    h = str(host or "").strip().lower()
+    if not h:
+        return None
+    named = None
+    for row in _rows(db, account(owner)):
+        if row.kind not in ("key", "login") or not may_use(row, agent):
+            continue
+        origins = json.loads(row.addresses or "[]")
+        if f"https://{h}" in origins and git_host_of(row.kind, row.label, origins) == h:
+            return row
+        if named is None and not origins and git_host_of(row.kind, row.label, origins) == h:
+            named = row
+    return named
+
+
+def may_use_unasked(owner: Optional[str], session: Optional[str], row) -> bool:
+    """Whether a tool that has no card of its own may use `row` now: it is
+    set to *Agents may use it*, or to *once per chat* and was used in this one."""
+    use = row.use if row.use in USES else "ask"
+    return use == "allowed" or (use == "chat" and used_in_chat(owner, session, row.id))
+
+
 # ── the server's Bitwarden vault, by reference (`P27`) ──────────────────────
 
 BW_PREFIX = "bw:"

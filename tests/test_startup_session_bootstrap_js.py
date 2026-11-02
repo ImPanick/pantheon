@@ -111,12 +111,32 @@ _VERBATIM = {
     "backStack.mjs": _REPO / "static" / "js" / "backStack.js",
     # `B1194`. No imports of its own; the real table.
     "ui_visibility.mjs": _REPO / "static" / "js" / "ui_visibility.js",
-    # `D-2026-10-09-01` §2. No imports of its own, and every top-level
-    # reference to `window` is guarded, so the real module loads under node.
+    # `D-2026-10-09-01` §2. Every top-level reference to `window` is guarded,
+    # so the real module loads under node. It had no imports of its own until
+    # `B1706` gave its menu the Escape stack, the model picker's close and the
+    # pickers' keys — the three below, none with imports of their own, whose
+    # specifiers `_verbatim_source` points at their `.mjs` copies.
     "approvalMode.mjs": _REPO / "static" / "js" / "approvalMode.js",
+    "escMenuStack.mjs": _REPO / "static" / "js" / "escMenuStack.js",
+    "motion.mjs": _REPO / "static" / "js" / "motion.js",
+    "pickerKeys.mjs": _REPO / "static" / "js" / "pickerKeys.js",
     # `B1228`. No imports of its own; the real shared reads.
     "appConfig.mjs": _REPO / "static" / "js" / "appConfig.js",
 }
+
+
+def _verbatim_source(real: Path) -> str:
+    """`B1706`. A verbatim module as the sandbox holds it: each relative import
+    of another verbatim module pointed at that module's `.mjs` copy. An import
+    of anything else is left as it is and fails the fixture by name below."""
+    source = real.read_text(encoding="utf-8")
+
+    def _local(match):
+        spec = match.group(2)
+        copy = spec[2:-3] + ".mjs" if spec.startswith("./") and spec.endswith(".js") else None
+        return match.group(1) + ("./" + copy if copy in _VERBATIM else spec) + match.group(3)
+
+    return re.sub(r"""(\bfrom\s*['"])(\./[^'"]+)(['"])""", _local, source)
 
 _STUBS = {
     "storage.mjs": r"""
@@ -394,7 +414,13 @@ def results(tmp_path_factory):
     for name, stub in _STUBS.items():
         (module_dir / name).write_text(stub, encoding="utf-8")
     for name, real in _VERBATIM.items():
-        (module_dir / name).write_text(real.read_text(encoding="utf-8"), encoding="utf-8")
+        source_text = _verbatim_source(real)
+        unresolved = [s for s in re.findall(r"""\bfrom\s*['"](\.[^'"]+)['"]""", source_text)
+                      if s[2:] not in set(_VERBATIM) | set(_STUBS)]
+        assert not unresolved, (
+            f"{real.name} imports {unresolved}, which this sandbox does not hold: add each "
+            "to `_VERBATIM` (no imports of its own) or `_STUBS`")
+        (module_dir / name).write_text(source_text, encoding="utf-8")
 
     harness = _HARNESS.replace("SESSIONS_PATH", sessions_module.as_uri()).replace(
         "SHELL_PATH", _SHELL_URL

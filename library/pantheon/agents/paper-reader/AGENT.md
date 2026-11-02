@@ -4,13 +4,14 @@ name: Paper Reader
 tagline: "New papers on your topics: each one's method, result and limits in plain words."
 section: research
 icon: file-text
-version: 1.3.0
+version: 1.3.1
 wave: 2
 inputs:
   - {key: topics, kind: list, label: Topics to watch}
 triggers:
   - {on: weekly, day: fri, at: "07:00"}
 tools: [web_search, web_fetch, create_document]
+skills: [web-research]
 needs: {connectors: [], min_context: 16000, native_tools: preferred}
 delivers:
   - {kind: document, title: "Papers", must_contain: [New papers, Checked]}

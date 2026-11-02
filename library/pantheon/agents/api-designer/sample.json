@@ -1,0 +1,28 @@
+{
+ "case": "a-feature-with-one-caller",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read 2 files and 1 search; wrote docs/api/invoice-export.yaml and \"API design — invoice export\"",
+ "read": [
+  "grep",
+  "read_file"
+ ],
+ "wrote": [
+  "write_file",
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “API design”",
+   "ok": true,
+   "detail": "“API design — invoice export” is there."
+  }
+ ],
+ "answer": "2 endpoints, 2 schemas, 1 caller to change.\n\n## Report\n- read 2 files and 1 search; wrote docs/api/invoice-export.yaml and \"API design — invoice export\"",
+ "documents": [
+  {
+   "title": "API design — invoice export",
+   "content": "API design — invoice export\n2 endpoints, 2 schemas, 1 caller to change; written to docs/api/invoice-export.yaml\n\n## Endpoints\n- `POST /invoices/{id}/exports` — start an export of one invoice — the invoice's owner\n- `GET /exports/{export_id}` — the export's state and file link — the same person\n\n## Schemas\n- ExportRequest: format (string, pdf|csv, required)\n- Export: id (string), status (string, queued|ready|failed), url (string, when ready)\n\n## Errors\n- POST: 400 bad_format, 403 not_owner, 404 no_invoice, 409 already_running\n- GET: 403 not_owner, 404 no_export\n\n## Callers\n- static/js/invoices.js:2 — calls /invoices/{id}/pdf; moves to the POST then polls the GET"
+  }
+ ]
+}

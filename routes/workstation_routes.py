@@ -78,18 +78,67 @@ keyboard, which is the one thing the daemon cannot tell from the wire. The
 bridge is refused every `POST` here by the prefix above, so an agent cannot
 reach this route to type as the person past its own `busy`.
 
+`D-2026-10-31-01` — the live desktop. The screen as it moves, through KasmVNC,
+in place of frames — the window falls back to frames wherever there is no
+stream:
+
+  GET  /api/workstation/desktop  whether the caller's screen (or, for an admin,
+                                 `?person=`'s, to watch) streams, who holds it,
+                                 and the page the window frames to show it —
+                                 Pantheon's own copy of KasmVNC's web client
+                                 (`src/desktop_client.py`); or why not.
+  WS   /api/workstation/desktop/websockify
+                                 the stream itself, relayed: browser to
+                                 Pantheon to the workstation's daemon to the
+                                 display, RFB byte for byte. The caller's own
+                                 desktop as `person` — who drives exactly while
+                                 they hold the screen, set by POST /control as
+                                 before, at the workstation, live — or, with
+                                 `?person=` and only for an admin, someone
+                                 else's as `watch`, which never drives.
+
+`D-2026-11-01-01` — the browser on a screen of its own. The browser the agent
+drives runs alone on a second display of the person's (the workstation's, or
+Pantheon's own where there is none), streamed through the same client:
+
+  GET  /api/workstation/browser/screen
+                                 whether the caller's browser streams, who
+                                 holds it, and the client's page pointed at the
+                                 stream below; or why not, and the window shows
+                                 frames as before.
+  WS   /api/workstation/browser/websockify
+                                 that screen's stream, relayed like the
+                                 desktop's: the caller's own browser only, as
+                                 `person`, who drives exactly while they hold
+                                 it. No `?person=`: an admin watches a person's
+                                 desktop, not their browser.
+  GET  /api/workstation/browser?live=1
+                                 a frame's answer without the picture — the
+                                 agent's hand and where the page sits on the
+                                 screen — for the window drawing it live.
+
+A websocket passes no HTTP middleware, `AuthMiddleware` included, so the
+stream routes ask for themselves what the middleware would: a session cookie
+that `validate_token` accepts (a bearer token is not a person, `B70`), and an
+`Origin` whose host is this request's own `Host` — a page on another site
+cannot open a person's desktop with their cookie. Then `_watched` (the
+browser's: `_browser_mine`), the same door the frames go through.
+
 **The token never reaches the browser**: a frame is the daemon's picture
-re-sent, and nothing else of its answer passes through. JPEG because it is
+re-sent, and nothing else of its answer passes through; the stream is the
+display's bytes and nothing of the daemon's. JPEG because it is
 real in the image and about 20 ms a grab there against 65–70 ms for PNG
 (measured in `P20-01`).
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
-from typing import Any, Dict
+from typing import Any, Dict, Optional
+from urllib.parse import urlsplit
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, WebSocket
 from fastapi.responses import JSONResponse, Response
 
 from core.middleware import require_admin, require_operator
@@ -226,8 +275,90 @@ def setup_workstation_routes() -> APIRouter:
         except WorkstationError as e:
             raise _http_error(e)
         logger.info("workstation home reset for %s", answer.get("account"))
-        return {"ok": True, "account": answer.get("account"),
-                "sentence": "Your workstation home is back to a clean start."}
+        # `B1733`: back to the person's own starting point, when they saved one.
+        sentence = "Your workstation home is back to a clean start."
+        try:
+            point = await wa.starting_point(owner, auth_manager=_auth_manager(request))
+        except WorkstationError:
+            point = {}
+        if point.get("saved"):
+            sentence = "Your workstation is back at the starting point you saved."
+        return {"ok": True, "account": answer.get("account"), "sentence": sentence}
+
+    # `B1733` / `D-2026-11-01-02`. The caller's own starting point — what
+    # Reset puts back. Saving and forgetting are the person's (`POST
+    # /api/workstation…` is refused to the agent by `app_api` besides).
+    @router.get("/starting-point")
+    async def workstation_starting_point(request: Request):
+        """Have I saved a starting point, and what does Reset put back."""
+        owner = require_user(request)
+        try:
+            return await wa.starting_point(owner, auth_manager=_auth_manager(request))
+        except WorkstationError as e:
+            raise _http_error(e)
+
+    @router.post("/starting-point")
+    async def workstation_starting_point_set(request: Request):
+        """`{"action": "save"}`: my workstation as it is now is what Reset
+        puts back. `{"action": "forget"}`: Reset is the clean start again."""
+        from src.auth_helpers import request_is_a_person
+        owner = require_user(request)
+        if not request_is_a_person(request):
+            raise HTTPException(403, "Only you can save or forget your starting point.")
+        body = await _body(request)
+        action = body.get("action")
+        if action not in ("save", "forget"):
+            raise HTTPException(400, "A starting point is saved or forgotten.")
+        try:
+            answer = await wa.starting_point(owner, action, auth_manager=_auth_manager(request))
+        except WorkstationError as e:
+            raise _http_error(e)
+        logger.info("workstation starting point %s for %s", "saved" if action == "save"
+                    else "forgotten", owner)
+        return answer
+
+    # ── `B1725` / `D-2026-11-01-02`: Computer Use, on the caller's own workstation ──
+    #
+    # No card for a step the agent takes inside the caller's workstation, on
+    # their acceptance of the warning — a person's act, never the agent's
+    # (`request_is_a_person`; `app_api` refuses every `POST /api/workstation…`
+    # besides). Turning it off never asks.
+
+    @router.get("/computer-use")
+    async def workstation_computer_use(request: Request):
+        """Is Computer Use on for me, may I turn it on, and its warning."""
+        from src.approval_mode import computer_use_state
+        owner = require_user(request)
+        return await asyncio.to_thread(computer_use_state, owner,
+                                       auth_manager=_auth_manager(request))
+
+    @router.post("/computer-use")
+    async def workstation_computer_use_set(request: Request):
+        """`{"on": true, "accept_warning": <id>}` turns it on, on the
+        caller's acceptance of the warning `GET` serves now (400 with none,
+        409 for other words, 403 for someone who may not); `{"on": false}`
+        turns it off."""
+        from src.approval_mode import (
+            AutoRefused, computer_use_state, turn_computer_use_off, turn_computer_use_on,
+        )
+        from src.auth_helpers import request_is_a_person
+        owner = require_user(request)
+        if not request_is_a_person(request):
+            raise HTTPException(403, "Only you can turn Computer Use on or off.")
+        body = await _body(request)
+        on = body.get("on")
+        if not isinstance(on, bool):
+            raise HTTPException(400, "Say whether Computer Use is on: true or false.")
+        try:
+            if on:
+                await asyncio.to_thread(turn_computer_use_on, owner, body.get("accept_warning"),
+                                        auth_manager=_auth_manager(request))
+            else:
+                await asyncio.to_thread(turn_computer_use_off, owner)
+        except AutoRefused as refused:
+            raise HTTPException(refused.status, refused.sentence)
+        return await asyncio.to_thread(computer_use_state, owner,
+                                       auth_manager=_auth_manager(request))
 
     # ── `B1478`: the admin controls the workstation's containers ──────────────
     #
@@ -342,6 +473,41 @@ def setup_workstation_routes() -> APIRouter:
         except WorkstationError as e:
             raise _http_error(e)
 
+    def _browser_mine(request: Request):
+        """`(client, account)` for the caller's own browser: their
+        workstation's when it would answer them, Pantheon's own otherwise
+        (`src/local_browser.browser_for`)."""
+        from src.local_browser import browser_for
+        owner = require_user(request)
+        try:
+            return browser_for(owner, auth_manager=_auth_manager(request))
+        except WorkstationError as e:
+            raise _http_error(e)
+
+    def _control_target(request: Request):
+        """Whose holder `/control` reads and sets: the workstation's screen
+        when it answers the caller (with Pantheon's own browser behind it for
+        a moment the workstation cannot take, `FallbackBrowser`); Pantheon's
+        own browser when the workstation does not answer and that browser is
+        theirs; otherwise the workstation's refusal."""
+        from src.local_browser import LocalBrowserClient, browser_for
+        owner = require_user(request)
+        try:
+            wa.workstation_for(owner, auth_manager=_auth_manager(request))
+        except WorkstationError as refusal:
+            try:
+                client, account = browser_for(owner, auth_manager=_auth_manager(request))
+            except WorkstationError:
+                raise _http_error(refusal)
+            if not isinstance(client, LocalBrowserClient):
+                raise _http_error(refusal)
+            return client, account
+        try:
+            client, account = browser_for(owner, auth_manager=_auth_manager(request))
+        except WorkstationError as e:
+            raise _http_error(e)
+        return client, account
+
     def _watched(request: Request, person: str):
         """`B1424`. `(client, account)` for the screen being watched: the
         caller's own, or — for an admin, and only to watch — another person's.
@@ -398,7 +564,7 @@ def setup_workstation_routes() -> APIRouter:
     async def workstation_holder(request: Request, person: str = ""):
         """Who has the mouse and keyboard right now — on the caller's screen,
         or on the one an admin is watching (`B1424`)."""
-        client, account = _watched(request, person)
+        client, account = _watched(request, person) if (person or "").strip() else _control_target(request)
         try:
             made = await client.ensure(account)
         except WorkstationError as e:
@@ -408,7 +574,7 @@ def setup_workstation_routes() -> APIRouter:
     @router.post("/control")
     async def workstation_control(request: Request):
         """Take over (`person`) or hand back (`agent`) the caller's own screen."""
-        client, account = _mine(request)
+        client, account = _control_target(request)
         holder = (await _body(request)).get("holder")
         if holder not in P.HOLDERS:
             raise HTTPException(400, "“holder” is “person” (take over) or “agent” (hand back).")
@@ -420,14 +586,102 @@ def setup_workstation_routes() -> APIRouter:
         return {**_holder_answer(answer.get("holder"), changed=True),
                 "since": answer.get("since")}
 
+    # ── `D-2026-10-31-01`: the live desktop ────────────────────────────────────
+
+    @router.get("/desktop")
+    async def workstation_desktop(request: Request, person: str = ""):
+        """Whether the caller's screen streams, and the page that shows it —
+        or, for an admin, the screen of the `person` they watch (`B1424`)."""
+        from src import desktop_client
+        client, account = _watched(request, person)
+        try:
+            answer = await client.desktop(account)
+        except WorkstationError as e:
+            raise _http_error(e)
+        kind = answer.get("kind") if answer.get("kind") in P.DESKTOP_KINDS else None
+        out: Dict[str, Any] = {"kind": kind, **_holder_answer(answer.get("holder")),
+                               "watching": bool((person or "").strip())}
+        if kind and not desktop_client.available():
+            kind = out["kind"] = None
+            out["why"] = desktop_client.UNAVAILABLE_SENTENCE
+        elif kind:
+            out["client"] = desktop_client.page_url(
+                watch_person=(person or "").strip().lower() or None)
+        else:
+            out["why"] = str(answer.get("why") or "This screen is shown as pictures.")[:500]
+        return JSONResponse(out, headers=_NO_STORE)
+
+    def _socket_person(websocket: WebSocket) -> Optional[str]:
+        """The signed-in person a desktop websocket comes from, or None —
+        what `AuthMiddleware` decides for a request, decided here because a
+        websocket passes no HTTP middleware (module docstring). The person is
+        stamped where `require_user` reads it, so `_watched` works unchanged."""
+        from routes.auth_routes import SESSION_COOKIE
+        manager = _auth_manager(websocket)
+        if manager is None:
+            return None
+        if websocket.headers.get("authorization"):
+            return None  # a bearer token is a delegated credential, not a person (`B70`)
+        origin = websocket.headers.get("origin") or ""
+        host = (websocket.headers.get("host") or "").strip().lower()
+        if not origin or not host or urlsplit(origin).netloc.lower() != host:
+            return None
+        token = websocket.cookies.get(SESSION_COOKIE)
+        if not token or not manager.validate_token(token):
+            return None
+        user = manager.get_username_for_token(token)
+        if not user:
+            return None
+        websocket.state.current_user = user
+        websocket.state.api_token = False
+        return user
+
+    @router.websocket("/desktop/websockify")
+    async def workstation_desktop_stream(websocket: WebSocket, person: str = ""):
+        """The live desktop's stream, relayed (module docstring)."""
+        if _socket_person(websocket) is None:
+            await websocket.close(code=4401)
+            return
+        try:
+            client, account = _watched(websocket, person)  # type: ignore[arg-type]
+        except HTTPException as e:
+            await websocket.close(code=4403, reason=_close_reason(str(e.detail)))
+            return
+        if P.DESKTOP_SUBPROTOCOL not in (websocket.scope.get("subprotocols") or []):
+            await websocket.close(code=1002)
+            return
+        viewer = "watch" if (person or "").strip() else "person"
+        try:
+            async with client.desktop_stream(account, viewer) as upstream:
+                await websocket.accept(subprotocol=P.DESKTOP_SUBPROTOCOL)
+                logger.info("workstation desktop of %s: %s viewer connected", account, viewer)
+                await _relay(websocket, upstream)
+        except WorkstationError as e:
+            logger.info("workstation desktop of %s: %s", account, e.message)
+            await _close_quietly(websocket, 1011, e.message)
+            return
+        await _close_quietly(websocket, 1000, "")
+        logger.info("workstation desktop of %s: %s viewer gone", account, viewer)
+
     # ── `P25-06`: the agent browser's window ───────────────────────────────────
 
     @router.get("/browser")
-    async def workstation_browser(request: Request, if_none_match: str = "", since: int = 0):
+    async def workstation_browser(request: Request, if_none_match: str = "", since: int = 0,
+                                  live: bool = False):
         """The caller's own browser: one frame of the page, its address, title
         and tabs, and what it did after `since` (`P25-07`); `304` when none
-        of that changed."""
-        client, account = _mine(request)
+        of that changed. `D-2026-11-01-01`: with `live`, the same without the
+        picture — the window draws the browser's own screen live and wants only
+        the agent's hand and where the page sits on that screen."""
+        from src.local_browser import runs_in
+        client, account = _browser_mine(request)
+        if live:
+            try:
+                answer = await client.browser(account, "activity", since=max(0, int(since or 0))) or {}
+            except WorkstationError as e:
+                raise _http_error(e)
+            return JSONResponse({**_browser_state(answer), "live": True,
+                                 "runs_in": runs_in(client) or "pantheon"}, headers=_NO_STORE)
         try:
             shot = await client.browser(account, "frame", if_none_match=if_none_match or None,
                                         since=max(0, int(since or 0)))
@@ -436,19 +690,69 @@ def setup_workstation_routes() -> APIRouter:
             frame = _frame(shot)
         except WorkstationError as e:
             raise _http_error(e)
-        tabs = [{"tab": n, "url": str(t.get("url") or "")[:2000], "current": bool(t.get("current"))}
-                for n, t in enumerate(shot.get("tabs") or [], start=1) if isinstance(t, dict)]
-        activity = [_activity(a) for a in (shot.get("activity") or []) if isinstance(a, dict)]
-        seq = shot.get("seq") if isinstance(shot.get("seq"), int) and not isinstance(shot.get("seq"), bool) else 0
-        return JSONResponse({**frame, "url": str(shot.get("url") or "")[:4000],
-                             "title": str(shot.get("title") or "")[:300], "tabs": tabs,
-                             "activity": activity, "seq": seq},
+        return JSONResponse({**frame, **_browser_state(shot),
+                             # Which browser this is: the workstation's, or
+                             # Pantheon's own (`src/local_browser.py`).
+                             "runs_in": runs_in(client) or "pantheon"},
                             headers=_NO_STORE)
+
+    # ── `D-2026-11-01-01`: the browser's own screen, live ─────────────────────
+
+    @router.get("/browser/screen")
+    async def workstation_browser_screen(request: Request):
+        """Whether the caller's browser runs on a screen of its own that
+        streams, who holds it, and the page the window frames to show it —
+        Pantheon's own copy of KasmVNC's client, pointed at the stream below;
+        or why not, and the window shows frames."""
+        from src import desktop_client
+        client, account = _browser_mine(request)
+        try:
+            answer = await client.browser_screen(account)
+        except WorkstationError as e:
+            raise _http_error(e)
+        kind = answer.get("kind") if answer.get("kind") in P.DESKTOP_KINDS else None
+        out: Dict[str, Any] = {"kind": kind, **_holder_answer(answer.get("holder"))}
+        if kind and not desktop_client.available():
+            kind = out["kind"] = None
+            out["why"] = desktop_client.UNAVAILABLE_SENTENCE
+        elif kind:
+            out["client"] = desktop_client.page_url(stream=desktop_client.BROWSER_STREAM_PATH)
+        else:
+            out["why"] = str(answer.get("why") or "The browser is shown as pictures.")[:500]
+        return JSONResponse(out, headers=_NO_STORE)
+
+    @router.websocket("/browser/websockify")
+    async def workstation_browser_stream(websocket: WebSocket):
+        """The browser screen's stream, relayed as the desktop's is (module
+        docstring): the caller's own browser only, as `person` — who drives
+        exactly while they hold it."""
+        if _socket_person(websocket) is None:
+            await websocket.close(code=4401)
+            return
+        try:
+            client, account = _browser_mine(websocket)  # type: ignore[arg-type]
+        except HTTPException as e:
+            await websocket.close(code=4403, reason=_close_reason(str(e.detail)))
+            return
+        if P.DESKTOP_SUBPROTOCOL not in (websocket.scope.get("subprotocols") or []):
+            await websocket.close(code=1002)
+            return
+        try:
+            async with client.browser_screen_stream(account, "person") as upstream:
+                await websocket.accept(subprotocol=P.DESKTOP_SUBPROTOCOL)
+                logger.info("browser screen of %s: viewer connected", account)
+                await _relay(websocket, upstream)
+        except WorkstationError as e:
+            logger.info("browser screen of %s: %s", account, e.message)
+            await _close_quietly(websocket, 1011, e.message)
+            return
+        await _close_quietly(websocket, 1000, "")
+        logger.info("browser screen of %s: viewer gone", account)
 
     @router.post("/browser")
     async def workstation_browser_act(request: Request):
         """The person's own hand on their browser."""
-        client, account = _mine(request)
+        client, account = _browser_mine(request)
         body = await _body(request)
         action = body.get("action")
         if action not in _BROWSER_PERSON_ACTIONS:
@@ -470,6 +774,85 @@ def setup_workstation_routes() -> APIRouter:
         return out
 
     return router
+
+
+async def _relay(websocket: WebSocket, upstream: Any) -> None:
+    """`D-2026-10-31-01`. Messages both ways between the person's browser and
+    the workstation's stream until either side ends; whichever ends first ends
+    the other. Bytes are passed as they came — RFB is the client's and the
+    display's business, and the workstation already decided who may drive."""
+
+    async def down() -> None:
+        async for message in upstream:
+            if isinstance(message, (bytes, bytearray)):
+                await websocket.send_bytes(bytes(message))
+            else:
+                await websocket.send_text(message)
+
+    async def up() -> None:
+        while True:
+            message = await websocket.receive()
+            if message.get("type") == "websocket.disconnect":
+                return
+            if message.get("bytes") is not None:
+                await upstream.send(message["bytes"])
+            elif message.get("text") is not None:
+                await upstream.send(message["text"])
+
+    tasks = [asyncio.create_task(down()), asyncio.create_task(up())]
+    try:
+        done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+    finally:
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+    for result in results:
+        if isinstance(result, Exception) and not isinstance(result, asyncio.CancelledError):
+            logger.debug("workstation desktop relay ended: %s", type(result).__name__)
+
+
+def _close_reason(text: str) -> str:
+    """A close frame's reason is at most 123 bytes of UTF-8 (RFC 6455 §5.5)."""
+    raw = (text or "").encode("utf-8")[:120]
+    return raw.decode("utf-8", "ignore")
+
+
+async def _close_quietly(websocket: WebSocket, code: int, reason: str) -> None:
+    """Close a desktop websocket that may already be closed, or never accepted."""
+    from starlette.websockets import WebSocketState
+    try:
+        if websocket.application_state != WebSocketState.DISCONNECTED:
+            await websocket.close(code=code, reason=_close_reason(reason))
+    except (RuntimeError, OSError):
+        pass
+
+
+def _browser_state(answer: Dict[str, Any]) -> Dict[str, Any]:
+    """The page's address, title and tabs, what the browser did, and
+    (`D-2026-11-01-01`) where the page sits on its own screen — as the window
+    is given them, each its own type."""
+    tabs = [{"tab": n, "url": str(t.get("url") or "")[:2000], "current": bool(t.get("current"))}
+            for n, t in enumerate(answer.get("tabs") or [], start=1) if isinstance(t, dict)]
+    activity = [_activity(a) for a in (answer.get("activity") or []) if isinstance(a, dict)]
+    seq = answer.get("seq") if isinstance(answer.get("seq"), int) and not isinstance(answer.get("seq"), bool) else 0
+    return {"url": str(answer.get("url") or "")[:4000], "title": str(answer.get("title") or "")[:300],
+            "tabs": tabs, "activity": activity, "seq": seq, "view": _view(answer.get("view"))}
+
+
+def _view(v: Any) -> Optional[Dict[str, int]]:
+    """`D-2026-11-01-01`. Where the page sits on the browser's screen, in its
+    pixels, or None (a headless browser: the picture is the page)."""
+    if not isinstance(v, dict):
+        return None
+    out = {}
+    for key, limit in (("x", P.SCREEN_WIDTH), ("y", P.SCREEN_HEIGHT), ("w", P.SCREEN_WIDTH),
+                       ("h", P.SCREEN_HEIGHT)):
+        n = v.get(key)
+        if not isinstance(n, int) or isinstance(n, bool) or not 0 <= n <= limit:
+            return None
+        out[key] = n
+    return out if out["w"] > 0 and out["h"] > 0 else None
 
 
 def _activity(a: Dict[str, Any]) -> Dict[str, Any]:

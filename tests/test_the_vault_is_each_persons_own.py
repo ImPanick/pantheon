@@ -481,10 +481,34 @@ def test_vault_get_says_a_password_is_set_and_never_what_it_is(monkeypatch):
                 "login": {"username": "admin", "password": "hunter2-secret", "totp": "JBSWY3DPEHPK3PXP",
                           "uris": [{"uri": "http://192.168.1.1"}]}}
     monkeypatch.setattr(T, "bw_item", item)
+    monkeypatch.setattr(T, "bitwarden_set_up", lambda: True)
+    monkeypatch.setattr(T, "_describe_own", lambda owner, ref, agent: None)
     out = asyncio.run(T.do_vault_get(json.dumps({"item_id": "abc123", "reason": "check the router"})))
     text = out["output"]
     assert "hunter2-secret" not in text and "JBSWY3DP" not in text and "4321" not in text
     assert "Password: set" in text and 'item "bw:abc123"' in text
+
+
+def test_vault_search_and_get_read_the_persons_own_vault_and_never_say_it_is_locked(db, monkeypatch):
+    """`B-vault-search`. The owner (2026-11-01): *"The agent can see the github
+    token I put in the vault but can't access/use it. The vault is locked to
+    the agent."* `vault_search` and `vault_get` read only the server's
+    Bitwarden vault, never set up on that install, and answered *"Vault is
+    locked. Run vault_unlock"* about the vault the person had just filled."""
+    import src.tools.vault as T
+    monkeypatch.setattr(T, "_load_vault_config", lambda: {})
+    s = db()
+    V.create(s, "alice", {"kind": "key", "label": "GitHub token", "secret": "ghp_SECRET_77"})
+    s.close()
+    found = asyncio.run(T.do_vault_search(json.dumps({"query": "github"}), owner="alice"))
+    assert found["exit_code"] == 0 and "“GitHub token”" in found["output"], found
+    assert "$LOGIN_GITHUB_TOKEN_TOKEN" in found["output"] and "github.com" in found["output"]
+    assert "locked" not in found["output"].lower() and "ghp_SECRET_77" not in found["output"]
+    got = asyncio.run(T.do_vault_get(json.dumps({"item_id": "GitHub token", "reason": "push"}), owner="alice"))
+    assert "Token: set" in got["output"] and "ghp_SECRET_77" not in got["output"], got
+    none = asyncio.run(T.do_vault_get(json.dumps({"item_id": "abc123", "reason": "x"}), owner="alice"))
+    assert "no item “abc123”" in none["error"] and "“GitHub token”" in none["error"]
+    assert "“GitHub token”" not in asyncio.run(T.do_vault_search('{"query": "github"}', owner="bob"))["output"]
 
 
 def test_the_loop_shows_a_card_for_a_login_set_to_ask_and_runs_one_allowed(db, monkeypatch):

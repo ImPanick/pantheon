@@ -1,0 +1,15 @@
+# `B1729`. Chatterbox Turbo's server (`voice/chatterbox/server.py`), installed
+# by `voice/chatterbox/Dockerfile` over the PyTorch 2.6.0 CUDA 12.4 image,
+# whose torch and torchaudio are the ones chatterbox-tts 0.1.7 pins (2.6.0),
+# so pip keeps them. Pinned exactly, for the reasons in the top-level
+# requirements.txt's header (`B320`); Dependabot covers this folder
+# (`.github/dependabot.yml`).
+
+# Resemble AI's Chatterbox, Turbo among its models. MIT, code and weights.
+chatterbox-tts==0.1.7
+# The server around it, at the versions Pantheon itself pins.
+fastapi==0.141.1
+uvicorn==0.54.0
+# Fetches the weights while the image is built (`snapshot_download`); never
+# at run time (`HF_HUB_OFFLINE=1`).
+huggingface-hub==1.33.0

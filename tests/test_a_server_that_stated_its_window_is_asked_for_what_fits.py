@@ -80,7 +80,10 @@ def pantheon(tmp_path_factory):
     data = tmp_path_factory.mktemp("stated-window") / "data"
     data.mkdir()
     server = capture.Server(sys.executable, data, capture._free_port(),
-                            extra_env={"PANTHEON_DISABLE_MCP": "1"})
+                            extra_env={"PANTHEON_DISABLE_MCP": "1",
+                                      # `B1715`: these windows are measured without the
+                                      # shipped skills a design-document turn would be handed.
+                                      "PANTHEON_FIRST_PARTY_SKILLS": ""})
     try:
         server.start(timeout=150)
     except RuntimeError as e:
@@ -227,10 +230,14 @@ def _door_turn(world, door, key, endpoint_id):
 
 
 def test_an_estimate_never_asks_below_the_preset(world):
-    """A 9,000 window with less room than Brainstorm's 4096: what fits is below
+    """A window with less room than Brainstorm's 4096: what fits is below
     the preset, so the estimate is not trusted there — the later turn is sent
-    as asked and the server's own words answer it, exactly (§2)."""
-    endpoint_id = world.endpoint(9_000)
+    as asked and the server's own words answer it, exactly (§2).
+
+    `B1737`: 11,000, not 9,000 — this prompt measured 8,943 tokens at
+    `2503ea97`, so 9,000 had become a window it does not fit at all once one
+    more schema was offered, which is a different case from the one named."""
+    endpoint_id = world.endpoint(11_000)
     first, said_first, _ = _turn(world, "small_one", endpoint_id)
     later, said, _ = _turn(world, "small_two", endpoint_id)
     for sent, spoken in ((first, said_first), (later, said)):

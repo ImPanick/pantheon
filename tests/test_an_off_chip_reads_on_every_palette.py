@@ -67,6 +67,21 @@ const BASE = process.argv[2];
         return { c: p.slice(0, 3).map((v) => v * 255), a: p.length > 3 ? p[3] : 1 };
       }
       if (/\/\s*0\)$/.test(s)) return { c: [0, 0, 0], a: 0 };
+      // The cockpit's glass mixes in OKLab, and Chromium keeps the space:
+      // `oklab(L a b / α)`, converted to sRGB by Ottosson's matrices.
+      m = s.match(/^oklab\(([^)]+)\)$/);
+      if (m) {
+        const p = m[1].split(/[\s/]+/).filter(Boolean).map(Number);
+        const [L, A, B] = p;
+        const l = (L + 0.3963377774 * A + 0.2158037573 * B) ** 3;
+        const mm = (L - 0.1055613458 * A - 0.0638541728 * B) ** 3;
+        const q = (L - 0.0894841775 * A - 1.2914855480 * B) ** 3;
+        const lin = [4.0767416621 * l - 3.3077115913 * mm + 0.2309699292 * q,
+                     -1.2684380046 * l + 2.6097574011 * mm - 0.3413193965 * q,
+                     -0.0041960863 * l - 0.7034186147 * mm + 1.7076147010 * q];
+        const enc = (v) => { v = Math.min(1, Math.max(0, v)); return 255 * (v <= 0.0031308 ? 12.92 * v : 1.055 * v ** (1 / 2.4) - 0.055); };
+        return { c: lin.map(enc), a: p.length > 3 ? p[3] : 1 };
+      }
       throw new Error('cannot read colour ' + s);
     };
     const over = (top, under) => top.c.map((v, i) => v * top.a + under[i] * (1 - top.a));
@@ -76,7 +91,12 @@ const BASE = process.argv[2];
     };
     const ratio = (a, b) => { const x = lum(a), y = lum(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
     const bar = document.querySelector('.chat-input-bar');
-    const chips = [...document.querySelectorAll('.chat-input-left .tool-chip')];
+    // `B1706`: the bottom row, not only its left strip — the approval-mode
+    // chip moved from the strip to the row's right and is the same chip
+    // (`.tool-chip`, its on-state Auto), so it is measured where it is.
+    // The cockpit (2026-10-30) moves the indicator chips to the loadout under
+    // the text box; they are the same chips.
+    const chips = [...document.querySelectorAll('.chat-input-bottom .tool-chip, .ck-loadout .tool-chip')];
     const ws = document.getElementById('workspace-indicator-btn');
     const res = {};
     for (const name of Object.keys(tm.THEMES)) {
@@ -84,7 +104,10 @@ const BASE = process.argv[2];
       const row = {};
       for (const plan of [false, true]) {
         document.body.classList.toggle('plan-mode-active', plan);
-        const ground = parse(getComputedStyle(bar).backgroundColor).c;
+        // The cockpit's composer is glass: its tint is laid over the page's
+        // own `--bg`, which is what shows through it.
+        const ground = over(parse(getComputedStyle(bar).backgroundColor),
+                            parse(getComputedStyle(document.documentElement).backgroundColor).c);
         for (const chip of chips) {
           const had = chip.classList.contains('active');
           // Off, except the workspace chip, whose "a folder is set" state
@@ -136,10 +159,12 @@ def _chips(row):
 
 def test_every_palette_and_every_chip_was_measured(measured):
     assert measured["errors"] == []
-    assert len(measured["palettes"]) == 23, sorted(measured["palettes"])
+    assert len(measured["palettes"]) == 20, sorted(measured["palettes"])  # three retired: theme.js `RETIRED_THEMES`
     for row in measured["palettes"].values():
         assert {"plan-toggle-btn", "web-toggle-btn", "bash-toggle-btn",
-                "workspace-indicator-btn"} <= set(_chips(row)), sorted(row)
+                "workspace-indicator-btn",
+                # `B1706`: the approval-mode chip, now at the row's right.
+                "approval-mode-btn"} <= set(_chips(row)), sorted(row)
 
 
 def test_the_off_label_clears_aa_on_every_palette(measured):

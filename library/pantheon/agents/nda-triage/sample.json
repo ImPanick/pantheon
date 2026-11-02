@@ -1,0 +1,26 @@
+{
+ "case": "a-two-year-mutual-nda",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read \"NDA — Acme Ltd\" (13 lines) against your standard; wrote \"NDA triage — Acme Ltd\"",
+ "read": [
+  "manage_documents"
+ ],
+ "wrote": [
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “NDA triage”",
+   "ok": true,
+   "detail": "“NDA triage — Acme Ltd” is there."
+  }
+ ],
+ "answer": "negotiate: 2 clauses (term, survival), 0 never.\n\n## Report\n- read \"NDA — Acme Ltd\" (13 lines) against your standard; wrote \"NDA triage — Acme Ltd\"",
+ "documents": [
+  {
+   "title": "NDA triage — Acme Ltd",
+   "content": "NDA triage — Acme Ltd\nnegotiate: 2 clauses to negotiate, 0 never\na triage against your standard, not legal advice\n\n## Parties\n- Acme Ltd and your company, mutual (clause 1.1: \"each party\"); matches your standard.\n\n## Terms\n1. direction — 1.1 — \"each party may disclose … to the other\" — line 4\n2. confidential — 1.2 — \"all information disclosed, whether or not marked\" — line 5\n3. carve-outs — 2 — public, already known, independently developed, required by law — line 6\n4. term and survival — 7.1 — \"two years from the date hereof\"; survival silent — line 10\n5. permitted use and recipients — 3 — \"its employees and professional advisers who need to know\" — line 7\n6. return or destroy — 5 — \"return or destroy on written request; one archival copy\" — line 8\n7. law and courts — 9 — \"England and Wales\" — line 12\n8. remedies — 8 — injunctive relief; no indemnity — line 11\n\n## Against the standard\n1. standard. 2. acceptable: wider than \"marked\", which protects you too. 3. standard. 4. negotiate: your standard is three years with confidentiality surviving two more; 7.1 ends everything at two. 5. standard. 6. standard. 7. standard. 8. standard.\n- silent: survival (4) — negotiate; add it.\n\n## Verdict\n- negotiate — 7.1: \"This agreement runs for three years from the date hereof; the obligations in clauses 2 to 6 survive its end for two years.\" No never clauses."
+  }
+ ]
+}

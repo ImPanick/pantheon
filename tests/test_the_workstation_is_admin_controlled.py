@@ -96,7 +96,7 @@ def datadir(tmp_path, monkeypatch):
     monkeypatch.setattr(src.settings, "SETTINGS_FILE", settings_file)
     monkeypatch.setattr(src.settings, "FEATURES_FILE", features_file)
     monkeypatch.setenv("AUTH_ENABLED", "true")
-    for name in (P.URL_ENV, P.TOKEN_ENV):
+    for name in (P.URL_ENV, P.TOKEN_ENV, P.VM_URL_ENV):
         monkeypatch.delenv(name, raising=False)
     pairing = tmp_path / "pairing"
     pairing.mkdir()
@@ -169,7 +169,8 @@ def run(coro):
 def test_the_keys_ship_off_and_the_destination_ships_empty():
     from src.settings import DEFAULT_SETTINGS
     assert {k: DEFAULT_SETTINGS[k] for k in wa.SETTING_KEYS} == {
-        "workstation_enabled": False,
+        # `B1720` (`D-2026-10-31-03`): unanswered — on when the stack runs one.
+        "workstation_enabled": None,
         "workstation_url": "",
         "workstation_token": "",
         "workstation_tls_pin": "",            # `B980`: empty, the environment's beneath it
@@ -198,7 +199,7 @@ def test_only_an_admin_writes_a_workstation_setting(app, who):
         "workstation_enabled": True, "workstation_sudo": False,
         "workstation_url": "http://evil.example:7040"})
     assert r.status_code == 403
-    assert stored("workstation_enabled") is False
+    assert stored("workstation_enabled") is None
     assert stored("workstation_sudo") is None
     assert stored("workstation_url") == ""
 
@@ -239,7 +240,7 @@ def test_a_bad_value_is_refused_at_the_door_with_a_sentence(app, key, value, wor
                                  json={"workstation_enabled": True, key: value})
     assert r.status_code == 400
     assert words in r.json()["detail"]
-    assert stored("workstation_enabled") is False
+    assert stored("workstation_enabled") is None
 
 
 def test_an_empty_address_and_an_empty_token_mean_the_next_layer(app):
@@ -435,6 +436,64 @@ def test_routing_is_the_admins_switch_and_off_is_the_default_answer(app, ws, aut
     assert wa.routes_tools(ALLOWED, auth_manager=auth) is True
 
 
+# ── `B1720`: unanswered, it is on when the stack runs one ───────────────────
+#
+# `D-2026-10-31-03`. Since `9687cdf` the default stack runs the workstation and
+# puts its address in Pantheon's environment; the off default left a fresh
+# install's agent unable to use it until an admin found the switch.
+
+def test_unanswered_and_no_workstation_in_the_environment_is_off(app, auth):
+    from src import workstation_client as wc
+    assert stored("workstation_enabled") is None
+    assert (wc.enabled_choice(), wc.enabled()) == (None, False)
+    assert wa.routes_tools(ADMIN, auth_manager=auth) is False
+    assert as_user(app, ADMIN).get("/api/workstation/status").json()["state"] == wa.STATE_OFF
+
+
+def test_unanswered_with_the_stacks_workstation_is_on(app, ws, auth, monkeypatch):
+    """Red before `B1720`: the stack's address and token alone left it off."""
+    from src import workstation_client as wc
+    monkeypatch.setenv(P.URL_ENV, ws.url)
+    monkeypatch.setenv(P.TOKEN_ENV, ws.token)
+    assert (wc.enabled_choice(), wc.enabled()) == (None, True)
+    client, account = wa.workstation_for(ADMIN, auth_manager=auth)
+    assert client.base == ws.url and account == account_for(ADMIN)
+    assert wa.routes_tools(ADMIN, auth_manager=auth) is True
+    status = as_user(app, ADMIN).get("/api/workstation/status").json()
+    assert status["state"] == wa.STATE_UP
+    assert (status["settings"]["enabled"], status["settings"]["enabled_choice"]) == (True, None)
+    # Still the person's privilege: on is not on for everyone.
+    assert wa.routes_tools(PLAIN, auth_manager=auth) is False
+
+
+def test_the_vms_address_alone_is_the_stack_running_one(datadir, monkeypatch):
+    from src import workstation_client as wc
+    monkeypatch.setenv(P.VM_URL_ENV, "http://workstation-vm:7040")
+    assert wc.enabled() is True
+
+
+def test_an_admins_off_wins_over_the_stack(app, ws, auth, monkeypatch):
+    from src import workstation_client as wc
+    monkeypatch.setenv(P.URL_ENV, ws.url)
+    monkeypatch.setenv(P.TOKEN_ENV, ws.token)
+    r = as_user(app, ADMIN).post("/api/auth/settings", json={"workstation_enabled": False})
+    assert r.status_code == 200, r.text
+    assert (stored("workstation_enabled"), wc.enabled()) == (False, False)
+    assert wa.routes_tools(ADMIN, auth_manager=auth) is False
+    # And it can be handed back to the default, as `workstation_sudo` can.
+    r = as_user(app, ADMIN).post("/api/auth/settings", json={"workstation_enabled": None})
+    assert r.status_code == 200, r.text
+    assert (stored("workstation_enabled"), wc.enabled()) == (None, True)
+
+
+def test_a_hand_edited_non_answer_is_unanswered(datadir, monkeypatch):
+    from src import workstation_client as wc
+    monkeypatch.setattr(wc, "_setting", lambda key, default="": "yes")
+    assert wc.enabled_choice() is None and wc.enabled() is False
+    monkeypatch.setenv(P.URL_ENV, "http://workstation:7040")
+    assert wc.enabled() is True
+
+
 def test_an_api_token_does_not_inherit_its_owners_workstation(app, ws):
     """`B70`: every bearer token resolves to the admin who minted it, and a
     credential handed to a third party is not that admin at the keyboard."""
@@ -566,8 +625,9 @@ def test_the_admins_sudo_reaches_the_daemon_both_ways(app, ws):
     assert ws.system.sudo is False, "precondition: the daemon starts with sudo off"
     switch_on(app, ws)
     status = as_user(app, ALLOWED).get("/api/workstation/status").json()
-    # `B1428`: unanswered, `sudo` is off in the shared container.
-    assert ws.system.sudo is False and status["daemon"]["sudo"] is False
+    # `B1428`: unanswered, `sudo` is on everywhere — the owner (2026-10-31):
+    # *"Agents get FULL access."*
+    assert ws.system.sudo is True and status["daemon"]["sudo"] is True
     admin = as_user(app, ADMIN)
     admin.post("/api/auth/settings", json={"workstation_sudo": True})
     assert admin.post("/api/workstation/check").json()["daemon"]["sudo"] is True
@@ -587,7 +647,8 @@ def test_ensure_ready_makes_the_account_and_hands_back_what_the_tools_need(app, 
     ready = run(wa.ensure_ready(ALSO, auth_manager=app.state.auth_manager))
     assert ready.account == account_for(ALSO)
     assert isinstance(ready.client, WorkstationClient) and ready.client.base == ws.url
-    assert ready.home["created"] is True and ready.daemon["sudo"] is False   # `B1428`: the container's default
+    # `B1428`: unanswered, on in the container too (the owner: "Agents get FULL access").
+    assert ready.home["created"] is True and ready.daemon["sudo"] is True
     assert account_for(ALSO) in ws.system.accounts()
     with pytest.raises(WorkstationError) as e:
         run(wa.ensure_ready(PLAIN, auth_manager=app.state.auth_manager))

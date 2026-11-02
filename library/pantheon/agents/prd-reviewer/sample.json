@@ -1,0 +1,26 @@
+{
+ "case": "a-prd-with-a-vague-metric-and-a-contradiction",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read \"Weekly meal plan sharing\" (25 lines) against the eight questions; wrote \"PRD review — Weekly meal plan sharing\"",
+ "read": [
+  "manage_documents"
+ ],
+ "wrote": [
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “PRD review”",
+   "ok": true,
+   "detail": "“PRD review — Weekly meal plan sharing” is there."
+  }
+ ],
+ "answer": "Grade C: 3 gaps, 3 questions.\n\n## Report\n- read \"Weekly meal plan sharing\" (25 lines) against the eight questions; wrote \"PRD review — Weekly meal plan sharing\"",
+ "documents": [
+  {
+   "title": "PRD review — Weekly meal plan sharing",
+   "content": "PRD review — Weekly meal plan sharing\nGrade C: 3 gaps, 3 questions\n\n## Grade\n- C — the user and the problem are clear, but success has no number and the non-goals contradict a requirement.\n- who: answered (line 4); problem: answered (line 7); success: vague (line 10, \"More people share plans\"); in scope: answered (lines 13–15); out of scope: answered (lines 18–19); constraints: missing; dependencies: answered (line 22); risks: vague (line 25, \"privacy\")\n\n## Gaps\n- success has no number or date — line 10\n- constraints are missing — nothing on phones, offline, or data location\n- line 15 (\"share with up to five people\") contradicts line 19 (\"one other household member\")\n\n## Questions\n1. How many households sharing a plan by what date would make this worth it?\n2. Is it one other member (line 19) or up to five (line 15)?\n3. Does a shared plan leave the owner's device or region, and does that matter to you?\n\n## Verdict\n- revise — answer the three questions in the document, then build; the scope itself is small and clear."
+  }
+ ]
+}

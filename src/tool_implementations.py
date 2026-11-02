@@ -16,7 +16,7 @@ from src.tool_utils import get_mcp_manager  # re-exported: tests patch src.tool_
 # after the upstream registry migration (#3629). Re-imported here so this
 # module stays a working facade.
 from src.tools.system import (  # noqa: F401
-    do_manage_skills, _skill_dump, do_manage_tasks,
+    do_manage_skills, do_use_skill, _skill_dump, do_manage_tasks,
     do_api_call, do_app_api,
     _APP_API_BLOCKLIST_PREFIXES, _APP_API_BLOCKLIST_METHOD_PATH,
 )

@@ -45,13 +45,16 @@ with spaces (`ctrl+a BackSpace`).
 | Full screen | `F11` |
 | Quit Firefox | `ctrl+q` |
 
-## xterm
+## Terminal (xfce4-terminal)
 
 | Do | Keys |
 | --- | --- |
 | Interrupt the running command | `ctrl+c` |
 | Clear the screen | `ctrl+l` |
-| Paste the selection | `shift+Insert` |
+| Copy / paste | `ctrl+shift+c` / `ctrl+shift+v` |
+| Paste the selection | `shift+Insert` or `middle_click` |
+| New tab / close tab | `ctrl+shift+t` / `ctrl+shift+w` |
+| Bigger / smaller text | `ctrl+plus` / `ctrl+minus` |
 
-Text in an xterm is copied by selecting it with `drag` (or `double_click` /
-`triple_click`); it is pasted with `shift+Insert` or `middle_click`.
+`ctrl+c` and `ctrl+v` are the shell's own keys in a terminal, not copy and
+paste. Text is selected with `drag` (or `double_click` / `triple_click`).

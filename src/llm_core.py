@@ -24,6 +24,7 @@ from src.constants import PANTHEON_USER_AGENT
 from src.rate_limiter import outbound as _outbound
 from src.rate_limiter import parse_retry_after as _retry_after
 from src.rate_limiter import parse_reset_header as _reset_after
+from src import reasoning_effort as _reasoning_effort
 
 # Longest server-requested wait we will sit through inside a retry loop. Beyond
 # this, honouring the header by sleeping would hold a user's request open for
@@ -3289,6 +3290,10 @@ async def stream_llm(url: str, model: str, messages: List[Dict], temperature: fl
     await _capture_run_config_async(temperature, max_tokens, session_id, tools=tools, url=url,
                                     model=model, explicit_params=explicit_params)
 
+    # The composer's reasoning effort for this turn (`src/reasoning_effort.py`),
+    # for the conversation's own calls only: titles, summaries and other
+    # background work keep the model's default.
+    _reasoning_level = _reasoning_effort.current_level() if workload == "foreground" else _reasoning_effort.AUTO
     async with _local_model_slot(target_url, model, workload):
         async for chunk in _stream_llm_inner(
             url,
@@ -3304,6 +3309,7 @@ async def stream_llm(url: str, model: str, messages: List[Dict], temperature: fl
             tool_choice_none=tool_choice_none,
             explicit_params=explicit_params,
             max_tokens_floor=max_tokens_floor,
+            reasoning_level=_reasoning_level,
         ):
             yield chunk
 
@@ -3313,7 +3319,8 @@ async def _stream_llm_inner(url: str, model: str, messages: List[Dict], temperat
                             timeout: int = LLMConfig.STREAM_TIMEOUT, prompt_type: Optional[str] = None,
                             tools: Optional[List[Dict]] = None, session_id: Optional[str] = None,
                             tool_choice_none: bool = False, explicit_params=frozenset(),
-                            max_tokens_floor: Optional[int] = None):
+                            max_tokens_floor: Optional[int] = None,
+                            reasoning_level: str = "auto"):
     """Stream LLM responses with improved error handling.
 
     Yields SSE chunks:
@@ -3338,11 +3345,17 @@ async def _stream_llm_inner(url: str, model: str, messages: List[Dict], temperat
         messages_copy = [{"role": "system", "content": "\n\n".join(sys_parts)}] + non_sys
     else:
         messages_copy = non_sys
+    # Reasoning effort said in words, where the model's own switch can't say it.
+    # On a worker thread: telling a local server from a cloud one can read the
+    # endpoints table (`is_local_endpoint`, `B1588`).
+    messages_copy = await asyncio.to_thread(
+        _reasoning_effort.apply_to_messages, messages_copy, url, model, reasoning_level)
 
     if provider == "anthropic":
         target_url = _normalize_anthropic_url(url)
         h = _build_anthropic_headers(headers)
         payload = _build_anthropic_payload(model, messages_copy, temperature, max_tokens, stream=True, tools=tools)
+        await asyncio.to_thread(_reasoning_effort.apply_to_payload, payload, url, model, reasoning_level)
     elif provider == "ollama":
         target_url = _normalize_ollama_url(url)
         h = {"Content-Type": "application/json"}
@@ -3353,10 +3366,12 @@ async def _stream_llm_inner(url: str, model: str, messages: List[Dict], temperat
             model, messages_copy, temperature, max_tokens,
             stream=True, tools=tools, num_ctx=num_ctx,
         )
+        await asyncio.to_thread(_reasoning_effort.apply_to_payload, payload, url, model, reasoning_level)
     elif provider == "chatgpt-subscription":
         target_url = _normalize_chatgpt_subscription_url(url)
         h = _provider_headers(provider, headers)
         payload = _build_chatgpt_responses_payload(model, messages_copy, temperature, max_tokens, stream=True)
+        await asyncio.to_thread(_reasoning_effort.apply_to_payload, payload, url, model, reasoning_level)
     else:
         target_url = _normalize_openai_chat_url(url)
         payload = {
@@ -3389,6 +3404,10 @@ async def _stream_llm_inner(url: str, model: str, messages: List[Dict], temperat
             payload["think"] = False
         await asyncio.to_thread(_apply_local_profiles, payload, url, target_url, model,
                                 session_id, explicit_params)   # `B1588`
+        # The composer's level replaces the defaults above (Mistral's env
+        # level, Ollama's `think: false`); the GPT-5 tools scrub still wins,
+        # since the API refuses the pair.
+        await asyncio.to_thread(_reasoning_effort.apply_to_payload, payload, url, model, reasoning_level)
         _scrub_openai_chat_tool_reasoning(payload, target_url, model)
         h = _provider_headers(provider, headers)
         if provider == "copilot":

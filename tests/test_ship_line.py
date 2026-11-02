@@ -109,7 +109,11 @@ def test_the_trend_is_the_series_the_proposal_states():
     first, last = waves[0], waves[-1]
     filed, closed = last[0] - first[0], last[1] - first[1]
     opened = (last[0] - last[1]) - (first[0] - first[1])
-    assert filed > 0 and closed > 0, (filed, closed)
+    # `B1737`'s wave made it ten in a row with nothing closed: every row since
+    # `B1724` is built and claimed until the owner has tested it (their rule,
+    # 2026-11-01: *"I am the final approval gate"*), so a window with no
+    # closure is the tracker telling the truth, not a broken series.
+    assert filed > 0 and closed >= 0, (filed, closed)
     assert opened == filed - closed                              # the identity § 1 rests on
     # Done %, read against the README sentence that states it. Until 2026-10-07
     # this asserted done % always rises over the window; P23 filed its audit's

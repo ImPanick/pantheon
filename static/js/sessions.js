@@ -353,6 +353,8 @@ function _syncAttachmentsToSession() {
 function _deselectCurrentSession(sid) {
   if (currentSessionId !== sid) return;
   currentSessionId = null;
+  // `B1703`: no chat is open, so the chip and badge say so (`setCurrentSessionId`).
+  try { approvalModeModule.load(null); } catch (_) {}
   uiModule.el('chat-history').innerHTML = '';
   uiModule.el('current-meta').textContent = 'Pantheon Chat';
   Storage.remove('lastSessionId');
@@ -2159,6 +2161,8 @@ export async function selectSession(id, { keepSidebar = false, showLoading = tru
     }
     currentSessionId = id;
     _syncAttachmentsToSession();
+    // `B1703`: this chat's approval mode, as `setCurrentSessionId` reads it.
+    try { approvalModeModule.load(id); } catch (_) {}
     try { window.__pantheonLastSelectedSessionId = id; } catch (_) {}
     // Identify Assistant / task-output sessions so we don't "trap" the user
     // there on return. Skipped from both `lastSessionId` persistence and the
@@ -2558,6 +2562,8 @@ export function createDirectChat(url, modelId, endpointId, opts = {}) {
   _skipAutoSelect = true;
   _suppressNextSessionLoading = true;
   currentSessionId = null;
+  // `B1703`: no chat yet, so not the last chat's Auto (`setCurrentSessionId`).
+  try { approvalModeModule.load(null); } catch (_) {}
   try { window.__pantheonLastSelectedSessionId = ''; } catch (_) {}
   Storage.remove('lastSessionId');
   history.replaceState(null, '', window.location.pathname);
@@ -2670,6 +2676,8 @@ export async function materializePendingSession() {
     }
     _pendingChat = null;
     currentSessionId = payload.id;
+    // `B1703`: the new chat's approval mode, as `setCurrentSessionId` reads it.
+    try { approvalModeModule.load(payload.id); } catch (_) {}
     // fx5-vision (`B1278`). The pending chat IS this chat now, so what its
     // composer holds is this chat's. Without this the first message of every
     // new chat lost its pictures: they stayed under the no-chat key, the send
@@ -2739,6 +2747,13 @@ export function setCurrentSessionId(id) {
   // the header badge carrying the previous chat's state onto this one, which
   // would be the cross-chat leak the ruling forbids showing up in the UI even
   // though the server never had it.
+  //
+  // `B1703`: and so is every other place this module sets `currentSessionId`
+  // — opening a chat from the list (`selectSession`), a new chat's first
+  // message, *New chat*, a deleted chat — each with this same line. Only
+  // this one read it, so on every chat opened from the list the chip stayed
+  // hidden (it is drawn once the server says this person may set it), and
+  // *New chat* kept the last chat's Auto badge.
   try { approvalModeModule.load(id); } catch (_) {}
   try { window.__pantheonLastSelectedSessionId = id || ''; } catch (_) {}
   if (!id) {

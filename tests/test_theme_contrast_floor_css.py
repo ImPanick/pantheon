@@ -203,7 +203,7 @@ def palettes(tmp_path_factory) -> dict:
     painted = json.loads([l for l in proc.stdout.splitlines() if l.strip()][-1])
 
     assert sorted(painted) == sorted(THEME_NAMES), sorted(painted)
-    assert len(painted) == 23, sorted(painted)
+    assert len(painted) == 20, sorted(painted)  # three retired: theme.js `RETIRED_THEMES`
 
     out = {}
     for name, props in painted.items():
@@ -237,7 +237,9 @@ def _worst(expr: str, theme: dict) -> float:
 # and `retrowave`'s surfaces to `#141423` / `#111a31`. The two palettes this
 # exception named (`D-2026-09-14-03`) clear now, so it is retired, and their
 # figures are pinned so neither slips back under.
-_B390_NOW = {"cute": (4.75, 4.51), "retrowave": (4.51, 4.75)}
+# `retrowave` left the set with the cockpit (theme.js `RETIRED_THEMES`), so
+# only `cute`'s figures are still a palette to hold.
+_B390_NOW = {"cute": (4.75, 4.51)}
 
 
 def test_body_text_clears_aa_on_every_palette(palettes):

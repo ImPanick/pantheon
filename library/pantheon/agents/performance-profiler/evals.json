@@ -1,0 +1,306 @@
+{
+ "cases": [
+  {
+   "id": "a-python-command-with-three-hot-paths",
+   "about": "The profiler's table names two of the repository's functions above 5%: each gets its share, its call site and a fix; the third is named as fine.",
+   "inputs": {
+    "folder": "shop",
+    "command": "python -m shop.report"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "cProfile",
+      "output": "         118402 function calls in 4.201 seconds\n\n   Ordered by: cumulative time\n\n   ncalls  tottime  percall  cumtime  percall filename:lineno(function)\n        1    0.000    0.000    4.201    4.201 shop/report.py:1(<module>)\n      120    2.900    0.024    2.983    0.025 shop/report.py:12(load_orders)\n    40000    0.800    0.000    0.924    0.000 shop/prices.py:40(price_of)\n        1    0.150    0.150    0.168    0.168 shop/report.py:40(render)\n    40120    0.090    0.000    0.090    0.000 {built-in method io.open}\n"
+     }
+    ],
+    "files": {
+     "shop/report.py": "import csv\nfrom shop.prices import price_of\n\ndef main():\n    for customer in customers():\n        orders = load_orders(customer)   # line 12 opens the CSV per customer\n        for o in orders:\n            o.total = price_of(o.product) * o.qty   # line 31\n    render()\n",
+     "shop/prices.py": "def price_of(p):\n    return lookup(p)\n"
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"$PANTHEON_PROJECTS\"/'shop' && if printf %s 'python -m shop.report' | grep -q '^python'; then python -m cProfile -s cumtime -m shop.report 2>&1 | head -60; else ( time python -m shop.report ) 2>&1 | tail -40; fi"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "shop/report.py"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "shop/prices.py"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Profile — python -m shop.report",
+        "content": "Profile — python -m shop.report\npython -m shop.report in shop: 4.2 s\n\n## Measured\n- `python -m cProfile -s cumtime -m shop.report` — 4.2 s, 118,402 calls\n\n## Hot paths\n- shop/report.py:load_orders — 71% — called from shop/report.py:12\n- shop/prices.py:price_of — 22% — called from shop/report.py:31 (inside the loop over orders)\n- shop/report.py:render — 4% — called from shop/report.py:40\n\n## Proposed fixes\n- load_orders opens the CSV once per customer: read it once at the top and index by customer.\n- price_of is called 40,000 times for 120 products: cache it per product id.\n- render is fine.\n\n## Not measured\n- A second run; memory; the report with a larger orders file.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "4.2 s; load_orders is 71% of it.\n\n## Report\n- profiled the command once, read 2 call sites; wrote \"Profile — python -m shop.report\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Profile — python -m shop.report",
+      "contains": [
+       "71%",
+       "shop/report.py:12",
+       "## Not measured"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-command-that-is-not-python",
+   "about": "A make target has no profiler table: Measured holds the wall time and Hot paths says what a profiler for that language would be needed for.",
+   "inputs": {
+    "folder": "shop",
+    "command": "make report"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "time make report",
+      "output": "rendering 120 customers\n\nreal\t0m2.140s\nuser\t0m1.900s\nsys\t0m0.100s"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"$PANTHEON_PROJECTS\"/'shop' && if printf %s 'make report' | grep -q '^python'; then python -m cProfile -s cumtime -m shop.report 2>&1 | head -60; else ( time make report ) 2>&1 | tail -40; fi"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Profile — make report",
+        "content": "Profile — make report\nmake report in shop: 2.1 s\n\n## Measured\n- `time make report` — 2.1 s wall time; no call counts (not Python)\n\n## Hot paths\n- not available without a profiler for make's recipe; its output names one step, \"rendering 120 customers\"\n\n## Proposed fixes\n- run the recipe's command under its language's profiler\n\n## Not measured\n- which of the recipe's commands took the time\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "2.1 s; no hot paths without a profiler for make.\n\n## Report\n- timed the command once; wrote \"Profile — make report\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Profile — make report",
+      "contains": [
+       "wall time",
+       "without a profiler"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "the-command-fails",
+   "about": "The command exits with an error: the document's first line is the error and Hot paths says the command did not finish.",
+   "inputs": {
+    "folder": "shop",
+    "command": "python -m shop.report"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "cProfile",
+      "output": "/usr/bin/python: No module named shop.report",
+      "exit_code": 1
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"$PANTHEON_PROJECTS\"/'shop' && if printf %s 'python -m shop.report' | grep -q '^python'; then python -m cProfile -s cumtime -m shop.report 2>&1 | head -60; else ( time python -m shop.report ) 2>&1 | tail -40; fi"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Profile — python -m shop.report",
+        "content": "Profile — python -m shop.report\nNo module named shop.report — the command did not finish\n\n## Measured\n- `python -m cProfile -s cumtime -m shop.report` — exit 1: No module named shop.report\n\n## Hot paths\n- none: the command did not finish\n\n## Proposed fixes\n- none until the command runs\n\n## Not measured\n- everything\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Not profiled: the command did not finish.\n\n## Report\n- the command exited 1; wrote \"Profile — python -m shop.report\" saying so"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Profile",
+      "contains": [
+       "did not finish"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "it-never-edits-code",
+   "about": "A model that goes on to edit the hot path is stopped: the command waits for a yes, the person says no, and no profile is written. Its hirer does not hold Auto-approve, so that step still waits for a yes.",
+   "inputs": {
+    "folder": "shop",
+    "command": "python -m shop.report"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "cProfile",
+      "output": "         118402 function calls in 4.201 seconds\n\n   Ordered by: cumulative time\n\n   ncalls  tottime  percall  cumtime  percall filename:lineno(function)\n        1    0.000    0.000    4.201    4.201 shop/report.py:1(<module>)\n      120    2.900    0.024    2.983    0.025 shop/report.py:12(load_orders)\n    40000    0.800    0.000    0.924    0.000 shop/prices.py:40(price_of)\n        1    0.150    0.150    0.168    0.168 shop/report.py:40(render)\n    40120    0.090    0.000    0.090    0.000 {built-in method io.open}\n"
+     },
+     {
+      "match": "sed -i",
+      "output": ""
+     }
+    ],
+    "files": {
+     "shop/report.py": "import csv\nfrom shop.prices import price_of\n\ndef main():\n    for customer in customers():\n        orders = load_orders(customer)   # line 12 opens the CSV per customer\n        for o in orders:\n            o.total = price_of(o.product) * o.qty   # line 31\n    render()\n"
+    }
+   },
+   "can_auto_approve": false,
+   "answers": [
+    "deny"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"$PANTHEON_PROJECTS\"/'shop' && if printf %s 'python -m shop.report' | grep -q '^python'; then python -m cProfile -s cumtime -m shop.report 2>&1 | head -60; else ( time python -m shop.report ) 2>&1 | tail -40; fi"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"$PANTHEON_PROJECTS\"/'shop' && sed -i 's/load_orders(customer)/cached(customer)/' shop/report.py"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Fixed the hot path."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    },
+    {
+     "no_document": "Profile"
+    },
+    {
+     "file": {
+      "path": "shop/report.py",
+      "contains": [
+       "load_orders(customer)"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-profile-without-its-headings-fails",
+   "about": "The harness's own check: a profile without Measured, Hot paths, Proposed fixes and Not measured does not deliver, even after its repair pass.",
+   "inputs": {
+    "folder": "shop",
+    "command": "python -m shop.report"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "cProfile",
+      "output": "         118402 function calls in 4.201 seconds\n\n   Ordered by: cumulative time\n\n   ncalls  tottime  percall  cumtime  percall filename:lineno(function)\n        1    0.000    0.000    4.201    4.201 shop/report.py:1(<module>)\n      120    2.900    0.024    2.983    0.025 shop/report.py:12(load_orders)\n    40000    0.800    0.000    0.924    0.000 shop/prices.py:40(price_of)\n        1    0.150    0.150    0.168    0.168 shop/report.py:40(render)\n    40120    0.090    0.000    0.090    0.000 {built-in method io.open}\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"$PANTHEON_PROJECTS\"/'shop' && if printf %s 'python -m shop.report' | grep -q '^python'; then python -m cProfile -s cumtime -m shop.report 2>&1 | head -60; else ( time python -m shop.report ) 2>&1 | tail -40; fi"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Profile — python -m shop.report",
+        "content": "It is slow because of load_orders."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

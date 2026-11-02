@@ -1,0 +1,29 @@
+{
+ "case": "three-doors-two-open",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- listed the tree, read 5 files, 1 search, 1 glob; wrote \"Threat model — the public API in shop\"",
+ "read": [
+  "grep",
+  "glob",
+  "read_file"
+ ],
+ "wrote": [
+  "bash",
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Threat model”",
+   "ok": true,
+   "detail": "“Threat model — the public API in shop” is there."
+  }
+ ],
+ "answer": "3 entry points, 4 threats, 2 open.\n\n## Report\n- listed the tree, read 5 files, 1 search, 1 glob; wrote \"Threat model — the public API in shop\"",
+ "documents": [
+  {
+   "title": "Threat model — the public API in shop",
+   "content": "Threat model — the public API in shop\n3 entry points, 4 threats, 2 open\n\n## Assets\n- customer orders and addresses — the orders table (shop/db.py)\n- the payment key — PAYMENT_KEY read at shop/config.py:2 from the environment\n- the ability to run code on the host — anything that reaches `subprocess` (shop/export.py:4)\n\n## Entry points\n1. POST /orders — shop/routes/public.py:4 — anyone\n2. GET /orders/{id} — shop/routes/public.py:8 — a signed-in user\n3. POST /admin/export — shop/routes/admin.py:1 — an admin\n\n## Threats\n1. 2 — a signed-in user — reads another customer's order by guessing the id — I (disclosure)\n2. 1 — anyone — sends 10,000 orders a minute and fills the database — D (denial)\n3. 3 — an admin — the export's format field reaches `subprocess` as part of a shell command — E (elevation)\n4. 1 — anyone — posts an order with a negative quantity for a refund — T (tampering)\n\n## Mitigations\n1. none — the handler loads by id without checking the owner (shop/routes/public.py:10)\n2. a rate limit of 60/minute per address — shop/middleware.py:1\n3. none — the format string is joined into the command (shop/export.py:4)\n4. quantity must be ≥ 1 — shop/models.py:2\n\n## Open\n- 3 — code on the host behind an admin login; fix: pass the format as an argument list, never a string.\n- 1 — every customer's orders behind any login; fix: filter by the signed-in user at shop/routes/public.py:10.\n- not read: shop/db.py."
+  }
+ ]
+}

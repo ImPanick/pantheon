@@ -114,7 +114,7 @@ function _strokeOnCanvas(ctx, kind, pts, dx, dy) {
  * `stage`), `size()` the frame's pixels, `say(text, {error})` its status line,
  * `send(text, files)` what writes a message into the chat.
  */
-export function createNotes({ win, size, say, send, frameInfo, mapPoint }) {
+export function createNotes({ win, size, say, send, frameInfo, mapPoint, freshPicture }) {
   let notes = [];
   let mode = null;          // null | 'note' | 'draw'
   let drawing = null;       // { noteId, kind, points }
@@ -420,6 +420,9 @@ export function createNotes({ win, size, say, send, frameInfo, mapPoint }) {
   async function sendNotes() {
     const open = notes.filter((n) => n.status === 'open');
     if (!open.length) return;
+    // `D-2026-11-01-01`: a live browser draws no frames, so one is fetched
+    // into the page's picture for the crops.
+    if (typeof freshPicture === 'function') await freshPicture();
     const s = size();
     const files = [];
     if (win.img.naturalWidth > 0) {

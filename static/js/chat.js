@@ -60,6 +60,9 @@ import { createAgentMeter, presentMeterEvent, METER_EVENT_TYPES, renderLimitsHin
 import { loadPanel } from './panels.js';
 import planWindow from './planWindow.js';
 import summonModule from './summon.js';   // P24-26
+import reasoningEffortModule from './reasoningEffort.js';   // reasoning effort chip
+import reactionsModule from './reactions.js';   // `B1736` emoji reactions
+reactionsModule.useSessionId(() => sessionModule.getCurrentSessionId());
 import * as contextUsage from './contextUsage.js';
 // `P10-06`. The context panel closes through the one popup registry, like
 // every other popup appended to <body> (see `_openContextPanel`).
@@ -307,10 +310,15 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
     const openUp = above >= pRect.height || above >= below;
     const room = Math.max(160, (openUp ? above : below) - 8);
     popup.style.maxHeight = `${Math.round(room)}px`;
-    const height = Math.min(pRect.height, room);
-    popup.style.top = openUp
-      ? `${Math.round(Math.max(8, rect.top - height - 8))}px`
-      : `${Math.round(rect.bottom + 8)}px`;
+    // Opened upward it hangs from its BOTTOM edge: a row that unfolds grows
+    // the panel up, away from the wheel, instead of pushing it down over it.
+    if (openUp) {
+      popup.style.top = 'auto';
+      popup.style.bottom = `${Math.round(window.innerHeight - rect.top + 8)}px`;
+    } else {
+      popup.style.bottom = 'auto';
+      popup.style.top = `${Math.round(rect.bottom + 8)}px`;
+    }
     let left = rect.right - pRect.width;
     left = Math.max(8, Math.min(left, window.innerWidth - pRect.width - 8));
     popup.style.left = `${Math.round(left)}px`;
@@ -471,7 +479,11 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
       return false;
     }
     try {
-      const res = await fetch(`/api/session/${encodeURIComponent(sid)}/compact`, { method: 'POST' });
+      // `B1731`: the cut is sized to the window the wheel draws, so the
+      // compaction is asked in the same mode the wheel was.
+      const agentBtn = document.getElementById('mode-agent-btn');
+      const mode = agentBtn && agentBtn.classList.contains('active') ? 'agent' : 'chat';
+      const res = await fetch(`/api/session/${encodeURIComponent(sid)}/compact?mode=${mode}`, { method: 'POST' });
       if (!res.ok) {
         // `P23-04` (CHAT-M-20, C-ERR): the server's sentence, read once — it
         // was "Compact failed: {"detail":"Not enough messages to compact"}".
@@ -479,7 +491,18 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
         uiModule.showError(refusal.sentence);
         return false;
       }
-      uiModule.showToast('Context compacted');
+      // `B1731`: say what it did — the wheel's figure before and after, and
+      // when Pantheon had to condense the messages itself.
+      let done = null;
+      try { done = await res.json(); } catch (_) { done = null; }
+      let said = 'Context compacted';
+      if (done && Number.isFinite(Number(done.before)) && Number.isFinite(Number(done.after))) {
+        said = `Context compacted: ${Math.round(Number(done.before))}% → ${Math.round(Number(done.after))}%`;
+      }
+      if (done && done.summarized_by === 'pantheon') {
+        said += ' (the model did not answer, so Pantheon condensed the older messages itself)';
+      }
+      uiModule.showToast(said);
       _closeContextHeaderPopup();
       if (sm && sm.selectSession) await sm.selectSession(sid, { keepSidebar: true, showLoading: false });
       refreshChatContextHeader('compact');
@@ -600,6 +623,20 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
       const detail = { active: !!active };
       if (typeof steerable === 'boolean') detail.steerable = steerable;
       window.dispatchEvent(new CustomEvent('pantheon:chat-busy-change', { detail }));
+    } catch (_) {}
+  }
+  /** `B1718`. The reply on screen as it streams, for whoever speaks it
+   *  (`voiceCall.js`): `start`; `text`, the round's text as it is shown so
+   *  far; `round`, a new bubble, so the text before it is done; `end`, with
+   *  the last round's text; `stop`, aborted or failed; `ask`, the agent put a
+   *  question or an approval to the person (`detail.question`, `kind`,
+   *  `options`); `steered`, the run read `count` steers. Foreground streams
+   *  only: a reply in a chat that is not open is not spoken in this one. */
+  function _announceReply(phase, sessionId, text, extra) {
+    try {
+      window.dispatchEvent(new CustomEvent('pantheon:reply', {
+        detail: Object.assign({ phase, sessionId: sessionId || '', text: typeof text === 'string' ? text : '' }, extra || {}),
+      }));
     } catch (_) {}
   }
   let _pendingContinue = null; // Stores the stopped AI element to merge with new response
@@ -1139,6 +1176,16 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
       const ta = document.getElementById('message');
       if (ta && mod.initSlashAutocomplete) mod.initSlashAutocomplete(ta);
     }).catch(() => {});
+    // `B1738`. `@` in the box opens the agent picker (summons the one picked).
+    import('./agentMention.js').then(mod => {
+      const ta = document.getElementById('message');
+      if (ta && mod.initAgentMention) mod.initAgentMention(ta);
+    }).catch(() => {});
+    // `B1739`. After a reply, the next step waits in the empty box; Tab takes it.
+    import('./nextStepGhost.js').then(mod => {
+      const ta = document.getElementById('message');
+      if (ta && mod.initNextStepGhost) mod.initNextStepGhost(ta);
+    }).catch(() => {});
 
     // ArrowUp on the composer recalls previous user prompts from this chat.
     const _wireArrowUpRecall = (composer) =>
@@ -1159,6 +1206,8 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
 
     // `P7-10`. The run limits beside the mode toggle.
     _wireAgentLimitsHint();
+    // Reasoning effort: shown for the selected model when it takes a level.
+    reasoningEffortModule.init(selectedRoute);
   }
 
   // addMessage, createMsgFooter, displayMetrics, hideWelcomeScreen, showWelcomeScreen
@@ -1659,6 +1708,7 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
   function _promoteQueuedRequest(id) {
     const peek = _queuedAgentRequests.find(it => it && it.id === id);
     if (!peek) return;
+    if (peek.steering) return;   // `B1741`: already on its way to the run
     if (peek.pendingUpload) {
       try { uiModule.showToast && uiModule.showToast('Still uploading the attachment…'); } catch (_) {}
       return;
@@ -1802,7 +1852,7 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
       const sid = _currentSessionIdSafe();
       if (!sid) return;
       const next = _queuedAgentRequests.find(
-        it => it && it.sessionId === sid && !it.pendingUpload && !it.restored
+        it => it && it.sessionId === sid && !it.pendingUpload && !it.restored && !it.steering
       );
       if (!next) return;
       _removeQueuedRequest(next.id);
@@ -1974,6 +2024,10 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
         output_target: 'session',
         attachmentCount: (it.attachments && it.attachments.length) || 0,
         editable: !it.pendingUpload,
+        // `B1741`. Its words are on their way to the run (Steer now was
+        // pressed and the server accepted); the row stays until the run
+        // picks them up or ends, and offers nothing meanwhile.
+        steering: !!it.steering,
         // Distinct from `editable`, which is also false for a launched
         // parallel run. `sendable` means "the drain would actually take this
         // one": `_drainQueuedRequests` filters `!it.pendingUpload`, so a row
@@ -2243,7 +2297,62 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
     },
     runParallel: () => { _runQueueParallel().catch(() => {}); },
     isStreamLive: _isQueueRunLive,
+    // 2026-11-01. *Steer now* on a queued row: the run in flight takes the
+    // message at its next step and the row leaves the queue. The answer to
+    // "can it, right now" is `chatStream.js`'s (`canSteerNow`), the one place
+    // that knows the route, the run's own verdict and the composer's guess.
+    // The row reads the OFFER, which `chatStream.js` withdraws before the
+    // run-end edge reaches anyone; `canSteerNow` alone stays true through the
+    // 1.2 s busy tail and nothing re-renders when that expires, so rows kept
+    // saying Steer now on an idle chat.
+    canSteer: () => { try { return !!(chatStream.isSteerOffered() && chatStream.canSteerNow()); } catch (_) { return false; } },
+    steerKeyLabel: () => chatStream.STEER_KEY_LABEL,
+    steerNow: async (id) => {
+      const it = _queuedAgentRequests.find(x => x && x.id === id);
+      if (!it) return false;
+      if (it.steering) return false;   // already on its way: a second press sends nothing twice
+      if (it.sessionId && it.sessionId !== _currentSessionIdSafe()) return false;
+      if (it.pendingUpload || (it.attachments && it.attachments.length)) {
+        // `B1280`: a steer is words only; the queue carries the picture.
+        try { uiModule.showToast && uiModule.showToast("A picture can't steer a running reply — Send now sends it ahead of the rest"); } catch (_) {}
+        return false;
+      }
+      // Marked before the round trip, so the drain, the bubble's click and a
+      // second press all leave it alone while the server is answering. The
+      // row leaves the queue only when the run picks the words up
+      // (`pantheon:steer-applied` below); a run that ends first un-marks it on
+      // the busy edge and the drain sends it next, so nothing is lost.
+      it.steering = true;
+      try { queuePanel.refresh(); } catch (_) {}
+      let sent = false;
+      try { sent = await chatStream.submitSteer(it.message, { queued: true }); } catch (_) { sent = false; }
+      if (sent !== 'steered') {
+        it.steering = false;
+        try { queuePanel.refresh(); } catch (_) {}
+        return false;
+      }
+      return true;
+    },
   };
+
+  // `B1741`. The two edges a steered row waits on. Both on `window`, as the
+  // events are, and outside any function the harnesses slice out of this file.
+  try {
+    window.addEventListener('pantheon:steer-applied', () => {
+      const landed = _queuedAgentRequests.filter(it => it && it.steering);
+      if (!landed.length) return;
+      for (const it of landed) _removeQueuedRequest(it.id);
+      try { queuePanel.refresh(); } catch (_) {}
+    });
+    window.addEventListener('pantheon:chat-busy-change', (ev) => {
+      if (ev && ev.detail && ev.detail.active) return;
+      let any = false;
+      for (const it of _queuedAgentRequests) {
+        if (it && it.steering) { it.steering = false; any = true; }
+      }
+      if (any) { try { queuePanel.refresh(); } catch (_) {} }
+    });
+  } catch (_) {}
 
 
   /**
@@ -2387,6 +2496,48 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
     // Clear tracking variables
     currentAccumulated = '';
     currentHolder = null;
+  }
+
+  /** `B1718`. Whether a reply is being written into the open chat, or a send
+   *  is on its way there: a voice chat's next turn then waits for it. */
+  export function isReplyRunning() {
+    return !!(isStreaming || _sendInFlight);
+  }
+
+  /**
+   * `B1718`. A voice chat's turn, as the person's next message: sent as if
+   * typed and sent, with whatever is attached. A draft in the box is kept —
+   * set aside while the spoken words go, and put back once they have
+   * (`pantheon:message-sent`). With a reply still running it waits in the
+   * queue instead (`queueSpokenTurn`). Answers `'sent'`, `'queued'` or
+   * `false`.
+   */
+  export function sendSpokenTurn(text) {
+    const said = String(text || '').trim();
+    const input = uiModule.el('message');
+    if (!said || !input) return false;
+    if (isReplyRunning()) return queueSpokenTurn(said) ? 'queued' : false;
+    const draft = input.value || '';
+    if (draft.trim()) {
+      const giveBack = () => {
+        window.removeEventListener('pantheon:message-sent', giveBack);
+        setTimeout(() => {
+          if (input.value) return;
+          input.value = draft;
+          input.dispatchEvent(new Event('input', { bubbles: true }));
+          if (uiModule.autoResize) uiModule.autoResize(input);
+        }, 0);
+      };
+      window.addEventListener('pantheon:message-sent', giveBack);
+      setTimeout(() => window.removeEventListener('pantheon:message-sent', giveBack), 15000);
+    }
+    return _setComposerAndSend(said) ? 'sent' : false;
+  }
+
+  /** `B1718`. A spoken turn that waits for the reply in flight, in the same
+   *  queue Enter puts a draft in while a reply streams. */
+  export function queueSpokenTurn(text) {
+    return !!_queueAgentRequest(String(text || '').trim(), { attachments: [], pendingUpload: false });
   }
 
   /**
@@ -3205,6 +3356,8 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
       if (selectedRouteForSend.model) fd.append('selected_model', selectedRouteForSend.model);
       if (selectedRouteForSend.endpoint_url) fd.append('selected_endpoint_url', selectedRouteForSend.endpoint_url);
       if (selectedRouteForSend.endpoint_id) fd.append('selected_endpoint_id', selectedRouteForSend.endpoint_id);
+      const _effortForSend = reasoningEffortModule.levelForSend();
+      if (_effortForSend) fd.append('reasoning_effort', _effortForSend);
       if (ids.length) fd.append('attachments', JSON.stringify(ids));
       // Auto-save & send active doc ID so the backend sees latest content
       if (documentModule && activeDocIdForSend && shouldSaveActiveDoc) {
@@ -3551,8 +3704,13 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
       let isThinking = false;
       let thinkingStartTime = null;
       // Streaming TTS: synthesize sentence-by-sentence during streaming
-      streamingTTS = !!(window.aiTTSManager && window.aiTTSManager.autoPlay && window.aiTTSManager.available);
+      // `B1718`: not in a voice chat, which speaks the reply itself.
+      // `B1730`: Conversation (`autoPlay`) needs a voice that speaks, not
+      // the read-aloud button (`available`), which is a switch of its own.
+      streamingTTS = !!(window.aiTTSManager && window.aiTTSManager.autoPlay && window.aiTTSManager.speaks
+                        && !window.__pantheonVoiceCall);
       if (streamingTTS) window.aiTTSManager.streamingStart();
+      _announceReply('start', streamSessionId);
       // Multi-bubble agent tracking
       let roundHolder = holder;       // Current AI text bubble (changes per round)
       let roundText = '';             // Text accumulated for current round
@@ -4351,8 +4509,10 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
                       roundReplyText += _delta;
                       const replyDisplayText = _replyDisplayProjector.append(_delta, roundReplyText);
                       _renderStream({ replyText: replyDisplayText });
+                      _announceReply('text', streamSessionId, replyDisplayText);
                     } else {
                       _renderStream({ knownNormal: true, displayText: _roundDisplayProjector.current() });
+                      _announceReply('text', streamSessionId, _roundDisplayProjector.current());
                     }
                     _scheduleThinkingSpinner();
                     if (streamingTTS) window.aiTTSManager.streamingUpdate(roundText);
@@ -4474,8 +4634,10 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
                     roundReplyText += _delta;
                     const replyDisplayText = _replyDisplayProjector.append(_delta, roundReplyText);
                     _renderStream({ replyText: replyDisplayText });
+                    _announceReply('text', streamSessionId, replyDisplayText);
                   } else {
                     _renderStream({ knownNormal: true, displayText: _roundDisplayProjector.current() });
+                    _announceReply('text', streamSessionId, _roundDisplayProjector.current());
                   }
                   _scheduleThinkingSpinner();
                   // Feed streaming TTS with accumulated text
@@ -5010,6 +5172,14 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
                 // request was spent on — the wheel reads that back.
                 refreshChatContextHeader('saved');
 
+              } else if (json.type === 'reaction') {
+                // `B1736`. The model reacted to the person's message; the
+                // marker it wrote was lifted out of the stream by the server.
+                if (_isBg) continue;
+                const _reactedTo = _userMsgEl || _resendBubble
+                  || Array.from(document.querySelectorAll('#chat-history > .msg-user')).pop();
+                if (_reactedTo && _reactedTo.isConnected !== false) reactionsModule.showModelReaction(_reactedTo, json.emoji);
+
               } else if (json.type === 'user_message_saved') {
                 // `B1507`. The person's row, for the bubble this send stands
                 // on: the one it drew, or the one an edit or a regenerate kept
@@ -5216,6 +5386,7 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
                 // `data`, so the event goes through whole.
                 if (_isBg) continue;
                 chatStream.handleSteerApplied(json);
+                _announceReply('steered', streamSessionId, '', { count: Number(json.count) || 1 });
 
               } else if (json.type === 'ask_user') {
                 if (_isBg) continue;
@@ -5232,7 +5403,16 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
                 if (holder && json.data && json.data.kind === 'tool_approval') {
                   holder.dataset.approvalPaused = String(json.data.question || '').trim() || '1';
                 }
+                if (holder) holder.dataset.askedUser = '1';
                 chatRenderer.renderAskUserCard(json.data || {});
+                {
+                  const _ask = json.data || {};
+                  _announceReply('ask', streamSessionId, '', {
+                    question: String(_ask.question || ''),
+                    kind: String(_ask.kind || ''),
+                    options: Array.isArray(_ask.options) ? _ask.options.map((o) => String((o && (o.label || o.text)) || o || '')) : [],
+                  });
+                }
 
               } else if (json.type === 'plan_update') {
                 if (_isBg) continue;
@@ -5283,6 +5463,7 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
                   spinner = _openRoundSpinner(newBody, _meter);   // `P4-23`: it carries the meter
                 }
                 if (streamingTTS) window.aiTTSManager._streamSentencesSent = 0;
+                _announceReply('round', streamSessionId);
                 uiModule.scrollHistory();
               } else if (json.type === 'budget_exceeded') {
                 if (_isBg) continue;
@@ -5640,7 +5821,10 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
 	        }
 		        try {
 		          const _endToggles = Storage.loadToggleState();
-		          if (_endToggles.plan_mode && accumulated) {
+		          // A plan-mode turn that asked instead of planning offers no
+		          // Execute: its text is the questions, not a plan.
+		          if (_endToggles.plan_mode && accumulated && !holder.dataset.askedUser
+		              && planWindow.hasPlanSteps(accumulated)) {
 		            _setStoredPlan(accumulated, streamSessionId);
 		            _attachPlanActions(footerTarget, accumulated);
 		          }
@@ -5648,9 +5832,15 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
 	        if (addAITTSButton && accumulated && window.aiTTSManager?._provider !== 'disabled' && window.aiTTSManager?.available) {
 	          addAITTSButton(footerTarget, accumulated);
 	        }
+        _announceReply('end', streamSessionId,
+                       _streamDisplayText(roundReplyText !== null ? roundReplyText : roundText));
         // TTS auto-play: streaming mode flushes remaining text, non-streaming enqueues full message
-        if (accumulated && window.aiTTSManager && window.aiTTSManager.autoPlay) {
-          const ttsBtn = holder.querySelector('.ai-tts-button');
+        // `B1718`: never in a voice chat, which has said the reply already.
+        if (accumulated && window.aiTTSManager && window.aiTTSManager.autoPlay && !window.__pantheonVoiceCall) {
+          // `B1730`: a reply with no read-aloud button (that switch is off)
+          // is said all the same, on a button nobody sees.
+          const ttsBtn = footerTarget.querySelector('.ai-tts-button') || holder.querySelector('.ai-tts-button')
+            || (window.aiTTSManager.speaks ? window.aiTTSManager.placeholderButton() : null);
           if (ttsBtn) {
             var ICON_PLAY_TTS = playIcon({ size: 14 });
             var ICON_STOP_TTS = stopIcon({ size: 14 });
@@ -5815,6 +6005,7 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
       } else {
         // Stop streaming TTS on any error/abort
         if (streamingTTS && window.aiTTSManager) window.aiTTSManager.stop();
+        _announceReply('stop', streamSessionId);
 
         if (abortCtrl && abortCtrl.signal.aborted) {
           const abortReason = abortCtrl._reason || '';
@@ -9020,6 +9211,10 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
     queueStreamingComposerRequest,
     abortCurrentRequest,
     stopCurrentReply,
+    // `B1718`: a voice chat's turns (`voiceCall.js`, wired by `app.js`).
+    isReplyRunning,
+    sendSpokenTurn,
+    queueSpokenTurn,
     detachCurrentStream,
     checkBackgroundStream,
     resumeStream,

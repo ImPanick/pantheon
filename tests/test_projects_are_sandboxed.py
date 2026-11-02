@@ -204,7 +204,8 @@ def test_the_picker_opens_on_the_projects_folder_not_the_install(data_dir, monke
 # ── the workstation sees projects/ and nothing else of Pantheon's ───────────
 
 def _workstation_volumes():
-    compose = yaml.safe_load((ROOT / "docker" / "workstation.yml").read_text())
+    # In Pantheon's own stack since 2026-10-31; `docker/workstation.yml` is a shim.
+    compose = yaml.safe_load((ROOT / "docker-compose.yml").read_text())
     return compose["services"]["workstation"]["volumes"]
 
 
@@ -227,7 +228,7 @@ def test_the_workstation_is_given_the_projects_folder():
 
 
 def test_the_workstation_is_given_nothing_else_of_pantheons():
-    """`docker/workstation.yml` has said since `P20-01`: *no Pantheon volume
+    """The workstation's compose service has said since `P20-01`: *no Pantheon volume
     but the pairing one*. The projects folder is the one exception and it is a
     subdirectory — a mount of `./data` would hand root in the sandbox the
     install's credentials, memory and database."""

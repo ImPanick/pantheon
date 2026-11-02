@@ -109,10 +109,11 @@ def test_the_calendar_loader(tmp_path):
 
 def test_the_speech_loader(tmp_path):
     out = _node(tmp_path, """
-        const getSettings = async () => ({ tts_enabled: true });
-        const manager = { available: true, async checkAvailability() %s };
+        const getSettings = async () => ({ tts_enabled: true, tts_read_aloud: true });   // `B1718`: read-aloud on
+        // `B1730`: the check takes `warm`, for a reply about to be said.
+        const manager = { available: true, async checkAvailability({ warm = false } = {}) %s };
         await both(() => manager.checkAvailability());
-    """ % _cut("tts-ai.js", "async checkAvailability()"))
+    """ % _cut("tts-ai.js", "async checkAvailability("))
     _assert_quiet_offline_loud_when_garbled(out, "speech")
 
 

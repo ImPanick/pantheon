@@ -2415,6 +2415,29 @@ def setup_skills_routes(skills_manager: SkillsManager) -> APIRouter:
                             if unknown else ""),
                 "skill": entry}
 
+    @router.get("/library")
+    async def list_library(request: Request):
+        """The vendored skill library, as a shelf to add from.
+
+        Kept out of `GET /api/skills` (its cards cost the Brain its 3 s bound)
+        and out of the model's catalogue (`D-2026-10-26-01` §8); this is the one
+        place a person can see what ships and take a skill for their own."""
+        user = _owner(request)
+        rows = skills_manager.library_catalogue(owner=user)
+        return {"skills": rows, "count": len(rows),
+                "manifest": skills_manager.library_manifest()}
+
+    @router.post("/library/{skill_id}/add")
+    async def add_from_library(request: Request, skill_id: str):
+        """Copy one vendored skill into the person's own store, published, so
+        their model is offered it and they can edit it."""
+        user = _owner(request)
+        entry = skills_manager.adopt_library_skill(skill_id, owner=user)
+        if entry is None:
+            raise HTTPException(404, "No skill by that name in the library")
+        _fire_skill_added(user, entry.get("name"))
+        return {"ok": True, "skill": entry}
+
     @router.post("/{skill_id}/fork")
     async def fork_skill(request: Request, skill_id: str, body: SkillForkRequest):
         """A separately named copy of a skill, for when it should diverge. `P8-52`.

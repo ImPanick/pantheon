@@ -4,13 +4,14 @@ name: Competitor Tracker
 tagline: "Pricing, launches and hiring changes at the companies you name, week on week."
 section: research
 icon: binoculars
-version: 1.3.0
+version: 1.3.2
 wave: 2
 inputs:
   - {key: companies, kind: list, label: The companies (name and website)}
 triggers:
   - {on: weekly, day: mon, at: "07:00"}
 tools: [web_search, web_fetch, create_document]
+skills: [web-research]
 needs: {connectors: [], min_context: 16000, native_tools: preferred}
 delivers:
   - {kind: document, title: "Competitors", must_contain: [Pricing, Launches, Hiring]}

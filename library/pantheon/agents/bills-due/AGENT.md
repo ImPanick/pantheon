@@ -4,13 +4,13 @@ name: Bills Due
 tagline: Bills due with amounts and where to pay them — Pantheon never pays.
 section: finance
 icon: receipt
-version: 1.2.0
+version: 1.2.1
 wave: 2
 inputs: []
 triggers:
   - {on: weekly, day: mon, at: "08:00"}
 tools: [search_emails, read_email, create_document]
-needs: {connectors: [], min_context: 16000, native_tools: preferred}
+needs: {connectors: [mail], min_context: 16000, native_tools: preferred}
 delivers:
   - {kind: document, title: "Bills due", must_contain: [Overdue, Due in the next three weeks, Checked]}
 effects: {read_private: allow, write_private: allow}

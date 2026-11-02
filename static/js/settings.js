@@ -56,10 +56,13 @@ import { chevronIcon } from './icons.js';
 import { mountHfToken, mountServers } from './servingSettings.js';   // `B1258`: the token's and the servers' one editor
 // `B1564`: the chat's microphone, and whether this browser has speech
 // recognition of its own, in the recorder's words (the same specifier as `app.js`'s).
-import voiceRecorderModule, { browserSpeechRecognition, NO_BROWSER_SPEECH } from './voiceRecorder.js';
+import voiceRecorderModule, { browserSpeechRecognition, browserSpeechRefusal, NO_BROWSER_SPEECH,
+  recordingExtension, recordingType } from './voiceRecorder.js';
 
 let initialized = false;
 let modalEl = null;
+// `B1718`. What Settings → Voice re-reads each time it is opened.
+const _voicePanelOpened = new Set();
 let _authPolicy = { password_min_length: 8 };
 
 /**
@@ -125,8 +128,11 @@ function onSettingsPanelActivated(tab) {
   // on every panel (a switch in Agent Tools changes the sidebar too, live).
   syncAppearanceOpacity(true);
 
-  // AI endpoints are intentionally refreshed only when entering the AI panel.
-  if (tab === 'ai') refreshAiModelEndpoints();
+  // AI endpoints are intentionally refreshed only when entering the AI panel,
+  // or the Voice panel (`B1718`), whose speech cards list endpoints too.
+  if (tab === 'ai' || tab === 'voice') refreshAiModelEndpoints();
+  // `B1718`: what the voice is doing now (a voice loading, one that cannot).
+  if (tab === 'voice') _voicePanelOpened.forEach((fn) => { try { fn(); } catch (_) { /* its own line says */ } });
 
   // `B1229`: the switch as stored now, not as it was when Settings first drew.
   if (tab === 'forge') _readForgeModelHubs();
@@ -162,6 +168,13 @@ function onSettingsPanelActivated(tab) {
     import('./personNetworks.js')
       .then((mod) => mod.open())
       .catch((e) => console.error('My networks panel failed to load', e));
+  }
+
+  // `B1730`. Same shape: the person's own Conversation switch and voice.
+  if (tab === 'conversation') {
+    import('./conversationSettings.js')
+      .then((mod) => mod.open())
+      .catch((e) => console.error('Conversation panel failed to load', e));
   }
 
   // `P27-03`. Same shape: the person's own vault, read on activation.
@@ -1025,78 +1038,218 @@ async function initVisionSettings() {
   });
 }
 
-/* ── Face Recognition ── */
+/* ── Voice chat, and the voice it answers in (`B1718`) ──
+   The Voice panel's second card (`static/index.html`). The voice is the one
+   setting read-aloud used (`tts_provider` and its model, speaker and speed),
+   chosen with one control: "None" saves `tts_enabled: false`, as "Off" does
+   for speech to text. Beside it, the voice chat's own three settings and the
+   read-aloud switch (`tts_read_aloud`), which choosing a voice for voice chat
+   does not turn on (`src/settings.py`'s `_read_aloud_as_it_was` keeps it for
+   an install that had it before the switch existed). Every change is
+   saved through `_postSettings`; the composer's call button is told through
+   the recorder's one reader of `/api/stt/stats` (`refreshSttProvider`). */
+const _KOKORO_VOICES = ['af_heart', 'af_bella', 'af_nicole', 'af_sarah', 'am_adam', 'am_michael', 'bf_emma', 'bm_george'];
+const _VOICE_PREVIEW = 'Hello. This is how replies sound in a voice chat.';
 
-/* ── Text to Speech ── */
+function _voiceNoteLine(note, text) {
+  var line = document.createElement('div');
+  line.textContent = text;
+  note.appendChild(line);
+  return line;
+}
+
 async function initTtsSettings() {
   var provSel = el('set-ttsProviderSelect');
+  var note = el('set-ttsProviderNote');
   var modelSelect = el('set-ttsModelSelect');
   var modelInput = el('set-ttsModelInput');
   var voiceSelect = el('set-ttsVoiceSelect');
   var voiceInput = el('set-ttsVoiceInput');
+  var voiceList = el('set-ttsVoiceList');
   var modelRow = el('set-ttsModelRow');
   var voiceRow = el('set-ttsVoiceRow');
   var speedSelect = el('set-ttsSpeedSelect');
   var speedRow = el('set-ttsSpeedRow');
   var ttsMsg = el('set-ttsSettingsMsg');
-  var ttsEnabledToggle = el('set-ttsEnabledToggle');
-  var ttsConfigWrap = provSel ? provSel.closest('div[style*="flex-direction"]') : null;
+  var chatToggle = el('set-voiceChatEnabledToggle');
+  var pauseSelect = el('set-voiceChatPauseSelect');
+  var bargeToggle = el('set-voiceChatBargeInToggle');
+  var readAloudToggle = el('set-ttsReadAloudToggle');
+  if (!provSel || !note) return;
+  var endpointNames = {};
+  var stats = null;   // `/api/tts/stats`, for the saved voice
 
   function isEndpoint() { return provSel.value.startsWith('endpoint:'); }
-  function getModel() { return isEndpoint() ? modelSelect.value : modelInput.value; }
-  function getVoice() { return isEndpoint() ? voiceSelect.value : voiceInput.value; }
+  function getModel() { return isEndpoint() ? (modelSelect.value || 'tts-1') : (modelInput.value.trim() || 'tts-1'); }
+  function getVoice() { return isEndpoint() ? voiceSelect.value : voiceInput.value.trim(); }
 
-  function updateVisibility() {
+  function say(text, bad) {
+    ttsMsg.textContent = text;
+    ttsMsg.style.color = bad ? 'var(--red)' : 'var(--fg)';
+    if (!bad) setTimeout(function() { if (ttsMsg.textContent === text) ttsMsg.textContent = ''; }, 2000);
+  }
+
+  function fillVoiceList() {
+    if (!voiceList) return;
     var prov = provSel.value;
-    modelRow.style.display = prov.startsWith('endpoint:') ? 'flex' : 'none';
-    voiceRow.style.display = prov === 'disabled' ? 'none' : 'flex';
-    speedRow.style.display = prov === 'disabled' ? 'none' : 'flex';
-    if (isEndpoint()) {
-      modelSelect.style.display = ''; modelInput.style.display = 'none';
-      voiceSelect.style.display = ''; voiceInput.style.display = 'none';
-    } else {
-      modelSelect.style.display = 'none'; modelInput.style.display = '';
-      voiceSelect.style.display = 'none'; voiceInput.style.display = prov === 'disabled' ? 'none' : '';
+    var names = [];
+    if (prov === 'piper') names = (stats && stats.provider === 'piper' && Array.isArray(stats.voices)) ? stats.voices : [];
+    else if (prov === 'local') names = _KOKORO_VOICES;
+    // `B1728`, `B1729`: every voice the engine speaking now has; Kokoro's
+    // short list until the server has said.
+    else if (prov === 'kokoro' || prov === 'auto' || prov === 'chatterbox') {
+      names = (stats && Array.isArray(stats.voices) && (stats.provider === prov || stats.chosen === prov))
+        ? stats.voices : (prov === 'chatterbox' ? ['default'] : _KOKORO_VOICES);
+    }
+    else if (prov === 'browser' && window.speechSynthesis) {
+      try { names = window.speechSynthesis.getVoices().map(function(v) { return v.name; }); } catch (_) { names = []; }
+    }
+    voiceList.textContent = '';
+    names.forEach(function(name) {
+      var opt = document.createElement('option');
+      opt.value = name;
+      voiceList.appendChild(opt);
+    });
+    // `B1728`. An endpoint's speaker (`alloy`, the stored default) is no voice
+    // of Kokoro's, Chatterbox's or Piper's, and the server says those with
+    // the engine's own voice instead: the field shows that one, its
+    // placeholder, rather than a name nothing here speaks with.
+    var typed = voiceInput ? voiceInput.value.trim() : '';
+    if (typed && prov !== 'browser' && !isEndpoint() && _endpointSpeakers.indexOf(typed) >= 0 && names.indexOf(typed) < 0) {
+      voiceInput.value = '';
+    }
+  }
+  var _endpointSpeakers = voiceSelect ? Array.from(voiceSelect.options).map(function(o) { return o.value; }) : [];
+
+  function describe() {
+    var prov = provSel.value;
+    note.textContent = '';
+    // `B1728`: "Automatic" is told by what it chose (`chosen`), and speaks
+    // with what it found (`provider`).
+    var current = stats && (stats.provider === prov || stats.chosen === prov);
+    if (prov === 'disabled') {
+      _voiceNoteLine(note, 'A voice chat shows the reply and says nothing.');
+    } else if (prov === 'auto') {
+      _voiceNoteLine(note, 'Chatterbox while it runs on this server’s GPU, else Kokoro on its processor, else Piper. '
+        + 'Each speaks here, so a reply’s words stay on this machine.');
+    } else if (prov === 'kokoro') {
+      _voiceNoteLine(note, 'Kokoro speaks on this server’s own processor, about three times faster than it talks, '
+        + 'so a reply’s words stay here.');
+    } else if (prov === 'chatterbox') {
+      _voiceNoteLine(note, 'Chatterbox speaks on this server’s GPU, in a container beside Pantheon '
+        + '(COMPOSE_PROFILES=chatterbox with the NVIDIA overlay), so a reply’s words stay here.');
+    } else if (prov === 'piper') {
+      _voiceNoteLine(note, 'Piper speaks on this server’s own processor, so a reply’s words stay here.');
+    } else if (prov === 'browser') {
+      _voiceNoteLine(note, 'The browser speaks with the voices it has. In Chrome, the voices named Google are '
+        + 'Google’s online service, so a reply’s words leave this machine for those.');
+      if (!('speechSynthesis' in window)) _voiceNoteLine(note, 'This browser has no voices of its own.');
+    } else if (prov === 'local') {
+      _voiceNoteLine(note, 'Kokoro speaks on this server’s GPU, so a reply’s words stay here.');
+    } else if (isEndpoint()) {
+      var name = endpointNames[prov.slice(9)];
+      _voiceNoteLine(note, name
+        ? 'Replies are sent to ' + name + ', an endpoint added under Added Models, at its /audio/speech.'
+        : 'That endpoint is gone or switched off, so nothing is said. Choose another.');
+    }
+    if (!current || prov === 'disabled' || prov === 'browser') return;
+    if (stats.unavailable_reason) {
+      _voiceNoteLine(note, stats.unavailable_reason).classList.add('settings-voice-why');
+    } else if (stats.provider === 'piper') {
+      _voiceNoteLine(note, stats.voice_loaded ? 'Ready: ' + stats.voice + '.' : 'Loading ' + stats.voice + '…');
+    } else if (stats.provider === 'kokoro') {
+      var label = (stats.labels && stats.labels[stats.voice]) || stats.voice;
+      _voiceNoteLine(note, (prov === 'auto' ? 'Speaking with Kokoro now: ' : 'Ready: ') + label + '. '
+        + (stats.voice_loaded ? '' : 'It loads with the first sentence it says, a few seconds.'));
+    } else if (stats.provider === 'chatterbox') {
+      _voiceNoteLine(note, (prov === 'auto' ? 'Speaking with Chatterbox now' : 'Ready')
+        + (stats.device ? ', on ' + stats.device : '') + '.');
     }
   }
 
-  var ttsKeywords = ['tts', 'audio'];
-  try {
-    var epRes = await fetch('/api/model-endpoints', { credentials: 'same-origin' });
-    var endpoints = await epRes.json();
-    endpoints.forEach(function(ep) {
-      if (!ep.is_enabled) return;
-      var hasTTS = (ep.models || []).some(m => ttsKeywords.some(kw => m.toLowerCase().includes(kw)));
-      if (!hasTTS) return;
-      var opt = document.createElement('option'); opt.value = 'endpoint:' + ep.id; opt.textContent = ep.name + ' (API)'; provSel.appendChild(opt);
+  function updateVisibility() {
+    var prov = provSel.value;
+    modelRow.style.display = isEndpoint() ? 'flex' : 'none';
+    voiceRow.style.display = prov === 'disabled' ? 'none' : 'flex';
+    speedRow.style.display = prov === 'disabled' ? 'none' : 'flex';
+    modelSelect.style.display = isEndpoint() ? '' : 'none';
+    modelInput.style.display = 'none';
+    voiceSelect.style.display = isEndpoint() ? '' : 'none';
+    voiceInput.style.display = isEndpoint() ? 'none' : '';
+    voiceInput.placeholder = prov === 'piper' ? ((stats && stats.default_voice) || 'en_US-ljspeech-medium')
+      : (prov === 'local' || prov === 'kokoro' || prov === 'auto' ? 'af_heart'
+        : (prov === 'chatterbox' ? 'default' : 'The system’s own voice'));
+    fillVoiceList();
+    describe();
+  }
+
+  var listed = [];
+  function fillEndpoints(endpoints, keep) {
+    listed = endpoints || [];
+    if (keep === undefined) keep = provSel.value;
+    Array.from(provSel.querySelectorAll('option[data-tts-endpoint]')).forEach(function(o) { o.remove(); });
+    endpointNames = {};
+    var ttsKeywords = ['tts', 'audio', 'speech'];
+    (endpoints || []).forEach(function(ep) {
+      if (!ep || !ep.is_enabled) return;
+      var speaks = (ep.models || []).some(function(m) { return ttsKeywords.some(function(kw) { return String(m).toLowerCase().includes(kw); }); });
+      if (!speaks) return;
+      endpointNames[ep.id] = ep.name;
+      var opt = document.createElement('option');
+      opt.value = 'endpoint:' + ep.id;
+      opt.textContent = 'Endpoint: ' + ep.name;
+      opt.dataset.ttsEndpoint = '1';
+      provSel.appendChild(opt);
     });
-  } catch (e) { console.warn('Failed to load endpoints for TTS', e); }
+    if (keep && keep.startsWith('endpoint:') && !endpointNames[keep.slice(9)]) {
+      var gone = document.createElement('option');
+      gone.value = keep;
+      gone.textContent = 'An endpoint that is gone or switched off';
+      gone.dataset.ttsEndpoint = '1';
+      provSel.appendChild(gone);
+    }
+    if (keep) provSel.value = keep;
+  }
+
+  async function readStats() {
+    try {
+      // `B1730`: the server's own voice, not the one this admin chose for
+      // themselves in Settings → Conversation.
+      var res = await fetch('/api/tts/stats?for=server', { credentials: 'same-origin' });
+      stats = res.ok ? await res.json() : null;
+    } catch (_) { stats = null; }
+  }
+
+  try { fillEndpoints(await _fetchModelEndpoints()); } catch (e) { console.warn('Failed to load endpoints for TTS', e); }
 
   try {
     var settingsRes = await fetch('/api/auth/settings', { credentials: 'same-origin' });
     var settings = await settingsRes.json();
-    if (settings.tts_provider) provSel.value = settings.tts_provider;
+    var provider = settings.tts_enabled === false ? 'disabled' : String(settings.tts_provider || 'disabled');
+    fillEndpoints(listed, provider);
+    if (provSel.value !== provider) provSel.value = 'disabled';
     if (settings.tts_model) { modelSelect.value = settings.tts_model; modelInput.value = settings.tts_model; }
     if (settings.tts_voice) { voiceSelect.value = settings.tts_voice; voiceInput.value = settings.tts_voice; }
-    if (settings.tts_speed) { speedSelect.value = settings.tts_speed; }
-    if (ttsEnabledToggle) ttsEnabledToggle.checked = settings.tts_enabled !== false;
+    if (settings.tts_speed) {
+      _appendUnlistedOption(speedSelect, String(settings.tts_speed));
+      speedSelect.value = String(settings.tts_speed);
+    }
+    if (chatToggle) chatToggle.checked = settings.voice_chat_enabled !== false;
+    if (pauseSelect && ['short', 'normal', 'relaxed'].indexOf(settings.voice_chat_pause) >= 0) pauseSelect.value = settings.voice_chat_pause;
+    if (bargeToggle) bargeToggle.checked = settings.voice_chat_barge_in !== false;
+    if (readAloudToggle) readAloudToggle.checked = settings.tts_read_aloud === true;
   } catch (e) { console.warn('Failed to load TTS settings', e); }
 
-  function syncTtsDisabled() {
-    var off = ttsEnabledToggle && !ttsEnabledToggle.checked;
-    var card = ttsEnabledToggle ? ttsEnabledToggle.closest('.admin-card') : null;
-    if (card) card.style.opacity = off ? '0.45' : '';
-    if (ttsConfigWrap) ttsConfigWrap.style.pointerEvents = off ? 'none' : '';
-  }
-  syncTtsDisabled();
-  updateVisibility();
-
   async function saveTTS() {
+    var prov = provSel.value;
     try {
-      await _postSettings({ tts_enabled: ttsEnabledToggle ? ttsEnabledToggle.checked : true, tts_provider: provSel.value, tts_model: getModel() || 'tts-1', tts_voice: getVoice() || 'alloy', tts_speed: speedSelect.value || '1' });
-      ttsMsg.textContent = 'Saved'; ttsMsg.style.color = 'var(--fg)'; setTimeout(() => { ttsMsg.textContent = ''; }, 2000);
+      await _postSettings({ tts_enabled: prov !== 'disabled', tts_provider: prov, tts_model: getModel(),
+                            tts_voice: getVoice() || (isEndpoint() ? 'alloy' : ''), tts_speed: speedSelect.value || '1' });
+      say('Saved');
       if (window.aiTTSManager) window.aiTTSManager.checkAvailability();
-    } catch (e) { ttsMsg.textContent = _notSaved(e); ttsMsg.style.color = 'var(--red)'; }
+      await readStats();
+      updateVisibility();
+    } catch (e) { say(_notSaved(e), true); }
   }
 
   async function saveAndClearCache() {
@@ -1104,45 +1257,65 @@ async function initTtsSettings() {
     fetch('/api/tts/clear-cache', { method: 'POST', credentials: 'same-origin' }).catch(function(){});
   }
 
+  async function saveChat(patch) {
+    try {
+      await _postSettings(patch);
+      say('Saved');
+      // The call button beside Send, from what the server now says.
+      voiceRecorderModule.refreshSttProvider();
+      if ('tts_read_aloud' in patch && window.aiTTSManager) window.aiTTSManager.checkAvailability();
+    } catch (e) { say(_notSaved(e), true); }
+  }
+
   provSel.addEventListener('change', function() {
     var prov = provSel.value;
-    if (prov === 'local') voiceInput.value = 'af_heart';
+    // The speaker belongs to the voice: Kokoro's and Piper's names are not
+    // each other's, and the browser's are the system's.
+    if (prov === 'local' || prov === 'kokoro') voiceInput.value = 'af_heart';
+    else if (prov === 'auto') voiceInput.value = '';
+    else if (prov === 'chatterbox') voiceInput.value = 'default';
+    else if (prov === 'piper') voiceInput.value = '';
     else if (isEndpoint()) { voiceSelect.value = 'alloy'; modelSelect.value = 'tts-1'; }
-    else if (prov === 'browser') { voiceInput.value = ''; voiceInput.placeholder = 'OS default voice'; }
+    else if (prov === 'browser') voiceInput.value = '';
     updateVisibility();
     saveTTS();
   });
   modelSelect.addEventListener('change', saveAndClearCache);
-  modelInput.addEventListener('change', saveTTS);
   voiceSelect.addEventListener('change', saveAndClearCache);
-  voiceInput.addEventListener('change', saveTTS);
+  voiceInput.addEventListener('change', saveAndClearCache);
   speedSelect.addEventListener('change', saveAndClearCache);
-  if (ttsEnabledToggle) ttsEnabledToggle.addEventListener('change', function() { syncTtsDisabled(); saveTTS(); });
+  if (chatToggle) chatToggle.addEventListener('change', function() { saveChat({ voice_chat_enabled: chatToggle.checked }); });
+  if (pauseSelect) pauseSelect.addEventListener('change', function() { saveChat({ voice_chat_pause: pauseSelect.value }); });
+  if (bargeToggle) bargeToggle.addEventListener('change', function() { saveChat({ voice_chat_barge_in: bargeToggle.checked }); });
+  if (readAloudToggle) readAloudToggle.addEventListener('change', function() { saveChat({ tts_read_aloud: readAloudToggle.checked }); });
+  if (window.speechSynthesis && 'onvoiceschanged' in window.speechSynthesis) {
+    try { window.speechSynthesis.addEventListener('voiceschanged', function() { if (provSel.value === 'browser') fillVoiceList(); }); } catch (_) { /* no voices to list */ }
+  }
+  _registerAiEndpointRefresh(function(endpoints) { fillEndpoints(endpoints); describe(); });
+  _voicePanelOpened.add(function() { readStats().then(updateVisibility); });
 
-  // Preview / test button
+  // Preview: the saved voice says a sentence, as a voice chat would.
   var previewBtn = el('set-ttsPreviewBtn');
   if (previewBtn) {
     var previewAudio = null;
     var previewPlaying = false;
-    function resetPreview() { previewPlaying = false; previewBtn.textContent = 'Preview'; previewBtn.style.borderColor = ''; }
+    // Stop, pressed while it speaks: ends the sentence and says nothing of it
+    // (a stop is not the voice failing).
+    var stopPreview = null;
+    function resetPreview() { previewPlaying = false; stopPreview = null; previewBtn.textContent = 'Hear the voice'; }
 
     previewBtn.addEventListener('click', async function() {
       if (previewPlaying) {
-        if (previewAudio) { previewAudio.pause(); previewAudio = null; }
-        window.speechSynthesis.cancel();
-        resetPreview(); return;
+        if (stopPreview) stopPreview();
+        return;
       }
       var prov = provSel.value;
-      if (prov === 'disabled') {
-        ttsMsg.textContent = 'Select a provider first'; ttsMsg.style.color = 'var(--red, #e55)';
-        setTimeout(function() { ttsMsg.textContent = ''; }, 2000); return;
-      }
-      var testText = 'Hello, this is a test of text to speech.';
-      previewPlaying = true; previewBtn.textContent = 'Loading...';
+      if (prov === 'disabled') { say('Choose a voice first.', true); return; }
+      previewPlaying = true; previewBtn.textContent = 'Loading…';
       try {
         if (prov === 'browser') {
-          if (!('speechSynthesis' in window)) throw new Error('Browser TTS not supported');
-          var utt = new SpeechSynthesisUtterance(testText);
+          if (!('speechSynthesis' in window)) throw new Error('This browser has no voices of its own.');
+          var utt = new SpeechSynthesisUtterance(_VOICE_PREVIEW);
           var voiceVal = getVoice();
           if (voiceVal) {
             var voices = window.speechSynthesis.getVoices();
@@ -1152,37 +1325,58 @@ async function initTtsSettings() {
             if (match) utt.voice = match;
           }
           utt.rate = parseFloat(speedSelect.value) || 1;
-          previewBtn.textContent = 'Stop'; previewBtn.style.borderColor = 'var(--red, #e55)';
-          await new Promise(function(resolve, reject) {
-            utt.onend = resolve;
-            utt.onerror = function(e) { reject(new Error('Browser TTS: ' + e.error)); };
+          previewBtn.textContent = 'Stop';
+          var how = await new Promise(function(resolve, reject) {
+            stopPreview = function() { resolve('stopped'); try { window.speechSynthesis.cancel(); } catch (_) { /* gone */ } };
+            utt.onend = function() { resolve('said'); };
+            utt.onerror = function(e) {
+              if (e && (e.error === 'interrupted' || e.error === 'canceled')) resolve('stopped');
+              else reject(new Error('The browser’s voice stopped: ' + (e && e.error)));
+            };
             window.speechSynthesis.speak(utt);
           });
+          if (how === 'said') say('That is the voice.');
         } else {
           var res = await fetch('/api/tts/synthesize', {
             method: 'POST', credentials: 'same-origin',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ text: testText, format: 'audio' })
+            // `B1730`: `engine: ''` is the server's voice, which this card
+            // sets, never the one this admin chose for themselves.
+            body: JSON.stringify({ text: _VOICE_PREVIEW, format: 'audio', engine: '' })
           });
-          if (!res.ok) { var err = await res.json().catch(function() { return {}; }); throw new Error(err.detail?.message || 'Synthesis failed'); }
+          if (!res.ok) {
+            var err = await res.json().catch(function() { return {}; });
+            throw new Error((err.detail && err.detail.message) || 'This server could not say it.');
+          }
           var blob = await res.blob();
           var url = URL.createObjectURL(blob);
           previewAudio = new Audio(url);
-          previewBtn.textContent = 'Stop'; previewBtn.style.borderColor = 'var(--red, #e55)';
-          await new Promise(function(resolve, reject) {
-            previewAudio.onended = function() { URL.revokeObjectURL(url); previewAudio = null; resolve(); };
-            previewAudio.onerror = function() { URL.revokeObjectURL(url); previewAudio = null; reject(new Error('Playback failed')); };
-            previewAudio.play().catch(reject);
+          previewBtn.textContent = 'Stop';
+          var heard = await new Promise(function(resolve, reject) {
+            var done = function() { URL.revokeObjectURL(url); previewAudio = null; };
+            stopPreview = function() { if (previewAudio) previewAudio.pause(); done(); resolve('stopped'); };
+            previewAudio.onended = function() { done(); resolve('said'); };
+            previewAudio.onerror = function() { done(); reject(new Error('The sound would not play.')); };
+            previewAudio.play().catch(function(e) {
+              if (e && e.name === 'AbortError') return;   // a stop that landed first
+              reject(e && e.name === 'NotAllowedError' ? new Error('The browser would not play sound on this page.') : e);
+            });
           });
+          if (heard === 'said') say('That is the voice.');
         }
       } catch (e) {
-        ttsMsg.textContent = 'Preview failed: ' + e.message; ttsMsg.style.color = 'var(--red, #e55)';
-        setTimeout(function() { ttsMsg.textContent = ''; }, 3000);
+        say(String((e && e.message) || e), true);
       } finally {
         resetPreview();
+        await readStats();
+        describe();
       }
     });
   }
+
+  updateVisibility();
+  await readStats();
+  updateVisibility();
 }
 
 /* ── Speech to Text (`B1564`) ──
@@ -1217,6 +1411,7 @@ async function initSttSettings() {
   var endpointNames = {};
   var saved = { provider: 'disabled', enabled: false };
   var serverSays = '';   // why local Whisper is not running, from `/api/stt/stats`
+  var serverState = '';   // `B1718`: loading, or ready and where it runs
   var downloadLine = '';   // the model-download switch, in `_envflagSourceLine`'s words
 
   function isEndpoint() { return provSel.value.startsWith('endpoint:'); }
@@ -1257,7 +1452,7 @@ async function initSttSettings() {
     var prov = provSel.value;
     note.textContent = '';
     if (prov === 'disabled') {
-      _sttNoteLine(note, 'Off: the chat has no microphone.');
+      _sttNoteLine(note, 'Off: there is no microphone beside Send, and a voice chat cannot hear.');
     } else if (prov === 'browser') {
       _sttNoteLine(note, 'In Chrome, the audio goes to Google to be turned into text, so it leaves this machine. '
         + 'Other browsers may send it to their own service.');
@@ -1266,6 +1461,8 @@ async function initSttSettings() {
       _sttNoteLine(note, 'Whisper runs on this server, so the audio stays here.');
       if (downloadLine) _sttNoteLine(note, 'Downloading its model: ' + downloadLine);
       if (serverSays && saved.enabled && saved.provider === 'local') _sttNoteLine(note, serverSays);
+      // `B1718`: and, once it can run, whether it is ready.
+      else if (serverState && saved.enabled && saved.provider === 'local') _sttNoteLine(note, serverState);
       var door = document.createElement('button');
       door.type = 'button';
       door.className = 'admin-btn-sm';
@@ -1301,9 +1498,18 @@ async function initSttSettings() {
     // Why local Whisper is not running, when it is the saved provider: the
     // download gate's refusal (`B1565`) or faster-whisper missing.
     serverSays = '';
+    serverState = '';
     try {
       var res = await fetch('/api/stt/stats', { credentials: 'same-origin' });
-      if (res.ok) serverSays = String((await res.json()).unavailable_reason || '');
+      if (res.ok) {
+        var st = await res.json();
+        serverSays = String(st.unavailable_reason || '');
+        if (st.model_loaded) {
+          serverState = 'Ready: Whisper ' + st.model + (st.device === 'cuda' ? ' on the GPU.' : ' on the processor.');
+        } else if (st.loading) {
+          serverState = 'Loading Whisper ' + st.model + '… the first use waits for it.';
+        }
+      }
     } catch (_) { /* the line is left out; saving reports its own errors */ }
   }
 
@@ -1359,12 +1565,117 @@ async function initSttSettings() {
   modelInput.addEventListener('change', saveSTT);
   langInput.addEventListener('change', saveSTT);
   _registerAiEndpointRefresh(function(endpoints) { fillEndpoints(endpoints); describe(); });
+  _voicePanelOpened.add(function() {
+    if (saved.provider === 'local') readServer().then(describe);
+  });
+
+  // `B1718`. Test: a few seconds of the microphone, heard by what is saved
+  // (what the composer's microphone and a voice chat use), and what it heard
+  // said back — or the reason it could not, in the words dictation uses.
+  var testBtn = el('set-sttTestBtn');
+  var testOut = el('set-sttTestResult');
+  if (testBtn && testOut) {
+    testBtn.addEventListener('click', async function() {
+      if (testBtn.disabled) return;
+      var prov = saved.enabled ? saved.provider : 'disabled';
+      if (prov === 'disabled') { testOut.textContent = 'Choose a provider first.'; return; }
+      testBtn.disabled = true;
+      testOut.textContent = 'Listening for four seconds: say something.';
+      try {
+        var heard = await _hearForTest(prov, langInput.value.trim(), 4000, function() {
+          testOut.textContent = 'Writing out what was said…';
+        });
+        testOut.textContent = heard ? 'Heard: “' + heard + '”' : 'Nothing was heard. Check the microphone, and speak a little louder.';
+      } catch (e) {
+        testOut.textContent = String((e && e.message) || e);
+      } finally {
+        testBtn.disabled = false;
+        if (prov === 'local') { await readServer(); describe(); }
+      }
+    });
+  }
 
   // Drawn and listening before the two slower reads below: a choice made
   // while the switch's state is still being asked for is saved, not lost.
   updateVisibility();
   await Promise.all([saved.provider === 'local' ? readServer() : null, readDownloadSwitch()]);
   describe();
+}
+
+/** `B1718`. `ms` of the microphone, turned into words by `provider` (the
+ *  saved one), for Settings → Voice's test. The browser's recognition is
+ *  asked directly; every other provider through `POST /api/stt/transcribe`,
+ *  with a recording of a kind this browser makes (`recordingType`). */
+async function _hearForTest(provider, lang, ms, onWriting) {
+  if (!window.isSecureContext) throw new Error('The microphone needs HTTPS here (or localhost).');
+  if (provider === 'browser') {
+    var Recognition = browserSpeechRecognition();
+    if (!Recognition) throw new Error(NO_BROWSER_SPEECH);
+    return await new Promise(function(resolve, reject) {
+      var rec = new Recognition();
+      var words = '';
+      var why = '';
+      var over = false;
+      rec.continuous = true;
+      rec.interimResults = false;
+      rec.lang = lang || '';
+      rec.onresult = function(ev) {
+        for (var i = ev.resultIndex; i < ev.results.length; i++) {
+          if (ev.results[i].isFinal) words += ev.results[i][0].transcript + ' ';
+        }
+      };
+      rec.onerror = function(ev) { why = String((ev && ev.error) || ''); };
+      rec.onend = function() {
+        if (over) return;
+        over = true;
+        var said = browserSpeechRefusal(why);
+        if (!words.trim() && said) reject(new Error(said)); else resolve(words.trim());
+      };
+      try { rec.start(); } catch (_) { reject(new Error(browserSpeechRefusal('not-allowed'))); return; }
+      setTimeout(function() { if (onWriting) onWriting(); try { rec.stop(); } catch (_) { /* ended */ } }, ms);
+      // A recognition that never says it ended does not hold the test forever.
+      setTimeout(function() {
+        if (over) return;
+        over = true;
+        try { rec.abort(); } catch (_) { /* gone */ }
+        if (words.trim()) resolve(words.trim());
+        else reject(new Error('The browser’s speech recognition did not answer.'));
+      }, ms + 8000);
+    });
+  }
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw new Error('This browser cannot use a microphone.');
+  var stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch (e) {
+    if (e && e.name === 'NotAllowedError') throw new Error('The browser would not let this page use the microphone. Allow it for this site.');
+    if (e && e.name === 'NotFoundError') throw new Error('No microphone was found.');
+    throw new Error('The microphone could not be opened: ' + ((e && e.message) || e) + '.');
+  }
+  var blob;
+  try {
+    var asked = recordingType();
+    var recorder = asked ? new MediaRecorder(stream, { mimeType: asked }) : new MediaRecorder(stream);
+    var chunks = [];
+    recorder.ondataavailable = function(ev) { if (ev.data && ev.data.size) chunks.push(ev.data); };
+    var stopped = new Promise(function(resolve) { recorder.onstop = resolve; });
+    recorder.start();
+    await new Promise(function(resolve) { setTimeout(resolve, ms); });
+    recorder.stop();
+    await stopped;
+    blob = new Blob(chunks, { type: String(recorder.mimeType || asked || 'audio/webm').split(';')[0] });
+  } finally {
+    stream.getTracks().forEach(function(t) { t.stop(); });
+  }
+  if (onWriting) onWriting();
+  var form = new FormData();
+  form.append('file', blob, 'test.' + recordingExtension(blob.type));
+  var res = await fetch('/api/stt/transcribe', { method: 'POST', credentials: 'same-origin', body: form });
+  if (!res.ok) {
+    var err = await res.json().catch(function() { return {}; });
+    throw new Error((err.detail && err.detail.message) || 'It could not be turned into words.');
+  }
+  return String((await res.json()).text || '').trim();
 }
 
 /* ═══════════════════════════════════════════
@@ -2741,6 +3052,7 @@ const SHORTCUT_DEFAULTS = KEYBIND_DEFAULTS;
 const SHORTCUT_ICONS = {
   search:         '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="10" cy="10" r="7"/><path d="M21 21l-4.35-4.35"/></svg>',
   toggle_sidebar: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>',
+  toggle_workspace: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="14" y1="4" x2="14" y2="20"/></svg>',
   new_session:    '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>',
   fav_session:    '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>',
   delete_session: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>',
@@ -2766,7 +3078,7 @@ const SHORTCUT_ICONS = {
 const SHORTCUT_LABELS = KEYBIND_LABELS;   // `H19` — one table, not three
 
 const SHORTCUT_CATEGORIES = [
-  { name: 'Navigation', keys: ['search', 'toggle_sidebar', 'focus_input', 'settings'] },
+  { name: 'Navigation', keys: ['search', 'toggle_sidebar', 'toggle_workspace', 'focus_input', 'settings'] },
   { name: 'Chats', keys: ['new_session', 'fav_session', 'delete_session'] },
   { name: 'Tools', keys: ['plan_mode', 'incognito', 'tts', 'cancel'] },
   { name: 'Open Tools', keys: ['open_calendar', 'open_compare', 'open_cookbook', 'open_research', 'open_gallery', 'open_library', 'open_memory', 'open_notes', 'open_tasks', 'open_theme'] },
@@ -3776,6 +4088,12 @@ async function initReminderSettings() {
   function syncSynthesisDim() {
     const card = llmToggle.closest('.admin-card');
     if (card) card.style.opacity = llmToggle.checked ? '' : '0.45';
+    // `B1714`. The persona is read only when a model writes the reminder
+    // (`note_routes`' `reminder_llm_synthesis` gate), so with the switch off
+    // a choice here changed nothing and nothing said so.
+    const personaMsg = el('set-reminder-llm-persona-msg');
+    if (personaMsg) personaMsg.textContent = llmToggle.checked
+      ? '' : 'Used only while this card is switched on.';
   }
   syncSynthesisDim();
   llmToggle.addEventListener('change', () => {
@@ -4341,6 +4659,9 @@ const INTG_TYPES = {
   // `SET-U-9` (P23-03). A token that is neither agent's was listed nowhere —
   // the companion app's, a script's — so it could be neither seen nor revoked.
   token:   { label: 'API token', icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="15" r="4"/><path d="M10.85 12.15 19 4"/><path d="m18 5 2 2"/><path d="m15 8 2 2"/></svg>' },
+  // `B1713`. The companion bridge (`companion/`) mints a pairing code for a
+  // phone on the LAN; its only door was a bare page at /api/companion/pair.
+  phone:   { label: 'Phone', icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="2" width="12" height="20" rx="2"/><line x1="11" y1="18" x2="13" y2="18"/></svg>' },
   vault:   { label: 'Vault',   icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>' },
   // `P27-01`. The person's own logins (Settings → Vault) and git hosts
   // (Settings → Git), listed with everything else an agent can reach. Their
@@ -4679,6 +5000,7 @@ async function initUnifiedIntegrations() {
     // `SET-U-9`: a token row is listed to be seen and revoked; `B1193`: a new
     // one is made here, with a name, what it may do, and the secret shown once.
     else if (type === 'token') { if (editId === 'new') showTokenForm(); else formEl.style.display = 'none'; }
+    else if (type === 'phone') showPhonePairForm();
     // `P27-01`. A login and a git host are edited in their own panels.
     else if (type === 'login') { formEl.style.display = 'none'; open('vault'); }
     else if (type === 'githost') { formEl.style.display = 'none'; open('git'); }
@@ -4753,6 +5075,70 @@ async function initUnifiedIntegrations() {
         await renderList();
       } catch (e) {
         say('Not created: Pantheon did not answer.', true);
+        create.disabled = false;
+      }
+    });
+  }
+
+  // ── Pair a phone ──
+  // `B1713`. `POST /api/companion/pair?format=json` was built for "an in-app
+  // pairing screen" and nothing in the app called it: the only way to pair
+  // was to type /api/companion/pair into the address bar. Here: one press
+  // mints the code (a chat-scoped token, listed above as an API token so it
+  // can be revoked), and the QR and the details the phone needs are shown
+  // once. The server says which address it advertises; nothing is guessed.
+  function showPhonePairForm() {
+    const btn = 'display:inline-flex;align-items:center;gap:5px;background:transparent;color:var(--accent, var(--red));border-color:color-mix(in srgb, var(--accent, var(--red)) 45%, var(--border));';
+    formEl.innerHTML = `
+      <div class="admin-card" style="margin-top:8px">
+        <h2 style="font-size:13px;display:flex;align-items:center;gap:6px;"><span style="display:inline-flex;color:var(--accent, var(--red));">${INTG_TYPES.phone.icon}</span>Pair a phone</h2>
+        <div class="settings-col">
+          <div class="admin-toggle-sub">Makes a one-time pairing code for the Pantheon companion app on a phone on this network. The code is a token that may chat as you. It is listed here as an API token, so you can revoke it like any other.</div>
+          <div id="uf-pair-result" style="display:none;flex-direction:column;align-items:center;gap:8px;margin-top:10px;">
+            <img id="uf-pair-qr" alt="Pairing QR code" width="220" height="220" style="display:none;background:#fff;padding:8px;border-radius:8px;">
+            <div id="uf-pair-noqr" class="admin-toggle-sub" style="display:none;">No QR code could be drawn here. Enter the details below in the app instead.</div>
+            <dl id="uf-pair-details" style="display:grid;grid-template-columns:auto 1fr;gap:4px 10px;margin:0;font-size:12px;width:100%;"></dl>
+            <div class="admin-toggle-sub">Shown once. Pantheon keeps only a hash of the token. The phone must reach this address, so Pantheon has to listen on your network, not only on this computer.</div>
+          </div>
+          <div class="settings-row" style="margin-top:10px;align-items:center;justify-content:flex-end;gap:6px;">
+            <span id="uf-pair-msg" role="status" style="font-size:11px;flex:1;margin-right:8px"></span>
+            <button type="button" class="admin-btn-add" id="uf-pair-create" style="${btn}font-weight:600;">Make a pairing code</button>
+            <button type="button" class="admin-btn-add" id="uf-pair-cancel" style="${btn}">Close</button>
+          </div>
+        </div>
+      </div>`;
+    const msg = el('uf-pair-msg');
+    const say = (text, bad) => { msg.textContent = text; msg.style.color = bad ? 'var(--red)' : ''; };
+    el('uf-pair-cancel').addEventListener('click', () => { formEl.style.display = 'none'; formEl.innerHTML = ''; });
+    const create = el('uf-pair-create');
+    create.addEventListener('click', async () => {
+      create.disabled = true;
+      say('');
+      try {
+        const r = await fetch('/api/companion/pair?format=json', { method: 'POST', credentials: 'same-origin' });
+        if (!r.ok) {
+          say((await readRefusal(r, 'No code was made.')).sentence, true);
+          create.disabled = false;
+          return;
+        }
+        const d = await r.json();
+        const qr = el('uf-pair-qr');
+        if (typeof d.qr === 'string' && d.qr.startsWith('data:image/png;base64,')) {
+          qr.src = d.qr; qr.style.display = '';
+        } else {
+          el('uf-pair-noqr').style.display = '';
+        }
+        const others = Array.isArray(d.hosts) ? d.hosts.filter((h) => h && h !== d.host) : [];
+        const rows = [['Address', d.host], ['Port', d.port], ['Token', d.token]];
+        if (others.length) rows.push(['Also answers on', others.join(', ')]);
+        el('uf-pair-details').innerHTML = rows.map(([k, v]) =>
+          `<dt style="opacity:0.6;">${esc(k)}</dt><dd style="margin:0;"><code style="user-select:all;word-break:break-all;">${esc(String(v ?? ''))}</code></dd>`).join('');
+        el('uf-pair-result').style.display = 'flex';
+        create.style.display = 'none';
+        say('Scan it with the companion app.');
+        await renderList();
+      } catch (e) {
+        say('No code was made: Pantheon did not answer.', true);
         create.disabled = false;
       }
     });
@@ -7330,6 +7716,7 @@ async function initUnifiedIntegrations() {
       ['login', 'Login, for agents to sign in'],
       ['mcp', 'MCP Tool Server'],
       ['token', 'API token'],   // `B1193`
+      ['phone', 'Phone, paired with a QR code'],   // `B1713`
     ];
     const _iconFor = (k) => (INTG_TYPES[k]?.icon || '').replace(/width="14"/, 'width="16"').replace(/height="14"/, 'height="16"');
     const _rowsHtml = _typeOptions.map(([k, label]) => `<button type="button" class="uf-type-option" data-value="${k}" style="display:flex;align-items:center;gap:10px;width:100%;padding:8px 10px;background:transparent;border:0;color:var(--fg);font:inherit;cursor:pointer;text-align:left;"><span style="display:inline-flex;color:var(--accent, var(--red));flex-shrink:0;">${_iconFor(k)}</span><span>${esc(label)}</span></button>`).join('');

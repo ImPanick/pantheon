@@ -92,12 +92,66 @@ def environment(items: List[Dict[str, Any]]) -> Tuple[Dict[str, str], List[str]]
             fields["HOST"] = host
             fields["HOST_IP"] = (item.get("mapped") or {}).get(host, "")
             fields["PORT"] = str(parts.port or (443 if parts.scheme == "https" else 80))
+        # A key (an API token) is spelled as one too: `$LOGIN_GITHUB_TOKEN`
+        # reads as what it is, where `_PASSWORD` would not.
+        if item.get("kind") == "key" and item.get("secret"):
+            fields["TOKEN"] = item["secret"]
         prefixes = [f"LOGIN_{env_name(item['label'])}_"] + (["LOGIN_"] if len(items) == 1 else [])
         for prefix in prefixes:
             for k, v in fields.items():
                 if v:
                     env[prefix + k] = v
+    env.update(_forge_environment(items))
     return env, sorted(env)
+
+
+#: The variables each forge's own command-line tools read a token from.
+FORGE_TOKEN_VARS = {
+    "github.com": ("GH_TOKEN", "GITHUB_TOKEN"),
+    "gitlab.com": ("GITLAB_TOKEN",),
+}
+
+
+def _forge_environment(items: List[Dict[str, Any]]) -> Dict[str, str]:
+    """`B-vault-git`. For the first item that is a token for a git host: the
+    variables `gh` (or `glab`) reads, and a credential helper for that host
+    alone, given to git through its environment (`GIT_CONFIG_*`), so a plain
+    `git push` or `git clone https://…` in the command signs in with it. Like
+    every other value here it lives only in this one process's environment —
+    no file, no remote URL, no home is written."""
+    from src import vault as V
+    from src.agent_tools.git_tools import _HELPER
+    for item in items:
+        secret = item.get("secret") or ""
+        if not secret:
+            continue
+        host = V.git_host_of(item.get("kind"), item.get("label"), item.get("origins") or [], item.get("username"))
+        if not host:
+            continue
+        env = {name: secret for name in FORGE_TOKEN_VARS.get(host, ())}
+        env.update({"PANTHEON_GIT_HOST": host, "PANTHEON_GIT_USER": V.git_username(host, item.get("username")),
+                    "PANTHEON_GIT_TOKEN": secret, "GIT_TERMINAL_PROMPT": "0",
+                    # An empty helper first clears any the home configured,
+                    # so this token is the one git is answered with.
+                    "GIT_CONFIG_COUNT": "2", "GIT_CONFIG_KEY_0": f"credential.https://{host}.helper",
+                    "GIT_CONFIG_VALUE_0": "", "GIT_CONFIG_KEY_1": f"credential.https://{host}.helper",
+                    "GIT_CONFIG_VALUE_1": _HELPER})
+        return env
+    return {}
+
+
+#: Variables that carry no secret: never scrubbed out of what a command prints.
+_PLAIN_VARS = ("_URL", "_HOST", "_HOST_IP", "_PORT")
+_PLAIN_NAMES = frozenset({"PANTHEON_GIT_HOST", "PANTHEON_GIT_USER", "GIT_TERMINAL_PROMPT", "GIT_CONFIG_COUNT",
+                          "GIT_CONFIG_KEY_0", "GIT_CONFIG_VALUE_0", "GIT_CONFIG_KEY_1",
+                          "GIT_CONFIG_VALUE_1"})
+
+
+def secret_values(env: Dict[str, str]) -> List[str]:
+    """The values a command's output is scrubbed of."""
+    return [v for k, v in env.items()
+            if v and k not in _PLAIN_NAMES and not k.endswith(_PLAIN_VARS)
+            and not v.startswith(("http://", "https://"))]
 
 
 def describe(args: Dict[str, Any]) -> str:
@@ -139,15 +193,18 @@ async def run_with_login(content: Any, *, owner: Optional[str], station_workspac
     finally:
         db.close()
     env, names = environment(items)
-    values = [v for k, v in env.items()
-              if v and not v.startswith(("http://", "https://")) and not k.endswith(("_HOST", "_HOST_IP", "_PORT"))]
+    values = secret_values(env)
+    names = [n for n in names if n not in _PLAIN_NAMES and n != "PANTHEON_GIT_TOKEN"]
     r = await place.run(args["command"], cwd, env, TIMEOUT_S)
     out = V.scrub(r.get("stdout") or "", values)
     err = V.scrub(r.get("stderr") or "", values)
     text = (out + (("\n" + err) if err.strip() else "")).strip()
     if len(text) > OUTPUT_MAX:
         text = text[:OUTPUT_MAX // 2] + "\n… (cut) …\n" + text[-OUTPUT_MAX // 2:]
-    given = f"(The command had {', '.join('$' + n for n in names)}.)"
+    given = f"(The command had {', '.join('$' + n for n in names)}"
+    if env.get("PANTHEON_GIT_HOST"):
+        given += f"; git signed in to {env['PANTHEON_GIT_HOST']} with it"
+    given += ".)"
     if r.get("timed_out"):
         return {"error": f"The command did not finish within {int(TIMEOUT_S)} seconds. {given}",
                 "output": text, "exit_code": 124, **_where(place)}

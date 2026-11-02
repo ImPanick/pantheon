@@ -4,7 +4,7 @@
   Pantheon - native Windows launcher (no Docker).
 
   One command to: create a virtualenv, install dependencies, run first-time
-  setup (prints an admin password on first run), and start the server.
+  setup (asks for the admin account, or leaves it to the first browser visit), and start the server.
   Safe to re-run - it skips whatever already exists.
 
   Usage:

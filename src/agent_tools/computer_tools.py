@@ -68,7 +68,13 @@ _ACTION_ALIASES = {
 # The fields an input action may carry, as the protocol's `input` route names
 # them. Anything else in the arguments is not sent.
 _INPUT_FIELDS = ("x", "y", "to_x", "to_y", "dx", "dy", "text", "keys", "ms")
-_INT_FIELDS = ("x", "y", "to_x", "to_y", "dx", "dy", "ms")
+_INT_FIELDS = ("x", "y", "to_x", "to_y", "dx", "dy", "ms", "mark", "to_mark")
+#: `G4` (`D-2026-11-01-04`). The actions a mark stands in for a point in: the
+#: mark's middle is the point. `type` with a mark clicks it first, so "type
+#: into field 4" is one call.
+MARK_ACTIONS = ("click", "double_click", "triple_click", "right_click", "middle_click", "move",
+                "drag", "scroll", "mouse_down", "mouse_up", "type")
+SURFACE = "desktop"
 _NUMBER_RE = re.compile(r"^\s*-?\d+(?:\.\d+)?\s*$")
 _SCROLL_DIRECTIONS = {"down": (0, 1), "up": (0, -1), "right": (1, 0), "left": (-1, 0)}
 
@@ -134,6 +140,14 @@ def parse_args(content: Any) -> Tuple[Dict[str, Any], Optional[str]]:
     for key in _INT_FIELDS:
         if key in args:
             args[key] = _as_int(args[key])
+    for key in ("mark", "to_mark"):
+        # `G4`: "[7]", "#7", "mark 7" are seven.
+        v = args.get(key)
+        if isinstance(v, str):
+            digits = re.sub(r"[^0-9]", "", v)
+            args[key] = int(digits) if digits else v
+        elif v is None:
+            args.pop(key, None)
     return args, None
 
 
@@ -148,6 +162,14 @@ def describe_action(args: Dict[str, Any]) -> str:
     action = args.get("action")
     if action == SCREENSHOT:
         return "screenshot"
+    if args.get("mark") is not None:
+        named = f" “{args['mark_name']}”" if args.get("mark_name") else ""
+        at = f" at {_point(args)}" if args.get("x") is not None else ""
+        if action == "type":
+            text = str(args.get("text") or "")
+            shown = text if len(text) <= 40 else text[:39] + "…"
+            return f"type “{shown}” into mark {args['mark']}{named}"
+        return f"{action.replace('_', ' ')} mark {args['mark']}{named}{at}"
     if action in ("click", "double_click", "triple_click", "right_click", "middle_click"):
         return f"{action.replace('_', ' ')} at {_point(args)}"
     if action == "move":
@@ -217,6 +239,71 @@ def _shot_line(shot: Dict[str, Any]) -> str:
             f"in those pixels.")
 
 
+def _place_marks(args: Dict[str, Any], owner: Optional[str]) -> Optional[str]:
+    """`G4`. A `mark` (and a drag's `to_mark`) turned into the point it stands
+    for, from the last screenshot this person's agent was shown; a sentence
+    when it cannot be. A point sent beside a mark wins: the model said both,
+    and the pixels are the more exact."""
+    from src import screen_marks
+    if args.get("mark") is None and args.get("to_mark") is None:
+        return None
+    if not screen_marks.ENABLED:
+        return "Marks are off: use x and y read from the screenshot."
+    if args["action"] not in MARK_ACTIONS:
+        return f"“mark” goes with a click, move, drag, scroll or type, not {args['action']}."
+    for key, (kx, ky) in (("mark", ("x", "y")), ("to_mark", ("to_x", "to_y"))):
+        if args.get(key) is None or args.get(kx) is not None:
+            continue
+        mark, problem = screen_marks.resolve(owner, SURFACE, args[key])
+        if problem:
+            return problem
+        args[kx], args[ky] = screen_marks.center(mark)
+        if key == "mark":
+            args["mark_name"] = mark.get("name") or ""
+    return None
+
+
+async def _marked(client, account: str, shot: Dict[str, Any], owner: Optional[str]
+                  ) -> Tuple[Dict[str, Any], str]:
+    """`G1`–`G4`. The screenshot with its marks drawn on and the list in
+    words, and the marks kept for `mark`: the desktop's accessibility tree
+    first (`ROUTES["marks"]`), then what the picture shows that the tree left
+    out. Any part that fails leaves the rest: no marks at all is the plain
+    screenshot, as before."""
+    import asyncio
+    from src import screen_marks
+    from src.workstation_client import WorkstationError
+
+    png = screen_marks.picture(shot)
+    if not png:
+        return shot, ""
+    width = shot.get("width") or P.SCREEN_WIDTH
+    height = shot.get("height") or P.SCREEN_HEIGHT
+    described: list = []
+    windows: list = []
+    try:
+        got = await client.marks(account)
+        described = screen_marks.normalise(got.get("marks") or [], width, height, "a11y")
+        windows = got.get("windows") or []
+    except WorkstationError as e:
+        # An older daemon (`not_found`) or a screen with no tree: the picture alone.
+        logger.debug("no accessibility marks for %s: %s", account, e.message)
+    except Exception as e:  # noqa: BLE001 — marks are help, never the action's failure
+        logger.info("accessibility marks not read for %s: %s", account, e)
+    try:
+        seen = await asyncio.to_thread(screen_marks.seen, png)
+    except Exception as e:  # noqa: BLE001
+        logger.info("screen not read for marks: %s", e)
+        seen = []
+    marks = screen_marks.merge(described, seen, windows)
+    screen_marks.remember(owner, SURFACE, marks)
+    if not marks:
+        return shot, ""
+    data, mime = await asyncio.to_thread(screen_marks.draw, png, marks)
+    import base64
+    return dict(shot, data_b64=base64.b64encode(data).decode(), mime=mime), screen_marks.listing(marks)
+
+
 class ComputerTool:
     """One action on the person's workstation display."""
 
@@ -229,6 +316,9 @@ class ComputerTool:
         if problem:
             return {"error": problem, "exit_code": 1}
         action = args["action"]
+        problem = _place_marks(args, owner)
+        if problem:
+            return {"error": problem, "exit_code": 1}
         try:
             # The admin's `sudo` in force and the person's display started
             # before the first action needs it (`P20-02`'s `ensure_ready`).
@@ -242,7 +332,12 @@ class ComputerTool:
             if action == SCREENSHOT:
                 shot = await client.screenshot(account)
             else:
+                if action == "type" and args.get("mark") is not None:
+                    # `G4`: into the field the mark names — clicked first.
+                    await client.input(account, "click", x=args["x"], y=args["y"])
                 fields = {k: args[k] for k in _INPUT_FIELDS if args.get(k) is not None}
+                if action == "type":
+                    fields = {k: v for k, v in fields.items() if k not in ("x", "y")}
                 answer = await client.input(account, action, screenshot_after=True, **fields)
                 shot = answer.get("screenshot")
         except WorkstationError as e:
@@ -258,13 +353,22 @@ class ComputerTool:
             return {"output": f"{did} No screenshot came back after it — take one before the "
                               "next action.", "exit_code": 0}
         caption = "Screen" if action == SCREENSHOT else f"Screen after {what}"
+        from src import screen_marks
+        listed = ""
+        if screen_marks.ENABLED and args.get("marks") is not False:
+            shot, listed = await _marked(client, account, shot, owner)
+        else:
+            screen_marks.forget(owner, SURFACE)
+        output = f"{did} {_shot_line(shot)}"
+        if listed:
+            output += "\n" + listed
         return {
-            "output": f"{did} {_shot_line(shot)}",
+            "output": output,
             "exit_code": 0,
             "images": [{"data": shot["data_b64"], "mimeType": shot.get("mime") or "image/png"}],
             "screenshot_caption": caption,
         }
 
 
-__all__ = ["ACTIONS", "BUSY_ADVICE", "ComputerTool", "SCREENSHOT", "TOOL_NAME", "command_line",
+__all__ = ["ACTIONS", "BUSY_ADVICE", "ComputerTool", "MARK_ACTIONS", "SCREENSHOT", "TOOL_NAME", "command_line",
            "describe_action", "parse_args", "unavailable_reason"]

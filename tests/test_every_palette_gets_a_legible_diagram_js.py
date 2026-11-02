@@ -201,7 +201,7 @@ def mermaid_schemes(mermaid_report):
 @pytest.fixture(scope="module")
 def palettes():
     colours = _palette_colours()
-    assert len(colours) == 23, sorted(colours)
+    assert len(colours) == 20, sorted(colours)  # three retired: theme.js `RETIRED_THEMES`
     return colours
 
 
@@ -340,7 +340,7 @@ def test_the_unoverridden_edge_label_would_still_fail_this(palettes, mermaid_rep
         measured[name] = contrast(ink["textColor"], ink["edgeLabelBackground"])
     failing = {n: round(v, 2) for n, v in measured.items() if v < TEXT_MIN}
     assert set(failing) == set(palettes) - {"light", "paper", "lavender", "cute", "notebook", "codehost", "video", "mintchat"}, failing
-    assert len(failing) == 15, failing
+    assert len(failing) == 12, failing  # three dark presets retired: theme.js `RETIRED_THEMES`
     # Not a rounding argument in either direction: 4.43 under, 21.00 over.
     assert set(failing.values()) == {4.43}, failing
     passing = {n: round(v, 2) for n, v in measured.items() if n not in failing}
@@ -398,7 +398,7 @@ def test_a_diagram_left_in_the_other_scheme_would_still_fail_this(palettes, merm
     assert max(light.values()) < 1.5, light
 
     dark = {n: round(v, 2) for n, v in strokes.items() if n not in light}
-    assert len(dark) == 15, dark
+    assert len(dark) == 12, dark  # three dark presets retired: theme.js `RETIRED_THEMES`
     assert 2.16 <= min(dark.values()) and max(dark.values()) <= 3.45, dark
     under = {n: v for n, v in dark.items() if v < GRAPHIC_MIN}
     # `retrowave` left this set with `B390` (`D-2026-10-26-01` §13): a darker

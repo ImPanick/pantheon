@@ -130,7 +130,9 @@ def test_the_measured_rung_is_the_colour_chromium_paints(cc, tmp_path):
     if NODE is None:
         pytest.skip(_SKIP or "no browser")
     cases, expected = [], []
-    for name in ("retrowave", "light", "terminal", "cute", "ume"):
+    # `retrowave` and `terminal` were measured here until the cockpit retired them;
+    # `organs` and `ocean` take their places as the dark, saturated cases.
+    for name in ("organs", "light", "ocean", "cute", "ume"):
         palette = cc.themes()[name]
         for pct in (30, 55, 75):
             cases.append([palette["fg"], cc.fg_muted(palette), pct])

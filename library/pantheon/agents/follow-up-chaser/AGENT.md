@@ -4,7 +4,7 @@ name: Follow-up Chaser
 tagline: Finds the mail you sent that nobody answered, and drafts a polite nudge for each.
 section: email
 icon: reply
-version: 1.1.0
+version: 1.1.1
 wave: 1
 inputs:
   - {key: wait_days, kind: number, label: Days without an answer before a nudge, default: 4}
@@ -12,6 +12,7 @@ inputs:
 triggers:
   - {on: daily, at: "09:00", days: weekdays}
 tools: [list_email_accounts, list_emails, search_emails, read_email, draft_email]
+needs: {connectors: [mail]}
 delivers:
   - {kind: answer, must_contain: [Waiting, Not chased]}
   - {kind: email_draft, max: 10}

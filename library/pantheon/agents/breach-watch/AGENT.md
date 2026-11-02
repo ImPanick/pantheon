@@ -4,13 +4,14 @@ name: Breach Watch
 tagline: "Each week, public breach notices touching your domains or addresses, from the company's own notice or established news — never a leak site."
 section: security
 icon: shield-alert
-version: 1.1.0
+version: 1.1.2
 wave: 2
 inputs:
   - {key: names, kind: list, label: Your domains and email addresses}
 triggers:
   - {on: weekly, day: fri, at: "08:15"}
 tools: [web_search, web_fetch]
+skills: [web-research]
 needs: {connectors: [], min_context: 16000, native_tools: preferred}
 delivers:
   - {kind: answer, must_contain: [New notices, Already covered, Checked]}

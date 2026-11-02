@@ -16,15 +16,25 @@
 # Verify with:
 #   docker info | grep -i nvidia
 #
-# This overlay only passes the host GPU through to the container.
+# This overlay passes the host GPU through to the container.
 # The slim Pantheon image does not bundle CUDA userspace or inference
 # engines — install vLLM / llama-cpp-python / SGLang via
 # Forge -> Dependencies (or pip) before serving GPU models.
+#
+# `B1729`. It also carries Chatterbox Turbo (Resemble AI, MIT), the voice
+# Pantheon speaks with on the GPU, in a container of its own
+# (voice/chatterbox/). Opt-in: add COMPOSE_PROFILES=chatterbox to .env (or
+# pass --profile chatterbox) and `docker compose up -d` builds and starts it,
+# about 3 GB of GPU memory once loaded. While it answers, the "Automatic"
+# voice (Settings -> Voice) speaks with it; without it, with Kokoro on the
+# processor. Recordings of a voice you may use (WAV or FLAC, one person, over
+# five seconds) in data/chatterbox-voices/ become voices to choose.
 services:
   pantheon:
     environment:
       - NVIDIA_VISIBLE_DEVICES=all
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      - PANTHEON_CHATTERBOX_URL=${PANTHEON_CHATTERBOX_URL:-http://chatterbox:8004}
     deploy:
       resources:
         reservations:
@@ -32,3 +42,19 @@ services:
             - driver: nvidia
               count: all
               capabilities: [gpu]
+  chatterbox:
+    profiles: ["chatterbox"]
+    build:
+      context: ./voice/chatterbox
+    environment:
+      - CHATTERBOX_DEVICE=${CHATTERBOX_DEVICE:-cuda}
+    volumes:
+      - ${APP_DATA_DIR:-./data}/chatterbox-voices:/voices:z
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped

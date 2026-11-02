@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<!--
+  The desktop under the windows (D-2026-10-31-02): the cockpit's light field
+  as the wallpaper (/usr/share/pantheon-workstation/pantheon-desktop.svg) and
+  no icons on it. xfdesktop keys a wallpaper by the screen's name, which is
+  VNC-0 on KasmVNC's server and "screen" on Xvfb's, so each is named. This
+  file is in the account's home; "Reset to clean" puts it back.
+-->
+<channel name="xfce4-desktop" version="1.0">
+  <property name="backdrop" type="empty">
+    <property name="single-workspace-mode" type="bool" value="true"/>
+    <property name="single-workspace-number" type="int" value="0"/>
+    <property name="screen0" type="empty">
+      <property name="monitorVNC-0" type="empty">
+        <property name="workspace0" type="empty">
+          <property name="color-style" type="int" value="0"/>
+          <property name="rgba1" type="array">
+            <value type="double" value="0.157"/>
+            <value type="double" value="0.173"/>
+            <value type="double" value="0.204"/>
+            <value type="double" value="1"/>
+          </property>
+          <property name="image-style" type="int" value="5"/>
+          <property name="last-image" type="string" value="/usr/share/pantheon-workstation/pantheon-desktop.svg"/>
+        </property>
+      </property>
+      <property name="monitorscreen" type="empty">
+        <property name="workspace0" type="empty">
+          <property name="color-style" type="int" value="0"/>
+          <property name="rgba1" type="array">
+            <value type="double" value="0.157"/>
+            <value type="double" value="0.173"/>
+            <value type="double" value="0.204"/>
+            <value type="double" value="1"/>
+          </property>
+          <property name="image-style" type="int" value="5"/>
+          <property name="last-image" type="string" value="/usr/share/pantheon-workstation/pantheon-desktop.svg"/>
+        </property>
+      </property>
+      <property name="monitormonitor0" type="empty">
+        <property name="workspace0" type="empty">
+          <property name="color-style" type="int" value="0"/>
+          <property name="rgba1" type="array">
+            <value type="double" value="0.157"/>
+            <value type="double" value="0.173"/>
+            <value type="double" value="0.204"/>
+            <value type="double" value="1"/>
+          </property>
+          <property name="image-style" type="int" value="5"/>
+          <property name="last-image" type="string" value="/usr/share/pantheon-workstation/pantheon-desktop.svg"/>
+        </property>
+      </property>
+      <property name="monitordefault" type="empty">
+        <property name="workspace0" type="empty">
+          <property name="color-style" type="int" value="0"/>
+          <property name="rgba1" type="array">
+            <value type="double" value="0.157"/>
+            <value type="double" value="0.173"/>
+            <value type="double" value="0.204"/>
+            <value type="double" value="1"/>
+          </property>
+          <property name="image-style" type="int" value="5"/>
+          <property name="last-image" type="string" value="/usr/share/pantheon-workstation/pantheon-desktop.svg"/>
+        </property>
+      </property>
+    </property>
+  </property>
+  <property name="desktop-icons" type="empty">
+    <property name="style" type="int" value="0"/>
+  </property>
+  <property name="desktop-menu" type="empty">
+    <property name="show" type="bool" value="true"/>
+    <property name="show-icons" type="bool" value="true"/>
+  </property>
+  <property name="windowlist-menu" type="empty">
+    <property name="show" type="bool" value="false"/>
+  </property>
+</channel>

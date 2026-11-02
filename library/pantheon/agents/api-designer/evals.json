@@ -1,0 +1,386 @@
+{
+ "cases": [
+  {
+   "id": "a-feature-with-one-caller",
+   "about": "The tree has a PDF route and a script that calls it: the design names two endpoints, two schemas, every error, and the caller's line; the YAML lands in docs/api.",
+   "inputs": {
+    "folder": "api",
+    "feature": "Invoice export: start an export of an invoice and fetch it when ready"
+   },
+   "world": {
+    "files": {
+     "api/routes/invoices.py": "from fastapi import APIRouter\nrouter = APIRouter()\n\n@router.get('/invoices/{id}/pdf')\ndef invoice_pdf(id: str):\n    return render(id)\n",
+     "api/static/js/invoices.js": "export async function download(id) {\n  const r = await fetch(`/invoices/${id}/pdf`);\n  return r.blob();\n}\n"
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "grep",
+       {
+        "pattern": "invoice",
+        "path": "api"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "api/routes/invoices.py"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "api/static/js/invoices.js"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "write_file",
+       {
+        "path": "api/docs/api/invoice-export.yaml",
+        "content": "openapi: 3.0.3\ninfo:\n  title: Invoice export\n  version: 1.0.0\npaths:\n  /invoices/{id}/exports:\n    post:\n      summary: Start an export of one invoice\n      responses:\n        '202': {description: Export}\n        '400': {description: bad_format}\n        '403': {description: not_owner}\n        '404': {description: no_invoice}\n        '409': {description: already_running}\n  /exports/{export_id}:\n    get:\n      summary: The export's state and file link\n      responses:\n        '200': {description: Export}\n        '403': {description: not_owner}\n        '404': {description: no_export}\ncomponents:\n  schemas:\n    ExportRequest:\n      type: object\n      required: [format]\n      properties:\n        format: {type: string, enum: [pdf, csv]}\n    Export:\n      type: object\n      properties:\n        id: {type: string}\n        status: {type: string, enum: [queued, ready, failed]}\n        url: {type: string}\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "API design — invoice export",
+        "content": "API design — invoice export\n2 endpoints, 2 schemas, 1 caller to change; written to docs/api/invoice-export.yaml\n\n## Endpoints\n- `POST /invoices/{id}/exports` — start an export of one invoice — the invoice's owner\n- `GET /exports/{export_id}` — the export's state and file link — the same person\n\n## Schemas\n- ExportRequest: format (string, pdf|csv, required)\n- Export: id (string), status (string, queued|ready|failed), url (string, when ready)\n\n## Errors\n- POST: 400 bad_format, 403 not_owner, 404 no_invoice, 409 already_running\n- GET: 403 not_owner, 404 no_export\n\n## Callers\n- static/js/invoices.js:2 — calls /invoices/{id}/pdf; moves to the POST then polls the GET\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "2 endpoints, 2 schemas, 1 caller to change.\n\n## Report\n- read 2 files and 1 search; wrote docs/api/invoice-export.yaml and \"API design — invoice export\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "API design — invoice export",
+      "contains": [
+       "POST /invoices/{id}/exports",
+       "409 already_running",
+       "static/js/invoices.js:2"
+      ]
+     }
+    },
+    {
+     "file": {
+      "path": "api/docs/api/invoice-export.yaml",
+      "contains": [
+       "openapi: 3.0",
+       "ExportRequest"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "no-code-matches-the-feature",
+   "about": "Nothing in the tree uses the feature's nouns: the design is written from the feature alone and Callers says none found.",
+   "inputs": {
+    "folder": "api",
+    "feature": "Webhooks: let a caller register a URL and receive events"
+   },
+   "world": {
+    "files": {
+     "api/routes/invoices.py": "from fastapi import APIRouter\nrouter = APIRouter()\n\n@router.get('/invoices/{id}/pdf')\ndef invoice_pdf(id: str):\n    return render(id)\n",
+     "api/static/js/invoices.js": "export async function download(id) {\n  const r = await fetch(`/invoices/${id}/pdf`);\n  return r.blob();\n}\n"
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "grep",
+       {
+        "pattern": "webhook",
+        "path": "api"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "write_file",
+       {
+        "path": "api/docs/api/webhooks.yaml",
+        "content": "openapi: 3.0.3\ninfo: {title: Webhooks, version: 1.0.0}\npaths:\n  /webhooks:\n    post: {summary: Register a URL}\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "API design — webhooks",
+        "content": "API design — webhooks\n1 endpoint, 1 schema, 0 callers to change; written to docs/api/webhooks.yaml\n\n## Endpoints\n- `POST /webhooks` — register a URL for events — an account owner\n\n## Schemas\n- Webhook: url (string, required), events (list of string)\n\n## Errors\n- POST: 400 bad_url, 401 not_signed_in, 409 already_registered\n\n## Callers\n- none found\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "1 endpoint, 1 schema, 0 callers to change.\n\n## Report\n- 1 search found nothing; wrote docs/api/webhooks.yaml and \"API design — webhooks\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "API design — webhooks",
+      "contains": [
+       "none found"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-design-is-already-there",
+   "about": "docs/api already holds a file by that name: the new one is written as -v2 beside it, and the old one is left word for word.",
+   "inputs": {
+    "folder": "api",
+    "feature": "Invoice export: start an export of an invoice and fetch it when ready"
+   },
+   "world": {
+    "files": {
+     "api/routes/invoices.py": "from fastapi import APIRouter\nrouter = APIRouter()\n\n@router.get('/invoices/{id}/pdf')\ndef invoice_pdf(id: str):\n    return render(id)\n",
+     "api/static/js/invoices.js": "export async function download(id) {\n  const r = await fetch(`/invoices/${id}/pdf`);\n  return r.blob();\n}\n",
+     "api/docs/api/invoice-export.yaml": "openapi: 3.0.0\ninfo: {title: old draft, version: 0.1.0}\n"
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "grep",
+       {
+        "pattern": "invoice",
+        "path": "api"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "api/routes/invoices.py"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "api/static/js/invoices.js"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "write_file",
+       {
+        "path": "api/docs/api/invoice-export-v2.yaml",
+        "content": "openapi: 3.0.3\ninfo:\n  title: Invoice export\n  version: 1.0.0\npaths:\n  /invoices/{id}/exports:\n    post:\n      summary: Start an export of one invoice\n      responses:\n        '202': {description: Export}\n        '400': {description: bad_format}\n        '403': {description: not_owner}\n        '404': {description: no_invoice}\n        '409': {description: already_running}\n  /exports/{export_id}:\n    get:\n      summary: The export's state and file link\n      responses:\n        '200': {description: Export}\n        '403': {description: not_owner}\n        '404': {description: no_export}\ncomponents:\n  schemas:\n    ExportRequest:\n      type: object\n      required: [format]\n      properties:\n        format: {type: string, enum: [pdf, csv]}\n    Export:\n      type: object\n      properties:\n        id: {type: string}\n        status: {type: string, enum: [queued, ready, failed]}\n        url: {type: string}\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "API design — invoice export",
+        "content": "API design — invoice export\n2 endpoints, 2 schemas, 1 caller to change; written to docs/api/invoice-export-v2.yaml\n\n## Endpoints\n- `POST /invoices/{id}/exports` — start an export of one invoice — the invoice's owner\n- `GET /exports/{export_id}` — the export's state and file link — the same person\n\n## Schemas\n- ExportRequest: format (string, pdf|csv, required)\n- Export: id (string), status (string, queued|ready|failed), url (string, when ready)\n\n## Errors\n- POST: 400 bad_format, 403 not_owner, 404 no_invoice, 409 already_running\n- GET: 403 not_owner, 404 no_export\n\n## Callers\n- static/js/invoices.js:2 — calls /invoices/{id}/pdf; moves to the POST then polls the GET\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "2 endpoints, 2 schemas, 1 caller to change.\n\n## Report\n- read 2 files and 1 search; wrote docs/api/invoice-export-v2.yaml and \"API design — invoice export\""
+    }
+   ],
+   "checks": [
+    {
+     "file": {
+      "path": "api/docs/api/invoice-export-v2.yaml",
+      "contains": [
+       "ExportRequest"
+      ]
+     }
+    },
+    {
+     "file": {
+      "path": "api/docs/api/invoice-export.yaml",
+      "contains": [
+       "old draft"
+      ],
+      "lacks": [
+       "ExportRequest"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "it-never-rewrites-existing-code",
+   "about": "A model that writes over the route file is refused by the table's never: the route keeps its text, and the design is still delivered.",
+   "inputs": {
+    "folder": "api",
+    "feature": "Invoice export: start an export of an invoice and fetch it when ready"
+   },
+   "world": {
+    "files": {
+     "api/routes/invoices.py": "from fastapi import APIRouter\nrouter = APIRouter()\n\n@router.get('/invoices/{id}/pdf')\ndef invoice_pdf(id: str):\n    return render(id)\n",
+     "api/static/js/invoices.js": "export async function download(id) {\n  const r = await fetch(`/invoices/${id}/pdf`);\n  return r.blob();\n}\n"
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "grep",
+       {
+        "pattern": "invoice",
+        "path": "api"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "write_file",
+       {
+        "path": "api/routes/invoices.py",
+        "content": "# rewritten by the designer\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "write_file",
+       {
+        "path": "api/docs/api/invoice-export.yaml",
+        "content": "openapi: 3.0.3\ninfo:\n  title: Invoice export\n  version: 1.0.0\npaths:\n  /invoices/{id}/exports:\n    post:\n      summary: Start an export of one invoice\n      responses:\n        '202': {description: Export}\n        '400': {description: bad_format}\n        '403': {description: not_owner}\n        '404': {description: no_invoice}\n        '409': {description: already_running}\n  /exports/{export_id}:\n    get:\n      summary: The export's state and file link\n      responses:\n        '200': {description: Export}\n        '403': {description: not_owner}\n        '404': {description: no_export}\ncomponents:\n  schemas:\n    ExportRequest:\n      type: object\n      required: [format]\n      properties:\n        format: {type: string, enum: [pdf, csv]}\n    Export:\n      type: object\n      properties:\n        id: {type: string}\n        status: {type: string, enum: [queued, ready, failed]}\n        url: {type: string}\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "API design — invoice export",
+        "content": "API design — invoice export\n2 endpoints, 2 schemas, 1 caller to change; written to docs/api/invoice-export.yaml\n\n## Endpoints\n- `POST /invoices/{id}/exports` — start an export of one invoice — the invoice's owner\n- `GET /exports/{export_id}` — the export's state and file link — the same person\n\n## Schemas\n- ExportRequest: format (string, pdf|csv, required)\n- Export: id (string), status (string, queued|ready|failed), url (string, when ready)\n\n## Errors\n- POST: 400 bad_format, 403 not_owner, 404 no_invoice, 409 already_running\n- GET: 403 not_owner, 404 no_export\n\n## Callers\n- static/js/invoices.js:2 — calls /invoices/{id}/pdf; moves to the POST then polls the GET\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "2 endpoints, 2 schemas, 1 caller to change.\n\n## Report\n- read 2 files and 1 search; wrote docs/api/invoice-export.yaml and \"API design — invoice export\""
+    }
+   ],
+   "checks": [
+    {
+     "file": {
+      "path": "api/routes/invoices.py",
+      "contains": [
+       "invoice_pdf"
+      ],
+      "lacks": [
+       "rewritten"
+      ]
+     }
+    },
+    {
+     "document": {
+      "title": "API design — invoice export",
+      "contains": [
+       "## Callers"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-design-without-its-headings-fails",
+   "about": "The harness's own check: a design without Endpoints, Schemas, Errors and Callers does not deliver, even after its repair pass.",
+   "inputs": {
+    "folder": "api",
+    "feature": "Invoice export: start an export of an invoice and fetch it when ready"
+   },
+   "world": {
+    "files": {
+     "api/routes/invoices.py": "from fastapi import APIRouter\nrouter = APIRouter()\n\n@router.get('/invoices/{id}/pdf')\ndef invoice_pdf(id: str):\n    return render(id)\n",
+     "api/static/js/invoices.js": "export async function download(id) {\n  const r = await fetch(`/invoices/${id}/pdf`);\n  return r.blob();\n}\n"
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "grep",
+       {
+        "pattern": "invoice",
+        "path": "api"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "API design — invoice export",
+        "content": "Two routes, you know the ones."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

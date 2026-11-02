@@ -1,0 +1,7 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# No screen saver (D-2026-10-31-02): XFCE starts one if it is installed, and a
+# blanked screen is a blank stream and blank screenshots for the agent.
+[Desktop Entry]
+Type=Application
+Name=Screensaver
+Hidden=true

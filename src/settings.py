@@ -418,17 +418,20 @@ DEFAULT_SETTINGS = {
     #
     # A separate Ubuntu machine the agent's shell, Python, files and screen
     # work run in — a container beside Pantheon, a VM, or any host running
-    # `workstation/agentd.py`. **Off, and that is the whole default**: with
-    # `workstation_enabled` false nothing is called and every tool runs exactly
-    # where it runs today (`Law 1`). An admin turns it on in Settings →
-    # Workstation; `can_use_workstation` (`core/auth.py`) decides who else may
-    # use it. Every key here is admin-only to write — `POST /api/auth/settings`
+    # `workstation/agentd.py`. **Unanswered (None) means "on when the stack
+    # runs one"** (`B1720`, `D-2026-10-31-03`): on when the compose file put a
+    # workstation address in Pantheon's environment, off otherwise — so an
+    # install without one calls nothing and every tool runs exactly where it
+    # always has (`Law 1`). An admin's on or off in Settings → Workstation
+    # wins; `can_use_workstation` (`core/auth.py`) decides who else may use
+    # it. A materialized None stays unanswered, the way `workstation_sudo`'s
+    # does. Every key here is admin-only to write — `POST /api/auth/settings`
     # validates each one through `src/workstation_access.validate_setting`, and
     # the agent's own `manage_settings` may read them and may not write them
     # (`_SELF_RESTRAINT_KEYS`): switching the workstation off, or routing off,
     # moves the agent's shell back into the process that holds every key, and a
     # new address hands a stranger the token and every command.
-    "workstation_enabled": False,
+    "workstation_enabled": None,
     # Where the daemon listens. Ships EMPTY: `check-destinations.py` requires a
     # destination-shaped key to, and the emptiness is what keeps the overlay's
     # `PANTHEON_WORKSTATION_URL` reachable beneath it (`H06`, `B20`) — the
@@ -667,7 +670,13 @@ DEFAULT_SETTINGS = {
     # (e.g., urgency alert email). Example: "https://chat.example.com"
     "app_public_url": "",
     "tts_enabled": True,
-    "tts_provider": "disabled",
+    # `B1728`. "Automatic": Chatterbox while its GPU sidecar answers, else
+    # Kokoro on this server's processor (baked into the image), else Piper
+    # (`services/tts/tts_service.py` `AUTO_ORDER`). It was "disabled", and no
+    # page could choose another until `B1718`, where "None" also turns
+    # `tts_enabled` off; a file holding the old default is read as this one
+    # (`_tts_provider_as_it_was`).
+    "tts_provider": "auto",
     "tts_model": "tts-1",
     "tts_voice": "alloy",
     "tts_speed": "1",
@@ -675,6 +684,23 @@ DEFAULT_SETTINGS = {
     "stt_provider": "disabled",
     "stt_model": "base",
     "stt_language": "",
+    # `B1718`. Voice chat: talking with the agent in the open chat, heard by
+    # speech-to-text above and answered in the voice above that. On by default
+    # because it does nothing until someone presses the call button, and a
+    # press with no speech-to-text set up says where to set it. `pause` is how
+    # long a silence ends a turn (`static/js/voiceCapture.js` `PAUSES`);
+    # `barge_in` lets the person talk over the agent to stop or correct it,
+    # and off is taking turns, for a speaker the microphone hears too well.
+    # Global and admin-written, like the speech settings beside them.
+    "voice_chat_enabled": True,
+    "voice_chat_pause": "normal",
+    "voice_chat_barge_in": True,
+    # `B1718`. The read-aloud button under each reply. It had no switch: it
+    # showed whenever a voice was chosen, and choosing one for voice chat must
+    # not bring it under every reply by itself. Off as shipped; an install
+    # that chose a voice before this switch existed keeps its button
+    # (`_read_aloud_as_it_was`).
+    "tts_read_aloud": False,
     "search_provider": "searxng",
     # Empty by default as of 2026-08-31 (`Law 16`). This shipped as
     # `["duckduckgo"]` on the reasoning that it is free and needs no API key —
@@ -1328,6 +1354,27 @@ def load_settings() -> dict:
     return _owned_copy(_cached_settings())
 
 
+def _read_aloud_as_it_was(saved: dict) -> bool:
+    """`B1718`. Whether a settings file written before `tts_read_aloud`
+    existed had the read-aloud button: a voice chosen and speech not switched
+    off. The first save writes the answer down (`POST /api/auth/settings`
+    writes the whole merged dict), so choosing a voice after that is not
+    taken for asking for the button."""
+    provider = str(saved.get("tts_provider") or "disabled")
+    return saved.get("tts_enabled", True) is not False and provider != "disabled"
+
+
+def _tts_provider_as_it_was(saved: dict) -> Optional[str]:
+    """`B1728`. The voice a settings file written before "Automatic" means:
+    "disabled" with speech left on is the old default written down by a save
+    of the whole dict, never a choice (no page could choose a voice before
+    `B1718`, and its "None" saves `tts_enabled: false`), so it reads as
+    "auto". `None` when the file says what it means."""
+    if saved.get("tts_provider") == "disabled" and saved.get("tts_enabled", True) is not False:
+        return "auto"
+    return None
+
+
 def _cached_settings() -> dict:
     """The merged settings this process is serving — **never returned to a
     caller outside this module.** `load_settings` copies it; `get_setting`
@@ -1342,6 +1389,10 @@ def _cached_settings() -> dict:
         if not isinstance(saved, dict):
             raise ValueError("settings must be an object")
         merged = {**DEFAULT_SETTINGS, **saved}
+        if "tts_read_aloud" not in saved:
+            merged["tts_read_aloud"] = _read_aloud_as_it_was(saved)
+        if _tts_provider_as_it_was(saved):
+            merged["tts_provider"] = _tts_provider_as_it_was(saved)
     except FileNotFoundError:
         merged = dict(DEFAULT_SETTINGS)
     except (PermissionError, json.JSONDecodeError, ValueError) as exc:

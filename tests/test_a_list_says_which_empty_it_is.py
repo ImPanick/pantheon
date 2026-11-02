@@ -109,14 +109,15 @@ const BASE = process.argv[2];
   // ── notes ──────────────────────────────────────────────────────────────
   const pane = '#notes-pane .notes-pane-body';
   out.notes = {};
-  await page.click('#tool-notes-btn');
+  // The cockpit's rail is the desktop door to Notes (its Tools list lives in the phone drawer).
+  await page.click('#rail-notes');
   await waitState(pane, 'empty');
   out.notes.empty = await state(pane);
   await press(pane, 'Take a note');
   out.notes.focused = await page.evaluate(() => document.activeElement && document.activeElement.className);
   await page.request.post(BASE + '/api/notes', { data: { title: 'Harbour', content: 'opens at six', note_type: 'note' } });
   await page.click('#notes-close-btn');
-  await page.click('#tool-notes-btn');
+  await page.click('#rail-notes');
   await page.waitForSelector('.note-card');
   await page.fill('#notes-search', 'zzzz-nothing');
   await waitState(pane, 'filtered');
@@ -134,7 +135,7 @@ const BASE = process.argv[2];
   await page.click('#notes-close-btn');
   await page.route('**/api/notes', (r) => r.fulfill({ status: 500, contentType: 'application/json',
                                                       body: JSON.stringify({ detail: 'the notes store is locked' }) }));
-  await page.click('#tool-notes-btn');
+  await page.click('#rail-notes');
   await waitState(pane, 'error');
   out.notes.error = await state(pane);
   await page.unroute('**/api/notes');

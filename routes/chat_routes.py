@@ -32,6 +32,8 @@ from src.agent_loop import (
     submit_steer,
 )
 from src import agent_runs
+from src import reasoning_effort as _reasoning_effort
+from src import message_reactions as _message_reactions   # `B1736`
 from src.model_context import estimate_tokens
 from src.context_compactor import (
     apply_compaction_state,
@@ -1897,6 +1899,12 @@ def setup_chat_routes(
         incognito = request_flag(form_data.get("incognito"))
         plan_mode = request_flag(form_data.get("plan_mode") or (body or {}).get("plan_mode"))
         chat_mode = str(form_data.get("mode", "")).lower()  # 'chat' or 'agent'
+        # The composer's reasoning effort (Auto, Low … Max); `ultrathink` in
+        # the message runs this one turn at Max. `src/reasoning_effort.py`.
+        _turn_reasoning_level = _reasoning_effort.turn_level(
+            form_data.get("reasoning_effort") or (body or {}).get("reasoning_effort"),
+            message,
+        )
         tool_approval_id = (
             form_data.get("tool_approval_id")
             or (body or {}).get("tool_approval_id")
@@ -2330,6 +2338,13 @@ def setup_chat_routes(
             ),
             persist_user_message=not tool_approval_continuation,
             invoked_skill=invoked_skill,   # `B1374`
+            # `B1736`. A fresh message may be reacted to; a continuation after
+            # an approval card answers a message the model already saw.
+            offer_reactions=not tool_approval_continuation,
+        )
+        _reactions_on = (
+            not tool_approval_continuation and not incognito
+            and _message_reactions.wanted(ctx.uprefs, compare_mode=compare_mode)
         )
 
         _research_flags = {"do": do_research}  # Mutable container for generator scope
@@ -2491,7 +2506,8 @@ def setup_chat_routes(
                 "bash", "host_shell", "python", "computer", "shell_with_login",
                 # `P16-20`: a network check is the same drift one tool wider.
                 "network",
-                "search_chats", "read_chat", "manage_skills", "manage_memory",
+                "search_chats", "read_chat", "manage_skills", "use_skill",
+                "manage_memory",
                 "read_file", "write_file", "edit_file",
                 "create_document", "edit_document", "update_document",
                 "send_email", "reply_to_email",
@@ -2518,6 +2534,7 @@ def setup_chat_routes(
                 "search_chats",       # past chat history
                 "read_chat",          # a past chat, read through (`B1621`)
                 "manage_skills",      # skill presets tied to user
+                "use_skill",          # the same, read (`B1737`)
                 "create_session",
                 "list_sessions",
                 "manage_session",
@@ -4039,8 +4056,20 @@ def setup_chat_routes(
             """Wrapper that guarantees _active_streams cleanup even if stream_with_save
             raises before reaching a mode-specific finally block."""
             try:
-                async for chunk in stream_with_save():
-                    yield chunk
+                # `B1736`. The model's reaction marker never reaches the
+                # screen: the filter sends it as a `reaction` event instead.
+                _reaction_filter = _message_reactions.ReactionStreamFilter() if _reactions_on else None
+                with _reasoning_effort.turn_scope(_turn_reasoning_level), \
+                        _message_reactions.turn_scope(_reactions_on):
+                    async for chunk in stream_with_save():
+                        if _reaction_filter is None:
+                            yield chunk
+                            continue
+                        for _out in _reaction_filter.feed(chunk):
+                            yield _out
+                    if _reaction_filter is not None:
+                        for _out in _reaction_filter.flush():
+                            yield _out
             finally:
                 _active_streams.pop(session, None)
                 # `B1653`. The memories this turn sent have their use count
@@ -4416,6 +4445,82 @@ def setup_chat_routes(
                 yield f'event: error\ndata: {json.dumps({"error": str(e), "status": 500})}\n\n'
 
         return StreamingResponse(stream_rewrite(), media_type="text/event-stream")
+
+    @router.post("/api/chat/next-step")
+    async def next_step_suggestion(request: Request) -> Dict[str, Any]:
+        """`B1739`. One sentence the person would most likely send next, for
+        the composer to offer as ghost text once a reply has finished (Tab
+        takes it; nothing is sent for them). Asked of the chat's own model,
+        which is the one already loaded. Not as `background` work: that waits
+        for the UI to go quiet, and this request is the UI. Instead the call
+        is dropped the moment the page lets go of it (the person typed or
+        sent), so a local model's one slot is back for their send at once.
+        Every failure is an empty answer: a missing suggestion is nothing the
+        person needs to hear about."""
+        from src import next_step as _next_step
+        try:
+            body = await request.json()
+        except Exception:
+            raise HTTPException(400, "Invalid JSON")
+        session_id = str((body or {}).get("session_id") or "").strip()
+        if not session_id:
+            raise HTTPException(400, "session_id is required")
+        await asyncio.to_thread(_verify_session_owner, request, session_id)
+        try:
+            sess = session_manager.get_session(session_id)
+        except (KeyError, SessionNotFoundError):
+            raise HTTPException(404, CHAT_GONE)
+        messages = _next_step.build_messages(getattr(sess, "history", None) or [])
+        if not messages or not sess.endpoint_url or not sess.model:
+            return {"suggestion": ""}
+        call = asyncio.ensure_future(llm_call_async(
+            sess.endpoint_url, sess.model, messages, headers=sess.headers,
+            temperature=0.4, max_tokens=0, timeout=60, max_retries=1,
+        ))
+        try:
+            while not call.done():
+                if await request.is_disconnected():
+                    call.cancel()
+                    return {"suggestion": ""}
+                await asyncio.wait({call}, timeout=0.25)
+            answer = call.result()
+        except asyncio.CancelledError:
+            call.cancel()
+            return {"suggestion": ""}
+        except Exception as exc:
+            logger.info("next-step suggestion skipped: %s", type(exc).__name__)
+            return {"suggestion": ""}
+        return {"suggestion": _next_step.clean(answer)}
+
+    @router.get("/api/chat/reasoning-effort")
+    async def reasoning_effort_levels(
+        request: Request,
+        model: str = "",
+        endpoint_id: str = "",
+        endpoint_url: str = "",
+    ) -> Dict[str, Any]:
+        """Whether the selected model takes a reasoning effort, and how each
+        level reaches it — so the composer shows its selector only where it
+        does something. Resolves the selection as a send would; string
+        matching only, no request leaves (`Law 16`)."""
+        owner = effective_user(request)
+        selected_id = str(endpoint_id or "").strip()
+        selected_url = str(endpoint_url or "").strip()
+
+        def _support():
+            run_url = selected_url
+            if selected_id or selected_url:
+                try:
+                    resolved = _selected_registered_endpoint(selected_id, selected_url, owner=owner)
+                except Exception:
+                    logger.warning("reasoning effort: selected endpoint lookup failed", exc_info=True)
+                    resolved = None
+                if resolved:
+                    run_url = resolved[0]
+            return _reasoning_effort.effort_support(run_url, str(model or "").strip())
+
+        return await asyncio.to_thread(_support)
+
 
     # ------------------------------------------------------------------ #
     # P7-10 — how far an agent run may go, asked before it starts.

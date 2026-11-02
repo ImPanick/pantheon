@@ -81,6 +81,17 @@ def agent_clicks(owner, x=5, y=5):
         owner=owner, security_context=NO_TOOL_SECURITY_CONTEXT))[1]
 
 
+@pytest.fixture(autouse=True)
+def no_pantheon_browser(monkeypatch):
+    """This file is about the workstation's screen. Where Pantheon has a
+    Firefox of its own, `/control` answers for that browser to a person the
+    workstation does not answer (`src/local_browser.py`, held in
+    `test_control_falls_to_pantheons_browser_when_it_has_one`); here it has none,
+    whatever this machine has installed."""
+    import src.local_browser as LB
+    monkeypatch.setattr(LB, "firefox_here", lambda: False)
+
+
 @pytest.fixture
 def tools_see(monkeypatch, auth):
     """The tool layer asks `may_use` without the route's auth manager; point the
@@ -176,6 +187,17 @@ def test_a_person_without_the_privilege_is_refused_and_nothing_is_asked(app, ws,
     assert r.status_code == 403 and r.json()["detail"] == wa.NOT_PERMITTED_SENTENCE
     assert account_for(PLAIN) not in ws.system.accounts()
     assert ws.system._screens == {}, "a display was asked for on their behalf"
+
+
+def test_control_falls_to_pantheons_browser_when_it_has_one(app, ws, monkeypatch):
+    """Off, with a Firefox of Pantheon's own: who holds the browser is that
+    browser's answer, and the workstation is still asked nothing."""
+    import src.local_browser as LB
+    monkeypatch.setattr(LB, "firefox_here", lambda: True)
+    r = call(as_user(app, PLAIN), "POST", "/api/workstation/control", {"holder": "person"})
+    assert r.status_code == 200 and r.json()["holder"] == "person"
+    assert call(as_user(app, PLAIN), "GET", "/api/workstation/control", None).json()["holder"] == "person"
+    assert ws.system._screens == {}
 
 
 @pytest.mark.parametrize("method,path,body", ROUTES)

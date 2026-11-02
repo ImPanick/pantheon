@@ -670,22 +670,34 @@ def test_the_approval_slot_stays_shut_until_its_control_exists(sandbox, preamble
 def test_the_approval_row_presses_the_chats_own_control(sandbox, preamble):
     """The shape `fx8-approval` shipped: `#approval-mode-btn` plus
     `window.approvalModeModule`, whose own comment calls it *"the same door
-    `fx8-mobile` drives"*. The row presses that chip — it never writes an
-    approval state of its own — and the sheet gets out of the way, because
-    turning Auto on asks one question first."""
+    `fx8-mobile` drives"*. The row presses the chat's own control — it never
+    writes an approval state of its own — and the sheet gets out of the way,
+    because turning Auto on asks one question first.
+
+    `B1706`: the chip opens a menu rather than flipping the mode, so the
+    control the row presses is that menu's item for the mode asked for
+    (`[data-approval-choice]`) — `'toggle'` below was the chip's own click and
+    is now the item's. The chip itself is never clicked: that would open its
+    menu behind a closing sheet."""
     out = _case(sandbox, preamble, """
       let auto = false;
       const presses = [];
       const chip = document.createElement('button');
       chip.id = 'approval-mode-btn';
-      chip.setAttribute('aria-pressed', 'false');
-      chip.addEventListener('click', () => {
-        presses.push('toggle');
-        auto = !auto;
-        chip.setAttribute('aria-pressed', auto ? 'true' : 'false');
-        chip.classList.toggle('active', auto);
-      });
+      chip.setAttribute('aria-haspopup', 'menu');
+      chip.addEventListener('click', () => presses.push('chip'));
       document.body.appendChild(chip);
+      for (const mode of ['manual', 'auto']) {
+        const item = document.createElement('div');
+        item.setAttribute('role', 'menuitemradio');
+        item.setAttribute('data-approval-choice', mode);
+        item.addEventListener('click', () => {
+          presses.push(mode);
+          auto = mode === 'auto';
+          chip.classList.toggle('active', auto);
+        });
+        document.body.appendChild(item);
+      }
       window.approvalModeModule = { isAuto: () => auto };
       sheet.initTurnSheet(document);
       const manualFirst = {hidden: el('turn-row-approval').hidden,
@@ -705,16 +717,23 @@ def test_the_approval_row_presses_the_chats_own_control(sandbox, preamble):
       tap('turn-chip');
       tap('turn-approval-auto');
       await tick();
-      say({manualFirst, sameTick, after, idle: presses.slice()});
+      const idle = presses.slice();
+      // And the way back is the menu's Manual approve.
+      tap('turn-chip');
+      tap('turn-approval-manual');
+      await tick();
+      say({manualFirst, sameTick, after, idle, back: presses.slice(),
+           backFlag: el('turn-chip-approval').hidden});
     """)
     assert out["manualFirst"] == {"hidden": False, "auto": "false", "manual": "true",
                                   "flag": True, "label": "This turn: Agent mode"}
     # The sheet is out of the way before the control is pressed.
     assert out["sameTick"] == {"presses": [], "open": False}
     # Auto is the state a person must not miss: it is on the chip, unopened.
-    assert out["after"] == {"presses": ["toggle"], "auto": "true", "flag": False,
+    assert out["after"] == {"presses": ["auto"], "auto": "true", "flag": False,
                             "label": "This turn: Agent mode, Auto approval"}
-    assert out["idle"] == ["toggle"], "the row pressed the chip to set the mode it was in"
+    assert out["idle"] == ["auto"], "the row pressed a control to set the mode it was in"
+    assert out["back"] == ["auto", "manual"] and out["backFlag"] is True
 
 
 def test_every_control_that_decides_a_turn_has_a_row(sandbox, preamble):

@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<!--
+  The terminal (D-2026-10-31-02): JetBrains Mono on the cockpit's deepest
+  surface, the accent as the cursor, a palette of the default theme's own
+  hues, and nothing between the text and the frame (no menu bar, no
+  scrollbar). Pastes are never questioned, so an agent's paste runs as a
+  person's would. Copy is Ctrl+Shift+C and paste Ctrl+Shift+V. This file is in
+  the account's home; "Reset to clean" puts it back.
+-->
+<channel name="xfce4-terminal" version="1.0">
+  <property name="font-name" type="string" value="JetBrains Mono 11"/>
+  <property name="font-use-system" type="bool" value="false"/>
+  <property name="font-allow-bold" type="bool" value="true"/>
+  <property name="color-foreground" type="string" value="#cfd9de"/>
+  <property name="color-background" type="string" value="#15181c"/>
+  <property name="color-cursor" type="string" value="#e06c75"/>
+  <property name="color-cursor-foreground" type="string" value="#15181c"/>
+  <property name="color-cursor-use-default" type="bool" value="false"/>
+  <property name="color-selection" type="string" value="#e8eef0"/>
+  <property name="color-selection-background" type="string" value="#5a3a40"/>
+  <property name="color-selection-use-default" type="bool" value="false"/>
+  <property name="color-bold-use-default" type="bool" value="true"/>
+  <property name="color-bold-is-bright" type="bool" value="false"/>
+  <property name="color-palette" type="string" value="#1e2228;#e06c75;#98c379;#e5c07b;#61afef;#c678dd;#56b6c2;#abb2bf;#5c6370;#ef8891;#b0d68f;#f0d197;#84c2f5;#d59ae6;#9cdef2;#e6eaf0"/>
+  <property name="background-mode" type="string" value="TERMINAL_BACKGROUND_SOLID"/>
+  <property name="misc-cursor-blinks" type="bool" value="false"/>
+  <property name="misc-cursor-shape" type="string" value="TERMINAL_CURSOR_SHAPE_BLOCK"/>
+  <property name="misc-menubar-default" type="bool" value="false"/>
+  <property name="misc-toolbar-default" type="bool" value="false"/>
+  <property name="misc-borders-default" type="bool" value="true"/>
+  <property name="misc-show-unsafe-paste-dialog" type="bool" value="false"/>
+  <property name="misc-confirm-close" type="bool" value="false"/>
+  <property name="misc-bell" type="bool" value="false"/>
+  <property name="misc-bell-urgent" type="bool" value="false"/>
+  <property name="misc-default-geometry" type="string" value="100x30"/>
+  <property name="misc-tab-close-buttons" type="bool" value="true"/>
+  <property name="misc-new-tab-adjacent" type="bool" value="true"/>
+  <property name="misc-slim-tabs" type="bool" value="true"/>
+  <property name="scrolling-bar" type="string" value="TERMINAL_SCROLLBAR_NONE"/>
+  <property name="scrolling-lines" type="uint" value="10000"/>
+  <property name="title-initial" type="string" value="Terminal"/>
+  <property name="title-mode" type="string" value="TERMINAL_TITLE_REPLACE"/>
+</channel>

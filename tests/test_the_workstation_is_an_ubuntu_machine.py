@@ -706,15 +706,17 @@ def test_the_daemon_starts_pairs_answers_and_stops_from_the_command_line(tmp_pat
             proc.wait()
 
 
-# ── the compose overlay, as compose itself resolves it ───────────────────────
+# ── the compose stack, as compose itself resolves it ─────────────────────────
 
 def _compose(pgid="1234"):
     if not shutil.which("docker"):
         pytest.skip("the docker CLI is not installed here")
     env = {k: v for k, v in os.environ.items() if k not in ("COMPOSE_FILE", "PGID")}
     env["PGID"] = pgid
-    done = subprocess.run(["docker", "compose", "-f", "docker-compose.yml", "-f",
-                           "docker/workstation.yml", "config", "--format", "json"],
+    # The container is in Pantheon's own stack since 2026-10-31
+    # (`docker/workstation.yml` is a shim that adds nothing).
+    done = subprocess.run(["docker", "compose", "-f", "docker-compose.yml",
+                           "config", "--format", "json"],
                           cwd=ROOT, env=env, capture_output=True, text=True, timeout=60)
     if done.returncode != 0 and "is not a docker command" in done.stderr:
         pytest.skip("docker compose is not installed here")

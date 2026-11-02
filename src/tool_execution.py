@@ -618,6 +618,36 @@ def _runs_in_workstation(tool: Any, owner: Optional[str]) -> bool:
     return routes(tool, owner)
 
 
+#: `B1725` / `D-2026-11-01-02`. A step Computer Use let run without a card
+#: is bound to the workstation: when it would now run anywhere else — the
+#: workstation stopped answering between the gate and the run, and the browser
+#: fell back to Pantheon's own — it is not run, in these words, rather than
+#: run on this machine with nobody asked.
+WORKSTATION_ONLY_SENTENCE = (
+    "This step was cleared to run inside your workstation, and the workstation stopped "
+    "answering before it ran, so it was not run anywhere else. Try again once the "
+    "workstation is back."
+)
+
+
+def _inside_workstation_now(tool: Any, owner: Optional[str], routed: bool) -> bool:
+    """`B1725`. Does this call still run inside the workstation? `computer`
+    only ever does; `agent_browser` when the workstation's browser answers
+    it, not Pantheon's own; the nine shell and file tools when routed.
+    Unanswerable is a no."""
+    if tool == "computer":
+        return True
+    if tool == "agent_browser":
+        try:
+            from src.local_browser import LocalBrowserClient, browser_for
+
+            client, _account = browser_for(owner)
+            return not isinstance(client, LocalBrowserClient)
+        except Exception:  # noqa: BLE001 — unanswerable is "not inside"
+            return False
+    return bool(routed)
+
+
 def _lifted_for(tool: Any, owner: Optional[str]) -> bool:
     """`B985`: is this blocked tool lifted for this person because their tools
     run in the workstation? `workstation_tools.lifted_tools`, the set the agent
@@ -1227,11 +1257,14 @@ async def execute_tool_block(
                 owner=owner,
             )
 
+    workstation_only = False
     if isinstance(security_context, ToolRunSecurityContext) and not approval_claimed:
         decision = security_context.decision_for(
             getattr(block, "tool_type", None),
             getattr(block, "content", None),
         )
+        # `B1725`. Cleared because it runs in the workstation: it runs there.
+        workstation_only = bool(decision.allowed and decision.workstation_approved)
         if not decision.allowed:
             logger.warning(
                 "External-context policy blocked tool=%r",
@@ -1285,6 +1318,7 @@ async def execute_tool_block(
                 else None
             ),
             station_workspace=station_workspace,
+            workstation_only=workstation_only,
         )
         if isinstance(security_context, ToolRunSecurityContext):
             security_context.observe_tool_result(
@@ -1341,8 +1375,12 @@ async def _execute_tool_block_impl(
     approved_document_version: Optional[int] = None,
     approved_document_digest: Optional[str] = None,
     station_workspace: Optional[str] = None,
+    workstation_only: bool = False,
 ) -> Tuple[str, Dict]:
     """Execute a single tool block. Returns (description, result_dict).
+
+    `workstation_only`: Computer Use let this step run without a card because
+    it runs inside the workstation (`B1725`), so it runs there or not at all.
 
     `station_workspace` is the workspace when it is a folder in the person's
     workstation (`B968`); a workspace on this machine is bound by the caller.
@@ -1353,7 +1391,7 @@ async def _execute_tool_block_impl(
     """
     from src.tool_implementations import (
         do_search_chats, do_manage_tasks,
-        do_manage_skills, do_api_call, do_manage_notes,
+        do_manage_skills, do_use_skill, do_api_call, do_manage_notes,
         do_manage_calendar,
         do_download_model, do_serve_model, do_list_served_models, do_stop_served_model,
         do_tail_serve_output,
@@ -1447,6 +1485,13 @@ async def _execute_tool_block_impl(
     # file tools, with the workstation on, routing not switched off and the
     # person allowed to use it (`workstation_tools.routes`).
     in_workstation = _runs_in_workstation(tool, owner)
+    if workstation_only and not _inside_workstation_now(tool, owner, in_workstation):
+        logger.warning("Computer Use step %s not run: it would no longer run in the workstation",
+                       tool)
+        return f"{tool}: NOT RUN", {
+            "error": WORKSTATION_ONLY_SENTENCE, "exit_code": 1,
+            "blocked": True, "policy": "computer_use",
+        }
 
     # A non-admin is refused `bash` and the file tools because here they reach
     # the process that holds every secret. In the workstation they reach the
@@ -1590,7 +1635,8 @@ async def _execute_tool_block_impl(
         # as whom, and in which folder are the whole question.
         from src.agent_tools.git_tools import command_line as _git_line, run_git
         desc = f"git: {_git_line(content)}"
-        result = await run_git(content, owner=owner, station_workspace=station_workspace)
+        result = await run_git(content, owner=owner, station_workspace=station_workspace,
+                               session_id=session_id, agent_id=getattr(tool_policy, "agent_id", None))
     elif tool == "manage_bg_jobs":
         # Inspect/kill detached `bash` jobs; needs session_id to scope to chat.
         desc = f"manage_bg_jobs: {content.split(chr(10))[0][:80]}"
@@ -1641,6 +1687,10 @@ async def _execute_tool_block_impl(
     elif tool == "manage_skills":
         desc = "manage_skills"
         result = await do_manage_skills(content, owner=owner)
+    elif tool == "use_skill":
+        # `B1737`. Read-only: open or search the skills, chosen by the model.
+        desc = "use_skill"
+        result = await do_use_skill(content, owner=owner)
     elif tool == "api_call":
         first_line = content.split("\n")[0].strip()[:60]
         desc = f"api_call: {first_line}"
@@ -1718,10 +1768,10 @@ async def _execute_tool_block_impl(
         result = await do_manage_contact(content, owner=owner)
     elif tool == "vault_search":
         desc = "vault_search"
-        result = await do_vault_search(content, owner=owner)
+        result = await do_vault_search(content, owner=owner, agent=getattr(tool_policy, "agent_id", None))
     elif tool == "vault_get":
         desc = "vault_get"
-        result = await do_vault_get(content, owner=owner)
+        result = await do_vault_get(content, owner=owner, agent=getattr(tool_policy, "agent_id", None))
     elif tool == "vault_unlock":
         desc = "vault_unlock"
         result = await do_vault_unlock(content, owner=owner)

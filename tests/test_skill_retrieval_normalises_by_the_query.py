@@ -90,7 +90,11 @@ def library():
     """
     with tempfile.TemporaryDirectory() as d:
         sm = SkillsManager(d)
-        skills = sm.load_all()
+        # `B1737`. The vendored library alone, which is what this measures:
+        # Pantheon's first-party skills shadow it on purpose (`B1419`), and
+        # `write-automated-tests` coming first for *"write pytest tests"* is
+        # that working, not the scorer failing.
+        skills = [s for s in sm.load_all() if s.get("library") == "ecc"]
         for s in skills:
             s["status"] = "published"
         assert len(skills) >= 280, f"library did not load: {len(skills)}"

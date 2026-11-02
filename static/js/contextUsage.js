@@ -215,26 +215,41 @@ function _el(doc, tag, cls, text) {
   return n;
 }
 
-function _itemRow(doc, item, total) {
+function _itemRow(doc, item, total, catTokens = 0) {
   const li = _el(doc, 'li', 'ctx-usage-item');
+  // `2026-10-31`. How much of its category this part is, as a thin gauge
+  // under its name: the breakdown reads at a glance, the figure stays exact.
+  const own = Number((item && item.tokens) || 0);
+  let gauge = null;
+  if (item && !item.uncounted && catTokens > 0 && own > 0) {
+    gauge = _el(doc, 'span', 'ctx-usage-item-bar');
+    gauge.setAttribute('aria-hidden', 'true');
+    const meter = _el(doc, 'span', 'ctx-usage-item-meter');
+    meter.style.width = `${Math.max(2, Math.min(100, (own / catTokens) * 100)).toFixed(1)}%`;
+    gauge.appendChild(meter);
+  }
+  const main = _el(doc, 'span', 'ctx-usage-item-main');
   const name = _el(doc, 'span', 'ctx-usage-item-name', item && item.name ? item.name : 'part');
-  li.appendChild(name);
+  main.appendChild(name);
   if (item && item.kind) {
-    li.appendChild(_el(doc, 'span', `ctx-usage-kind ctx-usage-kind-${item.kind}`,
+    main.appendChild(_el(doc, 'span', `ctx-usage-kind ctx-usage-kind-${item.kind}`,
       KIND_LABELS[item.kind] || KIND_LABELS.file));
   }
   if (item && item.count) {
-    li.appendChild(_el(doc, 'span', 'ctx-usage-item-count', `×${Number(item.count).toLocaleString()}`));
+    main.appendChild(_el(doc, 'span', 'ctx-usage-item-count', `×${Number(item.count).toLocaleString()}`));
   }
+  li.appendChild(main);
   const tokens = _el(doc, 'span', 'ctx-usage-item-tokens');
   if (item && item.uncounted) {
     tokens.textContent = 'not counted';
     tokens.title = 'The estimate reads text; pictures and audio are counted by the model, not here.';
   } else {
     tokens.textContent = formatTokens(item && item.tokens);
-    tokens.title = `${Number((item && item.tokens) || 0).toLocaleString()} tokens · ${_share(item && item.tokens, total)}`;
+    const ofCat = catTokens > 0 ? ` · ${_share(own, catTokens)} of this part` : '';
+    tokens.title = `${own.toLocaleString()} tokens${ofCat} · ${_share(own, total)} of the window`;
   }
   li.appendChild(tokens);
+  if (gauge) li.appendChild(gauge);
   return li;
 }
 
@@ -243,6 +258,7 @@ function _categoryRow(doc, cat, total) {
   const unmeasured = cat.measured === false;
   const row = _el(doc, items.length ? 'details' : 'div', 'ctx-usage-cat');
   row.dataset.key = cat.key;
+  if (items.length) row.classList.add('has-parts');
   if (unmeasured) row.classList.add('unmeasured');
   const head = _el(doc, items.length ? 'summary' : 'div', 'ctx-usage-cat-head');
   const swatch = _el(doc, 'span', 'ctx-usage-swatch');
@@ -267,7 +283,8 @@ function _categoryRow(doc, cat, total) {
   row.appendChild(head);
   if (items.length) {
     const list = _el(doc, 'ul', 'ctx-usage-items');
-    items.forEach((item) => list.appendChild(_itemRow(doc, item, total)));
+    const catTokens = unmeasured ? 0 : Number(cat.tokens || 0);
+    items.forEach((item) => list.appendChild(_itemRow(doc, item, total, catTokens)));
     row.appendChild(list);
   }
   return row;
@@ -346,7 +363,19 @@ export function buildUsagePanel(doc, data, { pending = [], meterHost = null } = 
       bar.appendChild(seg);
     }
     bar.setAttribute('aria-label', `${pct}% of the window used${described.length ? `: ${described.join(', ')}` : ''}`);
-    panel.appendChild(bar);
+    // `2026-10-31`. Where compaction starts on its own, on the bar itself, so
+    // "how far is that" is read off the same line as "how full is it".
+    const wrap = _el(doc, 'div', 'ctx-usage-bar-wrap');
+    wrap.appendChild(bar);
+    const at = Number(data.auto_compact_threshold || 0);
+    if (at > 0 && at < 100) {
+      const mark = _el(doc, 'span', 'ctx-usage-bar-mark');
+      mark.style.left = `${at}%`;
+      mark.title = `Auto compact at ${at}%`;
+      mark.setAttribute('aria-hidden', 'true');
+      wrap.appendChild(mark);
+    }
+    panel.appendChild(wrap);
 
     const list = _el(doc, 'div', 'ctx-usage-list');
     categories.forEach((cat) => {
@@ -387,5 +416,25 @@ export function buildUsagePanel(doc, data, { pending = [], meterHost = null } = 
 
   const attach = _pendingSection(doc, pending, meterHost);
   if (attach) panel.appendChild(attach);
+  _linkRowsToBar(panel);
   return panel;
+}
+
+/**
+ * `2026-10-31`. A row and its stretch of the bar are one thing: pointing at
+ * either lights both and lets the rest of the bar fall back.
+ */
+function _linkRowsToBar(panel) {
+  const segs = panel.querySelectorAll('.ctx-usage-seg[data-key]');
+  const rows = panel.querySelectorAll('.ctx-usage-cat[data-key]');
+  if (!segs.length) return;
+  const set = (key) => {
+    panel.classList.toggle('has-focus', !!key);
+    segs.forEach((s) => s.classList.toggle('is-focus', !!key && s.dataset.key === key));
+    rows.forEach((r) => r.classList.toggle('is-focus', !!key && r.dataset.key === key));
+  };
+  [...segs, ...rows].forEach((n) => {
+    n.addEventListener('mouseenter', () => set(n.dataset.key));
+    n.addEventListener('mouseleave', () => set(''));
+  });
 }

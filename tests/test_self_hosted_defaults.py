@@ -73,8 +73,19 @@ def test_no_cloud_provider_is_the_shipped_default_model(defaults, key):
 
 
 def test_speech_ships_disabled(defaults):
-    """TTS/STT defaults name cloud models; both must ship off."""
-    assert defaults["tts_provider"] == "disabled"
+    """TTS/STT defaults name cloud models; both must ship off.
+
+    `B1728`, 2026-11-01: the voice ships as "Automatic", which is none of
+    those — it speaks only with what runs on this server or beside it
+    (`AUTO_ORDER`: the Chatterbox sidecar, Kokoro and Piper on the processor),
+    never an endpoint and never the browser's voices, which in Chrome are
+    Google's. The cloud model it names (`tts_model`, "tts-1") is read only by
+    an endpoint someone added. Speech to text still ships off."""
+    from services.tts.tts_service import AUTO_ORDER
+
+    assert defaults["tts_provider"] in ("disabled", "auto")
+    if defaults["tts_provider"] == "auto":
+        assert set(AUTO_ORDER) <= {"chatterbox", "kokoro", "piper"}, AUTO_ORDER
     assert defaults["stt_provider"] == "disabled"
     assert defaults["stt_enabled"] is False
 

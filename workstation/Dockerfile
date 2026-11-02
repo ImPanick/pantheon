@@ -2,7 +2,8 @@
 # The Pantheon workstation — `P20-01`, `D-2026-09-30-03`.
 #
 # An Ubuntu 24.04 userland the agents work in: one Unix account and one X
-# display per person, a light desktop (JWM, a terminal, Firefox), the tools a
+# display per person, a desktop (XFCE themed to the cockpit, `D-2026-10-31-02`:
+# a terminal, Firefox, a file manager), the tools a
 # task usually needs, and `agentd` answering `workstation/protocol.py` on 7040.
 # The build context is this directory and nothing else:
 #
@@ -58,9 +59,11 @@ RUN --mount=type=secret,id=build-ca,required=false,mode=0444 \
 # Measured 2026-09-30 on a fresh profile left idle for 120 s: without the file,
 # 135 lookups of 15 outside hosts; with it, none.
 # `provision.sh files` puts it at /etc/firefox/policies/policies.json, and the
-# skeleton every home starts from and "Reset to clean" returns to in /etc/skel.
+# skeleton every home starts from and "Reset to clean" returns to in /etc/skel,
+# and the desktop's window frames, wallpaper and menu mark (`D-2026-10-31-02`).
 COPY firefox/policies.json /opt/pantheon-workstation/provision/firefox/policies.json
 COPY skel/ /opt/pantheon-workstation/provision/skel/
+COPY desktop/ /opt/pantheon-workstation/provision/desktop/
 RUN sh /opt/pantheon-workstation/provision/provision.sh files --skel /etc/skel
 COPY *.py /opt/pantheon-workstation/workstation/
 # `B976`. The overlay runs this container without CAP_NET_RAW (`P20-06`), and the

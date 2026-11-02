@@ -90,7 +90,7 @@ def _prompt_admin_credentials():
 def create_default_admin():
     """Create an initial admin user if none exists."""
     auth_path = AUTH_FILE
-    if os.path.exists(auth_path):
+    if os.path.exists(auth_path) and _auth_file_has_users(auth_path):
         print("  [skip] auth.json already exists")
         return "exists"
 
@@ -113,10 +113,18 @@ def create_default_admin():
         elif sys.stdin.isatty() and not os.getenv("PANTHEON_SKIP_ADMIN_PROMPT"):
             # Interactive terminal — ask the user
             username, password = _prompt_admin_credentials()
-        else:
-            # Non-interactive (Docker, CI) — fall back to generated password
+        elif password:
+            # A password named in the environment, no user: it is `admin`'s.
             username = username or "admin"
-            password = password or __import__("secrets").token_urlsafe(18)
+        else:
+            # Non-interactive (Docker, a launcher) with nothing named. This used
+            # to make `admin` with a random password printed only to the log —
+            # an account nobody had been told about, and a fresh install that
+            # answered every visit with "Invalid credentials" (2026-10-31). The
+            # account store is left empty instead, and an empty store is the
+            # setup flag: the first visit to the app asks for the admin account.
+            print("  [ok] No admin yet: the first visit to Pantheon asks for one")
+            return "deferred"
 
         username = username or "admin"
         hashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
@@ -156,6 +164,23 @@ def create_default_admin():
         print("  [warn] bcrypt not installed — skipping admin user creation")
         print("         Run: pip install bcrypt")
         return "skipped"
+
+
+def _auth_file_has_users(path):
+    """Whether an existing auth.json holds an account. One with none (a store
+    the server wrote before anyone set up) is still a fresh install."""
+    import json
+    try:
+        with open(path, encoding="utf-8") as fh:
+            data = json.load(fh)
+    except (OSError, ValueError):
+        # Unreadable is not empty: never write over what could not be read.
+        return True
+    users = data.get("users") if isinstance(data, dict) else None
+    if isinstance(users, dict):
+        return len(users) > 0
+    # The pre-multi-user shape carried one password at the top level.
+    return bool(isinstance(data, dict) and data.get("password_hash"))
 
 
 def create_env():
@@ -296,6 +321,8 @@ def main():
         print("Login with your admin credentials.\n")
     elif admin_status == "exists":
         print("Login with your existing admin credentials.\n")
+    elif admin_status == "deferred":
+        print("Open Pantheon in a browser: the first visit sets up your admin account.\n")
     elif admin_status == "skipped":
         print("Admin creation did not happen: dependencies are missing.\nRun 'pip install bcrypt' and rerun setup.\n")
     elif admin_status == "failed":

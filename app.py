@@ -1206,6 +1206,11 @@ app.include_router(setup_workspace_routes())
 # admin, and Reset my workstation for whoever may use it.
 from routes.workstation_routes import setup_workstation_routes
 app.include_router(setup_workstation_routes())
+# `D-2026-10-31-01`. The live desktop's web client: KasmVNC's, unpacked into the
+# image from the workstation's own pinned package and served from here, under
+# `/api/` so it is behind the session like the routes above (`src/desktop_client.py`).
+from src.desktop_client import PREFIX as _DESKTOP_CLIENT_PREFIX, DesktopClientFiles
+app.mount(_DESKTOP_CLIENT_PREFIX, DesktopClientFiles(), name="desktop-client")
 
 # Hardware model fitting (cookbook "What Fits?" tab)
 from routes.hwfit_routes import setup_hwfit_routes

@@ -220,7 +220,8 @@ def test_every_tab_is_drawn_from_the_registry_in_the_registrys_order(sandbox):
     # Sixteen since `P20-02` added the Workstation panel (2026-09-30).
     # `B1229`: + forge. `P24-15`: + agents.
     # `P25-02`: + git; `P27-03`: + vault; `B1475`: + my-networks.
-    assert len(buttons) == 21, f"expected twenty-one tabs, drew {len(buttons)}"
+    # `B1718`: + voice. `B1730`: + conversation, each person's own.
+    assert len(buttons) == 23, f"expected twenty-three tabs, drew {len(buttons)}"
     assert all(b["hasIcon"] for b in buttons), "a tab lost its glyph"
 
 
@@ -269,7 +270,8 @@ def test_the_admin_tabs_still_carry_the_class_that_hides_them(sandbox):
     # `B1229`: Forge, whose one control saves to an admin-only route.
     assert admin_only == {"tools", "users", "embeddings", "networks", "system",
                           "services", "added-models", "ai", "search", "reminders",
-                          "forge", "agents"}  # `P24-15`: its two controls are admin settings
+                          "forge", "agents",  # `P24-15`: its two controls are admin settings
+                          "voice"}  # `B1718`: every control saves to `POST /api/auth/settings`
     for row in out["nav"]:
         if row.get("tab"):
             assert ("admin-only" in row["classes"]) == (row["tab"] in admin_only - for_operator), row
@@ -342,7 +344,7 @@ def test_redrawing_the_nav_keeps_the_tab_you_were_on(sandbox):
         }));
     """ % json.dumps(_index_panel_ids()))
     assert out["active"] == ["appearance"]
-    assert out["count"] == 21, "a redraw duplicated the nav"  # `B1229`: + forge; `P24-15`: + agents; `P25-02`: + git; `P27-03`: + vault; `B1475`: + my-networks
+    assert out["count"] == 23, "a redraw duplicated the nav"  # `B1229`: + forge; `P24-15`: + agents; `P25-02`: + git; `P27-03`: + vault; `B1475`: + my-networks; `B1718`: + voice; `B1730`: + conversation
 
 
 def test_a_missing_container_is_not_an_exception(sandbox):
@@ -399,7 +401,7 @@ def test_the_page_carries_the_container_and_no_hand_written_tab():
     assert 'data-settings-tab=' not in html, "a tab is still declared in the markup"
     # The panels are still markup, deliberately — that is the half the
     # self-check still has something to compare.
-    assert len(_index_panel_ids()) == 21  # `P20-02`: + workstation; `B1229`: + forge; `P24-15`: + agents; `P25-02`: + git; `P27-03`: + vault; `B1475`: + my-networks
+    assert len(_index_panel_ids()) == 23  # `P20-02`: + workstation; `B1229`: + forge; `P24-15`: + agents; `P25-02`: + git; `P27-03`: + vault; `B1475`: + my-networks; `B1718`: + voice; `B1730`: + conversation
 
 
 def test_the_generated_nav_has_the_css_it_needs():

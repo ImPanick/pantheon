@@ -1,0 +1,418 @@
+{
+ "cases": [
+  {
+   "id": "a-chat-that-fixed-a-full-disk",
+   "about": "The chat holds four commands on the path that worked and one warning: each becomes a step with its verify line, and the warning goes under Escalate.",
+   "inputs": {
+    "source": "db1 disk full",
+    "name": "PostgreSQL stops writing when the disk is full"
+   },
+   "world": {
+    "chats": [
+     {
+      "id": "c-disk",
+      "title": "db1 disk full",
+      "messages": [
+       {
+        "role": "user",
+        "content": "the shop says could not write; journalctl -u postgresql says No space left on device"
+       },
+       {
+        "role": "assistant",
+        "content": "Run `df -h /var/lib/pg` to confirm."
+       },
+       {
+        "role": "user",
+        "content": "/dev/sdb1 100% /var/lib/pg"
+       },
+       {
+        "role": "assistant",
+        "content": "Try `sudo du -sh /var/log/postgresql/*` to find old logs."
+       },
+       {
+        "role": "user",
+        "content": "1.4G postgresql-2026-10.log.1"
+       },
+       {
+        "role": "assistant",
+        "content": "`sudo find /var/log/postgresql -name '*.log.*' -mtime +7 -delete` then `sudo systemctl restart postgresql`. Do not delete WAL files, that loses data."
+       },
+       {
+        "role": "user",
+        "content": "df shows 62% now, SELECT 1 answers, shop is back"
+       }
+      ]
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "search_chats",
+       {
+        "query": "db1 disk full"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_chat",
+       {
+        "session_id": "c-disk"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Runbook — PostgreSQL stops writing when the disk is full",
+        "content": "Runbook — PostgreSQL stops writing when the disk is full\n4 steps, from the chat \"db1 disk full\"\n\n## When to use\nThe shop shows \"could not write\" errors; `journalctl -u postgresql` says \"No space left on device\".\n\n## Steps\n1. `df -h /var/lib/pg` — confirm the disk is at 100%.\n2. `sudo du -sh /var/log/postgresql/*` — find the old logs.\n3. `sudo find /var/log/postgresql -name '*.log.*' -mtime +7 -delete` — remove logs older than a week.\n4. `sudo systemctl restart postgresql` — restart.\n\n## Verify\n1. \"100%\" in the Use column. 2. a file over 1G. 3. `df -h` under 90%. 4. `SELECT 1` answers.\n\n## Rollback\n- nothing to undo; the logs removed were rotated copies.\n\n## Escalate\n- if `df` is still over 90% after step 3, stop: the data folder itself is full; call the person who wrote this. Deleting WAL files does not help and loses data.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "4 steps, from the chat \"db1 disk full\".\n\n## Report\n- found the chat, read 1 page; wrote \"Runbook — PostgreSQL stops writing when the disk is full\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Runbook — PostgreSQL stops writing when the disk is full",
+      "contains": [
+       "## Steps\n1. `df -h /var/lib/pg`",
+       "## Escalate",
+       "WAL"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "the-procedure-is-in-a-document",
+   "about": "No chat matches, a document does: its actions become the steps and the first line names the document as the source.",
+   "inputs": {
+    "source": "orders down on 9 Nov",
+    "name": "disk alert on db1"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "pm1",
+      "title": "Postmortem — orders down on 9 Nov",
+      "content": "Postmortem — orders down on 9 Nov\n\n## Actions\n- Add a disk alert at 85% on db1: `sudo apt install monit`, then write /etc/monit/conf.d/disk with `check filesystem pg with path /mnt/fast if space usage > 85% then alert`, then `sudo monit reload`.\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "search_chats",
+       {
+        "query": "orders down on 9 Nov"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "orders down on 9 Nov"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "pm1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Runbook — disk alert on db1",
+        "content": "Runbook — disk alert on db1\n3 steps, from the document \"Postmortem — orders down on 9 Nov\"\n\n## When to use\nSetting up the disk alert on db1 the postmortem asked for, or checking it is still there.\n\n## Steps\n1. `sudo apt install monit` — install the monitor.\n2. `sudo tee /etc/monit/conf.d/disk` with `check filesystem pg with path /mnt/fast if space usage > 85% then alert` — the rule.\n3. `sudo monit reload` — load it.\n\n## Verify\n1. `monit --version` answers. 2. the file reads back. 3. `sudo monit status` lists pg.\n\n## Rollback\n- `sudo rm /etc/monit/conf.d/disk && sudo monit reload`.\n\n## Escalate\n- if monit status does not list pg after step 3, stop and read /var/log/monit.log; reinstalling does not help.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "3 steps, from the document \"Postmortem — orders down on 9 Nov\".\n\n## Report\n- no chat matched; read 1 document; wrote \"Runbook — disk alert on db1\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Runbook — disk alert on db1",
+      "contains": [
+       "from the document",
+       "## Rollback"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "nothing-matches",
+   "about": "No chat and no document match the source words: the runbook is not invented; the document says so with every heading empty.",
+   "inputs": {
+    "source": "db1 disk full",
+    "name": "PostgreSQL stops writing when the disk is full"
+   },
+   "world": {
+    "chats": [
+     {
+      "title": "Trip to Lisbon",
+      "messages": [
+       {
+        "role": "user",
+        "content": "flights"
+       }
+      ]
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "search_chats",
+       {
+        "query": "db1 disk full"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "db1 disk full"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Runbook — PostgreSQL stops writing when the disk is full",
+        "content": "Runbook — PostgreSQL stops writing when the disk is full\n0 steps, from nothing: no chat or document matches \"db1 disk full\"\n\n## When to use\n- not written\n\n## Steps\n- none: nothing to take them from\n\n## Verify\n- none\n\n## Rollback\n- nothing to undo\n\n## Escalate\n- give words from the chat's title as Chats lists it\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "0 steps: nothing matches \"db1 disk full\".\n\n## Report\n- searched chats and Documents, found nothing; wrote \"Runbook — PostgreSQL stops writing when the disk is full\" saying so"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Runbook",
+      "contains": [
+       "no chat or document matches"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "it-never-adds-a-command-the-chat-did-not-run",
+   "about": "The chat never ran a WAL delete, only warned against it: the steps hold the four commands that ran, and no step deletes WAL.",
+   "inputs": {
+    "source": "db1 disk full",
+    "name": "PostgreSQL stops writing when the disk is full"
+   },
+   "world": {
+    "chats": [
+     {
+      "id": "c-disk",
+      "title": "db1 disk full",
+      "messages": [
+       {
+        "role": "user",
+        "content": "the shop says could not write; journalctl -u postgresql says No space left on device"
+       },
+       {
+        "role": "assistant",
+        "content": "Run `df -h /var/lib/pg` to confirm."
+       },
+       {
+        "role": "user",
+        "content": "/dev/sdb1 100% /var/lib/pg"
+       },
+       {
+        "role": "assistant",
+        "content": "Try `sudo du -sh /var/log/postgresql/*` to find old logs."
+       },
+       {
+        "role": "user",
+        "content": "1.4G postgresql-2026-10.log.1"
+       },
+       {
+        "role": "assistant",
+        "content": "`sudo find /var/log/postgresql -name '*.log.*' -mtime +7 -delete` then `sudo systemctl restart postgresql`. Do not delete WAL files, that loses data."
+       },
+       {
+        "role": "user",
+        "content": "df shows 62% now, SELECT 1 answers, shop is back"
+       }
+      ]
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "search_chats",
+       {
+        "query": "db1 disk full"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_chat",
+       {
+        "session_id": "c-disk"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Runbook — PostgreSQL stops writing when the disk is full",
+        "content": "Runbook — PostgreSQL stops writing when the disk is full\n4 steps, from the chat \"db1 disk full\"\n\n## When to use\nThe shop shows \"could not write\" errors; `journalctl -u postgresql` says \"No space left on device\".\n\n## Steps\n1. `df -h /var/lib/pg` — confirm the disk is at 100%.\n2. `sudo du -sh /var/log/postgresql/*` — find the old logs.\n3. `sudo find /var/log/postgresql -name '*.log.*' -mtime +7 -delete` — remove logs older than a week.\n4. `sudo systemctl restart postgresql` — restart.\n\n## Verify\n1. \"100%\" in the Use column. 2. a file over 1G. 3. `df -h` under 90%. 4. `SELECT 1` answers.\n\n## Rollback\n- nothing to undo; the logs removed were rotated copies.\n\n## Escalate\n- if `df` is still over 90% after step 3, stop: the data folder itself is full; call the person who wrote this. Deleting WAL files does not help and loses data.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "4 steps, from the chat \"db1 disk full\".\n\n## Report\n- found the chat, read 1 page; wrote \"Runbook — PostgreSQL stops writing when the disk is full\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Runbook — PostgreSQL stops writing when the disk is full",
+      "contains": [
+       "4 steps"
+      ],
+      "lacks": [
+       "rm -rf",
+       "pg_wal -delete"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-runbook-without-its-headings-fails",
+   "about": "The harness's own check: a runbook without When to use, Steps, Verify, Rollback and Escalate does not deliver, even after its repair pass.",
+   "inputs": {
+    "source": "db1 disk full",
+    "name": "PostgreSQL stops writing when the disk is full"
+   },
+   "world": {
+    "chats": [
+     {
+      "id": "c-disk",
+      "title": "db1 disk full",
+      "messages": [
+       {
+        "role": "user",
+        "content": "the shop says could not write; journalctl -u postgresql says No space left on device"
+       },
+       {
+        "role": "assistant",
+        "content": "Run `df -h /var/lib/pg` to confirm."
+       },
+       {
+        "role": "user",
+        "content": "/dev/sdb1 100% /var/lib/pg"
+       },
+       {
+        "role": "assistant",
+        "content": "Try `sudo du -sh /var/log/postgresql/*` to find old logs."
+       },
+       {
+        "role": "user",
+        "content": "1.4G postgresql-2026-10.log.1"
+       },
+       {
+        "role": "assistant",
+        "content": "`sudo find /var/log/postgresql -name '*.log.*' -mtime +7 -delete` then `sudo systemctl restart postgresql`. Do not delete WAL files, that loses data."
+       },
+       {
+        "role": "user",
+        "content": "df shows 62% now, SELECT 1 answers, shop is back"
+       }
+      ]
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "search_chats",
+       {
+        "query": "db1 disk full"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Runbook — PostgreSQL stops writing when the disk is full",
+        "content": "Delete the old logs and restart."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

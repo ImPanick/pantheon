@@ -25,6 +25,12 @@ So the rules below are about *phrases*, never tokens:
   quote regex (`B290`, `B876`).
 * an argument to `console.*` is for a developer, not a person, and is skipped.
 * "tmux session" is tmux's own word for the Forge's serve, not a chat.
+* **Conversation**, capitalised, is the name the owner gave the switch that has
+  the agent say its replies out loud (`D-2026-11-01-03`, `B1730`), and a switch
+  is not a chat. `SWITCH_NAME` sets that name aside where it is plainly the
+  switch: its state, the control, the chip's tooltip, the door to its Settings
+  tab. It is the file's one permission, and it is the owner's; every other
+  "conversation" a person reads still fails.
 
 **The register below is a hand-off, not a permission** (the `P0-29` pattern):
 each entry is a string inside another lane's file or range this wave, with the
@@ -56,6 +62,19 @@ _HAS_NODE = shutil.which("node") is not None
 CHAT_WORD = re.compile(
     r"(?<![A-Za-z0-9_\-/.#$])(?:session|sessions|conversation|conversations)(?![A-Za-z0-9_\-])",
     re.I)
+
+# `D-2026-11-01-03`. The owner, 2026-11-01 02:34, of the switch the plan had
+# called *Speak replies aloud*: "This should be a "Conversation" switch not
+# speak replies aloud - we make it personal-able". The name is set aside only
+# where it is the switch, and case-sensitively: *Conversation on* / *off*,
+# *the Conversation chip* / *switch*, the chip's tooltip *Conversation: the
+# agent says…*, and *Settings → Conversation*. "Delete Conversation",
+# "Conversation history" and "a conversation" are a chat by another name, and
+# still fail.
+SWITCH_NAME = re.compile(
+    r"Settings\s*(?:→|&rarr;|›|&rsaquo;|->|>)\s*Conversation\b"
+    r"|\bConversation(?=\s+(?:on|off|chip|switch)\b)"
+    r"|^\s*Conversation:(?=\s+the agent\b)")
 
 # A door that names the room by its bare old name: "Settings › Integrations",
 # "in Integrations", "Open Integrations", "-> Integrations". `MCP & ` before it is
@@ -139,6 +158,7 @@ def _served_files():
             yield rel
 
 
+@functools.lru_cache(maxsize=None)
 def _phrases(rel: str):
     text = (_REPO / rel).read_text(encoding="utf-8", errors="replace")
     return _html_phrases(text) if rel.endswith(".html") else list(_js_phrases(text))
@@ -148,12 +168,19 @@ def _is_phrase(text: str) -> bool:
     return " " in text.strip()
 
 
+def _says_a_chat_word(text: str) -> bool:
+    """A phrase that calls something a session or a conversation, once the
+    switch's own name (`SWITCH_NAME`) is set aside."""
+    return (_is_phrase(text) and "tmux" not in text.lower()
+            and bool(CHAT_WORD.search(SWITCH_NAME.sub(" ", text))))
+
+
 @functools.lru_cache(maxsize=None)
 def _chat_word_hits():
     out = {}
     for rel in _served_files():
         for line, text in _phrases(rel):
-            if _is_phrase(text) and CHAT_WORD.search(text) and "tmux" not in text.lower():
+            if _says_a_chat_word(text):
                 out.setdefault(rel, []).append((line, text.strip()[:90]))
     return out
 
@@ -239,6 +266,25 @@ def test_the_room_rule_separates_a_door_from_the_items():
     assert not BARE_ROOM.search("No Integrations are switched on.")
 
 
+def test_the_switch_is_called_conversation_and_a_chat_is_still_a_chat():
+    """`D-2026-11-01-03`: the switch's name is read as its name where it is one,
+    through the predicate the sweep uses, and nowhere else."""
+    switch = ("Conversation on", "Conversation off.",
+              "Conversation on here; your account did not keep it",
+              "Conversation: the agent says its replies out loud",
+              "The Conversation chip beside Plan, Web and Shell",
+              "Turn the Conversation switch off to stop it",
+              "No voice can speak here yet. Settings → Conversation says why.",
+              "unless they choose their own in Settings &rarr; Conversation.")
+    assert [t for t in switch if _says_a_chat_word(t)] == []
+    chat = ("Delete conversation", "Delete Conversation", "New Conversation",
+            "Conversation history", "All Conversations", "Start a conversation",
+            "conversation on", "Settings → conversation", "Settings → Conversations",
+            "Conversation: Tuesday's notes", "Your Conversation is saved",
+            "Conversation on: this conversation is kept", "Rename session")
+    assert [t for t in chat if not _says_a_chat_word(t)] == []
+
+
 def test_the_scan_reads_what_it_claims_to_read():
     files = set(_served_files())
     for expected in ("static/index.html", "static/app.js", "static/js/sessions.js",
@@ -277,6 +323,14 @@ def test_the_register_holds_nothing_already_done():
     assert not settled, (
         "These no longer carry a retired name, so their register entry is an "
         "excuse for nothing — take it out: " + ", ".join(settled))
+
+
+def test_the_switch_name_is_still_the_switch():
+    """`SWITCH_NAME` excuses strings that exist. The day the switch is renamed or
+    gone this fails, and the permission comes out with it."""
+    named = [rel for rel in _served_files() for _, text in _phrases(rel)
+             if _is_phrase(text) and SWITCH_NAME.search(text)]
+    assert {"static/index.html", "static/js/conversation.js"} <= set(named), sorted(set(named))
 
 
 def test_the_hand_off_is_exact_about_what_is_left():

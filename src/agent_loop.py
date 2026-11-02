@@ -104,7 +104,9 @@ from src.tool_approvals import (
 # says which question it answers, beside `resolve_trust_rung`'s, because this
 # module already has a `mode` ('agent'/'chat'/'research') and two things called
 # `mode` in one file is how one of them gets read for the other.
-from src.approval_mode import ApprovalMode, hire_lift_for, mode_for as approval_mode_for
+from src.approval_mode import (
+    ApprovalMode, hire_lift_for, mode_for as approval_mode_for, workstation_lift_for,
+)
 from src.tool_utils import _truncate, get_mcp_manager
 from src.agent_stops import (
     ROUNDS_WITHOUT_NEW_INFORMATION,
@@ -288,8 +290,17 @@ def _runs_in(tool_name: Any, owner: Any) -> Optional[str]:
     pick. Anything else, or a question that cannot be answered, is "here": the
     phrase that was always shown.
     """
-    if tool_name in ("computer", "agent_browser", "network"):
+    if tool_name in ("computer", "network"):
         return RUNS_IN_WORKSTATION
+    if tool_name == "agent_browser":
+        # Pantheon's own browser when the workstation would not answer them.
+        try:
+            from src.local_browser import LocalBrowserClient, browser_for
+
+            client, _account = browser_for(owner)
+            return None if isinstance(client, LocalBrowserClient) else RUNS_IN_WORKSTATION
+        except Exception:
+            return RUNS_IN_WORKSTATION
     try:
         from src.agent_tools import workstation_tools
 
@@ -1690,6 +1701,8 @@ Generate an image. Line 1 = description, line 2 = model name, line 3 = WxH (e.g.
     "manage_session": "- ```manage_session``` — Rename, archive, delete, fork, switch, or `list` chats (the UI calls them 'chats'; 'session' is internal). Line 1 = action (list/switch/rename/archive/unarchive/delete/important/unimportant/truncate/fork), Line 2 = exact chat id from a `list` result (or `current` where supported). For delete/archive/truncate, always list first and reuse the exact id; never invent placeholder ids. `switch`/`open` returns a clickable anchor link the user can tap to open the chat — use for \"open my X chat\".\n  `list_sessions` returns the same chat ids, most recent first.",
     "manage_memory": "- ```manage_memory``` — Manage the user's persistent memory (facts about the USER themselves, their preferences, context that persists across chats). Line 1 = action (list/add/edit/delete/search), rest = content. Use when user says 'remember this' about themselves, states identity facts like 'my name is <name>' / 'call me <name>' / 'I live in <place>', or asks about stored memories. DO NOT use for info about another person (their address, phone, email, birthday).\n  Info about another person goes in `manage_contact`: if the user pastes an address/phone with a name and says 'save this for <person>', use `manage_contact add` with the address arg, NOT manage_memory.",
     "manage_skills": "- ```manage_skills``` — Skill registry (SKILL.md format). Args (JSON): {\"action\": \"list|view|view_ref|search|add|edit|patch|publish|delete\", ...}. `list` returns the index of available skills (published + teacher-escalation drafts); `view name=foo` fetches the full SKILL.md; `view_ref name=foo path=...` loads a reference file under the skill directory. For `add`, provide an explicit kebab-case `name` and only report the exact returned name, because storage may normalize or dedupe it. Use this BEFORE doing domain work — there may already be a procedure (published or draft) that prescribes the correct steps. Drafts written by the teacher loop are authoritative guidance even though they're not yet published.",
+    # `B1737`. How the model acts on the skills catalogue itself.
+    "use_skill": "- ```use_skill``` — Open a listed skill by `name`, or search skills by `query` (the kind of work).",
     "manage_tasks": "- ```manage_tasks``` — Create and manage scheduled background tasks (recurring AI jobs). Args (JSON): {\"action\": \"list|create|edit|delete|pause|resume|run|dry_run|draft_workflow\", ...}. For steps that run one after another, draft_workflow with {\"description\": \"<the user's words>\"} drafts a workflow, switched off, that a person checks in the Workbench.",
     "manage_endpoints": "- ```manage_endpoints``` — Add, remove, or configure AI model API endpoints. Args (JSON): {\"action\": \"list|add|delete|enable|disable\", ...}. Use when user wants to add a new AI provider.",
     # `B1398`, second instance. The narrowing sentence below ended `` (`B871`) ``
@@ -1759,8 +1772,8 @@ If the user asks for a reminder/alarm before the event, pass `reminder_minutes` 
     # `B1621`.
     "read_chat": "- ```read_chat``` — Read one of the user's own past chats through, in order, a page at a time — to summarise, quote or learn from a whole conversation, where a search shows only a match and a few lines around it. Args (JSON): {\"session_id\": \"<id from list_sessions or search_chats>\", \"from\": <message number, default 1>}; the answer says where the next page starts.",
     "pipeline": "- ```pipeline``` — Run a multi-step AI pipeline. Args (JSON) with ordered steps, each specifying a model and prompt. Use for complex workflows.",
-    "ui_control": "- ```ui_control``` — Control the UI: toggle tools on/off, OPEN PANELS, open email reply drafts, switch models, change themes. Commands: `toggle <name> on/off` (names: bash/shell, web/search, research, incognito), `open_panel <name>` (panels: documents, gallery, email, sessions, notes, memories/brain, skills, settings, cookbook), `open_email_reply <uid> <folder> <reply|reply-all|ai-reply> <body text>` (opens an email compose document pre-filled with body, DOES NOT send; use this for normal “write/draft a reply saying X” requests), `set_mode agent/chat`, `switch_model <name>`, `set_theme <preset>`, `create_theme <name> <bg> <fg> <panel> <border> <accent>` (optional key=val for advanced colors AND background effects: bgPattern=<none|dots|synapse|rain|constellations|perlin-flow|petals|sparkles|embers|ascii>, bgEffectColor=#RRGGBB, bgEffectIntensity=<num>, bgEffectSize=<num>, frosted=true|false). \"open documents\" / \"open library\" / \"show gallery\" / \"open inbox\" / \"open notes\" / \"open cookbook\" all map to `open_panel <name>`. Built-in theme presets: dark, light, midnight, paper, cyberpunk, retrowave, forest, ocean, ume, copper, terminal, organs, lavender, gpt, claude, cute, guild, codehost, grove, notebook, channel, video, mintchat. For any other vibe/name, use create_theme.",
-    "ask_user": "- ```ask_user``` — Ask the user a multiple-choice question when the task is genuinely ambiguous and the answer changes what you do next (pick an approach, confirm an assumption, choose a target). Args (JSON): {\"question\": \"...\", \"options\": [{\"label\": \"...\", \"description\": \"...\"?}, ...], \"multi\": false?}. 2-6 options. The user gets clickable buttons; calling this ENDS your turn and their choice comes back as your next message. Prefer sensible defaults — only ask when you truly can't proceed well without their input. LOOK BEFORE YOU ASK: if any tool in this turn's list would answer the question, call it instead — a question whose answer a tool would have printed is the defect, not the caution. Never use this to ask permission for a step the user already asked for; take the step. Holding an act that needs a person is the approval gate's job, not this tool's.",
+    "ui_control": "- ```ui_control``` — Control the UI: toggle tools on/off, OPEN PANELS, open email reply drafts, switch models, change themes. Commands: `toggle <name> on/off` (names: bash/shell, web/search, research, incognito), `open_panel <name>` (panels: documents, gallery, email, sessions, notes, memories/brain, skills, settings, cookbook), `open_email_reply <uid> <folder> <reply|reply-all|ai-reply> <body text>` (opens an email compose document pre-filled with body, DOES NOT send; use this for normal “write/draft a reply saying X” requests), `set_mode agent/chat`, `switch_model <name>`, `set_theme <preset>`, `create_theme <name> <bg> <fg> <panel> <border> <accent>` (optional key=val for advanced colors AND background effects: bgPattern=<none|dots|synapse|rain|constellations|perlin-flow|petals|sparkles|embers|ascii>, bgEffectColor=#RRGGBB, bgEffectIntensity=<num>, bgEffectSize=<num>, frosted=true|false). \"open documents\" / \"open library\" / \"show gallery\" / \"open inbox\" / \"open notes\" / \"open cookbook\" all map to `open_panel <name>`. Built-in theme presets: dark, light, midnight, paper, forest, ocean, ume, copper, organs, lavender, gpt, claude, cute, guild, codehost, grove, notebook, channel, video, mintchat. For any other vibe/name, use create_theme.",
+    "ask_user": "- ```ask_user``` — Ask the user a multiple-choice question when the task is genuinely ambiguous and the answer changes what you do next (pick an approach, confirm an assumption, choose a target). Args (JSON): {\"question\": \"...\", \"options\": [{\"label\": \"...\", \"description\": \"...\"?}, ...], \"multi\": false?}. 2-6 options. To ask several things at once (plan mode, before drafting a plan): {\"question\": \"one-line lead-in\", \"questions\": [{\"question\": \"...\", \"options\"?: [...], \"multi\"?: false}, ...]} — up to 5, options optional, the person can always type their own answer. The user gets clickable buttons; calling this ENDS your turn and their choice comes back as your next message. Prefer sensible defaults — only ask when you truly can't proceed well without their input. LOOK BEFORE YOU ASK: if any tool in this turn's list would answer the question, call it instead — a question whose answer a tool would have printed is the defect, not the caution. Never use this to ask permission for a step the user already asked for; take the step. Holding an act that needs a person is the approval gate's job, not this tool's.",
     "update_plan": "- ```update_plan``` — While executing an approved plan, write the plan back: tick steps done or revise them. Args (JSON): {\"plan\": \"- [x] done step\\n- [ ] next step\"}. Always pass the COMPLETE checklist, not a diff. Call it after finishing each step (mark it `- [x]`) and whenever the user asks to change the plan. The user's docked plan window updates live. Does nothing if there's no active plan. Writing the plan is not doing the work: after this call, take the next unchecked step in the same turn.",
     "list_served_models": "- ```list_served_models``` — Show what the Forge (LLM-serving subsystem) is currently running. NO args. Use this for ANY 'what's running' / 'what's serving' / 'show my cookbook' / 'is anything up' query. DO NOT shell out (`ps aux`, `docker ps`, etc.) — this tool is the source of truth. Failed serve tasks include recent logs plus diagnosis/retry suggestions.\n  Use those suggestions to call `serve_model` again with an adjusted command when appropriate.",
     "stop_served_model": "- ```stop_served_model``` — Stop a running model server. Args (JSON): {\"session_id\": \"<from list_served_models>\"}. Use for 'kill my cookbook' / 'stop the model' / 'shut down vLLM'.",
@@ -1807,7 +1820,7 @@ Blocked paths/routes (refused for safety): /api/auth/, /api/users/, /api/tokens/
         "```agent_browser\n"
         '{"action": "open", "url": "https://example.org"}\n'
         "```\n"
-        "A real browser in the person's workstation, which they watch in the app — one action "
+        "A real browser — in the person's workstation, or in Pantheon when they have none — which they watch in the app — one action "
         "per block: open (url), read (the page's text and its elements numbered [1], [2]…), "
         "click (ref), type (ref, text, submit), press (keys), scroll (dy), back, forward, "
         "reload, tabs, tab_new (url), tab_switch (tab), tab_close (tab), screenshot, login "
@@ -1842,8 +1855,9 @@ Blocked paths/routes (refused for safety): /api/auth/, /api/users/, /api/tokens/
         '{"logins": ["Grafana (agent)"], "command": "curl -su \\"$LOGIN_USER:$LOGIN_PASSWORD\\" \\"$LOGIN_URL/api/health\\""}\n'
         "```\n"
         "One shell command with logins from the person's vault in its environment — you name "
-        "them, you never see them: $LOGIN_<NAME>_USER, _PASSWORD, _OTP, _URL, _HOST, _HOST_IP, _PORT (and $LOGIN_USER… "
-        "when only one is named). Write the variables, never a value; the output is scrubbed."
+        "them, you never see them: $LOGIN_<NAME>_USER, _PASSWORD, _OTP, _URL, _HOST, _HOST_IP, _PORT, and _TOKEN for a key (and $LOGIN_USER… "
+        "when only one is named). A GitHub/GitLab token also sets $GH_TOKEN/$GITLAB_TOKEN and signs "
+        "plain git in to that host. Write the variables, never a value; the output is scrubbed."
     ),
     # `P25-03`. The fenced form of the `git` schema, for a model with no
     # native tool channel.
@@ -4306,6 +4320,37 @@ def pan_qwen_route_temperature(temperature, model, explicit_params=frozenset()):
     return temperature
 
 
+#: `B1725` / `D-2026-11-01-02`. What a turn is told when its person's
+#: Computer Use is on. Short and procedural, because the models it is for
+#: include small local ones (the owner tested with a 12B): look, do one thing,
+#: look again. It says what still asks, because that is true.
+COMPUTER_USE_RULES = (
+    "\n\n🖥️ COMPUTER USE IS ON. The workstation is a computer you operate yourself, like a "
+    "person sitting at it: its screen, mouse and keyboard through `computer`, its shell "
+    "through bash. Steps inside it run without asking the person; only a command that "
+    "deletes or overwrites files still asks.\n"
+    "Work screen-first:\n"
+    "1. Look: `computer` action `screenshot`.\n"
+    "2. Do one thing: click, type, press a key or scroll, at coordinates read from that "
+    "screenshot.\n"
+    "3. Look at the screenshot the action returns before the next one. Repeat until the "
+    "screen shows the task done.\n"
+    "Use the screen for anything a person does with a mouse: web pages in Firefox, apps, "
+    "forms, settings, dialogs. Use bash for commands, installs and files. Do not stop to ask "
+    "permission for steps inside the workstation — carry the task through, then say what the "
+    "last screenshot shows."
+)
+#: `G4` (`D-2026-11-01-04`). Added to the rules while screen marks are on
+#: (`src/screen_marks.ENABLED`): the numbers are the easy, exact way to point,
+#: and a small model told so uses them.
+COMPUTER_USE_MARKS_RULE = (
+    "\nEvery screenshot has the things you can click boxed and numbered, with a list of them "
+    "in words. Point by number: {\"action\": \"click\", \"mark\": 7}, or "
+    "{\"action\": \"type\", \"mark\": 4, \"text\": \"hello\"} to type into field 4. Use x and y "
+    "only for a spot no mark covers. Numbers belong to the last screenshot only."
+)
+
+
 def _build_system_prompt(
     messages: List[Dict],
     model: str,
@@ -4325,8 +4370,12 @@ def _build_system_prompt(
     schema_offer: str = "native",
     tool_suite=None,
     approved_plan: Optional[str] = None,
+    computer_use: bool = False,
 ) -> List[Dict]:
     """Build agent system prompt, inject MCP/document context, merge consecutive system msgs.
+
+    `computer_use` (`B1725`): this person's Computer Use is on, so a turn
+    offered `computer` is told to work the workstation screen-first.
 
     `schema_offer` is `tool_schema_offer`'s answer for this route, and the MCP
     block below is the one part of the prompt that has to know it: that block
@@ -4755,6 +4804,15 @@ def _build_system_prompt(
     ):
         agent_prompt += prune_rules_to_available_tools(
             _local_computer_rules(), _avail_for_rules)
+    # `B1725` / `D-2026-11-01-02`. Computer Use: the workstation is a computer
+    # the agent operates — screen first — not a shell it reaches into.
+    if (computer_use and not suppress_local_context
+            and (relevant_tools is None or "computer" in relevant_tools)
+            and "computer" not in (disabled_tools or ())):
+        agent_prompt += COMPUTER_USE_RULES
+        from src import screen_marks as _screen_marks
+        if _screen_marks.ENABLED:
+            agent_prompt += COMPUTER_USE_MARKS_RULE
 
     # When creating email documents, instruct the AI on the format
     if relevant_tools and not suppress_local_context and (_EMAIL_TOOL_HINTS & set(relevant_tools)):
@@ -4818,23 +4876,32 @@ def _build_system_prompt(
                 from src.context_budget import resolve_skill_injection
                 _skill_max_injected = resolve_skill_injection(
                     owner, preference=_prefs.get("skill_max_injected"))
+                # `P8-51`: switched-off packages and groups stay out.
+                #
+                # `B1361`. This was `sm.load_active(owner=owner)`, which
+                # applies the package/group switches and **none** of the four
+                # gates the catalogue applies, so the same message withheld a
+                # skill by name and pasted its whole procedure in below.
+                # `injectable_skills` is the one list; `index_for` is its
+                # projection (`Law 7`).
+                _injectable = sm.injectable_skills(
+                    owner=owner,
+                    active_toolsets=_skill_active_toolsets(disabled_tools)
+                ) if _skill_max_injected > 0 else []
                 relevant_skills = sm.get_relevant_skills(
                     _skill_query(last_user, approved_plan),
-                    # `P8-51`: switched-off packages and groups stay out.
-                    #
-                    # `B1361`. This was `sm.load_active(owner=owner)`, which
-                    # applies the package/group switches and **none** of the four
-                    # gates the catalogue applies, so the same message withheld a
-                    # skill by name and pasted its whole procedure in below.
-                    # `injectable_skills` is the one list; `index_for` is its
-                    # projection (`Law 7`).
-                    skills=sm.injectable_skills(
-                        owner=owner,
-                        active_toolsets=_skill_active_toolsets(disabled_tools)),
+                    skills=_injectable,
                     threshold=0.25,
                     max_items=_skill_max_injected,
                     min_confidence=_skill_min_conf,
                 ) if _skill_max_injected > 0 else []
+                # `B1719`. The tool's manual rides with the tool: a turn
+                # offered `computer` is told how to drive the desktop however
+                # its request is worded. `relevant_tools` of `None` (every
+                # tool) names no tool, so it adds none.
+                from services.memory.skill_injection import with_tool_manuals
+                relevant_skills = with_tool_manuals(
+                    relevant_skills, _injectable, relevant_tools or ())
                 # `P4-25` — which skills were injected, and at what confidence.
                 # Recorded after selection rather than at the call site, because
                 # the threshold and max_items are applied here: what a receipt
@@ -5190,11 +5257,28 @@ def _skills_for_turn(sm, owner, disabled_tools=None) -> list:
     `5a7c75c`). A shipped skill counts only where the catalogue would list it:
     `injectable_skills`, gated on this turn's tools when they are known.
     """
-    own = [s for s in sm.load_active(owner=owner) if not s.get("bundled")]
-    active = _skill_active_toolsets(disabled_tools) if disabled_tools is not None else None
-    shipped = [s for s in sm.injectable_skills(owner=owner, active_toolsets=active)
-               if s.get("bundled")]
-    return own + shipped
+    # `B1715`. The core set arrives as a matched body, which needs no tool to
+    # open — so it is not a reason to offer `manage_skills` either.
+    # `B1737`. Nor is any shipped skill now: `use_skill` opens them
+    # (`_skills_to_open`), and `manage_skills` — the tool that edits — rides
+    # only with skills that are the person's own to edit.
+    # `disabled_tools` is kept for the callers: the person's own count on
+    # every turn, whatever its tools.
+    return [s for s in sm.load_active(owner=owner) if not s.get("bundled")]
+
+
+def _skills_to_open(sm, owner, disabled_tools=None) -> bool:
+    """Whether `use_skill` has anything to open on this turn. `B1737`.
+
+    The catalogue this turn would list (`index_for`, gated on its tools), or
+    the bundled library the tool's search reaches."""
+    try:
+        active = _skill_active_toolsets(disabled_tools) if disabled_tools is not None else None
+        return bool(sm.index_for(owner=owner, active_toolsets=active)
+                    or sm.library_count(owner=owner))
+    except Exception:
+        logger.debug("use_skill offer: skills unreadable", exc_info=True)
+        return False
 
 
 def _skill_query(last_user: str, approved_plan: Optional[str] = None) -> str:
@@ -5304,8 +5388,13 @@ def skill_toolsets_for_owner(owner) -> list:
     return _skill_active_toolsets(withheld)
 
 
-def _skill_body_tool_in_prompt(relevant_tools, disabled_tools, needs_admin: bool) -> bool:
-    """Would a `manage_skills action=view` issued on this turn actually run?
+def _skill_body_tool_in_prompt(relevant_tools, disabled_tools, needs_admin: bool,
+                               tool: str = "use_skill") -> bool:
+    """Would a call to open a skill, issued on this turn, actually run?
+
+    `B1737`. The skills message tells the model to open a procedure with
+    `use_skill`, so that is the name asked about by default; `tool` names
+    another (`manage_skills`) for a caller that still means that one.
 
     `B1360` (`fx9-skills`, 2026-10-14). Both halves of the skills message told
     the model to fetch a procedure with `manage_skills action=view`, and neither
@@ -5324,14 +5413,14 @@ def _skill_body_tool_in_prompt(relevant_tools, disabled_tools, needs_admin: bool
     predicate, called from the index renderer's call site and the matched
     renderer's with the same three arguments (`Law 7`).
     """
-    if turn_tool_access(disabled_tools).blocks("manage_skills"):
+    if turn_tool_access(disabled_tools).blocks(tool):
         return False
-    if needs_admin and "manage_skills" in _ADMIN_PROMPT_FORCE_INCLUDE:
+    if needs_admin and tool in _ADMIN_PROMPT_FORCE_INCLUDE:
         return True
     if relevant_tools is None:
         # The fallback prompt names every tool that has a section.
-        return "manage_skills" in TOOL_SECTIONS
-    return "manage_skills" in set(relevant_tools)
+        return tool in TOOL_SECTIONS
+    return tool in set(relevant_tools)
 
 
 def _record_fenced_channel(tool_names, disabled, compact, owner) -> None:
@@ -6623,12 +6712,16 @@ PLAN_MODE_DIRECTIVE = (
     "ground the plan. If the task is 'write a file', your plan is to DESCRIBE "
     "writing it — you do NOT write it now.\n"
     "\n"
-    "OUTPUT: present the plan as a GitHub-style checklist, one concrete step per line:\n"
+    "OUTPUT: open with one line, `Goal: ...`, saying in the person's own terms "
+    "what will be true once the plan is carried out. Then present the plan as a "
+    "GitHub-style checklist, one concrete step per line:\n"
     "- [ ] first action you will take once approved\n"
     "- [ ] next action\n"
     "Each item = one concrete action (file to create/edit, command to run, side "
     "effect). Do not execute. Do not end with 'Done' or anything implying the work "
-    "is finished. End your turn with the checklist.\n"
+    "is finished. End your turn with the checklist — or, when you do not yet know "
+    "enough to plan, with your questions (below). Never with both, never with "
+    "neither.\n"
     "\n"
     # `audit-P1-plan-loop`. GPT-6.1's audit found a weak local model stuck for
     # over four minutes reconciling a request's own formatting demands (three
@@ -6665,7 +6758,33 @@ PLAN_MODE_DIRECTIVE = (
     "person — so a question that the repository would have answered costs the "
     "person a round trip for nothing, and a plan built on a guess about what "
     "was meant is still worse than a question, because the guess is invisible "
-    "once the plan is approved. Look first, then ask, then plan."
+    "once the plan is approved. Look first, then ask, then plan.\n"
+    "\n"
+    # The owner, 2026-10-31: *"we also need to ensure the LLM has enough
+    # information to actually draft a plan... if it doesn't — it needs to query
+    # the user for more information to build the plan off of... gather the
+    # users vision — form the plan that makes it reality."* The paragraph above
+    # says to ask; nothing said what a plan needs, so a model given "build me a
+    # dashboard" checked nothing and planned a guess. These four are the check,
+    # and `ask_user`'s `questions` is the one card that asks for all of them at
+    # once (`src/agent_tools/interaction_tools.py` `_brief`), so gathering the
+    # vision costs one round trip rather than one per question.
+    "BEFORE YOU WRITE A PLAN, CHECK YOU HAVE ENOUGH TO PLAN FROM. A plan the "
+    "person can approve rests on four things: (1) THE OUTCOME — what they want "
+    "to exist or change, in a sentence; (2) DONE — how they will know it worked; "
+    "(3) THE LIMITS — where it lives, what it must use or must not touch, how "
+    "big, by when; (4) THEIR TASTE — the look, feel, audience or priority, "
+    "wherever it would change the steps. After grounding, if any of the four is "
+    "still a guess that would change the steps, do NOT draft a plan on top of "
+    "the guess: call `ask_user` with `questions` — only the few that matter, "
+    "at most 5, each short and specific, with 2-4 suggested answers where you "
+    "can offer sensible ones and none where only their own words will do — and "
+    "end the turn there. Do not ask what the request already says, and do not "
+    "ask for the sake of asking: a request that answers all four gets its plan "
+    "straight away. When the answers come back, plan from them and carry their "
+    "words into the `Goal:` line and the steps; ask again only about a gap their "
+    "answers opened. If they tell you to go ahead with what you have, plan, and "
+    "name each assumption you made in the step it shapes."
 )
 
 
@@ -7220,14 +7339,30 @@ async def stream_agent_loop(
     # and for Auto's reason — a privilege revoked mid-turn must not answer two
     # blocks of one turn two ways — and False for every chat, task and
     # summoned agent (`ToolPolicy.hired` is the task engine's, for a hire).
+    # `B1703` / `D-2026-10-30-01`: and only once the hire's person accepted
+    # the warning naming what it allows (`hire_id`, `allow_effects`) — none on
+    # record, and the gate asks as it always did.
     _hire_lift = await asyncio.to_thread(
         hire_lift_for, owner, hired=bool(getattr(tool_policy, "hired", False)),
+        hire_id=getattr(tool_policy, "hire_id", None),
+        allow_effects=frozenset(getattr(tool_policy, "allow_effects", ()) or ()),
         delegated_credential=bool(delegated_credential),
     )
     if _hire_lift:
         logger.info(
             "[approval] hired run in session %s: what its hire allows runs after "
             "outside content without a card (D-2026-10-29-01)", session_id,
+        )
+    # `B1725` / `D-2026-11-01-02`. **Computer Use**: this person accepted its
+    # warning, so a step inside their own workstation runs without a card.
+    # Resolved once, beside Auto and for Auto's reason, and never for a token.
+    _workstation_lift = await asyncio.to_thread(
+        workstation_lift_for, owner, delegated_credential=bool(delegated_credential),
+    )
+    if _workstation_lift:
+        logger.info(
+            "[approval] session %s: Computer Use is on, so steps inside the workstation "
+            "run without a card (D-2026-11-01-02)", session_id,
         )
     # `B1660`. The files this run makes, so a `write_file` over one of them is
     # a plain write and one over a file that was there before the run began is
@@ -7269,6 +7404,13 @@ async def stream_agent_loop(
         # the post-external gate for this run.
         hire_allow_effects=frozenset(getattr(tool_policy, "allow_effects", ()) or ()),
         hire_allow_after_outside=_hire_lift,
+        # `B1725`. Computer Use, and the loop's own answer to where a call
+        # runs (`_runs_in`, the words `tool_start` already says it with).
+        workstation_lift=_workstation_lift,
+        workstation_lookup=(
+            (lambda tool: _runs_in(tool, owner) == RUNS_IN_WORKSTATION)
+            if _workstation_lift else None
+        ),
         # `P27-08`. A vault login set to ask asks, whatever the rung or Auto.
         vault_use_lookup=_vault_use_lookup(owner, session_id, getattr(tool_policy, "agent_id", None)),
         files=_run_files,   # `B1660`
@@ -7379,9 +7521,16 @@ async def stream_agent_loop(
     # question, so the two are offered to exactly the same people.
     # `P16-20`. The network tool lives on the same workstation too; and it is
     # offered only where an admin left LAN reach on (`agent_lan_reach`).
-    if (disabled_tools.allows("agent_browser") or disabled_tools.allows("network")) and \
+    # The owner (2026-10-31): the browser runs without a workstation too —
+    # Pantheon's own Firefox (`src/local_browser.py`) — so `agent_browser` is
+    # asked its own question, which falls back to the workstation's.
+    if disabled_tools.allows("network") and \
             _computer_unavailable_reason(owner, delegated_credential=bool(delegated_credential)):
-        disabled_tools.withhold({"agent_browser", "network"}, because=WITHHELD_BY_WORKSTATION)
+        disabled_tools.withhold({"network"}, because=WITHHELD_BY_WORKSTATION)
+    if disabled_tools.allows("agent_browser"):
+        from src.local_browser import unavailable_reason as _browser_unavailable_reason
+        if _browser_unavailable_reason(owner, delegated_credential=bool(delegated_credential)):
+            disabled_tools.withhold({"agent_browser"}, because=WITHHELD_BY_WORKSTATION)
     if disabled_tools.allows("network"):
         try:
             from src.agent_tools.network_tools import lan_reach_on
@@ -8314,6 +8463,15 @@ async def stream_agent_loop(
             _skills_on = _skills_pref_enabled(owner)
             _sm = SkillsManager(DATA_DIR)
             _owner_skills = _skills_for_turn(_sm, owner, disabled_tools) if _skills_on else []
+            # `B1737`. The catalogue now lists the core set and points at the
+            # library, and `use_skill` is how the model acts on it — offered
+            # whenever there is anything to open, the core set included, so
+            # the model picks a QA or frontend procedure itself instead of
+            # waiting for the request's words to match one. Read-only and two
+            # arguments, so it is not `manage_skills`' cost on every turn
+            # (`B1426`), which still rides only with the person's own skills.
+            if _skills_on and _skills_to_open(_sm, owner, disabled_tools):
+                _relevant_tools.add("use_skill")
             if _owner_skills:
                 _relevant_tools.add("manage_skills")
                 if _retrieval_query:
@@ -8355,6 +8513,15 @@ async def stream_agent_loop(
                         )
         except Exception as _e:
             logger.debug(f"[tool-rag] skill-aware tool include skipped: {_e}")
+
+    # `B1725` / `D-2026-11-01-02`. With Computer Use on, the workstation's
+    # screen is offered on every turn, however the request is worded — the
+    # person asked for an agent that uses the computer, not one that has to
+    # be told the word "workstation" first. Capped below like every other
+    # addition: a workstation that would not answer withholds it
+    # (`WITHHELD_BY_WORKSTATION`).
+    if not guide_only and _relevant_tools is not None and _workstation_lift:
+        _relevant_tools.add("computer")
 
     # `B1350` (fx11-cap). **The invariant, in one place.** Everything above
     # widens `_relevant_tools` — the selector's floor, the intent's domains,
@@ -8694,6 +8861,7 @@ async def stream_agent_loop(
             disabled_tools,
             needs_admin=_needs_admin,
             relevant_tools=route_tools,
+            computer_use=_workstation_lift,   # `B1725`
             mcp_disabled_map=_mcp_disabled_map,
             # `B39`. Was `is_api or is_native_ollama or is_ollama_compat`, and
             # those last two terms produced the only combination in the product
@@ -11220,6 +11388,10 @@ async def stream_agent_loop(
             # engine copies it onto the run's step log.
             if security_decision.hire_approved:
                 _auto_fields = {**_auto_fields, "hire_approved": True}
+            # `B1725`. A step inside the workstation that ran without its card
+            # because Computer Use is on, recorded the same way.
+            if security_decision.workstation_approved:
+                _auto_fields = {**_auto_fields, "workstation_approved": True}
             if security_decision.auto_approved:
                 logger.info(
                     "[agent] %s ran under Auto in session=%s without an approval "

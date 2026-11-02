@@ -394,11 +394,12 @@ def test_the_block_does_not_name_a_tool_this_turn_cannot_call(store):
 
 
 def test_the_block_names_the_tool_when_the_turn_can_call_it(store):
+    """`B1737`: the tool the block names for opening a skill is `use_skill`."""
     body, _ = _prompt(PROCEDURE_QUESTION,
-                      relevant_tools={"ask_user", "update_plan", "manage_skills"})
+                      relevant_tools={"ask_user", "update_plan", "use_skill"})
     block = _skills_block(body)
-    assert "manage_skills" in block
-    assert "action=view" in block
+    assert "`use_skill` name=<name>" in block
+    assert "`use_skill` query=" in block
 
 
 def test_a_body_the_model_asks_for_comes_back(store):
@@ -462,7 +463,9 @@ def test_index_for_is_the_projection_of_the_one_injectable_list(store):
     assert {s["name"] for s in full} == {s["name"] for s in idx}
     assert sorted(idx[0]) == sorted(
         ["name", "description", "category", "status", "source",
-         "teacher_model", "uses", "opens"])
+         "teacher_model", "uses", "opens",
+         # `B1737`: whether the catalogue names it without its description.
+         "shipped"])
 
 
 # ── 4. a body that was cut says so ──────────────────────────────────────────
@@ -517,18 +520,23 @@ def test_the_injecting_call_site_reads_the_persons_own_budget(store, monkeypatch
     import src.settings as settings
     from src.context_budget import SKILL_INDEX_BUDGET
 
+    # `B1737` moved this from 700: the preamble now says how to choose and
+    # search (`use_skill`), so the heading, preamble and one line no longer fit
+    # 700 (one line and the cut note measure 766). The question is unchanged — whose budget bounds the block.
+    limit = 800
+
     def _role_limit(key, owner=None):
         if key == SKILL_INDEX_BUDGET and owner == OWNER:
-            return 700
+            return limit
         return None
 
     monkeypatch.setattr(settings, "role_limit", _role_limit)
     _body, report = _prompt(PROCEDURE_QUESTION, owner=OWNER)
     assert report["skill_index_chars"] > 0, "this person has no skills, so nothing is asserted"
-    assert report["skill_index_chars"] <= 700
+    assert report["skill_index_chars"] <= limit
     assert report["skill_index_truncated"] is True
     _body2, report2 = _prompt(PROCEDURE_QUESTION, owner=None)
-    assert report2["skill_index_chars"] > 700
+    assert report2["skill_index_chars"] > limit
     assert report2["skill_index_truncated"] is False
 
 

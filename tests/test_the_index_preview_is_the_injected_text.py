@@ -96,6 +96,13 @@ def library(tmp_path, monkeypatch):
     monkeypatch.setattr(constants, "DATA_DIR", str(tmp_path), raising=False)
     monkeypatch.setattr(agent_loop, "_cached_base_prompt", None, raising=False)
     monkeypatch.setattr(agent_loop, "_cached_base_prompt_key", None, raising=False)
+    # `B1737`. The shipped layer is held out as the vendored one is: these
+    # cases compare the preview with the injection for this store, and the
+    # preview reads this person's standing withholds before the loop's are
+    # stubbed, so a shipped skill that drives `bash` was in one and not the other.
+    import services.memory.skills as _skills
+    monkeypatch.setattr(_skills, "_first_party_library_root",
+                        lambda: str(tmp_path / "no-shipped-skills"))
     return SkillsManager(str(tmp_path), library_root="")
 
 

@@ -2200,7 +2200,10 @@ async function _cmdCompact(args, ctx) {
   compactSpinner.destroy();
   if (res.ok) {
     const d = await res.json();
-    slashReply(`Compacted: ${d.summarized || 0} older messages summarised, ${d.kept || 0} kept.`);
+    // `B1731`: and the wheel's figure before and after.
+    const moved = (Number.isFinite(Number(d.before)) && Number.isFinite(Number(d.after)))
+      ? ` Context ${Math.round(Number(d.before))}% → ${Math.round(Number(d.after))}%.` : '';
+    slashReply(`Compacted: ${d.summarized || 0} older messages summarised, ${d.kept || 0} kept.${moved}`);
     if (sessionModule?.selectSession) await sessionModule.selectSession(ctx.sid);
   } else {
     let detail = 'Compaction failed';
@@ -2430,6 +2433,18 @@ function _tourSession(opts = {}) {
     tooltip.style.display = '';
     const tw = o.arrow ? 280 : (tooltip.offsetWidth || 260);
     const th = tooltip.offsetHeight || 100;
+    if (placement === 'center-above' && target && target.getBoundingClientRect().width > 0) {
+      // A window's opening step: centred on the window, above its title bar
+      // when there is room, else just under it. A third of the way down the
+      // viewport used to land it on the title and the window's controls.
+      const win = target.closest('.modal-content, .notes-pane, .research-pane, .calendar-pane, .cookbook-pane') || target;
+      const w = win.getBoundingClientRect();
+      const above = w.top - 12 - th;
+      tooltip.style.top = (above >= 10 ? above : Math.min(w.top + 60, window.innerHeight - th - 10)) + 'px';
+      tooltip.style.left = Math.min(Math.max(10, w.left + w.width / 2 - tw / 2), window.innerWidth - tw - 10) + 'px';
+      tooltip.style.visibility = '';
+      return;
+    }
     if (placement === 'center-above' || !target) {
       // Centered horizontally, sitting in the upper third of the viewport.
       tooltip.style.top = Math.max(10, window.innerHeight * 0.32 - th / 2) + 'px';

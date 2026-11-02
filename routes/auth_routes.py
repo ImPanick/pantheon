@@ -1,7 +1,8 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Authentication routes — login, logout, signup, status, user management."""
 
-from fastapi import APIRouter, Request, Response, HTTPException
+from fastapi import APIRouter, Request, Response, HTTPException, UploadFile, File
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from typing import Optional
 import asyncio
@@ -15,6 +16,7 @@ from pathlib import Path
 from core.atomic_io import atomic_write_json, atomic_write_text
 from core.auth import (
     AuthManager, DEFAULT_PRIVILEGES, RESERVED_USERNAMES, SetAdminResult, TOKEN_TTL,
+    clean_profile,
 )
 from core.middleware import require_admin, require_operator
 from src.events import record_auth_event
@@ -77,11 +79,55 @@ class LoginRequest(BaseModel):
 class SetupRequest(BaseModel):
     username: str
     password: str
+    # 2026-10-31. The first admin's profile, and whether the sign-in page
+    # offers sign-up. All optional: `{username, password}` is still a setup.
+    display_name: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    allow_signup: Optional[bool] = None
 
 
 class SignupRequest(BaseModel):
     username: str
     password: str
+    display_name: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+
+
+class ProfileUpdateRequest(BaseModel):
+    """Only the fields sent are written; `null` or `""` clears one."""
+    display_name: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    bio: Optional[str] = None
+
+
+# A profile picture: what a browser can show, small enough to keep beside the
+# account store, recognised by its own first bytes rather than by its name.
+AVATAR_MAX_BYTES = 2 * 1024 * 1024
+_AVATAR_KINDS = (
+    (b"\x89PNG\r\n\x1a\n", ".png", "image/png"),
+    (b"\xff\xd8\xff", ".jpg", "image/jpeg"),
+    (b"GIF87a", ".gif", "image/gif"),
+    (b"GIF89a", ".gif", "image/gif"),
+)
+
+
+def _avatar_kind(head: bytes):
+    """(extension, media type) for a picture's first bytes, or None."""
+    for magic, ext, media in _AVATAR_KINDS:
+        if head.startswith(magic):
+            return ext, media
+    if head[:4] == b"RIFF" and head[8:12] == b"WEBP":
+        return ".webp", "image/webp"
+    return None
+
+
+def _profile_fields(body) -> dict:
+    """The profile fields a request named, for `clean_profile`."""
+    return {k: v for k, v in body.model_dump(exclude_unset=True).items()
+            if k in ("display_name", "email", "phone", "bio")}
 
 
 class ChangePasswordRequest(BaseModel):
@@ -219,15 +265,44 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
             raise HTTPException(400, "Username is required")
         if body.username.lower() in RESERVED_USERNAMES:
             raise HTTPException(403, "Username is reserved")
+        try:
+            profile = clean_profile(_profile_fields(body))
+        except ValueError as exc:
+            raise HTTPException(400, str(exc))
         ok = await asyncio.to_thread(auth_manager.setup, body.username, body.password)
         if not ok:
             await _audit("setup", subject=body.username, outcome="error",
                          detail={"reason": "setup_failed"})
             raise HTTPException(500, "Setup failed")
+        username = body.username.strip().lower()
+        if profile:
+            await asyncio.to_thread(auth_manager.update_profile, username, profile)
+        if body.allow_signup is not None:
+            auth_manager.signup_enabled = bool(body.allow_signup)
+        await asyncio.to_thread(auth_manager.mark_setup_complete, username)
+        # The person's own skills are on disk with the owner of the account
+        # they were made under. Boot re-assigns unclaimed ones to the admin
+        # (app.py), but boot ran before this account existed — so after an
+        # install was recovered by moving auth.json aside, every skill the
+        # person had stayed hidden until the next restart. Claim them now.
+        try:
+            from services.memory.skills import SkillsManager
+            claimed = await asyncio.to_thread(
+                SkillsManager(os.path.dirname(SKILLS_DIR)).backfill_owner, username, {username})
+            if claimed:
+                logger.info("Assigned %s existing skill file(s) to %s at setup", claimed, username)
+        except Exception as exc:
+            logger.warning("Could not assign existing skills to %s at setup: %s", username, exc)
         await _audit("user_create", actor=body.username,
                      subject=body.username,
-                     detail={"via": "setup", "is_admin": True})
-        return {"ok": True, "message": "Admin account created"}
+                     detail={"via": "setup", "is_admin": True,
+                             "signup_enabled": auth_manager.signup_enabled})
+        reply = {"ok": True, "message": "Admin account created"}
+        if body.allow_signup is not None:
+            # Said back only to a caller that chose; the reply is otherwise
+            # the one it always was.
+            reply["signup_enabled"] = auth_manager.signup_enabled
+        return reply
 
     @router.post("/signup")
     async def signup(body: SignupRequest, request: Request):
@@ -248,11 +323,17 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
             raise HTTPException(400, "Username is required")
         if body.username.lower() in RESERVED_USERNAMES:
             raise HTTPException(403, "Username is reserved")
+        try:
+            profile = clean_profile(_profile_fields(body))
+        except ValueError as exc:
+            raise HTTPException(400, str(exc))
         ok = await asyncio.to_thread(auth_manager.create_user, body.username, body.password, is_admin=False)
         if not ok:
             await _audit("user_create", subject=body.username, outcome="error",
                          detail={"via": "signup", "reason": "username_taken"})
             raise HTTPException(409, "Username already taken")
+        if profile:
+            await asyncio.to_thread(auth_manager.update_profile, body.username, profile)
         await _audit("user_create", actor=body.username, subject=body.username,
                      detail={"via": "signup", "is_admin": False})
         return {"ok": True, "message": "Account created"}
@@ -328,6 +409,9 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
             if u:
                 result["privileges"] = auth_manager.get_privileges(u)
                 result["shell"] = _shell_for(u, is_admin=bool(result.get("is_admin")))
+                prof = auth_manager.get_profile(u)
+                result["display_name"] = prof.get("display_name", "")
+                result["has_avatar"] = bool(prof.get("avatar"))
         except Exception:
             pass
         return result
@@ -348,6 +432,85 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
     async def auth_policy():
         """Return public auth policy constants for the frontend."""
         return auth_manager.policy()
+
+    # ------------------------------------------------------------------
+    # Profile (2026-10-31): the signed-in person's own; nobody else's.
+    # ------------------------------------------------------------------
+
+    def _avatar_dir() -> Path:
+        return Path(auth_manager.auth_path).resolve().parent / "avatars"
+
+    @router.get("/profile")
+    async def read_own_profile(request: Request):
+        user = require_user(request)
+        return {"username": user, **auth_manager.get_profile(user)}
+
+    @router.put("/profile")
+    async def update_own_profile(body: ProfileUpdateRequest, request: Request):
+        user = require_user(request)
+        try:
+            prof = await asyncio.to_thread(auth_manager.update_profile, user, _profile_fields(body))
+        except ValueError as exc:
+            raise HTTPException(400, str(exc))
+        if prof is None:
+            raise HTTPException(404, "No such account")
+        await _audit("profile_update", actor=user, subject=user,
+                     detail={"fields": sorted(_profile_fields(body))})
+        return {"ok": True, "username": user, **prof}
+
+    @router.post("/profile/avatar")
+    async def upload_own_avatar(request: Request, file: UploadFile = File(...)):
+        user = require_user(request)
+        data = await file.read(AVATAR_MAX_BYTES + 1)
+        if len(data) > AVATAR_MAX_BYTES:
+            raise HTTPException(413, "The picture is larger than 2 MB")
+        kind = _avatar_kind(data[:16])
+        if not kind:
+            raise HTTPException(415, "The picture must be a PNG, JPEG, GIF or WebP image")
+        ext, _media = kind
+        folder = _avatar_dir()
+        await asyncio.to_thread(folder.mkdir, parents=True, exist_ok=True)
+        # A random name, not the username: a rename moves the account row and
+        # its profile, and the picture goes with it untouched.
+        name = __import__("secrets").token_hex(12) + ext
+        await asyncio.to_thread((folder / name).write_bytes, data)
+        old = auth_manager.get_profile(user).get("avatar") or ""
+        auth_manager.set_avatar(user, name)
+        if old and old != name and "/" not in old and "\\" not in old:
+            try:
+                (folder / old).unlink()
+            except OSError:
+                pass
+        await _audit("profile_update", actor=user, subject=user, detail={"fields": ["avatar"]})
+        return {"ok": True, "avatar": name}
+
+    @router.delete("/profile/avatar")
+    async def remove_own_avatar(request: Request):
+        user = require_user(request)
+        old = auth_manager.get_profile(user).get("avatar") or ""
+        auth_manager.set_avatar(user, "")
+        if old and "/" not in old and "\\" not in old:
+            try:
+                (_avatar_dir() / old).unlink()
+            except OSError:
+                pass
+        return {"ok": True}
+
+    @router.get("/avatar/{username}")
+    async def read_avatar(username: str, request: Request):
+        """Any signed-in person may see anyone's picture (it is what the
+        picture is for); a caller with no session is refused by the gate."""
+        require_user(request)
+        name = auth_manager.get_profile(username).get("avatar") or ""
+        # A bare file name this module wrote; anything with a path in it is
+        # not one, whatever a hand-edited auth.json says.
+        safe = bool(name) and Path(name).name == name and not name.startswith(".")
+        path = _avatar_dir() / name if safe else None
+        if not path or not path.is_file():
+            raise HTTPException(404, "No picture")
+        media = _avatar_kind(path.read_bytes()[:16])
+        return FileResponse(path, media_type=media[1] if media else "application/octet-stream",
+                            headers={"Cache-Control": "private, max-age=300"})
 
     @router.post("/change-password")
     async def change_password(body: ChangePasswordRequest, request: Request):
@@ -427,6 +590,49 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
     async def list_users(request: Request):
         require_admin(request)
         return {"users": auth_manager.list_users()}
+
+    # `B1705`. Auto-approve acceptances are readable one chat or hire at a
+    # time, by their own person; an admin could not see who had accepted
+    # Auto where. The list, and the one act an admin may take on another
+    # person's acceptance: turn the gate back on.
+    @router.get("/auto-approve")
+    async def list_auto_approve(request: Request):
+        """Every open Auto-approve acceptance: person, chat or hire, when,
+        and whether it still lifts anything (`in_effect`)."""
+        require_admin(request)
+        from src.approval_mode import open_acceptances
+        try:
+            records = await asyncio.to_thread(
+                open_acceptances,
+                auth_manager=getattr(request.app.state, "auth_manager", None))
+        except Exception as exc:  # noqa: BLE001 — *could not load*, never *no one*
+            logger.warning("could not list Auto-approve acceptances: %s", exc)
+            raise HTTPException(500, "Could not read who has Auto-approve on. Try again.")
+        return {"acceptances": [
+            {key: record.get(key) for key in
+             ("subject", "subject_id", "name", "owner", "by", "at", "effects",
+              "effect_words", "in_effect")}
+            for record in records]}
+
+    @router.post("/auto-approve/withdraw")
+    async def withdraw_auto_approve(request: Request):
+        """Turn one chat back to Manual approve, or stop a hire running its
+        allowed actions unasked. Body: `{subject: chat|hire, subject_id}`."""
+        require_admin(request)
+        from src.approval_mode import AutoRefused, withdraw_for
+        try:
+            body = await request.json()
+        except Exception:
+            body = {}
+        body = body if isinstance(body, dict) else {}
+        try:
+            was_open = await asyncio.to_thread(
+                withdraw_for, body.get("subject"), body.get("subject_id"))
+        except AutoRefused as refused:
+            raise HTTPException(refused.status, refused.sentence) from None
+        logger.info("[approval] %s turned Auto-approve off for %s %s",
+                    get_current_user(request), body.get("subject"), body.get("subject_id"))
+        return {"ok": True, "was_on": was_open}
 
     @router.post("/users")
     async def admin_create_user(body: CreateUserRequest, request: Request):
@@ -1124,6 +1330,9 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
         # `Ask every time` and `ask-every-time`. Reject at the door instead.
         _ENUMS = {
             "trust_rung": tuple(rung.value for rung in TrustRung),
+            # `B1718`. How long a silence ends a voice chat turn; the three
+            # `static/js/voiceCapture.js` `PAUSES` knows.
+            "voice_chat_pause": ("short", "normal", "relaxed"),
         }
         # `P12-01` / `P12-05b`. The eighteen numeric limits, whose shipped value
         # is `None` — the third value an integer needs so the flat merged dict
@@ -1290,6 +1499,10 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
             if key == "networks_per_person" and not isinstance(val, bool):
                 # `B1475`. Read as `is True` (`person_networks.enabled`), so a
                 # string would store and turn nothing on.
+                raise HTTPException(400, f"{key} must be true or false")
+            if key in ("voice_chat_enabled", "voice_chat_barge_in", "tts_read_aloud") and not isinstance(val, bool):
+                # `B1718`. Read as booleans by the voice chat and the reply's
+                # read-aloud button; a string would store and switch nothing.
                 raise HTTPException(400, f"{key} must be true or false")
             if key == "forge_model_hubs" and not isinstance(val, bool):
                 # `B1229`. The switch that lets the Forge reach Hugging Face

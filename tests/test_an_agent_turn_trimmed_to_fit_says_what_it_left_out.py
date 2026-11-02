@@ -72,7 +72,10 @@ def world(tmp_path_factory):
     data = work / "data"
     data.mkdir()
     server = capture.Server(sys.executable, data, capture._free_port(),
-                            extra_env={"PANTHEON_DISABLE_MCP": "1", "PANTHEON_UPLOAD_BURST_LIMIT": "100"})
+                            extra_env={"PANTHEON_DISABLE_MCP": "1", "PANTHEON_UPLOAD_BURST_LIMIT": "100",
+                                      # `B1715`: these windows are measured without the
+                                      # shipped skills a design-document turn would be handed.
+                                      "PANTHEON_FIRST_PARTY_SKILLS": ""})
     try:
         server.start(timeout=150)
     except RuntimeError as e:

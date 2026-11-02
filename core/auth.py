@@ -174,6 +174,38 @@ class SetAdminResult(enum.Enum):
     LAST_ADMIN = "last_admin"           # would remove the last remaining admin
 
 
+# ── Profile fields (2026-10-31) ─────────────────────────────────────────────
+# What an account may say about its person beyond the sign-in. Each is
+# optional, plain text, and bounded; the picture is a file kept beside the
+# account store (`routes/auth_routes.py`), named here by its file name only.
+PROFILE_FIELDS = ("display_name", "email", "phone", "bio")
+PROFILE_LIMITS = {"display_name": 64, "email": 254, "phone": 32, "bio": 500}
+_EMAIL_RE = __import__("re").compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+_PHONE_RE = __import__("re").compile(r"^\+?[0-9 ().\-]{4,32}$")
+
+
+def clean_profile(changes: Dict[str, Any]) -> Dict[str, str]:
+    """The known fields of `changes`, trimmed and checked. Unknown keys are
+    dropped; `None` and `""` clear a field. Raises ValueError naming the field
+    and what it needs."""
+    out: Dict[str, str] = {}
+    for key in PROFILE_FIELDS:
+        if key not in (changes or {}):
+            continue
+        value = changes.get(key)
+        value = "" if value is None else str(value).strip()
+        if len(value) > PROFILE_LIMITS[key]:
+            raise ValueError(f"{key.replace('_', ' ').capitalize()} is longer than {PROFILE_LIMITS[key]} characters")
+        if value and key == "email" and not _EMAIL_RE.match(value):
+            raise ValueError("Email does not look like an address (name@example.com)")
+        if value and key == "phone" and not _PHONE_RE.match(value):
+            raise ValueError("Phone may hold digits, spaces, + ( ) . and -")
+        if key != "bio":
+            value = " ".join(value.split())
+        out[key] = value
+    return out
+
+
 class AuthManager:
     """Manages multi-user password + session-token auth system."""
 
@@ -453,8 +485,15 @@ class AuthManager:
             except Exception:
                 logger.warning(f"Failed to revoke API tokens for deleted user '{username}'")
                 return False
+            avatar = ((self._config["users"][username] or {}).get("profile") or {}).get("avatar") or ""
             del self._config["users"][username]
             self._save()
+        # Their profile picture goes with the account (2026-10-31).
+        if avatar and Path(avatar).name == avatar and not avatar.startswith("."):
+            try:
+                (Path(self.auth_path).resolve().parent / "avatars" / avatar).unlink()
+            except OSError:
+                pass
         # Purge all sessions belonging to this user. validate_token doesn't
         # cross-check `self.users`, so without this step a deleted user's
         # cookie keeps authenticating.
@@ -508,9 +547,71 @@ class AuthManager:
     def is_admin(self, username: str) -> bool:
         return self.users.get(username, {}).get("is_admin", False)
 
+    # ------------------------------------------------------------------
+    # Profile (2026-10-31). Who a person is, beside how they sign in: kept on
+    # the account row under `profile`, so an account made before this has
+    # none and reads as empty — nothing to migrate, nothing an update breaks.
+    # ------------------------------------------------------------------
+
+    def get_profile(self, username: str) -> Dict[str, Any]:
+        """The person's profile, every field present (empty when unset)."""
+        username = (username or "").strip().lower()
+        user = self.users.get(username)
+        if not isinstance(user, dict):
+            return {}
+        stored = user.get("profile")
+        stored = stored if isinstance(stored, dict) else {}
+        out = {key: str(stored.get(key) or "") for key in PROFILE_FIELDS}
+        out["avatar"] = str(stored.get("avatar") or "")
+        out["updated"] = stored.get("updated")
+        out["created"] = user.get("created")
+        return out
+
+    def update_profile(self, username: str, changes: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Write the named profile fields; validated by `clean_profile`.
+        Returns the profile, or None for an unknown account. Raises
+        ValueError with a sentence a person can act on."""
+        username = (username or "").strip().lower()
+        cleaned = clean_profile(changes)
+        with self._config_lock:
+            user = self.users.get(username)
+            if not isinstance(user, dict):
+                return None
+            profile = user.get("profile")
+            profile = dict(profile) if isinstance(profile, dict) else {}
+            profile.update(cleaned)
+            profile["updated"] = time.time()
+            user["profile"] = profile
+            self._save()
+        return self.get_profile(username)
+
+    def set_avatar(self, username: str, filename: str) -> bool:
+        """Point the profile at a picture file (`""` clears it)."""
+        username = (username or "").strip().lower()
+        with self._config_lock:
+            user = self.users.get(username)
+            if not isinstance(user, dict):
+                return False
+            profile = user.get("profile")
+            profile = dict(profile) if isinstance(profile, dict) else {}
+            profile["avatar"] = filename
+            profile["updated"] = time.time()
+            user["profile"] = profile
+            self._save()
+        return True
+
+    def mark_setup_complete(self, username: str) -> None:
+        """Record when the first-run setup finished and who did it. The setup
+        flag itself is the account store: a fresh one has no accounts and
+        asks; this is the record of the answer."""
+        with self._config_lock:
+            self._config["setup"] = {"completed": time.time(), "by": (username or "").strip().lower()}
+            self._save()
+
     def list_users(self) -> List[Dict[str, Any]]:
         return [
             {"username": u, "is_admin": d.get("is_admin", False),
+             "display_name": str(((d.get("profile") or {}) if isinstance(d.get("profile"), dict) else {}).get("display_name") or ""),
              "role": self.get_role(u),
              "privileges": self.get_privileges(u)}
             for u, d in self.users.items()

@@ -278,10 +278,13 @@ def install(args: argparse.Namespace, plan: Plan) -> int:
                 "Firefox) — several minutes", ["sh", str(HERE / "provision.sh"), "packages"])
     else:
         say("  · skipping packages (--no-packages)")
-    plan.do(f"the daemon, its skeleton ({OPT}) and Firefox's policy",
+    plan.do(f"the daemon, its skeleton ({OPT}), the desktop's theme and Firefox's policy",
             ["sh", str(HERE / "provision.sh"), "files", "--skel", str(plan.path(OPT / "skel")),
              "--code", str(plan.path(OPT)),
-             "--policies", str(plan.path(Path("/etc/firefox/policies")))])
+             "--policies", str(plan.path(Path("/etc/firefox/policies"))),
+             # `D-2026-10-31-02`: the desktop's window frames, wallpaper and mark.
+             "--themes", str(plan.path(Path("/usr/share/themes"))),
+             "--share", str(plan.path(Path("/usr/share/pantheon-workstation")))])
     token = existing_token(plan)
     if token:
         say(f"  · keeping the token already in {TOKEN_FILE}")

@@ -4,7 +4,7 @@ name: Morning Brief
 tagline: One page each morning — today's calendar, urgent mail, what is due, and what changed overnight.
 section: personal-home
 icon: sun
-version: 1.1.0
+version: 1.1.1
 wave: 1
 starred: true
 inputs:
@@ -12,7 +12,7 @@ inputs:
 triggers:
   - {on: daily, at: "{at}"}
 tools: [manage_calendar, list_emails, manage_notes, manage_tasks]
-needs: {connectors: [], min_context: 12000, native_tools: preferred}
+needs: {connectors: [mail, calendar], min_context: 12000, native_tools: preferred}
 delivers:
   - {kind: answer, must_contain: [Today, Mail that needs you, Due, Overnight]}
 effects: {read_private: allow, write_private: ask, destructive: never}

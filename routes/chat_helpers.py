@@ -964,6 +964,7 @@ async def build_chat_context(
     continuation_context_message: str | None = None,
     persist_user_message: bool = True,
     invoked_skill: str | None = None,
+    offer_reactions: bool = False,
 ) -> ChatContext:
     """Build the full context (preface + messages) for an LLM call.
 
@@ -1120,6 +1121,12 @@ async def build_chat_context(
     # earlier turn's would be sent again to whatever model the chat is on now.
     from src.attachment_refs import without_sounds
     messages = without_sounds(messages, keep_last_user=True)
+    # `B1736`. The model may react to the person's message, and hears how they
+    # reacted to its recent replies (`src/message_reactions.py`).
+    if offer_reactions and not incognito:
+        from src import message_reactions
+        if message_reactions.wanted(uprefs, compare_mode=compare_mode):
+            messages = message_reactions.with_reactions(messages)
 
     # Current date/time — injected as a standalone *user*-role context message
     # placed immediately before the latest user turn, NOT folded into the
@@ -1462,7 +1469,11 @@ def clean_thinking_for_save(content: str, metadata: dict | None = None) -> tuple
             md["thinking"] = info["thinking"]
         if info.get("time"):
             md["thinking_time"] = info["time"]
-        return info["reply"], md
+        content = info["reply"]
+    # `B1736`. A stopped reply keeps no reaction marker in its words either.
+    from src import message_reactions
+    if message_reactions.turn_enabled():
+        content, _ = message_reactions.take_reaction(content)
     return content, md
 
 
@@ -1548,9 +1559,17 @@ def save_assistant_response(
         _content = _think_info["reply"]
     else:
         _content = full_response
+    # `B1736`. The model's reaction to the person's message is lifted out of
+    # its words and kept on that message.
+    from src import message_reactions
+    _reaction = None
+    if message_reactions.turn_enabled():
+        _content, _reaction = message_reactions.take_reaction(_content)
     if incognito:
         _append_incognito_message(session_id, "assistant", _content, md)
         return None
+    if _reaction:
+        message_reactions.react_to_latest_person_message(sess, session_id, _reaction)
     sess.add_message(ChatMessage("assistant", _content, metadata=md))
 
     from core.database import update_session_last_accessed

@@ -90,10 +90,9 @@ def _chips():
         "workspace-indicator-btn", "doc-indicator-btn", "rag-indicator-btn",
         "research-toggle-btn", "group-toggle-btn", "character-indicator-btn",
         "compare-indicator-btn",
-        # `D-2026-10-09-01` §2, measured into the strip 2026-10-09. Listed so
-        # the four assertions below cover it; without the entry it is a chip
-        # nothing in this file checks.
-        "approval-mode-btn",
+        # (`D-2026-10-09-01` §2's `approval-mode-btn` was measured into the
+        # strip 2026-10-09 and listed here; `B1706` moved it out of the strip
+        # to the bottom row's right, as the approval-mode selector.)
         # `P24-26`, 2026-10-24: the summoned agent's chip.
         "summon-indicator-btn",
     }
@@ -115,12 +114,19 @@ def test_the_strip_still_holds_the_nine_the_row_counted():
     for.
 
     And on 2026-10-24: **nine** and **twelve** — `P24-26` put the summoned
-    agent's chip (`#summon-indicator-btn`) beside the Workspace pill."""
+    agent's chip (`#summon-indicator-btn`) beside the Workspace pill.
+
+    And on 2026-10-30: **eight** and **eleven** — `B1706` took
+    `#approval-mode-btn` out of the strip: the owner asked for the approval
+    mode as a selector at the bottom of the composer, so it is a chip at the
+    right of the bottom row that opens a menu, and one control rather than
+    two (`Law 7`)."""
     strip = _strip()
     assert strip.count('class="input-icon-btn tool-indicator"') \
-        + strip.count('class="input-icon-btn tool-indicator ') == 9, \
-        "the nine tool indicators are no longer nine"
-    assert len(_chips()) == 12, [i for i, _ in _chips()]
+        + strip.count('class="input-icon-btn tool-indicator ') == 8, \
+        "the eight tool indicators are no longer eight"
+    assert len(_chips()) == 11, [i for i, _ in _chips()]
+    assert 'id="approval-mode-btn"' not in strip, "the old on/off chip is back in the strip"
 
 
 # ── One component ───────────────────────────────────────────────────────────

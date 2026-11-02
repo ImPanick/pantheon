@@ -10,7 +10,9 @@ Four procedures under `library/pantheon/skills/`, published, read before the
 vendored ECC layer, and gated on the tools they drive (`requires_toolsets`), so
 they reach a turn exactly when the workstation would answer it. Every command
 in them was run on a live Xvfb + JWM + xdotool + Firefox desktop built from the
-workstation's own `.jwmrc` and Firefox policy before it was written down.
+workstation's own `.jwmrc` and Firefox policy before it was written down, and
+the desktop's lines again on XFCE built from the skeleton's `.config` when it
+replaced JWM (`D-2026-10-31-02`).
 
 Three things had to change for "by default" to be true, and each is asserted
 here through the path the model actually takes:
@@ -84,9 +86,12 @@ def _own_skill(store, name, owner, text="my own way"):
 # ── 1. what ships ───────────────────────────────────────────────────────────
 
 def test_four_skills_ship_published_and_gated_on_the_tools_they_drive(store):
-    dirs = {d.name for d in FIRST_PARTY.iterdir() if d.is_dir()}
+    # The workstation's four; the core set beside them is
+    # `tests/test_the_core_skills_ship_switched_on.py`'s.
+    dirs = {d.name for d in FIRST_PARTY.iterdir() if d.is_dir() and d.name.startswith("workstation-")}
     assert dirs == set(SHIPPED)
-    rows = {s["name"]: s for s in store.load_all() if s.get("library") == "pantheon"}
+    rows = {s["name"]: s for s in store.load_all()
+            if s.get("library") == "pantheon" and s.get("category") == "workstation"}
     assert set(rows) == set(SHIPPED)
     for name, needs in SHIPPED.items():
         assert rows[name]["status"] == "published", name
@@ -330,6 +335,59 @@ def test_the_loop_hands_the_builder_its_approved_plan(store, monkeypatch):
     assert "### workstation-self-test" in text
 
 
+# ── 4b. the desktop's manual rides with the `computer` tool (`B1719`) ───────
+#
+# Measured on `e22fd4a`, Pantheon's own loop driving a real XFCE workstation:
+# this request matched the other three workstation skills, the default cap of
+# three left `workstation-desktop` out, and the model was handed `computer`
+# with no word on where the panel's buttons are or that it looks before it
+# clicks.
+
+TERMINAL_REQUEST = "On the workstation, open a terminal and write a file by typing in it"
+DESKTOP_STEP = "The panel is the bottom 40 pixels"
+
+
+def test_premise_the_wording_alone_leaves_the_desktop_out(store):
+    rows = store.injectable_skills(owner="alice", active_toolsets=["computer", "bash"])
+    matched = store.get_relevant_skills(TERMINAL_REQUEST, skills=rows, threshold=0.25, max_items=3)
+    assert "workstation-desktop" not in _names(matched)
+
+
+def test_a_turn_offered_computer_gets_the_desktop_procedure_whatever_its_wording(store, monkeypatch):
+    """Red before `B1719`."""
+    text, _ = _loop_prompt(monkeypatch, TERMINAL_REQUEST)
+    assert "### workstation-desktop" in text
+    assert DESKTOP_STEP in text, "the procedure's steps, not only its name"
+
+
+def test_the_manual_comes_first_and_once(store):
+    from services.memory.skill_injection import with_tool_manuals
+    rows = store.injectable_skills(owner="alice", active_toolsets=["computer", "bash"])
+    by_name = {r["name"]: r for r in rows}
+    shell = by_name["workstation-shell"]
+    desktop = by_name["workstation-desktop"]
+    assert [r["name"] for r in with_tool_manuals([shell], rows, {"computer"})] == [
+        "workstation-desktop", "workstation-shell"]
+    assert [r["name"] for r in with_tool_manuals([shell, desktop], rows, {"computer", "bash"})] == [
+        "workstation-desktop", "workstation-shell"]
+
+
+def test_no_computer_offered_adds_nothing(store):
+    from services.memory.skill_injection import with_tool_manuals
+    rows = store.injectable_skills(owner="alice", active_toolsets=["computer", "bash"])
+    shell = next(r for r in rows if r["name"] == "workstation-shell")
+    assert with_tool_manuals([shell], rows, {"bash", "read_file"}) == [shell]
+    assert with_tool_manuals([shell], rows, ()) == [shell]
+
+
+def test_a_manual_the_gates_withheld_stays_out(store):
+    """It comes from the injectable list only: a turn whose cap lacks
+    `computer` has no desktop skill to add, whatever it names."""
+    from services.memory.skill_injection import with_tool_manuals
+    rows = store.injectable_skills(owner="alice", active_toolsets=["bash", "read_file"])
+    assert with_tool_manuals([], rows, {"computer"}) == []
+
+
 def test_all_four_bodies_fit_the_default_budget_uncut(store):
     from services.memory.skill_injection import render_matched_skills_block
     rows = [s for s in store.injectable_skills(owner="alice", active_toolsets=["computer", "bash"])
@@ -387,6 +445,7 @@ def test_no_skill_tells_the_model_to_use_a_background_job_the_workstation_refuse
 
 
 # ── `B1426`: a shipped skill puts `manage_skills` in a turn only where it shows ─
+# `B1737`: and now nowhere — `use_skill` is the tool that opens a shipped one.
 
 def test_the_vendored_drafts_do_not_put_the_skills_tool_in_every_turn(store):
     """286 drafts nobody is shown, and four procedures gated on the screen: on a
@@ -399,11 +458,15 @@ def test_the_vendored_drafts_do_not_put_the_skills_tool_in_every_turn(store):
 
 
 def test_a_turn_that_can_show_them_offers_the_tool_to_open_them(store):
-    rows = agent_loop._skills_for_turn(store, "alice", set())
-    assert {r["name"] for r in rows} == set(SHIPPED)
+    """`B1737`. The tool that opens a shipped skill is `use_skill` now, so a
+    turn that can show the workstation's four offers that and not the editor."""
+    listed = {r["name"] for r in store.index_for(owner="alice", active_toolsets=None)}
+    assert set(SHIPPED) <= listed
+    assert agent_loop._skills_to_open(store, "alice", set()) is True
+    assert agent_loop._skills_for_turn(store, "alice", set()) == []
     assert agent_loop._skill_body_tool_offered(
         BUILD_REQUEST, suppress_skills=False, owner="alice",
-        data_dir=constants.DATA_DIR, disabled_tools=set()) is True
+        data_dir=constants.DATA_DIR, disabled_tools=set()) is False
 
 
 def test_a_persons_own_drafts_still_count(store):
