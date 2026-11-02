@@ -377,6 +377,12 @@ def test_the_workstation_images_share_one_base():
     """`vm.Dockerfile` says it builds from `Dockerfile`'s base; a pin moved in
     one and not the other is two userlands arriving by accident."""
     refs = {rel: _from_refs((_ROOT / rel).read_text(encoding="utf-8")) for rel in _WORKSTATION}
+    # `B1744`: `Dockerfile` also names Debian's, Kali's and Parrot's bases (a
+    # stage each, `WORKSTATION_OS` picks one; each pinned, which the rule
+    # above holds). The VM's machines are Ubuntu, so it is Ubuntu's base —
+    # the one `ubuntu` reference there — that both files must share.
+    refs = {rel: [r for r in found if _split_image(r)[0] == "ubuntu"] or found
+            for rel, found in refs.items()}
     assert all(len(r) == 1 for r in refs.values()), refs
     assert len({r[0] for r in refs.values()}) == 1, refs
     name, tag, digest = _split_image(refs[_WORKSTATION[0]][0])
