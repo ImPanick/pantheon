@@ -1,7 +1,10 @@
 #!/bin/sh
 # SPDX-License-Identifier: AGPL-3.0-or-later
 #
-# Make an Ubuntu 24.04 machine the workstation's userland — `P20-07`.
+# Make an Ubuntu 24.04 machine the workstation's userland — `P20-07`. Since
+# `B1744` also Debian 13, Kali Linux (rolling) and Parrot Security 7: the same
+# list on each, read from /etc/os-release, with the few differences named where
+# they are (the mirror's file, KasmVNC's build, the toolset).
 #
 # ONE list of what a workstation has, for every backend (`Law 14`). Before this
 # file the list lived inline in `Dockerfile`; a VM provisioned by cloud-init or a
@@ -31,6 +34,9 @@
 #              the pinned package, checked, left in DIR for the image to install
 #              (`D-2026-11-01-01`) — the screen Pantheon's own browser runs on for
 #              a person without a workstation, streamed like a workstation's.
+#   tools      `B1744`. Kali's or Parrot's own toolset on top, as much as
+#              --toolset says: `none`, `top10`, `default` (what the distro's own
+#              installer ships) or `everything`. Nothing on Ubuntu or Debian.
 #   files      Firefox's no-phone-home policy (--policies DIR, default
 #              /etc/firefox/policies, where Firefox reads it), the skeleton
 #              new homes start from (--skel DIR, default
@@ -96,6 +102,30 @@ KASMVNC_URL=https://github.com/kasmtech/KasmVNC/releases/download
 
 say() { printf 'provision: %s\n' "$*"; }
 
+# `B1744`. Which system this is: `ID` from /etc/os-release (ubuntu, debian,
+# kali, parrot). Anything else Debian-like is tried as Debian; anything else at
+# all is refused, because the list below is apt's.
+# (`OS_RELEASE` names another file, for the tests.)
+os_id() {
+    release=${OS_RELEASE:-/etc/os-release}
+    id=$(sed -n 's/^ID=//p' "$release" 2>/dev/null | tr -d '"' | head -n 1)
+    case "$id" in
+        ubuntu|debian|kali|parrot) printf '%s' "$id" ;;
+        *)
+            if grep -qs '^ID_LIKE=.*debian' "$release"; then printf 'debian'
+            else say "this is not a system the workstation is made from (${id:-no $release})" >&2; exit 1; fi ;;
+    esac
+}
+
+# KasmVNC's build for this system: Ubuntu 24.04's, or Debian 13's for Debian,
+# Parrot 7 (Debian 13 underneath) and Kali (Debian testing, nearest to 13).
+kasmvnc_dist() {
+    case "$(os_id)" in
+        ubuntu) printf 'ubuntu_noble' ;;
+        *) printf 'debian_trixie' ;;
+    esac
+}
+
 # kasmvnc_deb ARCH OUT [DIST]: the pinned KasmVNC package for ARCH (amd64 or
 # arm64) and DIST (ubuntu_noble, the workstation's, or debian_trixie, Pantheon's
 # own image's), downloaded to OUT and checked against its sum; anything else
@@ -141,9 +171,18 @@ packages() {
         shift
     done
     export DEBIAN_FRONTEND=noninteractive
+    os=$(os_id)
+    say "making a $os workstation"
     if [ -n "${APT_MIRROR:-}" ]; then
+        # The mirror replaces the system's own archive, wherever that system
+        # keeps it (deb822 for Ubuntu, Debian and Kali; Parrot's one-line list).
         say "using the mirror $APT_MIRROR"
-        sed -i -E "s#^URIs: .*#URIs: ${APT_MIRROR}#" /etc/apt/sources.list.d/ubuntu.sources
+        case "$os" in
+            ubuntu) sed -i -E "s#^URIs: .*#URIs: ${APT_MIRROR}#" /etc/apt/sources.list.d/ubuntu.sources ;;
+            debian) sed -i -E "s#^URIs: .*debian/?\$#URIs: ${APT_MIRROR}#" /etc/apt/sources.list.d/debian.sources ;;
+            kali) sed -i -E "s#^URIs: .*#URIs: ${APT_MIRROR}#" /etc/apt/sources.list.d/kali.sources ;;
+            parrot) sed -i -E "s#^deb https://deb.parrot.sh/parrot #deb ${APT_MIRROR} #" /etc/apt/sources.list.d/parrot.list ;;
+        esac
     fi
     ca=${PROVISION_CA:-/run/secrets/build-ca}
     if [ -s "$ca" ]; then
@@ -169,12 +208,20 @@ packages() {
     apt-get update
     apt-get install -y --no-install-recommends firefox
     # The live desktop (`D-2026-10-31-01`): KasmVNC's X server, installed from the
-    # pinned package with apt so its libraries come from Ubuntu.
+    # pinned package with apt so its libraries come from the system's archive.
+    # `B1744`: Kali is rolling, so a library KasmVNC's Debian 13 build names
+    # can move out from under it there; then the desktop is shown as pictures
+    # (Xvfb, as on an architecture KasmVNC does not build for) and the build
+    # says so, rather than the whole image failing. A wrong checksum still stops
+    # the build everywhere.
     arch=$(dpkg --print-architecture)
     case "$arch" in
         amd64|arm64)
-            kasmvnc_deb "$arch" /tmp/kasmvncserver.deb
-            apt-get install -y --no-install-recommends /tmp/kasmvncserver.deb
+            kasmvnc_deb "$arch" /tmp/kasmvncserver.deb "$(kasmvnc_dist)"
+            if ! apt-get install -y --no-install-recommends /tmp/kasmvncserver.deb; then
+                [ "$os" = kali ] || exit 1
+                say "KasmVNC's Debian 13 build does not install on this Kali; the desktop is shown as pictures (Xvfb)"
+            fi
             rm -f /tmp/kasmvncserver.deb ;;
         *) say "KasmVNC builds no package for $arch; the desktop is shown as pictures (Xvfb)" ;;
     esac
@@ -184,6 +231,60 @@ packages() {
         userdel -r ubuntu 2>/dev/null || true
     fi
     say "packages installed"
+}
+
+# `B1744`. The security distros' own tools, on top of the workstation.
+# The metapackages are each distro's own names for its sets: Kali's
+# (`kali-tools-top10`, `kali-linux-default` — what Kali's installer selects —
+# and `kali-linux-everything`) and Parrot's (`parrot-tools-full`, what the
+# Security edition ships, and three of the categories it is made of for the
+# smaller set — the same names `parrotsec/security`'s own image installs).
+# Installed WITH recommends, unlike the desktop: that is how the distros
+# install them, and a tool missing its recommended helpers is not the tool a
+# model trained on that distro expects.
+tools() {
+    image=no
+    toolset=default
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --image) image=yes ;;
+            --toolset) toolset=$2; shift ;;
+            *) say "unknown option $1"; exit 2 ;;
+        esac
+        shift
+    done
+    os=$(os_id)
+    case "$toolset" in
+        none|top10|default|everything) ;;
+        *) say "the toolset is none, top10, default or everything, not $toolset"; exit 2 ;;
+    esac
+    case "$os:$toolset" in
+        kali:top10) metas=kali-tools-top10 ;;
+        kali:default) metas=kali-linux-default ;;
+        kali:everything) metas=kali-linux-everything ;;
+        parrot:top10) metas="parrot-tools-infogathering parrot-tools-web parrot-tools-password" ;;
+        parrot:default|parrot:everything) metas=parrot-tools-full ;;
+        *) say "no toolset for $os ($toolset)"; return 0 ;;
+    esac
+    export DEBIAN_FRONTEND=noninteractive
+    ca=${PROVISION_CA:-/run/secrets/build-ca}
+    if [ -s "$ca" ]; then
+        echo "Acquire::https::CAInfo \"$ca\";" > /etc/apt/apt.conf.d/99-provision-ca
+    fi
+    if [ -n "${APT_PROXY:-}" ]; then
+        printf 'Acquire::http::Proxy "%s";\nAcquire::https::Proxy "%s";\n' "$APT_PROXY" "$APT_PROXY" \
+            > /etc/apt/apt.conf.d/99-provision-proxy
+    fi
+    say "installing $os's $toolset toolset ($metas)"
+    apt-get update
+    # shellcheck disable=SC2086 # the list is words on purpose
+    apt-get install -y -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold $metas
+    rm -f /etc/apt/apt.conf.d/99-provision-ca /etc/apt/apt.conf.d/99-provision-proxy
+    if [ "$image" = yes ]; then
+        apt-get clean
+        rm -rf /var/lib/apt/lists/*
+    fi
+    say "toolset installed"
 }
 
 files() {
@@ -261,8 +362,9 @@ server() {
 
 case "$STEP" in
     packages) packages "$@" ;;
+    tools) tools "$@" ;;
     files) files "$@" ;;
     client) client "$@" ;;
     server) server "$@" ;;
-    *) echo "usage: provision.sh packages [--image] | files [--skel DIR] [--code DIR] [--policies DIR] [--themes DIR] [--share DIR] | client DIR | server DIR" >&2; exit 2 ;;
+    *) echo "usage: provision.sh packages [--image] | tools [--image] [--toolset none|top10|default|everything] | files [--skel DIR] [--code DIR] [--policies DIR] [--themes DIR] [--share DIR] | client DIR | server DIR" >&2; exit 2 ;;
 esac

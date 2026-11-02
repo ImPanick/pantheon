@@ -165,6 +165,14 @@ def setup_prefs_routes():
             # which the voice service reads on every sentence it says to them.
             value = (checked_conversation(value) if key == CONVERSATION_PREF
                      else checked_voice(value))
+        elif key == "workstation_system":
+            # `B1744`. Which system this person's workstation is: Ubuntu,
+            # Debian, Kali or Parrot (`workstation_access.checked_system`).
+            from src.workstation_access import checked_system
+            try:
+                value = checked_system(value)
+            except ValueError as e:
+                raise HTTPException(400, str(e))
         elif key == "reactions_enabled":
             value = value is not False   # `B1736`: a switch, on unless turned off
         prefs[key] = value

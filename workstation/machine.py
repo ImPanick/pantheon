@@ -76,6 +76,27 @@ def facts(word: Optional[str] = None) -> Dict[str, Optional[str]]:
     return {"virtualization": word, "accel": accel(word)}
 
 
+def os_release(path: Path = Path("/etc/os-release")) -> Dict[str, Optional[str]]:
+    """`B1744`. Which system this is, from the file every one of them ships:
+    `{"id", "name"}` — `ID` (`ubuntu`, `debian`, `kali`, `parrot`, …) and
+    `PRETTY_NAME` — or Nones when there is no such file (a macOS host, say).
+    Read, never assumed from the image's name: it is what the panel shows a
+    person who picked a system, so it has to be the one that answered."""
+    out: Dict[str, Optional[str]] = {"id": None, "name": None}
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return out
+    for line in text.splitlines():
+        key, _, value = line.partition("=")
+        value = value.strip().strip('"').strip("'")[:120] or None
+        if key.strip() == "ID":
+            out["id"] = value.lower() if value else None
+        elif key.strip() == "PRETTY_NAME":
+            out["name"] = value
+    return out
+
+
 def default_backend(system: str, word: str) -> str:
     """What a daemon is when nobody said: a `single` daemon is somebody's
     machine Pantheon was pointed at; an `ubuntu` one is the container image
@@ -87,4 +108,4 @@ def default_backend(system: str, word: str) -> str:
     return "remote"
 
 
-__all__ = ["accel", "default_backend", "facts", "in_container", "virtualization"]
+__all__ = ["accel", "default_backend", "facts", "in_container", "os_release", "virtualization"]

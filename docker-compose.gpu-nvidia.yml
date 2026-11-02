@@ -34,6 +34,9 @@ services:
       - workstation-pairing:/workstation-pairing:ro
       - workstation-net-pairing:/workstation-net-pairing:ro
       - workstation-vm-pairing:/workstation-vm-pairing:ro
+      - workstation-debian-pairing:/workstation-debian-pairing:ro
+      - workstation-kali-pairing:/workstation-kali-pairing:ro
+      - workstation-parrot-pairing:/workstation-parrot-pairing:ro
     # Pantheon's own browser (`src/local_browser.py`) is a headless Firefox,
     # whose content processes share memory through /dev/shm; Docker's 64 MB
     # default crashes tabs. A tmpfs limit, not memory set aside.
@@ -135,6 +138,11 @@ services:
       - PANTHEON_WORKSTATION_NET_URL=http://workstation:7041
       - PANTHEON_WORKSTATION_VM_URL=http://workstation-vm:7040
       - PANTHEON_WORKSTATION_VM_PAIRING=/workstation-vm-pairing
+      # `B1744`: the other systems a person may pick, each where its profile
+      # starts it (below); one that is not running is never routed to.
+      - PANTHEON_WORKSTATION_DEBIAN_URL=http://workstation:7042
+      - PANTHEON_WORKSTATION_KALI_URL=http://workstation:7043
+      - PANTHEON_WORKSTATION_PARROT_URL=http://workstation:7044
       # NVIDIA overlay (from docker/gpu.nvidia.yml).
       - NVIDIA_VISIBLE_DEVICES=all
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
@@ -353,6 +361,106 @@ services:
       start_period: 20s
     restart: unless-stopped
 
+  # `B1744`. The workstation as another system: Debian 13, Kali Linux or
+  # Parrot Security beside the Ubuntu one above, for the people who pick it
+  # (Settings -> Workstation -> System, each person's own). The owner,
+  # 2026-11-02, on Kali and Parrot: *"Considering I have custom fine-tune
+  # LLM's built around full-suite security ops.. (Purple Teaming, aka Red and
+  # Blue team experts)."* Built from the same `Dockerfile` and `provision.sh`
+  # as Ubuntu's (`WORKSTATION_OS`), so the desktop, the live screen and the
+  # agent's tools are the same; each runs only when its profile is on —
+  # `COMPOSE_PROFILES=kali,parrot` in `.env` (any of `debian`, `kali`,
+  # `parrot`) — and costs nothing otherwise. `WORKSTATION_TOOLSET` is how much
+  # of Kali's or Parrot's own toolset its image has: `none`, `top10`,
+  # `default` (what the distro's installer ships; the default) or
+  # `everything`. Each listens on its own port in the same network
+  # namespace, so the admin's network mode holds for it exactly as for
+  # Ubuntu's, with homes and a pairing volume of its own. Like Ubuntu's, it
+  # cannot send raw packets (no CAP_NET_RAW), so a scan that needs them runs
+  # as a connect scan (`nmap -sT`).
+  workstation-debian:
+    profiles: ["debian"]
+    build:
+      context: ./workstation
+      args:
+        WORKSTATION_OS: debian
+    command: ["--system", "ubuntu", "--bind", "0.0.0.0", "--port", "7042"]
+    network_mode: "service:workstation-net"
+    depends_on:
+      workstation-net:
+        condition: service_healthy
+    cap_drop: [NET_RAW]
+    environment:
+      - PANTHEON_WORKSTATION_PAIRING_GID=${PGID:-1000}
+    volumes:
+      - workstation-debian-homes:/home
+      - workstation-debian-pairing:/workstation-pairing
+      - ${APP_DATA_DIR:-./data}/projects:/projects:z
+    shm_size: "2gb"
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import json,sys,urllib.request as u; sys.exit(0 if json.load(u.urlopen('http://127.0.0.1:7042/v1/health', timeout=5)).get('agent') == 'pantheon-workstation' else 1)"]
+      interval: 15s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    restart: unless-stopped
+
+  workstation-kali:
+    profiles: ["kali"]
+    build:
+      context: ./workstation
+      args:
+        WORKSTATION_OS: kali
+        TOOLSET: ${WORKSTATION_TOOLSET:-default}
+    command: ["--system", "ubuntu", "--bind", "0.0.0.0", "--port", "7043"]
+    network_mode: "service:workstation-net"
+    depends_on:
+      workstation-net:
+        condition: service_healthy
+    cap_drop: [NET_RAW]
+    environment:
+      - PANTHEON_WORKSTATION_PAIRING_GID=${PGID:-1000}
+    volumes:
+      - workstation-kali-homes:/home
+      - workstation-kali-pairing:/workstation-pairing
+      - ${APP_DATA_DIR:-./data}/projects:/projects:z
+    shm_size: "2gb"
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import json,sys,urllib.request as u; sys.exit(0 if json.load(u.urlopen('http://127.0.0.1:7043/v1/health', timeout=5)).get('agent') == 'pantheon-workstation' else 1)"]
+      interval: 15s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    restart: unless-stopped
+
+  workstation-parrot:
+    profiles: ["parrot"]
+    build:
+      context: ./workstation
+      args:
+        WORKSTATION_OS: parrot
+        TOOLSET: ${WORKSTATION_TOOLSET:-default}
+    command: ["--system", "ubuntu", "--bind", "0.0.0.0", "--port", "7044"]
+    network_mode: "service:workstation-net"
+    depends_on:
+      workstation-net:
+        condition: service_healthy
+    cap_drop: [NET_RAW]
+    environment:
+      - PANTHEON_WORKSTATION_PAIRING_GID=${PGID:-1000}
+    volumes:
+      - workstation-parrot-homes:/home
+      - workstation-parrot-pairing:/workstation-pairing
+      - ${APP_DATA_DIR:-./data}/projects:/projects:z
+    shm_size: "2gb"
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import json,sys,urllib.request as u; sys.exit(0 if json.load(u.urlopen('http://127.0.0.1:7044/v1/health', timeout=5)).get('agent') == 'pantheon-workstation' else 1)"]
+      interval: 15s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    restart: unless-stopped
+
   # The workstation — a virtual machine of their own for each person, that the
   # agent works inside: its shell, Python and files, a desktop the person can
   # watch and take over, and a Firefox there. The owner (2026-10-31): *"We need
@@ -435,3 +543,9 @@ volumes:
   workstation-net-pairing:
   workstation-vm:
   workstation-vm-pairing:
+  workstation-debian-homes:
+  workstation-debian-pairing:
+  workstation-kali-homes:
+  workstation-kali-pairing:
+  workstation-parrot-homes:
+  workstation-parrot-pairing:
