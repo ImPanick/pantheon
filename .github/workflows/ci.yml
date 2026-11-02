@@ -117,6 +117,14 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
+          # `B1742`. `check-ledger.py` below holds the ledger's passing count
+          # to being dated and pinned to a commit (`B1405`), and asks git
+          # whether that commit exists. With the default one-commit checkout
+          # it never did: the step has been red on every run since the pin
+          # was written on 2026-10-18, and the fourteen steps after it have
+          # not run in CI since. The full history is what the pin is checked
+          # against, as the gitleaks job already fetches for its own scan.
+          fetch-depth: 0
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
         with:
           python-version: "3.11"

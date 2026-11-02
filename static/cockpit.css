@@ -795,6 +795,55 @@ html.cockpit .queue-panel-pause {
 }
 html.cockpit .plan-inline-execute { background: linear-gradient(135deg, var(--ck-accent), var(--ck-accent-2)) !important; color: var(--ck-on-accent) !important; }
 html.cockpit .plan-inline-clear:hover, html.cockpit .queue-panel-pause:hover { background: var(--ck-tint-2) !important; }
+/* A queued message in the strip (2026-11-01, the owner): its number, its words,
+   and Edit · Steer now (Send now while the run cannot take a steer) · ×. No
+   lamp, no word for its state, no clock, and no hint under the list: the
+   number says it is waiting. (`queuePanel.js` draws the row; the head's Pause
+   is not in the strip.) The foot's one button comes back only with two or
+   more waiting — "Send all N now", which asks one after another or all at
+   once (`P6-06`) — since a single message has its own buttons on its row. */
+html.cockpit #ck-strip .queue-panel:not(.queue-panel-many) .queue-panel-foot { display: none !important; }
+html.cockpit #ck-strip .queue-panel-hint { display: none !important; }
+html.cockpit #ck-strip .queue-panel-many .queue-panel-foot { display: flex !important; justify-content: flex-end; padding: 4px 6px 2px !important; margin: 0 !important; border: 0 !important; background: transparent !important; }
+/* A row whose words are on their way to the run (`B1741`): it says so and
+   offers nothing until the run picks them up or ends. */
+html.cockpit #ck-strip .queue-row-steering { font: 400 12px/1 var(--ck-font-ui); color: var(--ck-text-3); padding-right: 4px; }
+html.cockpit #ck-strip .queue-panel-list { padding: 0 2px !important; max-height: none; }
+html.cockpit #ck-strip .queue-row {
+  border: 0 !important; border-radius: var(--ck-r-s, 10px) !important; background: transparent !important; padding: 2px 6px !important; margin: 0 !important;
+}
+html.cockpit #ck-strip .queue-row:hover { background: var(--ck-tint) !important; }
+html.cockpit #ck-strip .queue-row.expanded { background: var(--ck-tint) !important; padding: 6px 8px 8px !important; }
+html.cockpit #ck-strip .queue-row .task-log-row-head { gap: 8px; min-height: 32px; font-size: 13px; }
+html.cockpit #ck-strip .queue-row-grip { color: var(--ck-text-3); }
+html.cockpit #ck-strip .queue-row-pos { font: 500 12px/1 var(--ck-font-ui); color: var(--ck-text-3); min-width: 1.8ch; text-align: right; }
+html.cockpit #ck-strip .queue-row .queue-row-text { font: 400 13px/1.4 var(--ck-font-ui) !important; color: var(--ck-text) !important; max-width: none; flex: 1 1 auto; min-width: 0; }
+html.cockpit #ck-strip .queue-row .queued-pill { font: 400 11px/1 var(--ck-font-ui); color: var(--ck-text-2); background: var(--ck-tint); border: 0; padding: 3px 8px; border-radius: 999px; }
+html.cockpit #ck-strip .task-log-running-inline { gap: 4px; }
+html.cockpit #ck-strip .queue-row :is(.queue-row-edit, .queue-steer-now, .queue-force-run) {
+  position: static; top: auto; height: 24px !important; max-height: none; min-height: 0; margin: 0 !important; padding: 0 10px !important; border-radius: 999px !important; opacity: 1;
+  font: 500 12px/1 var(--ck-font-ui) !important; color: var(--ck-text-2) !important; background: var(--ck-tint) !important; border: 0 !important; gap: 5px;
+  transition: background var(--ck-t) var(--ck-ease), color var(--ck-t) var(--ck-ease), transform var(--ck-t) var(--ck-spring);
+}
+html.cockpit #ck-strip .queue-row :is(.queue-row-edit, .queue-force-run):hover { background: var(--ck-tint-2) !important; color: var(--ck-text) !important; }
+html.cockpit #ck-strip .queue-row :is(.queue-steer-now, .queue-force-run) svg { transform: none; }
+html.cockpit #ck-strip .queue-row .queue-steer-now {
+  background: linear-gradient(135deg, var(--ck-accent), var(--ck-accent-2)) !important; color: var(--ck-on-accent) !important;
+  box-shadow: inset 0 1px 0 color-mix(in oklab, #fff 35%, transparent), 0 4px 12px -6px var(--ck-accent-glow) !important;
+}
+html.cockpit #ck-strip .queue-row .queue-steer-now:hover { transform: translateY(-1px); }
+html.cockpit #ck-strip .queue-row :is(.queue-remove, .queue-stop) {
+  position: static; top: auto; width: 24px; height: 24px; margin: 0 0 0 2px; border-radius: 50%; display: inline-flex; color: var(--ck-text-3);
+}
+html.cockpit #ck-strip .queue-row :is(.queue-remove, .queue-stop):hover { background: var(--ck-tint-2); color: var(--ck-text); }
+html.cockpit #ck-strip .queue-row-input {
+  font: 400 13px/1.45 var(--ck-font-ui) !important; color: var(--ck-text) !important; background: var(--ck-glass-strong) !important; border: 1px solid var(--ck-edge) !important; border-radius: 10px !important; padding: 6px 8px !important;
+}
+html.cockpit #ck-strip .queue-row-save {
+  height: 24px; border-radius: 999px; border: 0; padding: 0 12px; font: 500 12px/1 var(--ck-font-ui);
+  background: linear-gradient(135deg, var(--ck-accent), var(--ck-accent-2)); color: var(--ck-on-accent);
+}
+html.cockpit #ck-strip .queue-row-field { font: 400 11.5px/1 var(--ck-font-ui); color: var(--ck-text-3); }
 
 /* attachments ride under the text box as a chip row (the loadout) */
 html.cockpit .ck-loadout { display: flex; flex-wrap: wrap; gap: 6px; padding: 4px 14px 2px; }
@@ -813,9 +862,20 @@ html.cockpit[data-ck-tone="light"] .ck-loadout :is(.tool-chip, .tool-indicator, 
 html.cockpit .ck-loadout .tool-chip:hover { background: var(--ck-tint-2) !important; color: var(--ck-text) !important; }
 @keyframes ck-chip-in { from { opacity: 0; transform: scale(.85); } }
 
-/* ───────────────────────── the composer: same anatomy, a lit glass capsule ───────────────────────── */
+/* ───────────────────────── the composer: a lit glass capsule over a deck of controls ─────────────────────────
+   2026-11-01 (the owner: "move the controls out of the chatbox except the
+   voice, dictation, stop and the attach button"). The capsule is the box
+   alone — the message, its attachments, + and the three rounds at its right.
+   Every control that sets up the turn sits on the deck under it, bare chips on
+   the field: the switches at the left, the mode, the effort, the approval mode
+   and the context ring at the right. `.chat-input-bar` holds both and stays the
+   container the width queries read. */
 html.cockpit .chat-input-bar {
-  position: relative; z-index: var(--ck-z-composer); max-width: 760px !important; width: calc(100% - 36px) !important; margin: 0 auto 18px !important; padding: 0 !important; gap: 0 !important; flex: none;
+  position: relative; z-index: var(--ck-z-composer); max-width: 760px !important; width: calc(100% - 36px) !important; margin: 0 auto 14px !important; padding: 0 !important; gap: 4px !important; flex: none;
+  border: 0 !important; background: none !important; box-shadow: none !important;
+}
+html.cockpit .chat-input-box {
+  position: relative; padding: 0 !important; gap: 0 !important;
   border-radius: 22px !important; border: 1px solid var(--ck-edge) !important;
   background: linear-gradient(135deg, var(--ck-sheen-hi) 0%, transparent 42%, transparent 72%, var(--ck-sheen-lo) 100%), var(--ck-noise-soft) 0 0/240px 240px, var(--ck-glass-strong) !important;
   background-origin: border-box !important;
@@ -823,17 +883,20 @@ html.cockpit .chat-input-bar {
   box-shadow: inset 0 1px 0 var(--ck-edge-hi), var(--ck-lift-2) !important;
   transition: box-shadow var(--ck-t-slow) var(--ck-ease), border-color var(--ck-t) var(--ck-ease);
 }
-html.cockpit .chat-input-bar::before {
+html.cockpit .chat-input-box::before {
   content: ""; position: absolute; inset: -1px; border-radius: inherit; padding: 1px; pointer-events: none;
   background: linear-gradient(120deg, var(--ck-accent), transparent 35%, transparent 65%, var(--ck-accent-2)); opacity: 0;
   transition: opacity var(--ck-t-slow) var(--ck-ease);
   -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor;
   mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
 }
-html.cockpit .chat-input-bar:focus-within::before { opacity: 1; }
-html.cockpit .chat-input-bar:focus-within { box-shadow: inset 0 1px 0 var(--ck-edge-hi), 0 0 0 4px var(--ck-accent-wash), var(--ck-lift-2) !important; }
-html.cockpit body.plan-mode-active .chat-input-bar { border-style: solid !important; border-color: var(--ck-accent-line) !important; }
+html.cockpit .chat-input-box:focus-within::before { opacity: 1; }
+html.cockpit .chat-input-box:focus-within { box-shadow: inset 0 1px 0 var(--ck-edge-hi), 0 0 0 4px var(--ck-accent-wash), var(--ck-lift-2) !important; }
+html.cockpit body.plan-mode-active .chat-input-box { border-style: solid !important; border-color: var(--ck-accent-line) !important; }
 html.cockpit .chat-input-top { display: flex !important; align-items: flex-start; gap: 8px; padding: 14px 12px 4px 18px; }
+/* the box's own row: + at the left, dictation, the call and Send at the right */
+html.cockpit .chat-input-actions { display: flex !important; align-items: center; gap: 6px; padding: 4px 10px 10px 12px; }
+html.cockpit .chat-input-send-group { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; flex: none; }
 html.cockpit #message {
   flex: 1; resize: none; border: 0 !important; outline: 0 !important; background: transparent !important; color: var(--ck-text) !important;
   font: 400 15px/1.5 var(--ck-font-ui) !important; min-height: 24px; max-height: 160px; padding: 2px 0 !important; box-shadow: none !important; letter-spacing: 0 !important;
@@ -851,9 +914,12 @@ html.cockpit .model-picker-btn::before { content: ""; width: 6px; height: 6px; b
 html.cockpit .model-picker-btn .ck-loc { font-size: 10px; font-weight: 500; color: var(--ck-text-3); letter-spacing: .04em; }
 html.cockpit .model-picker-btn svg { transform: rotate(180deg); }
 html.cockpit .plan-mode-status { position: static !important; order: 2; align-self: center; }
-html.cockpit .chat-input-bottom { display: flex !important; align-items: center; gap: 6px; padding: 6px 10px 10px !important; margin: 0 !important; }
-html.cockpit .chat-input-left { display: flex !important; align-items: center; gap: 4px !important; flex: 1; min-width: 0; flex-wrap: nowrap !important; overflow: visible; }
-html.cockpit .chat-input-right { display: flex !important; align-items: center; gap: 4px !important; flex: none; }
+/* the deck: bare chips on the field, the switches left and the readings right */
+html.cockpit .chat-input-bottom { display: flex !important; flex-wrap: wrap; align-items: center; gap: 4px 6px; padding: 0 8px !important; margin: 0 !important; min-height: 32px; }
+html.cockpit .chat-input-left { display: flex !important; align-items: center; gap: 2px !important; flex: 1; min-width: 0; flex-wrap: nowrap !important; overflow: visible; }
+/* the readings keep to the right; when the deck is too narrow for both groups
+   (the switches fold into + first, `app.js`), they take a second line */
+html.cockpit .chat-input-right { display: flex !important; align-items: center; gap: 2px !important; flex: none; margin-left: auto; }
 html.cockpit .overflow-wrapper { position: static !important; flex: none; }
 html.cockpit .overflow-plus-btn {
   width: 32px !important; height: 32px !important; min-width: 32px; border-radius: 50% !important; display: grid !important; place-items: center; padding: 0 !important;
@@ -875,7 +941,6 @@ html.cockpit .overflow-plus-btn.has-active:not([aria-expanded="true"]):not(.acti
   display: block !important; position: absolute; top: 3px; right: 3px; width: 6px; height: 6px; border-radius: 50%;
   background: var(--ck-accent); box-shadow: 0 0 0 2px var(--ck-accent-wash);
 }
-html.cockpit .ck-vsep { width: 1px; height: 18px; background: var(--ck-edge); margin: 0 4px; flex: none; }
 /* Plan, Web and Shell: three fixed switches with a lamp for on */
 html.cockpit #plan-toggle-btn,
 html.cockpit #web-toggle-btn,
@@ -979,7 +1044,13 @@ html.cockpit .approval-mode-chip {
   color: var(--ck-text-2) !important; background: transparent !important; border: 0 !important; box-shadow: none !important;
 }
 html.cockpit .approval-mode-menu-title { color: var(--ck-text-2) !important; font-family: var(--ck-font-ui) !important; }
-html.cockpit .approval-mode-chip:hover { background: var(--ck-tint) !important; color: var(--ck-text-2) !important; }
+/* `B1740`: on the deck the chip rests on the bare field, not the box's glass,
+   and under the pointer the muted ink on the tint measured 4.37:1 on the cute
+   palette. The pointer lights the word to the full ink, and on the light tone
+   to the darkened ink the loadout's chips already use (cute's own `--fg` is
+   4.38:1 on its canvas). */
+html.cockpit .approval-mode-chip:hover { background: var(--ck-tint) !important; color: var(--ck-text) !important; }
+html.cockpit[data-ck-tone="light"] .approval-mode-chip:hover { color: color-mix(in oklab, var(--ck-text) 80%, #000) !important; }
 html.cockpit body.ck-auto-approve .approval-mode-chip { color: var(--ck-warn-text) !important; background: color-mix(in oklab, var(--ck-warn) 14%, transparent) !important; }
 /* reasoning effort: a quiet instrument until a level is set, then the accent */
 html.cockpit .reasoning-effort-chip {
@@ -987,7 +1058,8 @@ html.cockpit .reasoning-effort-chip {
   color: var(--ck-text-2) !important; background: transparent !important; border: 0 !important; box-shadow: none !important; gap: 5px !important;
 }
 html.cockpit .reasoning-effort-chip-label { font: 400 12px/1 var(--ck-font-ui) !important; }
-html.cockpit .reasoning-effort-chip:hover:not(.active) { background: var(--ck-tint) !important; color: var(--ck-text-2) !important; }
+html.cockpit .reasoning-effort-chip:hover:not(.active) { background: var(--ck-tint) !important; color: var(--ck-text) !important; } /* `B1740`: the full ink under the pointer, as the approval chip */
+html.cockpit[data-ck-tone="light"] .reasoning-effort-chip:hover:not(.active) { color: color-mix(in oklab, var(--ck-text) 80%, #000) !important; }
 /* A level set is a switch that is on: the strip's one on-state (`B1552`). */
 html.cockpit .reasoning-effort-chip.active { color: var(--ck-text) !important; background: var(--ck-accent-wash) !important; }
 html.cockpit[data-ck-tone="light"] .reasoning-effort-chip.active { color: color-mix(in oklab, var(--ck-text) 80%, #000) !important; }
@@ -1003,6 +1075,8 @@ html.cockpit .reasoning-effort-item-name { color: var(--ck-text) !important; fon
 html.cockpit .turn-chip {
   border-radius: 999px !important; background: var(--ck-tint) !important; border: 0 !important; color: var(--ck-text-2) !important; font: 400 12px/1 var(--ck-font-ui) !important; height: 30px;
 }
+/* `B1740`: the same muted-ink-on-tint pair, at rest, on the deck's bare field. */
+html.cockpit[data-ck-tone="light"] .turn-chip { color: color-mix(in oklab, var(--ck-text) 80%, #000) !important; }
 
 /* send, which morphs into stop */
 html.cockpit .send-btn {
@@ -1019,8 +1093,6 @@ html.cockpit .send-btn .send-btn-label { display: none !important; }
 html.cockpit .send-btn[data-mode="streaming"] { animation: ck-breathe var(--ck-beat) var(--ck-ease) infinite; }
 html.cockpit .send-btn:disabled { opacity: .55; }
 
-html.cockpit .ck-hints { display: flex; gap: 16px; justify-content: center; font-size: 11px; color: var(--ck-text-3); padding-top: 8px; flex-wrap: wrap; opacity: .8; }
-html.cockpit .ck-hints span { display: inline-flex; gap: 5px; align-items: center; }
 @container chatbar (max-width: 680px) { html.cockpit .chat-context-pill .ctx-ring-of { display: none; } }
 @container chatbar (max-width: 580px) {
   html.cockpit #plan-toggle-btn .tool-chip-label, html.cockpit #web-toggle-btn .tool-chip-label, html.cockpit #bash-toggle-btn .tool-chip-label, html.cockpit #conversation-toggle-btn .tool-chip-label { display: none !important; }
@@ -1978,3 +2050,58 @@ html.cockpit #plan-toggle-btn:is(.active, [aria-pressed="true"]) .tool-chip-labe
    circle and onto the strip's edge. It also sat 1px above the tabs' middle. */
 html.cockpit .ck-strip-fold { padding: 0 !important; width: 24px !important; height: 24px !important; min-width: 24px; min-height: 0; top: 6px; right: 6px; line-height: 0; }
 html.cockpit .ck-strip-fold svg { display: block; margin: 0; }
+
+/* ── `/` skills, `@` agents, and the next step (B1738, B1739) ────────────
+   Panick (2026-11-01): `/` opens the skills to look up, `@` the agents to
+   summon, and after a reply the next most valuable step waits in the box for
+   Tab. The `/` and `@` popovers take the floating glass recipe (`.ck-pop`
+   above) at full body, like the effort menu: they sit over the chat, and each
+   row is a line of small text. Names are the UI face, never the red mono of
+   the classic popup. */
+html.cockpit :is(.slash-autocomplete-popup, .agent-mention-popup) {
+  background: linear-gradient(135deg, var(--ck-sheen-hi) 0%, transparent 42%, transparent 72%, var(--ck-sheen-lo) 100%), var(--ck-noise-soft) 0 0/240px 240px, var(--ck-glass-base) !important;
+  font-size: 13px !important; scrollbar-width: thin;
+}
+html.cockpit :is(.slash-autocomplete-popup, .agent-mention-popup)[style*="display: block"] { animation: ck-pop-in var(--ck-t-slow) var(--ck-spring) backwards; transform-origin: bottom left; }
+html.cockpit .slash-ac-cat { color: var(--ck-text-3) !important; font: 500 10.5px/1.2 var(--ck-font-ui) !important; letter-spacing: .08em; padding: 10px 10px 4px !important; }
+html.cockpit .slash-ac-row { align-items: center !important; gap: 10px !important; padding: 7px 10px !important; border-radius: 12px; transition: background var(--ck-t-fast) var(--ck-ease); }
+html.cockpit .slash-ac-row:hover { background: var(--ck-tint) !important; }
+html.cockpit .slash-ac-row.slash-ac-row-sel { background: color-mix(in oklab, var(--ck-text) 11%, transparent) !important; box-shadow: inset 0 0 0 1px var(--ck-edge-lo); }
+/* A skill or an agent is looked up by what it does: its name and shelf on
+   the first line, what it is for under it (two lines at most). */
+html.cockpit .slash-ac-row:is(.slash-ac-skill, .agent-mention-row) { flex-wrap: wrap; white-space: normal !important; row-gap: 2px !important; padding: 8px 10px !important; }
+html.cockpit .slash-ac-row:is(.slash-ac-skill, .agent-mention-row) .slash-ac-shelf { margin-left: auto; }
+html.cockpit .slash-ac-row:is(.slash-ac-skill, .agent-mention-row) .slash-ac-help {
+  order: 3; flex: 1 0 100% !important; white-space: normal; font-size: 12px !important; color: var(--ck-text-3) !important;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+html.cockpit .slash-ac-row.slash-ac-row-sel:is(.slash-ac-skill, .agent-mention-row) .slash-ac-help { color: var(--ck-text-2) !important; }
+html.cockpit .slash-ac-token { color: var(--ck-text) !important; font: 500 13px/1.35 var(--ck-font-ui) !important; }
+html.cockpit .slash-ac-row:not(.agent-mention-row) .slash-ac-token { font-family: var(--ck-font-mono, ui-monospace, monospace) !important; font-size: 12.5px !important; }
+html.cockpit .slash-ac-help { color: var(--ck-text-2) !important; opacity: 1 !important; font: 400 12.5px/1.35 var(--ck-font-ui) !important; }
+html.cockpit .slash-ac-usage { color: var(--ck-text-3) !important; font-size: 11px !important; }
+html.cockpit .slash-ac-shelf {
+  font: 500 10.5px/1 var(--ck-font-ui) !important; letter-spacing: .02em; padding: 4px 7px; border-radius: 999px; background: var(--ck-tint); color: var(--ck-text-2) !important;
+}
+html.cockpit .slash-ac-empty { color: var(--ck-text-3) !important; font-style: normal !important; padding: 8px 10px 10px !important; }
+html.cockpit .slash-ac-empty code { color: var(--ck-text-2) !important; }
+
+/* The next step: ghost words where the person's words go, and a key cap
+   that says Tab (a button on touch screens). The box's own prompt steps back
+   while it shows. */
+.next-step-host { position: relative; }
+.next-step-ghost {
+  position: absolute; display: none; pointer-events: none; z-index: 1; box-sizing: border-box;
+  white-space: pre-wrap; overflow-wrap: break-word; color: color-mix(in srgb, var(--fg) 42%, transparent);
+}
+.next-step-cap {
+  pointer-events: auto; display: inline-flex; align-items: center; vertical-align: 1px; margin-left: 8px;
+  height: 18px; padding: 0 6px; border-radius: 6px; font-weight: 600; font-size: 10px; line-height: 1; font-family: inherit; letter-spacing: .04em;
+  border: 1px solid color-mix(in srgb, var(--fg) 22%, transparent); background: transparent; color: color-mix(in srgb, var(--fg) 60%, transparent); cursor: pointer;
+}
+#message.next-step-on::placeholder, html.cockpit #message.next-step-on::placeholder { color: transparent !important; }
+html.cockpit .next-step-ghost { color: var(--ck-text-3) !important; }
+html.cockpit .next-step-cap {
+  padding: 0 7px !important; height: 19px !important; min-height: 0 !important; font: 600 10px/1 var(--ck-font-ui) !important; color: var(--ck-text-2) !important;
+  background: var(--ck-tint) !important; border: 1px solid var(--ck-edge) !important; border-radius: 6px !important; box-shadow: inset 0 -1px 0 var(--ck-edge-lo) !important;
+}

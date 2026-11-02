@@ -327,6 +327,7 @@ NOT_IMPORTED = "Not imported:"
 IMPORT_NAMES = {
     "beautifulsoup4": "bs4",
     "chromadb-client": "chromadb",
+    "pillow": "PIL",
     "psycopg2-binary": "psycopg2",
     "python-dateutil": "dateutil",
     "python-dotenv": "dotenv",

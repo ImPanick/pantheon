@@ -53,14 +53,19 @@ document.addEventListener('pantheon:tool-approval', () => {
  * **next step**, not instantly. Every string in this file says "next step" for
  * that reason — see the `Mid-run steering` block in `src/agent_loop.py`.
  *
- * `Law 15`: a key binding nobody can discover is not a feature. So the same
- * intent gets a **visible bar** above the composer for as long as the agent is
- * working, and that bar names both verbs and both keys. It is drawn from here
- * rather than from `static/index.html` only because this module owns the
- * feature; the markup is inert until a stream is actually in flight.
+ * `Law 15`: a key binding nobody can discover is not a feature. The visible
+ * control is **Steer now on a queued message** (`queuePanel.js`): Enter queues,
+ * which everyone finds, and the queued row then offers to hand those words to
+ * the run instead of waiting. Until 2026-11-01 this module also drew a bar of
+ * its own over the composer for the whole run ("Working… ⌘⏎ steers, ⏎ queues
+ * · Steer now"); the owner: *"we know it's working — not needed until a
+ * message pops up in queue, and even then the message should be unaccompanied
+ * aside from Edit and Steer Now, and its number in the queue."* So this module
+ * now keeps only the ANSWER — is a steer on offer for the run in flight — and
+ * says it (`pantheon:steer-offer`); the queue draws the control.
  *
  * Capability probe: the transport is `POST /api/chat/steer/{session_id}`. Until
- * that route exists the probe fails, **nothing is drawn, and Cmd/Ctrl+Enter
+ * that route exists the probe fails, **nothing is offered, and Cmd/Ctrl+Enter
  * keeps its current behaviour** — no dead control, no stolen key binding, no
  * promise the server cannot keep (`Law 13`).
  */
@@ -69,11 +74,11 @@ const STEER_API_BASE = window.location.origin;
 
 let _steerSupported = null;      // null = not probed yet, then true | false
 let _steerProbeInFlight = false;
-let _steerBar = null;            // the visible affordance, while a run is live
-let _steerSentList = null;       // <ul> of steers accepted for this run
-let _steerBoundSessionId = '';   // the session the bar currently belongs to
+let _steerOffered = false;       // a steer is on offer for the run in flight
+let _steerPending = 0;           // steers accepted and not yet `steer_applied`
+let _steerPendingQueued = 0;     // of those, the ones that came off the queue's rows (`B1741`)
+let _steerBoundSessionId = '';   // the session the offer currently belongs to
 let _steerKeyBound = false;
-let _steerStyleInjected = false;
 // Set the first time a `steer_applied` event actually reaches this module. It
 // is the difference between "the confirmation channel is live and this steer
 // missed the run" and "we have no confirmation channel, so say nothing".
@@ -103,8 +108,6 @@ let _steerComposerAnswer = null;
 // unchanged.
 let _steerVerdictsSeen = false;
 
-const STEER_PENDING_TEXT = ' — lands at the next step';
-
 const _steerIsMac = (() => {
   try {
     const p = (navigator.userAgentData && navigator.userAgentData.platform)
@@ -112,7 +115,8 @@ const _steerIsMac = (() => {
     return /mac|iphone|ipad|ipod/i.test(p);
   } catch (_) { return false; }
 })();
-const STEER_KEY_LABEL = _steerIsMac ? '⌘⏎' : 'Ctrl+⏎';
+/** The steer key, named where the queue offers *Steer now* (`queuePanel.js`). */
+export const STEER_KEY_LABEL = _steerIsMac ? '⌘⏎' : 'Ctrl+⏎';
 
 /** Same predicate app.js uses to decide the composer is talking to a live run
  *  (`_isForegroundChatBusy`). Reused verbatim rather than re-derived so the two
@@ -185,132 +189,46 @@ function _steerComposer() {
   return document.getElementById('message');
 }
 
-/** Theme tokens only — `--accent` is never defined at `:root` (D-2026-08-26-03),
- *  so every accent use carries the `var(--red)` fallback the rest of the app
- *  uses. Injected from JS because this module does not own `static/style.css`.
- *  The hint and the sent list are `--fg-muted`, the theme-aware muted ink —
- *  they painted `--color-muted`, the grey pivot under it, until `B391`. */
-function _injectSteerStyle() {
-  if (_steerStyleInjected) return;
-  _steerStyleInjected = true;
-  const style = document.createElement('style');
-  style.textContent = `
-.steer-bar{display:flex;align-items:center;flex-wrap:wrap;gap:8px;
-  margin:0 0 6px;padding:6px 10px;border-radius:8px;font-size:11.5px;
-  border:1px solid color-mix(in srgb, var(--accent, var(--red)) 34%, var(--border));
-  background:color-mix(in srgb, var(--accent, var(--red)) 8%, var(--panel));
-  color:var(--fg);}
-.steer-bar-title{display:inline-flex;align-items:center;gap:5px;font-weight:600;
-  color:var(--accent, var(--red));white-space:nowrap;}
-.steer-bar-dot{width:6px;height:6px;border-radius:50%;
-  background:var(--accent, var(--red));animation:steer-pulse 1.4s ease-in-out infinite;}
-@keyframes steer-pulse{0%,100%{opacity:.35}50%{opacity:1}}
-@media (prefers-reduced-motion: reduce){.steer-bar-dot{animation:none;opacity:.8}}
-.steer-bar-hint{color:var(--fg-muted);flex:1;min-width:180px;}
-.steer-bar-hint kbd{font:inherit;font-weight:600;color:var(--fg);
-  border:1px solid var(--border);border-radius:4px;padding:0 4px;}
-.steer-bar-btn{cursor:pointer;font:inherit;font-weight:600;white-space:nowrap;
-  padding:3px 10px;border-radius:6px;color:var(--bg);
-  border:1px solid var(--accent, var(--red));
-  background:var(--accent, var(--red));}
-.steer-bar-btn:disabled{cursor:default;opacity:.45;}
-.steer-sent{list-style:none;margin:0;padding:0;flex-basis:100%;
-  display:flex;flex-direction:column;gap:3px;}
-.steer-sent li{color:var(--fg-muted);overflow:hidden;text-overflow:ellipsis;
-  white-space:nowrap;}
-.steer-sent li strong{color:var(--fg);font-weight:500;}
-`;
-  document.head.appendChild(style);
+/** The offer, said once each time it changes. `queuePanel.js` listens and
+ *  draws *Steer now* on each queued message while it stands, *Send now* when
+ *  it does not; `chat.js` asks `canSteerNow()` for the same answer. */
+function _announceSteerOffer() {
+  try {
+    window.dispatchEvent(new CustomEvent('pantheon:steer-offer', { detail: { offered: _steerOffered } }));
+  } catch (_) {}
 }
 
-function _removeSteerBar() {
-  if (_steerBar && _steerBar.parentNode) _steerBar.parentNode.removeChild(_steerBar);
-  _steerBar = null;
-  _steerSentList = null;
+function _withdrawSteer() {
+  const was = _steerOffered;
+  _steerOffered = false;
+  _steerPending = 0;
   _steerBoundSessionId = '';
+  if (was) _announceSteerOffer();
 }
 
-/** Draw the affordance directly above the composer, as a sibling of
- *  `.chat-input-bar` (the same place `#attach-strip` already sits) so it never
- *  fights the composer's own layout. */
-function _steerEl(tag, cls, text) {
-  const node = document.createElement(tag);
-  if (cls) node.className = cls;
-  if (text != null) node.textContent = text;
-  return node;
+/** A steer is on offer for the run in flight, bound to the session current at
+ *  THIS moment (the `P6-01` defect class: a steer belongs to one conversation). */
+function _offerSteer() {
+  if (_steerSupported !== true) return false;
+  const sid = _steerSessionId();
+  if (_steerOffered && _steerBoundSessionId === sid) return true;
+  _steerOffered = true;
+  _steerBoundSessionId = sid;
+  _announceSteerOffer();
+  return true;
 }
 
-function _ensureSteerBar() {
-  if (_steerSupported !== true) return null;
-  const inputBar = document.querySelector('.chat-input-bar');
-  if (!inputBar || !inputBar.parentNode) return null;
-  if (_steerBar && _steerBar.isConnected) return _steerBar;
-  _injectSteerStyle();
-  const bar = _steerEl('div', 'steer-bar');
-  bar.setAttribute('role', 'status');
-
-  const title = _steerEl('span', 'steer-bar-title');
-  title.appendChild(_steerEl('span', 'steer-bar-dot'));
-  title.appendChild(_steerEl('span', null, 'Working…'));
-  bar.appendChild(title);
-
-  // Both verbs, both keys, in the one place a person is already looking while
-  // the agent works. This sentence IS the Law 15 answer for this feature —
-  // `P23-04` (§ 5): in a few words, not thirty, and still the honest promise
-  // (a steer lands at the agent's next step, not "now").
-  const hint = _steerEl('span', 'steer-bar-hint');
-  hint.appendChild(_steerEl('kbd', null, STEER_KEY_LABEL));
-  hint.appendChild(_steerEl('span', null, ' steers at the next step, '));
-  hint.appendChild(_steerEl('kbd', null, '⏎'));
-  hint.appendChild(_steerEl('span', null, ' queues.'));
-  bar.appendChild(hint);
-
-  const btn = _steerEl('button', 'steer-bar-btn', 'Steer now');
-  btn.setAttribute('type', 'button');
-  btn.addEventListener('click', (e) => {
-    if (e && e.preventDefault) e.preventDefault();
-    const input = _steerComposer();
-    const text = ((input && input.value) || '').trim();
-    if (!text) {
-      try { uiModule.showToast && uiModule.showToast('Type the change first, then Steer now'); } catch (_) {}
-      if (input && input.focus) input.focus();
-      return;
-    }
-    submitSteer(text);
-  });
-  bar.appendChild(btn);
-
-  const sent = _steerEl('ul', 'steer-sent');
-  bar.appendChild(sent);
-
-  inputBar.parentNode.insertBefore(bar, inputBar);
-  _steerBar = bar;
-  _steerSentList = sent;
-  _steerBoundSessionId = _steerSessionId();
-  return bar;
-}
-
-/** One accepted steer, echoed where the user can see it. Built from text nodes
- *  rather than an innerHTML string so the user's own words can never be markup. */
-function _noteSteerSent(text) {
-  const bar = _ensureSteerBar();
-  if (!bar || !_steerSentList) return;
-  const li = document.createElement('li');
-  const shown = text.length > 120 ? text.slice(0, 120) + '…' : text;
-  li.appendChild(_steerEl('span', null, '↪ '));
-  li.appendChild(_steerEl('strong', null, shown));
-  li.appendChild(_steerEl('span', 'steer-sent-state', STEER_PENDING_TEXT));
-  _steerSentList.appendChild(li);
+/** Whether a steer is on offer right now. The queue's rows read `canSteerNow`,
+ *  which adds the live-run check; this is the offer itself, for the tests that
+ *  pin WHEN it is made (`B81`: never before the run has answered on a turn the
+ *  composer can see is not steerable). */
+export function isSteerOffered() {
+  return _steerOffered;
 }
 
 /** How many accepted steers are still waiting for a `steer_applied`. */
 function _steerPendingCount() {
-  if (!_steerSentList) return 0;
-  let n = 0;
-  _steerSentList.querySelectorAll('.steer-sent-state').forEach((el) => {
-    if ((el.textContent || '') === STEER_PENDING_TEXT) n++;
-  });
-  return n;
+  return _steerPending;
 }
 
 /** Hand the text to the queue instead, and say so. The queue is `chat.js`'s and
@@ -405,13 +323,22 @@ export function canSteerNow() {
  * and a refusal queues the words themselves (`queueSpokenTurn`). It answers
  * `'steered'`, `'queued'` or `false` rather than a boolean, because the call
  * waits for a steer differently from a queued turn.
+ *
+ * `{ queued: true }` is a message already in the queue (*Steer now* on its
+ * row): the composer is not touched either, and a refusal leaves the message
+ * where it is — it is queued already — and says why. Answers `'steered'` or
+ * `false`.
  */
-export async function submitSteer(text, { spoken = false } = {}) {
+export async function submitSteer(text, { spoken = false, queued = false } = {}) {
   const body = String(text || '').trim();
   if (!body) return false;
   const fallBack = (reason) => {
-    const queued = _queueInsteadOfSteering(reason, spoken ? body : '');
-    return spoken ? (queued ? 'queued' : false) : false;
+    if (queued) {
+      try { uiModule.showToast && uiModule.showToast(reason + ' — it stays in the queue'); } catch (_) {}
+      return false;
+    }
+    const queuedNow = _queueInsteadOfSteering(reason, spoken ? body : '');
+    return spoken ? (queuedNow ? 'queued' : false) : false;
   };
   const sid = _steerSessionId();
   if (!sid) return fallBack('No active chat to steer');
@@ -420,13 +347,11 @@ export async function submitSteer(text, { spoken = false } = {}) {
   // steered the run without it (measured on `0345288` in Chromium: the steer
   // posted `{"text": …}` alone and the thumbnail stayed). The queue carries
   // attachments, so a message with a picture waits for the run instead.
-  if (!spoken && _composerHoldsFiles()) {
+  if (!spoken && !queued && _composerHoldsFiles()) {
     _queueInsteadOfSteering("A picture can't steer a running reply");
     return false;
   }
-  const input = spoken ? null : _steerComposer();
-  const btn = _steerBar && _steerBar.querySelector('.steer-bar-btn');
-  if (btn) btn.disabled = true;
+  const input = (spoken || queued) ? null : _steerComposer();
   try {
     const res = await fetch(`${STEER_API_BASE}/api/chat/steer/${encodeURIComponent(sid)}`, {
       method: 'POST',
@@ -436,7 +361,7 @@ export async function submitSteer(text, { spoken = false } = {}) {
     });
     if (res.status === 404 || res.status === 405 || res.status === 501) {
       _steerSupported = false;
-      _removeSteerBar();
+      _withdrawSteer();
       return fallBack('Steering is not available on this server');
     }
     let data = {};
@@ -455,15 +380,14 @@ export async function submitSteer(text, { spoken = false } = {}) {
       return fallBack(why);
     }
     _clearComposerAfterSteer(input);
-    _noteSteerSent(body);
+    _steerPending++;
+    if (queued) _steerPendingQueued++;
     try {
       uiModule.showToast && uiModule.showToast('Steering — the agent picks this up at its next step');
     } catch (_) {}
-    return spoken ? 'steered' : true;
+    return (spoken || queued) ? 'steered' : true;
   } catch (err) {
     return fallBack('Steering failed: ' + ((err && err.message) || err));
-  } finally {
-    if (btn) btn.disabled = false;
   }
 }
 
@@ -506,7 +430,22 @@ export function initSteerControl() {
       // ended before it reached a round boundary. Say so — but only when the
       // confirmation channel has been seen working at least once, or a build
       // without it would cry wolf on every steer that landed perfectly well.
-      const missed = _steerConfirmSeen ? _steerPendingCount() : 0;
+      // `B1741`. A steer that came off a queued row is not lost with the run:
+      // the row stayed in the queue, marked, until the run picked it up
+      // (`pantheon:steer-applied`), and chat.js un-marks it on this same edge
+      // so the drain sends it next. Say that, rather than "send it again".
+      const fromQueue = _steerPendingQueued;
+      _steerPendingQueued = 0;
+      const missed = _steerConfirmSeen ? Math.max(0, _steerPendingCount() - fromQueue) : 0;
+      if (fromQueue) {
+        try {
+          uiModule.showToast && uiModule.showToast(
+            fromQueue === 1
+              ? 'The response finished before your queued message was picked up — it stays in the queue and goes next'
+              : `${fromQueue} queued messages were not picked up before the response finished — they stay in the queue and go next`,
+            { duration: 7000 });
+        } catch (_) {}
+      }
       if (missed) {
         try {
           uiModule.showToast && uiModule.showToast(
@@ -516,7 +455,7 @@ export function initSteerControl() {
             { duration: 7000 });
         } catch (_) {}
       }
-      _removeSteerBar();
+      _withdrawSteer();
       _steerRunAnswer = null;
       _steerComposerAnswer = null;
       return;
@@ -547,7 +486,7 @@ export function initSteerControl() {
     // `B1253` (fx2-doors). The probe is awaited the first time on a page, and
     // a turn can end inside that wait: a slash command raises the busy edge
     // before it knows it is one (`handleChatSubmit`) and drops it before the
-    // probe answers. This went on to draw the bar over an idle chat, where it
+    // probe answers. This went on to offer a steer over an idle chat, where it
     // stayed until the next turn took it down. The run's own flag, read after
     // the wait — not `_steerChatBusy()`, whose ~1.2 s tail outlives the run
     // (and which typing in the composer held true for 15 s until `B1558`).
@@ -555,7 +494,7 @@ export function initSteerControl() {
     if (_steerSupported !== true) return;
     // The stream can beat the probe on the first run of a page, so its verdict
     // is re-read after the await rather than assumed not to have arrived (`B14`).
-    if (_steerRunAnswer === false) { _removeSteerBar(); return; }
+    if (_steerRunAnswer === false) { _withdrawSteer(); return; }
     // Chat mode has no rounds, so it has no step boundary to deliver a steer
     // at, and the server refuses one — correctly, since accepting it would
     // report words as landing that nothing would ever read. Drawing the bar
@@ -577,13 +516,13 @@ export function initSteerControl() {
     // see: an image-generation session, and a `research_pending` continuation
     // whose toggle is already clear. Both are still corrected by the run's own
     // answer, which is the only thing that knows.
-    if (_steerRunAnswer === null && _steerComposerSaysNo()) { _removeSteerBar(); return; }
+    if (_steerRunAnswer === null && _steerComposerSaysNo()) { _withdrawSteer(); return; }
     // A run that belongs to a different chat than the one on screen gets a
-    // fresh bar rather than another session's accepted-steer list.
-    if (_steerBar && _steerBoundSessionId && _steerBoundSessionId !== _steerSessionId()) {
-      _removeSteerBar();
+    // fresh offer rather than another session's pending count.
+    if (_steerOffered && _steerBoundSessionId && _steerBoundSessionId !== _steerSessionId()) {
+      _withdrawSteer();
     }
-    _ensureSteerBar();
+    _offerSteer();
   });
   return true;
 }
@@ -610,26 +549,37 @@ export function initSteerControl() {
 export function handleStreamSteerable(data) {
   const steerable = !!(data && data.steerable);
   _steerRunAnswer = steerable;
-  if (!steerable) { _removeSteerBar(); return; }
+  if (!steerable) { _withdrawSteer(); return; }
   // Only while a run is actually live: this event is replayed from the run's
   // buffer on `/api/chat/resume`, and a replay that arrives after the run ended
-  // must not resurrect the bar.
-  if (_steerSupported === true && _steerChatBusy()) _ensureSteerBar();
+  // must not resurrect the offer.
+  if (_steerSupported === true && _steerChatBusy()) _offerSteer();
 }
 
 /**
  * `steer_applied` from `src/agent_loop.py`: the steer actually reached the
- * model, at round `round`. Purely a confirmation — the bar already told the
- * user it was pending, and this upgrades that line to "applied".
+ * model, at round `round`. Purely a confirmation — the toast at acceptance
+ * said it was on its way, and this one says it landed.
  */
 export function handleSteerApplied(data) {
   _steerConfirmSeen = true;
-  if (!_steerSentList) return;
+  const landed = _steerPending;
+  const fromQueue = _steerPendingQueued;
+  _steerPending = 0;
+  _steerPendingQueued = 0;
+  if (!landed) return;
   const round = Number((data && data.round) || 0);
-  const states = _steerSentList.querySelectorAll('.steer-sent-state');
-  states.forEach((el) => {
-    el.textContent = ' — applied' + (round ? ' at step ' + round : '');
-  });
+  // `B1741`. The queue's rows that were steered leave the queue now, not at
+  // acceptance: the loop consumes every pending steer at one step, so all of
+  // them landed together. chat.js listens.
+  try {
+    window.dispatchEvent(new CustomEvent('pantheon:steer-applied', { detail: { count: landed, queued: fromQueue, round } }));
+  } catch (_) {}
+  try {
+    uiModule.showToast && uiModule.showToast(
+      (landed === 1 ? 'Your steer was picked up' : `${landed} steers were picked up`)
+      + (round ? ` at step ${round}` : ''));
+  } catch (_) {}
 }
 
 initSteerControl();
@@ -1051,6 +1001,9 @@ const chatStream = {
   initSteerControl,
   probeSteerSupport,
   submitSteer,
+  canSteerNow,
+  isSteerOffered,
+  STEER_KEY_LABEL,
   handleSteerApplied,
   handleStreamSteerable,
 };

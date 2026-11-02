@@ -3091,8 +3091,23 @@ body.bg-pattern-ascii {
     .loading { color:var(--red); font-style:italic; }
     #chat-form { display:none; }
 
-    /* Unified chat input bar */
+    /* The composer: the box (`.chat-input-box` — the message, its attachments,
+       and the four buttons that act on the message itself: attach, dictation,
+       the call, Send) over the deck (`.chat-input-bottom` — every control that
+       decides what the turn does). 2026-11-01, the owner: the box had grown
+       too crowded to read, so the controls left it. The two stay inside one
+       `.chat-input-bar`, which is the container the width queries read and the
+       region the rest of the page measures as "the composer". */
 	    .chat-input-bar {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      max-width: 800px;
+      margin-left: auto;
+	      margin-right: auto;
+	      width: 100%;
+		    }
+	    .chat-input-box {
 	      background: var(--input-bg, var(--panel));
 	      border: 1px solid var(--input-border, var(--border));
 	      border-radius: 16px;
@@ -3100,17 +3115,26 @@ body.bg-pattern-ascii {
       display: flex;
       flex-direction: column;
       gap: 8px;
-      max-width: 800px;
-      margin-left: auto;
-	      margin-right: auto;
-	      width: 100%;
 		      transition: border-color 0.16s ease, background 0.16s ease;
 		    }
-		    body.plan-mode-active .chat-input-bar {
+		    body.plan-mode-active .chat-input-box {
 		      border-style: dashed;
 		      border-color: color-mix(in srgb, var(--accent, var(--red)) 55%, transparent);
 		      background: color-mix(in srgb, var(--accent, var(--red)) 8%, var(--input-bg, var(--panel)));
 		    }
+	    /* The box's own row: + at the left, dictation, the call and Send at the right. */
+	    .chat-input-actions {
+	      display: flex;
+	      align-items: center;
+	      gap: 8px;
+	    }
+	    .chat-input-send-group {
+	      display: flex;
+	      align-items: center;
+	      gap: 8px;
+	      margin-left: auto;
+	      flex-shrink: 0;
+	    }
 	    .chat-input-top {
 	      width: 100%;
 	      position: relative;
@@ -3225,7 +3249,7 @@ body.bg-pattern-ascii {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      margin-top: 4px;
+      padding: 0 4px;
     }
     /* Progressive shrinkage: as the chat input bar gets narrow, sacrifice
        chrome before the typing area. First the Agent/Chat toggle is REPLACED
@@ -3272,7 +3296,7 @@ body.bg-pattern-ascii {
       display: none !important;
     }
     /* Always keep overflow wrapper visible and leftmost */
-    .chat-input-left > .overflow-wrapper {
+    .chat-input-actions > .overflow-wrapper {
       flex-shrink: 0;
       position: relative;
       z-index: 1;
@@ -4494,7 +4518,11 @@ body.bg-pattern-ascii {
        description is the muted ladder (`check-contrast.py`'s
        `LADDER_IDIOM`). */
     .approval-mode-wrap {
-      position: relative;
+      /* Static since `B1740`: the chip sits on the deck under the box, and a
+         menu rising from the chip covered the box's right side (the model
+         picker, the end of the words, Send). Both menus hang from the bar, so
+         they open above the whole composer, as the model picker's does. */
+      position: static;
       display: flex;
       align-items: center;
       flex-shrink: 0;
@@ -4604,7 +4632,10 @@ body.bg-pattern-ascii {
     @media (prefers-reduced-motion: reduce) {
       .reasoning-effort-needle { transition: none; }
     }
-    .chat-input-bar:has(.reasoning-effort-wrap) { position: relative; }
+    /* The menus hang from the bar — the whole composer, box and deck — not
+       from a chip (a wide menu ran off the chat's left edge) and not from the
+       deck (`B1740`: 16px above the deck is across the box's right side). */
+    .chat-input-bar:has(.reasoning-effort-wrap, .approval-mode-wrap) { position: relative; }
     .model-picker-menu.reasoning-effort-menu {
       min-width: 300px;
     }
@@ -6965,7 +6996,7 @@ body.bg-pattern-ascii {
       }
       /* Safe area padding for notched devices */
       .chat-input-bar {
-        padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+        padding-bottom: env(safe-area-inset-bottom, 0px);
       }
       /* Mode toggle — larger touch targets */
       .mode-toggle {
@@ -49251,7 +49282,9 @@ button.task-card-toggle {
   border: 2px dashed var(--warn);
 }
 .agent-thread-node.waiting .agent-thread-header { font-style: italic; }
-body.plan-mode-active .chat-input-bar {
+/* `B1740`: the composer's ground is `.chat-input-box` now; the bar around it
+   is a bare wrapper that plan mode leaves alone. */
+body.plan-mode-active .chat-input-box {
   border-style: solid;
   border-color: var(--input-border, var(--border));
   background: var(--input-bg, var(--panel));

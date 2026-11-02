@@ -13,9 +13,15 @@ What is pinned, and why each one is a defect if it breaks:
     is NOT taken. Shipping a visible control that cannot work is the `Law 13`
     failure this feature is most exposed to, and stealing a key binding to do
     nothing is worse than not having the feature.
-  * With the route present, a live run draws the bar, and the bar names both
-    verbs and both keys — the `Law 15` requirement, checked as rendered text
-    rather than as a promise in a comment.
+  * With the route present, a live run puts a steer ON OFFER — and draws
+    nothing of its own. Until 2026-11-01 it drew a bar ("Working… ⌘⏎ steers,
+    ⏎ queues · Steer now") over the composer for the whole run; the owner:
+    *"we know it's working — not needed until a message pops up in queue"*.
+    The `Law 15` control is now *Steer now* on each queued message
+    (`queuePanel.js`, pinned in `tests/test_a_queued_message_offers_steer_now_js.py`);
+    this module says the offer on `pantheon:steer-offer` and answers
+    `isSteerOffered()` / `canSteerNow()`, which is what the cases below read
+    where they read the node before.
   * A refusal falls back to `chat.js`'s existing queue rather than dropping the
     user's words or growing a second queue (`Law 14`).
   * The steer is addressed to the session that was current when the key was
@@ -251,19 +257,19 @@ def test_without_the_route_no_control_is_drawn_and_no_key_is_taken(sandbox):
     out = _run(sandbox, """
         globalThis.__sid = 'sess-a';
         mockFetch(async () => res(404, {}));
-        await import('./chatStream.js');
+        const mod = await import('./chatStream.js');
         setBusy(true);
         await tick();
         composer.value = 'use the staging db';
         const ev = pressSteerKey();
         console.log(JSON.stringify({
-          bar: !!document.querySelector('.steer-bar'),
+          offered: mod.isSteerOffered(),
           prevented: ev.prevented,
           composerStillHasText: composer.value,
           probes: calls.fetch.length,
         }));
     """)
-    assert out["bar"] is False, "a control that cannot work must not be drawn"
+    assert out["offered"] is False, "a control that cannot work must not be offered"
     assert out["prevented"] is False, "Cmd/Ctrl+Enter must keep its existing behaviour"
     assert out["composerStillHasText"] == "use the staging db"
     assert out["probes"] == 1, "the capability probe should fire once, not per keystroke"
@@ -271,63 +277,65 @@ def test_without_the_route_no_control_is_drawn_and_no_key_is_taken(sandbox):
 
 # ── with the route: the Law 15 surface ──────────────────────────────────────
 
-def test_a_live_run_draws_a_bar_that_names_both_verbs_and_both_keys(sandbox):
+def test_a_live_run_offers_a_steer_and_draws_nothing_of_its_own(sandbox):
+    """The offer is the module's whole output now: said once on
+    `pantheon:steer-offer` when it is made, readable through `isSteerOffered`,
+    and no node of the module's own anywhere on the page (the queue's row is
+    the control, and it is drawn by `queuePanel.js` from this offer)."""
     out = _run(sandbox, """
         globalThis.__sid = 'sess-a';
         mockFetch(async () => res(200, { supported: true }));
-        await import('./chatStream.js');
+        const offers = [];
+        globalThis.addEventListener('pantheon:steer-offer', (e) => offers.push(e.detail.offered));
+        const mod = await import('./chatStream.js');
+        const before = mod.isSteerOffered();
         setBusy(true);
         await tick();
-        const bar = document.querySelector('.steer-bar');
         console.log(JSON.stringify({
-          drawn: !!bar,
-          text: bar ? bar.innerText : '',
-          hasButton: !!(bar && bar.querySelector('.steer-bar-btn')),
-          buttonLabel: bar ? bar.querySelector('.steer-bar-btn').innerText : '',
-          role: bar ? bar.getAttribute('role') : '',
+          before, offered: mod.isSteerOffered(), can: mod.canSteerNow(), offers,
+          nodes: document.body.childNodes.length, bar: !!document.querySelector('.steer-bar'),
+          key: mod.STEER_KEY_LABEL,
         }));
     """)
-    assert out["drawn"] is True
-    assert out["hasButton"] is True, "Law 15: a key binding alone is not discoverable"
-    assert out["buttonLabel"] == "Steer now"
-    assert out["role"] == "status"
-    text = out["text"]
-    assert "Ctrl+⏎" in text, "the steer key is named on screen"
-    # `P23-04` (§ 5): "Ctrl+⏎ steers now, ⏎ queues." — both verbs, both keys.
-    assert "⏎" in text and "queues" in text, "the queue verb is named too"
-    assert "next step" in text, "the honest round-boundary promise"
+    assert out["before"] is False
+    assert out["offered"] is True and out["can"] is True
+    assert out["offers"] == [True], "said once, when it is made"
+    assert out["bar"] is False and out["nodes"] == 1, "nothing is drawn over the composer any more"
+    assert out["key"] == "Ctrl+⏎", "the key the queue's row names in its tooltip"
 
 
-def test_the_bar_never_claims_an_instant_redirect(sandbox):
+def test_the_toasts_never_claim_an_instant_redirect(sandbox):
     out = _run(sandbox, """
         globalThis.__sid = 'sess-a';
-        mockFetch(async () => res(200, {}));
-        await import('./chatStream.js');
+        mockFetch(async () => res(200, { accepted: true }));
+        const mod = await import('./chatStream.js');
         setBusy(true);
         await tick();
         composer.value = 'stop and switch to the other file';
-        document.querySelector('.steer-bar-btn').dispatchEvent({ type: 'click', preventDefault(){} });
+        pressSteerKey();
         await tick();
-        const bar = document.querySelector('.steer-bar');
-        console.log(JSON.stringify({ text: bar.innerText, toasts: calls.toasts }));
+        mod.handleSteerApplied({ round: 2 });
+        console.log(JSON.stringify({ toasts: calls.toasts }));
     """)
-    blob = (out["text"] + " " + " ".join(out["toasts"])).lower()
+    blob = " ".join(out["toasts"]).lower()
     for lie in ("immediately", "instantly", "right now", "interrupt"):
         assert lie not in blob, f"the backend cannot deliver {lie!r} — see agent_loop round structure"
     assert "next step" in blob
 
 
-def test_the_bar_disappears_when_the_run_ends(sandbox):
+def test_the_offer_is_withdrawn_when_the_run_ends(sandbox):
     out = _run(sandbox, """
         globalThis.__sid = 'sess-a';
         mockFetch(async () => res(200, {}));
-        await import('./chatStream.js');
+        const offers = [];
+        globalThis.addEventListener('pantheon:steer-offer', (e) => offers.push(e.detail.offered));
+        const mod = await import('./chatStream.js');
         setBusy(true); await tick();
-        const during = !!document.querySelector('.steer-bar');
+        const during = mod.isSteerOffered();
         setBusy(false); await tick();
-        console.log(JSON.stringify({ during, after: !!document.querySelector('.steer-bar') }));
+        console.log(JSON.stringify({ during, after: mod.isSteerOffered(), offers }));
     """)
-    assert out == {"during": True, "after": False}
+    assert out == {"during": True, "after": False, "offers": [True, False]}
 
 
 # ── sending ─────────────────────────────────────────────────────────────────
@@ -346,14 +354,14 @@ def test_the_key_posts_the_steer_to_the_session_that_was_current(sandbox):
           prevented: ev.prevented, stopped: ev.stopped,
           url: calls.fetch[0].url, body: calls.fetch[0].body,
           composer: composer.value,
-          echo: document.querySelector('.steer-sent').innerText,
+          toasts: calls.toasts,
         }));
     """)
     assert out["prevented"] is True and out["stopped"] is True
     assert out["url"] == "http://test.local/api/chat/steer/sess-a"
     assert out["body"] == {"text": "use the staging db"}, "trimmed, and no probe flag"
     assert out["composer"] == "", "the composer is cleared once the steer is accepted"
-    assert "use the staging db" in out["echo"] and "lands at the next step" in out["echo"]
+    assert any("next step" in t for t in out["toasts"]), "accepted is said, with the honest promise"
 
 
 def test_the_key_is_ignored_when_no_run_is_live(sandbox):
@@ -381,17 +389,14 @@ def test_an_empty_composer_never_posts(sandbox):
         calls.fetch.length = 0;
         composer.value = '   ';
         const ev = pressSteerKey();
-        document.querySelector('.steer-bar-btn').dispatchEvent({ type: 'click', preventDefault(){} });
         await tick();
         console.log(JSON.stringify({
-          prevented: ev.prevented, posts: calls.fetch.length,
-          toasts: calls.toasts, focused: composer.focused,
+          prevented: ev.prevented, posts: calls.fetch.length, toasts: calls.toasts,
         }));
     """)
     assert out["posts"] == 0
-    assert out["prevented"] is False
-    assert any("Type the change first" in t for t in out["toasts"])
-    assert out["focused"] is True, "the button should send you back to the composer"
+    assert out["prevented"] is False, "the key is handed back; Enter on an empty box does what it always did"
+    assert out["toasts"] == []
 
 
 # ── refusals fall back to the ONE queue ─────────────────────────────────────
@@ -421,7 +426,7 @@ def test_a_refused_steer_falls_back_to_the_existing_queue(sandbox):
     assert out["errors"] == []
 
 
-def test_no_steer_bar_is_drawn_for_a_plain_chat_turn(sandbox):
+def test_no_steer_is_offered_for_a_plain_chat_turn(sandbox):
     """A control that can only decline is worse than no control (`Law 15`).
 
     Chat mode has no rounds, so there is no step boundary to deliver a steer at
@@ -435,17 +440,17 @@ def test_no_steer_bar_is_drawn_for_a_plain_chat_turn(sandbox):
         mockFetch(async () => res(200, { supported: true }));
         let mode = 'chat';
         globalThis.window.__pantheonGetChatMode = () => mode;
-        await import('./chatStream.js');
+        const mod = await import('./chatStream.js');
         setBusy(true); await tick();
-        const chatMode = !!document.querySelector('.steer-bar');
+        const chatMode = mod.isSteerOffered();
         setBusy(false); await tick();
         mode = 'agent';
         setBusy(true); await tick();
-        const agentMode = !!document.querySelector('.steer-bar');
+        const agentMode = mod.isSteerOffered();
         console.log(JSON.stringify({ chatMode, agentMode }));
     """)
     assert out["chatMode"] is False, "chat mode must not advertise steering"
-    assert out["agentMode"] is True, "agent mode still gets the bar"
+    assert out["agentMode"] is True, "agent mode still gets the offer"
 
 
 # ── the run's own verdict (B14) ─────────────────────────────────────────────
@@ -459,21 +464,21 @@ def test_no_steer_bar_is_drawn_for_a_plain_chat_turn(sandbox):
 # carries `steer_applied`, and that answer outranks the guess.
 
 
-def test_a_run_that_says_it_cannot_be_steered_takes_the_bar_down(sandbox):
+def test_a_run_that_says_it_cannot_be_steered_withdraws_the_offer(sandbox):
     out = _run(sandbox, """
         globalThis.__sid = 'sess-a';
         mockFetch(async () => res(200, { supported: true }));
         const mod = await import('./chatStream.js');
         setBusy(true); await tick();
-        const beforeAnswer = !!document.querySelector('.steer-bar');
+        const beforeAnswer = mod.isSteerOffered();
         mod.handleStreamSteerable({ type: 'stream_steerable', steerable: false });
-        const afterAnswer = !!document.querySelector('.steer-bar');
-        console.log(JSON.stringify({ beforeAnswer, afterAnswer }));
+        const afterAnswer = mod.isSteerOffered();
+        console.log(JSON.stringify({ beforeAnswer, afterAnswer, can: mod.canSteerNow() }));
     """)
-    assert out["beforeAnswer"] is True, "the bar is drawn on the busy edge, before the POST answers"
-    assert out["afterAnswer"] is False, (
+    assert out["beforeAnswer"] is True, "the offer is made on the busy edge, before the POST answers"
+    assert out["afterAnswer"] is False and out["can"] is False, (
         "a research turn, an image session and a compare pane can only decline; "
-        "leaving the bar up is the Law 15 half of the defect P6-18 fixed elsewhere"
+        "leaving the offer up is the Law 15 half of the defect P6-18 fixed elsewhere"
     )
 
 
@@ -514,9 +519,9 @@ def test_a_run_that_says_it_CAN_be_steered_overrides_the_composers_guess(sandbox
         globalThis.window.__pantheonGetChatMode = () => 'chat';
         const mod = await import('./chatStream.js');
         setBusy(true); await tick();
-        const guessed = !!document.querySelector('.steer-bar');
+        const guessed = mod.isSteerOffered();
         mod.handleStreamSteerable({ steerable: true });
-        const answered = !!document.querySelector('.steer-bar');
+        const answered = mod.isSteerOffered();
         composer.value = 'use the staging db';
         const ev = pressSteerKey();
         await tick();
@@ -545,16 +550,16 @@ def test_a_verdict_that_beats_the_capability_probe_still_wins(sandbox, answer, d
         const mod = await import('./chatStream.js');
         setBusy(true);                                  // listener parks on the probe
         await tick();
-        const beforeProbe = !!document.querySelector('.steer-bar');
+        const beforeProbe = mod.isSteerOffered();
         mod.handleStreamSteerable({ steerable: ANSWER });
         releaseProbe();
         await tick();
         console.log(JSON.stringify({
-          beforeProbe, bar: !!document.querySelector('.steer-bar'),
+          beforeProbe, offered: mod.isSteerOffered(),
         }));
     """.replace("ANSWER", "true" if answer else "false"))
-    assert out["beforeProbe"] is False, "nothing is drawn until the build is known to support it"
-    assert out["bar"] is drawn
+    assert out["beforeProbe"] is False, "nothing is offered until the build is known to support it"
+    assert out["offered"] is drawn
 
 
 def test_the_verdict_does_not_carry_from_one_run_to_the_next(sandbox):
@@ -574,10 +579,10 @@ def test_the_verdict_does_not_carry_from_one_run_to_the_next(sandbox):
         const mod = await import('./chatStream.js');
         setBusy(true); await tick();
         mod.handleStreamSteerable({ steerable: false });
-        const duringResearch = !!document.querySelector('.steer-bar');
+        const duringResearch = mod.isSteerOffered();
         setBusy(false); await tick();
         setBusy(true); await tick();          // an ordinary agent turn follows
-        const nextRun = !!document.querySelector('.steer-bar');
+        const nextRun = mod.isSteerOffered();
         composer.value = 'and now steer';
         const ev = pressSteerKey();
         await tick();
@@ -585,9 +590,9 @@ def test_the_verdict_does_not_carry_from_one_run_to_the_next(sandbox):
         // Now the back-to-back case: refused, then a new run starts with no
         // end edge between them.
         mod.handleStreamSteerable({ steerable: false });
-        const refusedAgain = !!document.querySelector('.steer-bar');
+        const refusedAgain = mod.isSteerOffered();
         setBusy(true); await tick();
-        const backToBack = !!document.querySelector('.steer-bar');
+        const backToBack = mod.isSteerOffered();
         console.log(JSON.stringify({
           duringResearch, nextRun, prevented: ev.prevented, refusedAgain, backToBack,
         }));
@@ -601,7 +606,7 @@ def test_the_verdict_does_not_carry_from_one_run_to_the_next(sandbox):
     )
 
 
-def test_a_replayed_verdict_after_the_run_ended_does_not_resurrect_the_bar(sandbox):
+def test_a_replayed_verdict_after_the_run_ended_does_not_resurrect_the_offer(sandbox):
     """`/api/chat/resume` replays a run's buffer from the start, so this event
     arrives again on every reconnect — including one that lands after the run
     has finished."""
@@ -612,9 +617,9 @@ def test_a_replayed_verdict_after_the_run_ended_does_not_resurrect_the_bar(sandb
         setBusy(true); await tick();
         setBusy(false); await tick();
         mod.handleStreamSteerable({ steerable: true });
-        console.log(JSON.stringify({ bar: !!document.querySelector('.steer-bar') }));
+        console.log(JSON.stringify({ offered: mod.isSteerOffered(), can: mod.canSteerNow() }));
     """)
-    assert out == {"bar": False}
+    assert out == {"offered": False, "can": False}
 
 
 def test_a_server_that_never_announces_behaves_exactly_as_before(sandbox):
@@ -626,16 +631,16 @@ def test_a_server_that_never_announces_behaves_exactly_as_before(sandbox):
         mockFetch(async () => res(200, { supported: true }));
         let mode = 'agent';
         globalThis.window.__pantheonGetChatMode = () => mode;
-        await import('./chatStream.js');
+        const mod = await import('./chatStream.js');
         setBusy(true); await tick();
-        const agentMode = !!document.querySelector('.steer-bar');
+        const agentMode = mod.isSteerOffered();
         composer.value = 'steer it';
         const ev = pressSteerKey();
         await tick();
         setBusy(false); await tick();
         mode = 'chat';
         setBusy(true); await tick();
-        const chatMode = !!document.querySelector('.steer-bar');
+        const chatMode = mod.isSteerOffered();
         console.log(JSON.stringify({ agentMode, chatMode, prevented: ev.prevented }));
     """)
     assert out == {"agentMode": True, "chatMode": False, "prevented": True}
@@ -647,12 +652,12 @@ def test_a_route_that_vanishes_hides_the_control_and_queues_instead(sandbox):
         globalThis.chatModule = { queueStreamingComposerRequest: () => { calls.queued++; return true; } };
         let n = 0;
         mockFetch(async () => (++n === 1 ? res(200, {}) : res(404, {})));
-        await import('./chatStream.js');
+        const mod = await import('./chatStream.js');
         setBusy(true); await tick();
         composer.value = 'change of plan';
         pressSteerKey();
         await tick();
-        const gone = !document.querySelector('.steer-bar');
+        const gone = !mod.isSteerOffered();
         composer.value = 'again';
         const ev = pressSteerKey();
         console.log(JSON.stringify({ queued: calls.queued, gone, secondPrevented: ev.prevented }));
@@ -664,23 +669,31 @@ def test_a_route_that_vanishes_hides_the_control_and_queues_instead(sandbox):
 
 # ── session binding (the P6-01 defect class) ────────────────────────────────
 
-def test_switching_chats_mid_run_does_not_inherit_the_other_chats_steer_list(sandbox):
+def test_switching_chats_mid_run_does_not_inherit_the_other_chats_pending_steers(sandbox):
+    """A steer accepted in chat A is A's. A run that starts in chat B gets a
+    fresh offer and no pending count, so B's `steer_applied` has nothing of
+    A's to report as picked up — and B's end has nothing of A's to report as
+    missed (the echo list that used to show this per chat is gone with the
+    bar; the count is what it carried)."""
     out = _run(sandbox, """
         globalThis.__sid = 'sess-a';
         mockFetch(async () => res(200, { accepted: true }));
-        await import('./chatStream.js');
+        const offers = [];
+        globalThis.addEventListener('pantheon:steer-offer', (e) => offers.push(e.detail.offered));
+        const mod = await import('./chatStream.js');
         setBusy(true); await tick();
         composer.value = 'first chat steer';
         pressSteerKey();
         await tick();
-        const aEcho = document.querySelector('.steer-sent').innerText;
+        const aToasts = calls.toasts.length;
         globalThis.__sid = 'sess-b';
         setBusy(true); await tick();       // a run starts in the other chat
-        const bEcho = document.querySelector('.steer-sent').innerText;
-        console.log(JSON.stringify({ aEcho, bEcho }));
+        mod.handleSteerApplied({ round: 1 });
+        console.log(JSON.stringify({ aToasts, toasts: calls.toasts, offers }));
     """)
-    assert "first chat steer" in out["aEcho"]
-    assert out["bEcho"] == "", "session B must not show session A's accepted steers"
+    assert out["aToasts"] == 1, "A's steer was accepted and said so"
+    assert len(out["toasts"]) == 1, "nothing of A's is reported in B"
+    assert out["offers"] == [True, False, True], "withdrawn for A, offered afresh for B"
 
 
 def test_no_session_means_no_steer_and_no_lost_text(sandbox):
@@ -700,7 +713,7 @@ def test_no_session_means_no_steer_and_no_lost_text(sandbox):
 
 # ── the applied confirmation ────────────────────────────────────────────────
 
-def test_steer_applied_upgrades_pending_to_applied(sandbox):
+def test_steer_applied_says_the_steer_was_picked_up(sandbox):
     out = _run(sandbox, """
         globalThis.__sid = 'sess-a';
         mockFetch(async () => res(200, { accepted: true }));
@@ -709,13 +722,44 @@ def test_steer_applied_upgrades_pending_to_applied(sandbox):
         composer.value = 'switch approach';
         pressSteerKey();
         await tick();
-        const before = document.querySelector('.steer-sent').innerText;
+        const before = calls.toasts.slice();
         mod.handleSteerApplied({ type: 'steer_applied', round: 3, steers: ['switch approach'] });
-        console.log(JSON.stringify({ before, after: document.querySelector('.steer-sent').innerText }));
+        const after = calls.toasts.slice();
+        mod.handleSteerApplied({ type: 'steer_applied', round: 4 });
+        console.log(JSON.stringify({ before, after, again: calls.toasts.length }));
     """)
-    assert "lands at the next step" in out["before"]
-    assert "applied at step 3" in out["after"]
-    assert "switch approach" in out["after"], "the user's own words survive the upgrade"
+    assert any("next step" in t for t in out["before"]), "accepted: on its way"
+    assert len(out["after"]) == 2 and "picked up at step 3" in out["after"][-1]
+    assert out["again"] == 2, "a confirmation with nothing pending says nothing"
+
+
+def test_a_queued_message_steers_without_touching_the_composer(sandbox):
+    """*Steer now* on a queued row (`queuePanel.js` → `chat.js` driver →
+    `submitSteer(text, { queued: true })`). The words are the row's, not the
+    box's: the composer is neither read for pictures nor cleared; a refusal
+    leaves the message where it is — it is queued already — and says why."""
+    out = _run(sandbox, """
+        globalThis.__sid = 'sess-a';
+        globalThis.chatModule = { queueStreamingComposerRequest: () => { calls.queued++; return true; } };
+        let n = 0;
+        mockFetch(async () => (++n <= 2 ? res(200, { accepted: true })
+                                        : res(409, { accepted: false, reason: 'too_many' })));
+        const mod = await import('./chatStream.js');
+        setBusy(true); await tick();
+        composer.value = 'what I am typing now';
+        const ok = await mod.submitSteer('the queued words', { queued: true });
+        const refused = await mod.submitSteer('another queued one', { queued: true });
+        console.log(JSON.stringify({
+          ok, refused, composer: composer.value, queued: calls.queued,
+          bodies: calls.fetch.slice(1).map(f => f.body), toasts: calls.toasts,
+        }));
+    """)
+    assert out["ok"] == "steered"
+    assert out["bodies"][0] == {"text": "the queued words"}
+    assert out["composer"] == "what I am typing now", "the box is not the source and is not cleared"
+    assert out["refused"] is False
+    assert out["queued"] == 0, "a refusal does not queue the message a second time"
+    assert any("stays in the queue" in t for t in out["toasts"]), out["toasts"]
 
 
 def test_a_steer_that_missed_the_run_is_reported_once_the_channel_is_known_live(sandbox):
@@ -778,3 +822,44 @@ def test_steer_applied_is_safe_before_anything_was_steered(sandbox):
         console.log(JSON.stringify({ ok: true }));
     """)
     assert out == {"ok": True}
+
+
+# ── `B1741`: what a steer that came off the queue's row is owed ─────────────
+
+def test_steer_applied_announces_how_many_came_off_the_queue(sandbox):
+    """The queue's rows leave the queue when the run HAS the words, not when
+    the server accepted them, so `steer_applied` is said on `window` with how
+    many landed and how many of those were queued rows (chat.js listens and
+    takes exactly its marked rows off)."""
+    out = _run(sandbox, """
+        globalThis.__sid = 'sess-a';
+        mockFetch(async () => res(200, { accepted: true }));
+        const mod = await import('./chatStream.js');
+        const applied = [];
+        globalThis.addEventListener('pantheon:steer-applied', (e) => applied.push(e.detail));
+        setBusy(true); await tick();
+        composer.value = 'typed one'; pressSteerKey(); await tick();
+        await mod.submitSteer('off the row', { queued: true });
+        mod.handleSteerApplied({ round: 2 });
+        mod.handleSteerApplied({ round: 3 });   // nothing pending now: said once, not twice
+        console.log(JSON.stringify({ applied }));
+    """)
+    assert out["applied"] == [{"count": 2, "queued": 1, "round": 2}], out
+
+
+def test_a_queued_steer_that_missed_the_run_says_it_stays_in_the_queue(sandbox):
+    """The row was kept, marked, and chat.js un-marks it on this same edge so
+    the drain sends it next — so the toast says that, and says it even before
+    the confirmation channel has been seen (the message is not lost either
+    way, unlike a typed steer, whose words are gone from the box)."""
+    out = _run(sandbox, """
+        globalThis.__sid = 'sess-a';
+        mockFetch(async () => res(200, { accepted: true }));
+        const mod = await import('./chatStream.js');
+        setBusy(true); await tick();
+        await mod.submitSteer('off the row', { queued: true });
+        setBusy(false); await tick();
+        console.log(JSON.stringify({ toasts: calls.toasts }));
+    """)
+    assert any("stays in the queue and goes next" in t for t in out["toasts"]), out["toasts"]
+    assert not any("send it again" in t for t in out["toasts"]), out["toasts"]

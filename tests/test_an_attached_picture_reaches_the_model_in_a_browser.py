@@ -128,6 +128,8 @@ async function open(browser, mode, size, theme) {
       localStorage.setItem('pantheon-ui-visibility', JSON.stringify({ 'first-run-tours': false }));
       localStorage.setItem('pantheon-toggles', JSON.stringify({ mode: a.mode }));
     } catch (_) {}
+    // `B1741`: whether a steer is on offer, as `chatStream.js` says it.
+    window.addEventListener('pantheon:steer-offer', (e) => { window.__steerOffered = !!(e.detail && e.detail.offered); });
   }, { theme: JSON.stringify({ name: theme, colors: COLOURS[theme] }), mode });
   try {
     const r = await ctx.request.post(C.base + '/api/auth/login',
@@ -238,9 +240,9 @@ async function send(page, text, done = /Sent (no|\d+) picture|^ERROR /, ms = 900
     const n = await page.evaluate(() => document.querySelectorAll('.msg-ai').length);
     if (n > before && done.test(await lastReply(page))) break;
   }
-  // The turn is over when the composer is idle again (`B1638`).
-  await until(page, 'the composer idle after the reply', () => !document.querySelector('.steer-bar-btn')
-    && !window.__pantheonChatBusy);
+  // The turn is over when the composer is idle again (`B1638`). `B1741`: the
+  // steer strip is gone, so the busy flag alone says so.
+  await until(page, 'the composer idle after the reply', () => !window.__pantheonChatBusy);
 }
 
 const state = (page) => page.evaluate(() => {
@@ -327,10 +329,14 @@ async function scenario(browser, name, { mode = 'chat', size = [1440, 900], them
     await pick(page, C.vision);
     await page.fill('#message', C.words.l);
     await page.press('#message', 'Enter');
-    await page.waitForSelector('.steer-bar-btn', { timeout: 20000 });
+    // `B1741`: no strip is drawn for a run any more. The steer is ON OFFER
+    // once the run has answered (a busy edge alone is not that: the probe
+    // runs after the chat is materialised), and the composer takes it on
+    // Ctrl/Cmd+Enter.
+    await until(page, 'a steer on offer', () => window.__steerOffered === true, 30000);
     await attach(page, C.cat);
     await page.fill('#message', C.words.l2);
-    await page.locator('.steer-bar-btn').first().click();
+    await page.press('#message', process.platform === 'darwin' ? 'Meta+Enter' : 'Control+Enter');
     await until(page, "the steer's toast", () => [...document.querySelectorAll('.toast, .error-toast, .ui-toast')]
       .some((t) => t.textContent.includes("A picture can't steer")), 30000).catch(() => {});
     const steered = await state(page);
@@ -338,8 +344,7 @@ async function scenario(browser, name, { mode = 'chat', size = [1440, 900], them
       const body = [...document.querySelectorAll('.msg-ai .body')].pop();
       return !!body && /Sent (no|\d+) picture/.test(body.textContent);
     }, 120000);
-    await until(page, 'the composer idle after the queued reply', () => !document.querySelector('.steer-bar-btn')
-      && !window.__pantheonChatBusy);
+    await until(page, 'the composer idle after the queued reply', () => !window.__pantheonChatBusy);
     return { toastsAtSteer: steered.toasts };
   });
 

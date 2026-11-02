@@ -557,14 +557,8 @@ function buildLoadout() {
 /* ───────────────────────── composer details ───────────────────────── */
 
 function buildComposer() {
-  const left = $('.chat-input-left');
-  const wrap = $('.overflow-wrapper', left || document);
-  if (left && wrap && !$('.ck-vsep', left)) {
-    const sep = document.createElement('span');
-    sep.className = 'ck-vsep';
-    sep.setAttribute('aria-hidden', 'true');
-    wrap.insertAdjacentElement('afterend', sep);
-  }
+  // `B1740`: the + button lives in the box's action row now and the switches
+  // on the deck under it, so there is no separator to draw between them.
   [['plan-toggle-btn', 'plan'], ['web-toggle-btn', 'globe'], ['bash-toggle-btn', 'term']].forEach(([id, ic]) => {
     const b = byId(id);
     if (!b || b.dataset.ckIcon) return;
