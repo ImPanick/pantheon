@@ -1075,7 +1075,7 @@ def _kill(proc: subprocess.Popen) -> None:
         try:
             os.killpg(proc.pid, 9)
         except OSError:
-            pass
+            pass  # already gone between the wait and the kill
 
 
 # ── everyone's phones ────────────────────────────────────────────────────────
