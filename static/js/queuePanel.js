@@ -90,6 +90,7 @@ let _wired = false;
 let _timer = null;
 let _editingId = null;      // the row whose textarea is open — never re-render under it
 let _modelChoices = null;   // memoised; the model list is fetched by models.js, not here
+let _renderAfterDrag = null; // a render asked for mid-drag, run once the drop has landed
 
 /**
  * Launched-but-not-finished parallel runs. A queued item leaves chat.js's array
@@ -242,10 +243,19 @@ function buildRow(entry) {
     head.appendChild(grip);
   }
 
-  const dot = document.createElement('span');
-  dot.className = `task-log-status task-log-status-${cls}`;
-  dot.title = entry.status || '';
-  head.appendChild(dot);
+  // 2026-11-01 (the owner): a queued message is "unaccompanied — aside from
+  // an Edit and a Steer now button, and a number for its place in the queue".
+  // So a row the person can still change carries no status lamp, no word for
+  // its state and no clock: its number says it is waiting, and the two
+  // buttons say what can be done with it. A launched run (not editable) keeps
+  // the activity view's lamp, word and elapsed time, which are about a job in
+  // flight rather than a message waiting.
+  if (!entry.editable) {
+    const dot = document.createElement('span');
+    dot.className = `task-log-status task-log-status-${cls}`;
+    dot.title = entry.status || '';
+    head.appendChild(dot);
+  }
 
   const pos = document.createElement('span');
   pos.className = 'queue-row-pos';
@@ -269,30 +279,65 @@ function buildRow(entry) {
   spacer.style.flex = '1';
   head.appendChild(spacer);
 
-  // Right side: the activity view's own "Running <elapsed> [start now] [stop]"
-  // cluster. `.task-log-running-elapsed[data-since]` is the shared timer
-  // contract — `tick()` below drives it exactly as `_tickActivityTimers` does.
+  // Right side. A launched run: the activity view's own "Running <elapsed>
+  // [stop]" cluster — `.task-log-running-elapsed[data-since]` is the shared
+  // timer contract, `tick()` below drives it exactly as `_tickActivityTimers`
+  // does. A queued message: Edit, then Steer now while the run in flight can
+  // take a steer (`chatStream.js canSteerNow`, asked through the driver) or
+  // Send now when it cannot, then ×.
   const right = document.createElement('span');
   right.className = 'task-log-running-inline';
-  const label = document.createElement('span');
-  label.className = 'task-log-running-label';
-  label.textContent = statusLabel(entry.status);
-  right.appendChild(label);
+  if (entry.steering) {
+    // `B1741`. Steer now was pressed: the words are on their way to the run.
+    // Nothing is offered until the run picks them up (the row leaves) or
+    // ends first (the row is plain-queued again and goes next).
+    row.dataset.steering = '1';
+    const note = document.createElement('span');
+    note.className = 'queue-row-steering';
+    note.textContent = 'Steering…';
+    note.title = 'The run picks these words up at its next step';
+    right.appendChild(note);
+    head.appendChild(right);
+    row.appendChild(head);
+    return row;
+  }
+  if (!entry.editable) {
+    const label = document.createElement('span');
+    label.className = 'task-log-running-label';
+    label.textContent = statusLabel(entry.status);
+    right.appendChild(label);
 
-  if (entry.ts) {
-    const el = document.createElement('span');
-    el.className = 'task-log-running-elapsed';
-    el.dataset.since = String(new Date(entry.ts).getTime());
-    el.textContent = formatElapsed(Date.now() - new Date(entry.ts).getTime());
-    right.appendChild(el);
+    if (entry.ts) {
+      const el = document.createElement('span');
+      el.className = 'task-log-running-elapsed';
+      el.dataset.since = String(new Date(entry.ts).getTime());
+      el.textContent = formatElapsed(Date.now() - new Date(entry.ts).getTime());
+      right.appendChild(el);
+    }
   }
 
+  if (entry.editable) {
+    const edit = document.createElement('button');
+    edit.type = 'button';
+    edit.className = 'task-log-force-run queue-row-edit';
+    edit.title = 'Change the words, or the mode and model it sends with';
+    edit.textContent = 'Edit';
+    right.appendChild(edit);
+  }
   if (entry.status === 'queued') {
+    // `entry.steerable` is decided in `entries()`, where the driver is asked;
+    // a row is built from its entry alone.
     const force = document.createElement('button');
     force.type = 'button';
-    force.className = 'task-log-force-run queue-force-run';
-    force.title = 'Send this one now, ahead of the rest';
-    force.innerHTML = `${ICON_PLAY}<span>Start now</span>`;
+    if (entry.steerable) {
+      force.className = 'task-log-force-run queue-steer-now';
+      force.title = `Hand this to the run now — it picks it up at its next step (${entry.steerKey || 'Ctrl+⏎'} in the box does the same)`;
+      force.innerHTML = `${ICON_PLAY}<span>Steer now</span>`;
+    } else {
+      force.className = 'task-log-force-run queue-force-run';
+      force.title = 'Send this one now, ahead of the rest';
+      force.innerHTML = `${ICON_PLAY}<span>Send now</span>`;
+    }
     right.appendChild(force);
   }
   if (entry.status === 'running') {
@@ -393,6 +438,17 @@ function entries() {
   if (!_driver) return [];
   let live = [];
   try { live = _driver.getEntries() || []; } catch (_) { live = []; }
+  // Steer now, or Send now: whether the run in flight can take a steer is
+  // `chatStream.js`'s answer (through the driver), and a picture cannot steer
+  // (`B1280`: a steer is words only; the queue is what carries the files).
+  let canSteer = false;
+  try { canSteer = !!(_driver.canSteer && _driver.canSteer()); } catch (_) { canSteer = false; }
+  const steerKey = _steerKeyLabel();
+  for (const r of live) {
+    if (!r || typeof r !== 'object') continue;
+    r.steerable = canSteer && !!r.editable && r.sendable !== false && !r.attachmentCount && !r.steering;
+    r.steerKey = steerKey;
+  }
   const sid = safeSessionId();
   const launched = _launched
     .filter(l => !sid || l.homeSessionId === sid)
@@ -420,18 +476,37 @@ function safeSessionId() {
   catch (_) { return ''; }
 }
 
+/** The steer key, as the composer names it (`chatStream.js`), for the tooltip. */
+function _steerKeyLabel() {
+  try { return (_driver && _driver.steerKeyLabel && _driver.steerKeyLabel()) || 'Ctrl+⏎'; }
+  catch (_) { return 'Ctrl+⏎'; }
+}
+
 // ── Render ──────────────────────────────────────────────────────────────────
 
 export function render() {
   if (!_els || !_els.root) return;
+  // A rebuild under a drag detaches the row in hand: dragSort's document-level
+  // mouseup then lands on a placeholder with no parent and the drop is lost.
+  // A run starting or ending (`pantheon:chat-busy-change`) can ask for one
+  // mid-drag, so the render waits for the drop.
+  if (_els.list && _els.list.querySelector('.queue-row.dragging, .queue-row.touch-dragging')) {
+    if (!_renderAfterDrag) {
+      _renderAfterDrag = setTimeout(() => { _renderAfterDrag = null; render(); }, 200);
+    }
+    return;
+  }
   const rows = entries();
   // `waiting` drives the Send button, so it must count only rows the drain
   // would actually take. A row whose attachment is still uploading is queued
   // and not sendable; counting it here put a "Send now" button on screen that
   // the drain's own `!it.pendingUpload` filter guaranteed would do nothing.
   const queued = rows.filter(r => r.status === 'queued');
-  const waiting = queued.filter(r => r.sendable !== false).length;
-  const preparing = queued.length - waiting;
+  // A row on its way to the run (`B1741`, *Steering…*) is not waiting to be
+  // sent: the count, the state line and "Send all N now" leave it out.
+  const steering = queued.filter(r => r.steering).length;
+  const waiting = queued.filter(r => r.sendable !== false && !r.steering).length;
+  const preparing = queued.length - waiting - steering;
   const running = rows.filter(r => r.status === 'running').length;
 
   if (!rows.length) {
@@ -463,6 +538,10 @@ export function render() {
     : 'Hold the queue — queued messages stay put until you press Resume';
 
   _els.run.hidden = waiting === 0;
+  // The cockpit strip shows the foot only with two or more waiting: "Send all
+  // N now" (one after another, or all at once — `P6-06`) has no row of its
+  // own, while a single message's buttons are on its row.
+  _els.root.classList.toggle('queue-panel-many', waiting > 1);
   _els.run.textContent = waiting > 1 ? `Send all ${waiting} now` : 'Send now';
   _els.run.title = waiting > 1
     ? 'Choose one after another in this chat, or all at once in new chats'
@@ -625,6 +704,26 @@ function wire() {
       if (_driver && _driver.startNow) _driver.startNow(id);
       return;
     }
+    if (t.closest('.queue-steer-now')) {
+      ev.stopPropagation();
+      if (_driver && _driver.steerNow) _driver.steerNow(id);
+      return;
+    }
+    if (t.closest('.queue-row-edit')) {
+      ev.stopPropagation();
+      // The same door the row itself is: open to edit, press again to keep.
+      const open = row.classList.toggle('expanded');
+      if (open) {
+        _editingId = id;
+        const ta = row.querySelector('.queue-row-input');
+        if (ta) { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
+      } else {
+        commitRow(row);
+        if (_editingId === id) _editingId = null;
+        render();
+      }
+      return;
+    }
     if (t.closest('.queue-stop')) {
       ev.stopPropagation();
       if (_driver && _driver.stopRun) _driver.stopRun(id);
@@ -646,6 +745,7 @@ function wire() {
     }
     // Clicks inside the editor must not toggle the row shut under the caret.
     if (t.closest('.queue-row-editor') || t.closest('.queue-row-field') || t.closest('.queue-row-grip')) return;
+    if (row.dataset.steering === '1') return;   // `B1741`: on its way; nothing to change
     const open = row.classList.toggle('expanded');
     if (open) {
       _editingId = id;
@@ -829,6 +929,9 @@ export function refresh() { render(); }
  *   runSequential()       -> drain into this chat, one at a time
  *   runParallel()         -> a session per item, all at once
  *   isStreamLive(sid)     -> is a stream still attached to that session
+ *   canSteer()            -> the run in flight can take a steer right now
+ *   steerNow(id)          -> hand this queued message to the run in flight
+ *   steerKeyLabel()       -> the steer key as the composer names it
  */
 export function init(driver) {
   _driver = driver || null;
@@ -837,6 +940,12 @@ export function init(driver) {
   _els.chevron.innerHTML = ICON_CHEVRON;
   _els.icon.innerHTML = ICON_QUEUE;
   wire();
+  // A row's button reads Steer now or Send now by whether the run in flight
+  // can take a steer, which the stream answers after the row is drawn.
+  try {
+    window.addEventListener('pantheon:steer-offer', () => render());
+    window.addEventListener('pantheon:chat-busy-change', () => render());
+  } catch (_) {}
   render();
   return true;
 }

@@ -205,5 +205,7 @@ def test_the_composer_capsule_carries_the_ring_for_its_textarea():
     capsule's own ring."""
     css = (ROOT / "static" / "cockpit.css").read_text(encoding="utf-8")
     assert "html.cockpit #message { --focus-ring-width: 0px; }" in css
-    assert "html.cockpit .chat-input-bar:focus-within::before { opacity: 1; }" in css
-    assert re.search(r"html\.cockpit \.chat-input-bar:focus-within \{ box-shadow:[^}]*var\(--ck-accent-wash\)", css)
+    # 2026-11-01: the capsule is `.chat-input-box` (the message and its own
+    # four buttons); the deck of controls under it is outside the ring.
+    assert "html.cockpit .chat-input-box:focus-within::before { opacity: 1; }" in css
+    assert re.search(r"html\.cockpit \.chat-input-box:focus-within \{ box-shadow:[^}]*var\(--ck-accent-wash\)", css)

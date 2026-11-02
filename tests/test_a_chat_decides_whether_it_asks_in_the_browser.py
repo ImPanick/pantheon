@@ -633,12 +633,18 @@ def test_the_shipped_markup_holds_both_surfaces():
     assert 'style="display:none;"' in chip.group(0), (
         "hidden until the server says this person may set it"
     )
+    # 2026-11-01: the deck. Send moved into the box's own row above the deck
+    # (`.chat-input-actions`), so the deck's right-hand group is the slice from
+    # `.chat-input-right` to the deck's end, not "up to the send button".
+    box = html[html.index('<div class="chat-input-box">'):html.index('<div class="chat-input-bottom"')]
+    assert 'class="send-btn' in box, "Send is in the box, with +, dictation and the call"
+    assert 'id="approval-mode-btn"' not in box, "the selector is on the deck, not in the box"
     bottom = html[html.index('<div class="chat-input-bottom"'):]
     left = bottom[: bottom.index('<div class="chat-input-right">')]
     right = bottom[bottom.index('<div class="chat-input-right">'):]
     assert 'id="approval-mode-btn"' not in left, "the old chip is still in the strip"
-    assert 'id="approval-mode-btn"' in right[: right.index('class="send-btn')], (
-        "the selector is at the bottom right of the composer")
+    assert 'id="approval-mode-btn"' in right[: right.index('<form id="chat-form"')], (
+        "the selector is at the bottom right of the composer, on the deck")
     items = re.findall(r'<div[^>]*role="menuitemradio"[^>]*data-approval-choice="([a-z]+)"[^>]*>', html)
     assert items == ["manual", "auto"], items
     for name in ("approval-mode-item-name", "approval-mode-item-desc"):

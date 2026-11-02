@@ -3,13 +3,16 @@
 // `B81`. Runs the REAL steering block out of `static/js/chatStream.js` together
 // with the REAL busy-edge functions out of `static/js/chat.js`, because the
 // property the row is about lives between them: `chat.js` raises the busy edge
-// at send-path entry and `chatStream.js` decides, on that edge, whether to
-// paint the bar. Testing either half alone cannot see it.
+// at send-path entry and `chatStream.js` decides, on that edge, whether a
+// steer is on offer. Testing either half alone cannot see it.
 //
-// Nothing here greps (`Law 20`). "Painted" means a `.steer-bar` node was
-// actually inserted before `.chat-input-bar` by the real `_ensureSteerBar`, and
-// the timeline below is the order those insertions and removals really
-// happened.
+// Nothing here greps (`Law 20`). Until 2026-11-01 "painted" meant a
+// `.steer-bar` node really inserted before `.chat-input-bar`; the bar is gone
+// (the queue's row offers *Steer now* instead — the owner: "we know it's
+// working"), and what the module keeps is the OFFER, said on
+// `pantheon:steer-offer` by the real `_offerSteer` / `_withdrawSteer`. The
+// timeline below is the order those announcements really happened, which is
+// the same property measured at the same edge.
 //
 // One mechanical transform: `export ` is stripped from the sliced declarations,
 // because `new Function` is not a module. Nothing else is rewritten.
@@ -102,14 +105,12 @@ function makeNode(tag, id) {
       n.parentNode = this; n.isConnected = true;
       const i = this.children.indexOf(ref);
       this.children.splice(i < 0 ? this.children.length : i, 0, n);
-      if (n.className === 'steer-bar') timeline.push('paint');
       return n;
     },
     removeChild(n) {
       const i = this.children.indexOf(n);
       if (i >= 0) this.children.splice(i, 1);
       n.parentNode = null; n.isConnected = false;
-      if (n.className === 'steer-bar') timeline.push('remove');
       return n;
     },
     setAttribute(k, v) { this.attrs[k] = v; },
@@ -159,6 +160,10 @@ const window = {
 class CustomEvent {
   constructor(type, init) { this.type = type; this.detail = (init && init.detail) || null; }
 }
+// Every offer and withdrawal that really happened, in order.
+window.addEventListener('pantheon:steer-offer', (ev) => {
+  timeline.push(ev && ev.detail && ev.detail.offered ? 'offer' : 'withdraw');
+});
 const navigator = { platform: 'Linux x86_64' };
 const uiModule = {
   el: (id) => byId[id] || null,
@@ -178,12 +183,12 @@ const make = new Function(
   'document', 'window', 'navigator', 'uiModule', 'sessionModule', 'fetch', 'CustomEvent',
   busyBlock + '\n\n' + sendEntryBlock + '\n\n' + steerBlock +
   '\n return { _setForegroundChatBusy, handleStreamSteerable, probeSteerSupport, submitSteer,' +
-  ' __sendPathEntry,' +
+  ' __sendPathEntry, isSteerOffered,' +
   " _composerTurnSteerable: typeof _composerTurnSteerable === 'function' ? _composerTurnSteerable : null };",
 );
 const api = make(document, window, navigator, uiModule, sessionModule, fetchStub, CustomEvent);
 
-const barPainted = () => root.children.some(c => c.className === 'steer-bar');
+const offered = () => api.isSteerOffered();
 
 const settle = () => new Promise(r => setTimeout(r, 10));
 
@@ -208,7 +213,7 @@ const settle = () => new Promise(r => setTimeout(r, 10));
   const verdict = api._composerTurnSteerable ? api._composerTurnSteerable() : null;
   api.__sendPathEntry();
   await settle();
-  const afterEdge = barPainted();
+  const afterEdge = offered();
 
   if (turn === 'research-then-agent') {
     // Run one ends, run two starts in agent mode on a busy edge that carries no
@@ -233,7 +238,7 @@ const settle = () => new Promise(r => setTimeout(r, 10));
     api._setForegroundChatBusy(true);
     await settle();
   }
-  const afterResync = barPainted();
+  const afterResync = offered();
 
   if (server === 'steerable') api.handleStreamSteerable({ steerable: true });
   if (server === 'unsteerable') api.handleStreamSteerable({ steerable: false });
@@ -248,12 +253,12 @@ const settle = () => new Promise(r => setTimeout(r, 10));
 
   console.log(JSON.stringify({
     verdict,
-    // Painted between the send-path entry and the first byte of the response —
+    // Offered between the send-path entry and the first byte of the response —
     // the window the row measures.
-    paintedBeforeTheRunAnswered: afterEdge,
-    paintedAfterResync: afterResync,
-    paintedNow: barPainted(),
-    // Every paint/remove that really happened, in order.
+    offeredBeforeTheRunAnswered: afterEdge,
+    offeredAfterResync: afterResync,
+    offeredNow: offered(),
+    // Every offer/withdraw that really happened, in order.
     timeline,
     steerSent,
     requests,

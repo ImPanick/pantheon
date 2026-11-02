@@ -1717,6 +1717,9 @@
 
     <!-- Unified chat input bar -->
     <div class="chat-input-bar">
+      <!-- The box: the message, its attachments, and the four buttons that
+           act on the message itself. -->
+      <div class="chat-input-box">
       <div class="chat-input-top">
         <div id="message-ghost" class="ghost-text-overlay" aria-hidden="true"></div>
         <textarea id="message" placeholder="Message Pantheon..." required autocomplete="off" aria-label="Message input" rows="1" autofocus></textarea>
@@ -1778,106 +1781,132 @@
         })();
         </script>
       </div>
-      <div class="chat-input-bottom" style="visibility:hidden">
-        <div class="chat-input-left">
-          <!-- Overflow menu (+) — always first/left -->
-          <div class="overflow-wrapper">
-            <button type="button" class="input-icon-btn overflow-plus-btn" id="overflow-plus-btn" title="More tools" aria-label="More tools" aria-haspopup="true">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
-              </svg>
-              <span class="plus-active-dot"></span>
+      <!-- The box's own row (2026-11-01, Panick: "move the controls out of the
+           chatbox except the voice, dictation, stop and the attach button"):
+           what belongs to the message itself — attach (+), dictation, the
+           call, Send — and nothing else. Every control that sets up the turn
+           sits on the deck under the box (`.chat-input-bottom`). -->
+      <div class="chat-input-actions">
+        <!-- Overflow menu (+) — always first/left -->
+        <div class="overflow-wrapper">
+          <button type="button" class="input-icon-btn overflow-plus-btn" id="overflow-plus-btn" title="More tools" aria-label="More tools" aria-haspopup="true">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+            </svg>
+            <span class="plus-active-dot"></span>
+          </button>
+          <div id="overflow-menu" class="overflow-menu hidden">
+            <button type="button" class="overflow-menu-item" id="overflow-attach-btn">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+              <span>Add files</span>
+              <span class="overflow-hint">From this device</span>
             </button>
-            <div id="overflow-menu" class="overflow-menu hidden">
-              <button type="button" class="overflow-menu-item" id="overflow-attach-btn">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
-                <span>Add files</span>
-                <span class="overflow-hint">From this device</span>
-              </button>
-              <button type="button" class="overflow-menu-item" id="overflow-doc-btn">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/>
-                </svg>
-                <span>Documents</span>
-                <span class="overflow-hint">Write beside the chat</span>
-              </button>
-              <button type="button" class="overflow-menu-item composer-menu-folded" id="overflow-rag-btn" tabindex="-1">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>
-                </svg>
-                <span>RAG</span>
-                <span class="overflow-active-dot"></span>
-              </button>
-              <button type="button" class="overflow-menu-item" id="overflow-workspace-btn">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
-                </svg>
-                <span>Workspace</span>
-                <span class="overflow-hint">A folder the agent works in</span>
-                <span class="overflow-active-dot"></span>
-              </button>
-              <div class="overflow-menu-sep" role="separator"></div>
-              <!-- `P24-26`. Summon an agent into this chat (Agent mode only):
-                   its runbook, its tools and its effects table for the turns
-                   that follow, until the chip is cleared. static/js/summon.js -->
-              <button type="button" class="overflow-menu-item" id="overflow-agents-btn" data-submenu="agents" aria-haspopup="menu" aria-expanded="false">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="8" width="16" height="12" rx="3"/><path d="M12 4v4"/><circle cx="12" cy="3" r="1"/><path d="M9 13h.01M15 13h.01M9.5 16.5h5"/></svg>
-                <span>Agents</span>
-                <span class="overflow-active-dot"></span>
-                <span class="overflow-chevron" aria-hidden="true">›</span>
-              </button>
-              <!-- `P25-01`. The + menu's submenus: a row that opens a menu beside
-                   it (a page with a back row on a phone). static/js/composerMenu.js
-                   builds each from its one list; RAG lives under Modes. -->
-              <button type="button" class="overflow-menu-item" data-submenu="skills" aria-haspopup="menu" aria-expanded="false">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 19.5V5a2 2 0 0 1 2-2h12v16H6.5A2.5 2.5 0 0 0 4 21.5"/><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H18"/><path d="M9 7h6M9 11h4"/></svg>
-                <span>Skills</span>
-                <span class="overflow-chevron" aria-hidden="true">›</span>
-              </button>
-              <button type="button" class="overflow-menu-item" id="overflow-git-btn" data-submenu="git" aria-haspopup="menu" aria-expanded="false">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="5" r="2"/><circle cx="6" cy="19" r="2"/><circle cx="18" cy="9" r="2"/><path d="M6 7v10"/><path d="M18 11c0 4-6 3-11.4 6.4"/></svg>
-                <span>Git</span>
-                <span class="overflow-chevron" aria-hidden="true">›</span>
-              </button>
-              <!-- `P26-04`. The Design window: its starting points as a submenu. -->
-              <button type="button" class="overflow-menu-item" data-submenu="design" aria-haspopup="menu" aria-expanded="false">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="13.5" cy="6.5" r="1"/><circle cx="17.5" cy="10.5" r="1"/><circle cx="8.5" cy="7.5" r="1"/><circle cx="6.5" cy="12.5" r="1"/><path d="M12 2a10 10 0 0 0 0 20c.9 0 1.6-.7 1.6-1.6 0-.4-.2-.8-.4-1.1-.3-.3-.4-.7-.4-1.1 0-.9.7-1.6 1.6-1.6H16a6 6 0 0 0 6-6c0-5-4.5-8.6-10-8.6z"/></svg>
-                <span>Design</span>
-                <span class="overflow-chevron" aria-hidden="true">›</span>
-              </button>
-              <!-- `P25-06`. The agent browser's window (`browserWindow.js`'s door). -->
-              <button type="button" class="overflow-menu-item" data-open-agent-browser>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
-                <span>Browser</span>
-                <span class="overflow-hint">Watch the agent browse, or browse with it</span>
-              </button>
-              <button type="button" class="overflow-menu-item" id="overflow-modes-btn" data-submenu="modes" aria-haspopup="menu" aria-expanded="false">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="17" x2="20" y2="17"/><circle cx="9" cy="7" r="2.5"/><circle cx="15" cy="17" r="2.5"/></svg>
-                <span>Modes</span>
-                <span class="overflow-active-dot"></span>
-                <span class="overflow-chevron" aria-hidden="true">›</span>
-              </button>
-              <div class="overflow-menu-sep" role="separator"></div>
-              <!-- Inline "deep research mode" toggle removed (superseded by the
-                   Deep Research sidebar / trigger_research). The hidden
-                   #research-toggle checkbox is kept inert so existing JS refs
-                   don't break; without this entry point it can't be enabled. -->
-              <!-- Group Chat moved to Characters modal Group tab -->
-              <!-- TTS Mode hidden — read-aloud feature is off in this build. -->
-              <button type="button" class="overflow-menu-item" id="overflow-tts-btn" hidden style="display:none">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
-                <span>TTS Mode</span>
-                <span class="overflow-active-dot"></span>
-              </button>
-              <button type="button" class="overflow-menu-item" id="overflow-preset-btn">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="m18 2 4 4"/><path d="m17 7 3-3"/><path d="M19 9 8.7 19.3c-1 1-2.5 1-3.4 0l-.6-.6c-1-1-1-2.5 0-3.4L15 5"/><path d="m9 11 4 4"/><path d="m5 19-3 3"/><path d="m14 4 6 6"/>
-                </svg>
-                <span>Prompt</span>
-                <span class="overflow-hint">Persona and system prompt</span>
-              </button>
-            </div>
+            <button type="button" class="overflow-menu-item" id="overflow-doc-btn">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/>
+              </svg>
+              <span>Documents</span>
+              <span class="overflow-hint">Write beside the chat</span>
+            </button>
+            <button type="button" class="overflow-menu-item composer-menu-folded" id="overflow-rag-btn" tabindex="-1">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>
+              </svg>
+              <span>RAG</span>
+              <span class="overflow-active-dot"></span>
+            </button>
+            <button type="button" class="overflow-menu-item" id="overflow-workspace-btn">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+              </svg>
+              <span>Workspace</span>
+              <span class="overflow-hint">A folder the agent works in</span>
+              <span class="overflow-active-dot"></span>
+            </button>
+            <div class="overflow-menu-sep" role="separator"></div>
+            <!-- `P24-26`. Summon an agent into this chat (Agent mode only):
+                 its runbook, its tools and its effects table for the turns
+                 that follow, until the chip is cleared. static/js/summon.js -->
+            <button type="button" class="overflow-menu-item" id="overflow-agents-btn" data-submenu="agents" aria-haspopup="menu" aria-expanded="false">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="8" width="16" height="12" rx="3"/><path d="M12 4v4"/><circle cx="12" cy="3" r="1"/><path d="M9 13h.01M15 13h.01M9.5 16.5h5"/></svg>
+              <span>Agents</span>
+              <span class="overflow-active-dot"></span>
+              <span class="overflow-chevron" aria-hidden="true">›</span>
+            </button>
+            <!-- `P25-01`. The + menu's submenus: a row that opens a menu beside
+                 it (a page with a back row on a phone). static/js/composerMenu.js
+                 builds each from its one list; RAG lives under Modes. -->
+            <button type="button" class="overflow-menu-item" data-submenu="skills" aria-haspopup="menu" aria-expanded="false">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 19.5V5a2 2 0 0 1 2-2h12v16H6.5A2.5 2.5 0 0 0 4 21.5"/><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H18"/><path d="M9 7h6M9 11h4"/></svg>
+              <span>Skills</span>
+              <span class="overflow-chevron" aria-hidden="true">›</span>
+            </button>
+            <button type="button" class="overflow-menu-item" id="overflow-git-btn" data-submenu="git" aria-haspopup="menu" aria-expanded="false">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="5" r="2"/><circle cx="6" cy="19" r="2"/><circle cx="18" cy="9" r="2"/><path d="M6 7v10"/><path d="M18 11c0 4-6 3-11.4 6.4"/></svg>
+              <span>Git</span>
+              <span class="overflow-chevron" aria-hidden="true">›</span>
+            </button>
+            <!-- `P26-04`. The Design window: its starting points as a submenu. -->
+            <button type="button" class="overflow-menu-item" data-submenu="design" aria-haspopup="menu" aria-expanded="false">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="13.5" cy="6.5" r="1"/><circle cx="17.5" cy="10.5" r="1"/><circle cx="8.5" cy="7.5" r="1"/><circle cx="6.5" cy="12.5" r="1"/><path d="M12 2a10 10 0 0 0 0 20c.9 0 1.6-.7 1.6-1.6 0-.4-.2-.8-.4-1.1-.3-.3-.4-.7-.4-1.1 0-.9.7-1.6 1.6-1.6H16a6 6 0 0 0 6-6c0-5-4.5-8.6-10-8.6z"/></svg>
+              <span>Design</span>
+              <span class="overflow-chevron" aria-hidden="true">›</span>
+            </button>
+            <!-- `P25-06`. The agent browser's window (`browserWindow.js`'s door). -->
+            <button type="button" class="overflow-menu-item" data-open-agent-browser>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+              <span>Browser</span>
+              <span class="overflow-hint">Watch the agent browse, or browse with it</span>
+            </button>
+            <button type="button" class="overflow-menu-item" id="overflow-modes-btn" data-submenu="modes" aria-haspopup="menu" aria-expanded="false">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="17" x2="20" y2="17"/><circle cx="9" cy="7" r="2.5"/><circle cx="15" cy="17" r="2.5"/></svg>
+              <span>Modes</span>
+              <span class="overflow-active-dot"></span>
+              <span class="overflow-chevron" aria-hidden="true">›</span>
+            </button>
+            <div class="overflow-menu-sep" role="separator"></div>
+            <!-- Inline "deep research mode" toggle removed (superseded by the
+                 Deep Research sidebar / trigger_research). The hidden
+                 #research-toggle checkbox is kept inert so existing JS refs
+                 don't break; without this entry point it can't be enabled. -->
+            <!-- Group Chat moved to Characters modal Group tab -->
+            <!-- TTS Mode hidden — read-aloud feature is off in this build. -->
+            <button type="button" class="overflow-menu-item" id="overflow-tts-btn" hidden style="display:none">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
+              <span>TTS Mode</span>
+              <span class="overflow-active-dot"></span>
+            </button>
+            <button type="button" class="overflow-menu-item" id="overflow-preset-btn">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="m18 2 4 4"/><path d="m17 7 3-3"/><path d="M19 9 8.7 19.3c-1 1-2.5 1-3.4 0l-.6-.6c-1-1-1-2.5 0-3.4L15 5"/><path d="m9 11 4 4"/><path d="m5 19-3 3"/><path d="m14 4 6 6"/>
+              </svg>
+              <span>Prompt</span>
+              <span class="overflow-hint">Persona and system prompt</span>
+            </button>
           </div>
+        </div>
+        <div class="chat-input-send-group">
+          <!-- `B1718`. Speech to text and voice chat, beside Send, each shown
+               when its setting is on (Settings → Voice): the microphone types
+               what is said into the box (`voiceRecorder.js`), and the call
+               button talks with the agent (`voiceCall.js`). -->
+          <button type="button" class="composer-voice-btn" id="composer-mic-btn" title="Dictate" aria-label="Dictate" aria-pressed="false" hidden>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="2.5" width="6" height="12" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0"/><path d="M12 17.5V21"/></svg>
+          </button>
+          <button type="button" class="composer-voice-btn composer-call-btn" id="composer-call-btn" title="Voice chat" aria-label="Voice chat" aria-pressed="false" hidden>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 10v4"/><path d="M8 6.5v11"/><path d="M12 3.5v17"/><path d="M16 7.5v9"/><path d="M20 10.5v3"/></svg>
+          </button>
+          <button type="submit" form="chat-form" class="send-btn newchat-mode" data-mode="idle" title="Send message">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+          </button>
+        </div>
+      </div>
+      </div>
+      <!-- The deck: the controls that decide what the turn does, under the
+           box rather than in it. Left, the switches; right, the mode, the
+           effort, the approval mode and the context ring. -->
+      <div class="chat-input-bottom" role="group" aria-label="This turn" style="visibility:hidden">
+        <div class="chat-input-left">
           <!-- Plan mode (P6-12). The only visible way in: entry used to be a Tab
                press in the composer or a mobile swipe, and the status pill could
                only turn it OFF. `.plan-mode-btn` styling and app.js's
@@ -1969,11 +1998,6 @@
           </button>
         </div>
         <div class="chat-input-right">
-          <!-- `B892`. The context wheel, at the bottom where the message is
-               written. It opens the breakdown of what the window is spent on
-               (`static/js/contextUsage.js`); it moved here from the chat
-               header, same id. -->
-          <button type="button" class="chat-context-pill" id="chat-context-pill" title="Context window" aria-haspopup="dialog" aria-expanded="false" hidden><span class="chat-context-dot"></span><span id="chat-context-pill-label">0%</span></button>
           <!-- `P7-10`. How far one message in Agent mode may go on its own —
                the step limit the loop will actually enforce (lifted on a local
                model) and the tool-call limit — said where Agent mode is chosen
@@ -1983,6 +2007,25 @@
                active mode (`style.css`), and it is the Agent button's
                description for a screen reader. -->
           <span class="agent-limits-hint" id="agent-limits-hint" hidden></span>
+          <!-- Agent / Chat mode toggle -->
+          <div class="mode-toggle">
+            <button type="button" class="mode-toggle-btn active" id="mode-agent-btn" aria-pressed="true" aria-describedby="agent-limits-hint">Agent</button>
+            <button type="button" class="mode-toggle-btn" id="mode-chat-btn" aria-pressed="false">Chat</button>
+          </div>
+          <!-- `D-2026-10-09-01` §4. On a phone the segmented toggle above is
+               dropped by the chat bar's container query and NOTHING replaced
+               it, so the mode could not be reached at all (measured 2026-10-09:
+               at a 360 px viewport the bar is 340 px and `.mode-toggle` is
+               `display: none`; there is no slash command and no palette row for
+               it either). This chip takes its place on a narrow bar: it SAYS
+               the mode without anything being opened, and it is the door to
+               every other control that decides what a turn does
+               (`#turn-sheet`). Filled by `static/js/turnSheet.js`. -->
+          <button type="button" class="turn-chip" id="turn-chip" aria-haspopup="dialog" aria-expanded="false" aria-controls="turn-sheet" title="This turn">
+            <span class="turn-chip-mode" id="turn-chip-mode">Agent</span>
+            <span class="turn-chip-flag" id="turn-chip-approval" hidden>Auto</span>
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="{{chevron:up}}"/></svg>
+          </button>
           <!-- Reasoning effort: how hard a thinking model is asked to think
                (Auto, Low … Max). Shown only while the selected model takes a
                level (`GET /api/chat/reasoning-effort`); the menu is the model
@@ -2026,11 +2069,6 @@
               </div>
             </div>
           </div>
-          <!-- Agent / Chat mode toggle -->
-          <div class="mode-toggle">
-            <button type="button" class="mode-toggle-btn active" id="mode-agent-btn" aria-pressed="true" aria-describedby="agent-limits-hint">Agent</button>
-            <button type="button" class="mode-toggle-btn" id="mode-chat-btn" aria-pressed="false">Chat</button>
-          </div>
           <!-- `B1706`. This chat's approval mode (`D-2026-10-09-01` §2), at the
                bottom of the composer with the rest of what decides a turn: a
                chip naming the mode in one word that opens a menu headed with
@@ -2067,33 +2105,11 @@
               </div>
             </div>
           </div>
-          <!-- `D-2026-10-09-01` §4. On a phone the segmented toggle above is
-               dropped by the chat bar's container query and NOTHING replaced
-               it, so the mode could not be reached at all (measured 2026-10-09:
-               at a 360 px viewport the bar is 340 px and `.mode-toggle` is
-               `display: none`; there is no slash command and no palette row for
-               it either). This chip takes its place on a narrow bar: it SAYS
-               the mode without anything being opened, and it is the door to
-               every other control that decides what a turn does
-               (`#turn-sheet`). Filled by `static/js/turnSheet.js`. -->
-          <button type="button" class="turn-chip" id="turn-chip" aria-haspopup="dialog" aria-expanded="false" aria-controls="turn-sheet" title="This turn">
-            <span class="turn-chip-mode" id="turn-chip-mode">Agent</span>
-            <span class="turn-chip-flag" id="turn-chip-approval" hidden>Auto</span>
-            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="{{chevron:up}}"/></svg>
-          </button>
-          <!-- `B1718`. Speech to text and voice chat, beside Send, each shown
-               when its setting is on (Settings → Voice): the microphone types
-               what is said into the box (`voiceRecorder.js`), and the call
-               button talks with the agent (`voiceCall.js`). -->
-          <button type="button" class="composer-voice-btn" id="composer-mic-btn" title="Dictate" aria-label="Dictate" aria-pressed="false" hidden>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="2.5" width="6" height="12" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0"/><path d="M12 17.5V21"/></svg>
-          </button>
-          <button type="button" class="composer-voice-btn composer-call-btn" id="composer-call-btn" title="Voice chat" aria-label="Voice chat" aria-pressed="false" hidden>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 10v4"/><path d="M8 6.5v11"/><path d="M12 3.5v17"/><path d="M16 7.5v9"/><path d="M20 10.5v3"/></svg>
-          </button>
-          <button type="submit" form="chat-form" class="send-btn newchat-mode" data-mode="idle" title="Send message">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
-          </button>
+          <!-- `B892`. The context wheel, at the bottom where the message is
+               written. It opens the breakdown of what the window is spent on
+               (`static/js/contextUsage.js`); it moved here from the chat
+               header, same id. -->
+          <button type="button" class="chat-context-pill" id="chat-context-pill" title="Context window" aria-haspopup="dialog" aria-expanded="false" hidden><span class="chat-context-dot"></span><span id="chat-context-pill-label">0%</span></button>
         </div>
       </div>
       <!-- Hidden checkboxes for state -->

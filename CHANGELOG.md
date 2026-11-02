@@ -402,6 +402,18 @@ the next one is cut.
 
 ### Changed — read this before upgrading
 
+- **The controls sit under the message box, and a queued message carries *Steer now*** (2026-11-01,
+  `B1740`, `B1741`). The box holds your words, the model picker and four buttons: +, dictation, voice
+  and send. Plan, Web, Shell, Conversation, Agent/Chat, the effort dial, the permissions chip and the
+  context ring sit on a row under it, and wrap when the window is narrow. The *Working… Steer now*
+  strip that covered the box during a run is gone: Ctrl/Cmd+Enter still steers from the box, and each
+  message waiting in the queue shows its place (*1.*, *2.*), its words, *Edit* and *Steer now* — press
+  it and the row reads *Steering…* until the run picks those words up at its next step; if the reply
+  finishes first the message stays in the queue and goes next, never lost (*Send now* instead when the
+  run cannot take a steer, or the message carries a picture). With two or more waiting, *Send all N
+  now* sits under the rows as before. The effort and permissions menus open above the whole composer.
+  Hard-refresh once after updating: the page's cache name changed.
+
 - **The server speaks with *Automatic* unless you chose otherwise** (2026-11-01, `B1728`). The
   voice in **Settings → Voice** was *None* until an admin chose one, so voice chat answered in
   silence on a fresh install. It is *Automatic* now (Chatterbox on a GPU, else Kokoro, else Piper).

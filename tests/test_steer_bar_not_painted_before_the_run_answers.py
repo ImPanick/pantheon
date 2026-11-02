@@ -39,11 +39,19 @@ own answer, which is the only thing that knows.
 
 These run the real code from BOTH files together through
 `tests/harness/steer_bar_first_paint.js` (`Law 20`), because the property lives
-between them. "Painted" means a `.steer-bar` node was really inserted by the
-real `_ensureSteerBar`; the timeline is the order the insertions and removals
+between them. "Painted" meant a `.steer-bar` node really inserted by the real
+`_ensureSteerBar`; the timeline was the order the insertions and removals
 really happened. Measured before the fix: a research turn's timeline was
 `["paint"]` with nothing to remove it on a server with no event, and
 `["paint", "remove"]` on one with it.
+
+**2026-11-01.** The bar itself is gone — the owner: *"we know it's working"*;
+the queue's row offers *Steer now* on a queued message instead
+(`queuePanel.js`). What `chatStream.js` keeps is the OFFER, decided at the same
+edge by the same rules and said on `pantheon:steer-offer`. So "offered" stands
+where "painted" stood, and the timeline is the real `_offerSteer` /
+`_withdrawSteer` announcements: `["offer"]`, `["offer", "withdraw"]`, `[]`.
+The file keeps its name, which the tracker's `B81` row cites.
 """
 
 import json
@@ -70,38 +78,38 @@ def _run(turn, server="none", *extra) -> dict:
     return json.loads(lines[-1])
 
 
-# ── Verify, first half: a research turn paints nothing, ever ────────────────
+# ── Verify, first half: a research turn offers nothing, ever ────────────────
 
 @pytest.mark.parametrize("server", ["none", "unsteerable"])
-def test_a_research_turn_paints_no_steer_bar_at_any_point(server):
+def test_a_research_turn_offers_no_steer_at_any_point(server):
     """The row's `Verify`, on both servers — including the one that never
     corrects, where the old code left the bar up for the whole run."""
     got = _run("research", server)
-    assert got["paintedBeforeTheRunAnswered"] is False
+    assert got["offeredBeforeTheRunAnswered"] is False
     assert got["timeline"] == [], (
         "before B81 the busy edge painted the bar for a research turn and only "
         "`stream_steerable` took it down, one round trip later"
     )
-    assert got["paintedNow"] is False
+    assert got["offeredNow"] is False
 
 
-def test_a_research_turn_that_the_run_says_is_steerable_gets_its_bar():
+def test_a_research_turn_that_the_run_says_is_steerable_gets_its_offer():
     """`B14` runs in both directions and still does: a `research_pending`
     continuation, or an auto-escalated turn, is corrected UPWARD — and the paint
     happens only once the run has said so, never before."""
     got = _run("research", "steerable")
-    assert got["paintedBeforeTheRunAnswered"] is False
-    assert got["timeline"] == ["paint"]
-    assert got["paintedNow"] is True
+    assert got["offeredBeforeTheRunAnswered"] is False
+    assert got["timeline"] == ["offer"]
+    assert got["offeredNow"] is True
 
 
 # ── Verify, second half: a server with no event must keep steering ─────────
 
-def test_an_agent_turn_still_gets_its_bar_with_no_event_from_the_server():
+def test_an_agent_turn_still_gets_its_offer_with_no_event_from_the_server():
     """The reason "draw nothing until the run answers" was declined."""
     got = _run("agent", "none")
-    assert got["paintedBeforeTheRunAnswered"] is True
-    assert got["timeline"] == ["paint"]
+    assert got["offeredBeforeTheRunAnswered"] is True
+    assert got["timeline"] == ["offer"]
 
 
 def test_steering_still_sends_on_a_server_that_never_answers():
@@ -112,18 +120,18 @@ def test_steering_still_sends_on_a_server_that_never_answers():
 
 # ── the parts that must not have changed ───────────────────────────────────
 
-def test_a_chat_turn_still_paints_nothing():
+def test_a_chat_turn_still_offers_nothing():
     """`P6-18`'s own case. Chat mode has no rounds, so no step to deliver at."""
     got = _run("chat", "none")
     assert got["timeline"] == []
 
 
-def test_the_run_still_takes_the_bar_down_when_it_says_no():
+def test_the_run_still_withdraws_the_offer_when_it_says_no():
     """An image-generation session is the case the client cannot see: the bar
     goes up on the composer's guess and the run takes it down. `B14` intact."""
     got = _run("agent", "unsteerable")
-    assert got["timeline"] == ["paint", "remove"]
-    assert got["paintedNow"] is False
+    assert got["timeline"] == ["offer", "withdraw"]
+    assert got["offeredNow"] is False
 
 
 @pytest.mark.parametrize("turn,expected", [("agent", True), ("research", False), ("chat", False)])
@@ -148,14 +156,14 @@ def test_a_verdictless_busy_edge_does_not_erase_the_verdict_in_hand():
     verdict to unknown and fell back to the mode alone — the bar would appear
     mid-research, which is the defect with a delay on it."""
     got = _run("research-resync", "none")
-    assert got["paintedAfterResync"] is False
+    assert got["offeredAfterResync"] is False
     assert got["timeline"] == []
 
 
 def test_a_verdictless_busy_edge_leaves_a_steerable_turn_alone():
     got = _run("agent-resync", "none")
-    assert got["paintedAfterResync"] is True
-    assert got["timeline"] == ["paint"]
+    assert got["offeredAfterResync"] is True
+    assert got["timeline"] == ["offer"]
 
 
 def test_a_verdict_does_not_outlive_its_run():
@@ -163,9 +171,9 @@ def test_a_verdict_does_not_outlive_its_run():
     (an older `chat.js`, or the re-announcement path). The first run's `false`
     must be gone by then, or steering is retired for the rest of the page."""
     got = _run("research-then-agent", "none")
-    assert got["paintedBeforeTheRunAnswered"] is False
-    assert got["paintedAfterResync"] is True
-    assert got["timeline"] == ["paint"]
+    assert got["offeredBeforeTheRunAnswered"] is False
+    assert got["offeredAfterResync"] is True
+    assert got["timeline"] == ["offer"]
 
 
 def test_a_verdictless_edge_does_not_throw_away_the_run_s_own_answer():
@@ -173,9 +181,9 @@ def test_a_verdictless_edge_does_not_throw_away_the_run_s_own_answer():
     answer is the authoritative one and outranks a guess that has since gone
     stale — before this, every busy edge reset it to unknown."""
     got = _run("research-answered-resync", "none")
-    assert got["paintedBeforeTheRunAnswered"] is False
-    assert got["paintedAfterResync"] is True
-    assert got["timeline"] == ["paint"]
+    assert got["offeredBeforeTheRunAnswered"] is False
+    assert got["offeredAfterResync"] is True
+    assert got["timeline"] == ["offer"]
 
 
 def test_a_composer_it_cannot_read_fails_open():
@@ -184,4 +192,4 @@ def test_a_composer_it_cannot_read_fails_open():
     client-side exception would hide a control that works."""
     got = _run("broken-composer", "none")
     assert got["verdict"] is True
-    assert got["timeline"] == ["paint"]
+    assert got["timeline"] == ["offer"]

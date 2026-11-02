@@ -8,6 +8,12 @@ busy edge inside that wait, and the listener then drew *Working… Steer now*
 over an idle Agent chat — still there 14 s later, until the next command took
 it down. Now the listener asks the run's own flag again after the wait.
 
+2026-11-01: the bar is gone (the queue's row offers *Steer now* instead), and
+the same listener now decides whether a steer is OFFERED (`isSteerOffered`).
+The defect would read the same — an offer standing over an idle chat — so the
+cases pin the offer where they pinned the node. The file keeps its name, which
+the tracker's `B1253` row cites.
+
 Driven under node: the REAL `chatStream.js`, in `test_chat_steer_js.py`'s
 sandbox, with the probe held open while the busy edge rises and falls.
 """
@@ -36,34 +42,34 @@ _HELD_PROBE = """
     let answer;
     const held = new Promise((r) => { answer = r; });
     mockFetch(async () => { await held; return res(409, { reason: 'no_active_run' }); });
-    await import('./chatStream.js');
+    const mod = await import('./chatStream.js');
 """
 
 
-def test_a_turn_that_ends_inside_the_first_probe_draws_no_bar(sandbox):
+def test_a_turn_that_ends_inside_the_first_probe_offers_no_steer(sandbox):
     out = _run(sandbox, _HELD_PROBE + """
         setBusy(true);          // `/help` + Enter: the busy edge, before it is known to be a command
         await tick();
         setBusy(false);         // the command answered; the probe has not
         answer();
         await tick(8);
-        const idle = !!document.querySelector('.steer-bar');
+        const idle = mod.isSteerOffered();
         setBusy(true);          // a real agent turn, the probe answered now
         await tick();
-        console.log(JSON.stringify({ idle, during: !!document.querySelector('.steer-bar'),
+        console.log(JSON.stringify({ idle, during: mod.isSteerOffered(),
                                      probes: calls.fetch.length }));
     """)
-    assert out["idle"] is False, "the bar was drawn over an idle chat"
-    assert out["during"] is True, "a real turn must still draw the bar"
+    assert out["idle"] is False, "a steer was offered over an idle chat"
+    assert out["during"] is True, "a real turn must still offer one"
     assert out["probes"] == 1
 
 
-def test_a_turn_still_going_when_the_first_probe_answers_draws_the_bar(sandbox):
+def test_a_turn_still_going_when_the_first_probe_answers_offers_the_steer(sandbox):
     out = _run(sandbox, _HELD_PROBE + """
         setBusy(true);
         await tick();
         answer();
         await tick(8);
-        console.log(JSON.stringify({ bar: !!document.querySelector('.steer-bar') }));
+        console.log(JSON.stringify({ offered: mod.isSteerOffered() }));
     """)
-    assert out["bar"] is True
+    assert out["offered"] is True

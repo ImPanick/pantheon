@@ -420,7 +420,9 @@ def test_the_wheel_is_in_the_composer_and_not_the_header():
     right = html.index('<div class="chat-input-right">')
     pill = html.index('id="chat-context-pill"')
     assert html.count('id="chat-context-pill"') == 1
-    assert right < pill < html.index('class="mode-toggle"', right)
+    # 2026-11-01: the ring is the last reading on the deck's right, after the
+    # mode toggle, the effort dial and the approval chip.
+    assert right < html.index('class="mode-toggle"', right) < pill < html.index('<form id="chat-form"', right)
     assert 'id="chat-context-pill"' not in html[html.index('class="chat-meta-overlay"'):right][:4000]
 
 

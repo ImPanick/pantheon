@@ -536,9 +536,12 @@ def test_the_javascript_uses_are_recorded_but_not_this_rows_work():
     # sign-in page, the *optional* tag on a label (bare) and the sign-up line
     # (a rung); voice chat (`B1716`, 44235702) removed one rung with the old
     # Settings speech message line.
-    assert len(found) == 62, f"expected 62 --fg-muted uses outside the sheet, found {len(found)}"
+    # 62 -> 60, 60 -> 58 bare: 2026-11-01, the Working… steer bar and its
+    # injected style left `chatStream.js` (the queue's row offers Steer now);
+    # its hint and its sent list were two of `B391`'s six.
+    assert len(found) == 60, f"expected 60 --fg-muted uses outside the sheet, found {len(found)}"
     bare = [e for e in found if e == "var(--fg-muted)"]
-    assert len(bare) == 60, f"expected 60 of them bare, found {len(bare)}"
+    assert len(bare) == 58, f"expected 58 of them bare, found {len(bare)}"
     # Nothing under `static/js/theme.js` may declare it — that is the mirror
     # `B21` is about, and the reason this row put the token in `:root`.
     assert "--fg-muted" not in THEME_JS.read_text(encoding="utf-8"), (
