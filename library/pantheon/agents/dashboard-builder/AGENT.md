@@ -4,7 +4,7 @@ name: Dashboard Builder
 tagline: A dashboard page in your projects folder from a data file.
 section: data-analytics
 icon: layout-dashboard
-version: 1.5.0
+version: 1.5.1
 wave: 2
 inputs:
   - {key: file, kind: text, label: "The data file, inside your projects folder"}
@@ -12,6 +12,7 @@ inputs:
 triggers:
   - {on: hand}
 tools: [python, read_file, write_file]
+skills: [analyze-data]
 needs: {connectors: [], min_context: 32000, native_tools: preferred}
 delivers:
   - {kind: file, title: "dashboard/index.html"}

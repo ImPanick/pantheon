@@ -4,13 +4,13 @@ name: FAQ Builder
 tagline: "Anything asked more than twice becomes a FAQ entry, with the best answer found."
 section: knowledge
 icon: message-circle-question
-version: 1.2.0
+version: 1.2.1
 wave: 2
 inputs: []
 triggers:
   - {on: weekly, day: wed, at: "07:00"}
 tools: [search_chats, read_chat, search_emails, read_email, manage_documents, create_document]
-needs: {connectors: [], min_context: 16000, native_tools: preferred}
+needs: {connectors: [mail], min_context: 16000, native_tools: preferred}
 delivers:
   - {kind: document, title: "FAQ", must_contain: [Answered, Not answered yet, Checked]}
 effects: {read_private: allow, write_private: allow, destructive: never}

@@ -4,13 +4,14 @@ name: Survey Analyst
 tagline: "Themes, counts and quotes from survey answers."
 section: data-analytics
 icon: clipboard-check
-version: 1.4.0
+version: 1.4.1
 wave: 2
 inputs:
   - {key: file, kind: text, label: "The answers (CSV), inside your projects folder"}
 triggers:
   - {on: hand}
 tools: [python, create_document]
+skills: [analyze-data]
 needs: {connectors: [], min_context: 32000, native_tools: preferred}
 delivers:
   - {kind: document, title: "Survey findings", must_contain: [Counts, Themes, What stood out]}

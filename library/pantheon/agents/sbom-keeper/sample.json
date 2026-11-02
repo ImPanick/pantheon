@@ -1,0 +1,27 @@
+{
+ "case": "two-bumps-and-a-new-package",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read 2 requirement files and the environment's list; wrote \"Bill of materials — shop — 2026-11-10\"",
+ "read": [
+  "read_file"
+ ],
+ "wrote": [
+  "bash",
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Bill of materials”",
+   "ok": true,
+   "detail": "“Bill of materials — shop — 2026-11-10” is there."
+  }
+ ],
+ "answer": "5 components, 3 changed, 1 flag.\n\n## Report\n- read 2 requirement files and the environment's list; wrote \"Bill of materials — shop — 2026-11-10\"\n\n## Carry forward\n- run: 2026-11-10\n- fastapi 0.115.0; pydantic 2.9.2; requests 2.32.3; ssh-audit 3.2.0; pytest 8.3.3 (dev)",
+ "documents": [
+  {
+   "title": "Bill of materials — shop — 2026-11-10",
+   "content": "Bill of materials — shop — 2026-11-10\n5 components (1 dev), 3 changed, 1 flag\n\n## Components\n- fastapi — 0.115.0 — MIT — requirements.txt\n- pydantic — 2.9.2 — MIT — requirements.txt\n- requests — 2.32.3 — Apache-2.0 — requirements.txt\n- ssh-audit — 3.2.0 — not recorded — requirements.txt\n- pytest — 8.3.3 — MIT — dev — requirements-dev.txt\n\n## Licences\n- MIT — 3; Apache-2.0 — 1; not recorded — 1 (ssh-audit)\n\n## Changed\n- new: ssh-audit 3.2.0 (requirements.txt)\n- version: requests 2.31.0 → 2.32.3\n- version: pydantic 2.9.1 → 2.9.2\n- since 2026-11-03\n\n## Flags\n- ssh-audit — new, licence not recorded in the tree: find and record it before the next release."
+  }
+ ]
+}

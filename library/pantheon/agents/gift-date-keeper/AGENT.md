@@ -4,12 +4,13 @@ name: Gift & Date Keeper
 tagline: "Two weeks before a birthday or anniversary, reminds you and suggests gifts from your notes."
 section: personal-home
 icon: gift
-version: 1.1.0
+version: 1.1.1
 wave: 2
 inputs: []
 triggers:
   - {on: weekly, day: mon, at: "09:00"}
 tools: [manage_notes, manage_memory, resolve_contact]
+skills: [remember-what-matters]
 needs: {connectors: [], min_context: 16000, native_tools: preferred}
 delivers:
   - {kind: answer, must_contain: [Coming up, Reminders set]}

@@ -4,7 +4,7 @@ name: Proposal Writer
 tagline: "A proposal from the brief, your past proposals and pricing. It sends nothing."
 section: sales
 icon: file-signature
-version: 1.1.0
+version: 1.1.1
 wave: 2
 inputs:
   - {key: brief, kind: long_text, label: The client and what they asked for}
@@ -12,6 +12,7 @@ inputs:
 triggers:
   - {on: hand}
 tools: [manage_documents, manage_memory, create_document]
+skills: [remember-what-matters]
 needs: {connectors: [], min_context: 32000, native_tools: preferred}
 delivers:
   - {kind: document, title: "Proposal", must_contain: [Your situation, Approach, Timeline, Price, Terms, Next step]}

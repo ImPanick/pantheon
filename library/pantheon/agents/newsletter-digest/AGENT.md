@@ -4,7 +4,7 @@ name: Newsletter Digest
 tagline: "Folds the week's newsletters into one digest with the links worth opening."
 section: email
 icon: newspaper
-version: 1.1.0
+version: 1.1.1
 wave: 2
 inputs:
   - {key: account, kind: email_account, label: Which inbox (blank for all of them), optional: true}
@@ -12,7 +12,7 @@ inputs:
 triggers:
   - {on: weekly, day: sun, at: "08:00"}
 tools: [list_emails, search_emails, read_email, create_document]
-needs: {connectors: [], min_context: 16000, native_tools: preferred}
+needs: {connectors: [mail], min_context: 16000, native_tools: preferred}
 delivers:
   - {kind: document, title: "Newsletter digest", must_contain: [Worth reading, By newsletter, Skipped]}
 effects: {read_private: allow, write_private: allow}

@@ -4,13 +4,14 @@ name: Form Responder
 tagline: Each form submission sent to its webhook is summarised, filed as a document, and answered in draft.
 section: support
 icon: inbox
-version: 1.1.0
+version: 1.1.1
 wave: 1
 inputs:
   - {key: tone, kind: choice, label: How the drafts sound, choices: [Warm, Brief, Formal], default: Warm}
 triggers:
   - {on: webhook}
 tools: [create_document, draft_email]
+needs: {connectors: [mail]}
 delivers:
   - {kind: document, title: "Form", must_contain: [Summary, Fields, Reply]}
   - {kind: email_draft, max: 1}

@@ -1,0 +1,28 @@
+{
+ "case": "two-moved-one-quiet",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- 4 searches, read 2 messages since 3 Nov; wrote \"Pipeline — 2026-11-10\"",
+ "read": [
+  "search_emails",
+  "read_email",
+  "manage_documents"
+ ],
+ "wrote": [
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Pipeline”",
+   "ok": true,
+   "detail": "“Pipeline — 2026-11-10” is there."
+  }
+ ],
+ "answer": "4 deals: 2 moved, 1 quiet.\n\n## Report\n- 4 searches, read 2 messages since 3 Nov; wrote \"Pipeline — 2026-11-10\"\n\n## Carry forward\n- run: 2026-11-10\n- Acme negotiating 2026-11-07; Birch & Co proposal 2026-11-04; Cedar Ltd closing 2026-11-09; Dune lead 2026-10-22",
+ "documents": [
+  {
+   "title": "Pipeline — 2026-11-10",
+   "content": "Pipeline — 2026-11-10\n4 deals: 2 moved, 1 quiet, since 2026-11-03\n\n## Stages\n- Acme — negotiating — 2026-11-07, Ana (Acme)\n- Birch & Co — proposal — 2026-11-04, you\n- Cedar Ltd — closing — 2026-11-09, Cal (Cedar)\n- Dune — lead — 2026-10-22, you\n\n## Moved\n- Acme: proposal → negotiating — \"can you do the same for 10% less if we sign for two years?\"\n- Cedar Ltd: negotiating → closing — \"PO raised, number 4471, signing Friday\"\n\n## Quiet\n- Dune — 19 days — their turn (your message of 22 Oct is unanswered)\n\n## Next steps\n- Acme — answer the two-year price — you — 2026-11-12\n- Birch & Co — wait for their review; nudge on 14 Nov — you — 2026-11-14\n- Cedar Ltd — countersign — you — 2026-11-14\n- Dune — one short follow-up or close as lost — you — 2026-11-11"
+  }
+ ]
+}

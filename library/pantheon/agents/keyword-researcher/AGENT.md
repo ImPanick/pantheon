@@ -4,7 +4,7 @@ name: Keyword Researcher
 tagline: "Keywords for a topic, each with its intent and a difficulty estimate."
 section: seo
 icon: key
-version: 1.3.0
+version: 1.3.1
 wave: 2
 inputs:
   - {key: topic, kind: text, label: The topic}
@@ -12,6 +12,7 @@ inputs:
 triggers:
   - {on: hand}
 tools: [web_search, web_fetch, create_document]
+skills: [web-research]
 needs: {connectors: [], min_context: 16000, native_tools: preferred}
 delivers:
   - {kind: document, title: "Keywords", must_contain: [Keywords, Easiest wins, Notes, No search-volume data]}

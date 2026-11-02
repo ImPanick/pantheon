@@ -4,7 +4,7 @@ name: Repo Doctor
 tagline: Runs a repository's tests each night and puts fixes for what fails on a branch of their own.
 section: development
 icon: stethoscope
-version: 1.5.0
+version: 1.5.1
 wave: 1
 inputs:
   - {key: folder, kind: folder, label: "The repository's folder, inside your projects folder"}
@@ -12,6 +12,7 @@ inputs:
 triggers:
   - {on: daily, at: "02:30"}
 tools: [bash, ls, read_file, edit_file, grep]
+skills: [change-code-safely, debug-a-failure]
 needs: {connectors: [], min_context: 32000, native_tools: required}
 delivers:
   - {kind: answer, must_contain: [Before, Fixes, After]}

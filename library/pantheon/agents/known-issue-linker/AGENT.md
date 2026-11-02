@@ -4,7 +4,7 @@ name: Known-Issue Linker
 tagline: Matches new reports to known issues and drafts the status reply.
 section: support
 icon: link
-version: 1.1.0
+version: 1.1.1
 wave: 2
 inputs:
   - {key: account, kind: email_account, label: The support inbox}
@@ -12,7 +12,7 @@ inputs:
 triggers:
   - {on: event, event: email_received, every: 5, label: Every five new messages}
 tools: [list_emails, read_email, manage_documents, draft_email_reply]
-needs: {connectors: [], min_context: 16000, native_tools: preferred}
+needs: {connectors: [mail], min_context: 16000, native_tools: preferred}
 delivers:
   - {kind: email_draft, max: 15}
   - {kind: answer, must_contain: [Matched, No match, Reported again after a fix]}

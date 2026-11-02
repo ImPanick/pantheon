@@ -4,7 +4,7 @@ name: Outbound Writer
 tagline: "Personalised first emails for a list of prospects — drafted, never sent."
 section: sales
 icon: send
-version: 1.3.0
+version: 1.3.1
 wave: 2
 inputs:
   - {key: prospects, kind: long_text, label: "One per line: name, email, role, company, site"}
@@ -12,7 +12,7 @@ inputs:
 triggers:
   - {on: hand}
 tools: [web_fetch, draft_email]
-needs: {connectors: [], min_context: 16000, native_tools: preferred}
+needs: {connectors: [mail], min_context: 16000, native_tools: preferred}
 delivers:
   - {kind: email_draft, max: 25}
   - {kind: answer, must_contain: [Drafted, Nothing specific found]}

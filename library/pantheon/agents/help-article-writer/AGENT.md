@@ -4,14 +4,14 @@ name: Help Article Writer
 tagline: "Turns the week's resolved questions into help articles. It publishes nothing."
 section: support
 icon: book-plus
-version: 1.1.0
+version: 1.1.1
 wave: 2
 inputs:
   - {key: account, kind: email_account, label: The support inbox}
 triggers:
   - {on: weekly, day: fri, at: "13:00"}
 tools: [search_emails, read_email, manage_documents, create_document]
-needs: {connectors: [], min_context: 16000, native_tools: preferred}
+needs: {connectors: [mail], min_context: 16000, native_tools: preferred}
 delivers:
   - {kind: answer, must_contain: [Drafted, Already answered, Not resolved]}
 effects: {read_private: allow, write_private: allow, destructive: never}

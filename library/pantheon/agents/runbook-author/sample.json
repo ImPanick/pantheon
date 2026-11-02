@@ -1,0 +1,27 @@
+{
+ "case": "a-chat-that-fixed-a-full-disk",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- found the chat, read 1 page; wrote \"Runbook — PostgreSQL stops writing when the disk is full\"",
+ "read": [
+  "search_chats",
+  "read_chat"
+ ],
+ "wrote": [
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Runbook”",
+   "ok": true,
+   "detail": "“Runbook — PostgreSQL stops writing when the disk is full” is there."
+  }
+ ],
+ "answer": "4 steps, from the chat \"db1 disk full\".\n\n## Report\n- found the chat, read 1 page; wrote \"Runbook — PostgreSQL stops writing when the disk is full\"",
+ "documents": [
+  {
+   "title": "Runbook — PostgreSQL stops writing when the disk is full",
+   "content": "Runbook — PostgreSQL stops writing when the disk is full\n4 steps, from the chat \"db1 disk full\"\n\n## When to use\nThe shop shows \"could not write\" errors; `journalctl -u postgresql` says \"No space left on device\".\n\n## Steps\n1. `df -h /var/lib/pg` — confirm the disk is at 100%.\n2. `sudo du -sh /var/log/postgresql/*` — find the old logs.\n3. `sudo find /var/log/postgresql -name '*.log.*' -mtime +7 -delete` — remove logs older than a week.\n4. `sudo systemctl restart postgresql` — restart.\n\n## Verify\n1. \"100%\" in the Use column. 2. a file over 1G. 3. `df -h` under 90%. 4. `SELECT 1` answers.\n\n## Rollback\n- nothing to undo; the logs removed were rotated copies.\n\n## Escalate\n- if `df` is still over 90% after step 3, stop: the data folder itself is full; call the person who wrote this. Deleting WAL files does not help and loses data."
+  }
+ ]
+}

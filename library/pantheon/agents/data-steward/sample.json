@@ -1,0 +1,28 @@
+{
+ "case": "three-files-one-owner-recorded",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- 2 globs, read the head of 3 files, README and SCHEMA, 1 search; wrote \"Data inventory — shop\"",
+ "read": [
+  "glob",
+  "read_file",
+  "grep"
+ ],
+ "wrote": [
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Data inventory”",
+   "ok": true,
+   "detail": "“Data inventory — shop” is there."
+  }
+ ],
+ "answer": "3 datasets, 2 with personal data, 4 gaps.\n\n## Report\n- 2 globs, read the head of 3 files, README and SCHEMA, 1 search; wrote \"Data inventory — shop\"",
+ "documents": [
+  {
+   "title": "Data inventory — shop",
+   "content": "Data inventory — shop\n3 datasets, 2 hold personal data, 4 gaps\n\n## Datasets\n1. data/orders.csv — not counted — order_id, customer_id, placed_at, total, ship_address — csv\n2. data/customers.csv — not counted — customer_id, name, email, phone, born — csv\n3. tests/fixtures/orders_small.csv — 1 row — same as 1 — csv, test data\n\n## Personal data\n- data/customers.csv — name, email, phone (contact details); born (date of birth)\n- data/orders.csv — ship_address (locates a person); customer_id (identifies one, with 2)\n- tests/fixtures/orders_small.csv — ship_address: test data, but real-looking; see Gaps\n\n## Owners\n- data/customers.csv — \"the shop team\" — README.md:3\n- data/orders.csv — not recorded\n- tests/fixtures/orders_small.csv — not recorded\n\n## Retention\n- data/customers.csv — not recorded\n- data/orders.csv — not recorded; one growing file, no practice to read\n- tests/fixtures/orders_small.csv — kept with the code\n\n## Gaps\n1. customers.csv — contact details and date of birth with no retention period: decide one and write it in README.md.\n2. orders.csv — no owner and no retention; ship_address is personal data.\n3. tests/fixtures/orders_small.csv — confirm the address is made up; if real, replace it.\n4. SCHEMA.md lists a `notes` column in orders.csv that the file does not have."
+  }
+ ]
+}

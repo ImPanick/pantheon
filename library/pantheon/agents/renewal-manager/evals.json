@@ -1,0 +1,703 @@
+{
+ "cases": [
+  {
+   "id": "three-due-one-at-risk",
+   "about": "Three contracts end inside ninety days: one has a specific win to thank for, one has an unanswered complaint and is at risk, one has no address; the existing event is not duplicated, and no draft names a price.",
+   "inputs": {
+    "contracts": "Contracts",
+    "at": "09:00"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "k1",
+      "title": "Contracts",
+      "content": "Contracts\nAcme — ana@acme.example — 2026-12-31 — £12,000\nBirch & Co — bo@birch.example — 2027-01-15 — £4,800\nCedar Ltd — (no address) — 2027-02-01 — £9,600\nElm — el@elm.example — 2027-06-30 — £2,000\n"
+     }
+    ],
+    "emails": [
+     {
+      "id": "m30",
+      "from": "ana@acme.example",
+      "subject": "Shared plans rolled out to the warehouse team",
+      "date": "2026-10-14",
+      "body": "All 40 of them on it now."
+     },
+     {
+      "id": "m33",
+      "from": "bo@birch.example",
+      "subject": "Issue with the export again",
+      "date": "2026-10-29",
+      "body": "Third time this month."
+     }
+    ],
+    "calendar": [
+     {
+      "summary": "Renewal: Birch & Co",
+      "start": "2027-01-15T09:00:00",
+      "end": "2027-01-15T09:30:00"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Contracts"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "k1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "ana@acme.example",
+        "max_results": 5
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "bo@birch.example",
+        "max_results": 5
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_calendar",
+       {
+        "action": "list_events",
+        "start": "2026-11-10",
+        "end": "2027-02-08"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_calendar",
+       {
+        "action": "create_event",
+        "summary": "Renewal: Acme",
+        "dtstart": "2026-12-31T09:00:00",
+        "dtend": "2026-12-31T09:30:00",
+        "description": "Renewals — 2026-11-10"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_calendar",
+       {
+        "action": "create_event",
+        "summary": "Renewal reminder: Birch & Co",
+        "dtstart": "2026-11-16T09:00:00",
+        "dtend": "2026-11-16T09:30:00",
+        "description": "Renewals — 2026-11-10"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_calendar",
+       {
+        "action": "create_event",
+        "summary": "Renewal: Cedar Ltd",
+        "dtstart": "2027-02-01T09:00:00",
+        "dtend": "2027-02-01T09:30:00",
+        "description": "Renewals — 2026-11-10"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_calendar",
+       {
+        "action": "create_event",
+        "summary": "Renewal reminder: Cedar Ltd",
+        "dtstart": "2026-12-03T09:00:00",
+        "dtend": "2026-12-03T09:30:00",
+        "description": "Renewals — 2026-11-10"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "draft_email",
+       {
+        "to": "ana@acme.example",
+        "subject": "Acme — renewal on 2026-12-31",
+        "body": "Hi Ana,\n\nThank you for the year — and for rolling the shared plans out to the whole warehouse team.\n\nYour contract runs to 31 December. Nothing changes unless you want it to.\n\nWhat would make next year better for you?\n\nHappy to talk it through on a call whenever suits."
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "draft_email",
+       {
+        "to": "bo@birch.example",
+        "subject": "Birch & Co — renewal on 2027-01-15",
+        "body": "Hi Bo,\n\nThank you for the year. I don't have a specific win from our mail to point at, and I'd rather ask than guess — and first, I want to make sure the export issue you raised on 29 October is properly fixed.\n\nYour contract runs to 15 January. Nothing changes unless you want it to.\n\nWhat would make next year better for you?\n\nHappy to talk on a call whenever suits."
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Renewals — 2026-11-10",
+        "content": "Renewals — 2026-11-10\n3 due in 90 days, 1 at risk, 2 drafted, 3 booked\n\n## Due\n- Acme — 2026-12-31 — 51 days — £12,000\n- Birch & Co — 2027-01-15 — 66 days — £4,800\n- Cedar Ltd — 2027-02-01 — 83 days — £9,600\n\n## At risk\n- Birch & Co — \"Issue with the export again\" on 2026-10-29, unanswered 12 days\n\n## Drafted\n- Acme — \"Acme — renewal on 2026-12-31\" — thanks for rolling the shared plans out to the warehouse team (subject of 2026-10-14)\n- Birch & Co — \"Birch & Co — renewal on 2027-01-15\" — no specific win in the mail; the note says so and asks about the export issue first\n- Cedar Ltd — no address: not drafted\n\n## Booked\n- Acme — 2026-12-31; reminder 2026-11-01 is past, none set\n- Birch & Co — 2027-01-15, existing; reminder 2026-11-16\n- Cedar Ltd — 2027-02-01; reminder 2026-12-03\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "3 due, 1 at risk, 2 drafted, 3 booked.\n\n## Report\n- read \"Contracts\" (3 due of 4), 2 searches, 4 events made, 2 drafts; wrote \"Renewals — 2026-11-10\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Renewals — 2026-11-10",
+      "contains": [
+       "## At risk\n- Birch & Co",
+       "no address: not drafted",
+       "existing"
+      ]
+     }
+    },
+    {
+     "drafts_at_most": 2
+    },
+    {
+     "draft_to": "ana@acme.example"
+    }
+   ]
+  },
+  {
+   "id": "nothing-is-due",
+   "about": "No contract ends inside ninety days: Due says none, no draft or event is made.",
+   "inputs": {
+    "contracts": "Contracts",
+    "at": "09:00"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "k1",
+      "title": "Contracts",
+      "content": "Contracts\nElm — el@elm.example — 2027-06-30 — £2,000\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Contracts"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "k1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Renewals — 2026-11-10",
+        "content": "Renewals — 2026-11-10\n0 due in 90 days, 0 at risk, 0 drafted, 0 booked\n\n## Due\n- none: the next end date is Elm on 2027-06-30 (232 days)\n\n## At risk\n- none checked\n\n## Drafted\n- none\n\n## Booked\n- none\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Nothing is due in 90 days.\n\n## Report\n- read \"Contracts\" (0 due of 1); wrote \"Renewals — 2026-11-10\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Renewals",
+      "contains": [
+       "## Due\n- none"
+      ]
+     }
+    },
+    {
+     "drafts_at_most": 0
+    },
+    {
+     "not_called": "manage_calendar"
+    }
+   ]
+  },
+  {
+   "id": "the-mailbox-refuses",
+   "about": "The searches fail: the contracts are still due, booked and drafted, and At risk says not checked with why.",
+   "inputs": {
+    "contracts": "Contracts",
+    "at": "09:00"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "k1",
+      "title": "Contracts",
+      "content": "Contracts\nAcme — ana@acme.example — 2026-12-31 — £12,000\nBirch & Co — bo@birch.example — 2027-01-15 — £4,800\nCedar Ltd — (no address) — 2027-02-01 — £9,600\nElm — el@elm.example — 2027-06-30 — £2,000\n"
+     }
+    ],
+    "calendar": [
+     {
+      "summary": "Renewal: Birch & Co",
+      "start": "2027-01-15T09:00:00",
+      "end": "2027-01-15T09:30:00"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Contracts"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "k1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "ana@acme.example",
+        "max_results": 5
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_calendar",
+       {
+        "action": "list_events",
+        "start": "2026-11-10",
+        "end": "2027-02-08"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_calendar",
+       {
+        "action": "create_event",
+        "summary": "Renewal: Acme",
+        "dtstart": "2026-12-31T09:00:00",
+        "dtend": "2026-12-31T09:30:00",
+        "description": "Renewals — 2026-11-10"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_calendar",
+       {
+        "action": "create_event",
+        "summary": "Renewal reminder: Birch & Co",
+        "dtstart": "2026-11-16T09:00:00",
+        "dtend": "2026-11-16T09:30:00",
+        "description": "Renewals — 2026-11-10"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_calendar",
+       {
+        "action": "create_event",
+        "summary": "Renewal: Cedar Ltd",
+        "dtstart": "2027-02-01T09:00:00",
+        "dtend": "2027-02-01T09:30:00",
+        "description": "Renewals — 2026-11-10"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_calendar",
+       {
+        "action": "create_event",
+        "summary": "Renewal reminder: Cedar Ltd",
+        "dtstart": "2026-12-03T09:00:00",
+        "dtend": "2026-12-03T09:30:00",
+        "description": "Renewals — 2026-11-10"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "draft_email",
+       {
+        "to": "ana@acme.example",
+        "subject": "Acme — renewal on 2026-12-31",
+        "body": "Hi Ana,\n\nThank you for the year — and for rolling the shared plans out to the whole warehouse team.\n\nYour contract runs to 31 December. Nothing changes unless you want it to.\n\nWhat would make next year better for you?\n\nHappy to talk it through on a call whenever suits."
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Renewals — 2026-11-10",
+        "content": "Renewals — 2026-11-10\n3 due in 90 days, 0 at risk, 1 drafted, 3 booked\n\n## Due\n- Acme — 2026-12-31 — 51 days — £12,000\n- Birch & Co — 2027-01-15 — 66 days — £4,800\n- Cedar Ltd — 2027-02-01 — 83 days — £9,600\n\n## At risk\n- not checked: the mailbox returned nothing for any contact; reconnect mail and run again\n\n## Drafted\n- Acme — \"Acme — renewal on 2026-12-31\" — thanks for rolling the shared plans out to the warehouse team (subject of 2026-10-14)\n- Birch & Co — not drafted: without the mail I cannot say what to thank them for; next run\n- Cedar Ltd — no address: not drafted\n\n## Booked\n- Acme — 2026-12-31; reminder 2026-11-01 is past, none set\n- Birch & Co — 2027-01-15, existing; reminder 2026-11-16\n- Cedar Ltd — 2027-02-01; reminder 2026-12-03\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "3 due, risk not checked (mailbox), 1 drafted, 3 booked.\n\n## Report\n- read \"Contracts\"; the mailbox returned nothing; 4 events; 1 draft; wrote \"Renewals — 2026-11-10\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Renewals",
+      "contains": [
+       "not checked"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "it-never-writes-a-price-in-a-draft",
+   "about": "Every draft thanks, states the end date and asks a question; none names a price, a discount or a term.",
+   "inputs": {
+    "contracts": "Contracts",
+    "at": "09:00"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "k1",
+      "title": "Contracts",
+      "content": "Contracts\nAcme — ana@acme.example — 2026-12-31 — £12,000\nBirch & Co — bo@birch.example — 2027-01-15 — £4,800\nCedar Ltd — (no address) — 2027-02-01 — £9,600\nElm — el@elm.example — 2027-06-30 — £2,000\n"
+     }
+    ],
+    "emails": [
+     {
+      "id": "m30",
+      "from": "ana@acme.example",
+      "subject": "Shared plans rolled out to the warehouse team",
+      "date": "2026-10-14",
+      "body": "All 40 of them on it now."
+     },
+     {
+      "id": "m33",
+      "from": "bo@birch.example",
+      "subject": "Issue with the export again",
+      "date": "2026-10-29",
+      "body": "Third time this month."
+     }
+    ],
+    "calendar": [
+     {
+      "summary": "Renewal: Birch & Co",
+      "start": "2027-01-15T09:00:00",
+      "end": "2027-01-15T09:30:00"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Contracts"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "k1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "ana@acme.example",
+        "max_results": 5
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "bo@birch.example",
+        "max_results": 5
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_calendar",
+       {
+        "action": "list_events",
+        "start": "2026-11-10",
+        "end": "2027-02-08"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_calendar",
+       {
+        "action": "create_event",
+        "summary": "Renewal: Acme",
+        "dtstart": "2026-12-31T09:00:00",
+        "dtend": "2026-12-31T09:30:00",
+        "description": "Renewals — 2026-11-10"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_calendar",
+       {
+        "action": "create_event",
+        "summary": "Renewal reminder: Birch & Co",
+        "dtstart": "2026-11-16T09:00:00",
+        "dtend": "2026-11-16T09:30:00",
+        "description": "Renewals — 2026-11-10"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_calendar",
+       {
+        "action": "create_event",
+        "summary": "Renewal: Cedar Ltd",
+        "dtstart": "2027-02-01T09:00:00",
+        "dtend": "2027-02-01T09:30:00",
+        "description": "Renewals — 2026-11-10"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_calendar",
+       {
+        "action": "create_event",
+        "summary": "Renewal reminder: Cedar Ltd",
+        "dtstart": "2026-12-03T09:00:00",
+        "dtend": "2026-12-03T09:30:00",
+        "description": "Renewals — 2026-11-10"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "draft_email",
+       {
+        "to": "ana@acme.example",
+        "subject": "Acme — renewal on 2026-12-31",
+        "body": "Hi Ana,\n\nThank you for the year — and for rolling the shared plans out to the whole warehouse team.\n\nYour contract runs to 31 December. Nothing changes unless you want it to.\n\nWhat would make next year better for you?\n\nHappy to talk it through on a call whenever suits."
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "draft_email",
+       {
+        "to": "bo@birch.example",
+        "subject": "Birch & Co — renewal on 2027-01-15",
+        "body": "Hi Bo,\n\nThank you for the year. I don't have a specific win from our mail to point at, and I'd rather ask than guess — and first, I want to make sure the export issue you raised on 29 October is properly fixed.\n\nYour contract runs to 15 January. Nothing changes unless you want it to.\n\nWhat would make next year better for you?\n\nHappy to talk on a call whenever suits."
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Renewals — 2026-11-10",
+        "content": "Renewals — 2026-11-10\n3 due in 90 days, 1 at risk, 2 drafted, 3 booked\n\n## Due\n- Acme — 2026-12-31 — 51 days — £12,000\n- Birch & Co — 2027-01-15 — 66 days — £4,800\n- Cedar Ltd — 2027-02-01 — 83 days — £9,600\n\n## At risk\n- Birch & Co — \"Issue with the export again\" on 2026-10-29, unanswered 12 days\n\n## Drafted\n- Acme — \"Acme — renewal on 2026-12-31\" — thanks for rolling the shared plans out to the warehouse team (subject of 2026-10-14)\n- Birch & Co — \"Birch & Co — renewal on 2027-01-15\" — no specific win in the mail; the note says so and asks about the export issue first\n- Cedar Ltd — no address: not drafted\n\n## Booked\n- Acme — 2026-12-31; reminder 2026-11-01 is past, none set\n- Birch & Co — 2027-01-15, existing; reminder 2026-11-16\n- Cedar Ltd — 2027-02-01; reminder 2026-12-03\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "3 due, 1 at risk, 2 drafted, 3 booked.\n\n## Report\n- read \"Contracts\" (3 due of 4), 2 searches, 4 events made, 2 drafts; wrote \"Renewals — 2026-11-10\""
+    }
+   ],
+   "checks": [
+    {
+     "drafts_at_most": 2
+    },
+    {
+     "no_draft_to": "£"
+    },
+    {
+     "no_draft_to": "discount"
+    }
+   ]
+  },
+  {
+   "id": "a-renewals-document-without-its-headings-fails",
+   "about": "The harness's own check: a renewals document without Due, At risk, Drafted and Booked does not deliver, even after its repair pass.",
+   "inputs": {
+    "contracts": "Contracts",
+    "at": "09:00"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "k1",
+      "title": "Contracts",
+      "content": "Contracts\nAcme — ana@acme.example — 2026-12-31 — £12,000\nBirch & Co — bo@birch.example — 2027-01-15 — £4,800\nCedar Ltd — (no address) — 2027-02-01 — £9,600\nElm — el@elm.example — 2027-06-30 — £2,000\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Contracts"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Renewals — 2026-11-10",
+        "content": "Three renewals coming up."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

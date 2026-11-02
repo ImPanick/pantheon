@@ -1,0 +1,28 @@
+{
+ "case": "four-commits-a-triage-and-a-change-record",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read 4 commits, 1 triage, 1 change record and 2 changed files; wrote \"Release notes — 2.4.0\"",
+ "read": [
+  "manage_documents",
+  "read_file"
+ ],
+ "wrote": [
+  "bash",
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Release notes”",
+   "ok": true,
+   "detail": "“Release notes — 2.4.0” is there."
+  }
+ ],
+ "answer": "2.4.0: 3 for users, 2 for operators, 3 upgrade steps, 1 known issue.\n\n## Report\n- read 4 commits, 1 triage, 1 change record and 2 changed files; wrote \"Release notes — 2.4.0\"",
+ "documents": [
+  {
+   "title": "Release notes — 2.4.0",
+   "content": "Release notes — 2.4.0\n2.4.0 since v2.3.1: 3 for users, 2 for operators, 3 upgrade steps, 1 known issue\n\n## For users\n- Share a weekly meal plan with one other person in your household by email.\n- Discount codes you mistype now give a clear message instead of an empty basket.\n- The orders page loads faster for accounts with thousands of orders.\n\n## For operators\n- New setting `SHARE_FROM_ADDRESS` (shop/config.py:2): the address invitations are sent from; the app refuses to start without it.\n- PostgreSQL's data folder moves to /mnt/fast/pg (Change record — move the database to the new disk); the nightly backup reads the new path.\n\n## Upgrade notes\n1. Back up the database (`pg_dump shop > shop-2.3.1.sql`).\n2. Run the migrations — 0042 drops `orders.notes`; no simple return after this step.\n3. Set `SHARE_FROM_ADDRESS` and restart.\n\n## Known issues\n- Sending mail retries forever when the mail server is down (tests/test_mail.py::test_retry_stops, failing since 2026-11-03); workaround: restart the worker."
+  }
+ ]
+}

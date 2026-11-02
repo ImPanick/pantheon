@@ -4,7 +4,7 @@ name: Market Mapper
 tagline: "The players, prices, positioning and gaps in a market you name."
 section: research
 icon: map
-version: 1.3.0
+version: 1.3.1
 wave: 2
 inputs:
   - {key: market, kind: text, label: The market}
@@ -12,6 +12,7 @@ inputs:
 triggers:
   - {on: hand}
 tools: [web_search, web_fetch, create_document]
+skills: [web-research]
 needs: {connectors: [], min_context: 16000, native_tools: preferred}
 delivers:
   - {kind: document, title: "Market map", must_contain: [Players, Clusters, Gaps]}

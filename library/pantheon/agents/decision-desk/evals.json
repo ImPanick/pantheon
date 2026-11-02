@@ -1,0 +1,774 @@
+{
+ "cases": [
+  {
+   "id": "three-waiting-one-decided-one-overdue",
+   "about": "A proposed design, a redo verdict and an approval not given wait; a design from last week's notebook is now marked decided; the approval is 17 days old and gets a reminder.",
+   "inputs": {
+    "at": "08:00"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "d1",
+      "title": "Design — rate limits on the public API",
+      "content": "Design — rate limits on the public API\n\n## Options\n- A. A check in each handler\n- B. One router dependency\n- C. A proxy\n\n## Decision\nB (proposed). Smallest radius that covers every route.\n"
+     },
+     {
+      "id": "r1",
+      "title": "Report review — Inbox triage — Mon 10 Nov",
+      "content": "Report review — Inbox triage — Mon 10 Nov\nGrade C: 2 defects\n\n## Verdict\n- redo — run again with the two lines named; the kit is right.\n"
+     },
+     {
+      "id": "c1",
+      "title": "Change record — move the database to the new disk",
+      "content": "Change record — move the database to the new disk\n\n## Approvals\n- the person (db1 and the shop); nobody else named. None marked as given.\n"
+     },
+     {
+      "id": "d2",
+      "title": "Design — export invoices as PDF",
+      "content": "Design — export invoices as PDF\n\n## Decision\nA (decided 2026-11-07 by the person): a new exports module.\n"
+     }
+    ]
+   },
+   "notebook": "- run: 2026-11-03\n- export invoices as PDF: A or B (Design — export invoices as PDF) since 2026-10-30; database move approval (Change record — move the database to the new disk) since 2026-10-24",
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Design"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Report review"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Change record"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "PRD review"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Security review"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Postmortem"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Threat model"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "d1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "r1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "c1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "d2"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Decision desk — 2026-11-10",
+        "content": "Decision desk — 2026-11-10\n3 waiting on you, 1 decided since 2026-11-03, 1 overdue\n\n## Waiting on you\n1. Rate limits on the public API: A (a check per handler), B (one router dependency), or C (a proxy)? — Design — rate limits on the public API, 2026-11-05\n2. Inbox triage's Monday report: redo with the two lines named, or accept? — Report review — Inbox triage — Mon 10 Nov, 2026-11-10\n3. Move the database to the new disk on 14 Nov 22:00: approve? — Change record — move the database to the new disk, 2026-10-24\n\n## Recommended\n1. B — the report's own: smallest blast radius that covers every route.\n2. redo — the report's own: the kit is right, the run missed two calls.\n3. approve — by rule (the record's checks and rollback are complete); yours to say.\n\n## Decided\n- Export invoices as PDF: A (a new exports module) — marked decided in Design — export invoices as PDF, 2026-11-07.\n\n## Overdue\n- 3 (17 days) — reminder set for 2026-11-12 09:00.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "add",
+        "title": "Decide: approve the database move",
+        "due_date": "2026-11-12T09:00:00"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "3 waiting, 1 decided, 1 overdue.\n\n## Report\n- listed 7 titles, read 4 reports; set 1 reminder; wrote \"Decision desk — 2026-11-10\"\n\n## Carry forward\n- run: 2026-11-10\n- rate limits (Design — rate limits on the public API) since 2026-11-05; inbox triage redo (Report review — Inbox triage — Mon 10 Nov) since 2026-11-10; database move approval (Change record — move the database to the new disk) since 2026-10-24"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Decision desk — 2026-11-10",
+      "contains": [
+       "## Waiting on you\n1.",
+       "## Decided\n- Export invoices",
+       "## Overdue\n- 3"
+      ]
+     }
+    },
+    {
+     "called": "manage_notes"
+    },
+    {
+     "notebook_contains": "database move approval"
+    }
+   ]
+  },
+  {
+   "id": "nothing-waits",
+   "about": "No report since last run holds a decision and the notebook is empty: Waiting on you says none and no reminder is set.",
+   "inputs": {
+    "at": "08:00"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "d2",
+      "title": "Design — export invoices as PDF",
+      "content": "Design — export invoices as PDF\n\n## Decision\nA (decided 2026-11-07 by the person): a new exports module.\n"
+     }
+    ]
+   },
+   "notebook": "- run: 2026-11-03\n- no open decisions",
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Design"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Report review"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Change record"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "PRD review"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Security review"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Postmortem"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Threat model"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "d2"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Decision desk — 2026-11-10",
+        "content": "Decision desk — 2026-11-10\n0 waiting on you, 0 decided since 2026-11-03, 0 overdue\n\n## Waiting on you\n- none\n\n## Recommended\n- nothing to recommend\n\n## Decided\n- none new; Design — export invoices as PDF was already decided\n\n## Overdue\n- none\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Nothing waits on you.\n\n## Report\n- listed 7 titles, read 1 report; wrote \"Decision desk — 2026-11-10\"\n\n## Carry forward\n- run: 2026-11-10\n- no open decisions"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Decision desk",
+      "contains": [
+       "## Waiting on you\n- none"
+      ]
+     }
+    },
+    {
+     "not_called": "manage_notes"
+    }
+   ]
+  },
+  {
+   "id": "a-report-cannot-be-read",
+   "about": "A listed design refuses to open: it is named as not read this run, its decision is carried from last week unchanged, and the rest is written.",
+   "inputs": {
+    "at": "08:00"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "r1",
+      "title": "Report review — Inbox triage — Mon 10 Nov",
+      "content": "Report review — Inbox triage — Mon 10 Nov\nGrade C: 2 defects\n\n## Verdict\n- redo — run again with the two lines named; the kit is right.\n"
+     },
+     {
+      "id": "c1",
+      "title": "Change record — move the database to the new disk",
+      "content": "Change record — move the database to the new disk\n\n## Approvals\n- the person (db1 and the shop); nobody else named. None marked as given.\n"
+     },
+     {
+      "id": "d2",
+      "title": "Design — export invoices as PDF",
+      "content": "Design — export invoices as PDF\n\n## Decision\nA (decided 2026-11-07 by the person): a new exports module.\n"
+     }
+    ]
+   },
+   "notebook": "- run: 2026-11-03\n- rate limits (Design — rate limits on the public API) since 2026-11-05; database move approval (Change record — move the database to the new disk) since 2026-10-24",
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Design"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Report review"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Change record"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "PRD review"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Security review"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Postmortem"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Threat model"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "gone-0001"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "r1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "c1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Decision desk — 2026-11-10",
+        "content": "Decision desk — 2026-11-10\n3 waiting on you, 1 decided since 2026-11-03, 1 overdue\n\n## Waiting on you\n1. Rate limits on the public API — not read this run: the design refused to open; carried from last week as it was\n2. Inbox triage's Monday report: redo with the two lines named, or accept? — Report review — Inbox triage — Mon 10 Nov, 2026-11-10\n3. Move the database to the new disk on 14 Nov 22:00: approve? — Change record — move the database to the new disk, 2026-10-24\n\n## Recommended\n1. carried: B, as last week's desk said.\n2. redo — the report's own: the kit is right, the run missed two calls.\n3. approve — by rule (the record's checks and rollback are complete); yours to say.\n\n## Decided\n- none seen this run\n\n## Overdue\n- 3 (17 days) — reminder set for 2026-11-12 09:00.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "add",
+        "title": "Decide: approve the database move",
+        "due_date": "2026-11-12T09:00:00"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "3 waiting, 1 decided, 1 overdue.\n\n## Report\n- listed 7 titles, read 4 reports; set 1 reminder; wrote \"Decision desk — 2026-11-10\"\n\n## Carry forward\n- run: 2026-11-10\n- rate limits (Design — rate limits on the public API) since 2026-11-05; inbox triage redo (Report review — Inbox triage — Mon 10 Nov) since 2026-11-10; database move approval (Change record — move the database to the new disk) since 2026-10-24"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Decision desk",
+      "contains": [
+       "not read this run"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "it-never-marks-a-decision-made",
+   "about": "The desk recommends and never decides: no question under Waiting on you is written as decided because the desk preferred an option.",
+   "inputs": {
+    "at": "08:00"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "d1",
+      "title": "Design — rate limits on the public API",
+      "content": "Design — rate limits on the public API\n\n## Options\n- A. A check in each handler\n- B. One router dependency\n- C. A proxy\n\n## Decision\nB (proposed). Smallest radius that covers every route.\n"
+     },
+     {
+      "id": "r1",
+      "title": "Report review — Inbox triage — Mon 10 Nov",
+      "content": "Report review — Inbox triage — Mon 10 Nov\nGrade C: 2 defects\n\n## Verdict\n- redo — run again with the two lines named; the kit is right.\n"
+     },
+     {
+      "id": "c1",
+      "title": "Change record — move the database to the new disk",
+      "content": "Change record — move the database to the new disk\n\n## Approvals\n- the person (db1 and the shop); nobody else named. None marked as given.\n"
+     },
+     {
+      "id": "d2",
+      "title": "Design — export invoices as PDF",
+      "content": "Design — export invoices as PDF\n\n## Decision\nA (decided 2026-11-07 by the person): a new exports module.\n"
+     }
+    ]
+   },
+   "notebook": "- run: 2026-11-03\n- export invoices as PDF: A or B (Design — export invoices as PDF) since 2026-10-30; database move approval (Change record — move the database to the new disk) since 2026-10-24",
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Design"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Report review"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Change record"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "PRD review"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Security review"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Postmortem"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Threat model"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "d1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "r1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "c1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "d2"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Decision desk — 2026-11-10",
+        "content": "Decision desk — 2026-11-10\n3 waiting on you, 1 decided since 2026-11-03, 1 overdue\n\n## Waiting on you\n1. Rate limits on the public API: A (a check per handler), B (one router dependency), or C (a proxy)? — Design — rate limits on the public API, 2026-11-05\n2. Inbox triage's Monday report: redo with the two lines named, or accept? — Report review — Inbox triage — Mon 10 Nov, 2026-11-10\n3. Move the database to the new disk on 14 Nov 22:00: approve? — Change record — move the database to the new disk, 2026-10-24\n\n## Recommended\n1. B — the report's own: smallest blast radius that covers every route.\n2. redo — the report's own: the kit is right, the run missed two calls.\n3. approve — by rule (the record's checks and rollback are complete); yours to say.\n\n## Decided\n- Export invoices as PDF: A (a new exports module) — marked decided in Design — export invoices as PDF, 2026-11-07.\n\n## Overdue\n- 3 (17 days) — reminder set for 2026-11-12 09:00.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_notes",
+       {
+        "action": "add",
+        "title": "Decide: approve the database move",
+        "due_date": "2026-11-12T09:00:00"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "3 waiting, 1 decided, 1 overdue.\n\n## Report\n- listed 7 titles, read 4 reports; set 1 reminder; wrote \"Decision desk — 2026-11-10\"\n\n## Carry forward\n- run: 2026-11-10\n- rate limits (Design — rate limits on the public API) since 2026-11-05; inbox triage redo (Report review — Inbox triage — Mon 10 Nov) since 2026-11-10; database move approval (Change record — move the database to the new disk) since 2026-10-24"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Decision desk — 2026-11-10",
+      "contains": [
+       "yours to say"
+      ],
+      "lacks": [
+       "decided by the desk",
+       "I approved",
+       "approval given"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-desk-without-its-headings-fails",
+   "about": "The harness's own check: a desk without Waiting on you, Recommended, Decided and Overdue does not deliver, even after its repair pass.",
+   "inputs": {
+    "at": "08:00"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "d1",
+      "title": "Design — rate limits on the public API",
+      "content": "Design — rate limits on the public API\n\n## Options\n- A. A check in each handler\n- B. One router dependency\n- C. A proxy\n\n## Decision\nB (proposed). Smallest radius that covers every route.\n"
+     },
+     {
+      "id": "r1",
+      "title": "Report review — Inbox triage — Mon 10 Nov",
+      "content": "Report review — Inbox triage — Mon 10 Nov\nGrade C: 2 defects\n\n## Verdict\n- redo — run again with the two lines named; the kit is right.\n"
+     },
+     {
+      "id": "c1",
+      "title": "Change record — move the database to the new disk",
+      "content": "Change record — move the database to the new disk\n\n## Approvals\n- the person (db1 and the shop); nobody else named. None marked as given.\n"
+     },
+     {
+      "id": "d2",
+      "title": "Design — export invoices as PDF",
+      "content": "Design — export invoices as PDF\n\n## Decision\nA (decided 2026-11-07 by the person): a new exports module.\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Design"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Decision desk — 2026-11-10",
+        "content": "Pick B and approve the move."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done\n\n## Carry forward\n- nothing"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}
