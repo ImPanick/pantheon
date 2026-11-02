@@ -246,7 +246,7 @@ def checked_system(value: Any) -> str:
 
 # The profile that starts each system's container (`docker-compose.yml`), as
 # the panel tells an admin to switch it on.
-SYSTEM_PROFILE_HINT = ("Add {system} to COMPOSE_PROFILES in .env (for example "
+SYSTEM_PROFILE_HINT = ("add {system} to COMPOSE_PROFILES in .env (for example "
                        "COMPOSE_PROFILES={system}) and run docker compose up -d --build.")
 
 
