@@ -4,14 +4,14 @@ name: Evening Wrap
 tagline: "What you worked on today, what slipped to tomorrow, and tomorrow's first meeting."
 section: personal-home
 icon: sunset
-version: 1.1.0
+version: 1.1.1
 wave: 2
 inputs:
   - {key: at, kind: time, label: When it wraps up, default: "18:00"}
 triggers:
   - {on: daily, at: "{at}", days: weekdays}
 tools: [manage_notes, manage_calendar, list_sessions, manage_tasks]
-needs: {connectors: [], min_context: 16000, native_tools: preferred}
+needs: {connectors: [calendar], min_context: 16000, native_tools: preferred}
 delivers:
   - {kind: answer, must_contain: [Done, Moved, Tomorrow]}
 effects: {read_private: allow, write_private: ask, destructive: never}

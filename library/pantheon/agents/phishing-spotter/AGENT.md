@@ -4,14 +4,14 @@ name: Phishing Spotter
 tagline: Flags suspicious mail with the reason before you open it — it never clicks a link.
 section: email
 icon: shield-alert
-version: 1.1.0
+version: 1.1.1
 wave: 2
 inputs:
   - {key: account, kind: email_account, label: Which inbox (blank for all of them), optional: true}
 triggers:
   - {on: event, event: email_received, every: 3, label: Every three new messages}
 tools: [list_emails, read_email, create_document]
-needs: {connectors: [], min_context: 16000, native_tools: preferred}
+needs: {connectors: [mail], min_context: 16000, native_tools: preferred}
 delivers:
   - {kind: answer, must_contain: [Suspicious, Unsure, Fine]}
 effects: {read_private: allow, write_private: allow}

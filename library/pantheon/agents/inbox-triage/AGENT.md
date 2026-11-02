@@ -4,7 +4,7 @@ name: Inbox Triage
 tagline: Sorts new mail into Urgent, Needs a reply and FYI, and drafts the replies that need you.
 section: email
 icon: mail
-version: 1.1.0
+version: 1.1.1
 wave: 1
 starred: true
 inputs:
@@ -14,7 +14,7 @@ triggers:
   - {on: event, event: email_received, every: 5, label: Every five new messages}
   - {on: daily, at: "08:00", days: weekdays, label: Weekday morning sweep}
 tools: [list_email_accounts, list_emails, read_email, draft_email_reply, create_document]
-needs: {connectors: [], min_context: 16000, native_tools: preferred}
+needs: {connectors: [mail], min_context: 16000, native_tools: preferred}
 delivers:
   - {kind: document, title: "Inbox triage", must_contain: [Urgent, Needs a reply, FYI]}
   - {kind: email_draft, max: 10}

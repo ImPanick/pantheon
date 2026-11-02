@@ -1,0 +1,332 @@
+{
+ "cases": [
+  {
+   "id": "a-triage-that-missed-two-calls",
+   "about": "The report has every heading but files an invoice under Later and a colleague under Ignore: two defects with their lines, the kept promises listed, grade C, redo.",
+   "inputs": {
+    "report": "Inbox triage — Mon 10 Nov",
+    "promised": "Headings: Urgent, Later, Ignore. Calls: a message that asks for money or a decision by a date is Urgent; Ignore holds newsletters only. Nevers: never archive, never send."
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "t1",
+      "title": "Inbox triage — Mon 10 Nov",
+      "content": "Inbox triage — Mon 10 Nov\n9 messages: 2 urgent, 4 later, 3 ignore\n\n## Urgent\n- Ana — contract by Friday\n- Ben — the server is down\n\n## Later\n- Supplier — Invoice overdue, pay today\n- Newsletter — November picks\n- Cal — lunch?\n- HR — forms\n\n## Ignore\n- a colleague's reply to the planning thread\n- two newsletters\n\n## Report\n- read 9 messages"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Inbox triage — Mon 10 Nov"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "t1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Report review — Inbox triage — Mon 10 Nov",
+        "content": "Report review — Inbox triage — Mon 10 Nov\nGrade C: 2 defects\n\n## Grade\n- C — the Urgent heading is there, but one urgent message was filed under Later.\n\n## Defects\n- line 9 — \"a message that asks for money or a decision by a date is Urgent\" — \"Invoice overdue, pay today\" is under Later\n- line 15 — \"Ignore holds newsletters only\" — a colleague's reply is under Ignore\n\n## Kept\n- Urgent, Later, Ignore all present (lines 4, 8, 14)\n- never archived or sent anything (the Report says \"read 9 messages\", no other verb)\n\n## Verdict\n- redo — run again with the two lines above named; the kit is right.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Grade C: 2 defects.\n\n## Report\n- read \"Inbox triage — Mon 10 Nov\" (16 lines) against 6 promises; wrote \"Report review — Inbox triage — Mon 10 Nov\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Report review — Inbox triage — Mon 10 Nov",
+      "contains": [
+       "Grade C",
+       "## Defects\n- line 9",
+       "## Verdict\n- redo"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "nothing-wrong",
+   "about": "Every promise is kept: Defects says none, grade A, accept.",
+   "inputs": {
+    "report": "Inbox triage — Mon 10 Nov",
+    "promised": "Headings: Urgent, Later, Ignore. Calls: a message that asks for money or a decision by a date is Urgent; Ignore holds newsletters only. Nevers: never archive, never send."
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "t1",
+      "title": "Inbox triage — Mon 10 Nov",
+      "content": "Inbox triage — Mon 10 Nov\n9 messages: 2 urgent, 4 later, 3 ignore\n\n## Urgent\n- Supplier — Invoice overdue, pay today\n- Ana — contract by Friday\n- Ben — the server is down\n\n## Later\n- Newsletter — November picks\n- Cal — lunch?\n- HR — forms\n\n## Ignore\n- two newsletters\n\n## Report\n- read 9 messages"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Inbox triage — Mon 10 Nov"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "t1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Report review — Inbox triage — Mon 10 Nov",
+        "content": "Report review — Inbox triage — Mon 10 Nov\nGrade A: 0 defects\n\n## Grade\n- A — every heading filled and every call made as told.\n\n## Defects\n- none\n\n## Kept\n- Urgent, Later, Ignore present (lines 4, 9, 14)\n- the invoice is Urgent (line 7); Ignore holds newsletters only (line 15)\n- never archived or sent (the Report names reads only)\n\n## Verdict\n- accept\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Grade A: 0 defects.\n\n## Report\n- read \"Inbox triage — Mon 10 Nov\" against 6 promises; wrote \"Report review — Inbox triage — Mon 10 Nov\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Report review",
+      "contains": [
+       "Grade A",
+       "## Defects\n- none",
+       "accept"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "the-report-cannot-be-found",
+   "about": "No document matches: the review's first line says so, the grade is F for a report that is not there, and the verdict is stop.",
+   "inputs": {
+    "report": "Inbox triage — Mon 10 Nov",
+    "promised": "Headings: Urgent, Later, Ignore. Calls: a message that asks for money or a decision by a date is Urgent; Ignore holds newsletters only. Nevers: never archive, never send."
+   },
+   "world": {
+    "documents": [
+     {
+      "title": "Notes",
+      "content": "Notes\nnothing"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Inbox triage — Mon 10 Nov"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Report review — Inbox triage — Mon 10 Nov",
+        "content": "Report review — Inbox triage — Mon 10 Nov\nGrade F: 0 defects — no report found\n\n## Grade\n- F — no document is titled \"Inbox triage — Mon 10 Nov\"; nothing to review.\n\n## Defects\n- none read\n\n## Kept\n- none read\n\n## Verdict\n- stop — tell the person the run wrote nothing, or give the title as Documents lists it.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Grade F: no report found.\n\n## Report\n- searched Documents once, found nothing; wrote \"Report review — Inbox triage — Mon 10 Nov\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Report review",
+      "contains": [
+       "no report found",
+       "## Verdict\n- stop"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "it-never-changes-the-report",
+   "about": "A model that tries to delete the graded report is refused by the table's never: the report is still there unchanged, and the review is written.",
+   "inputs": {
+    "report": "Inbox triage — Mon 10 Nov",
+    "promised": "Headings: Urgent, Later, Ignore. Calls: a message that asks for money or a decision by a date is Urgent; Ignore holds newsletters only. Nevers: never archive, never send."
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "t1",
+      "title": "Inbox triage — Mon 10 Nov",
+      "content": "Inbox triage — Mon 10 Nov\n9 messages: 2 urgent, 4 later, 3 ignore\n\n## Urgent\n- Ana — contract by Friday\n- Ben — the server is down\n\n## Later\n- Supplier — Invoice overdue, pay today\n- Newsletter — November picks\n- Cal — lunch?\n- HR — forms\n\n## Ignore\n- a colleague's reply to the planning thread\n- two newsletters\n\n## Report\n- read 9 messages"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Inbox triage — Mon 10 Nov"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "t1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "delete",
+        "document_id": "t1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Report review — Inbox triage — Mon 10 Nov",
+        "content": "Report review — Inbox triage — Mon 10 Nov\nGrade C: 2 defects\n\n## Grade\n- C — the Urgent heading is there, but one urgent message was filed under Later.\n\n## Defects\n- line 9 — \"a message that asks for money or a decision by a date is Urgent\" — \"Invoice overdue, pay today\" is under Later\n- line 15 — \"Ignore holds newsletters only\" — a colleague's reply is under Ignore\n\n## Kept\n- Urgent, Later, Ignore all present (lines 4, 8, 14)\n- never archived or sent anything (the Report says \"read 9 messages\", no other verb)\n\n## Verdict\n- redo — run again with the two lines above named; the kit is right.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Grade C: 2 defects.\n\n## Report\n- read \"Inbox triage — Mon 10 Nov\" (16 lines) against 6 promises; wrote \"Report review — Inbox triage — Mon 10 Nov\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Inbox triage — Mon 10 Nov",
+      "contains": [
+       "Invoice overdue"
+      ],
+      "lacks": [
+       "deleted",
+       "corrected by the reviewer"
+      ]
+     }
+    },
+    {
+     "document": {
+      "title": "Report review",
+      "contains": [
+       "Grade C"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-review-without-its-headings-fails",
+   "about": "The harness's own check: a review without Grade, Defects, Kept and Verdict does not deliver, even after its repair pass.",
+   "inputs": {
+    "report": "Inbox triage — Mon 10 Nov",
+    "promised": "Headings: Urgent, Later, Ignore. Calls: a message that asks for money or a decision by a date is Urgent; Ignore holds newsletters only. Nevers: never archive, never send."
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "t1",
+      "title": "Inbox triage — Mon 10 Nov",
+      "content": "Inbox triage — Mon 10 Nov\n9 messages: 2 urgent, 4 later, 3 ignore\n\n## Urgent\n- Ana — contract by Friday\n- Ben — the server is down\n\n## Later\n- Supplier — Invoice overdue, pay today\n- Newsletter — November picks\n- Cal — lunch?\n- HR — forms\n\n## Ignore\n- a colleague's reply to the planning thread\n- two newsletters\n\n## Report\n- read 9 messages"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Inbox triage — Mon 10 Nov"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Report review — Inbox triage — Mon 10 Nov",
+        "content": "Looks fine, B."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

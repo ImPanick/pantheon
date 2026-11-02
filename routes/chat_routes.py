@@ -4446,6 +4446,52 @@ def setup_chat_routes(
 
         return StreamingResponse(stream_rewrite(), media_type="text/event-stream")
 
+    @router.post("/api/chat/next-step")
+    async def next_step_suggestion(request: Request) -> Dict[str, Any]:
+        """`B1739`. One sentence the person would most likely send next, for
+        the composer to offer as ghost text once a reply has finished (Tab
+        takes it; nothing is sent for them). Asked of the chat's own model,
+        which is the one already loaded. Not as `background` work: that waits
+        for the UI to go quiet, and this request is the UI. Instead the call
+        is dropped the moment the page lets go of it (the person typed or
+        sent), so a local model's one slot is back for their send at once.
+        Every failure is an empty answer: a missing suggestion is nothing the
+        person needs to hear about."""
+        from src import next_step as _next_step
+        try:
+            body = await request.json()
+        except Exception:
+            raise HTTPException(400, "Invalid JSON")
+        session_id = str((body or {}).get("session_id") or "").strip()
+        if not session_id:
+            raise HTTPException(400, "session_id is required")
+        await asyncio.to_thread(_verify_session_owner, request, session_id)
+        try:
+            sess = session_manager.get_session(session_id)
+        except (KeyError, SessionNotFoundError):
+            raise HTTPException(404, CHAT_GONE)
+        messages = _next_step.build_messages(getattr(sess, "history", None) or [])
+        if not messages or not sess.endpoint_url or not sess.model:
+            return {"suggestion": ""}
+        call = asyncio.ensure_future(llm_call_async(
+            sess.endpoint_url, sess.model, messages, headers=sess.headers,
+            temperature=0.4, max_tokens=0, timeout=60, max_retries=1,
+        ))
+        try:
+            while not call.done():
+                if await request.is_disconnected():
+                    call.cancel()
+                    return {"suggestion": ""}
+                await asyncio.wait({call}, timeout=0.25)
+            answer = call.result()
+        except asyncio.CancelledError:
+            call.cancel()
+            return {"suggestion": ""}
+        except Exception as exc:
+            logger.info("next-step suggestion skipped: %s", type(exc).__name__)
+            return {"suggestion": ""}
+        return {"suggestion": _next_step.clean(answer)}
+
     @router.get("/api/chat/reasoning-effort")
     async def reasoning_effort_levels(
         request: Request,

@@ -363,10 +363,12 @@ def test_the_helper_survives_a_webview_with_no_matchmedia():
 #   * **5 distinct injected by `slashCommands.js`**, not 12 — the module carries
 #     the same three-keyframe `egg-styles` string ten times verbatim, guarded by
 #     an id check so only the first can ever apply. `P1-12` corrected this.
-#   * **A sixth runtime injection nobody counted**: `chatStream.js` writes
-#     `steer-pulse` into `document.head`. It carries its own narrow block, so it
+#   * **A sixth runtime injection nobody counted**: `chatStream.js` wrote
+#     `steer-pulse` into `document.head`. It carried its own narrow block, so it
 #     was never a defect — but it was never in the audit either, and the next
-#     one might not bring its own guard.
+#     one might not bring its own guard. Gone since 2026-11-01 (`B1741`): the
+#     *Working… Steer now* strip it animated is no longer drawn, so the module
+#     injects nothing, and the census below says so.
 #   * **`static/login.html` defines `login-spin` and no guard reached it.** That
 #     is the row's real finding and the only live defect here. The login page
 #     does not load `style.css` — it mirrors the palette by hand so its first
@@ -426,12 +428,12 @@ def test_the_keyframe_census_is_not_the_number_on_the_row():
     )
 
     injected = _injected_keyframes()
+    # One module since 2026-11-01: `chatStream.js`'s `steer-pulse` left with
+    # the steer strip (`B1741`), and nothing has taken its place.
     assert set(injected) == {
-        "static/js/chatStream.js",
         "static/js/slashCommands.js",
     }, f"a module started injecting keyframes: {sorted(injected)}"
     assert len(injected["static/js/slashCommands.js"]) == 5, injected
-    assert injected["static/js/chatStream.js"] == ["steer-pulse"], injected
 
 
 # One exception, and it is one page rather than a pattern. `wave-variants.html`

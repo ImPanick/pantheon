@@ -316,9 +316,12 @@ let step = 'start';   // which part failed, said on the way out
   // places: away from everything (the chip off and on, the heading, both
   // rows — one of them the focused, keyboard-highlighted one), on the chip,
   // and on a row. Each thing is measured on the ground it is painted on,
-  // read from the page rather than assumed: the composer (and the composer
-  // in plan mode) under the chip's own background, and the menu's panel under
-  // a row's own background.
+  // read from the page rather than assumed: under the chip, every ancestor's
+  // background composited down to the page's canvas (`B1740` put the chip on
+  // the deck under the box, over the bare field, so the box's ground is no
+  // longer its ground; plan mode is still measured, since it recolours the
+  // box the deck sits beside), and the menu's panel under a row's own
+  // background.
   await page.addStyleTag({ content: '*, *::before, *::after { transition: none !important; animation: none !important; }' });
   await page.click('#approval-mode-btn');
   await settle();
@@ -335,7 +338,20 @@ let step = 'start';   // which part failed, said on the way out
     const ink = (node, ground) => ratio(over(rgba(getComputedStyle(node).color), ground), ground);
     const chipEl = document.getElementById('approval-mode-btn');
     const label = document.getElementById('approval-mode-label');
-    const barEl = document.querySelector('.chat-input-bar');
+    // The ground under a node: the page's canvas, then each ancestor's own
+    // background laid over it from the root down. A transparent wrapper
+    // contributes nothing, which is the point — the measurement follows the
+    // paint, not the markup.
+    const groundUnder = (node) => {
+      const chain = [];
+      for (let n = node.parentElement; n; n = n.parentElement) chain.unshift(n);
+      let g = over(rgba(getComputedStyle(document.documentElement).backgroundColor), [255, 255, 255]);
+      for (const n of chain) {
+        if (n === document.documentElement) continue;
+        g = over(rgba(getComputedStyle(n).backgroundColor), g);
+      }
+      return g;
+    };
     const menu = document.getElementById('approval-mode-menu');
     const heading = document.getElementById('approval-mode-menu-title');
     const items = [...document.querySelectorAll('[data-approval-choice]')];
@@ -347,7 +363,7 @@ let step = 'start';   // which part failed, said on the way out
       const chipStates = where === 'chip' ? ['hover'] : where === 'away' ? ['off', 'on'] : [];
       for (const plan of [false, true]) {
         document.body.classList.toggle('plan-mode-active', plan);
-        const ground = rgba(getComputedStyle(barEl).backgroundColor).c;
+        const ground = groundUnder(chipEl);
         for (const state of chipStates) {
           chipEl.classList.toggle('active', state === 'on');
           note('chip-' + state, ink(label, over(rgba(getComputedStyle(chipEl).backgroundColor), ground)));

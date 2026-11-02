@@ -140,6 +140,15 @@ AT_THE_BAR = frozenset({
     "etl-runner", "restore-drill",
     # Creative & Media, the whole section.
     "photo-organiser", "story-writer", "video-clipper",
+    # Wave 3 (2026-11-01, `P24-28`): the company slice — engineering,
+    # testing, AI, devops, security, data, product, management, sales,
+    # support, legal and operations, each built at this bar from the start.
+    "architect", "api-designer", "pair-programmer", "performance-profiler", "build-doctor",
+    "tech-debt-registrar", "test-planner", "regression-triager", "bug-reproducer", "report-reviewer",
+    "guardrail-tester", "change-manager", "postmortem-writer", "runbook-author", "threat-modeller",
+    "security-reviewer", "sbom-keeper", "data-engineer", "data-steward", "prd-reviewer",
+    "release-notes-owner", "decision-desk", "pipeline-keeper", "renewal-manager", "escalation-manager",
+    "nda-triage", "executive-assistant", "meeting-prep",
 })
 
 SECTIONS = ("Steps", "Judgement calls", "Edge cases", "Deliverable", "Example")

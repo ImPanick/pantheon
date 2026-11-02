@@ -2203,6 +2203,9 @@ function initializeEventListeners() {
       // `B1706`: nor for the approval-mode chip — its menu takes the focus,
       // on the mode this chat is in, as the model picker's box does.
       if (e.target.closest('#approval-mode-btn')) return;
+      // `B1740`: nor for the effort dial on the deck — its menu focuses its
+      // first level when it opens, as the approval chip's menu does.
+      if (e.target.closest('#reasoning-effort-btn')) return;
       // Don't refocus when tapping the +/chevron tools button — the user
       // is explicitly trying to dismiss the keyboard and open the tools
       // menu. Without this, the textarea blurs (keyboard down), then this
@@ -2451,8 +2454,9 @@ function initializeEventListeners() {
       // Force reflow then measure each child
       void inputLeft.offsetWidth;
 
-      // Measure the overflow wrapper (always visible)
-      const wrapperWidth = overflowWrapper.offsetWidth + 4;
+      // The + (attach) button lives in the box's own row now (2026-11-01), so
+      // it takes none of the deck's room; measured only if it is in this row.
+      const wrapperWidth = inputLeft.contains(overflowWrapper) ? overflowWrapper.offsetWidth + 4 : 0;
 
       // Measure each collapsible button's natural width
       const btnWidths = collapsibleBtns.map(btn => btn.offsetWidth + 4);
@@ -2526,6 +2530,16 @@ function initializeEventListeners() {
     const inputBottom = inputLeft.parentElement;
     if (inputBottom) {
       new ResizeObserver(() => requestAnimationFrame(checkToolbarOverflow)).observe(inputBottom);
+    }
+    // And when the right-hand group grows or shrinks on its own: the approval
+    // chip and the effort dial appear once the chat and the model are known,
+    // and the context ring takes its figure after the first turn — none of
+    // which changes the row's own size, so the observer above never saw them
+    // and the mode toggle was drawn over the switches (measured 2026-11-01 at
+    // a 486 px bar during a run).
+    const rightGroup = document.querySelector('.chat-input-right');
+    if (rightGroup) {
+      new ResizeObserver(() => requestAnimationFrame(checkToolbarOverflow)).observe(rightGroup);
     }
   })();
 
@@ -4215,8 +4229,9 @@ function startPantheonApp() {
   // Add drag and drop handlers for the chat container
   const chatContainer = el('chat-container');
 
-  // Prevent default to allow drop
-  const chatInputBar = chatContainer.querySelector('.chat-input-bar');
+  // Prevent default to allow drop. `B1740`: the dashed frame goes on the box
+  // (the rounded capsule), not the bare wrapper around box and deck.
+  const chatInputBar = chatContainer.querySelector('.chat-input-box') || chatContainer.querySelector('.chat-input-bar');
   function _showDropHighlight() {
     chatContainer.style.backgroundColor = 'rgba(0, 170, 255, 0.1)';
     chatContainer.style.transition = 'background-color 0.2s ease';

@@ -118,6 +118,12 @@ the next one is cut.
   that cannot see images still gets the list. `scripts/grounding_eval.py` measures it on your own
   model: five desktop and browser tasks, with marks off and on. Rebuild both images: the
   workstation gains the accessibility bus and Pantheon's image gains Tesseract.
+- **`/` skills, `@` agents, and the next step on Tab** (2026-11-01, `B1738`, `B1739`). Typing `/` in
+  the message box now opens on your skills (name, shelf and what each is for), with the slash commands
+  after them, and Enter takes the highlighted one. Typing `@` opens the Agents hall; pick one and it is
+  summoned into the chat (Agent mode turns on). When a reply finishes, the chat's model suggests the
+  most valuable next step as faded text in the empty box: Tab puts it there ready to send, Escape or
+  typing puts it away.
 - **The agent picks its own skills** (2026-11-01, `B1737`). Every agent turn now lists the skills the
   model may use, by category, and tells it to open the one for the work it is starting: QA and
   testing, frontend and design, debugging, research, writing. A new read-only tool, `use_skill`,
@@ -395,6 +401,18 @@ the next one is cut.
   button all close it. `/toggle mode [agent|chat]` is the same control, typed.
 
 ### Changed — read this before upgrading
+
+- **The controls sit under the message box, and a queued message carries *Steer now*** (2026-11-01,
+  `B1740`, `B1741`). The box holds your words, the model picker and four buttons: +, dictation, voice
+  and send. Plan, Web, Shell, Conversation, Agent/Chat, the effort dial, the permissions chip and the
+  context ring sit on a row under it, and wrap when the window is narrow. The *Working… Steer now*
+  strip that covered the box during a run is gone: Ctrl/Cmd+Enter still steers from the box, and each
+  message waiting in the queue shows its place (*1.*, *2.*), its words, *Edit* and *Steer now* — press
+  it and the row reads *Steering…* until the run picks those words up at its next step; if the reply
+  finishes first the message stays in the queue and goes next, never lost (*Send now* instead when the
+  run cannot take a steer, or the message carries a picture). With two or more waiting, *Send all N
+  now* sits under the rows as before. The effort and permissions menus open above the whole composer.
+  Hard-refresh once after updating: the page's cache name changed.
 
 - **The server speaks with *Automatic* unless you chose otherwise** (2026-11-01, `B1728`). The
   voice in **Settings → Voice** was *None* until an admin chose one, so voice chat answered in
@@ -762,6 +780,23 @@ the next one is cut.
 
 ### Fixed
 
+- **The picture and PDF readers are patched, and the two CI checks every pull request had carried
+  red since October are green** (2026-11-02, `B1742`, `B1743`). Pillow moves 12.3.0 → 13.0.0
+  (thirty-nine advisories in the decoders an uploaded picture reaches: heap overflows, reads of
+  uninitialised memory, loops and allocation bombs), pypdf 6.19.0 → 6.21.4 (eighteen crafted PDFs
+  that loop forever) and fastembed 0.8.1 → 0.9.1, which is what let Pillow move — it capped Pillow
+  below 13. Rebuild the image to pick the three up. One thing to know: a *fresh* download of the
+  embedding model now reads 256 tokens where it read 128, so texts over 128 tokens embed a little
+  differently than in a cache made before; an existing install keeps its cache. And the CI job that
+  checks the ledger's pinned commit now fetches the history it asks git about, so its fourteen later
+  steps run again.
+- **KasmVNC is credited as the step it is, and QEMU and KVM are credited at all** (2026-11-01).
+  The owner: *"Ensure the credits for KASM's KVM is credited appropriately. This is HUGE leap for
+  Pantheon."* `CREDITS.md` had KasmVNC's licences in its Docker section only; it now opens, after
+  Odysseus, with a section on KasmVNC and Kasm Technologies — what the live desktop, take-over and
+  the live browser owe it, and the TigerVNC, TightVNC, RealVNC and noVNC work it stands on — and the
+  README says so where it says where Pantheon came from. The VM workstation's QEMU, Linux's KVM,
+  `genisoimage` and Ubuntu's cloud image were not credited anywhere; they have their own section now.
 - **Compact cuts the chat hard and no longer fails on a slow local model** (2026-11-01, `B1731`).
   The owner: *"Chat compaction does not actually do anything."* The summary was asked of the model
   with 30 seconds and 1,024 tokens, which a local reasoning model such as gpt-oss runs out of, and

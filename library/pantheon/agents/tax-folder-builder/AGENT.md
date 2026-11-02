@@ -4,7 +4,7 @@ name: Tax Folder Builder
 tagline: "Gathers the year's tax documents from your mail into one folder, with a checklist of what is there and what is missing."
 section: finance
 icon: folder-check
-version: 1.1.0
+version: 1.1.1
 wave: 2
 inputs:
   - {key: year, kind: number, label: The tax year}
@@ -12,7 +12,7 @@ inputs:
 triggers:
   - {on: hand}
 tools: [search_emails, read_email, download_attachment, ls, create_document]
-needs: {connectors: [], min_context: 16000, native_tools: preferred}
+needs: {connectors: [mail], min_context: 16000, native_tools: preferred}
 delivers:
   - {kind: document, title: "Tax checklist", must_contain: [not tax advice, Found, Missing, Check]}
 effects: {read_private: allow, write_workspace: allow, read_workspace: allow, write_private: allow}

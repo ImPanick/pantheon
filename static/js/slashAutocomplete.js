@@ -11,6 +11,10 @@ import { toolKeyFor, toolShown } from './ui_visibility.js';
 
 const POPUP_ID = 'slash-autocomplete';
 const MAX_VISIBLE = 14;
+// `B1738`. Skills lead the list: `/` is where a person looks their skills up,
+// so the published ones come first (all of them that match, up to this many),
+// then the commands under them.
+const MAX_SKILLS = 30;
 
 // Flatten the registry into a searchable list of leaf entries. Each entry is
 // either a top-level command or a "cmd sub" pair (so subcommands get their
@@ -160,6 +164,10 @@ async function _loadSkillEntries() {
       category: s.category || 'Skills',
       help: s.help || 'Run skill',
       usage: s.usage || `${s.token || `/${s.name}`} <request>`,
+      skill: true,
+      // "Skills / qa" → "qa": the popup heads the group "Skills" once and
+      // names each skill's own shelf on its row (`B1738`).
+      shelf: String(s.category || '').replace(/^Skills\s*\/\s*/i, '').trim(),
     })).filter(e => e.token && e.token.startsWith('/'));
   } catch {
     return [];
@@ -199,7 +207,7 @@ function _ensurePopup(textarea) {
   if (el) return el;
   el = document.createElement('div');
   el.id = POPUP_ID;
-  el.className = 'slash-autocomplete-popup';
+  el.className = 'slash-autocomplete-popup ck-pop';
   el.setAttribute('role', 'listbox');
   el.setAttribute('aria-label', 'Slash commands');
   document.body.appendChild(el);
@@ -212,7 +220,7 @@ function _ensurePopup(textarea) {
 
 function _position(popup, textarea) {
   const r = textarea.getBoundingClientRect();
-  const maxH = Math.min(window.innerHeight * 0.5, 360);
+  const maxH = Math.min(window.innerHeight * 0.55, 420);
   popup.style.maxHeight = maxH + 'px';
   // Anchor above the textarea, left-aligned with it
   popup.style.left = Math.round(r.left) + 'px';
@@ -238,13 +246,17 @@ function _render(popup, items, selectedIdx, query) {
   let lastCat = null;
   for (let i = 0; i < items.length; i++) {
     const it = items[i];
-    if (it.category !== lastCat) {
-      html += `<div class="slash-ac-cat">${_esc(it.category || 'Other')}</div>`;
-      lastCat = it.category;
+    const cat = it.skill ? 'Skills' : (it.category || 'Other');
+    if (cat !== lastCat) {
+      html += `<div class="slash-ac-cat">${_esc(cat)}</div>`;
+      lastCat = cat;
     }
     const sel = i === selectedIdx ? ' slash-ac-row-sel' : '';
-    const usage = it.usage && it.usage !== it.token ? ` <span class="slash-ac-usage">${_esc(it.usage)}</span>` : '';
-    html += `<div class="slash-ac-row${sel}" role="option" data-idx="${i}" data-token="${_esc(it.token)}">`
+    const usage = it.skill
+      ? (it.shelf ? ` <span class="slash-ac-usage slash-ac-shelf">${_esc(it.shelf)}</span>` : '')
+      : (it.usage && it.usage !== it.token ? ` <span class="slash-ac-usage">${_esc(it.usage)}</span>` : '');
+    const kind = it.skill ? ' slash-ac-skill' : '';
+    html += `<div class="slash-ac-row${sel}${kind}" role="option" data-idx="${i}" data-token="${_esc(it.token)}">`
          +    `<span class="slash-ac-token">${_esc(it.token)}</span>`
          +    `<span class="slash-ac-help">${_esc(it.help)}</span>`
          +    usage
@@ -301,12 +313,19 @@ export function initSlashAutocomplete(textarea) {
     if (groupItems.length) {
       items = groupItems.slice(0, MAX_VISIBLE);
     } else {
-      items = live
+      const ranked = live
       .map(e => ({ e, s: _scoreMatch(e, query) }))
       .filter(x => x.s > 0)
-      .sort((a, b) => b.s - a.s)
-      .slice(0, MAX_VISIBLE)
-      .map(x => x.e);
+      .sort((a, b) => b.s - a.s);
+      // `B1738`. Skills whose name matches come first, then the commands,
+      // then skills found only by what they are for (`/sho` is still
+      // `/shortcuts` first, `B948`).
+      const named = ranked.filter(x => x.e.skill && x.s >= 100).slice(0, MAX_SKILLS).map(x => x.e);
+      if (query === '/') named.sort((a, b) => a.token.localeCompare(b.token));
+      const commands = ranked.filter(x => !x.e.skill).slice(0, MAX_VISIBLE).map(x => x.e);
+      const described = ranked.filter(x => x.e.skill && x.s < 100)
+        .slice(0, Math.max(0, MAX_SKILLS - named.length)).map(x => x.e);
+      items = named.concat(commands, described);
     }
     if (!items.length && query.length > 1) { hide(); return; }
     if (!items.length) {
@@ -361,6 +380,20 @@ export function initSlashAutocomplete(textarea) {
       hide();
     }
   });
+
+  // `B1738`. Enter on a half-typed name takes the highlighted row. The
+  // composer's own Enter listener sits on the box and runs first, so this one
+  // listens on the document's capture phase, ahead of it; a fully typed
+  // command (an exact row) still goes to the composer and runs.
+  document.addEventListener('keydown', (e) => {
+    if (e.target !== textarea || !visible || !items.length) return;
+    if (e.key !== 'Enter' || e.shiftKey || e.isComposing) return;
+    const v = textarea.value.trim();
+    if (items.find(it => it.token === v || it.aliases.includes(v))) return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    insert(items[selectedIdx].token);
+  }, true);
 
   // Re-position on window resize / scroll
   window.addEventListener('resize', () => { if (visible) _position(popup, textarea); });

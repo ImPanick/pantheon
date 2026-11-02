@@ -88,4 +88,10 @@ regexes = [
   # numbered 1. The test asserts it never reaches another account's tools.
   # Both boundaries keep it from excusing a longer value.
   '''\bADA-SECRET-gitea-1\b''',
+  # `tests/test_slash_skills_at_agents_and_the_next_step.py` logs its browser
+  # drive into a throwaway account on a temporary data directory, named for
+  # what it is: the test persona `boxer`, the word `pass`, and `123`. The
+  # account exists only for the minutes the test runs. Both boundaries keep
+  # the entry from excusing a longer value.
+  '''\bboxer-pass-123\b''',
 ]

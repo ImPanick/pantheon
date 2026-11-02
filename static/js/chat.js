@@ -1176,6 +1176,16 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
       const ta = document.getElementById('message');
       if (ta && mod.initSlashAutocomplete) mod.initSlashAutocomplete(ta);
     }).catch(() => {});
+    // `B1738`. `@` in the box opens the agent picker (summons the one picked).
+    import('./agentMention.js').then(mod => {
+      const ta = document.getElementById('message');
+      if (ta && mod.initAgentMention) mod.initAgentMention(ta);
+    }).catch(() => {});
+    // `B1739`. After a reply, the next step waits in the empty box; Tab takes it.
+    import('./nextStepGhost.js').then(mod => {
+      const ta = document.getElementById('message');
+      if (ta && mod.initNextStepGhost) mod.initNextStepGhost(ta);
+    }).catch(() => {});
 
     // ArrowUp on the composer recalls previous user prompts from this chat.
     const _wireArrowUpRecall = (composer) =>
@@ -1698,6 +1708,7 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
   function _promoteQueuedRequest(id) {
     const peek = _queuedAgentRequests.find(it => it && it.id === id);
     if (!peek) return;
+    if (peek.steering) return;   // `B1741`: already on its way to the run
     if (peek.pendingUpload) {
       try { uiModule.showToast && uiModule.showToast('Still uploading the attachment…'); } catch (_) {}
       return;
@@ -1841,7 +1852,7 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
       const sid = _currentSessionIdSafe();
       if (!sid) return;
       const next = _queuedAgentRequests.find(
-        it => it && it.sessionId === sid && !it.pendingUpload && !it.restored
+        it => it && it.sessionId === sid && !it.pendingUpload && !it.restored && !it.steering
       );
       if (!next) return;
       _removeQueuedRequest(next.id);
@@ -2013,6 +2024,10 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
         output_target: 'session',
         attachmentCount: (it.attachments && it.attachments.length) || 0,
         editable: !it.pendingUpload,
+        // `B1741`. Its words are on their way to the run (Steer now was
+        // pressed and the server accepted); the row stays until the run
+        // picks them up or ends, and offers nothing meanwhile.
+        steering: !!it.steering,
         // Distinct from `editable`, which is also false for a launched
         // parallel run. `sendable` means "the drain would actually take this
         // one": `_drainQueuedRequests` filters `!it.pendingUpload`, so a row
@@ -2282,7 +2297,62 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
     },
     runParallel: () => { _runQueueParallel().catch(() => {}); },
     isStreamLive: _isQueueRunLive,
+    // 2026-11-01. *Steer now* on a queued row: the run in flight takes the
+    // message at its next step and the row leaves the queue. The answer to
+    // "can it, right now" is `chatStream.js`'s (`canSteerNow`), the one place
+    // that knows the route, the run's own verdict and the composer's guess.
+    // The row reads the OFFER, which `chatStream.js` withdraws before the
+    // run-end edge reaches anyone; `canSteerNow` alone stays true through the
+    // 1.2 s busy tail and nothing re-renders when that expires, so rows kept
+    // saying Steer now on an idle chat.
+    canSteer: () => { try { return !!(chatStream.isSteerOffered() && chatStream.canSteerNow()); } catch (_) { return false; } },
+    steerKeyLabel: () => chatStream.STEER_KEY_LABEL,
+    steerNow: async (id) => {
+      const it = _queuedAgentRequests.find(x => x && x.id === id);
+      if (!it) return false;
+      if (it.steering) return false;   // already on its way: a second press sends nothing twice
+      if (it.sessionId && it.sessionId !== _currentSessionIdSafe()) return false;
+      if (it.pendingUpload || (it.attachments && it.attachments.length)) {
+        // `B1280`: a steer is words only; the queue carries the picture.
+        try { uiModule.showToast && uiModule.showToast("A picture can't steer a running reply — Send now sends it ahead of the rest"); } catch (_) {}
+        return false;
+      }
+      // Marked before the round trip, so the drain, the bubble's click and a
+      // second press all leave it alone while the server is answering. The
+      // row leaves the queue only when the run picks the words up
+      // (`pantheon:steer-applied` below); a run that ends first un-marks it on
+      // the busy edge and the drain sends it next, so nothing is lost.
+      it.steering = true;
+      try { queuePanel.refresh(); } catch (_) {}
+      let sent = false;
+      try { sent = await chatStream.submitSteer(it.message, { queued: true }); } catch (_) { sent = false; }
+      if (sent !== 'steered') {
+        it.steering = false;
+        try { queuePanel.refresh(); } catch (_) {}
+        return false;
+      }
+      return true;
+    },
   };
+
+  // `B1741`. The two edges a steered row waits on. Both on `window`, as the
+  // events are, and outside any function the harnesses slice out of this file.
+  try {
+    window.addEventListener('pantheon:steer-applied', () => {
+      const landed = _queuedAgentRequests.filter(it => it && it.steering);
+      if (!landed.length) return;
+      for (const it of landed) _removeQueuedRequest(it.id);
+      try { queuePanel.refresh(); } catch (_) {}
+    });
+    window.addEventListener('pantheon:chat-busy-change', (ev) => {
+      if (ev && ev.detail && ev.detail.active) return;
+      let any = false;
+      for (const it of _queuedAgentRequests) {
+        if (it && it.steering) { it.steering = false; any = true; }
+      }
+      if (any) { try { queuePanel.refresh(); } catch (_) {} }
+    });
+  } catch (_) {}
 
 
   /**

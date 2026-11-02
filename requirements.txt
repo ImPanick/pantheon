@@ -67,7 +67,11 @@ pydantic==2.13.5
 # (`B1548`).
 pydantic-settings==2.15.0
 SQLAlchemy==2.1.1
-pypdf==6.19.0
+# `B1743`. 6.19.0 carries eighteen advisories (crafted PDFs that loop forever
+# in the xref, trailer, outline and object-cloning readers), each reachable
+# from an attached document; 6.21.4 (2026-10-28) is the first release with
+# none of them.
+pypdf==6.21.4
 beautifulsoup4==4.15.0
 charset-normalizer==3.5.1
 numpy==2.4.6
@@ -77,7 +81,16 @@ numpy==2.4.6
 # chromadb-client is the lightweight HTTP client (talks to a standalone
 # ChromaDB service); fastembed runs local ONNX embeddings.
 chromadb-client==1.5.9
-fastembed==0.8.1
+# `B1743`. 0.8.1 capped Pillow below 13.0 on every Python, and Pillow 12.3.0
+# carries fifty-seven advisories that 13.0.0 closes (crafted-image decoders:
+# PNG, GIF, TIFF, JPEG, BMP, PDF, EPS), every one reachable from an uploaded
+# picture. 0.9.1 (2026-10-24) raises the cap to 14.0, so it moves with Pillow.
+fastembed==0.9.1
+# `B1743`. Imported directly (uploads, gallery, screen marks, tool-result
+# pictures) and until now pinned only through fastembed. 13.0.0 (2026-10-16)
+# is the first release with none of the fifty-seven advisories pip-audit
+# reports against 12.3.0; it needs Python 3.11, which CI and the image have.
+pillow==13.0.0
 youtube-transcript-api==1.2.4
 # Markdown rendering for research reports (src/visual_report.py).
 # Imported at module-top so it's a hard core dep, not optional.

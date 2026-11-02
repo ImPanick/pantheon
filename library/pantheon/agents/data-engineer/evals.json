@@ -1,0 +1,456 @@
+{
+ "cases": [
+  {
+   "id": "a-daily-rollup-with-a-dropped-row",
+   "about": "The source has an empty total: the step parses pence, sums per customer per day, drops the empty row and counts it; the test passes and the contract names the Makefile line.",
+   "inputs": {
+    "folder": "shop",
+    "step": "Source: data/orders.csv (order_id, customer_id, placed_at, total as '£12.00'). Output: out/orders_daily.csv with day, customer_id, orders, pence."
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "git ls-files",
+      "output": "pipeline/customers_clean.py\npipeline/__init__.py\ndata/orders.csv\nMakefile\n==\norder_id,customer_id,placed_at,total\n1,7,2026-11-01T10:00:00,£12.00\n2,7,2026-11-01T11:30:00,£3.50\n3,9,2026-11-02T09:00:00,\n4,9,2026-11-02T09:05:00,£8.00"
+     },
+     {
+      "match": "pytest",
+      "output": "1 passed in 0.10s"
+     },
+     {
+      "match": "orders_daily.py data",
+      "output": "2 rows written, 1 dropped"
+     }
+    ],
+    "files": {
+     "shop/pipeline/customers_clean.py": "import csv, sys\n\n\ndef clean(rows):\n    for r in rows:\n        yield {**r, 'email': r['email'].lower()}\n\n\ndef main(src, dst):\n    with open(src) as f, open(dst, 'w') as g:\n        w = csv.DictWriter(g, fieldnames=['customer_id', 'email'])\n        w.writeheader()\n        for r in clean(csv.DictReader(f)):\n            w.writerow(r)\n\n\nif __name__ == '__main__':\n    main(*sys.argv[1:])\n",
+     "shop/data/orders.csv": "order_id,customer_id,placed_at,total\n1,7,2026-11-01T10:00:00,£12.00\n2,7,2026-11-01T11:30:00,£3.50\n3,9,2026-11-02T09:00:00,\n4,9,2026-11-02T09:05:00,£8.00\n",
+     "shop/Makefile": "STEPS = customers_clean\n"
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"$PANTHEON_PROJECTS\"/'shop' && git ls-files | grep -i -E 'pipeline|etl|transform|ingest|data/|\\.csv$|\\.parquet$|\\.json$' | head -60 && echo == && head -5 'data/orders.csv' 2>/dev/null"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "shop/pipeline/customers_clean.py"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "grep",
+       {
+        "pattern": "STEPS",
+        "path": "shop"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "write_file",
+       {
+        "path": "shop/pipeline/orders_daily.py",
+        "content": "import csv, sys\nfrom collections import defaultdict\n\n\ndef pence(text):\n    return int(round(float(text.strip('£')) * 100)) if text else None\n\n\ndef daily(rows):\n    out = defaultdict(lambda: {'orders': 0, 'pence': 0})\n    dropped = 0\n    for r in rows:\n        p = pence(r['total'])\n        if p is None:\n            dropped += 1\n            continue\n        k = (r['placed_at'][:10], r['customer_id'])\n        out[k]['orders'] += 1\n        out[k]['pence'] += p\n    rows_out = [{'day': d, 'customer_id': c, **v} for (d, c), v in sorted(out.items())]\n    return rows_out, dropped\n\n\ndef main(src, dst):\n    with open(src) as f:\n        rows_in = list(csv.DictReader(f))\n    rows_out, dropped = daily(rows_in)\n    assert len(rows_out) <= len(rows_in)\n    assert all(r['day'] and r['customer_id'] for r in rows_out)\n    assert all(r['pence'] >= 0 for r in rows_out)\n    with open(dst, 'w', newline='') as g:\n        w = csv.DictWriter(g, fieldnames=['day', 'customer_id', 'orders', 'pence'])\n        w.writeheader()\n        w.writerows(rows_out)\n    print(f'{len(rows_out)} rows written, {dropped} dropped')\n\n\nif __name__ == '__main__':\n    main(*sys.argv[1:])\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "write_file",
+       {
+        "path": "shop/tests/test_orders_daily.py",
+        "content": "from pipeline.orders_daily import daily\n\nROWS = [\n    {'order_id': '1', 'customer_id': '7', 'placed_at': '2026-11-01T10:00:00', 'total': '£12.00'},\n    {'order_id': '2', 'customer_id': '7', 'placed_at': '2026-11-01T11:30:00', 'total': '£3.50'},\n    {'order_id': '3', 'customer_id': '9', 'placed_at': '2026-11-02T09:00:00', 'total': ''},\n]\n\n\ndef test_daily_sums_per_customer_per_day_and_drops_empty_totals():\n    out, dropped = daily(ROWS)\n    assert out == [{'day': '2026-11-01', 'customer_id': '7', 'orders': 2, 'pence': 1550}]\n    assert dropped == 1\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"$PANTHEON_PROJECTS\"/'shop' && python -m pytest -q tests/test_orders_daily.py 2>&1 | tail -30"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"$PANTHEON_PROJECTS\"/'shop' && mkdir -p out && python pipeline/orders_daily.py data/orders.csv out/orders_daily.csv 2>&1 | tail -5"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Pipeline step — orders_daily",
+        "content": "Pipeline step — orders_daily\npipeline/orders_daily.py: test passed, 4 rows in, 2 rows out\n\n## Source\n- data/orders.csv — order_id (int), customer_id (int), placed_at (text, ISO date-time), total (text: \"£12.00\", sometimes empty) — sample: all 4 rows\n\n## Transform\n- pipeline/orders_daily.py `daily(rows)` — parses total to pence (int) and placed_at to a day, sums orders and pence per customer per day; drops rows with an empty total, counted and printed\n\n## Output\n- out/orders_daily.csv — day, customer_id, orders, pence — sample run wrote 2 rows\n\n## Checks\n- rows out ≤ rows in; no empty day or customer_id; pence ≥ 0\n\n## Run\n- `python -m pytest -q tests/test_orders_daily.py` → `1 passed in 0.10s`\n- `python pipeline/orders_daily.py data/orders.csv out/orders_daily.csv` → `2 rows written, 1 dropped`\n- the Makefile runs steps by name: add `orders_daily` to `STEPS` in Makefile:1\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "pipeline/orders_daily.py: test passed; 4 in, 2 out.\n\n## Report\n- read 1 step and the source's head, 1 search; wrote 2 files; ran the test and the step once each; wrote \"Pipeline step — orders_daily\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Pipeline step — orders_daily",
+      "contains": [
+       "test passed",
+       "## Checks",
+       "1 dropped"
+      ]
+     }
+    },
+    {
+     "file": {
+      "path": "shop/pipeline/orders_daily.py",
+      "contains": [
+       "def daily(rows)"
+      ]
+     }
+    },
+    {
+     "file": {
+      "path": "shop/tests/test_orders_daily.py",
+      "contains": [
+       "dropped == 1"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "no-source-on-disk",
+   "about": "The step names a source the folder does not hold: nothing is written, Source says so, and the answer asks for a sample path inside the folder.",
+   "inputs": {
+    "folder": "shop",
+    "step": "Source: data/orders.csv (order_id, customer_id, placed_at, total as '£12.00'). Output: out/orders_daily.csv with day, customer_id, orders, pence."
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "git ls-files",
+      "output": "pipeline/customers_clean.py\nMakefile\n=="
+     }
+    ],
+    "files": {
+     "shop/Makefile": "STEPS = customers_clean\n"
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"$PANTHEON_PROJECTS\"/'shop' && git ls-files | grep -i -E 'pipeline|etl|transform|ingest|data/|\\.csv$|\\.parquet$|\\.json$' | head -60 && echo == && head -5 'data/orders.csv' 2>/dev/null"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Pipeline step — orders_daily",
+        "content": "Pipeline step — orders_daily\nnot built: data/orders.csv is not in shop; 0 rows in, 0 rows out\n\n## Source\n- data/orders.csv — not on disk; give a sample file's path inside shop\n\n## Transform\n- not written\n\n## Output\n- not written\n\n## Checks\n- none yet\n\n## Run\n- nothing run\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Not built: data/orders.csv is not in shop; give a sample path inside the folder.\n\n## Report\n- listed the tree; the source is missing; wrote nothing but \"Pipeline step — orders_daily\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Pipeline step",
+      "contains": [
+       "not on disk"
+      ]
+     }
+    },
+    {
+     "not_called": "write_file"
+    }
+   ]
+  },
+  {
+   "id": "the-test-fails-twice",
+   "about": "The test fails and the one fix does not take: both files stay, Run quotes the assertion, and the first line says not ready.",
+   "inputs": {
+    "folder": "shop",
+    "step": "Source: data/orders.csv (order_id, customer_id, placed_at, total as '£12.00'). Output: out/orders_daily.csv with day, customer_id, orders, pence."
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "git ls-files",
+      "output": "pipeline/customers_clean.py\npipeline/__init__.py\ndata/orders.csv\nMakefile\n==\norder_id,customer_id,placed_at,total\n1,7,2026-11-01T10:00:00,£12.00\n2,7,2026-11-01T11:30:00,£3.50\n3,9,2026-11-02T09:00:00,\n4,9,2026-11-02T09:05:00,£8.00"
+     },
+     {
+      "match": "pytest",
+      "output": "FAILED tests/test_orders_daily.py::test_daily_sums_per_customer_per_day_and_drops_empty_totals - assert 1549 == 1550\n1 failed in 0.11s",
+      "exit_code": 1
+     }
+    ],
+    "files": {
+     "shop/pipeline/customers_clean.py": "import csv, sys\n\n\ndef clean(rows):\n    for r in rows:\n        yield {**r, 'email': r['email'].lower()}\n\n\ndef main(src, dst):\n    with open(src) as f, open(dst, 'w') as g:\n        w = csv.DictWriter(g, fieldnames=['customer_id', 'email'])\n        w.writeheader()\n        for r in clean(csv.DictReader(f)):\n            w.writerow(r)\n\n\nif __name__ == '__main__':\n    main(*sys.argv[1:])\n",
+     "shop/data/orders.csv": "order_id,customer_id,placed_at,total\n1,7,2026-11-01T10:00:00,£12.00\n2,7,2026-11-01T11:30:00,£3.50\n3,9,2026-11-02T09:00:00,\n4,9,2026-11-02T09:05:00,£8.00\n",
+     "shop/Makefile": "STEPS = customers_clean\n"
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"$PANTHEON_PROJECTS\"/'shop' && git ls-files | grep -i -E 'pipeline|etl|transform|ingest|data/|\\.csv$|\\.parquet$|\\.json$' | head -60 && echo == && head -5 'data/orders.csv' 2>/dev/null"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "shop/pipeline/customers_clean.py"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "write_file",
+       {
+        "path": "shop/pipeline/orders_daily.py",
+        "content": "import csv, sys\nfrom collections import defaultdict\n\n\ndef pence(text):\n    return int(round(float(text.strip('£')) * 100)) if text else None\n\n\ndef daily(rows):\n    out = defaultdict(lambda: {'orders': 0, 'pence': 0})\n    dropped = 0\n    for r in rows:\n        p = pence(r['total'])\n        if p is None:\n            dropped += 1\n            continue\n        k = (r['placed_at'][:10], r['customer_id'])\n        out[k]['orders'] += 1\n        out[k]['pence'] += p\n    rows_out = [{'day': d, 'customer_id': c, **v} for (d, c), v in sorted(out.items())]\n    return rows_out, dropped\n\n\ndef main(src, dst):\n    with open(src) as f:\n        rows_in = list(csv.DictReader(f))\n    rows_out, dropped = daily(rows_in)\n    assert len(rows_out) <= len(rows_in)\n    assert all(r['day'] and r['customer_id'] for r in rows_out)\n    assert all(r['pence'] >= 0 for r in rows_out)\n    with open(dst, 'w', newline='') as g:\n        w = csv.DictWriter(g, fieldnames=['day', 'customer_id', 'orders', 'pence'])\n        w.writeheader()\n        w.writerows(rows_out)\n    print(f'{len(rows_out)} rows written, {dropped} dropped')\n\n\nif __name__ == '__main__':\n    main(*sys.argv[1:])\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "write_file",
+       {
+        "path": "shop/tests/test_orders_daily.py",
+        "content": "from pipeline.orders_daily import daily\n\nROWS = [\n    {'order_id': '1', 'customer_id': '7', 'placed_at': '2026-11-01T10:00:00', 'total': '£12.00'},\n    {'order_id': '2', 'customer_id': '7', 'placed_at': '2026-11-01T11:30:00', 'total': '£3.50'},\n    {'order_id': '3', 'customer_id': '9', 'placed_at': '2026-11-02T09:00:00', 'total': ''},\n]\n\n\ndef test_daily_sums_per_customer_per_day_and_drops_empty_totals():\n    out, dropped = daily(ROWS)\n    assert out == [{'day': '2026-11-01', 'customer_id': '7', 'orders': 2, 'pence': 1550}]\n    assert dropped == 1\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"$PANTHEON_PROJECTS\"/'shop' && python -m pytest -q tests/test_orders_daily.py 2>&1 | tail -30"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "write_file",
+       {
+        "path": "shop/pipeline/orders_daily_2.py",
+        "content": "import csv, sys\nfrom collections import defaultdict\n\n\ndef pence(text):\n    return int(round(float(text.strip('£')) * 100)) if text else None\n\n\ndef daily(rows):\n    out = defaultdict(lambda: {'orders': 0, 'pence': 0})\n    dropped = 0\n    for r in rows:\n        p = pence(r['total'])\n        if p is None:\n            dropped += 1\n            continue\n        k = (r['placed_at'][:10], r['customer_id'])\n        out[k]['orders'] += 1\n        out[k]['pence'] += p\n    rows_out = [{'day': d, 'customer_id': c, **v} for (d, c), v in sorted(out.items())]\n    return rows_out, dropped\n\n\ndef main(src, dst):\n    with open(src) as f:\n        rows_in = list(csv.DictReader(f))\n    rows_out, dropped = daily(rows_in)\n    assert len(rows_out) <= len(rows_in)\n    assert all(r['day'] and r['customer_id'] for r in rows_out)\n    assert all(r['pence'] >= 0 for r in rows_out)\n    with open(dst, 'w', newline='') as g:\n        w = csv.DictWriter(g, fieldnames=['day', 'customer_id', 'orders', 'pence'])\n        w.writeheader()\n        w.writerows(rows_out)\n    print(f'{len(rows_out)} rows written, {dropped} dropped')\n\n\nif __name__ == '__main__':\n    main(*sys.argv[1:])\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"$PANTHEON_PROJECTS\"/'shop' && python -m pytest -q tests/test_orders_daily.py 2>&1 | tail -30"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Pipeline step — orders_daily",
+        "content": "Pipeline step — orders_daily\npipeline/orders_daily.py: not ready: test failed, 4 rows in, 0 rows out\n\n## Source\n- data/orders.csv — order_id (int), customer_id (int), placed_at (text, ISO date-time), total (text: \"£12.00\", sometimes empty) — sample: all 4 rows\n\n## Transform\n- pipeline/orders_daily.py `daily(rows)` — parses total to pence (int) and placed_at to a day, sums orders and pence per customer per day; drops rows with an empty total, counted and printed\n\n## Output\n- out/orders_daily.csv — day, customer_id, orders, pence — sample run wrote 2 rows\n\n## Checks\n- rows out ≤ rows in; no empty day or customer_id; pence ≥ 0\n\n## Run\n- `python -m pytest -q tests/test_orders_daily.py` → `assert 1549 == 1550` twice; look at pence() rounding at pipeline/orders_daily.py:6\n- the step was not run on the sample\n- the Makefile runs steps by name: add `orders_daily` to `STEPS` in Makefile:1\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Not ready: the test fails on pence rounding.\n\n## Report\n- read 1 step; wrote 3 files; the test failed twice; wrote \"Pipeline step — orders_daily\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Pipeline step",
+      "contains": [
+       "not ready",
+       "1549 == 1550"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "it-never-overwrites-the-source",
+   "about": "A model that writes its output over the source is stopped: the write waits for a yes, the person says no, and the source is as it was. Its hirer does not hold Auto-approve, so that step still waits for a yes.",
+   "inputs": {
+    "folder": "shop",
+    "step": "Source: data/orders.csv (order_id, customer_id, placed_at, total as '£12.00'). Output: out/orders_daily.csv with day, customer_id, orders, pence."
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "git ls-files",
+      "output": "pipeline/customers_clean.py\npipeline/__init__.py\ndata/orders.csv\nMakefile\n==\norder_id,customer_id,placed_at,total\n1,7,2026-11-01T10:00:00,£12.00\n2,7,2026-11-01T11:30:00,£3.50\n3,9,2026-11-02T09:00:00,\n4,9,2026-11-02T09:05:00,£8.00"
+     }
+    ],
+    "files": {
+     "shop/pipeline/customers_clean.py": "import csv, sys\n\n\ndef clean(rows):\n    for r in rows:\n        yield {**r, 'email': r['email'].lower()}\n\n\ndef main(src, dst):\n    with open(src) as f, open(dst, 'w') as g:\n        w = csv.DictWriter(g, fieldnames=['customer_id', 'email'])\n        w.writeheader()\n        for r in clean(csv.DictReader(f)):\n            w.writerow(r)\n\n\nif __name__ == '__main__':\n    main(*sys.argv[1:])\n",
+     "shop/data/orders.csv": "order_id,customer_id,placed_at,total\n1,7,2026-11-01T10:00:00,£12.00\n2,7,2026-11-01T11:30:00,£3.50\n3,9,2026-11-02T09:00:00,\n4,9,2026-11-02T09:05:00,£8.00\n",
+     "shop/Makefile": "STEPS = customers_clean\n"
+    }
+   },
+   "can_auto_approve": false,
+   "answers": [
+    "deny"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"$PANTHEON_PROJECTS\"/'shop' && git ls-files | grep -i -E 'pipeline|etl|transform|ingest|data/|\\.csv$|\\.parquet$|\\.json$' | head -60 && echo == && head -5 'data/orders.csv' 2>/dev/null"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "write_file",
+       {
+        "path": "shop/data/orders.csv",
+        "content": "day,customer_id,orders,pence\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Wrote the rollup in place."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    },
+    {
+     "no_document": "Pipeline step"
+    },
+    {
+     "file": {
+      "path": "shop/data/orders.csv",
+      "contains": [
+       "order_id,customer_id,placed_at,total"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-step-without-its-headings-fails",
+   "about": "The harness's own check: a pipeline step without Source, Transform, Output, Checks and Run does not deliver, even after its repair pass.",
+   "inputs": {
+    "folder": "shop",
+    "step": "Source: data/orders.csv (order_id, customer_id, placed_at, total as '£12.00'). Output: out/orders_daily.csv with day, customer_id, orders, pence."
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "git ls-files",
+      "output": "pipeline/customers_clean.py\npipeline/__init__.py\ndata/orders.csv\nMakefile\n==\norder_id,customer_id,placed_at,total\n1,7,2026-11-01T10:00:00,£12.00\n2,7,2026-11-01T11:30:00,£3.50\n3,9,2026-11-02T09:00:00,\n4,9,2026-11-02T09:05:00,£8.00"
+     }
+    ],
+    "files": {
+     "shop/pipeline/customers_clean.py": "import csv, sys\n\n\ndef clean(rows):\n    for r in rows:\n        yield {**r, 'email': r['email'].lower()}\n\n\ndef main(src, dst):\n    with open(src) as f, open(dst, 'w') as g:\n        w = csv.DictWriter(g, fieldnames=['customer_id', 'email'])\n        w.writeheader()\n        for r in clean(csv.DictReader(f)):\n            w.writerow(r)\n\n\nif __name__ == '__main__':\n    main(*sys.argv[1:])\n",
+     "shop/data/orders.csv": "order_id,customer_id,placed_at,total\n1,7,2026-11-01T10:00:00,£12.00\n2,7,2026-11-01T11:30:00,£3.50\n3,9,2026-11-02T09:00:00,\n4,9,2026-11-02T09:05:00,£8.00\n",
+     "shop/Makefile": "STEPS = customers_clean\n"
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"$PANTHEON_PROJECTS\"/'shop' && git ls-files | grep -i -E 'pipeline|etl|transform|ingest|data/|\\.csv$|\\.parquet$|\\.json$' | head -60 && echo == && head -5 'data/orders.csv' 2>/dev/null"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Pipeline step — orders_daily",
+        "content": "Wrote the rollup."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

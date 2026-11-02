@@ -4,7 +4,7 @@ name: Meal Planner
 tagline: "Plans a week of meals from what you like and have, with the shopping list."
 section: personal-home
 icon: utensils
-version: 1.1.0
+version: 1.1.1
 wave: 2
 inputs:
   - {key: people, kind: number, label: How many people, default: 2}
@@ -12,6 +12,7 @@ inputs:
 triggers:
   - {on: weekly, day: sun, at: "10:00"}
 tools: [manage_memory, manage_notes, create_document]
+skills: [remember-what-matters]
 needs: {connectors: [], min_context: 16000, native_tools: preferred}
 delivers:
   - {kind: document, title: "Meals this week", must_contain: [Dinners, Shopping, From the pantry]}

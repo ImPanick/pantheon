@@ -47,6 +47,9 @@ EVENT_MEMORY_ADDED = "memory_added"
 EVENT_RESEARCH_COMPLETED = "research_completed"
 EVENT_EMAIL_RECEIVED = "email_received"
 EVENT_SKILL_ADDED = "skill_added"
+#: `P24-28`. A hired agent finished a run and its report was kept — the
+#: signal one agent's work is ready for another (`hands_to` in `AGENT.md`).
+EVENT_REPORT_FILED = "report_filed"
 
 # `P8-23`. Each entry also declares WHAT THE TRIGGER HANDS THE TASK.
 #
@@ -103,6 +106,15 @@ EVENT_CATALOGUE = (
      "description": "Fires when a new skill is created",
      "payload": ("name",),
      "payload_summary": "the skill's name"},
+    # `P24-28`. The ninth: a hired agent's run finished and its report was
+    # kept (`src.agents.runtime.record_report`). What it hands on is who ran,
+    # which hire, which run, and the title of the document the run delivered
+    # (empty when its deliverable was an answer or a draft), so an agent hired
+    # on this event can open the right document with `manage_documents`.
+    {"name": EVENT_REPORT_FILED,
+     "description": "Fires when a hired agent's run finishes and its report is kept",
+     "payload": ("agent", "hire", "run_id", "title"),
+     "payload_summary": "the agent's id, the hire's name, the run's id and the delivered document's title"},
 )
 
 EVENT_NAMES = tuple(entry["name"] for entry in EVENT_CATALOGUE)

@@ -60,6 +60,51 @@ either identity. Please do not report Pantheon issues to them.
 
 ---
 
+## KasmVNC — the live workstation
+
+**The workstation's live desktop, and the agent's live browser, are
+[KasmVNC](https://github.com/kasmtech/KasmVNC), made and published as open
+source by [Kasm Technologies](https://kasmweb.com).**
+
+It is one of the largest steps this project has taken. Before it, the
+Workstation window showed still pictures of the agent's screen, taken every few
+seconds, and the agent's browser was screenshots under Pantheon's own chrome.
+With KasmVNC each person watches their workstation **live**: the desktop
+streams as it happens, they take over the mouse and keyboard and hand them back,
+the clipboard crosses in both directions, and the agent's Firefox runs on a
+screen of its own that the person sees and drives as a real browser. Computer
+Use (`D-2026-11-01-02`), where the agent works that screen like a person at a
+computer, is built on it. Kasm Technologies did the hard part — a VNC server
+and a browser client fast and polished enough to feel like the machine itself —
+and gave it away.
+
+KasmVNC stands, in turn, on the VNC lineage of
+[TigerVNC](https://tigervnc.org/), TightVNC and RealVNC, and its browser client
+is Kasm's fork of [noVNC](https://github.com/novnc/noVNC), by Joel Martin,
+Solly Ross, Samuel Mannehed and Pierre Ossman (Cendio AB) and the noVNC
+contributors. They are credited here with it.
+
+- **Version:** 1.5.2, Kasm Technologies' own Ubuntu packages, pinned by sha256
+  per architecture and run unmodified (`D-2026-10-31-01`, `D-2026-11-01-01`)
+- **Licence:** the server GPL-2.0-or-later; the web client noVNC's terms
+  (MPL-2.0 for its JavaScript core). The detail — what ships where, and what
+  travels with it — is in
+  [Docker images — the live workstation desktop](#docker-images--the-live-workstation-desktop)
+- **Names:** "Kasm", "Kasm Workspaces" and "KasmVNC" are Kasm Technologies'
+  names, and the logo inside their client is theirs. Pantheon uses KasmVNC; it
+  is not affiliated with or endorsed by Kasm Technologies
+
+### And the machine under it: QEMU and KVM
+
+When the workstation is a virtual machine, that machine is
+[QEMU](https://www.qemu.org/), accelerated by **KVM**, the Linux kernel's own
+virtualisation — the two together are what make a whole Ubuntu machine per
+person, reset to a starting point, fast enough to use. Credited with their
+licences in
+[Docker images — the workstation's virtual machines](#docker-images--the-workstations-virtual-machines).
+
+---
+
 ## Licence scope — what applies to what
 
 This section exists because the acknowledgements Pantheon inherited from
@@ -1219,6 +1264,23 @@ window frames and the wallpaper that `scripts/make-workstation-theme.py` draws,
 and the settings in the skeleton (`workstation/skel/.config/`) — is Pantheon's
 own, AGPL-3.0-or-later, and the wallpaper's mark is Pantheon's
 (`docs/brand/`).
+
+---
+
+## Docker images — the workstation's virtual machines
+
+The VM workstation (`workstation/vm.Dockerfile`, `workstation/vm.py`) is a host
+image that runs one virtual machine per person. Everything in it is a separate
+program, installed unmodified, that Pantheon's daemon starts and talks to; none
+of it is linked into Pantheon. Each package's own `copyright` file is under
+`/usr/share/doc/` in that image.
+
+| Part | Where it ships | Licence |
+|---|---|---|
+| [QEMU](https://www.qemu.org/) (`qemu-system-x86`, `qemu-utils`: the machine and its disk images) | The **VM host** image, from Ubuntu 24.04's packages by apt | GPL-2.0 (QEMU as a whole; parts are LGPL-2.1-or-later, BSD and MIT, as its `copyright` file lists) |
+| **KVM**, the hardware acceleration QEMU uses | Not shipped: it is the Linux kernel of the machine you run on, reached through `/dev/kvm` | GPL-2.0 (the Linux kernel) |
+| `genisoimage` (cdrkit), which writes each machine's first-boot settings disk | The **VM host** image, by apt | GPL-2.0 |
+| [Ubuntu Server cloud image](https://cloud-images.ubuntu.com/) 24.04, each machine's base disk | The **VM host** image, fetched at build and checked against Canonical's signed checksum list | Each package in it under its own licence; "Ubuntu" is Canonical's trademark, and the image is used unmodified as Canonical publishes it |
 
 ---
 

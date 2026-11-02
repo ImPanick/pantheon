@@ -4,14 +4,14 @@ name: Standup Collector
 tagline: "Gathers each person's update from mail into one roll-up every weekday."
 section: product
 icon: users-round
-version: 1.1.0
+version: 1.1.1
 wave: 2
 inputs:
   - {key: people, kind: list, label: "People whose updates to collect (their addresses)"}
 triggers:
   - {on: daily, at: "10:15", days: weekdays}
 tools: [search_emails, read_email, create_document]
-needs: {connectors: [], min_context: 16000, native_tools: preferred}
+needs: {connectors: [mail], min_context: 16000, native_tools: preferred}
 delivers:
   - {kind: document, title: "Standup", must_contain: [Blockers, Updates, Missing]}
 effects: {read_private: allow, write_private: allow}

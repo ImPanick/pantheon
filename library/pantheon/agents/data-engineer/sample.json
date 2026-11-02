@@ -1,0 +1,29 @@
+{
+ "case": "a-daily-rollup-with-a-dropped-row",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read 1 step and the source's head, 1 search; wrote 2 files; ran the test and the step once each; wrote \"Pipeline step — orders_daily\"",
+ "read": [
+  "read_file",
+  "grep"
+ ],
+ "wrote": [
+  "bash",
+  "write_file",
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Pipeline step”",
+   "ok": true,
+   "detail": "“Pipeline step — orders_daily” is there."
+  }
+ ],
+ "answer": "pipeline/orders_daily.py: test passed; 4 in, 2 out.\n\n## Report\n- read 1 step and the source's head, 1 search; wrote 2 files; ran the test and the step once each; wrote \"Pipeline step — orders_daily\"",
+ "documents": [
+  {
+   "title": "Pipeline step — orders_daily",
+   "content": "Pipeline step — orders_daily\npipeline/orders_daily.py: test passed, 4 rows in, 2 rows out\n\n## Source\n- data/orders.csv — order_id (int), customer_id (int), placed_at (text, ISO date-time), total (text: \"£12.00\", sometimes empty) — sample: all 4 rows\n\n## Transform\n- pipeline/orders_daily.py `daily(rows)` — parses total to pence (int) and placed_at to a day, sums orders and pence per customer per day; drops rows with an empty total, counted and printed\n\n## Output\n- out/orders_daily.csv — day, customer_id, orders, pence — sample run wrote 2 rows\n\n## Checks\n- rows out ≤ rows in; no empty day or customer_id; pence ≥ 0\n\n## Run\n- `python -m pytest -q tests/test_orders_daily.py` → `1 passed in 0.10s`\n- `python pipeline/orders_daily.py data/orders.csv out/orders_daily.csv` → `2 rows written, 1 dropped`\n- the Makefile runs steps by name: add `orders_daily` to `STEPS` in Makefile:1"
+  }
+ ]
+}

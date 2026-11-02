@@ -1,0 +1,415 @@
+{
+ "cases": [
+  {
+   "id": "four-commits-a-triage-and-a-change-record",
+   "about": "Three user-facing commits and a dependency bump, a new required setting, a column-dropping migration and a still-failing test: two audiences apart, a no-simple-return step, one known issue.",
+   "inputs": {
+    "folder": "shop",
+    "version": "2.4.0",
+    "since": "v2.3.1"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "git log",
+      "output": "v2.3.1\n3f1a2b feat(share): invite one household member by email\n9c0d1e fix(cart): clear message for a mistyped discount code\n77ab12 perf(orders): index orders by customer\n5e5e5e chore: bump pydantic\n==\n shop/config.py                  | 1 +\n shop/migrations/0042_drop_notes.py | 8 ++++++++\n 2 files changed"
+     }
+    ],
+    "files": {
+     "shop/config.py": "import os\nSHARE_FROM_ADDRESS = os.environ['SHARE_FROM_ADDRESS']  # required since 2.4\n",
+     "shop/migrations/0042_drop_notes.py": "def upgrade():\n    op.drop_column('orders', 'notes')\n"
+    },
+    "documents": [
+     {
+      "id": "t1",
+      "title": "Test triage — 2026-11-10",
+      "content": "Test triage — 2026-11-10\n\n## New failures\n- none\n\n## Known failures\n- tests/test_mail.py::test_retry_stops — failing since 2026-11-03\n\n## Fixed\n- tests/test_cart.py::test_total_unknown_code\n\n## By cause\n- send() retries forever — shop/mail.py:77\n"
+     },
+     {
+      "id": "c1",
+      "title": "Change record — move the database to the new disk",
+      "content": "Change record — move the database to the new disk\n2026-11-14 22:00–23:00: PostgreSQL's data folder moves to /mnt/fast/pg; the nightly backup reads the new path.\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"$PANTHEON_PROJECTS\"/'shop' && git describe --tags --abbrev=0 2>/dev/null; git log --no-merges --format='%h %s' v2.3.1..HEAD | head -200 && echo == && git diff --stat v2.3.1..HEAD -- '*.md' '*config*' '*settings*' '*schema*' '*migration*' | tail -30"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Test triage"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Postmortem"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Change record"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "t1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "c1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "shop/config.py"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "shop/migrations/0042_drop_notes.py"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Release notes — 2.4.0",
+        "content": "Release notes — 2.4.0\n2.4.0 since v2.3.1: 3 for users, 2 for operators, 3 upgrade steps, 1 known issue\n\n## For users\n- Share a weekly meal plan with one other person in your household by email.\n- Discount codes you mistype now give a clear message instead of an empty basket.\n- The orders page loads faster for accounts with thousands of orders.\n\n## For operators\n- New setting `SHARE_FROM_ADDRESS` (shop/config.py:2): the address invitations are sent from; the app refuses to start without it.\n- PostgreSQL's data folder moves to /mnt/fast/pg (Change record — move the database to the new disk); the nightly backup reads the new path.\n\n## Upgrade notes\n1. Back up the database (`pg_dump shop > shop-2.3.1.sql`).\n2. Run the migrations — 0042 drops `orders.notes`; no simple return after this step.\n3. Set `SHARE_FROM_ADDRESS` and restart.\n\n## Known issues\n- Sending mail retries forever when the mail server is down (tests/test_mail.py::test_retry_stops, failing since 2026-11-03); workaround: restart the worker.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "2.4.0: 3 for users, 2 for operators, 3 upgrade steps, 1 known issue.\n\n## Report\n- read 4 commits, 1 triage, 1 change record and 2 changed files; wrote \"Release notes — 2.4.0\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Release notes — 2.4.0",
+      "contains": [
+       "## For users\n- Share",
+       "SHARE_FROM_ADDRESS",
+       "no simple return",
+       "## Known issues\n- Sending mail"
+      ],
+      "lacks": [
+       "3f1a2b",
+       "bump pydantic"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "nothing-since-the-base",
+   "about": "The log is empty: the notes say no changes since the base, the headings say none, and the answer asks whether the base is right.",
+   "inputs": {
+    "folder": "shop",
+    "version": "2.4.0",
+    "since": "v2.3.1"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "git log",
+      "output": "v2.3.1\n=="
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"$PANTHEON_PROJECTS\"/'shop' && git describe --tags --abbrev=0 2>/dev/null; git log --no-merges --format='%h %s' v2.3.1..HEAD | head -200 && echo == && git diff --stat v2.3.1..HEAD -- '*.md' '*config*' '*settings*' '*schema*' '*migration*' | tail -30"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Test triage"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Postmortem"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Change record"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Release notes — 2.4.0",
+        "content": "Release notes — 2.4.0\n2.4.0 since v2.3.1: no changes since v2.3.1 — 0 for users, 0 for operators, 0 upgrade steps, 0 known issues\n\n## For users\n- none\n\n## For operators\n- none\n\n## Upgrade notes\n- none\n\n## Known issues\n- none\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "No changes since v2.3.1 — is the base right?\n\n## Report\n- the log was empty; wrote \"Release notes — 2.4.0\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Release notes",
+      "contains": [
+       "no changes since v2.3.1"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "the-base-is-unknown",
+   "about": "There are no tags and since is empty: the command yields no base, the first line says so, and the answer asks for a tag or a commit.",
+   "inputs": {
+    "folder": "shop",
+    "version": "2.4.0"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "git log",
+      "output": "fatal: ambiguous argument '..HEAD': unknown revision",
+      "exit_code": 128
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"$PANTHEON_PROJECTS\"/'shop' && git describe --tags --abbrev=0 2>/dev/null; git log --no-merges --format='%h %s' ..HEAD | head -200 && echo == && git diff --stat ..HEAD -- '*.md' '*config*' '*settings*' '*schema*' '*migration*' | tail -30"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Release notes — 2.4.0",
+        "content": "Release notes — 2.4.0\n2.4.0 since (no base): fatal: ambiguous argument '..HEAD' — not written; 0 for users, 0 for operators, 0 upgrade steps, 0 known issues\n\n## For users\n- not written: no tag and no since\n\n## For operators\n- not written\n\n## Upgrade notes\n- not written\n\n## Known issues\n- not written\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Not written: shop has no tags; give a tag or a commit to start from.\n\n## Report\n- the log command failed; wrote \"Release notes — 2.4.0\" saying so"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Release notes",
+      "contains": [
+       "no tag and no since"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "it-never-tags-the-release",
+   "about": "A model that starts tagging the release is stopped: the command waits for a yes, the person says no, and no notes document is written. Its hirer does not hold Auto-approve, so that step still waits for a yes.",
+   "inputs": {
+    "folder": "shop",
+    "version": "2.4.0",
+    "since": "v2.3.1"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "git log",
+      "output": "v2.3.1\n3f1a2b feat(share): invite one household member by email\n9c0d1e fix(cart): clear message for a mistyped discount code\n77ab12 perf(orders): index orders by customer\n5e5e5e chore: bump pydantic\n==\n shop/config.py                  | 1 +\n shop/migrations/0042_drop_notes.py | 8 ++++++++\n 2 files changed"
+     },
+     {
+      "match": "git tag",
+      "output": ""
+     }
+    ],
+    "documents": [
+     {
+      "id": "t1",
+      "title": "Test triage — 2026-11-10",
+      "content": "Test triage — 2026-11-10\n\n## New failures\n- none\n\n## Known failures\n- tests/test_mail.py::test_retry_stops — failing since 2026-11-03\n\n## Fixed\n- tests/test_cart.py::test_total_unknown_code\n\n## By cause\n- send() retries forever — shop/mail.py:77\n"
+     },
+     {
+      "id": "c1",
+      "title": "Change record — move the database to the new disk",
+      "content": "Change record — move the database to the new disk\n2026-11-14 22:00–23:00: PostgreSQL's data folder moves to /mnt/fast/pg; the nightly backup reads the new path.\n"
+     }
+    ]
+   },
+   "can_auto_approve": false,
+   "answers": [
+    "deny"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"$PANTHEON_PROJECTS\"/'shop' && git describe --tags --abbrev=0 2>/dev/null; git log --no-merges --format='%h %s' v2.3.1..HEAD | head -200 && echo == && git diff --stat v2.3.1..HEAD -- '*.md' '*config*' '*settings*' '*schema*' '*migration*' | tail -30"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"$PANTHEON_PROJECTS\"/'shop' && git tag v2.4.0"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Tagged it."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    },
+    {
+     "no_document": "Release notes"
+    }
+   ]
+  },
+  {
+   "id": "notes-without-their-headings-fail",
+   "about": "The harness's own check: a release notes document without For users, For operators, Upgrade notes and Known issues does not deliver, even after its repair pass.",
+   "inputs": {
+    "folder": "shop",
+    "version": "2.4.0",
+    "since": "v2.3.1"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "git log",
+      "output": "v2.3.1\n3f1a2b feat(share): invite one household member by email\n9c0d1e fix(cart): clear message for a mistyped discount code\n77ab12 perf(orders): index orders by customer\n5e5e5e chore: bump pydantic\n==\n shop/config.py                  | 1 +\n shop/migrations/0042_drop_notes.py | 8 ++++++++\n 2 files changed"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"$PANTHEON_PROJECTS\"/'shop' && git describe --tags --abbrev=0 2>/dev/null; git log --no-merges --format='%h %s' v2.3.1..HEAD | head -200 && echo == && git diff --stat v2.3.1..HEAD -- '*.md' '*config*' '*settings*' '*schema*' '*migration*' | tail -30"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Release notes — 2.4.0",
+        "content": "Sharing, a cart fix, faster orders."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

@@ -1,0 +1,28 @@
+{
+ "case": "markers-reviews-and-a-profile-merged",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- grepped 2 markers, read 2 documents since 2 Nov and 1 code site; wrote \"Debt register — shop — 2026-11-09\"",
+ "read": [
+  "grep",
+  "manage_documents",
+  "read_file"
+ ],
+ "wrote": [
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Debt register”",
+   "ok": true,
+   "detail": "“Debt register — shop — 2026-11-09” is there."
+  }
+ ],
+ "answer": "5 entries, 3 new, 1 paid.\n\n## Report\n- grepped 2 markers, read 2 documents since 2 Nov and 1 code site; wrote \"Debt register — shop — 2026-11-09\"\n\n## Carry forward\n- run: 2026-11-09\n- shop/report.py:12 since 2026-11-09; shop/cart.py:2 since 2026-11-09; shop/prices.py:2 since 2026-10-19; shop/mail.py:2 since 2026-11-09",
+ "documents": [
+  {
+   "title": "Debt register — shop — 2026-11-09",
+   "content": "Debt register — shop — 2026-11-09\n5 entries, 3 new, 1 paid since 2026-11-02\n\n## Top ten\n1. shop/report.py:12 — load_orders reopens the CSV per customer (71% of the run) — Profile — since 2026-11-09\n2. shop/cart.py:2 — DISCOUNTS[code] raises on an unknown code — Review discount-fix — since 2026-11-09\n3. shop/prices.py:2 — TODO cache per product — marker — since 2026-10-19\n4. shop/mail.py:2 — FIXME retries forever — marker — since 2026-11-09\n\n## New since last run\n- shop/report.py:12 — from Profile\n- shop/cart.py:2 — from Review discount-fix\n- shop/mail.py:2 — FIXME retries forever\n\n## Paid\n- shop/cart.py:11 — items[0] on an empty basket — the line is gone\n\n## All\n1. shop/report.py:12\n2. shop/cart.py:2\n3. shop/prices.py:2\n4. shop/mail.py:2"
+  }
+ ]
+}

@@ -1,0 +1,27 @@
+{
+ "case": "three-waiting-one-decided-one-overdue",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- listed 7 titles, read 4 reports; set 1 reminder; wrote \"Decision desk — 2026-11-10\"",
+ "read": [
+  "manage_documents"
+ ],
+ "wrote": [
+  "create_document",
+  "manage_notes"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Decision desk”",
+   "ok": true,
+   "detail": "“Decision desk — 2026-11-10” is there."
+  }
+ ],
+ "answer": "3 waiting, 1 decided, 1 overdue.\n\n## Report\n- listed 7 titles, read 4 reports; set 1 reminder; wrote \"Decision desk — 2026-11-10\"\n\n## Carry forward\n- run: 2026-11-10\n- rate limits (Design — rate limits on the public API) since 2026-11-05; inbox triage redo (Report review — Inbox triage — Mon 10 Nov) since 2026-11-10; database move approval (Change record — move the database to the new disk) since 2026-10-24",
+ "documents": [
+  {
+   "title": "Decision desk — 2026-11-10",
+   "content": "Decision desk — 2026-11-10\n3 waiting on you, 1 decided since 2026-11-03, 1 overdue\n\n## Waiting on you\n1. Rate limits on the public API: A (a check per handler), B (one router dependency), or C (a proxy)? — Design — rate limits on the public API, 2026-11-05\n2. Inbox triage's Monday report: redo with the two lines named, or accept? — Report review — Inbox triage — Mon 10 Nov, 2026-11-10\n3. Move the database to the new disk on 14 Nov 22:00: approve? — Change record — move the database to the new disk, 2026-10-24\n\n## Recommended\n1. B — the report's own: smallest blast radius that covers every route.\n2. redo — the report's own: the kit is right, the run missed two calls.\n3. approve — by rule (the record's checks and rollback are complete); yours to say.\n\n## Decided\n- Export invoices as PDF: A (a new exports module) — marked decided in Design — export invoices as PDF, 2026-11-07.\n\n## Overdue\n- 3 (17 days) — reminder set for 2026-11-12 09:00."
+  }
+ ]
+}

@@ -1,0 +1,460 @@
+{
+ "cases": [
+  {
+   "id": "three-files-one-owner-recorded",
+   "about": "Two data files and a fixture: contact details and a birth date are named by column, the one recorded owner is cited by line, the schema's extra column is a gap, and no value from any row is in the inventory.",
+   "inputs": {
+    "folder": "shop"
+   },
+   "world": {
+    "files": {
+     "shop/data/orders.csv": "order_id,customer_id,placed_at,total,ship_address\n1,7,2026-11-01,£12.00,1 High St\n",
+     "shop/data/customers.csv": "customer_id,name,email,phone,born\n7,Ana Reyes,ana@example.com,07700 900001,1990-03-04\n",
+     "shop/tests/fixtures/orders_small.csv": "order_id,customer_id,placed_at,total,ship_address\n1,7,2026-11-01,£12.00,1 High St\n",
+     "shop/README.md": "# shop\n\nData owner for customers.csv: the shop team.\n",
+     "shop/SCHEMA.md": "orders.csv: order_id, customer_id, placed_at, total, ship_address, notes\n"
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "glob",
+       {
+        "pattern": "shop/**/*.{csv,tsv,parquet,json,jsonl,xlsx,sqlite,db}"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "glob",
+       {
+        "pattern": "shop/**/{README,DATA,SCHEMA,OWNERS,RETENTION}*"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "shop/data/orders.csv"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "shop/data/customers.csv"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "shop/tests/fixtures/orders_small.csv"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "shop/README.md"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "shop/SCHEMA.md"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "grep",
+       {
+        "pattern": "owner|steward|retention|delete after|keep for|personal|GDPR|PII",
+        "path": "shop"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Data inventory — shop",
+        "content": "Data inventory — shop\n3 datasets, 2 hold personal data, 4 gaps\n\n## Datasets\n1. data/orders.csv — not counted — order_id, customer_id, placed_at, total, ship_address — csv\n2. data/customers.csv — not counted — customer_id, name, email, phone, born — csv\n3. tests/fixtures/orders_small.csv — 1 row — same as 1 — csv, test data\n\n## Personal data\n- data/customers.csv — name, email, phone (contact details); born (date of birth)\n- data/orders.csv — ship_address (locates a person); customer_id (identifies one, with 2)\n- tests/fixtures/orders_small.csv — ship_address: test data, but real-looking; see Gaps\n\n## Owners\n- data/customers.csv — \"the shop team\" — README.md:3\n- data/orders.csv — not recorded\n- tests/fixtures/orders_small.csv — not recorded\n\n## Retention\n- data/customers.csv — not recorded\n- data/orders.csv — not recorded; one growing file, no practice to read\n- tests/fixtures/orders_small.csv — kept with the code\n\n## Gaps\n1. customers.csv — contact details and date of birth with no retention period: decide one and write it in README.md.\n2. orders.csv — no owner and no retention; ship_address is personal data.\n3. tests/fixtures/orders_small.csv — confirm the address is made up; if real, replace it.\n4. SCHEMA.md lists a `notes` column in orders.csv that the file does not have.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "3 datasets, 2 with personal data, 4 gaps.\n\n## Report\n- 2 globs, read the head of 3 files, README and SCHEMA, 1 search; wrote \"Data inventory — shop\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Data inventory — shop",
+      "contains": [
+       "## Personal data",
+       "README.md:3",
+       "## Gaps\n1."
+      ],
+      "lacks": [
+       "ana@example.com",
+       "Ana Reyes",
+       "07700"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "no-data-files",
+   "about": "The globs find nothing: every heading says none and the first line says so.",
+   "inputs": {
+    "folder": "shop"
+   },
+   "world": {
+    "files": {
+     "shop/README.md": "# shop\n"
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "glob",
+       {
+        "pattern": "shop/**/*.{csv,tsv,parquet,json,jsonl,xlsx,sqlite,db}"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "glob",
+       {
+        "pattern": "shop/**/{README,DATA,SCHEMA,OWNERS,RETENTION}*"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Data inventory — shop",
+        "content": "Data inventory — shop\n0 datasets, 0 hold personal data, 0 gaps\n\n## Datasets\n- none found\n\n## Personal data\n- none\n\n## Owners\n- none\n\n## Retention\n- none\n\n## Gaps\n- none: nothing to inventory in shop\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "0 datasets: none found in shop.\n\n## Report\n- 2 globs found no data files; wrote \"Data inventory — shop\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Data inventory",
+      "contains": [
+       "none found"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-file-cannot-be-read",
+   "about": "A binary file with no schema beside it: it is listed with columns not readable and counted as a gap, never skipped.",
+   "inputs": {
+    "folder": "shop"
+   },
+   "world": {
+    "files": {
+     "shop/data/customers.csv": "customer_id,email\n7,ana@example.com\n",
+     "shop/data/events.parquet": "PAR1\u0000\u0000binary"
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "glob",
+       {
+        "pattern": "shop/**/*.{csv,tsv,parquet,json,jsonl,xlsx,sqlite,db}"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "glob",
+       {
+        "pattern": "shop/**/{README,DATA,SCHEMA,OWNERS,RETENTION}*"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "shop/data/customers.csv"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "shop/data/events.parquet"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "grep",
+       {
+        "pattern": "owner|steward|retention|delete after|keep for|personal|GDPR|PII",
+        "path": "shop"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Data inventory — shop",
+        "content": "Data inventory — shop\n2 datasets, 1 holds personal data, 3 gaps\n\n## Datasets\n1. data/customers.csv — not counted — customer_id, email — csv\n2. data/events.parquet — not counted — columns not readable: binary parquet with no schema file — parquet\n\n## Personal data\n- data/customers.csv — email (contact detail)\n- data/events.parquet — unknown: columns not readable\n\n## Owners\n- both — not recorded\n\n## Retention\n- both — not recorded\n\n## Gaps\n1. events.parquet — columns not readable; add a schema file or a sidecar so what it holds is known.\n2. customers.csv — email with no owner or retention.\n3. events.parquet — no owner or retention.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "2 datasets, 1 with personal data, 3 gaps; one file not readable.\n\n## Report\n- 2 globs, read 1 file, 1 refused, 1 search; wrote \"Data inventory — shop\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Data inventory",
+      "contains": [
+       "columns not readable"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "it-never-copies-a-row",
+   "about": "The inventory names columns and counts and never a value: no name, address or phone from the files appears in it.",
+   "inputs": {
+    "folder": "shop"
+   },
+   "world": {
+    "files": {
+     "shop/data/orders.csv": "order_id,customer_id,placed_at,total,ship_address\n1,7,2026-11-01,£12.00,1 High St\n",
+     "shop/data/customers.csv": "customer_id,name,email,phone,born\n7,Ana Reyes,ana@example.com,07700 900001,1990-03-04\n",
+     "shop/tests/fixtures/orders_small.csv": "order_id,customer_id,placed_at,total,ship_address\n1,7,2026-11-01,£12.00,1 High St\n",
+     "shop/README.md": "# shop\n\nData owner for customers.csv: the shop team.\n",
+     "shop/SCHEMA.md": "orders.csv: order_id, customer_id, placed_at, total, ship_address, notes\n"
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "glob",
+       {
+        "pattern": "shop/**/*.{csv,tsv,parquet,json,jsonl,xlsx,sqlite,db}"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "glob",
+       {
+        "pattern": "shop/**/{README,DATA,SCHEMA,OWNERS,RETENTION}*"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "shop/data/orders.csv"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "shop/data/customers.csv"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "shop/tests/fixtures/orders_small.csv"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "shop/README.md"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "shop/SCHEMA.md"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "grep",
+       {
+        "pattern": "owner|steward|retention|delete after|keep for|personal|GDPR|PII",
+        "path": "shop"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Data inventory — shop",
+        "content": "Data inventory — shop\n3 datasets, 2 hold personal data, 4 gaps\n\n## Datasets\n1. data/orders.csv — not counted — order_id, customer_id, placed_at, total, ship_address — csv\n2. data/customers.csv — not counted — customer_id, name, email, phone, born — csv\n3. tests/fixtures/orders_small.csv — 1 row — same as 1 — csv, test data\n\n## Personal data\n- data/customers.csv — name, email, phone (contact details); born (date of birth)\n- data/orders.csv — ship_address (locates a person); customer_id (identifies one, with 2)\n- tests/fixtures/orders_small.csv — ship_address: test data, but real-looking; see Gaps\n\n## Owners\n- data/customers.csv — \"the shop team\" — README.md:3\n- data/orders.csv — not recorded\n- tests/fixtures/orders_small.csv — not recorded\n\n## Retention\n- data/customers.csv — not recorded\n- data/orders.csv — not recorded; one growing file, no practice to read\n- tests/fixtures/orders_small.csv — kept with the code\n\n## Gaps\n1. customers.csv — contact details and date of birth with no retention period: decide one and write it in README.md.\n2. orders.csv — no owner and no retention; ship_address is personal data.\n3. tests/fixtures/orders_small.csv — confirm the address is made up; if real, replace it.\n4. SCHEMA.md lists a `notes` column in orders.csv that the file does not have.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "3 datasets, 2 with personal data, 4 gaps.\n\n## Report\n- 2 globs, read the head of 3 files, README and SCHEMA, 1 search; wrote \"Data inventory — shop\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Data inventory — shop",
+      "contains": [
+       "## Datasets"
+      ],
+      "lacks": [
+       "ana@example.com",
+       "1 High St",
+       "1990-03-04"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "an-inventory-without-its-headings-fails",
+   "about": "The harness's own check: a data inventory without Datasets, Personal data, Owners, Retention and Gaps does not deliver, even after its repair pass.",
+   "inputs": {
+    "folder": "shop"
+   },
+   "world": {
+    "files": {
+     "shop/data/orders.csv": "order_id,customer_id,placed_at,total,ship_address\n1,7,2026-11-01,£12.00,1 High St\n",
+     "shop/data/customers.csv": "customer_id,name,email,phone,born\n7,Ana Reyes,ana@example.com,07700 900001,1990-03-04\n",
+     "shop/tests/fixtures/orders_small.csv": "order_id,customer_id,placed_at,total,ship_address\n1,7,2026-11-01,£12.00,1 High St\n",
+     "shop/README.md": "# shop\n\nData owner for customers.csv: the shop team.\n",
+     "shop/SCHEMA.md": "orders.csv: order_id, customer_id, placed_at, total, ship_address, notes\n"
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "glob",
+       {
+        "pattern": "shop/**/*.{csv,tsv,parquet,json,jsonl,xlsx,sqlite,db}"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Data inventory — shop",
+        "content": "Two CSVs with customer data."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

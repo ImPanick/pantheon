@@ -1,0 +1,338 @@
+{
+ "cases": [
+  {
+   "id": "a-spec-with-three-requirements-and-a-non-goal",
+   "about": "Three requirements and one non-goal become four cases with their data; the one test that exists is named under Automated and a screen check goes by hand.",
+   "inputs": {
+    "spec": "Spec — weekly meal plan sharing",
+    "folder": "meals"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "s1",
+      "title": "Spec — weekly meal plan sharing",
+      "content": "Spec — weekly meal plan sharing\n\n## Goal\nAn owner shares a week's plan with one other household member by email.\n\n## Requirements\n1. Invite by email address.\n2. An invalid address gives a clear error and no invite.\n3. Both can edit any meal; the last change is shown with who made it.\n\n## Non-goals\n- chat; sharing beyond one household\n"
+     }
+    ],
+    "files": {
+     "meals/tests/test_sharing.py": "def test_last_writer_shown():\n    assert plan.edit('tue', by='ana').changed_by == 'ana'\n"
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Spec — weekly meal plan sharing"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "s1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "meals/tests/test_sharing.py"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Test plan — weekly meal plan sharing",
+        "content": "Test plan — weekly meal plan sharing\n4 cases: 3 automated, 1 by hand\n\n## Cases\n1. Invite by email — owner invites ana@example.com — Ana sees the plan — data: plan-1, ana\n2. Invite an invalid address — owner invites \"ana\" — a clear error, no invite — data: plan-1\n3. Second household refused — Ana invites a third person — refused (Non-goal) — data: plan-1, ana, ben\n4. Both edit the same meal — owner and Ana change Tuesday — last change shown with who — data: plan-1, ana\n\n## Data\n- plan-1: one week, seven meals, owned by the owner\n- ana, ben: two accounts with no plans\n\n## Automated\n- 1, 2, 3 — to write\n- 4 — exists: tests/test_sharing.py::test_last_writer_shown\n\n## By hand\n- 4 — how the \"changed by\" line reads on a phone\n\n## Out of scope\n- chat; sharing beyond one household (Non-goals)\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "4 cases: 3 automated, 1 by hand.\n\n## Report\n- read \"Spec — weekly meal plan sharing\" and 1 test file; wrote \"Test plan — weekly meal plan sharing\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Test plan — weekly meal plan sharing",
+      "contains": [
+       "## Cases",
+       "exists: tests/test_sharing.py",
+       "## Out of scope"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "no-spec-by-that-title",
+   "about": "Nothing matches the title: the plan says so on its first line, every heading says none, and the answer asks for the title as Documents lists it.",
+   "inputs": {
+    "spec": "Spec — sharing"
+   },
+   "world": {
+    "documents": [
+     {
+      "title": "Notes",
+      "content": "Notes\nnothing here"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Spec — sharing"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Test plan — sharing",
+        "content": "Test plan — sharing\n0 cases: 0 automated, 0 by hand — no spec found\n\n## Cases\n- none: no document matches \"Spec — sharing\"\n\n## Data\n- none\n\n## Automated\n- none\n\n## By hand\n- none\n\n## Out of scope\n- everything, until the spec is found: give its title as Documents lists it\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "0 cases: no document matches \"Spec — sharing\".\n\n## Report\n- searched Documents once, found nothing; wrote \"Test plan — sharing\" saying so"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Test plan",
+      "contains": [
+       "no spec found"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "the-test-file-cannot-be-read",
+   "about": "The folder has no tests folder: Automated marks every case to write and says the folder had no tests to compare with.",
+   "inputs": {
+    "spec": "Spec — weekly meal plan sharing",
+    "folder": "meals"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "s1",
+      "title": "Spec — weekly meal plan sharing",
+      "content": "Spec — weekly meal plan sharing\n\n## Goal\nAn owner shares a week's plan with one other household member by email.\n\n## Requirements\n1. Invite by email address.\n2. An invalid address gives a clear error and no invite.\n3. Both can edit any meal; the last change is shown with who made it.\n\n## Non-goals\n- chat; sharing beyond one household\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Spec — weekly meal plan sharing"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "s1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "meals/tests/test_sharing.py"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Test plan — weekly meal plan sharing",
+        "content": "Test plan — weekly meal plan sharing\n4 cases: 4 automated, 1 by hand\n\n## Cases\n1. Invite by email — owner invites ana@example.com — Ana sees the plan — data: plan-1, ana\n2. Invite an invalid address — owner invites \"ana\" — a clear error, no invite — data: plan-1\n3. Second household refused — Ana invites a third person — refused (Non-goal) — data: plan-1, ana, ben\n4. Both edit the same meal — owner and Ana change Tuesday — last change shown with who — data: plan-1, ana\n\n## Data\n- plan-1: one week, seven meals, owned by the owner\n- ana, ben: two accounts with no plans\n\n## Automated\n- 1, 2, 3 — to write\n- 4 — to write (meals/tests could not be read: no such file)\n\n## By hand\n- 4 — how the \"changed by\" line reads on a phone\n\n## Out of scope\n- chat; sharing beyond one household (Non-goals)\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "4 cases: 4 automated, 1 by hand.\n\n## Report\n- read the spec; the test file could not be read; wrote \"Test plan — weekly meal plan sharing\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Test plan",
+      "contains": [
+       "could not be read"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "it-never-writes-a-test",
+   "about": "A plan that says a test was written is a plan that broke its never: the document names each automated case as to write or exists, and no test file appears.",
+   "inputs": {
+    "spec": "Spec — weekly meal plan sharing",
+    "folder": "meals"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "s1",
+      "title": "Spec — weekly meal plan sharing",
+      "content": "Spec — weekly meal plan sharing\n\n## Goal\nAn owner shares a week's plan with one other household member by email.\n\n## Requirements\n1. Invite by email address.\n2. An invalid address gives a clear error and no invite.\n3. Both can edit any meal; the last change is shown with who made it.\n\n## Non-goals\n- chat; sharing beyond one household\n"
+     }
+    ],
+    "files": {
+     "meals/tests/test_sharing.py": "def test_last_writer_shown():\n    assert plan.edit('tue', by='ana').changed_by == 'ana'\n"
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Spec — weekly meal plan sharing"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "s1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Test plan — weekly meal plan sharing",
+        "content": "Test plan — weekly meal plan sharing\n4 cases: 3 automated, 1 by hand\n\n## Cases\n1. Invite by email — owner invites ana@example.com — Ana sees the plan — data: plan-1, ana\n2. Invite an invalid address — owner invites \"ana\" — a clear error, no invite — data: plan-1\n3. Second household refused — Ana invites a third person — refused (Non-goal) — data: plan-1, ana, ben\n4. Both edit the same meal — owner and Ana change Tuesday — last change shown with who — data: plan-1, ana\n\n## Data\n- plan-1: one week, seven meals, owned by the owner\n- ana, ben: two accounts with no plans\n\n## Automated\n- 1, 2, 3 — to write\n- 4 — exists: tests/test_sharing.py::test_last_writer_shown\n\n## By hand\n- 4 — how the \"changed by\" line reads on a phone\n\n## Out of scope\n- chat; sharing beyond one household (Non-goals)\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "4 cases: 3 automated, 1 by hand.\n\n## Report\n- read \"Spec — weekly meal plan sharing\" and 1 test file; wrote \"Test plan — weekly meal plan sharing\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Test plan — weekly meal plan sharing",
+      "contains": [
+       "to write"
+      ],
+      "lacks": [
+       "I wrote the test",
+       "test written"
+      ]
+     }
+    },
+    {
+     "not_called": "write_file"
+    }
+   ]
+  },
+  {
+   "id": "a-plan-without-its-headings-fails",
+   "about": "The harness's own check: a plan without Cases, Data, Automated, By hand and Out of scope does not deliver, even after its repair pass.",
+   "inputs": {
+    "spec": "Spec — weekly meal plan sharing",
+    "folder": "meals"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "s1",
+      "title": "Spec — weekly meal plan sharing",
+      "content": "Spec — weekly meal plan sharing\n\n## Goal\nAn owner shares a week's plan with one other household member by email.\n\n## Requirements\n1. Invite by email address.\n2. An invalid address gives a clear error and no invite.\n3. Both can edit any meal; the last change is shown with who made it.\n\n## Non-goals\n- chat; sharing beyond one household\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Spec — weekly meal plan sharing"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Test plan — weekly meal plan sharing",
+        "content": "Test the invite and the edit."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

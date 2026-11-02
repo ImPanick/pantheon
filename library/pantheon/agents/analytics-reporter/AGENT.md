@@ -4,7 +4,7 @@ name: Analytics Reporter
 tagline: "This week's numbers from a data file — what moved and the likely why."
 section: data-analytics
 icon: line-chart
-version: 1.4.0
+version: 1.4.2
 wave: 2
 inputs:
   - {key: file, kind: text, label: "The data file (CSV), inside your projects folder"}
@@ -12,6 +12,7 @@ inputs:
 triggers:
   - {on: weekly, day: mon, at: "07:30"}
 tools: [python, create_document]
+skills: [analyze-data]
 needs: {connectors: [], min_context: 16000, native_tools: preferred}
 delivers:
   - {kind: document, title: "Weekly numbers", must_contain: [What moved, Steady, Could not tell]}

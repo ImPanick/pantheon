@@ -1,0 +1,325 @@
+{
+ "cases": [
+  {
+   "id": "two-bumps-and-a-new-package",
+   "about": "Two versions moved and one package is new with no licence recorded: three changes, one flag, and every component carried forward.",
+   "inputs": {
+    "folder": "shop",
+    "at": "07:00"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "pip list",
+      "output": "requirements.txt\nrequirements-dev.txt\n==\nPackage   Version\n--------- -------\nfastapi   0.115.0\npydantic  2.9.2\nrequests  2.32.3\nssh-audit 3.2.0\npytest    8.3.3"
+     }
+    ],
+    "files": {
+     "shop/requirements.txt": "fastapi==0.115.0  # MIT\npydantic==2.9.2  # MIT\nrequests==2.32.3  # Apache-2.0\nssh-audit==3.2.0\n",
+     "shop/requirements-dev.txt": "pytest==8.3.3  # MIT\n"
+    }
+   },
+   "notebook": "- run: 2026-11-03\n- fastapi 0.115.0; pydantic 2.9.1; requests 2.31.0; pytest 8.3.3 (dev)",
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"$PANTHEON_PROJECTS\"/'shop' && ls requirements*.txt poetry.lock Pipfile.lock package-lock.json pnpm-lock.yaml yarn.lock go.sum Cargo.lock Gemfile.lock 2>/dev/null && echo == && (pip list --format=columns 2>/dev/null || true) | head -200"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "shop/requirements.txt"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "shop/requirements-dev.txt"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Bill of materials — shop — 2026-11-10",
+        "content": "Bill of materials — shop — 2026-11-10\n5 components (1 dev), 3 changed, 1 flag\n\n## Components\n- fastapi — 0.115.0 — MIT — requirements.txt\n- pydantic — 2.9.2 — MIT — requirements.txt\n- requests — 2.32.3 — Apache-2.0 — requirements.txt\n- ssh-audit — 3.2.0 — not recorded — requirements.txt\n- pytest — 8.3.3 — MIT — dev — requirements-dev.txt\n\n## Licences\n- MIT — 3; Apache-2.0 — 1; not recorded — 1 (ssh-audit)\n\n## Changed\n- new: ssh-audit 3.2.0 (requirements.txt)\n- version: requests 2.31.0 → 2.32.3\n- version: pydantic 2.9.1 → 2.9.2\n- since 2026-11-03\n\n## Flags\n- ssh-audit — new, licence not recorded in the tree: find and record it before the next release.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "5 components, 3 changed, 1 flag.\n\n## Report\n- read 2 requirement files and the environment's list; wrote \"Bill of materials — shop — 2026-11-10\"\n\n## Carry forward\n- run: 2026-11-10\n- fastapi 0.115.0; pydantic 2.9.2; requests 2.32.3; ssh-audit 3.2.0; pytest 8.3.3 (dev)"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Bill of materials — shop — 2026-11-10",
+      "contains": [
+       "## Changed\n- new: ssh-audit",
+       "requests 2.31.0 → 2.32.3",
+       "## Flags\n- ssh-audit"
+      ]
+     }
+    },
+    {
+     "notebook_contains": "ssh-audit 3.2.0"
+    }
+   ]
+  },
+  {
+   "id": "nothing-is-pinned",
+   "about": "No lock file and no manifest: Components says none found and the flag says the project cannot be inventoried until it pins.",
+   "inputs": {
+    "folder": "shop",
+    "at": "07:00"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "pip list",
+      "output": "==\nPackage Version\n------- -------\npip     24.0"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"$PANTHEON_PROJECTS\"/'shop' && ls requirements*.txt poetry.lock Pipfile.lock package-lock.json pnpm-lock.yaml yarn.lock go.sum Cargo.lock Gemfile.lock 2>/dev/null && echo == && (pip list --format=columns 2>/dev/null || true) | head -200"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Bill of materials — shop — 2026-11-10",
+        "content": "Bill of materials — shop — 2026-11-10\n0 components (0 dev), 0 changed, 1 flag\n\n## Components\n- none found: no lock file or manifest in shop\n\n## Licences\n- none\n\n## Changed\n- none\n\n## Flags\n- shop pins nothing: add a requirements.txt or a lock file, or this inventory stays empty.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "0 components: nothing is pinned.\n\n## Report\n- the listing found no manifest; wrote \"Bill of materials — shop — 2026-11-10\"\n\n## Carry forward\n- run: 2026-11-10\n- no components"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Bill of materials",
+      "contains": [
+       "none found"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "the-lock-file-cannot-be-read",
+   "about": "A lock file is listed but refuses to open: the components from the readable file are listed and the unreadable one is a flag.",
+   "inputs": {
+    "folder": "shop",
+    "at": "07:00"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "pip list",
+      "output": "requirements.txt\npoetry.lock\n==\n"
+     }
+    ],
+    "files": {
+     "shop/requirements.txt": "fastapi==0.115.0  # MIT\n"
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"$PANTHEON_PROJECTS\"/'shop' && ls requirements*.txt poetry.lock Pipfile.lock package-lock.json pnpm-lock.yaml yarn.lock go.sum Cargo.lock Gemfile.lock 2>/dev/null && echo == && (pip list --format=columns 2>/dev/null || true) | head -200"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "shop/requirements.txt"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "shop/poetry.lock"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Bill of materials — shop — 2026-11-10",
+        "content": "Bill of materials — shop — 2026-11-10\n1 component (0 dev), 0 changed, 1 flag\n\n## Components\n- fastapi — 0.115.0 — MIT — requirements.txt\n\n## Licences\n- MIT — 1\n\n## Changed\n- first run: everything is new\n\n## Flags\n- poetry.lock — not read: the file could not be opened; its components are missing from this inventory.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "1 component, 0 changed, 1 flag.\n\n## Report\n- read 1 of 2 lock files (poetry.lock refused); wrote \"Bill of materials — shop — 2026-11-10\"\n\n## Carry forward\n- run: 2026-11-10\n- fastapi 0.115.0"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Bill of materials",
+      "contains": [
+       "not read"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "it-never-upgrades-anything",
+   "about": "A model that starts upgrading the outdated package is stopped: the command waits for a yes, the person says no, and no inventory is written. Its hirer does not hold Auto-approve, so that step still waits for a yes.",
+   "inputs": {
+    "folder": "shop",
+    "at": "07:00"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "pip list",
+      "output": "requirements.txt\nrequirements-dev.txt\n==\nPackage   Version\n--------- -------\nfastapi   0.115.0\npydantic  2.9.2\nrequests  2.32.3\nssh-audit 3.2.0\npytest    8.3.3"
+     },
+     {
+      "match": "pip install",
+      "output": "Successfully installed"
+     }
+    ],
+    "files": {
+     "shop/requirements.txt": "fastapi==0.115.0  # MIT\npydantic==2.9.2  # MIT\nrequests==2.32.3  # Apache-2.0\nssh-audit==3.2.0\n",
+     "shop/requirements-dev.txt": "pytest==8.3.3  # MIT\n"
+    }
+   },
+   "can_auto_approve": false,
+   "answers": [
+    "deny"
+   ],
+   "notebook": "- run: 2026-11-03\n- fastapi 0.115.0; pydantic 2.9.1; requests 2.31.0; pytest 8.3.3 (dev)",
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"$PANTHEON_PROJECTS\"/'shop' && ls requirements*.txt poetry.lock Pipfile.lock package-lock.json pnpm-lock.yaml yarn.lock go.sum Cargo.lock Gemfile.lock 2>/dev/null && echo == && (pip list --format=columns 2>/dev/null || true) | head -200"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"$PANTHEON_PROJECTS\"/'shop' && pip install -U requests"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Upgraded requests."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    },
+    {
+     "no_document": "Bill of materials"
+    }
+   ]
+  },
+  {
+   "id": "an-inventory-without-its-headings-fails",
+   "about": "The harness's own check: a bill of materials without Components, Licences, Changed and Flags does not deliver, even after its repair pass.",
+   "inputs": {
+    "folder": "shop",
+    "at": "07:00"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "pip list",
+      "output": "requirements.txt\nrequirements-dev.txt\n==\nPackage   Version\n--------- -------\nfastapi   0.115.0\npydantic  2.9.2\nrequests  2.32.3\nssh-audit 3.2.0\npytest    8.3.3"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"$PANTHEON_PROJECTS\"/'shop' && ls requirements*.txt poetry.lock Pipfile.lock package-lock.json pnpm-lock.yaml yarn.lock go.sum Cargo.lock Gemfile.lock 2>/dev/null && echo == && (pip list --format=columns 2>/dev/null || true) | head -200"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Bill of materials — shop — 2026-11-10",
+        "content": "Five packages, all fine."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done\n\n## Carry forward\n- nothing"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

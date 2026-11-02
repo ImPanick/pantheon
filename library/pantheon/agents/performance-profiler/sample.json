@@ -1,0 +1,27 @@
+{
+ "case": "a-python-command-with-three-hot-paths",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- profiled the command once, read 2 call sites; wrote \"Profile — python -m shop.report\"",
+ "read": [
+  "read_file"
+ ],
+ "wrote": [
+  "bash",
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Profile”",
+   "ok": true,
+   "detail": "“Profile — python -m shop.report” is there."
+  }
+ ],
+ "answer": "4.2 s; load_orders is 71% of it.\n\n## Report\n- profiled the command once, read 2 call sites; wrote \"Profile — python -m shop.report\"",
+ "documents": [
+  {
+   "title": "Profile — python -m shop.report",
+   "content": "Profile — python -m shop.report\npython -m shop.report in shop: 4.2 s\n\n## Measured\n- `python -m cProfile -s cumtime -m shop.report` — 4.2 s, 118,402 calls\n\n## Hot paths\n- shop/report.py:load_orders — 71% — called from shop/report.py:12\n- shop/prices.py:price_of — 22% — called from shop/report.py:31 (inside the loop over orders)\n- shop/report.py:render — 4% — called from shop/report.py:40\n\n## Proposed fixes\n- load_orders opens the CSV once per customer: read it once at the top and index by customer.\n- price_of is called 40,000 times for 120 products: cache it per product id.\n- render is fine.\n\n## Not measured\n- A second run; memory; the report with a larger orders file."
+  }
+ ]
+}
