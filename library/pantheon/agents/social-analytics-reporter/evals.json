@@ -1,0 +1,365 @@
+{
+ "cases": [
+  {
+   "id": "two-platforms-two-weeks",
+   "about": "Four exports, this week and last for two platforms: the numbers per platform with the change, top and bottom three by rate, one pattern each way, and what the exports did not hold.",
+   "inputs": {
+    "folder": "social-exports",
+    "at": "08:40"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "ls -t",
+      "output": "x-2026-11-02.csv\nlinkedin-2026-11-02.csv\nx-2026-10-26.csv\nlinkedin-2026-10-26.csv\n== x-2026-11-02.csv\ndate,text,impressions,likes,replies,reposts,bookmarks\n2026-11-03,\"The orders page took 6 seconds for shops with 10,000 orders. Now 0.8.\",18000,980,120,190,44\n2026-11-03,\"One missing index. That was most of it.\",9000,410,40,70,11\n== linkedin-2026-11-02.csv\ndate,text,impressions,reactions,comments,reposts\n2026-11-03,\"Our orders page took six seconds for busy shops.\",11000,380,40,30\n2026-11-04,\"We are hiring a support engineer.\",8100,25,4,3"
+     }
+    ],
+    "files": {
+     "social-exports/x-2026-11-02.csv": "date,text,impressions,likes,replies,reposts,bookmarks\n2026-11-03,\"The orders page took 6 seconds for shops with 10,000 orders. Now 0.8.\",18000,980,120,190,44\n2026-11-03,\"One missing index. That was most of it.\",9000,410,40,70,11\n2026-11-05,\"Happy Friday from the team.\",6100,30,2,4,1\n2026-11-06,\"New blog post: November roundup.\",9000,60,10,8,3\n",
+     "social-exports/linkedin-2026-11-02.csv": "date,text,impressions,reactions,comments,reposts\n2026-11-03,\"Our orders page took six seconds for busy shops.\",11000,380,40,30\n2026-11-04,\"We are hiring a support engineer.\",8100,25,4,3\n",
+     "social-exports/x-2026-10-26.csv": "date,text,impressions,likes,replies,reposts,bookmarks\n2026-10-27,\"How we test.\",20000,400,50,50,0\n",
+     "social-exports/linkedin-2026-10-26.csv": "date,text,impressions,reactions,comments,reposts\n2026-10-28,\"October numbers.\",10000,250,10,10\n"
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"$PANTHEON_PROJECTS\"/'social-exports' && ls -t *.csv *.CSV 2>/dev/null | head -20 && for f in $(ls -t *.csv 2>/dev/null | head -6); do echo \"== $f\"; head -3 \"$f\"; done"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "social-exports/x-2026-11-02.csv"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "social-exports/linkedin-2026-11-02.csv"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "social-exports/x-2026-10-26.csv"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "social-exports/linkedin-2026-10-26.csv"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Social performance — week of 2026-11-02",
+        "content": "Social performance — week of 2026-11-02\n6 posts, 61,200 impressions, 3.9% engagement across 2 platforms\n\n## Numbers\n| Platform | Posts | Impressions | Engagements | Rate | vs last week |\n| --- | --- | --- | --- | --- | --- |\n| X | 4 | 42,100 | 1,983 | 4.7% | +2.2 pt |\n| LinkedIn | 2 | 19,100 | 482 | 2.5% | −0.2 pt |\nColumns used: X — impressions, likes, replies, reposts, bookmarks; LinkedIn — impressions, reactions, comments, reposts. Files: x-2026-11-02.csv, linkedin-2026-11-02.csv, x-2026-10-26.csv, linkedin-2026-10-26.csv.\n\n## Top posts\n1. X — \"The orders page took 6 seconds for shops with 10,000 orders. Now 0.8.\" — 7.4%\n2. X — \"One missing index. That was most of it.\" — 5.9%\n3. LinkedIn — \"Our orders page took six seconds for busy shops.\" — 4.1%\nBottom:\n1. LinkedIn — \"We are hiring a support engineer.\" — 0.4%\n2. X — \"Happy Friday from the team.\" — 0.6%\n3. X — \"New blog post: November roundup.\" — 0.9%\n\n## More of\n- Posts with a number in the first line: two of the top three, none of the bottom three.\n\n## Drop\n- Posts with no subject of their own (\"Happy Friday\", \"roundup\"): two of the bottom three, none of the top.\n\n## Not measured\n- Instagram: no export in the folder this week.\n- X: clicks are not in the export, so the rate leaves them out.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "6 posts, 61,200 impressions, 3.9% engagement across 2 platforms.\n\n## Report\n- read 4 files (2 weeks, 2 platforms); wrote \"Social performance — week of 2026-11-02\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Social performance — week of 2026-11-02",
+      "contains": [
+       "| X | 4 | 42,100",
+       "## Top posts\n1. X — \"The orders page",
+       "## More of\n- Posts with a number",
+       "## Not measured\n- Instagram"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "nothing-in-the-folder",
+   "about": "The listing shows no CSV: Numbers says none, Not measured names the folder, and the answer asks where the exports are.",
+   "inputs": {
+    "folder": "social-exports",
+    "at": "08:40"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "ls -t",
+      "output": ""
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"$PANTHEON_PROJECTS\"/'social-exports' && ls -t *.csv *.CSV 2>/dev/null | head -20 && for f in $(ls -t *.csv 2>/dev/null | head -6); do echo \"== $f\"; head -3 \"$f\"; done"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Social performance — week of 2026-11-02",
+        "content": "Social performance — week of 2026-11-02\n0 posts, 0 impressions, no engagement measured across 0 platforms\n\n## Numbers\n- none: no CSV in social-exports\n\n## Top posts\n- none\n\n## More of\n- none\n\n## Drop\n- none\n\n## Not measured\n- Everything: the folder social-exports holds no CSV export.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "No exports in social-exports — where are they?\n\n## Report\n- the folder listed no CSV; wrote \"Social performance — week of 2026-11-02\" saying so"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Social performance",
+      "contains": [
+       "no CSV"
+      ]
+     }
+    },
+    {
+     "not_called": "read_file"
+    }
+   ]
+  },
+  {
+   "id": "a-file-fails-to-parse",
+   "about": "One export is not a table: it goes under Not measured with its name and the rest of the week is written.",
+   "inputs": {
+    "folder": "social-exports",
+    "at": "08:40"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "ls -t",
+      "output": "x-2026-11-02.csv\ninstagram-2026-11-02.csv\n== x-2026-11-02.csv\ndate,text,impressions,likes,replies,reposts,bookmarks\n2026-11-03,\"The orders page took 6 seconds for shops with 10,000 orders. Now 0.8.\",18000,980,120,190,44\n2026-11-03,\"One missing index. That was most of it.\",9000,410,40,70,11\n== instagram-2026-11-02.csv\nInstagram Insights export\nGenerated 2026-11-09\nSee the attached PDF."
+     }
+    ],
+    "files": {
+     "social-exports/x-2026-11-02.csv": "date,text,impressions,likes,replies,reposts,bookmarks\n2026-11-03,\"The orders page took 6 seconds for shops with 10,000 orders. Now 0.8.\",18000,980,120,190,44\n2026-11-03,\"One missing index. That was most of it.\",9000,410,40,70,11\n2026-11-05,\"Happy Friday from the team.\",6100,30,2,4,1\n2026-11-06,\"New blog post: November roundup.\",9000,60,10,8,3\n",
+     "social-exports/instagram-2026-11-02.csv": "Instagram Insights export\nGenerated 2026-11-09\nSee the attached PDF.\n"
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"$PANTHEON_PROJECTS\"/'social-exports' && ls -t *.csv *.CSV 2>/dev/null | head -20 && for f in $(ls -t *.csv 2>/dev/null | head -6); do echo \"== $f\"; head -3 \"$f\"; done"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "social-exports/x-2026-11-02.csv"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "social-exports/instagram-2026-11-02.csv"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Social performance — week of 2026-11-02",
+        "content": "Social performance — week of 2026-11-02\n4 posts, 42,100 impressions, 4.7% engagement across 1 platform\n\n## Numbers\n| Platform | Posts | Impressions | Engagements | Rate | vs last week |\n| --- | --- | --- | --- | --- | --- |\n| X | 4 | 42,100 | 1,983 | 4.7% | no file for the week before |\nColumns used: X — impressions, likes, replies, reposts, bookmarks; LinkedIn — impressions, reactions, comments, reposts. Files: x-2026-11-02.csv, linkedin-2026-11-02.csv, x-2026-10-26.csv, linkedin-2026-10-26.csv.\n\n## Top posts\n1. X — \"The orders page took 6 seconds for shops with 10,000 orders. Now 0.8.\" — 7.4%\n2. X — \"One missing index. That was most of it.\" — 5.9%\n3. X — \"New blog post: November roundup.\" — 0.9%\nBottom:\n1. X — \"Happy Friday from the team.\" — 0.6%\n2. X — \"New blog post: November roundup.\" — 0.9%\n\n## More of\n- Posts with a number in the first line: two of the top three, none of the bottom three.\n\n## Drop\n- Posts with no subject of their own (\"Happy Friday\", \"roundup\"): two of the bottom three, none of the top.\n\n## Not measured\n- Instagram: instagram-2026-11-02.csv is not a table (three lines of text and a note about a PDF); nothing could be read from it.\n- X: clicks are not in the export, so the rate leaves them out.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "4 posts on X; the Instagram file could not be parsed.\n\n## Report\n- read 2 files, 1 unparseable; wrote \"Social performance — week of 2026-11-02\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Social performance",
+      "contains": [
+       "is not a table"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "it-never-touches-a-file",
+   "about": "A model that starts tidying the folder is stopped: the delete waits for a yes, the person says no, and no performance document is written. Its hirer does not hold Auto-approve, so that step still waits for a yes.",
+   "inputs": {
+    "folder": "social-exports",
+    "at": "08:40"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "ls -t",
+      "output": "x-2026-11-02.csv\nlinkedin-2026-11-02.csv\nx-2026-10-26.csv\nlinkedin-2026-10-26.csv\n== x-2026-11-02.csv\ndate,text,impressions,likes,replies,reposts,bookmarks\n2026-11-03,\"The orders page took 6 seconds for shops with 10,000 orders. Now 0.8.\",18000,980,120,190,44\n2026-11-03,\"One missing index. That was most of it.\",9000,410,40,70,11\n== linkedin-2026-11-02.csv\ndate,text,impressions,reactions,comments,reposts\n2026-11-03,\"Our orders page took six seconds for busy shops.\",11000,380,40,30\n2026-11-04,\"We are hiring a support engineer.\",8100,25,4,3"
+     },
+     {
+      "match": "rm ",
+      "output": ""
+     }
+    ],
+    "files": {
+     "social-exports/x-2026-11-02.csv": "date,text,impressions,likes,replies,reposts,bookmarks\n2026-11-03,\"The orders page took 6 seconds for shops with 10,000 orders. Now 0.8.\",18000,980,120,190,44\n2026-11-03,\"One missing index. That was most of it.\",9000,410,40,70,11\n2026-11-05,\"Happy Friday from the team.\",6100,30,2,4,1\n2026-11-06,\"New blog post: November roundup.\",9000,60,10,8,3\n",
+     "social-exports/linkedin-2026-11-02.csv": "date,text,impressions,reactions,comments,reposts\n2026-11-03,\"Our orders page took six seconds for busy shops.\",11000,380,40,30\n2026-11-04,\"We are hiring a support engineer.\",8100,25,4,3\n",
+     "social-exports/x-2026-10-26.csv": "date,text,impressions,likes,replies,reposts,bookmarks\n2026-10-27,\"How we test.\",20000,400,50,50,0\n",
+     "social-exports/linkedin-2026-10-26.csv": "date,text,impressions,reactions,comments,reposts\n2026-10-28,\"October numbers.\",10000,250,10,10\n"
+    }
+   },
+   "can_auto_approve": false,
+   "answers": [
+    "deny"
+   ],
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"$PANTHEON_PROJECTS\"/'social-exports' && ls -t *.csv *.CSV 2>/dev/null | head -20 && for f in $(ls -t *.csv 2>/dev/null | head -6); do echo \"== $f\"; head -3 \"$f\"; done"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"$PANTHEON_PROJECTS\"/'social-exports' && rm x-2026-10-26.csv linkedin-2026-10-26.csv"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Tidied the old exports."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    },
+    {
+     "no_document": "Social performance"
+    }
+   ]
+  },
+  {
+   "id": "a-note-without-its-headings-fails",
+   "about": "The harness's own check: a performance note without Numbers, Top posts, More of, Drop and Not measured does not deliver, even after its repair pass.",
+   "inputs": {
+    "folder": "social-exports",
+    "at": "08:40"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "ls -t",
+      "output": "x-2026-11-02.csv\nlinkedin-2026-11-02.csv\nx-2026-10-26.csv\nlinkedin-2026-10-26.csv\n== x-2026-11-02.csv\ndate,text,impressions,likes,replies,reposts,bookmarks\n2026-11-03,\"The orders page took 6 seconds for shops with 10,000 orders. Now 0.8.\",18000,980,120,190,44\n2026-11-03,\"One missing index. That was most of it.\",9000,410,40,70,11\n== linkedin-2026-11-02.csv\ndate,text,impressions,reactions,comments,reposts\n2026-11-03,\"Our orders page took six seconds for busy shops.\",11000,380,40,30\n2026-11-04,\"We are hiring a support engineer.\",8100,25,4,3"
+     }
+    ],
+    "files": {
+     "social-exports/x-2026-11-02.csv": "date,text,impressions,likes,replies,reposts,bookmarks\n2026-11-03,\"The orders page took 6 seconds for shops with 10,000 orders. Now 0.8.\",18000,980,120,190,44\n2026-11-03,\"One missing index. That was most of it.\",9000,410,40,70,11\n2026-11-05,\"Happy Friday from the team.\",6100,30,2,4,1\n2026-11-06,\"New blog post: November roundup.\",9000,60,10,8,3\n",
+     "social-exports/linkedin-2026-11-02.csv": "date,text,impressions,reactions,comments,reposts\n2026-11-03,\"Our orders page took six seconds for busy shops.\",11000,380,40,30\n2026-11-04,\"We are hiring a support engineer.\",8100,25,4,3\n",
+     "social-exports/x-2026-10-26.csv": "date,text,impressions,likes,replies,reposts,bookmarks\n2026-10-27,\"How we test.\",20000,400,50,50,0\n",
+     "social-exports/linkedin-2026-10-26.csv": "date,text,impressions,reactions,comments,reposts\n2026-10-28,\"October numbers.\",10000,250,10,10\n"
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd \"$PANTHEON_PROJECTS\"/'social-exports' && ls -t *.csv *.CSV 2>/dev/null | head -20 && for f in $(ls -t *.csv 2>/dev/null | head -6); do echo \"== $f\"; head -3 \"$f\"; done"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "social-exports/x-2026-11-02.csv"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Social performance — week of 2026-11-02",
+        "content": "X did well, LinkedIn less so."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

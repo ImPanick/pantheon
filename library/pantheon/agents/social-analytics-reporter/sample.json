@@ -1,0 +1,27 @@
+{
+ "case": "two-platforms-two-weeks",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read 4 files (2 weeks, 2 platforms); wrote \"Social performance — week of 2026-11-02\"",
+ "read": [
+  "read_file"
+ ],
+ "wrote": [
+  "bash",
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Social performance”",
+   "ok": true,
+   "detail": "“Social performance — week of 2026-11-02” is there."
+  }
+ ],
+ "answer": "6 posts, 61,200 impressions, 3.9% engagement across 2 platforms.\n\n## Report\n- read 4 files (2 weeks, 2 platforms); wrote \"Social performance — week of 2026-11-02\"",
+ "documents": [
+  {
+   "title": "Social performance — week of 2026-11-02",
+   "content": "Social performance — week of 2026-11-02\n6 posts, 61,200 impressions, 3.9% engagement across 2 platforms\n\n## Numbers\n| Platform | Posts | Impressions | Engagements | Rate | vs last week |\n| --- | --- | --- | --- | --- | --- |\n| X | 4 | 42,100 | 1,983 | 4.7% | +2.2 pt |\n| LinkedIn | 2 | 19,100 | 482 | 2.5% | −0.2 pt |\nColumns used: X — impressions, likes, replies, reposts, bookmarks; LinkedIn — impressions, reactions, comments, reposts. Files: x-2026-11-02.csv, linkedin-2026-11-02.csv, x-2026-10-26.csv, linkedin-2026-10-26.csv.\n\n## Top posts\n1. X — \"The orders page took 6 seconds for shops with 10,000 orders. Now 0.8.\" — 7.4%\n2. X — \"One missing index. That was most of it.\" — 5.9%\n3. LinkedIn — \"Our orders page took six seconds for busy shops.\" — 4.1%\nBottom:\n1. LinkedIn — \"We are hiring a support engineer.\" — 0.4%\n2. X — \"Happy Friday from the team.\" — 0.6%\n3. X — \"New blog post: November roundup.\" — 0.9%\n\n## More of\n- Posts with a number in the first line: two of the top three, none of the bottom three.\n\n## Drop\n- Posts with no subject of their own (\"Happy Friday\", \"roundup\"): two of the bottom three, none of the top.\n\n## Not measured\n- Instagram: no export in the folder this week.\n- X: clicks are not in the export, so the rate leaves them out."
+  }
+ ]
+}

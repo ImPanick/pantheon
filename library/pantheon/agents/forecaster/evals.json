@@ -1,0 +1,337 @@
+{
+ "cases": [
+  {
+   "id": "trend-plus-season-over-two-years",
+   "about": "104 weeks of orders: trend plus season, eight weeks with a range, a 7% held-out error, two missing weeks named, one outlier left in and flagged.",
+   "inputs": {
+    "file": "weekly-orders.csv",
+    "horizon": "8 weeks"
+   },
+   "world": {
+    "files": {
+     "weekly-orders.csv": "week,orders\n2026-01-05,600\n2026-01-12,605\n2026-01-19,610\n2026-01-26,615\n2026-02-02,620\n2026-02-09,625\n2026-02-16,630\n2026-02-23,635\n2026-03-02,640\n2026-03-09,645\n2026-03-16,650\n2026-03-23,655"
+    },
+    "shell": [
+     {
+      "match": "python3",
+      "output": "periods=104 span=2024-11-04..2026-11-02 method=trend+season holdout_mape=7.1 resid_sd=43\n2026-11-09,705,640,770\n2026-11-16,718,645,791\n2026-11-23,760,680,840\n2026-11-30,812,724,900\n2026-12-07,790,696,884\n2026-12-14,745,645,845\n2026-12-21,690,584,796\n2026-12-28,700,589,811\ntotal=5920 low=5210 high=6630\noutliers=2025-08-18:1420(+4.0sd)\nmissing=2025-12-29,2026-01-05"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "weekly-orders.csv"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "python3 - <<'PY'\nimport csv\n# parse weekly-orders.csv, fit trend + season, hold out 8, print rows\nPY"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Forecast — weekly-orders.csv, 8 weeks",
+        "content": "Forecast — weekly-orders.csv, 8 weeks\n5,920 orders over the next 8 weeks (range 5,210–6,630), held-out error 7%\n\n## Numbers\n| Week of | Forecast | Low | High |\n| --- | --- | --- | --- |\n| 2026-11-09 | 705 | 640 | 770 |\n| 2026-11-16 | 718 | 645 | 791 |\n| 2026-11-23 | 760 | 680 | 840 |\n| 2026-11-30 | 812 | 724 | 900 |\n| 2026-12-07 | 790 | 696 | 884 |\n| 2026-12-14 | 745 | 645 | 845 |\n| 2026-12-21 | 690 | 584 | 796 |\n| 2026-12-28 | 700 | 589 | 811 |\nTotal: 5,920 (5,210–6,630).\n\n## Method\nTrend plus week-of-year season: a straight line fitted to 104 weeks (2024-11-04 to 2026-11-02), plus the average lift of each week position across the two years. Fitted on the first 96 weeks and checked on the last 8, it was off by 7% on average. The range is ±1.5 standard deviations of the fit's errors, widening each week ahead.\n\n## Assumptions\n- Last year's late-November lift repeats; no price change or campaign the file cannot know about.\n- 2 missing weeks (2025-12-29, 2026-01-05) were filled as missing, not as zero.\n- The range is the spread the history supports, not a guarantee.\n\n## Not measured\n- 2025-08-18: 1,420 orders, 4 standard deviations above the fit; left in. Say if it should be excluded.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "5,920 orders over the next 8 weeks (5,210–6,630), trend plus season, held-out error 7%.\n\n## Report\n- read weekly-orders.csv (104 weeks); 1 command; wrote \"Forecast — weekly-orders.csv, 8 weeks\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Forecast — weekly-orders.csv, 8 weeks",
+      "contains": [
+       "| 2026-11-09 | 705 | 640 | 770 |",
+       "Total: 5,920 (5,210–6,630)",
+       "## Method\nTrend plus week-of-year season",
+       "2 missing weeks",
+       "## Not measured\n- 2025-08-18"
+      ],
+      "lacks": [
+       "guaranteed",
+       "will be exactly"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "no-usable-series",
+   "about": "Five rows only: Numbers says none, Method says what was missing, and the answer asks for a longer file.",
+   "inputs": {
+    "file": "weekly-orders.csv",
+    "horizon": "8 weeks"
+   },
+   "world": {
+    "files": {
+     "weekly-orders.csv": "week,orders\n2026-10-05,610\n2026-10-12,622\n2026-10-19,615\n2026-10-26,640\n2026-11-02,655\n"
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "weekly-orders.csv"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Forecast — weekly-orders.csv, 8 weeks",
+        "content": "Forecast — weekly-orders.csv, 8 weeks\nno forecast over the next 8 weeks (range none), held-out error none\n\n## Numbers\n- none: 5 periods is too few to fit (8 is the floor).\n\n## Method\n- none run; the file has 5 weekly rows from 2026-10-05 to 2026-11-02.\n\n## Assumptions\n- none\n\n## Not measured\n- everything: a longer history is needed.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "No forecast: 5 weeks is too few — 8 is the floor, 26 would be honest.\n\n## Report\n- read weekly-orders.csv (5 rows); nothing run; wrote \"Forecast — weekly-orders.csv, 8 weeks\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Forecast",
+      "contains": [
+       "## Numbers\n- none"
+      ]
+     }
+    },
+    {
+     "not_called": "bash"
+    }
+   ]
+  },
+  {
+   "id": "the-command-fails",
+   "about": "Python answers an error on a column name: it is quoted under Not measured, fixed once, and the second run forecasts.",
+   "inputs": {
+    "file": "weekly-orders.csv",
+    "horizon": "8 weeks"
+   },
+   "world": {
+    "files": {
+     "weekly-orders.csv": "week,orders\n2026-01-05,600\n2026-01-12,605\n2026-01-19,610\n2026-01-26,615\n2026-02-02,620\n2026-02-09,625\n2026-02-16,630\n2026-02-23,635\n2026-03-02,640\n2026-03-09,645\n2026-03-16,650\n2026-03-23,655"
+    },
+    "shell": [
+     {
+      "match": "KeyError",
+      "output": "Traceback (most recent call last):\nKeyError: 'value'",
+      "exit_code": 1
+     },
+     {
+      "match": "python3",
+      "output": "periods=104 span=2024-11-04..2026-11-02 method=trend+season holdout_mape=7.1 resid_sd=43\n2026-11-09,705,640,770\n2026-11-16,718,645,791\n2026-11-23,760,680,840\n2026-11-30,812,724,900\n2026-12-07,790,696,884\n2026-12-14,745,645,845\n2026-12-21,690,584,796\n2026-12-28,700,589,811\ntotal=5920 low=5210 high=6630\noutliers=2025-08-18:1420(+4.0sd)\nmissing=2025-12-29,2026-01-05"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "weekly-orders.csv"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "python3 - <<'PY'\n# fit using row['value']  # KeyError expected\nPY"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "python3 - <<'PY'\nimport csv\n# parse weekly-orders.csv, fit trend + season, hold out 8, print rows\nPY"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Forecast — weekly-orders.csv, 8 weeks",
+        "content": "Forecast — weekly-orders.csv, 8 weeks\n5,920 orders over the next 8 weeks (range 5,210–6,630), held-out error 7%\n\n## Numbers\n| Week of | Forecast | Low | High |\n| --- | --- | --- | --- |\n| 2026-11-09 | 705 | 640 | 770 |\n| 2026-11-16 | 718 | 645 | 791 |\n| 2026-11-23 | 760 | 680 | 840 |\n| 2026-11-30 | 812 | 724 | 900 |\n| 2026-12-07 | 790 | 696 | 884 |\n| 2026-12-14 | 745 | 645 | 845 |\n| 2026-12-21 | 690 | 584 | 796 |\n| 2026-12-28 | 700 | 589 | 811 |\nTotal: 5,920 (5,210–6,630).\n\n## Method\nTrend plus week-of-year season: a straight line fitted to 104 weeks (2024-11-04 to 2026-11-02), plus the average lift of each week position across the two years. Fitted on the first 96 weeks and checked on the last 8, it was off by 7% on average. The range is ±1.5 standard deviations of the fit's errors, widening each week ahead.\n\n## Assumptions\n- Last year's late-November lift repeats; no price change or campaign the file cannot know about.\n- 2 missing weeks (2025-12-29, 2026-01-05) were filled as missing, not as zero.\n- The range is the spread the history supports, not a guarantee.\n\n## Not measured\n- First run failed: \"KeyError: 'value'\" — the column is `orders`; fixed and run again.\n- 2025-08-18: 1,420 orders, 4 standard deviations above the fit; left in. Say if it should be excluded.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "5,920 orders over the next 8 weeks (5,210–6,630); the first run failed on the column name and was fixed.\n\n## Report\n- read weekly-orders.csv; 2 commands (1 failed); wrote \"Forecast — weekly-orders.csv, 8 weeks\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Forecast",
+      "contains": [
+       "First run failed",
+       "KeyError"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "it-never-smooths-a-break-away",
+   "about": "A series with a four-sigma week: the point stays in the fit, is named under Not measured, and the answer asks whether to exclude it.",
+   "inputs": {
+    "file": "weekly-orders.csv",
+    "horizon": "8 weeks"
+   },
+   "world": {
+    "files": {
+     "weekly-orders.csv": "week,orders\n2026-01-05,600\n2026-01-12,605\n2026-01-19,610\n2026-01-26,615\n2026-02-02,620\n2026-02-09,625\n2026-02-16,630\n2026-02-23,635\n2026-03-02,640\n2026-03-09,645\n2026-03-16,650\n2026-03-23,655"
+    },
+    "shell": [
+     {
+      "match": "python3",
+      "output": "periods=104 span=2024-11-04..2026-11-02 method=trend+season holdout_mape=7.1 resid_sd=43\n2026-11-09,705,640,770\n2026-11-16,718,645,791\n2026-11-23,760,680,840\n2026-11-30,812,724,900\n2026-12-07,790,696,884\n2026-12-14,745,645,845\n2026-12-21,690,584,796\n2026-12-28,700,589,811\ntotal=5920 low=5210 high=6630\noutliers=2025-08-18:1420(+4.0sd)\nmissing=2025-12-29,2026-01-05"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "weekly-orders.csv"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "python3 - <<'PY'\nimport csv\n# parse weekly-orders.csv, fit trend + season, hold out 8, print rows\nPY"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Forecast — weekly-orders.csv, 8 weeks",
+        "content": "Forecast — weekly-orders.csv, 8 weeks\n5,920 orders over the next 8 weeks (range 5,210–6,630), held-out error 7%\n\n## Numbers\n| Week of | Forecast | Low | High |\n| --- | --- | --- | --- |\n| 2026-11-09 | 705 | 640 | 770 |\n| 2026-11-16 | 718 | 645 | 791 |\n| 2026-11-23 | 760 | 680 | 840 |\n| 2026-11-30 | 812 | 724 | 900 |\n| 2026-12-07 | 790 | 696 | 884 |\n| 2026-12-14 | 745 | 645 | 845 |\n| 2026-12-21 | 690 | 584 | 796 |\n| 2026-12-28 | 700 | 589 | 811 |\nTotal: 5,920 (5,210–6,630).\n\n## Method\nTrend plus week-of-year season: a straight line fitted to 104 weeks (2024-11-04 to 2026-11-02), plus the average lift of each week position across the two years. Fitted on the first 96 weeks and checked on the last 8, it was off by 7% on average. The range is ±1.5 standard deviations of the fit's errors, widening each week ahead.\n\n## Assumptions\n- Last year's late-November lift repeats; no price change or campaign the file cannot know about.\n- 2 missing weeks (2025-12-29, 2026-01-05) were filled as missing, not as zero.\n- The range is the spread the history supports, not a guarantee.\n\n## Not measured\n- 2025-08-18: 1,420 orders, 4 standard deviations above the fit; left in. Say if it should be excluded.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "5,920 orders over the next 8 weeks; 2025-08-18 is 4 standard deviations high and was left in — exclude it?\n\n## Report\n- read weekly-orders.csv; 1 command; wrote \"Forecast — weekly-orders.csv, 8 weeks\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Forecast",
+      "contains": [
+       "left in"
+      ],
+      "lacks": [
+       "removed the outlier",
+       "smoothed"
+      ]
+     }
+    },
+    {
+     "answer_contains": [
+      "exclude"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "a-forecast-without-its-headings-fails",
+   "about": "The harness's own check: a forecast without Numbers, Method, Assumptions and Not measured does not deliver, even after its repair pass.",
+   "inputs": {
+    "file": "weekly-orders.csv",
+    "horizon": "8 weeks"
+   },
+   "world": {
+    "files": {
+     "weekly-orders.csv": "week,orders\n2026-01-05,600\n2026-01-12,605\n2026-01-19,610\n2026-01-26,615\n2026-02-02,620\n2026-02-09,625\n2026-02-16,630\n2026-02-23,635\n2026-03-02,640\n2026-03-09,645\n2026-03-16,650\n2026-03-23,655"
+    },
+    "shell": [
+     {
+      "match": "python3",
+      "output": "periods=104 span=2024-11-04..2026-11-02 method=trend+season holdout_mape=7.1 resid_sd=43\n2026-11-09,705,640,770\n2026-11-16,718,645,791\n2026-11-23,760,680,840\n2026-11-30,812,724,900\n2026-12-07,790,696,884\n2026-12-14,745,645,845\n2026-12-21,690,584,796\n2026-12-28,700,589,811\ntotal=5920 low=5210 high=6630\noutliers=2025-08-18:1420(+4.0sd)\nmissing=2025-12-29,2026-01-05"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "weekly-orders.csv"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Forecast — weekly-orders.csv, 8 weeks",
+        "content": "About 5,900 orders."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

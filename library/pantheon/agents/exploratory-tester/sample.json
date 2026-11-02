@@ -1,0 +1,25 @@
+{
+ "case": "a-negative-quantity-makes-a-negative-total",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- 14 actions on shop.example; wrote \"Exploratory session — the checkout with odd quantities\"",
+ "read": [],
+ "wrote": [
+  "computer",
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Exploratory session”",
+   "ok": true,
+   "detail": "“Exploratory session — the checkout with odd quantities” is there."
+  }
+ ],
+ "answer": "1 finding: a negative quantity makes a negative total (wrong); 0 and 999999 held.\n\n## Report\n- 14 actions on shop.example; wrote \"Exploratory session — the checkout with odd quantities\"",
+ "documents": [
+  {
+   "title": "Exploratory session — the checkout with odd quantities",
+   "content": "Exploratory session — the checkout with odd quantities\n1 finding (0 block, 1 wrong, 0 rough) in 14 actions\n\n## Charter\n- https://shop.example/, \"the checkout with odd quantities\", 9 minutes.\n\n## Found\n- wrong — 1. Open Blue mug. 2. Set quantity to −1. 3. Add. — saw: the basket shows \"−1 × Blue mug, −£12.00\", total −£12.00 — expected: the quantity refused or clamped to 1 — screen: \"Basket — 1 line: '−1 × Blue mug, −£12.00'; total −£12.00.\"\n\n## Tried\n- Quantity 0: refused with \"Choose at least 1\". Held.\n- Quantity 999999: clamped to 99 with \"Up to 99 per order\". Held.\n\n## Not reached\n- Pay with a card: not attempted; no real payment.\n- Back after submit, double Add: time budget spent on the quantity probes."
+  }
+ ]
+}

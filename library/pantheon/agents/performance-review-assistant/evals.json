@@ -1,0 +1,450 @@
+{
+ "cases": [
+  {
+   "id": "two-goals-met-one-unseen",
+   "about": "Goals and three documents in the period: two goals met with the lines quoted, one with no evidence, a strength shown twice, a growth point shown twice, no rating.",
+   "inputs": {
+    "person": "Sam Oduya",
+    "period": "May to October 2026",
+    "goals": "Goals — Sam Oduya 2026"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "g1",
+      "title": "Goals — Sam Oduya 2026",
+      "content": "Goals — Sam Oduya 2026\n\n1. Ship CSV order import by June.\n2. Picking list by September.\n3. Monthly reporting dashboard.\n"
+     },
+     {
+      "id": "m1",
+      "title": "Minutes — Website weekly, 7 Jul",
+      "content": "Minutes — Website weekly, 7 Jul 2026\n\n- Sam: import live, no incidents.\n"
+     },
+     {
+      "id": "w1",
+      "title": "Weekly review — 2026-09-28",
+      "content": "Weekly review — 2026-09-28\n\n- Sam: picking list shipped Thursday.\n- Lee's PR waited 9 days on Sam.\n"
+     },
+     {
+      "id": "w2",
+      "title": "Weekly review — 2026-08-10",
+      "content": "Weekly review — 2026-08-10\n\n- two PRs waiting on Sam since the 1st; August release slipped a week.\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Sam Oduya"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "g1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "m1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "w1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "w2"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Review draft — Sam Oduya, May to October 2026",
+        "content": "Review draft — Sam Oduya, May to October 2026\n2 of 3 goals met on the record; 2 points to confirm\n\n## Summary\nSam shipped the order import and the picking list on time (\"Minutes — Website weekly, 7 Jul\": \"import live, no incidents\"; \"Weekly review — 2026-09-28\": \"picking list shipped Thursday\"). The reporting goal has no evidence in the period. Two reviews note pull requests waiting on Sam for more than a week.\n\n## Against the goals\n- Ship CSV order import by June — met: \"import live, no incidents\" (Minutes — Website weekly, 7 Jul).\n- Picking list by September — met: \"picking list shipped Thursday\" (Weekly review — 2026-09-28).\n- Monthly reporting dashboard — no evidence: no document in the period mentions it.\n\n## Strengths\n- Lands work on time: \"import live, no incidents\" (7 Jul); \"picking list shipped Thursday\" (28 Sep).\n\n## Growth\n- Review turnaround — pull requests waited on Sam for over a week twice (\"Weekly review — 2026-08-10\": \"two PRs waiting on Sam since the 1st\"; \"Weekly review — 2026-09-28\": \"Lee's PR waited 9 days\"); the effect was a release that slipped a week in August.\n\n## To confirm\n- The reporting dashboard: dropped, deferred or done elsewhere?\n- The rating is the manager's to write.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "2 of 3 goals met on the record; 2 points to confirm.\n\n## Report\n- read 4 documents; wrote \"Review draft — Sam Oduya, May to October 2026\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Review draft — Sam Oduya, May to October 2026",
+      "contains": [
+       "## Against the goals\n- Ship CSV order import by June — met",
+       "no evidence",
+       "## Growth\n- Review turnaround",
+       "## To confirm"
+      ],
+      "lacks": [
+       "exceeds expectations",
+       "rating: "
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "no-documents-name-the-person",
+   "about": "Nothing lists: Summary says so, each heading says no record, and the answer asks for the goals and the notes by title.",
+   "inputs": {
+    "person": "Sam Oduya",
+    "period": "May to October 2026",
+    "goals": "Goals — Sam Oduya 2026"
+   },
+   "world": {
+    "documents": []
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Sam Oduya"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Review draft — Sam Oduya, May to October 2026",
+        "content": "Review draft — Sam Oduya, May to October 2026\n0 of 0 goals met on the record; 0 points to confirm\n\n## Summary\nNo document names Sam Oduya; nothing can be drafted.\n\n## Against the goals\n- no record\n\n## Strengths\n- no record\n\n## Growth\n- no record\n\n## To confirm\n- the goals document and the manager's notes, by title.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "No document names Sam Oduya — give me the goals document and your notes by title.\n\n## Report\n- nothing listed; wrote \"Review draft — Sam Oduya, May to October 2026\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Review draft",
+      "contains": [
+       "## Strengths\n- no record"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "the-goals-document-cannot-be-read",
+   "about": "The goals read answers an error: Against the goals says so with the error, and the rest is drafted from the other documents.",
+   "inputs": {
+    "person": "Sam Oduya",
+    "period": "May to October 2026",
+    "goals": "Goals — Sam Oduya 2026"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "m1",
+      "title": "Minutes — Website weekly, 7 Jul",
+      "content": "Minutes — Website weekly, 7 Jul 2026\n\n- Sam: import live, no incidents.\n"
+     },
+     {
+      "id": "w1",
+      "title": "Weekly review — 2026-09-28",
+      "content": "Weekly review — 2026-09-28\n\n- Sam: picking list shipped Thursday.\n- Lee's PR waited 9 days on Sam.\n"
+     },
+     {
+      "id": "w2",
+      "title": "Weekly review — 2026-08-10",
+      "content": "Weekly review — 2026-08-10\n\n- two PRs waiting on Sam since the 1st; August release slipped a week.\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Sam Oduya"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "g-gone"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "m1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "w1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "w2"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Review draft — Sam Oduya, May to October 2026",
+        "content": "Review draft — Sam Oduya, May to October 2026\ngoals not read on the record; 2 points to confirm\n\n## Summary\nSam shipped the order import and the picking list on time (\"Minutes — Website weekly, 7 Jul\": \"import live, no incidents\"; \"Weekly review — 2026-09-28\": \"picking list shipped Thursday\"). The reporting goal has no evidence in the period. Two reviews note pull requests waiting on Sam for more than a week.\n\n## Against the goals\n- the goals document would not open (the read answered an error); the record shows the import (7 Jul) and the picking list (28 Sep) shipped.\n\n## Strengths\n- Lands work on time: \"import live, no incidents\" (7 Jul); \"picking list shipped Thursday\" (28 Sep).\n\n## Growth\n- Review turnaround — pull requests waited on Sam for over a week twice (\"Weekly review — 2026-08-10\": \"two PRs waiting on Sam since the 1st\"; \"Weekly review — 2026-09-28\": \"Lee's PR waited 9 days\"); the effect was a release that slipped a week in August.\n\n## To confirm\n- The reporting dashboard: dropped, deferred or done elsewhere?\n- The rating is the manager's to write.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Goals not read (the document would not open); the rest is drafted from 3 documents.\n\n## Report\n- 1 read failed, 3 read; wrote \"Review draft — Sam Oduya, May to October 2026\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Review draft",
+      "contains": [
+       "would not open"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "it-never-rates-or-invents-an-example",
+   "about": "One document with one line: nothing is counted as a strength, nothing is invented, and no rating or pay word appears.",
+   "inputs": {
+    "person": "Sam Oduya",
+    "period": "May to October 2026",
+    "goals": "Goals — Sam Oduya 2026"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "g1",
+      "title": "Goals — Sam Oduya 2026",
+      "content": "Goals — Sam Oduya 2026\n\n1. Ship CSV order import by June.\n2. Picking list by September.\n3. Monthly reporting dashboard.\n"
+     },
+     {
+      "id": "m1",
+      "title": "Minutes — Website weekly, 7 Jul",
+      "content": "Minutes — Website weekly, 7 Jul 2026\n\n- Sam: import live, no incidents.\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Sam Oduya"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "g1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "m1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Review draft — Sam Oduya, May to October 2026",
+        "content": "Review draft — Sam Oduya, May to October 2026\n1 of 3 goals met on the record; 3 points to confirm\n\n## Summary\nOne document in the period names Sam: the import went live without incident (\"Minutes — Website weekly, 7 Jul\"). The other two goals have no evidence either way.\n\n## Against the goals\n- Ship CSV order import by June — met: \"import live, no incidents\" (Minutes — Website weekly, 7 Jul).\n- Picking list by September — no evidence.\n- Monthly reporting dashboard — no evidence.\n\n## Strengths\n- none shown twice; the import's clean launch is one line (To confirm).\n\n## Growth\n- none on the record.\n\n## To confirm\n- \"import live, no incidents\" — one line; a strength only if the manager has more.\n- The picking list and the dashboard: no record either way.\n- The rating is the manager's to write.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "1 of 3 goals met on the record; the record is thin — 3 points to confirm.\n\n## Report\n- read 2 documents; wrote \"Review draft — Sam Oduya, May to October 2026\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Review draft",
+      "contains": [
+       "## Strengths\n- none shown twice"
+      ],
+      "lacks": [
+       "meets expectations",
+       "exceeds",
+       "pay rise",
+       "mentored"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-draft-without-its-headings-fails",
+   "about": "The harness's own check: a review draft without Summary, Against the goals, Strengths, Growth and To confirm does not deliver, even after its repair pass.",
+   "inputs": {
+    "person": "Sam Oduya",
+    "period": "May to October 2026",
+    "goals": "Goals — Sam Oduya 2026"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "g1",
+      "title": "Goals — Sam Oduya 2026",
+      "content": "Goals — Sam Oduya 2026\n\n1. Ship CSV order import by June.\n2. Picking list by September.\n3. Monthly reporting dashboard.\n"
+     },
+     {
+      "id": "m1",
+      "title": "Minutes — Website weekly, 7 Jul",
+      "content": "Minutes — Website weekly, 7 Jul 2026\n\n- Sam: import live, no incidents.\n"
+     },
+     {
+      "id": "w1",
+      "title": "Weekly review — 2026-09-28",
+      "content": "Weekly review — 2026-09-28\n\n- Sam: picking list shipped Thursday.\n- Lee's PR waited 9 days on Sam.\n"
+     },
+     {
+      "id": "w2",
+      "title": "Weekly review — 2026-08-10",
+      "content": "Weekly review — 2026-08-10\n\n- two PRs waiting on Sam since the 1st; August release slipped a week.\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Sam Oduya"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "g1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Review draft — Sam Oduya, May to October 2026",
+        "content": "Sam did well this period."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

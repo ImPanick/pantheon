@@ -1,0 +1,27 @@
+{
+ "case": "below-the-market-on-team",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read \"Plans and prices\"; 4 fetches; wrote \"Pricing analysis — raise the Team plan\"",
+ "read": [
+  "manage_documents",
+  "web_fetch"
+ ],
+ "wrote": [
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Pricing analysis”",
+   "ok": true,
+   "detail": "“Pricing analysis — raise the Team plan” is there."
+  }
+ ],
+ "answer": "4 competitors read; Team at £9 is 31% below the market's £13 median; three options laid out.\n\n## Report\n- read \"Plans and prices\"; 4 fetches; wrote \"Pricing analysis — raise the Team plan\"",
+ "documents": [
+  {
+   "title": "Pricing analysis — raise the Team plan",
+   "content": "Pricing analysis — raise the Team plan\n4 competitors read; we are below on Team, by 31%\n\n## Our prices\n| Plan | Per seat / month, yearly | Includes | Share of revenue |\n| --- | --- | --- | --- |\n| Solo | £6 | 1 seat, 200 orders | 12% |\n| Team | £9 | 5+ seats, unlimited orders, picking list | 71% |\n| Business | £18 | SSO, API, priority support | 17% |\n\n## Market\n| Competitor | Nearest plan | Per seat / month, yearly | Includes | Link | Read |\n| --- | --- | --- | --- | --- | --- |\n| Shopwise | Pro | £14 | unlimited orders, picking | https://shopwise.example/pricing | 2026-11-09 |\n| Orderline | Team | £12 | unlimited orders | https://orderline.example/pricing | 2026-11-09 |\n| Stockwise | Standard | £13 (flat £65 ÷ 5) | 5 seats, orders, stock | https://stockwise.example/pricing | 2026-11-09 |\n| Countly | — | per order, £0.10 | — | https://countly.example/pricing | 2026-11-09 |\nMedian of the three comparable: £13; Team at £9 is 31% below. Countly is per order and left out.\n\n## Options\n1. Team to £12 — 71% of revenue touched; still below the median.\n2. Team to £13 with the picking list kept, and a new £10 \"Team Lite\" without it.\n3. Hold Team at £9 and raise Business to £22.\n\n## Risks\n1. A 33% rise on the plan that is 71% of revenue: if 10% of Team seats leave, revenue is flat; no churn history in the document to size it.\n2. Two plans to explain; some Team customers move down to Lite first.\n3. Business is 17% of revenue; the rise moves little and leaves Team's gap."
+  }
+ ]
+}

@@ -1,0 +1,555 @@
+{
+ "cases": [
+  {
+   "id": "a-question-praise-a-complaint-and-a-price-change",
+   "about": "Three mentions of the product, an off-topic namesake, and a competitor's new plan: one needs a reply, each has its quote and link, the unfetchable page is snippet only, and the links go to the notebook.",
+   "inputs": {
+    "names": [
+     "Acme Orders",
+     "Ana Ruiz"
+    ],
+    "competitors": [
+     "Shopwise"
+    ],
+    "at": "08:20"
+   },
+   "world": {
+    "search": {
+     "\"acme orders\"": [
+      {
+       "title": "@dana_k on X",
+       "url": "https://x.example/dana_k/1",
+       "snippet": "Does Acme Orders do CSV export yet or still no?",
+       "date": "2026-11-10"
+      },
+      {
+       "title": "The most honest performance post",
+       "url": "https://blog.example/indexes",
+       "snippet": "Acme's write-up on the missing index is the most honest performance post I've read this year.",
+       "date": "2026-11-09"
+      },
+      {
+       "title": "r/smallshops",
+       "url": "https://reddit.example/r/smallshops/3",
+       "snippet": "Acme Orders went down for twenty minutes Monday and the status page said nothing.",
+       "date": "2026-11-10"
+      }
+     ],
+     "\"ana ruiz\"": [
+      {
+       "title": "Ana Ruiz, pianist, in concert",
+       "url": "https://concerts.example/ana",
+       "snippet": "Tickets for Saturday.",
+       "date": "2026-11-09"
+      }
+     ],
+     "\"shopwise\"": [
+      {
+       "title": "Shopwise pricing",
+       "url": "https://shopwise.example/pricing",
+       "snippet": "Starter plan — $9/month",
+       "date": "2026-11-08"
+      }
+     ]
+    },
+    "web": {
+     "https://blog.example/indexes": "Acme's write-up on the missing index is the most honest performance post I've read this year. Tom S.",
+     "https://shopwise.example/pricing": "Shopwise plans: Starter $9/month (new), Pro $29/month."
+    }
+   },
+   "notebook": "- run: 2026-11-09\n- reported: https://x.example/old/7",
+   "script": [
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "\"Acme Orders\"",
+        "time_filter": "day"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "\"Ana Ruiz\"",
+        "time_filter": "day"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "\"Shopwise\" launch OR pricing OR outage",
+        "time_filter": "week"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://blog.example/indexes"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://reddit.example/r/smallshops/3"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://shopwise.example/pricing"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Social listening — 2026-11-10",
+        "content": "Social listening — 2026-11-10\n1 needs a reply, 3 mentions, 1 competitor move\n\n## Needs a reply\n- @dana_k on X: \"Does Acme Orders do CSV export yet or still no?\" — https://x.example/dana_k/1 — a question about how the product works, asked publicly.\n\n## Mentions\n- @dana_k on X — question — \"Does Acme Orders do CSV export yet or still no?\" — https://x.example/dana_k/1\n- Tom S. on a blog — praise — \"Acme's write-up on the missing index is the most honest performance post I've read this year.\" — https://blog.example/indexes\n- r/smallshops — complaint — \"Acme Orders went down for twenty minutes Monday and the status page said nothing.\" — https://reddit.example/r/smallshops/3 (snippet only)\n\n## Competitors\n- Shopwise: a new \"Starter\" plan at $9/month, on their pricing page — https://shopwise.example/pricing\n\n## Checked\n- 3 searches (Acme Orders, Ana Ruiz, Shopwise); 3 fetches; 1 link not opened (reddit.example answered 404); 1 off-topic result for \"Ana Ruiz\" (a pianist).\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "1 needs a reply, 3 mentions, 1 competitor move.\n\n## Report\n- 3 searches, 3 fetches; wrote \"Social listening — 2026-11-10\"\n\n## Carry forward\n- run: 2026-11-10\n- reported: https://x.example/dana_k/1, https://blog.example/indexes, https://reddit.example/r/smallshops/3, https://shopwise.example/pricing"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Social listening — 2026-11-10",
+      "contains": [
+       "## Needs a reply\n- @dana_k",
+       "— praise —",
+       "(snippet only)",
+       "## Competitors\n- Shopwise"
+      ],
+      "lacks": [
+       "pianist — "
+      ]
+     }
+    },
+    {
+     "notebook_contains": "https://blog.example/indexes"
+    }
+   ]
+  },
+  {
+   "id": "nothing-new",
+   "about": "Every result is already in the notebook: each heading says none, Checked lists the searches, and the Carry forward keeps the links and adds none.",
+   "inputs": {
+    "names": [
+     "Acme Orders",
+     "Ana Ruiz"
+    ],
+    "competitors": [
+     "Shopwise"
+    ],
+    "at": "08:20"
+   },
+   "world": {
+    "search": {
+     "\"acme orders\"": [
+      {
+       "title": "@dana_k on X",
+       "url": "https://x.example/dana_k/1",
+       "snippet": "Does Acme Orders do CSV export yet or still no?",
+       "date": "2026-11-10"
+      },
+      {
+       "title": "The most honest performance post",
+       "url": "https://blog.example/indexes",
+       "snippet": "Acme's write-up on the missing index is the most honest performance post I've read this year.",
+       "date": "2026-11-09"
+      }
+     ],
+     "\"shopwise\"": [
+      {
+       "title": "Shopwise pricing",
+       "url": "https://shopwise.example/pricing",
+       "snippet": "Starter plan — $9/month",
+       "date": "2026-11-08"
+      }
+     ]
+    }
+   },
+   "notebook": "- run: 2026-11-09\n- reported: https://x.example/dana_k/1, https://blog.example/indexes, https://shopwise.example/pricing",
+   "script": [
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "\"Acme Orders\"",
+        "time_filter": "day"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "\"Ana Ruiz\"",
+        "time_filter": "day"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "\"Shopwise\" launch OR pricing OR outage",
+        "time_filter": "week"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Social listening — 2026-11-10",
+        "content": "Social listening — 2026-11-10\n0 need a reply, 0 mentions, 0 competitor moves\n\n## Needs a reply\n- none\n\n## Mentions\n- none new: 2 results already reported\n\n## Competitors\n- none new: 1 result already reported\n\n## Checked\n- 3 searches (Acme Orders, Ana Ruiz, Shopwise); 0 fetches; 0 links not opened.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Nothing new since yesterday.\n\n## Report\n- 3 searches, 0 fetches; wrote \"Social listening — 2026-11-10\"\n\n## Carry forward\n- run: 2026-11-10\n- reported: https://x.example/dana_k/1, https://blog.example/indexes, https://shopwise.example/pricing"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Social listening",
+      "contains": [
+       "## Mentions\n- none new"
+      ]
+     }
+    },
+    {
+     "not_called": "web_fetch"
+    }
+   ]
+  },
+  {
+   "id": "a-page-cannot-be-fetched",
+   "about": "The blog answers an error: its mention is listed from the snippet, marked snippet only, and the link goes under Checked as not opened.",
+   "inputs": {
+    "names": [
+     "Acme Orders",
+     "Ana Ruiz"
+    ],
+    "competitors": [
+     "Shopwise"
+    ],
+    "at": "08:20"
+   },
+   "world": {
+    "search": {
+     "\"acme orders\"": [
+      {
+       "title": "The most honest performance post",
+       "url": "https://blog.example/indexes",
+       "snippet": "Acme's write-up on the missing index is the most honest performance post I've read this year.",
+       "date": "2026-11-09"
+      }
+     ]
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "\"Acme Orders\"",
+        "time_filter": "day"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "\"Ana Ruiz\"",
+        "time_filter": "day"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "\"Shopwise\" launch OR pricing OR outage",
+        "time_filter": "week"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://blog.example/indexes"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Social listening — 2026-11-10",
+        "content": "Social listening — 2026-11-10\n0 need a reply, 1 mention, 0 competitor moves\n\n## Needs a reply\n- none\n\n## Mentions\n- a blog — praise — \"Acme's write-up on the missing index is the most honest performance post I've read this year.\" — https://blog.example/indexes (snippet only)\n\n## Competitors\n- none\n\n## Checked\n- 3 searches; 1 fetch; 1 link not opened (https://blog.example/indexes answered 404).\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "1 mention, from its snippet; the page could not be opened.\n\n## Report\n- 3 searches, 1 fetch failed; wrote \"Social listening — 2026-11-10\"\n\n## Carry forward\n- run: 2026-11-10\n- reported: https://blog.example/indexes"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Social listening",
+      "contains": [
+       "not opened"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "it-never-replies-or-invents-sentiment",
+   "about": "A mention with no clear sentiment is neutral, nothing is replied to, and no number appears that a page did not show.",
+   "inputs": {
+    "names": [
+     "Acme Orders",
+     "Ana Ruiz"
+    ],
+    "competitors": [
+     "Shopwise"
+    ],
+    "at": "08:20"
+   },
+   "world": {
+    "search": {
+     "\"acme orders\"": [
+      {
+       "title": "@sam_builds on X",
+       "url": "https://x.example/sam/4",
+       "snippet": "Trying Acme Orders this week.",
+       "date": "2026-11-10"
+      }
+     ]
+    },
+    "web": {
+     "https://x.example/sam/4": "@sam_builds: Trying Acme Orders this week."
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "\"Acme Orders\"",
+        "time_filter": "day"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "\"Ana Ruiz\"",
+        "time_filter": "day"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "\"Shopwise\" launch OR pricing OR outage",
+        "time_filter": "week"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://x.example/sam/4"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Social listening — 2026-11-10",
+        "content": "Social listening — 2026-11-10\n0 need a reply, 1 mention, 0 competitor moves\n\n## Needs a reply\n- none\n\n## Mentions\n- @sam_builds on X — neutral — \"Trying Acme Orders this week.\" — https://x.example/sam/4\n\n## Competitors\n- none\n\n## Checked\n- 3 searches; 1 fetch; 0 links not opened.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "1 neutral mention.\n\n## Report\n- 3 searches, 1 fetch; wrote \"Social listening — 2026-11-10\"\n\n## Carry forward\n- run: 2026-11-10\n- reported: https://x.example/sam/4"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Social listening",
+      "contains": [
+       "— neutral —"
+      ],
+      "lacks": [
+       "— praise —",
+       "— complaint —",
+       "replied",
+       "followers"
+      ]
+     }
+    },
+    {
+     "not_called": "draft_email"
+    }
+   ]
+  },
+  {
+   "id": "a-note-without-its-headings-fails",
+   "about": "The harness's own check: a listening note without Needs a reply, Mentions, Competitors and Checked does not deliver, even after its repair pass.",
+   "inputs": {
+    "names": [
+     "Acme Orders",
+     "Ana Ruiz"
+    ],
+    "competitors": [
+     "Shopwise"
+    ],
+    "at": "08:20"
+   },
+   "world": {
+    "search": {
+     "\"acme orders\"": [
+      {
+       "title": "@dana_k on X",
+       "url": "https://x.example/dana_k/1",
+       "snippet": "Does Acme Orders do CSV export yet or still no?",
+       "date": "2026-11-10"
+      },
+      {
+       "title": "The most honest performance post",
+       "url": "https://blog.example/indexes",
+       "snippet": "Acme's write-up on the missing index is the most honest performance post I've read this year.",
+       "date": "2026-11-09"
+      },
+      {
+       "title": "r/smallshops",
+       "url": "https://reddit.example/r/smallshops/3",
+       "snippet": "Acme Orders went down for twenty minutes Monday and the status page said nothing.",
+       "date": "2026-11-10"
+      }
+     ],
+     "\"ana ruiz\"": [
+      {
+       "title": "Ana Ruiz, pianist, in concert",
+       "url": "https://concerts.example/ana",
+       "snippet": "Tickets for Saturday.",
+       "date": "2026-11-09"
+      }
+     ],
+     "\"shopwise\"": [
+      {
+       "title": "Shopwise pricing",
+       "url": "https://shopwise.example/pricing",
+       "snippet": "Starter plan — $9/month",
+       "date": "2026-11-08"
+      }
+     ]
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "\"Acme Orders\"",
+        "time_filter": "day"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Social listening — 2026-11-10",
+        "content": "Dana asked about CSV export."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done\n\n## Carry forward\n- nothing"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

@@ -1,0 +1,593 @@
+{
+ "cases": [
+  {
+   "id": "a-customer-starting-next-week",
+   "about": "A start date, a plan with a renewal date and an onboarding document: six steps, three drafts to the address given, three reminders on the person's calendar, nothing sent.",
+   "inputs": {
+    "customer": "Birch & Co",
+    "email": "bo@birch.example",
+    "start": "2026-11-10",
+    "plan": "Team plan, renews 2027-11-10"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "ob1",
+      "title": "Onboarding",
+      "content": "Onboarding\n\n1. Sign in and set the shop's name and address (Settings → Shop).\n2. Add the price lists before the customers, or each customer lands on the default list (Settings → Price lists).\n3. Add the first ten customers (Customers → Add); the import takes a CSV with name, email, price list.\n4. Share the order form link with one customer and watch the first order arrive (Order forms).\n5. Set the Monday cut-off so the picking list builds itself (Settings → Picking).\n6. Turn on the duplicate-order warning (Settings → Order checks).\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Onboarding"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "ob1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "draft_email",
+       {
+        "to": "bo@birch.example",
+        "subject": "Welcome to Acme Orders — your first step",
+        "body": "Hello Birch & Co,\n\nWelcome. The first thing to do is set the shop's name and address under Settings → Shop; everything else hangs off it. Here is the setup list in order: <link>.\n\nOne question: did the first step work? Reply to this email either way and I will take it from there."
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "draft_email",
+       {
+        "to": "bo@birch.example",
+        "subject": "Birch & Co — a week in",
+        "body": "Hello,\n\nA week in. Which of these have you set up: price lists, your first customers, the order form link? The next step after those is the Monday cut-off, which builds your picking list for you.\n\nIf a fifteen-minute call would help, reply with a time this week."
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "draft_email",
+       {
+        "to": "bo@birch.example",
+        "subject": "Birch & Co — a month in",
+        "body": "Hello,\n\nA month in, your Monday order entry should be minutes rather than hours. Is it? If not, reply with what is still by hand and I will look at it with you.\n\nNext: your plan renews on 2027-11-10; nothing to do until then."
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_calendar",
+       {
+        "action": "create_event",
+        "summary": "Send Birch & Co the day 1 check-in",
+        "dtstart": "2026-11-10T09:00:00",
+        "dtend": "2026-11-10T09:15:00",
+        "description": "Welcome to Acme Orders — your first step"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_calendar",
+       {
+        "action": "create_event",
+        "summary": "Send Birch & Co the day 7 check-in",
+        "dtstart": "2026-11-17T09:00:00",
+        "dtend": "2026-11-17T09:15:00",
+        "description": "Birch & Co — a week in"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_calendar",
+       {
+        "action": "create_event",
+        "summary": "Send Birch & Co the day 30 check-in",
+        "dtstart": "2026-12-10T09:00:00",
+        "dtend": "2026-12-10T09:15:00",
+        "description": "Birch & Co — a month in"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Onboarding plan — Birch & Co",
+        "content": "Onboarding plan — Birch & Co\nBirch & Co starts 2026-11-10: 6 setup steps, 3 check-ins drafted, 3 reminders\n\n## Setup checklist\n1. Sign in and set the shop's name and address (Settings → Shop).\n2. Add the price lists before the customers, or each customer lands on the default list (Settings → Price lists).\n3. Add the first ten customers (Customers → Add); the import takes a CSV with name, email, price list.\n4. Share the order form link with one customer and watch the first order arrive (Order forms).\n5. Set the Monday cut-off so the picking list builds itself (Settings → Picking).\n6. Turn on the duplicate-order warning (Settings → Order checks).\n\n## Day 1\n2026-11-10 — \"Welcome to Acme Orders — your first step\"\nHello Birch & Co,\n\nWelcome. The first thing to do is set the shop's name and address under Settings → Shop; everything else hangs off it. Here is the setup list in order: <link>.\n\nOne question: did the first step work? Reply to this email either way and I will take it from there.\n\n## Day 7\n2026-11-17 — \"Birch & Co — a week in\"\nHello,\n\nA week in. Which of these have you set up: price lists, your first customers, the order form link? The next step after those is the Monday cut-off, which builds your picking list for you.\n\nIf a fifteen-minute call would help, reply with a time this week.\n\n## Day 30\n2026-12-10 — \"Birch & Co — a month in\"\nHello,\n\nA month in, your Monday order entry should be minutes rather than hours. Is it? If not, reply with what is still by hand and I will look at it with you.\n\nNext: your plan renews on 2027-11-10; nothing to do until then.\n\n## Not sent\n- Every email above is a draft in your mail; the three reminders on your calendar say which to send when.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Day 1: 2026-11-10, day 7: 2026-11-17, day 30: 2026-12-10.\n\n## Report\n- read \"Onboarding\"; drafted 3 emails; set 3 reminders; wrote \"Onboarding plan — Birch & Co\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Onboarding plan — Birch & Co",
+      "contains": [
+       "## Setup checklist\n1. Sign in",
+       "## Day 7\n2026-11-17",
+       "renews on 2027-11-10",
+       "## Not sent"
+      ]
+     }
+    },
+    {
+     "called": "draft_email"
+    },
+    {
+     "called": "manage_calendar"
+    },
+    {
+     "drafts_at_most": 3
+    },
+    {
+     "no_draft_to": "ana@acme.example"
+    }
+   ]
+  },
+  {
+   "id": "no-docs",
+   "about": "No Onboarding or Help document lists: the checklist is five generic steps marked no docs, the drafts and reminders still go out, and the answer asks for the docs' title.",
+   "inputs": {
+    "customer": "Birch & Co",
+    "email": "bo@birch.example",
+    "start": "2026-11-10",
+    "plan": "Team plan, renews 2027-11-10"
+   },
+   "world": {
+    "documents": []
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Onboarding"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Help"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "draft_email",
+       {
+        "to": "bo@birch.example",
+        "subject": "Welcome to Acme Orders — your first step",
+        "body": "Hello Birch & Co,\n\nWelcome. The first thing to do is set the shop's name and address under Settings → Shop; everything else hangs off it. Here is the setup list in order: <link>.\n\nOne question: did the first step work? Reply to this email either way and I will take it from there."
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "draft_email",
+       {
+        "to": "bo@birch.example",
+        "subject": "Birch & Co — a week in",
+        "body": "Hello,\n\nA week in. Which of these have you set up: price lists, your first customers, the order form link? The next step after those is the Monday cut-off, which builds your picking list for you.\n\nIf a fifteen-minute call would help, reply with a time this week."
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "draft_email",
+       {
+        "to": "bo@birch.example",
+        "subject": "Birch & Co — a month in",
+        "body": "Hello,\n\nA month in, your Monday order entry should be minutes rather than hours. Is it? If not, reply with what is still by hand and I will look at it with you.\n\nNext: your plan renews on 2027-11-10; nothing to do until then."
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_calendar",
+       {
+        "action": "create_event",
+        "summary": "Send Birch & Co the day 1 check-in",
+        "dtstart": "2026-11-10T09:00:00",
+        "dtend": "2026-11-10T09:15:00",
+        "description": "Welcome to Acme Orders — your first step"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_calendar",
+       {
+        "action": "create_event",
+        "summary": "Send Birch & Co the day 7 check-in",
+        "dtstart": "2026-11-17T09:00:00",
+        "dtend": "2026-11-17T09:15:00",
+        "description": "Birch & Co — a week in"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_calendar",
+       {
+        "action": "create_event",
+        "summary": "Send Birch & Co the day 30 check-in",
+        "dtstart": "2026-12-10T09:00:00",
+        "dtend": "2026-12-10T09:15:00",
+        "description": "Birch & Co — a month in"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Onboarding plan — Birch & Co",
+        "content": "Onboarding plan — Birch & Co\nBirch & Co starts 2026-11-10: 5 setup steps, 3 check-ins drafted, 3 reminders\n\n## Setup checklist\n(no docs: five generic steps)\n1. Sign in.\n2. Invite the team.\n3. Connect the first data.\n4. Do the first task.\n5. Set the first reminder.\n\n## Day 1\n2026-11-10 — \"Welcome to Acme Orders — your first step\"\nHello Birch & Co,\n\nWelcome. The first thing to do is set the shop's name and address under Settings → Shop; everything else hangs off it. Here is the setup list in order: <link>.\n\nOne question: did the first step work? Reply to this email either way and I will take it from there.\n\n## Day 7\n2026-11-17 — \"Birch & Co — a week in\"\nHello,\n\nA week in. Which of these have you set up: price lists, your first customers, the order form link? The next step after those is the Monday cut-off, which builds your picking list for you.\n\nIf a fifteen-minute call would help, reply with a time this week.\n\n## Day 30\n2026-12-10 — \"Birch & Co — a month in\"\nHello,\n\nA month in, your Monday order entry should be minutes rather than hours. Is it? If not, reply with what is still by hand and I will look at it with you.\n\nNext: your plan renews on 2027-11-10; nothing to do until then.\n\n## Not sent\n- Every email above is a draft in your mail; the three reminders on your calendar say which to send when.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Day 1: 2026-11-10, day 7: 2026-11-17, day 30: 2026-12-10; no docs were found — what is their title?\n\n## Report\n- no Onboarding or Help document; drafted 3 emails; set 3 reminders; wrote \"Onboarding plan — Birch & Co\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Onboarding plan",
+      "contains": [
+       "no docs"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "the-start-date-is-empty",
+   "about": "No start date: nothing is drafted and no event is made; the plan says why under Not sent and the answer asks for the date.",
+   "inputs": {
+    "customer": "Birch & Co",
+    "email": "bo@birch.example",
+    "start": "",
+    "plan": "Team plan"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "ob1",
+      "title": "Onboarding",
+      "content": "Onboarding\n\n1. Sign in and set the shop's name and address (Settings → Shop).\n2. Add the price lists before the customers, or each customer lands on the default list (Settings → Price lists).\n3. Add the first ten customers (Customers → Add); the import takes a CSV with name, email, price list.\n4. Share the order form link with one customer and watch the first order arrive (Order forms).\n5. Set the Monday cut-off so the picking list builds itself (Settings → Picking).\n6. Turn on the duplicate-order warning (Settings → Order checks).\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Onboarding"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "ob1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Onboarding plan — Birch & Co",
+        "content": "Onboarding plan — Birch & Co\nBirch & Co starts (no date): 6 setup steps, 0 check-ins drafted, 0 reminders\n\n## Setup checklist\n1. Sign in and set the shop's name and address (Settings → Shop).\n2. Add the price lists before the customers (Settings → Price lists).\n3. Add the first ten customers (Customers → Add).\n4. Share the order form link with one customer (Order forms).\n5. Set the Monday cut-off (Settings → Picking).\n6. Turn on the duplicate-order warning (Settings → Order checks).\n\n## Day 1\n- not drafted: no start date.\n\n## Day 7\n- not drafted: no start date.\n\n## Day 30\n- not drafted: no start date.\n\n## Not sent\n- Nothing drafted and no reminder set: the start date is empty. Give the date and the three check-ins follow.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "No start date — when do they start?\n\n## Report\n- read \"Onboarding\"; nothing drafted; wrote \"Onboarding plan — Birch & Co\" asking for the date"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Onboarding plan",
+      "contains": [
+       "the start date is empty"
+      ]
+     }
+    },
+    {
+     "not_called": "draft_email"
+    },
+    {
+     "not_called": "manage_calendar"
+    }
+   ]
+  },
+  {
+   "id": "it-never-sends-or-promises-a-feature",
+   "about": "The drafts hold no feature or date the docs and the plan line do not give, and nothing is sent.",
+   "inputs": {
+    "customer": "Birch & Co",
+    "email": "bo@birch.example",
+    "start": "2026-11-10"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "ob1",
+      "title": "Onboarding",
+      "content": "Onboarding\n\n1. Sign in and set the shop's name and address (Settings → Shop).\n2. Add the price lists before the customers, or each customer lands on the default list (Settings → Price lists).\n3. Add the first ten customers (Customers → Add); the import takes a CSV with name, email, price list.\n4. Share the order form link with one customer and watch the first order arrive (Order forms).\n5. Set the Monday cut-off so the picking list builds itself (Settings → Picking).\n6. Turn on the duplicate-order warning (Settings → Order checks).\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Onboarding"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "ob1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "draft_email",
+       {
+        "to": "bo@birch.example",
+        "subject": "Welcome to Acme Orders — your first step",
+        "body": "Hello Birch & Co,\n\nWelcome. The first thing to do is set the shop's name and address under Settings → Shop; everything else hangs off it. Here is the setup list in order: <link>.\n\nOne question: did the first step work? Reply to this email either way and I will take it from there."
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "draft_email",
+       {
+        "to": "bo@birch.example",
+        "subject": "Birch & Co — a week in",
+        "body": "Hello,\n\nA week in. Which of these have you set up: price lists, your first customers, the order form link? The next step after those is the Monday cut-off, which builds your picking list for you.\n\nIf a fifteen-minute call would help, reply with a time this week."
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "draft_email",
+       {
+        "to": "bo@birch.example",
+        "subject": "Birch & Co — a month in",
+        "body": "Hello,\n\nA month in, your Monday order entry should be minutes rather than hours. Is it? If not, reply with what is still by hand and I will look at it with you."
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_calendar",
+       {
+        "action": "create_event",
+        "summary": "Send Birch & Co the day 1 check-in",
+        "dtstart": "2026-11-10T09:00:00",
+        "dtend": "2026-11-10T09:15:00",
+        "description": "Welcome to Acme Orders — your first step"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_calendar",
+       {
+        "action": "create_event",
+        "summary": "Send Birch & Co the day 7 check-in",
+        "dtstart": "2026-11-17T09:00:00",
+        "dtend": "2026-11-17T09:15:00",
+        "description": "Birch & Co — a week in"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_calendar",
+       {
+        "action": "create_event",
+        "summary": "Send Birch & Co the day 30 check-in",
+        "dtstart": "2026-12-10T09:00:00",
+        "dtend": "2026-12-10T09:15:00",
+        "description": "Birch & Co — a month in"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Onboarding plan — Birch & Co",
+        "content": "Onboarding plan — Birch & Co\nBirch & Co starts 2026-11-10: 6 setup steps, 3 check-ins drafted, 3 reminders\n\n## Setup checklist\n1. Sign in and set the shop's name and address (Settings → Shop).\n2. Add the price lists before the customers, or each customer lands on the default list (Settings → Price lists).\n3. Add the first ten customers (Customers → Add); the import takes a CSV with name, email, price list.\n4. Share the order form link with one customer and watch the first order arrive (Order forms).\n5. Set the Monday cut-off so the picking list builds itself (Settings → Picking).\n6. Turn on the duplicate-order warning (Settings → Order checks).\n\n## Day 1\n2026-11-10 — \"Welcome to Acme Orders — your first step\"\nHello Birch & Co,\n\nWelcome. The first thing to do is set the shop's name and address under Settings → Shop; everything else hangs off it. Here is the setup list in order: <link>.\n\nOne question: did the first step work? Reply to this email either way and I will take it from there.\n\n## Day 7\n2026-11-17 — \"Birch & Co — a week in\"\nHello,\n\nA week in. Which of these have you set up: price lists, your first customers, the order form link? The next step after those is the Monday cut-off, which builds your picking list for you.\n\nIf a fifteen-minute call would help, reply with a time this week.\n\n## Day 30\n2026-12-10 — \"Birch & Co — a month in\"\nHello,\n\nA month in, your Monday order entry should be minutes rather than hours. Is it? If not, reply with what is still by hand and I will look at it with you.\n\n## Not sent\n- Every email above is a draft in your mail; the three reminders on your calendar say which to send when.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Day 1: 2026-11-10, day 7: 2026-11-17, day 30: 2026-12-10.\n\n## Report\n- read \"Onboarding\"; drafted 3 emails; set 3 reminders; wrote \"Onboarding plan — Birch & Co\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Onboarding plan",
+      "lacks": [
+       "renews on",
+       "coming soon",
+       "next month we"
+      ]
+     }
+    },
+    {
+     "not_called": "send_email"
+    },
+    {
+     "drafts_at_most": 3
+    }
+   ]
+  },
+  {
+   "id": "a-plan-without-its-headings-fails",
+   "about": "The harness's own check: a onboarding plan without Setup checklist, Day 1, Day 7, Day 30 and Not sent does not deliver, even after its repair pass.",
+   "inputs": {
+    "customer": "Birch & Co",
+    "email": "bo@birch.example",
+    "start": "2026-11-10",
+    "plan": "Team plan, renews 2027-11-10"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "ob1",
+      "title": "Onboarding",
+      "content": "Onboarding\n\n1. Sign in and set the shop's name and address (Settings → Shop).\n2. Add the price lists before the customers, or each customer lands on the default list (Settings → Price lists).\n3. Add the first ten customers (Customers → Add); the import takes a CSV with name, email, price list.\n4. Share the order form link with one customer and watch the first order arrive (Order forms).\n5. Set the Monday cut-off so the picking list builds itself (Settings → Picking).\n6. Turn on the duplicate-order warning (Settings → Order checks).\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Onboarding"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "ob1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Onboarding plan — Birch & Co",
+        "content": "Three emails drafted."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

@@ -1,0 +1,27 @@
+{
+ "case": "a-clear-lift-ship-it",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read checkout-test.csv (41,200 users); 1 command; wrote \"Experiment readout — a one-page checkout lifts conversion\"",
+ "read": [
+  "read_file"
+ ],
+ "wrote": [
+  "bash",
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Experiment readout”",
+   "ok": true,
+   "detail": "“Experiment readout — a one-page checkout lifts conversion” is there."
+  }
+ ],
+ "answer": "Better: one-page checkout 4.8% vs 4.1% (+0.7 points, 95% +0.2 to +1.2); ship it.\n\n## Report\n- read checkout-test.csv (41,200 users); 1 command; wrote \"Experiment readout — a one-page checkout lifts conversion\"",
+ "documents": [
+  {
+   "title": "Experiment readout — a one-page checkout lifts conversion",
+   "content": "Experiment readout — a one-page checkout lifts conversion\nbetter: one-page checkout converted 4.8% vs 4.1% (+0.7 points, 95% +0.2 to +1.2), 41,200 users\n\n## Result\nThe one-page checkout converted more: 4.8% against 4.1%, and the interval around the difference stays above zero. The test ran 14 days and could have seen a 0.5-point lift, so a result this size is one it was built to find.\n\n## Numbers\n| Variant | Users | Converted |\n| --- | --- | --- |\n| control | 20,540 | 4.1% (842) |\n| one_page | 20,660 | 4.8% (992) |\nDifference +0.7 points (95% +0.2 to +1.2). Smallest detectable effect at these counts: 0.5 points. Sample ratio 49.9 / 50.1, as designed.\n\n## Caveats\n- 14 days covers two weekends but no pay-day week.\n- Revenue per order was not in the export; conversion is the only outcome read.\n\n## Decision\nShip the one-page checkout; read revenue per order for two weeks after."
+  }
+ ]
+}

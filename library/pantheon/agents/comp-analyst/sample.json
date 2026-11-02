@@ -1,0 +1,27 @@
+{
+ "case": "five-sources-one-unopened",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- 4 searches, 6 fetches; wrote \"Pay band — senior backend engineer, Manchester\"",
+ "read": [
+  "web_search",
+  "web_fetch"
+ ],
+ "wrote": [
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Pay band”",
+   "ok": true,
+   "detail": "“Pay band — senior backend engineer, Manchester” is there."
+  }
+ ],
+ "answer": "£70k–£77.5k base for a senior backend engineer in Manchester, from 5 sources.\n\n## Report\n- 4 searches, 6 fetches; wrote \"Pay band — senior backend engineer, Manchester\"",
+ "documents": [
+  {
+   "title": "Pay band — senior backend engineer, Manchester",
+   "content": "Pay band — senior backend engineer, Manchester\n£70,000–£77,500 base, from 5 sources (spread £70,000–£85,000)\n\n## Range\n- £70k–£77.5k (25th–75th percentile of 5 midpoints), median £72k; 5 points, adequate.\n\n## Sources\n| Source | Link | As printed | Yearly base | Level | Date |\n| --- | --- | --- | --- | --- | --- |\n| Ledgerly job post | https://ledgerly.example/jobs/42 | £70,000–£85,000 | £77,500 | senior | 2026-10 |\n| ShipQuick post | https://shipquick.example/careers/7 | £75k–£95k + equity | £85,000 | senior | 2026-09 |\n| TechPay survey | https://techpay.example/2026 | median £72,000 (NW England) | £72,000 | senior | 2026-06 |\n| Countly post | https://countly.example/jobs/3 | £6,000/month | £72,000 | senior | 2026-10 |\n| Stockwise post | https://stockwise.example/jobs/11 | £65,000–£75,000 | £70,000 | senior | 2026-08 |\n\n## Assumptions\n- Role family: backend / server engineer; level: senior, 5–8 years; place: Manchester plus a North West survey row; figures from 2026; no currency conversion; equity left out of the base.\n\n## Checked\n- 4 searches; 5 pages opened; 1 not opened (https://payscale.example/senior-backend answered 404; snippet £64,000 unconfirmed, left out)."
+  }
+ ]
+}

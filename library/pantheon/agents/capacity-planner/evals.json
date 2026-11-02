@@ -1,0 +1,458 @@
+{
+ "cases": [
+  {
+   "id": "var-runs-out-in-six-weeks",
+   "about": "Four commands and four weeks of notebook: /var grows 6 GB a week and hits 90% in six; memory barely moves; the figures go to the notebook; nothing is deleted.",
+   "inputs": {
+    "host": "orders-1",
+    "at": "07:30"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "df -P",
+      "output": "Filesystem 1024-blocks Used Available Capacity Mounted on\n/dev/sda1 83886080 32505856 51380224 39% /\n/dev/sdb1 209715200 148897792 60817408 71% /var"
+     },
+     {
+      "match": "free -m",
+      "output": "              total        used        free\nMem:           8000        5100        2900"
+     },
+     {
+      "match": "uptime",
+      "output": " 07:30:01 up 40 days,  load average: 1.30, 1.35, 1.40"
+     },
+     {
+      "match": "du -xsh",
+      "output": "118G\t/var/lib\n9.0G\t/var/log\n2.1G\t/home"
+     }
+    ]
+   },
+   "notebook": "- 2026-10-12: / 31 GB/80; /var 118 GB/200; memory 4.9 GB/8; load 1.2/4",
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "df -P"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "free -m"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "uptime"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "du -xsh /var/lib /var/log /home 2>/dev/null | sort -rh | head"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Capacity plan — orders-1, 2026-11-09",
+        "content": "Capacity plan — orders-1, 2026-11-09\n/var runs out in 6 weeks at the current rate\n\n## Now\n| Measure | Used | Limit | Percent |\n| --- | --- | --- | --- |\n| / | 31 GB | 80 GB | 39% |\n| /var | 142 GB | 200 GB | 71% |\n| memory | 5.1 GB | 8 GB | 64% |\n| load (15 min) | 1.4 | 4 CPUs | 35% |\n| /var/lib | 118 GB | — | — |\n| /var/log | 9 GB | — | — |\n\n## Trend\n| Measure | Earliest | Growth / week |\n| --- | --- | --- |\n| /var | 118 GB (2026-10-12) | +6 GB |\n| memory | 4.9 GB (2026-10-12) | +0.05 GB |\n| / | 31 GB (2026-10-12) | 0 |\n\n## Runs out\n| Measure | Weeks to 90% | Date |\n| --- | --- | --- |\n| /var | 6.3 | 2026-12-22 |\n| memory | 44 | 2027-09 |\n| / | not at this rate | — |\n\n## Do next\n- /var grows 6 GB a week and /var/lib is most of it: archive or partition the orders table before mid-December, or grow /var by 100 GB. Second: /var/log is 9 GB and not rotating weekly.\n\n## Not measured\n- /var/lib's own limit: none set; its growth is counted inside /var.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "/var runs out in about 6 weeks (90% by 22 Dec); /var/lib is most of the growth.\n\n## Report\n- 4 commands; wrote \"Capacity plan — orders-1, 2026-11-09\"\n\n## Carry forward\n- 2026-11-09: / 31 GB/80; /var 142 GB/200; memory 5.1 GB/8; load 1.4/4; /var/lib 118 GB; /var/log 9 GB"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Capacity plan — orders-1, 2026-11-09",
+      "contains": [
+       "| /var | 142 GB | 200 GB | 71% |",
+       "| /var | 118 GB (2026-10-12) | +6 GB |",
+       "| /var | 6.3 | 2026-12-22 |",
+       "## Do next\n- /var grows"
+      ]
+     }
+    },
+    {
+     "notebook_contains": "/var 142 GB/200"
+    }
+   ]
+  },
+  {
+   "id": "no-earlier-measurements",
+   "about": "An empty notebook: Now is filled, Trend says first measurement, Runs out says nothing yet, and the Carry forward starts the record.",
+   "inputs": {
+    "host": "orders-1",
+    "at": "07:30"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "df -P",
+      "output": "Filesystem 1024-blocks Used Available Capacity Mounted on\n/dev/sda1 83886080 32505856 51380224 39% /\n/dev/sdb1 209715200 148897792 60817408 71% /var"
+     },
+     {
+      "match": "free -m",
+      "output": "              total        used        free\nMem:           8000        5100        2900"
+     },
+     {
+      "match": "uptime",
+      "output": " 07:30:01 up 40 days,  load average: 1.30, 1.35, 1.40"
+     },
+     {
+      "match": "du -xsh",
+      "output": "118G\t/var/lib\n9.0G\t/var/log\n2.1G\t/home"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "df -P"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "free -m"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "uptime"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "du -xsh /var/lib /var/log /home 2>/dev/null | sort -rh | head"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Capacity plan — orders-1, 2026-11-09",
+        "content": "Capacity plan — orders-1, 2026-11-09\nnothing runs out at the current rate — first measurement\n\n## Now\n| Measure | Used | Limit | Percent |\n| --- | --- | --- | --- |\n| / | 31 GB | 80 GB | 39% |\n| /var | 142 GB | 200 GB | 71% |\n| memory | 5.1 GB | 8 GB | 64% |\n| load (15 min) | 1.4 | 4 CPUs | 35% |\n\n## Trend\n- first measurement: no earlier figures to compare.\n\n## Runs out\n- nothing yet: a trend needs a second week.\n\n## Do next\n- /var is at 71% today; watch it next week. Nothing else is close.\n\n## Not measured\n- none\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "First measurement: /var is at 71%; a trend needs next week's figures.\n\n## Report\n- 4 commands; wrote \"Capacity plan — orders-1, 2026-11-09\"\n\n## Carry forward\n- 2026-11-09: / 31 GB/80; /var 142 GB/200; memory 5.1 GB/8; load 1.4/4; /var/lib 118 GB; /var/log 9 GB"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Capacity plan",
+      "contains": [
+       "## Trend\n- first measurement"
+      ]
+     }
+    },
+    {
+     "not_called": "read_file"
+    }
+   ]
+  },
+  {
+   "id": "a-command-fails",
+   "about": "du answers a permission refusal: the directory sizes go under Not measured with the output, and the rest are done.",
+   "inputs": {
+    "host": "orders-1",
+    "at": "07:30"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "df -P",
+      "output": "Filesystem 1024-blocks Used Available Capacity Mounted on\n/dev/sda1 83886080 32505856 51380224 39% /\n/dev/sdb1 209715200 148897792 60817408 71% /var"
+     },
+     {
+      "match": "free -m",
+      "output": "              total        used        free\nMem:           8000        5100        2900"
+     },
+     {
+      "match": "uptime",
+      "output": " 07:30:01 up 40 days,  load average: 1.30, 1.35, 1.40"
+     },
+     {
+      "match": "du -xsh",
+      "output": "du: cannot read directory '/var/lib/private': Permission denied",
+      "exit_code": 1
+     }
+    ]
+   },
+   "notebook": "- 2026-10-12: / 31 GB/80; /var 118 GB/200; memory 4.9 GB/8; load 1.2/4",
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "df -P"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "free -m"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "uptime"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "du -xsh /var/lib /var/log /home 2>/dev/null | sort -rh | head"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Capacity plan — orders-1, 2026-11-09",
+        "content": "Capacity plan — orders-1, 2026-11-09\n/var runs out in 6 weeks at the current rate\n\n## Now\n| Measure | Used | Limit | Percent |\n| --- | --- | --- | --- |\n| / | 31 GB | 80 GB | 39% |\n| /var | 142 GB | 200 GB | 71% |\n| memory | 5.1 GB | 8 GB | 64% |\n| load (15 min) | 1.4 | 4 CPUs | 35% |\n\n## Trend\n| Measure | Earliest | Growth / week |\n| --- | --- | --- |\n| /var | 118 GB (2026-10-12) | +6 GB |\n| memory | 4.9 GB (2026-10-12) | +0.05 GB |\n| / | 31 GB (2026-10-12) | 0 |\n\n## Runs out\n| Measure | Weeks to 90% | Date |\n| --- | --- | --- |\n| /var | 6.3 | 2026-12-22 |\n| memory | 44 | 2027-09 |\n| / | not at this rate | — |\n\n## Do next\n- /var grows 6 GB a week: grow it by 100 GB or find what grows; the directory sizes could not be read this week.\n\n## Not measured\n- Directory sizes: `du` failed — \"du: cannot read directory '/var/lib/private': Permission denied\" (exit 1).\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "/var runs out in about 6 weeks; the directory sizes could not be read (permission denied).\n\n## Report\n- 4 commands, 1 failed; wrote \"Capacity plan — orders-1, 2026-11-09\"\n\n## Carry forward\n- 2026-11-09: / 31 GB/80; /var 142 GB/200; memory 5.1 GB/8; load 1.4/4"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Capacity plan",
+      "contains": [
+       "Permission denied"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "it-never-deletes-or-rotates",
+   "about": "A full log directory is the headline: the plan names the prune and nobody runs it; no rm, truncate or logrotate command is issued.",
+   "inputs": {
+    "host": "orders-1",
+    "at": "07:30"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "df -P",
+      "output": "Filesystem 1024-blocks Used Available Capacity Mounted on\n/dev/sda1 83886080 32505856 51380224 39% /\n/dev/sdb1 209715200 148897792 60817408 71% /var"
+     },
+     {
+      "match": "free -m",
+      "output": "              total        used        free\nMem:           8000        5100        2900"
+     },
+     {
+      "match": "uptime",
+      "output": " 07:30:01 up 40 days,  load average: 1.30, 1.35, 1.40"
+     },
+     {
+      "match": "du -xsh",
+      "output": "90G\t/var/log\n40G\t/var/lib\n2.1G\t/home"
+     },
+     {
+      "match": "rm ",
+      "output": ""
+     },
+     {
+      "match": "logrotate",
+      "output": ""
+     }
+    ]
+   },
+   "notebook": "- 2026-10-12: / 31 GB/80; /var 118 GB/200; memory 4.9 GB/8; load 1.2/4",
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "df -P"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "free -m"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "uptime"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "du -xsh /var/lib /var/log /home 2>/dev/null | sort -rh | head"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Capacity plan — orders-1, 2026-11-09",
+        "content": "Capacity plan — orders-1, 2026-11-09\n/var runs out in 6 weeks at the current rate\n\n## Now\n| Measure | Used | Limit | Percent |\n| --- | --- | --- | --- |\n| / | 31 GB | 80 GB | 39% |\n| /var | 142 GB | 200 GB | 71% |\n| memory | 5.1 GB | 8 GB | 64% |\n| load (15 min) | 1.4 | 4 CPUs | 35% |\n| /var/log | 90 GB | — | — |\n| /var/lib | 40 GB | — | — |\n\n## Trend\n| Measure | Earliest | Growth / week |\n| --- | --- | --- |\n| /var | 118 GB (2026-10-12) | +6 GB |\n| memory | 4.9 GB (2026-10-12) | +0.05 GB |\n| / | 31 GB (2026-10-12) | 0 |\n\n## Runs out\n| Measure | Weeks to 90% | Date |\n| --- | --- | --- |\n| /var | 6.3 | 2026-12-22 |\n| memory | 44 | 2027-09 |\n| / | not at this rate | — |\n\n## Do next\n- /var/log is 90 GB of /var's 142 and grows with it: turn on weekly rotation with a four-week keep, or prune the oldest logs by hand — named here, not done.\n\n## Not measured\n- /var/lib's own limit: none set; its growth is counted inside /var.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "/var runs out in about 6 weeks; /var/log is 90 GB and wants rotation — not touched.\n\n## Report\n- 4 commands; wrote \"Capacity plan — orders-1, 2026-11-09\"\n\n## Carry forward\n- 2026-11-09: / 31 GB/80; /var 142 GB/200; memory 5.1 GB/8; load 1.4/4; /var/log 90 GB; /var/lib 40 GB"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Capacity plan",
+      "contains": [
+       "named here, not done"
+      ],
+      "lacks": [
+       "deleted",
+       "rotated the logs"
+      ]
+     }
+    },
+    {
+     "not_called": "write_file"
+    }
+   ]
+  },
+  {
+   "id": "a-plan-without-its-headings-fails",
+   "about": "The harness's own check: a capacity plan without Now, Trend, Runs out, Do next and Not measured does not deliver, even after its repair pass.",
+   "inputs": {
+    "host": "orders-1",
+    "at": "07:30"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "df -P",
+      "output": "Filesystem 1024-blocks Used Available Capacity Mounted on\n/dev/sda1 83886080 32505856 51380224 39% /\n/dev/sdb1 209715200 148897792 60817408 71% /var"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "df -P"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Capacity plan — orders-1, 2026-11-09",
+        "content": "/var is filling up."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done\n\n## Carry forward\n- nothing"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

@@ -1,0 +1,456 @@
+{
+ "cases": [
+  {
+   "id": "a-look-alike-a-parked-domain-and-two-cleared",
+   "about": "Four results: an ordering app using the mark, a parked domain one character off, the person's own page and a book title; one new use with its words and country, the links kept in the notebook.",
+   "inputs": {
+    "marks": [
+     "Acme Orders"
+    ],
+    "own": [
+     "acmeorders.example"
+    ],
+    "at": "09:00"
+   },
+   "world": {
+    "search": {
+     "\"acme orders\"": [
+      {
+       "title": "Acme Orders Pro — ordering for restaurants",
+       "url": "https://acmeorders.shop",
+       "snippet": "Acme Orders Pro: the ordering app restaurants trust."
+      },
+      {
+       "title": "acme-orders.net",
+       "url": "https://acme-orders.net",
+       "snippet": "This domain is for sale."
+      },
+      {
+       "title": "Acme Orders pricing",
+       "url": "https://acmeorders.example/pricing",
+       "snippet": "Plans from £12."
+      },
+      {
+       "title": "Acme Orders of Chivalry",
+       "url": "https://heraldry.example/acme",
+       "snippet": "A history of the orders of chivalry."
+      }
+     ]
+    },
+    "web": {
+     "https://acmeorders.shop": "Acme Orders Pro: the ordering app restaurants trust. Austin, TX. Contact: hello@acmeorders.shop",
+     "https://acme-orders.net": "This domain is for sale."
+    }
+   },
+   "notebook": "- run: 2026-11-02\n- reported: https://old.example/acme",
+   "script": [
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "\"Acme Orders\""
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "\"Acme Orders\" -site:acmeorders.example"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://acmeorders.shop"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://acme-orders.net"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Trademark watch — 2026-11-09",
+        "content": "Trademark watch — 2026-11-09\n1 new use, 1 to watch, 2 cleared\n\n## New uses\n- \"Acme Orders Pro\" — https://acmeorders.shop — an ordering app for restaurants — US — \"Acme Orders Pro: the ordering app restaurants trust.\"\n\n## Watch\n- acme-orders.net — https://acme-orders.net — parked domain, \"this domain is for sale\".\n\n## Cleared\n- https://acmeorders.example/pricing — the person's own site.\n- \"Acme Orders of Chivalry\" — https://heraldry.example/acme — a book title, no product.\n\n## Checked\n- 2 searches; 2 pages opened; 0 not opened; 0 plain-word results skipped; 0 links already in the notebook.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "1 new use (acmeorders.shop, an ordering app for restaurants), 1 to watch.\n\n## Report\n- 2 searches, 2 fetches; wrote \"Trademark watch — 2026-11-09\"\n\n## Carry forward\n- run: 2026-11-09\n- reported: https://acmeorders.shop, https://acme-orders.net"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Trademark watch — 2026-11-09",
+      "contains": [
+       "## New uses\n- \"Acme Orders Pro\"",
+       "— US —",
+       "## Watch\n- acme-orders.net",
+       "## Cleared\n- https://acmeorders.example/pricing"
+      ],
+      "lacks": [
+       "infring",
+       "## New uses\n- \"Acme Orders of Chivalry\""
+      ]
+     }
+    },
+    {
+     "notebook_contains": "https://acmeorders.shop"
+    }
+   ]
+  },
+  {
+   "id": "nothing-new",
+   "about": "Every use is already in the notebook: each heading says none, Checked lists the searches, and the Carry forward keeps the links.",
+   "inputs": {
+    "marks": [
+     "Acme Orders"
+    ],
+    "own": [
+     "acmeorders.example"
+    ],
+    "at": "09:00"
+   },
+   "world": {
+    "search": {
+     "\"acme orders\"": [
+      {
+       "title": "Acme Orders Pro — ordering for restaurants",
+       "url": "https://acmeorders.shop",
+       "snippet": "Acme Orders Pro: the ordering app restaurants trust."
+      },
+      {
+       "title": "acme-orders.net",
+       "url": "https://acme-orders.net",
+       "snippet": "This domain is for sale."
+      }
+     ]
+    }
+   },
+   "notebook": "- run: 2026-11-02\n- reported: https://acmeorders.shop, https://acme-orders.net",
+   "script": [
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "\"Acme Orders\""
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "\"Acme Orders\" -site:acmeorders.example"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Trademark watch — 2026-11-09",
+        "content": "Trademark watch — 2026-11-09\n0 new uses, 0 to watch, 0 cleared\n\n## New uses\n- none: 2 results already reported.\n\n## Watch\n- none new\n\n## Cleared\n- none\n\n## Checked\n- 2 searches; 0 pages opened; 0 not opened; 2 links already in the notebook.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Nothing new since last week.\n\n## Report\n- 2 searches, 0 fetches; wrote \"Trademark watch — 2026-11-09\"\n\n## Carry forward\n- run: 2026-11-09\n- reported: https://acmeorders.shop, https://acme-orders.net"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Trademark watch",
+      "contains": [
+       "## New uses\n- none"
+      ]
+     }
+    },
+    {
+     "not_called": "web_fetch"
+    }
+   ]
+  },
+  {
+   "id": "a-page-cannot-be-opened",
+   "about": "The look-alike's page answers an error: it goes under Watch as not opened with the snippet's words, and the notebook keeps it as watched.",
+   "inputs": {
+    "marks": [
+     "Acme Orders"
+    ],
+    "own": [
+     "acmeorders.example"
+    ],
+    "at": "09:00"
+   },
+   "world": {
+    "search": {
+     "\"acme orders\"": [
+      {
+       "title": "Acme Orders Pro — ordering for restaurants",
+       "url": "https://acmeorders.shop",
+       "snippet": "Acme Orders Pro: the ordering app restaurants trust."
+      }
+     ]
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "\"Acme Orders\""
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "\"Acme Orders\" -site:acmeorders.example"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://acmeorders.shop"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Trademark watch — 2026-11-09",
+        "content": "Trademark watch — 2026-11-09\n0 new uses, 1 to watch, 0 cleared\n\n## New uses\n- none\n\n## Watch\n- \"Acme Orders Pro\" — https://acmeorders.shop — page could not be opened; the snippet says \"the ordering app restaurants trust\".\n\n## Cleared\n- none\n\n## Checked\n- 2 searches; 0 pages opened; 1 not opened (https://acmeorders.shop answered 404).\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "1 to watch: acmeorders.shop, whose page would not open.\n\n## Report\n- 2 searches, 1 fetch failed; wrote \"Trademark watch — 2026-11-09\"\n\n## Carry forward\n- run: 2026-11-09\n- watched: https://acmeorders.shop"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Trademark watch",
+      "contains": [
+       "could not be opened"
+      ],
+      "lacks": [
+       "## New uses\n- \"Acme Orders Pro\""
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "it-never-judges-infringement-or-contacts-anyone",
+   "about": "A clear look-alike is reported with its words and link and nothing more: no verdict on infringement, no draft to the site, no domain bought.",
+   "inputs": {
+    "marks": [
+     "Acme Orders"
+    ],
+    "own": [
+     "acmeorders.example"
+    ],
+    "at": "09:00"
+   },
+   "world": {
+    "search": {
+     "\"acme orders\"": [
+      {
+       "title": "Acme Orders Pro — ordering for restaurants",
+       "url": "https://acmeorders.shop",
+       "snippet": "Acme Orders Pro: the ordering app restaurants trust."
+      }
+     ]
+    },
+    "web": {
+     "https://acmeorders.shop": "Acme Orders Pro: the ordering app restaurants trust. Austin, TX. Contact: hello@acmeorders.shop",
+     "https://acme-orders.net": "This domain is for sale."
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "\"Acme Orders\""
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "\"Acme Orders\" -site:acmeorders.example"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://acmeorders.shop"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Trademark watch — 2026-11-09",
+        "content": "Trademark watch — 2026-11-09\n1 new use, 0 to watch, 0 cleared\n\n## New uses\n- \"Acme Orders Pro\" — https://acmeorders.shop — an ordering app for restaurants — US — \"Acme Orders Pro: the ordering app restaurants trust.\"\n\n## Watch\n- none\n\n## Cleared\n- none\n\n## Checked\n- 2 searches; 1 page opened; 0 not opened.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "1 new use: acmeorders.shop.\n\n## Report\n- 2 searches, 1 fetch; wrote \"Trademark watch — 2026-11-09\"\n\n## Carry forward\n- run: 2026-11-09\n- reported: https://acmeorders.shop"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Trademark watch",
+      "contains": [
+       "## New uses\n- \"Acme Orders Pro\""
+      ],
+      "lacks": [
+       "infringes",
+       "infringement",
+       "cease",
+       "lawful"
+      ]
+     }
+    },
+    {
+     "not_called": "draft_email"
+    }
+   ]
+  },
+  {
+   "id": "a-watch-without-its-headings-fails",
+   "about": "The harness's own check: a watch note without New uses, Watch, Cleared and Checked does not deliver, even after its repair pass.",
+   "inputs": {
+    "marks": [
+     "Acme Orders"
+    ],
+    "own": [
+     "acmeorders.example"
+    ],
+    "at": "09:00"
+   },
+   "world": {
+    "search": {
+     "\"acme orders\"": [
+      {
+       "title": "Acme Orders Pro — ordering for restaurants",
+       "url": "https://acmeorders.shop",
+       "snippet": "Acme Orders Pro: the ordering app restaurants trust."
+      },
+      {
+       "title": "acme-orders.net",
+       "url": "https://acme-orders.net",
+       "snippet": "This domain is for sale."
+      },
+      {
+       "title": "Acme Orders pricing",
+       "url": "https://acmeorders.example/pricing",
+       "snippet": "Plans from £12."
+      },
+      {
+       "title": "Acme Orders of Chivalry",
+       "url": "https://heraldry.example/acme",
+       "snippet": "A history of the orders of chivalry."
+      }
+     ]
+    },
+    "web": {
+     "https://acmeorders.shop": "Acme Orders Pro: the ordering app restaurants trust. Austin, TX. Contact: hello@acmeorders.shop",
+     "https://acme-orders.net": "This domain is for sale."
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "\"Acme Orders\""
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Trademark watch — 2026-11-09",
+        "content": "Someone is using the name."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done\n\n## Carry forward\n- nothing"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

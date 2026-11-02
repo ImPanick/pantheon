@@ -1,0 +1,26 @@
+{
+ "case": "one-contradiction-one-stale-two-gaps",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read 4 policy documents; wrote \"Handbook review — 2026-11-09\"",
+ "read": [
+  "manage_documents"
+ ],
+ "wrote": [
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Handbook review”",
+   "ok": true,
+   "detail": "“Handbook review — 2026-11-09” is there."
+  }
+ ],
+ "answer": "4 documents read: 1 contradiction, 1 out of date, 2 questions not covered.\n\n## Report\n- read 4 policy documents; wrote \"Handbook review — 2026-11-09\"",
+ "documents": [
+  {
+   "title": "Handbook review — 2026-11-09",
+   "content": "Handbook review — 2026-11-09\n4 documents read: 1 contradiction, 1 out of date, 2 not covered\n\n## Contradictions\n- Notice period — \"Policy — Leaving\" §2: \"One month's notice for all staff\" vs \"Policy — Contracts\" §5: \"Three months' notice for senior staff\".\n\n## Out of date\n- \"Policy — Leave\" §4 names \"The 2024 holiday year\"; the current year is not stated.\n\n## Not covered\n- \"Can I carry leave over?\" — closest: \"Policy — Leave\" §4, which gives the year but no carry-over rule.\n- \"Who pays for a home desk?\" — nothing; \"Policy — Remote\" has no equipment line.\n\n## Fixes\n- \"Policy — Leaving\" §2: \"Notice is one month, or three months for senior staff as their contract states.\" (keeps the later Contracts document's rule and says so)\n- \"Policy — Leave\" §4: state the current holiday year.\n- \"Policy — Leave\" §4: add a carry-over rule — the owner to choose the figure.\n- \"Policy — Remote\": add an equipment line — who pays, up to what amount, what is returned."
+  }
+ ]
+}

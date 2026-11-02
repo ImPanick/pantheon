@@ -1,0 +1,26 @@
+{
+ "case": "three-user-changes-and-a-known-issue",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read \"Release notes — 2.4.0\" and no brand voice document; wrote \"Launch announcement — 2.4.0\"",
+ "read": [
+  "manage_documents"
+ ],
+ "wrote": [
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Launch announcement”",
+   "ok": true,
+   "detail": "“Launch announcement — 2.4.0” is there."
+  }
+ ],
+ "answer": "Lead: share a week's meal plan with one other person by email.\n\n## Report\n- read \"Release notes — 2.4.0\" and no brand voice document; wrote \"Launch announcement — 2.4.0\"",
+ "documents": [
+  {
+   "title": "Launch announcement — 2.4.0",
+   "content": "Launch announcement — 2.4.0\nShare a week's meal plan with one other person by email.\n\n## The one line\n2.4.0: share a week's meal plan with one other person by email — no account needed on their side.\n\n## Thread\n1/ 2.4.0 is out. The most-asked-for thing: share a week's meal plan with one other person by email.\n2/ They get a link. It opens the plan, read-only, with the shopping list. No sign-up.\n3/ Also fixed: a mistyped discount code now says so instead of emptying your basket.\n4/ And the orders page loads in under a second for shops with thousands of orders.\n5/ Notes and how to upgrade: <link>. Known: sending mail retries when the mail server is down; restart the worker.\n\n## LinkedIn post\n2.4.0 is out today, and the headline is the thing people asked for most: share a week's meal plan with one other person by email, with no account needed on their side.\n\nTwo smaller things: a mistyped discount code now says so instead of emptying the basket, and the orders page loads in under a second for busy shops.\n\nRelease notes: <link>\n\n## Video script\n- Shot 1 (0–5 s): the plan screen, cursor on Share — \"You have a week planned.\"\n- Shot 2 (5–15 s): the email field, one address typed — \"Type one email address.\"\n- Shot 3 (15–25 s): the other person's phone, the plan opening — \"They open the link. No sign-up.\"\n- Shot 4 (25–30 s): the version number — \"2.4.0, out today.\"\n\n## Newsletter blurb\n2.4.0 is out. Share a week's meal plan with one other person by email — they get a read-only link, no account needed. Also: mistyped discount codes now say so, and the orders page is fast for busy shops. Known: sending mail retries forever when the mail server is down; restart the worker."
+  }
+ ]
+}

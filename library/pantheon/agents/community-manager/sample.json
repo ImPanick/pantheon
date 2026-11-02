@@ -1,0 +1,28 @@
+{
+ "case": "two-questions-a-billing-complaint-and-praise",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read 5 notifications, 1 listening note and the Help document; wrote \"Community replies — 2026-11-10\"",
+ "read": [
+  "search_emails",
+  "read_email",
+  "manage_documents"
+ ],
+ "wrote": [
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Community replies”",
+   "ok": true,
+   "detail": "“Community replies — 2026-11-10” is there."
+  }
+ ],
+ "answer": "2 need a reply, 1 escalated, 1 to thank.\n\n## Report\n- read 5 notifications, 1 listening note and the Help document; wrote \"Community replies — 2026-11-10\"",
+ "documents": [
+  {
+   "title": "Community replies — 2026-11-10",
+   "content": "Community replies — 2026-11-10\n2 need a reply, 1 escalated, 1 to thank\n\n## Needs a reply\n- @dana_k (X): \"Can I export my orders as CSV or is that still not a thing?\" — Draft: \"It is: Orders → Export, top right, gives you a CSV of the current filter. Docs: Exporting orders.\" — Help › Exporting orders.\n- mo.builds (LinkedIn): \"Does the share link need the other person to sign up?\" — Draft: \"No sign-up on their side — the link opens the plan read-only. Docs: Sharing a plan.\" — Help › Sharing a plan.\n\n## Escalate\n- @priya_runs (X): \"Charged twice this month and support has not answered in 4 days. Not ok.\" — the escalation manager: a billing complaint, four days old, public. Holding reply drafted: \"Sorry — looking into it now and will reply here today.\"\n\n## Thanks\n- @tomstack (X): \"Finally someone shows the actual query.\" — Draft: \"Thank you — the index was the boring answer, which is the best kind.\"\n\n## Left alone\n- @acme_hvac (X): a different Acme; the mention is about heating."
+  }
+ ]
+}

@@ -1,0 +1,27 @@
+{
+ "case": "a-question-praise-a-complaint-and-a-price-change",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- 3 searches, 3 fetches; wrote \"Social listening — 2026-11-10\"",
+ "read": [
+  "web_search",
+  "web_fetch"
+ ],
+ "wrote": [
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Social listening”",
+   "ok": true,
+   "detail": "“Social listening — 2026-11-10” is there."
+  }
+ ],
+ "answer": "1 needs a reply, 3 mentions, 1 competitor move.\n\n## Report\n- 3 searches, 3 fetches; wrote \"Social listening — 2026-11-10\"\n\n## Carry forward\n- run: 2026-11-10\n- reported: https://x.example/dana_k/1, https://blog.example/indexes, https://reddit.example/r/smallshops/3, https://shopwise.example/pricing",
+ "documents": [
+  {
+   "title": "Social listening — 2026-11-10",
+   "content": "Social listening — 2026-11-10\n1 needs a reply, 3 mentions, 1 competitor move\n\n## Needs a reply\n- @dana_k on X: \"Does Acme Orders do CSV export yet or still no?\" — https://x.example/dana_k/1 — a question about how the product works, asked publicly.\n\n## Mentions\n- @dana_k on X — question — \"Does Acme Orders do CSV export yet or still no?\" — https://x.example/dana_k/1\n- Tom S. on a blog — praise — \"Acme's write-up on the missing index is the most honest performance post I've read this year.\" — https://blog.example/indexes\n- r/smallshops — complaint — \"Acme Orders went down for twenty minutes Monday and the status page said nothing.\" — https://reddit.example/r/smallshops/3 (snippet only)\n\n## Competitors\n- Shopwise: a new \"Starter\" plan at $9/month, on their pricing page — https://shopwise.example/pricing\n\n## Checked\n- 3 searches (Acme Orders, Ana Ruiz, Shopwise); 3 fetches; 1 link not opened (reddit.example answered 404); 1 off-topic result for \"Ana Ruiz\" (a pianist)."
+  }
+ ]
+}

@@ -1,0 +1,27 @@
+{
+ "case": "three-options-one-pick",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- 3 searches, 4 fetches; wrote \"Purchase options — 12 laptop stands for the studio\"",
+ "read": [
+  "web_search",
+  "web_fetch"
+ ],
+ "wrote": [
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Purchase options”",
+   "ok": true,
+   "detail": "“Purchase options — 12 laptop stands for the studio” is there."
+  }
+ ],
+ "answer": "Deskly Rise at £22 each (£240 for twelve), in budget, ships in 2 days.\n\n## Report\n- 3 searches, 4 fetches; wrote \"Purchase options — 12 laptop stands for the studio\"",
+ "documents": [
+  {
+   "title": "Purchase options — 12 laptop stands for the studio",
+   "content": "Purchase options — 12 laptop stands for the studio\nDeskly Rise at £22 each — 3 options from 4 pages\n\n## Options\n- Deskly Rise — https://deskly.example/rise — £22 each, bulk of 10+ £20 — aluminium, adjustable height, 3-year warranty — ships in 2 days — 30-day returns.\n- Loft Stand — https://loft.example/stand — £34 each — walnut, fixed height — ships in 10 days — 14-day returns.\n- Risa Pro — https://risa.example/pro — from £29 each — adjustable, folds flat — ships in 5 days — returns not shown.\n\n## Comparison\n| Option | Price (12) | Adjustable | Under £30 each | In budget (£360) |\n| --- | --- | --- | --- | --- |\n| Deskly Rise | £240 | met | met | yes |\n| Loft Stand | £408 | not met | not met | no |\n| Risa Pro | from £348 | met | met | yes, at the from price |\n\n## Pick\nDeskly Rise: it meets both must-haves, costs £240 for twelve at the bulk price its page shows, and ships in two days. Risa Pro would be the pick only if folding flat matters.\n\n## Checked\n- 3 searches; 4 pages opened; 1 not opened (https://standco.example answered 404); Risa Pro's snippet said £27, the page says from £29."
+  }
+ ]
+}

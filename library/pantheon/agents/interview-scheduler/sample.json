@@ -1,0 +1,29 @@
+{
+ "case": "a-slot-inside-the-window",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read 1 mail; held 1 slot; drafted 2 emails; wrote \"Interview schedule — Priya Nair\"",
+ "read": [
+  "search_emails",
+  "read_email"
+ ],
+ "wrote": [
+  "manage_calendar",
+  "draft_email",
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Interview schedule”",
+   "ok": true,
+   "detail": "“Interview schedule — Priya Nair” is there."
+  }
+ ],
+ "answer": "Tue 11 Nov 14:00–14:45, held; two drafts wait for you.\n\n## Report\n- read 1 mail; held 1 slot; drafted 2 emails; wrote \"Interview schedule — Priya Nair\"",
+ "documents": [
+  {
+   "title": "Interview schedule — Priya Nair",
+   "content": "Interview schedule — Priya Nair\nTue 11 Nov 14:00–14:45 (Europe/London) — held, 2 drafts waiting\n\n## Proposed\n- Tue 11 Nov, 14:00–14:45; panel: Sam Oduya, Lee Park; hold \"HOLD — interview: Priya Nair\".\n\n## Drafts\n- To priya@example.com — \"Interview on Tue 11 Nov, 14:00\" — the slot, 45 minutes, Sam and Lee by first name and role, a line to reply if it does not work.\n- To sam@acme.example, lee@acme.example — \"Interview: Priya Nair, Tue 11 Nov 14:00\" — the slot, the shortlist, who covers what.\n\n## Conflicts\n- Priya's mail of 6 Nov: \"Wednesday, when I am travelling\" — Wednesday skipped.\n\n## Not sent\n- Both drafts wait in Drafts; Lee has not said the slot works — the panel draft asks."
+  }
+ ]
+}

@@ -1,0 +1,537 @@
+{
+ "cases": [
+  {
+   "id": "three-options-one-pick",
+   "about": "Four seller pages, one of which will not open: three options priced from their pages, compared on both must-haves, the cheapest fit picked; the snippet price that disagreed is noted.",
+   "inputs": {
+    "need": "12 laptop stands for the studio",
+    "budget": "£360",
+    "must": [
+     "adjustable height",
+     "under £30 each"
+    ]
+   },
+   "world": {
+    "search": {
+     "price": [
+      {
+       "title": "Deskly Rise",
+       "url": "https://deskly.example/rise",
+       "snippet": "Aluminium laptop stand, £22."
+      },
+      {
+       "title": "Loft Stand",
+       "url": "https://loft.example/stand",
+       "snippet": "Walnut stand £34."
+      }
+     ],
+     "buy": [
+      {
+       "title": "Risa Pro",
+       "url": "https://risa.example/pro",
+       "snippet": "Folding stand £27."
+      },
+      {
+       "title": "StandCo",
+       "url": "https://standco.example",
+       "snippet": "Stands from £19."
+      }
+     ],
+     "vs": [
+      {
+       "title": "Best laptop stands 2026",
+       "url": "https://listicle.example/stands",
+       "snippet": "Our top picks."
+      }
+     ]
+    },
+    "web": {
+     "https://deskly.example/rise": "Deskly Rise. £22 each; 10 or more £20 each. Aluminium, adjustable height, 3-year warranty. Ships in 2 days. 30-day returns.",
+     "https://loft.example/stand": "Loft Stand. £34. Walnut, fixed height. Ships in 10 days. 14-day returns.",
+     "https://risa.example/pro": "Risa Pro. From £29. Adjustable, folds flat. Ships in 5 days."
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "12 laptop stands for the studio price"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "12 laptop stands for the studio buy"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "12 laptop stands for the studio vs"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://deskly.example/rise"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://loft.example/stand"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://risa.example/pro"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://standco.example"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Purchase options — 12 laptop stands for the studio",
+        "content": "Purchase options — 12 laptop stands for the studio\nDeskly Rise at £22 each — 3 options from 4 pages\n\n## Options\n- Deskly Rise — https://deskly.example/rise — £22 each, bulk of 10+ £20 — aluminium, adjustable height, 3-year warranty — ships in 2 days — 30-day returns.\n- Loft Stand — https://loft.example/stand — £34 each — walnut, fixed height — ships in 10 days — 14-day returns.\n- Risa Pro — https://risa.example/pro — from £29 each — adjustable, folds flat — ships in 5 days — returns not shown.\n\n## Comparison\n| Option | Price (12) | Adjustable | Under £30 each | In budget (£360) |\n| --- | --- | --- | --- | --- |\n| Deskly Rise | £240 | met | met | yes |\n| Loft Stand | £408 | not met | not met | no |\n| Risa Pro | from £348 | met | met | yes, at the from price |\n\n## Pick\nDeskly Rise: it meets both must-haves, costs £240 for twelve at the bulk price its page shows, and ships in two days. Risa Pro would be the pick only if folding flat matters.\n\n## Checked\n- 3 searches; 4 pages opened; 1 not opened (https://standco.example answered 404); Risa Pro's snippet said £27, the page says from £29.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Deskly Rise at £22 each (£240 for twelve), in budget, ships in 2 days.\n\n## Report\n- 3 searches, 4 fetches; wrote \"Purchase options — 12 laptop stands for the studio\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Purchase options — 12 laptop stands for the studio",
+      "contains": [
+       "## Options\n- Deskly Rise",
+       "| Loft Stand | £408 | not met",
+       "## Pick\nDeskly Rise",
+       "snippet said £27"
+      ],
+      "lacks": [
+       "## Options\n- StandCo",
+       "## Options\n- Best laptop stands"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "nothing-sells-it",
+   "about": "No result is a seller's page: Options says none, Checked lists the searches, and the answer asks for a seller the person knows.",
+   "inputs": {
+    "need": "12 laptop stands for the studio",
+    "budget": "£360",
+    "must": [
+     "adjustable height",
+     "under £30 each"
+    ]
+   },
+   "world": {
+    "search": {
+     "vs": [
+      {
+       "title": "Best laptop stands 2026",
+       "url": "https://listicle.example/stands",
+       "snippet": "Our top picks."
+      }
+     ]
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "12 laptop stands for the studio price"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "12 laptop stands for the studio buy"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "12 laptop stands for the studio vs"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Purchase options — 12 laptop stands for the studio",
+        "content": "Purchase options — 12 laptop stands for the studio\nno pick — 0 options from 0 pages\n\n## Options\n- none: the only result was a list article with no price.\n\n## Comparison\n- none\n\n## Pick\n- none\n\n## Checked\n- 3 searches; 0 pages opened; 0 not opened.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Nothing sells it under that name — name a seller you know, or another name for it.\n\n## Report\n- 3 searches, no sellers; wrote \"Purchase options — 12 laptop stands for the studio\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Purchase options",
+      "contains": [
+       "## Options\n- none"
+      ]
+     }
+    },
+    {
+     "not_called": "web_fetch"
+    }
+   ]
+  },
+  {
+   "id": "a-sellers-page-cannot-be-opened",
+   "about": "The only seller's page answers an error: it is named under Checked as not opened with its snippet price unconfirmed, and it is not an option.",
+   "inputs": {
+    "need": "12 laptop stands for the studio",
+    "budget": "£360",
+    "must": [
+     "adjustable height",
+     "under £30 each"
+    ]
+   },
+   "world": {
+    "search": {
+     "price": [
+      {
+       "title": "Deskly Rise",
+       "url": "https://deskly.example/rise",
+       "snippet": "Aluminium laptop stand, £22."
+      }
+     ]
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "12 laptop stands for the studio price"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "12 laptop stands for the studio buy"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "12 laptop stands for the studio vs"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://deskly.example/rise"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Purchase options — 12 laptop stands for the studio",
+        "content": "Purchase options — 12 laptop stands for the studio\nno pick — 0 options from 0 pages\n\n## Options\n- none: the one seller's page could not be opened.\n\n## Comparison\n- none\n\n## Pick\n- none: no price was read from a page.\n\n## Checked\n- 3 searches; 0 pages opened; 1 not opened (https://deskly.example/rise answered 404; snippet says £22, unconfirmed).\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "The one seller's page would not open; no price confirmed.\n\n## Report\n- 3 searches, 1 fetch failed; wrote \"Purchase options — 12 laptop stands for the studio\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Purchase options",
+      "contains": [
+       "not opened",
+       "unconfirmed"
+      ],
+      "lacks": [
+       "## Options\n- Deskly"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "it-never-picks-a-missing-must-have-or-orders",
+   "about": "Two options, the cheaper one missing a must-have: the dearer is picked, no price is rounded, and no order or form is touched.",
+   "inputs": {
+    "need": "12 laptop stands for the studio",
+    "budget": "£360",
+    "must": [
+     "adjustable height",
+     "under £30 each"
+    ]
+   },
+   "world": {
+    "search": {
+     "price": [
+      {
+       "title": "Deskly Rise",
+       "url": "https://deskly.example/rise",
+       "snippet": "Aluminium laptop stand, £22."
+      },
+      {
+       "title": "Loft Stand",
+       "url": "https://loft.example/stand",
+       "snippet": "Walnut stand £34."
+      }
+     ]
+    },
+    "web": {
+     "https://deskly.example/rise": "Deskly Rise. £22 each; 10 or more £20 each. Aluminium, adjustable height, 3-year warranty. Ships in 2 days. 30-day returns.",
+     "https://loft.example/stand": "Loft Stand. £34. Walnut, fixed height. Ships in 10 days. 14-day returns.",
+     "https://risa.example/pro": "Risa Pro. From £29. Adjustable, folds flat. Ships in 5 days."
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "12 laptop stands for the studio price"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "12 laptop stands for the studio buy"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "12 laptop stands for the studio vs"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://deskly.example/rise"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://loft.example/stand"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Purchase options — 12 laptop stands for the studio",
+        "content": "Purchase options — 12 laptop stands for the studio\nDeskly Rise at £22 each — 2 options from 2 pages\n\n## Options\n- Deskly Rise — https://deskly.example/rise — £22 each, bulk of 10+ £20 — adjustable height — ships in 2 days — 30-day returns.\n- Loft Stand — https://loft.example/stand — £34 each — fixed height — ships in 10 days — 14-day returns.\n\n## Comparison\n| Option | Price (12) | Adjustable | Under £30 each | In budget (£360) |\n| --- | --- | --- | --- | --- |\n| Deskly Rise | £240 | met | met | yes |\n| Loft Stand | £408 | not met | not met | no |\n\n## Pick\nDeskly Rise: the only option that meets both must-haves. Loft Stand is fixed height, so it is never the pick whatever its price.\n\n## Checked\n- 3 searches; 2 pages opened; 0 not opened.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Deskly Rise at £22 each; Loft Stand misses a must-have.\n\n## Report\n- 3 searches, 2 fetches; wrote \"Purchase options — 12 laptop stands for the studio\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Purchase options",
+      "contains": [
+       "## Pick\nDeskly Rise"
+      ],
+      "lacks": [
+       "## Pick\nLoft",
+       "ordered",
+       "about £"
+      ]
+     }
+    },
+    {
+     "not_called": "draft_email"
+    }
+   ]
+  },
+  {
+   "id": "options-without-their-headings-fail",
+   "about": "The harness's own check: a purchase note without Options, Comparison, Pick and Checked does not deliver, even after its repair pass.",
+   "inputs": {
+    "need": "12 laptop stands for the studio",
+    "budget": "£360",
+    "must": [
+     "adjustable height",
+     "under £30 each"
+    ]
+   },
+   "world": {
+    "search": {
+     "price": [
+      {
+       "title": "Deskly Rise",
+       "url": "https://deskly.example/rise",
+       "snippet": "Aluminium laptop stand, £22."
+      },
+      {
+       "title": "Loft Stand",
+       "url": "https://loft.example/stand",
+       "snippet": "Walnut stand £34."
+      }
+     ],
+     "buy": [
+      {
+       "title": "Risa Pro",
+       "url": "https://risa.example/pro",
+       "snippet": "Folding stand £27."
+      },
+      {
+       "title": "StandCo",
+       "url": "https://standco.example",
+       "snippet": "Stands from £19."
+      }
+     ],
+     "vs": [
+      {
+       "title": "Best laptop stands 2026",
+       "url": "https://listicle.example/stands",
+       "snippet": "Our top picks."
+      }
+     ]
+    },
+    "web": {
+     "https://deskly.example/rise": "Deskly Rise. £22 each; 10 or more £20 each. Aluminium, adjustable height, 3-year warranty. Ships in 2 days. 30-day returns.",
+     "https://loft.example/stand": "Loft Stand. £34. Walnut, fixed height. Ships in 10 days. 14-day returns.",
+     "https://risa.example/pro": "Risa Pro. From £29. Adjustable, folds flat. Ships in 5 days."
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "12 laptop stands for the studio price"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Purchase options — 12 laptop stands for the studio",
+        "content": "Buy the Deskly ones."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

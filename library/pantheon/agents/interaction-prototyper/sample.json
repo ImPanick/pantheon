@@ -1,0 +1,26 @@
+{
+ "case": "four-states-six-transitions",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read \"Spec — Order reminders by SMS\"; wrote \"Interaction spec — the opt-in at checkout\"",
+ "read": [
+  "manage_documents"
+ ],
+ "wrote": [
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Interaction spec”",
+   "ok": true,
+   "detail": "“Interaction spec — the opt-in at checkout” is there."
+  }
+ ],
+ "answer": "4 states, 6 transitions, 5 edge states (4 assumed), 3 open questions.\n\n## Report\n- read \"Spec — Order reminders by SMS\"; wrote \"Interaction spec — the opt-in at checkout\"",
+ "documents": [
+  {
+   "title": "Interaction spec — the opt-in at checkout",
+   "content": "Interaction spec — the opt-in at checkout\n4 states, 6 transitions, 5 edge states, 3 open questions\n\n## States\n- Unasked — the delivery step with the switch off and the phone field hidden; the person can turn it on or continue without it.\n- Asked — the switch on, the phone field shown and focused, Continue disabled until the field validates; the person can type, turn the switch off, or continue once valid.\n- Saved — the review step shows \"Reminder: <number>\" with Change; the person can change or place the order.\n- Declined — the review step shows no reminder line; the person can go back to add one.\n\n## Transitions\n| From | Action | To | What changes |\n| --- | --- | --- | --- |\n| Unasked | turn the switch on | Asked | phone field appears, focused; Continue disables |\n| Asked | type a valid number | Asked | Continue enables |\n| Asked | type an invalid number | Asked | \"[validation copy]\" under the field; Continue stays disabled |\n| Asked | turn the switch off | Unasked | field hides, its value kept for this session |\n| Asked | Continue (valid) | Saved | review shows the number |\n| Unasked | Continue | Declined | review shows no reminder line |\n\n## Edge states\n- Empty: the field shows the country code as a placeholder — assumed.\n- Loading: saving past a second shows Continue as busy — assumed.\n- Error: the number cannot be saved — \"[error copy]\" above Continue, the value kept — spec (\"errors are shown inline\").\n- Partial: not applicable, one field.\n- Return: back from review to delivery keeps the switch and number — assumed.\n\n## Open questions\n- If the person already has a number on their account: prefill or ask? The spec is silent.\n- Is the switch on by default for returning customers? \"opts in\" suggests off; confirm.\n- The validation copy and the error copy are not in the spec."
+  }
+ ]
+}

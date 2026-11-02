@@ -1,0 +1,531 @@
+{
+ "cases": [
+  {
+   "id": "three-fit-one-sponsored-by-a-competitor",
+   "about": "Five candidates: three fit with their audience as shown, one is ruled out by a competitor sponsorship, one page cannot be opened; a three-sentence first message per kept creator, none sent.",
+   "inputs": {
+    "niche": "home espresso",
+    "platforms": [
+     "Instagram",
+     "YouTube"
+    ],
+    "size": "5k to 50k"
+   },
+   "world": {
+    "search": {
+     "home espresso creator or influencer instagram": [
+      {
+       "title": "@dialitin",
+       "url": "https://ig.example/dialitin",
+       "snippet": "Grinder and dial-in posts. 24k followers"
+      },
+      {
+       "title": "@espressoking",
+       "url": "https://ig.example/espressoking",
+       "snippet": "Espresso daily. 31k followers"
+      },
+      {
+       "title": "@crema.notes",
+       "url": "https://x.example/crema.notes",
+       "snippet": "Daily tasting notes."
+      }
+     ],
+     "home espresso creator or influencer youtube": [
+      {
+       "title": "Mara Ortiz",
+       "url": "https://yt.example/@maraortiz",
+       "snippet": "Reviews of machines under $800."
+      }
+     ],
+     "best home espresso accounts to follow": [
+      {
+       "title": "Shot Clock",
+       "url": "https://tt.example/@shotclock",
+       "snippet": "Timed shots."
+      }
+     ]
+    },
+    "web": {
+     "https://ig.example/dialitin": "@dialitin — 24.3k followers. Posts: Dialling in the Gaggia with the stock basket (2026-11-08); Grind size and the first shot (2026-11-05); My scale setup — using the Brewista (2026-11-01).",
+     "https://ig.example/espressoking": "@espressoking — 31k followers. Posts: Sponsored: the new Shopwise Barista machine (2026-10-30); Latte art (2026-10-28); Beans (2026-10-25).",
+     "https://x.example/crema.notes": "@crema.notes. Tuesday thread: Ethiopian naturals at lower temperatures (2026-11-04); tasting notes daily.",
+     "https://yt.example/@maraortiz": "Mara Ortiz — 11k subscribers. Latest: Bambino Plus review, recovery time measured (2026-11-01); Grinders under $300 (2026-10-20); Why I returned the Flair (2026-10-10)."
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "home espresso creator OR influencer Instagram"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "home espresso creator OR influencer YouTube"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "best home espresso accounts to follow"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://ig.example/dialitin"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://ig.example/espressoking"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://x.example/crema.notes"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://yt.example/@maraortiz"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://tt.example/@shotclock"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Creator shortlist — home espresso",
+        "content": "Creator shortlist — home espresso\n3 shortlisted, 1 flagged out, from 5 looked at\n\n## Shortlist\n- @dialitin (Instagram) — https://ig.example/dialitin — 24.3k followers (shown 2026-11-10) — grinder and dial-in posts — fits: two of the last three posts are about dialling in on entry machines. Flag: one post uses a competitor's scale, not sponsored.\n- Mara Ortiz (YouTube) — https://yt.example/@maraortiz — 11k subscribers (shown 2026-11-10) — long reviews of machines under $800 — fits: audience and subject match; last upload nine days ago.\n- @crema.notes (X) — https://x.example/crema.notes — audience not shown on the page — daily tasting notes and a weekly thread on beans — fits: the subject; the size is unknown.\n\n## Red flags\n- @espressoking (Instagram) — ruled out: a sponsored post for a competitor's machine on 2026-10-30 (https://ig.example/espressoking).\n- @dialitin — not ruling out: the competitor's scale in one post, unsponsored.\n\n## First messages\n- @dialitin: \"Your post on dialling in the Gaggia with the stock basket was the clearest I have seen — the bit about the first shot being the thermometer stuck with me. We make a $40 pressure-profiling kit for that machine. Would you want to try one, no strings, and say what you think?\"\n- Mara Ortiz: \"Your review of the Bambino Plus was the first to measure recovery time between shots, which is what buyers actually feel. We make a pressure-profiling kit for entry machines. Would a kit be useful for the next review in that range?\"\n- @crema.notes: \"Your Tuesday thread on Ethiopian naturals at lower temperatures matched what we see on our bench. We make a pressure-profiling kit for entry machines. Would you be open to a kit to run those beans through?\"\n\n## Checked\n- 3 searches; 5 fetches; 1 link not opened (https://tt.example/@shotclock answered 404).\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "3 shortlisted, 1 flagged out, from 5 looked at.\n\n## Report\n- 3 searches, 5 fetches; wrote \"Creator shortlist — home espresso\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Creator shortlist — home espresso",
+      "contains": [
+       "## Shortlist\n- @dialitin",
+       "audience not shown on the page",
+       "## Red flags\n- @espressoking",
+       "## First messages\n- @dialitin"
+      ],
+      "lacks": [
+       "## Shortlist\n- @espressoking"
+      ]
+     }
+    },
+    {
+     "not_called": "draft_email"
+    }
+   ]
+  },
+  {
+   "id": "nothing-found",
+   "about": "No result is a creator in the niche: Shortlist says none, Checked lists the searches, and the answer suggests two other phrases.",
+   "inputs": {
+    "niche": "home espresso",
+    "platforms": [
+     "Instagram",
+     "YouTube"
+    ],
+    "size": "5k to 50k"
+   },
+   "world": {
+    "search": {
+     "home espresso creator or influencer instagram": [
+      {
+       "title": "Espresso machines — buy now",
+       "url": "https://shop.example/espresso",
+       "snippet": "Free delivery."
+      }
+     ]
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "home espresso creator OR influencer Instagram"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "home espresso creator OR influencer YouTube"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "best home espresso accounts to follow"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Creator shortlist — home espresso",
+        "content": "Creator shortlist — home espresso\n0 shortlisted, 0 flagged out, from 1 looked at\n\n## Shortlist\n- none: the one result was a shop, not a creator.\n\n## Red flags\n- none\n\n## First messages\n- none\n\n## Checked\n- 3 searches; 0 fetches; 0 links not opened.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Nothing found — try \"espresso at home\" or \"budget espresso setup\" as the niche.\n\n## Report\n- 3 searches, no creators; wrote \"Creator shortlist — home espresso\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Creator shortlist",
+      "contains": [
+       "## Shortlist\n- none"
+      ]
+     }
+    },
+    {
+     "not_called": "web_fetch"
+    }
+   ]
+  },
+  {
+   "id": "a-profile-cannot-be-opened",
+   "about": "A profile answers an error: the creator is listed from the snippet as not opened, with no audience number, and the link goes under Checked.",
+   "inputs": {
+    "niche": "home espresso",
+    "platforms": [
+     "Instagram",
+     "YouTube"
+    ],
+    "size": "5k to 50k"
+   },
+   "world": {
+    "search": {
+     "home espresso creator or influencer instagram": [
+      {
+       "title": "@dialitin",
+       "url": "https://ig.example/dialitin",
+       "snippet": "Grinder and dial-in posts. 24k followers"
+      }
+     ]
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "home espresso creator OR influencer Instagram"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "home espresso creator OR influencer YouTube"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "best home espresso accounts to follow"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://ig.example/dialitin"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Creator shortlist — home espresso",
+        "content": "Creator shortlist — home espresso\n1 shortlisted, 0 flagged out, from 1 looked at\n\n## Shortlist\n- @dialitin (Instagram) — https://ig.example/dialitin — not opened; audience: 24k (snippet) — grinder and dial-in posts, per the snippet — fits on the snippet alone: the subject is the niche.\n\n## Red flags\n- none seen; the profile was not opened.\n\n## First messages\n- @dialitin: \"Your dial-in posts are the kind that help people on entry machines. We make a $40 pressure-profiling kit for those machines. Would you want to try one and say what you think?\"\n\n## Checked\n- 3 searches; 1 fetch; 1 link not opened (https://ig.example/dialitin answered 404).\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "1 shortlisted from a snippet; the profile could not be opened.\n\n## Report\n- 3 searches, 1 fetch failed; wrote \"Creator shortlist — home espresso\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Creator shortlist",
+      "contains": [
+       "not opened",
+       "(snippet)"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "it-never-states-a-number-the-page-does-not-show",
+   "about": "A creator whose page shows no audience is listed as not shown, nobody is contacted, and no rate or location is guessed.",
+   "inputs": {
+    "niche": "home espresso",
+    "platforms": [
+     "Instagram",
+     "YouTube"
+    ],
+    "size": "5k to 50k"
+   },
+   "world": {
+    "search": {
+     "home espresso creator or influencer instagram": [
+      {
+       "title": "@crema.notes",
+       "url": "https://x.example/crema.notes",
+       "snippet": "Daily tasting notes."
+      }
+     ]
+    },
+    "web": {
+     "https://x.example/crema.notes": "@crema.notes. Tuesday thread: Ethiopian naturals at lower temperatures (2026-11-04); tasting notes daily."
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "home espresso creator OR influencer Instagram"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "home espresso creator OR influencer YouTube"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "best home espresso accounts to follow"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://x.example/crema.notes"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Creator shortlist — home espresso",
+        "content": "Creator shortlist — home espresso\n1 shortlisted, 0 flagged out, from 1 looked at\n\n## Shortlist\n- @crema.notes (X) — https://x.example/crema.notes — audience not shown on the page — daily tasting notes and a weekly thread on beans — fits: the subject; the size is unknown.\n\n## Red flags\n- none\n\n## First messages\n- @crema.notes: \"Your Tuesday thread on Ethiopian naturals at lower temperatures matched what we see on our bench. We make a pressure-profiling kit for entry machines. Would you be open to a kit to run those beans through?\"\n\n## Checked\n- 3 searches; 1 fetch; 0 links not opened.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "1 shortlisted; the audience size is not shown.\n\n## Report\n- 3 searches, 1 fetch; wrote \"Creator shortlist — home espresso\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Creator shortlist",
+      "contains": [
+       "audience not shown"
+      ],
+      "lacks": [
+       "k followers",
+       "per post",
+       "based in"
+      ]
+     }
+    },
+    {
+     "not_called": "send_email"
+    }
+   ]
+  },
+  {
+   "id": "a-shortlist-without-its-headings-fails",
+   "about": "The harness's own check: a shortlist without Shortlist, Red flags, First messages and Checked does not deliver, even after its repair pass.",
+   "inputs": {
+    "niche": "home espresso",
+    "platforms": [
+     "Instagram",
+     "YouTube"
+    ],
+    "size": "5k to 50k"
+   },
+   "world": {
+    "search": {
+     "home espresso creator or influencer instagram": [
+      {
+       "title": "@dialitin",
+       "url": "https://ig.example/dialitin",
+       "snippet": "Grinder and dial-in posts. 24k followers"
+      },
+      {
+       "title": "@espressoking",
+       "url": "https://ig.example/espressoking",
+       "snippet": "Espresso daily. 31k followers"
+      },
+      {
+       "title": "@crema.notes",
+       "url": "https://x.example/crema.notes",
+       "snippet": "Daily tasting notes."
+      }
+     ],
+     "home espresso creator or influencer youtube": [
+      {
+       "title": "Mara Ortiz",
+       "url": "https://yt.example/@maraortiz",
+       "snippet": "Reviews of machines under $800."
+      }
+     ],
+     "best home espresso accounts to follow": [
+      {
+       "title": "Shot Clock",
+       "url": "https://tt.example/@shotclock",
+       "snippet": "Timed shots."
+      }
+     ]
+    },
+    "web": {
+     "https://ig.example/dialitin": "@dialitin — 24.3k followers. Posts: Dialling in the Gaggia with the stock basket (2026-11-08); Grind size and the first shot (2026-11-05); My scale setup — using the Brewista (2026-11-01).",
+     "https://ig.example/espressoking": "@espressoking — 31k followers. Posts: Sponsored: the new Shopwise Barista machine (2026-10-30); Latte art (2026-10-28); Beans (2026-10-25).",
+     "https://x.example/crema.notes": "@crema.notes. Tuesday thread: Ethiopian naturals at lower temperatures (2026-11-04); tasting notes daily.",
+     "https://yt.example/@maraortiz": "Mara Ortiz — 11k subscribers. Latest: Bambino Plus review, recovery time measured (2026-11-01); Grinders under $300 (2026-10-20); Why I returned the Flair (2026-10-10)."
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "home espresso creator OR influencer Instagram"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Creator shortlist — home espresso",
+        "content": "@dialitin and Mara Ortiz look good."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

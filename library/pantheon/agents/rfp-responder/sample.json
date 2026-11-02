@@ -1,0 +1,26 @@
+{
+ "case": "five-questions-one-price",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read the RFP, \"RFP answers — 2026-06\", \"Security\" and \"Help\"; wrote \"RFP response — RFP — Northfield Council — order management\"",
+ "read": [
+  "manage_documents"
+ ],
+ "wrote": [
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “RFP response”",
+   "ok": true,
+   "detail": "“RFP response — RFP — Northfield Council — order management” is there."
+  }
+ ],
+ "answer": "4 answered, 1 gap.\n\n## Report\n- read the RFP, \"RFP answers — 2026-06\", \"Security\" and \"Help\"; wrote \"RFP response — RFP — Northfield Council — order management\"",
+ "documents": [
+  {
+   "title": "RFP response — RFP — Northfield Council — order management",
+   "content": "RFP response — RFP — Northfield Council — order management\n4 answered (1 reused, 1 adapted, 2 new), 1 gap\n\n## Answers\n1. Describe your hosting arrangements. — Acme Orders runs on servers in the EU (Frankfurt) with a second region in Dublin; data does not leave the EU. Daily backups are kept for 35 days. [RFP answers — 2026-06, Q4, reused]\n2. Is your service ISO 27001 certified? — Partly: our hosting provider holds ISO 27001; Acme Orders itself is not certified. [Security, \"Certifications\", new]\n3. Can orders be exported in bulk? — Yes: any order list can be exported as CSV from Orders → Export, with the current filter applied. [Help, \"Exporting orders\", adapted from RFP answers — 2026-06, Q11]\n4. Describe your data retention. — Order data is kept while the account is open and for 90 days after closure, then deleted; backups age out after 35 days. [Security, \"Retention\", new]\n\n## Gaps\n- 5. Provide your pricing for 40 users over three years. — a price: the person; last quoted to a council in 2026-04 at $38 per user per month (RFP answers, Q9), for context only.\n\n## Reused\n- RFP answers — 2026-06: Q4 (reused), Q11 (adapted).\n\n## Open questions\n- Q4: the bank (2026-06) said 60 days after closure; the Security document (2026-10) says 90. The newer document was used; update the bank."
+  }
+ ]
+}

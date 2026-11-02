@@ -1,0 +1,334 @@
+{
+ "cases": [
+  {
+   "id": "four-states-six-transitions",
+   "about": "A spec for an opt-in switch: four states with what shows and what can be done, six transitions, five edge states marked spec or assumed, three open questions.",
+   "inputs": {
+    "spec": "Spec — Order reminders by SMS",
+    "screen": "the opt-in at checkout"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "sp1",
+      "title": "Spec — Order reminders by SMS",
+      "content": "Spec — Order reminders by SMS\n\nAt the delivery step the customer opts in with a switch \"Text me a reminder the day before\"; when on, a phone field appears and Continue is disabled until it validates. The review step shows the number with Change. Errors are shown inline.\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Spec — Order reminders by SMS"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "sp1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Design system"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Interaction spec — the opt-in at checkout",
+        "content": "Interaction spec — the opt-in at checkout\n4 states, 6 transitions, 5 edge states, 3 open questions\n\n## States\n- Unasked — the delivery step with the switch off and the phone field hidden; the person can turn it on or continue without it.\n- Asked — the switch on, the phone field shown and focused, Continue disabled until the field validates; the person can type, turn the switch off, or continue once valid.\n- Saved — the review step shows \"Reminder: <number>\" with Change; the person can change or place the order.\n- Declined — the review step shows no reminder line; the person can go back to add one.\n\n## Transitions\n| From | Action | To | What changes |\n| --- | --- | --- | --- |\n| Unasked | turn the switch on | Asked | phone field appears, focused; Continue disables |\n| Asked | type a valid number | Asked | Continue enables |\n| Asked | type an invalid number | Asked | \"[validation copy]\" under the field; Continue stays disabled |\n| Asked | turn the switch off | Unasked | field hides, its value kept for this session |\n| Asked | Continue (valid) | Saved | review shows the number |\n| Unasked | Continue | Declined | review shows no reminder line |\n\n## Edge states\n- Empty: the field shows the country code as a placeholder — assumed.\n- Loading: saving past a second shows Continue as busy — assumed.\n- Error: the number cannot be saved — \"[error copy]\" above Continue, the value kept — spec (\"errors are shown inline\").\n- Partial: not applicable, one field.\n- Return: back from review to delivery keeps the switch and number — assumed.\n\n## Open questions\n- If the person already has a number on their account: prefill or ask? The spec is silent.\n- Is the switch on by default for returning customers? \"opts in\" suggests off; confirm.\n- The validation copy and the error copy are not in the spec.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "4 states, 6 transitions, 5 edge states (4 assumed), 3 open questions.\n\n## Report\n- read \"Spec — Order reminders by SMS\"; wrote \"Interaction spec — the opt-in at checkout\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Interaction spec — the opt-in at checkout",
+      "contains": [
+       "## States\n- Unasked",
+       "| Asked | Continue (valid) | Saved |",
+       "— assumed.",
+       "## Open questions\n- If the person already has a number"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "no-spec-has-that-title",
+   "about": "Nothing lists: States says none and the answer asks for the title as it reads.",
+   "inputs": {
+    "spec": "Spec — Order reminders by SMS",
+    "screen": "the opt-in at checkout"
+   },
+   "world": {
+    "documents": []
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Spec — Order reminders by SMS"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Interaction spec — the opt-in at checkout",
+        "content": "Interaction spec — the opt-in at checkout\n0 states, 0 transitions, 0 edge states, 1 open question\n\n## States\n- none: no document lists under \"Spec — Order reminders by SMS\".\n\n## Transitions\n- none\n\n## Edge states\n- none\n\n## Open questions\n- The spec's title as it reads in the documents.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "No spec with that title — what is it called in your documents?\n\n## Report\n- nothing listed; wrote \"Interaction spec — the opt-in at checkout\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Interaction spec",
+      "contains": [
+       "## States\n- none"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "the-spec-cannot-be-read",
+   "about": "The read answers an error: the document says so under Open questions and the answer repeats it.",
+   "inputs": {
+    "spec": "Spec — Order reminders by SMS",
+    "screen": "the opt-in at checkout"
+   },
+   "world": {
+    "documents": []
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Spec — Order reminders by SMS"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "sp-gone"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Interaction spec — the opt-in at checkout",
+        "content": "Interaction spec — the opt-in at checkout\n0 states, 0 transitions, 0 edge states, 1 open question\n\n## States\n- none: the spec would not open.\n\n## Transitions\n- none\n\n## Edge states\n- none\n\n## Open questions\n- The read answered an error; nothing was mapped.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "The spec would not open; nothing mapped.\n\n## Report\n- the read failed; wrote \"Interaction spec — the opt-in at checkout\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Interaction spec",
+      "contains": [
+       "would not open"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "it-never-decides-an-open-behaviour-silently",
+   "about": "A spec silent on the back button and the default: both are written as assumed or asked, never as settled, and no copy is written as final.",
+   "inputs": {
+    "spec": "Spec — Order reminders by SMS",
+    "screen": "the opt-in at checkout"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "sp1",
+      "title": "Spec — Order reminders by SMS",
+      "content": "Spec — Order reminders by SMS\n\nAt the delivery step the customer opts in with a switch \"Text me a reminder the day before\"; when on, a phone field appears and Continue is disabled until it validates. The review step shows the number with Change. Errors are shown inline.\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Spec — Order reminders by SMS"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "sp1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Design system"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Interaction spec — the opt-in at checkout",
+        "content": "Interaction spec — the opt-in at checkout\n4 states, 6 transitions, 5 edge states, 3 open questions\n\n## States\n- Unasked — the delivery step with the switch off and the phone field hidden; the person can turn it on or continue without it.\n- Asked — the switch on, the phone field shown and focused, Continue disabled until the field validates; the person can type, turn the switch off, or continue once valid.\n- Saved — the review step shows \"Reminder: <number>\" with Change; the person can change or place the order.\n- Declined — the review step shows no reminder line; the person can go back to add one.\n\n## Transitions\n| From | Action | To | What changes |\n| --- | --- | --- | --- |\n| Unasked | turn the switch on | Asked | phone field appears, focused; Continue disables |\n| Asked | type a valid number | Asked | Continue enables |\n| Asked | type an invalid number | Asked | \"[validation copy]\" under the field; Continue stays disabled |\n| Asked | turn the switch off | Unasked | field hides, its value kept for this session |\n| Asked | Continue (valid) | Saved | review shows the number |\n| Unasked | Continue | Declined | review shows no reminder line |\n\n## Edge states\n- Empty: the field shows the country code as a placeholder — assumed.\n- Loading: saving past a second shows Continue as busy — assumed.\n- Error: the number cannot be saved — \"[error copy]\" above Continue, the value kept — spec (\"errors are shown inline\").\n- Partial: not applicable, one field.\n- Return: back from review to delivery keeps the switch and number — assumed.\n\n## Open questions\n- If the person already has a number on their account: prefill or ask? The spec is silent.\n- Is the switch on by default for returning customers? \"opts in\" suggests off; confirm.\n- The validation copy and the error copy are not in the spec.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "4 states, 6 transitions; the default and the prefill are open questions, the back behaviour is assumed.\n\n## Report\n- read the spec; wrote \"Interaction spec — the opt-in at checkout\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Interaction spec",
+      "contains": [
+       "keeps the switch and number — assumed",
+       "[validation copy]"
+      ],
+      "lacks": [
+       "The switch is on by default",
+       "Please enter a valid phone number"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-spec-without-its-headings-fails",
+   "about": "The harness's own check: a interaction spec without States, Transitions, Edge states and Open questions does not deliver, even after its repair pass.",
+   "inputs": {
+    "spec": "Spec — Order reminders by SMS",
+    "screen": "the opt-in at checkout"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "sp1",
+      "title": "Spec — Order reminders by SMS",
+      "content": "Spec — Order reminders by SMS\n\nAt the delivery step the customer opts in with a switch \"Text me a reminder the day before\"; when on, a phone field appears and Continue is disabled until it validates. The review step shows the number with Change. Errors are shown inline.\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Spec — Order reminders by SMS"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "sp1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Interaction spec — the opt-in at checkout",
+        "content": "Switch on, field appears."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

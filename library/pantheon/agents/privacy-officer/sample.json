@@ -1,0 +1,26 @@
+{
+ "case": "two-gaps-ship-with-fixes",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read the spec and the privacy policy; wrote \"Privacy review — Spec — Order reminders by SMS\"",
+ "read": [
+  "manage_documents"
+ ],
+ "wrote": [
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Privacy review”",
+   "ok": true,
+   "detail": "“Privacy review — Spec — Order reminders by SMS” is there."
+  }
+ ],
+ "answer": "Ship with fixes: 4 data items, 2 gaps (retention and an unnamed SMS provider).\n\n## Report\n- read the spec and the privacy policy; wrote \"Privacy review — Spec — Order reminders by SMS\"",
+ "documents": [
+  {
+   "title": "Privacy review — Spec — Order reminders by SMS",
+   "content": "Privacy review — Spec — Order reminders by SMS\nship with fixes: 4 data items, 2 gaps\n\n## Verdict\nShip with fixes: the phone number and order history have a purpose and a home, but the spec keeps the number with no end date and sends it to an SMS provider it does not name.\n\n## Data touched\n| Item | Purpose | Where it goes | Kept for | Who sees it | Told? |\n| --- | --- | --- | --- | --- | --- |\n| Phone number | send the reminder | orders table; \"the SMS provider\" | not stated | support, the provider | yes, at opt-in |\n| Order history | pick the reminder time | orders table | per the policy, 12 months | support | yes |\n| Opt-in time | prove consent | orders table | with the number | support | no |\n| Delivery status | stop reminders | orders table | 30 days | support | no |\n\n## Gaps\n- Phone number — \"store their phone number with the order\" — Privacy policy §4: \"Contact details are kept 12 months after the last order\"; the spec names no period.\n- Phone number — \"handed to the SMS provider\" — Privacy policy §6 names each processor; the provider is unnamed.\n\n## Fixes\n- Add: \"Phone numbers are deleted 12 months after the customer's last order, with the rest of their contact details.\"\n- Add: \"SMS is sent through <provider>, under a data processing agreement; the provider is added to §6 before launch.\""
+  }
+ ]
+}

@@ -125,7 +125,7 @@ EFFECT_RULES = ("allow", "ask", "never")
 BUDGET_KEYS = ("runs_per_day", "max_steps", "max_minutes")
 DELIVER_KINDS = ("answer", "document", "email_draft", "file")
 NATIVE_TOOLS = ("required", "preferred", "no")
-WAVES = (1, 2, 3)
+WAVES = (1, 2, 3, 4)
 
 #: The most a manifest may ask for, whatever it says. A run is a scheduled
 #: task, and these are the scheduler's own ceilings stated once for agents.
@@ -748,7 +748,7 @@ def lint(fm: Dict[str, Any], runbook: str, *, source: str = "shipped", path: str
     version = _str(fm, "version", limit=20)
     _need(bool(_VERSION_RE.match(version)), f"The version “{version}” is not like 1.0.0.")
     wave = fm.get("wave", 2)
-    _need(wave in WAVES, "“wave” is 1, 2 or 3.")
+    _need(wave in WAVES, "“wave” is 1, 2, 3 or 4.")
     starred = fm.get("starred", False)
     _need(isinstance(starred, bool), "“starred” is true or false.")
     icon = _str(fm, "icon", limit=32, required=False)

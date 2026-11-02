@@ -149,6 +149,19 @@ AT_THE_BAR = frozenset({
     "security-reviewer", "sbom-keeper", "data-engineer", "data-steward", "prd-reviewer",
     "release-notes-owner", "decision-desk", "pipeline-keeper", "renewal-manager", "escalation-manager",
     "nda-triage", "executive-assistant", "meeting-prep",
+    # Wave 4 (2026-11-02, `P24-29`): the second company slice — the Social
+    # Desk, marketing, sales, support, legal, people, operations, QA, devops,
+    # data, design and product, each built at this bar from the start.
+    "social-media-manager", "community-manager", "social-listener", "launch-announcer",
+    "brand-voice-keeper", "social-analytics-reporter", "influencer-scout",
+    "partnerships-scout", "case-study-writer", "deal-desk", "rfp-responder", "csat-analyst",
+    "onboarding-specialist",
+    "procurement", "privacy-officer", "licence-auditor", "ip-trademark-watch", "interview-scheduler",
+    "performance-review-assistant", "comp-analyst", "hr-policy-keeper", "vendor-manager", "it-helpdesk",
+    "process-documenter", "compliance-calendar",
+    "exploratory-tester", "capacity-planner", "analytics-engineer", "forecaster", "experiment-analyst",
+    "design-system-keeper", "interaction-prototyper", "usability-test-runner", "interview-synthesiser",
+    "pricing-analyst", "backlog-groomer",
 })
 
 SECTIONS = ("Steps", "Judgement calls", "Edge cases", "Deliverable", "Example")

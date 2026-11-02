@@ -1,0 +1,446 @@
+{
+ "cases": [
+  {
+   "id": "one-contradiction-one-stale-two-gaps",
+   "about": "Four policies and two questions: a notice-period contradiction with both lines, a stale holiday year, two questions with no answer, a fix for each.",
+   "inputs": {
+    "handbook": "Policy",
+    "asked": [
+     "Can I carry leave over?",
+     "Who pays for a home desk?"
+    ]
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "p1",
+      "title": "Policy — Leaving",
+      "content": "Policy — Leaving (2025-03)\n\n§2 One month's notice for all staff.\n"
+     },
+     {
+      "id": "p2",
+      "title": "Policy — Contracts",
+      "content": "Policy — Contracts (2026-01)\n\n§5 Three months' notice for senior staff.\n"
+     },
+     {
+      "id": "p3",
+      "title": "Policy — Leave",
+      "content": "Policy — Leave\n\n§4 The 2024 holiday year runs April to March. 25 days.\n"
+     },
+     {
+      "id": "p4",
+      "title": "Policy — Remote",
+      "content": "Policy — Remote\n\n§1 Staff may work from home three days a week.\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Policy"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "p1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "p2"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "p3"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "p4"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Handbook review — 2026-11-09",
+        "content": "Handbook review — 2026-11-09\n4 documents read: 1 contradiction, 1 out of date, 2 not covered\n\n## Contradictions\n- Notice period — \"Policy — Leaving\" §2: \"One month's notice for all staff\" vs \"Policy — Contracts\" §5: \"Three months' notice for senior staff\".\n\n## Out of date\n- \"Policy — Leave\" §4 names \"The 2024 holiday year\"; the current year is not stated.\n\n## Not covered\n- \"Can I carry leave over?\" — closest: \"Policy — Leave\" §4, which gives the year but no carry-over rule.\n- \"Who pays for a home desk?\" — nothing; \"Policy — Remote\" has no equipment line.\n\n## Fixes\n- \"Policy — Leaving\" §2: \"Notice is one month, or three months for senior staff as their contract states.\" (keeps the later Contracts document's rule and says so)\n- \"Policy — Leave\" §4: state the current holiday year.\n- \"Policy — Leave\" §4: add a carry-over rule — the owner to choose the figure.\n- \"Policy — Remote\": add an equipment line — who pays, up to what amount, what is returned.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "4 documents read: 1 contradiction, 1 out of date, 2 questions not covered.\n\n## Report\n- read 4 policy documents; wrote \"Handbook review — 2026-11-09\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Handbook review — 2026-11-09",
+      "contains": [
+       "## Contradictions\n- Notice period",
+       "\"Policy — Contracts\" §5",
+       "## Out of date\n- \"Policy — Leave\" §4",
+       "## Not covered\n- \"Can I carry leave over?\"",
+       "## Fixes\n- \"Policy — Leaving\" §2"
+      ]
+     }
+    },
+    {
+     "not_called": "edit_document"
+    }
+   ]
+  },
+  {
+   "id": "no-policy-documents",
+   "about": "Nothing lists under the title: every heading says none and the answer asks for the handbook's title.",
+   "inputs": {
+    "handbook": "Policy",
+    "asked": [
+     "Can I carry leave over?",
+     "Who pays for a home desk?"
+    ]
+   },
+   "world": {
+    "documents": []
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Policy"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Handbook review — 2026-11-09",
+        "content": "Handbook review — 2026-11-09\n0 documents read: 0 contradictions, 0 out of date, 0 not covered\n\n## Contradictions\n- none: no document lists under \"Policy\".\n\n## Out of date\n- none\n\n## Not covered\n- none checked\n\n## Fixes\n- none\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "No policy documents found under \"Policy\" — what is the handbook called?\n\n## Report\n- nothing listed; wrote \"Handbook review — 2026-11-09\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Handbook review",
+      "contains": [
+       "## Contradictions\n- none"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-document-cannot-be-read",
+   "about": "One policy answers an error on read: it is named under Out of date as not read, and the rest are reviewed.",
+   "inputs": {
+    "handbook": "Policy",
+    "asked": [
+     "Can I carry leave over?",
+     "Who pays for a home desk?"
+    ]
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "p1",
+      "title": "Policy — Leaving",
+      "content": "Policy — Leaving (2025-03)\n\n§2 One month's notice for all staff.\n"
+     },
+     {
+      "id": "p2",
+      "title": "Policy — Contracts",
+      "content": "Policy — Contracts (2026-01)\n\n§5 Three months' notice for senior staff.\n"
+     },
+     {
+      "id": "p3",
+      "title": "Policy — Leave",
+      "content": "Policy — Leave\n\n§4 The 2024 holiday year runs April to March. 25 days.\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Policy"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "p1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "p2"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "p3"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "p-gone"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Handbook review — 2026-11-09",
+        "content": "Handbook review — 2026-11-09\n3 of 4 documents read: 1 contradiction, 1 out of date, 2 not covered\n\n## Contradictions\n- Notice period — \"Policy — Leaving\" §2: \"One month's notice for all staff\" vs \"Policy — Contracts\" §5: \"Three months' notice for senior staff\".\n\n## Out of date\n- \"Policy — Leave\" §4 names \"The 2024 holiday year\"; the current year is not stated.\n- \"Policy — Remote\" — not read: the read answered an error.\n\n## Not covered\n- \"Can I carry leave over?\" — closest: \"Policy — Leave\" §4, which gives the year but no carry-over rule.\n- \"Who pays for a home desk?\" — nothing; \"Policy — Remote\" has no equipment line.\n\n## Fixes\n- \"Policy — Leaving\" §2: \"Notice is one month, or three months for senior staff as their contract states.\" (keeps the later Contracts document's rule and says so)\n- \"Policy — Leave\" §4: state the current holiday year.\n- \"Policy — Leave\" §4: add a carry-over rule — the owner to choose the figure.\n- \"Policy — Remote\": add an equipment line — who pays, up to what amount, what is returned.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "3 of 4 documents read (Remote would not open): 1 contradiction, 1 out of date, 2 not covered.\n\n## Report\n- read 3 policy documents, 1 failed; wrote \"Handbook review — 2026-11-09\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Handbook review",
+      "contains": [
+       "not read: the read answered an error"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "it-never-picks-the-lawful-rule-or-edits",
+   "about": "A section that contradicts itself: both figures are quoted, the fix asks the owner rather than picking, and no document is edited.",
+   "inputs": {
+    "handbook": "Policy",
+    "asked": [
+     "Can I carry leave over?",
+     "Who pays for a home desk?"
+    ]
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "p5",
+      "title": "Policy — Expenses",
+      "content": "Policy — Expenses\n\n§3 Meals up to £25 a day. Meals are reimbursed to £40 a day on overnight trips and otherwise to £25; the daily limit is £30.\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Policy"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "p5"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Handbook review — 2026-11-09",
+        "content": "Handbook review — 2026-11-09\n1 document read: 1 contradiction, 0 out of date, 2 not covered\n\n## Contradictions\n- Meal limit — \"Policy — Expenses\" §3 gives \"up to £25 a day\" and \"the daily limit is £30\" in one paragraph.\n\n## Out of date\n- none\n\n## Not covered\n- \"Can I carry leave over?\" — nothing: no leave policy among the documents.\n- \"Who pays for a home desk?\" — nothing.\n\n## Fixes\n- \"Policy — Expenses\" §3: one figure for the daily meal limit — the owner to say whether £25 or £30 is current; the overnight £40 stands.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "1 document read: §3 of Expenses contradicts itself (£25 vs £30) — the owner to pick.\n\n## Report\n- read 1 policy document; wrote \"Handbook review — 2026-11-09\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Handbook review",
+      "contains": [
+       "the owner to say"
+      ],
+      "lacks": [
+       "£30 is correct",
+       "£25 is correct",
+       "unlawful"
+      ]
+     }
+    },
+    {
+     "not_called": "edit_document"
+    }
+   ]
+  },
+  {
+   "id": "a-review-without-its-headings-fails",
+   "about": "The harness's own check: a handbook review without Contradictions, Out of date, Not covered and Fixes does not deliver, even after its repair pass.",
+   "inputs": {
+    "handbook": "Policy",
+    "asked": [
+     "Can I carry leave over?",
+     "Who pays for a home desk?"
+    ]
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "p1",
+      "title": "Policy — Leaving",
+      "content": "Policy — Leaving (2025-03)\n\n§2 One month's notice for all staff.\n"
+     },
+     {
+      "id": "p2",
+      "title": "Policy — Contracts",
+      "content": "Policy — Contracts (2026-01)\n\n§5 Three months' notice for senior staff.\n"
+     },
+     {
+      "id": "p3",
+      "title": "Policy — Leave",
+      "content": "Policy — Leave\n\n§4 The 2024 holiday year runs April to March. 25 days.\n"
+     },
+     {
+      "id": "p4",
+      "title": "Policy — Remote",
+      "content": "Policy — Remote\n\n§1 Staff may work from home three days a week.\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Policy"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "p1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Handbook review — 2026-11-09",
+        "content": "Notice periods disagree."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

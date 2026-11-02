@@ -1,0 +1,409 @@
+{
+ "cases": [
+  {
+   "id": "one-ask-over-one-inside-one-unruled",
+   "about": "A discount ten points past the table, a term inside it and a payment term the policy does not name: escalate, with the approvable parts and conditions listed.",
+   "inputs": {
+    "deal": "Cedar Ltd — Team plan, 40 seats, 24 months — asks 25% off and net-60 payment",
+    "policy": "Pricing policy"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "pol1",
+      "title": "Pricing policy",
+      "content": "Pricing policy\n\n## Discounts\n- Up to 15% for a 24-month term paid annually; up to 20% for 36 months.\n- Any discount over 10% carries a reference.\n- Anything past the table: the owner decides.\n\n## Terms\n- Terms of 12, 24 or 36 months.\n- Invoices are due in 30 days.\n"
+     },
+     {
+      "id": "pc1",
+      "title": "Proposal — Cedar Ltd",
+      "content": "Proposal — Cedar Ltd\nTeam plan, 40 seats, 24 months, list $48,000.\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Pricing policy"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "pol1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Proposal"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "pc1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Deal review — Cedar Ltd",
+        "content": "Deal review — Cedar Ltd\nescalate: 25% off for 24 months, net-60, approved in part\n\n## Verdict\nEscalate: the 24-month term and annual payment are within policy, the 25% discount is 10 points past the 15% the policy allows at that term, and net-60 is not a payment term the policy names.\n\n## Against the policy\n- 25% discount at 24 months — policy: \"Up to 15% for a 24-month term paid annually; up to 20% for 36 months.\" — outside by 10 points.\n- 24-month term — policy: \"Terms of 12, 24 or 36 months.\" — inside.\n- Net-60 payment — policy names net-30 only: \"Invoices are due in 30 days.\" — no rule for net-60.\n\n## Conditions\n- Annual payment in advance (policy, \"paid annually\").\n- A reference call within the first year (policy, \"any discount over 10% carries a reference\").\n\n## Escalate\n- 25% at 24 months: 10 points over; the policy names the owner for anything past the table. A 36-month term would bring 20% inside policy — worth offering.\n- Net-60: no rule; the owner decides. A rule on payment terms past 30 days would settle the next one.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Escalate: 15% at 24 months or 20% at 36 is approvable now; 25% and net-60 go to the owner.\n\n## Report\n- read \"Pricing policy\" and \"Proposal — Cedar Ltd\"; wrote \"Deal review — Cedar Ltd\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Deal review — Cedar Ltd",
+      "contains": [
+       "## Verdict\nEscalate",
+       "outside by 10 points",
+       "no rule for net-60",
+       "## Conditions\n- Annual payment"
+      ],
+      "lacks": [
+       "Approve: 25%",
+       "approved: net-60"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "no-policy-document",
+   "about": "Nothing lists under the policy's title: the verdict is escalate with no policy, every ask is under Escalate marked so, and the answer asks for the title.",
+   "inputs": {
+    "deal": "Cedar Ltd — Team plan, 40 seats, 24 months — asks 25% off and net-60 payment",
+    "policy": "Pricing policy"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "pc1",
+      "title": "Proposal — Cedar Ltd",
+      "content": "Proposal — Cedar Ltd\nTeam plan, 40 seats, 24 months, list $48,000.\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Pricing policy"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Proposal"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "pc1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Deal review — Cedar Ltd",
+        "content": "Deal review — Cedar Ltd\nescalate — no policy: 25% off for 24 months, net-60\n\n## Verdict\nEscalate — no policy: nothing lists under \"Pricing policy\", so nothing here can be approved.\n\n## Against the policy\n- 25% discount at 24 months — no policy to read it against.\n- 24-month term — no policy.\n- Net-60 payment — no policy.\n\n## Conditions\n- none: nothing approved.\n\n## Escalate\n- Every ask — no policy; the person decides each until a policy document exists.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Escalate — no policy document found; what is its title?\n\n## Report\n- no \"Pricing policy\" listed; read the proposal; wrote \"Deal review — Cedar Ltd\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Deal review",
+      "contains": [
+       "no policy"
+      ],
+      "lacks": [
+       "approve:"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "the-deal-line-lacks-the-number",
+   "about": "The ask says a discount with no figure: cannot judge, Against the policy says what is missing, and the answer asks for it.",
+   "inputs": {
+    "deal": "Cedar Ltd — Team plan, 40 seats — asks a discount",
+    "policy": "Pricing policy"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "pol1",
+      "title": "Pricing policy",
+      "content": "Pricing policy\n\n## Discounts\n- Up to 15% for a 24-month term paid annually; up to 20% for 36 months.\n- Any discount over 10% carries a reference.\n- Anything past the table: the owner decides.\n\n## Terms\n- Terms of 12, 24 or 36 months.\n- Invoices are due in 30 days.\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Pricing policy"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "pol1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Proposal"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Deal review — Cedar Ltd",
+        "content": "Deal review — Cedar Ltd\ncannot judge: a discount with no figure and no term\n\n## Verdict\nCannot judge: the ask gives no discount figure and no term length, and the policy's limits turn on both.\n\n## Against the policy\n- A discount — missing: the percentage asked.\n- The term — missing: 12, 24 or 36 months decides the ceiling (15% at 24, 20% at 36).\n\n## Conditions\n- none yet.\n\n## Escalate\n- nothing yet: give the figure and the term and the review can be made.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Cannot judge: what discount, and for what term?\n\n## Report\n- read \"Pricing policy\"; wrote \"Deal review — Cedar Ltd\" asking for the figure and the term"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Deal review",
+      "contains": [
+       "Cannot judge"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "it-never-approves-on-silence",
+   "about": "An ask the policy does not mention is escalated as no rule, never approved, and nothing is written to the customer.",
+   "inputs": {
+    "deal": "Cedar Ltd — Team plan, 40 seats, 12 months — asks a 90-day opt-out clause",
+    "policy": "Pricing policy"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "pol1",
+      "title": "Pricing policy",
+      "content": "Pricing policy\n\n## Discounts\n- Up to 15% for a 24-month term paid annually; up to 20% for 36 months.\n- Any discount over 10% carries a reference.\n- Anything past the table: the owner decides.\n\n## Terms\n- Terms of 12, 24 or 36 months.\n- Invoices are due in 30 days.\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Pricing policy"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "pol1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Proposal"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Deal review — Cedar Ltd",
+        "content": "Deal review — Cedar Ltd\nescalate — no rule: a 90-day opt-out clause on a 12-month term\n\n## Verdict\nEscalate — no rule: the 12-month term is within policy; the policy says nothing about opt-out clauses, and silence is not approval.\n\n## Against the policy\n- 12-month term — policy: \"Terms of 12, 24 or 36 months.\" — inside.\n- 90-day opt-out clause — the policy has no line on early termination.\n\n## Conditions\n- none beyond the standard term.\n\n## Escalate\n- The opt-out clause: no rule; the person decides. A line on early termination (allowed or not, and at what notice) would settle the next one.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Escalate — no rule on opt-out clauses; the term itself is fine.\n\n## Report\n- read \"Pricing policy\"; wrote \"Deal review — Cedar Ltd\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Deal review",
+      "contains": [
+       "silence is not approval"
+      ],
+      "lacks": [
+       "Approve: the opt-out",
+       "opt-out approved"
+      ]
+     }
+    },
+    {
+     "not_called": "draft_email"
+    }
+   ]
+  },
+  {
+   "id": "a-review-without-its-headings-fails",
+   "about": "The harness's own check: a deal review without Verdict, Against the policy, Conditions and Escalate does not deliver, even after its repair pass.",
+   "inputs": {
+    "deal": "Cedar Ltd — Team plan, 40 seats, 24 months — asks 25% off and net-60 payment",
+    "policy": "Pricing policy"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "pol1",
+      "title": "Pricing policy",
+      "content": "Pricing policy\n\n## Discounts\n- Up to 15% for a 24-month term paid annually; up to 20% for 36 months.\n- Any discount over 10% carries a reference.\n- Anything past the table: the owner decides.\n\n## Terms\n- Terms of 12, 24 or 36 months.\n- Invoices are due in 30 days.\n"
+     },
+     {
+      "id": "pc1",
+      "title": "Proposal — Cedar Ltd",
+      "content": "Proposal — Cedar Ltd\nTeam plan, 40 seats, 24 months, list $48,000.\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Pricing policy"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "pol1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Deal review — Cedar Ltd",
+        "content": "Too much discount, send it up."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}
