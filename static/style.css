@@ -50794,7 +50794,7 @@ body.plan-mode-active .chat-input-top > .model-picker-wrap:has(> .model-picker-m
 }
 .phw-content { display: flex; flex-direction: column; gap: 8px; min-width: 320px; }
 .phw-heading { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
-.phw-icon { display: inline-flex; color: color-mix(in oklab, var(--fg) 40%, var(--fg-muted)); }
+.phw-icon { display: inline-flex; }
 .phw-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .phw-bar, .phw-open { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .phw-open[hidden], .phw-bar [hidden] { display: none; }
