@@ -780,6 +780,16 @@ the next one is cut.
 
 ### Fixed
 
+- **The picture and PDF readers are patched, and the two CI checks every pull request had carried
+  red since October are green** (2026-11-02, `B1742`, `B1743`). Pillow moves 12.3.0 → 13.0.0
+  (thirty-nine advisories in the decoders an uploaded picture reaches: heap overflows, reads of
+  uninitialised memory, loops and allocation bombs), pypdf 6.19.0 → 6.21.4 (eighteen crafted PDFs
+  that loop forever) and fastembed 0.8.1 → 0.9.1, which is what let Pillow move — it capped Pillow
+  below 13. Rebuild the image to pick the three up. One thing to know: a *fresh* download of the
+  embedding model now reads 256 tokens where it read 128, so texts over 128 tokens embed a little
+  differently than in a cache made before; an existing install keeps its cache. And the CI job that
+  checks the ledger's pinned commit now fetches the history it asks git about, so its fourteen later
+  steps run again.
 - **KasmVNC is credited as the step it is, and QEMU and KVM are credited at all** (2026-11-01).
   The owner: *"Ensure the credits for KASM's KVM is credited appropriately. This is HUGE leap for
   Pantheon."* `CREDITS.md` had KasmVNC's licences in its Docker section only; it now opens, after
