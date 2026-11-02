@@ -48,6 +48,21 @@ MODEL_NEEDS: Dict[str, str] = {
 }
 
 
+def capability(need: str, endpoint_url: str, model: str) -> Optional[bool]:
+    """`P24-30`. Whether the route's model has `need` — True, False, or None
+    when nothing knows. Asks the model's own record (`chat_helpers`), which
+    may ask the endpoint; the eval harness answers None for its scripted model
+    without asking, as it answers the scripted window."""
+    ask = {"vision": "vision_answer", "reasoning": "reasoning_answer", "audio": "audio_answer"}.get(need)
+    if not ask:
+        return None
+    try:
+        from src import chat_helpers
+        return getattr(chat_helpers, ask)(model, endpoint_url)
+    except Exception:
+        return None  # nothing knows: unknown warns nothing
+
+
 def route_facts(endpoint_url: Optional[str], model: Optional[str],
                 owner: Optional[str] = None) -> Dict[str, Any]:
     """What is known about a route: `{"model", "context" (int or None when not
@@ -58,13 +73,8 @@ def route_facts(endpoint_url: Optional[str], model: Optional[str],
                              "vision": None, "reasoning": None, "audio": None}
     if not endpoint_url or not model:
         return facts
-    for key, ask in (("vision", "vision_answer"), ("reasoning", "reasoning_answer"),
-                     ("audio", "audio_answer")):
-        try:
-            from src import chat_helpers
-            facts[key] = getattr(chat_helpers, ask)(model, endpoint_url)
-        except Exception:
-            pass  # nothing knows: unknown warns nothing
+    for key in MODEL_NEEDS:
+        facts[key] = capability(key, endpoint_url, model)
     try:
         from src.model_context import get_context_length_known
         ctx, known = get_context_length_known(endpoint_url, model)

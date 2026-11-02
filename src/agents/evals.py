@@ -1331,6 +1331,13 @@ async def run_case(manifest, case: Dict[str, Any], *, factory, data_dir: str,
             p.set(model_context, "_query_context_length",
                   lambda u, m: scripted_window(u, m) if str(u).startswith(SCRIPTED_URL) and m == SCRIPTED_MODEL
                   else real_window(u, m))
+            # `P24-30`. And for what it can do (`needs.model`): the scripted
+            # model's vision, reasoning and audio are unknown, said without asking.
+            import src.agents.needs as needs_mod
+            real_capability = needs_mod.capability
+            p.set(needs_mod, "capability",
+                  lambda need, u, m: None if str(u).startswith(SCRIPTED_URL) and m == SCRIPTED_MODEL
+                  else real_capability(need, u, m))
     except BaseException:
         p.undo()
         raise
