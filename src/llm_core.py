@@ -1653,7 +1653,7 @@ _THINKING_MODEL_PATTERNS = (
 )
 
 def _turn_thinking_off(payload: Dict, url: str) -> None:
-    """`B1754`. Ask a self-hosted thinking model to answer without reasoning.
+    """`B1755`. Ask a self-hosted thinking model to answer without reasoning.
 
     `chat_template_kwargs.enable_thinking` is the Qwen3-family template switch
     llama.cpp's server, vLLM and SGLang read; Ollama's door reads `think`.
@@ -2580,7 +2580,7 @@ async def llm_call_async(
 ) -> str | tuple[str, str]:
     """Asynchronous LLM call using httpx with connection pooling, timeout, retry logic, and performance logging.
 
-    ``thinking=False`` (`B1754`) asks a self-hosted thinking model not to
+    ``thinking=False`` (`B1755`) asks a self-hosted thinking model not to
     reason first, for small side calls (a chat's title, the next-step
     suggestion) whose answer is a few words. Measured in the owner's LM Studio
     log: a five-word title cost 192 reasoning tokens and the next-step
@@ -2750,7 +2750,7 @@ async def llm_call_async(
             payload["reasoning_effort"] = _MISTRAL_REASONING_EFFORT
         if thinking is False and _supports_thinking(model):
             # Off the loop: the self-hosted test reads the endpoint rows.
-            await asyncio.to_thread(_turn_thinking_off, payload, url)   # `B1754`
+            await asyncio.to_thread(_turn_thinking_off, payload, url)   # `B1755`
         await asyncio.to_thread(_apply_local_profiles, payload, url, target_url, model,
                                 session_id, explicit_params)   # `B1588`
 

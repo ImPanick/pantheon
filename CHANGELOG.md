@@ -403,7 +403,7 @@ the next one is cut.
 ### Changed — read this before upgrading
 
 - **A model served locally is sent a core set of tools, and loads the rest with `find_tools`**
-  (2026-11-06, `B1754`). LM Studio, llama.cpp, Ollama or vLLM on this machine or your network used
+  (2026-11-06, `B1755`). LM Studio, llama.cpp, Ollama or vLLM on this machine or your network used
   to receive the whole tool suite (87 tools, ~38K tokens with their instructions) with every message
   whenever the model's window had room, and a slow GPU spent minutes reading it before the question.
   Now tool definitions for a local model stop at `local_tool_budget_tokens` (default 8,000; set 0 for

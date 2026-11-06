@@ -940,7 +940,7 @@ def _classify(msg: dict, index: int, history: bool) -> tuple[str, str]:
 # "affordable on a 128k window and real on an 8k one".
 TOOL_SUITE_SHARE = 0.4
 
-# `B1754`. The ceiling on tool definitions for a model served on this machine
+# `B1755`. The ceiling on tool definitions for a model served on this machine
 # or this network (LM Studio, llama.cpp, Ollama, vLLM). The share above is about
 # *room*; on a local server the binding cost is *time*. Measured on the owner's
 # qwen3.8-27b in LM Studio (2026-11-05): a 262K window let the whole suite ship —
@@ -1015,7 +1015,7 @@ def tool_suite_room(context_length: int, get_setting, *,
         # default.
         out = {"room": max(0, int(budget * share)), "window": 0,
                "window_known": False, "budget": budget, "basis": "window_unknown"}
-    # `B1754`. A local server pays for every token in prompt-processing time,
+    # `B1755`. A local server pays for every token in prompt-processing time,
     # so its room is also capped by `local_tool_budget_tokens`.
     out["local_cap"] = 0
     if local:

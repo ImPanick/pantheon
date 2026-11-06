@@ -1692,7 +1692,7 @@ async def _execute_tool_block_impl(
         desc = "use_skill"
         result = await do_use_skill(content, owner=owner)
     elif tool == "find_tools":
-        # `B1754`. Read-only: search the tool register; the loop loads the hits.
+        # `B1755`. Read-only: search the tool register; the loop loads the hits.
         desc = "find_tools"
         result = await do_find_tools(content, owner=owner)
     elif tool == "api_call":

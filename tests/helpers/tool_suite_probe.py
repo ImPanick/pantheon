@@ -650,7 +650,7 @@ async def probe_world(scratch: str, *, mcp_states: Sequence[str] = MCP_STATES,
     from src import constants
     from src import context_budget
 
-    # `B1754`. The probe's endpoint is on loopback, so the product treats it as
+    # `B1755`. The probe's endpoint is on loopback, so the product treats it as
     # a local server and caps the suite at `local_tool_budget_tokens`. The
     # probe measures the window rule, the one every server is held to, so the
     # local ceiling is off unless a caller asks for it by passing a budget.

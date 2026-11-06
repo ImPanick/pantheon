@@ -92,7 +92,7 @@ _register(
     ToolEffect.USER_INTERACTION,
 )
 _register(
-    # `B1754`. Searches Pantheon's own tool register (and the MCP tool list)
+    # `B1755`. Searches Pantheon's own tool register (and the MCP tool list)
     # and loads names into the turn's set. No person's data, nothing written.
     {"find_tools"},
     ToolEffect.READ_PUBLIC,
