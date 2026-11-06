@@ -1130,6 +1130,25 @@ FUNCTION_TOOL_SCHEMAS = [
             }
         }
     },
+    # `B1751`. How a turn with part of the suite reaches the rest of it.
+    {
+        "type": "function",
+        "function": {
+            "name": "find_tools",
+            "description": (
+                "Load tools that are not in this turn's list: search by a few "
+                "words for the job, or name them. What it finds is callable "
+                "from your next step."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "What the tool should do."},
+                    "names": {"type": "array", "items": {"type": "string"}}
+                }
+            }
+        }
+    },
     {
         "type": "function",
         "function": {

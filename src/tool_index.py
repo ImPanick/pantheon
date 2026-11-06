@@ -135,6 +135,7 @@ BUILTIN_TOOL_DESCRIPTIONS: Dict[str, str] = {
     # `B1621`.
     "read_chat": "Read one of the user's own past chats through, in order, a page at a time — to summarise or quote a whole conversation.",
     "ask_user": "Ask the user a multiple-choice question to get a decision or clarification. Use this when the task is genuinely ambiguous and the answer changes what you do next — pick between approaches, confirm an assumption, choose among options — instead of guessing. Provide a clear `question` and 2-6 `options` (each with a short `label`, optional `description`). To gather several answers at once (plan mode, before a plan), pass `questions`: up to 5, each a `question` with optional `options`. Omit `multi`/keep it false unless the question explicitly permits choosing multiple options. Calling this ENDS your turn: the user sees clickable buttons and their choice arrives as your next message. Don't use it for things you can decide from context or sensible defaults, or for irreversible-action confirmation if a dedicated flow exists.",
+    "find_tools": "Find and load a tool that is not in this turn's list: search the whole tool suite by what the job needs (calendar, email, contacts, documents, settings, models, git, MCP servers) or load tools by name.",
     "update_plan": "Write back to the ACTIVE PLAN while executing an approved plan: mark steps done or revise them. After finishing a step call this with the full checklist and that step marked done; when the user asks to change the plan call it with the revised checklist. Always pass the COMPLETE markdown checklist (`- [ ]` / `- [x]`), not a diff. The user's docked plan window updates live. No effect when there is no active plan.",
     "ui_control": "Control the UI and toggle tools on/off. Use this to turn off / turn on / disable / enable individual tools and features: shell (bash), search (web), research, browser, documents, incognito. Open panels (documents library, gallery, email inbox, sessions, notes, memories/brain, skills, settings, forge (formerly cookbook — both are accepted)) via `open_panel <name>`. Use `open_email_reply <uid> <folder> reply <body text>` (or structured body) to open an email reply draft document without sending. USE THIS whenever the user says to write/draft a reply or tells you what to say — opening an empty draft or sending immediately is wrong. Body can continue on subsequent lines for multi-line replies. Also switches between chat/agent modes, changes the current model, and applies/creates themes.",
     "list_email_accounts": "List configured email accounts and default status. Use before reading or sending mail when the user mentions Gmail, work mail, custom domain mail, another mailbox, or asks to compare/check multiple inboxes.",
@@ -984,6 +985,13 @@ SUITE_DOMAIN_ORDER: Tuple[str, ...] = (
 SUITE_REASON_WHOLE = "whole_suite"
 SUITE_REASON_WINDOW = "window"
 SUITE_REASON_WINDOW_UNKNOWN = "window_unknown"
+#: `B1751`. The window had room, but the model is served locally and the
+#: operator's `local_tool_budget_tokens` ceiling narrowed the set.
+SUITE_REASON_LOCAL = "local_budget"
+
+#: `B1751`. Offered on every partial turn, because it is how the model reaches
+#: the part of the suite this turn did not carry.
+FIND_TOOLS = "find_tools"
 
 
 @dataclass(frozen=True)
@@ -1150,8 +1158,19 @@ def plan_tool_suite(
     domains: Iterable[str] = (),
     domain_map: Optional[Dict[str, Set[str]]] = None,
     domain_order: Sequence[str] = SUITE_DOMAIN_ORDER,
+    keep: Iterable[str] = (),
+    local_cap: int = 0,
 ) -> ToolSuite:
     """Decide this turn's tool set: the whole suite, or a deterministic part.
+
+    `B1751`. `keep` is the set this conversation was offered last turn. When it
+    still fits, this turn's set is `keep` plus whatever the request pins and
+    nothing else, so the tool block (and the system prompt built from it) stays
+    byte-identical between turns and a local server's prompt cache survives;
+    it only grows when the person names something new. `local_cap` is the
+    ceiling `tool_suite_room` applied for a local model, recorded as the reason
+    when it is what narrowed the set. `find_tools` is offered on every partial
+    turn, because it is how the model reaches the rest.
 
     `cost(name)` is the tokens that name's definition spends in the window —
     `src/context_budget.tool_schema_tokens` on its schema, 0 for a name that has
@@ -1180,27 +1199,39 @@ def plan_tool_suite(
             pinned=tuple(sorted(pinned_in)),
         )
 
-    order = suite_priority_order(
-        pool, pinned=pinned_in, mcp=mcp, keyword_picks=keyword_picks,
-        domains=domains, domain_map=domain_map, domain_order=domain_order,
-    )
+    if FIND_TOOLS in pool:
+        pinned_in.add(FIND_TOOLS)
+    kept = {str(n) for n in (keep or ()) if str(n) in pool} | pinned_in
+    kept_cost = sum(int(cost(name) or 0) for name in kept)
     offered: Set[str] = set()
     spent = 0
-    for name in order:
-        price = int(cost(name) or 0)
-        if name in pinned_in:
+    if keep and kept_cost <= room:
+        offered = set(kept)
+        spent = kept_cost
+    else:
+        order = suite_priority_order(
+            pool, pinned=pinned_in, mcp=mcp, keyword_picks=keyword_picks,
+            domains=domains, domain_map=domain_map, domain_order=domain_order,
+        )
+        for name in order:
+            price = int(cost(name) or 0)
+            if name in pinned_in:
+                offered.add(name)
+                spent += price
+                continue
+            if spent + price > room:
+                continue
             offered.add(name)
             spent += price
-            continue
-        if spent + price > room:
-            continue
-        offered.add(name)
-        spent += price
+    if local_cap:
+        reason = SUITE_REASON_LOCAL
+    else:
+        reason = SUITE_REASON_WINDOW if window_known else SUITE_REASON_WINDOW_UNKNOWN
     return ToolSuite(
         candidates=frozenset(pool), offered=frozenset(offered),
         withheld=tuple(sorted(pool - offered)),
         partial=bool(pool - offered),
-        reason=SUITE_REASON_WINDOW if window_known else SUITE_REASON_WINDOW_UNKNOWN,
+        reason=reason,
         room=room, cost=spent, window=int(window or 0),
         window_known=bool(window_known), window_basis=str(window_basis or ""),
         pinned=tuple(sorted(pinned_in)),

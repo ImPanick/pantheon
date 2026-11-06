@@ -53,6 +53,116 @@ def _use_skill_toolsets(owner) -> Optional[List[str]]:
         return None
 
 
+# `B1751`. `find_tools`: how a turn that carries part of the suite reaches the
+# rest. The search is over the tool register's own descriptions
+# (`tool_index.BUILTIN_TOOL_DESCRIPTIONS`) and every MCP tool the manager holds;
+# the agent loop then loads what the person may call into the turn's set and
+# rewrites this result to say exactly what was loaded.
+FIND_TOOLS_MAX = 5
+_FIND_STOPWORDS = frozenset({
+    "a", "an", "the", "to", "for", "of", "and", "or", "in", "on", "with", "my",
+    "me", "i", "it", "is", "be", "do", "that", "this", "tool", "tools", "use",
+    "want", "need", "can", "some", "something", "from", "by", "at", "as",
+})
+
+
+def _find_words(text: str) -> List[str]:
+    out = []
+    for word in re.findall(r"[a-z0-9]+", str(text or "").lower()):
+        if len(word) < 2 or word in _FIND_STOPWORDS:
+            continue
+        out.append(word[:5])
+    return out
+
+
+def find_tool_matches(query: str = "", names=None, *, mcp_tools=None) -> List[Dict[str, str]]:
+    """Rank the register's tools against `query`; exact `names` come first.
+
+    `mcp_tools` is `{qualified_name: description}`; when None the live MCP
+    manager is asked. Pure apart from that, so a test can call it directly.
+    """
+    from src.tool_index import BUILTIN_TOOL_DESCRIPTIONS
+    catalogue: Dict[str, str] = dict(BUILTIN_TOOL_DESCRIPTIONS)
+    if mcp_tools is None:
+        mcp_tools = {}
+        try:
+            from src.tool_utils import get_mcp_manager
+            mgr = get_mcp_manager()
+            if mgr:
+                for tool in mgr.get_all_tools({}, overrides={}) or []:
+                    qualified = tool.get("qualified_name")
+                    if qualified and not tool.get("is_disabled"):
+                        mcp_tools[str(qualified)] = str(tool.get("description") or "")
+        except Exception:
+            logger.debug("find_tools: MCP tools unreadable", exc_info=True)
+    catalogue.update(mcp_tools or {})
+    catalogue.pop("find_tools", None)
+
+    picked: List[str] = []
+    for name in names or []:
+        name = str(name or "").strip()
+        if name in catalogue and name not in picked:
+            picked.append(name)
+    words = set(_find_words(query))
+    if words:
+        import math
+        bags = {name: (set(_find_words(name.replace("_", " "))), set(_find_words(desc)))
+                for name, desc in catalogue.items()}
+        # A word most tools share ("list", "manage") says little; a rare one
+        # ("notes", "calendar") says which tool. Weighted by inverse frequency.
+        total = max(1, len(bags))
+        df: Dict[str, int] = {}
+        for name_words, desc_words in bags.values():
+            for w in name_words | desc_words:
+                df[w] = df.get(w, 0) + 1
+        weight = {w: math.log(1 + total / df.get(w, total)) for w in words}
+        scored = []
+        for name, (name_words, desc_words) in bags.items():
+            if name in picked:
+                continue
+            score = (3 * sum(weight[w] for w in words & name_words)
+                     + sum(weight[w] for w in words & desc_words))
+            if score:
+                scored.append((-score, name))
+        scored.sort()
+        # Only the strong matches: a hit worth half the best one or more, so a
+        # query that names one job does not load five tools that share a word.
+        top = -scored[0][0] if scored else 0
+        for neg, name in scored[:max(0, FIND_TOOLS_MAX - len(picked))]:
+            if -neg * 2 < top:
+                break
+            picked.append(name)
+    out = []
+    for name in picked[:FIND_TOOLS_MAX]:
+        desc = catalogue.get(name, "")
+        first = desc.split(". ")[0].strip()
+        out.append({"name": name, "description": first[:200]})
+    return out
+
+
+async def do_find_tools(content: str, owner: Optional[str] = None) -> Dict:
+    """Search the whole tool suite; the agent loop loads what it may. `B1751`."""
+    try:
+        args = _parse_tool_args(content)
+    except ValueError:
+        args = {"query": str(content or "")}
+    if not isinstance(args, dict):
+        args = {}
+    query = str(args.get("query") or "").strip()
+    names = args.get("names") or args.get("name") or []
+    if isinstance(names, str):
+        names = [n.strip() for n in names.split(",") if n.strip()]
+    if not query and not names:
+        return {"error": "Pass query (a few words for the job) or names.", "exit_code": 1}
+    found = find_tool_matches(query, names)
+    if not found:
+        return {"output": f"No tool matches {query or names!r}. Try other words.",
+                "exit_code": 0, "found": []}
+    lines = [f"- {f['name']} — {f['description']}" for f in found]
+    return {"output": "Tools matching the request:\n" + "\n".join(lines),
+            "exit_code": 0, "found": [f["name"] for f in found]}
+
+
 async def do_use_skill(content: str, owner: Optional[str] = None) -> Dict:
     """`B1737`. Open a skill, or search for one, chosen by the model itself.
 

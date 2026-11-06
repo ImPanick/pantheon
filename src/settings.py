@@ -799,6 +799,11 @@ DEFAULT_SETTINGS = {
     # `compute_input_token_budget`.
     "agent_input_token_hard_max": 200_000,
     "agent_stream_timeout_seconds": 300,
+    # `B1751`. Ceiling, in tokens, on the tool definitions sent to a model
+    # served locally (LM Studio, llama.cpp, Ollama, vLLM on this machine or
+    # network). Past it the turn carries a core set plus what the request
+    # names, and `find_tools` loads the rest. 0 = no ceiling (window share only).
+    "local_tool_budget_tokens": 8000,
     # Extra directory roots that read_file / write_file may access, in
     # addition to the built-in project data/ and system temp dirs. Each
     # entry is an absolute path. Sensitive subpaths (.ssh, .gnupg, shell
@@ -1081,6 +1086,8 @@ def role_limit_ranges() -> dict[str, tuple[int, int]]:
     # is 1, as every key's here; the instance setting's 0 (*no trim*) is not a
     # role's to set.
     ranges[AGENT_INPUT_BUDGET_SETTING] = (1, MAX_AGENT_INPUT_BUDGET)
+    # `B1751`. 0 switches the local tool ceiling off.
+    ranges["local_tool_budget_tokens"] = (0, 200_000)
     return ranges
 
 

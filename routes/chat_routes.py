@@ -4476,6 +4476,7 @@ def setup_chat_routes(
         call = asyncio.ensure_future(llm_call_async(
             sess.endpoint_url, sess.model, messages, headers=sess.headers,
             temperature=0.4, max_tokens=0, timeout=60, max_retries=1,
+            thinking=False,   # `B1751`: one short sentence needs no reasoning pass
         ))
         try:
             while not call.done():
