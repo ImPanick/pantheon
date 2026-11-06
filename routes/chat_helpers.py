@@ -352,7 +352,7 @@ async def auto_name_session(session_manager, sess):
             max_tokens=4096,
             headers=t_headers,
             timeout=60,
-            thinking=False,   # `B1751`: a title needs no reasoning pass
+            thinking=False,   # `B1754`: a title needs no reasoning pass
         )
 
         title = title.strip().strip('"\'').strip()

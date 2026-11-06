@@ -1130,7 +1130,7 @@ FUNCTION_TOOL_SCHEMAS = [
             }
         }
     },
-    # `B1751`. How a turn with part of the suite reaches the rest of it.
+    # `B1754`. How a turn with part of the suite reaches the rest of it.
     {
         "type": "function",
         "function": {

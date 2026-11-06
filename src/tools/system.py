@@ -53,7 +53,7 @@ def _use_skill_toolsets(owner) -> Optional[List[str]]:
         return None
 
 
-# `B1751`. `find_tools`: how a turn that carries part of the suite reaches the
+# `B1754`. `find_tools`: how a turn that carries part of the suite reaches the
 # rest. The search is over the tool register's own descriptions
 # (`tool_index.BUILTIN_TOOL_DESCRIPTIONS`) and every MCP tool the manager holds;
 # the agent loop then loads what the person may call into the turn's set and
@@ -141,7 +141,7 @@ def find_tool_matches(query: str = "", names=None, *, mcp_tools=None) -> List[Di
 
 
 async def do_find_tools(content: str, owner: Optional[str] = None) -> Dict:
-    """Search the whole tool suite; the agent loop loads what it may. `B1751`."""
+    """Search the whole tool suite; the agent loop loads what it may. `B1754`."""
     try:
         args = _parse_tool_args(content)
     except ValueError:

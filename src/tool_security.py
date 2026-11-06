@@ -379,7 +379,7 @@ PLAN_MODE_READONLY_TOOLS = {
     # side effect is the open counter `manage_skills view` also keeps), so a
     # plan can be written from the procedure for the work it plans.
     "use_skill",
-    # `B1751`. Reads the tool register and loads names into the turn's set;
+    # `B1754`. Reads the tool register and loads names into the turn's set;
     # writes nothing.
     "find_tools",
 }

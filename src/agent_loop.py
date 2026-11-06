@@ -1317,7 +1317,7 @@ def plan_turn_tool_suite(
 ):
     """This turn's tool set: the whole suite, or a deterministic part of it.
 
-    `B1751`. On a model served locally the room is also capped by
+    `B1754`. On a model served locally the room is also capped by
     `local_tool_budget_tokens` (`context_budget.tool_suite_room(local=True)`),
     and `keep` — the set this conversation was offered last turn — holds the
     tool block steady between turns so the server's prompt cache is reused.
@@ -1449,7 +1449,7 @@ def plan_turn_tool_suite(
     )
 
 
-# `B1751`. The tool set each conversation was offered on its last partial turn,
+# `B1754`. The tool set each conversation was offered on its last partial turn,
 # keyed by session id, so the next turn can offer the same set (plus anything
 # newly named) and a local server's cached prompt prefix stays valid. Bounded;
 # the oldest conversation is forgotten first, which costs one cache miss.
@@ -1467,7 +1467,7 @@ def session_tool_set(session_id: Optional[str]) -> frozenset:
 
 
 def remember_session_tool_set(session_id: Optional[str], names: Iterable[str]) -> None:
-    """Record (replace) the set a conversation was offered. `B1751`."""
+    """Record (replace) the set a conversation was offered. `B1754`."""
     if not session_id:
         return
     key = str(session_id)
@@ -1754,7 +1754,7 @@ Generate an image. Line 1 = description, line 2 = model name, line 3 = WxH (e.g.
     "manage_skills": "- ```manage_skills``` — Skill registry (SKILL.md format). Args (JSON): {\"action\": \"list|view|view_ref|search|add|edit|patch|publish|delete\", ...}. `list` returns the index of available skills (published + teacher-escalation drafts); `view name=foo` fetches the full SKILL.md; `view_ref name=foo path=...` loads a reference file under the skill directory. For `add`, provide an explicit kebab-case `name` and only report the exact returned name, because storage may normalize or dedupe it. Use this BEFORE doing domain work — there may already be a procedure (published or draft) that prescribes the correct steps. Drafts written by the teacher loop are authoritative guidance even though they're not yet published.",
     # `B1737`. How the model acts on the skills catalogue itself.
     "use_skill": "- ```use_skill``` — Open a listed skill by `name`, or search skills by `query` (the kind of work).",
-    # `B1751`.
+    # `B1754`.
     "find_tools": "- ```find_tools``` — Load tools that are not in this turn's list. Args (JSON): {\"query\": \"a few words for the job\"} or {\"names\": [\"manage_calendar\"]}. The tools it finds are callable from your next step.",
     "manage_tasks": "- ```manage_tasks``` — Create and manage scheduled background tasks (recurring AI jobs). Args (JSON): {\"action\": \"list|create|edit|delete|pause|resume|run|dry_run|draft_workflow\", ...}. For steps that run one after another, draft_workflow with {\"description\": \"<the user's words>\"} drafts a workflow, switched off, that a person checks in the Workbench.",
     "manage_endpoints": "- ```manage_endpoints``` — Add, remove, or configure AI model API endpoints. Args (JSON): {\"action\": \"list|add|delete|enable|disable\", ...}. Use when user wants to add a new AI provider.",
@@ -2192,13 +2192,13 @@ _PARTIAL_SUITE_WHY = {
     "window_unknown": "this endpoint did not report its context window, so the "
                       "set was kept conservative",
     "route": "this route was narrowed to the tools its task needs",
-    # `B1751`.
+    # `B1754`.
     "local_budget": "this model runs on local hardware, where every tool "
                     "definition costs prompt-processing time, so the set was "
                     "kept lean",
 }
 
-# `B1751`. When `find_tools` is in the set the rest of the suite is one call
+# `B1754`. When `find_tools` is in the set the rest of the suite is one call
 # away, so the notice says so instead of telling the model to stop and ask.
 _PARTIAL_SUITE_NOTICE_FINDABLE = (
     "## This turn's tool set is partial\n"
@@ -8271,7 +8271,7 @@ async def stream_agent_loop(
                 within_allowed=_within_allowed,
                 pinned_tools=pinned_tools or (),
                 owner=owner,
-                keep=session_tool_set(session_id),   # `B1751`
+                keep=session_tool_set(session_id),   # `B1754`
             )
 
         def _log_the_plan(label):
@@ -8291,7 +8291,7 @@ async def stream_agent_loop(
             _relevant_tools = set(_tool_suite.offered)
             _selection_saw_mcp_names = True
             _log_the_plan("")
-            # `B1751`. A partial set is remembered so the next turn of this
+            # `B1754`. A partial set is remembered so the next turn of this
             # conversation offers the same one; a whole suite needs no memory.
             if _tool_suite.partial:
                 remember_session_tool_set(session_id, _tool_suite.offered)
@@ -11862,7 +11862,7 @@ async def stream_agent_loop(
                     except Exception as _e:
                         logger.debug(f"skill requires_toolsets unlock skipped: {_e}")
 
-            # `B1751`. `find_tools` found names; load the ones this person may
+            # `B1754`. `find_tools` found names; load the ones this person may
             # call into the turn's set so the NEXT round carries their schemas
             # (the same door a skill's `requires_toolsets` uses above), remember
             # them for the rest of the conversation, and rewrite the result to

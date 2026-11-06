@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""`B1751`. A model served locally reads a lean prompt that stays the same.
+"""`B1754`. A model served locally reads a lean prompt that stays the same.
 
 The owner, 2026-11-05, with LM Studio logs from a local `qwen3.8-27b`: *"We
 need to figure out why the LLM takes SOO long to process the prompt — is it

@@ -985,11 +985,11 @@ SUITE_DOMAIN_ORDER: Tuple[str, ...] = (
 SUITE_REASON_WHOLE = "whole_suite"
 SUITE_REASON_WINDOW = "window"
 SUITE_REASON_WINDOW_UNKNOWN = "window_unknown"
-#: `B1751`. The window had room, but the model is served locally and the
+#: `B1754`. The window had room, but the model is served locally and the
 #: operator's `local_tool_budget_tokens` ceiling narrowed the set.
 SUITE_REASON_LOCAL = "local_budget"
 
-#: `B1751`. Offered on every partial turn, because it is how the model reaches
+#: `B1754`. Offered on every partial turn, because it is how the model reaches
 #: the part of the suite this turn did not carry.
 FIND_TOOLS = "find_tools"
 
@@ -1163,7 +1163,7 @@ def plan_tool_suite(
 ) -> ToolSuite:
     """Decide this turn's tool set: the whole suite, or a deterministic part.
 
-    `B1751`. `keep` is the set this conversation was offered last turn. When it
+    `B1754`. `keep` is the set this conversation was offered last turn. When it
     still fits, this turn's set is `keep` plus whatever the request pins and
     nothing else, so the tool block (and the system prompt built from it) stays
     byte-identical between turns and a local server's prompt cache survives;
