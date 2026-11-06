@@ -1,0 +1,29 @@
+{
+ "case": "one-new-bill-posted-and-the-run-laid-out",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read 2 mails; posted 1 bill; wrote \"Payment run — 2026-11-12\"",
+ "read": [
+  "ledger_table",
+  "search_emails",
+  "read_email"
+ ],
+ "wrote": [
+  "ledger_table",
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Payment run”",
+   "ok": true,
+   "detail": "“Payment run — 2026-11-12” is there."
+  }
+ ],
+ "answer": "Pay 1,320.50 this week: Hetzner (overdue) and Birch Legal; Figma is due later; one amount to settle.\n\n## Report\n- read 2 mails; posted 1 bill; wrote \"Payment run — 2026-11-12\"",
+ "documents": [
+  {
+   "title": "Payment run — 2026-11-12",
+   "content": "Payment run — 2026-11-12\n2 to pay this week totalling 1,320.50; 1 new, 1 to check\n\n## Pay this week\n| Counterparty | Reference | Amount | Due | How to pay |\n| --- | --- | --- | --- | --- |\n| Hetzner | R0012345 | 120.50 | 2026-11-10 (overdue 2 days) | SEPA to DE89… |\n| Birch Legal | 2026-311 | 1,200.00 | 2026-11-15 | bank transfer, details on the invoice |\n\n## Due later\n| Counterparty | Amount | Due |\n| --- | --- | --- |\n| Figma | 49.99 | 2026-11-28 |\n\n## New this week\n- Birch Legal 2026-311 — 1,200.00 due 2026-11-15 — \"Invoice 2026-311 for October\".\n\n## Check these\n- Hetzner R0012345: the reminder says 125.50 (a late fee); the ledger holds 120.50. Settle which to pay."
+  }
+ ]
+}

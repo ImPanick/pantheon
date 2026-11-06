@@ -199,6 +199,8 @@ function say(id, text, ok) {
 function describeDaemon(daemon) {
   if (!daemon) return '';
   const parts = [];
+  // `B1747`: which system answered, in its own words (its /etc/os-release).
+  if (daemon.system && daemon.system.name) parts.push(daemon.system.name);
   if (daemon.backend) {
     const words = BACKEND_WORDS[daemon.backend];
     parts.push(words ? words.label : daemon.backend);
@@ -223,6 +225,57 @@ function describeDaemon(daemon) {
   }
   parts.push(...describeMachines(daemon.machines));  // `B979`
   return parts.join(' · ');
+}
+
+// ── `B1747`: which system ─────────────────────────────────────────────────────
+
+/** The System picker: every system, the ones this stack does not run marked
+ *  so, and under it what the person gets and — for one that is not running —
+ *  what an admin does to start it. Hidden for a person who may not use it. */
+function renderSystem(view) {
+  const row = $('ws-system-row');
+  const why = $('ws-system-why');
+  const select = $('ws-system');
+  show(row, !!view);
+  if (!view) { show(why, false); return; }
+  if (select) {
+    select.textContent = '';
+    for (const sys of view.systems || []) {
+      const opt = document.createElement('option');
+      opt.value = sys.id;
+      opt.textContent = sys.runs || sys.id === 'ubuntu' ? sys.name : `${sys.name} (not running)`;
+      select.appendChild(opt);
+    }
+    select.value = view.chosen;
+  }
+  if (why) {
+    const named = (id) => ((view.systems || []).find((s) => s.id === id) || {}).name || id;
+    let line = '';
+    if (view.chosen !== view.in_use) {
+      const picked = (view.systems || []).find((s) => s.id === view.chosen) || {};
+      line = `${named(view.chosen)} is not running on this server, so you are on ${named(view.in_use)}.`;
+      if (picked.how) line += ` An admin starts it: ${picked.how}`;
+    } else if (view.in_use !== 'ubuntu') {
+      line = `Your agent works in ${named(view.in_use)}. Your files there are separate from your Ubuntu ones.`;
+    }
+    why.textContent = line;
+    show(why, !!line);
+  }
+}
+
+async function chooseSystem(system) {
+  try {
+    const res = await fetch('/api/prefs/workstation_system', {
+      method: 'PUT', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ value: system }),
+    });
+    if (!res.ok) { say('ws-result', await readError(res), false); return; }
+  } catch (_) {
+    say('ws-result', 'Pantheon did not answer. Try again.', false);
+    return;
+  }
+  say('ws-result', '', true);
+  await load();
 }
 
 function describeYou(you) {
@@ -262,6 +315,8 @@ function render(status) {
     you.textContent = line;
     show(you, !!line);
   }
+
+  renderSystem(status.may_use ? status.system : null);  // `B1747`
 
   show($('ws-check'), !!status.is_admin);
   // Only for a person who may use it and only while it answers: a reset of a
@@ -817,6 +872,7 @@ function wire() {
   $('ws-check')?.addEventListener('click', () => { check(); });
   $('ws-reset')?.addEventListener('click', () => { resetMine(); });
   $('ws-cu')?.addEventListener('change', () => { toggleComputerUse(!!$('ws-cu').checked); });  // `B1725`
+  $('ws-system')?.addEventListener('change', () => { chooseSystem($('ws-system').value); });  // `B1747`
   $('ws-sp-save')?.addEventListener('click', () => { startingPoint('save'); });          // `B1733`
   $('ws-sp-forget')?.addEventListener('click', () => { startingPoint('forget'); });
   // Each switch and select saves the moment it changes, like the email
@@ -864,4 +920,5 @@ export const _test = {
   describeDaemon, describeYou, render, apply, fillSettings, renderEffects, networkStateSentence,
   renderRecreate, renderSudo, machineKind, renderMachines,
   renderComputerUse, renderStartingPoint,   // `B1725`, `B1733`
+  renderSystem,   // `B1747`
 };

@@ -1,0 +1,26 @@
+{
+ "case": "two-goals-met-one-unseen",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read 4 documents; wrote \"Review draft — Sam Oduya, May to October 2026\"",
+ "read": [
+  "manage_documents"
+ ],
+ "wrote": [
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Review draft”",
+   "ok": true,
+   "detail": "“Review draft — Sam Oduya, May to October 2026” is there."
+  }
+ ],
+ "answer": "2 of 3 goals met on the record; 2 points to confirm.\n\n## Report\n- read 4 documents; wrote \"Review draft — Sam Oduya, May to October 2026\"",
+ "documents": [
+  {
+   "title": "Review draft — Sam Oduya, May to October 2026",
+   "content": "Review draft — Sam Oduya, May to October 2026\n2 of 3 goals met on the record; 2 points to confirm\n\n## Summary\nSam shipped the order import and the picking list on time (\"Minutes — Website weekly, 7 Jul\": \"import live, no incidents\"; \"Weekly review — 2026-09-28\": \"picking list shipped Thursday\"). The reporting goal has no evidence in the period. Two reviews note pull requests waiting on Sam for more than a week.\n\n## Against the goals\n- Ship CSV order import by June — met: \"import live, no incidents\" (Minutes — Website weekly, 7 Jul).\n- Picking list by September — met: \"picking list shipped Thursday\" (Weekly review — 2026-09-28).\n- Monthly reporting dashboard — no evidence: no document in the period mentions it.\n\n## Strengths\n- Lands work on time: \"import live, no incidents\" (7 Jul); \"picking list shipped Thursday\" (28 Sep).\n\n## Growth\n- Review turnaround — pull requests waited on Sam for over a week twice (\"Weekly review — 2026-08-10\": \"two PRs waiting on Sam since the 1st\"; \"Weekly review — 2026-09-28\": \"Lee's PR waited 9 days\"); the effect was a release that slipped a week in August.\n\n## To confirm\n- The reporting dashboard: dropped, deferred or done elsewhere?\n- The rating is the manager's to write."
+  }
+ ]
+}

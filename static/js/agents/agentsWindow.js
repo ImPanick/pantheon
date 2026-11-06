@@ -754,6 +754,15 @@ function _renderAgent(a) {
         : ' on this model yet.')));
     page.appendChild(fitLine);
   }
+  // `P24-30`. What it asks of the model before any model is looked at — it
+  // must see, think or hear — said on its page in the owner's words.
+  const requires = (a.needs_check && a.needs_check.requires) || [];
+  if (requires.length) {
+    const req = _el('div', 'agents-requires');
+    req.setAttribute('role', 'note');
+    requires.forEach((line) => req.appendChild(_el('p', 'agents-small', line)));
+    page.appendChild(req);
+  }
   // `B1448`. What it declared it needs and this person's model lacks — a
   // warning, not a lock: Summon still works.
   const short = (a.needs_check && a.needs_check.short) || [];

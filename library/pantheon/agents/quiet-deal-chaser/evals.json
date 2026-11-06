@@ -1,0 +1,559 @@
+{
+ "cases": [
+  {
+   "id": "two-quiet-two-drafts",
+   "about": "Four open deals: Cedar and Elm are quiet in the pipeline and the mail, so one draft each; Birch wrote two days ago and is left alone; Yew is Won. Nothing is sent.",
+   "inputs": {
+    "pipeline": "Pipeline",
+    "days": "10",
+    "at": "09:00"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "p1",
+      "title": "Pipeline",
+      "content": "Pipeline\n| Account | Contact | Stage | Owner | Last touch | Next step |\n| --- | --- | --- | --- | --- | --- |\n| Acme Ltd | ana@acme.example | Proposal sent | Sam | 2026-11-03 | two-year pricing |\n| Birch & Co | bo@birch.example | Proposal sent | Sam | 2026-10-29 | check in |\n| Cedar Ltd | cal@cedar.example | Proposal sent | Sam | 2026-10-20 | await answer |\n| Elm | leo@elm.example | Discovery | Sam | 2026-10-28 | send the deck |\n| Yew | | Won | Sam | 2026-10-01 | — |\n"
+     }
+    ],
+    "emails": [
+     {
+      "id": "q1",
+      "from": "me@example.com",
+      "to": "cal@cedar.example",
+      "subject": "Proposal for the Q1 rollout",
+      "body": "Proposal attached.",
+      "date": "2026-10-20"
+     },
+     {
+      "id": "q2",
+      "from": "leo@elm.example",
+      "subject": "Re: deck",
+      "body": "Looking forward to the deck.",
+      "date": "2026-10-27"
+     },
+     {
+      "id": "q3",
+      "from": "bo@birch.example",
+      "subject": "Re: proposal",
+      "body": "The new CFO starts in January.",
+      "date": "2026-11-08"
+     },
+     {
+      "id": "q4",
+      "from": "ana@acme.example",
+      "subject": "Re: pricing",
+      "body": "Thanks for the call.",
+      "date": "2026-11-09"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Pipeline"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "p1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "cal@cedar.example",
+        "max_results": 5
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "bo@birch.example",
+        "max_results": 5
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "leo@elm.example",
+        "max_results": 5
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "draft_email",
+       {
+        "to": "cal@cedar.example",
+        "subject": "Proposal for the Q1 rollout: one question",
+        "body": "Hi Cal — does the January start still hold on your side? If a two-year term helps, the rate for it is in the proposal's last page. Which week suits for a ten-minute call?"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "draft_email",
+       {
+        "to": "leo@elm.example",
+        "subject": "The deck you asked for, and a date",
+        "body": "Hi Leo — the deck is attached as promised. Two demo slots next week: Tuesday 10:00 or Thursday 14:00. Which suits?"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Quiet deals — 2026-11-10",
+        "content": "Quiet deals — 2026-11-10\n2 quiet, 2 drafted, 1 left alone\n\n## Quiet\n| Account | Stage | Last touch | Last mail | Days quiet |\n| --- | --- | --- | --- | --- |\n| Cedar Ltd | Proposal sent | 2026-10-20 | 2026-10-20, ours | 21 |\n| Elm | Discovery | 2026-10-28 | 2026-10-27, theirs | 13 |\n\n## Drafted\n- Cedar Ltd — to cal@cedar.example — \"Proposal for the Q1 rollout: one question\" — asked whether the January start still holds, offered the two-year rate.\n- Elm — to leo@elm.example — \"The deck you asked for, and a date\" — asked which of two demo slots next week suits.\n\n## Left alone\n- Birch & Co — the pipeline says 2026-10-29, but Bo wrote on 2026-11-08 (\"the new CFO starts in January\"); the pipeline is behind.\n- Yew — Won; never chased.\n\n## Not in the pipeline\n- none\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "2 nudges drafted (Cedar, Elm); Birch left alone — they wrote on the 8th and the pipeline is behind.\n\n## Report\n- read \"Pipeline\" (4 open deals); searched 3 threads; drafted 2; wrote \"Quiet deals — 2026-11-10\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Quiet deals",
+      "contains": [
+       "| Cedar Ltd | Proposal sent | 2026-10-20 |",
+       "Birch & Co — the pipeline says 2026-10-29",
+       "## Not in the pipeline\n- none"
+      ]
+     }
+    },
+    {
+     "drafts_at_most": 2
+    },
+    {
+     "draft_to": "cal@cedar.example"
+    },
+    {
+     "no_draft_to": "bo@birch.example"
+    },
+    {
+     "not_called": "send_email"
+    }
+   ]
+  },
+  {
+   "id": "no-quiet-deals",
+   "about": "Every open deal was touched this week: nothing is drafted, Quiet and Drafted say none, the document is still written.",
+   "inputs": {
+    "pipeline": "Pipeline",
+    "days": "10",
+    "at": "09:00"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "p1",
+      "title": "Pipeline",
+      "content": "Pipeline\n| Account | Contact | Stage | Owner | Last touch | Next step |\n| --- | --- | --- | --- | --- | --- |\n| Acme Ltd | ana@acme.example | Proposal sent | Sam | 2026-11-09 | pricing |\n"
+     }
+    ],
+    "emails": [
+     {
+      "id": "q1",
+      "from": "me@example.com",
+      "to": "cal@cedar.example",
+      "subject": "Proposal for the Q1 rollout",
+      "body": "Proposal attached.",
+      "date": "2026-10-20"
+     },
+     {
+      "id": "q2",
+      "from": "leo@elm.example",
+      "subject": "Re: deck",
+      "body": "Looking forward to the deck.",
+      "date": "2026-10-27"
+     },
+     {
+      "id": "q3",
+      "from": "bo@birch.example",
+      "subject": "Re: proposal",
+      "body": "The new CFO starts in January.",
+      "date": "2026-11-08"
+     },
+     {
+      "id": "q4",
+      "from": "ana@acme.example",
+      "subject": "Re: pricing",
+      "body": "Thanks for the call.",
+      "date": "2026-11-09"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Pipeline"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "p1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Quiet deals — 2026-11-10",
+        "content": "Quiet deals — 2026-11-10\n0 quiet, 0 drafted, 0 left alone\n\n## Quiet\n- none: every open deal was touched in the last 10 days.\n\n## Drafted\n- none\n\n## Left alone\n- none\n\n## Not in the pipeline\n- none\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "No quiet deals this week; nothing drafted.\n\n## Report\n- read \"Pipeline\" (1 open deal); drafted 0; wrote \"Quiet deals — 2026-11-10\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Quiet deals",
+      "contains": [
+       "## Drafted\n- none"
+      ]
+     }
+    },
+    {
+     "drafts_at_most": 0
+    }
+   ]
+  },
+  {
+   "id": "the-mailbox-refuses-the-search",
+   "about": "No mailbox answers: silence cannot be confirmed, so nothing is drafted; Quiet lists what the pipeline alone calls quiet and the answer says to run again.",
+   "inputs": {
+    "pipeline": "Pipeline",
+    "days": "10",
+    "at": "09:00"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "p1",
+      "title": "Pipeline",
+      "content": "Pipeline\n| Account | Contact | Stage | Owner | Last touch | Next step |\n| --- | --- | --- | --- | --- | --- |\n| Acme Ltd | ana@acme.example | Proposal sent | Sam | 2026-11-03 | two-year pricing |\n| Birch & Co | bo@birch.example | Proposal sent | Sam | 2026-10-29 | check in |\n| Cedar Ltd | cal@cedar.example | Proposal sent | Sam | 2026-10-20 | await answer |\n| Elm | leo@elm.example | Discovery | Sam | 2026-10-28 | send the deck |\n| Yew | | Won | Sam | 2026-10-01 | — |\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Pipeline"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "p1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "cal@cedar.example",
+        "max_results": 5
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Quiet deals — 2026-11-10",
+        "content": "Quiet deals — 2026-11-10\n3 quiet, 0 drafted, 0 left alone\n\n## Quiet\n| Account | Stage | Last touch | Last mail | Days quiet |\n| --- | --- | --- | --- | --- |\n| Cedar Ltd | Proposal sent | 2026-10-20 | not checked — mail unreachable | 21 (pipeline only) |\n| Birch & Co | Proposal sent | 2026-10-29 | not checked — mail unreachable | 12 (pipeline only) |\n| Elm | Discovery | 2026-10-28 | not checked — mail unreachable | 13 (pipeline only) |\n\n## Drafted\n- none: silence could not be confirmed against the mail.\n\n## Left alone\n- none\n\n## Not in the pipeline\n- not checked\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Nothing drafted: the mailbox refused the search, so silence could not be confirmed. Three deals look quiet by the pipeline alone; run again when mail is back.\n\n## Report\n- read \"Pipeline\"; search_emails failed; drafted 0; wrote \"Quiet deals — 2026-11-10\""
+    }
+   ],
+   "checks": [
+    {
+     "drafts_at_most": 0
+    },
+    {
+     "document": {
+      "title": "Quiet deals",
+      "contains": [
+       "mail unreachable"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-deal-with-no-contact-address",
+   "about": "A quiet deal with no address: left alone with the ask that the address be added; the others are drafted.",
+   "inputs": {
+    "pipeline": "Pipeline",
+    "days": "10",
+    "at": "09:00"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "p1",
+      "title": "Pipeline",
+      "content": "Pipeline\n| Account | Contact | Stage | Owner | Last touch | Next step |\n| --- | --- | --- | --- | --- | --- |\n| Cedar Ltd | cal@cedar.example | Proposal sent | Sam | 2026-10-20 | await answer |\n| Oak | | Discovery | Sam | 2026-10-15 | call |\n"
+     }
+    ],
+    "emails": [
+     {
+      "id": "q1",
+      "from": "me@example.com",
+      "to": "cal@cedar.example",
+      "subject": "Proposal for the Q1 rollout",
+      "body": "Proposal attached.",
+      "date": "2026-10-20"
+     },
+     {
+      "id": "q2",
+      "from": "leo@elm.example",
+      "subject": "Re: deck",
+      "body": "Looking forward to the deck.",
+      "date": "2026-10-27"
+     },
+     {
+      "id": "q3",
+      "from": "bo@birch.example",
+      "subject": "Re: proposal",
+      "body": "The new CFO starts in January.",
+      "date": "2026-11-08"
+     },
+     {
+      "id": "q4",
+      "from": "ana@acme.example",
+      "subject": "Re: pricing",
+      "body": "Thanks for the call.",
+      "date": "2026-11-09"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Pipeline"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "p1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "cal@cedar.example",
+        "max_results": 5
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "draft_email",
+       {
+        "to": "cal@cedar.example",
+        "subject": "Proposal for the Q1 rollout: one question",
+        "body": "Hi Cal — does the January start still hold on your side? Which week suits for a ten-minute call?"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Quiet deals — 2026-11-10",
+        "content": "Quiet deals — 2026-11-10\n2 quiet, 1 drafted, 1 left alone\n\n## Quiet\n| Account | Stage | Last touch | Last mail | Days quiet |\n| --- | --- | --- | --- | --- |\n| Cedar Ltd | Proposal sent | 2026-10-20 | 2026-10-20, ours | 21 |\n| Oak | Discovery | 2026-10-15 | no address | 26 |\n\n## Drafted\n- Cedar Ltd — to cal@cedar.example — \"Proposal for the Q1 rollout: one question\" — asked whether the January start holds.\n\n## Left alone\n- Oak — no contact address in the pipeline; add one and the nudge is drafted next week.\n\n## Not in the pipeline\n- none\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "1 nudge drafted (Cedar); Oak left alone — no contact address in the pipeline.\n\n## Report\n- read \"Pipeline\" (2 open deals); searched 1 thread; drafted 1; wrote \"Quiet deals — 2026-11-10\""
+    }
+   ],
+   "checks": [
+    {
+     "drafts_at_most": 1
+    },
+    {
+     "document": {
+      "title": "Quiet deals",
+      "contains": [
+       "Oak — no contact address"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-quiet-deals-document-without-its-headings-fails",
+   "about": "The harness's own check: a quiet deals document without Quiet, Drafted, Left alone and Not in the pipeline does not deliver, even after its repair pass.",
+   "inputs": {
+    "pipeline": "Pipeline",
+    "days": "10",
+    "at": "09:00"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "p1",
+      "title": "Pipeline",
+      "content": "Pipeline\n| Account | Contact | Stage | Owner | Last touch | Next step |\n| --- | --- | --- | --- | --- | --- |\n| Acme Ltd | ana@acme.example | Proposal sent | Sam | 2026-11-03 | two-year pricing |\n| Birch & Co | bo@birch.example | Proposal sent | Sam | 2026-10-29 | check in |\n| Cedar Ltd | cal@cedar.example | Proposal sent | Sam | 2026-10-20 | await answer |\n| Elm | leo@elm.example | Discovery | Sam | 2026-10-28 | send the deck |\n| Yew | | Won | Sam | 2026-10-01 | — |\n"
+     }
+    ],
+    "emails": [
+     {
+      "id": "q1",
+      "from": "me@example.com",
+      "to": "cal@cedar.example",
+      "subject": "Proposal for the Q1 rollout",
+      "body": "Proposal attached.",
+      "date": "2026-10-20"
+     },
+     {
+      "id": "q2",
+      "from": "leo@elm.example",
+      "subject": "Re: deck",
+      "body": "Looking forward to the deck.",
+      "date": "2026-10-27"
+     },
+     {
+      "id": "q3",
+      "from": "bo@birch.example",
+      "subject": "Re: proposal",
+      "body": "The new CFO starts in January.",
+      "date": "2026-11-08"
+     },
+     {
+      "id": "q4",
+      "from": "ana@acme.example",
+      "subject": "Re: pricing",
+      "body": "Thanks for the call.",
+      "date": "2026-11-09"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Pipeline"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Quiet deals — 2026-11-10",
+        "content": "Chased two."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

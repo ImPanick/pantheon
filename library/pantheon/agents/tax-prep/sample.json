@@ -1,0 +1,27 @@
+{
+ "case": "a-quarter-totalled-with-two-lines-missing",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- summed the ledger for 2026-07-01..2026-09-30 by kind and category; read 9 lines and \"Tax checklist\"; wrote \"Tax pack — 2026-07-01 to 2026-09-30\"",
+ "read": [
+  "ledger_table",
+  "manage_documents"
+ ],
+ "wrote": [
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Tax pack”",
+   "ok": true,
+   "detail": "“Tax pack — 2026-07-01 to 2026-09-30” is there."
+  }
+ ],
+ "answer": "Q3: income 36,000.00, expenses 3,100.20, VAT paid 2,400.00; 2 lines want a receipt or memo before the pack goes out.\n\n## Report\n- summed the ledger for 2026-07-01..2026-09-30 by kind and category; read 9 lines and \"Tax checklist\"; wrote \"Tax pack — 2026-07-01 to 2026-09-30\"",
+ "documents": [
+  {
+   "title": "Tax pack — 2026-07-01 to 2026-09-30",
+   "content": "Tax pack — 2026-07-01 to 2026-09-30\nincome 36,000.00, expenses 3,100.20 across 3 categories, tax paid 2,400.00, 2 lines missing a receipt or memo\n\n## Income\n| Month | Income lines | Paid invoices | Total |\n| --- | --- | --- | --- |\n| 2026-07 | 0.00 | 12,000.00 | 12,000.00 |\n| 2026-08 | 0.00 | 12,000.00 | 12,000.00 |\n| 2026-09 | 0.00 | 12,000.00 | 12,000.00 |\n- Open at period end: INV-1041 Cedar Ltd 9,600.00 (not income yet).\n\n## Deductible expenses\n| Category | Lines | Total |\n| --- | --- | --- |\n| hosting | 2 | 1,446.00 |\n| travel | 1 | 1,640.00 |\n| meals (flag) | 1 | 14.20 |\n\n## Tax already paid\n- 2026-07-31 Tax office — 2,400.00 (VAT, Q2).\n\n## Missing\n| Id | Date | Counterparty | Amount | Missing |\n| --- | --- | --- | --- | --- |\n| 7c1e0000 | 2026-08-14 | Corner Café | 14.20 | ref, memo |\n| 91ab0000 | 2026-09-02 | Rail Co | 1,640.00 | ref |\n\n## For the accountant\n- \"Vehicle costs\": not in the ledger; nearest is travel: 1,640.00.\n- \"VAT paid\": 2,400.00 on 2026-07-31."
+  }
+ ]
+}

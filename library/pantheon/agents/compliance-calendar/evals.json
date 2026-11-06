@@ -1,0 +1,496 @@
+{
+ "cases": [
+  {
+   "id": "one-overdue-three-this-month",
+   "about": "A register with a passed date, two dates this month and two next quarter, plus a vendor deadline already reminded: two reminders set seven days ahead, the reminded one not repeated, the notebook kept.",
+   "inputs": {
+    "register": "Obligations",
+    "at": "09:00"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "ob1",
+      "title": "Obligations",
+      "content": "Obligations\n\n| Obligation | Due | Owner | Done |\n| Data protection fee renewal | 2026-11-01 | Lee Park | |\n| Employers' liability insurance renewal | 2026-11-20 | Sam Oduya | |\n| TLS certificate, shop.acme.example | 2026-11-25 | | |\n| Annual policy review | 2027-01-31 | Lee Park | |\n| VAT return, Q4 | 2027-02-07 | finance | |\n"
+     },
+     {
+      "id": "vr1",
+      "title": "Vendor register — 2026-11-09",
+      "content": "Vendor register — 2026-11-09\n\n## Renewing soon\n- Ledgerly — notice deadline 2026-12-02 — owner Lee Park\n"
+     }
+    ]
+   },
+   "notebook": "- reminded: Ledgerly notice deadline 2026-12-02",
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Obligations"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "ob1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Vendor register"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "vr1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Licence audit"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_calendar",
+       {
+        "action": "create_event",
+        "summary": "Due: Employers' liability insurance renewal (Sam Oduya)",
+        "dtstart": "2026-11-13T09:00:00",
+        "dtend": "2026-11-13T09:15:00",
+        "description": "Renew the employers' liability insurance by 2026-11-20. Source: Obligations."
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_calendar",
+       {
+        "action": "create_event",
+        "summary": "Due: TLS certificate, shop.acme.example (no owner)",
+        "dtstart": "2026-11-18T09:00:00",
+        "dtend": "2026-11-18T09:15:00",
+        "description": "Renew the TLS certificate for shop.acme.example by 2026-11-25. Source: Obligations."
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Compliance calendar — 2026-11-09",
+        "content": "Compliance calendar — 2026-11-09\n1 overdue, 3 due within 31 days, 1 without an owner; 2 reminders set\n\n## Overdue\n- Data protection fee renewal — due 2026-11-01 — 8 days late — owner: Lee Park — \"Obligations\".\n\n## Due this month\n- Employers' liability insurance renewal — 2026-11-20 — owner: Sam Oduya — reminder 2026-11-13 — \"Obligations\".\n- TLS certificate, shop.acme.example — 2026-11-25 — owner: none — reminder 2026-11-18 — \"Obligations\".\n- Ledgerly notice deadline — 2026-12-02 — owner: Lee Park — reminded 2026-11-02 — \"Vendor register — 2026-11-09\".\n\n## No owner\n- TLS certificate, shop.acme.example — 2026-11-25.\n\n## Next quarter\n| Obligation | Date | Owner |\n| --- | --- | --- |\n| Annual policy review | 2027-01-31 | Lee Park |\n| VAT return, Q4 | 2027-02-07 | finance |\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "1 overdue (data protection fee, 8 days), 3 due within 31 days; 2 reminders set.\n\n## Report\n- read \"Obligations\" and 1 vendor register; set 2 reminders; wrote \"Compliance calendar — 2026-11-09\"\n\n## Carry forward\n- reminded: Employers' liability insurance renewal 2026-11-20; TLS certificate shop.acme.example 2026-11-25; Ledgerly notice deadline 2026-12-02"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Compliance calendar — 2026-11-09",
+      "contains": [
+       "## Overdue\n- Data protection fee renewal",
+       "reminder 2026-11-13",
+       "reminded 2026-11-02",
+       "## No owner\n- TLS certificate",
+       "| VAT return, Q4 | 2027-02-07 |"
+      ],
+      "lacks": [
+       "done",
+       "## Overdue\n- none"
+      ]
+     }
+    },
+    {
+     "notebook_contains": "TLS certificate shop.acme.example 2026-11-25"
+    }
+   ]
+  },
+  {
+   "id": "no-obligations-document",
+   "about": "Nothing lists under the title: the calendar is built from the vendor register alone, says so, and the answer asks for the register's title.",
+   "inputs": {
+    "register": "Obligations",
+    "at": "09:00"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "vr1",
+      "title": "Vendor register — 2026-11-09",
+      "content": "Vendor register — 2026-11-09\n\n## Renewing soon\n- Ledgerly — notice deadline 2026-12-02 — owner Lee Park\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Obligations"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Vendor register"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "vr1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Licence audit"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_calendar",
+       {
+        "action": "create_event",
+        "summary": "Due: Ledgerly notice deadline (Lee Park)",
+        "dtstart": "2026-11-25T09:00:00",
+        "dtend": "2026-11-25T09:15:00",
+        "description": "Give Ledgerly notice by 2026-12-02 or it renews. Source: Vendor register — 2026-11-09."
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Compliance calendar — 2026-11-09",
+        "content": "Compliance calendar — 2026-11-09\n0 overdue, 1 due within 31 days, 0 without an owner; 1 reminder set — from the vendor register only, no \"Obligations\" document found\n\n## Overdue\n- none known\n\n## Due this month\n- Ledgerly notice deadline — 2026-12-02 — owner: Lee Park — reminder 2026-11-25 — \"Vendor register — 2026-11-09\".\n\n## No owner\n- none\n\n## Next quarter\n- none known\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "No \"Obligations\" document — built from the vendor register alone; what is the register called?\n\n## Report\n- nothing listed under Obligations; read 1 vendor register; set 1 reminder; wrote \"Compliance calendar — 2026-11-09\"\n\n## Carry forward\n- reminded: Ledgerly notice deadline 2026-12-02"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Compliance calendar",
+      "contains": [
+       "no \"Obligations\" document found"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "the-register-cannot-be-read",
+   "about": "The register answers an error on read: no reminders are set, the document says why under Overdue.",
+   "inputs": {
+    "register": "Obligations",
+    "at": "09:00"
+   },
+   "world": {
+    "documents": []
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Obligations"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "ob-gone"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Vendor register"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Licence audit"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Compliance calendar — 2026-11-09",
+        "content": "Compliance calendar — 2026-11-09\n0 overdue, 0 due within 31 days, 0 without an owner; 0 reminders set\n\n## Overdue\n- unknown: \"Obligations\" would not open (the read answered an error); nothing was reminded.\n\n## Due this month\n- unknown\n\n## No owner\n- unknown\n\n## Next quarter\n- unknown\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "The register would not open; no reminders set.\n\n## Report\n- 1 read failed; wrote \"Compliance calendar — 2026-11-09\"\n\n## Carry forward\n- reminded: none"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Compliance calendar",
+      "contains": [
+       "would not open"
+      ]
+     }
+    },
+    {
+     "not_called": "manage_calendar"
+    }
+   ]
+  },
+  {
+   "id": "it-never-marks-done-or-reminds-twice",
+   "about": "Every date this month is already in the notebook: no event is made, each row says reminded, and the overdue row stays at the top unmarked.",
+   "inputs": {
+    "register": "Obligations",
+    "at": "09:00"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "ob1",
+      "title": "Obligations",
+      "content": "Obligations\n\n| Obligation | Due | Owner | Done |\n| Data protection fee renewal | 2026-11-01 | Lee Park | |\n| Employers' liability insurance renewal | 2026-11-20 | Sam Oduya | |\n| TLS certificate, shop.acme.example | 2026-11-25 | | |\n| Annual policy review | 2027-01-31 | Lee Park | |\n| VAT return, Q4 | 2027-02-07 | finance | |\n"
+     }
+    ]
+   },
+   "notebook": "- reminded: Employers' liability insurance renewal 2026-11-20; TLS certificate shop.acme.example 2026-11-25",
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Obligations"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "ob1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Vendor register"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Licence audit"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Compliance calendar — 2026-11-09",
+        "content": "Compliance calendar — 2026-11-09\n1 overdue, 2 due within 31 days, 1 without an owner; 0 reminders set\n\n## Overdue\n- Data protection fee renewal — due 2026-11-01 — 8 days late — owner: Lee Park — \"Obligations\".\n\n## Due this month\n- Employers' liability insurance renewal — 2026-11-20 — owner: Sam Oduya — reminded 2026-11-02 — \"Obligations\".\n- TLS certificate, shop.acme.example — 2026-11-25 — owner: none — reminded 2026-11-02 — \"Obligations\".\n\n## No owner\n- TLS certificate, shop.acme.example — 2026-11-25.\n\n## Next quarter\n| Obligation | Date | Owner |\n| --- | --- | --- |\n| Annual policy review | 2027-01-31 | Lee Park |\n| VAT return, Q4 | 2027-02-07 | finance |\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "1 overdue, 2 due this month, both already reminded; nothing new set.\n\n## Report\n- read \"Obligations\"; set 0 reminders; wrote \"Compliance calendar — 2026-11-09\"\n\n## Carry forward\n- reminded: Employers' liability insurance renewal 2026-11-20; TLS certificate shop.acme.example 2026-11-25"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Compliance calendar",
+      "contains": [
+       "## Overdue\n- Data protection fee renewal",
+       "reminded 2026-11-02"
+      ],
+      "lacks": [
+       "— done",
+       "marked done"
+      ]
+     }
+    },
+    {
+     "not_called": "manage_calendar"
+    }
+   ]
+  },
+  {
+   "id": "a-calendar-without-its-headings-fails",
+   "about": "The harness's own check: a compliance calendar without Overdue, Due this month, No owner and Next quarter does not deliver, even after its repair pass.",
+   "inputs": {
+    "register": "Obligations",
+    "at": "09:00"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "ob1",
+      "title": "Obligations",
+      "content": "Obligations\n\n| Obligation | Due | Owner | Done |\n| Data protection fee renewal | 2026-11-01 | Lee Park | |\n| Employers' liability insurance renewal | 2026-11-20 | Sam Oduya | |\n| TLS certificate, shop.acme.example | 2026-11-25 | | |\n| Annual policy review | 2027-01-31 | Lee Park | |\n| VAT return, Q4 | 2027-02-07 | finance | |\n"
+     },
+     {
+      "id": "vr1",
+      "title": "Vendor register — 2026-11-09",
+      "content": "Vendor register — 2026-11-09\n\n## Renewing soon\n- Ledgerly — notice deadline 2026-12-02 — owner Lee Park\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Obligations"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "ob1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Compliance calendar — 2026-11-09",
+        "content": "Insurance is due soon."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done\n\n## Carry forward\n- nothing"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

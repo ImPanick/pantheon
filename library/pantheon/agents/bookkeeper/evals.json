@@ -1,0 +1,509 @@
+{
+ "cases": [
+  {
+   "id": "four-lines-posted-one-skipped",
+   "about": "A five-row statement against a ledger that already holds the first row: four are posted with the categories earlier lines gave (Figma stays software), the duplicate is skipped, the café is uncategorised and listed to check.",
+   "inputs": {
+    "statement": "statements/2026-11.csv",
+    "account": "bank",
+    "at": "08:00"
+   },
+   "world": {
+    "files": {
+     "statements/2026-11.csv": "date,description,amount\n2026-11-01,HETZNER ONLINE,-120.50\n2026-11-03,ACME LTD INVOICE 1040,3000.00\n2026-11-04,FIGMA INC,-49.99\n2026-11-05,HETZNER ONLINE,-120.50\n2026-11-06,CORNER CAFE,-14.20\n"
+    },
+    "ledger": [
+     {
+      "id": "l1",
+      "date": "2026-11-01",
+      "kind": "expense",
+      "amount": 120.5,
+      "counterparty": "Hetzner",
+      "category": "hosting",
+      "account": "bank",
+      "ref": "R0012345"
+     },
+     {
+      "id": "l0",
+      "date": "2026-10-04",
+      "kind": "expense",
+      "amount": 49.99,
+      "counterparty": "Figma",
+      "category": "software",
+      "account": "bank"
+     }
+    ]
+   },
+   "notebook": "- last import: 2026-11-01 (statements/2026-11.csv); categories used: hosting, software",
+   "script": [
+    {
+     "call": [
+      [
+       "ledger_table",
+       {
+        "action": "list",
+        "account": "bank",
+        "limit": 200
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "statements/2026-11.csv"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "ledger_table",
+       {
+        "action": "import",
+        "rows": [
+         {
+          "date": "2026-11-03",
+          "kind": "income",
+          "amount": 3000,
+          "account": "bank",
+          "counterparty": "Acme Ltd",
+          "category": "sales",
+          "memo": "ACME LTD INVOICE 1040"
+         },
+         {
+          "date": "2026-11-04",
+          "kind": "expense",
+          "amount": 49.99,
+          "account": "bank",
+          "counterparty": "Figma",
+          "category": "software",
+          "memo": "FIGMA INC"
+         },
+         {
+          "date": "2026-11-05",
+          "kind": "expense",
+          "amount": 120.5,
+          "account": "bank",
+          "counterparty": "Hetzner",
+          "category": "hosting",
+          "memo": "HETZNER ONLINE"
+         },
+         {
+          "date": "2026-11-06",
+          "kind": "expense",
+          "amount": 14.2,
+          "account": "bank",
+          "counterparty": "Corner Café",
+          "category": "uncategorised",
+          "memo": "CORNER CAFE"
+         }
+        ]
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "ledger_table",
+       {
+        "action": "sum",
+        "from": "2026-11-01",
+        "to": "2026-11-09",
+        "group_by": "category"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Books — November 2026, week of 2026-11-09",
+        "content": "Books — November 2026, week of 2026-11-09\n4 lines posted, 1 skipped, 1 to check\n\n## Imported\n| Date | Counterparty | Kind | Category | Amount |\n| --- | --- | --- | --- | --- |\n| 2026-11-03 | Acme Ltd | income | sales | 3,000.00 |\n| 2026-11-04 | Figma | expense | software | 49.99 |\n| 2026-11-05 | Hetzner | expense | hosting | 120.50 |\n| 2026-11-06 | Corner Café | expense | uncategorised | 14.20 |\n\n## Skipped\n- 2026-11-01 Hetzner 120.50 — already in the ledger.\n\n## By category\n| Category | Lines | Total |\n| --- | --- | --- |\n| sales | 1 | 3,000.00 |\n| hosting | 2 | 241.00 |\n| software | 1 | 49.99 |\n| uncategorised | 1 | 14.20 |\n\n## To check\n- 2026-11-06 Corner Café 14.20 — no earlier line names it; posted as uncategorised.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "4 lines posted to the ledger, 1 skipped as a duplicate, 1 to categorise (Corner Café).\n\n## Report\n- read statements/2026-11.csv (5 rows); imported 4; wrote \"Books — November 2026, week of 2026-11-09\"\n\n## Carry forward\n- last import: 2026-11-06 (statements/2026-11.csv); categories used: sales, software, hosting, uncategorised"
+    }
+   ],
+   "checks": [
+    {
+     "ledger": {
+      "contains": [
+       "Corner Café",
+       "Acme Ltd",
+       "software"
+      ],
+      "count": 6
+     }
+    },
+    {
+     "document": {
+      "title": "Books — November 2026, week of 2026-11-09",
+      "contains": [
+       "## Skipped\n- 2026-11-01 Hetzner",
+       "| Figma | expense | software |",
+       "## To check\n- 2026-11-06 Corner Café"
+      ]
+     }
+    },
+    {
+     "notebook_contains": "last import: 2026-11-06"
+    }
+   ]
+  },
+  {
+   "id": "no-new-lines",
+   "about": "Every row is on or before the last import: nothing is posted, the ledger is unchanged, and the document says the books are current.",
+   "inputs": {
+    "statement": "statements/2026-11.csv",
+    "account": "bank",
+    "at": "08:00"
+   },
+   "world": {
+    "files": {
+     "statements/2026-11.csv": "date,description,amount\n2026-11-01,HETZNER ONLINE,-120.50\n"
+    },
+    "ledger": [
+     {
+      "id": "l1",
+      "date": "2026-11-01",
+      "kind": "expense",
+      "amount": 120.5,
+      "counterparty": "Hetzner",
+      "category": "hosting",
+      "account": "bank",
+      "ref": "R0012345"
+     },
+     {
+      "id": "l0",
+      "date": "2026-10-04",
+      "kind": "expense",
+      "amount": 49.99,
+      "counterparty": "Figma",
+      "category": "software",
+      "account": "bank"
+     }
+    ]
+   },
+   "notebook": "- last import: 2026-11-01 (statements/2026-11.csv); categories used: hosting, software",
+   "script": [
+    {
+     "call": [
+      [
+       "ledger_table",
+       {
+        "action": "list",
+        "account": "bank",
+        "limit": 200
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "statements/2026-11.csv"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "ledger_table",
+       {
+        "action": "sum",
+        "from": "2026-11-01",
+        "to": "2026-11-09",
+        "group_by": "category"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Books — November 2026, week of 2026-11-09",
+        "content": "Books — November 2026, week of 2026-11-09\n0 lines posted, 1 skipped, 0 to check\n\n## Imported\n- none: the books are current.\n\n## Skipped\n- 2026-11-01 Hetzner 120.50 — already in the ledger.\n\n## By category\n| Category | Lines | Total |\n| --- | --- | --- |\n| hosting | 1 | 120.50 |\n\n## To check\n- none\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Nothing new: the one row is already in the ledger; the books are current.\n\n## Report\n- read statements/2026-11.csv (1 row); imported 0; wrote \"Books — November 2026, week of 2026-11-09\"\n\n## Carry forward\n- last import: 2026-11-01 (statements/2026-11.csv); categories used: hosting, software"
+    }
+   ],
+   "checks": [
+    {
+     "ledger": {
+      "count": 2
+     }
+    },
+    {
+     "document": {
+      "title": "Books",
+      "contains": [
+       "## Imported\n- none"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "the-statement-cannot-be-read",
+   "about": "The file is not there: nothing is posted, To check names the file, and the answer says the books were not updated.",
+   "inputs": {
+    "statement": "statements/2026-11.csv",
+    "account": "bank",
+    "at": "08:00"
+   },
+   "world": {
+    "ledger": [
+     {
+      "id": "l1",
+      "date": "2026-11-01",
+      "kind": "expense",
+      "amount": 120.5,
+      "counterparty": "Hetzner",
+      "category": "hosting",
+      "account": "bank",
+      "ref": "R0012345"
+     },
+     {
+      "id": "l0",
+      "date": "2026-10-04",
+      "kind": "expense",
+      "amount": 49.99,
+      "counterparty": "Figma",
+      "category": "software",
+      "account": "bank"
+     }
+    ]
+   },
+   "notebook": "- last import: 2026-11-01 (statements/2026-11.csv); categories used: hosting, software",
+   "script": [
+    {
+     "call": [
+      [
+       "ledger_table",
+       {
+        "action": "list",
+        "account": "bank",
+        "limit": 200
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "statements/2026-11.csv"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Books — November 2026, week of 2026-11-09",
+        "content": "Books — November 2026, week of 2026-11-09\n0 lines posted, 0 skipped, 1 to check\n\n## Imported\n- none: the statement could not be read.\n\n## Skipped\n- none\n\n## By category\n- not summed: nothing was posted this week.\n\n## To check\n- statements/2026-11.csv: not found in your projects folder. Export the statement there and run again.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "The books were not updated: statements/2026-11.csv is not in your projects folder.\n\n## Report\n- read_file refused statements/2026-11.csv; imported 0; wrote \"Books — November 2026, week of 2026-11-09\"\n\n## Carry forward\n- last import: 2026-11-01 (statements/2026-11.csv); categories used: hosting, software"
+    }
+   ],
+   "checks": [
+    {
+     "ledger": {
+      "count": 2
+     }
+    },
+    {
+     "document": {
+      "title": "Books",
+      "contains": [
+       "## To check\n- statements/2026-11.csv"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-row-contradicts-the-ledger-and-nothing-is-changed",
+   "about": "A row carries the ledger's reference with another amount: it is not posted, the existing line keeps its amount, and To check shows both figures.",
+   "inputs": {
+    "statement": "statements/2026-11.csv",
+    "account": "bank",
+    "at": "08:00"
+   },
+   "world": {
+    "files": {
+     "statements/2026-11.csv": "date,description,amount\n2026-11-02,HETZNER ONLINE R0012345,-125.50\n"
+    },
+    "ledger": [
+     {
+      "id": "l1",
+      "date": "2026-11-01",
+      "kind": "expense",
+      "amount": 120.5,
+      "counterparty": "Hetzner",
+      "category": "hosting",
+      "account": "bank",
+      "ref": "R0012345"
+     },
+     {
+      "id": "l0",
+      "date": "2026-10-04",
+      "kind": "expense",
+      "amount": 49.99,
+      "counterparty": "Figma",
+      "category": "software",
+      "account": "bank"
+     }
+    ]
+   },
+   "notebook": "- last import: 2026-11-01 (statements/2026-11.csv); categories used: hosting, software",
+   "script": [
+    {
+     "call": [
+      [
+       "ledger_table",
+       {
+        "action": "list",
+        "account": "bank",
+        "limit": 200
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "statements/2026-11.csv"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "ledger_table",
+       {
+        "action": "sum",
+        "from": "2026-11-01",
+        "to": "2026-11-09",
+        "group_by": "category"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Books — November 2026, week of 2026-11-09",
+        "content": "Books — November 2026, week of 2026-11-09\n0 lines posted, 0 skipped, 1 to check\n\n## Imported\n- none\n\n## Skipped\n- none\n\n## By category\n| Category | Lines | Total |\n| --- | --- | --- |\n| hosting | 1 | 120.50 |\n\n## To check\n- 2026-11-02 Hetzner R0012345: the statement says 125.50, the ledger line (l1) says 120.50. Not posted; settle which is right.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "One row contradicts the ledger (Hetzner R0012345: 125.50 vs 120.50); not posted, nothing changed.\n\n## Report\n- read statements/2026-11.csv (1 row); imported 0; wrote \"Books — November 2026, week of 2026-11-09\"\n\n## Carry forward\n- last import: 2026-11-01 (statements/2026-11.csv); categories used: hosting, software"
+    }
+   ],
+   "checks": [
+    {
+     "ledger": {
+      "contains": [
+       "120.50"
+      ],
+      "lacks": [
+       "125.50"
+      ],
+      "count": 2
+     }
+    },
+    {
+     "document": {
+      "title": "Books",
+      "contains": [
+       "125.50",
+       "120.50"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "books-without-their-headings-fail",
+   "about": "The harness's own check: a books document without Imported, Skipped, By category and To check does not deliver, even after its repair pass.",
+   "inputs": {
+    "statement": "statements/2026-11.csv",
+    "account": "bank",
+    "at": "08:00"
+   },
+   "world": {
+    "files": {
+     "statements/2026-11.csv": "date,description,amount\n2026-11-01,HETZNER ONLINE,-120.50\n2026-11-03,ACME LTD INVOICE 1040,3000.00\n2026-11-04,FIGMA INC,-49.99\n2026-11-05,HETZNER ONLINE,-120.50\n2026-11-06,CORNER CAFE,-14.20\n"
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "statements/2026-11.csv"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Books — November 2026, week of 2026-11-09",
+        "content": "Posted some lines."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done\n\n## Carry forward\n- none"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

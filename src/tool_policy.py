@@ -116,6 +116,7 @@ _COMMON_TOOL_NAMES = {
     "manage_mcp",
     "manage_memory",
     "manage_notes",
+    "ledger_table",       # `P24-30`
     "manage_research",
     "manage_session",
     "manage_settings",

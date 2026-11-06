@@ -1,0 +1,457 @@
+{
+ "cases": [
+  {
+   "id": "a-slot-inside-the-window",
+   "about": "The candidate rules out Wednesday: Tuesday 14:00 is held once, two drafts are written and none sent, the conflict quoted.",
+   "inputs": {
+    "candidate": "Priya Nair",
+    "email": "priya@example.com",
+    "panel": [
+     "sam@acme.example",
+     "lee@acme.example"
+    ],
+    "window": "Tue 11 to Thu 13 Nov 2026, afternoons",
+    "length": "45 minutes"
+   },
+   "world": {
+    "emails": [
+     {
+      "id": "pm1",
+      "from": "priya@example.com",
+      "subject": "Re: next steps",
+      "body": "Thanks — any afternoon that week works except Wednesday, when I am travelling.",
+      "date": "2026-11-06"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "Priya Nair",
+        "max_results": 10
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "pm1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_calendar",
+       {
+        "action": "create_event",
+        "summary": "HOLD — interview: Priya Nair",
+        "dtstart": "2026-11-11T14:00:00",
+        "dtend": "2026-11-11T14:45:00",
+        "description": "Panel: sam@acme.example, lee@acme.example. Not confirmed until the invitations are sent."
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "draft_email",
+       {
+        "to": "priya@example.com",
+        "subject": "Interview on Tue 11 Nov, 14:00",
+        "body": "Hello Priya,\n\nCould we meet on Tuesday 11 November at 14:00 (London time) for 45 minutes? You would talk with Sam, our engineering lead, and Lee from product.\n\nIf that time does not work, reply with one that does and we will move it.\n\nBest wishes"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "draft_email",
+       {
+        "to": "sam@acme.example, lee@acme.example",
+        "subject": "Interview: Priya Nair, Tue 11 Nov 14:00",
+        "body": "Interview with Priya Nair, Tuesday 11 November, 14:00–14:45. Shortlist: \"Applicant shortlist — backend engineer\". Sam covers the systems questions, Lee the product ones. Say if the slot does not work."
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Interview schedule — Priya Nair",
+        "content": "Interview schedule — Priya Nair\nTue 11 Nov 14:00–14:45 (Europe/London) — held, 2 drafts waiting\n\n## Proposed\n- Tue 11 Nov, 14:00–14:45; panel: Sam Oduya, Lee Park; hold \"HOLD — interview: Priya Nair\".\n\n## Drafts\n- To priya@example.com — \"Interview on Tue 11 Nov, 14:00\" — the slot, 45 minutes, Sam and Lee by first name and role, a line to reply if it does not work.\n- To sam@acme.example, lee@acme.example — \"Interview: Priya Nair, Tue 11 Nov 14:00\" — the slot, the shortlist, who covers what.\n\n## Conflicts\n- Priya's mail of 6 Nov: \"Wednesday, when I am travelling\" — Wednesday skipped.\n\n## Not sent\n- Both drafts wait in Drafts; Lee has not said the slot works — the panel draft asks.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Tue 11 Nov 14:00–14:45, held; two drafts wait for you.\n\n## Report\n- read 1 mail; held 1 slot; drafted 2 emails; wrote \"Interview schedule — Priya Nair\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Interview schedule — Priya Nair",
+      "contains": [
+       "## Proposed\n- Tue 11 Nov, 14:00",
+       "## Conflicts\n- Priya's mail",
+       "## Not sent\n- Both drafts"
+      ]
+     }
+    },
+    {
+     "drafts_at_most": 2
+    },
+    {
+     "not_called": "send_email"
+    }
+   ]
+  },
+  {
+   "id": "no-availability-from-anyone",
+   "about": "No mail from the candidate: the window's first slot is held, the candidate's draft asks them to confirm or offer another, Conflicts says none known.",
+   "inputs": {
+    "candidate": "Priya Nair",
+    "email": "priya@example.com",
+    "panel": [
+     "sam@acme.example",
+     "lee@acme.example"
+    ],
+    "window": "Tue 11 to Thu 13 Nov 2026, afternoons",
+    "length": "45 minutes"
+   },
+   "world": {
+    "emails": []
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "Priya Nair",
+        "max_results": 10
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_calendar",
+       {
+        "action": "create_event",
+        "summary": "HOLD — interview: Priya Nair",
+        "dtstart": "2026-11-11T14:00:00",
+        "dtend": "2026-11-11T14:45:00",
+        "description": "Panel: sam@acme.example, lee@acme.example. Not confirmed until the invitations are sent."
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "draft_email",
+       {
+        "to": "priya@example.com",
+        "subject": "Interview on Tue 11 Nov, 14:00",
+        "body": "Hello Priya,\n\nCould we meet on Tuesday 11 November at 14:00 (London time) for 45 minutes with Sam, our engineering lead, and Lee from product? If another afternoon that week suits you better, reply with it and we will move.\n\nBest wishes"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "draft_email",
+       {
+        "to": "sam@acme.example, lee@acme.example",
+        "subject": "Interview: Priya Nair, Tue 11 Nov 14:00",
+        "body": "Interview with Priya Nair, Tuesday 11 November, 14:00–14:45. Shortlist: \"Applicant shortlist — backend engineer\". Sam covers the systems questions, Lee the product ones. Say if the slot does not work."
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Interview schedule — Priya Nair",
+        "content": "Interview schedule — Priya Nair\nTue 11 Nov 14:00–14:45 (Europe/London) — held, 2 drafts waiting\n\n## Proposed\n- Tue 11 Nov, 14:00–14:45; panel: Sam Oduya, Lee Park; hold \"HOLD — interview: Priya Nair\".\n\n## Drafts\n- To priya@example.com — \"Interview on Tue 11 Nov, 14:00\" — the slot, 45 minutes, Sam and Lee by first name and role, a line to reply if it does not work.\n- To sam@acme.example, lee@acme.example — \"Interview: Priya Nair, Tue 11 Nov 14:00\" — the slot, the shortlist, who covers what.\n\n## Conflicts\n- none known: no mail from Priya was found; her draft asks her to confirm.\n\n## Not sent\n- Both drafts wait in Drafts; Lee has not said the slot works — the panel draft asks.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Tue 11 Nov 14:00–14:45 held; Priya's draft asks her to confirm.\n\n## Report\n- no mail found; held 1 slot; drafted 2 emails; wrote \"Interview schedule — Priya Nair\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Interview schedule",
+      "contains": [
+       "## Conflicts\n- none known"
+      ]
+     }
+    },
+    {
+     "not_called": "read_email"
+    }
+   ]
+  },
+  {
+   "id": "a-mail-refuses-to-open",
+   "about": "The candidate's mail answers an error on read: the slot is picked without it and Not sent names the mail for the person to read first.",
+   "inputs": {
+    "candidate": "Priya Nair",
+    "email": "priya@example.com",
+    "panel": [
+     "sam@acme.example",
+     "lee@acme.example"
+    ],
+    "window": "Tue 11 to Thu 13 Nov 2026, afternoons",
+    "length": "45 minutes"
+   },
+   "world": {
+    "emails": []
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "Priya Nair",
+        "max_results": 10
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "pm-gone"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_calendar",
+       {
+        "action": "create_event",
+        "summary": "HOLD — interview: Priya Nair",
+        "dtstart": "2026-11-11T14:00:00",
+        "dtend": "2026-11-11T14:45:00",
+        "description": "Panel: sam@acme.example, lee@acme.example. Not confirmed until the invitations are sent."
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "draft_email",
+       {
+        "to": "priya@example.com",
+        "subject": "Interview on Tue 11 Nov, 14:00",
+        "body": "Hello Priya,\n\nCould we meet on Tuesday 11 November at 14:00 (London time) for 45 minutes? You would talk with Sam, our engineering lead, and Lee from product.\n\nIf that time does not work, reply with one that does and we will move it.\n\nBest wishes"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "draft_email",
+       {
+        "to": "sam@acme.example, lee@acme.example",
+        "subject": "Interview: Priya Nair, Tue 11 Nov 14:00",
+        "body": "Interview with Priya Nair, Tuesday 11 November, 14:00–14:45. Shortlist: \"Applicant shortlist — backend engineer\". Sam covers the systems questions, Lee the product ones. Say if the slot does not work."
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Interview schedule — Priya Nair",
+        "content": "Interview schedule — Priya Nair\nTue 11 Nov 14:00–14:45 (Europe/London) — held, 2 drafts waiting\n\n## Proposed\n- Tue 11 Nov, 14:00–14:45; panel: Sam Oduya, Lee Park; hold \"HOLD — interview: Priya Nair\".\n\n## Drafts\n- To priya@example.com — \"Interview on Tue 11 Nov, 14:00\" — the slot, 45 minutes, Sam and Lee by first name and role, a line to reply if it does not work.\n- To sam@acme.example, lee@acme.example — \"Interview: Priya Nair, Tue 11 Nov 14:00\" — the slot, the shortlist, who covers what.\n\n## Conflicts\n- Priya's mail of 6 Nov: \"Wednesday, when I am travelling\" — Wednesday skipped.\n\n## Not sent\n- Both drafts wait in Drafts; Priya's mail \"Re: next steps\" would not open — read it before sending, it may rule the slot out.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Tue 11 Nov 14:00 held; one of Priya's mails would not open — read it before sending.\n\n## Report\n- 1 mail failed to open; held 1 slot; drafted 2 emails; wrote \"Interview schedule — Priya Nair\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Interview schedule",
+      "contains": [
+       "would not open"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "the-candidate-and-the-window-disagree",
+   "about": "Every time the candidate offered is outside the window: nothing is held or drafted, Conflicts quotes their line, and the answer asks to widen the window.",
+   "inputs": {
+    "candidate": "Priya Nair",
+    "email": "priya@example.com",
+    "panel": [
+     "sam@acme.example",
+     "lee@acme.example"
+    ],
+    "window": "Tue 11 to Thu 13 Nov 2026, afternoons",
+    "length": "45 minutes"
+   },
+   "world": {
+    "emails": [
+     {
+      "id": "pm2",
+      "from": "priya@example.com",
+      "subject": "Re: next steps",
+      "body": "I can only do mornings that week, or any time the week after.",
+      "date": "2026-11-06"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "Priya Nair",
+        "max_results": 10
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "pm2"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Interview schedule — Priya Nair",
+        "content": "Interview schedule — Priya Nair\nno slot — nothing held, 0 drafts\n\n## Proposed\n- none: every time Priya offered is outside the window.\n\n## Drafts\n- none\n\n## Conflicts\n- Priya's mail of 6 Nov: \"I can only do mornings that week, or any time the week after.\" — the window is afternoons, 11–13 Nov.\n\n## Not sent\n- nothing to send; widen the window to mornings or the week after, or decline.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "No slot: Priya can only do mornings or the week after — widen the window or decline.\n\n## Report\n- read 1 mail; nothing held; wrote \"Interview schedule — Priya Nair\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Interview schedule",
+      "contains": [
+       "## Proposed\n- none"
+      ]
+     }
+    },
+    {
+     "not_called": "manage_calendar"
+    },
+    {
+     "drafts_at_most": 0
+    }
+   ]
+  },
+  {
+   "id": "a-schedule-without-its-headings-fails",
+   "about": "The harness's own check: a schedule note without Proposed, Drafts, Conflicts and Not sent does not deliver, even after its repair pass.",
+   "inputs": {
+    "candidate": "Priya Nair",
+    "email": "priya@example.com",
+    "panel": [
+     "sam@acme.example",
+     "lee@acme.example"
+    ],
+    "window": "Tue 11 to Thu 13 Nov 2026, afternoons",
+    "length": "45 minutes"
+   },
+   "world": {
+    "emails": [
+     {
+      "id": "pm1",
+      "from": "priya@example.com",
+      "subject": "Re: next steps",
+      "body": "Thanks — any afternoon that week works except Wednesday, when I am travelling.",
+      "date": "2026-11-06"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "Priya Nair",
+        "max_results": 10
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Interview schedule — Priya Nair",
+        "content": "Tuesday at two."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

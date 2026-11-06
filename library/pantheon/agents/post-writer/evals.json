@@ -1,0 +1,552 @@
+{
+ "cases": [
+  {
+   "id": "two-slots-four-posts",
+   "about": "Two calendar slots on two platforms make four posts, each with the source of its number, a variant for the main slot, hashtags only from the research, and the guide's rules named. Nothing is posted.",
+   "inputs": {
+    "calendar": "Content calendar",
+    "hooks": "Hooks and hashtags",
+    "guide": "Brand voice",
+    "platforms": "LinkedIn, X"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "g1",
+      "title": "Brand voice",
+      "content": "Brand voice\n§2 No exclamation marks.\n§4 Say \"we\", never \"our team\".\n§5 One question per post.\n§6 Never red; brand colours are dark blue, cream and amber."
+     },
+     {
+      "id": "c1",
+      "title": "Content calendar",
+      "content": "Content calendar — week of 2026-11-10\n## Dates that matter\n- none\n## Slots\n- 2026-11-10 LinkedIn, X — the pilot numbers (main)\n- 2026-11-13 LinkedIn, X — the meeting cull\n"
+     },
+     {
+      "id": "h1",
+      "title": "Hooks and hashtags — four-day week, 2026-11-10",
+      "content": "Hooks and hashtags — four-day week, 2026-11-10\n## Hooks\n1. \"61 companies tried a four-day week for six months; 56 kept it.\" [1]\n2. \"We did not give people Friday off. We took Friday's work away.\" [2]\n## Hashtags\n- LinkedIn: #fourdayweek #futureofwork\n- X: #4dayweek\n## Sources\n1. example.org/pilot — \"56 of 61 companies will continue\"; \"revenue flat\".\n2. blog.example/fifth-day — \"14 standing meetings cut to 5.\"\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Brand voice"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "g1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Content calendar"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "c1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Hooks and hashtags"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "h1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Posts — week of 2026-11-10",
+        "content": "Posts — week of 2026-11-10\n4 posts for 2 slots; lead with: Tuesday, the pilot numbers\n\n## Posts\n- 2026-11-10 · LinkedIn · 61 companies tried a four-day week for six months. 56 kept it. [1]\n\n  Revenue was flat. The part everyone skips: the 5 that went back.\n\n  Would your team keep it?\n- 2026-11-10 · X · 61 companies tried a four-day week. 56 kept it. Revenue flat. Would yours? [1] #4dayweek\n- 2026-11-13 · LinkedIn · We did not give people Friday off. We took Friday's work away. [2]\n\n  14 standing meetings became 5. If you tried it, what did you cut?\n- 2026-11-13 · X · \"We took Friday's work away.\" 14 standing meetings became 5. What would you cut? [2]\n\n## Variants\n- 2026-11-10 · LinkedIn · Five companies tried a four-day week and went back. Nobody writes about them. [1] What did they see?\n\n## Hashtags\n- LinkedIn: #fourdayweek #futureofwork\n- X: #4dayweek\n- Rules kept: no exclamation marks (§2); \"we\", never \"our team\" (§4); one question per post (§5).\n\n## Image briefs\n- 2026-11-10 · LinkedIn — a plain card: \"61 tried · 56 kept\". Alt text: \"Text card reading 61 tried, 56 kept.\"\n\n## Not written\n- none\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "4 posts for 2 slots; lead with Tuesday's pilot numbers (61 tried, 56 kept).\n\n## Report\n- read \"Brand voice\", \"Content calendar\", \"Hooks and hashtags — four-day week, 2026-11-10\"; wrote \"Posts — week of 2026-11-10\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Posts — week of",
+      "contains": [
+       "56 kept it. [1]",
+       "Rules kept:",
+       "## Variants\n- 2026-11-10"
+      ],
+      "lacks": [
+       "!",
+       "save 30%"
+      ]
+     }
+    },
+    {
+     "not_called": "post_social"
+    }
+   ]
+  },
+  {
+   "id": "no-slots-this-week",
+   "about": "The calendar has no slots: the document is written with Posts saying none and the next slot named.",
+   "inputs": {
+    "calendar": "Content calendar",
+    "hooks": "Hooks and hashtags",
+    "guide": "Brand voice",
+    "platforms": "LinkedIn, X"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "g1",
+      "title": "Brand voice",
+      "content": "Brand voice\n§2 No exclamation marks.\n§4 Say \"we\", never \"our team\".\n§5 One question per post.\n§6 Never red; brand colours are dark blue, cream and amber."
+     },
+     {
+      "id": "c1",
+      "title": "Content calendar",
+      "content": "Content calendar — week of 2026-11-10\n## Dates that matter\n- none\n## Slots\n- none this week; next: 2026-11-17 LinkedIn\n"
+     },
+     {
+      "id": "h1",
+      "title": "Hooks and hashtags — four-day week, 2026-11-10",
+      "content": "Hooks and hashtags — four-day week, 2026-11-10\n## Hooks\n1. \"61 companies tried a four-day week for six months; 56 kept it.\" [1]\n2. \"We did not give people Friday off. We took Friday's work away.\" [2]\n## Hashtags\n- LinkedIn: #fourdayweek #futureofwork\n- X: #4dayweek\n## Sources\n1. example.org/pilot — \"56 of 61 companies will continue\"; \"revenue flat\".\n2. blog.example/fifth-day — \"14 standing meetings cut to 5.\"\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Brand voice"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "g1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Content calendar"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "c1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Hooks and hashtags"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "h1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Posts — week of 2026-11-10",
+        "content": "Posts — week of 2026-11-10\n0 posts for 0 slots; lead with: none\n\n## Posts\n- none: the calendar has no slots this week. Next slot: 2026-11-17 LinkedIn.\n\n## Variants\n- none\n\n## Hashtags\n- none\n\n## Image briefs\n- none\n\n## Not written\n- none\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "No posts: the calendar has no slots this week; the next is 2026-11-17 on LinkedIn.\n\n## Report\n- read 3 documents; wrote \"Posts — week of 2026-11-10\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Posts — week of",
+      "contains": [
+       "## Posts\n- none"
+      ]
+     }
+    },
+    {
+     "not_called": "post_social"
+    }
+   ]
+  },
+  {
+   "id": "the-voice-guide-cannot-be-read",
+   "about": "No guide document: the posts are written plain, Not written says they are unreviewed, and the answer says so first.",
+   "inputs": {
+    "calendar": "Content calendar",
+    "hooks": "Hooks and hashtags",
+    "guide": "Brand voice",
+    "platforms": "LinkedIn, X"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "c1",
+      "title": "Content calendar",
+      "content": "Content calendar — week of 2026-11-10\n## Dates that matter\n- none\n## Slots\n- 2026-11-10 LinkedIn, X — the pilot numbers (main)\n- 2026-11-13 LinkedIn, X — the meeting cull\n"
+     },
+     {
+      "id": "h1",
+      "title": "Hooks and hashtags — four-day week, 2026-11-10",
+      "content": "Hooks and hashtags — four-day week, 2026-11-10\n## Hooks\n1. \"61 companies tried a four-day week for six months; 56 kept it.\" [1]\n2. \"We did not give people Friday off. We took Friday's work away.\" [2]\n## Hashtags\n- LinkedIn: #fourdayweek #futureofwork\n- X: #4dayweek\n## Sources\n1. example.org/pilot — \"56 of 61 companies will continue\"; \"revenue flat\".\n2. blog.example/fifth-day — \"14 standing meetings cut to 5.\"\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Brand voice"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Content calendar"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "c1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Hooks and hashtags"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "h1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Posts — week of 2026-11-10",
+        "content": "Posts — week of 2026-11-10\n4 posts for 2 slots; lead with: Tuesday, the pilot numbers\n\n## Posts\n- 2026-11-10 · LinkedIn · 61 companies tried a four-day week for six months. 56 kept it. [1]\n\n  Revenue was flat. The part everyone skips: the 5 that went back.\n\n  Would your team keep it?\n- 2026-11-10 · X · 61 companies tried a four-day week. 56 kept it. Revenue flat. Would yours? [1] #4dayweek\n- 2026-11-13 · LinkedIn · We did not give people Friday off. We took Friday's work away. [2]\n\n  14 standing meetings became 5. If you tried it, what did you cut?\n- 2026-11-13 · X · \"We took Friday's work away.\" 14 standing meetings became 5. What would you cut? [2]\n\n## Variants\n- 2026-11-10 · LinkedIn · Five companies tried a four-day week and went back. Nobody writes about them. [1] What did they see?\n\n## Hashtags\n- LinkedIn: #fourdayweek #futureofwork\n- X: #4dayweek\n- Rules kept: none — no voice guide was found.\n\n## Image briefs\n- 2026-11-10 · LinkedIn — a plain card: \"61 tried · 56 kept\". Alt text: \"Text card reading 61 tried, 56 kept.\"\n\n## Not written\n- every post is unreviewed against a voice guide: no \"Brand voice\" document was found.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "No voice guide was found, so the 4 posts are unreviewed; lead with Tuesday's pilot numbers.\n\n## Report\n- no \"Brand voice\"; read \"Content calendar\" and the hooks; wrote \"Posts — week of 2026-11-10\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Posts — week of",
+      "contains": [
+       "unreviewed against a voice guide"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "the-hooks-contradict-the-calendar",
+   "about": "The slot says announce the price cut and the research says the price went up: that post is not written; both are quoted and the person is asked which is true.",
+   "inputs": {
+    "calendar": "Content calendar",
+    "hooks": "Hooks and hashtags",
+    "guide": "Brand voice",
+    "platforms": "LinkedIn, X"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "g1",
+      "title": "Brand voice",
+      "content": "Brand voice\n§2 No exclamation marks.\n§4 Say \"we\", never \"our team\".\n§5 One question per post.\n§6 Never red; brand colours are dark blue, cream and amber."
+     },
+     {
+      "id": "c1",
+      "title": "Content calendar",
+      "content": "Content calendar — week of 2026-11-10\n## Dates that matter\n- none\n## Slots\n- 2026-11-10 LinkedIn — announce the price cut (main)\n"
+     },
+     {
+      "id": "h1",
+      "title": "Hooks and hashtags — pricing, 2026-11-10",
+      "content": "Hooks and hashtags — pricing\n## Hooks\n1. \"Our plans go up 10% on 1 December.\" [1]\n## Sources\n1. pricing page — \"prices rise 10% from 1 December\".\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Brand voice"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "g1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Content calendar"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "c1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Hooks and hashtags"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "h1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Posts — week of 2026-11-10",
+        "content": "Posts — week of 2026-11-10\n0 posts for 1 slot; lead with: none until the price is confirmed\n\n## Posts\n- none\n\n## Variants\n- none\n\n## Hashtags\n- none\n\n## Image briefs\n- none\n\n## Not written\n- 2026-11-10 LinkedIn: the calendar says \"announce the price cut\"; the research quotes the pricing page, \"prices rise 10% from 1 December\". Which is true? Not written until you say.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Not written: the calendar says price cut, the research says prices rise 10% on 1 December — which is true?\n\n## Report\n- read 3 documents; wrote \"Posts — week of 2026-11-10\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Posts — week of",
+      "contains": [
+       "prices rise 10%",
+       "announce the price cut"
+      ],
+      "lacks": [
+       "price cut is here"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "posts-without-their-headings-fail",
+   "about": "The harness's own check: a posts document without Posts, Variants, Hashtags, Image briefs and Not written does not deliver, even after its repair pass.",
+   "inputs": {
+    "calendar": "Content calendar",
+    "hooks": "Hooks and hashtags",
+    "guide": "Brand voice",
+    "platforms": "LinkedIn, X"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "g1",
+      "title": "Brand voice",
+      "content": "Brand voice\n§2 No exclamation marks.\n§4 Say \"we\", never \"our team\".\n§5 One question per post.\n§6 Never red; brand colours are dark blue, cream and amber."
+     },
+     {
+      "id": "c1",
+      "title": "Content calendar",
+      "content": "Content calendar — week of 2026-11-10\n## Dates that matter\n- none\n## Slots\n- 2026-11-10 LinkedIn, X — the pilot numbers (main)\n- 2026-11-13 LinkedIn, X — the meeting cull\n"
+     },
+     {
+      "id": "h1",
+      "title": "Hooks and hashtags — four-day week, 2026-11-10",
+      "content": "Hooks and hashtags — four-day week, 2026-11-10\n## Hooks\n1. \"61 companies tried a four-day week for six months; 56 kept it.\" [1]\n2. \"We did not give people Friday off. We took Friday's work away.\" [2]\n## Hashtags\n- LinkedIn: #fourdayweek #futureofwork\n- X: #4dayweek\n## Sources\n1. example.org/pilot — \"56 of 61 companies will continue\"; \"revenue flat\".\n2. blog.example/fifth-day — \"14 standing meetings cut to 5.\"\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Brand voice"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Posts — week of 2026-11-10",
+        "content": "Here it is."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

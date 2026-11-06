@@ -70,7 +70,7 @@ def test_every_effect_a_shipped_table_names_is_carried_by_some_call_of_its_kit()
     something; an `allow` or an `ask` names what some call its run can make
     carries — so it lets something through or asks something."""
     agents, broken = catalogue(None)
-    assert broken == [] and len(agents) == 201
+    assert broken == [] and len(agents) == 259
     dead = {}
     for m in agents:
         tools, run = _carried(m)

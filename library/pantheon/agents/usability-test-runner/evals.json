@@ -1,0 +1,407 @@
+{
+ "cases": [
+  {
+   "id": "five-sessions-two-shared-stumbles",
+   "about": "An interaction spec and five sessions' notes: four tasks in the participant's words, a script that does not lead, measures, and findings counted by people with one quote each.",
+   "inputs": {
+    "feature": "order reminders by SMS",
+    "spec": "Interaction spec — the opt-in at checkout",
+    "notes": "Session notes — SMS reminders"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "is1",
+      "title": "Interaction spec — the opt-in at checkout",
+      "content": "Interaction spec — the opt-in at checkout\n4 states, 6 transitions, 5 edge states, 3 open questions\n\n## States\n- Unasked — the delivery step with the switch off and the phone field hidden; the person can turn it on or continue without it.\n- Asked — the switch on, the phone field shown and focused, Continue disabled until the field validates; the person can type, turn the switch off, or continue once valid.\n- Saved — the review step shows \"Reminder: <number>\" with Change; the person can change or place the order.\n- Declined — the review step shows no reminder line; the person can go back to add one.\n\n## Transitions\n| From | Action | To | What changes |\n| --- | --- | --- | --- |\n| Unasked | turn the switch on | Asked | phone field appears, focused; Continue disables |\n| Asked | type a valid number | Asked | Continue enables |\n| Asked | type an invalid number | Asked | \"[validation copy]\" under the field; Continue stays disabled |\n| Asked | turn the switch off | Unasked | field hides, its value kept for this session |\n| Asked | Continue (valid) | Saved | review shows the number |\n| Unasked | Continue | Declined | review shows no reminder line |\n\n## Edge states\n- Empty: the field shows the country code as a placeholder — assumed.\n- Loading: saving past a second shows Continue as busy — assumed.\n- Error: the number cannot be saved — \"[error copy]\" above Continue, the value kept — spec (\"errors are shown inline\").\n- Partial: not applicable, one field.\n- Return: back from review to delivery keeps the switch and number — assumed.\n\n## Open questions\n- If the person already has a number on their account: prefill or ask? The spec is silent.\n- Is the switch on by default for returning customers? \"opts in\" suggests off; confirm.\n- The validation copy and the error copy are not in the spec.\n"
+     },
+     {
+      "id": "sn1",
+      "title": "Session notes — SMS reminders",
+      "content": "Session notes — SMS reminders\n\nS1: Task 1 — scrolled past the switch, found it via Change on review (hint). \"I thought that was the newsletter thing.\" Task 2 ok. Task 3 ok.\nS2: Task 1 — scrolled past the switch, failed. Typed the leading zero, validation message, fixed. \"Oh, it wants it without the zero.\"\nS3: Task 1 ok. Task 2 ok. Task 3 ok.\nS4: Task 1 — scrolled past, found via Change (hint). Task 4 — looked in the confirmation email.\nS5: Task 1 ok; typed the leading zero, fixed.\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Interaction spec — the opt-in at checkout"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "is1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Session notes — SMS reminders"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "sn1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Usability test — order reminders by SMS",
+        "content": "Usability test — order reminders by SMS\n4 tasks; 5 sessions read; top finding: 3 of 5 missed the reminder switch\n\n## Tasks\n1. You are buying a mug for a friend and want a text the day before it arrives. Get to the point where you are sure you will get one. — Success: the review step shows \"Reminder: <number>\".\n2. You typed your number wrong. Fix it. — Success: the review step shows the corrected number.\n3. You changed your mind and do not want texts. Make sure you will not get one. — Success: the review step shows no reminder line.\n4. You have placed the order. Find out when the text will come. — Success: the confirmation names the day.\n\n## Script\n- Welcome: \"We are testing the checkout, not you; nothing you do is wrong. Please think out loud as you go.\"\n- Each task read verbatim; if silent for ten seconds: \"What are you thinking?\"; if stuck for a minute: \"What would you expect to happen here?\" then move on and note a fail.\n- Close: \"What was the hardest part? What would you change?\"\n\n## Measures\n- Per task: completed alone / with a hint / failed; seconds to first action; where they hesitated; one quote.\n- Sheet columns: session, task, result, first action (s), hesitation, quote.\n\n## Findings\n- The reminder switch on the delivery step — 3 of 5 scrolled past it; two found it on the review step's Change with a hint, one failed. \"I thought that was the newsletter thing.\" (Task 1)\n- The phone field's country code — 2 of 5 typed the leading zero and got the validation message; both fixed it. \"Oh, it wants it without the zero.\" (Task 1)\n- Seen once: one participant looked for the reminder in the confirmation email rather than the page (Task 4).\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "4 tasks; 5 sessions read; 3 of 5 missed the reminder switch on the delivery step.\n\n## Report\n- read the interaction spec and the session notes; wrote \"Usability test — order reminders by SMS\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Usability test — order reminders by SMS",
+      "contains": [
+       "## Tasks\n1. You are buying a mug",
+       "## Script\n- Welcome",
+       "## Findings\n- The reminder switch on the delivery step — 3 of 5",
+       "- Seen once:"
+      ],
+      "lacks": [
+       "turn on the SMS switch",
+       "S1 said",
+       "users hated"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "no-spec-or-notes",
+   "about": "Nothing lists under either title: the tasks are written from the feature's line, Findings says no sessions yet, and the answer asks for the spec.",
+   "inputs": {
+    "feature": "order reminders by SMS"
+   },
+   "world": {
+    "documents": []
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "order reminders by SMS"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Usability test — order reminders by SMS",
+        "content": "Usability test — order reminders by SMS\n4 tasks; 0 sessions read; top finding: none yet\n\nWritten from the feature's line alone; no spec was found.\n\n## Tasks\n1. You are buying a mug for a friend and want a text the day before it arrives. Get to the point where you are sure you will get one. — Success: the review step shows \"Reminder: <number>\".\n2. You typed your number wrong. Fix it. — Success: the review step shows the corrected number.\n3. You changed your mind and do not want texts. Make sure you will not get one. — Success: the review step shows no reminder line.\n4. You have placed the order. Find out when the text will come. — Success: the confirmation names the day.\n\n## Script\n- Welcome: \"We are testing the checkout, not you; nothing you do is wrong. Please think out loud as you go.\"\n- Each task read verbatim; if silent for ten seconds: \"What are you thinking?\"; if stuck for a minute: \"What would you expect to happen here?\" then move on and note a fail.\n- Close: \"What was the hardest part? What would you change?\"\n\n## Measures\n- Per task: completed alone / with a hint / failed; seconds to first action; where they hesitated; one quote.\n- Sheet columns: session, task, result, first action (s), hesitation, quote.\n\n## Findings\n- no sessions yet.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "4 tasks written from the feature's line; no spec found — which document describes it?\n\n## Report\n- nothing listed; wrote \"Usability test — order reminders by SMS\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Usability test",
+      "contains": [
+       "## Findings\n- no sessions yet"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "the-notes-cannot-be-read",
+   "about": "The notes answer an error on read: Findings says so, the plan stands.",
+   "inputs": {
+    "feature": "order reminders by SMS",
+    "spec": "Interaction spec — the opt-in at checkout",
+    "notes": "Session notes — SMS reminders"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "is1",
+      "title": "Interaction spec — the opt-in at checkout",
+      "content": "Interaction spec — the opt-in at checkout\n4 states, 6 transitions, 5 edge states, 3 open questions\n\n## States\n- Unasked — the delivery step with the switch off and the phone field hidden; the person can turn it on or continue without it.\n- Asked — the switch on, the phone field shown and focused, Continue disabled until the field validates; the person can type, turn the switch off, or continue once valid.\n- Saved — the review step shows \"Reminder: <number>\" with Change; the person can change or place the order.\n- Declined — the review step shows no reminder line; the person can go back to add one.\n\n## Transitions\n| From | Action | To | What changes |\n| --- | --- | --- | --- |\n| Unasked | turn the switch on | Asked | phone field appears, focused; Continue disables |\n| Asked | type a valid number | Asked | Continue enables |\n| Asked | type an invalid number | Asked | \"[validation copy]\" under the field; Continue stays disabled |\n| Asked | turn the switch off | Unasked | field hides, its value kept for this session |\n| Asked | Continue (valid) | Saved | review shows the number |\n| Unasked | Continue | Declined | review shows no reminder line |\n\n## Edge states\n- Empty: the field shows the country code as a placeholder — assumed.\n- Loading: saving past a second shows Continue as busy — assumed.\n- Error: the number cannot be saved — \"[error copy]\" above Continue, the value kept — spec (\"errors are shown inline\").\n- Partial: not applicable, one field.\n- Return: back from review to delivery keeps the switch and number — assumed.\n\n## Open questions\n- If the person already has a number on their account: prefill or ask? The spec is silent.\n- Is the switch on by default for returning customers? \"opts in\" suggests off; confirm.\n- The validation copy and the error copy are not in the spec.\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Interaction spec — the opt-in at checkout"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "is1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Session notes — SMS reminders"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "sn-gone"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Usability test — order reminders by SMS",
+        "content": "Usability test — order reminders by SMS\n4 tasks; 0 sessions read; top finding: none yet\n\n## Tasks\n1. You are buying a mug for a friend and want a text the day before it arrives. Get to the point where you are sure you will get one. — Success: the review step shows \"Reminder: <number>\".\n2. You typed your number wrong. Fix it. — Success: the review step shows the corrected number.\n3. You changed your mind and do not want texts. Make sure you will not get one. — Success: the review step shows no reminder line.\n4. You have placed the order. Find out when the text will come. — Success: the confirmation names the day.\n\n## Script\n- Welcome: \"We are testing the checkout, not you; nothing you do is wrong. Please think out loud as you go.\"\n- Each task read verbatim; if silent for ten seconds: \"What are you thinking?\"; if stuck for a minute: \"What would you expect to happen here?\" then move on and note a fail.\n- Close: \"What was the hardest part? What would you change?\"\n\n## Measures\n- Per task: completed alone / with a hint / failed; seconds to first action; where they hesitated; one quote.\n- Sheet columns: session, task, result, first action (s), hesitation, quote.\n\n## Findings\n- the session notes would not open (the read answered an error); the plan stands.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "4 tasks; the session notes would not open.\n\n## Report\n- read the interaction spec; 1 read failed; wrote \"Usability test — order reminders by SMS\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Usability test",
+      "contains": [
+       "would not open"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "it-never-turns-one-person-into-a-pattern",
+   "about": "One session only: everything is 1 of 1 and nothing is called shared.",
+   "inputs": {
+    "feature": "order reminders by SMS",
+    "spec": "Interaction spec — the opt-in at checkout",
+    "notes": "Session notes — SMS reminders"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "is1",
+      "title": "Interaction spec — the opt-in at checkout",
+      "content": "Interaction spec — the opt-in at checkout\n4 states, 6 transitions, 5 edge states, 3 open questions\n\n## States\n- Unasked — the delivery step with the switch off and the phone field hidden; the person can turn it on or continue without it.\n- Asked — the switch on, the phone field shown and focused, Continue disabled until the field validates; the person can type, turn the switch off, or continue once valid.\n- Saved — the review step shows \"Reminder: <number>\" with Change; the person can change or place the order.\n- Declined — the review step shows no reminder line; the person can go back to add one.\n\n## Transitions\n| From | Action | To | What changes |\n| --- | --- | --- | --- |\n| Unasked | turn the switch on | Asked | phone field appears, focused; Continue disables |\n| Asked | type a valid number | Asked | Continue enables |\n| Asked | type an invalid number | Asked | \"[validation copy]\" under the field; Continue stays disabled |\n| Asked | turn the switch off | Unasked | field hides, its value kept for this session |\n| Asked | Continue (valid) | Saved | review shows the number |\n| Unasked | Continue | Declined | review shows no reminder line |\n\n## Edge states\n- Empty: the field shows the country code as a placeholder — assumed.\n- Loading: saving past a second shows Continue as busy — assumed.\n- Error: the number cannot be saved — \"[error copy]\" above Continue, the value kept — spec (\"errors are shown inline\").\n- Partial: not applicable, one field.\n- Return: back from review to delivery keeps the switch and number — assumed.\n\n## Open questions\n- If the person already has a number on their account: prefill or ask? The spec is silent.\n- Is the switch on by default for returning customers? \"opts in\" suggests off; confirm.\n- The validation copy and the error copy are not in the spec.\n"
+     },
+     {
+      "id": "sn2",
+      "title": "Session notes — SMS reminders",
+      "content": "Session notes — SMS reminders\n\nS1: Task 1 — scrolled past the switch, found it via Change (hint). \"I thought that was the newsletter thing.\"\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Interaction spec — the opt-in at checkout"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "is1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Session notes — SMS reminders"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "sn2"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Usability test — order reminders by SMS",
+        "content": "Usability test — order reminders by SMS\n4 tasks; 1 session read; top finding: none shared yet (1 of 1 missed the switch)\n\n## Tasks\n1. You are buying a mug for a friend and want a text the day before it arrives. Get to the point where you are sure you will get one. — Success: the review step shows \"Reminder: <number>\".\n2. You typed your number wrong. Fix it. — Success: the review step shows the corrected number.\n3. You changed your mind and do not want texts. Make sure you will not get one. — Success: the review step shows no reminder line.\n4. You have placed the order. Find out when the text will come. — Success: the confirmation names the day.\n\n## Script\n- Welcome: \"We are testing the checkout, not you; nothing you do is wrong. Please think out loud as you go.\"\n- Each task read verbatim; if silent for ten seconds: \"What are you thinking?\"; if stuck for a minute: \"What would you expect to happen here?\" then move on and note a fail.\n- Close: \"What was the hardest part? What would you change?\"\n\n## Measures\n- Per task: completed alone / with a hint / failed; seconds to first action; where they hesitated; one quote.\n- Sheet columns: session, task, result, first action (s), hesitation, quote.\n\n## Findings\n- No finding is shared: one session cannot show a pattern.\n- Seen once: the reminder switch on the delivery step — 1 of 1 scrolled past it and found it via Change with a hint. \"I thought that was the newsletter thing.\" (Task 1)\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "4 tasks; 1 session read — nothing shared yet; the switch was missed once.\n\n## Report\n- read the spec and 1 session's notes; wrote \"Usability test — order reminders by SMS\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Usability test",
+      "contains": [
+       "1 of 1"
+      ],
+      "lacks": [
+       "users miss",
+       "participants missed",
+       "most people"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-test-without-its-headings-fails",
+   "about": "The harness's own check: a test plan without Tasks, Script, Measures and Findings does not deliver, even after its repair pass.",
+   "inputs": {
+    "feature": "order reminders by SMS",
+    "spec": "Interaction spec — the opt-in at checkout",
+    "notes": "Session notes — SMS reminders"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "is1",
+      "title": "Interaction spec — the opt-in at checkout",
+      "content": "Interaction spec — the opt-in at checkout\n4 states, 6 transitions, 5 edge states, 3 open questions\n\n## States\n- Unasked — the delivery step with the switch off and the phone field hidden; the person can turn it on or continue without it.\n- Asked — the switch on, the phone field shown and focused, Continue disabled until the field validates; the person can type, turn the switch off, or continue once valid.\n- Saved — the review step shows \"Reminder: <number>\" with Change; the person can change or place the order.\n- Declined — the review step shows no reminder line; the person can go back to add one.\n\n## Transitions\n| From | Action | To | What changes |\n| --- | --- | --- | --- |\n| Unasked | turn the switch on | Asked | phone field appears, focused; Continue disables |\n| Asked | type a valid number | Asked | Continue enables |\n| Asked | type an invalid number | Asked | \"[validation copy]\" under the field; Continue stays disabled |\n| Asked | turn the switch off | Unasked | field hides, its value kept for this session |\n| Asked | Continue (valid) | Saved | review shows the number |\n| Unasked | Continue | Declined | review shows no reminder line |\n\n## Edge states\n- Empty: the field shows the country code as a placeholder — assumed.\n- Loading: saving past a second shows Continue as busy — assumed.\n- Error: the number cannot be saved — \"[error copy]\" above Continue, the value kept — spec (\"errors are shown inline\").\n- Partial: not applicable, one field.\n- Return: back from review to delivery keeps the switch and number — assumed.\n\n## Open questions\n- If the person already has a number on their account: prefill or ask? The spec is silent.\n- Is the switch on by default for returning customers? \"opts in\" suggests off; confirm.\n- The validation copy and the error copy are not in the spec.\n"
+     },
+     {
+      "id": "sn1",
+      "title": "Session notes — SMS reminders",
+      "content": "Session notes — SMS reminders\n\nS1: Task 1 — scrolled past the switch, found it via Change on review (hint). \"I thought that was the newsletter thing.\" Task 2 ok. Task 3 ok.\nS2: Task 1 — scrolled past the switch, failed. Typed the leading zero, validation message, fixed. \"Oh, it wants it without the zero.\"\nS3: Task 1 ok. Task 2 ok. Task 3 ok.\nS4: Task 1 — scrolled past, found via Change (hint). Task 4 — looked in the confirmation email.\nS5: Task 1 ok; typed the leading zero, fixed.\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Interaction spec — the opt-in at checkout"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "is1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Usability test — order reminders by SMS",
+        "content": "Ask them to set up a reminder."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

@@ -13,7 +13,7 @@ triggers:
   - {on: hand}
 tools: [computer, manage_documents]
 skills: [workstation-desktop]
-needs: {connectors: [workstation], min_context: 32000, native_tools: required}
+needs: {connectors: [workstation], min_context: 32000, native_tools: required, model: [vision]}
 delivers:
   - {kind: answer, must_contain: [Filled, Left empty, Check before you submit]}
 effects: {execute_code: allow, network_egress: ask, write_private: allow, destructive: never, read_private: allow, read_workspace: allow}

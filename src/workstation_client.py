@@ -228,7 +228,46 @@ def effective_backend() -> str:
     return "vm" if vm_accel() == "kvm" else "container"
 
 
-def resolve_base() -> tuple[Optional[str], str]:
+# ── which system (`B1747`) ─────────────────────────────────────────────────────
+
+def system_pairing_token_path(system: str) -> Path:
+    return (Path(os.environ.get(P.system_pairing_dir_env(system)) or P.system_pairing_dir(system))
+            / P.TOKEN_FILENAME)
+
+
+def system_runs(system: str) -> bool:
+    """Whether the stack runs `system`'s workstation: its address is in
+    Pantheon's environment (the compose files set all of them) AND its daemon
+    has written a pairing token — which it does when it first starts, so a
+    profile nobody switched on is not offered. Ubuntu is the workstation
+    `resolve_base` has always meant, and is there whenever any is."""
+    if system == P.DEFAULT_SYSTEM:
+        return stack_provides() or bool(parse_base(str(_setting("workstation_url", "") or "")))
+    if system not in P.SYSTEMS or not parse_base(os.environ.get(P.system_url_env(system), "")):
+        return False
+    try:
+        return bool(system_pairing_token_path(system).read_text(encoding="utf-8").strip())
+    except OSError:
+        return False
+
+
+def systems_offered() -> List[str]:
+    """The systems a person may pick, in `protocol.SYSTEMS`' order. An
+    address an admin typed (another machine) is one machine: then only it."""
+    if parse_base(str(_setting("workstation_url", "") or "")):
+        return [P.DEFAULT_SYSTEM]
+    return [s for s in P.SYSTEMS if system_runs(s)]
+
+
+def system_in_use(chosen: Optional[str]) -> str:
+    """The system a person who chose `chosen` gets: theirs when the stack runs
+    it, Ubuntu otherwise — never an address nothing answers at."""
+    if chosen in P.SYSTEMS and chosen != P.DEFAULT_SYSTEM and chosen in systems_offered():
+        return chosen
+    return P.DEFAULT_SYSTEM
+
+
+def resolve_base(system: Optional[str] = None) -> tuple[Optional[str], str]:
     """`(origin, source)`: the address in effect and the layer it came from.
 
     `P20-02`. The order lives here and only here — `configured_base` is this
@@ -240,10 +279,16 @@ def resolve_base() -> tuple[Optional[str], str]:
 
     `B1478`: with both local backends configured, the environment layer is the
     one the effective backend names — the VM's address for `vm`, the
-    container's otherwise. A stored address (another machine) still wins."""
+    container's otherwise. A stored address (another machine) still wins.
+
+    `B1747`: `system` is the one a person picked (`system_in_use`); a system
+    other than Ubuntu is its own container's address, whatever the backend."""
     stored = parse_base(str(_setting("workstation_url", "") or ""))
     if stored:
         return stored, SOURCE_SETTING
+    if system and system != P.DEFAULT_SYSTEM:
+        env = parse_base(os.environ.get(P.system_url_env(system), ""))
+        return (env, SOURCE_ENVIRONMENT) if env else (None, SOURCE_NONE)
     if vm_configured() and effective_backend() == "vm":
         return parse_base(os.environ.get(P.VM_URL_ENV, "")), SOURCE_ENVIRONMENT
     env = parse_base(os.environ.get(URL_ENV, ""))
@@ -252,30 +297,38 @@ def resolve_base() -> tuple[Optional[str], str]:
     return None, SOURCE_NONE
 
 
-def configured_base() -> Optional[str]:
-    return resolve_base()[0]
+def configured_base(system: Optional[str] = None) -> Optional[str]:
+    return resolve_base(system)[0]
 
 
-def pairing_token_path() -> Path:
+def pairing_token_path(system: Optional[str] = None) -> Path:
     """The pairing token of the daemon `resolve_base` names: the VM backend's
-    own folder when that is the one in use (`B1478`)."""
+    own folder when that is the one in use (`B1478`), or the picked system's
+    (`B1747`)."""
+    if system and system != P.DEFAULT_SYSTEM \
+            and not parse_base(str(_setting("workstation_url", "") or "")):
+        return system_pairing_token_path(system)
     if vm_configured() and effective_backend() == "vm" \
             and not parse_base(str(_setting("workstation_url", "") or "")):
         return Path(os.environ.get(P.VM_PAIRING_DIR_ENV) or "/workstation-vm-pairing") / P.TOKEN_FILENAME
     return Path(os.environ.get(P.PAIRING_DIR_ENV) or P.DEFAULT_PAIRING_DIR) / P.TOKEN_FILENAME
 
 
-def resolve_token() -> tuple[str, str]:
+def resolve_token(system: Optional[str] = None) -> tuple[str, str]:
     """`(token, source)`. The value never leaves the server: the panel is told
-    the source and whether there is one, and nothing else (`P20-02`)."""
-    token = str(_setting("workstation_token", "") or "").strip()
+    the source and whether there is one, and nothing else (`P20-02`).
+    `B1747`: another system's daemon has its own token, in its own pairing
+    volume — the setting and the environment are Ubuntu's (or a remote's)."""
+    other = bool(system and system != P.DEFAULT_SYSTEM
+                 and not parse_base(str(_setting("workstation_url", "") or "")))
+    token = "" if other else str(_setting("workstation_token", "") or "").strip()
     if token:
         return token, SOURCE_SETTING
-    token = (os.environ.get(P.TOKEN_ENV) or "").strip()
+    token = "" if other else (os.environ.get(P.TOKEN_ENV) or "").strip()
     if token:
         return token, SOURCE_ENVIRONMENT
     try:
-        token = pairing_token_path().read_text(encoding="utf-8").strip()
+        token = pairing_token_path(system).read_text(encoding="utf-8").strip()
     except OSError:
         token = ""
     if token:
@@ -283,8 +336,8 @@ def resolve_token() -> tuple[str, str]:
     return "", SOURCE_NONE
 
 
-def configured_token() -> str:
-    return resolve_token()[0]
+def configured_token(system: Optional[str] = None) -> str:
+    return resolve_token(system)[0]
 
 
 def enabled_choice() -> Optional[bool]:
@@ -317,16 +370,17 @@ def enabled() -> bool:
     return stack_provides()
 
 
-def from_settings() -> Optional["WorkstationClient"]:
+def from_settings(system: Optional[str] = None) -> Optional["WorkstationClient"]:
     """The configured client, or None when the workstation is off or has no
     address. A missing token is not None — it is a client whose calls say
-    what is missing, because "off" and "misconfigured" are different answers."""
+    what is missing, because "off" and "misconfigured" are different answers.
+    `B1747`: `system` is the one the person uses (`system_in_use`)."""
     if not enabled():
         return None
-    base = configured_base()
+    base = configured_base(system)
     if not base:
         return None
-    return WorkstationClient(base, configured_token())
+    return WorkstationClient(base, configured_token(system))
 
 
 ProgressCb = Callable[[str, str], Union[None, Awaitable[None]]]
@@ -828,6 +882,42 @@ class WorkstationClient:
         return await self._call("browser", account, body, timeout=120.0 + _TIMEOUT, allow_304=True)
 
 
+    async def phone(self, account: str, action: str, *, holder: str = "agent",
+                    **fields: Any) -> Dict:
+        """`B1751`. One action on the account's phone (`ROUTES["phone"]`). A
+        daemon older than the phone answers `not_found`; that comes back as a
+        phone that is not there, with a sentence, never as a failure."""
+        if action not in P.PHONE_ACTIONS:
+            raise WorkstationError("bad_request",
+                                   f"“{action}” is not one of {', '.join(P.PHONE_ACTIONS)}.")
+        body = {"action": action, "holder": holder, **{k: v for k, v in fields.items() if v is not None}}
+        try:
+            # A screenshot after an input waits for the screen to settle, and
+            # stopping a phone saves it first.
+            return await self._call("phone", account, body, timeout=90.0 + _TIMEOUT)
+        except WorkstationError as e:
+            if e.status == 404:
+                raise WorkstationError(
+                    "unavailable", "This workstation is older than the phone. Rebuild it: "
+                                   "docker compose up -d --build.") from e
+            raise
+
+    async def phone_screen(self, account: str) -> Dict:
+        """`B1751`. `{"kind", "holder", "why"?}` for the phone's screen —
+        `browser_screen`'s answer, for the phone."""
+        try:
+            return await self._call("phone_screen", account, timeout=60.0)
+        except WorkstationError as e:
+            if e.status == 404:
+                return {"kind": None, "holder": None,
+                        "why": "This workstation is older than the phone. Rebuild it: "
+                               "docker compose up -d --build."}
+            raise
+
+    def phone_screen_stream(self, account: str, viewer: str):
+        """`B1751`. The phone's screen, as `desktop_stream` gives the desktop."""
+        return self.desktop_stream(account, viewer, route="phone_screen")
+
     async def names(self, account: str, names: Dict[str, str], pins: List[Dict[str, str]]) -> Dict:
         """`P27-04`. The account's whole set of mapped names and pinned
         certificates; answers what a command there is given."""
@@ -902,7 +992,7 @@ class WorkstationClient:
         from websockets.asyncio.client import connect
         from websockets.exceptions import InvalidStatus, WebSocketException
 
-        if route not in ("desktop", "browser_screen"):
+        if route not in ("desktop", "browser_screen", "phone_screen"):
             raise WorkstationError("bad_request", "That is not a stream the workstation serves.")
         headers = self._headers()
         verify = await self._wire()  # `P20-07`: before the token goes anywhere
@@ -1023,4 +1113,6 @@ __all__ = ["display_pin", "resolve_pin",  # `B980`
            "WorkstationUnreachable",  # `B978`, added
            "account_for", "cert_fingerprint", "configured_base", "configured_pin", "configured_token",
            "enabled", "from_settings", "gate_for", "gate_token_path", "normalise_pin",
-           "pairing_token_path", "parse_base", "resolve_base", "resolve_gate", "resolve_token"]
+           "pairing_token_path", "parse_base", "resolve_base", "resolve_gate", "resolve_token",
+           # `B1747`, added.
+           "system_in_use", "system_pairing_token_path", "system_runs", "systems_offered"]

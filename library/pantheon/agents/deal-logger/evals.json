@@ -1,0 +1,547 @@
+{
+ "cases": [
+  {
+   "id": "three-new-sources-one-deal-moves",
+   "about": "One summary already logged is skipped; Acme moves to Negotiating from the new summary, Birch stays, and Fir — not in the pipeline — goes under Not logged with the line to add. The Pipeline document is not edited.",
+   "inputs": {
+    "pipeline": "Pipeline",
+    "at": "17:30"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "p1",
+      "title": "Pipeline",
+      "content": "Pipeline\n| Account | Contact | Stage | Owner | Last touch | Next step |\n| --- | --- | --- | --- | --- | --- |\n| Acme Ltd | ana@acme.example | Proposal sent | Sam | 2026-11-03 | two-year pricing |\n| Birch & Co | bo@birch.example | Proposal sent | Sam | 2026-10-29 | check in |\n| Cedar Ltd | cal@cedar.example | Proposal sent | Sam | 2026-10-20 | await answer |\n| Elm | leo@elm.example | Discovery | Sam | 2026-10-28 | send the deck |\n| Yew | | Won | Sam | 2026-10-01 | — |\n"
+     },
+     {
+      "id": "cs-acme-1103",
+      "title": "Call summary — Acme Ltd, 2026-11-03",
+      "content": "Proposal walked through; no commitments."
+     },
+     {
+      "id": "cs-acme-1110",
+      "title": "Call summary — Acme Ltd, 2026-11-10",
+      "content": "Call summary — Acme Ltd, 2026-11-10\n3 commitments, 2 objections; next step: send the two-year pricing, Sam, 2026-11-12\n\n## Who\n- Them: Ana (Head of Finance), Tom (IT lead). Us: Sam. Stage in the pipeline: Proposal sent (2026-11-03).\n\n## What they said\n- Ana: \"The retainer works for us; the question is whether two years gets us a better rate.\"\n- Tom: \"Single sign-on is a must before IT signs off; Okta specifically.\"\n- Ana: \"Legal needs the data processing addendum before anything is signed.\"\n\n## Objections\n- Price over a two-year term — \"whether two years gets us a better rate\" — Sam said a two-year quote would follow.\n- Single sign-on missing — \"Okta specifically\" — Sam said Okta is in the next release; Tom asked for a date in writing.\n\n## Commitments\n| Who | What | When | Side |\n| --- | --- | --- | --- |\n| Sam | Send two-year pricing | 2026-11-12 | us |\n| Sam | Okta release date in writing | not said | us |\n| Ana | Introduce legal for the DPA | this week | them |\n\n## Next step\n- Send the two-year pricing by 2026-11-12 (Sam); ask Tom for a date to confirm the Okta plan, since none was agreed.\n"
+     },
+     {
+      "id": "min-birch-1109",
+      "title": "Minutes — Birch & Co check-in, 2026-11-09",
+      "content": "Bo: no change until the new CFO starts in January. Next: check in 2027-01-12."
+     },
+     {
+      "id": "cs-elm-1110",
+      "title": "Call summary — Fir, 2026-11-10",
+      "content": "First call with Fir. Next: send the deck."
+     }
+    ]
+   },
+   "notebook": "- logged: cs-acme-1103",
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Pipeline"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "p1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Call summary"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Minutes"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "cs-acme-1110"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "min-birch-1109"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "cs-elm-1110"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Deal notes — 2026-11-10",
+        "content": "Deal notes — 2026-11-10\n1 deal moved, 1 unchanged, 1 not logged\n\n## Deal\n- Acme Ltd — \"Call summary — Acme Ltd, 2026-11-10\".\n- Birch & Co — \"Minutes — Birch & Co check-in, 2026-11-09\".\n\n## What changed\n- Acme Ltd: Ana asked for two-year pricing; Tom made Okta SSO a condition; Ana is introducing legal for the DPA this week. Reading: moving toward terms, with one technical condition.\n- Birch & Co: \"no change until the new CFO starts in January\". Reading: unchanged, parked by them.\n\n## Stage\n| Account | Stage now | Stage proposed | Why |\n| --- | --- | --- | --- |\n| Acme Ltd | Proposal sent | Negotiating | pricing terms and a DPA are being worked |\n| Birch & Co | Proposal sent | Proposal sent | parked until January, their words |\n\n## Next step\n| Account | What | Owner | Date |\n| --- | --- | --- | --- |\n| Acme Ltd | Send two-year pricing | Sam | 2026-11-12 |\n| Birch & Co | Check in after the CFO starts | Sam | 2027-01-12 |\n\n## Not logged\n- \"Call summary — Fir, 2026-11-10\": Fir is not in the pipeline. Line to add: Fir — Discovery — first call 2026-11-10 — next: send the deck.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Acme moves to Negotiating (two-year pricing, Okta condition, DPA); Birch parked until January; Fir is not in the pipeline yet.\n\n## Report\n- read \"Pipeline\" and 3 new sources; wrote \"Deal notes — 2026-11-10\"\n\n## Carry forward\n- logged: cs-acme-1103, cs-acme-1110, min-birch-1109, cs-elm-1110"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Deal notes",
+      "contains": [
+       "| Acme Ltd | Proposal sent | Negotiating |",
+       "Fir is not in the pipeline",
+       "Reading:"
+      ]
+     }
+    },
+    {
+     "not_called": "update_document"
+    },
+    {
+     "notebook_contains": "cs-elm-1110"
+    }
+   ]
+  },
+  {
+   "id": "no-new-sources",
+   "about": "Every source is in the notebook: the document is written with Deal saying none, and the answer says the deals are current.",
+   "inputs": {
+    "pipeline": "Pipeline",
+    "at": "17:30"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "p1",
+      "title": "Pipeline",
+      "content": "Pipeline\n| Account | Contact | Stage | Owner | Last touch | Next step |\n| --- | --- | --- | --- | --- | --- |\n| Acme Ltd | ana@acme.example | Proposal sent | Sam | 2026-11-03 | two-year pricing |\n| Birch & Co | bo@birch.example | Proposal sent | Sam | 2026-10-29 | check in |\n| Cedar Ltd | cal@cedar.example | Proposal sent | Sam | 2026-10-20 | await answer |\n| Elm | leo@elm.example | Discovery | Sam | 2026-10-28 | send the deck |\n| Yew | | Won | Sam | 2026-10-01 | — |\n"
+     },
+     {
+      "id": "cs-acme-1103",
+      "title": "Call summary — Acme Ltd, 2026-11-03",
+      "content": "Proposal walked through."
+     }
+    ]
+   },
+   "notebook": "- logged: cs-acme-1103",
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Pipeline"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "p1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Call summary"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Minutes"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Deal notes — 2026-11-10",
+        "content": "Deal notes — 2026-11-10\n0 deals moved, 0 unchanged, 0 not logged\n\n## Deal\n- none: no call summary or minutes since the last run.\n\n## What changed\n- nothing\n\n## Stage\n- unchanged\n\n## Next step\n- as in the pipeline\n\n## Not logged\n- none\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "The deals are current: no new call summaries or minutes since the last run.\n\n## Report\n- read \"Pipeline\" and 0 new sources; wrote \"Deal notes — 2026-11-10\"\n\n## Carry forward\n- logged: cs-acme-1103"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Deal notes",
+      "contains": [
+       "## Deal\n- none"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-source-cannot-be-read",
+   "about": "One listed summary is empty: it goes under Not logged with its id and the reason; the rest are logged.",
+   "inputs": {
+    "pipeline": "Pipeline",
+    "at": "17:30"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "p1",
+      "title": "Pipeline",
+      "content": "Pipeline\n| Account | Contact | Stage | Owner | Last touch | Next step |\n| --- | --- | --- | --- | --- | --- |\n| Acme Ltd | ana@acme.example | Proposal sent | Sam | 2026-11-03 | two-year pricing |\n| Birch & Co | bo@birch.example | Proposal sent | Sam | 2026-10-29 | check in |\n| Cedar Ltd | cal@cedar.example | Proposal sent | Sam | 2026-10-20 | await answer |\n| Elm | leo@elm.example | Discovery | Sam | 2026-10-28 | send the deck |\n| Yew | | Won | Sam | 2026-10-01 | — |\n"
+     },
+     {
+      "id": "cs-acme-1110",
+      "title": "Call summary — Acme Ltd, 2026-11-10",
+      "content": "Call summary — Acme Ltd, 2026-11-10\n3 commitments, 2 objections; next step: send the two-year pricing, Sam, 2026-11-12\n\n## Who\n- Them: Ana (Head of Finance), Tom (IT lead). Us: Sam. Stage in the pipeline: Proposal sent (2026-11-03).\n\n## What they said\n- Ana: \"The retainer works for us; the question is whether two years gets us a better rate.\"\n- Tom: \"Single sign-on is a must before IT signs off; Okta specifically.\"\n- Ana: \"Legal needs the data processing addendum before anything is signed.\"\n\n## Objections\n- Price over a two-year term — \"whether two years gets us a better rate\" — Sam said a two-year quote would follow.\n- Single sign-on missing — \"Okta specifically\" — Sam said Okta is in the next release; Tom asked for a date in writing.\n\n## Commitments\n| Who | What | When | Side |\n| --- | --- | --- | --- |\n| Sam | Send two-year pricing | 2026-11-12 | us |\n| Sam | Okta release date in writing | not said | us |\n| Ana | Introduce legal for the DPA | this week | them |\n\n## Next step\n- Send the two-year pricing by 2026-11-12 (Sam); ask Tom for a date to confirm the Okta plan, since none was agreed.\n"
+     },
+     {
+      "id": "cs-bad",
+      "title": "Call summary — Cedar Ltd, 2026-11-10",
+      "content": ""
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Pipeline"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "p1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Call summary"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Minutes"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "cs-acme-1110"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "cs-bad"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Deal notes — 2026-11-10",
+        "content": "Deal notes — 2026-11-10\n1 deal moved, 0 unchanged, 1 not logged\n\n## Deal\n- Acme Ltd — \"Call summary — Acme Ltd, 2026-11-10\".\n- Birch & Co — \"Minutes — Birch & Co check-in, 2026-11-09\".\n\n## What changed\n- Acme Ltd: Ana asked for two-year pricing; Tom made Okta SSO a condition; Ana is introducing legal for the DPA this week. Reading: moving toward terms, with one technical condition.\n- Birch & Co: \"no change until the new CFO starts in January\". Reading: unchanged, parked by them.\n\n## Stage\n| Account | Stage now | Stage proposed | Why |\n| --- | --- | --- | --- |\n| Acme Ltd | Proposal sent | Negotiating | pricing terms and a DPA are being worked |\n| Birch & Co | Proposal sent | Proposal sent | parked until January, their words |\n\n## Next step\n| Account | What | Owner | Date |\n| --- | --- | --- | --- |\n| Acme Ltd | Send two-year pricing | Sam | 2026-11-12 |\n| Birch & Co | Check in after the CFO starts | Sam | 2027-01-12 |\n\n## Not logged\n- \"Call summary — Cedar Ltd, 2026-11-10\" (cs-bad): the document is empty; nothing to log. Ask the Call Summariser to rewrite it.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Acme moves to Negotiating; the Cedar summary (cs-bad) is empty and was not logged.\n\n## Report\n- read \"Pipeline\" and 2 new sources; wrote \"Deal notes — 2026-11-10\"\n\n## Carry forward\n- logged: cs-acme-1110, cs-bad"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Deal notes",
+      "contains": [
+       "(cs-bad): the document is empty"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "the-source-contradicts-the-pipeline",
+   "about": "The pipeline says Lost and a new call summary shows a next meeting: both are quoted, Stage proposes reopened — confirm, and the deal is not moved to Won.",
+   "inputs": {
+    "pipeline": "Pipeline",
+    "at": "17:30"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "p1",
+      "title": "Pipeline",
+      "content": "Pipeline\n| Account | Contact | Stage | Owner | Last touch | Next step |\n| --- | --- | --- | --- | --- | --- |\n| Acme Ltd | ana@acme.example | Proposal sent | Sam | 2026-11-03 | two-year pricing |\n| Birch & Co | bo@birch.example | Proposal sent | Sam | 2026-10-29 | check in |\n| Cedar Ltd | cal@cedar.example | Lost | Sam | 2026-10-20 | — |\n| Elm | leo@elm.example | Discovery | Sam | 2026-10-28 | send the deck |\n| Yew | | Won | Sam | 2026-10-01 | — |\n"
+     },
+     {
+      "id": "cs-cedar",
+      "title": "Call summary — Cedar Ltd, 2026-11-10",
+      "content": "Cal: we want to pick this back up; can we meet on the 17th? Sam: yes, the 17th at 10."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Pipeline"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "p1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Call summary"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Minutes"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "cs-cedar"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Deal notes — 2026-11-10",
+        "content": "Deal notes — 2026-11-10\n1 deal moved, 0 unchanged, 0 not logged\n\n## Deal\n- Cedar Ltd — \"Call summary — Cedar Ltd, 2026-11-10\".\n\n## What changed\n- Cedar Ltd: the pipeline says Lost (2026-10-20); the call says \"we want to pick this back up; can we meet on the 17th?\". Reading: reopened by them.\n\n## Stage\n| Account | Stage now | Stage proposed | Why |\n| --- | --- | --- | --- |\n| Cedar Ltd | Lost | reopened — confirm | a meeting is booked; confirm the loss was premature |\n\n## Next step\n| Account | What | Owner | Date |\n| --- | --- | --- | --- |\n| Cedar Ltd | Meet Cal | Sam | 2026-11-17 |\n\n## Not logged\n- none\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Cedar: the pipeline says Lost but Cal booked a meeting for the 17th — proposed reopened, confirm.\n\n## Report\n- read \"Pipeline\" and 1 new sources; wrote \"Deal notes — 2026-11-10\"\n\n## Carry forward\n- logged: cs-cedar"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Deal notes",
+      "contains": [
+       "reopened — confirm",
+       "pick this back up"
+      ],
+      "lacks": [
+       "| Won |"
+      ]
+     }
+    },
+    {
+     "not_called": "update_document"
+    }
+   ]
+  },
+  {
+   "id": "notes-without-their-headings-fail",
+   "about": "The harness's own check: a deal notes document without Deal, What changed, Stage, Next step and Not logged does not deliver, even after its repair pass.",
+   "inputs": {
+    "pipeline": "Pipeline",
+    "at": "17:30"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "p1",
+      "title": "Pipeline",
+      "content": "Pipeline\n| Account | Contact | Stage | Owner | Last touch | Next step |\n| --- | --- | --- | --- | --- | --- |\n| Acme Ltd | ana@acme.example | Proposal sent | Sam | 2026-11-03 | two-year pricing |\n| Birch & Co | bo@birch.example | Proposal sent | Sam | 2026-10-29 | check in |\n| Cedar Ltd | cal@cedar.example | Proposal sent | Sam | 2026-10-20 | await answer |\n| Elm | leo@elm.example | Discovery | Sam | 2026-10-28 | send the deck |\n| Yew | | Won | Sam | 2026-10-01 | — |\n"
+     },
+     {
+      "id": "cs-acme-1103",
+      "title": "Call summary — Acme Ltd, 2026-11-03",
+      "content": "Proposal walked through; no commitments."
+     },
+     {
+      "id": "cs-acme-1110",
+      "title": "Call summary — Acme Ltd, 2026-11-10",
+      "content": "Call summary — Acme Ltd, 2026-11-10\n3 commitments, 2 objections; next step: send the two-year pricing, Sam, 2026-11-12\n\n## Who\n- Them: Ana (Head of Finance), Tom (IT lead). Us: Sam. Stage in the pipeline: Proposal sent (2026-11-03).\n\n## What they said\n- Ana: \"The retainer works for us; the question is whether two years gets us a better rate.\"\n- Tom: \"Single sign-on is a must before IT signs off; Okta specifically.\"\n- Ana: \"Legal needs the data processing addendum before anything is signed.\"\n\n## Objections\n- Price over a two-year term — \"whether two years gets us a better rate\" — Sam said a two-year quote would follow.\n- Single sign-on missing — \"Okta specifically\" — Sam said Okta is in the next release; Tom asked for a date in writing.\n\n## Commitments\n| Who | What | When | Side |\n| --- | --- | --- | --- |\n| Sam | Send two-year pricing | 2026-11-12 | us |\n| Sam | Okta release date in writing | not said | us |\n| Ana | Introduce legal for the DPA | this week | them |\n\n## Next step\n- Send the two-year pricing by 2026-11-12 (Sam); ask Tom for a date to confirm the Okta plan, since none was agreed.\n"
+     },
+     {
+      "id": "min-birch-1109",
+      "title": "Minutes — Birch & Co check-in, 2026-11-09",
+      "content": "Bo: no change until the new CFO starts in January. Next: check in 2027-01-12."
+     },
+     {
+      "id": "cs-elm-1110",
+      "title": "Call summary — Fir, 2026-11-10",
+      "content": "First call with Fir. Next: send the deck."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Pipeline"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Deal notes — 2026-11-10",
+        "content": "Acme moved."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done\n\n## Carry forward\n- none"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

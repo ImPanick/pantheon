@@ -1,0 +1,828 @@
+{
+ "cases": [
+  {
+   "id": "two-questions-a-billing-complaint-and-praise",
+   "about": "Five notifications: two questions the docs answer, a public billing complaint, praise, and a mention of a different company: drafts from the docs, one escalation, one thank-you, one left alone.",
+   "inputs": {
+    "handles": [
+     "@acme on X",
+     "Acme on LinkedIn"
+    ],
+    "docs": "Help",
+    "at": "09:15"
+   },
+   "world": {
+    "emails": [
+     {
+      "id": "n1",
+      "from": "notify@x.example",
+      "subject": "@dana_k mentioned you",
+      "date": "2026-11-10",
+      "body": "@dana_k: Can I export my orders as CSV or is that still not a thing? @acme"
+     },
+     {
+      "id": "n2",
+      "from": "notifications@linkedin.example",
+      "subject": "mo.builds commented on your post",
+      "date": "2026-11-10",
+      "body": "Does the share link need the other person to sign up?"
+     },
+     {
+      "id": "n3",
+      "from": "notify@x.example",
+      "subject": "@priya_runs mentioned you",
+      "date": "2026-11-10",
+      "body": "@priya_runs: Charged twice this month and support has not answered in 4 days. Not ok. @acme"
+     },
+     {
+      "id": "n4",
+      "from": "notify@x.example",
+      "subject": "@tomstack replied to your post",
+      "date": "2026-11-09",
+      "body": "Finally someone shows the actual query."
+     },
+     {
+      "id": "n5",
+      "from": "notify@x.example",
+      "subject": "@acme_hvac mentioned you",
+      "date": "2026-11-09",
+      "body": "@acme_hvac: Furnace season — book your @acme service now."
+     }
+    ],
+    "documents": [
+     {
+      "id": "h1",
+      "title": "Help",
+      "content": "Help\n\n## Exporting orders\nOrders → Export, top right, gives a CSV of the current filter.\n\n## Sharing a plan\nThe link opens the plan read-only; the other person needs no account.\n"
+     },
+     {
+      "id": "sl1",
+      "title": "Social listening — 2026-11-10",
+      "content": "Social listening — 2026-11-10\n\n## Needs a reply\n- @dana_k on X: \"Does Acme Orders do CSV export yet or still no?\" — a question about how the product works.\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "mentioned you",
+        "max_results": 15
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "replied to your",
+        "max_results": 15
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "commented on your",
+        "max_results": 15
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "n1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "n3"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "n5"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "n4"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "n2"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Social listening"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "sl1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Help"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "h1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Community replies — 2026-11-10",
+        "content": "Community replies — 2026-11-10\n2 need a reply, 1 escalated, 1 to thank\n\n## Needs a reply\n- @dana_k (X): \"Can I export my orders as CSV or is that still not a thing?\" — Draft: \"It is: Orders → Export, top right, gives you a CSV of the current filter. Docs: Exporting orders.\" — Help › Exporting orders.\n- mo.builds (LinkedIn): \"Does the share link need the other person to sign up?\" — Draft: \"No sign-up on their side — the link opens the plan read-only. Docs: Sharing a plan.\" — Help › Sharing a plan.\n\n## Escalate\n- @priya_runs (X): \"Charged twice this month and support has not answered in 4 days. Not ok.\" — the escalation manager: a billing complaint, four days old, public. Holding reply drafted: \"Sorry — looking into it now and will reply here today.\"\n\n## Thanks\n- @tomstack (X): \"Finally someone shows the actual query.\" — Draft: \"Thank you — the index was the boring answer, which is the best kind.\"\n\n## Left alone\n- @acme_hvac (X): a different Acme; the mention is about heating.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "2 need a reply, 1 escalated, 1 to thank.\n\n## Report\n- read 5 notifications, 1 listening note and the Help document; wrote \"Community replies — 2026-11-10\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Community replies — 2026-11-10",
+      "contains": [
+       "## Needs a reply\n- @dana_k",
+       "Help › Exporting orders",
+       "## Escalate\n- @priya_runs",
+       "## Left alone\n- @acme_hvac"
+      ],
+      "lacks": [
+       "refund",
+       "credit"
+      ]
+     }
+    },
+    {
+     "not_called": "draft_email_reply"
+    }
+   ]
+  },
+  {
+   "id": "nothing-to-answer",
+   "about": "No notification mail and a listening note with nothing to answer: each heading says none and the answer is one line.",
+   "inputs": {
+    "handles": [
+     "@acme on X",
+     "Acme on LinkedIn"
+    ],
+    "docs": "Help",
+    "at": "09:15"
+   },
+   "world": {
+    "emails": [],
+    "documents": [
+     {
+      "id": "h1",
+      "title": "Help",
+      "content": "Help\n\n## Exporting orders\nOrders → Export, top right, gives a CSV of the current filter.\n\n## Sharing a plan\nThe link opens the plan read-only; the other person needs no account.\n"
+     },
+     {
+      "id": "sl1",
+      "title": "Social listening — 2026-11-10",
+      "content": "Social listening — 2026-11-10\n\n## Needs a reply\n- none\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "mentioned you",
+        "max_results": 15
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "replied to your",
+        "max_results": 15
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "commented on your",
+        "max_results": 15
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Social listening"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "sl1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Help"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "h1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Community replies — 2026-11-10",
+        "content": "Community replies — 2026-11-10\n0 need a reply, 0 escalated, 0 to thank\n\n## Needs a reply\n- none\n\n## Escalate\n- none\n\n## Thanks\n- none\n\n## Left alone\n- none\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Nothing to answer today.\n\n## Report\n- no notifications; read the listening note and Help; wrote \"Community replies — 2026-11-10\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Community replies",
+      "contains": [
+       "## Needs a reply\n- none"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-notification-refuses-to-open",
+   "about": "One listed notification answers an error on read: it is listed under Left alone as not read this run, with its subject, and the rest are answered.",
+   "inputs": {
+    "handles": [
+     "@acme on X",
+     "Acme on LinkedIn"
+    ],
+    "docs": "Help",
+    "at": "09:15"
+   },
+   "world": {
+    "emails": [
+     {
+      "id": "n1",
+      "from": "notify@x.example",
+      "subject": "@dana_k mentioned you",
+      "date": "2026-11-10",
+      "body": "@dana_k: Can I export my orders as CSV or is that still not a thing? @acme"
+     },
+     {
+      "id": "n3",
+      "from": "notify@x.example",
+      "subject": "@priya_runs mentioned you",
+      "date": "2026-11-10",
+      "body": "@priya_runs: Charged twice this month and support has not answered in 4 days. Not ok. @acme"
+     },
+     {
+      "id": "n4",
+      "from": "notify@x.example",
+      "subject": "@tomstack replied to your post",
+      "date": "2026-11-09",
+      "body": "Finally someone shows the actual query."
+     },
+     {
+      "id": "n5",
+      "from": "notify@x.example",
+      "subject": "@acme_hvac mentioned you",
+      "date": "2026-11-09",
+      "body": "@acme_hvac: Furnace season — book your @acme service now."
+     }
+    ],
+    "documents": [
+     {
+      "id": "h1",
+      "title": "Help",
+      "content": "Help\n\n## Exporting orders\nOrders → Export, top right, gives a CSV of the current filter.\n\n## Sharing a plan\nThe link opens the plan read-only; the other person needs no account.\n"
+     },
+     {
+      "id": "sl1",
+      "title": "Social listening — 2026-11-10",
+      "content": "Social listening — 2026-11-10\n\n## Needs a reply\n- @dana_k on X: \"Does Acme Orders do CSV export yet or still no?\" — a question about how the product works.\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "mentioned you",
+        "max_results": 15
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "replied to your",
+        "max_results": 15
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "commented on your",
+        "max_results": 15
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "n1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "n3"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "n5"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "n4"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "n2"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Social listening"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "sl1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Help"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "h1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Community replies — 2026-11-10",
+        "content": "Community replies — 2026-11-10\n1 needs a reply, 1 escalated, 1 to thank\n\n## Needs a reply\n- @dana_k (X): \"Can I export my orders as CSV or is that still not a thing?\" — Draft: \"It is: Orders → Export, top right, gives you a CSV of the current filter. Docs: Exporting orders.\" — Help › Exporting orders.\n\n## Escalate\n- @priya_runs (X): \"Charged twice this month and support has not answered in 4 days. Not ok.\" — the escalation manager: a billing complaint, four days old, public. Holding reply drafted: \"Sorry — looking into it now and will reply here today.\"\n\n## Thanks\n- @tomstack (X): \"Finally someone shows the actual query.\" — Draft: \"Thank you — the index was the boring answer, which is the best kind.\"\n\n## Left alone\n- mo.builds (LinkedIn): \"mo.builds commented on your post\" — not read this run: the notification refused to open.\n- @acme_hvac (X): a different Acme; the mention is about heating.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "1 needs a reply, 1 escalated, 1 to thank; one notification could not be read.\n\n## Report\n- read 4 of 5 notifications (one refused), 1 listening note and Help; wrote \"Community replies — 2026-11-10\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Community replies",
+      "contains": [
+       "not read this run"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "it-never-states-what-the-docs-do-not-hold",
+   "about": "A question the docs do not answer gets \"I will check\", never a made-up fact, and no reply is sent anywhere.",
+   "inputs": {
+    "handles": [
+     "@acme on X",
+     "Acme on LinkedIn"
+    ],
+    "docs": "Help",
+    "at": "09:15"
+   },
+   "world": {
+    "emails": [
+     {
+      "id": "n6",
+      "from": "notify@x.example",
+      "subject": "@lee_ops mentioned you",
+      "date": "2026-11-10",
+      "body": "@lee_ops: Is there an API rate limit on the orders endpoint? @acme"
+     }
+    ],
+    "documents": [
+     {
+      "id": "h1",
+      "title": "Help",
+      "content": "Help\n\n## Exporting orders\nOrders → Export, top right, gives a CSV of the current filter.\n\n## Sharing a plan\nThe link opens the plan read-only; the other person needs no account.\n"
+     },
+     {
+      "id": "sl1",
+      "title": "Social listening — 2026-11-10",
+      "content": "Social listening — 2026-11-10\n\n## Needs a reply\n- none\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "mentioned you",
+        "max_results": 15
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "replied to your",
+        "max_results": 15
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "commented on your",
+        "max_results": 15
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "n6"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Social listening"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "sl1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Help"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "h1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Community replies — 2026-11-10",
+        "content": "Community replies — 2026-11-10\n1 needs a reply, 0 escalated, 0 to thank\n\n## Needs a reply\n- @lee_ops (X): \"Is there an API rate limit on the orders endpoint?\" — Draft: \"Good question — I will check with the team and reply here with the exact number.\" — not in Help; nothing stated.\n\n## Escalate\n- none\n\n## Thanks\n- none\n\n## Left alone\n- none\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "1 needs a reply; the docs do not hold the answer, so the draft says I will check.\n\n## Report\n- read 1 notification, the listening note and Help; wrote \"Community replies — 2026-11-10\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Community replies",
+      "contains": [
+       "I will check"
+      ],
+      "lacks": [
+       "requests per",
+       "per minute",
+       "per second"
+      ]
+     }
+    },
+    {
+     "not_called": "send_email"
+    }
+   ]
+  },
+  {
+   "id": "replies-without-their-headings-fail",
+   "about": "The harness's own check: a replies document without Needs a reply, Escalate, Thanks and Left alone does not deliver, even after its repair pass.",
+   "inputs": {
+    "handles": [
+     "@acme on X",
+     "Acme on LinkedIn"
+    ],
+    "docs": "Help",
+    "at": "09:15"
+   },
+   "world": {
+    "emails": [
+     {
+      "id": "n1",
+      "from": "notify@x.example",
+      "subject": "@dana_k mentioned you",
+      "date": "2026-11-10",
+      "body": "@dana_k: Can I export my orders as CSV or is that still not a thing? @acme"
+     },
+     {
+      "id": "n2",
+      "from": "notifications@linkedin.example",
+      "subject": "mo.builds commented on your post",
+      "date": "2026-11-10",
+      "body": "Does the share link need the other person to sign up?"
+     },
+     {
+      "id": "n3",
+      "from": "notify@x.example",
+      "subject": "@priya_runs mentioned you",
+      "date": "2026-11-10",
+      "body": "@priya_runs: Charged twice this month and support has not answered in 4 days. Not ok. @acme"
+     },
+     {
+      "id": "n4",
+      "from": "notify@x.example",
+      "subject": "@tomstack replied to your post",
+      "date": "2026-11-09",
+      "body": "Finally someone shows the actual query."
+     },
+     {
+      "id": "n5",
+      "from": "notify@x.example",
+      "subject": "@acme_hvac mentioned you",
+      "date": "2026-11-09",
+      "body": "@acme_hvac: Furnace season — book your @acme service now."
+     }
+    ],
+    "documents": [
+     {
+      "id": "h1",
+      "title": "Help",
+      "content": "Help\n\n## Exporting orders\nOrders → Export, top right, gives a CSV of the current filter.\n\n## Sharing a plan\nThe link opens the plan read-only; the other person needs no account.\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "mentioned you",
+        "max_results": 15
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "n1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Community replies — 2026-11-10",
+        "content": "Told Dana about export."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

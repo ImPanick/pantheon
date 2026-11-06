@@ -35,7 +35,7 @@ class TestFormatUpstreamError:
 
     def test_404_points_at_base_url(self):
         msg = _format_upstream_error(404, "", "https://api.groq.com/openai/v1")
-        assert msg == "Groq returned 404 — check the base URL and model name."
+        assert msg == "Groq returned 404 at /openai/v1 — check the base URL and model name."
 
     def test_429_rate_limited(self):
         msg = _format_upstream_error(

@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 from urllib.parse import unquote, urlparse
-from sqlalchemy import DDL, event, create_engine, Column, String, Text, Boolean, DateTime, Integer, ForeignKey, JSON, Index, UniqueConstraint, func, inspect, text
+from sqlalchemy import DDL, event, create_engine, Column, String, Text, Boolean, DateTime, Integer, Float, ForeignKey, JSON, Index, UniqueConstraint, func, inspect, text
 from sqlalchemy.engine import Engine, make_url
 from sqlalchemy.types import TypeDecorator
 from sqlalchemy.ext.declarative import declarative_base, declared_attr
@@ -3456,6 +3456,32 @@ def _migrate_add_assistant_columns():
 
 
 
+
+
+class LedgerEntry(TimestampMixin, Base):
+    """`P24-30` · One line of a person's ledger — the table the finance agents
+    keep (`ledger_table`): what came in, what went out, what is owed and owing.
+
+    A new table only, so `init_db`'s `create_all` is the whole migration. Rows
+    are the person's own (`owner`); an agent that writes one marks `source`.
+    `amount` is positive; `kind` says which way the money goes.
+    """
+    __tablename__ = "ledger_entries"
+
+    id           = Column(String, primary_key=True, index=True)
+    owner        = Column(String, nullable=True, index=True)
+    date         = Column(String, index=True)               # YYYY-MM-DD
+    kind         = Column(String, index=True)               # income | expense | invoice | bill | payroll | transfer | tax
+    account      = Column(String, default="")               # bank, card, cash, …
+    category     = Column(String, default="", index=True)   # the person's own chart: rent, software, sales, …
+    counterparty = Column(String, default="", index=True)   # who paid or was paid
+    amount       = Column(Float, default=0.0)
+    currency     = Column(String, default="")
+    memo         = Column(Text, nullable=True)
+    status       = Column(String, default="posted", index=True)  # posted | open | paid | void | draft
+    due          = Column(String, nullable=True)            # YYYY-MM-DD, for an invoice or a bill
+    ref          = Column(String, nullable=True)            # invoice or bill number, receipt id
+    source       = Column(String, default="user")           # user | agent | import
 
 
 class Note(TimestampMixin, Base):

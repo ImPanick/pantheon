@@ -1,0 +1,26 @@
+{
+ "case": "two-visuals-two-captions",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read \"Brand voice\", the visuals and the hooks; wrote \"Captions — Visuals — Posts — week of 2026-11-10\"",
+ "read": [
+  "manage_documents"
+ ],
+ "wrote": [
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Captions”",
+   "ok": true,
+   "detail": "“Captions — Visuals — Posts — week of 2026-11-10” is there."
+  }
+ ],
+ "answer": "2 captions; lead with the 61/56 card (\"61 companies tried a four-day week. 56 kept it.\").\n\n## Report\n- read \"Brand voice\", the visuals and the hooks; wrote \"Captions — Visuals — Posts — week of 2026-11-10\"",
+ "documents": [
+  {
+   "title": "Captions — Visuals — Posts — week of 2026-11-10",
+   "content": "Captions — Visuals — Posts — week of 2026-11-10\n2 captions for 2 visuals; lead with: the 61/56 card\n\n## Captions\n- Tuesday · the 61/56 card\n  61 companies tried a four-day week. 56 kept it.\n  Revenue stayed flat. The five that went back are Thursday's story.\n  Would yours keep it?\n- Thursday · the meeting chart\n  14 standing meetings became 5. That was the four-day week.\n  Nobody lost a day of work; they lost nine meetings a week.\n  Count yours and tell us the number.\n\n## Alt text\n- Tuesday: Dark blue card reading \"61 tried · 56 kept\".\n- Thursday: Two amber bars on dark blue, 14 and 5, standing meetings before and after.\n\n## Hashtags\n- Tuesday: #fourdayweek\n- Thursday: #fourdayweek #worksmarter\n\n## Not written\n- none"
+  }
+ ]
+}

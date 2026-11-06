@@ -6,6 +6,7 @@ section: email
 icon: reply
 version: 1.1.1
 wave: 1
+accepts: ["document:Invoices"]
 inputs:
   - {key: wait_days, kind: number, label: Days without an answer before a nudge, default: 4}
   - {key: account, kind: email_account, label: Which inbox (blank for all of them), optional: true}

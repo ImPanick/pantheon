@@ -1,0 +1,511 @@
+{
+ "cases": [
+  {
+   "id": "drift-in-two-files-and-a-duplicate-button",
+   "about": "A tokens file and three source files: six hard-coded values matched to tokens with file and line, an unused token, a duplicated button; no file edited.",
+   "inputs": {
+    "folder": "web"
+   },
+   "world": {
+    "files": {
+     "web/src/tokens.css": ":root {\n  --color-primary: #1e40af;\n  --color-danger: #dc2626;\n  --color-info: #0ea5e9;\n  --font-sm: 0.875rem;\n  --radius-md: 6px;\n  --space-4: 16px;\n  --space-5: 24px;\n}\n",
+     "web/src/Checkout.css": ".total { color: #1e40af; font-size: 14px; padding: 20px; }\n.card { border-radius: 6px; padding: 20px; }\n",
+     "web/src/Button.jsx": "export const Button = () => <button style={{background: '#1e40af', fontSize: '14px'}} />;\n",
+     "web/src/ui/PrimaryButton.jsx": "export const PrimaryButton = () => <button className=\"btn-primary\" />;\n"
+    },
+    "shell": [
+     {
+      "match": "ls -R",
+      "output": "web:\nsrc\n\nweb/src:\nButton.jsx\nCheckout.css\ntokens.css\nui\n\nweb/src/ui:\nPrimaryButton.jsx"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "ls -R web | head -200"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "web/src/tokens.css"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "grep",
+       {
+        "pattern": "#[0-9a-fA-F]{3,8}",
+        "path": "web/src"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "grep",
+       {
+        "pattern": "rgb\\(",
+        "path": "web/src"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "grep",
+       {
+        "pattern": "[0-9]+px",
+        "path": "web/src"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "grep",
+       {
+        "pattern": "border-radius:",
+        "path": "web/src"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "grep",
+       {
+        "pattern": "font-size:",
+        "path": "web/src"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "grep",
+       {
+        "pattern": "--color-info",
+        "path": "web/src"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Design system audit — web",
+        "content": "Design system audit — web\n6 drifting values in 2 files, 1 unused token, 1 duplicated component\n\n## Drift\n| File:line | Value | Token |\n| --- | --- | --- |\n| src/Checkout.css:1 | #1e40af | --color-primary (#1e40af) |\n| src/Checkout.css:1 | 14px | --font-sm (0.875rem) |\n| src/Checkout.css:2 | 6px | --radius-md (6px) |\n| src/Button.jsx:1 | #1e40af | --color-primary (#1e40af) |\n| src/Button.jsx:1 | 14px | --font-sm (0.875rem) |\n| src/Checkout.css:1 | 20px | no token on the scale (see Tokens) |\n\n## Tokens\n- Unused: --color-info.\n- To add: 20px padding appears 2 times in Checkout.css with no spacing token between --space-4 (16px) and --space-5 (24px); under three, listed not proposed.\n\n## Components\n- src/Button.jsx and src/ui/PrimaryButton.jsx: both a primary button; PrimaryButton uses the class the tokens style, Button hard-codes #1e40af and 14px; keep PrimaryButton.\n\n## Fixes\n1. Replace `#1e40af` with `var(--color-primary)` — Checkout.css:1, Button.jsx:1.\n2. Replace `14px` with `var(--font-sm)` — Checkout.css:1, Button.jsx:1.\n3. Replace `6px` with `var(--radius-md)` — Checkout.css:2.\n4. Retire src/Button.jsx for src/ui/PrimaryButton.jsx.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "6 drifting values in 2 files; --color-info unused; Button.jsx duplicates PrimaryButton.\n\n## Report\n- read tokens.css; 6 searches; wrote \"Design system audit — web\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Design system audit — web",
+      "contains": [
+       "| src/Checkout.css:1 | #1e40af | --color-primary (#1e40af) |",
+       "## Tokens\n- Unused: --color-info",
+       "## Components\n- src/Button.jsx and src/ui/PrimaryButton.jsx",
+       "## Fixes\n1. Replace `#1e40af`"
+      ]
+     }
+    },
+    {
+     "not_called": "edit_file"
+    }
+   ]
+  },
+  {
+   "id": "no-tokens-file",
+   "about": "Nothing by the usual names and none given: Tokens says none found, Drift lists the most repeated values as candidates, and the answer asks where the tokens live.",
+   "inputs": {
+    "folder": "web"
+   },
+   "world": {
+    "files": {
+     "web/src/Checkout.css": ".total { color: #1e40af; font-size: 14px; padding: 20px; }\n.card { border-radius: 6px; padding: 20px; }\n"
+    },
+    "shell": [
+     {
+      "match": "ls -R",
+      "output": "web:\nsrc\n\nweb/src:\nCheckout.css"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "ls -R web | head -200"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "grep",
+       {
+        "pattern": "#[0-9a-fA-F]{3,8}",
+        "path": "web/src"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "grep",
+       {
+        "pattern": "rgb\\(",
+        "path": "web/src"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "grep",
+       {
+        "pattern": "[0-9]+px",
+        "path": "web/src"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Design system audit — web",
+        "content": "Design system audit — web\n0 drifting values in 0 files, 0 unused tokens, 0 duplicated components\n\n## Drift\n- none matched: there are no tokens to match against. Candidates: #1e40af (1), 14px (1), 20px (2), 6px (1).\n\n## Tokens\n- none found: no tokens.css, theme.css or tailwind.config under web.\n\n## Components\n- none duplicated among 1 file.\n\n## Fixes\n- Start a tokens file from the candidates above, then audit again.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "No tokens file under web — where do the tokens live? Candidates for one are listed.\n\n## Report\n- 3 searches; wrote \"Design system audit — web\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Design system audit",
+      "contains": [
+       "## Tokens\n- none found"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-search-fails",
+   "about": "A grep answers an error on a bad pattern: it is noted under Fixes as not searched, and the rest run.",
+   "inputs": {
+    "folder": "web"
+   },
+   "world": {
+    "files": {
+     "web/src/tokens.css": ":root {\n  --color-primary: #1e40af;\n  --color-danger: #dc2626;\n  --color-info: #0ea5e9;\n  --font-sm: 0.875rem;\n  --radius-md: 6px;\n  --space-4: 16px;\n  --space-5: 24px;\n}\n",
+     "web/src/Checkout.css": ".total { color: #1e40af; font-size: 14px; padding: 20px; }\n.card { border-radius: 6px; padding: 20px; }\n",
+     "web/src/Button.jsx": "export const Button = () => <button style={{background: '#1e40af', fontSize: '14px'}} />;\n",
+     "web/src/ui/PrimaryButton.jsx": "export const PrimaryButton = () => <button className=\"btn-primary\" />;\n"
+    },
+    "shell": [
+     {
+      "match": "ls -R",
+      "output": "web:\nsrc\n\nweb/src:\nButton.jsx\nCheckout.css\ntokens.css\nui\n\nweb/src/ui:\nPrimaryButton.jsx"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "ls -R web | head -200"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "web/src/tokens.css"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "grep",
+       {
+        "pattern": "rgb\\(",
+        "path": "web/src/missing"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "grep",
+       {
+        "pattern": "#[0-9a-fA-F]{3,8}",
+        "path": "web/src"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "grep",
+       {
+        "pattern": "[0-9]+px",
+        "path": "web/src"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Design system audit — web",
+        "content": "Design system audit — web\n6 drifting values in 2 files, 1 unused token, 1 duplicated component\n\n## Drift\n| File:line | Value | Token |\n| --- | --- | --- |\n| src/Checkout.css:1 | #1e40af | --color-primary (#1e40af) |\n| src/Checkout.css:1 | 14px | --font-sm (0.875rem) |\n| src/Checkout.css:2 | 6px | --radius-md (6px) |\n| src/Button.jsx:1 | #1e40af | --color-primary (#1e40af) |\n| src/Button.jsx:1 | 14px | --font-sm (0.875rem) |\n| src/Checkout.css:1 | 20px | no token on the scale (see Tokens) |\n\n## Tokens\n- Unused: --color-info.\n- To add: 20px padding appears 2 times in Checkout.css with no spacing token between --space-4 (16px) and --space-5 (24px); under three, listed not proposed.\n\n## Components\n- src/Button.jsx and src/ui/PrimaryButton.jsx: both a primary button; PrimaryButton uses the class the tokens style, Button hard-codes #1e40af and 14px; keep PrimaryButton.\n\n## Fixes\n- Not searched: `rgb\\(` over web/src/missing answered an error (no such folder); rgb() values were not checked.\n1. Replace `#1e40af` with `var(--color-primary)` — Checkout.css:1, Button.jsx:1.\n2. Replace `14px` with `var(--font-sm)` — Checkout.css:1, Button.jsx:1.\n3. Replace `6px` with `var(--radius-md)` — Checkout.css:2.\n4. Retire src/Button.jsx for src/ui/PrimaryButton.jsx.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "6 drifting values in 2 files; the rgb() search failed and was skipped.\n\n## Report\n- read tokens.css; 3 searches (1 failed); wrote \"Design system audit — web\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Design system audit",
+      "contains": [
+       "Not searched"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "it-never-edits-or-calls-an-exception-drift",
+   "about": "A value with a comment saying why: it is not listed as drift, and no file is written.",
+   "inputs": {
+    "folder": "web"
+   },
+   "world": {
+    "files": {
+     "web/src/tokens.css": ":root {\n  --color-primary: #1e40af;\n  --color-danger: #dc2626;\n  --color-info: #0ea5e9;\n  --font-sm: 0.875rem;\n  --radius-md: 6px;\n  --space-4: 16px;\n  --space-5: 24px;\n}\n",
+     "web/src/Legal.css": ".fine-print { font-size: 11px; /* legal minimum, not on the scale */ }\n"
+    },
+    "shell": [
+     {
+      "match": "ls -R",
+      "output": "web:\nsrc\n\nweb/src:\nLegal.css\ntokens.css"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "ls -R web | head -200"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "web/src/tokens.css"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "grep",
+       {
+        "pattern": "#[0-9a-fA-F]{3,8}",
+        "path": "web/src"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "grep",
+       {
+        "pattern": "rgb\\(",
+        "path": "web/src"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "grep",
+       {
+        "pattern": "[0-9]+px",
+        "path": "web/src"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "grep",
+       {
+        "pattern": "border-radius:",
+        "path": "web/src"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "grep",
+       {
+        "pattern": "font-size:",
+        "path": "web/src"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Design system audit — web",
+        "content": "Design system audit — web\n0 drifting values in 0 files, 2 unused tokens, 0 duplicated components\n\n## Drift\n- none: the one hard-coded value (Legal.css:1, 11px) carries a comment saying why — a deliberate exception, not drift.\n\n## Tokens\n- Unused: --color-info, --color-danger.\n\n## Components\n- none duplicated.\n\n## Fixes\n- none.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "No drift: the one off-scale value is a commented exception; 2 tokens unused.\n\n## Report\n- read tokens.css; 5 searches; wrote \"Design system audit — web\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Design system audit",
+      "contains": [
+       "deliberate exception"
+      ],
+      "lacks": [
+       "| src/Legal.css:1 | 11px |"
+      ]
+     }
+    },
+    {
+     "not_called": "write_file"
+    }
+   ]
+  },
+  {
+   "id": "an-audit-without-its-headings-fails",
+   "about": "The harness's own check: a design audit without Drift, Tokens, Components and Fixes does not deliver, even after its repair pass.",
+   "inputs": {
+    "folder": "web"
+   },
+   "world": {
+    "files": {
+     "web/src/tokens.css": ":root {\n  --color-primary: #1e40af;\n  --color-danger: #dc2626;\n  --color-info: #0ea5e9;\n  --font-sm: 0.875rem;\n  --radius-md: 6px;\n  --space-4: 16px;\n  --space-5: 24px;\n}\n",
+     "web/src/Checkout.css": ".total { color: #1e40af; font-size: 14px; padding: 20px; }\n.card { border-radius: 6px; padding: 20px; }\n",
+     "web/src/Button.jsx": "export const Button = () => <button style={{background: '#1e40af', fontSize: '14px'}} />;\n",
+     "web/src/ui/PrimaryButton.jsx": "export const PrimaryButton = () => <button className=\"btn-primary\" />;\n"
+    },
+    "shell": [
+     {
+      "match": "ls -R",
+      "output": "web:\nsrc\n\nweb/src:\nButton.jsx\nCheckout.css\ntokens.css\nui\n\nweb/src/ui:\nPrimaryButton.jsx"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "ls -R web | head -200"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Design system audit — web",
+        "content": "Lots of hard-coded blue."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

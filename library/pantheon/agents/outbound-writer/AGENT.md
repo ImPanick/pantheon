@@ -6,6 +6,7 @@ section: sales
 icon: send
 version: 1.3.1
 wave: 2
+accepts: ["document:Lead triage"]
 inputs:
   - {key: prospects, kind: long_text, label: "One per line: name, email, role, company, site"}
   - {key: offer, kind: long_text, label: What you offer and why it matters}

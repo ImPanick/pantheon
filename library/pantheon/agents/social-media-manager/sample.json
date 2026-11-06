@@ -1,0 +1,26 @@
+{
+ "case": "two-items-and-a-launch",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read the calendar, 1 announcement, 1 voice review and 1 performance note; wrote \"Social drafts — week of 2026-11-09\"",
+ "read": [
+  "manage_documents"
+ ],
+ "wrote": [
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Social drafts”",
+   "ok": true,
+   "detail": "“Social drafts — week of 2026-11-09” is there."
+  }
+ ],
+ "answer": "2 items, 4 drafts, 2 platforms.\n\n## Report\n- read the calendar, 1 announcement, 1 voice review and 1 performance note; wrote \"Social drafts — week of 2026-11-09\"",
+ "documents": [
+  {
+   "title": "Social drafts — week of 2026-11-09",
+   "content": "Social drafts — week of 2026-11-09\n2 items, 4 drafts, 2 platforms\n\n## This week\n- Tue 10 Nov — How we cut the orders page to under a second (calendar).\n- Thu 12 Nov — 2.4.0 launch: share a meal plan by email (Launch announcement — 2.4.0).\n- The performance note said threads with a number did best; both items open with one on X.\n\n## Drafts\n### How we cut the orders page to under a second\n**X (thread)**\n1/ The orders page took 6 seconds for shops with 10,000 orders. Now 0.8. Here is what we changed.\n2/ One missing index. That was most of it.\n3/ If a page of yours is slow, look at what it loads and never shows.\n**LinkedIn**\nOur orders page took six seconds for busy shops. It now takes under one.\n\nMost of the gain was a single database index; the rest was loading less than we drew.\n\nThe write-up: <link>\n\n### 2.4.0 — share a meal plan by email\n**X**\nYou can now share a week's meal plan with one other person by email. One link, no account for them. In 2.4.0, out today.\n**LinkedIn**\n2.4.0 is out. The thing people asked for most: share a meal plan by email with one other person, no account needed on their side.\n\nNotes: <link>\n\n## Image briefs\n- Orders page: a before/after bar, 6.0 s and 0.8 s, the two numbers as the only words; 1600×900.\n- 2.4.0: the share screen with one email field; 1600×900.\n\n## Not drafted\n- Instagram: not among the platforms named."
+  }
+ ]
+}

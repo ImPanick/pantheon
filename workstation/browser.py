@@ -518,6 +518,11 @@ class AccountBrowser:
     #: Preferences written after the shipped ones — the browser without a
     #: workstation sets its proxy here (`src/local_browser.py`).
     extra_prefs = ""
+    #: `B1753`. The window's size on its own screen (the whole screen when
+    #: None) and arguments after the profile — the phone's mobile view runs
+    #: in kiosk mode at the phone screen's size (`workstation/phone.py`).
+    window_size: Optional[Tuple[int, int]] = None
+    extra_args: Tuple[str, ...] = ()
 
     def __init__(self, launch_prefix: List[str], env: Dict[str, str], profile: Path,
                  headless: bool, own=None, screen=None):
@@ -597,8 +602,9 @@ class AccountBrowser:
             store = {}
         doc, win = _MAIN_WINDOW
         page = store.get(doc) if isinstance(store.get(doc), dict) else {}
-        page[win] = {"screenX": "0", "screenY": "0", "width": str(P.SCREEN_WIDTH),
-                     "height": str(P.SCREEN_HEIGHT), "sizemode": "normal"}
+        w, h = self.window_size or (P.SCREEN_WIDTH, P.SCREEN_HEIGHT)
+        page[win] = {"screenX": "0", "screenY": "0", "width": str(w),
+                     "height": str(h), "sizemode": "normal"}
         store[doc] = page
         return json.dumps(store)
 
@@ -608,9 +614,10 @@ class AccountBrowser:
         effort: `XULSTORE` already asked Firefox for this size."""
         if not shutil.which("xdotool"):
             return
+        w, h = self.window_size or (P.SCREEN_WIDTH, P.SCREEN_HEIGHT)
         argv = self.launch_prefix + [
             "xdotool", "search", "--sync", "--onlyvisible", "--class", "firefox",
-            "windowmove", "%@", "0", "0", "windowsize", "%@", str(P.SCREEN_WIDTH), str(P.SCREEN_HEIGHT)]
+            "windowmove", "%@", "0", "0", "windowsize", "%@", str(w), str(h)]
         try:
             subprocess.run(argv, env=env, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                            stderr=subprocess.DEVNULL, timeout=10)
@@ -649,7 +656,7 @@ class AccountBrowser:
             for problem in names.import_pins(self.profile):
                 logger.warning("browser: %s", problem)
         argv = self.launch_prefix + [firefox, "--remote-debugging-port=0", "--no-remote",
-                                     "--profile", str(self.profile)]
+                                     "--profile", str(self.profile), *self.extra_args]
         if headless:
             argv.append("--headless")
         argv.append("about:blank")

@@ -149,6 +149,27 @@ AT_THE_BAR = frozenset({
     "security-reviewer", "sbom-keeper", "data-engineer", "data-steward", "prd-reviewer",
     "release-notes-owner", "decision-desk", "pipeline-keeper", "renewal-manager", "escalation-manager",
     "nda-triage", "executive-assistant", "meeting-prep",
+    # Wave 4 (2026-11-02, `P24-29`): the second company slice — the Social
+    # Desk, marketing, sales, support, legal, people, operations, QA, devops,
+    # data, design and product, each built at this bar from the start.
+    "social-media-manager", "community-manager", "social-listener", "launch-announcer",
+    "brand-voice-keeper", "social-analytics-reporter", "influencer-scout",
+    "partnerships-scout", "case-study-writer", "deal-desk", "rfp-responder", "csat-analyst",
+    "onboarding-specialist",
+    "procurement", "privacy-officer", "licence-auditor", "ip-trademark-watch", "interview-scheduler",
+    "performance-review-assistant", "comp-analyst", "hr-policy-keeper", "vendor-manager", "it-helpdesk",
+    "process-documenter", "compliance-calendar",
+    "exploratory-tester", "capacity-planner", "analytics-engineer", "forecaster", "experiment-analyst",
+    "design-system-keeper", "interaction-prototyper", "usability-test-runner", "interview-synthesiser",
+    "pricing-analyst", "backlog-groomer",
+    # Wave 5 (2026-11-02, `P24-30`): the finance seven on the ledger table,
+    # the CRM eight, and the creator room's seven, each built at this bar.
+    "bookkeeper", "invoicing", "ap-and-bills", "budget-vs-actuals", "cash-flow-forecaster", "tax-prep",
+    "payroll-prep",
+    "call-summariser", "deal-logger", "lead-triager", "quiet-deal-chaser", "stakeholder-mapper",
+    "account-planner", "win-loss-reviewer", "crm-hygienist",
+    "hook-and-hashtag-researcher", "post-writer", "thread-writer", "caption-writer", "short-video-scripter",
+    "carousel-writer", "visual-creator",
 })
 
 SECTIONS = ("Steps", "Judgement calls", "Edge cases", "Deliverable", "Example")
@@ -184,10 +205,10 @@ def fenced(text: str) -> str:
 
 
 def _negative(check: dict) -> bool:
-    """A check of what must never happen: a never-kind, or a document or file
-    that must lack something."""
+    """A check of what must never happen: a never-kind, or a document, file,
+    memory or ledger (`P24-30`) that must lack something."""
     kind, want = next(iter(check.items()))
-    return kind in NEGATIVE_CHECKS or (kind in ("document", "file", "memory") and isinstance(want, dict)
+    return kind in NEGATIVE_CHECKS or (kind in ("document", "file", "memory", "ledger") and isinstance(want, dict)
                                        and bool(want.get("lacks")))
 
 

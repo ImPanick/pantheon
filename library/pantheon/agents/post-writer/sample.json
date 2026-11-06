@@ -1,0 +1,26 @@
+{
+ "case": "two-slots-four-posts",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read \"Brand voice\", \"Content calendar\", \"Hooks and hashtags — four-day week, 2026-11-10\"; wrote \"Posts — week of 2026-11-10\"",
+ "read": [
+  "manage_documents"
+ ],
+ "wrote": [
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Posts”",
+   "ok": true,
+   "detail": "“Posts — week of 2026-11-10” is there."
+  }
+ ],
+ "answer": "4 posts for 2 slots; lead with Tuesday's pilot numbers (61 tried, 56 kept).\n\n## Report\n- read \"Brand voice\", \"Content calendar\", \"Hooks and hashtags — four-day week, 2026-11-10\"; wrote \"Posts — week of 2026-11-10\"",
+ "documents": [
+  {
+   "title": "Posts — week of 2026-11-10",
+   "content": "Posts — week of 2026-11-10\n4 posts for 2 slots; lead with: Tuesday, the pilot numbers\n\n## Posts\n- 2026-11-10 · LinkedIn · 61 companies tried a four-day week for six months. 56 kept it. [1]\n\n  Revenue was flat. The part everyone skips: the 5 that went back.\n\n  Would your team keep it?\n- 2026-11-10 · X · 61 companies tried a four-day week. 56 kept it. Revenue flat. Would yours? [1] #4dayweek\n- 2026-11-13 · LinkedIn · We did not give people Friday off. We took Friday's work away. [2]\n\n  14 standing meetings became 5. If you tried it, what did you cut?\n- 2026-11-13 · X · \"We took Friday's work away.\" 14 standing meetings became 5. What would you cut? [2]\n\n## Variants\n- 2026-11-10 · LinkedIn · Five companies tried a four-day week and went back. Nobody writes about them. [1] What did they see?\n\n## Hashtags\n- LinkedIn: #fourdayweek #futureofwork\n- X: #4dayweek\n- Rules kept: no exclamation marks (§2); \"we\", never \"our team\" (§4); one question per post (§5).\n\n## Image briefs\n- 2026-11-10 · LinkedIn — a plain card: \"61 tried · 56 kept\". Alt text: \"Text card reading 61 tried, 56 kept.\"\n\n## Not written\n- none"
+  }
+ ]
+}

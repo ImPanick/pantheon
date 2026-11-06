@@ -1,0 +1,423 @@
+{
+ "cases": [
+  {
+   "id": "four-posts-not-eight",
+   "about": "Three real points make a four-post thread, not eight: each number has its source, the opinion is marked view, the close has one ask. Nothing is posted.",
+   "inputs": {
+    "idea": "The five companies that went back from the four-day week, and what they saw.",
+    "hooks": "Hooks and hashtags",
+    "guide": "Brand voice",
+    "length": "8"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "g1",
+      "title": "Brand voice",
+      "content": "Brand voice\n§2 No exclamation marks.\n§4 Say \"we\", never \"our team\".\n§5 One question per post.\n§6 Never red; brand colours are dark blue, cream and amber."
+     },
+     {
+      "id": "h1",
+      "title": "Hooks and hashtags — four-day week, 2026-11-10",
+      "content": "Hooks and hashtags — four-day week, 2026-11-10\n## Hooks\n1. \"61 companies tried a four-day week for six months; 56 kept it.\" [1]\n2. \"We did not give people Friday off. We took Friday's work away.\" [2]\n## Hashtags\n- LinkedIn: #fourdayweek #futureofwork\n- X: #4dayweek\n## Sources\n1. example.org/pilot — \"56 of 61 companies will continue\"; \"revenue flat\".\n2. blog.example/fifth-day — \"14 standing meetings cut to 5.\"\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Brand voice"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "g1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Hooks and hashtags"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "h1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Thread — the five that went back",
+        "content": "Thread — the five that went back\n4 posts; hook: \"61 companies tried a four-day week. Everyone writes about the 56 that kept it.\"\n\n## Hook\n61 companies tried a four-day week. Everyone writes about the 56 that kept it. Here is what the other 5 saw. (106)\n\n## Posts\n2. They did not fail on output. Revenue was flat for all 61. [1] (59)\n3. The teams that stayed cut 14 standing meetings to 5. [2] (54)\n4. Our view: a four-day week is a meeting cull with a day off attached. (view) (68)\n\n## Close\nPiloting it? Count your standing meetings first. Reply \"meetings\" and we will send how. (88)\n\n## Sources\n1. example.org/pilot — \"56 of 61 companies will continue\"; \"revenue flat\".\n2. blog.example/fifth-day — \"14 standing meetings cut to 5.\"\n- Post 4: view.\n\n## Not written\n- none\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "4 posts; hook: \"61 companies tried a four-day week. Everyone writes about the 56 that kept it.\" Post 4 is our view.\n\n## Report\n- read \"Brand voice\" and the hooks; wrote \"Thread — the five that went back\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Thread —",
+      "contains": [
+       "Revenue was flat for all 61. [1]",
+       "(view)"
+      ],
+      "lacks": [
+       "1/",
+       "studies show",
+       "\n8."
+      ]
+     }
+    },
+    {
+     "not_called": "post_social"
+    }
+   ]
+  },
+  {
+   "id": "no-sources",
+   "about": "No hooks document: the thread is written as the person's view, every post marked view, and the answer says it carries no evidence.",
+   "inputs": {
+    "idea": "The five companies that went back from the four-day week, and what they saw.",
+    "hooks": "Hooks and hashtags",
+    "guide": "Brand voice",
+    "length": "8"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "g1",
+      "title": "Brand voice",
+      "content": "Brand voice\n§2 No exclamation marks.\n§4 Say \"we\", never \"our team\".\n§5 One question per post.\n§6 Never red; brand colours are dark blue, cream and amber."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Brand voice"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "g1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Hooks and hashtags"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Thread — the five that went back",
+        "content": "Thread — the five that went back\n3 posts; hook: \"Some companies tried a four-day week and went back. Here is why we think they did.\"\n\n## Hook\nSome companies tried a four-day week and went back. Here is why we think they did. (82)\n\n## Posts\n2. We think the day off was never the hard part. (view) (45)\n3. We think the meetings were. (view) (27)\n\n## Close\nTried it? Reply with what broke first. (38)\n\n## Sources\n- every post: view. No hooks document was found.\n\n## Not written\n- no numbers: nothing sources them yet.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "3 posts, all our view: no hooks document was found, so the thread carries no evidence yet.\n\n## Report\n- read \"Brand voice\"; no hooks document; wrote \"Thread — the five that went back\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Thread —",
+      "contains": [
+       "every post: view"
+      ],
+      "lacks": [
+       "56"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "the-guide-cannot-be-read",
+   "about": "No guide: the thread is written plain and Not written says it is unreviewed.",
+   "inputs": {
+    "idea": "The five companies that went back from the four-day week, and what they saw.",
+    "hooks": "Hooks and hashtags",
+    "guide": "Brand voice",
+    "length": "8"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "h1",
+      "title": "Hooks and hashtags — four-day week, 2026-11-10",
+      "content": "Hooks and hashtags — four-day week, 2026-11-10\n## Hooks\n1. \"61 companies tried a four-day week for six months; 56 kept it.\" [1]\n2. \"We did not give people Friday off. We took Friday's work away.\" [2]\n## Hashtags\n- LinkedIn: #fourdayweek #futureofwork\n- X: #4dayweek\n## Sources\n1. example.org/pilot — \"56 of 61 companies will continue\"; \"revenue flat\".\n2. blog.example/fifth-day — \"14 standing meetings cut to 5.\"\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Brand voice"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Hooks and hashtags"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "h1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Thread — the five that went back",
+        "content": "Thread — the five that went back\n4 posts; hook: \"61 companies tried a four-day week. Everyone writes about the 56 that kept it.\"\n\n## Hook\n61 companies tried a four-day week. Everyone writes about the 56 that kept it. Here is what the other 5 saw. (106)\n\n## Posts\n2. They did not fail on output. Revenue was flat for all 61. [1] (59)\n3. The teams that stayed cut 14 standing meetings to 5. [2] (54)\n4. Our view: a four-day week is a meeting cull with a day off attached. (view) (68)\n\n## Close\nPiloting it? Count your standing meetings first. Reply \"meetings\" and we will send how. (88)\n\n## Sources\n1. example.org/pilot — \"56 of 61 companies will continue\"; \"revenue flat\".\n2. blog.example/fifth-day — \"14 standing meetings cut to 5.\"\n- Post 4: view.\n\n## Not written\n- unreviewed against a voice guide: no \"Brand voice\" document was found.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "No voice guide was found, so the 4-post thread is unreviewed.\n\n## Report\n- no \"Brand voice\"; read the hooks; wrote \"Thread — the five that went back\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Thread —",
+      "contains": [
+       "unreviewed against a voice guide"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "the-sources-contradict-the-idea",
+   "about": "The idea says most companies went back; the sources say 56 of 61 kept it: the thread is not written as given; both are quoted and the supported thread is proposed.",
+   "inputs": {
+    "idea": "Most companies that tried the four-day week went back.",
+    "hooks": "Hooks and hashtags",
+    "guide": "Brand voice",
+    "length": "8"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "g1",
+      "title": "Brand voice",
+      "content": "Brand voice\n§2 No exclamation marks.\n§4 Say \"we\", never \"our team\".\n§5 One question per post.\n§6 Never red; brand colours are dark blue, cream and amber."
+     },
+     {
+      "id": "h1",
+      "title": "Hooks and hashtags — four-day week, 2026-11-10",
+      "content": "Hooks and hashtags — four-day week, 2026-11-10\n## Hooks\n1. \"61 companies tried a four-day week for six months; 56 kept it.\" [1]\n2. \"We did not give people Friday off. We took Friday's work away.\" [2]\n## Hashtags\n- LinkedIn: #fourdayweek #futureofwork\n- X: #4dayweek\n## Sources\n1. example.org/pilot — \"56 of 61 companies will continue\"; \"revenue flat\".\n2. blog.example/fifth-day — \"14 standing meetings cut to 5.\"\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Brand voice"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "g1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Hooks and hashtags"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "h1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Thread — most companies went back",
+        "content": "Thread — most companies went back\n0 posts; hook: none — the sources contradict the idea\n\n## Hook\n- not written\n\n## Posts\n- none\n\n## Close\n- none\n\n## Sources\n1. example.org/pilot — \"56 of 61 companies will continue\".\n\n## Not written\n- The idea says most companies went back; the source says 56 of 61 kept it. Proposed instead: \"the five that went back\" — the minority, and what they saw.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Not written: the idea says most went back, the source says 56 of 61 kept it; proposed the thread on the five that went back.\n\n## Report\n- read \"Brand voice\" and the hooks; wrote \"Thread — most companies went back\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Thread —",
+      "contains": [
+       "56 of 61",
+       "Proposed instead"
+      ],
+      "lacks": [
+       "Most companies went back."
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-thread-without-its-headings-fails",
+   "about": "The harness's own check: a thread without Hook, Posts, Close, Sources and Not written does not deliver, even after its repair pass.",
+   "inputs": {
+    "idea": "The five companies that went back from the four-day week, and what they saw.",
+    "hooks": "Hooks and hashtags",
+    "guide": "Brand voice",
+    "length": "8"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "g1",
+      "title": "Brand voice",
+      "content": "Brand voice\n§2 No exclamation marks.\n§4 Say \"we\", never \"our team\".\n§5 One question per post.\n§6 Never red; brand colours are dark blue, cream and amber."
+     },
+     {
+      "id": "h1",
+      "title": "Hooks and hashtags — four-day week, 2026-11-10",
+      "content": "Hooks and hashtags — four-day week, 2026-11-10\n## Hooks\n1. \"61 companies tried a four-day week for six months; 56 kept it.\" [1]\n2. \"We did not give people Friday off. We took Friday's work away.\" [2]\n## Hashtags\n- LinkedIn: #fourdayweek #futureofwork\n- X: #4dayweek\n## Sources\n1. example.org/pilot — \"56 of 61 companies will continue\"; \"revenue flat\".\n2. blog.example/fifth-day — \"14 standing meetings cut to 5.\"\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Brand voice"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Thread — the five that went back",
+        "content": "Here it is."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

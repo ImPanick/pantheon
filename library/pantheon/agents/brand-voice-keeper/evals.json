@@ -1,0 +1,419 @@
+{
+ "cases": [
+  {
+   "id": "two-rules-broken-two-drafts-pass",
+   "about": "Four drafts against a three-rule guide: a bare number and a banned opening get their fixes with the rule quoted, two pass, and the drafts document is not edited.",
+   "inputs": {
+    "title": "Social drafts — week of 2026-11-09",
+    "guide": "Brand voice"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "g1",
+      "title": "Brand voice",
+      "content": "Brand voice\n\nWe sound like a careful colleague.\n\n## Rules\n- A number carries its unit and where it was measured.\n- Never open with excited, thrilled or proud.\n- Say you, never users.\n"
+     },
+     {
+      "id": "sd1",
+      "title": "Social drafts — week of 2026-11-09",
+      "content": "Social drafts — week of 2026-11-09\n\n## Drafts\n### Orders page\n**X (thread)**\n1/ The orders page took 6 seconds for shops with 10,000 orders. Now it takes 0.8. Here is what we changed.\n**LinkedIn**\nOur orders page took six seconds for busy shops. It now takes under one second, measured on the same shop.\n**Instagram**\nExcited to share how we cut the orders page from 6 seconds to 0.8 seconds, measured on the same shop.\n### 2.4.0\n**X**\nYou can now share a week's meal plan with one other person by email. In 2.4.0, out today.\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Brand voice"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "g1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Social drafts — week of 2026-11-09"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "sd1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Voice review — Social drafts — week of 2026-11-09",
+        "content": "Voice review — Social drafts — week of 2026-11-09\nfix first: 2 passed, 2 fixes\n\n## Verdict\nFix first: one draft states a timing without its unit and where it was measured, and one opens with a banned word. The rest is ready.\n\n## Fixes\n- Orders page — X thread, post 1: \"Now it takes 0.8. Here is what we changed.\" → \"Now it takes 0.8 seconds, measured on the same shop. Here is what we changed.\" — rule: \"A number carries its unit and where it was measured.\"\n- Orders page — Instagram: \"Excited to share how we cut the orders page…\" → \"How we cut the orders page from 6 seconds to 0.8 seconds, measured on the same shop:\" — rule: \"Never open with excited, thrilled or proud.\"\n\n## Passed\n- Orders page — LinkedIn\n- 2.4.0 — X\n\n## Rules used\n- \"A number carries its unit and where it was measured.\" — 1 line\n- \"Never open with excited, thrilled or proud.\" — 1 line\n- \"Say you, never users.\" — 0 lines\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Fix first: 2 passed, 2 fixes.\n\n## Report\n- read \"Brand voice\" and \"Social drafts — week of 2026-11-09\"; wrote \"Voice review — Social drafts — week of 2026-11-09\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Voice review — Social drafts — week of 2026-11-09",
+      "contains": [
+       "## Verdict\nFix first",
+       "rule: \"A number carries its unit",
+       "## Passed\n- Orders page — LinkedIn",
+       "## Rules used"
+      ]
+     }
+    },
+    {
+     "not_called": "edit_document"
+    }
+   ]
+  },
+  {
+   "id": "no-voice-guide",
+   "about": "Nothing lists under the guide's title: the review runs on three defaults, each marked as such, and the verdict says a guide would make the review the person's.",
+   "inputs": {
+    "title": "Social drafts — week of 2026-11-09",
+    "guide": "Brand voice"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "sd1",
+      "title": "Social drafts — week of 2026-11-09",
+      "content": "Social drafts — week of 2026-11-09\n\n## Drafts\n### Orders page\n**X (thread)**\n1/ The orders page took 6 seconds for shops with 10,000 orders. Now it takes 0.8. Here is what we changed.\n**LinkedIn**\nOur orders page took six seconds for busy shops. It now takes under one second, measured on the same shop.\n**Instagram**\nExcited to share how we cut the orders page from 6 seconds to 0.8 seconds, measured on the same shop.\n### 2.4.0\n**X**\nYou can now share a week's meal plan with one other person by email. In 2.4.0, out today.\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Brand voice"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Social drafts — week of 2026-11-09"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "sd1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Voice review — Social drafts — week of 2026-11-09",
+        "content": "Voice review — Social drafts — week of 2026-11-09\nfix first: 3 passed, 1 fix (default, no guide)\n\n## Verdict\nFix first on the defaults: no \"Brand voice\" document is listed, so the review used three defaults — plain words, no exclamation marks, one idea per post. A guide would make this review yours rather than mine.\n\n## Fixes\n- Orders page — Instagram: \"Excited to share how we cut…\" → \"How we cut the orders page from 6 seconds to 0.8 seconds:\" — default, no guide: plain words.\n\n## Passed\n- Orders page — X thread\n- Orders page — LinkedIn\n- 2.4.0 — X\n\n## Rules used\n- plain words — default, no guide — 1 line\n- no exclamation marks — default, no guide — 0 lines\n- one idea per post — default, no guide — 0 lines\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Fix first on the defaults: 3 passed, 1 fix; no voice guide was found.\n\n## Report\n- no \"Brand voice\" listed; read the drafts; wrote \"Voice review — Social drafts — week of 2026-11-09\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Voice review",
+      "contains": [
+       "default, no guide"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "the-drafts-cannot-be-read",
+   "about": "Nothing lists under the drafts' title: the review says not reviewed under Verdict, the other headings say none, and the answer asks for the exact title.",
+   "inputs": {
+    "title": "Social drafts — week of 2026-11-09",
+    "guide": "Brand voice"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "g1",
+      "title": "Brand voice",
+      "content": "Brand voice\n\nWe sound like a careful colleague.\n\n## Rules\n- A number carries its unit and where it was measured.\n- Never open with excited, thrilled or proud.\n- Say you, never users.\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Brand voice"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "g1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Social drafts — week of 2026-11-09"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Voice review — Social drafts — week of 2026-11-09",
+        "content": "Voice review — Social drafts — week of 2026-11-09\nnot reviewed: 0 passed, 0 fixes\n\n## Verdict\nnot reviewed — \"Social drafts — week of 2026-11-09\" could not be read: nothing lists under that title.\n\n## Fixes\n- none\n\n## Passed\n- none\n\n## Rules used\n- none\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Not reviewed: nothing lists under \"Social drafts — week of 2026-11-09\" — what is the exact title?\n\n## Report\n- read \"Brand voice\"; the drafts were not found; wrote \"Voice review — Social drafts — week of 2026-11-09\" saying so"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Voice review",
+      "contains": [
+       "could not be read"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "it-never-invents-a-rule",
+   "about": "A change the guide does not call for is marked taste, and no fix touches a number or a link.",
+   "inputs": {
+    "title": "Social drafts — week of 2026-11-09",
+    "guide": "Brand voice"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "g1",
+      "title": "Brand voice",
+      "content": "Brand voice\n\nWe sound like a careful colleague.\n\n## Rules\n- A number carries its unit and where it was measured.\n- Never open with excited, thrilled or proud.\n- Say you, never users.\n"
+     },
+     {
+      "id": "sd1",
+      "title": "Social drafts — week of 2026-11-09",
+      "content": "Social drafts — week of 2026-11-09\n\n## Drafts\n### Orders page\n**X (thread)**\n1/ The orders page took 6 seconds for shops with 10,000 orders. Now it takes 0.8. Here is what we changed.\n**LinkedIn**\nOur orders page took six seconds for busy shops. It now takes under one second, measured on the same shop.\n**Instagram**\nExcited to share how we cut the orders page from 6 seconds to 0.8 seconds, measured on the same shop.\n### 2.4.0\n**X**\nYou can now share a week's meal plan with one other person by email. In 2.4.0, out today.\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Brand voice"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "g1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Social drafts — week of 2026-11-09"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "sd1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Voice review — Social drafts — week of 2026-11-09",
+        "content": "Voice review — Social drafts — week of 2026-11-09\nfix first: 1 passed, 3 fixes\n\n## Verdict\nFix first: one draft states a timing without its unit and where it was measured, and one opens with a banned word. The rest is ready.\n\n## Fixes\n- Orders page — X thread, post 1: \"Now it takes 0.8. Here is what we changed.\" → \"Now it takes 0.8 seconds, measured on the same shop. Here is what we changed.\" — rule: \"A number carries its unit and where it was measured.\"\n- Orders page — Instagram: \"Excited to share how we cut the orders page…\" → \"How we cut the orders page from 6 seconds to 0.8 seconds, measured on the same shop:\" — rule: \"Never open with excited, thrilled or proud.\"\n\n- 2.4.0 — X: \"In 2.4.0, out today.\" → \"In 2.4.0, out today — no account needed on their side.\" — taste: the guide has no rule; keep the original if you prefer.\n\n## Passed\n- Orders page — LinkedIn\n\n## Rules used\n- \"A number carries its unit and where it was measured.\" — 1 line\n- \"Never open with excited, thrilled or proud.\" — 1 line\n- \"Say you, never users.\" — 0 lines\n- no rule; taste — 1 line\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Fix first: 1 passed, 3 fixes, one of them taste.\n\n## Report\n- read \"Brand voice\" and the drafts; wrote \"Voice review — Social drafts — week of 2026-11-09\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Voice review",
+      "contains": [
+       "taste: the guide has no rule"
+      ],
+      "lacks": [
+       "rule: \"Say what is new",
+       "0.9 seconds",
+       "→ \"The orders page took 7"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-review-without-its-headings-fails",
+   "about": "The harness's own check: a voice review without Verdict, Fixes, Passed and Rules used does not deliver, even after its repair pass.",
+   "inputs": {
+    "title": "Social drafts — week of 2026-11-09",
+    "guide": "Brand voice"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "g1",
+      "title": "Brand voice",
+      "content": "Brand voice\n\nWe sound like a careful colleague.\n\n## Rules\n- A number carries its unit and where it was measured.\n- Never open with excited, thrilled or proud.\n- Say you, never users.\n"
+     },
+     {
+      "id": "sd1",
+      "title": "Social drafts — week of 2026-11-09",
+      "content": "Social drafts — week of 2026-11-09\n\n## Drafts\n### Orders page\n**X (thread)**\n1/ The orders page took 6 seconds for shops with 10,000 orders. Now it takes 0.8. Here is what we changed.\n**LinkedIn**\nOur orders page took six seconds for busy shops. It now takes under one second, measured on the same shop.\n**Instagram**\nExcited to share how we cut the orders page from 6 seconds to 0.8 seconds, measured on the same shop.\n### 2.4.0\n**X**\nYou can now share a week's meal plan with one other person by email. In 2.4.0, out today.\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Brand voice"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "g1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Voice review — Social drafts — week of 2026-11-09",
+        "content": "Looks fine, drop the excited."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

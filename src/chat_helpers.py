@@ -246,10 +246,12 @@ def _authority(parsed) -> str:
     return host if parsed.port is None else f"{host}:{parsed.port}"
 
 
-def ollama_supports_vision(url: str, model: str) -> Optional[bool]:
-    """What Ollama's `/api/show` says about `model`'s `vision` capability, read
-    by the Ollama capability reader — or None when the endpoint is not Ollama,
-    is unreachable, or does not list capabilities."""
+def _ollama_show_record(url: str, model: str):
+    """What Ollama's `/api/show` says about `model`, read by the Ollama
+    capability reader — the record, or None when the endpoint is not Ollama,
+    is unreachable, or answered nothing the reader can read. One read answers
+    every question asked of it (`ollama_supports_vision`, `ollama_thinks`),
+    cached `_PROVIDER_FINGERPRINT_TTL` per model."""
     from src.model_capability_readers import VENDOR_OLLAMA
     if not model or _vendor_of(url) != VENDOR_OLLAMA:
         return None
@@ -270,16 +272,38 @@ def ollama_supports_vision(url: str, model: str) -> Optional[bool]:
         payload = r.json() if r.is_success else {}
     except Exception:
         payload = {}
-    answer = None
+    record = None
     if isinstance(payload, dict):
         # The reader is the one parser (`Law 14`): a payload with no
-        # `capabilities` list is an unknown family to it, so None.
-        from src.model_capabilities import vision_verdict
+        # `capabilities` list is an unknown family to it, so every verdict
+        # read off the record is None.
         from src.model_capability_readers import ollama as ollama_reader
         record = ollama_reader.record_from_show_payload(model.strip(), payload)
-        answer = vision_verdict(record.capability) if record else None
-    _ollama_show_cache[key] = (answer, now + _PROVIDER_FINGERPRINT_TTL)
-    return answer
+    _ollama_show_cache[key] = (record, now + _PROVIDER_FINGERPRINT_TTL)
+    return record
+
+
+def ollama_supports_vision(url: str, model: str) -> Optional[bool]:
+    """What Ollama's `/api/show` says about `model`'s `vision` capability, read
+    by the Ollama capability reader — or None when the endpoint is not Ollama,
+    is unreachable, or does not list capabilities."""
+    record = _ollama_show_record(url, model)
+    if record is None:
+        return None
+    from src.model_capabilities import vision_verdict
+    return vision_verdict(record.capability)
+
+
+def ollama_thinks(url: str, model: str) -> Optional[bool]:
+    """`P24-30`. What Ollama's `/api/show` says about `model`'s `thinking`
+    capability — `ollama_supports_vision`'s twin, from the same read: True
+    when it lists thinking, False when it lists capabilities and thinking is
+    not among them, None when it says nothing this can read."""
+    record = _ollama_show_record(url, model)
+    if record is None:
+        return None
+    from src.model_capabilities import reasoning_verdict
+    return reasoning_verdict(record.capability)
 
 
 def _openrouter_answers(url: str) -> Optional[dict]:
@@ -511,6 +535,31 @@ def audio_answer(model_name: str, endpoint_url: str = "") -> Optional[bool]:
     if not endpoint_url:
         return None
     return endpoint_hears(endpoint_url, model_name or "")
+
+
+def reasoning_answer(model_name: str, endpoint_url: str = "") -> Optional[bool]:
+    """`P24-30`. Whether a model thinks before it answers, as far as anything
+    that knows has said: Ollama's `/api/show` where it lists capabilities
+    (`ollama_thinks`); otherwise True where the model is a family Pantheon
+    already drives a reasoning dial on (`reasoning_effort.mechanism` — the
+    switch it sends is evidence the model has one); None — unknown — otherwise.
+    Read by an agent's `needs.model` check (`src/agents/needs.py`), which says
+    nothing on None, as the window and tool checks do."""
+    if endpoint_url:
+        try:
+            said = ollama_thinks(endpoint_url, model_name or "")
+        except Exception:
+            said = None
+        if said is not None:
+            return said
+    try:
+        from src.reasoning_effort import mechanism
+        if mechanism(endpoint_url or "", model_name or ""):
+            return True
+    except Exception:
+        # Unknown, not False: a needs check says nothing on an unknown (`P24-30`).
+        pass
+    return None
 
 
 def model_supports_vision(model_name: str, endpoint_url: str = "") -> bool:

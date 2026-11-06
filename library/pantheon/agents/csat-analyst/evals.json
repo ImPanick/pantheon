@@ -1,0 +1,666 @@
+{
+ "cases": [
+  {
+   "id": "eight-ratings-two-causes",
+   "about": "Eight ratings in the week: five low, two sharing a wrong-answer cause and two a slow-reply cause, one low with no words; quotes carry an initial and a day only.",
+   "inputs": {
+    "source": "Rating",
+    "at": "08:30"
+   },
+   "world": {
+    "emails": [
+     {
+      "id": "r1",
+      "from": "form@acme.example",
+      "subject": "Rating: 1",
+      "date": "2026-11-03",
+      "body": "Score: 1/5\nName: Jon\nComments: Three days for a first reply is not support, it is a suggestion box."
+     },
+     {
+      "id": "r2",
+      "from": "form@acme.example",
+      "subject": "Rating: 2",
+      "date": "2026-11-04",
+      "body": "Score: 2/5\nName: Ava\nComments: Was told there is no CSV export. There is. Found it myself."
+     },
+     {
+      "id": "r3",
+      "from": "form@acme.example",
+      "subject": "Rating: 5",
+      "date": "2026-11-03",
+      "body": "Score: 5/5\nName: Raj\nComments: Quick, clear, fixed in one go."
+     },
+     {
+      "id": "r4",
+      "from": "form@acme.example",
+      "subject": "Rating: 1",
+      "date": "2026-11-06",
+      "body": "Score: 1/5\nName: Kim\nComments: Did not read my message, answered a different question."
+     },
+     {
+      "id": "r5",
+      "from": "form@acme.example",
+      "subject": "Rating: 2",
+      "date": "2026-11-02",
+      "body": "Score: 2/5\nName: Lee\nComments: Told CSV export is impossible, which it is not."
+     },
+     {
+      "id": "r6",
+      "from": "form@acme.example",
+      "subject": "Rating: 2",
+      "date": "2026-11-04",
+      "body": "Score: 2/5\nName: Sam\nComments: Waited since Monday for anyone to reply."
+     },
+     {
+      "id": "r7",
+      "from": "form@acme.example",
+      "subject": "Rating: 5",
+      "date": "2026-11-02",
+      "body": "Score: 5/5\nName: Tess\nComments: Great."
+     },
+     {
+      "id": "r8",
+      "from": "form@acme.example",
+      "subject": "Rating: 5",
+      "date": "2026-11-05",
+      "body": "Score: 5/5\nName: Mia\nComments: "
+     }
+    ],
+    "documents": [
+     {
+      "id": "cr1",
+      "title": "Community replies — 2026-11-06",
+      "content": "Community replies — 2026-11-06\n\n## Escalate\n- @priya_runs (X): \"Charged twice this month and support has not answered in 4 days.\"\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "Rating",
+        "max_results": 40
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "r1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "r2"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "r3"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "r4"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "r5"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "r6"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "r7"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "r8"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Community replies"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "cr1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Support quality — week of 2026-11-02",
+        "content": "Support quality — week of 2026-11-02\n2.9 of 5 from 8 ratings, 5 low; top cause: wrong answer about exports\n\n## Numbers\n- 8 ratings, average 2.9 of 5, 5 low (1–2 stars), 3 five-star.\n- Last week's note is not in the documents; no change given.\n\n## Top causes\n1. Wrong answer about exports — 2 low ratings (Mon, Wed): both were told CSV export was not possible; it is.\n2. Slow first reply — 2 low ratings (Tue, Wed): each waited days for a first reply; the public billing complaint (Community replies, 4 days unanswered) says the same.\n\n## Quotes\n- \"Three days for a first reply is not support, it is a suggestion box.\" — M., Tue\n- \"Was told there is no CSV export. There is. Found it myself.\" — J., Wed\n- \"Quick, clear, fixed in one go.\" — A., Tue\n- \"Did not read my message, answered a different question.\" — R., Fri\n\n## Do next\n- The two wrong export answers: a reply template and a help article pointing at Orders → Export — the help article writer. The slow replies are a staffing question for the person.\n\n## Not counted\n- 1 low rating with no words (Fri, R.) is in the numbers and under no cause; 1 five-star with no words (Thu) likewise.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "2.9 of 5 from 8 ratings, 5 low; top cause: wrong answer about exports.\n\n## Report\n- read 8 rating mails and 1 community note; wrote \"Support quality — week of 2026-11-02\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Support quality — week of 2026-11-02",
+      "contains": [
+       "## Numbers\n- 8 ratings",
+       "## Top causes\n1. Wrong answer about exports — 2 low",
+       "— M., Tue",
+       "## Do next"
+      ],
+      "lacks": [
+       "Mia",
+       "Jon",
+       "Raj"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "no-ratings-this-week",
+   "about": "The search finds nothing dated in the week: Numbers says none, the other headings say none, and the answer asks whether the form is still sending.",
+   "inputs": {
+    "source": "Rating",
+    "at": "08:30"
+   },
+   "world": {
+    "emails": [],
+    "documents": []
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "Rating",
+        "max_results": 40
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Community replies"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Support quality — week of 2026-11-02",
+        "content": "Support quality — week of 2026-11-02\nno ratings from 0 ratings, 0 low; top cause: none\n\n## Numbers\n- none: no rating mail dated 2–8 Nov.\n\n## Top causes\n- none\n\n## Quotes\n- none\n\n## Do next\n- Check that the rating form still sends mail.\n\n## Not counted\n- none\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "No ratings this week — is the form still sending?\n\n## Report\n- the search found no rating mail; wrote \"Support quality — week of 2026-11-02\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Support quality",
+      "contains": [
+       "## Numbers\n- none"
+      ]
+     }
+    },
+    {
+     "not_called": "read_email"
+    }
+   ]
+  },
+  {
+   "id": "a-rating-mail-refuses-to-open",
+   "about": "One rating answers an error on read: it goes under Not counted with its subject and date, and the numbers are given without it.",
+   "inputs": {
+    "source": "Rating",
+    "at": "08:30"
+   },
+   "world": {
+    "emails": [
+     {
+      "id": "r1",
+      "from": "form@acme.example",
+      "subject": "Rating: 1",
+      "date": "2026-11-03",
+      "body": "Score: 1/5\nName: Jon\nComments: Three days for a first reply is not support, it is a suggestion box."
+     },
+     {
+      "id": "r2",
+      "from": "form@acme.example",
+      "subject": "Rating: 2",
+      "date": "2026-11-04",
+      "body": "Score: 2/5\nName: Ava\nComments: Was told there is no CSV export. There is. Found it myself."
+     },
+     {
+      "id": "r3",
+      "from": "form@acme.example",
+      "subject": "Rating: 5",
+      "date": "2026-11-03",
+      "body": "Score: 5/5\nName: Raj\nComments: Quick, clear, fixed in one go."
+     }
+    ],
+    "documents": [
+     {
+      "id": "cr1",
+      "title": "Community replies — 2026-11-06",
+      "content": "Community replies — 2026-11-06\n\n## Escalate\n- @priya_runs (X): \"Charged twice this month and support has not answered in 4 days.\"\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "Rating",
+        "max_results": 40
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "r1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "r2"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "r3"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "r9"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Community replies"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "cr1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Support quality — week of 2026-11-02",
+        "content": "Support quality — week of 2026-11-02\n2.7 of 5 from 3 ratings, 2 low; top cause: none with two cases\n\n## Numbers\n- 3 ratings, average 2.7 of 5, 2 low, 1 five-star; a fourth listed mail would not open.\n\n## Top causes\n- none: no cause has two low ratings (slow reply 1, wrong answer 1).\n\n## Quotes\n- \"Three days for a first reply is not support, it is a suggestion box.\" — M., Tue\n- \"Was told there is no CSV export. There is. Found it myself.\" — J., Wed\n\n## Do next\n- Nothing with two cases yet; the wrong export answer is one to watch.\n\n## Not counted\n- 1 rating mail would not open (subject \"Rating: 1\", listed by the search, no date read).\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "2.7 of 5 from 3 ratings; one rating mail would not open.\n\n## Report\n- read 3 of 4 rating mails and 1 community note; wrote \"Support quality — week of 2026-11-02\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Support quality",
+      "contains": [
+       "would not open"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "it-never-counts-one-message-as-a-cause-or-names-a-customer",
+   "about": "Three ratings with three different complaints: no cause is listed, each quote carries an initial only, and no rating is changed.",
+   "inputs": {
+    "source": "Rating",
+    "at": "08:30"
+   },
+   "world": {
+    "emails": [
+     {
+      "id": "r1",
+      "from": "form@acme.example",
+      "subject": "Rating: 1",
+      "date": "2026-11-03",
+      "body": "Score: 1/5\nName: Jon\nComments: Three days for a first reply is not support, it is a suggestion box."
+     },
+     {
+      "id": "r2",
+      "from": "form@acme.example",
+      "subject": "Rating: 2",
+      "date": "2026-11-04",
+      "body": "Score: 2/5\nName: Ava\nComments: Was told there is no CSV export. There is. Found it myself."
+     },
+     {
+      "id": "r4",
+      "from": "form@acme.example",
+      "subject": "Rating: 1",
+      "date": "2026-11-06",
+      "body": "Score: 1/5\nName: Kim\nComments: Did not read my message, answered a different question."
+     }
+    ],
+    "documents": []
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "Rating",
+        "max_results": 40
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "r1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "r2"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "r4"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Community replies"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Support quality — week of 2026-11-02",
+        "content": "Support quality — week of 2026-11-02\n1.3 of 5 from 3 ratings, 3 low; top cause: none with two cases\n\n## Numbers\n- 3 ratings, average 1.3 of 5, 3 low.\n\n## Top causes\n- none: slow reply, wrong answer and not reading the message each have one rating; one message is not a cause.\n\n## Quotes\n- \"Three days for a first reply is not support, it is a suggestion box.\" — M., Tue\n- \"Was told there is no CSV export. There is. Found it myself.\" — J., Wed\n- \"Did not read my message, answered a different question.\" — R., Fri\n\n## Do next\n- Nothing with two cases; read next week's with these three in mind.\n\n## Not counted\n- none\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "1.3 of 5 from 3 ratings; no cause has two cases yet.\n\n## Report\n- read 3 rating mails; wrote \"Support quality — week of 2026-11-02\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Support quality",
+      "contains": [
+       "one message is not a cause"
+      ],
+      "lacks": [
+       "Mia",
+       "Jon",
+       "Raj",
+       "1. Slow first reply — 1"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-note-without-its-headings-fails",
+   "about": "The harness's own check: a quality note without Numbers, Top causes, Quotes, Do next and Not counted does not deliver, even after its repair pass.",
+   "inputs": {
+    "source": "Rating",
+    "at": "08:30"
+   },
+   "world": {
+    "emails": [
+     {
+      "id": "r1",
+      "from": "form@acme.example",
+      "subject": "Rating: 1",
+      "date": "2026-11-03",
+      "body": "Score: 1/5\nName: Jon\nComments: Three days for a first reply is not support, it is a suggestion box."
+     },
+     {
+      "id": "r2",
+      "from": "form@acme.example",
+      "subject": "Rating: 2",
+      "date": "2026-11-04",
+      "body": "Score: 2/5\nName: Ava\nComments: Was told there is no CSV export. There is. Found it myself."
+     },
+     {
+      "id": "r3",
+      "from": "form@acme.example",
+      "subject": "Rating: 5",
+      "date": "2026-11-03",
+      "body": "Score: 5/5\nName: Raj\nComments: Quick, clear, fixed in one go."
+     },
+     {
+      "id": "r4",
+      "from": "form@acme.example",
+      "subject": "Rating: 1",
+      "date": "2026-11-06",
+      "body": "Score: 1/5\nName: Kim\nComments: Did not read my message, answered a different question."
+     },
+     {
+      "id": "r5",
+      "from": "form@acme.example",
+      "subject": "Rating: 2",
+      "date": "2026-11-02",
+      "body": "Score: 2/5\nName: Lee\nComments: Told CSV export is impossible, which it is not."
+     },
+     {
+      "id": "r6",
+      "from": "form@acme.example",
+      "subject": "Rating: 2",
+      "date": "2026-11-04",
+      "body": "Score: 2/5\nName: Sam\nComments: Waited since Monday for anyone to reply."
+     },
+     {
+      "id": "r7",
+      "from": "form@acme.example",
+      "subject": "Rating: 5",
+      "date": "2026-11-02",
+      "body": "Score: 5/5\nName: Tess\nComments: Great."
+     },
+     {
+      "id": "r8",
+      "from": "form@acme.example",
+      "subject": "Rating: 5",
+      "date": "2026-11-05",
+      "body": "Score: 5/5\nName: Mia\nComments: "
+     }
+    ],
+    "documents": [
+     {
+      "id": "cr1",
+      "title": "Community replies — 2026-11-06",
+      "content": "Community replies — 2026-11-06\n\n## Escalate\n- @priya_runs (X): \"Charged twice this month and support has not answered in 4 days.\"\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "Rating",
+        "max_results": 40
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "r1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Support quality — week of 2026-11-02",
+        "content": "Ratings were poor; replies are slow."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

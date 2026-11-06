@@ -1,0 +1,26 @@
+{
+ "case": "five-slides-not-eight",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read \"Brand voice\" and the hooks; wrote \"Carousel — the five that went back\"",
+ "read": [
+  "manage_documents"
+ ],
+ "wrote": [
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Carousel”",
+   "ok": true,
+   "detail": "“Carousel — the five that went back” is there."
+  }
+ ],
+ "answer": "5 slides; cover: \"56 kept the four-day week. 5 didn't.\" Slide 4 is our view.\n\n## Report\n- read \"Brand voice\" and the hooks; wrote \"Carousel — the five that went back\"",
+ "documents": [
+  {
+   "title": "Carousel — the five that went back",
+   "content": "Carousel — the five that went back\n5 slides; cover: \"56 kept the four-day week. 5 didn't.\"\n\n## Cover\n- 56 kept the four-day week. 5 didn't.\n- What the five saw that the rest missed\n\n## Slides\n2. Revenue was flat for all 61 — Output was never the problem. [1]\n3. 14 meetings became 5 — The teams that stayed cut them. The five never did. [2]\n4. A meeting cull with a day off — Skip the cull, keep the cost. (view)\n\n## Close\n- Count your standing meetings first.\n- Reply \"meetings\" and we will send how.\n\n## Image briefs\n1. Card, dark blue, large \"56 / 5\" in cream.\n2. Card, one flat cream line across, headline above.\n3. Bar chart, two amber bars 14 and 5, before / after.\n4. Card, headline only, centred.\n5. Card, the ask in brand type.\n\n## Not written\n- none"
+  }
+ ]
+}

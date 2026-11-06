@@ -124,6 +124,8 @@ TOOL_TAGS = {"bash", "python", "web_search", "web_fetch", "read_file", "write_fi
              "manage_endpoints", "manage_mcp", "manage_webhooks",
              "manage_tokens", "manage_documents", "manage_settings",
              "manage_notes", "manage_calendar",
+             # `P24-30`. The finance agents' table.
+             "ledger_table",
              # `B66`, and the third time this exact omission has shipped — see
              # the `tail_serve_output` note below. The system prompt names
              # `manage_rag` twice and tells the agent to offload large tool

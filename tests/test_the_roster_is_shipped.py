@@ -37,7 +37,9 @@ from src.agents.teams import teams
 PLAN_TEAMS = {"inbox-zero", "chief-of-staff", "household", "home-lab", "ship-a-website", "code-health",
               "security-watch", "research-desk", "model-lab", "content-studio", "growth", "sales-desk",
               "support-desk", "the-books",
-              "engineering-desk"}    # `P24-28`: the first team with a flow
+              "engineering-desk",    # `P24-28`: the first team with a flow
+              "social-desk",    # `P24-29`: the Social Desk
+              "crm-desk", "creator-room"}    # `P24-30`: the CRM Desk and the Creator Room
 
 
 @pytest.fixture(scope="module")
@@ -51,7 +53,7 @@ def test_the_roster_has_its_starters_and_wave_two(hall):
     waves = {}
     for m in hall:
         waves[m.wave] = waves.get(m.wave, 0) + 1
-    assert waves == {1: 18, 2: 155, 3: 28}    # wave 3: the company slice (`P24-28`)
+    assert waves == {1: 18, 2: 155, 3: 28, 4: 36, 5: 22}    # wave 3: the company slice (`P24-28`); wave 4: the second (`P24-29`); wave 5: finance, CRM, content (`P24-30`)
     assert sum(1 for m in hall if m.starred) == 5
 
 

@@ -251,6 +251,9 @@ const _DOOR_FUNCTIONS = {
   // `P25-06`. The agent browser's window, loaded by `app.js` for its doors.
   'agent-browser-modal': () => import('./browserWindow.js')
     .then((m) => m.openAgentBrowser()),
+  // `B1751`. The phone's window, loaded by `app.js` for its doors.
+  'phone-modal': () => import('./phoneWindow.js')
+    .then((m) => m.openPhone()),
   // `P26-04`. The Design window.
   'design-modal': () => import('./design/designWindow.js')
     .then((m) => m.openDesign()),

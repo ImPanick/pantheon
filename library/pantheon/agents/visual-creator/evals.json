@@ -1,0 +1,491 @@
+{
+ "cases": [
+  {
+   "id": "four-made-one-briefed",
+   "about": "Five briefs: four short-text images are generated with prompts that name the layout, words and brand colours; the sentence slide is briefed for hand-set text; every image has alt text.",
+   "inputs": {
+    "source": "Carousel — the five that went back",
+    "style": "dark blue, cream and amber; never red",
+    "size": "1080x1350"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "k1",
+      "title": "Carousel — the five that went back",
+      "content": "Carousel — the five that went back\n5 slides; cover: \"56 kept the four-day week. 5 didn't.\"\n\n## Cover\n- 56 kept the four-day week. 5 didn't.\n- What the five saw that the rest missed\n\n## Slides\n2. Revenue was flat for all 61 — Output was never the problem. [1]\n3. 14 meetings became 5 — The teams that stayed cut them. The five never did. [2]\n4. A meeting cull with a day off — Skip the cull, keep the cost. (view)\n\n## Close\n- Count your standing meetings first.\n- Reply \"meetings\" and we will send how.\n\n## Image briefs\n1. Card, dark blue, large \"56 / 5\" in cream.\n2. Card, one flat cream line across, headline above.\n3. Bar chart, two amber bars 14 and 5, before / after.\n4. Card, headline only, centred.\n5. Card, the ask in brand type.\n\n## Not written\n- none\n"
+     }
+    ],
+    "images": [
+     {
+      "match": "56 / 5",
+      "path": "images/carousel-1.png"
+     },
+     {
+      "match": "horizontal cream line",
+      "path": "images/carousel-2.png"
+     },
+     {
+      "match": "two-bar chart",
+      "path": "images/carousel-3.png"
+     },
+     {
+      "match": "thin cream border",
+      "path": "images/carousel-5.png"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Carousel — the five that went back"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "k1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "generate_image",
+       {
+        "prompt": "A flat dark blue card, 1080x1350, large cream numerals '56 / 5' centred, nothing else.",
+        "size": "1080x1350"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "generate_image",
+       {
+        "prompt": "A flat dark blue card with one horizontal cream line across the middle third, no text.",
+        "size": "1080x1350"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "generate_image",
+       {
+        "prompt": "A two-bar chart on dark blue: left bar tall, right bar a third of it, amber bars, no labels.",
+        "size": "1080x1350"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "generate_image",
+       {
+        "prompt": "A flat dark blue card, empty, with a thin cream border.",
+        "size": "1080x1350"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Visuals — Carousel — the five that went back",
+        "content": "Visuals — Carousel — the five that went back\n4 made, 1 briefed, 0 not made\n\n## Made\n- 1 · images/carousel-1.png · \"A flat dark blue card, 1080x1350, large cream numerals '56 / 5' centred, nothing else.\" · 1080x1350\n- 2 · images/carousel-2.png · \"A flat dark blue card with one horizontal cream line across the middle third, no text.\" · 1080x1350\n- 3 · images/carousel-3.png · \"A two-bar chart on dark blue: left bar tall, right bar a third of it, amber bars, no labels.\" · 1080x1350\n- 5 · images/carousel-5.png · \"A flat dark blue card, empty, with a thin cream border.\" · 1080x1350\n\n## Briefs\n- 4 · Card: headline \"A meeting cull with a day off\" set by hand in brand type, cream on dark blue.\n\n## Alt text\n- 1: Dark blue card with large cream numbers reading \"56 / 5\".\n- 2: Dark blue card with a single flat cream line, for flat revenue.\n- 3: Two amber bars on dark blue, the left three times the right, before and after.\n- 4: Dark blue card reading \"A meeting cull with a day off\".\n- 5: Dark blue card with a thin cream border, for the closing text.\n\n## Not made\n- none. Slide 4 carries a sentence, so its words are set by hand.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "4 made, 1 briefed for hand-set text (slide 4); every image has alt text.\n\n## Report\n- read \"Carousel — the five that went back\" (5 briefs); generated 4; wrote \"Visuals — Carousel — the five that went back\""
+    }
+   ],
+   "checks": [
+    {
+     "called": "generate_image"
+    },
+    {
+     "document": {
+      "title": "Visuals —",
+      "contains": [
+       "images/carousel-3.png",
+       "## Briefs\n- 4 · Card",
+       "- 5: Dark blue card"
+      ],
+      "lacks": [
+       "bright red",
+       "engaging",
+       "image of"
+      ]
+     }
+    },
+    {
+     "not_called": "post_social"
+    }
+   ]
+  },
+  {
+   "id": "no-briefs-in-the-source",
+   "about": "The source has no Image briefs: nothing is generated, the document says none, and the answer names what to run first.",
+   "inputs": {
+    "source": "Posts — week of 2026-11-10",
+    "style": "dark blue, cream and amber; never red",
+    "size": "1080x1350"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "p1",
+      "title": "Posts — week of 2026-11-10",
+      "content": "Posts — week of 2026-11-10\n## Posts\n- a post\n## Image briefs\n- none\n"
+     }
+    ],
+    "images": [
+     {
+      "match": "56 / 5",
+      "path": "images/carousel-1.png"
+     },
+     {
+      "match": "horizontal cream line",
+      "path": "images/carousel-2.png"
+     },
+     {
+      "match": "two-bar chart",
+      "path": "images/carousel-3.png"
+     },
+     {
+      "match": "thin cream border",
+      "path": "images/carousel-5.png"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Posts — week of 2026-11-10"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "p1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Visuals — Posts — week of 2026-11-10",
+        "content": "Visuals — Posts — week of 2026-11-10\n0 made, 0 briefed, 0 not made\n\n## Made\n- none\n\n## Briefs\n- none: the source has no image briefs.\n\n## Alt text\n- none\n\n## Not made\n- none\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Nothing to make: \"Posts — week of 2026-11-10\" has no image briefs. Run the Post Writer or Carousel Writer with briefs first.\n\n## Report\n- read 1 document; generated 0; wrote \"Visuals — Posts — week of 2026-11-10\""
+    }
+   ],
+   "checks": [
+    {
+     "not_called": "generate_image"
+    },
+    {
+     "document": {
+      "title": "Visuals —",
+      "contains": [
+       "## Made\n- none"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "image-generation-is-off",
+   "about": "The image model refuses every prompt: each brief becomes a designer's brief, Not made carries the error, and the answer says how to turn it on.",
+   "inputs": {
+    "source": "Carousel — the five that went back",
+    "style": "dark blue, cream and amber; never red",
+    "size": "1080x1350"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "k1",
+      "title": "Carousel — the five that went back",
+      "content": "Carousel — the five that went back\n5 slides; cover: \"56 kept the four-day week. 5 didn't.\"\n\n## Cover\n- 56 kept the four-day week. 5 didn't.\n- What the five saw that the rest missed\n\n## Slides\n2. Revenue was flat for all 61 — Output was never the problem. [1]\n3. 14 meetings became 5 — The teams that stayed cut them. The five never did. [2]\n4. A meeting cull with a day off — Skip the cull, keep the cost. (view)\n\n## Close\n- Count your standing meetings first.\n- Reply \"meetings\" and we will send how.\n\n## Image briefs\n1. Card, dark blue, large \"56 / 5\" in cream.\n2. Card, one flat cream line across, headline above.\n3. Bar chart, two amber bars 14 and 5, before / after.\n4. Card, headline only, centred.\n5. Card, the ask in brand type.\n\n## Not written\n- none\n"
+     }
+    ],
+    "images": [
+     {
+      "match": "",
+      "error": "Image generation is off in Settings."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Carousel — the five that went back"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "k1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "generate_image",
+       {
+        "prompt": "A flat dark blue card, 1080x1350, large cream numerals '56 / 5' centred, nothing else.",
+        "size": "1080x1350"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Visuals — Carousel — the five that went back",
+        "content": "Visuals — Carousel — the five that went back\n0 made, 5 briefed, 5 not made\n\n## Made\n- none\n\n## Briefs\n- 1 · Card, dark blue, large \"56 / 5\" in cream, 1080x1350.\n- 2 · Card, one flat cream line across, headline above, 1080x1350.\n- 3 · Bar chart, two amber bars 14 and 5, before / after, 1080x1350.\n- 4 · Card, headline \"A meeting cull with a day off\", centred, 1080x1350.\n- 5 · Card, the ask in brand type, 1080x1350.\n\n## Alt text\n- 1: Dark blue card reading \"56 / 5\".\n- 2: Dark blue card with a flat cream line.\n- 3: Two amber bars, 14 and 5.\n- 4: Dark blue card reading \"A meeting cull with a day off\".\n- 5: Dark blue card with the closing ask.\n\n## Not made\n- all five: generate_image answered \"Image generation is off in Settings.\" Turn it on, or pass these briefs to a designer.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Nothing generated: image generation is off. All 5 are briefed for a designer; turn it on in Settings to make them here.\n\n## Report\n- read the carousel (5 briefs); generate_image refused; wrote \"Visuals — Carousel — the five that went back\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Visuals —",
+      "contains": [
+       "Image generation is off",
+       "## Briefs\n- 1 · Card"
+      ]
+     }
+    },
+    {
+     "answer_contains": [
+      "Settings"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "the-brief-and-the-style-line-conflict",
+   "about": "A brief asks for a red card and the style line says never red: the style wins, the image is made in brand colours, and Not made says the brief was adjusted.",
+   "inputs": {
+    "source": "Carousel — the five that went back",
+    "style": "dark blue, cream and amber; never red",
+    "size": "1080x1350"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "k1",
+      "title": "Carousel — the five that went back",
+      "content": "Carousel — sale\n## Image briefs\n1. Card, bright red, large \"56 / 5\".\n"
+     }
+    ],
+    "images": [
+     {
+      "match": "56 / 5",
+      "path": "images/carousel-1.png"
+     },
+     {
+      "match": "horizontal cream line",
+      "path": "images/carousel-2.png"
+     },
+     {
+      "match": "two-bar chart",
+      "path": "images/carousel-3.png"
+     },
+     {
+      "match": "thin cream border",
+      "path": "images/carousel-5.png"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Carousel — the five that went back"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "k1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "generate_image",
+       {
+        "prompt": "A flat dark blue card, 1080x1350, large cream numerals '56 / 5' centred, nothing else.",
+        "size": "1080x1350"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Visuals — Carousel — the five that went back",
+        "content": "Visuals — Carousel — the five that went back\n1 made, 0 briefed, 0 not made\n\n## Made\n- 1 · images/carousel-1.png · \"A flat dark blue card, 1080x1350, large cream numerals '56 / 5' centred, nothing else.\" · 1080x1350\n\n## Briefs\n- none\n\n## Alt text\n- 1: Dark blue card with large cream numbers reading \"56 / 5\".\n\n## Not made\n- 1 adjusted: the brief asked for bright red; the style line says never red, so it was made in dark blue and cream.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "1 made, adjusted from red to dark blue — your style line says never red.\n\n## Report\n- read 1 brief; generated 1; wrote \"Visuals — Carousel — the five that went back\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Visuals —",
+      "contains": [
+       "1 adjusted",
+       "never red"
+      ],
+      "lacks": [
+       "bright red card,"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "visuals-without-their-headings-fail",
+   "about": "The harness's own check: a visuals document without Made, Briefs, Alt text and Not made does not deliver, even after its repair pass.",
+   "inputs": {
+    "source": "Carousel — the five that went back",
+    "style": "dark blue, cream and amber; never red",
+    "size": "1080x1350"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "k1",
+      "title": "Carousel — the five that went back",
+      "content": "Carousel — the five that went back\n5 slides; cover: \"56 kept the four-day week. 5 didn't.\"\n\n## Cover\n- 56 kept the four-day week. 5 didn't.\n- What the five saw that the rest missed\n\n## Slides\n2. Revenue was flat for all 61 — Output was never the problem. [1]\n3. 14 meetings became 5 — The teams that stayed cut them. The five never did. [2]\n4. A meeting cull with a day off — Skip the cull, keep the cost. (view)\n\n## Close\n- Count your standing meetings first.\n- Reply \"meetings\" and we will send how.\n\n## Image briefs\n1. Card, dark blue, large \"56 / 5\" in cream.\n2. Card, one flat cream line across, headline above.\n3. Bar chart, two amber bars 14 and 5, before / after.\n4. Card, headline only, centred.\n5. Card, the ask in brand type.\n\n## Not written\n- none\n"
+     }
+    ],
+    "images": [
+     {
+      "match": "56 / 5",
+      "path": "images/carousel-1.png"
+     },
+     {
+      "match": "horizontal cream line",
+      "path": "images/carousel-2.png"
+     },
+     {
+      "match": "two-bar chart",
+      "path": "images/carousel-3.png"
+     },
+     {
+      "match": "thin cream border",
+      "path": "images/carousel-5.png"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Carousel — the five that went back"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Visuals — Carousel — the five that went back",
+        "content": "Here it is."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

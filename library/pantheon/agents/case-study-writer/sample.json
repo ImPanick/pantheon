@@ -1,0 +1,26 @@
+{
+ "case": "minutes-with-two-numbers-and-two-quotes",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read 1 minutes and the proposal; wrote \"Case study — Birch & Co\"",
+ "read": [
+  "manage_documents"
+ ],
+ "wrote": [
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Case study”",
+   "ok": true,
+   "detail": "“Case study — Birch & Co” is there."
+  }
+ ],
+ "answer": "Headline: order entry from four hours a week to twenty minutes; 2 open questions.\n\n## Report\n- read 1 minutes and the proposal; wrote \"Case study — Birch & Co\"",
+ "documents": [
+  {
+   "title": "Case study — Birch & Co",
+   "content": "Case study — Birch & Co\nBirch & Co cut order entry from four hours a week to twenty minutes.\n\n## The problem\nBirch & Co sells plants to forty garden centres. Orders came by email and phone, and one person spent most of Monday typing them into a spreadsheet, with a mistake or two a week that cost a delivery.\n\n## What they did\n1. Moved the forty centres to the order form (Order forms), each with its own price list.\n2. Set the Monday cut-off so the picking list builds itself (Picking lists).\n3. Turned on the duplicate-order warning after the second week (Order checks).\n\n## The numbers\n| What | Before | After | Source |\n| --- | --- | --- | --- |\n| Order entry per week | 4 hours | 20 minutes | Minutes — Birch & Co check-in — 2026-11-03: \"down to twenty minutes on a Monday\" |\n| Delivery mistakes per month | 6 | 1 | Minutes — Birch & Co check-in — 2026-11-03: \"one wrong delivery since September, from six\" |\n\n## Quotes to confirm\n- [to confirm with Bo Lind: \"Monday used to be the day I dreaded.\"]\n- [to confirm with Bo Lind: \"The duplicate warning paid for it on its own.\"]\n\n## Open questions\n- The proposal promised a 10% cut in stock write-offs; the minutes do not mention write-offs. Ask Bo whether there is a figure.\n- Whether Birch & Co's logo may be used — not in the notes."
+  }
+ ]
+}

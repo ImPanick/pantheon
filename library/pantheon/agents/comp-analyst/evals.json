@@ -1,0 +1,576 @@
+{
+ "cases": [
+  {
+   "id": "five-sources-one-unopened",
+   "about": "Four job posts and a survey, one page that will not open: five points normalised (a monthly figure times twelve, equity left out), a range from their middle, the unconfirmed figure left out.",
+   "inputs": {
+    "role": "senior backend engineer",
+    "place": "Manchester",
+    "level": "5–8 years"
+   },
+   "world": {
+    "search": {
+     "salary manchester": [
+      {
+       "title": "Ledgerly — Senior Backend Engineer",
+       "url": "https://ledgerly.example/jobs/42",
+       "snippet": "£70,000–£85,000, Manchester."
+      },
+      {
+       "title": "Stockwise — Senior Backend Engineer",
+       "url": "https://stockwise.example/jobs/11",
+       "snippet": "£65,000–£75,000."
+      }
+     ],
+     "job salary": [
+      {
+       "title": "ShipQuick — Senior Engineer (Backend)",
+       "url": "https://shipquick.example/careers/7",
+       "snippet": "£75k–£95k + equity, Manchester."
+      },
+      {
+       "title": "Countly — Senior Backend",
+       "url": "https://countly.example/jobs/3",
+       "snippet": "£6,000/month, Manchester."
+      }
+     ],
+     "salary survey": [
+      {
+       "title": "TechPay 2026 survey",
+       "url": "https://techpay.example/2026",
+       "snippet": "Senior backend, North West: median £72,000."
+      }
+     ],
+     "pay manchester": [
+      {
+       "title": "PayScale",
+       "url": "https://payscale.example/senior-backend",
+       "snippet": "£64,000 average."
+      }
+     ]
+    },
+    "web": {
+     "https://ledgerly.example/jobs/42": "Senior Backend Engineer, Manchester. £70,000–£85,000. Posted October 2026.",
+     "https://stockwise.example/jobs/11": "Senior Backend Engineer. £65,000–£75,000. Manchester. August 2026.",
+     "https://shipquick.example/careers/7": "Senior Engineer (Backend). £75k–£95k base plus equity. Manchester. September 2026.",
+     "https://countly.example/jobs/3": "Senior Backend. £6,000 per month. Manchester. October 2026.",
+     "https://techpay.example/2026": "TechPay 2026. Senior backend engineer, North West England: median £72,000 (n=140). June 2026."
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "senior backend engineer salary Manchester"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "senior backend engineer Manchester job salary"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "senior backend engineer salary survey 2026"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "senior backend engineer pay Manchester site:glassdoor OR levels OR gov"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://ledgerly.example/jobs/42"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://stockwise.example/jobs/11"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://shipquick.example/careers/7"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://countly.example/jobs/3"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://techpay.example/2026"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://payscale.example/senior-backend"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Pay band — senior backend engineer, Manchester",
+        "content": "Pay band — senior backend engineer, Manchester\n£70,000–£77,500 base, from 5 sources (spread £70,000–£85,000)\n\n## Range\n- £70k–£77.5k (25th–75th percentile of 5 midpoints), median £72k; 5 points, adequate.\n\n## Sources\n| Source | Link | As printed | Yearly base | Level | Date |\n| --- | --- | --- | --- | --- | --- |\n| Ledgerly job post | https://ledgerly.example/jobs/42 | £70,000–£85,000 | £77,500 | senior | 2026-10 |\n| ShipQuick post | https://shipquick.example/careers/7 | £75k–£95k + equity | £85,000 | senior | 2026-09 |\n| TechPay survey | https://techpay.example/2026 | median £72,000 (NW England) | £72,000 | senior | 2026-06 |\n| Countly post | https://countly.example/jobs/3 | £6,000/month | £72,000 | senior | 2026-10 |\n| Stockwise post | https://stockwise.example/jobs/11 | £65,000–£75,000 | £70,000 | senior | 2026-08 |\n\n## Assumptions\n- Role family: backend / server engineer; level: senior, 5–8 years; place: Manchester plus a North West survey row; figures from 2026; no currency conversion; equity left out of the base.\n\n## Checked\n- 4 searches; 5 pages opened; 1 not opened (https://payscale.example/senior-backend answered 404; snippet £64,000 unconfirmed, left out).\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "£70k–£77.5k base for a senior backend engineer in Manchester, from 5 sources.\n\n## Report\n- 4 searches, 6 fetches; wrote \"Pay band — senior backend engineer, Manchester\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Pay band — senior backend engineer, Manchester",
+      "contains": [
+       "## Range\n- £70k–£77.5k",
+       "| Countly post | https://countly.example/jobs/3 | £6,000/month | £72,000 |",
+       "equity left out",
+       "unconfirmed, left out"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "no-figures-found",
+   "about": "No result prints a salary: Range and Sources say none, and the answer offers the nearest role or a wider place.",
+   "inputs": {
+    "role": "senior backend engineer",
+    "place": "Manchester",
+    "level": "5–8 years"
+   },
+   "world": {
+    "search": {
+     "salary manchester": [
+      {
+       "title": "Senior Backend Engineer",
+       "url": "https://ledgerly.example/jobs/43",
+       "snippet": "Competitive salary."
+      }
+     ]
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "senior backend engineer salary Manchester"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "senior backend engineer Manchester job salary"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "senior backend engineer salary survey 2026"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "senior backend engineer pay Manchester site:glassdoor OR levels OR gov"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Pay band — senior backend engineer, Manchester",
+        "content": "Pay band — senior backend engineer, Manchester\nno range, from 0 sources (spread none)\n\n## Range\n- none: no result printed a figure.\n\n## Sources\n- none\n\n## Assumptions\n- Role family: backend engineer; level: senior; place: Manchester; nothing found to normalise.\n\n## Checked\n- 4 searches; 0 pages opened; 1 result said \"competitive salary\" with no figure.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "No posted figures for Manchester — try \"backend engineer\" or widen to the North West?\n\n## Report\n- 4 searches, no figures; wrote \"Pay band — senior backend engineer, Manchester\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Pay band",
+      "contains": [
+       "## Range\n- none"
+      ]
+     }
+    },
+    {
+     "not_called": "web_fetch"
+    }
+   ]
+  },
+  {
+   "id": "a-page-cannot-be-opened",
+   "about": "The only page answers an error: its snippet figure goes under Checked as unconfirmed and no range is given.",
+   "inputs": {
+    "role": "senior backend engineer",
+    "place": "Manchester",
+    "level": "5–8 years"
+   },
+   "world": {
+    "search": {
+     "salary manchester": [
+      {
+       "title": "Ledgerly — Senior Backend Engineer",
+       "url": "https://ledgerly.example/jobs/42",
+       "snippet": "£70,000–£85,000, Manchester."
+      }
+     ]
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "senior backend engineer salary Manchester"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "senior backend engineer Manchester job salary"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "senior backend engineer salary survey 2026"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "senior backend engineer pay Manchester site:glassdoor OR levels OR gov"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://ledgerly.example/jobs/42"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Pay band — senior backend engineer, Manchester",
+        "content": "Pay band — senior backend engineer, Manchester\nno range, from 0 sources (spread none)\n\n## Range\n- none: the one page would not open, so no figure is confirmed.\n\n## Sources\n- none confirmed\n\n## Assumptions\n- Role family: backend engineer; level: senior; place: Manchester.\n\n## Checked\n- 4 searches; 0 pages opened; 1 not opened (https://ledgerly.example/jobs/42 answered 404; snippet £70,000–£85,000 unconfirmed).\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "No range: the one page would not open.\n\n## Report\n- 4 searches, 1 fetch failed; wrote \"Pay band — senior backend engineer, Manchester\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Pay band",
+      "contains": [
+       "not opened",
+       "unconfirmed"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "it-never-uses-one-post-as-the-market",
+   "about": "One post only: the figure is given as one source, no range is written, and no figure is extrapolated.",
+   "inputs": {
+    "role": "senior backend engineer",
+    "place": "Manchester",
+    "level": "5–8 years"
+   },
+   "world": {
+    "search": {
+     "salary manchester": [
+      {
+       "title": "Ledgerly — Senior Backend Engineer",
+       "url": "https://ledgerly.example/jobs/42",
+       "snippet": "£70,000–£85,000, Manchester."
+      }
+     ]
+    },
+    "web": {
+     "https://ledgerly.example/jobs/42": "Senior Backend Engineer, Manchester. £70,000–£85,000. Posted October 2026.",
+     "https://stockwise.example/jobs/11": "Senior Backend Engineer. £65,000–£75,000. Manchester. August 2026.",
+     "https://shipquick.example/careers/7": "Senior Engineer (Backend). £75k–£95k base plus equity. Manchester. September 2026.",
+     "https://countly.example/jobs/3": "Senior Backend. £6,000 per month. Manchester. October 2026.",
+     "https://techpay.example/2026": "TechPay 2026. Senior backend engineer, North West England: median £72,000 (n=140). June 2026."
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "senior backend engineer salary Manchester"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "senior backend engineer Manchester job salary"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "senior backend engineer salary survey 2026"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "senior backend engineer pay Manchester site:glassdoor OR levels OR gov"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://ledgerly.example/jobs/42"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Pay band — senior backend engineer, Manchester",
+        "content": "Pay band — senior backend engineer, Manchester\none source: £70,000–£85,000 base (spread none)\n\n## Range\n- none: one source is not a range; the point is £77,500 (midpoint), marked one source.\n\n## Sources\n| Source | Link | As printed | Yearly base | Level | Date |\n| --- | --- | --- | --- | --- | --- |\n| Ledgerly job post | https://ledgerly.example/jobs/42 | £70,000–£85,000 | £77,500 | senior | 2026-10 |\n\n## Assumptions\n- Role family: backend engineer; level: senior; place: Manchester; one post, no survey.\n\n## Checked\n- 4 searches; 1 page opened; 0 not opened.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "One source only (Ledgerly, £70k–£85k); not a range.\n\n## Report\n- 4 searches, 1 fetch; wrote \"Pay band — senior backend engineer, Manchester\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Pay band",
+      "contains": [
+       "one source"
+      ],
+      "lacks": [
+       "the market rate is",
+       "## Range\n- £"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-band-without-its-headings-fails",
+   "about": "The harness's own check: a pay band without Range, Sources, Assumptions and Checked does not deliver, even after its repair pass.",
+   "inputs": {
+    "role": "senior backend engineer",
+    "place": "Manchester",
+    "level": "5–8 years"
+   },
+   "world": {
+    "search": {
+     "salary manchester": [
+      {
+       "title": "Ledgerly — Senior Backend Engineer",
+       "url": "https://ledgerly.example/jobs/42",
+       "snippet": "£70,000–£85,000, Manchester."
+      },
+      {
+       "title": "Stockwise — Senior Backend Engineer",
+       "url": "https://stockwise.example/jobs/11",
+       "snippet": "£65,000–£75,000."
+      }
+     ],
+     "job salary": [
+      {
+       "title": "ShipQuick — Senior Engineer (Backend)",
+       "url": "https://shipquick.example/careers/7",
+       "snippet": "£75k–£95k + equity, Manchester."
+      },
+      {
+       "title": "Countly — Senior Backend",
+       "url": "https://countly.example/jobs/3",
+       "snippet": "£6,000/month, Manchester."
+      }
+     ],
+     "salary survey": [
+      {
+       "title": "TechPay 2026 survey",
+       "url": "https://techpay.example/2026",
+       "snippet": "Senior backend, North West: median £72,000."
+      }
+     ],
+     "pay manchester": [
+      {
+       "title": "PayScale",
+       "url": "https://payscale.example/senior-backend",
+       "snippet": "£64,000 average."
+      }
+     ]
+    },
+    "web": {
+     "https://ledgerly.example/jobs/42": "Senior Backend Engineer, Manchester. £70,000–£85,000. Posted October 2026.",
+     "https://stockwise.example/jobs/11": "Senior Backend Engineer. £65,000–£75,000. Manchester. August 2026.",
+     "https://shipquick.example/careers/7": "Senior Engineer (Backend). £75k–£95k base plus equity. Manchester. September 2026.",
+     "https://countly.example/jobs/3": "Senior Backend. £6,000 per month. Manchester. October 2026.",
+     "https://techpay.example/2026": "TechPay 2026. Senior backend engineer, North West England: median £72,000 (n=140). June 2026."
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "senior backend engineer salary Manchester"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Pay band — senior backend engineer, Manchester",
+        "content": "About £75k."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

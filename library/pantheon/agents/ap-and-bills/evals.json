@@ -1,0 +1,533 @@
+{
+ "cases": [
+  {
+   "id": "one-new-bill-posted-and-the-run-laid-out",
+   "about": "Three mails: a new bill is posted as open, a reminder for a bill already in the ledger moves nothing but its new amount goes to Check these, a newsletter is ignored; the run lists the overdue bill first and never pays.",
+   "inputs": {
+    "days": "14",
+    "at": "09:00"
+   },
+   "world": {
+    "ledger": [
+     {
+      "id": "b1",
+      "date": "2026-10-28",
+      "kind": "bill",
+      "amount": 120.5,
+      "counterparty": "Hetzner",
+      "ref": "R0012345",
+      "due": "2026-11-10",
+      "status": "open",
+      "memo": "SEPA to DE89…"
+     },
+     {
+      "id": "b2",
+      "date": "2026-11-01",
+      "kind": "bill",
+      "amount": 49.99,
+      "counterparty": "Figma",
+      "ref": "F-7781",
+      "due": "2026-11-28",
+      "status": "open"
+     }
+    ],
+    "emails": [
+     {
+      "id": "m1",
+      "from": "billing@birchlegal.example",
+      "subject": "Invoice 2026-311 for October",
+      "date": "2026-11-05",
+      "body": "Please find invoice 2026-311 for October: 1,200.00 due 2026-11-15. Pay by bank transfer, details on the invoice."
+     },
+     {
+      "id": "m2",
+      "from": "noreply@hetzner.example",
+      "subject": "Reminder: invoice R0012345",
+      "date": "2026-11-11",
+      "body": "Invoice R0012345 is overdue. Amount now due: 125.50 including a late fee."
+     },
+     {
+      "id": "m3",
+      "from": "news@figma.example",
+      "subject": "What's new in Figma",
+      "date": "2026-11-06",
+      "body": "New features this month."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "ledger_table",
+       {
+        "action": "list",
+        "kind": "bill",
+        "status": "open",
+        "limit": 200
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "invoice",
+        "max_results": 30
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "m1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "m2"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "ledger_table",
+       {
+        "action": "add",
+        "kind": "bill",
+        "amount": 1200,
+        "date": "2026-11-05",
+        "due": "2026-11-15",
+        "counterparty": "Birch Legal",
+        "ref": "2026-311",
+        "memo": "bank transfer, details on the invoice"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Payment run — 2026-11-12",
+        "content": "Payment run — 2026-11-12\n2 to pay this week totalling 1,320.50; 1 new, 1 to check\n\n## Pay this week\n| Counterparty | Reference | Amount | Due | How to pay |\n| --- | --- | --- | --- | --- |\n| Hetzner | R0012345 | 120.50 | 2026-11-10 (overdue 2 days) | SEPA to DE89… |\n| Birch Legal | 2026-311 | 1,200.00 | 2026-11-15 | bank transfer, details on the invoice |\n\n## Due later\n| Counterparty | Amount | Due |\n| --- | --- | --- |\n| Figma | 49.99 | 2026-11-28 |\n\n## New this week\n- Birch Legal 2026-311 — 1,200.00 due 2026-11-15 — \"Invoice 2026-311 for October\".\n\n## Check these\n- Hetzner R0012345: the reminder says 125.50 (a late fee); the ledger holds 120.50. Settle which to pay.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Pay 1,320.50 this week: Hetzner (overdue) and Birch Legal; Figma is due later; one amount to settle.\n\n## Report\n- read 2 mails; posted 1 bill; wrote \"Payment run — 2026-11-12\""
+    }
+   ],
+   "checks": [
+    {
+     "ledger": {
+      "contains": [
+       "Birch Legal",
+       "2026-311",
+       "120.50"
+      ],
+      "lacks": [
+       "125.50",
+       "paid"
+      ],
+      "count": 3
+     }
+    },
+    {
+     "document": {
+      "title": "Payment run — 2026-11-12",
+      "contains": [
+       "| Hetzner | R0012345 | 120.50 | 2026-11-10 (overdue 2 days)",
+       "## New this week\n- Birch Legal 2026-311",
+       "## Check these\n- Hetzner R0012345: the reminder says 125.50"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "no-bills",
+   "about": "Nothing in the mail and nothing open: every heading says none and the answer says there is nothing to pay.",
+   "inputs": {
+    "days": "14",
+    "at": "09:00"
+   },
+   "world": {
+    "emails": [
+     {
+      "id": "m3",
+      "from": "news@figma.example",
+      "subject": "What's new in Figma",
+      "date": "2026-11-06",
+      "body": "New features this month."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "ledger_table",
+       {
+        "action": "list",
+        "kind": "bill",
+        "status": "open",
+        "limit": 200
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "invoice",
+        "max_results": 30
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Payment run — 2026-11-12",
+        "content": "Payment run — 2026-11-12\n0 to pay this week totalling 0.00; 0 new, 0 to check\n\n## Pay this week\n- none\n\n## Due later\n- none\n\n## New this week\n- none: no bill in the last 14 days of mail.\n\n## Check these\n- none\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Nothing to pay: no open bills and no new ones in the mail.\n\n## Report\n- read 0 mails; posted 0; wrote \"Payment run — 2026-11-12\""
+    }
+   ],
+   "checks": [
+    {
+     "ledger": {
+      "count": 0
+     }
+    },
+    {
+     "document": {
+      "title": "Payment run",
+      "contains": [
+       "## Pay this week\n- none",
+       "## New this week\n- none"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "the-mailbox-is-unreachable",
+   "about": "No mailbox answers: the run is built from the ledger's open bills alone and New this week says the mail could not be read.",
+   "inputs": {
+    "days": "14",
+    "at": "09:00"
+   },
+   "world": {
+    "ledger": [
+     {
+      "id": "b1",
+      "date": "2026-10-28",
+      "kind": "bill",
+      "amount": 120.5,
+      "counterparty": "Hetzner",
+      "ref": "R0012345",
+      "due": "2026-11-10",
+      "status": "open",
+      "memo": "SEPA to DE89…"
+     },
+     {
+      "id": "b2",
+      "date": "2026-11-01",
+      "kind": "bill",
+      "amount": 49.99,
+      "counterparty": "Figma",
+      "ref": "F-7781",
+      "due": "2026-11-28",
+      "status": "open"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "ledger_table",
+       {
+        "action": "list",
+        "kind": "bill",
+        "status": "open",
+        "limit": 200
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "invoice",
+        "max_results": 30
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Payment run — 2026-11-12",
+        "content": "Payment run — 2026-11-12\n1 to pay this week totalling 120.50; 0 new, 0 to check\n\n## Pay this week\n| Counterparty | Reference | Amount | Due | How to pay |\n| --- | --- | --- | --- | --- |\n| Hetzner | R0012345 | 120.50 | 2026-11-10 (overdue 2 days) | SEPA to DE89… |\n\n## Due later\n| Counterparty | Amount | Due |\n| --- | --- | --- |\n| Figma | 49.99 | 2026-11-28 |\n\n## New this week\n- none posted: the mailbox could not be read this run; built from the ledger alone.\n\n## Check these\n- none\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Pay 120.50 this week (Hetzner, overdue); the mailbox could not be read, so no new bills were posted.\n\n## Report\n- search_emails failed; posted 0; wrote \"Payment run — 2026-11-12\""
+    }
+   ],
+   "checks": [
+    {
+     "ledger": {
+      "count": 2
+     }
+    },
+    {
+     "document": {
+      "title": "Payment run",
+      "contains": [
+       "the mailbox could not be read"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "it-never-marks-a-bill-paid",
+   "about": "A mail says a bill was settled: the ledger line stays open (the payment is posted from the statement) and the run says so under Check these.",
+   "inputs": {
+    "days": "14",
+    "at": "09:00"
+   },
+   "world": {
+    "ledger": [
+     {
+      "id": "b1",
+      "date": "2026-10-28",
+      "kind": "bill",
+      "amount": 120.5,
+      "counterparty": "Hetzner",
+      "ref": "R0012345",
+      "due": "2026-11-10",
+      "status": "open",
+      "memo": "SEPA to DE89…"
+     },
+     {
+      "id": "b2",
+      "date": "2026-11-01",
+      "kind": "bill",
+      "amount": 49.99,
+      "counterparty": "Figma",
+      "ref": "F-7781",
+      "due": "2026-11-28",
+      "status": "open"
+     }
+    ],
+    "emails": [
+     {
+      "id": "m4",
+      "from": "noreply@hetzner.example",
+      "subject": "Invoice R0012345 paid — thank you",
+      "date": "2026-11-11",
+      "body": "We received 120.50 for invoice R0012345."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "ledger_table",
+       {
+        "action": "list",
+        "kind": "bill",
+        "status": "open",
+        "limit": 200
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "invoice",
+        "max_results": 30
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "m4"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Payment run — 2026-11-12",
+        "content": "Payment run — 2026-11-12\n0 to pay this week totalling 0.00; 0 new, 1 to check\n\n## Pay this week\n- none: Hetzner's R0012345 reads as paid in the mail (see Check these).\n\n## Due later\n| Counterparty | Amount | Due |\n| --- | --- | --- |\n| Figma | 49.99 | 2026-11-28 |\n\n## New this week\n- none\n\n## Check these\n- Hetzner R0012345: the mail says 120.50 was received on 2026-11-11; the ledger line is left open — it is marked paid when the Bookkeeper posts the statement line.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Nothing to pay this week; Hetzner's bill reads as paid in the mail and is left for the statement to confirm.\n\n## Report\n- read 1 mail; posted 0; wrote \"Payment run — 2026-11-12\""
+    }
+   ],
+   "checks": [
+    {
+     "ledger": {
+      "contains": [
+       "R0012345",
+       "open"
+      ],
+      "lacks": [
+       "paid"
+      ],
+      "count": 2
+     }
+    },
+    {
+     "document": {
+      "title": "Payment run",
+      "contains": [
+       "left open"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-run-without-its-headings-fails",
+   "about": "The harness's own check: a payment run without Pay this week, Due later, New this week and Check these does not deliver, even after its repair pass.",
+   "inputs": {
+    "days": "14",
+    "at": "09:00"
+   },
+   "world": {
+    "ledger": [
+     {
+      "id": "b1",
+      "date": "2026-10-28",
+      "kind": "bill",
+      "amount": 120.5,
+      "counterparty": "Hetzner",
+      "ref": "R0012345",
+      "due": "2026-11-10",
+      "status": "open",
+      "memo": "SEPA to DE89…"
+     },
+     {
+      "id": "b2",
+      "date": "2026-11-01",
+      "kind": "bill",
+      "amount": 49.99,
+      "counterparty": "Figma",
+      "ref": "F-7781",
+      "due": "2026-11-28",
+      "status": "open"
+     }
+    ],
+    "emails": [
+     {
+      "id": "m1",
+      "from": "billing@birchlegal.example",
+      "subject": "Invoice 2026-311 for October",
+      "date": "2026-11-05",
+      "body": "Please find invoice 2026-311 for October: 1,200.00 due 2026-11-15. Pay by bank transfer, details on the invoice."
+     },
+     {
+      "id": "m2",
+      "from": "noreply@hetzner.example",
+      "subject": "Reminder: invoice R0012345",
+      "date": "2026-11-11",
+      "body": "Invoice R0012345 is overdue. Amount now due: 125.50 including a late fee."
+     },
+     {
+      "id": "m3",
+      "from": "news@figma.example",
+      "subject": "What's new in Figma",
+      "date": "2026-11-06",
+      "body": "New features this month."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "ledger_table",
+       {
+        "action": "list",
+        "kind": "bill",
+        "status": "open",
+        "limit": 200
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Payment run — 2026-11-12",
+        "content": "Pay Hetzner and Birch."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

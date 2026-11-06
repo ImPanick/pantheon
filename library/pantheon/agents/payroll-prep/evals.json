@@ -1,0 +1,546 @@
+{
+ "cases": [
+  {
+   "id": "three-lines-drafted-one-starter-pro-rated",
+   "about": "A Team document with a rise and a mid-month starter against October's two lines: three draft lines are posted at the Team document's figures, the starter pro-rated with the arithmetic shown, the changes listed; nothing is posted as paid.",
+   "inputs": {
+    "team": "Team",
+    "payday": "last working day"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "t1",
+      "title": "Team",
+      "content": "Team\nDana Kim — Engineer — 5200\nOmar Haddad — Designer — 4500 (from November; was 4200)\nPriya Nair — Support — 4800 (started 2026-11-16)\n"
+     }
+    ],
+    "ledger": [
+     {
+      "date": "2026-10-30",
+      "kind": "payroll",
+      "amount": 5200,
+      "counterparty": "Dana Kim",
+      "category": "payroll",
+      "memo": "October gross, Engineer"
+     },
+     {
+      "date": "2026-10-30",
+      "kind": "payroll",
+      "amount": 4200,
+      "counterparty": "Omar Haddad",
+      "category": "payroll",
+      "memo": "October gross, Designer"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Team"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "t1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "ledger_table",
+       {
+        "action": "list",
+        "kind": "payroll",
+        "from": "2026-08-22",
+        "limit": 200
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "ledger_table",
+       {
+        "action": "add",
+        "kind": "payroll",
+        "status": "draft",
+        "amount": 5200,
+        "date": "2026-11-30",
+        "counterparty": "Dana Kim",
+        "category": "payroll",
+        "memo": "November gross, Engineer"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "ledger_table",
+       {
+        "action": "add",
+        "kind": "payroll",
+        "status": "draft",
+        "amount": 4500,
+        "date": "2026-11-30",
+        "counterparty": "Omar Haddad",
+        "category": "payroll",
+        "memo": "November gross, Designer"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "ledger_table",
+       {
+        "action": "add",
+        "kind": "payroll",
+        "status": "draft",
+        "amount": 2400,
+        "date": "2026-11-30",
+        "counterparty": "Priya Nair",
+        "category": "payroll",
+        "memo": "November gross, Support (11/22 days)"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Payroll run — 2026-11",
+        "content": "Payroll run — 2026-11\n3 people, 12,100.00 gross, payday 2026-11-30 — drafted, not paid\n\n## Lines\n| Name | Role | Gross | Payday | Draft |\n| --- | --- | --- | --- | --- |\n| Dana Kim | Engineer | 5,200.00 | 2026-11-30 | posted |\n| Omar Haddad | Designer | 4,500.00 | 2026-11-30 | posted |\n| Priya Nair | Support (started 2026-11-16) | 2,400.00 | 2026-11-30 | posted |\n\n## Total\n- 12,100.00 gross across 3 people; October was 9,400.00 across 2.\n\n## Changes since last month\n- Starter: Priya Nair, 4,800.00 monthly, 11 of 22 working days = 2,400.00.\n- Pay change: Omar Haddad 4,200.00 → 4,500.00 (Team document, \"from November\").\n\n## Check before paying\n- Priya's pro-rata (11/22 days) and start date.\n- Omar's rise is in the Team document; confirm it was agreed from November.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "November payroll drafted: 3 people, 12,100.00 gross on 2026-11-30; one starter pro-rated, one rise to confirm.\n\n## Report\n- read \"Team\" and October's payroll lines; posted 3 draft lines; wrote \"Payroll run — 2026-11\""
+    }
+   ],
+   "checks": [
+    {
+     "ledger": {
+      "contains": [
+       "Priya Nair",
+       "draft",
+       "4500.00"
+      ],
+      "count": 5
+     }
+    },
+    {
+     "document": {
+      "title": "Payroll run — 2026-11",
+      "contains": [
+       "| Priya Nair | Support (started 2026-11-16) | 2,400.00 |",
+       "## Changes since last month\n- Starter: Priya Nair",
+       "11 of 22 working days",
+       "Omar Haddad 4,200.00 → 4,500.00"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "no-team-document",
+   "about": "Nothing matches the title: no lines are drafted, Check before paying says what the document should hold.",
+   "inputs": {
+    "team": "Team",
+    "payday": "last working day"
+   },
+   "world": {
+    "ledger": [
+     {
+      "date": "2026-10-30",
+      "kind": "payroll",
+      "amount": 5200,
+      "counterparty": "Dana Kim",
+      "category": "payroll",
+      "memo": "October gross, Engineer"
+     },
+     {
+      "date": "2026-10-30",
+      "kind": "payroll",
+      "amount": 4200,
+      "counterparty": "Omar Haddad",
+      "category": "payroll",
+      "memo": "October gross, Designer"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Team"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "ledger_table",
+       {
+        "action": "list",
+        "kind": "payroll",
+        "from": "2026-08-22",
+        "limit": 200
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Payroll run — 2026-11",
+        "content": "Payroll run — 2026-11\n0 people, 0.00 gross, payday 2026-11-30 — nothing drafted\n\n## Lines\n- none: no document titled \"Team\".\n\n## Total\n- 0.00; October was 9,400.00 across 2.\n\n## Changes since last month\n- unknown without the Team document.\n\n## Check before paying\n- Write a \"Team\" document — one person per line: name — role — monthly gross, with any start, leaving or change note — and run again. October's lines (Dana Kim 5,200.00, Omar Haddad 4,200.00) are in the ledger for reference.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Nothing drafted: there is no \"Team\" document; write one and run again.\n\n## Report\n- no document titled \"Team\"; read October's payroll lines; posted 0; wrote \"Payroll run — 2026-11\""
+    }
+   ],
+   "checks": [
+    {
+     "ledger": {
+      "count": 2
+     }
+    },
+    {
+     "document": {
+      "title": "Payroll run",
+      "contains": [
+       "no document titled \"Team\""
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "already-drafted",
+   "about": "This month's drafts exist from an earlier run: nothing new is posted and the document reports the existing drafts.",
+   "inputs": {
+    "team": "Team",
+    "payday": "last working day"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "t1",
+      "title": "Team",
+      "content": "Team\nDana Kim — Engineer — 5200\n"
+     }
+    ],
+    "ledger": [
+     {
+      "date": "2026-10-30",
+      "kind": "payroll",
+      "amount": 5200,
+      "counterparty": "Dana Kim",
+      "category": "payroll",
+      "memo": "October gross, Engineer"
+     },
+     {
+      "date": "2026-10-30",
+      "kind": "payroll",
+      "amount": 4200,
+      "counterparty": "Omar Haddad",
+      "category": "payroll",
+      "memo": "October gross, Designer"
+     },
+     {
+      "date": "2026-11-30",
+      "kind": "payroll",
+      "status": "draft",
+      "amount": 5200,
+      "counterparty": "Dana Kim",
+      "category": "payroll",
+      "memo": "November gross, Engineer"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Team"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "t1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "ledger_table",
+       {
+        "action": "list",
+        "kind": "payroll",
+        "from": "2026-08-22",
+        "limit": 200
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Payroll run — 2026-11",
+        "content": "Payroll run — 2026-11\n1 person, 5,200.00 gross, payday 2026-11-30 — drafted earlier, not paid\n\n## Lines\n| Name | Role | Gross | Payday | Draft |\n| --- | --- | --- | --- | --- |\n| Dana Kim | Engineer | 5,200.00 | 2026-11-30 | already drafted |\n\n## Total\n- 5,200.00 gross across 1 person; October was 9,400.00 across 2.\n\n## Changes since last month\n- Leaver: Omar Haddad is in October's lines and not in the Team document; not drafted.\n\n## Check before paying\n- Omar Haddad: confirm he has left, or add him to the Team document.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "November was already drafted (Dana Kim, 5,200.00); nothing new posted; Omar is not in the Team document.\n\n## Report\n- read \"Team\" and the payroll lines; posted 0; wrote \"Payroll run — 2026-11\""
+    }
+   ],
+   "checks": [
+    {
+     "ledger": {
+      "count": 3
+     }
+    },
+    {
+     "document": {
+      "title": "Payroll run",
+      "contains": [
+       "already drafted",
+       "Leaver: Omar Haddad"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "it-never-changes-pay-on-its-own",
+   "about": "The Team document and the history disagree on a salary: the Team document's figure is drafted, the difference is named, and the ledger's October line is untouched.",
+   "inputs": {
+    "team": "Team",
+    "payday": "last working day"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "t1",
+      "title": "Team",
+      "content": "Team\nDana Kim — Engineer — 5000\n"
+     }
+    ],
+    "ledger": [
+     {
+      "date": "2026-10-30",
+      "kind": "payroll",
+      "amount": 5200,
+      "counterparty": "Dana Kim",
+      "category": "payroll",
+      "memo": "October gross, Engineer"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Team"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "t1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "ledger_table",
+       {
+        "action": "list",
+        "kind": "payroll",
+        "from": "2026-08-22",
+        "limit": 200
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "ledger_table",
+       {
+        "action": "add",
+        "kind": "payroll",
+        "status": "draft",
+        "amount": 5000,
+        "date": "2026-11-30",
+        "counterparty": "Dana Kim",
+        "category": "payroll",
+        "memo": "November gross, Engineer"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Payroll run — 2026-11",
+        "content": "Payroll run — 2026-11\n1 person, 5,000.00 gross, payday 2026-11-30 — drafted, not paid\n\n## Lines\n| Name | Role | Gross | Payday | Draft |\n| --- | --- | --- | --- | --- |\n| Dana Kim | Engineer | 5,000.00 | 2026-11-30 | posted |\n\n## Total\n- 5,000.00 gross across 1 person; October was 5,200.00 across 1.\n\n## Changes since last month\n- Pay change: Dana Kim 5,200.00 (October's line) → 5,000.00 (Team document). The Team document is the source; the history is not changed.\n\n## Check before paying\n- Dana's figure: the Team document says 5,000.00 and October paid 5,200.00 — confirm which is right before paying.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "November drafted at the Team document's 5,000.00 for Dana Kim; October paid 5,200.00 — confirm before paying.\n\n## Report\n- read \"Team\" and October's line; posted 1 draft line; wrote \"Payroll run — 2026-11\""
+    }
+   ],
+   "checks": [
+    {
+     "ledger": {
+      "contains": [
+       "5200.00",
+       "5000.00",
+       "draft"
+      ],
+      "lacks": [
+       "paid"
+      ],
+      "count": 2
+     }
+    },
+    {
+     "document": {
+      "title": "Payroll run",
+      "contains": [
+       "confirm which is right before paying"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-run-without-its-headings-fails",
+   "about": "The harness's own check: a payroll run without Lines, Total, Changes since last month and Check before paying does not deliver, even after its repair pass.",
+   "inputs": {
+    "team": "Team",
+    "payday": "last working day"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "t1",
+      "title": "Team",
+      "content": "Team\nDana Kim — Engineer — 5200\nOmar Haddad — Designer — 4500 (from November; was 4200)\nPriya Nair — Support — 4800 (started 2026-11-16)\n"
+     }
+    ],
+    "ledger": [
+     {
+      "date": "2026-10-30",
+      "kind": "payroll",
+      "amount": 5200,
+      "counterparty": "Dana Kim",
+      "category": "payroll",
+      "memo": "October gross, Engineer"
+     },
+     {
+      "date": "2026-10-30",
+      "kind": "payroll",
+      "amount": 4200,
+      "counterparty": "Omar Haddad",
+      "category": "payroll",
+      "memo": "October gross, Designer"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Team"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Payroll run — 2026-11",
+        "content": "Pay everyone."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

@@ -258,6 +258,36 @@ Size the VM for the people who work at once: each running machine takes up to
 `PANTHEON_WORKSTATION_VM_MEMORY_MIB` (2 GB) and `PANTHEON_WORKSTATION_VM_CPUS`
 (2), on top of Pantheon itself.
 
+**A phone in the workstation.** Each person can have a real Android device in
+their container workstation: Google's Android Emulator running Android 15
+(Google APIs), as a Pixel 9 Pro, Pixel 9 Pro Fold, Pixel 8, Galaxy S25 Ultra,
+Galaxy Z Fold6 or Pixel Tablet. The + menu's *Phone* opens it in a window drawn
+as the device, with its side keys working; the mouse is a finger (click to tap,
+drag to swipe, scroll to fling, right click for Back), and the agent uses it
+too (`computer` with `screen: phone`, and `adb` from its shell). It is built in
+only when asked for, because it is about 4 GB and building it accepts the
+[Android SDK License](https://developer.android.com/studio/terms):
+
+```sh
+echo WORKSTATION_PHONE=on >> .env
+docker compose up -d --build workstation
+```
+
+It needs KVM. On Linux that is `/dev/kvm` on the host; on Docker Desktop for
+Windows it is the nested virtualization above (`.wslconfig`, Windows 11). The
+window says when it is missing. Without KVM (or without `WORKSTATION_PHONE`),
+the phone opens as a **mobile view** instead: the workstation's Firefox alone on
+the phone's screen, at the chosen device's shape and CSS width, with a mobile
+user agent and touch on, so a website lays itself out as it does on that phone.
+The window's title says *mobile view*; it runs web pages only, and its volume
+and recents keys are greyed. The Samsung devices have the real screens,
+densities and fold, but run stock Android, not One UI, which Samsung does not
+let anyone redistribute. iPhones cannot be emulated outside a Mac. Each running
+phone takes about `PANTHEON_PHONE_MEMORY_MIB` (2 GB); at most
+`PANTHEON_PHONE_MAX_RUNNING` (2) run at once, and one nobody has used or
+watched for `PANTHEON_PHONE_IDLE_MIN` (30) minutes is saved and stopped. The
+phone runs in the container workstation only, not in a per-person VM.
+
 Agents have full access by default: *sudo* is on in every backend until an
 admin turns it off (the owner, 2026-10-31: *"Agents get FULL access"*). In the
 container that means one person's agent can read another's workstation home,

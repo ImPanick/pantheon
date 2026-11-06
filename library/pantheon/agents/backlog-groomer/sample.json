@@ -1,0 +1,26 @@
+{
+ "case": "seven-items-sorted",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read \"Backlog\"; wrote \"Groomed backlog — 2026-11-09\"",
+ "read": [
+  "manage_documents"
+ ],
+ "wrote": [
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Groomed backlog”",
+   "ok": true,
+   "detail": "“Groomed backlog — 2026-11-09” is there."
+  }
+ ],
+ "answer": "7 items: 2 ready, 2 need detail, 1 duplicate pair, 2 stale.\n\n## Report\n- read \"Backlog\"; wrote \"Groomed backlog — 2026-11-09\"",
+ "documents": [
+  {
+   "title": "Groomed backlog — 2026-11-09",
+   "content": "Groomed backlog — 2026-11-09\n7 items: 2 ready, 2 need detail, 1 duplicate pair, 2 stale\n\n## Ready\n- \"Shops with 10k+ orders wait 6 s for the orders page; under 1 s\" — for busy shops — done when the orders page loads under 1 s at 10k orders (2026-11-03).\n- \"CSV export of orders by date range for the accountant\" — for the accountant — done when a range exports with the spec's columns (2026-10-28).\n\n## Needs detail\n- \"Better search\" — no problem stated, no who, no done-when; which searches fail today, and for whom?\n- \"Reminders by SMS\" — no done-when; is it opt-in rate, missed deliveries, or shipped?\n\n## Duplicates\n- \"Export orders to CSV\" (2026-09-02) and \"CSV export of orders by date range for the accountant\" (2026-10-28): the second is fuller; keep it.\n\n## Stale\n- \"Integrate with Ledgerly\" — last date 2026-06-14.\n- \"Bulk price edit\" — undated."
+  }
+ ]
+}

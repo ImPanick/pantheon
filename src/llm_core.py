@@ -25,6 +25,7 @@ from src.rate_limiter import outbound as _outbound
 from src.rate_limiter import parse_retry_after as _retry_after
 from src.rate_limiter import parse_reset_header as _reset_after
 from src import reasoning_effort as _reasoning_effort
+from src import openai_responses as _openai_responses
 
 # Longest server-requested wait we will sit through inside a retry loop. Beyond
 # this, honouring the header by sleeping would hold a user's request open for
@@ -714,6 +715,13 @@ def _normalize_openai_chat_url(url: str) -> str:
         return base
     if base.endswith("/models"):
         base = base[: -len("/models")].rstrip("/")
+    # `B1750`: a frontier host entered bare (`https://api.x.ai`) gets its API
+    # path, as `endpoint_resolver.build_chat_url` gives it.
+    try:
+        from src.endpoint_resolver import frontier_api_base
+        base = frontier_api_base(base)
+    except Exception:  # a URL it cannot read is sent as entered
+        pass
     return base + "/chat/completions"
 
 
@@ -1498,7 +1506,7 @@ def _format_chatgpt_subscription_error(status_code: int, text: str) -> str:
     return _format_upstream_error(status_code, text, "https://chatgpt.com/backend-api/codex")
 
 
-def _format_upstream_error(status: int, body: bytes | str, url: str) -> str:
+def _format_upstream_error(status: int, body: bytes | str, url: str, *, model: str = "") -> str:
     """Turn an upstream HTTP error into a user-readable sentence.
 
     Auth failures (401/403) become 'xAI rejected the API key' etc., so the UI
@@ -1534,7 +1542,16 @@ def _format_upstream_error(status: int, body: bytes | str, url: str) -> str:
         msg += ". Check Model Endpoints → {} and re-paste the key.".format(provider)
         return msg
     if status == 404:
-        return f"{provider} returned 404 — check the base URL and model name." + (f" ({detail})" if detail else "")
+        # `B1750`: say which address and which model, so a wrong base URL and
+        # a model this key cannot use are told apart without reading logs.
+        try:
+            _path = urlparse(url or "").path or "/"
+        except Exception:
+            _path = ""
+        where = f" at {_path}" if _path else ""
+        named = f" for model '{model}'" if model else ""
+        return (f"{provider} returned 404{where}{named} — check the base URL and model name."
+                + (f" ({detail})" if detail else ""))
     if status == 429:
         return f"{provider} rate-limited the request (429)." + (f" {detail}" if detail else "")
     if status >= 500:
@@ -2311,6 +2328,10 @@ def llm_call(url: str, model: str, messages: List[Dict], temperature: float = LL
             model, messages_copy, temperature, max_tokens,
             stream=False, num_ctx=get_context_length(url, model),
         )
+    elif provider == "openai" and _openai_responses.uses_responses_api(url, model):
+        # `B1750`: an OpenAI model served only by /v1/responses.
+        target_url = _openai_responses.responses_url(_normalize_openai_chat_url(url))
+        payload = _openai_responses.build_payload(model, messages_copy, max_tokens)
     else:
         target_url = _normalize_openai_chat_url(url)
         if provider == "copilot":
@@ -2335,10 +2356,18 @@ def llm_call(url: str, model: str, messages: List[Dict], temperature: float = LL
     except Exception as e:
         raise HTTPException(502, f"POST {target_url} failed: {e}")
     if not r.is_success:
+        # `B1750`: OpenAI says this model answers only at /v1/responses.
+        if _openai_responses.learn_from_refusal(target_url, model, r.status_code, r.text):
+            return llm_call(url, model, messages, temperature=temperature, max_tokens=max_tokens,
+                            headers=headers, timeout=timeout, prompt_type=prompt_type,
+                            explicit_params=explicit_params)
         raise HTTPException(502, f"Upstream {target_url} -> {r.status_code}: {r.text}")
     data = r.json()
     try:
-        if provider == "anthropic":
+        if provider == "openai" and _openai_responses.is_openai_platform_url(target_url) \
+                and target_url.endswith("/responses"):
+            response, _calls = _openai_responses.parse_response(data)
+        elif provider == "anthropic":
             response = _parse_anthropic_response(data)
         elif provider == "ollama":
             response = _parse_ollama_response(data)
@@ -2614,7 +2643,10 @@ async def llm_call_async(
             return cached_response, (_get_cached_response_model(cache_key) or model)
         return cached_response
 
-    if provider == "chatgpt-subscription":
+    if provider == "chatgpt-subscription" or (
+            provider == "openai" and _openai_responses.uses_responses_api(url, model)):
+        # `B1750`: an OpenAI Responses-only model goes the same way — through
+        # stream_llm's Responses path, its deltas collected.
         # ChatGPT/Codex requires streamed Responses requests even for callers
         # that want a plain string (auto-title, memory extraction, etc.).
         # Reuse stream_llm's validated Codex SSE path and collect deltas.
@@ -2756,7 +2788,17 @@ async def llm_call_async(
                                                     resent=True)
                     attempt -= 1
                     continue
-                friendly = _format_upstream_error(r.status_code, r.text, target_url)
+                # `B1750`: OpenAI says this model answers only at /v1/responses.
+                if _openai_responses.learn_from_refusal(target_url, model, r.status_code, r.text):
+                    return await llm_call_async(
+                        url, model, messages, temperature=temperature, max_tokens=max_tokens,
+                        headers=headers, timeout=timeout, max_retries=max_retries,
+                        prompt_type=prompt_type, session_id=session_id, workload=workload,
+                        availability_only_transport=availability_only_transport,
+                        return_model_metadata=return_model_metadata,
+                        explicit_params=explicit_params, max_tokens_floor=max_tokens_floor,
+                    )
+                friendly = _format_upstream_error(r.status_code, r.text, target_url, model=model)
                 logger.warning(
                     f"LLM async call to {target_url} failed in {duration:.2f}s "
                     f"(attempt {attempt}): HTTP {r.status_code} {friendly}"
@@ -3378,6 +3420,7 @@ async def _stream_llm_inner(url: str, model: str, messages: List[Dict], temperat
     messages_copy = await asyncio.to_thread(
         _reasoning_effort.apply_to_messages, messages_copy, url, model, reasoning_level)
 
+    _via_openai_responses = provider == "openai" and _openai_responses.uses_responses_api(url, model)
     if provider == "anthropic":
         target_url = _normalize_anthropic_url(url)
         h = _build_anthropic_headers(headers)
@@ -3399,6 +3442,15 @@ async def _stream_llm_inner(url: str, model: str, messages: List[Dict], temperat
         h = _provider_headers(provider, headers)
         payload = _build_chatgpt_responses_payload(model, messages_copy, temperature, max_tokens, stream=True)
         await asyncio.to_thread(_reasoning_effort.apply_to_payload, payload, url, model, reasoning_level)
+    elif _via_openai_responses:
+        # `B1750`: an OpenAI model served only by /v1/responses.
+        target_url = _openai_responses.responses_url(_normalize_openai_chat_url(url))
+        h = _provider_headers(provider, headers)
+        payload = _openai_responses.build_payload(
+            model, messages_copy, max_tokens, stream=True, tools=tools,
+            tool_choice_none=tool_choice_none)
+        await asyncio.to_thread(_reasoning_effort.apply_to_payload, payload, url, model, reasoning_level)
+        _openai_responses.finish_payload(payload, model)
     else:
         target_url = _normalize_openai_chat_url(url)
         payload = {
@@ -3455,7 +3507,10 @@ async def _stream_llm_inner(url: str, model: str, messages: List[Dict], temperat
     degenerate_guard = _DegenerateStreamGuard(model)
 
     # ── ChatGPT Subscription / Codex Responses streaming ──
-    if provider == "chatgpt-subscription":
+    # `B1750`: OpenAI's own Responses-only models stream through the same
+    # request, their events read by `openai_responses.StreamTranslator`.
+    if provider == "chatgpt-subscription" or _via_openai_responses:
+        translator = _openai_responses.StreamTranslator() if _via_openai_responses else None
         event_name = ""
         input_tokens = 0
         output_tokens = 0
@@ -3467,7 +3522,9 @@ async def _stream_llm_inner(url: str, model: str, messages: List[Dict], temperat
                 _clear_host_dead(target_url)
                 if r.status_code != 200:
                     raw = (await r.aread()).decode(errors="replace")
-                    friendly = _format_chatgpt_subscription_error(r.status_code, raw)
+                    friendly = (_format_upstream_error(r.status_code, raw, target_url, model=model)
+                                if translator else
+                                _format_chatgpt_subscription_error(r.status_code, raw))
                     yield f'event: error\ndata: {json.dumps({"status": r.status_code, "text": friendly, "raw": raw[:500]})}\n\n'
                     return
                 async for line in r.aiter_lines():
@@ -3484,6 +3541,23 @@ async def _stream_llm_inner(url: str, model: str, messages: List[Dict], temperat
                     try:
                         data = json.loads(raw)
                     except json.JSONDecodeError:
+                        continue
+                    if translator is not None:
+                        events = translator.feed(data, event_name)
+                        if translator.model and not _responses_model_announced:
+                            _responses_model_announced = True
+                            model_event = _model_actual_event(model, _reported_model_name(translator.model))
+                            if model_event:
+                                yield model_event
+                        for event in events:
+                            if event.startswith('data: {"delta"') and '"thinking"' not in event:
+                                _degenerate = degenerate_guard.check(json.loads(event[6:]).get("delta") or "")
+                                if _degenerate:
+                                    yield _degenerate
+                                    return
+                            yield event
+                        if translator.done:
+                            return
                         continue
                     evt = data.get("type") or event_name
                     response_data = data.get("response") or {}
@@ -3588,7 +3662,7 @@ async def _stream_llm_inner(url: str, model: str, messages: List[Dict], temperat
                 _clear_host_dead(target_url)
                 if r.status_code != 200:
                     raw = (await r.aread()).decode(errors="replace")
-                    friendly = _format_upstream_error(r.status_code, raw, target_url)
+                    friendly = _format_upstream_error(r.status_code, raw, target_url, model=model)
                     yield f'event: error\ndata: {json.dumps({"status": r.status_code, "text": friendly, "raw": raw[:500]})}\n\n'
                     return
                 async for line in r.aiter_lines():
@@ -3689,7 +3763,7 @@ async def _stream_llm_inner(url: str, model: str, messages: List[Dict], temperat
                 _clear_host_dead(target_url)
                 if r.status_code != 200:
                     raw = (await r.aread()).decode(errors="replace")
-                    friendly = _format_upstream_error(r.status_code, raw, target_url)
+                    friendly = _format_upstream_error(r.status_code, raw, target_url, model=model)
                     yield f'event: error\ndata: {json.dumps({"status": r.status_code, "text": friendly, "raw": raw[:500]})}\n\n'
                     return
                 async for line in r.aiter_lines():
@@ -3896,7 +3970,19 @@ async def _stream_llm_inner(url: str, model: str, messages: List[Dict], temperat
                     ):
                         yield _chunk
                     return
-                friendly = _format_upstream_error(r.status_code, raw, target_url)
+                # `B1750`: OpenAI says this model answers only at /v1/responses.
+                if _openai_responses.learn_from_refusal(target_url, model, r.status_code, raw):
+                    logger.info("[llm] %s serves %s only via /v1/responses — sending there",
+                                _host_key(target_url), model)
+                    async for _chunk in _stream_llm_inner(
+                        url, model, messages, temperature=temperature, max_tokens=max_tokens,
+                        headers=headers, timeout=timeout, prompt_type=prompt_type, tools=tools,
+                        session_id=session_id, tool_choice_none=tool_choice_none,
+                        explicit_params=explicit_params, reasoning_level=reasoning_level,
+                    ):
+                        yield _chunk
+                    return
+                friendly = _format_upstream_error(r.status_code, raw, target_url, model=model)
                 yield f'event: error\ndata: {json.dumps({"status": r.status_code, "text": friendly, "raw": raw[:500]})}\n\n'
                 return
 

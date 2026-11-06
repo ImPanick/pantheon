@@ -1,7 +1,12 @@
 #!/bin/sh
 # SPDX-License-Identifier: AGPL-3.0-or-later
 #
-# Make an Ubuntu 24.04 machine the workstation's userland — `P20-07`.
+# Make an Ubuntu 24.04 machine the workstation's userland — `P20-07`. Since
+# `B1747` also Debian 13, Fedora 44 and Rocky Linux 9 (the RHEL 9 family): the
+# same workstation on each, which system read from /etc/os-release. Ubuntu and
+# Debian share one apt list; Fedora and Rocky one dnf list (`DNF_PACKAGES`),
+# the same things under their names there, with the differences named where
+# they are (EPEL on Rocky, KasmVNC's EL9 build, Firefox from the system).
 #
 # ONE list of what a workstation has, for every backend (`Law 14`). Before this
 # file the list lived inline in `Dockerfile`; a VM provisioned by cloud-init or a
@@ -14,7 +19,7 @@
 #   install.py (another machine)       sh provision.sh packages
 #                                      sh provision.sh files --code /opt/pantheon-workstation
 #
-#   packages   apt: the desktop, the tools and Mozilla's Firefox (below).
+#   packages   apt or dnf: the desktop, the tools and Firefox (below).
 #              --image: this is an image being built, not somebody's machine —
 #              also drop apt's lists and the base image's `ubuntu` user (uid
 #              1000, Pantheon's default PGID: the pairing group). Never on a host
@@ -96,6 +101,79 @@ KASMVNC_URL=https://github.com/kasmtech/KasmVNC/releases/download
 
 say() { printf 'provision: %s\n' "$*"; }
 
+# `B1747`. Which system this is: `ID` from /etc/os-release (ubuntu, debian,
+# fedora, rocky). Anything else is refused: the lists below are for these.
+# (`OS_RELEASE` names another file, for the tests.)
+os_id() {
+    release=${OS_RELEASE:-/etc/os-release}
+    id=$(sed -n 's/^ID=//p' "$release" 2>/dev/null | tr -d '"' | head -n 1)
+    case "$id" in
+        ubuntu|debian|fedora|rocky) printf '%s' "$id" ;;
+        *) say "this is not a system the workstation is made from (${id:-no $release})" >&2; exit 1 ;;
+    esac
+}
+
+# KasmVNC's build for this system: Ubuntu 24.04's, Debian 13's, or the EL9
+# build (Kasm names it `oracle_9`) for Rocky 9 and, the nearest it has, Fedora.
+kasmvnc_dist() {
+    case "$(os_id)" in
+        ubuntu) printf 'ubuntu_noble' ;;
+        debian) printf 'debian_trixie' ;;
+        *) printf 'oracle_9' ;;
+    esac
+}
+
+# `B1747`. The same workstation under Fedora's and Rocky's names (`PACKAGES`
+# above is the list; this is it again for dnf). `curl` is not named: Rocky's
+# image has curl-minimal, which conflicts with it, and either gives `curl`.
+# Python's venv is part of `python3` there. On Rocky the desktop, xdotool and
+# scrot come from EPEL (`epel-release`, from Rocky's own extras repository,
+# signed by Rocky), which needs CRB enabled.
+DNF_PACKAGES="ca-certificates git sudo procps-ng less nano unzip xz tar findutils which \
+hostname util-linux shadow-utils python3 python3-pip gcc gcc-c++ make \
+xorg-x11-server-Xvfb xterm xdotool scrot dejavu-sans-fonts dbus-daemon dbus-tools \
+nftables \
+xfwm4 xfce4-panel xfdesktop xfce4-session xfce4-settings xfconf xfce4-terminal Thunar \
+adwaita-icon-theme librsvg2 \
+at-spi2-core python3-gobject"
+# The desktop's finishing touches, each installed when the system has it and
+# said when it does not (the theme still loads; a missing font falls back):
+# the menu, Papirus's icons, Inter and JetBrains Mono, and JWM, the desktop a
+# machine without XFCE gets.
+DNF_OPTIONAL="xfce4-whiskermenu-plugin papirus-icon-theme rsms-inter-fonts \
+jetbrains-mono-fonts-all jetbrains-mono-fonts jwm"
+
+# `B1747`. KasmVNC's EL9 build (`oracle_9`), read from the two packages on
+# 2026-11-02 like the others: what Rocky 9 runs, and what Fedora tries.
+KASMVNC_SHA256_EL9_X86_64=2420eb3a179144fe7a87af279c8d87d37b3b93ecb96ce16bc4af95f7096e303e
+KASMVNC_SHA256_EL9_AARCH64=0d541aa31093d745bcb16b5bee00c28524417dae6e4d766b09489f8c927247ab
+# tini, the image's PID 1 (`Dockerfile`'s ENTRYPOINT), which neither Fedora's
+# nor Rocky's archive carries under one name on both: the static build from its
+# own release, its sums the ones the release publishes (checked 2026-11-02).
+TINI_VERSION=0.19.0
+TINI_SHA256_AMD64=c5b0666b4cb676901f90dfcb37106783c5fe2077b04590973b885950611b30ee
+TINI_SHA256_ARM64=eae1d3aa50c48fb23b8cbdf4e369d0910dfc538566bfd09df89a774aa84a48b9
+
+# fetch_checked URL OUT SUM: download URL to OUT and refuse it unless it hashes to SUM.
+fetch_checked() {
+    cacert=
+    ca=${PROVISION_CA:-/run/secrets/build-ca}
+    if [ -s "$ca" ]; then
+        bundle=/etc/ssl/certs/ca-certificates.crt
+        [ -s "$bundle" ] || bundle=/etc/pki/tls/certs/ca-bundle.crt
+        cat "$bundle" "$ca" > /tmp/provision-ca.pem
+        cacert=/tmp/provision-ca.pem
+    fi
+    curl --fail --silent --show-error --location --retry 3 ${cacert:+--cacert "$cacert"} \
+        --output "$2" "$1"
+    rm -f /tmp/provision-ca.pem
+    if ! printf '%s  %s\n' "$3" "$2" | sha256sum -c - >/dev/null 2>&1; then
+        rm -f "$2"
+        say "$1 did not match its pinned checksum; refusing it"
+        exit 1
+    fi
+}
+
 # kasmvnc_deb ARCH OUT [DIST]: the pinned KasmVNC package for ARCH (amd64 or
 # arm64) and DIST (ubuntu_noble, the workstation's, or debian_trixie, Pantheon's
 # own image's), downloaded to OUT and checked against its sum; anything else
@@ -140,10 +218,27 @@ packages() {
         esac
         shift
     done
+    os=$(os_id)
+    say "making a $os workstation"
+    case "$os" in
+        ubuntu|debian) packages_apt "$os" "$image" ;;
+        *) packages_dnf "$os" "$image" ;;
+    esac
+    say "packages installed"
+}
+
+packages_apt() {
+    os=$1
+    image=$2
     export DEBIAN_FRONTEND=noninteractive
     if [ -n "${APT_MIRROR:-}" ]; then
+        # The mirror replaces the system's own archive (Debian's security
+        # archive is left alone).
         say "using the mirror $APT_MIRROR"
-        sed -i -E "s#^URIs: .*#URIs: ${APT_MIRROR}#" /etc/apt/sources.list.d/ubuntu.sources
+        case "$os" in
+            ubuntu) sed -i -E "s#^URIs: .*#URIs: ${APT_MIRROR}#" /etc/apt/sources.list.d/ubuntu.sources ;;
+            debian) sed -i -E "s#^URIs: .*debian/?\$#URIs: ${APT_MIRROR}#" /etc/apt/sources.list.d/debian.sources ;;
+        esac
     fi
     ca=${PROVISION_CA:-/run/secrets/build-ca}
     if [ -s "$ca" ]; then
@@ -169,11 +264,11 @@ packages() {
     apt-get update
     apt-get install -y --no-install-recommends firefox
     # The live desktop (`D-2026-10-31-01`): KasmVNC's X server, installed from the
-    # pinned package with apt so its libraries come from Ubuntu.
+    # pinned package with apt so its libraries come from the system's archive.
     arch=$(dpkg --print-architecture)
     case "$arch" in
         amd64|arm64)
-            kasmvnc_deb "$arch" /tmp/kasmvncserver.deb
+            kasmvnc_deb "$arch" /tmp/kasmvncserver.deb "$(kasmvnc_dist)"
             apt-get install -y --no-install-recommends /tmp/kasmvncserver.deb
             rm -f /tmp/kasmvncserver.deb ;;
         *) say "KasmVNC builds no package for $arch; the desktop is shown as pictures (Xvfb)" ;;
@@ -183,7 +278,75 @@ packages() {
         rm -rf /var/lib/apt/lists/*
         userdel -r ubuntu 2>/dev/null || true
     fi
-    say "packages installed"
+}
+
+# `B1747`. Fedora 44 and Rocky Linux 9: the same workstation with dnf.
+packages_dnf() {
+    os=$1
+    image=$2
+    if [ -n "${APT_MIRROR:-}" ]; then
+        say "APT_MIRROR is for Ubuntu and Debian; $os uses its own mirrors"
+    fi
+    ca=${PROVISION_CA:-/run/secrets/build-ca}
+    if [ -s "$ca" ]; then
+        # The builder's CA beside the system's, for dnf, for the build only.
+        cp "$ca" /etc/pki/ca-trust/source/anchors/provision-ca.pem
+        update-ca-trust
+    fi
+    if [ -n "${APT_PROXY:-}" ]; then
+        echo "proxy=$APT_PROXY" >> /etc/dnf/dnf.conf
+    fi
+    dnf="dnf -y --setopt=install_weak_deps=False"
+    if [ "$os" = rocky ]; then
+        # EPEL holds XFCE, xdotool, scrot and KasmVNC's Perl modules on EL9.
+        $dnf install dnf-plugins-core epel-release
+        dnf config-manager --set-enabled crb
+    fi
+    # shellcheck disable=SC2086 # the list is words on purpose
+    $dnf install $DNF_PACKAGES
+    for pkg in $DNF_OPTIONAL; do
+        $dnf install "$pkg" >/dev/null 2>&1 || say "$os has no $pkg; going on without it"
+    done
+    # Firefox is the system's own here (Fedora's current release, Rocky's
+    # ESR): an rpm, not a snap, so Mozilla's apt repository is not needed.
+    # The no-phone-home policy is the same file (`files`).
+    $dnf install firefox
+    case "$(uname -m)" in
+        x86_64) karch=x86_64; ksum=$KASMVNC_SHA256_EL9_X86_64; tarch=amd64; tsum=$TINI_SHA256_AMD64 ;;
+        aarch64) karch=aarch64; ksum=$KASMVNC_SHA256_EL9_AARCH64; tarch=arm64; tsum=$TINI_SHA256_ARM64 ;;
+        *) karch=; tarch= ;;
+    esac
+    if [ -n "$tarch" ]; then
+        fetch_checked "https://github.com/krallin/tini/releases/download/v$TINI_VERSION/tini-static-$tarch" \
+            /usr/bin/tini "$tsum"
+        chmod 0755 /usr/bin/tini
+    else
+        say "no tini for $(uname -m)"; exit 1
+    fi
+    # KasmVNC's EL9 build. On Rocky 9 it is the system it was built for, and a
+    # failure stops the build. Fedora is newer than EL9: when the build's
+    # libraries are not there, the desktop is shown as pictures (Xvfb, as on
+    # an architecture KasmVNC does not build for) and the build says so.
+    if [ -n "$karch" ]; then
+        fetch_checked "$KASMVNC_URL/v$KASMVNC_VERSION/kasmvncserver_oracle_9_${KASMVNC_VERSION}_$karch.rpm" \
+            /tmp/kasmvncserver.rpm "$ksum"
+        if ! $dnf install /tmp/kasmvncserver.rpm; then
+            [ "$os" = fedora ] || exit 1
+            say "KasmVNC's EL9 build does not install on this Fedora; the desktop is shown as pictures (Xvfb)"
+        fi
+        rm -f /tmp/kasmvncserver.rpm
+    fi
+    if [ -s "$ca" ]; then
+        rm -f /etc/pki/ca-trust/source/anchors/provision-ca.pem
+        update-ca-trust
+    fi
+    if [ -n "${APT_PROXY:-}" ]; then
+        sed -i '/^proxy=/d' /etc/dnf/dnf.conf
+    fi
+    if [ "$image" = yes ]; then
+        dnf clean all
+        rm -rf /var/cache/dnf
+    fi
 }
 
 files() {
@@ -259,10 +422,111 @@ server() {
     say "KasmVNC $KASMVNC_VERSION X server for Debian 13 ($arch) in $1"
 }
 
+# `B1751`. The phone: Google's Android SDK command-line tools, and with them the
+# emulator, adb and one Android system image (PHONE_IMAGE, sdkmanager's name for
+# it), under DIR (default /opt/android-sdk), plus scrcpy from Ubuntu — what shows
+# the emulator's screen and turns the mouse into touch — and the libraries the
+# emulator links. Only for an image built with WORKSTATION_PHONE=on: about 4 GB,
+# and running it accepts the Android SDK License (https://developer.android.com/
+# studio/terms), which `sdkmanager --licenses` is answered yes to below. x86_64 only.
+#
+# The tools' zip is pinned by its build number and checked before it is unpacked:
+# against ANDROID_CMDLINE_TOOLS_SHA256 when the builder gives one, and always
+# against the SHA-1 Google's own repository manifest lists for that file — the
+# record `sdkmanager` itself verifies every package it installs against. The
+# SHA-256 Google publishes beside the download could not be read from where this
+# was written (2026-11-02); whoever moves the build number reads it there and may
+# pin it here. Everything sdkmanager installs after that it checks itself.
+ANDROID_CMDLINE_TOOLS_BUILD=13114758
+ANDROID_REPO=https://dl.google.com/android/repository
+PHONE_LIBS="openjdk-17-jre-headless scrcpy libpulse0 libnss3 libxcomposite1 libxcursor1 \
+libxi6 libxtst6 libasound2t64 libgl1 libegl1 libgbm1 libdrm2 libxkbcommon0 libxkbfile1 \
+libxdamage1 libxrandr2 libxshmfence1 libdbus-glib-1-2 libbsd0"
+
+phone() {
+    sdk=${1:-/opt/android-sdk}
+    image=${PHONE_IMAGE:-system-images;android-35;google_apis;x86_64}
+    arch=$(dpkg --print-architecture)
+    if [ "$arch" != amd64 ]; then
+        say "the phone is x86_64 Android, and this machine is $arch; no phone"
+        return 0
+    fi
+    export DEBIAN_FRONTEND=noninteractive
+    ca=${PROVISION_CA:-/run/secrets/build-ca}
+    cacert=
+    if [ -s "$ca" ]; then
+        echo "Acquire::https::CAInfo \"$ca\";" > /etc/apt/apt.conf.d/99-provision-ca
+        cat /etc/ssl/certs/ca-certificates.crt "$ca" > /tmp/provision-ca.pem
+        cacert=/tmp/provision-ca.pem
+    fi
+    apt-get update
+    # shellcheck disable=SC2086 # the list is words on purpose
+    apt-get install -y --no-install-recommends $PHONE_LIBS
+    zip=commandlinetools-linux-${ANDROID_CMDLINE_TOOLS_BUILD}_latest.zip
+    say "fetching the Android SDK command-line tools ($ANDROID_CMDLINE_TOOLS_BUILD)"
+    curl --fail --silent --show-error --location --retry 3 ${cacert:+--cacert "$cacert"} \
+        --output "/tmp/$zip" "$ANDROID_REPO/$zip"
+    curl --fail --silent --show-error --location --retry 3 ${cacert:+--cacert "$cacert"} \
+        --output /tmp/android-repository.xml "$ANDROID_REPO/repository2-3.xml"
+    want=$(python3 -I - "$zip" /tmp/android-repository.xml <<'PY'
+import sys, xml.etree.ElementTree as ET
+name, path = sys.argv[1], sys.argv[2]
+for el in ET.parse(path).iter():
+    if el.tag.split("}")[-1] == "archive":
+        url = sha = None
+        for c in el.iter():
+            tag = c.tag.split("}")[-1]
+            if tag == "url":
+                url = (c.text or "").strip()
+            elif tag == "checksum":
+                sha = (c.text or "").strip()
+        if url == name and sha:
+            print(sha)
+            break
+PY
+)
+    if [ -z "$want" ] || ! printf '%s  %s\n' "$want" "/tmp/$zip" | sha1sum -c - >/dev/null 2>&1; then
+        rm -f "/tmp/$zip"
+        say "the command-line tools did not match Google's repository record; refusing them"
+        exit 1
+    fi
+    if [ -n "${ANDROID_CMDLINE_TOOLS_SHA256:-}" ] \
+            && ! printf '%s  %s\n' "$ANDROID_CMDLINE_TOOLS_SHA256" "/tmp/$zip" | sha256sum -c - >/dev/null 2>&1; then
+        rm -f "/tmp/$zip"
+        say "the command-line tools did not match ANDROID_CMDLINE_TOOLS_SHA256; refusing them"
+        exit 1
+    fi
+    install -d -m 0755 "$sdk/cmdline-tools"
+    rm -rf /tmp/android-cmdline-tools
+    python3 -I -c 'import sys, zipfile; zipfile.ZipFile(sys.argv[1]).extractall(sys.argv[2])' \
+        "/tmp/$zip" /tmp/android-cmdline-tools
+    rm -rf "$sdk/cmdline-tools/latest"
+    mv /tmp/android-cmdline-tools/cmdline-tools "$sdk/cmdline-tools/latest"
+    chmod -R a+rX,u+w "$sdk/cmdline-tools/latest"
+    chmod a+x "$sdk/cmdline-tools/latest/bin/"*
+    rm -rf "/tmp/$zip" /tmp/android-repository.xml /tmp/android-cmdline-tools
+    sdkm="$sdk/cmdline-tools/latest/bin/sdkmanager"
+    # sdkmanager reads the proxy's CA from Java's own store, not the system's.
+    if [ -n "$cacert" ]; then
+        keytool -importcert -noprompt -cacerts -storepass changeit -alias provision-ca \
+            -file "$ca" >/dev/null 2>&1 || true
+    fi
+    yes | "$sdkm" --sdk_root="$sdk" --licenses >/dev/null
+    "$sdkm" --sdk_root="$sdk" --install "platform-tools" "emulator" "$image"
+    if [ -n "$cacert" ]; then
+        keytool -delete -noprompt -cacerts -storepass changeit -alias provision-ca >/dev/null 2>&1 || true
+    fi
+    chmod -R a+rX "$sdk"
+    rm -f /etc/apt/apt.conf.d/99-provision-ca /tmp/provision-ca.pem
+    rm -rf /var/lib/apt/lists/*
+    say "the phone: Android SDK in $sdk with $image"
+}
+
 case "$STEP" in
+    phone) phone "$@" ;;
     packages) packages "$@" ;;
     files) files "$@" ;;
     client) client "$@" ;;
     server) server "$@" ;;
-    *) echo "usage: provision.sh packages [--image] | files [--skel DIR] [--code DIR] [--policies DIR] [--themes DIR] [--share DIR] | client DIR | server DIR" >&2; exit 2 ;;
+    *) echo "usage: provision.sh packages [--image] | files [--skel DIR] [--code DIR] [--policies DIR] [--themes DIR] [--share DIR] | client DIR | server DIR | phone [DIR]" >&2; exit 2 ;;
 esac

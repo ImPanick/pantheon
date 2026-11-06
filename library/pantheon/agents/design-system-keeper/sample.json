@@ -1,0 +1,28 @@
+{
+ "case": "drift-in-two-files-and-a-duplicate-button",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read tokens.css; 6 searches; wrote \"Design system audit — web\"",
+ "read": [
+  "read_file",
+  "grep"
+ ],
+ "wrote": [
+  "bash",
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Design system audit”",
+   "ok": true,
+   "detail": "“Design system audit — web” is there."
+  }
+ ],
+ "answer": "6 drifting values in 2 files; --color-info unused; Button.jsx duplicates PrimaryButton.\n\n## Report\n- read tokens.css; 6 searches; wrote \"Design system audit — web\"",
+ "documents": [
+  {
+   "title": "Design system audit — web",
+   "content": "Design system audit — web\n6 drifting values in 2 files, 1 unused token, 1 duplicated component\n\n## Drift\n| File:line | Value | Token |\n| --- | --- | --- |\n| src/Checkout.css:1 | #1e40af | --color-primary (#1e40af) |\n| src/Checkout.css:1 | 14px | --font-sm (0.875rem) |\n| src/Checkout.css:2 | 6px | --radius-md (6px) |\n| src/Button.jsx:1 | #1e40af | --color-primary (#1e40af) |\n| src/Button.jsx:1 | 14px | --font-sm (0.875rem) |\n| src/Checkout.css:1 | 20px | no token on the scale (see Tokens) |\n\n## Tokens\n- Unused: --color-info.\n- To add: 20px padding appears 2 times in Checkout.css with no spacing token between --space-4 (16px) and --space-5 (24px); under three, listed not proposed.\n\n## Components\n- src/Button.jsx and src/ui/PrimaryButton.jsx: both a primary button; PrimaryButton uses the class the tokens style, Button hard-codes #1e40af and 14px; keep PrimaryButton.\n\n## Fixes\n1. Replace `#1e40af` with `var(--color-primary)` — Checkout.css:1, Button.jsx:1.\n2. Replace `14px` with `var(--font-sm)` — Checkout.css:1, Button.jsx:1.\n3. Replace `6px` with `var(--radius-md)` — Checkout.css:2.\n4. Retire src/Button.jsx for src/ui/PrimaryButton.jsx."
+  }
+ ]
+}

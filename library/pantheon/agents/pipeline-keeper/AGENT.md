@@ -8,6 +8,7 @@ version: 1.0.0
 wave: 3
 department: sales
 role: worker
+accepts: ["document:Deal notes", "document:Quiet deals", "document:CRM hygiene"]
 hands_to:
   - {agent: follow-up-chaser, via: "document:Pipeline"}
   - {agent: renewal-manager, via: "document:Pipeline"}

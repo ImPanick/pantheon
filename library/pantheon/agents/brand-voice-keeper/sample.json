@@ -1,0 +1,26 @@
+{
+ "case": "two-rules-broken-two-drafts-pass",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read \"Brand voice\" and \"Social drafts — week of 2026-11-09\"; wrote \"Voice review — Social drafts — week of 2026-11-09\"",
+ "read": [
+  "manage_documents"
+ ],
+ "wrote": [
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Voice review”",
+   "ok": true,
+   "detail": "“Voice review — Social drafts — week of 2026-11-09” is there."
+  }
+ ],
+ "answer": "Fix first: 2 passed, 2 fixes.\n\n## Report\n- read \"Brand voice\" and \"Social drafts — week of 2026-11-09\"; wrote \"Voice review — Social drafts — week of 2026-11-09\"",
+ "documents": [
+  {
+   "title": "Voice review — Social drafts — week of 2026-11-09",
+   "content": "Voice review — Social drafts — week of 2026-11-09\nfix first: 2 passed, 2 fixes\n\n## Verdict\nFix first: one draft states a timing without its unit and where it was measured, and one opens with a banned word. The rest is ready.\n\n## Fixes\n- Orders page — X thread, post 1: \"Now it takes 0.8. Here is what we changed.\" → \"Now it takes 0.8 seconds, measured on the same shop. Here is what we changed.\" — rule: \"A number carries its unit and where it was measured.\"\n- Orders page — Instagram: \"Excited to share how we cut the orders page…\" → \"How we cut the orders page from 6 seconds to 0.8 seconds, measured on the same shop:\" — rule: \"Never open with excited, thrilled or proud.\"\n\n## Passed\n- Orders page — LinkedIn\n- 2.4.0 — X\n\n## Rules used\n- \"A number carries its unit and where it was measured.\" — 1 line\n- \"Never open with excited, thrilled or proud.\" — 1 line\n- \"Say you, never users.\" — 0 lines"
+  }
+ ]
+}

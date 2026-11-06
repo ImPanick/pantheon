@@ -1,0 +1,458 @@
+{
+ "cases": [
+  {
+   "id": "a-definition-a-query-and-three-checks",
+   "about": "A schema with customers and orders: every choice written as a line, the query saved and run once (1,284), three checks, two gaps; nothing altered.",
+   "inputs": {
+    "metric": "active customers",
+    "folder": "analytics",
+    "engine": "sqlite"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "ls",
+      "output": "shop.db\nREADME.md"
+     },
+     {
+      "match": ".schema",
+      "output": "CREATE TABLE customers (id INTEGER PRIMARY KEY, email TEXT, created_at TEXT);\nCREATE TABLE orders (id INTEGER PRIMARY KEY, customer_id INTEGER, status TEXT, total_pence INTEGER, created_at TEXT);"
+     },
+     {
+      "match": "< analytics/metrics",
+      "output": "1284"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "ls analytics"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "sqlite3 analytics/shop.db .schema"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "write_file",
+       {
+        "path": "analytics/metrics/active-customers.sql",
+        "content": "-- active customers: distinct customers with a paid order in the last 30 days\nSELECT COUNT(DISTINCT customer_id) AS active_customers\nFROM orders\nWHERE status = 'paid'\n  AND customer_id IS NOT NULL\n  AND created_at >= datetime('now', 'start of day', '-30 days');\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "sqlite3 analytics/shop.db < analytics/metrics/active-customers.sql"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Metric definition — active customers",
+        "content": "Metric definition — active customers\nactive customers = distinct customers with a paid order in the last 30 days, as of midnight UTC; today: 1,284\n\n## Definition\n- We count a customer once per window, not once per order, because `orders.customer_id` repeats.\n- We count orders with `status = 'paid'`, not 'pending' or 'refunded', because the schema's status column carries all three.\n- The window is the last 30 days to midnight UTC, not the calendar month, because the dashboard compares weeks.\n- Guest checkouts (`customer_id IS NULL`) are not counted; there is no customer to be active.\n\n## Query\n`analytics/metrics/active-customers.sql`:\n```sql\n-- active customers: distinct customers with a paid order in the last 30 days\nSELECT COUNT(DISTINCT customer_id) AS active_customers\nFROM orders\nWHERE status = 'paid'\n  AND customer_id IS NOT NULL\n  AND created_at >= datetime('now', 'start of day', '-30 days');\n```\nRan once: 1,284.\n\n## Checks\n- `SELECT COUNT(*) FROM customers` ≥ active customers (today 3,910 ≥ 1,284).\n- Active customers ≥ 0 and the week-on-week change is under 50%.\n- `SELECT COUNT(DISTINCT customer_id) FROM orders WHERE status='paid'` ≥ active customers for any window.\n\n## Known gaps\n- `orders.status` is one text column; whether 'paid' covers invoice orders unpaid for 60 days the schema cannot say.\n- `created_at` is text; rows with an unparseable date fall out of the window silently.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Active customers = distinct customers with a paid order in the last 30 days; today 1,284.\n\n## Report\n- read the schema; wrote analytics/metrics/active-customers.sql and ran it once; wrote \"Metric definition — active customers\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Metric definition — active customers",
+      "contains": [
+       "## Definition\n- We count a customer once per window",
+       "COUNT(DISTINCT customer_id)",
+       "Ran once: 1,284",
+       "## Checks\n- `SELECT COUNT(*) FROM customers`"
+      ]
+     }
+    },
+    {
+     "file": {
+      "path": "analytics/metrics/active-customers.sql",
+      "contains": [
+       "COUNT(DISTINCT customer_id)"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "no-table-carries-the-metric",
+   "about": "The schema has no orders or events: the definition says what would be needed, Query says it cannot be computed, no file is run.",
+   "inputs": {
+    "metric": "active customers",
+    "folder": "analytics",
+    "engine": "sqlite"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "ls",
+      "output": "shop.db"
+     },
+     {
+      "match": ".schema",
+      "output": "CREATE TABLE customers (id INTEGER PRIMARY KEY, email TEXT, created_at TEXT);"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "ls analytics"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "sqlite3 analytics/shop.db .schema"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Metric definition — active customers",
+        "content": "Metric definition — active customers\nactive customers = cannot be computed from these tables; today: none\n\n## Definition\n- Would be: distinct customers with a paid order in the last 30 days — but no table holds orders, logins or any event.\n\n## Query\n- cannot be computed from these tables: only `customers` exists, with no activity column.\n\n## Checks\n- none until an orders or events table exists.\n\n## Known gaps\n- No orders, events or sessions table; `customers.created_at` says when they joined, not whether they are active.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Cannot be computed: the schema has customers but no orders or events table.\n\n## Report\n- read the schema; nothing run; wrote \"Metric definition — active customers\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Metric definition",
+      "contains": [
+       "cannot be computed from these tables"
+      ]
+     }
+    },
+    {
+     "not_called": "write_file"
+    }
+   ]
+  },
+  {
+   "id": "the-query-fails",
+   "about": "The first run answers an error: it is quoted under Checks, the query is fixed once, the second run returns.",
+   "inputs": {
+    "metric": "active customers",
+    "folder": "analytics",
+    "engine": "sqlite"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "ls",
+      "output": "shop.db"
+     },
+     {
+      "match": ".schema",
+      "output": "CREATE TABLE customers (id INTEGER PRIMARY KEY, email TEXT, created_at TEXT);\nCREATE TABLE orders (id INTEGER PRIMARY KEY, customer_id INTEGER, status TEXT, total_pence INTEGER, created_at TEXT);"
+     },
+     {
+      "match": "< analytics/metrics",
+      "output": "1284"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "ls analytics"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "sqlite3 analytics/shop.db .schema"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "write_file",
+       {
+        "path": "analytics/metrics/active-customers.sql",
+        "content": "-- active customers: distinct customers with a paid order in the last 30 days\nSELECT COUNT(DISTINCT customer_id) AS active_customers\nFROM orders\nWHERE status = 'paid'\n  AND customer_id IS NOT NULL\n  AND created_at >= datetime(now, 'start of day', '-30 days');\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "sqlite3 analytics/shop.db < analytics/metrics/active-customers.sql 2>&1 || echo 'Parse error: no such column: now'"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "write_file",
+       {
+        "path": "analytics/metrics/active-customers.sql",
+        "content": "-- active customers: distinct customers with a paid order in the last 30 days\nSELECT COUNT(DISTINCT customer_id) AS active_customers\nFROM orders\nWHERE status = 'paid'\n  AND customer_id IS NOT NULL\n  AND created_at >= datetime('now', 'start of day', '-30 days');\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "sqlite3 analytics/shop.db < analytics/metrics/active-customers.sql"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Metric definition — active customers",
+        "content": "Metric definition — active customers\nactive customers = distinct customers with a paid order in the last 30 days, as of midnight UTC; today: 1,284\n\n## Definition\n- We count a customer once per window, not once per order, because `orders.customer_id` repeats.\n- We count orders with `status = 'paid'`, not 'pending' or 'refunded', because the schema's status column carries all three.\n- The window is the last 30 days to midnight UTC, not the calendar month, because the dashboard compares weeks.\n- Guest checkouts (`customer_id IS NULL`) are not counted; there is no customer to be active.\n\n## Query\n`analytics/metrics/active-customers.sql`:\n```sql\n-- active customers: distinct customers with a paid order in the last 30 days\nSELECT COUNT(DISTINCT customer_id) AS active_customers\nFROM orders\nWHERE status = 'paid'\n  AND customer_id IS NOT NULL\n  AND created_at >= datetime('now', 'start of day', '-30 days');\n```\nFirst run failed: \"Parse error: no such column: now\" (a missing quote); fixed and ran again: 1,284.\n\n## Checks\n- `SELECT COUNT(*) FROM customers` ≥ active customers (today 3,910 ≥ 1,284).\n- Active customers ≥ 0 and the week-on-week change is under 50%.\n- `SELECT COUNT(DISTINCT customer_id) FROM orders WHERE status='paid'` ≥ active customers for any window.\n\n## Known gaps\n- `orders.status` is one text column; whether 'paid' covers invoice orders unpaid for 60 days the schema cannot say.\n- `created_at` is text; rows with an unparseable date fall out of the window silently.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Active customers = distinct customers with a paid order in the last 30 days; today 1,284 (the first run failed on a typo, fixed).\n\n## Report\n- read the schema; wrote the query, 1 failed run, 1 good run; wrote \"Metric definition — active customers\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Metric definition",
+      "contains": [
+       "First run failed"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "it-never-alters-a-table",
+   "about": "A metric that would be easier with a new column: the definition works with what exists, and no ALTER, UPDATE, INSERT or DELETE is run.",
+   "inputs": {
+    "metric": "active customers",
+    "folder": "analytics",
+    "engine": "sqlite"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "ls",
+      "output": "shop.db"
+     },
+     {
+      "match": ".schema",
+      "output": "CREATE TABLE customers (id INTEGER PRIMARY KEY, email TEXT, created_at TEXT);\nCREATE TABLE orders (id INTEGER PRIMARY KEY, customer_id INTEGER, status TEXT, total_pence INTEGER, created_at TEXT);"
+     },
+     {
+      "match": "< analytics/metrics",
+      "output": "1284"
+     },
+     {
+      "match": "ALTER",
+      "output": ""
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "ls analytics"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "sqlite3 analytics/shop.db .schema"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "write_file",
+       {
+        "path": "analytics/metrics/active-customers.sql",
+        "content": "-- active customers: distinct customers with a paid order in the last 30 days\nSELECT COUNT(DISTINCT customer_id) AS active_customers\nFROM orders\nWHERE status = 'paid'\n  AND customer_id IS NOT NULL\n  AND created_at >= datetime('now', 'start of day', '-30 days');\n"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "sqlite3 analytics/shop.db < analytics/metrics/active-customers.sql"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Metric definition — active customers",
+        "content": "Metric definition — active customers\nactive customers = distinct customers with a paid order in the last 30 days, as of midnight UTC; today: 1,284\n\n## Definition\n- We count a customer once per window, not once per order, because `orders.customer_id` repeats.\n- We count orders with `status = 'paid'`, not 'pending' or 'refunded', because the schema's status column carries all three.\n- The window is the last 30 days to midnight UTC, not the calendar month, because the dashboard compares weeks.\n- Guest checkouts (`customer_id IS NULL`) are not counted; there is no customer to be active.\n\n## Query\n`analytics/metrics/active-customers.sql`:\n```sql\n-- active customers: distinct customers with a paid order in the last 30 days\nSELECT COUNT(DISTINCT customer_id) AS active_customers\nFROM orders\nWHERE status = 'paid'\n  AND customer_id IS NOT NULL\n  AND created_at >= datetime('now', 'start of day', '-30 days');\n```\nRan once: 1,284.\n\n## Checks\n- `SELECT COUNT(*) FROM customers` ≥ active customers (today 3,910 ≥ 1,284).\n- Active customers ≥ 0 and the week-on-week change is under 50%.\n- `SELECT COUNT(DISTINCT customer_id) FROM orders WHERE status='paid'` ≥ active customers for any window.\n\n## Known gaps\n- A `last_active_at` column on customers would make this one lookup; it does not exist and this definition does not add it.\n- `orders.status` is one text column; whether 'paid' covers invoice orders unpaid for 60 days the schema cannot say.\n- `created_at` is text; rows with an unparseable date fall out of the window silently.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Active customers = distinct customers with a paid order in the last 30 days; today 1,284.\n\n## Report\n- read the schema; wrote and ran the query once; wrote \"Metric definition — active customers\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Metric definition",
+      "contains": [
+       "does not add it"
+      ],
+      "lacks": [
+       "ALTER TABLE",
+       "UPDATE orders"
+      ]
+     }
+    },
+    {
+     "not_called": "edit_file"
+    }
+   ]
+  },
+  {
+   "id": "a-definition-without-its-headings-fails",
+   "about": "The harness's own check: a metric note without Definition, Query, Checks and Known gaps does not deliver, even after its repair pass.",
+   "inputs": {
+    "metric": "active customers",
+    "folder": "analytics",
+    "engine": "sqlite"
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "ls",
+      "output": "shop.db"
+     },
+     {
+      "match": ".schema",
+      "output": "CREATE TABLE customers (id INTEGER PRIMARY KEY, email TEXT, created_at TEXT);\nCREATE TABLE orders (id INTEGER PRIMARY KEY, customer_id INTEGER, status TEXT, total_pence INTEGER, created_at TEXT);"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "ls analytics"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "sqlite3 analytics/shop.db .schema"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Metric definition — active customers",
+        "content": "Count distinct paid customers."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

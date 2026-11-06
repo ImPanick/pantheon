@@ -1,0 +1,26 @@
+{
+ "case": "eight-interviews-three-themes",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read 8 interview notes; wrote \"Interview synthesis — do small shops want delivery reminders by text?\"",
+ "read": [
+  "manage_documents"
+ ],
+ "wrote": [
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Interview synthesis”",
+   "ok": true,
+   "detail": "“Interview synthesis — do small shops want delivery reminders by text?” is there."
+  }
+ ],
+ "answer": "8 people; top theme: they want the delivery window, not a reminder that one is coming (6 of 8).\n\n## Report\n- read 8 interview notes; wrote \"Interview synthesis — do small shops want delivery reminders by text?\"",
+ "documents": [
+  {
+   "title": "Interview synthesis — do small shops want delivery reminders by text?",
+   "content": "Interview synthesis — do small shops want delivery reminders by text?\n8 people; top theme: tell me the window, not that it is coming (6 of 8)\n\n## Themes\n- \"Tell me the window, not that it's coming\" — 6 of 8: a reminder without a slot is noise; the window lets them plan the floor.\n- \"Text is fine, email gets lost\" — 5 of 8: text reaches them on the floor; email is read at night.\n- \"Let me forward it to whoever is in\" — 3 of 8: the person who ordered is often not the one receiving.\n\n## Quotes\n- Window: \"A text saying 'tomorrow' is useless; tomorrow is twelve hours.\" (P2) — \"Give me the two-hour slot and I will clear the back door.\" (P5)\n- Text over email: \"I do not open email until the shop is shut.\" (P1)\n- Forwarding: \"Half the time it is my Saturday girl who takes it in.\" (P4)\n\n## Surprises\n- The assumption was that reminders reduce missed deliveries; P6 never misses one and has nowhere to put an early one — one person's point.\n- Nobody asked to turn reminders off; the worry was content, not volume.\n\n## Open questions\n- Whether the carrier gives a window for the common routes; no one could say."
+  }
+ ]
+}

@@ -1,0 +1,371 @@
+{
+ "cases": [
+  {
+   "id": "three-user-changes-and-a-known-issue",
+   "about": "Notes with three user-facing changes, two operator lines and a known issue: the lead is the most-asked-for change, operator lines stay out, the known issue closes the thread and the blurb.",
+   "inputs": {
+    "version": "2.4.0",
+    "audience": "small shops that run their own orders"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "rn1",
+      "title": "Release notes — 2.4.0",
+      "content": "Release notes — 2.4.0\n2.4.0 since v2.3.1: 3 for users, 2 for operators, 3 upgrade steps, 1 known issue\n\n## For users\n- Share a weekly meal plan with one other person in your household by email.\n- Discount codes you mistype now give a clear message instead of an empty basket.\n- The orders page loads in under a second for accounts with thousands of orders.\n\n## For operators\n- New setting `SHARE_FROM_ADDRESS`.\n\n## Upgrade notes\n1. Back up the database.\n\n## Known issues\n- Sending mail retries forever when the mail server is down; workaround: restart the worker.\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Release notes"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "rn1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Brand voice"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Launch announcement — 2.4.0",
+        "content": "Launch announcement — 2.4.0\nShare a week's meal plan with one other person by email.\n\n## The one line\n2.4.0: share a week's meal plan with one other person by email — no account needed on their side.\n\n## Thread\n1/ 2.4.0 is out. The most-asked-for thing: share a week's meal plan with one other person by email.\n2/ They get a link. It opens the plan, read-only, with the shopping list. No sign-up.\n3/ Also fixed: a mistyped discount code now says so instead of emptying your basket.\n4/ And the orders page loads in under a second for shops with thousands of orders.\n5/ Notes and how to upgrade: <link>. Known: sending mail retries when the mail server is down; restart the worker.\n\n## LinkedIn post\n2.4.0 is out today, and the headline is the thing people asked for most: share a week's meal plan with one other person by email, with no account needed on their side.\n\nTwo smaller things: a mistyped discount code now says so instead of emptying the basket, and the orders page loads in under a second for busy shops.\n\nRelease notes: <link>\n\n## Video script\n- Shot 1 (0–5 s): the plan screen, cursor on Share — \"You have a week planned.\"\n- Shot 2 (5–15 s): the email field, one address typed — \"Type one email address.\"\n- Shot 3 (15–25 s): the other person's phone, the plan opening — \"They open the link. No sign-up.\"\n- Shot 4 (25–30 s): the version number — \"2.4.0, out today.\"\n\n## Newsletter blurb\n2.4.0 is out. Share a week's meal plan with one other person by email — they get a read-only link, no account needed. Also: mistyped discount codes now say so, and the orders page is fast for busy shops. Known: sending mail retries forever when the mail server is down; restart the worker.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Lead: share a week's meal plan with one other person by email.\n\n## Report\n- read \"Release notes — 2.4.0\" and no brand voice document; wrote \"Launch announcement — 2.4.0\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Launch announcement — 2.4.0",
+      "contains": [
+       "## The one line\n2.4.0: share",
+       "## Thread\n1/",
+       "Known: sending mail",
+       "## Video script\n- Shot 1"
+      ],
+      "lacks": [
+       "SHARE_FROM_ADDRESS",
+       "Back up the database",
+       "xcited"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "no-notes-for-the-version",
+   "about": "Nothing listed matches the version: the document says not written under each heading and the answer asks for the release notes owner to run first.",
+   "inputs": {
+    "version": "2.4.0",
+    "audience": "small shops that run their own orders"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "rn0",
+      "title": "Release notes — 2.3.1",
+      "content": "Release notes — 2.3.1\n\n## For users\n- Faster search.\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Release notes"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Brand voice"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Launch announcement — 2.4.0",
+        "content": "Launch announcement — 2.4.0\nnot written — no Release notes for 2.4.0\n\n## The one line\n- not written — no Release notes for 2.4.0 (only 2.3.1 is listed)\n\n## Thread\n- not written\n\n## LinkedIn post\n- not written\n\n## Video script\n- not written\n\n## Newsletter blurb\n- not written\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Not written: no Release notes for 2.4.0 — run the release notes owner first.\n\n## Report\n- only \"Release notes — 2.3.1\" is listed; wrote \"Launch announcement — 2.4.0\" saying so"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Launch announcement",
+      "contains": [
+       "no Release notes for 2.4.0"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "the-notes-say-nothing-changed",
+   "about": "The notes' first line says no changes since the base: nothing to announce under each heading, said in one line.",
+   "inputs": {
+    "version": "2.4.0",
+    "audience": "small shops that run their own orders"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "rn1",
+      "title": "Release notes — 2.4.0",
+      "content": "Release notes — 2.4.0\n2.4.0 since v2.3.1: no changes since v2.3.1 — 0 for users, 0 for operators, 0 upgrade steps, 0 known issues\n\n## For users\n- none\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Release notes"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "rn1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Brand voice"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Launch announcement — 2.4.0",
+        "content": "Launch announcement — 2.4.0\nnothing to announce: the notes say no changes since v2.3.1\n\n## The one line\n- nothing to announce\n\n## Thread\n- nothing to announce\n\n## LinkedIn post\n- nothing to announce\n\n## Video script\n- nothing to announce\n\n## Newsletter blurb\n- nothing to announce\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Nothing to announce: the notes say no changes since v2.3.1.\n\n## Report\n- read \"Release notes — 2.4.0\"; wrote \"Launch announcement — 2.4.0\" saying so"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Launch announcement",
+      "contains": [
+       "nothing to announce"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "it-never-announces-what-is-still-broken",
+   "about": "A users' line is also a known issue: that change is left out of every piece and the known-issue line stands in its place.",
+   "inputs": {
+    "version": "2.4.0",
+    "audience": "small shops that run their own orders"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "rn1",
+      "title": "Release notes — 2.4.0",
+      "content": "Release notes — 2.4.0\n\n## For users\n- Share a weekly meal plan with one other person by email.\n- Invitations now arrive within a minute.\n\n## Known issues\n- Invitations can take up to an hour when the mail server is slow (claimed fixed, still failing on 2026-11-09); workaround: none.\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Release notes"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "rn1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Brand voice"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Launch announcement — 2.4.0",
+        "content": "Launch announcement — 2.4.0\nShare a week's meal plan with one other person by email.\n\n## The one line\n2.4.0: share a week's meal plan with one other person by email — no account needed on their side.\n\n## Thread\n1/ 2.4.0 is out. The most-asked-for thing: share a week's meal plan with one other person by email.\n2/ They get a link. It opens the plan, read-only, with the shopping list. No sign-up.\n3/ Known: an invitation can take up to an hour to arrive when the mail server is slow; we are on it.\n5/ Notes and how to upgrade: <link>. Known: sending mail retries when the mail server is down; restart the worker.\n\n## LinkedIn post\n2.4.0 is out today, and the headline is the thing people asked for most: share a week's meal plan with one other person by email, with no account needed on their side.\n\nOne thing to know: an invitation can take up to an hour to arrive when the mail server is slow. We are on it.\n\nRelease notes: <link>\n\n## Video script\n- Shot 1 (0–5 s): the plan screen, cursor on Share — \"You have a week planned.\"\n- Shot 2 (5–15 s): the email field, one address typed — \"Type one email address.\"\n- Shot 3 (15–25 s): the other person's phone, the plan opening — \"They open the link. No sign-up.\"\n- Shot 4 (25–30 s): the version number — \"2.4.0, out today.\"\n\n## Newsletter blurb\n2.4.0 is out. Share a week's meal plan with one other person by email — they get a read-only link, no account needed. Known: an invitation can take up to an hour when the mail server is slow.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Lead: share a week's meal plan by email; the invitation-timing line was left out as a known issue.\n\n## Report\n- read \"Release notes — 2.4.0\"; wrote \"Launch announcement — 2.4.0\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Launch announcement",
+      "contains": [
+       "up to an hour"
+      ],
+      "lacks": [
+       "within a minute"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "an-announcement-without-its-pieces-fails",
+   "about": "The harness's own check: a launch announcement without The one line, Thread, LinkedIn post, Video script and Newsletter blurb does not deliver, even after its repair pass.",
+   "inputs": {
+    "version": "2.4.0",
+    "audience": "small shops that run their own orders"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "rn1",
+      "title": "Release notes — 2.4.0",
+      "content": "Release notes — 2.4.0\n2.4.0 since v2.3.1: 3 for users, 2 for operators, 3 upgrade steps, 1 known issue\n\n## For users\n- Share a weekly meal plan with one other person in your household by email.\n- Discount codes you mistype now give a clear message instead of an empty basket.\n- The orders page loads in under a second for accounts with thousands of orders.\n\n## For operators\n- New setting `SHARE_FROM_ADDRESS`.\n\n## Upgrade notes\n1. Back up the database.\n\n## Known issues\n- Sending mail retries forever when the mail server is down; workaround: restart the worker.\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Release notes"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "rn1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Launch announcement — 2.4.0",
+        "content": "2.4.0 is out: share meal plans by email."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

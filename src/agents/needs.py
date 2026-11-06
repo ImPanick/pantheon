@@ -18,6 +18,16 @@ So the two are compared with what Pantheon actually knows about the route:
     surface) is a shortfall. `both` means nobody has said, and the schemas are
     sent, so it is not.
 
+  * **what the model is** (`P24-30`) — `needs.model` names `vision`,
+    `reasoning` or `audio`, and the route is asked the one question each of
+    those already has an answer to: `chat_helpers.vision_answer`,
+    `reasoning_answer` and `audio_answer` — the endpoint's own word where it
+    gives one (LM Studio, Ollama, OpenRouter, llama.cpp), the family's
+    otherwise, and None when nothing knows. Only a *no* is a shortfall, and
+    the hall says then, in the owner's words: *"This agent requires {it} in
+    order to perform its job. Consider loading a model that meets this
+    specification."*
+
 It **warns, it does not refuse**. A model a little under an agent's window may
 still do the job, and the fit badge (`fit.py`) is the measurement; this is the
 sentence that tells the person, before they summon and again when it runs, that
@@ -29,14 +39,42 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional
 
 
+#: `P24-30`. What `needs.model` may name, each with the words the hall uses
+#: for it and the question that answers it (`src/chat_helpers`).
+MODEL_NEEDS: Dict[str, str] = {
+    "vision": "vision (a model that can see pictures)",
+    "reasoning": "reasoning (a model that thinks before it answers)",
+    "audio": "audio input (a model that can hear recordings)",
+}
+
+
+def capability(need: str, endpoint_url: str, model: str) -> Optional[bool]:
+    """`P24-30`. Whether the route's model has `need` — True, False, or None
+    when nothing knows. Asks the model's own record (`chat_helpers`), which
+    may ask the endpoint; the eval harness answers None for its scripted model
+    without asking, as it answers the scripted window."""
+    ask = {"vision": "vision_answer", "reasoning": "reasoning_answer", "audio": "audio_answer"}.get(need)
+    if not ask:
+        return None
+    try:
+        from src import chat_helpers
+        return getattr(chat_helpers, ask)(model, endpoint_url)
+    except Exception:
+        return None  # nothing knows: unknown warns nothing
+
+
 def route_facts(endpoint_url: Optional[str], model: Optional[str],
                 owner: Optional[str] = None) -> Dict[str, Any]:
     """What is known about a route: `{"model", "context" (int or None when not
-    known), "tools" ("native" | "both" | "fenced" | None)}`. Never raises — a
-    route that can't be looked at has no facts, and no facts warn nothing."""
-    facts: Dict[str, Any] = {"model": model, "context": None, "tools": None}
+    known), "tools" ("native" | "both" | "fenced" | None), "vision",
+    "reasoning", "audio" (True | False | None)}`. Never raises — a route that
+    can't be looked at has no facts, and no facts warn nothing."""
+    facts: Dict[str, Any] = {"model": model, "context": None, "tools": None,
+                             "vision": None, "reasoning": None, "audio": None}
     if not endpoint_url or not model:
         return facts
+    for key in MODEL_NEEDS:
+        facts[key] = capability(key, endpoint_url, model)
     try:
         from src.model_context import get_context_length_known
         ctx, known = get_context_length_known(endpoint_url, model)
@@ -80,7 +118,29 @@ def shortfall(needs: Dict[str, Any], facts: Dict[str, Any]) -> List[str]:
     if (needs or {}).get("native_tools") == "required" and facts.get("tools") == "fenced":
         out.append(f"It needs a model that calls tools natively; {model} is set to the "
                    "fenced form on its endpoint, so its tool calls may not land.")
+    # `P24-30`. The owner's sentence, said only of a model known not to have it.
+    for need in (needs or {}).get("model") or ():
+        if facts.get(need) is False:
+            out.append(requirement_sentence(need, model))
     return out
+
+
+def requirement_sentence(need: str, model: Optional[str] = None) -> str:
+    """`P24-30`. *"This agent requires {capability} in order to perform its
+    job. Consider loading a model that meets this specification."* — the
+    owner's words (2026-11-02), with the model named when one is."""
+    what = MODEL_NEEDS.get(need, need)
+    said = f"This agent requires {what} in order to perform its job."
+    if model:
+        said += f" {model} does not have it."
+    return said + " Consider loading a model that meets this specification."
+
+
+def requirements(needs: Dict[str, Any]) -> List[str]:
+    """`P24-30`. What an agent says of the model it needs, before any model is
+    looked at — one line per `needs.model` entry, for its page in the hall."""
+    return [f"This agent requires {MODEL_NEEDS.get(n, n)} in order to perform its job."
+            for n in (needs or {}).get("model") or ()]
 
 
 def run_warnings(plan, endpoint_url: Optional[str], model: Optional[str]) -> List[str]:
@@ -107,7 +167,9 @@ def run_warnings(plan, endpoint_url: Optional[str], model: Optional[str]) -> Lis
 def check(manifest, facts: Dict[str, Any]) -> Dict[str, Any]:
     """`{"model", "short": [sentences]}` for `manifest` on the route `facts`
     describes — what the hall shows beside the fit badge."""
-    return {"model": facts.get("model"), "short": shortfall(getattr(manifest, "needs", {}) or {}, facts)}
+    needs = getattr(manifest, "needs", {}) or {}
+    return {"model": facts.get("model"), "short": shortfall(needs, facts),
+            "requires": requirements(needs)}
 
 
 # ── `B1623` · the programs an agent runs, checked before it is hired ────────

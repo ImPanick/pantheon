@@ -1,0 +1,26 @@
+{
+ "case": "one-ask-over-one-inside-one-unruled",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read \"Pricing policy\" and \"Proposal — Cedar Ltd\"; wrote \"Deal review — Cedar Ltd\"",
+ "read": [
+  "manage_documents"
+ ],
+ "wrote": [
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Deal review”",
+   "ok": true,
+   "detail": "“Deal review — Cedar Ltd” is there."
+  }
+ ],
+ "answer": "Escalate: 15% at 24 months or 20% at 36 is approvable now; 25% and net-60 go to the owner.\n\n## Report\n- read \"Pricing policy\" and \"Proposal — Cedar Ltd\"; wrote \"Deal review — Cedar Ltd\"",
+ "documents": [
+  {
+   "title": "Deal review — Cedar Ltd",
+   "content": "Deal review — Cedar Ltd\nescalate: 25% off for 24 months, net-60, approved in part\n\n## Verdict\nEscalate: the 24-month term and annual payment are within policy, the 25% discount is 10 points past the 15% the policy allows at that term, and net-60 is not a payment term the policy names.\n\n## Against the policy\n- 25% discount at 24 months — policy: \"Up to 15% for a 24-month term paid annually; up to 20% for 36 months.\" — outside by 10 points.\n- 24-month term — policy: \"Terms of 12, 24 or 36 months.\" — inside.\n- Net-60 payment — policy names net-30 only: \"Invoices are due in 30 days.\" — no rule for net-60.\n\n## Conditions\n- Annual payment in advance (policy, \"paid annually\").\n- A reference call within the first year (policy, \"any discount over 10% carries a reference\").\n\n## Escalate\n- 25% at 24 months: 10 points over; the policy names the owner for anything past the table. A 36-month term would bring 20% inside policy — worth offering.\n- Net-60: no rule; the owner decides. A rule on payment terms past 30 days would settle the next one."
+  }
+ ]
+}

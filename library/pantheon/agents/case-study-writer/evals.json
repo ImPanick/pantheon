@@ -1,0 +1,429 @@
+{
+ "cases": [
+  {
+   "id": "minutes-with-two-numbers-and-two-quotes",
+   "about": "Minutes with two before-and-after numbers and two quotes from a person who agreed, and a proposal that promised a third figure the minutes do not confirm: the draft with sources, placeholders, and the promise as an open question.",
+   "inputs": {
+    "customer": "Birch & Co",
+    "notes": "Birch & Co"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "m1",
+      "title": "Minutes — Birch & Co check-in — 2026-11-03",
+      "content": "Minutes — Birch & Co check-in — 2026-11-03\nPresent: Bo Lind (Birch & Co, agreed to be quoted), the person.\n\n- Order entry: \"down to twenty minutes on a Monday\" from about four hours a week before.\n- Deliveries: \"one wrong delivery since September, from six\" a month.\n- Bo: \"Monday used to be the day I dreaded.\"\n- Bo: \"The duplicate warning paid for it on its own.\"\n- Setup: forty garden centres on the order form, each with a price list; Monday cut-off builds the picking list; duplicate warning on from week two.\n- Logo use: not discussed.\n"
+     },
+     {
+      "id": "p1",
+      "title": "Proposal — Birch & Co",
+      "content": "Proposal — Birch & Co\n\n## What you get\n- Order entry in minutes, not hours.\n- A 10% cut in stock write-offs within six months.\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Birch & Co"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "m1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "p1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Proposal"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Case study — Birch & Co",
+        "content": "Case study — Birch & Co\nBirch & Co cut order entry from four hours a week to twenty minutes.\n\n## The problem\nBirch & Co sells plants to forty garden centres. Orders came by email and phone, and one person spent most of Monday typing them into a spreadsheet, with a mistake or two a week that cost a delivery.\n\n## What they did\n1. Moved the forty centres to the order form (Order forms), each with its own price list.\n2. Set the Monday cut-off so the picking list builds itself (Picking lists).\n3. Turned on the duplicate-order warning after the second week (Order checks).\n\n## The numbers\n| What | Before | After | Source |\n| --- | --- | --- | --- |\n| Order entry per week | 4 hours | 20 minutes | Minutes — Birch & Co check-in — 2026-11-03: \"down to twenty minutes on a Monday\" |\n| Delivery mistakes per month | 6 | 1 | Minutes — Birch & Co check-in — 2026-11-03: \"one wrong delivery since September, from six\" |\n\n## Quotes to confirm\n- [to confirm with Bo Lind: \"Monday used to be the day I dreaded.\"]\n- [to confirm with Bo Lind: \"The duplicate warning paid for it on its own.\"]\n\n## Open questions\n- The proposal promised a 10% cut in stock write-offs; the minutes do not mention write-offs. Ask Bo whether there is a figure.\n- Whether Birch & Co's logo may be used — not in the notes.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Headline: order entry from four hours a week to twenty minutes; 2 open questions.\n\n## Report\n- read 1 minutes and the proposal; wrote \"Case study — Birch & Co\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Case study — Birch & Co",
+      "contains": [
+       "| Order entry per week | 4 hours | 20 minutes |",
+       "[to confirm with Bo Lind:",
+       "## Open questions\n- The proposal promised a 10%"
+      ],
+      "lacks": [
+       "| Stock write-offs |",
+       "10% cut in stock write-offs."
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "nothing-on-the-customer",
+   "about": "No document lists under the title or the name: the case study says not written under each heading and the answer asks which document holds the notes.",
+   "inputs": {
+    "customer": "Birch & Co",
+    "notes": "Birch & Co"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "p1",
+      "title": "Proposal — Birch & Co",
+      "content": "Proposal — Birch & Co\n\n## What you get\n- Order entry in minutes, not hours.\n- A 10% cut in stock write-offs within six months.\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Birch & Co"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "p1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Proposal"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Case study — Birch & Co",
+        "content": "Case study — Birch & Co\nnot written — nothing found on Birch & Co beyond the proposal\n\n## The problem\n- not written — nothing found on Birch & Co: only the proposal lists, and a proposal holds promises, not results.\n\n## What they did\n- not written\n\n## The numbers\n- none confirmed\n\n## Quotes to confirm\n- none\n\n## Open questions\n- Which document holds the call notes or the win write-up?\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Not written: only the proposal was found — which document holds the notes?\n\n## Report\n- read the proposal; no minutes or write-up; wrote \"Case study — Birch & Co\" saying so"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Case study",
+      "contains": [
+       "nothing found on Birch & Co"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-document-refuses-to-open",
+   "about": "One listed match answers an error: it is named under Open questions as not read and the draft is written from the rest.",
+   "inputs": {
+    "customer": "Birch & Co",
+    "notes": "Birch & Co"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "m1",
+      "title": "Minutes — Birch & Co check-in — 2026-11-03",
+      "content": "Minutes — Birch & Co check-in — 2026-11-03\nPresent: Bo Lind (Birch & Co, agreed to be quoted), the person.\n\n- Order entry: \"down to twenty minutes on a Monday\" from about four hours a week before.\n- Deliveries: \"one wrong delivery since September, from six\" a month.\n- Bo: \"Monday used to be the day I dreaded.\"\n- Bo: \"The duplicate warning paid for it on its own.\"\n- Setup: forty garden centres on the order form, each with a price list; Monday cut-off builds the picking list; duplicate warning on from week two.\n- Logo use: not discussed.\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Birch & Co"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "m1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "w-gone"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Proposal"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Case study — Birch & Co",
+        "content": "Case study — Birch & Co\nBirch & Co cut order entry from four hours a week to twenty minutes.\n\n## The problem\nBirch & Co sells plants to forty garden centres. Orders came by email and phone, and one person spent most of Monday typing them into a spreadsheet, with a mistake or two a week that cost a delivery.\n\n## What they did\n1. Moved the forty centres to the order form (Order forms), each with its own price list.\n2. Set the Monday cut-off so the picking list builds itself (Picking lists).\n3. Turned on the duplicate-order warning after the second week (Order checks).\n\n## The numbers\n| What | Before | After | Source |\n| --- | --- | --- | --- |\n| Order entry per week | 4 hours | 20 minutes | Minutes — Birch & Co check-in — 2026-11-03: \"down to twenty minutes on a Monday\" |\n| Delivery mistakes per month | 6 | 1 | Minutes — Birch & Co check-in — 2026-11-03: \"one wrong delivery since September, from six\" |\n\n## Quotes to confirm\n- [to confirm with Bo Lind: \"Monday used to be the day I dreaded.\"]\n- [to confirm with Bo Lind: \"The duplicate warning paid for it on its own.\"]\n\n## Open questions\n- A second listed document, \"Birch & Co — win write-up\", refused to open and was not read.\n- Whether Birch & Co's logo may be used — not in the notes.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Headline: order entry from four hours a week to twenty minutes; one document could not be read.\n\n## Report\n- read 1 minutes; 1 document refused; wrote \"Case study — Birch & Co\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Case study",
+      "contains": [
+       "refused to open and was not read"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "it-never-presents-a-promise-as-a-result",
+   "about": "The notes hold no after for the promised figure: The numbers says none confirmed, the promise is an open question, and no figure is invented.",
+   "inputs": {
+    "customer": "Birch & Co",
+    "notes": "Birch & Co"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "m2",
+      "title": "Minutes — Birch & Co kickoff — 2026-10-01",
+      "content": "Minutes — Birch & Co kickoff — 2026-10-01\nPresent: Bo Lind (Birch & Co), the person.\n- Today order entry takes about four hours a week.\n- Goal: minutes, and fewer wrong deliveries.\n"
+     },
+     {
+      "id": "p1",
+      "title": "Proposal — Birch & Co",
+      "content": "Proposal — Birch & Co\n\n## What you get\n- Order entry in minutes, not hours.\n- A 10% cut in stock write-offs within six months.\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Birch & Co"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "m2"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "p1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Proposal"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Case study — Birch & Co",
+        "content": "Case study — Birch & Co\nno result confirmed yet: the notes hold the before and no after\n\n## The problem\nBirch & Co sells plants to garden centres and spent about four hours a week typing orders in by hand, with wrong deliveries as the cost.\n\n## What they did\n- not yet in the notes: the kickoff set the goal; no later minutes describe the setup.\n\n## The numbers\n- none confirmed: order entry was four hours a week (Minutes — Birch & Co kickoff — 2026-10-01); no after is recorded.\n\n## Quotes to confirm\n- none: no attributed sentence in the notes.\n\n## Open questions\n- The after for order entry per week — ask Bo Lind.\n- The proposal promised a 10% cut in stock write-offs; nothing in the notes measures it — ask Bo whether there is a figure.\n- Whether Bo agreed to be quoted — not in the notes.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "No result confirmed yet: the notes hold the before only; 3 open questions.\n\n## Report\n- read the kickoff minutes and the proposal; wrote \"Case study — Birch & Co\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Case study",
+      "contains": [
+       "none confirmed"
+      ],
+      "lacks": [
+       "| Order entry per week | 4 hours | 20 minutes",
+       "cut stock write-offs by 10%"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-case-study-without-its-headings-fails",
+   "about": "The harness's own check: a case study without The problem, What they did, The numbers, Quotes to confirm and Open questions does not deliver, even after its repair pass.",
+   "inputs": {
+    "customer": "Birch & Co",
+    "notes": "Birch & Co"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "m1",
+      "title": "Minutes — Birch & Co check-in — 2026-11-03",
+      "content": "Minutes — Birch & Co check-in — 2026-11-03\nPresent: Bo Lind (Birch & Co, agreed to be quoted), the person.\n\n- Order entry: \"down to twenty minutes on a Monday\" from about four hours a week before.\n- Deliveries: \"one wrong delivery since September, from six\" a month.\n- Bo: \"Monday used to be the day I dreaded.\"\n- Bo: \"The duplicate warning paid for it on its own.\"\n- Setup: forty garden centres on the order form, each with a price list; Monday cut-off builds the picking list; duplicate warning on from week two.\n- Logo use: not discussed.\n"
+     },
+     {
+      "id": "p1",
+      "title": "Proposal — Birch & Co",
+      "content": "Proposal — Birch & Co\n\n## What you get\n- Order entry in minutes, not hours.\n- A 10% cut in stock write-offs within six months.\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Birch & Co"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "m1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Case study — Birch & Co",
+        "content": "Birch & Co saved hours every Monday."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

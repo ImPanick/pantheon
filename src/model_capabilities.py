@@ -863,6 +863,22 @@ def audio_verdict(capability: ModelCapability) -> bool | None:
     return False
 
 
+def reasoning_verdict(capability: ModelCapability) -> bool | None:
+    """`capability` as the answer to "does this model think before it answers".
+
+    `P24-30`, `vision_verdict`'s third sibling and read the same way: True
+    when it names reasoning (Ollama's `thinking`, OpenRouter's `reasoning`
+    parameters); False when a provider described the model and named it not;
+    None when it said nothing this can read. Read for an agent that declared
+    `needs.model: [reasoning]`, which warns on False and says nothing on None.
+    """
+    if CAP_REASONING in capability.capabilities:
+        return True
+    if capability.family == FAMILY_UNKNOWN or capability.confidence == CONFIDENCE_UNKNOWN:
+        return None
+    return False
+
+
 def display_surfaces_for(capability: ModelCapability) -> tuple[str, ...]:
     return tuple(query.surface for query in DISPLAY_QUERIES if query.matches(capability))
 

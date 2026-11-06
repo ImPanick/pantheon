@@ -1,0 +1,26 @@
+{
+ "case": "two-renewing-one-ownerless-one-dearer",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read the register, last week's register and 1 review; wrote \"Vendor register — 2026-11-09\"",
+ "read": [
+  "manage_documents"
+ ],
+ "wrote": [
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Vendor register”",
+   "ok": true,
+   "detail": "“Vendor register — 2026-11-09” is there."
+  }
+ ],
+ "answer": "3 vendors: 2 renewing within 60 days (Ledgerly's notice falls 2 Dec), 1 without an owner.\n\n## Report\n- read the register, last week's register and 1 review; wrote \"Vendor register — 2026-11-09\"",
+ "documents": [
+  {
+   "title": "Vendor register — 2026-11-09",
+   "content": "Vendor register — 2026-11-09\n3 vendors: 2 renewing within 60 days, 1 without an owner, 1 cost changed\n\n## Renewing soon\n- Ledgerly — notice deadline 2026-12-02 (renews 2027-01-01, 30 days' notice) — owner Lee Park — £1,800/year — review 2026-10-20: keep.\n- ShipQuick — renews 2026-12-15 — owner none — £3,600/year — no review.\n\n## No owner\n- ShipQuick — £3,600/year — renews 2026-12-15.\n\n## Cost changed\n- Cloudbox — £2,400/year last week, £2,880/year this week (+£480, +20%); the register's note says \"price rise letter, 3 Nov\".\n\n## All vendors\n| Vendor | Owner | Cost/year | Renewal | Notice | Review |\n| --- | --- | --- | --- | --- | --- |\n| Ledgerly | Lee Park | £1,800 | 2027-01-01 | 30 days | keep (2026-10-20) |\n| ShipQuick | — | £3,600 | 2026-12-15 | — | — |\n| Cloudbox | Sam Oduya | £2,880 | 2027-03-31 | 60 days | — |"
+  }
+ ]
+}
