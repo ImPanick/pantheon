@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""The phone: a real Android device per person, in their workstation. `B1747`.
+"""The phone: a real Android device per person, in their workstation. `B1751`.
 
 The owner, 2026-11-02: *"a mobile device emulator... with various real device
 emulation (Samsung Galaxy Z Fold, Google Pixel Pro, etc...) with the real OS,
@@ -50,7 +50,7 @@ fiction the panel already says so beside); with `sudo` off, the emulator's adb
 port is still on the loopback every account shares, which `THREAT_MODEL.md`
 records as this row's open edge.
 
-WITHOUT KVM: THE MOBILE VIEW (`B1749`)
+WITHOUT KVM: THE MOBILE VIEW (`B1753`)
 ======================================
 
 The owner chose, 2026-11-02, "Real Android, plus mobile view": on a host
@@ -131,7 +131,7 @@ NOT_X86 = "The phone runs x86_64 Android, and this workstation is {arch}."
 NO_SCREEN = ("The phone has no screen to show on: this workstation has no KasmVNC. Rebuild it: "
              "docker compose up -d --build.")
 
-# `B1749`. The mobile view: where its profile lives, what Home opens, and the
+# `B1753`. The mobile view: where its profile lives, what Home opens, and the
 # Firefox for Android its user agent names (a version sites recognise).
 MOBILE_PROFILE_DIR = ".pantheon/mobile-view"
 MOBILE_HOME = "about:home"
@@ -294,7 +294,7 @@ def scrcpy_argv(scrcpy: str, serial: str, size: Tuple[int, int], *,
 
 def mobile_view_size(device: str, posture: Optional[str] = None,
                      rotation: int = 0) -> Tuple[int, int]:
-    """`B1749`. The mobile view's screen: the device's screen — its cover
+    """`B1753`. The mobile view's screen: the device's screen — its cover
     screen when a foldable is closed, turned on its side at an odd rotation —
     scaled to fit `P.PHONE_SCREEN_MAX`, both sides even."""
     d = P.PHONE_DEVICES.get(device) or P.PHONE_DEVICES[P.PHONE_DEFAULT_DEVICE]
@@ -346,12 +346,12 @@ def mobile_view_prefs(device: str, posture: Optional[str] = None, rotation: int 
         "browser.sessionstore.resume_from_crash": False,
         "browser.fullscreen.autohide": True,
     }
-    return ("// `B1749`: the phone's mobile view (`workstation/phone.py`).\n"
+    return ("// `B1753`: the phone's mobile view (`workstation/phone.py`).\n"
             + "".join(f"user_pref({json.dumps(k)}, {json.dumps(v)});\n" for k, v in lines.items()))
 
 
 class MobileView(AccountBrowser):
-    """`B1749`. The workstation's Firefox as a phone: on the phone's screen,
+    """`B1753`. The workstation's Firefox as a phone: on the phone's screen,
     in kiosk mode, at its size. Never headless: a mobile view nobody can see
     is no view, so a screen that will not start is said, not worked around."""
 
@@ -504,7 +504,7 @@ class AccountPhone:
         self.watchers = 0
         self._booting: Optional[threading.Thread] = None
         self._avail: Optional[Tuple[float, Optional[str]]] = None
-        self.mobile: Optional[MobileView] = None   # `B1749`: the mobile view's Firefox
+        self.mobile: Optional[MobileView] = None   # `B1753`: the mobile view's Firefox
 
     # -- what it is -------------------------------------------------------------
 
@@ -531,14 +531,14 @@ class AccountPhone:
 
     def availability(self) -> Optional[str]:
         """Why this workstation can run no phone at all — not Android and not
-        the mobile view (`B1749`) — or None when it can run one."""
+        the mobile view (`B1753`) — or None when it can run one."""
         why = self.android_why()
         if why is None or self.mobile_why() is None:
             return None
         return why
 
     def mobile_why(self) -> Optional[str]:
-        """`B1749`. Why the mobile view cannot run here, or None."""
+        """`B1753`. Why the mobile view cannot run here, or None."""
         if self.screen is None:
             return NO_SCREEN
         if not find_firefox():
@@ -546,7 +546,7 @@ class AccountPhone:
         return None
 
     def mode(self) -> Optional[str]:
-        """`B1749`. "android" where the real phone runs, "mobile_view" where
+        """`B1753`. "android" where the real phone runs, "mobile_view" where
         only the mobile view does, None where neither."""
         if self.android_why() is None:
             return "android"
@@ -595,7 +595,7 @@ class AccountPhone:
         return out
 
     def screen_size(self) -> Tuple[int, int]:
-        """The phone's screen now: the device's, or (`B1749`) the mobile
+        """The phone's screen now: the device's, or (`B1753`) the mobile
         view's, which turns and folds with it."""
         if self.mode() == "mobile_view":
             return mobile_view_size(self.device, self.posture, self.rotation)
@@ -786,7 +786,7 @@ class AccountPhone:
             self.state = "on"
             logger.info("phone for %s: %s is on", self.account, self.device)
 
-    # -- `B1749`: the mobile view -------------------------------------------
+    # -- `B1753`: the mobile view -------------------------------------------
 
     def _start_mobile(self) -> Dict:
         self._stop_locked()
@@ -904,7 +904,7 @@ class AccountPhone:
 
     def ensure_shown(self) -> None:
         """scrcpy again if it stopped while the phone stayed on — and a
-        mobile view whose Firefox was closed is off (`B1749`)."""
+        mobile view whose Firefox was closed is off (`B1753`)."""
         with self.lock:
             if self.mobile is not None:
                 if self.state == "on" and not self.running():
@@ -1008,7 +1008,7 @@ class AccountPhone:
             raise PhoneError("bad_request", f"“button” is one of {', '.join(P.PHONE_BUTTONS)}.")
         with self.lock:
             if name == "power" and self.mobile is not None:
-                self._stop_locked()       # `B1749`: the mobile view's Power is off
+                self._stop_locked()       # `B1753`: the mobile view's Power is off
                 return self.info("button")
             self._on()
             if self.mobile is not None:

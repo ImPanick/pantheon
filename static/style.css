@@ -50780,7 +50780,7 @@ body.plan-mode-active .chat-input-top > .model-picker-wrap:has(> .model-picker-m
 }
 .abw-modal.abw-agent-busy .abw-stage { box-shadow: 0 0 0 1px var(--border-control, var(--border)); }
 
-/* ── `B1747` · `B1748` · the phone ──────────────────────────────────────────
+/* ── `B1751` · `B1752` · the phone ──────────────────────────────────────────
    A real Android device (`phoneWindow.js`), drawn as one: a bezel at the
    device's own shape (`--phw-aspect`, set from the server's screen size), its
    side keys on the right edge where its maker puts them, the live screen

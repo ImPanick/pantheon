@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //
-// `B1747`. The phone's window: a real Android device, in a phone you can hold.
+// `B1751`. The phone's window: a real Android device, in a phone you can hold.
 //
 // The owner (2026-11-02): *"a mobile device emulator... with various real
 // device emulation (Samsung Galaxy Z Fold, Google Pixel Pro, etc...) with the
@@ -11,7 +11,7 @@
 // (`workstation/phone.py`), on a screen of its own streamed through
 // Pantheon's own copy of KasmVNC's client, exactly as the live browser is
 // (`browserWindow.js`). This window draws the device around that stream —
-// `B1748`: a bezel at the device's own shape, its side keys where its maker
+// `B1752`: a bezel at the device's own shape, its side keys where its maker
 // puts them (Google: power above the volume rocker; Samsung: the rocker above
 // power), each a real key press on the device — and the controls a phone on a
 // desk does not have: which device it is, power, rotate, fold, and an address
@@ -48,17 +48,17 @@ const SAY = {
   on: 'Ready.',
   holding: 'You have the phone: click to tap, drag to swipe, scroll to fling, right click for Back.',
   agent: 'The agent has the screens. Click the phone or Take over to use it yourself.',
-  // `B1749`: where there is no KVM, the phone is a phone-shaped browser.
+  // `B1753`: where there is no KVM, the phone is a phone-shaped browser.
   mobileStarting: 'Opening the mobile view…',
   mobile: 'Mobile view: web pages only, laid out as this device shows them. The real Android needs KVM.',
 };
 
-/** `B1749`. Whether the phone is the mobile view rather than Android. */
+/** `B1753`. Whether the phone is the mobile view rather than Android. */
 export function isMobileView(state) {
   return !!(state && state.mode === 'mobile_view');
 }
 
-/** `B1749`. Which keys work: the mobile view has no volume or recents. */
+/** `B1753`. Which keys work: the mobile view has no volume or recents. */
 export function keyWorks(state, id) {
   if (!isMobileView(state)) return true;
   return id === 'power' || id === 'back' || id === 'home';
@@ -99,18 +99,18 @@ export function deviceOf(state) {
   return list.find((d) => d.id === (state && state.device)) || list[0] || { id: '', name: 'Phone', maker: '', kind: 'phone' };
 }
 
-/** `B1748`. The bezel's shape for the state: the screen's own, or a closed
+/** `B1752`. The bezel's shape for the state: the screen's own, or a closed
  *  foldable's cover — `{ w, h }`, the screen's pixels as the server sent them. */
 export function bezelShape(state) {
   const screen = (state && Array.isArray(state.screen) && state.screen.length === 2) ? state.screen : [492, 1100];
   const [w, h] = screen;
   const d = deviceOf(state);
-  // The mobile view's screen is already the cover's shape (`B1749`).
+  // The mobile view's screen is already the cover's shape (`B1753`).
   if (d.foldable && state.posture === 'closed' && !isMobileView(state)) return { w: Math.round(w / 2), h };
   return { w, h };
 }
 
-/** `B1748`. Where a maker puts the side keys, top to bottom, on the right edge. */
+/** `B1752`. Where a maker puts the side keys, top to bottom, on the right edge. */
 export function sideKeys(maker) {
   return maker === 'Samsung'
     ? [{ id: 'volume_up', label: 'Volume up' }, { id: 'volume_down', label: 'Volume down' }, { id: 'power', label: 'Power' }]
@@ -271,7 +271,7 @@ function _render() {
   _win.give.hidden = !on || !holding;
   _win.openForm.hidden = !on;
 
-  // `B1748`. The bezel: the device's shape, its keys on its maker's side.
+  // `B1752`. The bezel: the device's shape, its keys on its maker's side.
   const shape = bezelShape(s);
   _win.bezel.style.setProperty('--phw-aspect', `${shape.w} / ${shape.h}`);
   _win.bezel.dataset.kind = d.kind || 'phone';
@@ -385,7 +385,7 @@ function _build() {
   status.appendChild(dot);
   status.appendChild(statusText);
 
-  // `B1748`. The device itself.
+  // `B1752`. The device itself.
   const stage = _el('div', 'phw-stage');
   const bezel = _el('div', 'phw-bezel');
   const speaker = _el('span', 'phw-speaker');

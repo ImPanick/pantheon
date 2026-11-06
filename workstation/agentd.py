@@ -666,7 +666,7 @@ class Workstation:
         # `P27-04`. Each account's mapped names and pinned certificates.
         self._names: Dict[str, Any] = {}
         self.browsers.names_of = lambda account: self._names.get(account)
-        # `B1747`: each account's phone, started only when asked for; its adb
+        # `B1751`: each account's phone, started only when asked for; its adb
         # reaches the account's own shell through `run_as`.
         from workstation.phone import Phones
         self.phones = Phones(system)
@@ -767,7 +767,7 @@ class Workstation:
 
     def reset(self, account: str) -> Dict:
         self.browsers.stop(account)   # `P25-05`: its profile goes with the home
-        self.phones.stop(account)     # `B1747`: and its phone's devices with it
+        self.phones.stop(account)     # `B1751`: and its phone's devices with it
         names = self._names.pop(account, None)
         if names is not None:
             names.stop()              # `P27-04`: its files go with the home too
@@ -842,7 +842,7 @@ class Workstation:
         browser_screen = self.system.browser_display(account)
         if browser_screen is not None:
             browser_screen.set_driver(person)
-        # `B1747`: and the phone's.
+        # `B1751`: and the phone's.
         phone_of = getattr(self.system, "phone_display", None)
         phone_screen = phone_of(account) if callable(phone_of) else None
         if phone_screen is not None:
@@ -941,7 +941,7 @@ class Workstation:
         finally:
             _close(sock)
 
-    # -- `B1747`: the phone --------------------------------------------------------
+    # -- `B1751`: the phone --------------------------------------------------------
 
     def phone(self, account: str, body: Dict) -> Dict:
         """One action on the account's phone (`ROUTES["phone"]`)."""
@@ -1001,7 +1001,7 @@ class Workstation:
             screen = phone.screen
             if action == "screenshot":
                 return dict(self._phone_shot(screen, str(body.get("format") or "png")),
-                            mode=phone.mode())  # `B1749`: Android, or the mobile view
+                            mode=phone.mode())  # `B1753`: Android, or the mobile view
             # input: the input action is "input" here, "action" being the phone's
             act = _validated_action({**body, "action": body.get("input")},
                                     size=(screen.width, screen.height))
@@ -1515,7 +1515,7 @@ def _clean_window(raw) -> Optional[Dict]:
 
 def _validated_action(body: Dict, size: Optional[Tuple[int, int]] = None) -> Dict:
     """One input action, every field checked against the protocol's bounds, so
-    a screen implementation is handed nothing it has to distrust. `B1747`:
+    a screen implementation is handed nothing it has to distrust. `B1751`:
     `size`, a screen other than the protocol's (the phone's), within it."""
     width, height = size or (P.SCREEN_WIDTH, P.SCREEN_HEIGHT)
     name = body.get("action")
@@ -1792,7 +1792,7 @@ class Handler(BaseHTTPRequestHandler):
             if name is None:
                 raise WorkstationError("not_found", "No such workstation route.")
             if name in ("desktop", "browser_screen", "phone_screen"):
-                # `D-2026-10-31-01`, `D-2026-11-01-01`, `B1747`
+                # `D-2026-10-31-01`, `D-2026-11-01-01`, `B1751`
                 if "websocket" in (self.headers.get("Upgrade") or "").lower():
                     q = parse_qs(parts.query)
                     self._desktop(account, (q.get("viewer") or ["person"])[0],
@@ -1826,7 +1826,7 @@ class Handler(BaseHTTPRequestHandler):
                        "input": lambda: self.station.input(account, body),
                        "marks": lambda: self.station.marks(account),  # `G2`
                        "browser": lambda: self.station.browser(account, body),
-                       "phone": lambda: self.station.phone(account, body),  # `B1747`
+                       "phone": lambda: self.station.phone(account, body),  # `B1751`
                        "names": lambda: self.station.names(account, body),
                        "network": lambda: self.station.network(account, body),
                        # `B1733`
@@ -1869,7 +1869,7 @@ class Handler(BaseHTTPRequestHandler):
             # Before anything is opened toward the display, like the two above.
             raise WorkstationError("bad_request", "Sec-WebSocket-Key is not a websocket key.")
         upstream_of = (self.station.browser_screen_upstream if browser
-                       else self.station.phone_screen_upstream if phone  # `B1747`
+                       else self.station.phone_screen_upstream if phone  # `B1751`
                        else self.station.desktop_upstream)
         what = "browser screen" if browser else "phone screen" if phone else "desktop"
         noun = ("The browser's screen" if browser else "The phone's screen" if phone

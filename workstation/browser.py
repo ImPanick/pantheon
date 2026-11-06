@@ -518,7 +518,7 @@ class AccountBrowser:
     #: Preferences written after the shipped ones — the browser without a
     #: workstation sets its proxy here (`src/local_browser.py`).
     extra_prefs = ""
-    #: `B1749`. The window's size on its own screen (the whole screen when
+    #: `B1753`. The window's size on its own screen (the whole screen when
     #: None) and arguments after the profile — the phone's mobile view runs
     #: in kiosk mode at the phone screen's size (`workstation/phone.py`).
     window_size: Optional[Tuple[int, int]] = None

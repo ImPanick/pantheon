@@ -61,7 +61,7 @@ RUN --mount=type=secret,id=build-ca,required=false,mode=0444 \
 # `provision.sh files` puts it at /etc/firefox/policies/policies.json, and the
 # skeleton every home starts from and "Reset to clean" returns to in /etc/skel,
 # and the desktop's window frames, wallpaper and menu mark (`D-2026-10-31-02`).
-# `B1747`. The phone — Google's Android Emulator with one real Android system
+# `B1751`. The phone — Google's Android Emulator with one real Android system
 # image, adb and scrcpy (`provision.sh phone`, `workstation/phone.py`) — only
 # when asked for: about 4 GB, x86_64 only, and building it accepts the Android
 # SDK License. `docker-compose.yml` passes WORKSTATION_PHONE through; set it to

@@ -251,7 +251,7 @@ _QUICK_DEATHS_MAX = 2
 # (`workstation/browser.py`), streamed like the desktop. Each has its own X
 # cookie and its own KasmVNC logins, so neither display's clients reach the
 # other's.
-# `B1747`: or the phone's — scrcpy alone on it, showing the account's Android
+# `B1751`: or the phone's — scrcpy alone on it, showing the account's Android
 # emulator (`workstation/phone.py`), at the device's own shape.
 DISPLAY_ROLES = ("desktop", "browser", "phone")
 _AUTH_FILE = {"desktop": ".Xauthority", "browser": ".Xauthority-browser",
@@ -739,7 +739,7 @@ def kasmvnc_argv(server: str, *, displayfd: int, auth: Path, port: int,
     """`Xkasmvnc`'s command line (module docstring, THE DISPLAY): the display
     Xvfb would be — the protocol's size, 24 bits, no TCP, the account's
     cookie, never reset — plus the stream on loopback behind the logins file,
-    and nothing else of KasmVNC switched on. `B1747`: `size`, for the phone's
+    and nothing else of KasmVNC switched on. `B1751`: `size`, for the phone's
     screen, which is its device's shape."""
     width, height = size or (P.SCREEN_WIDTH, P.SCREEN_HEIGHT)
     return [server, "-displayfd", str(displayfd),
@@ -855,7 +855,7 @@ class XDisplay(Screen):
         self.system = system
         self.account = account
         self.role = role if role in DISPLAY_ROLES else "desktop"
-        # `B1747`: the screen's size — the protocol's, except the phone's,
+        # `B1751`: the screen's size — the protocol's, except the phone's,
         # which is its device's (`set_size`).
         self.width, self.height = P.SCREEN_WIDTH, P.SCREEN_HEIGHT
         self.number: Optional[int] = None
@@ -885,7 +885,7 @@ class XDisplay(Screen):
         return f":{self.number}" if self.number is not None and self.running() else None
 
     def set_size(self, size: Tuple[int, int]) -> None:
-        """`B1747`. The phone's screen at its device's shape: a running screen
+        """`B1751`. The phone's screen at its device's shape: a running screen
         of another size is stopped, and the next `start` makes it this one."""
         size = (int(size[0]), int(size[1]))
         with self._lock:
@@ -953,7 +953,7 @@ class XDisplay(Screen):
             if self.role in ("browser", "phone"):
                 # `D-2026-11-01-01`: nothing more on the browser's screen;
                 # its Firefox is started there by `workstation/browser.py`.
-                # `B1747`: nor on the phone's, where `workstation/phone.py`
+                # `B1751`: nor on the phone's, where `workstation/phone.py`
                 # starts scrcpy.
                 logger.info("%s screen :%s started for %s, live on 127.0.0.1:%s", self.role,
                             self.number, self.account, desktop[0] if desktop else "-")
@@ -1034,7 +1034,7 @@ class XDisplay(Screen):
         else:
             self._desktop_why = (getattr(self.system, "no_kasmvnc_why", None)
                                  or self._said("missing"))
-        if self.role in ("browser", "phone"):  # `B1747`: the phone's, the same way
+        if self.role in ("browser", "phone"):  # `B1751`: the phone's, the same way
             raise WorkstationError("unavailable", self._desktop_why)
         started, why = self._spawn(prefix, env, "Xvfb",
                                    lambda fd: xvfb_argv(displayfd=fd, auth=auth))
@@ -1228,7 +1228,7 @@ class XDisplay(Screen):
         no desktop session and no tree: its marks come from its page."""
         if self.role == "browser":
             raise WorkstationError("unavailable", "The browser's screen is marked from its page.")
-        if self.role == "phone":  # `B1747`
+        if self.role == "phone":  # `B1751`
             raise WorkstationError("unavailable", "The phone's screen is marked from its own "
                                                   "UI tree.")
         from workstation import a11y_marks
@@ -1349,8 +1349,8 @@ class UbuntuSystem(System):
         self._displays: Dict[str, XDisplay] = {}
         # `D-2026-11-01-01`: each account's browser screen, started by its browser.
         self._browser_displays: Dict[str, XDisplay] = {}
-        self._phone_displays: Dict[str, XDisplay] = {}  # `B1747`
-        # `B1747`: what an account's shell gets so its `adb` reaches its own
+        self._phone_displays: Dict[str, XDisplay] = {}  # `B1751`
+        # `B1751`: what an account's shell gets so its `adb` reaches its own
         # phone (`Phones.env_of`), set by the daemon.
         self.phone_env: Callable[[str], Dict[str, str]] = lambda account: {}
         self._acting = threading.local()
@@ -1552,7 +1552,7 @@ class UbuntuSystem(System):
         screen = self._browser_displays.get(account)  # `D-2026-11-01-01`
         if screen:
             screen.stop()
-        screen = self._phone_displays.get(account)  # `B1747`
+        screen = self._phone_displays.get(account)  # `B1751`
         if screen:
             screen.stop()
         uid = self.uid(account)
@@ -1592,7 +1592,7 @@ class UbuntuSystem(System):
             env["DISPLAY"] = display
             env["XAUTHORITY"] = f"{home}/.Xauthority"
         if with_display:
-            # `B1747`: the account's own adb server and phone, for its shell.
+            # `B1751`: the account's own adb server and phone, for its shell.
             try:
                 env.update(self.phone_env(account) or {})
             except Exception:  # noqa: BLE001 — a phone that cannot say is no phone
@@ -1737,7 +1737,7 @@ class UbuntuSystem(System):
         return self._browser_displays.setdefault(account, XDisplay(self, account, role="browser"))
 
     def phone_display(self, account: str) -> XDisplay:
-        """`B1747`. The account's phone screen, made on first ask and started
+        """`B1751`. The account's phone screen, made on first ask and started
         by the phone that shows on it (`workstation/phone.py`) — never by
         `wake`: a person who never turns their phone on has none."""
         self.uid(account)

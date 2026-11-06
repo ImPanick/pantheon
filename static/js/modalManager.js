@@ -200,7 +200,7 @@ const _LABELS = {
   'workbench-modal':   { label: 'Workbench', icon: iconSvg(WORKFLOW_GLYPH, { outline: true }) },
   // `P25-06`. The agent browser — a globe, the doors' glyph (`browserWindow.js`).
   'agent-browser-modal': { label: 'Agent browser', icon: 'M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zM2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z' },
-  // `B1747`. The phone — a handset, the door's glyph (`phoneWindow.js`).
+  // `B1751`. The phone — a handset, the door's glyph (`phoneWindow.js`).
   'phone-modal':         { label: 'Phone', icon: 'M8 2h8a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2zM11 18h2' },
   'design-modal':        { label: 'Design', icon: 'M12 2a10 10 0 0 0 0 20c.9 0 1.6-.7 1.6-1.6 0-.4-.2-.8-.4-1.1-.3-.3-.4-.7-.4-1.1 0-.9.7-1.6 1.6-1.6H16a6 6 0 0 0 6-6c0-5-4.5-8.6-10-8.6z' },
   // `P24-12`. The Agents hall — its glyph is the doors' (`agents/agentsWindow.js:AGENT_ICON`).
@@ -2128,7 +2128,7 @@ const _AUTO_WIRE = {
   // card, through `browserWindow.js:openAgentBrowser`; no rail button of its own.
   'agent-browser-modal':  { rail: null,             sidebar: null },
   'design-modal':         { rail: null,             sidebar: null },   // `P26-04`
-  'phone-modal':          { rail: null,             sidebar: null },   // `B1747`
+  'phone-modal':          { rail: null,             sidebar: null },   // `B1751`
 };
 
 function _autoRegister(id) {

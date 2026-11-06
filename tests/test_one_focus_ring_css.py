@@ -299,7 +299,7 @@ def test_the_focus_visible_rules_are_forty_two_not_thirty_five():
         "51/48 → 52/49 on 2026-10-25: `P26`'s `.design-start` card, a new "
         "focusable control whose hover border shows on keyboard focus too, "
         "on top of the global ring. "
-        "52/49 → 53/50 on 2026-11-02: `B1748`'s phone side keys "
+        "52/49 → 53/50 on 2026-11-02: `B1752`'s phone side keys "
         "(`.phw-side:focus-visible`), whose hover fill shows on keyboard "
         "focus too, the same way."
     )

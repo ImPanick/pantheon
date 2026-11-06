@@ -117,7 +117,7 @@ Pantheon's own where there is none), streamed through the same client:
                                  agent's hand and where the page sits on the
                                  screen — for the window drawing it live.
 
-`B1747` — the phone. A real Android device (`workstation/phone.py`) on a
+`B1751` — the phone. A real Android device (`workstation/phone.py`) on a
 third screen of the person's, streamed through the same client:
 
   GET  /api/workstation/phone    whether the caller's workstation can run a
@@ -791,7 +791,7 @@ def setup_workstation_routes() -> APIRouter:
             out["pointed"] = _pointed(answer["pointed"])
         return out
 
-    # ── `B1747`: the phone ─────────────────────────────────────────────────────
+    # ── `B1751`: the phone ─────────────────────────────────────────────────────
 
     @router.get("/phone")
     async def workstation_phone(request: Request):
@@ -1006,7 +1006,7 @@ _BROWSER_FIELDS = ("url", "x", "y", "text", "submit", "keys", "dx", "dy", "tab",
                    "note", "notes", "shapes", "said", "status", "all", "page")
 
 
-# `B1747`. What a person's phone window may ask, and the fields it may carry;
+# `B1751`. What a person's phone window may ask, and the fields it may carry;
 # the daemon validates every one (`workstation/phone.py`). Touch is not here:
 # it is the stream's, while the person holds the screens.
 _PHONE_PERSON_ACTIONS = ("start", "stop", "device", "button", "posture", "rotate", "open_url")
@@ -1014,7 +1014,7 @@ _PHONE_FIELDS = ("device", "button", "posture", "url")
 
 
 def _phone_state(answer: Dict[str, Any]) -> Dict[str, Any]:
-    """`B1747`. The phone's state as the window is given it: only what it
+    """`B1751`. The phone's state as the window is given it: only what it
     draws, each field shaped."""
     devices = []
     for d in answer.get("devices") or []:
@@ -1040,7 +1040,7 @@ def _phone_state(answer: Dict[str, Any]) -> Dict[str, Any]:
         "android": str(answer.get("android") or "")[:120],
         "buttons": list(P.PHONE_BUTTONS),
     }
-    # `B1749`: Android, or the mobile view where there is no KVM, and why.
+    # `B1753`: Android, or the mobile view where there is no KVM, and why.
     out["mode"] = answer.get("mode") if answer.get("mode") in P.PHONE_MODES else None
     if out["mode"] == "mobile_view":
         out["why_not_android"] = str(answer.get("why_not_android") or "")[:500]

@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""`B1749` — on a host without KVM, the phone is a mobile view.
+"""`B1753` — on a host without KVM, the phone is a mobile view.
 
 The owner chose, 2026-11-02, "Real Android, plus mobile view": where the real
 Android phone cannot run (no KVM — Docker Desktop without nested

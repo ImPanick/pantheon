@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""`B1747` / `B1748` — a real Android phone per person, in the workstation.
+"""`B1751` / `B1752` — a real Android phone per person, in the workstation.
 
 The owner, 2026-11-02: *"a mobile device emulator... with various real device
 emulation (Samsung Galaxy Z Fold, Google Pixel Pro, etc...) with the real OS,
@@ -442,7 +442,7 @@ def test_a_phone_that_is_on_lets_the_action_through_and_one_that_cannot_says_why
     assert out["error"] == "No KVM here." and out["exit_code"] == 1
 
 
-# ── the window (`B1748`) ──────────────────────────────────────────────────────
+# ── the window (`B1752`) ──────────────────────────────────────────────────────
 
 def _window_module(tmp_path):
     """`phoneWindow.js` with its two imports stood in for, so its pure parts

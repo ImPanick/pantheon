@@ -1564,7 +1564,7 @@ class VmStation(Workstation):
         that streams, under its own KasmVNC."""
         return self.system.forward(account, "desktop", timeout=120.0)
 
-    # `B1747`. The phone runs in the container workstation only: a machine
+    # `B1751`. The phone runs in the container workstation only: a machine
     # here would need KVM inside KVM to boot Android, and its image has no SDK.
     PHONE_ELSEWHERE = ("The phone runs in the container workstation, not in a VM. In Settings -> "
                        "Workstation, set Backend to Container to use it.")

@@ -259,7 +259,7 @@ server() {
     say "KasmVNC $KASMVNC_VERSION X server for Debian 13 ($arch) in $1"
 }
 
-# `B1747`. The phone: Google's Android SDK command-line tools, and with them the
+# `B1751`. The phone: Google's Android SDK command-line tools, and with them the
 # emulator, adb and one Android system image (PHONE_IMAGE, sdkmanager's name for
 # it), under DIR (default /opt/android-sdk), plus scrcpy from Ubuntu — what shows
 # the emulator's screen and turns the mouse into touch — and the libraries the

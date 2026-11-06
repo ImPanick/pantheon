@@ -309,7 +309,7 @@ ROUTES: Dict[str, Tuple[str, str]] = {
     # that has no tree answers `unavailable`; a daemon older than this answers
     # `404 not_found`. Either way the caller reads the picture instead.
     "marks": ("GET", "/v1/users/{account}/marks"),
-    # `B1747`, added: the account's **phone** — Google's Android Emulator
+    # `B1751`, added: the account's **phone** — Google's Android Emulator
     # running a real Android system image as one of `PHONE_DEVICES`
     # (`workstation/phone.py`), on a screen of its own like the browser's: an
     # `XDisplay` of role "phone" under KasmVNC, where scrcpy shows the
@@ -342,7 +342,7 @@ ROUTES: Dict[str, Tuple[str, str]] = {
     # `screenshot` and `marks` are `409 busy` (one holder, on every screen). A
     # daemon older than this answers `404 not_found`.
     "phone": ("POST", "/v1/users/{account}/phone"),
-    # `B1747`, added: the phone's screen live — `ROUTES["browser_screen"]`'s two
+    # `B1751`, added: the phone's screen live — `ROUTES["browser_screen"]`'s two
     # shapes and rules exactly, for the phone's display. The GET without the
     # upgrade starts nothing: a phone boots only when asked to (`phone` start).
     "phone_screen": ("GET", "/v1/users/{account}/phone/screen"),
@@ -364,13 +364,13 @@ MAX_DESKTOP_HANDSHAKE_BYTES = 16_384
 # `P16-20` / `D-2026-10-25-03`. The network actions (`workstation/netcheck.py`):
 # one connection per `reach`, no ranges.
 NETWORK_ACTIONS = ("interfaces", "reach")
-# `B1747`. The phone (`ROUTES["phone"]`, `workstation/phone.py`).
+# `B1751`. The phone (`ROUTES["phone"]`, `workstation/phone.py`).
 PHONE_ACTIONS = ("status", "start", "stop", "device", "button", "posture", "rotate",
                  "open_url", "screenshot", "input", "marks")
 #: The ones that never move the phone, so never `busy`.
 PHONE_LOOK_ACTIONS = ("status", "screenshot", "marks")
 PHONE_STATES = ("off", "starting", "on", "unavailable")
-#: `B1749`. What runs as the phone: the real Android ("android", which needs
+#: `B1753`. What runs as the phone: the real Android ("android", which needs
 #: KVM), or, where there is none, the mobile view ("mobile_view": the
 #: workstation's Firefox shaped and identified as the device). The state's
 #: "mode" says which; with "mobile_view" it also says "why_not_android".
@@ -730,7 +730,7 @@ __all__ = [
     "INTERNET_EXCLUDED_V6", "NETWORK_ENFORCEMENT",
     # `B1733`, added.
     "STARTING_POINT_ACTIONS", "STARTING_POINT_SCOPES",
-    # `B1747`, added.
+    # `B1751`, added.
     "PHONE_ACTIONS", "PHONE_BUTTONS", "PHONE_DEFAULT_DEVICE", "PHONE_DEVICES",
     "PHONE_LOOK_ACTIONS", "PHONE_MODES", "PHONE_POSTURES", "PHONE_SCREEN_MAX", "PHONE_STATES",
     "phone_screen_size",

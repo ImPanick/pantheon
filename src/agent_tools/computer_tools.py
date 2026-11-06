@@ -75,7 +75,7 @@ _INT_FIELDS = ("x", "y", "to_x", "to_y", "dx", "dy", "ms", "mark", "to_mark")
 MARK_ACTIONS = ("click", "double_click", "triple_click", "right_click", "middle_click", "move",
                 "drag", "scroll", "mouse_down", "mouse_up", "type")
 SURFACE = "desktop"
-#: `B1747`. The screens the tool works: the desktop, and the person's phone —
+#: `B1751`. The screens the tool works: the desktop, and the person's phone —
 #: a real Android device on a screen of its own (`workstation/phone.py`), where
 #: a click is a tap, a drag a swipe and the wheel a fling. Each keeps its own
 #: marks (`screen_marks`' surface), since a number means a place on one screen.
@@ -172,7 +172,7 @@ def describe_action(args: Dict[str, Any]) -> str:
     card's command line and the screenshot's summary are both this, so the card
     says what was done without the raw arguments (they stay one click away)."""
     action = args.get("action")
-    if args.get("screen") == "phone":  # `B1747`
+    if args.get("screen") == "phone":  # `B1751`
         return "phone: " + describe_action({k: v for k, v in args.items() if k != "screen"})
     if action == SCREENSHOT:
         return "screenshot"
@@ -249,7 +249,7 @@ def unavailable_reason(owner: Optional[str], *, delegated_credential: bool = Fal
 def _shot_line(shot: Dict[str, Any], screen: str = "desktop") -> str:
     width = shot.get("width") or P.SCREEN_WIDTH
     height = shot.get("height") or P.SCREEN_HEIGHT
-    if screen == "phone" and shot.get("mode") == "mobile_view":  # `B1749`
+    if screen == "phone" and shot.get("mode") == "mobile_view":  # `B1753`
         return (f"The phone's screen is attached: {width}×{height} pixels, and the coordinates "
                 "you send are in those pixels. It is a mobile view, not Android: a "
                 "phone-shaped browser (this workstation has no KVM), so web pages only; the "
@@ -307,7 +307,7 @@ async def _marked(client, account: str, shot: Dict[str, Any], owner: Optional[st
     windows: list = []
     surface = PHONE_SURFACE if screen == "phone" else SURFACE
     try:
-        # `B1747`: the phone's marks are its own UI tree's.
+        # `B1751`: the phone's marks are its own UI tree's.
         got = await (client.phone(account, "marks") if screen == "phone" else client.marks(account))
         described = screen_marks.normalise(got.get("marks") or [], width, height, "a11y")
         windows = got.get("windows") or []
@@ -331,7 +331,7 @@ async def _marked(client, account: str, shot: Dict[str, Any], owner: Optional[st
 
 
 async def _phone_on(client, account: str) -> Optional[Dict[str, Any]]:
-    """`B1747`. None when the phone is on and the action can go ahead; else
+    """`B1751`. None when the phone is on and the action can go ahead; else
     what the model is told — the phone turned on and booting (so it waits and
     looks again), or why there is no phone here."""
     from src.workstation_client import WorkstationError
@@ -346,7 +346,7 @@ async def _phone_on(client, account: str) -> Optional[Dict[str, Any]]:
     if state.get("state") == "starting":
         name = next((d.get("name") for d in state.get("devices") or []
                      if d.get("id") == state.get("device")), state.get("device"))
-        if state.get("mode") == "mobile_view":  # `B1749`
+        if state.get("mode") == "mobile_view":  # `B1753`
             return {"output": (f"The phone ({name}) is opening as a mobile view: this "
                                "workstation has no KVM for Android, so it is a browser shaped "
                                "and identified as that device. Wait a few seconds (`wait` with "
@@ -397,7 +397,7 @@ class ComputerTool:
                 return started
         try:
             if on_phone:
-                # `B1747`: the same actions on the phone's screen.
+                # `B1751`: the same actions on the phone's screen.
                 if action == SCREENSHOT:
                     shot = await client.phone(account, "screenshot")
                 else:

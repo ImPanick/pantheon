@@ -756,7 +756,7 @@ FUNCTION_TOOL_SCHEMAS = [
                                             "spaces are pressed in turn."},
                     "ms": {"type": "integer",
                            "description": "wait: milliseconds, 0 to {max_wait_ms}."},
-                    # `B1747`.
+                    # `B1751`.
                     "screen": {"type": "string", "enum": ["desktop", "phone"],
                                "description": "Which screen: the desktop (the default), or "
                                               "the person's phone — a real Android device "

@@ -48,7 +48,7 @@ SHIPPED = {
     "workstation-apps-and-windows": ["computer", "bash"],
     "workstation-shell": ["computer", "bash"],
     "workstation-self-test": ["computer", "bash"],
-    # `B1747`: the phone, by the same tool and adb in the shell.
+    # `B1751`: the phone, by the same tool and adb in the shell.
     "workstation-phone": ["computer", "bash"],
 }
 BUILD_REQUEST = "Create a website for my bakery and make sure it works"
@@ -392,7 +392,7 @@ def test_a_manual_the_gates_withheld_stays_out(store):
 
 def test_all_four_bodies_fit_the_default_budget_uncut(store):
     from services.memory.skill_injection import render_matched_skills_block
-    # The four desktop manuals; the phone's (`B1747`) is matched on its own,
+    # The four desktop manuals; the phone's (`B1751`) is matched on its own,
     # beside the desktop's at most, and is held to the same budget below.
     rows = [s for s in store.injectable_skills(owner="alice", active_toolsets=["computer", "bash"])
             if s["name"] in SHIPPED and s["name"] != "workstation-phone"]

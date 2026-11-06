@@ -830,7 +830,7 @@ class WorkstationClient:
 
     async def phone(self, account: str, action: str, *, holder: str = "agent",
                     **fields: Any) -> Dict:
-        """`B1747`. One action on the account's phone (`ROUTES["phone"]`). A
+        """`B1751`. One action on the account's phone (`ROUTES["phone"]`). A
         daemon older than the phone answers `not_found`; that comes back as a
         phone that is not there, with a sentence, never as a failure."""
         if action not in P.PHONE_ACTIONS:
@@ -849,7 +849,7 @@ class WorkstationClient:
             raise
 
     async def phone_screen(self, account: str) -> Dict:
-        """`B1747`. `{"kind", "holder", "why"?}` for the phone's screen —
+        """`B1751`. `{"kind", "holder", "why"?}` for the phone's screen —
         `browser_screen`'s answer, for the phone."""
         try:
             return await self._call("phone_screen", account, timeout=60.0)
@@ -861,7 +861,7 @@ class WorkstationClient:
             raise
 
     def phone_screen_stream(self, account: str, viewer: str):
-        """`B1747`. The phone's screen, as `desktop_stream` gives the desktop."""
+        """`B1751`. The phone's screen, as `desktop_stream` gives the desktop."""
         return self.desktop_stream(account, viewer, route="phone_screen")
 
     async def names(self, account: str, names: Dict[str, str], pins: List[Dict[str, str]]) -> Dict:
