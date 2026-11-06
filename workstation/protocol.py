@@ -340,6 +340,43 @@ ROUTES: Dict[str, Tuple[str, str]] = {
     # that has no tree answers `unavailable`; a daemon older than this answers
     # `404 not_found`. Either way the caller reads the picture instead.
     "marks": ("GET", "/v1/users/{account}/marks"),
+    # `B1751`, added: the account's **phone** — Google's Android Emulator
+    # running a real Android system image as one of `PHONE_DEVICES`
+    # (`workstation/phone.py`), on a screen of its own like the browser's: an
+    # `XDisplay` of role "phone" under KasmVNC, where scrcpy shows the
+    # emulator's display and turns a click into a touch, a drag into a swipe
+    # and the wheel into a fling. Only where the workstation was built with it
+    # (`WORKSTATION_PHONE=on`) and the host has KVM: Android's emulator does
+    # not run usefully without it, and the answer says which is missing.
+    #   {"action": one of PHONE_ACTIONS, ...its fields, "holder": "agent"|"person"="agent"}
+    #   status {}            -> the phone's state (below), starting nothing
+    #   start {device?}      -> the state; boots the device (the person's last, or
+    #                           PHONE_DEFAULT_DEVICE) and returns while it boots
+    #   stop {}              -> the state; the emulator saved and stopped
+    #   device {device}      -> the state; that device chosen, and booted if one ran
+    #   button {button}      -> one of PHONE_BUTTONS pressed on the device
+    #   posture {posture}    -> one of PHONE_POSTURES (a foldable only)
+    #   rotate {}            -> the device turned a quarter
+    #   open_url {url}       -> the address opened on the device (http, https)
+    #   screenshot {}        -> `ROUTES["screenshot"]`'s answer, of the phone's screen
+    #   input {input, ...}   -> `ROUTES["input"]`'s, on the phone's screen: "input" is
+    #                           one of INPUT_ACTIONS (its fields beside it, and
+    #                           "screenshot_after"), in that screen's own pixels
+    #   marks {}             -> `ROUTES["marks"]`'s, read from the device's own UI tree
+    #                           (uiautomator), boxes in the phone screen's pixels
+    # The state: {"ok", "action", "available": bool, "why"?: str, "state": one of
+    #   PHONE_STATES, "device": a PHONE_DEVICES key, "devices": [{"id", "name",
+    #   "maker", "kind", "foldable", "width", "height", "density"}], "posture":
+    #   one of PHONE_POSTURES | null, "rotation": 0|1|2|3, "screen": [w, h],
+    #   "accel": "kvm" | null, "android": str (the system image)}.
+    # While a person holds the screen the agent's actions other than `status`,
+    # `screenshot` and `marks` are `409 busy` (one holder, on every screen). A
+    # daemon older than this answers `404 not_found`.
+    "phone": ("POST", "/v1/users/{account}/phone"),
+    # `B1751`, added: the phone's screen live — `ROUTES["browser_screen"]`'s two
+    # shapes and rules exactly, for the phone's display. The GET without the
+    # upgrade starts nothing: a phone boots only when asked to (`phone` start).
+    "phone_screen": ("GET", "/v1/users/{account}/phone/screen"),
 }
 
 # ── what the fields may hold ──────────────────────────────────────────────────
@@ -358,6 +395,59 @@ MAX_DESKTOP_HANDSHAKE_BYTES = 16_384
 # `P16-20` / `D-2026-10-25-03`. The network actions (`workstation/netcheck.py`):
 # one connection per `reach`, no ranges.
 NETWORK_ACTIONS = ("interfaces", "reach")
+# `B1751`. The phone (`ROUTES["phone"]`, `workstation/phone.py`).
+PHONE_ACTIONS = ("status", "start", "stop", "device", "button", "posture", "rotate",
+                 "open_url", "screenshot", "input", "marks")
+#: The ones that never move the phone, so never `busy`.
+PHONE_LOOK_ACTIONS = ("status", "screenshot", "marks")
+PHONE_STATES = ("off", "starting", "on", "unavailable")
+#: `B1753`. What runs as the phone: the real Android ("android", which needs
+#: KVM), or, where there is none, the mobile view ("mobile_view": the
+#: workstation's Firefox shaped and identified as the device). The state's
+#: "mode" says which; with "mobile_view" it also says "why_not_android".
+PHONE_MODES = ("android", "mobile_view")
+#: The hardware keys, each the Android key code it sends (`input keyevent`).
+PHONE_BUTTONS = {"power": 26, "volume_up": 24, "volume_down": 25, "back": 4, "home": 3,
+                 "recents": 187}
+#: A foldable's two postures: open flat, or closed onto its cover screen.
+PHONE_POSTURES = ("open", "closed")
+#: The real devices a phone can be: each one's screen as the maker ships it
+#: (pixels and the density Android draws at), and for a foldable the cover
+#: screen it shows when closed — emulated as a region of the inner screen, the
+#: way the SDK's own foldable devices are, so its width is the cover's and its
+#: height the inner's. Samsung's devices run stock Android: One UI is
+#: Samsung's and is not redistributable, so their size, density and fold are
+#: real and their skin is not.
+PHONE_DEVICES: Dict[str, Dict] = {
+    "pixel_9_pro": {"name": "Google Pixel 9 Pro", "maker": "Google", "kind": "phone",
+                    "width": 1280, "height": 2856, "density": 480},
+    "pixel_9_pro_fold": {"name": "Google Pixel 9 Pro Fold", "maker": "Google", "kind": "foldable",
+                         "width": 2076, "height": 2152, "density": 420, "cover_width": 1038},
+    "pixel_8": {"name": "Google Pixel 8", "maker": "Google", "kind": "phone",
+                "width": 1080, "height": 2400, "density": 420},
+    "galaxy_s25_ultra": {"name": "Samsung Galaxy S25 Ultra", "maker": "Samsung", "kind": "phone",
+                         "width": 1080, "height": 2340, "density": 440},
+    "galaxy_z_fold6": {"name": "Samsung Galaxy Z Fold6", "maker": "Samsung", "kind": "foldable",
+                       "width": 1856, "height": 2160, "density": 420, "cover_width": 928},
+    "pixel_tablet": {"name": "Google Pixel Tablet", "maker": "Google", "kind": "tablet",
+                     "width": 2560, "height": 1600, "density": 320},
+}
+PHONE_DEFAULT_DEVICE = "pixel_9_pro"
+#: The most the phone's screen is, in its own pixels: the device's screen
+#: scaled to fit, so a screenshot is one a model can read and a stream one a
+#: browser can carry. Inside the protocol's screen, so every bound holds.
+PHONE_SCREEN_MAX = (1280, 1100)  # the width is SCREEN_WIDTH, stated below
+
+
+def phone_screen_size(device: str) -> Tuple[int, int]:
+    """The phone screen's `(width, height)` for a device: its screen scaled
+    to fit `PHONE_SCREEN_MAX`, both even (video encoders want even sides)."""
+    d = PHONE_DEVICES.get(device) or PHONE_DEVICES[PHONE_DEFAULT_DEVICE]
+    w, h = d["width"], d["height"]
+    scale = min(PHONE_SCREEN_MAX[0] / w, PHONE_SCREEN_MAX[1] / h, 1.0)
+    return max(2, int(w * scale) // 2 * 2), max(2, int(h * scale) // 2 * 2)
+
+
 # `B1733`. What a starting point may be asked (`ROUTES["starting_point"]`),
 # and what one holds.
 STARTING_POINT_ACTIONS = ("status", "save", "forget")
@@ -674,4 +764,8 @@ __all__ = [
     # `B1747`, added.
     "DEFAULT_SYSTEM", "SYSTEMS", "SYSTEM_NAMES", "SYSTEM_PORTS", "system_pairing_dir",
     "system_pairing_dir_env", "system_url_env",
+    # `B1751`, added.
+    "PHONE_ACTIONS", "PHONE_BUTTONS", "PHONE_DEFAULT_DEVICE", "PHONE_DEVICES",
+    "PHONE_LOOK_ACTIONS", "PHONE_MODES", "PHONE_POSTURES", "PHONE_SCREEN_MAX", "PHONE_STATES",
+    "phone_screen_size",
 ]

@@ -675,6 +675,12 @@ class Workstation:
         # `P27-04`. Each account's mapped names and pinned certificates.
         self._names: Dict[str, Any] = {}
         self.browsers.names_of = lambda account: self._names.get(account)
+        # `B1751`: each account's phone, started only when asked for; its adb
+        # reaches the account's own shell through `run_as`.
+        from workstation.phone import Phones
+        self.phones = Phones(system)
+        if hasattr(system, "phone_env"):
+            system.phone_env = self.phones.env_of
         # `B1661`. Which run of the daemon this is, new at every start, so a
         # caller that remembers what a daemon said (an account's home) can
         # tell this one from another started later at the same address.
@@ -771,6 +777,7 @@ class Workstation:
 
     def reset(self, account: str) -> Dict:
         self.browsers.stop(account)   # `P25-05`: its profile goes with the home
+        self.phones.stop(account)     # `B1751`: and its phone's devices with it
         names = self._names.pop(account, None)
         if names is not None:
             names.stop()              # `P27-04`: its files go with the home too
@@ -845,6 +852,11 @@ class Workstation:
         browser_screen = self.system.browser_display(account)
         if browser_screen is not None:
             browser_screen.set_driver(person)
+        # `B1751`: and the phone's.
+        phone_of = getattr(self.system, "phone_display", None)
+        phone_screen = phone_of(account) if callable(phone_of) else None
+        if phone_screen is not None:
+            phone_screen.set_driver(person)
 
     # -- `D-2026-10-31-01`: the live desktop ----------------------------------
 
@@ -937,6 +949,136 @@ class Workstation:
         try:
             yield sock, "/websockify", authorization
         finally:
+            _close(sock)
+
+    # -- `B1751`: the phone --------------------------------------------------------
+
+    def phone(self, account: str, body: Dict) -> Dict:
+        """One action on the account's phone (`ROUTES["phone"]`)."""
+        from workstation.phone import PhoneError
+        action = body.get("action")
+        if action not in P.PHONE_ACTIONS:
+            raise WorkstationError("bad_request",
+                                   f"“action” is one of {', '.join(P.PHONE_ACTIONS)}.")
+        who = body.get("holder") or "agent"
+        if who not in P.HOLDERS:
+            raise WorkstationError("bad_request", "“holder” is “agent” or “person”.")
+        if (who == "agent" and action not in P.PHONE_LOOK_ACTIONS
+                and self.holder(account)["holder"] == "person"):
+            raise WorkstationError(
+                "busy", "A person has taken over this workstation's screens, the phone's "
+                        "among them. Wait for them to hand it back, or ask them what they need.")
+        self.system.ensure(account)
+        phone = self.phones.get(account)
+        try:
+            if action == "status":
+                return phone.info()
+            if action == "start":
+                return phone.start(body.get("device"))
+            if action == "stop":
+                return phone.stop()
+            if action == "device":
+                device = body.get("device")
+                if device not in P.PHONE_DEVICES:
+                    raise WorkstationError("bad_request",
+                                           f"“device” is one of {', '.join(P.PHONE_DEVICES)}.")
+                if phone.running():
+                    return dict(phone.start(device), action="device")
+                with phone.lock:
+                    phone.device = device
+                    phone._save_device()
+                return phone.info("device")
+            if action == "button":
+                return phone.button(body.get("button"))
+            if action == "posture":
+                return phone.set_posture(body.get("posture"))
+            if action == "rotate":
+                return phone.rotate()
+            if action == "open_url":
+                return phone.open_url(body.get("url"))
+            if action == "marks":
+                got = phone.marks()
+                w, h = P.phone_screen_size(phone.device)
+                marks = [m for m in (_clean_mark(raw, (w, h))
+                                     for raw in (got.get("marks") or [])[:P.MAX_MARKS])
+                         if m is not None]
+                out: Dict = {"source": "a11y", "marks": marks, "windows": got.get("windows") or [],
+                             "width": w, "height": h}
+                if got.get("why"):
+                    out["why"] = str(got["why"])[:300]
+                return out
+            phone._on()
+            screen = phone.screen
+            if action == "screenshot":
+                return dict(self._phone_shot(screen, str(body.get("format") or "png")),
+                            mode=phone.mode())  # `B1753`: Android, or the mobile view
+            # input: the input action is "input" here, "action" being the phone's
+            act = _validated_action({**body, "action": body.get("input")},
+                                    size=(screen.width, screen.height))
+            if act["action"] == "wait":
+                time.sleep(act["ms"] / 1000)
+            else:
+                screen.send(act)
+            out = {"ok": True, "action": act["action"]}
+            if body.get("screenshot_after"):
+                time.sleep(0.5)
+                out["screenshot"] = dict(self._phone_shot(screen, "png"), mode=phone.mode())
+            return out
+        except PhoneError as e:
+            raise WorkstationError(e.code if e.code in P.ERRORS else "unavailable", e.message)
+
+    @staticmethod
+    def _phone_shot(screen, fmt: str) -> Dict:
+        if fmt not in P.SCREENSHOT_FORMATS:
+            raise WorkstationError("bad_request", f"format is one of {', '.join(P.SCREENSHOT_FORMATS)}.")
+        data, mime = screen.grab(fmt)
+        return {"mime": mime, "data_b64": base64.b64encode(data).decode(),
+                "width": screen.width, "height": screen.height,
+                "digest": hashlib.sha256(data).hexdigest()[:16]}
+
+    def phone_screen(self, account: str) -> Dict:
+        """What `ROUTES["phone_screen"]` answers without an upgrade: whether
+        the phone's screen streams now, and who holds it. Starts nothing."""
+        self.system.ensure(account)
+        phone = self.phones.get(account)
+        phone.ensure_shown()
+        screen = phone.screen
+        kind = screen.desktop_kind if screen is not None and phone.state == "on" else None
+        out: Dict = {"kind": kind if kind in P.DESKTOP_KINDS else None,
+                     "holder": self.holder(account)["holder"]}
+        if out["kind"] is None:
+            info = phone.info()
+            out["why"] = info.get("why") or {
+                "starting": "The phone is booting.",
+                "off": "The phone is off."}.get(info["state"], "The phone has no live screen.")
+        return out
+
+    @contextlib.contextmanager
+    def phone_screen_upstream(self, account: str, viewer: str):
+        """`desktop_upstream`, for the phone's screen. While a viewer is
+        connected the phone is watched, and is not stopped for being idle."""
+        if viewer not in P.DESKTOP_VIEWERS:
+            raise WorkstationError("bad_request",
+                                   f"“viewer” is one of {', '.join(P.DESKTOP_VIEWERS)}.")
+        self.system.ensure(account)
+        phone = self.phones.get(account)
+        if phone.screen is None or phone.state != "on":
+            raise WorkstationError("unavailable", "The phone is not on, so its screen has "
+                                                  "nothing to show.")
+        phone.ensure_shown()
+        port, authorization = phone.screen.desktop(viewer)
+        try:
+            sock = socket.create_connection(("127.0.0.1", port), timeout=10.0)
+        except OSError as e:
+            raise WorkstationError("unavailable", f"The phone's screen did not answer ({e}).")
+        with phone.lock:
+            phone.watchers += 1
+        try:
+            yield sock, "/websockify", authorization
+        finally:
+            with phone.lock:
+                phone.watchers -= 1
+                phone.touch()
             _close(sock)
 
     # -- paths ------------------------------------------------------------------
@@ -1333,14 +1475,16 @@ def _int(value, default: int, name: str) -> int:
     return value
 
 
-def _clean_box(raw) -> Optional[List[int]]:
-    """A box `[x, y, w, h]` of whole numbers on the screen, or None."""
+def _clean_box(raw, size: Optional[Tuple[int, int]] = None) -> Optional[List[int]]:
+    """A box `[x, y, w, h]` of whole numbers on the screen (`size`, the
+    protocol's by default), or None."""
+    width, height = size or (P.SCREEN_WIDTH, P.SCREEN_HEIGHT)
     if not isinstance(raw, (list, tuple)) or len(raw) != 4:
         return None
     if not all(isinstance(v, int) and not isinstance(v, bool) for v in raw):
         return None
     x, y, w, h = raw
-    if w < 1 or h < 1 or x < 0 or y < 0 or x + w > P.SCREEN_WIDTH or y + h > P.SCREEN_HEIGHT:
+    if w < 1 or h < 1 or x < 0 or y < 0 or x + w > width or y + h > height:
         return None
     return [x, y, w, h]
 
@@ -1349,12 +1493,12 @@ def _text(raw, limit: int = P.MARK_NAME_MAX) -> str:
     return " ".join(str(raw or "").split())[:limit] if isinstance(raw, str) else ""
 
 
-def _clean_mark(raw) -> Optional[Dict]:
+def _clean_mark(raw, size: Optional[Tuple[int, int]] = None) -> Optional[Dict]:
     """`G2`. One mark as the protocol says it, or None: what the reader
     printed is the account's process's words, so only these fields, shaped."""
     if not isinstance(raw, dict):
         return None
-    box = _clean_box(raw.get("box"))
+    box = _clean_box(raw.get("box"), size)
     if box is None:
         return None
     out = {"role": _text(raw.get("role"), 40), "name": _text(raw.get("name")), "box": box,
@@ -1379,9 +1523,11 @@ def _clean_window(raw) -> Optional[Dict]:
             "marks": marks if isinstance(marks, int) and not isinstance(marks, bool) else 0}
 
 
-def _validated_action(body: Dict) -> Dict:
+def _validated_action(body: Dict, size: Optional[Tuple[int, int]] = None) -> Dict:
     """One input action, every field checked against the protocol's bounds, so
-    a screen implementation is handed nothing it has to distrust."""
+    a screen implementation is handed nothing it has to distrust. `B1751`:
+    `size`, a screen other than the protocol's (the phone's), within it."""
+    width, height = size or (P.SCREEN_WIDTH, P.SCREEN_HEIGHT)
     name = body.get("action")
     if name not in P.INPUT_ACTIONS:
         raise WorkstationError("bad_request", f"“action” is one of {', '.join(P.INPUT_ACTIONS)}.")
@@ -1400,14 +1546,14 @@ def _validated_action(body: Dict) -> Dict:
 
     if name in ("click", "double_click", "triple_click", "right_click", "middle_click",
                 "move", "drag", "scroll"):
-        coord("x", P.SCREEN_WIDTH, True)
-        coord("y", P.SCREEN_HEIGHT, True)
+        coord("x", width, True)
+        coord("y", height, True)
     if name in ("mouse_down", "mouse_up"):
-        coord("x", P.SCREEN_WIDTH, False)
-        coord("y", P.SCREEN_HEIGHT, False)
+        coord("x", width, False)
+        coord("y", height, False)
     if name == "drag":
-        coord("to_x", P.SCREEN_WIDTH, True)
-        coord("to_y", P.SCREEN_HEIGHT, True)
+        coord("to_x", width, True)
+        coord("to_y", height, True)
     if name == "scroll":
         for k in ("dx", "dy"):
             v = body.get(k, 0)
@@ -1655,14 +1801,16 @@ class Handler(BaseHTTPRequestHandler):
                         None)
             if name is None:
                 raise WorkstationError("not_found", "No such workstation route.")
-            if name in ("desktop", "browser_screen"):  # `D-2026-10-31-01`, `D-2026-11-01-01`
+            if name in ("desktop", "browser_screen", "phone_screen"):
+                # `D-2026-10-31-01`, `D-2026-11-01-01`, `B1751`
                 if "websocket" in (self.headers.get("Upgrade") or "").lower():
                     q = parse_qs(parts.query)
                     self._desktop(account, (q.get("viewer") or ["person"])[0],
-                                  browser=name == "browser_screen")
+                                  browser=name == "browser_screen", phone=name == "phone_screen")
                     return
-                self._send(200, self.station.desktop(account) if name == "desktop"
-                           else self.station.browser_screen(account))
+                self._send(200, {"desktop": self.station.desktop,
+                                 "browser_screen": self.station.browser_screen,
+                                 "phone_screen": self.station.phone_screen}[name](account))
                 return
             if name == "screenshot":
                 q = parse_qs(parts.query)
@@ -1688,6 +1836,7 @@ class Handler(BaseHTTPRequestHandler):
                        "input": lambda: self.station.input(account, body),
                        "marks": lambda: self.station.marks(account),  # `G2`
                        "browser": lambda: self.station.browser(account, body),
+                       "phone": lambda: self.station.phone(account, body),  # `B1751`
                        "names": lambda: self.station.names(account, body),
                        "network": lambda: self.station.network(account, body),
                        # `B1733`
@@ -1710,7 +1859,8 @@ class Handler(BaseHTTPRequestHandler):
             logger.exception("workstation route %s failed", path)
             self._fail(WorkstationError("internal", f"The workstation failed: {type(e).__name__}."))
 
-    def _desktop(self, account: str, viewer: str, *, browser: bool = False) -> None:
+    def _desktop(self, account: str, viewer: str, *, browser: bool = False,
+                 phone: bool = False) -> None:
         """`D-2026-10-31-01`. The upgrade: checked, sent on to where the stream
         is served with that viewer's login, its `101` handed back as it came
         (its accept value is computed from the caller's own key), and then the
@@ -1729,9 +1879,11 @@ class Handler(BaseHTTPRequestHandler):
             # Before anything is opened toward the display, like the two above.
             raise WorkstationError("bad_request", "Sec-WebSocket-Key is not a websocket key.")
         upstream_of = (self.station.browser_screen_upstream if browser
+                       else self.station.phone_screen_upstream if phone  # `B1751`
                        else self.station.desktop_upstream)
-        what = "browser screen" if browser else "desktop"
-        noun = "The browser's screen" if browser else "The live desktop"
+        what = "browser screen" if browser else "phone screen" if phone else "desktop"
+        noun = ("The browser's screen" if browser else "The phone's screen" if phone
+                else "The live desktop")
         with upstream_of(account, viewer) as (upstream, path, authorization):
             upstream.settimeout(30.0)
             try:

@@ -117,6 +117,24 @@ Pantheon's own where there is none), streamed through the same client:
                                  agent's hand and where the page sits on the
                                  screen — for the window drawing it live.
 
+`B1751` — the phone. A real Android device (`workstation/phone.py`) on a
+third screen of the person's, streamed through the same client:
+
+  GET  /api/workstation/phone    whether the caller's workstation can run a
+                                 phone (and why not), its devices, which one is
+                                 chosen, and its state. Starts nothing.
+  POST /api/workstation/phone    the person's own hand: start, stop, device,
+                                 a side or navigation key, fold, rotate, open
+                                 an address — sent with `holder: "person"`.
+  GET  /api/workstation/phone/screen
+                                 whether the phone's screen streams, who holds
+                                 it, and the client's page pointed at the
+                                 stream below; or why not.
+  WS   /api/workstation/phone/websockify
+                                 that screen's stream, relayed like the
+                                 browser's: the caller's own phone only, as
+                                 `person`, driving exactly while they hold it.
+
 A websocket passes no HTTP middleware, `AuthMiddleware` included, so the
 stream routes ask for themselves what the middleware would: a session cookie
 that `validate_token` accepts (a bearer token is not a person, `B70`), and an
@@ -773,6 +791,89 @@ def setup_workstation_routes() -> APIRouter:
             out["pointed"] = _pointed(answer["pointed"])
         return out
 
+    # ── `B1751`: the phone ─────────────────────────────────────────────────────
+
+    @router.get("/phone")
+    async def workstation_phone(request: Request):
+        """The caller's own phone: whether this workstation can run one (and
+        why not), the devices it can be, which one is chosen, and its state.
+        Starts nothing."""
+        client, account = _mine(request)
+        try:
+            answer = await client.phone(account, "status", holder="person")
+        except WorkstationError as e:
+            if e.code != "unavailable":
+                raise _http_error(e)
+            answer = {"available": False, "state": "unavailable", "why": e.message}
+        return JSONResponse(_phone_state(answer), headers=_NO_STORE)
+
+    @router.post("/phone")
+    async def workstation_phone_act(request: Request):
+        """The person's own hand on their phone: turn it on or off, choose the
+        device, press a side or navigation key, fold it, turn it, open an
+        address. Touch itself travels in the stream, while they hold it."""
+        client, account = _mine(request)
+        body = await _body(request)
+        action = body.get("action")
+        if action not in _PHONE_PERSON_ACTIONS:
+            raise HTTPException(400, f"“action” is one of {', '.join(_PHONE_PERSON_ACTIONS)}.")
+        fields = {k: body[k] for k in _PHONE_FIELDS if k in body}
+        try:
+            answer = await client.phone(account, action, holder="person", **fields)
+        except WorkstationError as e:
+            raise _http_error(e)
+        logger.info("phone of %s: %s", account, action)
+        return JSONResponse(_phone_state(answer), headers=_NO_STORE)
+
+    @router.get("/phone/screen")
+    async def workstation_phone_screen(request: Request):
+        """Whether the caller's phone's screen streams now, who holds it, and
+        the client's page pointed at the stream below; or why not."""
+        from src import desktop_client
+        client, account = _mine(request)
+        try:
+            answer = await client.phone_screen(account)
+        except WorkstationError as e:
+            raise _http_error(e)
+        kind = answer.get("kind") if answer.get("kind") in P.DESKTOP_KINDS else None
+        out: Dict[str, Any] = {"kind": kind, **_holder_answer(answer.get("holder"))}
+        if kind and not desktop_client.available():
+            kind = out["kind"] = None
+            out["why"] = desktop_client.UNAVAILABLE_SENTENCE
+        elif kind:
+            out["client"] = desktop_client.page_url(stream=desktop_client.PHONE_STREAM_PATH)
+        else:
+            out["why"] = str(answer.get("why") or "The phone has no live screen.")[:500]
+        return JSONResponse(out, headers=_NO_STORE)
+
+    @router.websocket("/phone/websockify")
+    async def workstation_phone_stream(websocket: WebSocket):
+        """The phone screen's stream, relayed as the browser's is: the
+        caller's own phone only, as `person`, who drives exactly while they
+        hold the screens."""
+        if _socket_person(websocket) is None:
+            await websocket.close(code=4401)
+            return
+        try:
+            client, account = _mine(websocket)  # type: ignore[arg-type]
+        except HTTPException as e:
+            await websocket.close(code=4403, reason=_close_reason(str(e.detail)))
+            return
+        if P.DESKTOP_SUBPROTOCOL not in (websocket.scope.get("subprotocols") or []):
+            await websocket.close(code=1002)
+            return
+        try:
+            async with client.phone_screen_stream(account, "person") as upstream:
+                await websocket.accept(subprotocol=P.DESKTOP_SUBPROTOCOL)
+                logger.info("phone screen of %s: viewer connected", account)
+                await _relay(websocket, upstream)
+        except WorkstationError as e:
+            logger.info("phone screen of %s: %s", account, e.message)
+            await _close_quietly(websocket, 1011, e.message)
+            return
+        await _close_quietly(websocket, 1000, "")
+        logger.info("phone screen of %s: viewer gone", account)
+
     return router
 
 
@@ -903,6 +1004,50 @@ _BROWSER_PERSON_ACTIONS = ("open", "click", "type", "press", "scroll", "back", "
                            "point")
 _BROWSER_FIELDS = ("url", "x", "y", "text", "submit", "keys", "dx", "dy", "tab", "double",
                    "note", "notes", "shapes", "said", "status", "all", "page")
+
+
+# `B1751`. What a person's phone window may ask, and the fields it may carry;
+# the daemon validates every one (`workstation/phone.py`). Touch is not here:
+# it is the stream's, while the person holds the screens.
+_PHONE_PERSON_ACTIONS = ("start", "stop", "device", "button", "posture", "rotate", "open_url")
+_PHONE_FIELDS = ("device", "button", "posture", "url")
+
+
+def _phone_state(answer: Dict[str, Any]) -> Dict[str, Any]:
+    """`B1751`. The phone's state as the window is given it: only what it
+    draws, each field shaped."""
+    devices = []
+    for d in answer.get("devices") or []:
+        if isinstance(d, dict) and d.get("id") in P.PHONE_DEVICES:
+            devices.append({"id": d["id"], "name": str(d.get("name") or "")[:80],
+                            "maker": str(d.get("maker") or "")[:40],
+                            "kind": d.get("kind") if d.get("kind") in ("phone", "foldable", "tablet") else "phone",
+                            "foldable": bool(d.get("foldable"))})
+    if not devices:
+        devices = [{"id": k, "name": v["name"], "maker": v["maker"], "kind": v["kind"],
+                    "foldable": v["kind"] == "foldable"} for k, v in P.PHONE_DEVICES.items()]
+    device = answer.get("device") if answer.get("device") in P.PHONE_DEVICES else P.PHONE_DEFAULT_DEVICE
+    screen = answer.get("screen")
+    if not (isinstance(screen, list) and len(screen) == 2
+            and all(isinstance(v, int) and not isinstance(v, bool) and v > 0 for v in screen)):
+        screen = list(P.phone_screen_size(device))
+    state = answer.get("state") if answer.get("state") in P.PHONE_STATES else "unavailable"
+    out: Dict[str, Any] = {
+        "available": bool(answer.get("available")), "state": state, "device": device,
+        "devices": devices, "screen": screen,
+        "posture": answer.get("posture") if answer.get("posture") in P.PHONE_POSTURES else None,
+        "rotation": answer.get("rotation") if answer.get("rotation") in (0, 1, 2, 3) else 0,
+        "android": str(answer.get("android") or "")[:120],
+        "buttons": list(P.PHONE_BUTTONS),
+    }
+    # `B1753`: Android, or the mobile view where there is no KVM, and why.
+    out["mode"] = answer.get("mode") if answer.get("mode") in P.PHONE_MODES else None
+    if out["mode"] == "mobile_view":
+        out["why_not_android"] = str(answer.get("why_not_android") or "")[:500]
+        out["user_agent"] = str(answer.get("user_agent") or "")[:200]
+    if answer.get("why"):
+        out["why"] = str(answer["why"])[:500]
+    return out
 
 
 def _note(n: Dict[str, Any]) -> Dict[str, Any]:

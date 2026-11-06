@@ -185,6 +185,16 @@ These are open, acknowledged, and contributor help is welcome. Each one was re-c
 
 3. **Prompt-injection hardening is a convention, not an enforced boundary.** `untrusted_context_message` has to be *called*. Nothing in the type system or the test suite proves that every path carrying external content into the LLM goes through it — a new tool that returns fetched text and injects it directly is a security bug that compiles, imports and passes review. The list of surfaces above is maintained by hand.
 
+4. **A phone's adb is on the workstation's shared loopback** (`B1751`). Each person's phone
+   (`workstation/phone.py`) is an Android emulator run as their account, and its adb port listens on the
+   container's loopback, which every account there shares. Its console asks for a token kept in the
+   person's home, its port is above the range adb scans by itself, and each account has its own adb
+   server; but an account that knows the port can `adb connect` to another person's phone, whose
+   Google APIs image does not ask adb for a key. With `sudo` on (the default) this adds nothing — every
+   account is root in the workstation already. With `sudo` off it is a way into another person's phone.
+   The fix is a rule in the network gate (`workstation/gate.py`; `netrules.py` already writes per-uid rules) that
+   admits a phone's two ports to its own account's uid alone.
+
 ### Closed gaps
 
 - ~~**An admin's webhook could not reach anything the operator runs.**~~ Decided (`B692`, `D-2026-10-26-01` §2). A webhook an admin types may point at the LAN, a tailnet (CGNAT) or an IPv6 ULA — n8n, Home Assistant — and the route logs that it does; loopback, link-local (cloud metadata), multicast and the unspecified address stay refused, and delivery stays pinned to the addresses that were checked, so a name that rebinds to loopback is refused at the socket. The agent's own `webhooks add` keeps the public-only rule, now with CGNAT in it.

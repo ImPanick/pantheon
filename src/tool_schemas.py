@@ -756,6 +756,15 @@ FUNCTION_TOOL_SCHEMAS = [
                                             "spaces are pressed in turn."},
                     "ms": {"type": "integer",
                            "description": "wait: milliseconds, 0 to {max_wait_ms}."},
+                    # `B1751`.
+                    "screen": {"type": "string", "enum": ["desktop", "phone"],
+                               "description": "Which screen: the desktop (the default), or "
+                                              "the person's phone — a real Android device "
+                                              "(the one they chose, such as a Pixel or a "
+                                              "Galaxy). On the phone a click is a tap, a drag "
+                                              "a swipe and scroll a fling; right_click is Back "
+                                              "and middle_click is Home; its screenshot says "
+                                              "its own size. Its first use turns it on."},
                 },
                 "required": ["action"]
             }

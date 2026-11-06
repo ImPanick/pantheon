@@ -338,6 +338,11 @@ services:
   workstation:
     build:
       context: ./workstation
+      # `B1751`. The phone (a real Android device per person) is built in only
+      # when asked for: WORKSTATION_PHONE=on in .env, then rebuild. About 4 GB,
+      # and it accepts the Android SDK License.
+      args:
+        WORKSTATION_PHONE: ${WORKSTATION_PHONE:-off}
     command: ["--system", "ubuntu", "--bind", "0.0.0.0", "--port", "7040"]
     network_mode: "service:workstation-net"
     depends_on:
@@ -346,6 +351,16 @@ services:
     cap_drop: [NET_RAW]
     environment:
       - PANTHEON_WORKSTATION_PAIRING_GID=${PGID:-1000}
+      # `B1751`. A phone nobody used for this many minutes is stopped; at most
+      # this many run at once, each about this much memory.
+      - PANTHEON_PHONE_IDLE_MIN=${PANTHEON_PHONE_IDLE_MIN:-30}
+      - PANTHEON_PHONE_MAX_RUNNING=${PANTHEON_PHONE_MAX_RUNNING:-2}
+      - PANTHEON_PHONE_MEMORY_MIB=${PANTHEON_PHONE_MEMORY_MIB:-2048}
+    # `B1751`. The phone's emulator runs on KVM: the one device-cgroup rule for
+    # /dev/kvm, as `workstation-vm` has. On a host without KVM it opens nothing
+    # and the phone says why.
+    device_cgroup_rules:
+      - "c 10:232 rwm"
     volumes:
       - workstation-homes:/home
       - workstation-pairing:/workstation-pairing
