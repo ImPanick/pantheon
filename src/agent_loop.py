@@ -8299,11 +8299,9 @@ async def stream_agent_loop(
             _relevant_tools = set(_tool_suite.offered)
             _selection_saw_mcp_names = True
             _log_the_plan("")
-            # `B1755`. A partial set is remembered so the next turn of this
-            # conversation offers the same one; a whole suite needs no memory.
-            if _tool_suite.partial:
-                remember_session_tool_set(session_id, _tool_suite.offered)
-            else:
+            # `B1755`. A whole suite needs no memory; a partial set is
+            # remembered below, once everything after the plan has added to it.
+            if not _tool_suite.partial:
                 forget_session_tool_set(session_id)
         except Exception as exc:
             # `B1395` (agent:`fx11-order`). This said it *"fails back onto the
@@ -8627,6 +8625,15 @@ async def stream_agent_loop(
             _relevant_tools = disabled_tools.allowed_among(_relevant_tools)
 
     _base_relevant_tools = None if _relevant_tools is None else set(_relevant_tools)
+
+    # `B1755`. The set remembered for the next turn is the one this turn sends,
+    # not the planner's alone: the intent's domains, a matched skill's
+    # toolsets and the rest above add to it after the plan, and a set that
+    # carried `agent_browser` on one turn and not the next changed the prompt
+    # prefix and threw a local server's cache away (seen on the CI runner,
+    # where Firefox exists and the browser is offered).
+    if _tool_suite is not None and _tool_suite.partial and _base_relevant_tools is not None:
+        remember_session_tool_set(session_id, _base_relevant_tools)
 
     def _route_relevant_tools(candidate_model: str):
         route_tools = None if _base_relevant_tools is None else set(_base_relevant_tools)
