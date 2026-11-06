@@ -1,0 +1,28 @@
+{
+ "case": "four-people-from-two-documents-and-three-mails",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read 2 documents and 3 mails; wrote \"Stakeholder map — Acme Ltd\"",
+ "read": [
+  "manage_documents",
+  "search_emails",
+  "read_email"
+ ],
+ "wrote": [
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Stakeholder map”",
+   "ok": true,
+   "detail": "“Stakeholder map — Acme Ltd” is there."
+  }
+ ],
+ "answer": "4 people mapped (Ana for, Tom against until SSO); the signer Mark has never been in a conversation — ask Ana for time with him.\n\n## Report\n- read 2 documents and 3 mails; wrote \"Stakeholder map — Acme Ltd\"",
+ "documents": [
+  {
+   "title": "Stakeholder map — Acme Ltd",
+   "content": "Stakeholder map — Acme Ltd\n4 people mapped; biggest gap: the signer is named but has never been in a conversation\n\n## People\n- Ana Ruiz — Head of Finance (call summary 2026-11-10) — champion.\n- Tom Reyes — IT lead (call summary) — blocker until Okta SSO.\n- Mark — CEO, signs (Ana's mail 2026-11-09) — never in a thread.\n- Dee — counsel (Ana's mail 2026-11-10) — reviewing the DPA.\n\n## Roles\n| Person | Role | Source |\n| --- | --- | --- |\n| Ana Ruiz | budget owner, champion | call summary; mail s1 |\n| Tom Reyes | technical approver | mail s2 |\n| Mark | signer | mail s1 |\n| Dee | legal | mail s3 |\n\n## Stance\n- Ana: for — \"the retainer works for us\".\n- Tom: against until SSO — \"until Okta is in, IT will not approve\".\n- Mark: unknown — no words of his.\n- Dee: neutral — reviewing.\n\n## Gaps\n- The signer (Mark) has never been spoken to: ask Ana for ten minutes with him.\n- No procurement contact named."
+  }
+ ]
+}

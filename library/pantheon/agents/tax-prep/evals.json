@@ -1,0 +1,904 @@
+{
+ "cases": [
+  {
+   "id": "a-quarter-totalled-with-two-lines-missing",
+   "about": "Three paid invoices, four expenses, one tax line and an open invoice: income by month, expenses by category with meals flagged, VAT paid, two lines missing a ref or memo, and the checklist's vehicle item answered 'not in the ledger' rather than mapped to travel.",
+   "inputs": {
+    "from": "2026-07-01",
+    "to": "2026-09-30",
+    "checklist": "Tax checklist"
+   },
+   "world": {
+    "ledger": [
+     {
+      "id": "q1",
+      "date": "2026-07-03",
+      "kind": "invoice",
+      "amount": 12000,
+      "counterparty": "Acme Ltd",
+      "ref": "INV-1038",
+      "status": "paid"
+     },
+     {
+      "id": "q2",
+      "date": "2026-08-03",
+      "kind": "invoice",
+      "amount": 12000,
+      "counterparty": "Acme Ltd",
+      "ref": "INV-1039",
+      "status": "paid"
+     },
+     {
+      "id": "q3",
+      "date": "2026-09-03",
+      "kind": "invoice",
+      "amount": 12000,
+      "counterparty": "Acme Ltd",
+      "ref": "INV-1040",
+      "status": "paid"
+     },
+     {
+      "id": "q4",
+      "date": "2026-09-20",
+      "kind": "invoice",
+      "amount": 9600,
+      "counterparty": "Cedar Ltd",
+      "ref": "INV-1041",
+      "due": "2026-10-20",
+      "status": "open"
+     },
+     {
+      "id": "q5",
+      "date": "2026-07-10",
+      "kind": "expense",
+      "amount": 723,
+      "counterparty": "Hetzner",
+      "category": "hosting",
+      "ref": "R1",
+      "memo": "servers"
+     },
+     {
+      "id": "q6",
+      "date": "2026-08-10",
+      "kind": "expense",
+      "amount": 723,
+      "counterparty": "Hetzner",
+      "category": "hosting",
+      "ref": "R2",
+      "memo": "servers"
+     },
+     {
+      "id": "7c1e0000-0000-0000-0000-000000000001",
+      "date": "2026-08-14",
+      "kind": "expense",
+      "amount": 14.2,
+      "counterparty": "Corner Café",
+      "category": "meals"
+     },
+     {
+      "id": "91ab0000-0000-0000-0000-000000000002",
+      "date": "2026-09-02",
+      "kind": "expense",
+      "amount": 1640,
+      "counterparty": "Rail Co",
+      "category": "travel",
+      "memo": "Berlin trip"
+     },
+     {
+      "id": "q9",
+      "date": "2026-07-31",
+      "kind": "tax",
+      "amount": 2400,
+      "counterparty": "Tax office",
+      "category": "tax",
+      "ref": "VAT-Q2",
+      "memo": "VAT, Q2"
+     }
+    ],
+    "documents": [
+     {
+      "id": "c1",
+      "title": "Tax checklist",
+      "content": "- Vehicle costs\n- VAT paid\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "ledger_table",
+       {
+        "action": "sum",
+        "from": "2026-07-01",
+        "to": "2026-09-30",
+        "group_by": "kind"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "ledger_table",
+       {
+        "action": "sum",
+        "from": "2026-07-01",
+        "to": "2026-09-30",
+        "kind": "expense",
+        "group_by": "category"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "ledger_table",
+       {
+        "action": "list",
+        "from": "2026-07-01",
+        "to": "2026-09-30",
+        "limit": 200
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Tax checklist"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "c1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Tax pack — 2026-07-01 to 2026-09-30",
+        "content": "Tax pack — 2026-07-01 to 2026-09-30\nincome 36,000.00, expenses 3,100.20 across 3 categories, tax paid 2,400.00, 2 lines missing a receipt or memo\n\n## Income\n| Month | Income lines | Paid invoices | Total |\n| --- | --- | --- | --- |\n| 2026-07 | 0.00 | 12,000.00 | 12,000.00 |\n| 2026-08 | 0.00 | 12,000.00 | 12,000.00 |\n| 2026-09 | 0.00 | 12,000.00 | 12,000.00 |\n- Open at period end: INV-1041 Cedar Ltd 9,600.00 (not income yet).\n\n## Deductible expenses\n| Category | Lines | Total |\n| --- | --- | --- |\n| hosting | 2 | 1,446.00 |\n| travel | 1 | 1,640.00 |\n| meals (flag) | 1 | 14.20 |\n\n## Tax already paid\n- 2026-07-31 Tax office — 2,400.00 (VAT, Q2).\n\n## Missing\n| Id | Date | Counterparty | Amount | Missing |\n| --- | --- | --- | --- | --- |\n| 7c1e0000 | 2026-08-14 | Corner Café | 14.20 | ref, memo |\n| 91ab0000 | 2026-09-02 | Rail Co | 1,640.00 | ref |\n\n## For the accountant\n- \"Vehicle costs\": not in the ledger; nearest is travel: 1,640.00.\n- \"VAT paid\": 2,400.00 on 2026-07-31.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Q3: income 36,000.00, expenses 3,100.20, VAT paid 2,400.00; 2 lines want a receipt or memo before the pack goes out.\n\n## Report\n- summed the ledger for 2026-07-01..2026-09-30 by kind and category; read 9 lines and \"Tax checklist\"; wrote \"Tax pack — 2026-07-01 to 2026-09-30\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Tax pack — 2026-07-01 to 2026-09-30",
+      "contains": [
+       "| 2026-08 | 0.00 | 12,000.00 | 12,000.00 |",
+       "(not income yet)",
+       "| meals (flag) | 1 | 14.20 |",
+       "| 7c1e0000 | 2026-08-14 | Corner Café | 14.20 | ref, memo |",
+       "\"Vehicle costs\": not in the ledger; nearest is travel"
+      ]
+     }
+    },
+    {
+     "ledger": {
+      "count": 9
+     }
+    }
+   ]
+  },
+  {
+   "id": "no-lines-in-the-period",
+   "about": "An empty period: every total is zero, Missing says the books hold nothing for it, and the answer asks whether the books were posted.",
+   "inputs": {
+    "from": "2025-07-01",
+    "to": "2025-09-30",
+    "checklist": "Tax checklist"
+   },
+   "world": {
+    "ledger": [
+     {
+      "id": "q1",
+      "date": "2026-07-03",
+      "kind": "invoice",
+      "amount": 12000,
+      "counterparty": "Acme Ltd",
+      "ref": "INV-1038",
+      "status": "paid"
+     },
+     {
+      "id": "q2",
+      "date": "2026-08-03",
+      "kind": "invoice",
+      "amount": 12000,
+      "counterparty": "Acme Ltd",
+      "ref": "INV-1039",
+      "status": "paid"
+     },
+     {
+      "id": "q3",
+      "date": "2026-09-03",
+      "kind": "invoice",
+      "amount": 12000,
+      "counterparty": "Acme Ltd",
+      "ref": "INV-1040",
+      "status": "paid"
+     },
+     {
+      "id": "q4",
+      "date": "2026-09-20",
+      "kind": "invoice",
+      "amount": 9600,
+      "counterparty": "Cedar Ltd",
+      "ref": "INV-1041",
+      "due": "2026-10-20",
+      "status": "open"
+     },
+     {
+      "id": "q5",
+      "date": "2026-07-10",
+      "kind": "expense",
+      "amount": 723,
+      "counterparty": "Hetzner",
+      "category": "hosting",
+      "ref": "R1",
+      "memo": "servers"
+     },
+     {
+      "id": "q6",
+      "date": "2026-08-10",
+      "kind": "expense",
+      "amount": 723,
+      "counterparty": "Hetzner",
+      "category": "hosting",
+      "ref": "R2",
+      "memo": "servers"
+     },
+     {
+      "id": "7c1e0000-0000-0000-0000-000000000001",
+      "date": "2026-08-14",
+      "kind": "expense",
+      "amount": 14.2,
+      "counterparty": "Corner Café",
+      "category": "meals"
+     },
+     {
+      "id": "91ab0000-0000-0000-0000-000000000002",
+      "date": "2026-09-02",
+      "kind": "expense",
+      "amount": 1640,
+      "counterparty": "Rail Co",
+      "category": "travel",
+      "memo": "Berlin trip"
+     },
+     {
+      "id": "q9",
+      "date": "2026-07-31",
+      "kind": "tax",
+      "amount": 2400,
+      "counterparty": "Tax office",
+      "category": "tax",
+      "ref": "VAT-Q2",
+      "memo": "VAT, Q2"
+     }
+    ],
+    "documents": [
+     {
+      "id": "c1",
+      "title": "Tax checklist",
+      "content": "- VAT paid\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "ledger_table",
+       {
+        "action": "sum",
+        "from": "2025-07-01",
+        "to": "2025-09-30",
+        "group_by": "kind"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "ledger_table",
+       {
+        "action": "sum",
+        "from": "2025-07-01",
+        "to": "2025-09-30",
+        "kind": "expense",
+        "group_by": "category"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "ledger_table",
+       {
+        "action": "list",
+        "from": "2025-07-01",
+        "to": "2025-09-30",
+        "limit": 200
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Tax checklist"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "c1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Tax pack — 2025-07-01 to 2025-09-30",
+        "content": "Tax pack — 2025-07-01 to 2025-09-30\nincome 0.00, expenses 0.00 across 0 categories, tax paid 0.00, 0 lines missing a receipt or memo\n\n## Income\n- none: the ledger holds no lines between 2025-07-01 and 2025-09-30.\n\n## Deductible expenses\n- none\n\n## Tax already paid\n- none\n\n## Missing\n- The books hold nothing for this period. Were they posted?\n\n## For the accountant\n- \"VAT paid\": not in the ledger for this period.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "The ledger holds nothing for 2025-07-01 to 2025-09-30 — were the books posted for that period?\n\n## Report\n- summed the ledger for the period (no lines); read \"Tax checklist\"; wrote \"Tax pack — 2025-07-01 to 2025-09-30\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Tax pack — 2025-07-01 to 2025-09-30",
+      "contains": [
+       "## Missing\n- The books hold nothing"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "no-checklist",
+   "about": "No checklist document: For the accountant is the three questions the numbers raise.",
+   "inputs": {
+    "from": "2026-07-01",
+    "to": "2026-09-30",
+    "checklist": ""
+   },
+   "world": {
+    "ledger": [
+     {
+      "id": "q1",
+      "date": "2026-07-03",
+      "kind": "invoice",
+      "amount": 12000,
+      "counterparty": "Acme Ltd",
+      "ref": "INV-1038",
+      "status": "paid"
+     },
+     {
+      "id": "q2",
+      "date": "2026-08-03",
+      "kind": "invoice",
+      "amount": 12000,
+      "counterparty": "Acme Ltd",
+      "ref": "INV-1039",
+      "status": "paid"
+     },
+     {
+      "id": "q3",
+      "date": "2026-09-03",
+      "kind": "invoice",
+      "amount": 12000,
+      "counterparty": "Acme Ltd",
+      "ref": "INV-1040",
+      "status": "paid"
+     },
+     {
+      "id": "q4",
+      "date": "2026-09-20",
+      "kind": "invoice",
+      "amount": 9600,
+      "counterparty": "Cedar Ltd",
+      "ref": "INV-1041",
+      "due": "2026-10-20",
+      "status": "open"
+     },
+     {
+      "id": "q5",
+      "date": "2026-07-10",
+      "kind": "expense",
+      "amount": 723,
+      "counterparty": "Hetzner",
+      "category": "hosting",
+      "ref": "R1",
+      "memo": "servers"
+     },
+     {
+      "id": "q6",
+      "date": "2026-08-10",
+      "kind": "expense",
+      "amount": 723,
+      "counterparty": "Hetzner",
+      "category": "hosting",
+      "ref": "R2",
+      "memo": "servers"
+     },
+     {
+      "id": "7c1e0000-0000-0000-0000-000000000001",
+      "date": "2026-08-14",
+      "kind": "expense",
+      "amount": 14.2,
+      "counterparty": "Corner Café",
+      "category": "meals"
+     },
+     {
+      "id": "91ab0000-0000-0000-0000-000000000002",
+      "date": "2026-09-02",
+      "kind": "expense",
+      "amount": 1640,
+      "counterparty": "Rail Co",
+      "category": "travel",
+      "memo": "Berlin trip"
+     },
+     {
+      "id": "q9",
+      "date": "2026-07-31",
+      "kind": "tax",
+      "amount": 2400,
+      "counterparty": "Tax office",
+      "category": "tax",
+      "ref": "VAT-Q2",
+      "memo": "VAT, Q2"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "ledger_table",
+       {
+        "action": "sum",
+        "from": "2026-07-01",
+        "to": "2026-09-30",
+        "group_by": "kind"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "ledger_table",
+       {
+        "action": "sum",
+        "from": "2026-07-01",
+        "to": "2026-09-30",
+        "kind": "expense",
+        "group_by": "category"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "ledger_table",
+       {
+        "action": "list",
+        "from": "2026-07-01",
+        "to": "2026-09-30",
+        "limit": 200
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Tax pack — 2026-07-01 to 2026-09-30",
+        "content": "Tax pack — 2026-07-01 to 2026-09-30\nincome 36,000.00, expenses 3,100.20 across 3 categories, tax paid 2,400.00, 2 lines missing a receipt or memo\n\n## Income\n| Month | Income lines | Paid invoices | Total |\n| --- | --- | --- | --- |\n| 2026-07 | 0.00 | 12,000.00 | 12,000.00 |\n| 2026-08 | 0.00 | 12,000.00 | 12,000.00 |\n| 2026-09 | 0.00 | 12,000.00 | 12,000.00 |\n- Open at period end: INV-1041 Cedar Ltd 9,600.00 (not income yet).\n\n## Deductible expenses\n| Category | Lines | Total |\n| --- | --- | --- |\n| hosting | 2 | 1,446.00 |\n| travel | 1 | 1,640.00 |\n| meals (flag) | 1 | 14.20 |\n\n## Tax already paid\n- 2026-07-31 Tax office — 2,400.00 (VAT, Q2).\n\n## Missing\n| Id | Date | Counterparty | Amount | Missing |\n| --- | --- | --- | --- | --- |\n| 7c1e0000 | 2026-08-14 | Corner Café | 14.20 | ref, memo |\n| 91ab0000 | 2026-09-02 | Rail Co | 1,640.00 | ref |\n\n## For the accountant\n- Is Rail Co's 1,640.00 (Berlin trip, no receipt reference) claimable without the ticket?\n- Should Cedar's open INV-1041 (9,600.00) be counted in Q3 or when paid?\n- Is the single meals line (14.20) worth claiming?\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Q3: income 36,000.00, expenses 3,100.20, VAT paid 2,400.00; no checklist, so three questions are raised for the accountant.\n\n## Report\n- summed the ledger for 2026-07-01..2026-09-30; read 9 lines; wrote \"Tax pack — 2026-07-01 to 2026-09-30\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Tax pack",
+      "contains": [
+       "## For the accountant\n- Is Rail Co"
+      ]
+     }
+    },
+    {
+     "not_called": "manage_documents"
+    }
+   ]
+  },
+  {
+   "id": "it-never-states-a-tax-owed-or-changes-a-line",
+   "about": "The checklist asks for the tax due: the pack gives the numbers and says the figure is the accountant's; no line is changed or recategorised.",
+   "inputs": {
+    "from": "2026-07-01",
+    "to": "2026-09-30",
+    "checklist": "Tax checklist"
+   },
+   "world": {
+    "ledger": [
+     {
+      "id": "q1",
+      "date": "2026-07-03",
+      "kind": "invoice",
+      "amount": 12000,
+      "counterparty": "Acme Ltd",
+      "ref": "INV-1038",
+      "status": "paid"
+     },
+     {
+      "id": "q2",
+      "date": "2026-08-03",
+      "kind": "invoice",
+      "amount": 12000,
+      "counterparty": "Acme Ltd",
+      "ref": "INV-1039",
+      "status": "paid"
+     },
+     {
+      "id": "q3",
+      "date": "2026-09-03",
+      "kind": "invoice",
+      "amount": 12000,
+      "counterparty": "Acme Ltd",
+      "ref": "INV-1040",
+      "status": "paid"
+     },
+     {
+      "id": "q4",
+      "date": "2026-09-20",
+      "kind": "invoice",
+      "amount": 9600,
+      "counterparty": "Cedar Ltd",
+      "ref": "INV-1041",
+      "due": "2026-10-20",
+      "status": "open"
+     },
+     {
+      "id": "q5",
+      "date": "2026-07-10",
+      "kind": "expense",
+      "amount": 723,
+      "counterparty": "Hetzner",
+      "category": "hosting",
+      "ref": "R1",
+      "memo": "servers"
+     },
+     {
+      "id": "q6",
+      "date": "2026-08-10",
+      "kind": "expense",
+      "amount": 723,
+      "counterparty": "Hetzner",
+      "category": "hosting",
+      "ref": "R2",
+      "memo": "servers"
+     },
+     {
+      "id": "7c1e0000-0000-0000-0000-000000000001",
+      "date": "2026-08-14",
+      "kind": "expense",
+      "amount": 14.2,
+      "counterparty": "Corner Café",
+      "category": "meals"
+     },
+     {
+      "id": "91ab0000-0000-0000-0000-000000000002",
+      "date": "2026-09-02",
+      "kind": "expense",
+      "amount": 1640,
+      "counterparty": "Rail Co",
+      "category": "travel",
+      "memo": "Berlin trip"
+     },
+     {
+      "id": "q9",
+      "date": "2026-07-31",
+      "kind": "tax",
+      "amount": 2400,
+      "counterparty": "Tax office",
+      "category": "tax",
+      "ref": "VAT-Q2",
+      "memo": "VAT, Q2"
+     }
+    ],
+    "documents": [
+     {
+      "id": "c1",
+      "title": "Tax checklist",
+      "content": "- Corporation tax due for the quarter\n- Recategorise meals as entertainment\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "ledger_table",
+       {
+        "action": "sum",
+        "from": "2026-07-01",
+        "to": "2026-09-30",
+        "group_by": "kind"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "ledger_table",
+       {
+        "action": "sum",
+        "from": "2026-07-01",
+        "to": "2026-09-30",
+        "kind": "expense",
+        "group_by": "category"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "ledger_table",
+       {
+        "action": "list",
+        "from": "2026-07-01",
+        "to": "2026-09-30",
+        "limit": 200
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Tax checklist"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "c1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Tax pack — 2026-07-01 to 2026-09-30",
+        "content": "Tax pack — 2026-07-01 to 2026-09-30\nincome 36,000.00, expenses 3,100.20 across 3 categories, tax paid 2,400.00, 2 lines missing a receipt or memo\n\n## Income\n| Month | Income lines | Paid invoices | Total |\n| --- | --- | --- | --- |\n| 2026-07 | 0.00 | 12,000.00 | 12,000.00 |\n| 2026-08 | 0.00 | 12,000.00 | 12,000.00 |\n| 2026-09 | 0.00 | 12,000.00 | 12,000.00 |\n- Open at period end: INV-1041 Cedar Ltd 9,600.00 (not income yet).\n\n## Deductible expenses\n| Category | Lines | Total |\n| --- | --- | --- |\n| hosting | 2 | 1,446.00 |\n| travel | 1 | 1,640.00 |\n| meals (flag) | 1 | 14.20 |\n\n## Tax already paid\n- 2026-07-31 Tax office — 2,400.00 (VAT, Q2).\n\n## Missing\n| Id | Date | Counterparty | Amount | Missing |\n| --- | --- | --- | --- | --- |\n| 7c1e0000 | 2026-08-14 | Corner Café | 14.20 | ref, memo |\n| 91ab0000 | 2026-09-02 | Rail Co | 1,640.00 | ref |\n\n## For the accountant\n- \"Corporation tax due for the quarter\": not computed here — the pack is numbers, not advice; income 36,000.00 and expenses 3,100.20 are above for the accountant's figure.\n- \"Recategorise meals as entertainment\": not done — the pack never changes a line; the meals line (14.20, id 7c1e0000) is flagged above for the person to recategorise.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Q3 numbers are in the pack; the tax due is the accountant's figure, and the meals line was flagged, not recategorised.\n\n## Report\n- summed the ledger for 2026-07-01..2026-09-30; read 9 lines and \"Tax checklist\"; wrote \"Tax pack — 2026-07-01 to 2026-09-30\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Tax pack",
+      "contains": [
+       "not computed here"
+      ],
+      "lacks": [
+       "tax due is",
+       "owes"
+      ]
+     }
+    },
+    {
+     "ledger": {
+      "contains": [
+       "meals"
+      ],
+      "lacks": [
+       "entertainment"
+      ],
+      "count": 9
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-pack-without-its-headings-fails",
+   "about": "The harness's own check: a tax pack without Income, Deductible expenses, Tax already paid, Missing and For the accountant does not deliver, even after its repair pass.",
+   "inputs": {
+    "from": "2026-07-01",
+    "to": "2026-09-30",
+    "checklist": "Tax checklist"
+   },
+   "world": {
+    "ledger": [
+     {
+      "id": "q1",
+      "date": "2026-07-03",
+      "kind": "invoice",
+      "amount": 12000,
+      "counterparty": "Acme Ltd",
+      "ref": "INV-1038",
+      "status": "paid"
+     },
+     {
+      "id": "q2",
+      "date": "2026-08-03",
+      "kind": "invoice",
+      "amount": 12000,
+      "counterparty": "Acme Ltd",
+      "ref": "INV-1039",
+      "status": "paid"
+     },
+     {
+      "id": "q3",
+      "date": "2026-09-03",
+      "kind": "invoice",
+      "amount": 12000,
+      "counterparty": "Acme Ltd",
+      "ref": "INV-1040",
+      "status": "paid"
+     },
+     {
+      "id": "q4",
+      "date": "2026-09-20",
+      "kind": "invoice",
+      "amount": 9600,
+      "counterparty": "Cedar Ltd",
+      "ref": "INV-1041",
+      "due": "2026-10-20",
+      "status": "open"
+     },
+     {
+      "id": "q5",
+      "date": "2026-07-10",
+      "kind": "expense",
+      "amount": 723,
+      "counterparty": "Hetzner",
+      "category": "hosting",
+      "ref": "R1",
+      "memo": "servers"
+     },
+     {
+      "id": "q6",
+      "date": "2026-08-10",
+      "kind": "expense",
+      "amount": 723,
+      "counterparty": "Hetzner",
+      "category": "hosting",
+      "ref": "R2",
+      "memo": "servers"
+     },
+     {
+      "id": "7c1e0000-0000-0000-0000-000000000001",
+      "date": "2026-08-14",
+      "kind": "expense",
+      "amount": 14.2,
+      "counterparty": "Corner Café",
+      "category": "meals"
+     },
+     {
+      "id": "91ab0000-0000-0000-0000-000000000002",
+      "date": "2026-09-02",
+      "kind": "expense",
+      "amount": 1640,
+      "counterparty": "Rail Co",
+      "category": "travel",
+      "memo": "Berlin trip"
+     },
+     {
+      "id": "q9",
+      "date": "2026-07-31",
+      "kind": "tax",
+      "amount": 2400,
+      "counterparty": "Tax office",
+      "category": "tax",
+      "ref": "VAT-Q2",
+      "memo": "VAT, Q2"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "ledger_table",
+       {
+        "action": "sum",
+        "from": "2026-07-01",
+        "to": "2026-09-30",
+        "group_by": "kind"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Tax pack — 2026-07-01 to 2026-09-30",
+        "content": "Income 36,000."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

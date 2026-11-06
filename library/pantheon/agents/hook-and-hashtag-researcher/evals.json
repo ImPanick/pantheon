@@ -1,0 +1,451 @@
+{
+ "cases": [
+  {
+   "id": "four-results-three-sources-hooks-with-sources",
+   "about": "Two searches give three real pages and a shop: every hook points at a fetched source, hashtags are only ones seen in use, the shop goes under Not used, and no post is written.",
+   "inputs": {
+    "topic": "four-day week",
+    "audience": "founders",
+    "platforms": "LinkedIn, X, Instagram"
+   },
+   "world": {
+    "search": {
+     "four-day week": [
+      {
+       "title": "Four-day week pilot results",
+       "url": "https://example.org/pilot",
+       "snippet": "56 of 61 companies will continue the four-day week; revenue flat."
+      },
+      {
+       "title": "What the fifth day cost us",
+       "url": "https://blog.example/fifth-day",
+       "snippet": "We took Friday's work away; 14 standing meetings cut to 5. #fourdayweek"
+      },
+      {
+       "title": "The four-day week is a mirage",
+       "url": "https://sceptic.example/mirage",
+       "snippet": "Productivity could not be measured, says one economist. #4dayweek"
+      },
+      {
+       "title": "Four-day week planner — buy now",
+       "url": "https://shop.example/planner",
+       "snippet": "Planner, 20% off."
+      }
+     ]
+    },
+    "web": {
+     "https://example.org/pilot": "Four-day week pilot results (2026-10-30). 56 of 61 companies will continue. Revenue flat across the cohort. #fourdayweek #futureofwork",
+     "https://blog.example/fifth-day": "What the fifth day cost us (2026-11-04). We did not give people Friday off. We took Friday's work away. 14 standing meetings cut to 5. #worksmarter",
+     "https://sceptic.example/mirage": "The four-day week is a mirage (2026-11-02). Productivity could not be measured. #4dayweek #productivity"
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "four-day week November 2026"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "four-day week founders"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://example.org/pilot"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://blog.example/fifth-day"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://sceptic.example/mirage"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Hooks and hashtags — four-day week, 2026-11-10",
+        "content": "Hooks and hashtags — four-day week, 2026-11-10\n4 hooks, 3 angles, 6 hashtags in use; strongest: \"61 companies tried it; 56 kept it\"\n\n## Hooks\n1. \"61 companies tried a four-day week for six months; 56 kept it.\" [1] — LinkedIn, X\n2. \"Revenue was flat.\" [1] — LinkedIn\n3. \"We did not give people Friday off. We took Friday's work away.\" [2] — LinkedIn, Instagram\n4. Depending on who you ask, it worked or \"could not be measured\". [1][3] — X\n\n## Angles\n- The part-timer's four-day week — no result mentions them.\n- The meeting cull as the real product — [2] mentions it in passing.\n- The companies that went back — only [3] is sceptical.\n\n## Hashtags\n- LinkedIn: #fourdayweek (in use, [1]) · #futureofwork (in use, [1])\n- X: #4dayweek (in use, [3]) · #productivity (in use, [3])\n- Instagram: #fourdayweek (in use, [1]) · #worksmarter (in use, [2])\n\n## Sources\n1. Four-day week pilot results — https://example.org/pilot — 2026-10-30 — \"56 of 61 companies will continue.\"\n2. What the fifth day cost us — https://blog.example/fifth-day — 2026-11-04 — \"We took Friday's work away.\"\n3. The four-day week is a mirage — https://sceptic.example/mirage — 2026-11-02 — \"Productivity could not be measured.\"\n\n## Not used\n- Four-day week planner — a shop listing.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Strongest hook: \"61 companies tried it; 56 kept it\" [1]; the angle to take is the part-timer nobody mentions.\n\n## Report\n- 2 searches, 4 results, opened 3 pages; wrote \"Hooks and hashtags — four-day week, 2026-11-10\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Hooks and hashtags",
+      "contains": [
+       "[1] — LinkedIn, X",
+       "#4dayweek (in use, [3])",
+       "## Not used\n- Four-day week planner"
+      ],
+      "lacks": [
+       "studies show",
+       "proposed"
+      ]
+     }
+    },
+    {
+     "called": "web_fetch"
+    }
+   ]
+  },
+  {
+   "id": "no-results-worth-quoting",
+   "about": "The searches return only a shop: the document is still written, Hooks says the topic is thin this week, and nothing is invented.",
+   "inputs": {
+    "topic": "four-day week",
+    "audience": "founders",
+    "platforms": "LinkedIn, X, Instagram"
+   },
+   "world": {
+    "search": {
+     "four-day week": [
+      {
+       "title": "Four-day week planner — buy now",
+       "url": "https://shop.example/planner",
+       "snippet": "Planner, 20% off."
+      }
+     ]
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "four-day week November 2026"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "four-day week founders"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Hooks and hashtags — four-day week, 2026-11-10",
+        "content": "Hooks and hashtags — four-day week, 2026-11-10\n0 hooks, 3 angles, 0 hashtags in use; strongest: none — the topic is thin this week\n\n## Hooks\n- none: no result this week carries a claim or a number to rest a hook on.\n\n## Angles\n- Search the pilot reports by name; search \"four-day week results\"; ask customers who tried it.\n\n## Hashtags\n- none found in use.\n\n## Sources\n- none\n\n## Not used\n- Four-day week planner — a shop listing.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "No hooks this week: the only result is a shop listing; Angles says what to search instead.\n\n## Report\n- 2 searches, 1 result, opened 0 pages; wrote \"Hooks and hashtags — four-day week, 2026-11-10\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Hooks and hashtags",
+      "contains": [
+       "## Hooks\n- none"
+      ],
+      "lacks": [
+       "56 kept"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-page-fails-to-open",
+   "about": "One page answers 404: its claim comes from the snippet, marked snippet only under Sources.",
+   "inputs": {
+    "topic": "four-day week",
+    "audience": "founders",
+    "platforms": "LinkedIn, X, Instagram"
+   },
+   "world": {
+    "search": {
+     "four-day week": [
+      {
+       "title": "Four-day week pilot results",
+       "url": "https://example.org/pilot",
+       "snippet": "56 of 61 companies will continue the four-day week; revenue flat."
+      },
+      {
+       "title": "What the fifth day cost us",
+       "url": "https://blog.example/fifth-day",
+       "snippet": "We took Friday's work away; 14 standing meetings cut to 5. #fourdayweek"
+      }
+     ]
+    },
+    "web": {
+     "https://blog.example/fifth-day": "What the fifth day cost us (2026-11-04). We did not give people Friday off. We took Friday's work away. 14 standing meetings cut to 5. #worksmarter"
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "four-day week November 2026"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "four-day week founders"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://example.org/pilot"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://blog.example/fifth-day"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Hooks and hashtags — four-day week, 2026-11-10",
+        "content": "Hooks and hashtags — four-day week, 2026-11-10\n4 hooks, 3 angles, 6 hashtags in use; strongest: \"61 companies tried it; 56 kept it\"\n\n## Hooks\n1. \"61 companies tried a four-day week for six months; 56 kept it.\" [1] — LinkedIn, X\n2. \"Revenue was flat.\" [1] — LinkedIn\n3. \"We did not give people Friday off. We took Friday's work away.\" [2] — LinkedIn, Instagram\n4. Depending on who you ask, it worked or \"could not be measured\". [1][3] — X\n\n## Angles\n- The part-timer's four-day week — no result mentions them.\n- The meeting cull as the real product — [2] mentions it in passing.\n- The companies that went back — only [3] is sceptical.\n\n## Hashtags\n- LinkedIn: #fourdayweek (in use, [1]) · #futureofwork (in use, [1])\n- X: #4dayweek (in use, [3]) · #productivity (in use, [3])\n- Instagram: #fourdayweek (in use, [1]) · #worksmarter (in use, [2])\n\n## Sources\n1. Four-day week pilot results — https://example.org/pilot — snippet only (the page did not open) — \"56 of 61 companies will continue\"\n2. What the fifth day cost us — https://blog.example/fifth-day — 2026-11-04 — \"We took Friday's work away.\"\n\n## Not used\n- Four-day week planner — a shop listing.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Strongest hook: \"56 of 61 kept it\" — from the snippet only, since the pilot page did not open.\n\n## Report\n- 2 searches, 2 results, opened 1 of 2 pages; wrote \"Hooks and hashtags — four-day week, 2026-11-10\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Hooks and hashtags",
+      "contains": [
+       "snippet only"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "two-sources-contradict",
+   "about": "One page says output rose and another says it could not be measured: the hook says both, both are sourced, and neither is stated as fact.",
+   "inputs": {
+    "topic": "four-day week",
+    "audience": "founders",
+    "platforms": "LinkedIn, X, Instagram"
+   },
+   "world": {
+    "search": {
+     "four-day week": [
+      {
+       "title": "Four-day week pilot results",
+       "url": "https://example.org/pilot",
+       "snippet": "56 of 61 companies will continue the four-day week; revenue flat."
+      },
+      {
+       "title": "The four-day week is a mirage",
+       "url": "https://sceptic.example/mirage",
+       "snippet": "Productivity could not be measured, says one economist. #4dayweek"
+      }
+     ]
+    },
+    "web": {
+     "https://example.org/pilot": "Four-day week pilot results (2026-10-30). 56 of 61 companies will continue. Revenue flat across the cohort. #fourdayweek #futureofwork",
+     "https://blog.example/fifth-day": "What the fifth day cost us (2026-11-04). We did not give people Friday off. We took Friday's work away. 14 standing meetings cut to 5. #worksmarter",
+     "https://sceptic.example/mirage": "The four-day week is a mirage (2026-11-02). Productivity could not be measured. #4dayweek #productivity"
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "four-day week November 2026"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "four-day week founders"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://example.org/pilot"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://sceptic.example/mirage"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Hooks and hashtags — four-day week, 2026-11-10",
+        "content": "Hooks and hashtags — four-day week, 2026-11-10\n4 hooks, 3 angles, 6 hashtags in use; strongest: \"61 companies tried it; 56 kept it\"\n\n## Hooks\n1. \"61 companies tried a four-day week for six months; 56 kept it.\" [1] — LinkedIn, X\n2. \"Revenue was flat.\" [1] — LinkedIn\n3. \"We did not give people Friday off. We took Friday's work away.\" [2] — LinkedIn, Instagram\n4. Depending on who you ask, it worked or \"could not be measured\". [1][3] — X\n\n## Angles\n- The part-timer's four-day week — no result mentions them.\n- The meeting cull as the real product — [2] mentions it in passing.\n- The companies that went back — only [3] is sceptical.\n\n## Hashtags\n- LinkedIn: #fourdayweek (in use, [1]) · #futureofwork (in use, [1])\n- X: #4dayweek (in use, [3]) · #productivity (in use, [3])\n- Instagram: #fourdayweek (in use, [1]) · #worksmarter (in use, [2])\n\n## Sources\n1. Four-day week pilot results — https://example.org/pilot — 2026-10-30 — \"56 of 61 companies will continue.\"\n2. What the fifth day cost us — https://blog.example/fifth-day — 2026-11-04 — \"We took Friday's work away.\"\n3. The four-day week is a mirage — https://sceptic.example/mirage — 2026-11-02 — \"Productivity could not be measured.\"\n\n## Not used\n- Four-day week planner — a shop listing.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Strongest hook: \"61 tried, 56 kept\" [1]; sources disagree on productivity ([1] flat revenue, [3] could not be measured) — the hook says both.\n\n## Report\n- 2 searches, 2 results, opened 2 pages; wrote \"Hooks and hashtags — four-day week, 2026-11-10\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Hooks and hashtags",
+      "contains": [
+       "Depending on who you ask",
+       "[1][3]"
+      ]
+     }
+    },
+    {
+     "not_called": "post_social"
+    }
+   ]
+  },
+  {
+   "id": "a-research-document-without-its-headings-fails",
+   "about": "The harness's own check: a hooks document without Hooks, Angles, Hashtags, Sources and Not used does not deliver, even after its repair pass.",
+   "inputs": {
+    "topic": "four-day week",
+    "audience": "founders",
+    "platforms": "LinkedIn, X, Instagram"
+   },
+   "world": {
+    "search": {
+     "four-day week": [
+      {
+       "title": "Four-day week pilot results",
+       "url": "https://example.org/pilot",
+       "snippet": "56 of 61 companies will continue the four-day week; revenue flat."
+      }
+     ]
+    },
+    "web": {
+     "https://example.org/pilot": "Four-day week pilot results (2026-10-30). 56 of 61 companies will continue. Revenue flat across the cohort. #fourdayweek #futureofwork",
+     "https://blog.example/fifth-day": "What the fifth day cost us (2026-11-04). We did not give people Friday off. We took Friday's work away. 14 standing meetings cut to 5. #worksmarter",
+     "https://sceptic.example/mirage": "The four-day week is a mirage (2026-11-02). Productivity could not be measured. #4dayweek #productivity"
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "four-day week November 2026"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Hooks and hashtags — four-day week, 2026-11-10",
+        "content": "Here it is."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

@@ -1,0 +1,25 @@
+{
+ "case": "two-copyleft-one-unknown",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- ran 2 commands; wrote \"Licence audit — acme-orders\"",
+ "read": [],
+ "wrote": [
+  "bash",
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Licence audit”",
+   "ok": true,
+   "detail": "“Licence audit — acme-orders” is there."
+  }
+ ],
+ "answer": "5 packages: 2 allowed, 2 copyleft (psycopg2 LGPL, readline-gpl GPL), 1 unknown.\n\n## Report\n- ran 2 commands; wrote \"Licence audit — acme-orders\"",
+ "documents": [
+  {
+   "title": "Licence audit — acme-orders",
+   "content": "Licence audit — acme-orders\n5 packages: 2 allowed, 2 copyleft, 1 unknown\n\n## Summary\n- Python (requirements.txt, 5 packages); allow-list MIT, BSD, Apache-2.0, ISC; read with `pip-licenses --format=json`.\n\n## Copyleft\n- psycopg2 2.9.9 — LGPL — direct — triggers on static linking; the wheel links dynamically; replacing it means pg8000 (BSD).\n- readline-gpl 1.2 — GPL-3.0 — direct — triggers on distribution; find a replacement or confirm the project is never distributed.\n\n## Unknown\n- internal-metrics 0.4 — licence field UNKNOWN; the package is the company's own; add a LICENSE to its repository.\n\n## Allowed\n| Package | Version | Licence |\n| --- | --- | --- |\n| fastapi | 0.141.0 | MIT |\n| httpx | 0.28.1 | BSD |\n\n## Not read\n- none"
+  }
+ ]
+}

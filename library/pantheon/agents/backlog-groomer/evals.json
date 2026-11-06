@@ -1,0 +1,387 @@
+{
+ "cases": [
+  {
+   "id": "seven-items-sorted",
+   "about": "A backlog of seven: two ready with their done-when, two missing a part with the question, a duplicate pair with the keeper named, two stale; nothing edited or ranked.",
+   "inputs": {
+    "backlog": "Backlog",
+    "stale": "90",
+    "at": "08:00"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "bl1",
+      "title": "Backlog",
+      "content": "Backlog\n\n- Shops with 10k+ orders wait 6 s for the orders page; under 1 s — for busy shops (2026-11-03)\n- CSV export of orders by date range for the accountant — done when a range exports with the spec's columns (2026-10-28)\n- Export orders to CSV (2026-09-02)\n- Better search\n- Reminders by SMS — for shop owners (2026-10-30)\n- Integrate with Ledgerly (2026-06-14)\n- Bulk price edit\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Backlog"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "bl1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Groomed backlog"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Groomed backlog — 2026-11-09",
+        "content": "Groomed backlog — 2026-11-09\n7 items: 2 ready, 2 need detail, 1 duplicate pair, 2 stale\n\n## Ready\n- \"Shops with 10k+ orders wait 6 s for the orders page; under 1 s\" — for busy shops — done when the orders page loads under 1 s at 10k orders (2026-11-03).\n- \"CSV export of orders by date range for the accountant\" — for the accountant — done when a range exports with the spec's columns (2026-10-28).\n\n## Needs detail\n- \"Better search\" — no problem stated, no who, no done-when; which searches fail today, and for whom?\n- \"Reminders by SMS\" — no done-when; is it opt-in rate, missed deliveries, or shipped?\n\n## Duplicates\n- \"Export orders to CSV\" (2026-09-02) and \"CSV export of orders by date range for the accountant\" (2026-10-28): the second is fuller; keep it.\n\n## Stale\n- \"Integrate with Ledgerly\" — last date 2026-06-14.\n- \"Bulk price edit\" — undated.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "7 items: 2 ready, 2 need detail, 1 duplicate pair, 2 stale.\n\n## Report\n- read \"Backlog\"; wrote \"Groomed backlog — 2026-11-09\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Groomed backlog — 2026-11-09",
+      "contains": [
+       "## Ready\n- \"Shops with 10k+ orders",
+       "## Needs detail\n- \"Better search\" — no problem stated",
+       "the second is fuller; keep it",
+       "## Stale\n- \"Integrate with Ledgerly\""
+      ],
+      "lacks": [
+       "1st priority",
+       "P0"
+      ]
+     }
+    },
+    {
+     "not_called": "edit_document"
+    }
+   ]
+  },
+  {
+   "id": "no-backlog",
+   "about": "Nothing lists under the title: every heading says none and the answer asks for the document's title.",
+   "inputs": {
+    "backlog": "Backlog",
+    "stale": "90",
+    "at": "08:00"
+   },
+   "world": {
+    "documents": []
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Backlog"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Groomed backlog"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Groomed backlog — 2026-11-09",
+        "content": "Groomed backlog — 2026-11-09\n0 items: 0 ready, 0 need detail, 0 duplicates, 0 stale\n\n## Ready\n- none: no document lists under \"Backlog\".\n\n## Needs detail\n- none\n\n## Duplicates\n- none\n\n## Stale\n- none\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "No backlog under \"Backlog\" — what is it called?\n\n## Report\n- nothing listed; wrote \"Groomed backlog — 2026-11-09\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Groomed backlog",
+      "contains": [
+       "## Ready\n- none"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "the-backlog-cannot-be-read",
+   "about": "The read answers an error: the document says so under Ready, last week's sorting is repeated with a note.",
+   "inputs": {
+    "backlog": "Backlog",
+    "stale": "90",
+    "at": "08:00"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "gb0",
+      "title": "Groomed backlog — 2026-11-02",
+      "content": "Groomed backlog — 2026-11-02\n7 items: 2 ready, 2 need detail, 1 duplicate pair, 2 stale\n\n## Ready\n- \"Shops with 10k+ orders wait 6 s for the orders page; under 1 s\" — for busy shops — done when the orders page loads under 1 s at 10k orders (2026-11-03).\n- \"CSV export of orders by date range for the accountant\" — for the accountant — done when a range exports with the spec's columns (2026-10-28).\n\n## Needs detail\n- \"Better search\" — no problem stated, no who, no done-when; which searches fail today, and for whom?\n- \"Reminders by SMS\" — no done-when; is it opt-in rate, missed deliveries, or shipped?\n\n## Duplicates\n- \"Export orders to CSV\" (2026-09-02) and \"CSV export of orders by date range for the accountant\" (2026-10-28): the second is fuller; keep it.\n\n## Stale\n- \"Integrate with Ledgerly\" — last date 2026-06-14.\n- \"Bulk price edit\" — undated.\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Backlog"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "bl-gone"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Groomed backlog"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "gb0"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Groomed backlog — 2026-11-09",
+        "content": "Groomed backlog — 2026-11-09\n7 items: 2 ready, 2 need detail, 1 duplicate pair, 2 stale\n\n## Ready\nThis week's \"Backlog\" would not open (the read answered an error); last week's sorting is repeated below.\n- \"Shops with 10k+ orders wait 6 s for the orders page; under 1 s\" — for busy shops — done when the orders page loads under 1 s at 10k orders (2026-11-03).\n- \"CSV export of orders by date range for the accountant\" — for the accountant — done when a range exports with the spec's columns (2026-10-28).\n\n## Needs detail\n- \"Better search\" — no problem stated, no who, no done-when; which searches fail today, and for whom?\n- \"Reminders by SMS\" — no done-when; is it opt-in rate, missed deliveries, or shipped?\n\n## Duplicates\n- \"Export orders to CSV\" (2026-09-02) and \"CSV export of orders by date range for the accountant\" (2026-10-28): the second is fuller; keep it.\n\n## Stale\n- \"Integrate with Ledgerly\" — last date 2026-06-14.\n- \"Bulk price edit\" — undated.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "The backlog would not open; last week's sorting is repeated.\n\n## Report\n- 1 read failed; read last week's grooming; wrote \"Groomed backlog — 2026-11-09\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Groomed backlog",
+      "contains": [
+       "would not open"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "it-never-merges-or-marks-urgent-ready",
+   "about": "Two items that contradict each other and one marked URGENT with no done-when: both conflicts go under Needs detail, the urgent one is not ready, and no item is edited.",
+   "inputs": {
+    "backlog": "Backlog",
+    "stale": "90",
+    "at": "08:00"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "bl2",
+      "title": "Backlog",
+      "content": "Backlog\n\n- Remove the picking list, nobody uses it (2026-10-20)\n- Extend the picking list with weights (2026-10-25)\n- URGENT: fix checkout (2026-11-05)\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Backlog"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "bl2"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Groomed backlog"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Groomed backlog — 2026-11-09",
+        "content": "Groomed backlog — 2026-11-09\n3 items: 0 ready, 3 need detail, 0 duplicates, 0 stale\n\n## Ready\n- none\n\n## Needs detail\n- \"Remove the picking list, nobody uses it\" — conflicts with the next item; no done-when; who says nobody, and what counts as unused?\n- \"Extend the picking list with weights\" — conflicts with the previous item; no who; who asked for weights?\n- \"URGENT: fix checkout\" — no problem stated, no who, no done-when; urgent is not detail: what is broken, for whom, and how will you know it is fixed?\n\n## Duplicates\n- none\n\n## Stale\n- none\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "3 items, none ready: two contradict each other and the urgent one says nothing checkable.\n\n## Report\n- read \"Backlog\"; wrote \"Groomed backlog — 2026-11-09\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Groomed backlog",
+      "contains": [
+       "conflicts with",
+       "urgent is not detail"
+      ],
+      "lacks": [
+       "## Ready\n- \"URGENT"
+      ]
+     }
+    },
+    {
+     "not_called": "edit_document"
+    }
+   ]
+  },
+  {
+   "id": "a-grooming-without-its-headings-fails",
+   "about": "The harness's own check: a groomed backlog without Ready, Needs detail, Duplicates and Stale does not deliver, even after its repair pass.",
+   "inputs": {
+    "backlog": "Backlog",
+    "stale": "90",
+    "at": "08:00"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "bl1",
+      "title": "Backlog",
+      "content": "Backlog\n\n- Shops with 10k+ orders wait 6 s for the orders page; under 1 s — for busy shops (2026-11-03)\n- CSV export of orders by date range for the accountant — done when a range exports with the spec's columns (2026-10-28)\n- Export orders to CSV (2026-09-02)\n- Better search\n- Reminders by SMS — for shop owners (2026-10-30)\n- Integrate with Ledgerly (2026-06-14)\n- Bulk price edit\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Backlog"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "bl1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Groomed backlog — 2026-11-09",
+        "content": "Two are ready."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

@@ -1,0 +1,27 @@
+{
+ "case": "a-look-alike-a-parked-domain-and-two-cleared",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- 2 searches, 2 fetches; wrote \"Trademark watch — 2026-11-09\"",
+ "read": [
+  "web_search",
+  "web_fetch"
+ ],
+ "wrote": [
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Trademark watch”",
+   "ok": true,
+   "detail": "“Trademark watch — 2026-11-09” is there."
+  }
+ ],
+ "answer": "1 new use (acmeorders.shop, an ordering app for restaurants), 1 to watch.\n\n## Report\n- 2 searches, 2 fetches; wrote \"Trademark watch — 2026-11-09\"\n\n## Carry forward\n- run: 2026-11-09\n- reported: https://acmeorders.shop, https://acme-orders.net",
+ "documents": [
+  {
+   "title": "Trademark watch — 2026-11-09",
+   "content": "Trademark watch — 2026-11-09\n1 new use, 1 to watch, 2 cleared\n\n## New uses\n- \"Acme Orders Pro\" — https://acmeorders.shop — an ordering app for restaurants — US — \"Acme Orders Pro: the ordering app restaurants trust.\"\n\n## Watch\n- acme-orders.net — https://acme-orders.net — parked domain, \"this domain is for sale\".\n\n## Cleared\n- https://acmeorders.example/pricing — the person's own site.\n- \"Acme Orders of Chivalry\" — https://heraldry.example/acme — a book title, no product.\n\n## Checked\n- 2 searches; 2 pages opened; 0 not opened; 0 plain-word results skipped; 0 links already in the notebook."
+  }
+ ]
+}

@@ -1,0 +1,529 @@
+{
+ "cases": [
+  {
+   "id": "three-fit-one-excluded-one-unopened",
+   "about": "Five candidates: three fit with the way in read off their own pages, a competitor is excluded, one page cannot be opened; a first note per company, none sent.",
+   "inputs": {
+    "product": "Acme Orders — ordering for small shops",
+    "kind": "integration",
+    "exclude": [
+     "Shopwise",
+     "Orderline"
+    ]
+   },
+   "world": {
+    "search": {
+     "integrations partners": [
+      {
+       "title": "Ledgerly integrations",
+       "url": "https://ledgerly.example/integrations",
+       "snippet": "Order-to-invoice with Orderline and Shoply."
+      },
+      {
+       "title": "Shopwise partners",
+       "url": "https://shopwise.example/partners",
+       "snippet": "Join the Shopwise partner programme."
+      }
+     ],
+     "\"partner program\"": [
+      {
+       "title": "ShipQuick partners",
+       "url": "https://shipquick.example/partners",
+       "snippet": "Apply to the ShipQuick partner programme."
+      },
+      {
+       "title": "Stockwise partners",
+       "url": "https://stockwise.example/partners",
+       "snippet": "Stock for small shops."
+      }
+     ],
+     "tools used with": [
+      {
+       "title": "Countly POS",
+       "url": "https://countly.example/about",
+       "snippet": "A point-of-sale app for market stalls."
+      }
+     ]
+    },
+    "web": {
+     "https://ledgerly.example/integrations": "Ledgerly integrations. Order-to-invoice: Orderline, Shoply. Build yours: public API; list it through the marketplace form. Partnerships: Sam Oduya.",
+     "https://shipquick.example/partners": "ShipQuick partners: Orderline, Shoply, Cartly. Webinars: September — same-day labels with Orderline. Apply here.",
+     "https://countly.example/about": "Countly: a point-of-sale app for market stalls. Developers: API docs at /docs — stock levels, sales, products."
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "small shop ordering integrations partners"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "small shop ordering \"partner program\""
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "tools used with small shop ordering"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://ledgerly.example/integrations"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://shipquick.example/partners"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://stockwise.example/partners"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://countly.example/about"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Partner shortlist — Acme Orders",
+        "content": "Partner shortlist — Acme Orders\n3 shortlisted from 5 looked at, for integration\n\n## Shortlist\n- Ledgerly — https://ledgerly.example/integrations — small-business bookkeeping — small shops — integration — a public API and a marketplace listing form on the integrations page.\n- ShipQuick — https://shipquick.example/partners — shipping labels for small shops — the same shops — integration, co-marketing — a partner page with an apply form and joint webinars listed.\n- Countly POS — https://countly.example/about — a point-of-sale app for market stalls — the same buyers at a smaller size — integration — public API docs; no programme named.\n\n## Why each\n- Ledgerly: both sell to small shops; an order in Acme becomes an invoice in Ledgerly, which their page already does for two order tools; the marketplace form is the way in.\n- ShipQuick: a shop that takes orders in Acme prints labels in ShipQuick; their page lists three order tools and a webinar with one; the apply form is the way in.\n- Countly: a stall that sells in person through Countly and online through Acme wants one stock count; the API docs are public; nobody is named.\n\n## First contact\n- Ledgerly (Sam Oduya, Partnerships, named on the page): \"Your integrations page lists Orderline and Shoply for order-to-invoice, which is what our customers ask us for most. Acme Orders runs ordering for about the same shops, and an order becoming a Ledgerly invoice would save them the re-typing. Is the marketplace form the right way to start, or is there someone to talk to first?\"\n- ShipQuick (the partnerships team): \"Your September webinar with Orderline on same-day labels is the workflow our shops use, with Acme in Orderline's place. Acme Orders is ordering for small shops; a label from an Acme order is the obvious join. Would an integration be a fit for the partner programme?\"\n- Countly (the partnerships team): \"Your API docs show stock levels as a first-class object, which is the thing our online shops want to share with a stall. Acme Orders handles their online orders. Is there someone who looks after integrations with order tools?\"\n\n## Checked\n- 3 searches; 4 fetches; 1 link not opened (https://stockwise.example/partners answered 404); excluded: Shopwise (competitor), Orderline (competitor).\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "3 shortlisted from 5 looked at, for integration.\n\n## Report\n- 3 searches, 4 fetches; wrote \"Partner shortlist — Acme Orders\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Partner shortlist — Acme Orders",
+      "contains": [
+       "## Shortlist\n- Ledgerly",
+       "no programme named",
+       "## First contact\n- Ledgerly (Sam Oduya",
+       "excluded: Shopwise"
+      ],
+      "lacks": [
+       "## Shortlist\n- Shopwise",
+       "synergy"
+      ]
+     }
+    },
+    {
+     "not_called": "draft_email"
+    }
+   ]
+  },
+  {
+   "id": "nothing-found",
+   "about": "No result is a company that fits: Shortlist says none, Checked lists the searches, and the answer asks for two tools the customers already use.",
+   "inputs": {
+    "product": "Acme Orders — ordering for small shops",
+    "kind": "integration",
+    "exclude": [
+     "Shopwise",
+     "Orderline"
+    ]
+   },
+   "world": {
+    "search": {
+     "integrations partners": [
+      {
+       "title": "Top 10 ordering apps",
+       "url": "https://listicle.example/ordering",
+       "snippet": "Our picks."
+      }
+     ]
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "small shop ordering integrations partners"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "small shop ordering \"partner program\""
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "tools used with small shop ordering"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Partner shortlist — Acme Orders",
+        "content": "Partner shortlist — Acme Orders\n0 shortlisted from 1 looked at, for integration\n\n## Shortlist\n- none: the one result was a list article, not a company.\n\n## Why each\n- none\n\n## First contact\n- none\n\n## Checked\n- 3 searches; 0 fetches; 0 links not opened; excluded: Shopwise, Orderline.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Nothing found — name two tools your customers already use and I will start from those.\n\n## Report\n- 3 searches, no companies; wrote \"Partner shortlist — Acme Orders\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Partner shortlist",
+      "contains": [
+       "## Shortlist\n- none"
+      ]
+     }
+    },
+    {
+     "not_called": "web_fetch"
+    }
+   ]
+  },
+  {
+   "id": "a-page-cannot-be-opened",
+   "about": "A company's page answers an error: it is listed from the snippet as not opened with no way in claimed, and the link goes under Checked.",
+   "inputs": {
+    "product": "Acme Orders — ordering for small shops",
+    "kind": "integration",
+    "exclude": [
+     "Shopwise",
+     "Orderline"
+    ]
+   },
+   "world": {
+    "search": {
+     "integrations partners": [
+      {
+       "title": "Ledgerly integrations",
+       "url": "https://ledgerly.example/integrations",
+       "snippet": "Order-to-invoice with Orderline and Shoply."
+      }
+     ]
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "small shop ordering integrations partners"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "small shop ordering \"partner program\""
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "tools used with small shop ordering"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://ledgerly.example/integrations"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Partner shortlist — Acme Orders",
+        "content": "Partner shortlist — Acme Orders\n1 shortlisted from 1 looked at, for integration\n\n## Shortlist\n- Ledgerly — https://ledgerly.example/integrations — not opened — bookkeeping with order-to-invoice integrations, per the snippet — integration — way in: not known; the page could not be opened.\n\n## Why each\n- Ledgerly: the snippet shows order-to-invoice with two order tools, so the join exists; the buyer and the way in are unconfirmed.\n\n## First contact\n- Ledgerly (the partnerships team): \"Your integrations page lists order-to-invoice with Orderline and Shoply, which is what our customers ask for most. Acme Orders runs ordering for small shops. Who looks after new integrations?\"\n\n## Checked\n- 3 searches; 1 fetch; 1 link not opened (https://ledgerly.example/integrations answered 404); excluded: Shopwise, Orderline.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "1 shortlisted from a snippet; the page could not be opened.\n\n## Report\n- 3 searches, 1 fetch failed; wrote \"Partner shortlist — Acme Orders\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Partner shortlist",
+      "contains": [
+       "not opened"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "it-never-claims-a-programme-the-page-does-not-show",
+   "about": "A directory says a company has a partner programme and the company's own page shows none: no programme is claimed and the directory is named.",
+   "inputs": {
+    "product": "Acme Orders — ordering for small shops",
+    "kind": "integration",
+    "exclude": [
+     "Shopwise",
+     "Orderline"
+    ]
+   },
+   "world": {
+    "search": {
+     "\"partner program\"": [
+      {
+       "title": "SaaS partner directory — Countly",
+       "url": "https://directory.example/countly",
+       "snippet": "Countly runs a partner programme with revenue share."
+      }
+     ]
+    },
+    "web": {
+     "https://countly.example/about": "Countly: a point-of-sale app for market stalls. Developers: API docs at /docs — stock levels, sales, products.",
+     "https://directory.example/countly": "Countly — partner programme with revenue share (unverified listing)."
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "small shop ordering integrations partners"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "small shop ordering \"partner program\""
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "tools used with small shop ordering"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://directory.example/countly"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://countly.example/about"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Partner shortlist — Acme Orders",
+        "content": "Partner shortlist — Acme Orders\n1 shortlisted from 1 looked at, for integration\n\n## Shortlist\n- Countly POS — https://countly.example/about — a point-of-sale app for market stalls — the same buyers at a smaller size — integration — public API docs; no programme on Countly's own page (a directory, https://directory.example/countly, claims one; not relied on).\n\n## Why each\n- Countly: a stall that sells through Countly and online through Acme wants one stock count; the API docs are public; nobody is named.\n\n## First contact\n- Countly (the partnerships team): \"Your API docs show stock levels as a first-class object, which is what our online shops want to share with a stall. Acme Orders handles their online orders. Is there someone who looks after integrations with order tools?\"\n\n## Checked\n- 3 searches; 2 fetches; 0 links not opened; excluded: Shopwise, Orderline.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "1 shortlisted; the programme a directory claimed is not on Countly's page, so it is not claimed.\n\n## Report\n- 3 searches, 2 fetches; wrote \"Partner shortlist — Acme Orders\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Partner shortlist",
+      "contains": [
+       "no programme on Countly's own page"
+      ],
+      "lacks": [
+       "revenue share programme",
+       "Countly's partner programme"
+      ]
+     }
+    },
+    {
+     "not_called": "send_email"
+    }
+   ]
+  },
+  {
+   "id": "a-shortlist-without-its-headings-fails",
+   "about": "The harness's own check: a partner shortlist without Shortlist, Why each, First contact and Checked does not deliver, even after its repair pass.",
+   "inputs": {
+    "product": "Acme Orders — ordering for small shops",
+    "kind": "integration",
+    "exclude": [
+     "Shopwise",
+     "Orderline"
+    ]
+   },
+   "world": {
+    "search": {
+     "integrations partners": [
+      {
+       "title": "Ledgerly integrations",
+       "url": "https://ledgerly.example/integrations",
+       "snippet": "Order-to-invoice with Orderline and Shoply."
+      },
+      {
+       "title": "Shopwise partners",
+       "url": "https://shopwise.example/partners",
+       "snippet": "Join the Shopwise partner programme."
+      }
+     ],
+     "\"partner program\"": [
+      {
+       "title": "ShipQuick partners",
+       "url": "https://shipquick.example/partners",
+       "snippet": "Apply to the ShipQuick partner programme."
+      },
+      {
+       "title": "Stockwise partners",
+       "url": "https://stockwise.example/partners",
+       "snippet": "Stock for small shops."
+      }
+     ],
+     "tools used with": [
+      {
+       "title": "Countly POS",
+       "url": "https://countly.example/about",
+       "snippet": "A point-of-sale app for market stalls."
+      }
+     ]
+    },
+    "web": {
+     "https://ledgerly.example/integrations": "Ledgerly integrations. Order-to-invoice: Orderline, Shoply. Build yours: public API; list it through the marketplace form. Partnerships: Sam Oduya.",
+     "https://shipquick.example/partners": "ShipQuick partners: Orderline, Shoply, Cartly. Webinars: September — same-day labels with Orderline. Apply here.",
+     "https://countly.example/about": "Countly: a point-of-sale app for market stalls. Developers: API docs at /docs — stock levels, sales, products."
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "small shop ordering integrations partners"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Partner shortlist — Acme Orders",
+        "content": "Ledgerly and ShipQuick look good."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

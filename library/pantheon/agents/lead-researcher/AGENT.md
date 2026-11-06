@@ -6,6 +6,7 @@ section: sales
 icon: user-search
 version: 1.3.1
 wave: 2
+accepts: ["document:Lead triage"]
 inputs:
   - {key: who, kind: text, label: The person and company}
 triggers:

@@ -60,6 +60,14 @@ OTHER_FILLS = {
     "<first path>": "/pets", "<second path>": "/pets/1", "<the machines, each in single quotes>": "'web1'",
     "<the repositories, each in single quotes>": "'app'", "<category>": "bills", "<file>": "scan001.pdf",
     "<YYYY-MM>": "2026-10", "<short name>": "power-bill", "<ext>": "pdf", "<video>": "films/trip.mp4",
+    # `P24-28`'s shell agents: the report's command (Bug Reproducer), a build log
+    # (Build Doctor), a source and a step (Data Engineer), the check (Pair
+    # Programmer), a command and its python-less form (Performance Profiler,
+    # Regression Triager), a range (Release Notes Owner, Security Reviewer).
+    "<the command the report names>": "true", "<log>": "build.log", "<the source file>": "data/orders.csv",
+    "<step_name>": "orders_daily", "<the check>": "pytest -q", "<command>": "pytest -q",
+    "<the command without its leading python>": "-m pytest -q", "<since or the last tag>": "v0.2.0",
+    "<range>": "main...fix",
 }
 #: A repository's commits here are made by nobody's own git settings.
 GIT_IDENTITY = {"GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@example.com", "GIT_COMMITTER_NAME": "t",

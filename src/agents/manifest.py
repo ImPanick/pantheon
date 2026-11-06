@@ -125,7 +125,13 @@ EFFECT_RULES = ("allow", "ask", "never")
 BUDGET_KEYS = ("runs_per_day", "max_steps", "max_minutes")
 DELIVER_KINDS = ("answer", "document", "email_draft", "file")
 NATIVE_TOOLS = ("required", "preferred", "no")
-WAVES = (1, 2, 3)
+#: `P24-30`. What an agent may say of the model it runs on, beyond a window
+#: and native tool calls: it must see pictures, think before it answers, or
+#: hear recordings. The hall says each on the agent's page, and says again —
+#: *"Consider loading a model that meets this specification."* — when the
+#: model this person's hires run on is known not to have it (`needs.py`).
+MODEL_NEEDS = ("vision", "reasoning", "audio")
+WAVES = (1, 2, 3, 4, 5)
 
 #: The most a manifest may ask for, whatever it says. A run is a scheduled
 #: task, and these are the scheduler's own ceilings stated once for agents.
@@ -675,10 +681,17 @@ def _check_programs(raw: Any, inputs: Tuple[Dict[str, Any], ...]) -> List[Dict[s
 
 
 def _check_needs(raw: dict, inputs: Tuple[Dict[str, Any], ...] = ()) -> Dict[str, Any]:
-    out: Dict[str, Any] = {"connectors": [], "min_context": 0, "native_tools": "preferred"}
+    out: Dict[str, Any] = {"connectors": [], "min_context": 0, "native_tools": "preferred", "model": []}
     for k, v in raw.items():
         if k == "programs":
             out[k] = _check_programs(v, inputs)
+        elif k == "model":
+            _need(isinstance(v, list) and all(isinstance(x, str) for x in v),
+                  "“needs.model” is a list of what the model must have, like [vision].")
+            bad = [x for x in v if x not in MODEL_NEEDS]
+            _need(not bad, f"“needs.model” names {', '.join(bad)}; a model can be asked for: "
+                           f"{', '.join(MODEL_NEEDS)}.")
+            out[k] = list(dict.fromkeys(v))
         elif k == "connectors":
             _need(isinstance(v, list) and all(isinstance(x, str) and x for x in v),
                   "“needs.connectors” is not a list of names.")
@@ -748,7 +761,7 @@ def lint(fm: Dict[str, Any], runbook: str, *, source: str = "shipped", path: str
     version = _str(fm, "version", limit=20)
     _need(bool(_VERSION_RE.match(version)), f"The version “{version}” is not like 1.0.0.")
     wave = fm.get("wave", 2)
-    _need(wave in WAVES, "“wave” is 1, 2 or 3.")
+    _need(wave in WAVES, "“wave” is 1, 2, 3, 4 or 5.")
     starred = fm.get("starred", False)
     _need(isinstance(starred, bool), "“starred” is true or false.")
     icon = _str(fm, "icon", limit=32, required=False)

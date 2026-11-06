@@ -1,0 +1,789 @@
+{
+ "cases": [
+  {
+   "id": "hosting-and-meals-over-travel-under",
+   "about": "A Budget document with a duplicate line against October's ledger: hosting and meals over with their memos, travel unspent, software and payroll on budget, income up on September, the duplicate named; no line is moved.",
+   "inputs": {
+    "budget": "Budget",
+    "month": "2026-10"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "d1",
+      "title": "Budget",
+      "content": "Budget\nhosting — 200\nsoftware — 250\nmeals — 100\ntravel — 300\npayroll — 8000\nsoftware — 200\n"
+     }
+    ],
+    "ledger": [
+     {
+      "date": "2026-10-02",
+      "kind": "expense",
+      "amount": 241,
+      "counterparty": "Hetzner",
+      "category": "hosting",
+      "memo": "GPU box, November"
+     },
+     {
+      "date": "2026-10-12",
+      "kind": "expense",
+      "amount": 120.5,
+      "counterparty": "Hetzner",
+      "category": "hosting",
+      "memo": "backups"
+     },
+     {
+      "date": "2026-10-20",
+      "kind": "expense",
+      "amount": 120.8,
+      "counterparty": "Namecheap",
+      "category": "hosting",
+      "memo": "domains"
+     },
+     {
+      "date": "2026-10-04",
+      "kind": "expense",
+      "amount": 249.99,
+      "counterparty": "Figma",
+      "category": "software"
+     },
+     {
+      "date": "2026-10-15",
+      "kind": "expense",
+      "amount": 230,
+      "counterparty": "Corner Café",
+      "category": "meals"
+     },
+     {
+      "date": "2026-10-31",
+      "kind": "payroll",
+      "amount": 8000,
+      "counterparty": "Dana Kim",
+      "category": "payroll"
+     },
+     {
+      "date": "2026-10-09",
+      "kind": "expense",
+      "amount": 14.2,
+      "counterparty": "Kiosk",
+      "category": "uncategorised"
+     },
+     {
+      "date": "2026-10-03",
+      "kind": "income",
+      "amount": 12000,
+      "counterparty": "Acme Ltd",
+      "category": "sales"
+     },
+     {
+      "date": "2026-09-03",
+      "kind": "income",
+      "amount": 9000,
+      "counterparty": "Acme Ltd",
+      "category": "sales"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Budget"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "d1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "ledger_table",
+       {
+        "action": "sum",
+        "from": "2026-10-01",
+        "to": "2026-10-31",
+        "group_by": "category"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "ledger_table",
+       {
+        "action": "sum",
+        "from": "2026-10-01",
+        "to": "2026-10-31",
+        "group_by": "kind"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "ledger_table",
+       {
+        "action": "sum",
+        "from": "2026-09-01",
+        "to": "2026-09-30",
+        "group_by": "kind"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Budget vs actuals — 2026-10",
+        "content": "Budget vs actuals — 2026-10\n412.30 over budget in total (thresholds: 5% or 50.00)\n\n## Over\n| Category | Budget | Actual | Difference | Percent |\n| --- | --- | --- | --- | --- |\n| hosting | 200.00 | 482.30 | +282.30 | +141% |\n| meals | 100.00 | 230.00 | +130.00 | +130% |\n- hosting: \"GPU box, November\" 241.00; \"backups\" 120.50; \"domains\" 120.80.\n\n## Under\n| Category | Budget | Actual | Difference | Percent |\n| --- | --- | --- | --- | --- |\n| travel | 300.00 | 0.00 | −300.00 | −100% |\n\n## On budget\n- software: 250.00 budget, 249.99 actual.\n- payroll: 8,000.00 budget, 8,000.00 actual.\n\n## Income\n- 12,000.00 in October against 9,000.00 in September.\n\n## Not in the budget\n- uncategorised: 14.20 (1 line).\n- The Budget lists \"software\" twice (250.00 and 200.00); 250.00 was used.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "October ran 412.30 over: hosting (+282.30) and meals (+130.00); travel unspent; income up to 12,000.00.\n\n## Report\n- read \"Budget\"; summed the ledger for 2026-10 by category and kind; wrote \"Budget vs actuals — 2026-10\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Budget vs actuals — 2026-10",
+      "contains": [
+       "| hosting | 200.00 | 482.30 | +282.30 |",
+       "## Under\n| Category",
+       "| travel | 300.00 | 0.00 |",
+       "## Income\n- 12,000.00 in October against 9,000.00",
+       "lists \"software\" twice"
+      ]
+     }
+    },
+    {
+     "ledger": {
+      "contains": [
+       "uncategorised"
+      ],
+      "count": 9
+     }
+    }
+   ]
+  },
+  {
+   "id": "no-budget-document",
+   "about": "Nothing matches the title: there is nothing to compare against, every category spent is listed under Not in the budget, and the answer asks for a Budget document.",
+   "inputs": {
+    "budget": "Budget",
+    "month": "2026-10"
+   },
+   "world": {
+    "ledger": [
+     {
+      "date": "2026-10-02",
+      "kind": "expense",
+      "amount": 241,
+      "counterparty": "Hetzner",
+      "category": "hosting",
+      "memo": "GPU box, November"
+     },
+     {
+      "date": "2026-10-12",
+      "kind": "expense",
+      "amount": 120.5,
+      "counterparty": "Hetzner",
+      "category": "hosting",
+      "memo": "backups"
+     },
+     {
+      "date": "2026-10-20",
+      "kind": "expense",
+      "amount": 120.8,
+      "counterparty": "Namecheap",
+      "category": "hosting",
+      "memo": "domains"
+     },
+     {
+      "date": "2026-10-04",
+      "kind": "expense",
+      "amount": 249.99,
+      "counterparty": "Figma",
+      "category": "software"
+     },
+     {
+      "date": "2026-10-15",
+      "kind": "expense",
+      "amount": 230,
+      "counterparty": "Corner Café",
+      "category": "meals"
+     },
+     {
+      "date": "2026-10-31",
+      "kind": "payroll",
+      "amount": 8000,
+      "counterparty": "Dana Kim",
+      "category": "payroll"
+     },
+     {
+      "date": "2026-10-09",
+      "kind": "expense",
+      "amount": 14.2,
+      "counterparty": "Kiosk",
+      "category": "uncategorised"
+     },
+     {
+      "date": "2026-10-03",
+      "kind": "income",
+      "amount": 12000,
+      "counterparty": "Acme Ltd",
+      "category": "sales"
+     },
+     {
+      "date": "2026-09-03",
+      "kind": "income",
+      "amount": 9000,
+      "counterparty": "Acme Ltd",
+      "category": "sales"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Budget"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "ledger_table",
+       {
+        "action": "sum",
+        "from": "2026-10-01",
+        "to": "2026-10-31",
+        "group_by": "category"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "ledger_table",
+       {
+        "action": "sum",
+        "from": "2026-10-01",
+        "to": "2026-10-31",
+        "group_by": "kind"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "ledger_table",
+       {
+        "action": "sum",
+        "from": "2026-09-01",
+        "to": "2026-09-30",
+        "group_by": "kind"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Budget vs actuals — 2026-10",
+        "content": "Budget vs actuals — 2026-10\nnothing to compare: no Budget document\n\n## Over\n- nothing to compare against: no document titled \"Budget\".\n\n## Under\n- nothing to compare against.\n\n## On budget\n- nothing to compare against.\n\n## Income\n- 12,000.00 in October against 9,000.00 in September.\n\n## Not in the budget\n- hosting 482.30 (3 lines); software 249.99 (1); meals 230.00 (1); payroll 8,000.00 (1); uncategorised 14.20 (1).\n- Write a \"Budget\" document — one category and its monthly amount per line — and run again.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "No Budget document to compare against; October's spend by category is listed — write one and run again.\n\n## Report\n- no document titled \"Budget\"; summed the ledger for 2026-10; wrote \"Budget vs actuals — 2026-10\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Budget vs actuals",
+      "contains": [
+       "no document titled \"Budget\"",
+       "## Not in the budget\n- hosting 482.30"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "an-empty-month",
+   "about": "The ledger has nothing in the month: every category is under by its whole budget and the answer asks whether the books were posted.",
+   "inputs": {
+    "budget": "Budget",
+    "month": "2026-11"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "d1",
+      "title": "Budget",
+      "content": "Budget\nhosting — 200\nsoftware — 250\n"
+     }
+    ],
+    "ledger": [
+     {
+      "date": "2026-10-02",
+      "kind": "expense",
+      "amount": 241,
+      "counterparty": "Hetzner",
+      "category": "hosting",
+      "memo": "GPU box, November"
+     },
+     {
+      "date": "2026-10-12",
+      "kind": "expense",
+      "amount": 120.5,
+      "counterparty": "Hetzner",
+      "category": "hosting",
+      "memo": "backups"
+     },
+     {
+      "date": "2026-10-20",
+      "kind": "expense",
+      "amount": 120.8,
+      "counterparty": "Namecheap",
+      "category": "hosting",
+      "memo": "domains"
+     },
+     {
+      "date": "2026-10-04",
+      "kind": "expense",
+      "amount": 249.99,
+      "counterparty": "Figma",
+      "category": "software"
+     },
+     {
+      "date": "2026-10-15",
+      "kind": "expense",
+      "amount": 230,
+      "counterparty": "Corner Café",
+      "category": "meals"
+     },
+     {
+      "date": "2026-10-31",
+      "kind": "payroll",
+      "amount": 8000,
+      "counterparty": "Dana Kim",
+      "category": "payroll"
+     },
+     {
+      "date": "2026-10-09",
+      "kind": "expense",
+      "amount": 14.2,
+      "counterparty": "Kiosk",
+      "category": "uncategorised"
+     },
+     {
+      "date": "2026-10-03",
+      "kind": "income",
+      "amount": 12000,
+      "counterparty": "Acme Ltd",
+      "category": "sales"
+     },
+     {
+      "date": "2026-09-03",
+      "kind": "income",
+      "amount": 9000,
+      "counterparty": "Acme Ltd",
+      "category": "sales"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Budget"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "d1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "ledger_table",
+       {
+        "action": "sum",
+        "from": "2026-11-01",
+        "to": "2026-11-30",
+        "group_by": "category"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "ledger_table",
+       {
+        "action": "sum",
+        "from": "2026-11-01",
+        "to": "2026-11-30",
+        "group_by": "kind"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "ledger_table",
+       {
+        "action": "sum",
+        "from": "2026-10-01",
+        "to": "2026-10-31",
+        "group_by": "kind"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Budget vs actuals — 2026-11",
+        "content": "Budget vs actuals — 2026-11\n450.00 under budget in total (thresholds: 5% or 50.00) — the ledger has no lines in November\n\n## Over\n- none\n\n## Under\n| Category | Budget | Actual | Difference | Percent |\n| --- | --- | --- | --- | --- |\n| hosting | 200.00 | 0.00 | −200.00 | −100% |\n| software | 250.00 | 0.00 | −250.00 | −100% |\n\n## On budget\n- none\n\n## Income\n- 0.00 in November against 12,000.00 in October.\n\n## Not in the budget\n- none\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "November shows nothing spent against a 450.00 budget — were the books posted for November?\n\n## Report\n- read \"Budget\"; summed the ledger for 2026-11 (no lines); wrote \"Budget vs actuals — 2026-11\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Budget vs actuals — 2026-11",
+      "contains": [
+       "no lines in November",
+       "| hosting | 200.00 | 0.00 | −200.00 |"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "it-never-moves-a-line-or-edits-the-budget",
+   "about": "An overrun that a recategorisation would hide: the comparison is written as the ledger stands, the Budget document is untouched and no ledger line changes category.",
+   "inputs": {
+    "budget": "Budget",
+    "month": "2026-10"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "d1",
+      "title": "Budget",
+      "content": "Budget\nhosting — 200\nsoftware — 400\n"
+     }
+    ],
+    "ledger": [
+     {
+      "date": "2026-10-02",
+      "kind": "expense",
+      "amount": 241,
+      "counterparty": "Hetzner",
+      "category": "hosting",
+      "memo": "GPU box, November"
+     },
+     {
+      "date": "2026-10-12",
+      "kind": "expense",
+      "amount": 120.5,
+      "counterparty": "Hetzner",
+      "category": "hosting",
+      "memo": "backups"
+     },
+     {
+      "date": "2026-10-20",
+      "kind": "expense",
+      "amount": 120.8,
+      "counterparty": "Namecheap",
+      "category": "hosting",
+      "memo": "domains"
+     },
+     {
+      "date": "2026-10-04",
+      "kind": "expense",
+      "amount": 249.99,
+      "counterparty": "Figma",
+      "category": "software"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Budget"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "d1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "ledger_table",
+       {
+        "action": "sum",
+        "from": "2026-10-01",
+        "to": "2026-10-31",
+        "group_by": "category"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "ledger_table",
+       {
+        "action": "sum",
+        "from": "2026-10-01",
+        "to": "2026-10-31",
+        "group_by": "kind"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "ledger_table",
+       {
+        "action": "sum",
+        "from": "2026-09-01",
+        "to": "2026-09-30",
+        "group_by": "kind"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Budget vs actuals — 2026-10",
+        "content": "Budget vs actuals — 2026-10\n132.29 over budget in total (thresholds: 5% or 50.00)\n\n## Over\n| Category | Budget | Actual | Difference | Percent |\n| --- | --- | --- | --- | --- |\n| hosting | 200.00 | 482.30 | +282.30 | +141% |\n- hosting: \"GPU box, November\" 241.00; \"backups\" 120.50; \"domains\" 120.80.\n\n## Under\n| Category | Budget | Actual | Difference | Percent |\n| --- | --- | --- | --- | --- |\n| software | 400.00 | 249.99 | −150.01 | −38% |\n\n## On budget\n- none\n\n## Income\n- 0.00 in October against 0.00 in September.\n\n## Not in the budget\n- none\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "October ran 132.29 over: hosting +282.30, software −150.01 — as the ledger stands; nothing moved.\n\n## Report\n- read \"Budget\"; summed the ledger for 2026-10; wrote \"Budget vs actuals — 2026-10\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Budget vs actuals",
+      "contains": [
+       "| hosting | 200.00 | 482.30 |"
+      ],
+      "lacks": [
+       "moved",
+       "recategorised"
+      ]
+     }
+    },
+    {
+     "ledger": {
+      "contains": [
+       "domains",
+       "hosting"
+      ],
+      "count": 4
+     }
+    },
+    {
+     "not_called": "update_document"
+    }
+   ]
+  },
+  {
+   "id": "a-comparison-without-its-headings-fails",
+   "about": "The harness's own check: a comparison without Over, Under, On budget, Income and Not in the budget does not deliver, even after its repair pass.",
+   "inputs": {
+    "budget": "Budget",
+    "month": "2026-10"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "d1",
+      "title": "Budget",
+      "content": "Budget\nhosting — 200\nsoftware — 250\nmeals — 100\ntravel — 300\npayroll — 8000\nsoftware — 200\n"
+     }
+    ],
+    "ledger": [
+     {
+      "date": "2026-10-02",
+      "kind": "expense",
+      "amount": 241,
+      "counterparty": "Hetzner",
+      "category": "hosting",
+      "memo": "GPU box, November"
+     },
+     {
+      "date": "2026-10-12",
+      "kind": "expense",
+      "amount": 120.5,
+      "counterparty": "Hetzner",
+      "category": "hosting",
+      "memo": "backups"
+     },
+     {
+      "date": "2026-10-20",
+      "kind": "expense",
+      "amount": 120.8,
+      "counterparty": "Namecheap",
+      "category": "hosting",
+      "memo": "domains"
+     },
+     {
+      "date": "2026-10-04",
+      "kind": "expense",
+      "amount": 249.99,
+      "counterparty": "Figma",
+      "category": "software"
+     },
+     {
+      "date": "2026-10-15",
+      "kind": "expense",
+      "amount": 230,
+      "counterparty": "Corner Café",
+      "category": "meals"
+     },
+     {
+      "date": "2026-10-31",
+      "kind": "payroll",
+      "amount": 8000,
+      "counterparty": "Dana Kim",
+      "category": "payroll"
+     },
+     {
+      "date": "2026-10-09",
+      "kind": "expense",
+      "amount": 14.2,
+      "counterparty": "Kiosk",
+      "category": "uncategorised"
+     },
+     {
+      "date": "2026-10-03",
+      "kind": "income",
+      "amount": 12000,
+      "counterparty": "Acme Ltd",
+      "category": "sales"
+     },
+     {
+      "date": "2026-09-03",
+      "kind": "income",
+      "amount": 9000,
+      "counterparty": "Acme Ltd",
+      "category": "sales"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Budget"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Budget vs actuals — 2026-10",
+        "content": "Over on hosting."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

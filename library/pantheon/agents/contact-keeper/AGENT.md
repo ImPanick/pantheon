@@ -6,6 +6,7 @@ section: sales
 icon: address-book
 version: 1.1.1
 wave: 1
+accepts: ["document:CRM hygiene"]
 triggers:
   - {on: event, event: email_received, every: 10, label: Every ten new messages}
 tools: [list_emails, read_email, resolve_contact, manage_contact]

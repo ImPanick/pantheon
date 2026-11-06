@@ -994,6 +994,51 @@ FUNCTION_TOOL_SCHEMAS = [
             }
         }
     },
+    # `P24-30`. The finance agents' table — one row per line of money.
+    {
+        "type": "function",
+        "function": {
+            "name": "ledger_table",
+            "description": (
+                "The person's ledger: a table of money lines (income, expense, invoice, bill, "
+                "payroll, transfer, tax). list filters lines; sum totals them by kind, category, "
+                "counterparty, account, month or status; add records one; import records many; "
+                "update changes a line (e.g. status to paid); delete removes one. Amounts are "
+                "positive; kind says which way the money goes. Use this for bookkeeping, "
+                "invoices, bills, budgets and cash-flow — never a note or a document for a row of money."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "action": {"type": "string", "enum": ["list", "sum", "add", "update", "delete", "import"],
+                               "description": "What to do; list when unsure."},
+                    "id": {"type": "string", "description": "Line id for update/delete; the 8-character prefix from a list is enough."},
+                    "kind": {"type": "string", "enum": ["income", "expense", "invoice", "bill", "payroll", "transfer", "tax"],
+                             "description": "Which way the money goes (add/import), or a filter (list/sum)."},
+                    "date": {"type": "string", "description": "YYYY-MM-DD; today when left out of an add."},
+                    "amount": {"type": "number", "description": "Positive amount."},
+                    "currency": {"type": "string", "description": "Optional, e.g. USD."},
+                    "account": {"type": "string", "description": "Bank, card, cash — the person's own names."},
+                    "category": {"type": "string", "description": "The person's own category: rent, software, sales…"},
+                    "counterparty": {"type": "string", "description": "Who paid or was paid."},
+                    "memo": {"type": "string", "description": "What the line was for."},
+                    "status": {"type": "string", "enum": ["posted", "open", "paid", "void", "draft"],
+                               "description": "posted for money that moved; open/paid/void for an invoice or bill; draft to confirm later."},
+                    "due": {"type": "string", "description": "YYYY-MM-DD an invoice or bill falls due."},
+                    "ref": {"type": "string", "description": "Invoice or bill number, receipt id."},
+                    "from": {"type": "string", "description": "list/sum: earliest date, YYYY-MM-DD."},
+                    "to": {"type": "string", "description": "list/sum: latest date, YYYY-MM-DD."},
+                    "due_by": {"type": "string", "description": "list/sum: only lines due on or before this date."},
+                    "group_by": {"type": "string", "enum": ["kind", "category", "counterparty", "account", "month", "status"],
+                                 "description": "sum: how to group the totals (kind when left out)."},
+                    "limit": {"type": "integer", "description": "list: at most this many lines (200 at most)."},
+                    "rows": {"type": "array", "items": {"type": "object", "additionalProperties": True},
+                             "description": "import: the lines, each with date, kind, amount and the other fields."}
+                },
+                "required": ["action"]
+            }
+        }
+    },
     {
         "type": "function",
         "function": {

@@ -1,0 +1,28 @@
+{
+ "case": "four-lines-posted-one-skipped",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read statements/2026-11.csv (5 rows); imported 4; wrote \"Books — November 2026, week of 2026-11-09\"",
+ "read": [
+  "ledger_table",
+  "read_file"
+ ],
+ "wrote": [
+  "ledger_table",
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Books”",
+   "ok": true,
+   "detail": "“Books — November 2026, week of 2026-11-09” is there."
+  }
+ ],
+ "answer": "4 lines posted to the ledger, 1 skipped as a duplicate, 1 to categorise (Corner Café).\n\n## Report\n- read statements/2026-11.csv (5 rows); imported 4; wrote \"Books — November 2026, week of 2026-11-09\"\n\n## Carry forward\n- last import: 2026-11-06 (statements/2026-11.csv); categories used: sales, software, hosting, uncategorised",
+ "documents": [
+  {
+   "title": "Books — November 2026, week of 2026-11-09",
+   "content": "Books — November 2026, week of 2026-11-09\n4 lines posted, 1 skipped, 1 to check\n\n## Imported\n| Date | Counterparty | Kind | Category | Amount |\n| --- | --- | --- | --- | --- |\n| 2026-11-03 | Acme Ltd | income | sales | 3,000.00 |\n| 2026-11-04 | Figma | expense | software | 49.99 |\n| 2026-11-05 | Hetzner | expense | hosting | 120.50 |\n| 2026-11-06 | Corner Café | expense | uncategorised | 14.20 |\n\n## Skipped\n- 2026-11-01 Hetzner 120.50 — already in the ledger.\n\n## By category\n| Category | Lines | Total |\n| --- | --- | --- |\n| sales | 1 | 3,000.00 |\n| hosting | 2 | 241.00 |\n| software | 1 | 49.99 |\n| uncategorised | 1 | 14.20 |\n\n## To check\n- 2026-11-06 Corner Café 14.20 — no earlier line names it; posted as uncategorised."
+  }
+ ]
+}

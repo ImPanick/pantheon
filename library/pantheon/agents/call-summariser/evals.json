@@ -1,0 +1,323 @@
+{
+ "cases": [
+  {
+   "id": "a-call-becomes-one-page",
+   "about": "A six-line transcript against a pipeline that holds the account: three commitments with the transcript's dates, two objections, the next step is the earliest dated one, and the stage comes from the pipeline.",
+   "inputs": {
+    "transcript": "Ana (Head of Finance): The retainer works for us; the question is whether two years gets us a better rate.\nSam: I can send a two-year quote by Thursday the 12th.\nTom (IT lead): Single sign-on is a must before IT signs off; Okta specifically.\nSam: Okta is in the next release.\nTom: I need a date in writing.\nAna: Legal needs the data processing addendum before anything is signed; I will introduce them this week.",
+    "account": "Acme Ltd",
+    "pipeline": "Pipeline"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "p1",
+      "title": "Pipeline",
+      "content": "Pipeline\n| Account | Contact | Stage | Owner | Last touch | Next step |\n| --- | --- | --- | --- | --- | --- |\n| Acme Ltd | ana@acme.example | Proposal sent | Sam | 2026-11-03 | two-year pricing |\n| Birch & Co | bo@birch.example | Proposal sent | Sam | 2026-10-29 | check in |\n| Cedar Ltd | cal@cedar.example | Proposal sent | Sam | 2026-10-20 | await answer |\n| Elm | leo@elm.example | Discovery | Sam | 2026-10-28 | send the deck |\n| Yew | | Won | Sam | 2026-10-01 | — |\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Pipeline"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "p1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Call summary — Acme Ltd, 2026-11-10",
+        "content": "Call summary — Acme Ltd, 2026-11-10\n3 commitments, 2 objections; next step: send the two-year pricing, Sam, 2026-11-12\n\n## Who\n- Them: Ana (Head of Finance), Tom (IT lead). Us: Sam. Stage in the pipeline: Proposal sent (2026-11-03).\n\n## What they said\n- Ana: \"The retainer works for us; the question is whether two years gets us a better rate.\"\n- Tom: \"Single sign-on is a must before IT signs off; Okta specifically.\"\n- Ana: \"Legal needs the data processing addendum before anything is signed.\"\n\n## Objections\n- Price over a two-year term — \"whether two years gets us a better rate\" — Sam said a two-year quote would follow.\n- Single sign-on missing — \"Okta specifically\" — Sam said Okta is in the next release; Tom asked for a date in writing.\n\n## Commitments\n| Who | What | When | Side |\n| --- | --- | --- | --- |\n| Sam | Send two-year pricing | 2026-11-12 | us |\n| Sam | Okta release date in writing | not said | us |\n| Ana | Introduce legal for the DPA | this week | them |\n\n## Next step\n- Send the two-year pricing by 2026-11-12 (Sam); ask Tom for a date to confirm the Okta plan, since none was agreed.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Next step: send the two-year pricing by 2026-11-12; two objections (two-year price, Okta SSO), three commitments.\n\n## Report\n- read \"Pipeline\" (Acme: Proposal sent); wrote \"Call summary — Acme Ltd, 2026-11-10\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Call summary — Acme Ltd",
+      "contains": [
+       "Proposal sent",
+       "| Sam | Send two-year pricing | 2026-11-12 |",
+       "Okta release date in writing | not said"
+      ],
+      "lacks": [
+       "seemed keen"
+      ]
+     }
+    },
+    {
+     "not_called": "update_document"
+    }
+   ]
+  },
+  {
+   "id": "no-transcript-asks-instead",
+   "about": "Empty input: the summary is written with the pipeline line under Who and every other heading saying none; the answer asks for the transcript.",
+   "inputs": {
+    "transcript": "",
+    "account": "Acme Ltd",
+    "pipeline": "Pipeline"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "p1",
+      "title": "Pipeline",
+      "content": "Pipeline\n| Account | Contact | Stage | Owner | Last touch | Next step |\n| --- | --- | --- | --- | --- | --- |\n| Acme Ltd | ana@acme.example | Proposal sent | Sam | 2026-11-03 | two-year pricing |\n| Birch & Co | bo@birch.example | Proposal sent | Sam | 2026-10-29 | check in |\n| Cedar Ltd | cal@cedar.example | Proposal sent | Sam | 2026-10-20 | await answer |\n| Elm | leo@elm.example | Discovery | Sam | 2026-10-28 | send the deck |\n| Yew | | Won | Sam | 2026-10-01 | — |\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Pipeline"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "p1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Call summary — Acme Ltd, 2026-11-10",
+        "content": "Call summary — Acme Ltd, 2026-11-10\n0 commitments, 0 objections; next step: none — no transcript given\n\n## Who\n- No transcript given. Stage in the pipeline: Proposal sent (2026-11-03), next step: two-year pricing.\n\n## What they said\n- none — no transcript given\n\n## Objections\n- none — no transcript given\n\n## Commitments\n- none — no transcript given\n\n## Next step\n- none — paste the transcript or your notes and run again.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Nothing to summarise: paste the transcript or your notes. For context, Acme Ltd is at Proposal sent (last touch 2026-11-03, next step: two-year pricing).\n\n## Report\n- read \"Pipeline\"; wrote \"Call summary — Acme Ltd, 2026-11-10\" with nothing in it"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Call summary — Acme Ltd",
+      "contains": [
+       "none — no transcript given",
+       "Proposal sent"
+      ]
+     }
+    },
+    {
+     "answer_contains": [
+      "paste the transcript"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "the-pipeline-cannot-be-read-the-summary-is-still-written",
+   "about": "No document matches the pipeline title: the summary is written, Who says the stage is unknown, and the answer says so.",
+   "inputs": {
+    "transcript": "Ana (Head of Finance): The retainer works for us; the question is whether two years gets us a better rate.\nSam: I can send a two-year quote by Thursday the 12th.\nTom (IT lead): Single sign-on is a must before IT signs off; Okta specifically.\nSam: Okta is in the next release.\nTom: I need a date in writing.\nAna: Legal needs the data processing addendum before anything is signed; I will introduce them this week.",
+    "account": "Acme Ltd",
+    "pipeline": "Pipeline"
+   },
+   "world": {
+    "documents": []
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Pipeline"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Call summary — Acme Ltd, 2026-11-10",
+        "content": "Call summary — Acme Ltd, 2026-11-10\n3 commitments, 2 objections; next step: send the two-year pricing, Sam, 2026-11-12\n\n## Who\n- Them: Ana (Head of Finance), Tom (IT lead). Us: Sam. Stage in the pipeline: unknown — no \"Pipeline\" document was found.\n\n## What they said\n- Ana: \"The retainer works for us; the question is whether two years gets us a better rate.\"\n- Tom: \"Single sign-on is a must before IT signs off; Okta specifically.\"\n- Ana: \"Legal needs the data processing addendum before anything is signed.\"\n\n## Objections\n- Price over a two-year term — \"whether two years gets us a better rate\" — Sam said a two-year quote would follow.\n- Single sign-on missing — \"Okta specifically\" — Sam said Okta is in the next release; Tom asked for a date in writing.\n\n## Commitments\n| Who | What | When | Side |\n| --- | --- | --- | --- |\n| Sam | Send two-year pricing | 2026-11-12 | us |\n| Sam | Okta release date in writing | not said | us |\n| Ana | Introduce legal for the DPA | this week | them |\n\n## Next step\n- Send the two-year pricing by 2026-11-12 (Sam); ask Tom for a date to confirm the Okta plan, since none was agreed.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Next step: send the two-year pricing by 2026-11-12. The pipeline could not be read, so the deal's stage is unknown.\n\n## Report\n- no document titled \"Pipeline\"; wrote \"Call summary — Acme Ltd, 2026-11-10\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Call summary — Acme Ltd",
+      "contains": [
+       "Stage in the pipeline: unknown"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "the-transcript-contradicts-the-pipeline",
+   "about": "The pipeline says stalled on budget and the call says budget was approved: both are shown with the words quoted, and the next step asks for the pipeline to be updated by the Pipeline Keeper.",
+   "inputs": {
+    "transcript": "Ana: Budget was approved on Monday; we can start in January.\nSam: Then I will send the order form by the 12th.",
+    "account": "Acme Ltd",
+    "pipeline": "Pipeline"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "p1",
+      "title": "Pipeline",
+      "content": "Pipeline\n| Account | Contact | Stage | Owner | Last touch | Next step |\n| --- | --- | --- | --- | --- | --- |\n| Acme Ltd | ana@acme.example | Stalled — budget | Sam | 2026-10-20 | wait for budget |\n| Birch & Co | bo@birch.example | Proposal sent | Sam | 2026-10-29 | check in |\n| Cedar Ltd | cal@cedar.example | Proposal sent | Sam | 2026-10-20 | await answer |\n| Elm | leo@elm.example | Discovery | Sam | 2026-10-28 | send the deck |\n| Yew | | Won | Sam | 2026-10-01 | — |\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Pipeline"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "p1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Call summary — Acme Ltd, 2026-11-10",
+        "content": "Call summary — Acme Ltd, 2026-11-10\n1 commitment, 0 objections; next step: send the order form, Sam, 2026-11-12\n\n## Who\n- Them: Ana. Us: Sam. Stage in the pipeline: Stalled — budget (2026-10-20).\n\n## What they said\n- Ana: \"Budget was approved on Monday; we can start in January.\" The pipeline still says \"Stalled — budget\"; the transcript is newer.\n\n## Objections\n- none\n\n## Commitments\n| Who | What | When | Side |\n| --- | --- | --- | --- |\n| Sam | Send the order form | 2026-11-12 | us |\n\n## Next step\n- Send the order form by 2026-11-12 (Sam). The pipeline wants updating from Stalled to Verbal — for the Pipeline Keeper, from this summary.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Budget approved, start in January: next step is the order form by 2026-11-12; the pipeline still says stalled and wants updating.\n\n## Report\n- read \"Pipeline\" (Acme: Stalled — budget); wrote \"Call summary — Acme Ltd, 2026-11-10\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Call summary — Acme Ltd",
+      "contains": [
+       "Budget was approved",
+       "Stalled — budget",
+       "Pipeline Keeper"
+      ]
+     }
+    },
+    {
+     "not_called": "update_document"
+    }
+   ]
+  },
+  {
+   "id": "a-summary-without-its-headings-fails",
+   "about": "The harness's own check: a call summary without Who, What they said, Objections, Commitments and Next step does not deliver, even after its repair pass.",
+   "inputs": {
+    "transcript": "Ana (Head of Finance): The retainer works for us; the question is whether two years gets us a better rate.\nSam: I can send a two-year quote by Thursday the 12th.\nTom (IT lead): Single sign-on is a must before IT signs off; Okta specifically.\nSam: Okta is in the next release.\nTom: I need a date in writing.\nAna: Legal needs the data processing addendum before anything is signed; I will introduce them this week.",
+    "account": "Acme Ltd",
+    "pipeline": "Pipeline"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "p1",
+      "title": "Pipeline",
+      "content": "Pipeline\n| Account | Contact | Stage | Owner | Last touch | Next step |\n| --- | --- | --- | --- | --- | --- |\n| Acme Ltd | ana@acme.example | Proposal sent | Sam | 2026-11-03 | two-year pricing |\n| Birch & Co | bo@birch.example | Proposal sent | Sam | 2026-10-29 | check in |\n| Cedar Ltd | cal@cedar.example | Proposal sent | Sam | 2026-10-20 | await answer |\n| Elm | leo@elm.example | Discovery | Sam | 2026-10-28 | send the deck |\n| Yew | | Won | Sam | 2026-10-01 | — |\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Pipeline"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Call summary — Acme Ltd, 2026-11-10",
+        "content": "Good call, they liked it."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

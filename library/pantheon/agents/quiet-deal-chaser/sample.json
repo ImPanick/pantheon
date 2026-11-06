@@ -1,0 +1,28 @@
+{
+ "case": "two-quiet-two-drafts",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read \"Pipeline\" (4 open deals); searched 3 threads; drafted 2; wrote \"Quiet deals — 2026-11-10\"",
+ "read": [
+  "manage_documents",
+  "search_emails"
+ ],
+ "wrote": [
+  "draft_email",
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Quiet deals”",
+   "ok": true,
+   "detail": "“Quiet deals — 2026-11-10” is there."
+  }
+ ],
+ "answer": "2 nudges drafted (Cedar, Elm); Birch left alone — they wrote on the 8th and the pipeline is behind.\n\n## Report\n- read \"Pipeline\" (4 open deals); searched 3 threads; drafted 2; wrote \"Quiet deals — 2026-11-10\"",
+ "documents": [
+  {
+   "title": "Quiet deals — 2026-11-10",
+   "content": "Quiet deals — 2026-11-10\n2 quiet, 2 drafted, 1 left alone\n\n## Quiet\n| Account | Stage | Last touch | Last mail | Days quiet |\n| --- | --- | --- | --- | --- |\n| Cedar Ltd | Proposal sent | 2026-10-20 | 2026-10-20, ours | 21 |\n| Elm | Discovery | 2026-10-28 | 2026-10-27, theirs | 13 |\n\n## Drafted\n- Cedar Ltd — to cal@cedar.example — \"Proposal for the Q1 rollout: one question\" — asked whether the January start still holds, offered the two-year rate.\n- Elm — to leo@elm.example — \"The deck you asked for, and a date\" — asked which of two demo slots next week suits.\n\n## Left alone\n- Birch & Co — the pipeline says 2026-10-29, but Bo wrote on 2026-11-08 (\"the new CFO starts in January\"); the pipeline is behind.\n- Yew — Won; never chased.\n\n## Not in the pipeline\n- none"
+  }
+ ]
+}

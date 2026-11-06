@@ -1,0 +1,367 @@
+{
+ "cases": [
+  {
+   "id": "five-fixes-nothing-changed",
+   "about": "Contacts and the pipeline give one duplicate, two missing fields and two stale deals; each is a fix pointing at a uid or a line, and nothing is edited.",
+   "inputs": {
+    "pipeline": "Pipeline",
+    "stale": "30",
+    "at": "16:00"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "p1",
+      "title": "Pipeline",
+      "content": "Pipeline\n| Account | Contact | Stage | Owner | Last touch | Next step |\n| --- | --- | --- | --- | --- | --- |\n| Acme Ltd | ana@acme.example | Proposal sent | Sam | 2026-11-03 | two-year pricing |\n| Cedar Ltd | cal@cedar.example | Proposal sent | Sam | 2026-10-01 | await answer |\n| Yew | | Discovery | | 2026-09-28 | call |\n| Elm | leo@elm.example | Discovery | Sam | 2026-11-01 | deck |\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_contact",
+       {
+        "action": "list"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Pipeline"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "p1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "CRM hygiene — 2026-11-13",
+        "content": "CRM hygiene — 2026-11-13\n5 fixes: 1 duplicate, 2 missing, 2 stale\n\n## Duplicates\n- Ana Ruiz, Acme Ltd — two records (uid c12: ana@acme.example; uid c41: ana.ruiz@acme.example). Fix: ask which email is current, then merge into one.\n\n## Missing\n- Yew — no contact email and no owner on the pipeline line. Fix: add both or park the deal.\n- Cal (Cedar Ltd) — contact record has no phone. Fix: add from the last signature block.\n\n## Stale\n| Account | Stage | Last touch | Days |\n| --- | --- | --- | --- |\n| Cedar Ltd | Proposal sent | 2026-10-01 | 43 |\n| Yew | Discovery | 2026-09-28 | 46 |\n\n## Fix list\n1. c12 / c41 — merge Ana Ruiz once the current email is confirmed.\n2. Pipeline, Yew — add contact and owner.\n3. c7 (Cal) — add phone.\n4. Pipeline, Cedar Ltd — touch or move to Stalled.\n5. Pipeline, Yew — touch or close.\n\n## Checked\n- 58 contacts listed; \"Pipeline\" read (4 lines). Nothing was changed.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "5 fixes: one duplicate Ana Ruiz record, two missing fields, Cedar and Yew stale (43 and 46 days).\n\n## Report\n- listed contacts; read \"Pipeline\" (4 lines); wrote \"CRM hygiene — 2026-11-13\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "CRM hygiene",
+      "contains": [
+       "| Cedar Ltd | Proposal sent | 2026-10-01 | 43 |",
+       "## Fix list\n1.",
+       "Nothing was changed"
+      ]
+     }
+    },
+    {
+     "not_called": "update_document"
+    }
+   ]
+  },
+  {
+   "id": "no-contacts",
+   "about": "The contact list is empty: the contact half says none to check, the pipeline half runs, and Missing names every deal whose contact should be a contact.",
+   "inputs": {
+    "pipeline": "Pipeline",
+    "stale": "30",
+    "at": "16:00"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "p1",
+      "title": "Pipeline",
+      "content": "Pipeline\n| Account | Contact | Stage | Owner | Last touch | Next step |\n| --- | --- | --- | --- | --- | --- |\n| Acme Ltd | ana@acme.example | Proposal sent | Sam | 2026-11-03 | two-year pricing |\n| Cedar Ltd | cal@cedar.example | Proposal sent | Sam | 2026-10-01 | await answer |\n| Yew | | Discovery | | 2026-09-28 | call |\n| Elm | leo@elm.example | Discovery | Sam | 2026-11-01 | deck |\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_contact",
+       {
+        "action": "list"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Pipeline"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "p1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "CRM hygiene — 2026-11-13",
+        "content": "CRM hygiene — 2026-11-13\n5 fixes: 1 duplicate, 2 missing, 2 stale\n\n## Duplicates\n- none to check: the contact list is empty.\n\n## Missing\n- Yew — no contact email and no owner on the pipeline line. Fix: add both or park the deal.\n- ana@acme.example, cal@cedar.example, leo@elm.example are on the pipeline and not in contacts. Fix: add the three as contacts.\n\n## Stale\n| Account | Stage | Last touch | Days |\n| --- | --- | --- | --- |\n| Cedar Ltd | Proposal sent | 2026-10-01 | 43 |\n| Yew | Discovery | 2026-09-28 | 46 |\n\n## Fix list\n1. c12 / c41 — merge Ana Ruiz once the current email is confirmed.\n2. Pipeline, Yew — add contact and owner.\n3. c7 (Cal) — add phone.\n4. Pipeline, Cedar Ltd — touch or move to Stalled.\n5. Pipeline, Yew — touch or close.\n\n## Checked\n- 0 contacts listed; \"Pipeline\" read (4 lines). Nothing was changed.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "The contact list is empty; the pipeline's three addresses should become contacts, Yew lacks a contact and owner, Cedar and Yew are stale.\n\n## Report\n- listed 0 contacts; read \"Pipeline\" (4 lines); wrote \"CRM hygiene — 2026-11-13\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "CRM hygiene",
+      "contains": [
+       "## Duplicates\n- none to check",
+       "not in contacts"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "the-contacts-store-is-unreachable",
+   "about": "manage_contact answers an error: the pipeline half runs alone, Checked says contacts were not read.",
+   "inputs": {
+    "pipeline": "Pipeline",
+    "stale": "30",
+    "at": "16:00"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "p1",
+      "title": "Pipeline",
+      "content": "Pipeline\n| Account | Contact | Stage | Owner | Last touch | Next step |\n| --- | --- | --- | --- | --- | --- |\n| Acme Ltd | ana@acme.example | Proposal sent | Sam | 2026-11-03 | two-year pricing |\n| Cedar Ltd | cal@cedar.example | Proposal sent | Sam | 2026-10-01 | await answer |\n| Yew | | Discovery | | 2026-09-28 | call |\n| Elm | leo@elm.example | Discovery | Sam | 2026-11-01 | deck |\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_contact",
+       {
+        "action": "list",
+        "book": "missing"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Pipeline"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "p1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "CRM hygiene — 2026-11-13",
+        "content": "CRM hygiene — 2026-11-13\n5 fixes: 1 duplicate, 2 missing, 2 stale\n\n## Duplicates\n- not checked: the contacts store did not answer.\n\n## Missing\n- Yew — no contact email and no owner on the pipeline line. Fix: add both or park the deal.\n- Cal (Cedar Ltd) — contact record has no phone. Fix: add from the last signature block.\n\n## Stale\n| Account | Stage | Last touch | Days |\n| --- | --- | --- | --- |\n| Cedar Ltd | Proposal sent | 2026-10-01 | 43 |\n| Yew | Discovery | 2026-09-28 | 46 |\n\n## Fix list\n1. c12 / c41 — merge Ana Ruiz once the current email is confirmed.\n2. Pipeline, Yew — add contact and owner.\n3. c7 (Cal) — add phone.\n4. Pipeline, Cedar Ltd — touch or move to Stalled.\n5. Pipeline, Yew — touch or close.\n\n## Checked\n- contacts were not read (manage_contact answered an error); run again; \"Pipeline\" read (4 lines). Nothing was changed.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Pipeline half only: Yew lacks a contact and owner, Cedar and Yew are stale. Contacts were not read — run again.\n\n## Report\n- manage_contact failed; read \"Pipeline\" (4 lines); wrote \"CRM hygiene — 2026-11-13\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "CRM hygiene",
+      "contains": [
+       "contacts were not read"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-pipeline-line-that-cannot-be-parsed",
+   "about": "A line with no stage or account goes under Missing as an unreadable line for the Pipeline Keeper.",
+   "inputs": {
+    "pipeline": "Pipeline",
+    "stale": "30",
+    "at": "16:00"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "p1",
+      "title": "Pipeline",
+      "content": "Pipeline\n| Account | Contact | Stage | Owner | Last touch | Next step |\n| --- | --- | --- | --- | --- | --- |\n| Acme Ltd | ana@acme.example | Proposal sent | Sam | 2026-11-03 | two-year pricing |\n| Cedar Ltd | cal@cedar.example | Proposal sent | Sam | 2026-10-01 | await answer |\n| Yew | | Discovery | | 2026-09-28 | call |\n| Elm | leo@elm.example | Discovery | Sam | 2026-11-01 | deck |\n| | | | | | call Bo? |\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_contact",
+       {
+        "action": "list"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Pipeline"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "p1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "CRM hygiene — 2026-11-13",
+        "content": "CRM hygiene — 2026-11-13\n6 fixes: 1 duplicate, 3 missing, 2 stale\n\n## Duplicates\n- Ana Ruiz, Acme Ltd — two records (uid c12: ana@acme.example; uid c41: ana.ruiz@acme.example). Fix: ask which email is current, then merge into one.\n\n## Missing\n- Yew — no contact email and no owner on the pipeline line. Fix: add both or park the deal.\n- Cal (Cedar Ltd) — contact record has no phone. Fix: add from the last signature block.\n\n- unreadable line: \"| | | | | | call Bo? |\" — no account, no stage. Fix: the Pipeline Keeper fills or removes it.\n\n## Stale\n| Account | Stage | Last touch | Days |\n| --- | --- | --- | --- |\n| Cedar Ltd | Proposal sent | 2026-10-01 | 43 |\n| Yew | Discovery | 2026-09-28 | 46 |\n\n## Fix list\n1. c12 / c41 — merge Ana Ruiz once the current email is confirmed.\n2. Pipeline, Yew — add contact and owner.\n3. c7 (Cal) — add phone.\n4. Pipeline, Cedar Ltd — touch or move to Stalled.\n5. Pipeline, Yew — touch or close.\n\n## Checked\n- 58 contacts listed; \"Pipeline\" read (4 lines). Nothing was changed.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "6 fixes, including one unreadable pipeline line (\"call Bo?\") with no account or stage.\n\n## Report\n- listed contacts; read \"Pipeline\" (5 lines); wrote \"CRM hygiene — 2026-11-13\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "CRM hygiene",
+      "contains": [
+       "unreadable line"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-hygiene-report-without-its-headings-fails",
+   "about": "The harness's own check: a CRM hygiene report without Duplicates, Missing, Stale, Fix list and Checked does not deliver, even after its repair pass.",
+   "inputs": {
+    "pipeline": "Pipeline",
+    "stale": "30",
+    "at": "16:00"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "p1",
+      "title": "Pipeline",
+      "content": "Pipeline\n| Account | Contact | Stage | Owner | Last touch | Next step |\n| --- | --- | --- | --- | --- | --- |\n| Acme Ltd | ana@acme.example | Proposal sent | Sam | 2026-11-03 | two-year pricing |\n| Cedar Ltd | cal@cedar.example | Proposal sent | Sam | 2026-10-01 | await answer |\n| Yew | | Discovery | | 2026-09-28 | call |\n| Elm | leo@elm.example | Discovery | Sam | 2026-11-01 | deck |\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_contact",
+       {
+        "action": "list"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "CRM hygiene — 2026-11-13",
+        "content": "Some fixes."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

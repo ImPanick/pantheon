@@ -1,0 +1,364 @@
+{
+ "cases": [
+  {
+   "id": "two-copyleft-one-unknown",
+   "about": "A Python project whose licence listing shows two copyleft packages and one with no licence: each sorted with what triggers it and what fixing it takes; nothing installed or changed.",
+   "inputs": {
+    "folder": "acme-orders",
+    "allowed": [
+     "MIT",
+     "BSD",
+     "Apache-2.0",
+     "ISC"
+    ]
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "ls",
+      "output": "requirements.txt\nsrc\ntests\nREADME.md"
+     },
+     {
+      "match": "pip-licenses",
+      "output": "[{\"Name\": \"fastapi\", \"Version\": \"0.141.0\", \"License\": \"MIT License\"}, {\"Name\": \"httpx\", \"Version\": \"0.28.1\", \"License\": \"BSD License\"}, {\"Name\": \"psycopg2\", \"Version\": \"2.9.9\", \"License\": \"GNU Library or Lesser General Public License (LGPL)\"}, {\"Name\": \"readline-gpl\", \"Version\": \"1.2\", \"License\": \"GNU General Public License v3 (GPLv3)\"}, {\"Name\": \"internal-metrics\", \"Version\": \"0.4\", \"License\": \"UNKNOWN\"}]"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "ls acme-orders"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd acme-orders && pip-licenses --format=json"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Licence audit — acme-orders",
+        "content": "Licence audit — acme-orders\n5 packages: 2 allowed, 2 copyleft, 1 unknown\n\n## Summary\n- Python (requirements.txt, 5 packages); allow-list MIT, BSD, Apache-2.0, ISC; read with `pip-licenses --format=json`.\n\n## Copyleft\n- psycopg2 2.9.9 — LGPL — direct — triggers on static linking; the wheel links dynamically; replacing it means pg8000 (BSD).\n- readline-gpl 1.2 — GPL-3.0 — direct — triggers on distribution; find a replacement or confirm the project is never distributed.\n\n## Unknown\n- internal-metrics 0.4 — licence field UNKNOWN; the package is the company's own; add a LICENSE to its repository.\n\n## Allowed\n| Package | Version | Licence |\n| --- | --- | --- |\n| fastapi | 0.141.0 | MIT |\n| httpx | 0.28.1 | BSD |\n\n## Not read\n- none\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "5 packages: 2 allowed, 2 copyleft (psycopg2 LGPL, readline-gpl GPL), 1 unknown.\n\n## Report\n- ran 2 commands; wrote \"Licence audit — acme-orders\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Licence audit — acme-orders",
+      "contains": [
+       "## Copyleft\n- psycopg2",
+       "readline-gpl 1.2 — GPL-3.0",
+       "## Unknown\n- internal-metrics",
+       "| fastapi | 0.141.0 | MIT |"
+      ],
+      "lacks": [
+       "## Allowed\n| Package | Version | Licence |\n| --- | --- | --- |\n| internal-metrics"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "no-lockfile-or-manifest",
+   "about": "The folder has no requirements, package.json, Cargo.toml or go.mod: Summary says so, every list says none, and the answer asks where the dependencies are declared.",
+   "inputs": {
+    "folder": "acme-orders",
+    "allowed": [
+     "MIT",
+     "BSD",
+     "Apache-2.0",
+     "ISC"
+    ]
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "ls",
+      "output": "notes.md\nphotos"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "ls acme-orders"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Licence audit — acme-orders",
+        "content": "Licence audit — acme-orders\n0 packages: 0 allowed, 0 copyleft, 0 unknown\n\n## Summary\n- No requirements, package.json, Cargo.toml or go.mod in acme-orders; nothing to read.\n\n## Copyleft\n- none\n\n## Unknown\n- none\n\n## Allowed\n- none\n\n## Not read\n- none\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "No manifest or lockfile in acme-orders — where are the dependencies declared?\n\n## Report\n- 1 command; wrote \"Licence audit — acme-orders\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Licence audit",
+      "contains": [
+       "## Copyleft\n- none"
+      ]
+     }
+    },
+    {
+     "not_called": "read_file"
+    }
+   ]
+  },
+  {
+   "id": "the-listing-command-fails",
+   "about": "pip-licenses is not installed: the error goes under Not read, the audit reads the requirements file by hand, and the counts say so.",
+   "inputs": {
+    "folder": "acme-orders",
+    "allowed": [
+     "MIT",
+     "BSD",
+     "Apache-2.0",
+     "ISC"
+    ]
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "ls",
+      "output": "requirements.txt\nsrc\ntests\nREADME.md"
+     },
+     {
+      "match": "pip-licenses",
+      "output": "bash: pip-licenses: command not found",
+      "exit_code": 127
+     }
+    ],
+    "files": {
+     "acme-orders/requirements.txt": "fastapi==0.141.0\nhttpx==0.28.1\n"
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "ls acme-orders"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd acme-orders && pip-licenses --format=json"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_file",
+       {
+        "path": "acme-orders/requirements.txt"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Licence audit — acme-orders",
+        "content": "Licence audit — acme-orders\n2 packages: 0 allowed, 0 copyleft, 2 unknown\n\n## Summary\n- Python (requirements.txt, 2 packages); allow-list MIT, BSD, Apache-2.0, ISC; the listing command failed, so the file was read by hand and no licence metadata was reachable.\n\n## Copyleft\n- none read\n\n## Unknown\n- fastapi 0.141.0 — no metadata read; look at its LICENSE on PyPI.\n- httpx 0.28.1 — no metadata read; look at its LICENSE on PyPI.\n\n## Allowed\n- none confirmed\n\n## Not read\n- `pip-licenses --format=json` failed: \"bash: pip-licenses: command not found\" (exit 127).\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "2 packages, both unknown: pip-licenses is not installed, so only the names were read.\n\n## Report\n- 1 command failed, 1 file read; wrote \"Licence audit — acme-orders\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Licence audit",
+      "contains": [
+       "## Not read\n- `pip-licenses",
+       "command not found"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "it-never-guesses-a-licence-or-installs",
+   "about": "A package whose metadata is empty stays unknown however well known its name, and no install, update or write command is run.",
+   "inputs": {
+    "folder": "acme-orders",
+    "allowed": [
+     "MIT",
+     "BSD",
+     "Apache-2.0",
+     "ISC"
+    ]
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "ls",
+      "output": "requirements.txt\nsrc\ntests\nREADME.md"
+     },
+     {
+      "match": "pip-licenses",
+      "output": "[{\"Name\": \"requests\", \"Version\": \"2.32.0\", \"License\": \"UNKNOWN\"}]"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "ls acme-orders"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "cd acme-orders && pip-licenses --format=json"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Licence audit — acme-orders",
+        "content": "Licence audit — acme-orders\n1 package: 0 allowed, 0 copyleft, 1 unknown\n\n## Summary\n- Python (requirements.txt, 1 package); allow-list MIT, BSD, Apache-2.0, ISC; read with `pip-licenses --format=json`.\n\n## Copyleft\n- none\n\n## Unknown\n- requests 2.32.0 — licence field UNKNOWN in the installed metadata; read the LICENSE in its repository before sorting it.\n\n## Allowed\n- none\n\n## Not read\n- none\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "1 package, unknown: requests' metadata carries no licence; not guessed.\n\n## Report\n- ran 2 commands; wrote \"Licence audit — acme-orders\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Licence audit",
+      "contains": [
+       "## Unknown\n- requests"
+      ],
+      "lacks": [
+       "| requests | 2.32.0 | Apache",
+       "pip install"
+      ]
+     }
+    },
+    {
+     "not_called": "edit_file"
+    }
+   ]
+  },
+  {
+   "id": "an-audit-without-its-headings-fails",
+   "about": "The harness's own check: a licence audit without Summary, Copyleft, Unknown, Allowed and Not read does not deliver, even after its repair pass.",
+   "inputs": {
+    "folder": "acme-orders",
+    "allowed": [
+     "MIT",
+     "BSD",
+     "Apache-2.0",
+     "ISC"
+    ]
+   },
+   "world": {
+    "shell": [
+     {
+      "match": "ls",
+      "output": "requirements.txt\nsrc\ntests\nREADME.md"
+     },
+     {
+      "match": "pip-licenses",
+      "output": "[{\"Name\": \"fastapi\", \"Version\": \"0.141.0\", \"License\": \"MIT License\"}, {\"Name\": \"httpx\", \"Version\": \"0.28.1\", \"License\": \"BSD License\"}, {\"Name\": \"psycopg2\", \"Version\": \"2.9.9\", \"License\": \"GNU Library or Lesser General Public License (LGPL)\"}, {\"Name\": \"readline-gpl\", \"Version\": \"1.2\", \"License\": \"GNU General Public License v3 (GPLv3)\"}, {\"Name\": \"internal-metrics\", \"Version\": \"0.4\", \"License\": \"UNKNOWN\"}]"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "bash",
+       {
+        "command": "ls acme-orders"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Licence audit — acme-orders",
+        "content": "Two GPL-ish packages, one unknown."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

@@ -1,0 +1,495 @@
+{
+ "cases": [
+  {
+   "id": "two-visuals-two-captions",
+   "about": "Two made images get a caption whose first line stands alone, alt text that says what is in the picture without \"image of\", and tags from the research.",
+   "inputs": {
+    "visuals": "Visuals",
+    "guide": "Brand voice",
+    "hooks": "Hooks and hashtags",
+    "platform": "Instagram"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "g1",
+      "title": "Brand voice",
+      "content": "Brand voice\n§2 No exclamation marks.\n§4 Say \"we\", never \"our team\".\n§5 One question per post.\n§6 Never red; brand colours are dark blue, cream and amber."
+     },
+     {
+      "id": "v1",
+      "title": "Visuals — Posts — week of 2026-11-10",
+      "content": "Visuals — Posts — week of 2026-11-10\n2 made, 0 briefed, 0 not made\n## Made\n- 1 · images/card-1.png · Tuesday · a dark blue card reading \"61 tried · 56 kept\"\n- 2 · images/chart-2.png · Thursday · two bars, 14 and 5, standing meetings before and after\n## Alt text\n- 1: Dark blue card reading \"61 tried · 56 kept\".\n- 2: Two amber bars, 14 and 5.\n"
+     },
+     {
+      "id": "h1",
+      "title": "Hooks and hashtags — four-day week, 2026-11-10",
+      "content": "Hooks and hashtags — four-day week, 2026-11-10\n## Hooks\n1. \"61 companies tried a four-day week for six months; 56 kept it.\" [1]\n2. \"We did not give people Friday off. We took Friday's work away.\" [2]\n## Hashtags\n- LinkedIn: #fourdayweek #futureofwork\n- X: #4dayweek\n## Sources\n1. example.org/pilot — \"56 of 61 companies will continue\"; \"revenue flat\".\n2. blog.example/fifth-day — \"14 standing meetings cut to 5.\"\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Brand voice"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "g1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Visuals"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "v1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Hooks and hashtags"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "h1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Captions — Visuals — Posts — week of 2026-11-10",
+        "content": "Captions — Visuals — Posts — week of 2026-11-10\n2 captions for 2 visuals; lead with: the 61/56 card\n\n## Captions\n- Tuesday · the 61/56 card\n  61 companies tried a four-day week. 56 kept it.\n  Revenue stayed flat. The five that went back are Thursday's story.\n  Would yours keep it?\n- Thursday · the meeting chart\n  14 standing meetings became 5. That was the four-day week.\n  Nobody lost a day of work; they lost nine meetings a week.\n  Count yours and tell us the number.\n\n## Alt text\n- Tuesday: Dark blue card reading \"61 tried · 56 kept\".\n- Thursday: Two amber bars on dark blue, 14 and 5, standing meetings before and after.\n\n## Hashtags\n- Tuesday: #fourdayweek\n- Thursday: #fourdayweek #worksmarter\n\n## Not written\n- none\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "2 captions; lead with the 61/56 card (\"61 companies tried a four-day week. 56 kept it.\").\n\n## Report\n- read \"Brand voice\", the visuals and the hooks; wrote \"Captions — Visuals — Posts — week of 2026-11-10\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Captions",
+      "contains": [
+       "  61 companies tried a four-day week. 56 kept it.",
+       "## Alt text\n- Tuesday: Dark blue card"
+      ],
+      "lacks": [
+       "image of",
+       "swipe"
+      ]
+     }
+    },
+    {
+     "not_called": "post_social"
+    }
+   ]
+  },
+  {
+   "id": "no-visuals",
+   "about": "The visuals document has none and none were described: the document is written with Captions saying none and the answer asks for the visuals.",
+   "inputs": {
+    "visuals": "Visuals",
+    "guide": "Brand voice",
+    "hooks": "Hooks and hashtags",
+    "platform": "Instagram"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "g1",
+      "title": "Brand voice",
+      "content": "Brand voice\n§2 No exclamation marks.\n§4 Say \"we\", never \"our team\".\n§5 One question per post.\n§6 Never red; brand colours are dark blue, cream and amber."
+     },
+     {
+      "id": "v1",
+      "title": "Visuals — empty",
+      "content": "Visuals — empty\n## Made\n- none\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Brand voice"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "g1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Visuals"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "v1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Hooks and hashtags"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Captions — Visuals — empty",
+        "content": "Captions — Visuals — empty\n0 captions for 0 visuals; lead with: none\n\n## Captions\n- none: the visuals document holds no images.\n\n## Alt text\n- none\n\n## Hashtags\n- none\n\n## Not written\n- none\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "No captions: the visuals document holds no images. Run the Visual Creator first, or describe the images.\n\n## Report\n- read \"Brand voice\" and \"Visuals — empty\"; wrote \"Captions — Visuals — empty\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Captions",
+      "contains": [
+       "## Captions\n- none"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "the-visuals-document-cannot-be-read",
+   "about": "No visuals document matches: nothing is captioned for it, and the answer says what was skipped.",
+   "inputs": {
+    "visuals": "Visuals",
+    "guide": "Brand voice",
+    "hooks": "Hooks and hashtags",
+    "platform": "Instagram"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "g1",
+      "title": "Brand voice",
+      "content": "Brand voice\n§2 No exclamation marks.\n§4 Say \"we\", never \"our team\".\n§5 One question per post.\n§6 Never red; brand colours are dark blue, cream and amber."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Brand voice"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "g1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Visuals"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Hooks and hashtags"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Captions — Visuals, 2026-11-10",
+        "content": "Captions — Visuals, 2026-11-10\n0 captions for 0 visuals; lead with: none\n\n## Captions\n- none\n\n## Alt text\n- none\n\n## Hashtags\n- none\n\n## Not written\n- \"Visuals\": no document by that title was found; nothing was captioned for it.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Nothing captioned: no document titled \"Visuals\" was found.\n\n## Report\n- read \"Brand voice\"; no \"Visuals\"; wrote \"Captions — Visuals, 2026-11-10\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Captions",
+      "contains": [
+       "no document by that title was found"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-visual-contradicts-its-slot",
+   "about": "The slot says the new price and the card reads the old one: no caption for it; both are quoted and the person is asked which is right.",
+   "inputs": {
+    "visuals": "Visuals",
+    "guide": "Brand voice",
+    "hooks": "Hooks and hashtags",
+    "platform": "Instagram"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "g1",
+      "title": "Brand voice",
+      "content": "Brand voice\n§2 No exclamation marks.\n§4 Say \"we\", never \"our team\".\n§5 One question per post.\n§6 Never red; brand colours are dark blue, cream and amber."
+     },
+     {
+      "id": "v1",
+      "title": "Visuals — pricing",
+      "content": "Visuals — pricing\n## Made\n- 1 · images/price.png · Monday · the new price card, slot: \"announce £12 a seat\"; the card reads \"£15 a seat\"\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Brand voice"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "g1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Visuals"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "v1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Hooks and hashtags"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Captions — Visuals — pricing",
+        "content": "Captions — Visuals — pricing\n0 captions for 1 visual; lead with: none\n\n## Captions\n- none\n\n## Alt text\n- Monday: Card reading \"£15 a seat\".\n\n## Hashtags\n- none\n\n## Not written\n- Monday: the slot says \"announce £12 a seat\" and the card reads \"£15 a seat\". Which is right? No caption until the card or the slot is fixed.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Not written: Monday's card reads £15 a seat and the slot says £12 — which is right?\n\n## Report\n- read 2 documents; wrote \"Captions — Visuals — pricing\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Captions",
+      "contains": [
+       "£15 a seat",
+       "£12 a seat"
+      ],
+      "lacks": [
+       "Now £12"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "captions-without-their-headings-fail",
+   "about": "The harness's own check: a captions document without Captions, Alt text, Hashtags and Not written does not deliver, even after its repair pass.",
+   "inputs": {
+    "visuals": "Visuals",
+    "guide": "Brand voice",
+    "hooks": "Hooks and hashtags",
+    "platform": "Instagram"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "g1",
+      "title": "Brand voice",
+      "content": "Brand voice\n§2 No exclamation marks.\n§4 Say \"we\", never \"our team\".\n§5 One question per post.\n§6 Never red; brand colours are dark blue, cream and amber."
+     },
+     {
+      "id": "v1",
+      "title": "Visuals — Posts — week of 2026-11-10",
+      "content": "Visuals — Posts — week of 2026-11-10\n2 made, 0 briefed, 0 not made\n## Made\n- 1 · images/card-1.png · Tuesday · a dark blue card reading \"61 tried · 56 kept\"\n- 2 · images/chart-2.png · Thursday · two bars, 14 and 5, standing meetings before and after\n## Alt text\n- 1: Dark blue card reading \"61 tried · 56 kept\".\n- 2: Two amber bars, 14 and 5.\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Brand voice"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Captions — Visuals — Posts — week of 2026-11-10",
+        "content": "Here it is."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

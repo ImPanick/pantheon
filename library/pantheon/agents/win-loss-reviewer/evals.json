@@ -1,0 +1,377 @@
+{
+ "cases": [
+  {
+   "id": "seven-closed-deals-two-patterns",
+   "about": "Seven closed deals in the window: two groups of three or more become patterns, reasons stay under Too few to say, and one thing to do differently is named.",
+   "inputs": {
+    "pipeline": "Pipeline",
+    "months": "3"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "p1",
+      "title": "Pipeline",
+      "content": "Pipeline\n| Account | Stage | Value | Source | Closed | Reason | Days |\n| --- | --- | --- | --- | --- | --- | --- |\n| Yew | Won | 24000 | referral | 2026-10-01 | fit | 30 |\n| Ash | Won | 18000 | inbound | 2026-09-12 | fit | 35 |\n| Fir | Won | 9000 | inbound | 2026-10-20 | price ok | 28 |\n| Oak | Lost | 30000 | outbound | 2026-09-30 | price | 60 |\n| Pine | Lost | 12000 | outbound | 2026-10-05 | no decision | 72 |\n| Teak | Lost | 15000 | outbound | 2026-10-25 | competitor | 55 |\n| Maple | Lost | 8000 | outbound | 2026-08-28 | price | 51 |\n"
+     },
+     {
+      "id": "dn1",
+      "title": "Deal notes — 2026-10-05",
+      "content": "Pine: no decision after 72 days."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Pipeline"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "p1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Deal notes"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "dn1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Win-loss review — 2026-11",
+        "content": "Win-loss review — 2026-11\n43% won by count (3 of 7), 44% by value; pattern: outbound lost 4 of 4 and every loss ran past 50 days\n\n## Won\n| Account | Value | Source | Days | Reason |\n| --- | --- | --- | --- | --- |\n| Yew | 24000 | referral | 30 | fit |\n| Ash | 18000 | inbound | 35 | fit |\n| Fir | 9000 | inbound | 28 | price ok |\n\n## Lost\n| Account | Value | Source | Days | Reason |\n| --- | --- | --- | --- | --- |\n| Oak | 30000 | outbound | 60 | price |\n| Pine | 12000 | outbound | 72 | no decision |\n| Teak | 15000 | outbound | 55 | competitor |\n| Maple | 8000 | outbound | 51 | price |\n\n## Patterns\n- By source: outbound lost 4 of 4; inbound and referral won 3 of 3.\n- By length: every loss ran over 50 days; every win closed under 36.\n\n## Do differently\n- Qualify outbound harder before Proposal sent; add a 45-day check that asks for a decision date.\n\n## Too few to say\n- By reason: price 2, no decision 1, competitor 1 — no reason reaches three.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "43% won by count, 44% by value; outbound lost 4 of 4 and every loss ran past 50 days — qualify outbound harder and add a 45-day check.\n\n## Report\n- read \"Pipeline\" (7 closed deals) and 1 deal notes; wrote \"Win-loss review — 2026-11\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Win-loss review",
+      "contains": [
+       "outbound lost 4 of 4",
+       "## Too few to say\n- By reason: price 2"
+      ]
+     }
+    },
+    {
+     "not_called": "update_document"
+    }
+   ]
+  },
+  {
+   "id": "no-closed-deals",
+   "about": "Nothing Won or Lost in the window: Won and Lost say none, nothing is concluded, and the answer gives the date when three months will have passed.",
+   "inputs": {
+    "pipeline": "Pipeline",
+    "months": "3"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "p1",
+      "title": "Pipeline",
+      "content": "Pipeline\n| Account | Contact | Stage | Owner | Last touch | Next step |\n| --- | --- | --- | --- | --- | --- |\n| Acme Ltd | ana@acme.example | Proposal sent | Sam | 2026-11-03 | two-year pricing |\n| Birch & Co | bo@birch.example | Proposal sent | Sam | 2026-10-29 | check in |\n| Cedar Ltd | cal@cedar.example | Proposal sent | Sam | 2026-10-20 | await answer |\n| Elm | leo@elm.example | Discovery | Sam | 2026-10-28 | send the deck |\n| Yew | | Won | Sam | 2026-10-01 | — |\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Pipeline"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "p1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Deal notes"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Win-loss review — 2026-11",
+        "content": "Win-loss review — 2026-11\nno closed deals in the window; nothing can be said yet\n\n## Won\n- none in the last 3 months (Yew closed 2026-10-01 with no value or reason recorded).\n\n## Lost\n- none\n\n## Patterns\n- nothing can be said yet.\n\n## Do differently\n- record value, source and reason on each close so the next review has something to read.\n\n## Too few to say\n- everything: come back on 2027-02-03.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "No closed deals with a value and a reason in the window; nothing to conclude until 2027-02-03.\n\n## Report\n- read \"Pipeline\" (0 reviewable closes); wrote \"Win-loss review — 2026-11\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Win-loss review",
+      "contains": [
+       "## Lost\n- none",
+       "2027-02-03"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "the-pipeline-cannot-be-read",
+   "about": "No pipeline document: the review is written with every heading saying the pipeline was not read, and the answer says so.",
+   "inputs": {
+    "pipeline": "Pipeline",
+    "months": "3"
+   },
+   "world": {
+    "documents": []
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Pipeline"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Win-loss review — 2026-11",
+        "content": "Win-loss review — 2026-11\nthe pipeline was not read: no document titled \"Pipeline\"\n\n## Won\n- not read\n\n## Lost\n- not read\n\n## Patterns\n- none: the pipeline was not read.\n\n## Do differently\n- create or rename the pipeline document so it is titled \"Pipeline\", then run again.\n\n## Too few to say\n- everything\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "No review this month: no document titled \"Pipeline\" was found, so there are no closed deals to read.\n\n## Report\n- no document titled \"Pipeline\"; wrote \"Win-loss review — 2026-11\" with nothing in it"
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Win-loss review",
+      "contains": [
+       "the pipeline was not read"
+      ]
+     }
+    },
+    {
+     "answer_contains": [
+      "No review"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "the-notes-and-the-pipeline-disagree-on-the-outcome",
+   "about": "The pipeline says Lost and the notes' last entry is a signed contract: reviewed as the notes say, the disagreement is first under Do differently as a pipeline fix.",
+   "inputs": {
+    "pipeline": "Pipeline",
+    "months": "3"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "p1",
+      "title": "Pipeline",
+      "content": "Pipeline\n| Account | Stage | Value | Source | Closed | Reason | Days |\n| --- | --- | --- | --- | --- | --- | --- |\n| Yew | Won | 24000 | referral | 2026-10-01 | fit | 30 |\n| Ash | Won | 18000 | inbound | 2026-09-12 | fit | 35 |\n| Fir | Won | 9000 | inbound | 2026-10-20 | price ok | 28 |\n| Oak | Lost | 30000 | outbound | 2026-09-30 | price | 60 |\n| Pine | Lost | 12000 | outbound | 2026-10-05 | no decision | 72 |\n| Teak | Lost | 15000 | outbound | 2026-10-25 | competitor | 55 |\n| Maple | Lost | 8000 | outbound | 2026-08-28 | price | 51 |\n"
+     },
+     {
+      "id": "dn2",
+      "title": "Deal notes — 2026-10-26",
+      "content": "Teak: signed contract received 2026-10-25; stage Won."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Pipeline"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "p1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Deal notes"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "dn2"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Win-loss review — 2026-11",
+        "content": "Win-loss review — 2026-11\n57% won by count (4 of 7), 57% by value; Teak reviewed as Won per the deal notes though the pipeline says Lost\n\n## Won\n| Account | Value | Source | Days | Reason |\n| --- | --- | --- | --- | --- |\n| Yew | 24000 | referral | 30 | fit |\n| Ash | 18000 | inbound | 35 | fit |\n| Fir | 9000 | inbound | 28 | price ok |\n\n| Teak | 15000 | outbound | 55 | signed 2026-10-25 (deal notes) |\n\n## Lost\n| Account | Value | Source | Days | Reason |\n| --- | --- | --- | --- | --- |\n| Oak | 30000 | outbound | 60 | price |\n| Pine | 12000 | outbound | 72 | no decision |\n| Maple | 8000 | outbound | 51 | price |\n\n## Patterns\n- By source: outbound lost 3 of 4; inbound and referral won 3 of 3.\n- By length: every loss ran over 50 days; every win closed under 36.\n\n## Do differently\n- Pipeline fix first: Teak is Lost in the pipeline and Won in the deal notes of 2026-10-26 — the Pipeline Keeper should set it Won.\n- Qualify outbound harder before Proposal sent; add a 45-day check that asks for a decision date.\n\n## Too few to say\n- By reason: price 2, no decision 1, competitor 1 — no reason reaches three.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "57% won; Teak is Won in the notes but Lost in the pipeline — fix the pipeline first; outbound still lost 3 of 4.\n\n## Report\n- read \"Pipeline\" (7 closed deals) and 1 deal notes; wrote \"Win-loss review — 2026-11\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Win-loss review",
+      "contains": [
+       "Pipeline fix first: Teak"
+      ]
+     }
+    },
+    {
+     "not_called": "update_document"
+    }
+   ]
+  },
+  {
+   "id": "a-review-without-its-headings-fails",
+   "about": "The harness's own check: a win-loss review without Won, Lost, Patterns, Do differently and Too few to say does not deliver, even after its repair pass.",
+   "inputs": {
+    "pipeline": "Pipeline",
+    "months": "3"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "p1",
+      "title": "Pipeline",
+      "content": "Pipeline\n| Account | Stage | Value | Source | Closed | Reason | Days |\n| --- | --- | --- | --- | --- | --- | --- |\n| Yew | Won | 24000 | referral | 2026-10-01 | fit | 30 |\n| Ash | Won | 18000 | inbound | 2026-09-12 | fit | 35 |\n| Fir | Won | 9000 | inbound | 2026-10-20 | price ok | 28 |\n| Oak | Lost | 30000 | outbound | 2026-09-30 | price | 60 |\n| Pine | Lost | 12000 | outbound | 2026-10-05 | no decision | 72 |\n| Teak | Lost | 15000 | outbound | 2026-10-25 | competitor | 55 |\n| Maple | Lost | 8000 | outbound | 2026-08-28 | price | 51 |\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Pipeline"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Win-loss review — 2026-11",
+        "content": "We won some."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

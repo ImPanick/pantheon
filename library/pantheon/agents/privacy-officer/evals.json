@@ -1,0 +1,374 @@
+{
+ "cases": [
+  {
+   "id": "two-gaps-ship-with-fixes",
+   "about": "A spec that stores a phone number with no retention and hands it to an unnamed provider: four data items tabled, two gaps quoting the spec and the policy, a pasteable fix for each.",
+   "inputs": {
+    "spec": "Spec — Order reminders by SMS",
+    "region": "UK"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "sp1",
+      "title": "Spec — Order reminders by SMS",
+      "content": "Spec — Order reminders by SMS\n\nWhen a customer opts in at checkout we store their phone number with the order and send a reminder the day before delivery. The number is handed to the SMS provider. Order history picks the reminder time. Delivery status stops the reminders; it is kept 30 days.\n"
+     },
+     {
+      "id": "pp1",
+      "title": "Privacy policy",
+      "content": "Privacy policy\n\n§4 Contact details are kept 12 months after the last order.\n§6 Processors: Ledgerly (invoicing), Cloudbox (hosting). Each processor is named here and under a data processing agreement.\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Spec — Order reminders by SMS"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "sp1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Privacy policy"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "pp1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Privacy review — Spec — Order reminders by SMS",
+        "content": "Privacy review — Spec — Order reminders by SMS\nship with fixes: 4 data items, 2 gaps\n\n## Verdict\nShip with fixes: the phone number and order history have a purpose and a home, but the spec keeps the number with no end date and sends it to an SMS provider it does not name.\n\n## Data touched\n| Item | Purpose | Where it goes | Kept for | Who sees it | Told? |\n| --- | --- | --- | --- | --- | --- |\n| Phone number | send the reminder | orders table; \"the SMS provider\" | not stated | support, the provider | yes, at opt-in |\n| Order history | pick the reminder time | orders table | per the policy, 12 months | support | yes |\n| Opt-in time | prove consent | orders table | with the number | support | no |\n| Delivery status | stop reminders | orders table | 30 days | support | no |\n\n## Gaps\n- Phone number — \"store their phone number with the order\" — Privacy policy §4: \"Contact details are kept 12 months after the last order\"; the spec names no period.\n- Phone number — \"handed to the SMS provider\" — Privacy policy §6 names each processor; the provider is unnamed.\n\n## Fixes\n- Add: \"Phone numbers are deleted 12 months after the customer's last order, with the rest of their contact details.\"\n- Add: \"SMS is sent through <provider>, under a data processing agreement; the provider is added to §6 before launch.\"\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Ship with fixes: 4 data items, 2 gaps (retention and an unnamed SMS provider).\n\n## Report\n- read the spec and the privacy policy; wrote \"Privacy review — Spec — Order reminders by SMS\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Privacy review — Spec — Order reminders by SMS",
+      "contains": [
+       "## Verdict\nShip with fixes",
+       "| Phone number |",
+       "## Gaps\n- Phone number — \"store their phone number",
+       "## Fixes\n- Add:"
+      ],
+      "lacks": [
+       "encrypted",
+       "do not ship"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "no-spec-has-that-title",
+   "about": "Nothing lists under the title: the verdict is cannot review, Data touched says none, and the answer asks for the title as it reads.",
+   "inputs": {
+    "spec": "Spec — Order reminders by SMS",
+    "region": "UK"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "pp1",
+      "title": "Privacy policy",
+      "content": "Privacy policy\n\n§4 Contact details are kept 12 months after the last order.\n§6 Processors: Ledgerly (invoicing), Cloudbox (hosting). Each processor is named here and under a data processing agreement.\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Spec — Order reminders by SMS"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Privacy review — Spec — Order reminders by SMS",
+        "content": "Privacy review — Spec — Order reminders by SMS\ncannot review: 0 data items, 0 gaps\n\n## Verdict\nCannot review: no document lists under \"Spec — Order reminders by SMS\".\n\n## Data touched\n- none: nothing was read.\n\n## Gaps\n- none\n\n## Fixes\n- none\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Cannot review: no spec with that title — what is it called in your documents?\n\n## Report\n- nothing listed; wrote \"Privacy review — Spec — Order reminders by SMS\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Privacy review",
+      "contains": [
+       "Cannot review"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "the-spec-cannot-be-read",
+   "about": "The read answers an error: the verdict is cannot review with the error quoted under Gaps.",
+   "inputs": {
+    "spec": "Spec — Order reminders by SMS",
+    "region": "UK"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "pp1",
+      "title": "Privacy policy",
+      "content": "Privacy policy\n\n§4 Contact details are kept 12 months after the last order.\n§6 Processors: Ledgerly (invoicing), Cloudbox (hosting). Each processor is named here and under a data processing agreement.\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Spec — Order reminders by SMS"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "sp-missing"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Privacy review — Spec — Order reminders by SMS",
+        "content": "Privacy review — Spec — Order reminders by SMS\ncannot review: 0 data items, 0 gaps\n\n## Verdict\nCannot review: the spec would not open.\n\n## Data touched\n- none\n\n## Gaps\n- the read answered an error: no document with that id.\n\n## Fixes\n- none\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Cannot review: the spec would not open.\n\n## Report\n- the read failed; wrote \"Privacy review — Spec — Order reminders by SMS\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Privacy review",
+      "contains": [
+       "would not open"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "it-never-assumes-a-safeguard",
+   "about": "A spec silent on encryption and deletion: the review does not credit either, the verdict is not ship, and nothing is rewritten in the spec.",
+   "inputs": {
+    "spec": "Spec — Order reminders by SMS",
+    "region": "UK"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "sp1",
+      "title": "Spec — Order reminders by SMS",
+      "content": "Spec — Order reminders by SMS\n\nWhen a customer opts in at checkout we store their phone number with the order and send a reminder the day before delivery. The number is handed to the SMS provider. Order history picks the reminder time. Delivery status stops the reminders; it is kept 30 days.\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Spec — Order reminders by SMS"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "sp1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Privacy policy"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Privacy review — Spec — Order reminders by SMS",
+        "content": "Privacy review — Spec — Order reminders by SMS\nship with fixes: 4 data items, 3 gaps\n\n## Verdict\nShip with fixes: no policy is in the documents, so the UK rules apply; the phone number has no retention period, no named processor and no stated way for the customer to see or delete it.\n\n## Data touched\n| Item | Purpose | Where it goes | Kept for | Who sees it | Told? |\n| --- | --- | --- | --- | --- | --- |\n| Phone number | send the reminder | orders table; \"the SMS provider\" | not stated | support, the provider | yes, at opt-in |\n| Order history | pick the reminder time | orders table | not stated | support | yes |\n| Opt-in time | prove consent | orders table | not stated | support | no |\n| Delivery status | stop reminders | orders table | 30 days | support | no |\n\n## Gaps\n- Phone number — \"store their phone number with the order\" — UK rules: a retention period per item; none stated.\n- Phone number — \"handed to the SMS provider\" — UK rules: processors named and under contract; the provider is unnamed.\n- Phone number — no line gives the customer a way to see or delete it.\n\n## Fixes\n- Add a retention period for the number.\n- Name the SMS provider and its agreement.\n- Add: \"Customers can remove their number from Account → Notifications.\"\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Ship with fixes: 3 gaps; no policy was found, so the UK rules were applied.\n\n## Report\n- read the spec; no privacy policy listed; wrote \"Privacy review — Spec — Order reminders by SMS\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Privacy review",
+      "contains": [
+       "not stated"
+      ],
+      "lacks": [
+       "encrypted",
+       "is deleted after",
+       "## Verdict\nShip:"
+      ]
+     }
+    },
+    {
+     "not_called": "edit_document"
+    }
+   ]
+  },
+  {
+   "id": "a-review-without-its-headings-fails",
+   "about": "The harness's own check: a privacy review without Verdict, Data touched, Gaps and Fixes does not deliver, even after its repair pass.",
+   "inputs": {
+    "spec": "Spec — Order reminders by SMS",
+    "region": "UK"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "sp1",
+      "title": "Spec — Order reminders by SMS",
+      "content": "Spec — Order reminders by SMS\n\nWhen a customer opts in at checkout we store their phone number with the order and send a reminder the day before delivery. The number is handed to the SMS provider. Order history picks the reminder time. Delivery status stops the reminders; it is kept 30 days.\n"
+     },
+     {
+      "id": "pp1",
+      "title": "Privacy policy",
+      "content": "Privacy policy\n\n§4 Contact details are kept 12 months after the last order.\n§6 Processors: Ledgerly (invoicing), Cloudbox (hosting). Each processor is named here and under a data processing agreement.\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Spec — Order reminders by SMS"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "sp1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Privacy review — Spec — Order reminders by SMS",
+        "content": "Looks fine, name the provider."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

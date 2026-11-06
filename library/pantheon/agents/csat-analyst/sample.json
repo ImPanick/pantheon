@@ -1,0 +1,28 @@
+{
+ "case": "eight-ratings-two-causes",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read 8 rating mails and 1 community note; wrote \"Support quality — week of 2026-11-02\"",
+ "read": [
+  "search_emails",
+  "read_email",
+  "manage_documents"
+ ],
+ "wrote": [
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Support quality”",
+   "ok": true,
+   "detail": "“Support quality — week of 2026-11-02” is there."
+  }
+ ],
+ "answer": "2.9 of 5 from 8 ratings, 5 low; top cause: wrong answer about exports.\n\n## Report\n- read 8 rating mails and 1 community note; wrote \"Support quality — week of 2026-11-02\"",
+ "documents": [
+  {
+   "title": "Support quality — week of 2026-11-02",
+   "content": "Support quality — week of 2026-11-02\n2.9 of 5 from 8 ratings, 5 low; top cause: wrong answer about exports\n\n## Numbers\n- 8 ratings, average 2.9 of 5, 5 low (1–2 stars), 3 five-star.\n- Last week's note is not in the documents; no change given.\n\n## Top causes\n1. Wrong answer about exports — 2 low ratings (Mon, Wed): both were told CSV export was not possible; it is.\n2. Slow first reply — 2 low ratings (Tue, Wed): each waited days for a first reply; the public billing complaint (Community replies, 4 days unanswered) says the same.\n\n## Quotes\n- \"Three days for a first reply is not support, it is a suggestion box.\" — M., Tue\n- \"Was told there is no CSV export. There is. Found it myself.\" — J., Wed\n- \"Quick, clear, fixed in one go.\" — A., Tue\n- \"Did not read my message, answered a different question.\" — R., Fri\n\n## Do next\n- The two wrong export answers: a reply template and a help article pointing at Orders → Export — the help article writer. The slow replies are a staffing question for the person.\n\n## Not counted\n- 1 low rating with no words (Fri, R.) is in the numbers and under no cause; 1 five-star with no words (Thu) likewise."
+  }
+ ]
+}

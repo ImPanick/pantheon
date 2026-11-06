@@ -169,6 +169,7 @@ BUILTIN_TOOL_DESCRIPTIONS: Dict[str, str] = {
     "download_attachment": "Download an email attachment to local disk and return its path, so it can then be opened with read_file. Use when the user asks about a file that arrived by email.",
     "resolve_contact": "Look up a contact's email address by name. Searches CardDAV address book and sent email history. Use when the user says 'message [name]', 'email [name]', or 'send to [name]' without an email address.",
     "manage_contact": "Save / update / delete / list address-book contacts (CardDAV). Use for info about ANOTHER person — name, email, phone, postal address. Args: action=list|add|update|delete, name, email, phones, address, uid (from list). For 'save this for <person>' / address pastes / phone numbers next to a name, this is the right tool — NOT manage_memory. Do NOT use for facts about the USER ('my name is X'); those are manage_memory.",
+    "ledger_table": "The person's ledger table: list, sum (by kind, category, counterparty, account, month or status), add, update, delete or import lines of money — income, expenses, invoices, bills, payroll, transfers, tax. For bookkeeping, what is owed and owing, budgets against spend, and cash-flow; a row of money never goes in a note or a document.",
     "manage_notes": "Create and manage notes and checklists (Google Keep-style). ALWAYS use this for note/todo/checklist/reminder creation — NEVER hit /api/notes via app_api. Accepts natural-language `due_date` like 'tomorrow at 9am' or '11pm today' (parsed in the USER'S timezone). The due_date IS the reminder — it fires a notification at that time, so do NOT also create a calendar event for the same reminder. Set colors, labels, pin, archive. Do NOT use manage_memory for note content.",
     "manage_calendar": "Calendar event management: list, create, update, delete. Each event can carry a tag/category (event_type — work/personal/health/travel/meal/social/admin/other) and importance (low/normal/high/critical). Resolve today/tomorrow using the Current date and time context, then use ISO datetimes in the user's local wall time; supports all-day events. Use rrule only for explicit recurrence; for update_event pass rrule='' to remove repeats. For event reminders/alarms, pass reminder_minutes; this creates the Notes reminder, so do not also call manage_notes for the same reminder.",
     "download_model": "Download a HuggingFace model to a local or remote server. Specify repo_id (e.g. 'Qwen/Qwen3-8B'), optional server host, and optional include filter for specific files.",
@@ -603,6 +604,11 @@ class ToolIndex:
             {"manage_bg_jobs"},
         frozenset({"note", "todo", "reminder", "remind", "checklist", "remember to"}):
             {"manage_notes"},
+        # `P24-30`. A row of money.
+        frozenset({"ledger", "bookkeeping", "invoice", "invoices", "bill", "bills", "expense",
+                   "expenses", "payroll", "cash flow", "cashflow", "budget", "owed", "owing",
+                   "receivable", "payable", "revenue this month", "spend this month"}):
+            {"ledger_table"},
         # `B1373`. The person's own procedures. `manage_skills` reached a turn
         # only when the catalogue shipped (`B1360`) — no hint named it, no domain
         # seeded it — so on a window the product cannot prove, where the suite

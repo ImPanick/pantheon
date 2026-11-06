@@ -1,0 +1,604 @@
+{
+ "cases": [
+  {
+   "id": "two-items-and-a-launch",
+   "about": "A calendar item and a launch announcement, a voice review that bans an opening word and a performance note that favours numbered threads: four drafts, shaped per platform, the fix applied.",
+   "inputs": {
+    "platforms": [
+     "X",
+     "LinkedIn"
+    ],
+    "voice": "plain, warm, direct",
+    "at": "09:00"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "cal1",
+      "title": "Content calendar — November 2026",
+      "content": "Content calendar — November 2026\n\n## Week of 9 Nov\n- Tue 10 Nov — How we cut the orders page to under a second (blog + social)\n- Thu 12 Nov — 2.4.0 launch\n\n## Week of 16 Nov\n- Tue 17 Nov — Customer story: Birch & Co\n"
+     },
+     {
+      "id": "la1",
+      "title": "Launch announcement — 2.4.0",
+      "content": "Launch announcement — 2.4.0\nShare a week's meal plan with one other person by email.\n\n## The one line\n2.4.0: share a week's meal plan with one other person by email — no account needed on their side.\n\n## Thread\n1/ 2.4.0 is out. Share a week's meal plan with one other person by email.\n2/ They get a link. No sign-up.\n"
+     },
+     {
+      "id": "vr1",
+      "title": "Voice review — Social drafts — week of 2026-11-02",
+      "content": "Voice review — Social drafts — week of 2026-11-02\nfix first: 3 passed, 1 fix\n\n## Fixes\n- \"Excited to share\" → open with the result — rule: \"Never open with excited, thrilled or proud.\"\n"
+     },
+     {
+      "id": "sp1",
+      "title": "Social performance — week of 2026-11-02",
+      "content": "Social performance — week of 2026-11-02\n\n## More of\n- Threads with a number in the first post.\n\n## Drop\n- Instagram how-to posts: no reach three weeks running.\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Content calendar"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "cal1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Launch announcement"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Voice review"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Social performance"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "la1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "vr1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "sp1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Social drafts — week of 2026-11-09",
+        "content": "Social drafts — week of 2026-11-09\n2 items, 4 drafts, 2 platforms\n\n## This week\n- Tue 10 Nov — How we cut the orders page to under a second (calendar).\n- Thu 12 Nov — 2.4.0 launch: share a meal plan by email (Launch announcement — 2.4.0).\n- The performance note said threads with a number did best; both items open with one on X.\n\n## Drafts\n### How we cut the orders page to under a second\n**X (thread)**\n1/ The orders page took 6 seconds for shops with 10,000 orders. Now 0.8. Here is what we changed.\n2/ One missing index. That was most of it.\n3/ If a page of yours is slow, look at what it loads and never shows.\n**LinkedIn**\nOur orders page took six seconds for busy shops. It now takes under one.\n\nMost of the gain was a single database index; the rest was loading less than we drew.\n\nThe write-up: <link>\n\n### 2.4.0 — share a meal plan by email\n**X**\nYou can now share a week's meal plan with one other person by email. One link, no account for them. In 2.4.0, out today.\n**LinkedIn**\n2.4.0 is out. The thing people asked for most: share a meal plan by email with one other person, no account needed on their side.\n\nNotes: <link>\n\n## Image briefs\n- Orders page: a before/after bar, 6.0 s and 0.8 s, the two numbers as the only words; 1600×900.\n- 2.4.0: the share screen with one email field; 1600×900.\n\n## Not drafted\n- Instagram: not among the platforms named.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "2 items, 4 drafts, 2 platforms.\n\n## Report\n- read the calendar, 1 announcement, 1 voice review and 1 performance note; wrote \"Social drafts — week of 2026-11-09\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Social drafts — week of 2026-11-09",
+      "contains": [
+       "## This week\n- Tue 10 Nov",
+       "**X (thread)**",
+       "## Image briefs\n- Orders page",
+       "## Not drafted"
+      ],
+      "lacks": [
+       "Excited to",
+       "Instagram how-to"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "nothing-on-the-calendar-this-week",
+   "about": "The calendar has no item this week and nothing was announced: Drafts says none for the calendar and three evergreen drafts follow, built from the performance note.",
+   "inputs": {
+    "platforms": [
+     "X",
+     "LinkedIn"
+    ],
+    "voice": "plain, warm, direct",
+    "at": "09:00"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "cal1",
+      "title": "Content calendar — November 2026",
+      "content": "Content calendar — November 2026\n\n## Week of 16 Nov\n- Tue 17 Nov — Customer story: Birch & Co\n"
+     },
+     {
+      "id": "sp1",
+      "title": "Social performance — week of 2026-11-02",
+      "content": "Social performance — week of 2026-11-02\n\n## More of\n- Threads with a number in the first post.\n\n## Drop\n- Instagram how-to posts: no reach three weeks running.\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Content calendar"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "cal1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Launch announcement"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Voice review"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Social performance"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "sp1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Social drafts — week of 2026-11-09",
+        "content": "Social drafts — week of 2026-11-09\n0 items, 3 drafts, 2 platforms\n\n## This week\n- none on the calendar; three evergreen drafts below, from the performance note's \"more of\".\n\n## Drafts\n### Evergreen — a number first (evergreen)\n**X (thread)**\n1/ 9 out of 10 slow pages we have seen load something they never show. Here is how to find yours.\n2/ Open the network tab, sort by size, ask of each row: where does this appear on the page?\n**LinkedIn**\nMost slow pages load something they never show. Sort the network tab by size and ask of each row where it appears. The answer is often nowhere.\n\n### Evergreen — a question to readers (evergreen)\n**X**\nWhat is the one report you still build by hand every Monday?\n**LinkedIn**\nWhat is the one report you still build by hand every Monday? Asking because ours was the orders summary, for two years.\n\n### Evergreen — a result (evergreen)\n**X**\nA shop with 10,000 orders: 6 seconds to 0.8 on the orders page. One index.\n**LinkedIn**\nOne index took a busy shop's orders page from six seconds to under one. The write-up: <link>\n\n## Image briefs\n- none: evergreen posts run as text.\n\n## Not drafted\n- Nothing from the calendar: its next item is 17 Nov.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "0 items, 3 evergreen drafts, 2 platforms.\n\n## Report\n- read the calendar and 1 performance note; wrote \"Social drafts — week of 2026-11-09\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Social drafts",
+      "contains": [
+       "none on the calendar",
+       "(evergreen)"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "the-calendar-cannot-be-read",
+   "about": "No content calendar lists at all; a launch announcement is there: its posts are drafted, Not drafted says the calendar was missing, and the answer asks for it.",
+   "inputs": {
+    "platforms": [
+     "X",
+     "LinkedIn"
+    ],
+    "voice": "plain, warm, direct",
+    "at": "09:00"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "la1",
+      "title": "Launch announcement — 2.4.0",
+      "content": "Launch announcement — 2.4.0\nShare a week's meal plan with one other person by email.\n\n## The one line\n2.4.0: share a week's meal plan with one other person by email — no account needed on their side.\n\n## Thread\n1/ 2.4.0 is out. Share a week's meal plan with one other person by email.\n2/ They get a link. No sign-up.\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Content calendar"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Launch announcement"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "la1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Voice review"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Social performance"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Social drafts — week of 2026-11-09",
+        "content": "Social drafts — week of 2026-11-09\n1 item, 2 drafts, 2 platforms\n\n## This week\n- Thu 12 Nov — 2.4.0 launch (Launch announcement — 2.4.0); no calendar could be read.\n\n## Drafts\n### 2.4.0 — share a meal plan by email\n**X**\nYou can now share a week's meal plan with one other person by email. One link, no account for them. In 2.4.0, out today.\n**LinkedIn**\n2.4.0 is out. Share a meal plan by email with one other person, no account needed on their side.\n\nNotes: <link>\n\n## Image briefs\n- 2.4.0: the share screen with one email field; 1600×900.\n\n## Not drafted\n- Everything from the calendar: no Content calendar is listed, so nothing from it could be read.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "1 item from the announcement; no calendar could be read — which document is it?\n\n## Report\n- no Content calendar listed; read 1 announcement; wrote \"Social drafts — week of 2026-11-09\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Social drafts",
+      "contains": [
+       "no Content calendar is listed"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "it-never-posts-or-replies",
+   "about": "The drafts are written and nothing is posted: the document is the only output, and no draft names a customer or carries a claim the calendar does not hold.",
+   "inputs": {
+    "platforms": [
+     "X",
+     "LinkedIn"
+    ],
+    "voice": "plain, warm, direct",
+    "at": "09:00"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "cal1",
+      "title": "Content calendar — November 2026",
+      "content": "Content calendar — November 2026\n\n## Week of 9 Nov\n- Tue 10 Nov — How we cut the orders page to under a second (blog + social)\n- Thu 12 Nov — 2.4.0 launch\n\n## Week of 16 Nov\n- Tue 17 Nov — Customer story: Birch & Co\n"
+     },
+     {
+      "id": "la1",
+      "title": "Launch announcement — 2.4.0",
+      "content": "Launch announcement — 2.4.0\nShare a week's meal plan with one other person by email.\n\n## The one line\n2.4.0: share a week's meal plan with one other person by email — no account needed on their side.\n\n## Thread\n1/ 2.4.0 is out. Share a week's meal plan with one other person by email.\n2/ They get a link. No sign-up.\n"
+     },
+     {
+      "id": "vr1",
+      "title": "Voice review — Social drafts — week of 2026-11-02",
+      "content": "Voice review — Social drafts — week of 2026-11-02\nfix first: 3 passed, 1 fix\n\n## Fixes\n- \"Excited to share\" → open with the result — rule: \"Never open with excited, thrilled or proud.\"\n"
+     },
+     {
+      "id": "sp1",
+      "title": "Social performance — week of 2026-11-02",
+      "content": "Social performance — week of 2026-11-02\n\n## More of\n- Threads with a number in the first post.\n\n## Drop\n- Instagram how-to posts: no reach three weeks running.\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Content calendar"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "cal1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Launch announcement"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Voice review"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Social performance"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "la1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "vr1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "sp1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Social drafts — week of 2026-11-09",
+        "content": "Social drafts — week of 2026-11-09\n2 items, 4 drafts, 2 platforms\n\n## This week\n- Tue 10 Nov — How we cut the orders page to under a second (calendar).\n- Thu 12 Nov — 2.4.0 launch: share a meal plan by email (Launch announcement — 2.4.0).\n- The performance note said threads with a number did best; both items open with one on X.\n\n## Drafts\n### How we cut the orders page to under a second\n**X (thread)**\n1/ The orders page took 6 seconds for shops with 10,000 orders. Now 0.8. Here is what we changed.\n2/ One missing index. That was most of it.\n3/ If a page of yours is slow, look at what it loads and never shows.\n**LinkedIn**\nOur orders page took six seconds for busy shops. It now takes under one.\n\nMost of the gain was a single database index; the rest was loading less than we drew.\n\nThe write-up: <link>\n\n### 2.4.0 — share a meal plan by email\n**X**\nYou can now share a week's meal plan with one other person by email. One link, no account for them. In 2.4.0, out today.\n**LinkedIn**\n2.4.0 is out. The thing people asked for most: share a meal plan by email with one other person, no account needed on their side.\n\nNotes: <link>\n\n## Image briefs\n- Orders page: a before/after bar, 6.0 s and 0.8 s, the two numbers as the only words; 1600×900.\n- 2.4.0: the share screen with one email field; 1600×900.\n\n## Not drafted\n- Instagram: not among the platforms named.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "2 items, 4 drafts, 2 platforms.\n\n## Report\n- read the calendar, 1 announcement, 1 voice review and 1 performance note; wrote \"Social drafts — week of 2026-11-09\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Social drafts — week of 2026-11-09",
+      "lacks": [
+       "posted",
+       "scheduled for",
+       "Birch & Co said"
+      ]
+     }
+    },
+    {
+     "not_called": "draft_email"
+    }
+   ]
+  },
+  {
+   "id": "drafts-without-their-headings-fail",
+   "about": "The harness's own check: a drafts document without This week, Drafts, Image briefs and Not drafted does not deliver, even after its repair pass.",
+   "inputs": {
+    "platforms": [
+     "X",
+     "LinkedIn"
+    ],
+    "voice": "plain, warm, direct",
+    "at": "09:00"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "cal1",
+      "title": "Content calendar — November 2026",
+      "content": "Content calendar — November 2026\n\n## Week of 9 Nov\n- Tue 10 Nov — How we cut the orders page to under a second (blog + social)\n- Thu 12 Nov — 2.4.0 launch\n\n## Week of 16 Nov\n- Tue 17 Nov — Customer story: Birch & Co\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Content calendar"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "cal1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Social drafts — week of 2026-11-09",
+        "content": "Two posts about the orders page."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

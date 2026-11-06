@@ -1,0 +1,26 @@
+{
+ "case": "the-lowest-week-is-payroll-before-the-invoices-land",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read 3 open invoices, 2 open bills, 6 months of sums; wrote \"Cash-flow forecast — 2026-11-09\"",
+ "read": [
+  "ledger_table"
+ ],
+ "wrote": [
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Cash-flow forecast”",
+   "ok": true,
+   "detail": "“Cash-flow forecast — 2026-11-09” is there."
+  }
+ ],
+ "answer": "Lowest point 2,550.01 in week 4 (payroll before Acme and Birch pay); Cedar's overdue 9,600.00 is the number to watch.\n\n## Report\n- read 3 open invoices, 2 open bills, 6 months of sums; wrote \"Cash-flow forecast — 2026-11-09\"",
+ "documents": [
+  {
+   "title": "Cash-flow forecast — 2026-11-09",
+   "content": "Cash-flow forecast — 2026-11-09\nlowest point 1,850.00 in week 4 (2026-11-30)\n\n## Opening\n- 14,200.00 in the bank on 2026-11-09, as given.\n\n## Week by week\n| Week | Starting | In | Out | Closing |\n| --- | --- | --- | --- | --- |\n| 1 (11-09) | 14,200.00 | 1,600.00 | 1,800.00 | 14,000.00 |\n| 2 (11-16) | 14,000.00 | 1,600.00 | 600.00 | 15,000.00 |\n| 3 (11-23) | 15,000.00 | 11,200.00 | 649.99 | 25,550.01 |\n| 4 (11-30) | 25,550.01 | 1,600.00 | 24,600.00 | 2,550.01 |\n| 5 (12-07) | 2,550.01 | 6,100.00 | 600.00 | 8,050.01 |\n\n## Lowest point\n- Week 4 (11-30): payroll of 24,000.00 lands before Acme's INV-1042 and Birch's INV-1043 (4,500.00) are due in week 5.\n\n## Assumptions\n- Open invoices at their due dates; Cedar's overdue INV-1041 (9,600.00) counted in week 3, two weeks from today.\n- Weekly income run-rate 1,600.00 and spend 600.00: six-month averages (May–October), less the open lines already counted.\n- Payroll 24,000.00 on the last working day of each month, as in September and October.\n\n## Watch\n- Cedar's 9,600.00 slipping a month takes week 4 to −7,049.99.\n- No December bills are in the ledger yet beyond Figma.\n- Birch Legal's 1,200.00 is due in week 1."
+  }
+ ]
+}

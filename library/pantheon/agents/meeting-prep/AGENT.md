@@ -8,7 +8,7 @@ version: 1.0.0
 wave: 3
 department: operations
 role: worker
-accepts: ["document:Day plan"]
+accepts: ["document:Day plan", "document:Account plan"]
 hands_to:
   - {agent: meeting-minutes, via: "document:Meeting brief"}
 inputs:

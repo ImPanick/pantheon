@@ -1,0 +1,26 @@
+{
+ "case": "five-steps-from-three-documents",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read 3 documents; wrote \"Process — onboarding a new supplier\"",
+ "read": [
+  "manage_documents"
+ ],
+ "wrote": [
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Process”",
+   "ok": true,
+   "detail": "“Process — onboarding a new supplier” is there."
+  }
+ ],
+ "answer": "5 steps, 3 owners, 1 exception, 2 open questions (who signs; the order of the checks).\n\n## Report\n- read 3 documents; wrote \"Process — onboarding a new supplier\"",
+ "documents": [
+  {
+   "title": "Process — onboarding a new supplier",
+   "content": "Process — onboarding a new supplier\n5 steps, 3 owners, 1 exception, 2 open questions\n\n## Purpose\nA new supplier ends up in the vendor register with a signed contract and a way to be paid, so finance can pay their first invoice (\"Minutes — Ops weekly, 14 Oct\").\n\n## Steps\n1. Requester — posts the supplier in the ops channel with name, what for and a rough yearly cost — needs: nothing — produces: the request (\"Minutes — Ops weekly, 14 Oct\").\n2. Ops lead (Lee Park, as seen) — checks the register for an existing supplier doing the same — needs: the request — produces: a yes or a pointer (\"Notes — Lee, 15 Oct\").\n3. Requester — collects the contract and the bank details form — needs: the yes — produces: both (\"Runbook — Suppliers (old)\").\n4. Finance — phones to verify the bank details — needs: the form — produces: a verified supplier (\"Runbook — Suppliers (old)\").\n5. Ops lead — adds the row to \"Vendors\" with owner, cost and renewal — needs: the verified supplier and the contract — produces: the register entry (\"Notes — Lee, 15 Oct\").\n\n## Owners\n- Requester: 1, 3. Ops lead: 2, 5. Finance: 4.\n\n## Exceptions\n- Under £500 a year: pay on a card, file the receipt, skip the register (\"Minutes — Ops weekly, 14 Oct\").\n\n## Open questions\n- Who signs the contract? Step 3 collects it; no document shows a signer.\n- The old runbook has finance approving before the duplicate check; the October notes show the ops lead checking first with no finance approval. Which is current?"
+  }
+ ]
+}

@@ -1,0 +1,25 @@
+{
+ "case": "var-runs-out-in-six-weeks",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- 4 commands; wrote \"Capacity plan — orders-1, 2026-11-09\"",
+ "read": [],
+ "wrote": [
+  "bash",
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Capacity plan”",
+   "ok": true,
+   "detail": "“Capacity plan — orders-1, 2026-11-09” is there."
+  }
+ ],
+ "answer": "/var runs out in about 6 weeks (90% by 22 Dec); /var/lib is most of the growth.\n\n## Report\n- 4 commands; wrote \"Capacity plan — orders-1, 2026-11-09\"\n\n## Carry forward\n- 2026-11-09: / 31 GB/80; /var 142 GB/200; memory 5.1 GB/8; load 1.4/4; /var/lib 118 GB; /var/log 9 GB",
+ "documents": [
+  {
+   "title": "Capacity plan — orders-1, 2026-11-09",
+   "content": "Capacity plan — orders-1, 2026-11-09\n/var runs out in 6 weeks at the current rate\n\n## Now\n| Measure | Used | Limit | Percent |\n| --- | --- | --- | --- |\n| / | 31 GB | 80 GB | 39% |\n| /var | 142 GB | 200 GB | 71% |\n| memory | 5.1 GB | 8 GB | 64% |\n| load (15 min) | 1.4 | 4 CPUs | 35% |\n| /var/lib | 118 GB | — | — |\n| /var/log | 9 GB | — | — |\n\n## Trend\n| Measure | Earliest | Growth / week |\n| --- | --- | --- |\n| /var | 118 GB (2026-10-12) | +6 GB |\n| memory | 4.9 GB (2026-10-12) | +0.05 GB |\n| / | 31 GB (2026-10-12) | 0 |\n\n## Runs out\n| Measure | Weeks to 90% | Date |\n| --- | --- | --- |\n| /var | 6.3 | 2026-12-22 |\n| memory | 44 | 2027-09 |\n| / | not at this rate | — |\n\n## Do next\n- /var grows 6 GB a week and /var/lib is most of it: archive or partition the orders table before mid-December, or grow /var by 100 GB. Second: /var/log is 9 GB and not rotating weekly.\n\n## Not measured\n- /var/lib's own limit: none set; its growth is counted inside /var."
+  }
+ ]
+}

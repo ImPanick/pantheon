@@ -1,0 +1,36 @@
+{
+ "case": "two-raised-one-not-and-an-overdue-one-named",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read the ledger's invoices and \"Proposal — Birch & Co\"; posted 2 lines; wrote \"Invoice INV-1042 — Acme Ltd\", \"Invoice INV-1043 — Birch & Co\", \"Invoices — 2026-11-09\"",
+ "read": [
+  "ledger_table",
+  "manage_documents"
+ ],
+ "wrote": [
+  "ledger_table",
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Invoices”",
+   "ok": true,
+   "detail": "“Invoices — 2026-11-09” is there."
+  }
+ ],
+ "answer": "Raised INV-1042 and INV-1043 (4,500.00); Cedar's INV-1041 is 20 days overdue; Elm not raised — no amount.\n\n## Report\n- read the ledger's invoices and \"Proposal — Birch & Co\"; posted 2 lines; wrote \"Invoice INV-1042 — Acme Ltd\", \"Invoice INV-1043 — Birch & Co\", \"Invoices — 2026-11-09\"",
+ "documents": [
+  {
+   "title": "Invoice INV-1042 — Acme Ltd",
+   "content": "Invoice INV-1042 — Acme Ltd\n\n## From\nUs\n\n## To\nAcme Ltd (address to add)\n\n## Lines\n| What | Amount |\n| --- | --- |\n| October retainer | 3,000.00 |\n\n## Total\n3,000.00\n\n## Due\n2026-12-09 (30 days)\n\n## How to pay\nBank transfer, reference INV-1042."
+  },
+  {
+   "title": "Invoice INV-1043 — Birch & Co",
+   "content": "Invoice INV-1043 — Birch & Co\n\n## From\nUs\n\n## To\nBirch & Co (address to add)\n\n## Lines\n| What | Amount |\n| --- | --- |\n| Onboarding workshop | 1,500.00 |\n\n## Total\n1,500.00\n\n## Due\n2026-12-09 (30 days)\n\n## How to pay\nBank transfer, reference INV-1043."
+  },
+  {
+   "title": "Invoices — 2026-11-09",
+   "content": "Invoices — 2026-11-09\n2 raised totalling 4,500.00; 3 open, 1 overdue\n\n## Raised\n| Number | Client | What | Amount | Due |\n| --- | --- | --- | --- | --- |\n| INV-1042 | Acme Ltd | October retainer | 3,000.00 | 2026-12-09 |\n| INV-1043 | Birch & Co | Onboarding workshop | 1,500.00 | 2026-12-09 |\n- INV-1043: the proposal priced the workshop at 1,200.00; the line today says 1,500.00, which is what was raised.\n\n## Open\n| Number | Client | Amount | Due |\n| --- | --- | --- | --- |\n| INV-1041 | Cedar Ltd | 9,600.00 | 2026-10-20 |\n| INV-1042 | Acme Ltd | 3,000.00 | 2026-12-09 |\n| INV-1043 | Birch & Co | 1,500.00 | 2026-12-09 |\n\n## Overdue\n- INV-1041 Cedar Ltd 9,600.00 — 20 days late.\n\n## Not raised\n- Elm — \"consulting\" — no amount on the line and no proposal for Elm."
+  }
+ ]
+}

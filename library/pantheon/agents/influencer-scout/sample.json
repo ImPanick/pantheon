@@ -1,0 +1,27 @@
+{
+ "case": "three-fit-one-sponsored-by-a-competitor",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- 3 searches, 5 fetches; wrote \"Creator shortlist — home espresso\"",
+ "read": [
+  "web_search",
+  "web_fetch"
+ ],
+ "wrote": [
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Creator shortlist”",
+   "ok": true,
+   "detail": "“Creator shortlist — home espresso” is there."
+  }
+ ],
+ "answer": "3 shortlisted, 1 flagged out, from 5 looked at.\n\n## Report\n- 3 searches, 5 fetches; wrote \"Creator shortlist — home espresso\"",
+ "documents": [
+  {
+   "title": "Creator shortlist — home espresso",
+   "content": "Creator shortlist — home espresso\n3 shortlisted, 1 flagged out, from 5 looked at\n\n## Shortlist\n- @dialitin (Instagram) — https://ig.example/dialitin — 24.3k followers (shown 2026-11-10) — grinder and dial-in posts — fits: two of the last three posts are about dialling in on entry machines. Flag: one post uses a competitor's scale, not sponsored.\n- Mara Ortiz (YouTube) — https://yt.example/@maraortiz — 11k subscribers (shown 2026-11-10) — long reviews of machines under $800 — fits: audience and subject match; last upload nine days ago.\n- @crema.notes (X) — https://x.example/crema.notes — audience not shown on the page — daily tasting notes and a weekly thread on beans — fits: the subject; the size is unknown.\n\n## Red flags\n- @espressoking (Instagram) — ruled out: a sponsored post for a competitor's machine on 2026-10-30 (https://ig.example/espressoking).\n- @dialitin — not ruling out: the competitor's scale in one post, unsponsored.\n\n## First messages\n- @dialitin: \"Your post on dialling in the Gaggia with the stock basket was the clearest I have seen — the bit about the first shot being the thermometer stuck with me. We make a $40 pressure-profiling kit for that machine. Would you want to try one, no strings, and say what you think?\"\n- Mara Ortiz: \"Your review of the Bambino Plus was the first to measure recovery time between shots, which is what buyers actually feel. We make a pressure-profiling kit for entry machines. Would a kit be useful for the next review in that range?\"\n- @crema.notes: \"Your Tuesday thread on Ethiopian naturals at lower temperatures matched what we see on our bench. We make a pressure-profiling kit for entry machines. Would you be open to a kit to run those beans through?\"\n\n## Checked\n- 3 searches; 5 fetches; 1 link not opened (https://tt.example/@shotclock answered 404)."
+  }
+ ]
+}

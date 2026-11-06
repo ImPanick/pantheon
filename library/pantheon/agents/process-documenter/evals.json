@@ -1,0 +1,525 @@
+{
+ "cases": [
+  {
+   "id": "five-steps-from-three-documents",
+   "about": "Minutes, a note and an old runbook: five steps each with owner and source, an exception, and the order the documents disagree on left as an open question.",
+   "inputs": {
+    "process": "onboarding a new supplier",
+    "sources": [
+     "Minutes — Ops weekly, 14 Oct",
+     "Notes — Lee, 15 Oct",
+     "Runbook — Suppliers (old)"
+    ]
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "d1",
+      "title": "Minutes — Ops weekly, 14 Oct",
+      "content": "Minutes — Ops weekly, 14 Oct\n\n- New supplier: the requester posts name, what for and rough yearly cost in the ops channel. Goal: supplier in the register with a signed contract and bank details so finance can pay the first invoice.\n- Under £500 a year: pay on a card and file the receipt, skip the register.\n"
+     },
+     {
+      "id": "d2",
+      "title": "Notes — Lee, 15 Oct",
+      "content": "Notes — Lee, 15 Oct\n\nChecked the Countly request against the register for an existing supplier doing the same; none, said yes. Added the row to Vendors with owner, cost and renewal.\n"
+     },
+     {
+      "id": "d3",
+      "title": "Runbook — Suppliers (old)",
+      "content": "Runbook — Suppliers (old)\n\nFinance approves first, then ops checks for duplicates. The requester collects the contract and the bank details form. Finance phones to verify bank details.\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Minutes — Ops weekly, 14 Oct"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "d1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Notes — Lee, 15 Oct"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "d2"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Runbook — Suppliers (old)"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "d3"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Process — onboarding a new supplier",
+        "content": "Process — onboarding a new supplier\n5 steps, 3 owners, 1 exception, 2 open questions\n\n## Purpose\nA new supplier ends up in the vendor register with a signed contract and a way to be paid, so finance can pay their first invoice (\"Minutes — Ops weekly, 14 Oct\").\n\n## Steps\n1. Requester — posts the supplier in the ops channel with name, what for and a rough yearly cost — needs: nothing — produces: the request (\"Minutes — Ops weekly, 14 Oct\").\n2. Ops lead (Lee Park, as seen) — checks the register for an existing supplier doing the same — needs: the request — produces: a yes or a pointer (\"Notes — Lee, 15 Oct\").\n3. Requester — collects the contract and the bank details form — needs: the yes — produces: both (\"Runbook — Suppliers (old)\").\n4. Finance — phones to verify the bank details — needs: the form — produces: a verified supplier (\"Runbook — Suppliers (old)\").\n5. Ops lead — adds the row to \"Vendors\" with owner, cost and renewal — needs: the verified supplier and the contract — produces: the register entry (\"Notes — Lee, 15 Oct\").\n\n## Owners\n- Requester: 1, 3. Ops lead: 2, 5. Finance: 4.\n\n## Exceptions\n- Under £500 a year: pay on a card, file the receipt, skip the register (\"Minutes — Ops weekly, 14 Oct\").\n\n## Open questions\n- Who signs the contract? Step 3 collects it; no document shows a signer.\n- The old runbook has finance approving before the duplicate check; the October notes show the ops lead checking first with no finance approval. Which is current?\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "5 steps, 3 owners, 1 exception, 2 open questions (who signs; the order of the checks).\n\n## Report\n- read 3 documents; wrote \"Process — onboarding a new supplier\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Process — onboarding a new supplier",
+      "contains": [
+       "## Steps\n1. Requester",
+       "(Lee Park, as seen)",
+       "## Exceptions\n- Under £500",
+       "## Open questions\n- Who signs"
+      ],
+      "lacks": [
+       "should",
+       "6. "
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "nothing-describes-it",
+   "about": "No document lists for the sources or the words: Steps and Owners say no record, and the answer asks for one example of the process being done.",
+   "inputs": {
+    "process": "onboarding a new supplier",
+    "sources": [
+     "Minutes — Ops weekly, 14 Oct",
+     "Notes — Lee, 15 Oct",
+     "Runbook — Suppliers (old)"
+    ]
+   },
+   "world": {
+    "documents": []
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Minutes — Ops weekly, 14 Oct"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Notes — Lee, 15 Oct"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Runbook — Suppliers (old)"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "supplier"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Process — onboarding a new supplier",
+        "content": "Process — onboarding a new supplier\n0 steps, 0 owners, 0 exceptions, 1 open question\n\n## Purpose\n- no record\n\n## Steps\n- no record: none of the three sources lists, and nothing mentions a supplier.\n\n## Owners\n- no record\n\n## Exceptions\n- none\n\n## Open questions\n- One example of the process being done — minutes or a note — would let this be written.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Nothing describes it — point me at one example of a supplier being onboarded.\n\n## Report\n- nothing listed; wrote \"Process — onboarding a new supplier\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Process",
+      "contains": [
+       "## Steps\n- no record"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-source-cannot-be-read",
+   "about": "One source answers an error on read: it is named under Open questions as not read, and the page is written from the rest.",
+   "inputs": {
+    "process": "onboarding a new supplier",
+    "sources": [
+     "Minutes — Ops weekly, 14 Oct",
+     "Notes — Lee, 15 Oct",
+     "Runbook — Suppliers (old)"
+    ]
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "d1",
+      "title": "Minutes — Ops weekly, 14 Oct",
+      "content": "Minutes — Ops weekly, 14 Oct\n\n- New supplier: the requester posts name, what for and rough yearly cost in the ops channel. Goal: supplier in the register with a signed contract and bank details so finance can pay the first invoice.\n- Under £500 a year: pay on a card and file the receipt, skip the register.\n"
+     },
+     {
+      "id": "d2",
+      "title": "Notes — Lee, 15 Oct",
+      "content": "Notes — Lee, 15 Oct\n\nChecked the Countly request against the register for an existing supplier doing the same; none, said yes. Added the row to Vendors with owner, cost and renewal.\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Minutes — Ops weekly, 14 Oct"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "d1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Notes — Lee, 15 Oct"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "d2"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Runbook — Suppliers (old)"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "d-gone"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Process — onboarding a new supplier",
+        "content": "Process — onboarding a new supplier\n3 steps, 2 owners, 1 exception, 2 open questions\n\n## Purpose\nA new supplier ends up in the vendor register with a signed contract and a way to be paid (\"Minutes — Ops weekly, 14 Oct\").\n\n## Steps\n1. Requester — posts the supplier in the ops channel — needs: nothing — produces: the request (\"Minutes — Ops weekly, 14 Oct\").\n2. Ops lead (Lee Park, as seen) — checks the register for a duplicate — needs: the request — produces: a yes (\"Notes — Lee, 15 Oct\").\n3. Ops lead — adds the row to \"Vendors\" — needs: the yes — produces: the register entry (\"Notes — Lee, 15 Oct\").\n\n## Owners\n- Requester: 1. Ops lead: 2, 3.\n\n## Exceptions\n- Under £500 a year: pay on a card, file the receipt (\"Minutes — Ops weekly, 14 Oct\").\n\n## Open questions\n- \"Runbook — Suppliers (old)\" was not read: the read answered an error.\n- Where do the contract and bank details come from? Nothing read shows them being collected.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "3 steps from 2 documents; the old runbook would not open.\n\n## Report\n- read 2 documents, 1 failed; wrote \"Process — onboarding a new supplier\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Process",
+      "contains": [
+       "was not read"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "it-never-adds-a-step-or-picks-between-two",
+   "about": "Two sources in two orders: the shared steps are written, the fork is an open question with both lines, and no step the record does not show is added.",
+   "inputs": {
+    "process": "onboarding a new supplier",
+    "sources": [
+     "Minutes — Ops weekly, 14 Oct",
+     "Notes — Lee, 15 Oct",
+     "Runbook — Suppliers (old)"
+    ]
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "d2",
+      "title": "Notes — Lee, 15 Oct",
+      "content": "Notes — Lee, 15 Oct\n\nChecked the Countly request against the register for an existing supplier doing the same; none, said yes. Added the row to Vendors with owner, cost and renewal.\n"
+     },
+     {
+      "id": "d3",
+      "title": "Runbook — Suppliers (old)",
+      "content": "Runbook — Suppliers (old)\n\nFinance approves first, then ops checks for duplicates. The requester collects the contract and the bank details form. Finance phones to verify bank details.\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Minutes — Ops weekly, 14 Oct"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Notes — Lee, 15 Oct"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "d2"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Runbook — Suppliers (old)"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "d3"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Process — onboarding a new supplier",
+        "content": "Process — onboarding a new supplier\n4 steps, 3 owners, 0 exceptions, 1 open question\n\n## Purpose\nA supplier ends up in \"Vendors\" with verified bank details (\"Notes — Lee, 15 Oct\"; \"Runbook — Suppliers (old)\").\n\n## Steps\n1. Ops lead (Lee Park, as seen) — checks for an existing supplier doing the same — needs: the request — produces: a yes (\"Notes — Lee, 15 Oct\"). The old runbook puts finance approval before this step; see Open questions.\n2. Requester — collects the contract and the bank details form — needs: the yes — produces: both (\"Runbook — Suppliers (old)\").\n3. Finance — phones to verify the bank details — needs: the form — produces: a verified supplier (\"Runbook — Suppliers (old)\").\n4. Ops lead — adds the row to \"Vendors\" — needs: the verified supplier — produces: the entry (\"Notes — Lee, 15 Oct\").\n\n## Owners\n- Ops lead: 1, 4. Requester: 2. Finance: 3.\n\n## Exceptions\n- none on the record.\n\n## Open questions\n- \"Finance approves first, then ops checks for duplicates\" (Runbook — Suppliers (old)) against Lee checking first with no finance approval (Notes — Lee, 15 Oct). Which is current?\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "4 steps; the two sources disagree on whether finance approves first — left open.\n\n## Report\n- read 2 documents; wrote \"Process — onboarding a new supplier\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Process",
+      "contains": [
+       "Which is current?"
+      ],
+      "lacks": [
+       "5. ",
+       "Finance — approves"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-process-without-its-headings-fails",
+   "about": "The harness's own check: a process page without Purpose, Steps, Owners, Exceptions and Open questions does not deliver, even after its repair pass.",
+   "inputs": {
+    "process": "onboarding a new supplier",
+    "sources": [
+     "Minutes — Ops weekly, 14 Oct",
+     "Notes — Lee, 15 Oct",
+     "Runbook — Suppliers (old)"
+    ]
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "d1",
+      "title": "Minutes — Ops weekly, 14 Oct",
+      "content": "Minutes — Ops weekly, 14 Oct\n\n- New supplier: the requester posts name, what for and rough yearly cost in the ops channel. Goal: supplier in the register with a signed contract and bank details so finance can pay the first invoice.\n- Under £500 a year: pay on a card and file the receipt, skip the register.\n"
+     },
+     {
+      "id": "d2",
+      "title": "Notes — Lee, 15 Oct",
+      "content": "Notes — Lee, 15 Oct\n\nChecked the Countly request against the register for an existing supplier doing the same; none, said yes. Added the row to Vendors with owner, cost and renewal.\n"
+     },
+     {
+      "id": "d3",
+      "title": "Runbook — Suppliers (old)",
+      "content": "Runbook — Suppliers (old)\n\nFinance approves first, then ops checks for duplicates. The requester collects the contract and the bank details form. Finance phones to verify bank details.\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Minutes — Ops weekly, 14 Oct"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "d1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Process — onboarding a new supplier",
+        "content": "Ask ops, then finance pays."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

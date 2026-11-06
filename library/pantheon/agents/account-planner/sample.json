@@ -1,0 +1,26 @@
+{
+ "case": "a-plan-from-four-documents-and-the-pipeline",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read 3 documents and \"Pipeline\"; wrote \"Account plan — Acme Ltd\"",
+ "read": [
+  "manage_documents"
+ ],
+ "wrote": [
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Account plan”",
+   "ok": true,
+   "detail": "“Account plan — Acme Ltd” is there."
+  }
+ ],
+ "answer": "Goal one: close the two-year retainer by 2026-12-15; first move: two-year pricing with the Okta note by 2026-11-12.\n\n## Report\n- read 3 documents and \"Pipeline\"; wrote \"Account plan — Acme Ltd\"",
+ "documents": [
+  {
+   "title": "Account plan — Acme Ltd",
+   "content": "Account plan — Acme Ltd\nGoal one: close the two-year retainer by 2026-12-15; first move: two-year pricing with the Okta note by 2026-11-12\n\n## Where we are\n- Proposal sent 2026-11-03; two-year pricing asked for; Okta SSO is a condition; DPA with legal. Sources: pipeline, call summary 2026-11-10, stakeholder map.\n\n## Goals\n1. Close the two-year retainer by 2026-12-15 (call summary: \"two years gets us a better rate\").\n2. Clear IT's Okta condition in writing by 2026-11-20 (call summary, Tom).\n3. Meet the signer, Mark, before 2026-12-01 (stakeholder map gap).\n\n## People\n- Ana Ruiz (champion), Tom Reyes (blocker until SSO), Mark (signer, unmet), Dee (legal).\n\n## Risks\n- Okta slips past the quarter — shows as no written date by 2026-11-20.\n- The DPA stalls in legal — shows as no comments from Dee by 2026-11-24.\n\n## Next 90 days\n| Date | Move | Owner |\n| --- | --- | --- |\n| 2026-11-12 | Send two-year pricing with the Okta release note | Sam |\n| 2026-11-20 | Okta date in writing to Tom | Sam |\n| 2026-12-01 | Thirty minutes with Mark, via Ana | Sam |\n| 2026-12-15 | Close | Sam |"
+  }
+ ]
+}

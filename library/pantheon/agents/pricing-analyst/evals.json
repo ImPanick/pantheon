@@ -1,0 +1,556 @@
+{
+ "cases": [
+  {
+   "id": "below-the-market-on-team",
+   "about": "Three plans and four pricing pages: everything on one unit, a flat plan divided by its cap, a per-order competitor left out of the median, three options with their risks, no pick.",
+   "inputs": {
+    "plans": "Plans and prices",
+    "competitors": [
+     "https://shopwise.example/pricing",
+     "https://orderline.example/pricing",
+     "https://stockwise.example/pricing",
+     "https://countly.example/pricing"
+    ],
+    "question": "raise the Team plan"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "pl1",
+      "title": "Plans and prices",
+      "content": "Plans and prices\n\n| Plan | Per seat / month, yearly | Includes | Share of revenue |\n| Solo | £6 | 1 seat, 200 orders | 12% |\n| Team | £9 | 5+ seats, unlimited orders, picking list | 71% |\n| Business | £18 | SSO, API, priority support | 17% |\n"
+     }
+    ],
+    "web": {
+     "https://shopwise.example/pricing": "Shopwise pricing. Pro: £14 per seat per month, billed yearly. Unlimited orders, picking.",
+     "https://orderline.example/pricing": "Orderline. Team: £12 per seat/month billed annually. Unlimited orders.",
+     "https://stockwise.example/pricing": "Stockwise Standard: £65 per month flat, up to 5 seats. Orders and stock.",
+     "https://countly.example/pricing": "Countly: £0.10 per order. No seats."
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Plans and prices"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "pl1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://shopwise.example/pricing"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://orderline.example/pricing"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://stockwise.example/pricing"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://countly.example/pricing"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Pricing analysis — raise the Team plan",
+        "content": "Pricing analysis — raise the Team plan\n4 competitors read; we are below on Team, by 31%\n\n## Our prices\n| Plan | Per seat / month, yearly | Includes | Share of revenue |\n| --- | --- | --- | --- |\n| Solo | £6 | 1 seat, 200 orders | 12% |\n| Team | £9 | 5+ seats, unlimited orders, picking list | 71% |\n| Business | £18 | SSO, API, priority support | 17% |\n\n## Market\n| Competitor | Nearest plan | Per seat / month, yearly | Includes | Link | Read |\n| --- | --- | --- | --- | --- | --- |\n| Shopwise | Pro | £14 | unlimited orders, picking | https://shopwise.example/pricing | 2026-11-09 |\n| Orderline | Team | £12 | unlimited orders | https://orderline.example/pricing | 2026-11-09 |\n| Stockwise | Standard | £13 (flat £65 ÷ 5) | 5 seats, orders, stock | https://stockwise.example/pricing | 2026-11-09 |\n| Countly | — | per order, £0.10 | — | https://countly.example/pricing | 2026-11-09 |\nMedian of the three comparable: £13; Team at £9 is 31% below. Countly is per order and left out.\n\n## Options\n1. Team to £12 — 71% of revenue touched; still below the median.\n2. Team to £13 with the picking list kept, and a new £10 \"Team Lite\" without it.\n3. Hold Team at £9 and raise Business to £22.\n\n## Risks\n1. A 33% rise on the plan that is 71% of revenue: if 10% of Team seats leave, revenue is flat; no churn history in the document to size it.\n2. Two plans to explain; some Team customers move down to Lite first.\n3. Business is 17% of revenue; the rise moves little and leaves Team's gap.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "4 competitors read; Team at £9 is 31% below the market's £13 median; three options laid out.\n\n## Report\n- read \"Plans and prices\"; 4 fetches; wrote \"Pricing analysis — raise the Team plan\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Pricing analysis — raise the Team plan",
+      "contains": [
+       "| Team | £9 |",
+       "£13 (flat £65 ÷ 5)",
+       "Countly is per order and left out",
+       "## Options\n1. Team to £12",
+       "## Risks\n1."
+      ],
+      "lacks": [
+       "I recommend",
+       "the best option is"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "no-plans-document",
+   "about": "Nothing lists under the plans' title: Our prices says none, the market is still read, and the answer asks for the document.",
+   "inputs": {
+    "plans": "Plans and prices",
+    "competitors": [
+     "https://shopwise.example/pricing",
+     "https://orderline.example/pricing",
+     "https://stockwise.example/pricing",
+     "https://countly.example/pricing"
+    ],
+    "question": "raise the Team plan"
+   },
+   "world": {
+    "documents": [],
+    "web": {
+     "https://shopwise.example/pricing": "Shopwise pricing. Pro: £14 per seat per month, billed yearly. Unlimited orders, picking.",
+     "https://orderline.example/pricing": "Orderline. Team: £12 per seat/month billed annually. Unlimited orders.",
+     "https://stockwise.example/pricing": "Stockwise Standard: £65 per month flat, up to 5 seats. Orders and stock.",
+     "https://countly.example/pricing": "Countly: £0.10 per order. No seats."
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Plans and prices"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://shopwise.example/pricing"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://orderline.example/pricing"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://stockwise.example/pricing"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://countly.example/pricing"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Pricing analysis — raise the Team plan",
+        "content": "Pricing analysis — raise the Team plan\n4 competitors read; our prices not found\n\n## Our prices\n| Plan | Per seat / month, yearly | Includes | Share of revenue |\n| --- | --- | --- | --- |\n| none: no document lists under \"Plans and prices\" | | | |\n\n## Market\n| Competitor | Nearest plan | Per seat / month, yearly | Includes | Link | Read |\n| --- | --- | --- | --- | --- | --- |\n| Shopwise | Pro | £14 | unlimited orders, picking | https://shopwise.example/pricing | 2026-11-09 |\n| Orderline | Team | £12 | unlimited orders | https://orderline.example/pricing | 2026-11-09 |\n| Stockwise | Standard | £13 (flat £65 ÷ 5) | 5 seats, orders, stock | https://stockwise.example/pricing | 2026-11-09 |\n| Countly | — | per order, £0.10 | — | https://countly.example/pricing | 2026-11-09 |\nMedian of the three comparable: £13. Countly is per order and left out.\n\n## Options\n1. Team to £12 — 71% of revenue touched; still below the median.\n2. Team to £13 with the picking list kept, and a new £10 \"Team Lite\" without it.\n3. Hold Team at £9 and raise Business to £22.\n\n## Risks\n1. A 33% rise on the plan that is 71% of revenue: if 10% of Team seats leave, revenue is flat; no churn history in the document to size it.\n2. Two plans to explain; some Team customers move down to Lite first.\n3. Business is 17% of revenue; the rise moves little and leaves Team's gap.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "No \"Plans and prices\" document found; the market median is £13 — what is your plans document called?\n\n## Report\n- nothing listed; 4 fetches; wrote \"Pricing analysis — raise the Team plan\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Pricing analysis",
+      "contains": [
+       "no document lists under"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-pricing-page-cannot-be-opened",
+   "about": "One page answers an error and the search finds nothing with prices: the competitor is listed as not read with no price.",
+   "inputs": {
+    "plans": "Plans and prices",
+    "competitors": [
+     "https://shopwise.example/pricing",
+     "https://orderline.example/pricing",
+     "https://stockwise.example/pricing",
+     "https://countly.example/pricing"
+    ],
+    "question": "raise the Team plan"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "pl1",
+      "title": "Plans and prices",
+      "content": "Plans and prices\n\n| Plan | Per seat / month, yearly | Includes | Share of revenue |\n| Solo | £6 | 1 seat, 200 orders | 12% |\n| Team | £9 | 5+ seats, unlimited orders, picking list | 71% |\n| Business | £18 | SSO, API, priority support | 17% |\n"
+     }
+    ],
+    "web": {
+     "https://shopwise.example/pricing": "Shopwise pricing. Pro: £14 per seat per month, billed yearly. Unlimited orders, picking.",
+     "https://stockwise.example/pricing": "Stockwise Standard: £65 per month flat, up to 5 seats. Orders and stock.",
+     "https://countly.example/pricing": "Countly: £0.10 per order. No seats."
+    },
+    "search": {}
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Plans and prices"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "pl1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://shopwise.example/pricing"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://orderline.example/pricing"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://stockwise.example/pricing"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://countly.example/pricing"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_search",
+       {
+        "query": "Orderline pricing"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Pricing analysis — raise the Team plan",
+        "content": "Pricing analysis — raise the Team plan\n4 competitors read; we are below on Team, by 33%\n\n## Our prices\n| Plan | Per seat / month, yearly | Includes | Share of revenue |\n| --- | --- | --- | --- |\n| Solo | £6 | 1 seat, 200 orders | 12% |\n| Team | £9 | 5+ seats, unlimited orders, picking list | 71% |\n| Business | £18 | SSO, API, priority support | 17% |\n\n## Market\n| Competitor | Nearest plan | Per seat / month, yearly | Includes | Link | Read |\n| --- | --- | --- | --- | --- | --- |\n| Shopwise | Pro | £14 | unlimited orders, picking | https://shopwise.example/pricing | 2026-11-09 |\n| Orderline | — | not read | — | https://orderline.example/pricing | page answered 404; no priced page found |\n| Stockwise | Standard | £13 (flat £65 ÷ 5) | 5 seats, orders, stock | https://stockwise.example/pricing | 2026-11-09 |\n| Countly | — | per order, £0.10 | — | https://countly.example/pricing | 2026-11-09 |\nMedian of the two comparable: £13.50; Team at £9 is 33% below. Countly is per order and left out.\n\n## Options\n1. Team to £12 — 71% of revenue touched; still below the median.\n2. Team to £13 with the picking list kept, and a new £10 \"Team Lite\" without it.\n3. Hold Team at £9 and raise Business to £22.\n\n## Risks\n1. A 33% rise on the plan that is 71% of revenue: if 10% of Team seats leave, revenue is flat; no churn history in the document to size it.\n2. Two plans to explain; some Team customers move down to Lite first.\n3. Business is 17% of revenue; the rise moves little and leaves Team's gap.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "3 of 4 competitors read (Orderline's page would not open); Team is 33% below the £13.50 median.\n\n## Report\n- read \"Plans and prices\"; 4 fetches (1 failed), 1 search; wrote \"Pricing analysis — raise the Team plan\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Pricing analysis",
+      "contains": [
+       "not read"
+      ],
+      "lacks": [
+       "| Orderline | Team | £12 |"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "it-never-invents-a-price-or-picks",
+   "about": "A competitor's page shows no price at all: no figure is written for it from memory, and no option is recommended.",
+   "inputs": {
+    "plans": "Plans and prices",
+    "competitors": [
+     "https://shopwise.example/pricing",
+     "https://orderline.example/pricing",
+     "https://stockwise.example/pricing",
+     "https://countly.example/pricing"
+    ],
+    "question": "raise the Team plan"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "pl1",
+      "title": "Plans and prices",
+      "content": "Plans and prices\n\n| Plan | Per seat / month, yearly | Includes | Share of revenue |\n| Solo | £6 | 1 seat, 200 orders | 12% |\n| Team | £9 | 5+ seats, unlimited orders, picking list | 71% |\n| Business | £18 | SSO, API, priority support | 17% |\n"
+     }
+    ],
+    "web": {
+     "https://shopwise.example/pricing": "Shopwise pricing. Pro: £14 per seat per month, billed yearly. Unlimited orders, picking.",
+     "https://orderline.example/pricing": "Orderline. Team: £12 per seat/month billed annually. Unlimited orders.",
+     "https://stockwise.example/pricing": "Stockwise Standard: £65 per month flat, up to 5 seats. Orders and stock.",
+     "https://countly.example/pricing": "Countly. Contact sales for pricing."
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Plans and prices"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "pl1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://shopwise.example/pricing"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://orderline.example/pricing"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://stockwise.example/pricing"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "web_fetch",
+       {
+        "url": "https://countly.example/pricing"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Pricing analysis — raise the Team plan",
+        "content": "Pricing analysis — raise the Team plan\n4 competitors read; we are below on Team, by 31%\n\n## Our prices\n| Plan | Per seat / month, yearly | Includes | Share of revenue |\n| --- | --- | --- | --- |\n| Solo | £6 | 1 seat, 200 orders | 12% |\n| Team | £9 | 5+ seats, unlimited orders, picking list | 71% |\n| Business | £18 | SSO, API, priority support | 17% |\n\n## Market\n| Competitor | Nearest plan | Per seat / month, yearly | Includes | Link | Read |\n| --- | --- | --- | --- | --- | --- |\n| Shopwise | Pro | £14 | unlimited orders, picking | https://shopwise.example/pricing | 2026-11-09 |\n| Orderline | Team | £12 | unlimited orders | https://orderline.example/pricing | 2026-11-09 |\n| Stockwise | Standard | £13 (flat £65 ÷ 5) | 5 seats, orders, stock | https://stockwise.example/pricing | 2026-11-09 |\n| Countly | — | not shown (\"contact sales\") | — | https://countly.example/pricing | 2026-11-09 |\nMedian of the three comparable: £13; Team at £9 is 31% below. Countly shows no price and is left out.\n\n## Options\n1. Team to £12 — 71% of revenue touched; still below the median.\n2. Team to £13 with the picking list kept, and a new £10 \"Team Lite\" without it.\n3. Hold Team at £9 and raise Business to £22.\n\n## Risks\n1. A 33% rise on the plan that is 71% of revenue: if 10% of Team seats leave, revenue is flat; no churn history in the document to size it.\n2. Two plans to explain; some Team customers move down to Lite first.\n3. Business is 17% of revenue; the rise moves little and leaves Team's gap.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "4 pages read, Countly shows no price; Team is 31% below the £13 median; three options, your call.\n\n## Report\n- read \"Plans and prices\"; 4 fetches; wrote \"Pricing analysis — raise the Team plan\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Pricing analysis",
+      "contains": [
+       "not shown (\"contact sales\")"
+      ],
+      "lacks": [
+       "| Countly | — | £",
+       "I recommend",
+       "Recommended:"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "an-analysis-without-its-headings-fails",
+   "about": "The harness's own check: a pricing analysis without Our prices, Market, Options and Risks does not deliver, even after its repair pass.",
+   "inputs": {
+    "plans": "Plans and prices",
+    "competitors": [
+     "https://shopwise.example/pricing",
+     "https://orderline.example/pricing",
+     "https://stockwise.example/pricing",
+     "https://countly.example/pricing"
+    ],
+    "question": "raise the Team plan"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "pl1",
+      "title": "Plans and prices",
+      "content": "Plans and prices\n\n| Plan | Per seat / month, yearly | Includes | Share of revenue |\n| Solo | £6 | 1 seat, 200 orders | 12% |\n| Team | £9 | 5+ seats, unlimited orders, picking list | 71% |\n| Business | £18 | SSO, API, priority support | 17% |\n"
+     }
+    ],
+    "web": {
+     "https://shopwise.example/pricing": "Shopwise pricing. Pro: £14 per seat per month, billed yearly. Unlimited orders, picking.",
+     "https://orderline.example/pricing": "Orderline. Team: £12 per seat/month billed annually. Unlimited orders.",
+     "https://stockwise.example/pricing": "Stockwise Standard: £65 per month flat, up to 5 seats. Orders and stock.",
+     "https://countly.example/pricing": "Countly: £0.10 per order. No seats."
+    }
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Plans and prices"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "pl1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Pricing analysis — raise the Team plan",
+        "content": "We are cheap; raise it."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

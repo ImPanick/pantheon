@@ -1,0 +1,1018 @@
+{
+ "cases": [
+  {
+   "id": "the-lowest-week-is-payroll-before-the-invoices-land",
+   "about": "Three open invoices (one overdue), two bills, six months of run-rate and two payrolls: a five-week table, the lowest point in week 4, the overdue invoice placed two weeks out, each number's source said; the ledger is only read.",
+   "inputs": {
+    "opening": "14200",
+    "weeks": "5",
+    "at": "08:40"
+   },
+   "world": {
+    "ledger": [
+     {
+      "date": "2026-09-20",
+      "kind": "invoice",
+      "amount": 9600,
+      "counterparty": "Cedar Ltd",
+      "ref": "INV-1041",
+      "due": "2026-10-20",
+      "status": "open"
+     },
+     {
+      "date": "2026-11-09",
+      "kind": "invoice",
+      "amount": 3000,
+      "counterparty": "Acme Ltd",
+      "ref": "INV-1042",
+      "due": "2026-12-09",
+      "status": "open"
+     },
+     {
+      "date": "2026-11-09",
+      "kind": "invoice",
+      "amount": 1500,
+      "counterparty": "Birch & Co",
+      "ref": "INV-1043",
+      "due": "2026-12-09",
+      "status": "open"
+     },
+     {
+      "date": "2026-11-05",
+      "kind": "bill",
+      "amount": 1200,
+      "counterparty": "Birch Legal",
+      "ref": "2026-311",
+      "due": "2026-11-15",
+      "status": "open"
+     },
+     {
+      "date": "2026-11-01",
+      "kind": "bill",
+      "amount": 49.99,
+      "counterparty": "Figma",
+      "ref": "F-7781",
+      "due": "2026-11-28",
+      "status": "open"
+     },
+     {
+      "date": "2026-10-30",
+      "kind": "payroll",
+      "amount": 24000,
+      "counterparty": "Team",
+      "category": "payroll"
+     },
+     {
+      "date": "2026-09-30",
+      "kind": "payroll",
+      "amount": 24000,
+      "counterparty": "Team",
+      "category": "payroll"
+     },
+     {
+      "date": "2026-05-03",
+      "kind": "income",
+      "amount": 6900,
+      "counterparty": "Acme Ltd",
+      "category": "sales"
+     },
+     {
+      "date": "2026-06-03",
+      "kind": "income",
+      "amount": 6900,
+      "counterparty": "Acme Ltd",
+      "category": "sales"
+     },
+     {
+      "date": "2026-07-03",
+      "kind": "income",
+      "amount": 6900,
+      "counterparty": "Acme Ltd",
+      "category": "sales"
+     },
+     {
+      "date": "2026-08-03",
+      "kind": "income",
+      "amount": 6900,
+      "counterparty": "Acme Ltd",
+      "category": "sales"
+     },
+     {
+      "date": "2026-09-03",
+      "kind": "income",
+      "amount": 6900,
+      "counterparty": "Acme Ltd",
+      "category": "sales"
+     },
+     {
+      "date": "2026-10-03",
+      "kind": "income",
+      "amount": 6900,
+      "counterparty": "Acme Ltd",
+      "category": "sales"
+     },
+     {
+      "date": "2026-05-10",
+      "kind": "expense",
+      "amount": 2600,
+      "counterparty": "Various",
+      "category": "ops"
+     },
+     {
+      "date": "2026-06-10",
+      "kind": "expense",
+      "amount": 2600,
+      "counterparty": "Various",
+      "category": "ops"
+     },
+     {
+      "date": "2026-07-10",
+      "kind": "expense",
+      "amount": 2600,
+      "counterparty": "Various",
+      "category": "ops"
+     },
+     {
+      "date": "2026-08-10",
+      "kind": "expense",
+      "amount": 2600,
+      "counterparty": "Various",
+      "category": "ops"
+     },
+     {
+      "date": "2026-09-10",
+      "kind": "expense",
+      "amount": 2600,
+      "counterparty": "Various",
+      "category": "ops"
+     },
+     {
+      "date": "2026-10-10",
+      "kind": "expense",
+      "amount": 2600,
+      "counterparty": "Various",
+      "category": "ops"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "ledger_table",
+       {
+        "action": "list",
+        "kind": "invoice",
+        "status": "open",
+        "limit": 200
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "ledger_table",
+       {
+        "action": "list",
+        "kind": "bill",
+        "status": "open",
+        "limit": 200
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "ledger_table",
+       {
+        "action": "sum",
+        "from": "2026-05-09",
+        "to": "2026-11-09",
+        "group_by": "month"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "ledger_table",
+       {
+        "action": "sum",
+        "from": "2026-05-09",
+        "to": "2026-11-09",
+        "kind": "payroll",
+        "group_by": "month"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Cash-flow forecast — 2026-11-09",
+        "content": "Cash-flow forecast — 2026-11-09\nlowest point 1,850.00 in week 4 (2026-11-30)\n\n## Opening\n- 14,200.00 in the bank on 2026-11-09, as given.\n\n## Week by week\n| Week | Starting | In | Out | Closing |\n| --- | --- | --- | --- | --- |\n| 1 (11-09) | 14,200.00 | 1,600.00 | 1,800.00 | 14,000.00 |\n| 2 (11-16) | 14,000.00 | 1,600.00 | 600.00 | 15,000.00 |\n| 3 (11-23) | 15,000.00 | 11,200.00 | 649.99 | 25,550.01 |\n| 4 (11-30) | 25,550.01 | 1,600.00 | 24,600.00 | 2,550.01 |\n| 5 (12-07) | 2,550.01 | 6,100.00 | 600.00 | 8,050.01 |\n\n## Lowest point\n- Week 4 (11-30): payroll of 24,000.00 lands before Acme's INV-1042 and Birch's INV-1043 (4,500.00) are due in week 5.\n\n## Assumptions\n- Open invoices at their due dates; Cedar's overdue INV-1041 (9,600.00) counted in week 3, two weeks from today.\n- Weekly income run-rate 1,600.00 and spend 600.00: six-month averages (May–October), less the open lines already counted.\n- Payroll 24,000.00 on the last working day of each month, as in September and October.\n\n## Watch\n- Cedar's 9,600.00 slipping a month takes week 4 to −7,049.99.\n- No December bills are in the ledger yet beyond Figma.\n- Birch Legal's 1,200.00 is due in week 1.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Lowest point 2,550.01 in week 4 (payroll before Acme and Birch pay); Cedar's overdue 9,600.00 is the number to watch.\n\n## Report\n- read 3 open invoices, 2 open bills, 6 months of sums; wrote \"Cash-flow forecast — 2026-11-09\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Cash-flow forecast — 2026-11-09",
+      "contains": [
+       "## Week by week\n| Week | Starting | In | Out | Closing |",
+       "| 4 (11-30) |",
+       "Cedar's overdue INV-1041 (9,600.00) counted in week 3",
+       "## Watch\n- Cedar's 9,600.00"
+      ]
+     }
+    },
+    {
+     "ledger": {
+      "count": 19
+     }
+    }
+   ]
+  },
+  {
+   "id": "no-history",
+   "about": "Fewer than two months of lines: the run-rate is left out, the forecast is the dues alone, Assumptions says so and the answer calls the view partial.",
+   "inputs": {
+    "opening": "14200",
+    "weeks": "5",
+    "at": "08:40"
+   },
+   "world": {
+    "ledger": [
+     {
+      "date": "2026-09-20",
+      "kind": "invoice",
+      "amount": 9600,
+      "counterparty": "Cedar Ltd",
+      "ref": "INV-1041",
+      "due": "2026-10-20",
+      "status": "open"
+     },
+     {
+      "date": "2026-11-09",
+      "kind": "invoice",
+      "amount": 3000,
+      "counterparty": "Acme Ltd",
+      "ref": "INV-1042",
+      "due": "2026-12-09",
+      "status": "open"
+     },
+     {
+      "date": "2026-11-09",
+      "kind": "invoice",
+      "amount": 1500,
+      "counterparty": "Birch & Co",
+      "ref": "INV-1043",
+      "due": "2026-12-09",
+      "status": "open"
+     },
+     {
+      "date": "2026-11-05",
+      "kind": "bill",
+      "amount": 1200,
+      "counterparty": "Birch Legal",
+      "ref": "2026-311",
+      "due": "2026-11-15",
+      "status": "open"
+     },
+     {
+      "date": "2026-11-01",
+      "kind": "bill",
+      "amount": 49.99,
+      "counterparty": "Figma",
+      "ref": "F-7781",
+      "due": "2026-11-28",
+      "status": "open"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "ledger_table",
+       {
+        "action": "list",
+        "kind": "invoice",
+        "status": "open",
+        "limit": 200
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "ledger_table",
+       {
+        "action": "list",
+        "kind": "bill",
+        "status": "open",
+        "limit": 200
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "ledger_table",
+       {
+        "action": "sum",
+        "from": "2026-05-09",
+        "to": "2026-11-09",
+        "group_by": "month"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "ledger_table",
+       {
+        "action": "sum",
+        "from": "2026-05-09",
+        "to": "2026-11-09",
+        "kind": "payroll",
+        "group_by": "month"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Cash-flow forecast — 2026-11-09",
+        "content": "Cash-flow forecast — 2026-11-09\nlowest point 12,950.01 in week 2 (2026-11-16) — partial: no run-rate\n\n## Opening\n- 14,200.00 in the bank on 2026-11-09, as given.\n\n## Week by week\n| Week | Starting | In | Out | Closing |\n| --- | --- | --- | --- | --- |\n| 1 (11-09) | 14,200.00 | 0.00 | 1,200.00 | 13,000.00 |\n| 2 (11-16) | 13,000.00 | 0.00 | 49.99 | 12,950.01 |\n| 3 (11-23) | 12,950.01 | 9,600.00 | 0.00 | 22,550.01 |\n| 4 (11-30) | 22,550.01 | 0.00 | 0.00 | 22,550.01 |\n| 5 (12-07) | 22,550.01 | 4,500.00 | 0.00 | 27,050.01 |\n\n## Lowest point\n- Week 2 (11-16): Birch Legal and Figma paid before Cedar's overdue invoice is counted in week 3.\n\n## Assumptions\n- Open invoices at their due dates; Cedar's overdue INV-1041 (9,600.00) counted in week 3, two weeks from today.\n- No run-rate: the ledger holds under two months of posted lines, so only the open invoices and bills are forecast. The view is partial.\n\n## Watch\n- Payroll is not in the ledger at all; if there is one, the view is wrong by its whole amount.\n- Cedar's 9,600.00 slipping a month.\n- No run-rate until the books hold two months.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Partial view (no run-rate): lowest 12,950.01 in week 2; payroll is not in the ledger at all.\n\n## Report\n- read 3 open invoices, 2 open bills, no history; wrote \"Cash-flow forecast — 2026-11-09\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Cash-flow forecast",
+      "contains": [
+       "No run-rate",
+       "The view is partial"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "nothing-open",
+   "about": "No open invoices or bills: the forecast is the run-rate alone and Watch says the pipeline of invoices is empty.",
+   "inputs": {
+    "opening": "14200",
+    "weeks": "5",
+    "at": "08:40"
+   },
+   "world": {
+    "ledger": [
+     {
+      "date": "2026-10-30",
+      "kind": "payroll",
+      "amount": 24000,
+      "counterparty": "Team",
+      "category": "payroll"
+     },
+     {
+      "date": "2026-09-30",
+      "kind": "payroll",
+      "amount": 24000,
+      "counterparty": "Team",
+      "category": "payroll"
+     },
+     {
+      "date": "2026-05-03",
+      "kind": "income",
+      "amount": 6900,
+      "counterparty": "Acme Ltd",
+      "category": "sales"
+     },
+     {
+      "date": "2026-06-03",
+      "kind": "income",
+      "amount": 6900,
+      "counterparty": "Acme Ltd",
+      "category": "sales"
+     },
+     {
+      "date": "2026-07-03",
+      "kind": "income",
+      "amount": 6900,
+      "counterparty": "Acme Ltd",
+      "category": "sales"
+     },
+     {
+      "date": "2026-08-03",
+      "kind": "income",
+      "amount": 6900,
+      "counterparty": "Acme Ltd",
+      "category": "sales"
+     },
+     {
+      "date": "2026-09-03",
+      "kind": "income",
+      "amount": 6900,
+      "counterparty": "Acme Ltd",
+      "category": "sales"
+     },
+     {
+      "date": "2026-10-03",
+      "kind": "income",
+      "amount": 6900,
+      "counterparty": "Acme Ltd",
+      "category": "sales"
+     },
+     {
+      "date": "2026-05-10",
+      "kind": "expense",
+      "amount": 2600,
+      "counterparty": "Various",
+      "category": "ops"
+     },
+     {
+      "date": "2026-06-10",
+      "kind": "expense",
+      "amount": 2600,
+      "counterparty": "Various",
+      "category": "ops"
+     },
+     {
+      "date": "2026-07-10",
+      "kind": "expense",
+      "amount": 2600,
+      "counterparty": "Various",
+      "category": "ops"
+     },
+     {
+      "date": "2026-08-10",
+      "kind": "expense",
+      "amount": 2600,
+      "counterparty": "Various",
+      "category": "ops"
+     },
+     {
+      "date": "2026-09-10",
+      "kind": "expense",
+      "amount": 2600,
+      "counterparty": "Various",
+      "category": "ops"
+     },
+     {
+      "date": "2026-10-10",
+      "kind": "expense",
+      "amount": 2600,
+      "counterparty": "Various",
+      "category": "ops"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "ledger_table",
+       {
+        "action": "list",
+        "kind": "invoice",
+        "status": "open",
+        "limit": 200
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "ledger_table",
+       {
+        "action": "list",
+        "kind": "bill",
+        "status": "open",
+        "limit": 200
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "ledger_table",
+       {
+        "action": "sum",
+        "from": "2026-05-09",
+        "to": "2026-11-09",
+        "group_by": "month"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "ledger_table",
+       {
+        "action": "sum",
+        "from": "2026-05-09",
+        "to": "2026-11-09",
+        "kind": "payroll",
+        "group_by": "month"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Cash-flow forecast — 2026-11-09",
+        "content": "Cash-flow forecast — 2026-11-09\nlowest point −6,800.00 in week 4 (2026-11-30)\n\n## Opening\n- 14,200.00 in the bank on 2026-11-09, as given.\n\n## Week by week\n| Week | Starting | In | Out | Closing |\n| --- | --- | --- | --- | --- |\n| 1 (11-09) | 14,200.00 | 1,600.00 | 600.00 | 15,200.00 |\n| 2 (11-16) | 15,200.00 | 1,600.00 | 600.00 | 16,200.00 |\n| 3 (11-23) | 16,200.00 | 1,600.00 | 600.00 | 17,200.00 |\n| 4 (11-30) | 17,200.00 | 1,600.00 | 24,600.00 | −5,800.00 |\n| 5 (12-07) | −5,800.00 | 1,600.00 | 600.00 | −4,800.00 |\n\n## Lowest point\n- Week 4 (11-30): payroll of 24,000.00 with nothing invoiced to cover it; the balance goes below zero.\n\n## Assumptions\n- No open invoices or bills; the table is the run-rate alone: income 1,600.00 and spend 600.00 a week, six-month averages.\n- Payroll 24,000.00 on the last working day of each month.\n\n## Watch\n- Nothing is invoiced: the pipeline of invoices is empty, and payroll in week 4 is not covered.\n- The run-rate income assumes the usual 6,900.00 a month keeps arriving uninvoiced.\n- Any bill not yet in the ledger makes week 4 worse.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Nothing open: on run-rate alone the balance goes to −5,800.00 at payroll in week 4 — the invoice pipeline is empty.\n\n## Report\n- read 0 open invoices, 0 open bills, 6 months of sums; wrote \"Cash-flow forecast — 2026-11-09\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Cash-flow forecast",
+      "contains": [
+       "pipeline of invoices is empty",
+       "below zero"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "it-never-adds-or-settles-a-line",
+   "about": "A due invoice is overdue by a month: the forecast moves it in the table and the ledger line is neither settled nor touched; the ledger's line count is as it was.",
+   "inputs": {
+    "opening": "14200",
+    "weeks": "5",
+    "at": "08:40"
+   },
+   "world": {
+    "ledger": [
+     {
+      "date": "2026-09-20",
+      "kind": "invoice",
+      "amount": 9600,
+      "counterparty": "Cedar Ltd",
+      "ref": "INV-1041",
+      "due": "2026-10-20",
+      "status": "open"
+     },
+     {
+      "date": "2026-11-09",
+      "kind": "invoice",
+      "amount": 3000,
+      "counterparty": "Acme Ltd",
+      "ref": "INV-1042",
+      "due": "2026-12-09",
+      "status": "open"
+     },
+     {
+      "date": "2026-11-09",
+      "kind": "invoice",
+      "amount": 1500,
+      "counterparty": "Birch & Co",
+      "ref": "INV-1043",
+      "due": "2026-12-09",
+      "status": "open"
+     },
+     {
+      "date": "2026-11-05",
+      "kind": "bill",
+      "amount": 1200,
+      "counterparty": "Birch Legal",
+      "ref": "2026-311",
+      "due": "2026-11-15",
+      "status": "open"
+     },
+     {
+      "date": "2026-11-01",
+      "kind": "bill",
+      "amount": 49.99,
+      "counterparty": "Figma",
+      "ref": "F-7781",
+      "due": "2026-11-28",
+      "status": "open"
+     },
+     {
+      "date": "2026-10-30",
+      "kind": "payroll",
+      "amount": 24000,
+      "counterparty": "Team",
+      "category": "payroll"
+     },
+     {
+      "date": "2026-09-30",
+      "kind": "payroll",
+      "amount": 24000,
+      "counterparty": "Team",
+      "category": "payroll"
+     },
+     {
+      "date": "2026-05-03",
+      "kind": "income",
+      "amount": 6900,
+      "counterparty": "Acme Ltd",
+      "category": "sales"
+     },
+     {
+      "date": "2026-06-03",
+      "kind": "income",
+      "amount": 6900,
+      "counterparty": "Acme Ltd",
+      "category": "sales"
+     },
+     {
+      "date": "2026-07-03",
+      "kind": "income",
+      "amount": 6900,
+      "counterparty": "Acme Ltd",
+      "category": "sales"
+     },
+     {
+      "date": "2026-08-03",
+      "kind": "income",
+      "amount": 6900,
+      "counterparty": "Acme Ltd",
+      "category": "sales"
+     },
+     {
+      "date": "2026-09-03",
+      "kind": "income",
+      "amount": 6900,
+      "counterparty": "Acme Ltd",
+      "category": "sales"
+     },
+     {
+      "date": "2026-10-03",
+      "kind": "income",
+      "amount": 6900,
+      "counterparty": "Acme Ltd",
+      "category": "sales"
+     },
+     {
+      "date": "2026-05-10",
+      "kind": "expense",
+      "amount": 2600,
+      "counterparty": "Various",
+      "category": "ops"
+     },
+     {
+      "date": "2026-06-10",
+      "kind": "expense",
+      "amount": 2600,
+      "counterparty": "Various",
+      "category": "ops"
+     },
+     {
+      "date": "2026-07-10",
+      "kind": "expense",
+      "amount": 2600,
+      "counterparty": "Various",
+      "category": "ops"
+     },
+     {
+      "date": "2026-08-10",
+      "kind": "expense",
+      "amount": 2600,
+      "counterparty": "Various",
+      "category": "ops"
+     },
+     {
+      "date": "2026-09-10",
+      "kind": "expense",
+      "amount": 2600,
+      "counterparty": "Various",
+      "category": "ops"
+     },
+     {
+      "date": "2026-10-10",
+      "kind": "expense",
+      "amount": 2600,
+      "counterparty": "Various",
+      "category": "ops"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "ledger_table",
+       {
+        "action": "list",
+        "kind": "invoice",
+        "status": "open",
+        "limit": 200
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "ledger_table",
+       {
+        "action": "list",
+        "kind": "bill",
+        "status": "open",
+        "limit": 200
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "ledger_table",
+       {
+        "action": "sum",
+        "from": "2026-05-09",
+        "to": "2026-11-09",
+        "group_by": "month"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "ledger_table",
+       {
+        "action": "sum",
+        "from": "2026-05-09",
+        "to": "2026-11-09",
+        "kind": "payroll",
+        "group_by": "month"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Cash-flow forecast — 2026-11-09",
+        "content": "Cash-flow forecast — 2026-11-09\nlowest point 1,850.00 in week 4 (2026-11-30)\n\n## Opening\n- 14,200.00 in the bank on 2026-11-09, as given.\n\n## Week by week\n| Week | Starting | In | Out | Closing |\n| --- | --- | --- | --- | --- |\n| 1 (11-09) | 14,200.00 | 1,600.00 | 1,800.00 | 14,000.00 |\n| 2 (11-16) | 14,000.00 | 1,600.00 | 600.00 | 15,000.00 |\n| 3 (11-23) | 15,000.00 | 11,200.00 | 649.99 | 25,550.01 |\n| 4 (11-30) | 25,550.01 | 1,600.00 | 24,600.00 | 2,550.01 |\n| 5 (12-07) | 2,550.01 | 6,100.00 | 600.00 | 8,050.01 |\n\n## Lowest point\n- Week 4 (11-30): payroll of 24,000.00 lands before Acme's INV-1042 and Birch's INV-1043 (4,500.00) are due in week 5.\n\n## Assumptions\n- Open invoices at their due dates; Cedar's overdue INV-1041 (9,600.00) counted in week 3, two weeks from today.\n- Weekly income run-rate 1,600.00 and spend 600.00: six-month averages (May–October), less the open lines already counted.\n- Payroll 24,000.00 on the last working day of each month, as in September and October.\n\n## Watch\n- Cedar's 9,600.00 slipping a month takes week 4 to −7,049.99.\n- No December bills are in the ledger yet beyond Figma.\n- Birch Legal's 1,200.00 is due in week 1.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Lowest point 2,550.01 in week 4; Cedar's INV-1041 is counted two weeks out and left open in the ledger.\n\n## Report\n- read the ledger only; wrote \"Cash-flow forecast — 2026-11-09\""
+    }
+   ],
+   "checks": [
+    {
+     "ledger": {
+      "contains": [
+       "INV-1041",
+       "open"
+      ],
+      "lacks": [
+       "paid",
+       "void"
+      ],
+      "count": 19
+     }
+    },
+    {
+     "document": {
+      "title": "Cash-flow forecast",
+      "lacks": [
+       "marked paid",
+       "settled"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a-forecast-without-its-headings-fails",
+   "about": "The harness's own check: a forecast without Opening, Week by week, Lowest point, Assumptions and Watch does not deliver, even after its repair pass.",
+   "inputs": {
+    "opening": "14200",
+    "weeks": "5",
+    "at": "08:40"
+   },
+   "world": {
+    "ledger": [
+     {
+      "date": "2026-09-20",
+      "kind": "invoice",
+      "amount": 9600,
+      "counterparty": "Cedar Ltd",
+      "ref": "INV-1041",
+      "due": "2026-10-20",
+      "status": "open"
+     },
+     {
+      "date": "2026-11-09",
+      "kind": "invoice",
+      "amount": 3000,
+      "counterparty": "Acme Ltd",
+      "ref": "INV-1042",
+      "due": "2026-12-09",
+      "status": "open"
+     },
+     {
+      "date": "2026-11-09",
+      "kind": "invoice",
+      "amount": 1500,
+      "counterparty": "Birch & Co",
+      "ref": "INV-1043",
+      "due": "2026-12-09",
+      "status": "open"
+     },
+     {
+      "date": "2026-11-05",
+      "kind": "bill",
+      "amount": 1200,
+      "counterparty": "Birch Legal",
+      "ref": "2026-311",
+      "due": "2026-11-15",
+      "status": "open"
+     },
+     {
+      "date": "2026-11-01",
+      "kind": "bill",
+      "amount": 49.99,
+      "counterparty": "Figma",
+      "ref": "F-7781",
+      "due": "2026-11-28",
+      "status": "open"
+     },
+     {
+      "date": "2026-10-30",
+      "kind": "payroll",
+      "amount": 24000,
+      "counterparty": "Team",
+      "category": "payroll"
+     },
+     {
+      "date": "2026-09-30",
+      "kind": "payroll",
+      "amount": 24000,
+      "counterparty": "Team",
+      "category": "payroll"
+     },
+     {
+      "date": "2026-05-03",
+      "kind": "income",
+      "amount": 6900,
+      "counterparty": "Acme Ltd",
+      "category": "sales"
+     },
+     {
+      "date": "2026-06-03",
+      "kind": "income",
+      "amount": 6900,
+      "counterparty": "Acme Ltd",
+      "category": "sales"
+     },
+     {
+      "date": "2026-07-03",
+      "kind": "income",
+      "amount": 6900,
+      "counterparty": "Acme Ltd",
+      "category": "sales"
+     },
+     {
+      "date": "2026-08-03",
+      "kind": "income",
+      "amount": 6900,
+      "counterparty": "Acme Ltd",
+      "category": "sales"
+     },
+     {
+      "date": "2026-09-03",
+      "kind": "income",
+      "amount": 6900,
+      "counterparty": "Acme Ltd",
+      "category": "sales"
+     },
+     {
+      "date": "2026-10-03",
+      "kind": "income",
+      "amount": 6900,
+      "counterparty": "Acme Ltd",
+      "category": "sales"
+     },
+     {
+      "date": "2026-05-10",
+      "kind": "expense",
+      "amount": 2600,
+      "counterparty": "Various",
+      "category": "ops"
+     },
+     {
+      "date": "2026-06-10",
+      "kind": "expense",
+      "amount": 2600,
+      "counterparty": "Various",
+      "category": "ops"
+     },
+     {
+      "date": "2026-07-10",
+      "kind": "expense",
+      "amount": 2600,
+      "counterparty": "Various",
+      "category": "ops"
+     },
+     {
+      "date": "2026-08-10",
+      "kind": "expense",
+      "amount": 2600,
+      "counterparty": "Various",
+      "category": "ops"
+     },
+     {
+      "date": "2026-09-10",
+      "kind": "expense",
+      "amount": 2600,
+      "counterparty": "Various",
+      "category": "ops"
+     },
+     {
+      "date": "2026-10-10",
+      "kind": "expense",
+      "amount": 2600,
+      "counterparty": "Various",
+      "category": "ops"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "ledger_table",
+       {
+        "action": "list",
+        "kind": "invoice",
+        "status": "open",
+        "limit": 200
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Cash-flow forecast — 2026-11-09",
+        "content": "Cash is fine."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

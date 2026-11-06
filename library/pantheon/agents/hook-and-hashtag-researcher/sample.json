@@ -1,0 +1,27 @@
+{
+ "case": "four-results-three-sources-hooks-with-sources",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- 2 searches, 4 results, opened 3 pages; wrote \"Hooks and hashtags — four-day week, 2026-11-10\"",
+ "read": [
+  "web_search",
+  "web_fetch"
+ ],
+ "wrote": [
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Hooks and hashtags”",
+   "ok": true,
+   "detail": "“Hooks and hashtags — four-day week, 2026-11-10” is there."
+  }
+ ],
+ "answer": "Strongest hook: \"61 companies tried it; 56 kept it\" [1]; the angle to take is the part-timer nobody mentions.\n\n## Report\n- 2 searches, 4 results, opened 3 pages; wrote \"Hooks and hashtags — four-day week, 2026-11-10\"",
+ "documents": [
+  {
+   "title": "Hooks and hashtags — four-day week, 2026-11-10",
+   "content": "Hooks and hashtags — four-day week, 2026-11-10\n4 hooks, 3 angles, 6 hashtags in use; strongest: \"61 companies tried it; 56 kept it\"\n\n## Hooks\n1. \"61 companies tried a four-day week for six months; 56 kept it.\" [1] — LinkedIn, X\n2. \"Revenue was flat.\" [1] — LinkedIn\n3. \"We did not give people Friday off. We took Friday's work away.\" [2] — LinkedIn, Instagram\n4. Depending on who you ask, it worked or \"could not be measured\". [1][3] — X\n\n## Angles\n- The part-timer's four-day week — no result mentions them.\n- The meeting cull as the real product — [2] mentions it in passing.\n- The companies that went back — only [3] is sceptical.\n\n## Hashtags\n- LinkedIn: #fourdayweek (in use, [1]) · #futureofwork (in use, [1])\n- X: #4dayweek (in use, [3]) · #productivity (in use, [3])\n- Instagram: #fourdayweek (in use, [1]) · #worksmarter (in use, [2])\n\n## Sources\n1. Four-day week pilot results — https://example.org/pilot — 2026-10-30 — \"56 of 61 companies will continue.\"\n2. What the fifth day cost us — https://blog.example/fifth-day — 2026-11-04 — \"We took Friday's work away.\"\n3. The four-day week is a mirage — https://sceptic.example/mirage — 2026-11-02 — \"Productivity could not be measured.\"\n\n## Not used\n- Four-day week planner — a shop listing."
+  }
+ ]
+}

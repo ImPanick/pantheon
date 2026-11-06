@@ -1,0 +1,26 @@
+{
+ "case": "a-call-becomes-one-page",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read \"Pipeline\" (Acme: Proposal sent); wrote \"Call summary — Acme Ltd, 2026-11-10\"",
+ "read": [
+  "manage_documents"
+ ],
+ "wrote": [
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Call summary”",
+   "ok": true,
+   "detail": "“Call summary — Acme Ltd, 2026-11-10” is there."
+  }
+ ],
+ "answer": "Next step: send the two-year pricing by 2026-11-12; two objections (two-year price, Okta SSO), three commitments.\n\n## Report\n- read \"Pipeline\" (Acme: Proposal sent); wrote \"Call summary — Acme Ltd, 2026-11-10\"",
+ "documents": [
+  {
+   "title": "Call summary — Acme Ltd, 2026-11-10",
+   "content": "Call summary — Acme Ltd, 2026-11-10\n3 commitments, 2 objections; next step: send the two-year pricing, Sam, 2026-11-12\n\n## Who\n- Them: Ana (Head of Finance), Tom (IT lead). Us: Sam. Stage in the pipeline: Proposal sent (2026-11-03).\n\n## What they said\n- Ana: \"The retainer works for us; the question is whether two years gets us a better rate.\"\n- Tom: \"Single sign-on is a must before IT signs off; Okta specifically.\"\n- Ana: \"Legal needs the data processing addendum before anything is signed.\"\n\n## Objections\n- Price over a two-year term — \"whether two years gets us a better rate\" — Sam said a two-year quote would follow.\n- Single sign-on missing — \"Okta specifically\" — Sam said Okta is in the next release; Tom asked for a date in writing.\n\n## Commitments\n| Who | What | When | Side |\n| --- | --- | --- | --- |\n| Sam | Send two-year pricing | 2026-11-12 | us |\n| Sam | Okta release date in writing | not said | us |\n| Ana | Introduce legal for the DPA | this week | them |\n\n## Next step\n- Send the two-year pricing by 2026-11-12 (Sam); ask Tom for a date to confirm the Okta plan, since none was agreed."
+  }
+ ]
+}

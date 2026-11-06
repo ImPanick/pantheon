@@ -1,0 +1,27 @@
+{
+ "case": "three-fit-one-excluded-one-unopened",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- 3 searches, 4 fetches; wrote \"Partner shortlist — Acme Orders\"",
+ "read": [
+  "web_search",
+  "web_fetch"
+ ],
+ "wrote": [
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Partner shortlist”",
+   "ok": true,
+   "detail": "“Partner shortlist — Acme Orders” is there."
+  }
+ ],
+ "answer": "3 shortlisted from 5 looked at, for integration.\n\n## Report\n- 3 searches, 4 fetches; wrote \"Partner shortlist — Acme Orders\"",
+ "documents": [
+  {
+   "title": "Partner shortlist — Acme Orders",
+   "content": "Partner shortlist — Acme Orders\n3 shortlisted from 5 looked at, for integration\n\n## Shortlist\n- Ledgerly — https://ledgerly.example/integrations — small-business bookkeeping — small shops — integration — a public API and a marketplace listing form on the integrations page.\n- ShipQuick — https://shipquick.example/partners — shipping labels for small shops — the same shops — integration, co-marketing — a partner page with an apply form and joint webinars listed.\n- Countly POS — https://countly.example/about — a point-of-sale app for market stalls — the same buyers at a smaller size — integration — public API docs; no programme named.\n\n## Why each\n- Ledgerly: both sell to small shops; an order in Acme becomes an invoice in Ledgerly, which their page already does for two order tools; the marketplace form is the way in.\n- ShipQuick: a shop that takes orders in Acme prints labels in ShipQuick; their page lists three order tools and a webinar with one; the apply form is the way in.\n- Countly: a stall that sells in person through Countly and online through Acme wants one stock count; the API docs are public; nobody is named.\n\n## First contact\n- Ledgerly (Sam Oduya, Partnerships, named on the page): \"Your integrations page lists Orderline and Shoply for order-to-invoice, which is what our customers ask us for most. Acme Orders runs ordering for about the same shops, and an order becoming a Ledgerly invoice would save them the re-typing. Is the marketplace form the right way to start, or is there someone to talk to first?\"\n- ShipQuick (the partnerships team): \"Your September webinar with Orderline on same-day labels is the workflow our shops use, with Acme in Orderline's place. Acme Orders is ordering for small shops; a label from an Acme order is the obvious join. Would an integration be a fit for the partner programme?\"\n- Countly (the partnerships team): \"Your API docs show stock levels as a first-class object, which is the thing our online shops want to share with a stall. Acme Orders handles their online orders. Is there someone who looks after integrations with order tools?\"\n\n## Checked\n- 3 searches; 4 fetches; 1 link not opened (https://stockwise.example/partners answered 404); excluded: Shopwise (competitor), Orderline (competitor)."
+  }
+ ]
+}

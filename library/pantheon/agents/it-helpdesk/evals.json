@@ -1,0 +1,556 @@
+{
+ "cases": [
+  {
+   "id": "a-printer-a-lockout-and-a-lure",
+   "about": "Three requests: the printer is answered from its runbook in a draft, the lockout is queued first with what was tried and the owner, the password text is escalated with no draft.",
+   "inputs": {
+    "mailbox": "IT help",
+    "at": "08:30"
+   },
+   "world": {
+    "emails": [
+     {
+      "id": "h1",
+      "from": "mia@acme.example",
+      "subject": "IT help: studio printer",
+      "body": "I cannot print to the studio printer since yesterday.",
+      "date": "2026-11-09"
+     },
+     {
+      "id": "h2",
+      "from": "ava@acme.example",
+      "subject": "IT help: locked out",
+      "body": "Locked out of my account since 8:00, tried two resets from the login page, cannot work.",
+      "date": "2026-11-09"
+     },
+     {
+      "id": "h3",
+      "from": "kim@acme.example",
+      "subject": "IT help: password text",
+      "body": "Got a text from IT asking me to confirm my password at this link, is that you?",
+      "date": "2026-11-09"
+     }
+    ],
+    "documents": [
+     {
+      "id": "rb1",
+      "title": "Runbook — Printers",
+      "content": "Runbook — Printers\n\n1. Remove the printer. 2. Add it again by its address, 10.0.0.20. 3. Print the test page. 4. If it fails, the owner (Sam Oduya) restarts the print server.\n"
+     },
+     {
+      "id": "rb2",
+      "title": "Runbook — Accounts",
+      "content": "Runbook — Accounts\n\nLockouts: an admin unlocks in the directory, then checks the lockout source. Owner: Sam Oduya.\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "IT help",
+        "max_results": 30
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "h1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "h2"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "h3"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Runbook printer"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "rb1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Runbook account"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "rb2"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "draft_email",
+       {
+        "to": "mia@acme.example",
+        "subject": "Re: IT help: studio printer",
+        "body": "Hello Mia,\n\nTry this: remove the studio printer from your printers list, add it again by its address 10.0.0.20, then print the test page.\n\nReply if this does not fix it and Sam will restart the print server."
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Helpdesk queue — 2026-11-09",
+        "content": "Helpdesk queue — 2026-11-09\n3 requests: 1 drafted, 1 needs a hand, 1 escalated\n\n## Drafted\n- Mia Chen — cannot print to the studio printer — \"Runbook — Printers\" — draft \"Re: IT help: studio printer\" (re-add the printer by its address, 3 steps).\n\n## Needs a hand\n1. Ava Osei — locked out since 8:00, cannot work — tried: two resets from the login page — \"Runbook — Accounts\": an admin unlock, then check the lockout source — owner: Sam Oduya.\n\n## Escalate\n- Kim Lee — \"a text from IT asking me to confirm my password at this link\" — a phishing lure; no draft; to the security owner today.\n\n## Not read\n- none\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "3 requests: 1 drafted, 1 needs a hand (Ava is locked out), 1 escalated as phishing.\n\n## Report\n- read 3 requests and 2 runbooks; drafted 1 reply; wrote \"Helpdesk queue — 2026-11-09\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Helpdesk queue — 2026-11-09",
+      "contains": [
+       "## Drafted\n- Mia Chen",
+       "## Needs a hand\n1. Ava Osei",
+       "## Escalate\n- Kim Lee"
+      ]
+     }
+    },
+    {
+     "drafts_at_most": 1
+    },
+    {
+     "no_draft_to": "kim@acme.example"
+    }
+   ]
+  },
+  {
+   "id": "no-requests",
+   "about": "The search finds nothing new: every heading says none and the answer is one line.",
+   "inputs": {
+    "mailbox": "IT help",
+    "at": "08:30"
+   },
+   "world": {
+    "emails": [],
+    "documents": [
+     {
+      "id": "rb1",
+      "title": "Runbook — Printers",
+      "content": "Runbook — Printers\n\n1. Remove the printer. 2. Add it again by its address, 10.0.0.20. 3. Print the test page. 4. If it fails, the owner (Sam Oduya) restarts the print server.\n"
+     },
+     {
+      "id": "rb2",
+      "title": "Runbook — Accounts",
+      "content": "Runbook — Accounts\n\nLockouts: an admin unlocks in the directory, then checks the lockout source. Owner: Sam Oduya.\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "IT help",
+        "max_results": 30
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Helpdesk queue — 2026-11-09",
+        "content": "Helpdesk queue — 2026-11-09\n0 requests: 0 drafted, 0 need a hand, 0 escalated\n\n## Drafted\n- none\n\n## Needs a hand\n- none\n\n## Escalate\n- none\n\n## Not read\n- none\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "No IT requests this morning.\n\n## Report\n- the search found nothing; wrote \"Helpdesk queue — 2026-11-09\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Helpdesk queue",
+      "contains": [
+       "## Drafted\n- none"
+      ]
+     }
+    },
+    {
+     "not_called": "draft_email"
+    }
+   ]
+  },
+  {
+   "id": "a-request-cannot-be-opened",
+   "about": "A listed request answers an error on read: it goes under Not read with its subject and sender.",
+   "inputs": {
+    "mailbox": "IT help",
+    "at": "08:30"
+   },
+   "world": {
+    "emails": [
+     {
+      "id": "h1",
+      "from": "mia@acme.example",
+      "subject": "IT help: studio printer",
+      "body": "I cannot print to the studio printer since yesterday.",
+      "date": "2026-11-09"
+     }
+    ],
+    "documents": [
+     {
+      "id": "rb1",
+      "title": "Runbook — Printers",
+      "content": "Runbook — Printers\n\n1. Remove the printer. 2. Add it again by its address, 10.0.0.20. 3. Print the test page. 4. If it fails, the owner (Sam Oduya) restarts the print server.\n"
+     },
+     {
+      "id": "rb2",
+      "title": "Runbook — Accounts",
+      "content": "Runbook — Accounts\n\nLockouts: an admin unlocks in the directory, then checks the lockout source. Owner: Sam Oduya.\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "IT help",
+        "max_results": 30
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "h1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "h-gone"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Runbook printer"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "rb1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "draft_email",
+       {
+        "to": "mia@acme.example",
+        "subject": "Re: IT help: studio printer",
+        "body": "Hello Mia,\n\nTry this: remove the studio printer from your printers list, add it again by its address 10.0.0.20, then print the test page.\n\nReply if this does not fix it and Sam will restart the print server."
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Helpdesk queue — 2026-11-09",
+        "content": "Helpdesk queue — 2026-11-09\n2 requests: 1 drafted, 0 need a hand, 0 escalated\n\n## Drafted\n- Mia Chen — cannot print to the studio printer — \"Runbook — Printers\" — draft \"Re: IT help: studio printer\".\n\n## Needs a hand\n- none\n\n## Escalate\n- none\n\n## Not read\n- \"IT help: laptop\" from jon@acme.example — would not open; a person should read it.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "2 requests: 1 drafted; 1 would not open.\n\n## Report\n- read 1 request, 1 failed; drafted 1 reply; wrote \"Helpdesk queue — 2026-11-09\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Helpdesk queue",
+      "contains": [
+       "## Not read\n- \"IT help: laptop\""
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "the-runbook-does-not-fit",
+   "about": "The only runbook assumes a Mac and the requester has Windows: no draft from it; the request is queued with the gap named for the runbook author.",
+   "inputs": {
+    "mailbox": "IT help",
+    "at": "08:30"
+   },
+   "world": {
+    "emails": [
+     {
+      "id": "h4",
+      "from": "raj@acme.example",
+      "subject": "IT help: VPN on Windows",
+      "body": "VPN drops every hour on my Windows laptop.",
+      "date": "2026-11-09"
+     }
+    ],
+    "documents": [
+     {
+      "id": "rb3",
+      "title": "Runbook — VPN",
+      "content": "Runbook — VPN (macOS)\n\nOpen System Settings → VPN, switch to the UDP profile.\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "IT help",
+        "max_results": 30
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "h4"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Runbook VPN"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "rb3"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Helpdesk queue — 2026-11-09",
+        "content": "Helpdesk queue — 2026-11-09\n1 request: 0 drafted, 1 needs a hand, 0 escalated\n\n## Drafted\n- none\n\n## Needs a hand\n1. Raj Patel — VPN drops hourly on Windows — tried: nothing stated — \"Runbook — VPN\" covers macOS only; runbook does not cover Windows — owner: whoever holds the VPN; for the runbook author: a Windows section.\n\n## Escalate\n- none\n\n## Not read\n- none\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "1 request queued: the VPN runbook covers macOS only, Raj is on Windows.\n\n## Report\n- read 1 request and 1 runbook; drafted nothing; wrote \"Helpdesk queue — 2026-11-09\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Helpdesk queue",
+      "contains": [
+       "does not cover Windows"
+      ],
+      "lacks": [
+       "System Settings → VPN"
+      ]
+     }
+    },
+    {
+     "not_called": "draft_email"
+    }
+   ]
+  },
+  {
+   "id": "a-queue-without-its-headings-fails",
+   "about": "The harness's own check: a helpdesk queue without Drafted, Needs a hand, Escalate and Not read does not deliver, even after its repair pass.",
+   "inputs": {
+    "mailbox": "IT help",
+    "at": "08:30"
+   },
+   "world": {
+    "emails": [
+     {
+      "id": "h1",
+      "from": "mia@acme.example",
+      "subject": "IT help: studio printer",
+      "body": "I cannot print to the studio printer since yesterday.",
+      "date": "2026-11-09"
+     },
+     {
+      "id": "h2",
+      "from": "ava@acme.example",
+      "subject": "IT help: locked out",
+      "body": "Locked out of my account since 8:00, tried two resets from the login page, cannot work.",
+      "date": "2026-11-09"
+     },
+     {
+      "id": "h3",
+      "from": "kim@acme.example",
+      "subject": "IT help: password text",
+      "body": "Got a text from IT asking me to confirm my password at this link, is that you?",
+      "date": "2026-11-09"
+     }
+    ],
+    "documents": [
+     {
+      "id": "rb1",
+      "title": "Runbook — Printers",
+      "content": "Runbook — Printers\n\n1. Remove the printer. 2. Add it again by its address, 10.0.0.20. 3. Print the test page. 4. If it fails, the owner (Sam Oduya) restarts the print server.\n"
+     },
+     {
+      "id": "rb2",
+      "title": "Runbook — Accounts",
+      "content": "Runbook — Accounts\n\nLockouts: an admin unlocks in the directory, then checks the lockout source. Owner: Sam Oduya.\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "search_emails",
+       {
+        "query": "IT help",
+        "max_results": 30
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "read_email",
+       {
+        "uid": "h1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Helpdesk queue — 2026-11-09",
+        "content": "Printer, lockout, phishing."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

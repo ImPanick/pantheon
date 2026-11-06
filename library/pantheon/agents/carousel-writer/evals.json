@@ -1,0 +1,425 @@
+{
+ "cases": [
+  {
+   "id": "five-slides-not-eight",
+   "about": "Three points make five slides with cover and close, each with a short headline and its source, and a brief per slide for the Visual Creator. No image is made.",
+   "inputs": {
+    "idea": "The five companies that went back from the four-day week.",
+    "slides": "8",
+    "hooks": "Hooks and hashtags",
+    "guide": "Brand voice"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "g1",
+      "title": "Brand voice",
+      "content": "Brand voice\n§2 No exclamation marks.\n§4 Say \"we\", never \"our team\".\n§5 One question per post.\n§6 Never red; brand colours are dark blue, cream and amber."
+     },
+     {
+      "id": "h1",
+      "title": "Hooks and hashtags — four-day week, 2026-11-10",
+      "content": "Hooks and hashtags — four-day week, 2026-11-10\n## Hooks\n1. \"61 companies tried a four-day week for six months; 56 kept it.\" [1]\n2. \"We did not give people Friday off. We took Friday's work away.\" [2]\n## Hashtags\n- LinkedIn: #fourdayweek #futureofwork\n- X: #4dayweek\n## Sources\n1. example.org/pilot — \"56 of 61 companies will continue\"; \"revenue flat\".\n2. blog.example/fifth-day — \"14 standing meetings cut to 5.\"\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Brand voice"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "g1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Hooks and hashtags"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "h1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Carousel — the five that went back",
+        "content": "Carousel — the five that went back\n5 slides; cover: \"56 kept the four-day week. 5 didn't.\"\n\n## Cover\n- 56 kept the four-day week. 5 didn't.\n- What the five saw that the rest missed\n\n## Slides\n2. Revenue was flat for all 61 — Output was never the problem. [1]\n3. 14 meetings became 5 — The teams that stayed cut them. The five never did. [2]\n4. A meeting cull with a day off — Skip the cull, keep the cost. (view)\n\n## Close\n- Count your standing meetings first.\n- Reply \"meetings\" and we will send how.\n\n## Image briefs\n1. Card, dark blue, large \"56 / 5\" in cream.\n2. Card, one flat cream line across, headline above.\n3. Bar chart, two amber bars 14 and 5, before / after.\n4. Card, headline only, centred.\n5. Card, the ask in brand type.\n\n## Not written\n- none\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "5 slides; cover: \"56 kept the four-day week. 5 didn't.\" Slide 4 is our view.\n\n## Report\n- read \"Brand voice\" and the hooks; wrote \"Carousel — the five that went back\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Carousel",
+      "contains": [
+       "Output was never the problem. [1]",
+       "## Image briefs\n1. Card, dark blue"
+      ],
+      "lacks": [
+       "engaging",
+       "bright red"
+      ]
+     }
+    },
+    {
+     "not_called": "generate_image"
+    },
+    {
+     "not_called": "post_social"
+    }
+   ]
+  },
+  {
+   "id": "no-sources",
+   "about": "No hooks document: every slide is marked view and no number appears.",
+   "inputs": {
+    "idea": "The five companies that went back from the four-day week.",
+    "slides": "8",
+    "hooks": "Hooks and hashtags",
+    "guide": "Brand voice"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "g1",
+      "title": "Brand voice",
+      "content": "Brand voice\n§2 No exclamation marks.\n§4 Say \"we\", never \"our team\".\n§5 One question per post.\n§6 Never red; brand colours are dark blue, cream and amber."
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Brand voice"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "g1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Hooks and hashtags"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Carousel — the five that went back",
+        "content": "Carousel — the five that went back\n3 slides; cover: \"Why some went back\"\n\n## Cover\n- Why some went back from the four-day week\n- Our view, in three slides\n\n## Slides\n2. The meetings, not the day — We think the day off was never the hard part. (view)\n\n## Close\n- Tried it? Tell us what broke first.\n\n## Image briefs\n1. Card, headline only.\n2. Card, headline only.\n3. Card, the ask.\n\n## Not written\n- no numbers: nothing sources them yet.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "3 slides, all our view: no hooks document was found, so it carries no evidence yet.\n\n## Report\n- read \"Brand voice\"; no hooks; wrote \"Carousel — the five that went back\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Carousel",
+      "contains": [
+       "(view)"
+      ],
+      "lacks": [
+       "56"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "the-guide-cannot-be-read",
+   "about": "No guide: the carousel is written plain and Not written says it is unreviewed.",
+   "inputs": {
+    "idea": "The five companies that went back from the four-day week.",
+    "slides": "8",
+    "hooks": "Hooks and hashtags",
+    "guide": "Brand voice"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "h1",
+      "title": "Hooks and hashtags — four-day week, 2026-11-10",
+      "content": "Hooks and hashtags — four-day week, 2026-11-10\n## Hooks\n1. \"61 companies tried a four-day week for six months; 56 kept it.\" [1]\n2. \"We did not give people Friday off. We took Friday's work away.\" [2]\n## Hashtags\n- LinkedIn: #fourdayweek #futureofwork\n- X: #4dayweek\n## Sources\n1. example.org/pilot — \"56 of 61 companies will continue\"; \"revenue flat\".\n2. blog.example/fifth-day — \"14 standing meetings cut to 5.\"\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Brand voice"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Hooks and hashtags"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "h1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Carousel — the five that went back",
+        "content": "Carousel — the five that went back\n5 slides; cover: \"56 kept the four-day week. 5 didn't.\"\n\n## Cover\n- 56 kept the four-day week. 5 didn't.\n- What the five saw that the rest missed\n\n## Slides\n2. Revenue was flat for all 61 — Output was never the problem. [1]\n3. 14 meetings became 5 — The teams that stayed cut them. The five never did. [2]\n4. A meeting cull with a day off — Skip the cull, keep the cost. (view)\n\n## Close\n- Count your standing meetings first.\n- Reply \"meetings\" and we will send how.\n\n## Image briefs\n1. Card, dark blue, large \"56 / 5\" in cream.\n2. Card, one flat cream line across, headline above.\n3. Bar chart, two amber bars 14 and 5, before / after.\n4. Card, headline only, centred.\n5. Card, the ask in brand type.\n\n## Not written\n- unreviewed against a voice guide: no \"Brand voice\" document was found.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "No voice guide was found, so the 5-slide carousel is unreviewed.\n\n## Report\n- no \"Brand voice\"; read the hooks; wrote \"Carousel — the five that went back\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Carousel",
+      "contains": [
+       "unreviewed against a voice guide"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "the-idea-conflicts-with-its-sources",
+   "about": "The idea says most went back and the source says 56 of 61 kept it: not written as given, the supported carousel proposed.",
+   "inputs": {
+    "idea": "Most companies that tried the four-day week went back.",
+    "slides": "8",
+    "hooks": "Hooks and hashtags",
+    "guide": "Brand voice"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "g1",
+      "title": "Brand voice",
+      "content": "Brand voice\n§2 No exclamation marks.\n§4 Say \"we\", never \"our team\".\n§5 One question per post.\n§6 Never red; brand colours are dark blue, cream and amber."
+     },
+     {
+      "id": "h1",
+      "title": "Hooks and hashtags — four-day week, 2026-11-10",
+      "content": "Hooks and hashtags — four-day week, 2026-11-10\n## Hooks\n1. \"61 companies tried a four-day week for six months; 56 kept it.\" [1]\n2. \"We did not give people Friday off. We took Friday's work away.\" [2]\n## Hashtags\n- LinkedIn: #fourdayweek #futureofwork\n- X: #4dayweek\n## Sources\n1. example.org/pilot — \"56 of 61 companies will continue\"; \"revenue flat\".\n2. blog.example/fifth-day — \"14 standing meetings cut to 5.\"\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Brand voice"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "g1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Hooks and hashtags"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "read",
+        "document_id": "h1"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Carousel — most companies went back",
+        "content": "Carousel — most companies went back\n0 slides; cover: none — the sources contradict the idea\n\n## Cover\n- not written\n\n## Slides\n- none\n\n## Close\n- none\n\n## Image briefs\n- none\n\n## Not written\n- The idea says most went back; the source says 56 of 61 kept it. Proposed instead: the five that went back.\n"
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Not written: the source says 56 of 61 kept it; proposed the five-that-went-back carousel.\n\n## Report\n- read \"Brand voice\" and the hooks; wrote \"Carousel — most companies went back\""
+    }
+   ],
+   "checks": [
+    {
+     "document": {
+      "title": "Carousel",
+      "contains": [
+       "56 of 61",
+       "Proposed instead"
+      ]
+     }
+    },
+    {
+     "not_called": "generate_image"
+    }
+   ]
+  },
+  {
+   "id": "a-carousel-without-its-headings-fails",
+   "about": "The harness's own check: a carousel without Cover, Slides, Close, Image briefs and Not written does not deliver, even after its repair pass.",
+   "inputs": {
+    "idea": "The five companies that went back from the four-day week.",
+    "slides": "8",
+    "hooks": "Hooks and hashtags",
+    "guide": "Brand voice"
+   },
+   "world": {
+    "documents": [
+     {
+      "id": "g1",
+      "title": "Brand voice",
+      "content": "Brand voice\n§2 No exclamation marks.\n§4 Say \"we\", never \"our team\".\n§5 One question per post.\n§6 Never red; brand colours are dark blue, cream and amber."
+     },
+     {
+      "id": "h1",
+      "title": "Hooks and hashtags — four-day week, 2026-11-10",
+      "content": "Hooks and hashtags — four-day week, 2026-11-10\n## Hooks\n1. \"61 companies tried a four-day week for six months; 56 kept it.\" [1]\n2. \"We did not give people Friday off. We took Friday's work away.\" [2]\n## Hashtags\n- LinkedIn: #fourdayweek #futureofwork\n- X: #4dayweek\n## Sources\n1. example.org/pilot — \"56 of 61 companies will continue\"; \"revenue flat\".\n2. blog.example/fifth-day — \"14 standing meetings cut to 5.\"\n"
+     }
+    ]
+   },
+   "script": [
+    {
+     "call": [
+      [
+       "manage_documents",
+       {
+        "action": "list",
+        "search": "Brand voice"
+       }
+      ]
+     ]
+    },
+    {
+     "call": [
+      [
+       "create_document",
+       {
+        "title": "Carousel — the five that went back",
+        "content": "Here it is."
+       }
+      ]
+     ]
+    },
+    {
+     "say": "Done.\n\n## Report\n- done"
+    },
+    {
+     "say": "Done."
+    }
+   ],
+   "checks": [
+    {
+     "status": "error"
+    }
+   ]
+  }
+ ]
+}

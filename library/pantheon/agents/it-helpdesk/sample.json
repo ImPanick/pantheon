@@ -1,0 +1,29 @@
+{
+ "case": "a-printer-a-lockout-and-a-lure",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read 3 requests and 2 runbooks; drafted 1 reply; wrote \"Helpdesk queue — 2026-11-09\"",
+ "read": [
+  "search_emails",
+  "read_email",
+  "manage_documents"
+ ],
+ "wrote": [
+  "draft_email",
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Helpdesk queue”",
+   "ok": true,
+   "detail": "“Helpdesk queue — 2026-11-09” is there."
+  }
+ ],
+ "answer": "3 requests: 1 drafted, 1 needs a hand (Ava is locked out), 1 escalated as phishing.\n\n## Report\n- read 3 requests and 2 runbooks; drafted 1 reply; wrote \"Helpdesk queue — 2026-11-09\"",
+ "documents": [
+  {
+   "title": "Helpdesk queue — 2026-11-09",
+   "content": "Helpdesk queue — 2026-11-09\n3 requests: 1 drafted, 1 needs a hand, 1 escalated\n\n## Drafted\n- Mia Chen — cannot print to the studio printer — \"Runbook — Printers\" — draft \"Re: IT help: studio printer\" (re-add the printer by its address, 3 steps).\n\n## Needs a hand\n1. Ava Osei — locked out since 8:00, cannot work — tried: two resets from the login page — \"Runbook — Accounts\": an admin unlock, then check the lockout source — owner: Sam Oduya.\n\n## Escalate\n- Kim Lee — \"a text from IT asking me to confirm my password at this link\" — a phishing lure; no draft; to the security owner today.\n\n## Not read\n- none"
+  }
+ ]
+}

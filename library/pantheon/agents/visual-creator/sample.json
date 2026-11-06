@@ -1,0 +1,27 @@
+{
+ "case": "four-made-one-briefed",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read \"Carousel — the five that went back\" (5 briefs); generated 4; wrote \"Visuals — Carousel — the five that went back\"",
+ "read": [
+  "manage_documents"
+ ],
+ "wrote": [
+  "generate_image",
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Visuals”",
+   "ok": true,
+   "detail": "“Visuals — Carousel — the five that went back” is there."
+  }
+ ],
+ "answer": "4 made, 1 briefed for hand-set text (slide 4); every image has alt text.\n\n## Report\n- read \"Carousel — the five that went back\" (5 briefs); generated 4; wrote \"Visuals — Carousel — the five that went back\"",
+ "documents": [
+  {
+   "title": "Visuals — Carousel — the five that went back",
+   "content": "Visuals — Carousel — the five that went back\n4 made, 1 briefed, 0 not made\n\n## Made\n- 1 · images/carousel-1.png · \"A flat dark blue card, 1080x1350, large cream numerals '56 / 5' centred, nothing else.\" · 1080x1350\n- 2 · images/carousel-2.png · \"A flat dark blue card with one horizontal cream line across the middle third, no text.\" · 1080x1350\n- 3 · images/carousel-3.png · \"A two-bar chart on dark blue: left bar tall, right bar a third of it, amber bars, no labels.\" · 1080x1350\n- 5 · images/carousel-5.png · \"A flat dark blue card, empty, with a thin cream border.\" · 1080x1350\n\n## Briefs\n- 4 · Card: headline \"A meeting cull with a day off\" set by hand in brand type, cream on dark blue.\n\n## Alt text\n- 1: Dark blue card with large cream numbers reading \"56 / 5\".\n- 2: Dark blue card with a single flat cream line, for flat revenue.\n- 3: Two amber bars on dark blue, the left three times the right, before and after.\n- 4: Dark blue card reading \"A meeting cull with a day off\".\n- 5: Dark blue card with a thin cream border, for the closing text.\n\n## Not made\n- none. Slide 4 carries a sentence, so its words are set by hand."
+  }
+ ]
+}

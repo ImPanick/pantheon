@@ -1,0 +1,27 @@
+{
+ "case": "hosting-and-meals-over-travel-under",
+ "from": "its evaluation, with a scripted model",
+ "summary": "- read \"Budget\"; summed the ledger for 2026-10 by category and kind; wrote \"Budget vs actuals — 2026-10\"",
+ "read": [
+  "manage_documents",
+  "ledger_table"
+ ],
+ "wrote": [
+  "create_document"
+ ],
+ "refused": [],
+ "checks": [
+  {
+   "check": "a document titled “Budget vs actuals”",
+   "ok": true,
+   "detail": "“Budget vs actuals — 2026-10” is there."
+  }
+ ],
+ "answer": "October ran 412.30 over: hosting (+282.30) and meals (+130.00); travel unspent; income up to 12,000.00.\n\n## Report\n- read \"Budget\"; summed the ledger for 2026-10 by category and kind; wrote \"Budget vs actuals — 2026-10\"",
+ "documents": [
+  {
+   "title": "Budget vs actuals — 2026-10",
+   "content": "Budget vs actuals — 2026-10\n412.30 over budget in total (thresholds: 5% or 50.00)\n\n## Over\n| Category | Budget | Actual | Difference | Percent |\n| --- | --- | --- | --- | --- |\n| hosting | 200.00 | 482.30 | +282.30 | +141% |\n| meals | 100.00 | 230.00 | +130.00 | +130% |\n- hosting: \"GPU box, November\" 241.00; \"backups\" 120.50; \"domains\" 120.80.\n\n## Under\n| Category | Budget | Actual | Difference | Percent |\n| --- | --- | --- | --- | --- |\n| travel | 300.00 | 0.00 | −300.00 | −100% |\n\n## On budget\n- software: 250.00 budget, 249.99 actual.\n- payroll: 8,000.00 budget, 8,000.00 actual.\n\n## Income\n- 12,000.00 in October against 9,000.00 in September.\n\n## Not in the budget\n- uncategorised: 14.20 (1 line).\n- The Budget lists \"software\" twice (250.00 and 200.00); 250.00 was used."
+  }
+ ]
+}

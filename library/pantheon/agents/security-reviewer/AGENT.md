@@ -18,7 +18,7 @@ triggers:
   - {on: hand}
 tools: [bash, read_file, grep, create_document]
 skills: [review-code-changes]
-needs: {connectors: [], min_context: 32000, native_tools: preferred}
+needs: {connectors: [], min_context: 32000, native_tools: preferred, model: [reasoning]}
 delivers:
   - {kind: document, title: "Security review", must_contain: [Findings, Fixes, Safe, Verdict]}
 effects: {execute_code: allow, network_egress: never, read_workspace: allow, write_private: allow, destructive: never}
