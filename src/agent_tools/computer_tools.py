@@ -395,6 +395,10 @@ class ComputerTool:
             started = await _phone_on(client, account)
             if started:
                 return started
+        # `B1754`: the agent's hand, for the screen window to draw.
+        from src import desktop_activity
+        drawn = None if on_phone or action in (SCREENSHOT, "wait") else desktop_activity.begin(
+            account, action, what[:1].upper() + what[1:], args)
         try:
             if on_phone:
                 # `B1751`: the same actions on the phone's screen.
@@ -421,11 +425,16 @@ class ComputerTool:
                 answer = await client.input(account, action, screenshot_after=True, **fields)
                 shot = answer.get("screenshot")
         except WorkstationError as e:
+            desktop_activity.finish(account, drawn, False)
             if e.code == "busy":
                 return {"error": f"{e.message} {BUSY_ADVICE}", "exit_code": 1,
                         "workstation_error": e.code}
             return e.as_result()
+        except BaseException:
+            desktop_activity.finish(account, drawn, False)
+            raise
 
+        desktop_activity.finish(account, drawn, True)
         did = "Took a screenshot." if action == SCREENSHOT else f"Did: {what}."
         if not isinstance(shot, dict) or not shot.get("data_b64"):
             # The action happened; only the picture after it is missing. Said,
