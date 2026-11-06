@@ -89,7 +89,7 @@ from scratch. Introduced 2026-08-31; the folds are listed in § *What this run l
 | P26 | Design — the studio, and notes on the live page | 10 | 0 | 0 | **10** |
 | P27 | Connections — the hub and the private vault | 11 | 1 | 0 | **10** |
 | Backlog | Bugs and hardening found in flight | 1338 | 21 | 0 | **1292** |
-| **Total** | | **1832** | **38** | **3** | **1767** |
+| **Total** | | **1833** | **38** | **3** | **1767** |
 
 **Nothing is waiting on a decision** except one, and it is first: `P0-19` has to settle which of
 `CREDITS.md` and `ACKNOWLEDGMENTS.md` is the credits file. All eighteen ledger calls are answered
@@ -253,7 +253,7 @@ they are for.*
 > was claimed at the time is worth more than a quietly corrected one (`B44`).
 
 ### A seventy-fourth wave, of none: a picture reaches OpenAI's pro models, and every frontier provider is reached at its own address
-`4edc21fb`…`HEAD`. **1832 tracked, 1767 done. One row from the owner's first run with cloud models (`B1750`), built and claimed until he has tested it; none closed.**
+`4edc21fb`…`HEAD`. **1833 tracked, 1767 done. One row from the owner's first run with cloud models (`B1750`), built and claimed until he has tested it; none closed.**
 **OpenAI's Responses-only models now answer — text, pictures and tool calls — and a provider entered as its bare host gets its API path.** Every OpenAI request went to chat completions, which 404s for the `-pro`, deep-research, computer-use and codex models; those now go to `/v1/responses`, and a model OpenAI refuses the same way is learnt from the 404 and sent again there. xAI, Mistral, Gemini, OpenRouter and Groq entered without their path went to `<host>/chat/completions`, a 404 on each; they now get `/v1`, `/v1beta/openai`, `/api/v1` and `/openai/v1`. A 404 now names the path and the model.
 
 ### A seventy-third wave, of one: a real Android phone in the workstation, drawn as the device
