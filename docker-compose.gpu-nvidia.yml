@@ -34,6 +34,9 @@ services:
       - workstation-pairing:/workstation-pairing:ro
       - workstation-net-pairing:/workstation-net-pairing:ro
       - workstation-vm-pairing:/workstation-vm-pairing:ro
+      - workstation-debian-pairing:/workstation-debian-pairing:ro
+      - workstation-fedora-pairing:/workstation-fedora-pairing:ro
+      - workstation-rocky-pairing:/workstation-rocky-pairing:ro
     # Pantheon's own browser (`src/local_browser.py`) is a headless Firefox,
     # whose content processes share memory through /dev/shm; Docker's 64 MB
     # default crashes tabs. A tmpfs limit, not memory set aside.
@@ -135,6 +138,11 @@ services:
       - PANTHEON_WORKSTATION_NET_URL=http://workstation:7041
       - PANTHEON_WORKSTATION_VM_URL=http://workstation-vm:7040
       - PANTHEON_WORKSTATION_VM_PAIRING=/workstation-vm-pairing
+      # `B1747`: the other systems a person may pick, each where its profile
+      # starts it (below); one that is not running is never routed to.
+      - PANTHEON_WORKSTATION_DEBIAN_URL=http://workstation:7042
+      - PANTHEON_WORKSTATION_FEDORA_URL=http://workstation:7043
+      - PANTHEON_WORKSTATION_ROCKY_URL=http://workstation:7044
       # NVIDIA overlay (from docker/gpu.nvidia.yml).
       - NVIDIA_VISIBLE_DEVICES=all
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
@@ -353,6 +361,98 @@ services:
       start_period: 20s
     restart: unless-stopped
 
+  # `B1747`. The workstation as another system: Debian 13, Fedora 44 or Rocky
+  # Linux 9 (the RHEL 9 family) beside the Ubuntu one above, for the people who
+  # pick it (Settings -> Workstation -> System, each person's own) — the
+  # owner's ask for a choice of golden images, 2026-11-02. Built from the same
+  # `Dockerfile` and `provision.sh` as Ubuntu's (`WORKSTATION_OS`), so the
+  # desktop, the live screen and the agent's tools are the same; each runs
+  # only when its profile is on — `COMPOSE_PROFILES=fedora,rocky` in `.env`
+  # (any of `debian`, `fedora`, `rocky`) — and costs nothing otherwise. Each
+  # listens on its own port in the same network namespace, so the admin's
+  # network mode holds for it exactly as for Ubuntu's, with homes and a
+  # pairing volume of its own, and no CAP_NET_RAW, like Ubuntu's.
+  workstation-debian:
+    profiles: ["debian"]
+    build:
+      context: ./workstation
+      args:
+        WORKSTATION_OS: debian
+    command: ["--system", "ubuntu", "--bind", "0.0.0.0", "--port", "7042"]
+    network_mode: "service:workstation-net"
+    depends_on:
+      workstation-net:
+        condition: service_healthy
+    cap_drop: [NET_RAW]
+    environment:
+      - PANTHEON_WORKSTATION_PAIRING_GID=${PGID:-1000}
+    volumes:
+      - workstation-debian-homes:/home
+      - workstation-debian-pairing:/workstation-pairing
+      - ${APP_DATA_DIR:-./data}/projects:/projects:z
+    shm_size: "2gb"
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import json,sys,urllib.request as u; sys.exit(0 if json.load(u.urlopen('http://127.0.0.1:7042/v1/health', timeout=5)).get('agent') == 'pantheon-workstation' else 1)"]
+      interval: 15s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    restart: unless-stopped
+
+  workstation-fedora:
+    profiles: ["fedora"]
+    build:
+      context: ./workstation
+      args:
+        WORKSTATION_OS: fedora
+    command: ["--system", "ubuntu", "--bind", "0.0.0.0", "--port", "7043"]
+    network_mode: "service:workstation-net"
+    depends_on:
+      workstation-net:
+        condition: service_healthy
+    cap_drop: [NET_RAW]
+    environment:
+      - PANTHEON_WORKSTATION_PAIRING_GID=${PGID:-1000}
+    volumes:
+      - workstation-fedora-homes:/home
+      - workstation-fedora-pairing:/workstation-pairing
+      - ${APP_DATA_DIR:-./data}/projects:/projects:z
+    shm_size: "2gb"
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import json,sys,urllib.request as u; sys.exit(0 if json.load(u.urlopen('http://127.0.0.1:7043/v1/health', timeout=5)).get('agent') == 'pantheon-workstation' else 1)"]
+      interval: 15s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    restart: unless-stopped
+
+  workstation-rocky:
+    profiles: ["rocky"]
+    build:
+      context: ./workstation
+      args:
+        WORKSTATION_OS: rocky
+    command: ["--system", "ubuntu", "--bind", "0.0.0.0", "--port", "7044"]
+    network_mode: "service:workstation-net"
+    depends_on:
+      workstation-net:
+        condition: service_healthy
+    cap_drop: [NET_RAW]
+    environment:
+      - PANTHEON_WORKSTATION_PAIRING_GID=${PGID:-1000}
+    volumes:
+      - workstation-rocky-homes:/home
+      - workstation-rocky-pairing:/workstation-pairing
+      - ${APP_DATA_DIR:-./data}/projects:/projects:z
+    shm_size: "2gb"
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import json,sys,urllib.request as u; sys.exit(0 if json.load(u.urlopen('http://127.0.0.1:7044/v1/health', timeout=5)).get('agent') == 'pantheon-workstation' else 1)"]
+      interval: 15s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    restart: unless-stopped
+
   # The workstation — a virtual machine of their own for each person, that the
   # agent works inside: its shell, Python and files, a desktop the person can
   # watch and take over, and a Firefox there. The owner (2026-10-31): *"We need
@@ -435,3 +535,9 @@ volumes:
   workstation-net-pairing:
   workstation-vm:
   workstation-vm-pairing:
+  workstation-debian-homes:
+  workstation-debian-pairing:
+  workstation-fedora-homes:
+  workstation-fedora-pairing:
+  workstation-rocky-homes:
+  workstation-rocky-pairing:

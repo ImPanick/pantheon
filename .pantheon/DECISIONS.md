@@ -3841,3 +3841,30 @@ success rates are the owner's to run.
 
 What reopens it: the before/after showing marks do not help the owner's model, or a detector worth its weight.
 
+
+## D-2026-11-02-01 — the workstation's other systems are general-purpose: Debian, Fedora and Rocky Linux
+
+*The owner, 2026-11-02, 06:49:* *"I think that would be a worthwhile addition.. Considering I have custom fine-tune
+LLM's built around full-suite security ops.. (Purple Teaming, aka Red and Blue team experts)."* Then, 17:29, on the
+Kali and Parrot build: *"We can leave this as a private security driven branch... I don't feel like releasing llm
+automated hack-tools is the move to the public.. lol. Still cool that we can offer more. Replace kali and parrot with
+other Linux forms or other os's of great value."*
+
+**What it is.** Beside Ubuntu 24.04 (`B1747`): Debian 13, Fedora 44 and Rocky Linux 9, each a container in its own
+compose profile behind the same network gate, each person's own pick in Settings → Workstation → System. Kali and
+Parrot, with their toolsets, are kept on the branch `security/kali-parrot-workstations`, not shipped.
+
+**Calls made here, not by the owner, and why.**
+
+- **Fedora** for the current, developer-first desktop; **Rocky Linux 9** for the RHEL 9 family most servers run.
+- **Not openSUSE Leap 15**: its Python is 3.6 and the daemon needs 3.8. **Not Alpine or Arch**: KasmVNC builds no
+  package for either, so their desktop would be pictures only.
+- **Fedora takes KasmVNC's EL9 build**, the nearest Kasm makes; if it will not install, the build says so and the
+  desktop is shown as pictures (Xvfb). Rocky's must install, or the build stops.
+- **tini and KasmVNC are fetched by pinned sha256** on Fedora and Rocky (neither ships tini-static); Firefox is each
+  system's own rpm.
+
+**Not verified here.** This sandbox reaches no Debian, Fedora or Rocky package mirror, so only the Ubuntu image was
+built. Windows stays scoped, not built (it needs the KVM VM backend and a licence).
+
+What reopens it: a system the owner wants that KasmVNC builds for, or the owner shipping the security systems.

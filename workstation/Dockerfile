@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # The Pantheon workstation — `P20-01`, `D-2026-09-30-03`.
 #
-# An Ubuntu 24.04 userland the agents work in: one Unix account and one X
+# An Ubuntu 24.04 userland (or Debian 13, Fedora 44 or Rocky Linux 9: `WORKSTATION_OS`, `B1747`) the agents work in: one Unix account and one X
 # display per person, a desktop (XFCE themed to the cockpit, `D-2026-10-31-02`:
 # a terminal, Firefox, a file manager), the tools a
 # task usually needs, and `agentd` answering `workstation/protocol.py` on 7040.
@@ -19,7 +19,27 @@
 # multi-platform index, read 2026-10-29: the same index `24.04` and `noble`
 # pointed at that day) is what the builder pulls. `vm.Dockerfile` builds from the
 # same one; `.github/dependabot.yml`'s `/workstation` entry is what moves both.
-FROM ubuntu:noble-20261024.1@sha256:fe81560990fae86dc4743202b2cb4d3df98d0bcf949173cecef15ce1127ef852
+#
+# `B1747`. One Dockerfile, four systems: `WORKSTATION_OS` picks the base, and
+# everything after it — `provision.sh`, the desktop, the daemon — is the same
+# file for all of them (`Law 14`). BuildKit pulls and builds only the stage the
+# chosen system needs. Ubuntu is the workstation every install has; the other
+# three are opt-in compose profiles (`docker-compose.yml`). Each is pinned the
+# way Ubuntu is: a tag for a reader, a digest for the builder (each read
+# 2026-11-02 from Docker Hub's record of the multi-platform index).
+#   debian  Debian 13 (trixie), Debian's own official image, a dated build.
+#   fedora  Fedora 44, Fedora's official image (Fedora publishes no dated
+#           tag, so the digest alone says which build).
+#   rocky   Rocky Linux 9 (the RHEL 9 family), the Rocky project's own image,
+#           a dated build.
+ARG WORKSTATION_OS=ubuntu
+FROM ubuntu:noble-20261024.1@sha256:fe81560990fae86dc4743202b2cb4d3df98d0bcf949173cecef15ce1127ef852 AS base-ubuntu
+FROM debian:trixie-20261027@sha256:2dc419c6d7fe3dad0a2f9fd469c34cc90b0f9ba642d8fde837fe3d7d34a0e7f1 AS base-debian
+FROM fedora:44@sha256:43b29f65a41eb9c35e1cd5323e3bdf3b655c2357a9f4f1ff2f9c2798e5045d80 AS base-fedora
+FROM rockylinux/rockylinux:9.8.20260525.0@sha256:8101994123cf3d0a8fee517bee7f39e555c7d92bd2d9eb3303cc988a0eeed00f AS base-rocky
+
+FROM base-${WORKSTATION_OS}
+ARG WORKSTATION_OS
 
 ARG DEBIAN_FRONTEND=noninteractive
 # Optional, and empty by default, so a plain build uses Ubuntu's own sources

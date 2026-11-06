@@ -540,6 +540,15 @@ class System:
             raise WorkstationError("unavailable", f"This machine's clock could not be set: "
                                                   f"{e.strerror or e}.")
 
+    def os_release(self) -> Dict:
+        """`B1747`: `health`'s `system` — which system this machine is
+        (`machine.os_release`). Read once, like `machine`."""
+        cached = getattr(self, "_os_release", None)
+        if cached is None:
+            from workstation import machine as _machine
+            cached = self._os_release = _machine.os_release()
+        return dict(cached)
+
     def machine(self) -> Dict:
         """`health`'s `machine` object (`protocol.ACCELS`). Looked up once:
         what a machine runs on does not change while the daemon runs."""
@@ -690,6 +699,7 @@ class Workstation:
             out.update(self.settings())
             out["accounts"] = len(self.system.accounts())
             out["machine"] = self.system.machine()  # `P20-07`
+            out["system"] = self.system.os_release()  # `B1747`
             out["run"] = self.run  # `B1661`
         return out
 

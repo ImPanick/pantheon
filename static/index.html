@@ -4194,6 +4194,14 @@
                    `workstationScreen.js`'s one delegated listener. -->
               <button type="button" id="ws-open-screen" class="memory-toolbar-btn" data-open-workstation-screen hidden>Open the screen</button>
             </div>
+            <!-- `B1747`. Which system this person's workstation is: Ubuntu, or
+                 Debian, Fedora or Rocky Linux where the stack runs them. Theirs alone
+                 (`/api/prefs/workstation_system`). -->
+            <div class="settings-row ws-field ws-system-row" id="ws-system-row" hidden>
+              <label class="settings-label" for="ws-system">System</label>
+              <select id="ws-system" class="settings-select" aria-describedby="ws-system-why"></select>
+            </div>
+            <div id="ws-system-why" class="admin-toggle-sub ws-effect" hidden></div>
             <!-- `B1725` / `D-2026-11-01-02`. Computer Use: no card for a step
                  inside this person's workstation, behind a warning the server
                  words (`GET /api/workstation/computer-use`). -->

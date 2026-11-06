@@ -73,6 +73,37 @@ DEFAULT_PAIRING_DIR = "/workstation-pairing"
 # Settings → Workstation → Backend.
 VM_URL_ENV = "PANTHEON_WORKSTATION_VM_URL"
 VM_PAIRING_DIR_ENV = "PANTHEON_WORKSTATION_VM_PAIRING"
+# `B1747`. The systems a workstation can be: Ubuntu, Debian, Fedora and Rocky
+# Linux (the RHEL 9 family) — the owner's ask for a choice of golden images,
+# 2026-11-02, general-purpose systems only (`D-2026-11-02-01`). Ubuntu is the workstation above, the
+# container or the VM, at `URL_ENV`. Each of the others is a container of its
+# own behind the same network gate, built from the same `Dockerfile` and
+# `provision.sh` (`WORKSTATION_OS`), started only when its compose profile is
+# (`COMPOSE_PROFILES=fedora`, …), listening on its own port in the gate's
+# namespace, with its own homes and its own pairing volume. Each person picks
+# theirs (their preference `workstation_system`); a system the stack does not
+# run is shown, and says how to add it, but is never routed to.
+SYSTEMS = ("ubuntu", "debian", "fedora", "rocky")
+DEFAULT_SYSTEM = "ubuntu"
+SYSTEM_NAMES = {"ubuntu": "Ubuntu 24.04", "debian": "Debian 13",
+                "fedora": "Fedora 44", "rocky": "Rocky Linux 9"}
+SYSTEM_PORTS = {"ubuntu": DEFAULT_PORT, "debian": 7042, "fedora": 7043, "rocky": 7044}
+
+
+def system_url_env(system: str) -> str:
+    """Where Pantheon reads the address of `system`'s workstation."""
+    return URL_ENV if system == DEFAULT_SYSTEM else f"PANTHEON_WORKSTATION_{system.upper()}_URL"
+
+
+def system_pairing_dir_env(system: str) -> str:
+    return PAIRING_DIR_ENV if system == DEFAULT_SYSTEM else f"PANTHEON_WORKSTATION_{system.upper()}_PAIRING"
+
+
+def system_pairing_dir(system: str) -> str:
+    """The folder Pantheon mounts `system`'s pairing volume at by default."""
+    return DEFAULT_PAIRING_DIR if system == DEFAULT_SYSTEM else f"/workstation-{system}-pairing"
+
+
 TOKEN_FILENAME = "token"
 TOKEN_PREFIX = "pws_"
 TOKEN_ENTROPY_BYTES = 32
@@ -640,4 +671,7 @@ __all__ = [
     "INTERNET_EXCLUDED_V6", "NETWORK_ENFORCEMENT",
     # `B1733`, added.
     "STARTING_POINT_ACTIONS", "STARTING_POINT_SCOPES",
+    # `B1747`, added.
+    "DEFAULT_SYSTEM", "SYSTEMS", "SYSTEM_NAMES", "SYSTEM_PORTS", "system_pairing_dir",
+    "system_pairing_dir_env", "system_url_env",
 ]

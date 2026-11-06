@@ -207,6 +207,64 @@ def may_use(owner: Optional[str], *, auth_manager: Any = None) -> bool:
         return False
 
 
+# ── which system (`B1747`) ─────────────────────────────────────────────────────
+
+SYSTEM_PREF = "workstation_system"
+
+
+def system_choice(owner: Optional[str]) -> str:
+    """The system this person picked (their preference `SYSTEM_PREF`), or
+    Ubuntu when they never did or what is stored is not one."""
+    name = workstation_owner(owner)
+    if not name:
+        return P.DEFAULT_SYSTEM
+    try:
+        from routes.prefs_routes import _load_for_user
+        value = (_load_for_user(name) or {}).get(SYSTEM_PREF)
+    except Exception:  # noqa: BLE001 — an unreadable store is the default system
+        value = None
+    return value if value in P.SYSTEMS else P.DEFAULT_SYSTEM
+
+
+def system_for(owner: Optional[str]) -> str:
+    """The system this person's work runs on: their pick when the stack runs
+    it, Ubuntu otherwise (`wc.system_in_use`)."""
+    return wc.system_in_use(system_choice(owner))
+
+
+def checked_system(value: Any) -> str:
+    """A pick to store, or `ValueError` with the sentence. Any of the systems
+    may be stored — one the stack does not run yet is the person's wish, and
+    used the moment an admin starts it; until then they get Ubuntu."""
+    if value is None or value == "":
+        return P.DEFAULT_SYSTEM
+    if value not in P.SYSTEMS:
+        raise ValueError(f"“{str(value)[:40]}” is not a workstation system "
+                         f"({', '.join(P.SYSTEMS)}).")
+    return value
+
+
+# The profile that starts each system's container (`docker-compose.yml`), as
+# the panel tells an admin to switch it on.
+SYSTEM_PROFILE_HINT = ("add {system} to COMPOSE_PROFILES in .env (for example "
+                       "COMPOSE_PROFILES={system}) and run docker compose up -d --build.")
+
+
+def systems_view(owner: Optional[str]) -> Dict[str, Any]:
+    """What the System picker shows: every system, whether this stack runs
+    it, the person's pick and the one they actually get."""
+    offered = set(wc.systems_offered())
+    chosen = system_choice(owner)
+    return {
+        "chosen": chosen,
+        "in_use": wc.system_in_use(chosen),
+        "systems": [{"id": s, "name": P.SYSTEM_NAMES[s], "runs": s in offered,
+                     "how": None if s in offered or s == P.DEFAULT_SYSTEM
+                     else SYSTEM_PROFILE_HINT.format(system=s)}
+                    for s in P.SYSTEMS],
+    }
+
+
 def workstation_for(owner: Optional[str], *, auth_manager: Any = None
                     ) -> Tuple[WorkstationClient, str]:
     """`(client, account)` for this person, or a `WorkstationError` saying which
@@ -227,7 +285,9 @@ def workstation_for(owner: Optional[str], *, auth_manager: Any = None
     which judge a folder by the home whatever the jail (`B968`)."""
     if not wc.enabled():
         raise WorkstationError("off", OFF_SENTENCE)
-    client = wc.from_settings()
+    # `B1747`: on the system this person picked, when the stack runs it.
+    system = system_for(owner)
+    client = wc.from_settings(system) if system != P.DEFAULT_SYSTEM else wc.from_settings()
     if client is None:
         raise WorkstationError("unconfigured", UNCONFIGURED_SENTENCE)
     if not may_use(owner, auth_manager=auth_manager):
@@ -649,7 +709,8 @@ def _daemon_view(daemon: Dict[str, Any]) -> Dict[str, Any]:
     """The daemon's own answer, in the fields the panel shows."""
     keep = ("agent", "protocol", "backend", "version", "sudo", "network", "screen", "accounts",
             "machine",   # `P20-07`: what it runs on, and for a VM whether it is emulated
-            "machines")  # `B979`: on the VM backend, how many run and when one stops
+            "machines",  # `B979`: on the VM backend, how many run and when one stops
+            "system")    # `B1747`: which system answered (its /etc/os-release)
     return {k: daemon.get(k) for k in keep if k in daemon}
 
 
@@ -663,7 +724,10 @@ async def status_for(owner: Optional[str], *, is_admin: bool, auth_manager: Any 
     *Check now*: it asks a workstation that is switched off whether it would
     answer, so an admin can start the overlay, check, and then turn it on."""
     enabled = wc.enabled()
-    base, _source = wc.resolve_base()
+    # `B1747`: the person's system; Ubuntu's is asked for the way it always was.
+    system = system_for(owner)
+    other = system != P.DEFAULT_SYSTEM
+    base, _source = wc.resolve_base(system) if other else wc.resolve_base()
     permitted = may_use(owner, auth_manager=auth_manager)
     out: Dict[str, Any] = {
         "enabled": enabled,
@@ -679,6 +743,8 @@ async def status_for(owner: Optional[str], *, is_admin: bool, auth_manager: Any 
         # `P20-06`: replaced by what the daemon said once it answers. Nothing
         # for a person who may not use it — the admin's choice is not theirs.
         "network": network_view(network_setting(), None) if (permitted or is_admin) else None,
+        # `B1747`: which system this person's workstation is, and the others.
+        "system": systems_view(owner) if (permitted or is_admin) else None,
     }
     if is_admin:
         out["settings"] = settings_view()
@@ -696,7 +762,8 @@ async def status_for(owner: Optional[str], *, is_admin: bool, auth_manager: Any 
         out.update(state=STATE_UNCONFIGURED, sentence=UNCONFIGURED_SENTENCE)
         return out
 
-    client = WorkstationClient(base, wc.configured_token(), timeout=_STATUS_TIMEOUT_S)
+    token = wc.configured_token(system) if other else wc.configured_token()
+    client = WorkstationClient(base, token, timeout=_STATUS_TIMEOUT_S)
     try:
         daemon = await sync_config(client)
         out["daemon"] = _daemon_view(daemon)
@@ -743,4 +810,6 @@ __all__ = [
     "NETWORK_UNRESTRICTED", "network_view",
     # `B977`, `B978`
     "GATE_UP_SENTENCE", "network_held",
+    # `B1747`
+    "SYSTEM_PREF", "checked_system", "system_choice", "system_for", "systems_view",
 ]
