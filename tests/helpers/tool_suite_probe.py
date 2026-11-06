@@ -636,7 +636,8 @@ def _seed_skills(data_dir: str) -> None:
 
 
 @asynccontextmanager
-async def probe_world(scratch: str, *, mcp_states: Sequence[str] = MCP_STATES):
+async def probe_world(scratch: str, *, mcp_states: Sequence[str] = MCP_STATES,
+                      local_tool_budget: int = 0):
     """Build the world, hand it over, tear every process down by its own handle.
 
     **Async, and one event loop for the whole probe.** An `McpManager` stdio
@@ -647,7 +648,15 @@ async def probe_world(scratch: str, *, mcp_states: Sequence[str] = MCP_STATES):
     """
     import core.auth
     from src import constants
+    from src import context_budget
 
+    # `B1755`. The probe's endpoint is on loopback, so the product treats it as
+    # a local server and caps the suite at `local_tool_budget_tokens`. The
+    # probe measures the window rule, the one every server is held to, so the
+    # local ceiling is off unless a caller asks for it by passing a budget.
+    saved_local_budget = context_budget.local_tool_budget
+    context_budget.local_tool_budget = (
+        lambda get_setting, _b=int(local_tool_budget or 0): _b)
     data_dir = os.path.join(scratch, "data")
     os.makedirs(data_dir, exist_ok=True)
     manager = _seed_accounts(data_dir)
@@ -679,6 +688,7 @@ async def probe_world(scratch: str, *, mcp_states: Sequence[str] = MCP_STATES):
                 except Exception:
                     pass
         endpoint.stop()
+        context_budget.local_tool_budget = saved_local_budget
         constants.DATA_DIR = saved_data_dir
         core.auth.register_shared_auth_manager(saved_auth)
 

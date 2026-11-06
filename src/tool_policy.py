@@ -145,6 +145,7 @@ _COMMON_TOOL_NAMES = {
     "update_document",
     "update_plan",
     "use_skill",          # `B1737`
+    "find_tools",         # `B1755`
     "vault_get",
     "vault_search",
     "vault_unlock",

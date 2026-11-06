@@ -1391,7 +1391,7 @@ async def _execute_tool_block_impl(
     """
     from src.tool_implementations import (
         do_search_chats, do_manage_tasks,
-        do_manage_skills, do_use_skill, do_api_call, do_manage_notes, do_ledger_table,
+        do_manage_skills, do_use_skill, do_find_tools, do_api_call, do_manage_notes, do_ledger_table,
         do_manage_calendar,
         do_download_model, do_serve_model, do_list_served_models, do_stop_served_model,
         do_tail_serve_output,
@@ -1691,6 +1691,10 @@ async def _execute_tool_block_impl(
         # `B1737`. Read-only: open or search the skills, chosen by the model.
         desc = "use_skill"
         result = await do_use_skill(content, owner=owner)
+    elif tool == "find_tools":
+        # `B1755`. Read-only: search the tool register; the loop loads the hits.
+        desc = "find_tools"
+        result = await do_find_tools(content, owner=owner)
     elif tool == "api_call":
         first_line = content.split("\n")[0].strip()[:60]
         desc = f"api_call: {first_line}"

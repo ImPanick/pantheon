@@ -940,6 +940,34 @@ def _classify(msg: dict, index: int, history: bool) -> tuple[str, str]:
 # "affordable on a 128k window and real on an 8k one".
 TOOL_SUITE_SHARE = 0.4
 
+# `B1755`. The ceiling on tool definitions for a model served on this machine
+# or this network (LM Studio, llama.cpp, Ollama, vLLM). The share above is about
+# *room*; on a local server the binding cost is *time*. Measured on the owner's
+# qwen3.8-27b in LM Studio (2026-11-05): a 262K window let the whole suite ship —
+# 86 tools, 25.9K tokens of definitions on a three-message chat — and the server
+# processed the prompt at 68-167 tokens a second, so a cold request spent minutes
+# reading tool schemas before it read the question. Above this many tokens the
+# suite narrows to a fixed core plus what the person's words name, and
+# `find_tools` loads the rest when the model asks (nothing becomes unreachable).
+# 0 turns the ceiling off and restores the window-share rule alone.
+LOCAL_TOOL_BUDGET_SETTING = "local_tool_budget_tokens"
+DEFAULT_LOCAL_TOOL_BUDGET = 8000
+MAX_LOCAL_TOOL_BUDGET = 200_000
+
+
+def local_tool_budget(get_setting) -> int:
+    """The local ceiling in tokens, or 0 when the operator switched it off."""
+    try:
+        raw = get_setting(LOCAL_TOOL_BUDGET_SETTING, DEFAULT_LOCAL_TOOL_BUDGET)
+    except Exception:
+        raw = DEFAULT_LOCAL_TOOL_BUDGET
+    if raw is None or raw == "":
+        return DEFAULT_LOCAL_TOOL_BUDGET
+    try:
+        return max(0, min(int(raw), MAX_LOCAL_TOOL_BUDGET))
+    except (TypeError, ValueError):
+        return DEFAULT_LOCAL_TOOL_BUDGET
+
 
 def tool_schema_tokens(schemas) -> int:
     """What one tool schema, or a list of them, costs in the window.
@@ -960,7 +988,8 @@ def tool_schema_tokens(schemas) -> int:
 
 
 def tool_suite_room(context_length: int, get_setting, *,
-                    share: float = TOOL_SUITE_SHARE, owner=None) -> dict:
+                    share: float = TOOL_SUITE_SHARE, owner=None,
+                    local: bool = False) -> dict:
     """How many tokens of tool definitions this turn may carry, and on what.
 
     `context_length` is the **proven** window and nothing else — pass what
@@ -978,12 +1007,23 @@ def tool_suite_room(context_length: int, get_setting, *,
     window = _int_or_zero(context_length)
     budget = agent_input_budget(window, get_setting, owner=owner)   # `B751`
     if window > 0:
-        return {"room": max(0, int(window * share)), "window": window,
-                "window_known": True, "budget": budget, "basis": "proven_window"}
-    # Unknown window: scale off the conservative default the trimmer uses, not
-    # off the bare 128K fallback. `agent_input_budget(0, …)` is that default.
-    return {"room": max(0, int(budget * share)), "window": 0,
-            "window_known": False, "budget": budget, "basis": "window_unknown"}
+        out = {"room": max(0, int(window * share)), "window": window,
+               "window_known": True, "budget": budget, "basis": "proven_window"}
+    else:
+        # Unknown window: scale off the conservative default the trimmer uses,
+        # not off the bare 128K fallback. `agent_input_budget(0, …)` is that
+        # default.
+        out = {"room": max(0, int(budget * share)), "window": 0,
+               "window_known": False, "budget": budget, "basis": "window_unknown"}
+    # `B1755`. A local server pays for every token in prompt-processing time,
+    # so its room is also capped by `local_tool_budget_tokens`.
+    out["local_cap"] = 0
+    if local:
+        cap = local_tool_budget(get_setting)
+        if cap and cap < out["room"]:
+            out["room"] = cap
+            out["local_cap"] = cap
+    return out
 
 
 def measure_request_segments(messages, tools=None, *, history: bool = False) -> dict:

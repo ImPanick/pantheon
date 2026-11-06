@@ -1652,6 +1652,23 @@ _THINKING_MODEL_PATTERNS = (
     "magistral", "mistral-small", "mistral-medium",
 )
 
+def _turn_thinking_off(payload: Dict, url: str) -> None:
+    """`B1755`. Ask a self-hosted thinking model to answer without reasoning.
+
+    `chat_template_kwargs.enable_thinking` is the Qwen3-family template switch
+    llama.cpp's server, vLLM and SGLang read; Ollama's door reads `think`.
+    Only sent to a self-hosted server, because a strict cloud API refuses
+    fields it does not know (`_is_self_hosted_openai_compatible`, issue #3793).
+    """
+    if _is_ollama_openai_compat_url(url):
+        payload["think"] = False
+        return
+    if _is_self_hosted_openai_compatible(url):
+        kwargs = dict(payload.get("chat_template_kwargs") or {})
+        kwargs["enable_thinking"] = False
+        payload["chat_template_kwargs"] = kwargs
+
+
 def _supports_thinking(model: str) -> bool:
     """Check if model supports structured thinking output."""
     if not model:
@@ -2559,8 +2576,15 @@ async def llm_call_async(
     return_model_metadata: bool = False,
     explicit_params=frozenset(),
     max_tokens_floor: Optional[int] = None,
+    thinking: Optional[bool] = None,
 ) -> str | tuple[str, str]:
     """Asynchronous LLM call using httpx with connection pooling, timeout, retry logic, and performance logging.
+
+    ``thinking=False`` (`B1755`) asks a self-hosted thinking model not to
+    reason first, for small side calls (a chat's title, the next-step
+    suggestion) whose answer is a few words. Measured in the owner's LM Studio
+    log: a five-word title cost 192 reasoning tokens and the next-step
+    suggestion 452, generated on the same GPU the person's own turn needed.
 
     ``explicit_params`` names the sampling parameters a person chose (`P2-13`,
     see ``_apply_local_generation_stability``). `/api/chat` passes its preset's
@@ -2724,6 +2748,9 @@ async def llm_call_async(
             payload["think"] = False
         if provider == "mistral" and _supports_thinking(model):
             payload["reasoning_effort"] = _MISTRAL_REASONING_EFFORT
+        if thinking is False and _supports_thinking(model):
+            # Off the loop: the self-hosted test reads the endpoint rows.
+            await asyncio.to_thread(_turn_thinking_off, payload, url)   # `B1755`
         await asyncio.to_thread(_apply_local_profiles, payload, url, target_url, model,
                                 session_id, explicit_params)   # `B1588`
 

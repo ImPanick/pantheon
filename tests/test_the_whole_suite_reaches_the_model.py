@@ -75,7 +75,11 @@ W128K, W32K, W8K = 128_000, 32_000, 8_192
 
 
 def _settings(overrides=None):
-    data = dict(overrides or {})
+    # `B1755`. `LOCAL` is a loopback server, which the product caps at
+    # `local_tool_budget_tokens`; this file is about the window rule every
+    # server is held to, so the local ceiling is off unless a case sets it.
+    data = {"local_tool_budget_tokens": 0}
+    data.update(overrides or {})
 
     def get_setting(key, default=None):
         return data.get(key, default)
@@ -516,7 +520,10 @@ def test_a_partial_turn_tells_the_model_the_set_is_partial(monkeypatch):
     _base(monkeypatch, _mcp_manager(), window=W8K)
     _events, sent = _drive(monkeypatch, ["Nothing to do."])
     assert "tool set is partial" in sent[0]["prompt"]
-    assert "say in one sentence what you need" in sent[0]["prompt"]
+    # `B1755`. A partial turn carries `find_tools`, so the notice points the
+    # model at it instead of telling it to stop and describe what it lacks.
+    assert "find_tools" in sent[0]["tools"]
+    assert "call `find_tools`" in sent[0]["prompt"]
 
 
 def test_a_whole_suite_turn_says_nothing_about_being_partial(monkeypatch):

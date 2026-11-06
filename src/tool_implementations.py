@@ -17,7 +17,7 @@ from src.tool_utils import get_mcp_manager  # re-exported: tests patch src.tool_
 # module stays a working facade.
 from src.tools.ledger import do_ledger_table  # noqa: F401  (`P24-30`)
 from src.tools.system import (  # noqa: F401
-    do_manage_skills, do_use_skill, _skill_dump, do_manage_tasks,
+    do_manage_skills, do_use_skill, do_find_tools, _skill_dump, do_manage_tasks,
     do_api_call, do_app_api,
     _APP_API_BLOCKLIST_PREFIXES, _APP_API_BLOCKLIST_METHOD_PATH,
 )

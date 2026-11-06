@@ -13,7 +13,9 @@ import copy
 import json
 import re
 import time
+import threading
 import logging
+from collections import OrderedDict
 from dataclasses import dataclass
 from typing import Any, AsyncGenerator, Iterable, List, Dict, NamedTuple, Optional, Set
 from urllib.parse import urlparse
@@ -1311,8 +1313,14 @@ def plan_turn_tool_suite(
     get_setting_fn=None,
     pinned_tools: Iterable[str] = (),
     owner: Optional[str] = None,
+    keep: Iterable[str] = (),
 ):
     """This turn's tool set: the whole suite, or a deterministic part of it.
+
+    `B1755`. On a model served locally the room is also capped by
+    `local_tool_budget_tokens` (`context_budget.tool_suite_room(local=True)`),
+    and `keep` — the set this conversation was offered last turn — holds the
+    tool block steady between turns so the server's prompt cache is reused.
 
     `pinned_tools` (`B1372`) are names the caller keeps in the set whatever
     the room, beside rule 4's — a scheduled task's always-available assistant
@@ -1397,7 +1405,12 @@ def plan_turn_tool_suite(
     # number came from, so the receipt can say whether this turn's room was
     # measured off a server's answer or guessed from the model's name.
     window, window_basis = budget_context_basis(endpoint_url or "", model or "", fallback=0)
-    room = tool_suite_room(window, get_setting_fn or get_setting, owner=owner)  # `B751`
+    try:
+        _local = bool(endpoint_url) and is_local_endpoint(endpoint_url)
+    except Exception:
+        _local = False
+    room = tool_suite_room(window, get_setting_fn or get_setting, owner=owner,  # `B751`
+                           local=_local)
 
     domains = [str(d) for d in (domains or ())]
     # Rule 4: *"If the person's words name a tool, a domain or an MCP server,
@@ -1431,7 +1444,45 @@ def plan_turn_tool_suite(
         keyword_picks=keyword_picks,
         domains=domains,
         domain_map=_DOMAIN_TOOL_MAP,
+        keep=keep,
+        local_cap=int(room.get("local_cap") or 0),
     )
+
+
+# `B1755`. The tool set each conversation was offered on its last partial turn,
+# keyed by session id, so the next turn can offer the same set (plus anything
+# newly named) and a local server's cached prompt prefix stays valid. Bounded;
+# the oldest conversation is forgotten first, which costs one cache miss.
+_SESSION_TOOL_SETS: "OrderedDict[str, frozenset]" = OrderedDict()
+_SESSION_TOOL_SETS_MAX = 256
+_SESSION_TOOL_SETS_LOCK = threading.Lock()
+
+
+def session_tool_set(session_id: Optional[str]) -> frozenset:
+    """The set this conversation was last offered, or an empty set."""
+    if not session_id:
+        return frozenset()
+    with _SESSION_TOOL_SETS_LOCK:
+        return _SESSION_TOOL_SETS.get(str(session_id), frozenset())
+
+
+def remember_session_tool_set(session_id: Optional[str], names: Iterable[str]) -> None:
+    """Record (replace) the set a conversation was offered. `B1755`."""
+    if not session_id:
+        return
+    key = str(session_id)
+    with _SESSION_TOOL_SETS_LOCK:
+        _SESSION_TOOL_SETS[key] = frozenset(str(n) for n in names if n)
+        _SESSION_TOOL_SETS.move_to_end(key)
+        while len(_SESSION_TOOL_SETS) > _SESSION_TOOL_SETS_MAX:
+            _SESSION_TOOL_SETS.popitem(last=False)
+
+
+def forget_session_tool_set(session_id: Optional[str]) -> None:
+    if not session_id:
+        return
+    with _SESSION_TOOL_SETS_LOCK:
+        _SESSION_TOOL_SETS.pop(str(session_id), None)
 
 
 _PROMISED_TOOL_RE = re.compile(r"`([a-z][a-z0-9_]{2,40})`")
@@ -1703,6 +1754,8 @@ Generate an image. Line 1 = description, line 2 = model name, line 3 = WxH (e.g.
     "manage_skills": "- ```manage_skills``` — Skill registry (SKILL.md format). Args (JSON): {\"action\": \"list|view|view_ref|search|add|edit|patch|publish|delete\", ...}. `list` returns the index of available skills (published + teacher-escalation drafts); `view name=foo` fetches the full SKILL.md; `view_ref name=foo path=...` loads a reference file under the skill directory. For `add`, provide an explicit kebab-case `name` and only report the exact returned name, because storage may normalize or dedupe it. Use this BEFORE doing domain work — there may already be a procedure (published or draft) that prescribes the correct steps. Drafts written by the teacher loop are authoritative guidance even though they're not yet published.",
     # `B1737`. How the model acts on the skills catalogue itself.
     "use_skill": "- ```use_skill``` — Open a listed skill by `name`, or search skills by `query` (the kind of work).",
+    # `B1755`.
+    "find_tools": "- ```find_tools``` — Load tools that are not in this turn's list. Args (JSON): {\"query\": \"a few words for the job\"} or {\"names\": [\"manage_calendar\"]}. The tools it finds are callable from your next step.",
     "manage_tasks": "- ```manage_tasks``` — Create and manage scheduled background tasks (recurring AI jobs). Args (JSON): {\"action\": \"list|create|edit|delete|pause|resume|run|dry_run|draft_workflow\", ...}. For steps that run one after another, draft_workflow with {\"description\": \"<the user's words>\"} drafts a workflow, switched off, that a person checks in the Workbench.",
     "manage_endpoints": "- ```manage_endpoints``` — Add, remove, or configure AI model API endpoints. Args (JSON): {\"action\": \"list|add|delete|enable|disable\", ...}. Use when user wants to add a new AI provider.",
     # `B1398`, second instance. The narrowing sentence below ended `` (`B871`) ``
@@ -2147,15 +2200,33 @@ _PARTIAL_SUITE_WHY = {
     "window_unknown": "this endpoint did not report its context window, so the "
                       "set was kept conservative",
     "route": "this route was narrowed to the tools its task needs",
+    # `B1755`.
+    "local_budget": "this model runs on local hardware, where every tool "
+                    "definition costs prompt-processing time, so the set was "
+                    "kept lean",
 }
 
+# `B1755`. When `find_tools` is in the set the rest of the suite is one call
+# away, so the notice says so instead of telling the model to stop and ask.
+_PARTIAL_SUITE_NOTICE_FINDABLE = (
+    "## This turn's tool set is partial\n"
+    "You have {n} of your {total} tools loaded — {why}. The rest exist. When "
+    "the job needs a tool that is not listed, call `find_tools` with a few "
+    "words describing it (JSON: {{\"query\": \"calendar events\"}}); the "
+    "tools it finds are loaded and callable from your next step. Do not "
+    "conclude a capability does not exist before searching, and do not "
+    "substitute a shell command for a tool you could load."
+)
 
-def _partial_suite_notice(offered: int, total: int, reason: str) -> str:
+
+def _partial_suite_notice(offered: int, total: int, reason: str,
+                          findable: bool = False) -> str:
     """The notice, or `""` when the turn carries everything it could."""
     if total <= 0 or offered >= total:
         return ""
     why = _PARTIAL_SUITE_WHY.get(str(reason or ""), _PARTIAL_SUITE_WHY["route"])
-    return _PARTIAL_SUITE_NOTICE.format(n=offered, total=total, why=why)
+    template = _PARTIAL_SUITE_NOTICE_FINDABLE if findable else _PARTIAL_SUITE_NOTICE
+    return template.format(n=offered, total=total, why=why)
 
 
 def _assemble_prompt(tool_names: set, disabled_tools: set = None, compact: bool = False,
@@ -5553,7 +5624,8 @@ def _suite_notice_for(tool_suite, tool_names, disabled) -> str:
             return ""
         return _partial_suite_notice(len(tally["offered"]),
                                      len(tally["candidates"]),
-                                     tally["reason"])
+                                     tally["reason"],
+                                     findable="find_tools" in tally["offered"])
     except Exception as exc:
         logger.debug("[tool-suite] notice skipped: %s", exc)
         return ""
@@ -8207,6 +8279,7 @@ async def stream_agent_loop(
                 within_allowed=_within_allowed,
                 pinned_tools=pinned_tools or (),
                 owner=owner,
+                keep=session_tool_set(session_id),   # `B1755`
             )
 
         def _log_the_plan(label):
@@ -8226,6 +8299,12 @@ async def stream_agent_loop(
             _relevant_tools = set(_tool_suite.offered)
             _selection_saw_mcp_names = True
             _log_the_plan("")
+            # `B1755`. A partial set is remembered so the next turn of this
+            # conversation offers the same one; a whole suite needs no memory.
+            if _tool_suite.partial:
+                remember_session_tool_set(session_id, _tool_suite.offered)
+            else:
+                forget_session_tool_set(session_id)
         except Exception as exc:
             # `B1395` (agent:`fx11-order`). This said it *"fails back onto the
             # path that was here before: the selectors below still run"*, and
@@ -11790,6 +11869,53 @@ async def stream_agent_loop(
                                 break
                     except Exception as _e:
                         logger.debug(f"skill requires_toolsets unlock skipped: {_e}")
+
+            # `B1755`. `find_tools` found names; load the ones this person may
+            # call into the turn's set so the NEXT round carries their schemas
+            # (the same door a skill's `requires_toolsets` uses above), remember
+            # them for the rest of the conversation, and rewrite the result to
+            # say exactly what was loaded. A fenced route has no schema channel,
+            # so each loaded tool's own prompt line is included.
+            if block.tool_type == "find_tools" and not result.get("error"):
+                try:
+                    _found = [str(n) for n in (result.get("found") or []) if n]
+                    if _tool_suite is not None:
+                        _pool = set(_tool_suite.candidates)
+                    else:
+                        from src.tool_policy import selectable_tool_names as _stn
+                        _pool = set(_stn()) | set(_suite_mcp_names or ())
+                    _may = _within_allowed(set(_found) & _pool) & disabled_tools.allowed_among(_pool)
+                    _already = [n for n in _found if _relevant_tools is None or n in _relevant_tools]
+                    _loaded = [n for n in _found if n in _may and n not in _already]
+                    _refused = [n for n in _found if n not in _may and n not in _already]
+                    if _loaded and _relevant_tools is not None:
+                        _relevant_tools.update(_loaded)
+                        if _base_relevant_tools is not None:
+                            _base_relevant_tools.update(_loaded)
+                        remember_session_tool_set(
+                            session_id, set(session_tool_set(session_id)) | set(_relevant_tools))
+                        logger.info("[tool-suite] find_tools loaded for next round: %s", _loaded)
+                    _descs = {}
+                    for _line in str(result.get("output") or "").splitlines():
+                        if _line.startswith("- ") and " — " in _line:
+                            _n, _d = _line[2:].split(" — ", 1)
+                            _descs[_n.strip()] = _d.strip()
+                    _parts = []
+                    if _loaded:
+                        _parts.append("Loaded — callable from your next step:")
+                        for _n in _loaded:
+                            _sec = TOOL_SECTIONS.get(_n, "")
+                            _one = _sec.strip() if _sec and _sec.lstrip().startswith("- ") else ""
+                            _parts.append(_one or f"- {_n} — {_descs.get(_n, '')}")
+                    if _already:
+                        _parts.append("Already in your list: " + ", ".join(_already) + ".")
+                    if _refused:
+                        _parts.append("Not available on this turn: " + ", ".join(_refused) + ".")
+                    if not _parts:
+                        _parts.append(str(result.get("output") or "No tool matched."))
+                    result["output"] = "\n".join(_parts)
+                except Exception as _e:
+                    logger.warning("find_tools load skipped: %s", _e)
 
             # Extract structured web sources from web_search tool output.
             # web_search returns {"output": ..., "exit_code": 0}; check "output"
