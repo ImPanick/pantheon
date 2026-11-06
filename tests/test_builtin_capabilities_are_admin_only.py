@@ -187,7 +187,8 @@ async def test_the_listing_covers_every_tool_section(router):
     # and `P25-05` added `git` and `agent_browser`.
     # `P27-07`: + shell_with_login; `P27-09`: + connections; `P16-20`: + network;
     # `B1621`: + read_chat. `B1737`: + use_skill. `P24-30`: + ledger_table.
-    assert len(expected) == 69
+    # `B1755`: + find_tools.
+    assert len(expected) == 70
 
 
 # ── the loader and the flag ─────────────────────────────────────────────────
