@@ -97,6 +97,14 @@ def test_a_kept_set_that_no_longer_fits_is_planned_afresh():
     assert len(second.offered) < len(first.offered)
 
 
+def test_a_kept_set_a_little_over_the_room_is_still_kept():
+    # Last turn's set carried a skill's toolset on top of its plan.
+    first = _plan(pinned={"ask_user"})
+    carried = set(first.offered) | {"tool_29", "tool_28", "tool_27"}
+    second = _plan(pinned={"ask_user"}, keep=carried)
+    assert second.offered == carried
+
+
 def test_the_whole_suite_needs_no_find_tools_notice():
     plan = _plan(room=10_000, local_cap=0)
     assert not plan.partial
@@ -164,10 +172,16 @@ def _drive_conversation(scratch, budget):
 
 @pytest.fixture(scope="module")
 def conversations(tmp_path_factory):
-    return {
-        "lean": _drive_conversation(str(tmp_path_factory.mktemp("lean")), 8000),
-        "whole": _drive_conversation(str(tmp_path_factory.mktemp("whole")), 0),
-    }
+    # The browser is offered, as on a machine with Firefox (the CI runner): the
+    # first turn's words match a skill that brings `agent_browser`, which the
+    # later turns must keep, or the prefix changes (seen on CI, not here).
+    from src import local_browser
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(local_browser, "unavailable_reason", lambda *a, **k: None)
+        return {
+            "lean": _drive_conversation(str(tmp_path_factory.mktemp("lean")), 8000),
+            "whole": _drive_conversation(str(tmp_path_factory.mktemp("whole")), 0),
+        }
 
 
 def _tool_chars(body):

@@ -1211,7 +1211,14 @@ def plan_tool_suite(
     kept_cost = sum(int(cost(name) or 0) for name in kept)
     offered: Set[str] = set()
     spent = 0
-    if keep and kept_cost <= room:
+    # A kept set carries what last turn added after its plan (a domain's
+    # tools, a matched skill's toolsets: `agent_browser` alone is ~2,500
+    # tokens), so it can sit over `room`. When nothing new is pinned it is
+    # honoured up to half the room again; past that, or when the room really
+    # shrank, the set is planned afresh, which costs one cache miss.
+    _nothing_new = pinned_in <= (set(str(n) for n in keep or ()) | {FIND_TOOLS})
+    _keep_ceiling = room + room // 2 if _nothing_new else room
+    if keep and kept_cost <= _keep_ceiling:
         offered = set(kept)
         spent = kept_cost
     else:
