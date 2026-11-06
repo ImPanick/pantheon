@@ -47004,6 +47004,60 @@ body.settings-sidebar-resize-active {
   border-radius: 7px;
   background: var(--panel);
 }
+/* `B1754`. The agent's hand on the desktop: the live browser's (`.abw-hand`,
+   `P25-07`) on a layer over the screen that never takes a pointer. Its colour
+   is the theme's accent, set on `.wsv-agent` by `workstationScreen.js` and
+   taken from there by the arrow and the ring (and set on the caption's rule):
+   a pointer, not text, so it adds no accent site to this sheet's census. */
+.wsv-agent {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  overflow: hidden;
+  pointer-events: none;
+}
+.wsv-hand {
+  position: absolute;
+  left: 0;
+  top: 0;
+  line-height: 0;
+  pointer-events: none;
+  filter: drop-shadow(0 1px 2px var(--shadow-ink-3));
+  transition: transform 0.42s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.wsv-hand[hidden], .wsv-caption[hidden] { display: none; }
+.wsv-caption {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  z-index: 3;
+  max-width: min(70%, 520px);
+  padding: 6px 10px;
+  font-size: 12px;
+  color: var(--fg);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 4px 14px var(--shadow-ink-3);
+  pointer-events: none;
+}
+.wsv-caption[data-phase="doing"]::after { content: " …"; }
+.wsv-caption[data-phase="failed"] { border-left-color: var(--red) !important; }
+.wsv-ripple {
+  position: absolute;
+  width: 34px;
+  height: 34px;
+  margin: -17px 0 0 -17px;
+  border: 2px solid currentColor;
+  border-radius: 50%;
+  pointer-events: none;
+  animation: abw-ripple 0.65s ease-out forwards;
+}
+@media (prefers-reduced-motion: reduce) {
+  .wsv-hand { transition-duration: 0.01ms; }
+  .wsv-ripple { animation-duration: 0.01ms; }
+}
 .wsv-note {
   margin: 0;
   font-size: 12px;

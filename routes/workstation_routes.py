@@ -87,6 +87,9 @@ stream:
                                  and the page the window frames to show it —
                                  Pantheon's own copy of KasmVNC's web client
                                  (`src/desktop_client.py`); or why not.
+  GET  /api/workstation/desktop/activity  `B1754`: what the agent's hand did
+                                 on that screen after `?since`, for the window
+                                 to draw it (`src/desktop_activity.py`).
   WS   /api/workstation/desktop/websockify
                                  the stream itself, relayed: browser to
                                  Pantheon to the workstation's daemon to the
@@ -628,6 +631,17 @@ def setup_workstation_routes() -> APIRouter:
         else:
             out["why"] = str(answer.get("why") or "This screen is shown as pictures.")[:500]
         return JSONResponse(out, headers=_NO_STORE)
+
+    @router.get("/desktop/activity")
+    async def workstation_desktop_activity(request: Request, since: int = 0, person: str = ""):
+        """`B1754`. What the agent's hand did on the caller's desktop after
+        `since` (or, for an admin, on the `person`'s they watch), for the
+        screen window's hand: `src/desktop_activity.py`. Read from Pantheon's
+        own memory, so it asks nothing of the workstation."""
+        from src import desktop_activity
+        _client, account = _watched(request, person)
+        return JSONResponse(desktop_activity.since(account, max(0, int(since or 0))),
+                            headers=_NO_STORE)
 
     def _socket_person(websocket: WebSocket) -> Optional[str]:
         """The signed-in person a desktop websocket comes from, or None —
