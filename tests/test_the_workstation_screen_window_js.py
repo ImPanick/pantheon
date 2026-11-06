@@ -867,7 +867,9 @@ const giveWindow = () => { const f = live().frame;
 const say = (data, extra) => mod._test.onMessage(Object.assign(
   { source: live().frame && live().frame.contentWindow, origin: 'http://pantheon.test', data },
   extra || {}));
-const desktops = () => server.calls.filter((c) => c.url.startsWith('/api/workstation/desktop'));
+// The desktop's own ask, not the agent's hand (`/desktop/activity`, `B1754`).
+const desktops = () => server.calls.filter((c) => c.url.startsWith('/api/workstation/desktop')
+  && !c.url.startsWith('/api/workstation/desktop/activity'));
 const holderReads = () => server.calls.filter((c) => c.url.startsWith('/api/workstation/control')
   && c.method === 'GET');
 """.replace("__WATCHING__", WATCHING).replace("__CLIENT__", CLIENT)

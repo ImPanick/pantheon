@@ -74,6 +74,11 @@ const TIMING = {
   CLICK_SETTLE_MS: 250,   // a second click inside this is a double click
   TYPE_FLUSH_MS: 40,      // typed characters are sent together
   WHEEL_FLUSH_MS: 80,     // wheel turns are summed, then sent
+  ACTIVITY_MS: 450,       // `B1754`: the agent's hand, re-read this often while it moves
+  ACTIVITY_IDLE_MS: 1500, // … and this often while it is still
+  BUSY_FOR_MS: 6000,      // the hand counts as moving this long after its last step
+  CAPTION_MS: 2600,       // how long the caption stays after a step ends
+  RIPPLE_MS: 700,
 };
 const DRAG_PX = 4;              // further than this between press and release is a drag
 const WHEEL_PX_PER_CLICK = 100; // a pixel-mode wheel delta per wheel click
@@ -103,6 +108,18 @@ const LIVE_NOTE = {
   disconnected: 'The live desktop is not connected; it tries again on its own.',
 };
 const CLIP_NOTE_MS = 6000;     // how long a clipboard note stays under the stage
+// `B1754`. The agent's pointer on the desktop: the live browser's own arrow
+// (`browserWindow.js`'s `HAND_SVG`, `P25-07`), in the theme's accent, outlined
+// in the panel colour so it reads on any wallpaper in any theme. The real X
+// pointer is the person's too; this one is only ever the agent's.
+const HAND_SVG = '<svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true">'
+  + '<path d="M4 2.5 L4 19 L8.6 14.8 L11.6 21.5 L14.4 20.3 L11.4 13.7 L17.6 13.4 Z" '
+  + 'fill="currentColor" stroke="var(--panel)" stroke-width="1.6" stroke-linejoin="round"/></svg>';
+// The tip of the arrow, in the drawn hand's own pixels: the point it stands on.
+const HAND_TIP = { x: 4 * 22 / 24, y: 2.5 * 22 / 24 };
+// The desktop's fixed size (`workstation/protocol.py`'s SCREEN_WIDTH/HEIGHT),
+// which the live client scales into its frame.
+const SCREEN = { w: 1280, h: 800 };
 // The only page the stage frames: Pantheon's own copy of the client.
 const DESKTOP_CLIENT = '/api/workstation/desktop/client/';
 
@@ -180,6 +197,30 @@ export function keyAction(ev) {
   return { action: 'key', keys: [...mods, name].join('+') };
 }
 
+/**
+ * `B1754`. A point on the screen (its own pixels) as a place in the overlay,
+ * relative to the overlay's box — `mapPoint` the other way round. `box` is
+ * where the screen is drawn: the picture's own box, or, live, the client's
+ * frame, inside which the client scales the screen keeping its shape and
+ * centres it (`resize=scale`, `fit: true`). `null` when there is no place.
+ */
+export function placeOnScreen(x, y, box, overlay, w, h, fit = false) {
+  if (!box || !overlay || !(box.width > 0) || !(box.height > 0)) return null;
+  if (!(w > 0) || !(h > 0) || !Number.isFinite(x) || !Number.isFinite(y)) return null;
+  let left = box.left - overlay.left;
+  let top = box.top - overlay.top;
+  let kx = box.width / w;
+  let ky = box.height / h;
+  if (fit) {
+    const k = Math.min(kx, ky);
+    left += (box.width - w * k) / 2;
+    top += (box.height - h * k) / 2;
+    kx = k;
+    ky = k;
+  }
+  return { left: left + x * kx, top: top + y * ky };
+}
+
 /** Wheel deltas, summed, as whole wheel clicks within the protocol's bound. */
 export function wheelClicks(delta, deltaMode) {
   const perClick = deltaMode === 1 ? 3 : (deltaMode === 2 ? 1 / 3 : WHEEL_PX_PER_CLICK);
@@ -219,6 +260,14 @@ let _desktopAsk = 0;      // the latest ask; an older answer is dropped
 let _clip = '';           // text the workstation copied that the page could not place itself
 let _clipNote = '';
 let _clipNoteTimer = null;
+// `B1754`. The agent's hand.
+let _actSince = 0;        // the newest activity seq this window has drawn
+let _actTimer = null;
+let _actInFlight = false;
+let _actAsk = 0;          // the latest ask; an older answer is dropped
+let _lastAgentAt = 0;
+let _handAt = null;       // { x, y } on the screen, or null before its first step
+let _captionTimer = null;
 
 function _hidden(node, on) {
   if (node) node.hidden = !!on;
@@ -316,6 +365,8 @@ function _render() {
   // Live, the client draws the workstation's own pointer and takes the keys
   // itself; the picture's crosshair and focus are for pictures only.
   _win.screen.classList.toggle('wsv-holding', holding && !_live);
+  // `B1754`: while the person holds the screen the agent's hand is not on it.
+  if (holding) { _hidden(_win.hand, true); _hidden(_win.caption, true); }
   _win.screen.classList.toggle('wsv-is-live', !!_live);
   _win.screen.tabIndex = _live ? -1 : 0;
   _win.stage.classList.toggle('wsv-held', holding);
@@ -473,6 +524,128 @@ async function _tickLive() {
   }
   if (_soon) { _soon = false; wait = Math.min(wait, TIMING.AFTER_INPUT_MS); }
   if (_shouldPoll()) _schedule(wait - (Date.now() - started));
+}
+
+// ── the agent's hand (`B1754`) ───────────────────────────────────────────────
+
+/** The theme's accent, read from the page's own tokens each time, so a theme
+ *  change is followed at the hand's next step. */
+function _handColour() {
+  try {
+    return getComputedStyle(document.documentElement).getPropertyValue('--accent').trim();
+  } catch (_) { return ''; }
+}
+
+/** Where a point on the screen is in the overlay, as the screen is drawn now. */
+function _place(x, y) {
+  if (!_win) return null;
+  const overlay = _win.agent.getBoundingClientRect();
+  if (_live && _frame) {
+    return placeOnScreen(x, y, _frame.getBoundingClientRect(), overlay, SCREEN.w, SCREEN.h, true);
+  }
+  if (_win.img.hidden) return null;
+  return placeOnScreen(x, y, _win.img.getBoundingClientRect(), overlay, _size.w, _size.h);
+}
+
+function _moveHand(x, y) {
+  if (!_win) return;
+  _handAt = { x, y };
+  const at = _place(x, y);
+  if (!at) return;
+  const colour = _handColour();
+  if (colour) _win.agent.style.color = colour;
+  _win.hand.style.transform = `translate(${Math.round(at.left - HAND_TIP.x)}px, `
+    + `${Math.round(at.top - HAND_TIP.y)}px)`;
+  _hidden(_win.hand, _holder === 'person');
+}
+
+function _ripple(x, y) {
+  if (!_win) return;
+  const at = _place(x, y);
+  if (!at) return;
+  const r = _el('span', 'wsv-ripple');
+  r.setAttribute('aria-hidden', 'true');
+  r.style.left = `${Math.round(at.left)}px`;
+  r.style.top = `${Math.round(at.top)}px`;
+  _win.agent.appendChild(r);
+  setTimeout(() => { if (r.parentNode) r.parentNode.removeChild(r); }, TIMING.RIPPLE_MS);
+}
+
+function _caption(text, phase) {
+  if (!_win || _holder === 'person') return;
+  const c = _win.caption;
+  c.textContent = text;
+  c.dataset.phase = phase;
+  const colour = _handColour();
+  if (colour) c.style.borderLeftColor = colour;
+  _hidden(c, false);
+  if (_captionTimer) { clearTimeout(_captionTimer); _captionTimer = null; }
+  if (phase !== 'doing') {
+    _captionTimer = setTimeout(() => { _captionTimer = null; _hidden(_win && _win.caption, true); },
+      TIMING.CAPTION_MS);
+  }
+}
+
+const _CLICKS = new Set(['click', 'double_click', 'triple_click', 'right_click', 'middle_click']);
+
+/** What the agent did since this window last looked, drawn as it was done:
+ *  the hand glides to where it acts (a drag's end once it is done), says what
+ *  it does, and a click ripples where it landed. Only the agent's hand. */
+export function applyDesktopActivity(entries) {
+  (entries || []).forEach((a) => {
+    if (!a || typeof a !== 'object') return;
+    if (Number.isInteger(a.seq) && a.seq > _actSince) _actSince = a.seq;
+    if (a.who !== 'agent') return;
+    _lastAgentAt = Date.now();
+    const done = a.phase === 'done';
+    if (a.action === 'drag' && done && Number.isFinite(a.to_x) && Number.isFinite(a.to_y)) {
+      _moveHand(a.to_x, a.to_y);
+    } else if (Number.isFinite(a.x) && Number.isFinite(a.y)) {
+      _moveHand(a.x, a.y);
+    }
+    if (typeof a.label === 'string' && a.label) _caption(a.label, a.phase || 'done');
+    if (done && _CLICKS.has(a.action) && Number.isFinite(a.x)) _ripple(a.x, a.y);
+  });
+}
+
+function _activityWait() {
+  return Date.now() - _lastAgentAt < TIMING.BUSY_FOR_MS ? TIMING.ACTIVITY_MS : TIMING.ACTIVITY_IDLE_MS;
+}
+
+function _scheduleActivity(ms) {
+  if (_actTimer) clearTimeout(_actTimer);
+  _actTimer = setTimeout(_tickActivity, Math.max(0, ms));
+}
+
+async function _tickActivity() {
+  _actTimer = null;
+  if (!_shouldPoll() || _actInFlight) return;
+  _actInFlight = true;
+  const ask = ++_actAsk;
+  let wait = _activityWait();
+  try {
+    const res = await fetch(`/api/workstation/desktop/activity${_whose([`since=${_actSince}`])}`,
+      { credentials: 'same-origin', cache: 'no-store' });
+    if (res.ok && ask === _actAsk && _win) {
+      const answer = await res.json();
+      // A Pantheon restarted since the last look counts again from 0.
+      if (Number.isInteger(answer.seq) && answer.seq < _actSince) _actSince = 0;
+      applyDesktopActivity(answer.activity);
+      wait = _activityWait();
+    } else if (!res.ok) {
+      wait = TIMING.RETRY_MS;
+    }
+  } catch (_) {
+    wait = TIMING.RETRY_MS;
+  } finally {
+    _actInFlight = false;
+  }
+  if (_shouldPoll()) _scheduleActivity(wait);
+}
+
+/** The hand put back where it stood, after the window moved or resized. */
+function _replaceHand() {
+  if (_handAt && _win && !_win.hand.hidden) _moveHand(_handAt.x, _handAt.y);
 }
 
 // ── the live desktop (`D-2026-10-31-01`) ─────────────────────────────────────
@@ -1017,7 +1190,22 @@ function _build() {
   const empty = _el('div', 'wsv-empty', 'Asking the workstation for its screen…');
   screen.appendChild(img);
   screen.appendChild(empty);
+  // `B1754`. The agent's hand and its words, over the screen (and over the
+  // live client's frame, which the overlay never takes a click from).
+  const agent = _el('div', 'wsv-agent');
+  agent.setAttribute('aria-hidden', 'true');
+  const hand = _el('span', 'wsv-hand');
+  hand.innerHTML = HAND_SVG;   // a constant above, never server text
+  hand.hidden = true;
+  agent.appendChild(hand);
+  const caption = _el('div', 'wsv-caption');
+  caption.hidden = true;
   stage.appendChild(screen);
+  stage.appendChild(agent);
+  // The caption is read out; the hand is not (it is a picture of a pointer).
+  caption.setAttribute('role', 'status');
+  caption.setAttribute('aria-live', 'polite');
+  stage.appendChild(caption);
   const hint = _el('p', 'wsv-hint');
   hint.id = 'wsv-hint';
   hint.hidden = true;
@@ -1045,9 +1233,13 @@ function _build() {
   screen.addEventListener('focus', _render);
   screen.addEventListener('blur', () => { _flushTyped(); _render(); });
   img.addEventListener('dragstart', (e) => e.preventDefault());
+  img.addEventListener('load', _replaceHand);
+  if (typeof ResizeObserver === 'function') {
+    try { new ResizeObserver(_replaceHand).observe(stage); } catch (_) {}
+  }
 
   return { modal, content, header, status, statusText, take, give, reset, save, cu, paste, copy,
-    stage, screen, img, empty, hint, note, whoLabel, who };
+    stage, screen, img, empty, hint, note, whoLabel, who, agent, hand, caption };
 }
 
 /** Everything the window started, stopped; the screen handed back if this
@@ -1071,6 +1263,12 @@ function _teardown() {
   _clip = '';
   _clipNote = '';
   if (_clipNoteTimer) { clearTimeout(_clipNoteTimer); _clipNoteTimer = null; }
+  if (_actTimer) { clearTimeout(_actTimer); _actTimer = null; }
+  if (_captionTimer) { clearTimeout(_captionTimer); _captionTimer = null; }
+  _actAsk += 1;
+  _actSince = 0;
+  _handAt = null;
+  _lastAgentAt = 0;
   _desktopAsk += 1;     // an answer still on its way finds nothing to change
   const modal = _win.modal;
   _win = null;
@@ -1089,6 +1287,7 @@ function _resume() {
   if (_live) _mountFrame();
   else _askDesktop(); // it may stream now (a rebuilt workstation)
   _kick(0);
+  if (_shouldPoll()) _scheduleActivity(0);   // `B1754`
 }
 
 /**
@@ -1118,6 +1317,7 @@ export function openWorkstationScreen({ focus = false } = {}) {
     _askDesktop();
     _offerPeople();
     _askComputerUse();   // `B1725`
+    _scheduleActivity(0);   // `B1754`
   }
   if (focus && _win) {
     // Opened from the keyboard somewhere `a11y.js` does not watch (a tool
@@ -1171,7 +1371,13 @@ export function watchPerson(name) {
   _live = '';
   _why = '';
   _clip = '';
+  // `B1754`: another screen's hand, from its first step.
+  _actAsk += 1;
+  _actSince = 0;
+  _handAt = null;
   if (_win) {
+    _hidden(_win.hand, true);
+    _hidden(_win.caption, true);
     if (_win.who.value !== next) _win.who.value = next;
     _hidden(_win.img, true);
     _hidden(_win.empty, false);
@@ -1235,6 +1441,10 @@ export const _test = {
   win: () => _win,
   settled: () => _sendChain,
   onMessage: _onMessage,
+  tickActivity: _tickActivity,
+  hand: () => ({ since: _actSince, at: _handAt ? { ..._handAt } : null,
+    shown: !!(_win && !_win.hand.hidden), transform: _win ? _win.hand.style.transform : '',
+    caption: _win && !_win.caption.hidden ? _win.caption.textContent : null }),
   live: () => ({ client: _live, frame: _frame, state: _liveState, why: _why, clip: _clip,
     note: _win && !_win.note.hidden ? _win.note.textContent : null }),
 };
