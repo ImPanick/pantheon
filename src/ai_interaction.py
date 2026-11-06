@@ -130,19 +130,24 @@ def _resolve_model(spec: str, owner: Optional[str] = None, model_type: Optional[
         # listed.
         from routes.model_routes import offered_models
         from src.endpoint_resolver import ensure_listed
+        listed = []
         for ep in endpoints:
             try:
                 base, api_key = resolve_endpoint_runtime(ep, owner=owner)
             except Exception:
                 continue
-            headers = build_headers(api_key, base)
-            model_ids = offered_models(ep) or ensure_listed(ep)
+            listed.append((base, build_headers(api_key, base), offered_models(ep) or ensure_listed(ep)))
 
-            # Exact match first
+        # Exact match first, on every endpoint, before any partial one: `B1750`.
+        # A partial match on the first endpoint used to win over the exact name
+        # on the next — `gpt-4o` taken as whichever `gpt-4o-…` variant that
+        # endpoint listed first.
+        for base, headers, model_ids in listed:
             for mid in model_ids:
                 if mid.lower() == model_name.lower():
                     return build_chat_url(base), mid, headers
 
+        for base, headers, model_ids in listed:
             # Partial match
             for mid in model_ids:
                 if model_name.lower() in mid.lower() or mid.lower() in model_name.lower():

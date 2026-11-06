@@ -363,6 +363,46 @@ def _anthropic_api_root(base: str) -> str:
     return base
 
 
+# `B1750`. The API path each frontier provider serves its OpenAI-compatible
+# routes under, for a base entered as the bare host (`https://api.x.ai`). The
+# presets in the endpoint form carry these paths; a key pasted with the host
+# alone used to land on `<host>/chat/completions`, which every one of these
+# answers with a 404. Keyed on the exact host; `(path as entered, path to use)`
+# pairs extend a partial path (Gemini's native `/v1beta`, OpenRouter's `/api`).
+_FRONTIER_API_PATHS = {
+    "api.openai.com": ("/v1", {}),
+    "api.x.ai": ("/v1", {}),
+    "api.mistral.ai": ("/v1", {}),
+    "generativelanguage.googleapis.com": ("/v1beta/openai", {"/v1beta": "/v1beta/openai",
+                                                               "/v1": "/v1beta/openai"}),
+    "openrouter.ai": ("/api/v1", {"/api": "/api/v1"}),
+    "api.groq.com": ("/openai/v1", {"/openai": "/openai/v1"}),
+    "api.together.xyz": ("/v1", {}),
+    "api.fireworks.ai": ("/inference/v1", {"/inference": "/inference/v1"}),
+    "api.cerebras.ai": ("/v1", {}),
+    "api.moonshot.ai": ("/v1", {}),
+    "api.moonshot.cn": ("/v1", {}),
+}
+
+
+def frontier_api_base(base: str) -> str:
+    """`base` with the provider's API path added when it was left off."""
+    parsed = urlparse(base or "")
+    host = (parsed.hostname or "").lower()
+    known = _FRONTIER_API_PATHS.get(host)
+    if not known:
+        return base
+    default, partial = known
+    path = (parsed.path or "").rstrip("/")
+    if not path:
+        path = default
+    elif path in partial:
+        path = partial[path]
+    else:
+        return base
+    return urlunparse(parsed._replace(path=path, query="", fragment="")).rstrip("/")
+
+
 def build_chat_url(base: str) -> str:
     """Return the correct chat endpoint URL for a given base."""
     base = _prepare_endpoint_base(base)
@@ -373,8 +413,7 @@ def build_chat_url(base: str) -> str:
         return _append_endpoint_path(_ollama_api_root(base), "/chat")
     if provider == "chatgpt-subscription":
         return _append_endpoint_path(base, "/responses")
-    if _pathless_host(base, "api.openai.com"):
-        base = _append_endpoint_path(base, "/v1")
+    base = frontier_api_base(base)
     return _append_endpoint_path(base, "/chat/completions")
 
 
@@ -401,6 +440,7 @@ def build_models_url(base: str) -> Optional[str]:
     # path conventionally expose `/v1/models` (LM Studio, llama.cpp, vLLM).
     # For non-local unknown hosts, do not invent `/v1`; append `/models` to the
     # caller's base so look-alike provider hosts stay generic.
+    base = frontier_api_base(base)
     parsed = urlparse(base)
     host = (parsed.hostname or "").lower()
     is_local = host in {"localhost", "127.0.0.1", "::1", "host.docker.internal"}
