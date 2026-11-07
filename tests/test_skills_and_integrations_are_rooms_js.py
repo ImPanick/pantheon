@@ -72,6 +72,14 @@ _ROOM_STUBS["skills.js"] = (
     "    focusSkill(n) { globalThis.__skills.calls.push(['skill', n]); } };\n"
     "}\n"
 )
+# `B1756`. The Devices room's module: a stand-in that records its mounts.
+_ROOM_STUBS["phoneWindow.js"] = (
+    "globalThis.__phone = { mounts: [], shown: 0, destroyed: 0 };\n"
+    "export function mountPhoneRoom(host) {\n"
+    "  globalThis.__phone.mounts.push(host.id);\n"
+    "  return { shown() { globalThis.__phone.shown += 1; }, destroy() { globalThis.__phone.destroyed += 1; } };\n"
+    "}\n"
+)
 _ROOM_STUBS["settings.js"] = (
     "globalThis.__settings = { inits: 0, clicked: null };\n"
     "export default { initUnifiedIntegrations() {\n"
@@ -113,8 +121,8 @@ _PREAMBLE = (
     "import { dismissTopMenu, registerMenuDismiss } from '../escMenuStack.js';\n"
     "const wb = await import('./workbench.js');\n"
     "const mutate = () => globalThis.__observers.forEach((o) => o.fn([]));\n"
-    "const shown = () => ['workbench-room', 'workbench-room-skills', 'workbench-room-integrations']\n"
-    "  .filter((id) => !$(id).hidden);\n"
+    "const shown = () => ['workbench-room', 'workbench-room-skills', 'workbench-room-integrations',\n"
+    "  'workbench-room-devices'].filter((id) => $(id)).filter((id) => !$(id).hidden);\n"
     "const tab = (id) => $('workbench-room-tab-' + id);\n"
     "const key = (id, k) => tab(id).dispatchEvent({ type: 'keydown', key: k, preventDefault() {} });\n"
     "const nodeOf = (id) => $('workbench-room').querySelectorAll('.wb-node').find((n) => n.dataset.taskId === id);\n"
@@ -122,7 +130,8 @@ _PREAMBLE = (
 )
 
 
-def test_three_rooms_each_naming_its_panel_and_the_keys_move_between_them(glue):
+def test_four_rooms_each_naming_its_panel_and_the_keys_move_between_them(glue):
+    # `B1756` added Devices, the phone's room, after MCP & Integrations.
     o = _run(glue, _PREAMBLE, """
         wb.openWorkbench({});
         await settle(5);
@@ -131,24 +140,30 @@ def test_three_rooms_each_naming_its_panel_and_the_keys_move_between_them(glue):
         key('automations', 'ArrowRight'); await settle(2); walk.push(shown());
         key('skills', 'ArrowRight'); await settle(2); walk.push(shown());
         key('integrations', 'ArrowRight'); await settle(2); walk.push(shown());
+        key('devices', 'ArrowRight'); await settle(2); walk.push(shown());
         key('automations', 'ArrowLeft'); await settle(2); walk.push(shown());
-        key('integrations', 'Home'); await settle(2); walk.push(shown());
+        key('devices', 'Home'); await settle(2); walk.push(shown());
         key('automations', 'End'); await settle(2); walk.push(shown());
-        out({ rooms, walk, focused: tab('integrations').focused,
-              selected: ['automations', 'skills', 'integrations'].map((id) => tab(id).getAttribute('aria-selected')),
-              labelled: $('workbench-room-integrations').getAttribute('aria-labelledby'),
-              current: wb.currentRoom() });
+        out({ rooms, walk, focused: tab('devices').focused,
+              selected: ['automations', 'skills', 'integrations', 'devices'].map((id) => tab(id).getAttribute('aria-selected')),
+              labelled: $('workbench-room-devices').getAttribute('aria-labelledby'),
+              current: wb.currentRoom(), phone: globalThis.__phone });
     """)
     assert o["rooms"] == [
         {"id": "automations", "label": "Automations", "panel": "workbench-room", "mount": "function"},
         {"id": "skills", "label": "Skills", "panel": "workbench-room-skills", "mount": "function"},
         {"id": "integrations", "label": "MCP & Integrations", "panel": "workbench-room-integrations",
          "mount": "function"},
+        {"id": "devices", "label": "Devices", "panel": "workbench-room-devices", "mount": "function"},
     ]
-    a, s, i = ["workbench-room"], ["workbench-room-skills"], ["workbench-room-integrations"]
-    assert o["walk"] == [a, s, i, a, i, a, i]
-    assert o["focused"] is True and o["selected"] == ["false", "false", "true"]
-    assert o["labelled"] == "workbench-room-tab-integrations" and o["current"] == "integrations"
+    a, s, i, d = (["workbench-room"], ["workbench-room-skills"], ["workbench-room-integrations"],
+                  ["workbench-room-devices"])
+    assert o["walk"] == [a, s, i, d, a, d, a, d]
+    assert o["focused"] is True and o["selected"] == ["false", "false", "false", "true"]
+    assert o["labelled"] == "workbench-room-tab-devices" and o["current"] == "devices"
+    # The phone's module drew the room into its own host, once, and was told
+    # each time it came back into view.
+    assert o["phone"]["mounts"] == ["devices-room"] and o["phone"]["shown"] == 2
 
 
 def test_an_unsaved_step_form_survives_skills_and_back(glue):

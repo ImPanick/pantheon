@@ -364,6 +364,18 @@ ROUTES: Dict[str, Tuple[str, str]] = {
     #                           "screenshot_after"), in that screen's own pixels
     #   marks {}             -> `ROUTES["marks"]`'s, read from the device's own UI tree
     #                           (uiautomator), boxes in the phone screen's pixels
+    #   install {device?, accept_license?}
+    #                        -> `B1756`: the state; what the device needs (the SDK's
+    #                           tools the first time, its system image) installed by
+    #                           `provision.sh phone`, then the device booted. The
+    #                           Android SDK License is accepted once, by a person
+    #                           ("accept_license": true with holder "person"); `start`
+    #                           of a device not installed yet installs it the same way.
+    # `B1756`: each device in "devices" also says "installed" and "android" (its
+    # Android version); the state says "installed", "license": {"accepted", "url"},
+    # "install": {"state": idle|running|done|failed, "step"?, "step_label"?,
+    # "percent"?, "said"?, "why"?, "android"?} and, for a device not installed,
+    # "can_install". State "installing" is a device being installed.
     # The state: {"ok", "action", "available": bool, "why"?: str, "state": one of
     #   PHONE_STATES, "device": a PHONE_DEVICES key, "devices": [{"id", "name",
     #   "maker", "kind", "foldable", "width", "height", "density"}], "posture":
@@ -397,10 +409,10 @@ MAX_DESKTOP_HANDSHAKE_BYTES = 16_384
 NETWORK_ACTIONS = ("interfaces", "reach")
 # `B1751`. The phone (`ROUTES["phone"]`, `workstation/phone.py`).
 PHONE_ACTIONS = ("status", "start", "stop", "device", "button", "posture", "rotate",
-                 "open_url", "screenshot", "input", "marks")
+                 "open_url", "screenshot", "input", "marks", "install")
 #: The ones that never move the phone, so never `busy`.
 PHONE_LOOK_ACTIONS = ("status", "screenshot", "marks")
-PHONE_STATES = ("off", "starting", "on", "unavailable")
+PHONE_STATES = ("off", "installing", "starting", "on", "unavailable")
 #: `B1753`. What runs as the phone: the real Android ("android", which needs
 #: KVM), or, where there is none, the mobile view ("mobile_view": the
 #: workstation's Firefox shaped and identified as the device). The state's
@@ -419,19 +431,94 @@ PHONE_POSTURES = ("open", "closed")
 #: Samsung's and is not redistributable, so their size, density and fold are
 #: real and their skin is not.
 PHONE_DEVICES: Dict[str, Dict] = {
+    # ── Google ──
+    "pixel_9": {"name": "Google Pixel 9", "maker": "Google", "kind": "phone",
+                "width": 1080, "height": 2424, "density": 420},
     "pixel_9_pro": {"name": "Google Pixel 9 Pro", "maker": "Google", "kind": "phone",
                     "width": 1280, "height": 2856, "density": 480},
-    "pixel_9_pro_fold": {"name": "Google Pixel 9 Pro Fold", "maker": "Google", "kind": "foldable",
-                         "width": 2076, "height": 2152, "density": 420, "cover_width": 1038},
+    "pixel_9_pro_xl": {"name": "Google Pixel 9 Pro XL", "maker": "Google", "kind": "phone",
+                       "width": 1344, "height": 2992, "density": 480},
     "pixel_8": {"name": "Google Pixel 8", "maker": "Google", "kind": "phone",
                 "width": 1080, "height": 2400, "density": 420},
-    "galaxy_s25_ultra": {"name": "Samsung Galaxy S25 Ultra", "maker": "Samsung", "kind": "phone",
-                         "width": 1080, "height": 2340, "density": 440},
-    "galaxy_z_fold6": {"name": "Samsung Galaxy Z Fold6", "maker": "Samsung", "kind": "foldable",
-                       "width": 1856, "height": 2160, "density": 420, "cover_width": 928},
+    "pixel_8a": {"name": "Google Pixel 8a", "maker": "Google", "kind": "phone",
+                 "width": 1080, "height": 2400, "density": 420},
+    "pixel_9_pro_fold": {"name": "Google Pixel 9 Pro Fold", "maker": "Google", "kind": "foldable",
+                         "width": 2076, "height": 2152, "density": 420, "cover_width": 1038},
+    "pixel_fold": {"name": "Google Pixel Fold", "maker": "Google", "kind": "foldable",
+                   "width": 2208, "height": 1840, "density": 420, "cover_width": 1104},
     "pixel_tablet": {"name": "Google Pixel Tablet", "maker": "Google", "kind": "tablet",
                      "width": 2560, "height": 1600, "density": 320},
+    # ── Samsung ──
+    "galaxy_s25": {"name": "Samsung Galaxy S25", "maker": "Samsung", "kind": "phone",
+                   "width": 1080, "height": 2340, "density": 420},
+    "galaxy_s25_ultra": {"name": "Samsung Galaxy S25 Ultra", "maker": "Samsung", "kind": "phone",
+                         "width": 1080, "height": 2340, "density": 440},
+    "galaxy_a55": {"name": "Samsung Galaxy A55", "maker": "Samsung", "kind": "phone",
+                   "width": 1080, "height": 2340, "density": 420},
+    "galaxy_z_fold6": {"name": "Samsung Galaxy Z Fold6", "maker": "Samsung", "kind": "foldable",
+                       "width": 1856, "height": 2160, "density": 420, "cover_width": 928},
+    "galaxy_tab_s9": {"name": "Samsung Galaxy Tab S9", "maker": "Samsung", "kind": "tablet",
+                      "width": 2560, "height": 1600, "density": 320},
+    "galaxy_tab_s10_ultra": {"name": "Samsung Galaxy Tab S10 Ultra", "maker": "Samsung", "kind": "tablet",
+                             "width": 2960, "height": 1848, "density": 320},
+    # ── OnePlus and Nothing ──
+    "oneplus_12": {"name": "OnePlus 12", "maker": "OnePlus", "kind": "phone",
+                   "width": 1440, "height": 3168, "density": 560},
+    "oneplus_pad_2": {"name": "OnePlus Pad 2", "maker": "OnePlus", "kind": "tablet",
+                      "width": 3000, "height": 2120, "density": 400},
+    "nothing_phone_2": {"name": "Nothing Phone (2)", "maker": "Nothing", "kind": "phone",
+                        "width": 1080, "height": 2412, "density": 420},
 }
+#: `B1757`. What each device looks like from the front, for the window and
+#: the Devices room to draw it as the thing in the hand: its finish (the
+#: frame's colour and the maker's name for it), how round its corners are and
+#: how thick its bezel (each a share of the body's short side), where its
+#: front camera sits ("punch-center", "punch-left", "punch-right" in the
+#: screen; "bezel-top", "bezel-right" in the rim; a foldable's is its inner
+#: screen's), and its side keys, edge by edge, top to bottom or left to right.
+#: A drawing only: Android is told none of it.
+_GOOGLE_KEYS = {"right": ["power", "volume_up", "volume_down"]}
+_SAMSUNG_KEYS = {"right": ["volume_up", "volume_down", "power"]}
+_SPLIT_KEYS = {"left": ["volume_up", "volume_down"], "right": ["power"]}
+_TABLET_KEYS = {"top": ["power", "volume_up", "volume_down"]}
+PHONE_LOOKS: Dict[str, Dict] = {
+    "pixel_9": {"finish": "#202124", "finish_name": "Obsidian", "corner": 0.12, "bezel": 0.035,
+                "cutout": "punch-center", "keys": _GOOGLE_KEYS},
+    "pixel_9_pro": {"finish": "#8b8e83", "finish_name": "Hazel", "corner": 0.12, "bezel": 0.03,
+                    "cutout": "punch-center", "keys": _GOOGLE_KEYS},
+    "pixel_9_pro_xl": {"finish": "#232425", "finish_name": "Obsidian", "corner": 0.11, "bezel": 0.03,
+                       "cutout": "punch-center", "keys": _GOOGLE_KEYS},
+    "pixel_8": {"finish": "#7d8577", "finish_name": "Hazel", "corner": 0.13, "bezel": 0.04,
+                "cutout": "punch-center", "keys": _GOOGLE_KEYS},
+    "pixel_8a": {"finish": "#8db1d6", "finish_name": "Bay", "corner": 0.14, "bezel": 0.055,
+                 "cutout": "punch-center", "keys": _GOOGLE_KEYS},
+    "pixel_9_pro_fold": {"finish": "#252627", "finish_name": "Obsidian", "corner": 0.07, "bezel": 0.03,
+                         "cutout": "punch-right", "keys": _GOOGLE_KEYS},
+    "pixel_fold": {"finish": "#e6e1d8", "finish_name": "Porcelain", "corner": 0.06, "bezel": 0.05,
+                   "cutout": "bezel-right", "keys": _GOOGLE_KEYS},
+    "pixel_tablet": {"finish": "#ebe5da", "finish_name": "Porcelain", "corner": 0.05, "bezel": 0.07,
+                     "cutout": "bezel-top", "keys": _TABLET_KEYS},
+    "galaxy_s25": {"finish": "#2e3950", "finish_name": "Navy", "corner": 0.1, "bezel": 0.03,
+                   "cutout": "punch-center", "keys": _SAMSUNG_KEYS},
+    "galaxy_s25_ultra": {"finish": "#5b6a7c", "finish_name": "Titanium Silverblue", "corner": 0.05,
+                         "bezel": 0.025, "cutout": "punch-center", "keys": _SAMSUNG_KEYS},
+    "galaxy_a55": {"finish": "#b8d3ea", "finish_name": "Awesome Iceblue", "corner": 0.1, "bezel": 0.055,
+                   "cutout": "punch-center", "keys": _SAMSUNG_KEYS},
+    "galaxy_z_fold6": {"finish": "#9aa0a6", "finish_name": "Silver Shadow", "corner": 0.05, "bezel": 0.03,
+                       "cutout": "punch-right", "keys": _SAMSUNG_KEYS},
+    "galaxy_tab_s9": {"finish": "#3a3b3e", "finish_name": "Graphite", "corner": 0.04, "bezel": 0.05,
+                      "cutout": "bezel-top", "keys": _TABLET_KEYS},
+    "galaxy_tab_s10_ultra": {"finish": "#6d7074", "finish_name": "Moonstone Gray", "corner": 0.035,
+                             "bezel": 0.04, "cutout": "bezel-top", "keys": _TABLET_KEYS},
+    "oneplus_12": {"finish": "#2e5a4a", "finish_name": "Flowy Emerald", "corner": 0.11, "bezel": 0.025,
+                   "cutout": "punch-left", "keys": _SPLIT_KEYS},
+    "oneplus_pad_2": {"finish": "#5e6166", "finish_name": "Nimbus Gray", "corner": 0.05, "bezel": 0.055,
+                      "cutout": "bezel-top", "keys": _TABLET_KEYS},
+    "nothing_phone_2": {"finish": "#2d2e30", "finish_name": "Dark Grey", "corner": 0.1, "bezel": 0.035,
+                        "cutout": "punch-left", "keys": _SPLIT_KEYS},
+}
+PHONE_CUTOUTS = ("punch-center", "punch-left", "punch-right", "bezel-top", "bezel-right")
+PHONE_KEY_SIDES = ("left", "right", "top")
 PHONE_DEFAULT_DEVICE = "pixel_9_pro"
 #: The most the phone's screen is, in its own pixels: the device's screen
 #: scaled to fit, so a screenshot is one a model can read and a stream one a

@@ -501,7 +501,14 @@ class ChatProcessor:
                         temperature=0.1,
                         max_tokens=50,
                         timeout=15,
-                    ).strip()
+                        # Upstream Odysseus e4cc8ef (#7054): 50 tokens of a
+                        # reasoning model's thinking came back as the "query".
+                        thinking=False,
+                    )
+                    # A model with no reasoning parser puts its thinking inline.
+                    from src.text_helpers import strip_think
+                    generated_query = strip_think(generated_query or "", prose=False,
+                                                  prompt_echo=False).strip()
 
                     if generated_query:
                         # LLM successfully generated a non-empty query -> use the generated query

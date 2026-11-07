@@ -51,7 +51,60 @@ const SAY = {
   // `B1753`: where there is no KVM, the phone is a phone-shaped browser.
   mobileStarting: 'Opening the mobile view…',
   mobile: 'Mobile view: web pages only, laid out as this device shows them. The real Android needs KVM.',
+  // `B1756`: a device picked that the workstation does not have yet.
+  installing: 'Installing the device. Pantheon downloads its Android image, then turns it on.',
+  moved: 'Your phone is open in its own window. Close it there to use it here.',
 };
+
+/** `B1756`. The devices as the Phone room lists them: grouped by maker, each
+ *  with whether it is this one, whether it is on the workstation, and what
+ *  picking it does — the words of its button. */
+export function catalogueOf(state) {
+  const s = state || {};
+  const list = Array.isArray(s.devices) ? s.devices : [];
+  const mobile = isMobileView(s);
+  const groups = [];
+  for (const d of list) {
+    let g = groups.find((x) => x.maker === (d.maker || ''));
+    if (!g) { g = { maker: d.maker || '', devices: [] }; groups.push(g); }
+    const current = d.id === s.device;
+    // The mobile view has nothing to install: it is the workstation's browser.
+    const installed = mobile || d.installed === true;
+    let verb = installed ? 'Use this device' : 'Install and use';
+    if (current && (s.state === 'on' || s.state === 'starting')) verb = 'In use';
+    else if (current && s.state === 'installing') verb = 'Installing…';
+    g.devices.push({
+      id: d.id, name: d.name || d.id, maker: d.maker || '', kind: d.kind || 'phone',
+      foldable: !!d.foldable, android: d.android || '', installed, current, verb,
+      finish: lookOf(d).finish, finishName: lookOf(d).finishName,
+      busy: s.state === 'installing' || s.state === 'starting',
+    });
+  }
+  return groups;
+}
+
+/** `B1756`. The install's progress in words and a number 0–100, or null. */
+export function installLine(state) {
+  const s = state || {};
+  const inst = s.install && typeof s.install === 'object' ? s.install : null;
+  if (!inst || (inst.state !== 'running' && s.state !== 'installing')) {
+    if (inst && inst.state === 'failed') return { text: inst.why || 'The install did not finish.', percent: null, failed: true };
+    return null;
+  }
+  const pct = Number.isInteger(inst.percent) ? Math.max(0, Math.min(100, inst.percent)) : null;
+  const what = inst.android ? ` (${inst.android})` : '';
+  return { text: `${inst.step_label || 'Installing'}${what}`, percent: pct, failed: false };
+}
+
+/** `B1756`. Whether picking `id` first needs the person to accept the Android
+ *  SDK License — a real device not on the workstation, never accepted here. */
+export function needsLicense(state, id) {
+  const s = state || {};
+  if (isMobileView(s)) return false;
+  const d = (Array.isArray(s.devices) ? s.devices : []).find((x) => x.id === id);
+  if (!d || d.installed === true) return false;
+  return !(s.license && s.license.accepted === true);
+}
 
 /** `B1753`. Whether the phone is the mobile view rather than Android. */
 export function isMobileView(state) {
@@ -71,6 +124,8 @@ let _client = '';        // the live client's page, while the phone streams
 let _frame = null;
 let _timer = null;
 let _busy = false;       // a press on its way
+let _room = null;        // `B1756`: the Phone room's host, while it is mounted
+let _pending = '';       // `B1756`: a device waiting on the license's Accept
 
 function _el(tag, cls, text) {
   const n = document.createElement(tag);
@@ -87,9 +142,16 @@ function _button(cls, text, onClick, label) {
   return b;
 }
 
+let _noun = 'phone';   // `B1757`: "tablet" while the device is one
+
+/** One of `SAY`'s sentences for the device in hand: a tablet is a tablet. */
+function _words(text) {
+  return _noun === 'phone' ? text : String(text || '').replace(/\byour phone\b/gi, (m) => (m[0] === 'Y' ? 'Your ' : 'your ') + _noun);
+}
+
 function _say(text, { error = false } = {}) {
   if (!_win) return;
-  _win.statusText.textContent = String(text || '');
+  _win.statusText.textContent = _words(String(text || ''));
   _win.status.dataset.state = error ? 'down' : (_state && _state.state === 'on' ? 'up' : 'checking');
 }
 
@@ -115,6 +177,59 @@ export function sideKeys(maker) {
   return maker === 'Samsung'
     ? [{ id: 'volume_up', label: 'Volume up' }, { id: 'volume_down', label: 'Volume down' }, { id: 'power', label: 'Power' }]
     : [{ id: 'power', label: 'Power' }, { id: 'volume_up', label: 'Volume up' }, { id: 'volume_down', label: 'Volume down' }];
+}
+
+const KEY_LABELS = { power: 'Power', volume_up: 'Volume up', volume_down: 'Volume down' };
+const KEY_SIDES = ['left', 'right', 'top'];
+
+/** `B1757`. How the device looks from the front, as the server sent it, with
+ *  a stand-in for anything missing. */
+export function lookOf(device) {
+  const l = (device && device.look && typeof device.look === 'object') ? device.look : {};
+  const num = (v, d) => (typeof v === 'number' && Number.isFinite(v) ? v : d);
+  return {
+    finish: typeof l.finish === 'string' && /^#[0-9a-f]{6}$/i.test(l.finish) ? l.finish : '',
+    finishName: typeof l.finish_name === 'string' ? l.finish_name : '',
+    corner: Math.max(0, Math.min(0.2, num(l.corner, 0.1))),
+    bezel: Math.max(0, Math.min(0.1, num(l.bezel, 0.03))),
+    cutout: typeof l.cutout === 'string' ? l.cutout : 'punch-center',
+    keys: l.keys && typeof l.keys === 'object' ? l.keys : null,
+  };
+}
+
+/** `B1757`. The device's side keys, edge by edge: its own when the server
+ *  says where they are, else its maker's (`sideKeys`) on the right. */
+export function keysOf(device) {
+  const look = lookOf(device);
+  const out = { left: [], right: [], top: [] };
+  if (look.keys) {
+    for (const side of KEY_SIDES) {
+      for (const id of (Array.isArray(look.keys[side]) ? look.keys[side] : [])) {
+        if (KEY_LABELS[id]) out[side].push({ id, label: KEY_LABELS[id] });
+      }
+    }
+  }
+  if (!out.left.length && !out.right.length && !out.top.length) out.right = sideKeys(device && device.maker);
+  return out;
+}
+
+/** `B1757`. The body drawn to fit `W`×`H`: the screen at its own shape
+ *  (`shape`), the bezel around it at the device's share of its short side,
+ *  and its corners as round as the device's. `{ screenW, screenH, rim,
+ *  radius, inner }`, in CSS pixels. */
+export function bodyGeometry(look, shape, W, H) {
+  const l = look || lookOf(null);
+  const aspect = shape && shape.w > 0 && shape.h > 0 ? shape.w / shape.h : 492 / 1100;
+  const f = l.bezel;
+  const m = Math.min(aspect, 1);   // the short side, as a share of the screen's height
+  const sh = Math.max(0, Math.min(H / (1 + 2 * f * m), W / (aspect + 2 * f * m)));
+  const rim = Math.max(4, f * m * sh);
+  const screenH = Math.floor(sh);
+  const screenW = Math.floor(sh * aspect);
+  const short = Math.min(screenW, screenH) + 2 * rim;
+  const radius = Math.max(rim + 2, l.corner * short);
+  return { screenW, screenH, rim: Math.round(rim), radius: Math.round(radius),
+    inner: Math.max(2, Math.round(radius - rim * 0.85)) };
 }
 
 async function _get(url) {
@@ -172,9 +287,22 @@ export async function handBack() {
   _render();
 }
 
+/** `B1756`. Whether the room's copy is out of sight — its room switched away
+ *  from or the Workbench closed. It stops asking then, and gives the screens
+ *  back; showing the room again resumes. */
+function _roomHidden() {
+  if (!_win || !_win.embedded) return false;
+  const el = _win.modal;
+  return !el.isConnected || (typeof el.getClientRects === 'function' && el.getClientRects().length === 0);
+}
+
 async function _tick() {
   _timer = null;
   if (!_win) return;
+  if (_roomHidden()) {
+    if (_holder === 'person') handBack();
+    return;
+  }
   try {
     _state = await _get('/api/workstation/phone');
   } catch (e) {
@@ -219,6 +347,25 @@ function _dropFrame() {
   _frame = null;
 }
 
+/** `B1757`. Size the body to the stage at the device's own proportions. */
+function _shapeBody(shape, look) {
+  if (!_win) return;
+  const box = _win.stage.getBoundingClientRect();
+  if (!box.width || !box.height) return;   // not laid out yet: CSS's fallback holds
+  const cs = typeof getComputedStyle === 'function' ? getComputedStyle(_win.stage) : null;
+  const pad = (k) => (cs ? parseFloat(cs[k]) || 0 : 0);
+  const W = box.width - pad('paddingLeft') - pad('paddingRight') - 12;   // room for the keys
+  const H = box.height - pad('paddingTop') - pad('paddingBottom') - 12;
+  const g = bodyGeometry(look, shape, W, H);
+  const st = _win.bezel.style;
+  st.setProperty('--phw-rim', `${g.rim}px`);
+  st.setProperty('--phw-radius', `${g.radius}px`);
+  st.setProperty('--phw-inner', `${g.inner}px`);
+  st.width = `${g.screenW}px`;
+  st.height = `${g.screenH}px`;
+  st.maxWidth = 'none';
+}
+
 /** The stream laid in the bezel's screen at the phone screen's own shape,
  *  centred: a closed foldable's cover is the middle of that screen, and the
  *  bezel's narrower screen shows just it. */
@@ -240,7 +387,10 @@ function _render() {
   const on = s.state === 'on';
   const holding = _holder === 'person';
   const mobile = isMobileView(s);
-  _win.title.textContent = d.name ? `Phone · ${d.name}${mobile ? ' · mobile view' : ''}` : 'Phone';
+  // `B1757`: a tablet is called one.
+  const noun = d.kind === 'tablet' ? 'Tablet' : 'Phone';
+  _win.title.textContent = d.name ? `${noun} · ${d.name}${mobile ? ' · mobile view' : ''}` : 'Phone';
+  _noun = noun.toLowerCase();
   _win.title.title = mobile ? (s.why_not_android || '') : '';
 
   // The device list, grouped by maker; made once, kept selected.
@@ -260,10 +410,10 @@ function _render() {
     }
   }
   if (d.id) _win.device.value = d.id;
-  _win.device.disabled = s.state === 'unavailable' || s.state === 'starting';
+  _win.device.disabled = s.state === 'unavailable' || s.state === 'starting' || s.state === 'installing';
 
   _win.power.textContent = on || s.state === 'starting' ? 'Turn off' : 'Turn on';
-  _win.power.disabled = s.state === 'unavailable';
+  _win.power.disabled = s.state === 'unavailable' || s.state === 'installing';
   _win.rotate.hidden = !on;
   _win.fold.hidden = !(on && d.foldable);
   _win.fold.textContent = s.posture === 'closed' ? 'Unfold' : 'Fold';
@@ -272,51 +422,164 @@ function _render() {
   _win.openForm.hidden = !on;
 
   // `B1752`. The bezel: the device's shape, its keys on its maker's side.
+  // `B1757`: and the device as it looks — its finish, its corners, its bezel,
+  // its camera, its hinge and its keys on the edges they are on.
   const shape = bezelShape(s);
+  const look = lookOf(d);
   _win.bezel.style.setProperty('--phw-aspect', `${shape.w} / ${shape.h}`);
+  if (look.finish) _win.bezel.style.setProperty('--phw-finish', look.finish);
+  else _win.bezel.style.removeProperty('--phw-finish');
   _win.bezel.dataset.kind = d.kind || 'phone';
   _win.bezel.dataset.maker = (d.maker || '').toLowerCase();
-  const keys = sideKeys(d.maker);
-  if (_win.sideKeys.dataset.maker !== d.maker) {
-    _win.sideKeys.textContent = '';
-    for (const k of keys) {
-      const b = _el('button', `phw-side phw-side-${k.id}`);
-      b.type = 'button';
-      b.title = k.label;
-      b.setAttribute('aria-label', k.label);
-      b.dataset.key = k.id;
-      b.addEventListener('click', (e) => { e.preventDefault(); press(k.id); });
-      _win.sideKeys.appendChild(b);
+  _win.bezel.dataset.device = d.id || '';
+  _win.bezel.dataset.cutout = d.foldable && s.posture === 'closed' && !mobile ? 'punch-center' : look.cutout;
+  _win.bezel.dataset.posture = d.foldable ? (s.posture || 'open') : '';
+  _win.bezel.title = look.finishName ? `${d.name} · ${look.finishName}` : (d.name || '');
+  _shapeBody(shape, look);
+  if (_win.sideKeys.dataset.device !== d.id) {
+    const sides = keysOf(d);
+    for (const side of KEY_SIDES) {
+      const box = _win.keyBoxes[side];
+      box.textContent = '';
+      for (const k of sides[side]) {
+        const b = _el('button', `phw-side phw-side-${k.id}`);
+        b.type = 'button';
+        b.title = k.label;
+        b.setAttribute('aria-label', k.label);
+        b.dataset.key = k.id;
+        b.addEventListener('click', (e) => { e.preventDefault(); press(k.id); });
+        box.appendChild(b);
+      }
+      box.hidden = !sides[side].length;
     }
-    _win.sideKeys.dataset.maker = d.maker || '';
+    _win.sideKeys.dataset.device = d.id || '';
   }
-  for (const b of _win.sideKeys.querySelectorAll('button')) {
+  for (const b of _win.bezel.querySelectorAll('.phw-side')) {
     b.disabled = !on || !keyWorks(s, b.dataset.key);
   }
   for (const b of _win.nav.querySelectorAll('button')) {
     b.disabled = !on || !keyWorks(s, b.dataset.key);
   }
 
+  _renderInstall(s);
+  if (_win.catalogue) _renderCatalogue(s);
+
   _win.screen.classList.toggle('phw-holding', holding);
   _win.empty.hidden = on && !!_client;
+  _win.bezel.dataset.state = s.state || 'checking';
   if (on && _client) {
     _mountFrame();
     _placeFrame();
   } else {
     _dropFrame();
     _win.empty.textContent = s.state === 'unavailable' ? (s.why || 'There is no phone here.')
-      : (mobile && s.state === 'starting' ? SAY.mobileStarting : (SAY[s.state] || SAY.checking));
+      : _words(mobile && s.state === 'starting' ? SAY.mobileStarting : (SAY[s.state] || SAY.checking));
   }
   if (s.state === 'unavailable') _say(s.why || 'There is no phone here.', { error: true });
   else if (on && mobile && !holding) _say(SAY.mobile);
   else if (on) _say(holding ? (mobile ? 'You have the phone: click to tap, scroll to move the page.' : SAY.holding) : SAY.agent);
+  else if (s.state === 'installing') _say(_installSay(s));
+  else if (s.state === 'off' && installLine(s) && installLine(s).failed) _say(installLine(s).text, { error: true });
   else _say(mobile && s.state === 'starting' ? SAY.mobileStarting : (SAY[s.state] || SAY.checking));
 }
 
-function _build() {
-  const modal = _el('div', 'modal phw-modal');
-  modal.id = MODAL_ID;
-  const content = _el('div', 'modal-content phw-content');
+function _installSay(s) {
+  const line = installLine(s);
+  if (!line) return SAY.installing;
+  return line.percent === null ? `${line.text}…` : `${line.text}… ${line.percent}%`;
+}
+
+/** `B1756`. The install's bar and the license notice, in both the window and
+ *  the room. */
+function _renderInstall(s) {
+  const line = installLine(s);
+  _win.progress.hidden = !line || line.failed;
+  if (line && !line.failed) {
+    // The status line says the step; under the bar, what the download last said.
+    const inst = s.install && typeof s.install === 'object' ? s.install : {};
+    _win.progressText.textContent = String(inst.said || '');
+    _win.progressText.hidden = !inst.said;
+    if (line.percent === null) _win.progressBar.removeAttribute('value');
+    else _win.progressBar.value = line.percent;
+  }
+  _win.license.hidden = !_pending;
+  if (_pending) {
+    const d = (s.devices || []).find((x) => x.id === _pending);
+    _win.licenseText.textContent = `${d ? d.name : 'This device'} runs Google's Android system image, `
+      + 'which Pantheon downloads to your workstation once (about 4 GB). It is offered under the '
+      + 'Android Software Development Kit License Agreement. Accept it to install the device.';
+    const url = s.license && typeof s.license.url === 'string' && /^https:\/\//.test(s.license.url)
+      ? s.license.url : 'https://developer.android.com/studio/terms';
+    _win.licenseLink.href = url;
+  }
+}
+
+/** `B1756`. Pick a device as a person does in the list: switch to it, install
+ *  it if the workstation lacks it, and turn it on — the request the agent's
+ *  `use_device` sends too. */
+export function useDevice(id, { accept = false } = {}) {
+  if (!accept && needsLicense(_state, id)) {
+    _pending = id;
+    _render();
+    return Promise.resolve(null);
+  }
+  _pending = '';
+  const payload = { action: 'install', device: id };
+  if (accept) payload.accept_license = true;
+  return act(payload);
+}
+
+function _renderCatalogue(s) {
+  const groups = catalogueOf(s);
+  const key = JSON.stringify(groups);
+  if (_win.catalogue.dataset.key === key) return;
+  _win.catalogue.dataset.key = key;
+  _win.catalogue.textContent = '';
+  if (!groups.length) {
+    _win.catalogue.appendChild(_el('p', 'phw-cat-empty', s.state === 'unavailable'
+      ? (s.why || 'There is no phone here.') : SAY.checking));
+    return;
+  }
+  for (const g of groups) {
+    const section = _el('section', 'phw-cat-group');
+    section.appendChild(_el('h5', 'phw-cat-maker', g.maker || 'Devices'));
+    const ul = _el('ul', 'phw-cat-list');
+    for (const d of g.devices) {
+      const li = _el('li', 'phw-cat-item');
+      if (d.current) li.classList.add('phw-cat-current');
+      li.dataset.device = d.id;
+      const text = _el('div', 'phw-cat-text');
+      text.appendChild(_el('span', 'phw-cat-name', d.name));
+      // `B1757`: a swatch of the device's finish, named.
+      const swatch = _el('span', 'phw-cat-swatch');
+      swatch.setAttribute('aria-hidden', 'true');
+      swatch.dataset.kind = d.kind;
+      if (d.finish) swatch.style.setProperty('--phw-finish', d.finish);
+      li.insertBefore(swatch, li.firstChild);
+      const what = [d.kind === 'tablet' ? 'Tablet' : (d.foldable ? 'Foldable' : 'Phone')];
+      if (d.finishName) what.push(d.finishName);
+      text.appendChild(_el('span', 'phw-cat-facts', what.join(' · ')));
+      const where = [];
+      if (d.android && !isMobileView(s)) where.push(d.android);
+      where.push(d.installed ? (isMobileView(s) ? 'Mobile view' : 'Installed') : 'Not installed');
+      const status = _el('span', 'phw-cat-facts phw-cat-status', where.join(' · '));
+      status.dataset.installed = d.installed ? 'yes' : 'no';
+      text.appendChild(status);
+      li.appendChild(text);
+      const b = _button('phw-cat-use', d.verb, () => useDevice(d.id), `${d.verb}: ${d.name}`);
+      b.disabled = d.busy || (d.current && d.verb === 'In use') || s.state === 'unavailable';
+      li.appendChild(b);
+      ul.appendChild(li);
+    }
+    section.appendChild(ul);
+    _win.catalogue.appendChild(section);
+  }
+}
+
+function _build({ embedded = false } = {}) {
+  const modal = _el('div', embedded ? 'phw-room' : 'modal phw-modal');
+  if (!embedded) modal.id = MODAL_ID;
+  const content = _el('div', embedded ? 'phw-room-device' : 'modal-content phw-content');
   const header = _el('div', 'modal-header');
   const h = _el('h4', 'phw-heading');
   const icon = _el('span', 'phw-icon');
@@ -397,9 +660,22 @@ function _build() {
   glass.addEventListener('click', (e) => { e.preventDefault(); takeOver(); });
   screen.appendChild(empty);
   screen.appendChild(glass);
+  // `B1757`: the keys on each edge they are on, the front camera (in the
+  // screen or in the rim, as the device has it) and a foldable's crease.
   const sideKeysBox = _el('div', 'phw-side-keys');
+  const keyBoxes = {};
+  for (const side of KEY_SIDES) {
+    keyBoxes[side] = _el('div', `phw-keys phw-keys-${side}`);
+    sideKeysBox.appendChild(keyBoxes[side]);
+  }
+  const camera = _el('span', 'phw-camera');
+  camera.setAttribute('aria-hidden', 'true');
+  const hinge = _el('span', 'phw-hinge');
+  hinge.setAttribute('aria-hidden', 'true');
+  screen.appendChild(hinge);
   bezel.appendChild(speaker);
   bezel.appendChild(screen);
+  bezel.appendChild(camera);
   bezel.appendChild(sideKeysBox);
   stage.appendChild(bezel);
 
@@ -412,16 +688,68 @@ function _build() {
     nav.appendChild(b);
   }
 
+  // `B1756`. The install's progress, and the license a person accepts once.
+  const progress = _el('div', 'phw-progress');
+  progress.hidden = true;
+  const progressText = _el('span', 'phw-progress-text');
+  const progressBar = document.createElement('progress');
+  progressBar.className = 'phw-progress-bar';
+  progressBar.max = 100;
+  progressBar.setAttribute('aria-label', 'Install progress');
+  progress.appendChild(progressText);
+  progress.appendChild(progressBar);
+
+  const license = _el('div', 'phw-license');
+  license.hidden = true;
+  license.setAttribute('role', 'region');
+  license.setAttribute('aria-label', 'Android SDK License');
+  const licenseText = _el('p', 'phw-license-text');
+  const licenseLink = _el('a', 'phw-license-link', 'Read the license');
+  licenseLink.target = '_blank';
+  licenseLink.rel = 'noopener noreferrer';
+  const licenseRow = _el('div', 'phw-license-row');
+  const accept = _button('phw-license-accept', 'Accept and install', () => {
+    if (_pending) useDevice(_pending, { accept: true });
+  });
+  const decline = _button('phw-license-decline', 'Not now', () => { _pending = ''; _render(); });
+  licenseRow.appendChild(licenseLink);
+  licenseRow.appendChild(decline);
+  licenseRow.appendChild(accept);
+  license.appendChild(licenseText);
+  license.appendChild(licenseRow);
+
+  if (embedded) {
+    // The list beside it is the room's device picker; the select would say it twice.
+    device.hidden = true;
+    header.classList.remove('modal-header');
+    header.classList.add('phw-room-head');
+    close.remove();   // the room is closed with the Workbench
+  }
   content.appendChild(header);
   content.appendChild(bar);
   content.appendChild(openForm);
   content.appendChild(status);
+  content.appendChild(progress);
+  content.appendChild(license);
   content.appendChild(stage);
   content.appendChild(nav);
+
+  let catalogue = null;
+  if (embedded) {
+    const aside = _el('div', 'phw-catalogue');
+    aside.appendChild(_el('h4', 'phw-cat-head', 'Select a device'));
+    aside.appendChild(_el('p', 'phw-cat-lede', 'Pick a phone or tablet to use. One not on your '
+      + 'workstation yet is downloaded, installed and set up for you, then turned on. '
+      + 'Your agents use the same phone, the same way.'));
+    catalogue = _el('div', 'phw-cat-groups');
+    aside.appendChild(catalogue);
+    modal.appendChild(aside);
+  }
   modal.appendChild(content);
 
   return { modal, content, header, title, device, power, rotate, fold, take, give, openForm, address,
-    status, statusText, stage, bezel, screen, empty, glass, sideKeys: sideKeysBox, nav };
+    status, statusText, stage, bezel, screen, empty, glass, sideKeys: sideKeysBox, keyBoxes, camera, hinge, nav,
+    progress, progressText, progressBar, license, licenseText, licenseLink, catalogue, embedded };
 }
 
 function _teardown() {
@@ -435,11 +763,18 @@ function _teardown() {
   }
   _dropFrame();
   const modal = _win.modal;
+  const embedded = _win.embedded;
   _win = null;
   _state = null;
   _client = '';
   _holder = null;
+  _pending = '';
   if (modal.parentNode) modal.parentNode.removeChild(modal);
+  // The room keeps its place: a note says where the phone went (`B1756`).
+  if (embedded && _room) {
+    _room.textContent = '';
+    _room.appendChild(_el('p', 'phw-room-moved', SAY.moved));
+  }
 }
 
 function _resume() { _kick(0); }
@@ -452,7 +787,7 @@ export function openPhone() {
     _resume();
     return true;
   }
-  if (_win) _teardown();
+  if (_win) _teardown();   // the room's copy gives way to the window (`B1756`)
   _win = _build();
   document.body.appendChild(_win.modal);
   Modals.register(MODAL_ID, { restoreFn: _resume, closeFn: _teardown });
@@ -469,6 +804,39 @@ export function openPhone() {
 export function closePhone() {
   if (Modals.isRegistered(MODAL_ID)) Modals.close(MODAL_ID);
   else _teardown();
+}
+
+/** `B1756`. The Workbench's Phone room: the device list beside the phone
+ *  itself — the same window's parts, laid in the room. One copy runs at a time
+ *  (one stream, one poll): showing the room closes the window, and opening the
+ *  window leaves the room a note until it is shown again. */
+let _roomGen = 0;
+export function mountPhoneRoom(host) {
+  _room = host;
+  const gen = ++_roomGen;
+  const show = () => {
+    if (gen !== _roomGen) return;   // a later mount owns the room
+    if (_win && _win.embedded && _win.modal.parentNode === host) { _resume(); return; }
+    if (_win) {
+      if (Modals.isRegistered(MODAL_ID)) Modals.close(MODAL_ID);
+      if (_win) _teardown();
+    }
+    host.textContent = '';
+    _win = _build({ embedded: true });
+    host.appendChild(_win.modal);
+    _render();
+    _kick(0);
+  };
+  show();
+  return {
+    shown: show,
+    destroy() {
+      if (gen !== _roomGen) return;   // already given way to a later mount
+      _room = null;
+      if (_win && _win.embedded) _teardown();
+      host.textContent = '';
+    },
+  };
 }
 
 /** Every door is a `[data-open-phone]` control, answered here once. */
@@ -489,12 +857,12 @@ if (typeof document !== 'undefined' && document && typeof document.addEventListe
 }
 const _global = typeof window !== 'undefined' ? window : globalThis;
 if (_global && typeof _global.addEventListener === 'function') {
-  _global.addEventListener('resize', () => _placeFrame());
+  _global.addEventListener('resize', () => { if (_win) _render(); });
 }
 
 export const _test = {
-  TIMING, tick: _tick, win: () => _win,
+  TIMING, tick: _tick, win: () => _win, pending: () => _pending,
   state: () => ({ open: !!_win, state: _state, holder: _holder, client: _client, frame: _frame }),
 };
 
-export default { openPhone, closePhone, press, act, takeOver, handBack };
+export default { openPhone, closePhone, press, act, takeOver, handBack, useDevice, mountPhoneRoom };

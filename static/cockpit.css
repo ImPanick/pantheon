@@ -2128,3 +2128,70 @@ html.cockpit .msg .body pre.mermaid {
   background: transparent !important; border: 0 !important; box-shadow: none !important; padding: 0 !important; margin: 0 !important;
   border-radius: 0 !important; overflow: visible !important; white-space: normal;
 }
+
+/* ── `B1756` · `B1757` · the Devices room and the phone, in the cockpit ──
+   The device list is the window's quiet cards (glass, a hairline, the lit
+   edge), the device in use carries the accent wash every chosen chip has, the
+   install is a thin lit bar, and the license is one card with the window's one
+   primary. The device itself keeps its own finish: it is a drawing of the thing
+   in the hand, so its colour is the maker's, not the theme's — with the
+   cockpit's sheen from the top-left light and its lift. */
+html.cockpit .phw-room { gap: 18px; }
+html.cockpit .phw-catalogue { gap: 10px; padding-right: 6px; scrollbar-width: thin; }
+html.cockpit .phw-cat-head { font: 600 15px/1.3 var(--ck-font-ui) !important; color: var(--ck-text) !important; letter-spacing: -.005em; }
+html.cockpit .phw-cat-lede { color: var(--ck-text-3); font: 400 12.5px/1.5 var(--ck-font-ui); }
+html.cockpit .phw-cat-maker {
+  font: 600 11px/1 var(--ck-font-ui) !important; color: var(--ck-text-3) !important;
+  text-transform: uppercase; letter-spacing: .08em !important; margin: 4px 0 8px 4px;
+}
+html.cockpit .phw-cat-item {
+  gap: 12px; padding: 10px 10px 10px 12px; border-radius: var(--ck-r-m);
+  background: var(--ck-glass-soft); border: 1px solid var(--ck-edge-lo);
+  box-shadow: inset 0 1px 0 color-mix(in oklab, var(--ck-edge-hi) 50%, transparent);
+  transition: background var(--ck-t-fast) var(--ck-ease), border-color var(--ck-t-fast) var(--ck-ease);
+}
+html.cockpit .phw-cat-item:hover { background: var(--ck-tint); border-color: var(--ck-edge); }
+html.cockpit .phw-cat-current, html.cockpit .phw-cat-current:hover {
+  background: var(--ck-accent-wash); border-color: var(--ck-accent-line); box-shadow: inset 0 1px 0 var(--ck-edge-hi);
+}
+html.cockpit .phw-cat-name { color: var(--ck-text); font: 500 13px/1.35 var(--ck-font-ui); }
+html.cockpit .phw-cat-facts { color: var(--ck-text-3); font: 400 11.5px/1.4 var(--ck-font-ui); }
+html.cockpit .phw-cat-status[data-installed="yes"] { color: var(--ck-ok); }
+html.cockpit .phw-cat-swatch {
+  background: linear-gradient(145deg, color-mix(in oklab, var(--phw-finish, var(--ck-lamp-off)) 82%, #fff), var(--phw-finish, var(--ck-lamp-off)) 55%);
+  box-shadow: inset 0 0 0 2px color-mix(in oklab, #000 62%, var(--phw-finish, var(--ck-lamp-off))), 0 2px 6px -2px var(--ck-shade);
+}
+html.cockpit .phw-room-head .phw-heading { font: 600 14px/1.3 var(--ck-font-ui) !important; color: var(--ck-text); }
+html.cockpit .phw-room-head .phw-icon { color: var(--ck-text-3); }
+html.cockpit .phw-room-moved { color: var(--ck-text-3); }
+html.cockpit .phw-progress { color: var(--ck-text-3); font: 400 11.5px/1.4 var(--ck-font-ui); }
+html.cockpit .phw-progress-bar {
+  appearance: none; -webkit-appearance: none; height: 4px; border: 0; border-radius: 999px; overflow: hidden; background: var(--ck-tint-2);
+}
+html.cockpit .phw-progress-bar::-webkit-progress-bar { background: var(--ck-tint-2); border-radius: 999px; }
+html.cockpit .phw-progress-bar::-webkit-progress-value {
+  background: linear-gradient(90deg, var(--ck-accent), var(--ck-accent-2)); border-radius: 999px;
+  transition: width var(--ck-t) var(--ck-ease);
+}
+html.cockpit .phw-progress-bar::-moz-progress-bar { background: linear-gradient(90deg, var(--ck-accent), var(--ck-accent-2)); border-radius: 999px; }
+html.cockpit .phw-license {
+  border-radius: var(--ck-r-m); background: var(--ck-glass-soft); border: 1px solid var(--ck-edge-lo);
+  box-shadow: inset 0 1px 0 color-mix(in oklab, var(--ck-edge-hi) 50%, transparent);
+}
+html.cockpit .phw-license-text { color: var(--ck-text-2); font: 400 12.5px/1.55 var(--ck-font-ui); }
+html.cockpit .phw-license-link { color: var(--ck-accent-2); }
+html.cockpit .phw-license-accept {
+  background: linear-gradient(135deg, var(--ck-accent), var(--ck-accent-2)) !important; color: var(--ck-on-accent) !important; border: 0 !important;
+  font-weight: 600 !important; box-shadow: inset 0 1px 0 var(--ck-ring-hi), 0 6px 16px -8px var(--ck-accent-glow) !important;
+}
+html.cockpit .phw-license-accept:hover { filter: brightness(1.08); }
+html.cockpit .phw-stage { padding: 14px 22px 14px 22px; }
+html.cockpit .phw-bezel {
+  background:
+    linear-gradient(145deg, var(--ck-sheen-hi), transparent 38%, var(--ck-sheen-lo)),
+    var(--phw-finish, color-mix(in oklab, var(--fg) 82%, var(--bg)));
+  border: 1px solid color-mix(in oklab, var(--phw-finish, var(--fg)) 62%, #000);
+  box-shadow: inset 0 1px 0 var(--ck-ring-hi), inset 0 0 0 2px color-mix(in oklab, #000 30%, transparent), var(--ck-lift-2);
+}
+html.cockpit .phw-nav { gap: 10px; }
+html.cockpit .phw-nav-btn { min-width: 52px; }

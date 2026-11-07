@@ -573,6 +573,7 @@ def setup_task_routes(task_scheduler) -> APIRouter:
                     {"role": "system", "content": "Generate a short title (3-5 words, no quotes) for this scheduled task. Reply with ONLY the title, nothing else."},
                     {"role": "user", "content": prompt[:500]},
                 ],
+                thinking=False,   # upstream Odysseus e4cc8ef: 20 tokens hold no reasoning
                 max_tokens=20,
                 headers=headers,
                 timeout=15,

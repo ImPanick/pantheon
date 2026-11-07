@@ -106,7 +106,12 @@ def find_tool_matches(query: str = "", names=None, *, mcp_tools=None) -> List[Di
     words = set(_find_words(query))
     if words:
         import math
-        bags = {name: (set(_find_words(name.replace("_", " "))), set(_find_words(desc)))
+        # `src/tool_map.py`: the map's few words and the names people use for
+        # a tool ("VM", "remote desktop" for `computer`) count as the name does.
+        from src.tool_map import search_words
+        bags = {name: (set(_find_words(name.replace("_", " ")))
+                       | set(_find_words(search_words(name))),
+                       set(_find_words(desc)))
                 for name, desc in catalogue.items()}
         # A word most tools share ("list", "manage") says little; a rare one
         # ("notes", "calendar") says which tool. Weighted by inverse frequency.
@@ -132,10 +137,11 @@ def find_tool_matches(query: str = "", names=None, *, mcp_tools=None) -> List[Di
             if -neg * 2 < top:
                 break
             picked.append(name)
+    from src.tool_map import brief
     out = []
     for name in picked[:FIND_TOOLS_MAX]:
         desc = catalogue.get(name, "")
-        first = desc.split(". ")[0].strip()
+        first = brief(name) or desc.split(". ")[0].strip()
         out.append({"name": name, "description": first[:200]})
     return out
 
@@ -155,12 +161,35 @@ async def do_find_tools(content: str, owner: Optional[str] = None) -> Dict:
     if not query and not names:
         return {"error": "Pass query (a few words for the job) or names.", "exit_code": 1}
     found = find_tool_matches(query, names)
+    skills = _skills_for(query, owner) if query else []
     if not found:
-        return {"output": f"No tool matches {query or names!r}. Try other words.",
-                "exit_code": 0, "found": []}
+        out = f"No tool matches {query or names!r}. Try other words."
+        if skills:
+            out += "\n" + skills
+        return {"output": out, "exit_code": 0, "found": []}
     lines = [f"- {f['name']} — {f['description']}" for f in found]
     return {"output": "Tools matching the request:\n" + "\n".join(lines),
-            "exit_code": 0, "found": [f["name"] for f in found]}
+            "exit_code": 0, "found": [f["name"] for f in found],
+            # The agent loop rewrites `output`; this line rides along after it.
+            "skills_line": skills}
+
+
+def _skills_for(query: str, owner: Optional[str]) -> str:
+    """Up to two of Pantheon's or the person's skills for the job, one line,
+    or `""`. The owner, 2026-11-07: the search should say where to use the
+    skills too, so a desktop job finds `workstation-desktop` with `computer`."""
+    try:
+        from services.memory.skills import SkillsManager
+        from src.constants import DATA_DIR
+        rows = SkillsManager(DATA_DIR).find_skills(query, owner=owner, limit=6)
+    except Exception:
+        logger.debug("find_tools: skills unreadable", exc_info=True)
+        return ""
+    rows = [r for r in rows if r.get("source") != "library"][:2]
+    if not rows:
+        return ""
+    return "Skill that fits (open with use_skill {\"name\": ...}): " + "; ".join(
+        f"{r['name']} — {str(r.get('description') or '').split('. ')[0][:90]}" for r in rows)
 
 
 async def do_use_skill(content: str, owner: Optional[str] = None) -> Dict:

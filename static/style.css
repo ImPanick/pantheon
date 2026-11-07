@@ -50863,6 +50863,7 @@ body.plan-mode-active .chat-input-top > .model-picker-wrap:has(> .model-picker-m
 .phw-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .phw-bar, .phw-open { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .phw-open[hidden], .phw-bar [hidden] { display: none; }
+.phw-bar .phw-device[hidden] { display: none; }
 .phw-device { min-width: 0; flex: 1 1 180px; }
 .phw-address { flex: 1 1 200px; min-width: 0; }
 .phw-stage {
@@ -50884,17 +50885,17 @@ body.plan-mode-active .chat-input-top > .model-picker-wrap:has(> .model-picker-m
   max-width: calc(100% - 2 * var(--phw-rim) - 2px);
   aspect-ratio: var(--phw-aspect);
   padding: var(--phw-rim);
-  border-radius: 34px;
-  background: color-mix(in srgb, var(--fg) 82%, var(--bg));
-  border: 1px solid color-mix(in srgb, var(--fg) 60%, var(--bg));
+  /* `B1757`: the device's own corners and finish, set from its look. */
+  border-radius: var(--phw-radius, 34px);
+  background: var(--phw-finish, color-mix(in srgb, var(--fg) 82%, var(--bg)));
+  border: 1px solid color-mix(in srgb, var(--phw-finish, var(--fg)) 70%, #000);
   box-shadow:
     inset 0 0 0 2px color-mix(in srgb, var(--bg) 14%, transparent),
     0 10px 28px var(--shadow-ink-4);
   box-sizing: content-box;
   transition: aspect-ratio 0.25s ease;
 }
-.phw-bezel[data-kind="tablet"] { border-radius: 22px; --phw-rim: 16px; }
-.phw-bezel[data-kind="foldable"] { border-radius: 22px; }
+.phw-bezel[data-kind="tablet"] { --phw-rim: 16px; }
 .phw-speaker {
   position: absolute;
   top: calc(var(--phw-rim) / 2 - 1.5px);
@@ -50909,11 +50910,11 @@ body.plan-mode-active .chat-input-top > .model-picker-wrap:has(> .model-picker-m
   position: relative;
   width: 100%;
   height: 100%;
-  border-radius: 24px;
+  border-radius: var(--phw-inner, 24px);
   overflow: hidden;
   background: #000;
 }
-.phw-bezel[data-kind="tablet"] .phw-screen, .phw-bezel[data-kind="foldable"] .phw-screen { border-radius: 12px; }
+.phw-bezel[data-kind="tablet"] .phw-screen, .phw-bezel[data-kind="foldable"] .phw-screen { border-radius: var(--phw-inner, 12px); }
 .phw-live-frame { position: absolute; top: 0; height: 100%; border: 0; background: #000; }
 .phw-empty {
   position: absolute;
@@ -50930,23 +50931,49 @@ body.plan-mode-active .chat-input-top > .model-picker-wrap:has(> .model-picker-m
 .phw-empty[hidden] { display: none; }
 .phw-glass { position: absolute; inset: 0; cursor: pointer; }
 .phw-screen.phw-holding .phw-glass, .phw-empty:not([hidden]) ~ .phw-glass { display: none; }
-.phw-side-keys {
+/* `B1757`: each edge's keys where the device has them — the right edge, the
+   left, or (a tablet held landscape) the top. */
+.phw-side-keys { position: absolute; inset: 0; pointer-events: none; }
+.phw-keys { position: absolute; display: flex; gap: 10px; pointer-events: auto; }
+.phw-keys[hidden] { display: none; }
+.phw-keys-right { top: 18%; right: -6px; flex-direction: column; }
+.phw-keys-left { top: 18%; left: -6px; flex-direction: column; }
+.phw-keys-left .phw-side { border-radius: 3px 0 0 3px; }
+.phw-keys-top { top: -6px; right: 14%; flex-direction: row; }
+.phw-keys-top .phw-side { width: auto; height: 5px; border-radius: 3px 3px 0 0; }
+.phw-keys-top .phw-side-power { width: 36px; }
+.phw-keys-top :is(.phw-side-volume_up, .phw-side-volume_down) { width: 44px; }
+/* The front camera: a hole punched in the screen, or a lens in the rim. */
+.phw-camera {
   position: absolute;
-  top: 18%;
-  right: -6px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+  z-index: 2;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #2a3140 0 25%, #05070a 60%);
+  box-shadow: 0 0 0 1.5px color-mix(in srgb, #000 70%, var(--phw-finish, #222));
+  pointer-events: none;
 }
+.phw-bezel[data-cutout="punch-center"] .phw-camera { top: calc(var(--phw-rim) + 12px); left: 50%; transform: translateX(-50%); }
+.phw-bezel[data-cutout="punch-left"] .phw-camera { top: calc(var(--phw-rim) + 12px); left: calc(var(--phw-rim) + 16px); }
+.phw-bezel[data-cutout="punch-right"] .phw-camera { top: calc(var(--phw-rim) + 12px); right: calc(var(--phw-rim) + 16%); }
+.phw-bezel[data-cutout="bezel-top"] .phw-camera { top: calc(var(--phw-rim) / 2 - 3px); left: 50%; width: 6px; height: 6px; transform: translateX(-50%); }
+.phw-bezel[data-cutout="bezel-right"] .phw-camera { top: calc(var(--phw-rim) / 2 - 3px); right: 18%; width: 6px; height: 6px; }
+.phw-bezel:is([data-cutout="bezel-top"], [data-cutout="bezel-right"]) .phw-speaker { display: none; }
+/* A foldable open flat shows its crease down the middle. */
+.phw-hinge { display: none; position: absolute; top: 0; bottom: 0; left: 50%; width: 10px; transform: translateX(-50%);
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, #fff 6%, transparent) 45%, color-mix(in srgb, #000 22%, transparent) 55%, transparent);
+  pointer-events: none; z-index: 1; }
+.phw-bezel[data-kind="foldable"][data-posture="open"] .phw-hinge { display: block; }
 .phw-side {
   width: 5px;
   padding: 0;
   border: 0;
   border-radius: 0 3px 3px 0;
-  background: color-mix(in srgb, var(--fg) 70%, var(--bg));
+  background: color-mix(in srgb, var(--phw-finish, var(--fg)) 78%, #000);
   cursor: pointer;
 }
-.phw-side:hover:not(:disabled), .phw-side:focus-visible { background: color-mix(in srgb, var(--fg) 45%, var(--bg)); }
+.phw-side:hover:not(:disabled), .phw-side:focus-visible { background: color-mix(in srgb, var(--phw-finish, var(--fg)) 55%, #fff); }
 .phw-side:active:not(:disabled) { transform: translateX(-1px); }
 .phw-side:disabled { cursor: default; filter: saturate(0.6) brightness(0.9); }
 .phw-side-power { height: 36px; }
@@ -50956,6 +50983,76 @@ body.plan-mode-active .chat-input-top > .model-picker-wrap:has(> .model-picker-m
 .phw-nav-btn { min-width: 44px; font-size: 15px; }
 @media (prefers-reduced-motion: reduce) {
   .phw-bezel { transition-duration: 0.01ms; }
+}
+
+/* ── `B1756` · the Devices room ─────────────────────────────────────────────
+   The Workbench's room for the phone: the device list on the left, the same
+   phone as the window on the right. The list uses the theme's panel and edge;
+   the device in use is marked with the edge's own colour, no new accent. */
+.devices-room { height: 100%; min-height: 0; }
+.phw-room {
+  display: grid;
+  grid-template-columns: minmax(280px, 360px) minmax(320px, 1fr);
+  gap: 14px;
+  height: 100%;
+  min-height: 0;
+}
+.phw-catalogue { display: flex; flex-direction: column; gap: 8px; min-height: 0; overflow-y: auto; padding-right: 4px; }
+.phw-cat-head { margin: 0; font-size: 14px; }
+.phw-cat-lede { margin: 0; font-size: 12px; line-height: 1.45; }
+.phw-cat-groups { display: flex; flex-direction: column; gap: 10px; }
+.phw-cat-maker { margin: 0 0 4px; font-size: 12px; font-weight: 600; letter-spacing: 0.02em; }
+.phw-cat-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.phw-cat-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+}
+.phw-cat-current { box-shadow: inset 3px 0 0 var(--border-control, var(--border)); border-color: var(--border-control, var(--border)); }
+.phw-cat-text { display: flex; flex-direction: column; min-width: 0; flex: 1 1 auto; }
+/* `B1757`: a small drawing of the device in its finish. */
+.phw-cat-swatch {
+  flex: 0 0 auto;
+  width: 14px;
+  height: 26px;
+  border-radius: 4px;
+  background: var(--phw-finish, var(--border));
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, #000 55%, var(--phw-finish, var(--border)));
+}
+.phw-cat-swatch { margin-inline: 7px; }   /* each in the same 28px slot, so the names line up */
+.phw-cat-swatch[data-kind="tablet"] { width: 28px; height: 19px; margin-inline: 0; }
+.phw-cat-swatch[data-kind="foldable"] { width: 22px; height: 24px; margin-inline: 3px; }
+.phw-cat-name { font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.phw-cat-facts { font-size: 11.5px; }
+.phw-cat-use { flex-shrink: 0; }
+.phw-cat-empty { margin: 0; font-size: 12px; }
+.phw-room-device { display: flex; flex-direction: column; gap: 8px; min-width: 0; min-height: 0; }
+.phw-room-head { display: flex; align-items: center; }
+.phw-room-head .phw-heading { margin: 0; font-size: 14px; }
+.phw-room-moved { margin: 24px auto; max-width: 420px; text-align: center; font-size: 13px; }
+.phw-progress { display: flex; flex-direction: column; gap: 4px; font-size: 12px; }
+.phw-progress[hidden], .phw-license[hidden] { display: none; }
+.phw-progress-bar { width: 100%; height: 8px; accent-color: var(--fg); }
+.phw-license {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+}
+.phw-license-text { margin: 0; font-size: 12.5px; line-height: 1.5; }
+.phw-license-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.phw-license-link { margin-right: auto; font-size: 12.5px; color: var(--link-fg); }
+@media (max-width: 768px) {
+  .phw-room { grid-template-columns: 1fr; grid-template-rows: auto 1fr; overflow-y: auto; }
+  .phw-catalogue { overflow: visible; }
 }
 
 /* ── `P26-01` … `P26-03` · notes pinned to the page ─────────────────────────

@@ -975,6 +975,14 @@ class Workstation:
                 return phone.info()
             if action == "start":
                 return phone.start(body.get("device"))
+            if action == "install":
+                # `B1756`: a device picked and not here yet is installed, then
+                # booted. The SDK License is a person's to accept, never the agent's.
+                accept = body.get("accept_license") is True
+                if accept and who != "person":
+                    raise WorkstationError("bad_request", "Only a person accepts the Android SDK "
+                                                          "License, in the Phone room.")
+                return phone.install(body.get("device"), accept=accept)
             if action == "stop":
                 return phone.stop()
             if action == "device":

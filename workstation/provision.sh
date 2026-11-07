@@ -426,9 +426,13 @@ server() {
 # emulator, adb and one Android system image (PHONE_IMAGE, sdkmanager's name for
 # it), under DIR (default /opt/android-sdk), plus scrcpy from Ubuntu — what shows
 # the emulator's screen and turns the mouse into touch — and the libraries the
-# emulator links. Only for an image built with WORKSTATION_PHONE=on: about 4 GB,
-# and running it accepts the Android SDK License (https://developer.android.com/
-# studio/terms), which `sdkmanager --licenses` is answered yes to below. x86_64 only.
+# emulator links. Run at build time for an image built with WORKSTATION_PHONE=on,
+# and at run time by the daemon when a person picks a device the workstation
+# does not have yet (`B1756`, PHONE_RUNTIME=yes) — and then only once a person
+# has accepted the Android SDK License (https://developer.android.com/studio/
+# terms) in the Devices room (PHONE_ACCEPT_LICENSE=yes), which `sdkmanager
+# --licenses` is answered yes to below. About 4 GB. Each part already there is
+# skipped, so a second device costs only its system image. x86_64 only.
 #
 # The tools' zip is pinned by its build number and checked before it is unpacked:
 # against ANDROID_CMDLINE_TOOLS_SHA256 when the builder gives one, and always
@@ -446,10 +450,21 @@ libxdamage1 libxrandr2 libxshmfence1 libdbus-glib-1-2 libbsd0"
 phone() {
     sdk=${1:-/opt/android-sdk}
     image=${PHONE_IMAGE:-system-images;android-35;google_apis;x86_64}
-    arch=$(dpkg --print-architecture)
-    if [ "$arch" != amd64 ]; then
+    arch=$(dpkg --print-architecture 2>/dev/null || uname -m)
+    if [ "$arch" != amd64 ] && [ "$arch" != x86_64 ]; then
         say "the phone is x86_64 Android, and this machine is $arch; no phone"
         return 0
+    fi
+    # `B1756`. Also run by the workstation's daemon when a person picks a
+    # device that is not here yet (`workstation/phone.py`'s `Installer`), so
+    # every step is skipped when what it makes is already there: the second
+    # device is one more system image, not the whole SDK again. The daemon
+    # sets PHONE_ACCEPT_LICENSE=yes only once the person has accepted the
+    # Android SDK License in the window; the image build accepts it by being
+    # built with WORKSTATION_PHONE=on.
+    if [ "${PHONE_RUNTIME:-}" = yes ] && [ "${PHONE_ACCEPT_LICENSE:-}" != yes ]; then
+        say "the Android SDK License has not been accepted; nothing installed"
+        exit 3
     fi
     export DEBIAN_FRONTEND=noninteractive
     ca=${PROVISION_CA:-/run/secrets/build-ca}
@@ -459,16 +474,27 @@ phone() {
         cat /etc/ssl/certs/ca-certificates.crt "$ca" > /tmp/provision-ca.pem
         cacert=/tmp/provision-ca.pem
     fi
-    apt-get update
-    # shellcheck disable=SC2086 # the list is words on purpose
-    apt-get install -y --no-install-recommends $PHONE_LIBS
-    zip=commandlinetools-linux-${ANDROID_CMDLINE_TOOLS_BUILD}_latest.zip
-    say "fetching the Android SDK command-line tools ($ANDROID_CMDLINE_TOOLS_BUILD)"
-    curl --fail --silent --show-error --location --retry 3 ${cacert:+--cacert "$cacert"} \
-        --output "/tmp/$zip" "$ANDROID_REPO/$zip"
-    curl --fail --silent --show-error --location --retry 3 ${cacert:+--cacert "$cacert"} \
-        --output /tmp/android-repository.xml "$ANDROID_REPO/repository2-3.xml"
-    want=$(python3 -I - "$zip" /tmp/android-repository.xml <<'PY'
+    if ! command -v scrcpy >/dev/null 2>&1 || ! command -v java >/dev/null 2>&1; then
+        if ! command -v apt-get >/dev/null 2>&1; then
+            say "the phone's libraries come from apt, and this workstation has none; no phone"
+            exit 4
+        fi
+        say "step: libraries"
+        apt-get update
+        # shellcheck disable=SC2086 # the list is words on purpose
+        apt-get install -y --no-install-recommends $PHONE_LIBS
+        rm -rf /var/lib/apt/lists/*
+    fi
+    sdkm="$sdk/cmdline-tools/latest/bin/sdkmanager"
+    if [ ! -x "$sdkm" ]; then
+        zip=commandlinetools-linux-${ANDROID_CMDLINE_TOOLS_BUILD}_latest.zip
+        say "step: tools"
+        say "fetching the Android SDK command-line tools ($ANDROID_CMDLINE_TOOLS_BUILD)"
+        curl --fail --silent --show-error --location --retry 3 ${cacert:+--cacert "$cacert"} \
+            --output "/tmp/$zip" "$ANDROID_REPO/$zip"
+        curl --fail --silent --show-error --location --retry 3 ${cacert:+--cacert "$cacert"} \
+            --output /tmp/android-repository.xml "$ANDROID_REPO/repository2-3.xml"
+        want=$(python3 -I - "$zip" /tmp/android-repository.xml <<'PY'
 import sys, xml.etree.ElementTree as ET
 name, path = sys.argv[1], sys.argv[2]
 for el in ET.parse(path).iter():
@@ -485,41 +511,42 @@ for el in ET.parse(path).iter():
             break
 PY
 )
-    if [ -z "$want" ] || ! printf '%s  %s\n' "$want" "/tmp/$zip" | sha1sum -c - >/dev/null 2>&1; then
-        rm -f "/tmp/$zip"
-        say "the command-line tools did not match Google's repository record; refusing them"
-        exit 1
+        if [ -z "$want" ] || ! printf '%s  %s\n' "$want" "/tmp/$zip" | sha1sum -c - >/dev/null 2>&1; then
+            rm -f "/tmp/$zip"
+            say "the command-line tools did not match Google's repository record; refusing them"
+            exit 1
+        fi
+        if [ -n "${ANDROID_CMDLINE_TOOLS_SHA256:-}" ] \
+                && ! printf '%s  %s\n' "$ANDROID_CMDLINE_TOOLS_SHA256" "/tmp/$zip" | sha256sum -c - >/dev/null 2>&1; then
+            rm -f "/tmp/$zip"
+            say "the command-line tools did not match ANDROID_CMDLINE_TOOLS_SHA256; refusing them"
+            exit 1
+        fi
+        install -d -m 0755 "$sdk/cmdline-tools"
+        rm -rf /tmp/android-cmdline-tools
+        python3 -I -c 'import sys, zipfile; zipfile.ZipFile(sys.argv[1]).extractall(sys.argv[2])' \
+            "/tmp/$zip" /tmp/android-cmdline-tools
+        rm -rf "$sdk/cmdline-tools/latest"
+        mv /tmp/android-cmdline-tools/cmdline-tools "$sdk/cmdline-tools/latest"
+        chmod -R a+rX,u+w "$sdk/cmdline-tools/latest"
+        chmod a+x "$sdk/cmdline-tools/latest/bin/"*
+        rm -rf "/tmp/$zip" /tmp/android-repository.xml /tmp/android-cmdline-tools
     fi
-    if [ -n "${ANDROID_CMDLINE_TOOLS_SHA256:-}" ] \
-            && ! printf '%s  %s\n' "$ANDROID_CMDLINE_TOOLS_SHA256" "/tmp/$zip" | sha256sum -c - >/dev/null 2>&1; then
-        rm -f "/tmp/$zip"
-        say "the command-line tools did not match ANDROID_CMDLINE_TOOLS_SHA256; refusing them"
-        exit 1
-    fi
-    install -d -m 0755 "$sdk/cmdline-tools"
-    rm -rf /tmp/android-cmdline-tools
-    python3 -I -c 'import sys, zipfile; zipfile.ZipFile(sys.argv[1]).extractall(sys.argv[2])' \
-        "/tmp/$zip" /tmp/android-cmdline-tools
-    rm -rf "$sdk/cmdline-tools/latest"
-    mv /tmp/android-cmdline-tools/cmdline-tools "$sdk/cmdline-tools/latest"
-    chmod -R a+rX,u+w "$sdk/cmdline-tools/latest"
-    chmod a+x "$sdk/cmdline-tools/latest/bin/"*
-    rm -rf "/tmp/$zip" /tmp/android-repository.xml /tmp/android-cmdline-tools
-    sdkm="$sdk/cmdline-tools/latest/bin/sdkmanager"
     # sdkmanager reads the proxy's CA from Java's own store, not the system's.
     if [ -n "$cacert" ]; then
         keytool -importcert -noprompt -cacerts -storepass changeit -alias provision-ca \
             -file "$ca" >/dev/null 2>&1 || true
     fi
     yes | "$sdkm" --sdk_root="$sdk" --licenses >/dev/null
+    # What is already installed is not fetched again: sdkmanager skips it.
+    say "step: android"
     "$sdkm" --sdk_root="$sdk" --install "platform-tools" "emulator" "$image"
     if [ -n "$cacert" ]; then
         keytool -delete -noprompt -cacerts -storepass changeit -alias provision-ca >/dev/null 2>&1 || true
     fi
     chmod -R a+rX "$sdk"
     rm -f /etc/apt/apt.conf.d/99-provision-ca /tmp/provision-ca.pem
-    rm -rf /var/lib/apt/lists/*
-    say "the phone: Android SDK in $sdk with $image"
+    say "step: done"
 }
 
 case "$STEP" in

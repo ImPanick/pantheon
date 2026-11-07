@@ -142,11 +142,212 @@ MOBILE_NO_MARKS = ("The mobile view has no numbered marks of its own; click by w
                    "on its screenshot.")
 
 
+# `B1756`. Installing a device when it is picked. The owner, 2026-11-07: *"The
+# user should be able to pick from a list of devices and Pantheon should pull
+# the image/install configure etc."* The daemon runs the same `provision.sh
+# phone` step the image build runs — the same pinned, checked tools — for the
+# device's system image, as root, one install at a time for the workstation.
+PROVISION = "/opt/pantheon-workstation/provision/provision.sh"
+PROVISION_ENV = "PANTHEON_PHONE_PROVISION"
+LICENSE_URL = "https://developer.android.com/studio/terms"
+INSTALL_FREE_BYTES = 8 * 1024 ** 3     # the SDK, the emulator and one image, with room
+INSTALL_TIMEOUT_S = 3 * 3600.0
+INSTALL_STEPS = {
+    "libraries": "Installing the phone's libraries",
+    "tools": "Fetching Google's Android SDK tools",
+    "android": "Downloading Android and the emulator",
+    "done": "Installed",
+}
+ANDROID_NAMES = {33: "Android 13", 34: "Android 14", 35: "Android 15", 36: "Android 16"}
+NEEDS_LICENSE = ("Installing the phone accepts the Android SDK License ({url}). A person accepts "
+                 "it once, in the Workbench's Devices room; then any device can be installed.")
+CANNOT_INSTALL = ("This workstation cannot install the phone itself ({why}). Rebuild it with the "
+                  "phone in: set WORKSTATION_PHONE=on and run docker compose up -d --build.")
+
+
 class PhoneError(Exception):
     def __init__(self, code: str, message: str):
         super().__init__(message)
         self.code = code
         self.message = message
+
+
+def device_image(device: str) -> str:
+    """`B1756`. The system image a device runs: its own (`"image"` in the
+    catalogue) or the workstation's default (`image_package`)."""
+    d = P.PHONE_DEVICES.get(device) or {}
+    return str(d.get("image") or image_package())
+
+
+def android_name(package: str) -> str:
+    """"Android 15" for `system-images;android-35;…`, the API level otherwise."""
+    try:
+        api = int(image_parts(package)["api"].split("-")[-1])
+    except (PhoneError, ValueError, KeyError):
+        return package
+    return ANDROID_NAMES.get(api, f"Android API {api}")
+
+
+def image_installed(package: str) -> bool:
+    try:
+        return (sdk_root() / image_parts(package)["sysdir"]).is_dir()
+    except PhoneError:
+        return False
+
+
+def tools_installed() -> bool:
+    found = tools()
+    return bool(found["emulator"] and found["adb"] and found["scrcpy"])
+
+
+def license_accepted() -> bool:
+    """Whether Google's SDK License was accepted here: sdkmanager writes its
+    hash under `licenses/` once it is."""
+    return (sdk_root() / "licenses" / "android-sdk-license").is_file()
+
+
+def provision_script() -> Optional[str]:
+    path = os.environ.get(PROVISION_ENV) or PROVISION
+    return path if os.path.isfile(path) else None
+
+
+def can_install() -> Optional[str]:
+    """Why this daemon cannot install the phone, or None when it can."""
+    if not provision_script():
+        return "it has no provisioning script"
+    if hasattr(os, "geteuid") and os.geteuid() != 0:
+        return "its daemon does not run as root"
+    root = sdk_root()
+    probe = root if root.exists() else root.parent
+    try:
+        free = shutil.disk_usage(probe).free
+    except OSError:
+        free = None
+    if free is not None and free < INSTALL_FREE_BYTES and not tools_installed():
+        return f"it has {free // 1024 ** 3} GB free and needs about {INSTALL_FREE_BYTES // 1024 ** 3}"
+    return None
+
+
+_STEP_RE = re.compile(r"^provision: step: ([a-z]+)\s*$")
+_PERCENT_RE = re.compile(r"(\d{1,3})%")
+
+
+def read_progress(line: str, state: Dict) -> None:
+    """One line of `provision.sh phone`'s output into the install's state:
+    its step, sdkmanager's percent, and what it last said."""
+    line = line.strip()
+    if not line:
+        return
+    m = _STEP_RE.match(line)
+    if m:
+        if m.group(1) in INSTALL_STEPS:
+            state["step"] = m.group(1)
+            state["percent"] = 100 if m.group(1) == "done" else 0
+        return
+    m = _PERCENT_RE.search(line)
+    if m and "[" in line:
+        state["percent"] = min(100, int(m.group(1)))
+        said = line.split("%", 1)[-1].strip()
+        if said:
+            state["said"] = said[:160]
+        return
+    if line.startswith("provision: "):
+        state["said"] = line[len("provision: "):][:160]
+
+
+class Installer:
+    """`B1756`. The workstation's one phone install at a time: `provision.sh
+    phone` for a system image, as root, its progress read as it goes."""
+
+    def __init__(self, *, run: Optional[Callable] = None) -> None:
+        self.lock = threading.Lock()
+        self.state: Dict = {"state": "idle"}
+        self._run = run or self._provision
+        self._thread: Optional[threading.Thread] = None
+
+    def info(self) -> Dict:
+        with self.lock:
+            out = dict(self.state)
+        if out.get("step"):
+            out["step_label"] = INSTALL_STEPS.get(out["step"], out["step"])
+        return out
+
+    def running(self) -> bool:
+        with self.lock:
+            return self.state.get("state") == "running"
+
+    def start(self, package: str, *, accept: bool, then: Optional[Callable[[bool], None]] = None) -> Dict:
+        """Begin installing `package` (and the tools, the first time); `then`
+        is called with whether it worked. One install at a time."""
+        with self.lock:
+            if self.state.get("state") == "running":
+                if self.state.get("package") == package:
+                    return dict(self.state)
+                raise PhoneError("busy", "Another device is being installed on this workstation; "
+                                         "wait for it to finish.")
+            why = can_install()
+            if why:
+                raise PhoneError("unavailable", CANNOT_INSTALL.format(why=why))
+            if not (accept or license_accepted()):
+                raise PhoneError("license", NEEDS_LICENSE.format(url=LICENSE_URL))
+            self.state = {"state": "running", "package": package, "android": android_name(package),
+                          "step": "", "percent": 0, "said": "", "started": time.time()}
+            self._thread = threading.Thread(target=self._work, args=(package, then), daemon=True)
+            self._thread.start()
+            return dict(self.state)
+
+    def _work(self, package: str, then: Optional[Callable[[bool], None]]) -> None:
+        try:
+            code = self._run(package, self._line)
+        except Exception as e:  # noqa: BLE001 — said on the phone, never a silent "running"
+            code, why = -1, str(e)
+        else:
+            why = ""
+        ok = code == 0 and image_installed(package) and tools_installed()
+        with self.lock:
+            last = self.state.get("said") or ""
+            self.state.update(state="done" if ok else "failed", percent=100 if ok else
+                              self.state.get("percent", 0), finished=time.time())
+            if not ok:
+                self.state["why"] = (f"The install did not finish (exit {code}"
+                                     + (f": {why or last}" if (why or last) else "") + ").")[:400]
+        logger.info("phone install of %s: %s", package, "done" if ok else self.state.get("why"))
+        if then is not None:
+            try:
+                then(ok)
+            except Exception as e:  # noqa: BLE001 — the install's own state already says how it went
+                logger.warning("phone install of %s: what follows it failed: %s", package, e)
+
+    def _line(self, line: str) -> None:
+        with self.lock:
+            read_progress(line, self.state)
+
+    @staticmethod
+    def _provision(package: str, on_line: Callable[[str], None]) -> int:
+        env = {**os.environ, "PHONE_IMAGE": package, "PHONE_RUNTIME": "yes",
+               "PHONE_ACCEPT_LICENSE": "yes"}
+        proc = subprocess.Popen(["sh", provision_script() or PROVISION, "phone", str(sdk_root())],
+                                env=env, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                                stderr=subprocess.STDOUT, start_new_session=True)
+        assert proc.stdout is not None
+        buf = b""
+        deadline = time.monotonic() + INSTALL_TIMEOUT_S
+        while True:
+            chunk = proc.stdout.read1(4096) if hasattr(proc.stdout, "read1") else proc.stdout.read(4096)
+            if not chunk:
+                break
+            buf += chunk
+            # sdkmanager redraws its bar with carriage returns
+            parts = re.split(rb"[\r\n]", buf)
+            buf = parts.pop()
+            for raw in parts:
+                on_line(raw.decode("utf-8", "replace"))
+            if time.monotonic() > deadline:
+                _kill(proc)
+                return -1
+        if buf:
+            on_line(buf.decode("utf-8", "replace"))
+        return proc.wait()
 
 
 # ── the pieces, as pure functions (the tests read these) ─────────────────────
@@ -482,9 +683,11 @@ class AccountPhone:
                  claim_port: Optional[Callable[[str], Optional[int]]] = None,
                  release_port: Optional[Callable[[str], None]] = None,
                  can_start: Optional[Callable[[str], Optional[str]]] = None,
-                 kvm: Optional[Callable[[], Tuple[bool, str]]] = None) -> None:
+                 kvm: Optional[Callable[[], Tuple[bool, str]]] = None,
+                 installer: Optional["Installer"] = None) -> None:
         self.system = system
         self.account = account
+        self.installer = installer or Installer()   # `B1756`: the workstation's one
         self.screen = screen
         self.memory_mib = memory_mib
         self._claim_port = claim_port or (lambda a: CONSOLE_PORTS[0])
@@ -568,17 +771,16 @@ class AccountPhone:
         arch = platform.machine().lower()
         if arch not in ("x86_64", "amd64"):
             return NOT_X86.format(arch=arch or "another architecture")
-        found = tools()
-        if not found["emulator"] or not found["adb"]:
-            return BUILT_WITHOUT
-        if not (sdk_root() / image_parts(image_package())["sysdir"]).is_dir():
-            return BUILT_WITHOUT
-        if not found["scrcpy"]:
-            return BUILT_WITHOUT
         ok, why = self._kvm()
         if not ok:
             return NO_KVM.format(why=why)
-        return None
+        # `B1756`: a phone that is not installed yet is one picking a device
+        # installs — where this daemon can install it.
+        if tools_installed() and image_installed(image_package()):
+            return None
+        if can_install() is None:
+            return None
+        return BUILT_WITHOUT
 
     def env(self) -> Dict[str, str]:
         """What the emulator, adb and scrcpy run with, as the account — and
@@ -611,7 +813,8 @@ class AccountPhone:
                "state": "unavailable" if why else self.state, "device": self.device,
                "devices": [{"id": k, "name": v["name"], "maker": v["maker"], "kind": v["kind"],
                             "foldable": v["kind"] == "foldable", "width": v["width"],
-                            "height": v["height"], "density": v["density"]}
+                            "height": v["height"], "density": v["density"],
+                            "look": P.PHONE_LOOKS.get(k) or {}}   # `B1757`
                            for k, v in P.PHONE_DEVICES.items()],
                "posture": self.posture if d.get("kind") == "foldable" else None,
                "rotation": self.rotation,
@@ -619,6 +822,17 @@ class AccountPhone:
                "accel": "kvm" if self.state in ("starting", "on") and mode == "android" else None,
                "android": image_package(),
                "mode": mode}
+        # `B1756`: what each device needs, and the install under way.
+        ready_tools = tools_installed()
+        for entry in out["devices"]:
+            pkg = device_image(entry["id"])
+            entry["android"] = android_name(pkg)
+            entry["installed"] = (mode == "mobile_view") or (ready_tools and image_installed(pkg))
+        out["installed"] = (mode == "mobile_view") or (ready_tools and image_installed(device_image(self.device)))
+        out["license"] = {"accepted": license_accepted(), "url": LICENSE_URL}
+        out["install"] = self.installer.info()
+        if mode == "android" and not out["installed"]:
+            out["can_install"] = can_install() is None
         if mode == "mobile_view":
             out["why_not_android"] = (self.android_why() or "")[:500]
             out["user_agent"] = mobile_user_agent(self.device)
@@ -687,6 +901,55 @@ class AccountPhone:
     def touch(self) -> None:
         self.used_at = time.monotonic()
 
+    def installed(self, device: Optional[str] = None) -> bool:
+        """`B1756`. Whether a device is ready to boot here: the tools and its
+        system image installed."""
+        return tools_installed() and image_installed(device_image(device or self.device))
+
+    def install(self, device: Optional[str] = None, *, accept: bool = False,
+                then_start: bool = True) -> Dict:
+        """`B1756`. Install what `device` needs (the person's pick), then boot
+        it. `accept` is the person's acceptance of the Android SDK License,
+        asked once; a device already installed just starts."""
+        with self.lock:
+            if device is not None:
+                if device not in P.PHONE_DEVICES:
+                    raise PhoneError("bad_request",
+                                     f"“device” is one of {', '.join(P.PHONE_DEVICES)}.")
+                if device != self.device:
+                    if self.running():
+                        self._stop_locked()
+                    self.device = device
+                    self._save_device()
+            if self.mode() != "android":
+                # The mobile view has nothing to install: a pick starts it.
+                return self.start() if then_start else self.info("install")
+            if self.installed():
+                return self.start() if then_start else self.info("install")
+            wanted = self.device
+
+            def then(ok: bool) -> None:
+                with self.lock:
+                    if self.state == "installing":
+                        self.state = "off"
+                        self.why = ""
+                    if not ok:
+                        # Off, not unavailable: the person can pick it again
+                        # once whatever stopped it is fixed (`B1756`).
+                        self.state = "off"
+                        self.why = self.installer.info().get("why") or "The install did not finish."
+                        return
+                if then_start and self.device == wanted:
+                    try:
+                        self.start()
+                    except PhoneError as e:
+                        logger.info("phone for %s: after the install: %s", self.account, e.message)
+
+            self.installer.start(device_image(wanted), accept=accept, then=then)
+            self.state, self.why = "installing", ""
+            logger.info("phone for %s: installing %s", self.account, wanted)
+            return self.info("install")
+
     def start(self, device: Optional[str] = None) -> Dict:
         with self.lock:
             self.touch()
@@ -707,6 +970,11 @@ class AccountPhone:
                 return self.info("start")
             if self.mode() == "mobile_view":
                 return self._start_mobile()
+            if self.state == "installing" and self.installer.running():
+                return self.info("start")
+            if not self.installed():
+                # `B1756`: picked, and not here yet — installed, then booted.
+                return self.install(then_start=True)
             refused = self._can_start(self.account)
             if refused:
                 raise PhoneError("unavailable", refused)
@@ -1103,6 +1371,7 @@ class Phones:
         self._ports: Dict[str, int] = {}
         self._lock = threading.Lock()
         self._reaper: Optional[threading.Thread] = None
+        self.installer = Installer()   # `B1756`: one install at a time, for every account
 
     def get(self, account: str) -> AccountPhone:
         with self._lock:
@@ -1118,7 +1387,8 @@ class Phones:
                         screen = None
                 p = AccountPhone(self.system, account, screen, memory_mib=self.memory_mib,
                                  claim_port=self._claim, release_port=self._free,
-                                 can_start=self._room_for, kvm=self.kvm)
+                                 can_start=self._room_for, kvm=self.kvm,
+                                 installer=self.installer)
                 self._by_account[account] = p
             if self._reaper is None and self.idle_s:
                 self._reaper = threading.Thread(target=self._reap, daemon=True)
@@ -1129,7 +1399,8 @@ class Phones:
         """What the account's shell gets so its `adb` reaches its own phone;
         nothing for an account whose phone was never asked for."""
         p = self._by_account.get(account)
-        return p.env() if p is not None and p.android_why() is None else {}
+        return (p.env() if p is not None and p.android_why() is None and tools_installed()
+                else {})
 
     def _room_for(self, account: str) -> Optional[str]:
         running = [a for a, p in self._by_account.items() if a != account and p.running()]
