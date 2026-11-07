@@ -16,7 +16,8 @@ guards and `manage_tasks` all ask one place (`Law 7`).
     step or pinning a sample never makes one;
   * twenty are kept (`MAX_KEPT_VERSIONS`, imported), the oldest pruned, never
     the current one — one row per content version, the current one included, so
-    a run can be drawn on the exact graph it ran;
+    a run can be drawn on the exact graph it ran — and never one a run that has
+    not ended still stands on (`B1858`, `versions_held_by_runs`);
   * a restore writes a NEW version (`source="restored"`); history is linear and
     nothing is lost;
   * "no such workflow" and "no edits yet" are different answers.
@@ -484,19 +485,55 @@ def _write_version(db, wf, graph: dict, *, source: str) -> None:
     prune_versions(db, wf)
 
 
+def versions_held_by_runs(db, wf) -> frozenset:
+    """`B1858`. The versions a run of this workflow that has not ended still
+    stands on — queued, running or parked (`TASK_RUN_IN_FLIGHT_STATUSES`,
+    `workflow_runs.run_in_flight`'s words) — read from its step records
+    (`TaskRunNode.workflow_version`), the column the walker resumes from
+    (`TaskScheduler._run_workflow`: the first non-dry record's version).
+
+    A run that has not written its first record yet stands on the current
+    version, which `prune_versions` never takes anyway. A dry plan is never in
+    flight, and its records are left out exactly as the resume leaves them out.
+    """
+    from core.database import TASK_RUN_IN_FLIGHT_STATUSES, TaskRun, TaskRunNode
+    if not getattr(wf, "task_id", None):
+        return frozenset()
+    rows = (db.query(TaskRunNode.workflow_version)
+            .join(TaskRun, TaskRun.id == TaskRunNode.run_id)
+            .filter(TaskRun.task_id == wf.task_id,
+                    TaskRun.status.in_(TASK_RUN_IN_FLIGHT_STATUSES),
+                    TaskRunNode.workflow_version.isnot(None),
+                    TaskRunNode.dry.is_(False))
+            .distinct().all())
+    return frozenset(int(version) for (version,) in rows)
+
+
 def prune_versions(db, wf) -> int:
     """Keep the newest `MAX_KEPT_VERSIONS` rows and never the current one out.
 
     `P8-10`'s number, imported rather than typed again: a workflow's history and
     a skill's are one policy (`Law 7`). The import is a module the running app
     has already loaded (the skills manager), so it costs nothing here.
+
+    `B1858`. Nor a version a run still stands on (`versions_held_by_runs`). A
+    run parked on a Wait or a question resumes on the document it started
+    with, read back from its kept version (`graph_of_version`); measured on
+    the merged tree (the engine-triggers audit's t10), a parked run whose
+    workflow was saved twenty-one times while it waited woke to "version N is
+    no longer kept" and ended in error — a person's ordinary edits killed a
+    run they had not touched. Such a version is kept past the twenty for as
+    long as the run is in flight; the first save after it ends prunes it as
+    the policy always has. Nothing is ever kept for a run that has ended.
     """
     from services.memory.skills import MAX_KEPT_VERSIONS
     _, _, _, WorkflowVersion = _models()
     rows = (db.query(WorkflowVersion.id, WorkflowVersion.version)
             .filter(WorkflowVersion.workflow_id == wf.id)
             .order_by(WorkflowVersion.version.desc()).all())
-    doomed = [vid for vid, version in rows[MAX_KEPT_VERSIONS:] if version != wf.version]
+    beyond = [(vid, version) for vid, version in rows[MAX_KEPT_VERSIONS:] if version != wf.version]
+    held = versions_held_by_runs(db, wf) if beyond else frozenset()
+    doomed = [vid for vid, version in beyond if version not in held]
     if doomed:
         db.query(WorkflowVersion).filter(WorkflowVersion.id.in_(doomed)).delete(
             synchronize_session=False)
