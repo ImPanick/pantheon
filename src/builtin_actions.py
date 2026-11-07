@@ -678,6 +678,7 @@ async def action_consolidate_memory(owner: str, **kwargs) -> Tuple[str, bool]:
         import json
         import re
         import unicodedata
+        from src import memory_style
         from src.constants import DATA_DIR
         from src.llm_core import llm_call_async_with_fallback
         from src.memory import MemoryManager
@@ -691,15 +692,24 @@ async def action_consolidate_memory(owner: str, **kwargs) -> Tuple[str, bool]:
         def _memory_owner(mem: dict) -> str:
             return (mem.get("owner") or "").strip()
 
+        # `B1952`. Memories only. The style profile (`P13-17`) shares the store
+        # and is not one: it has no text until twenty messages give it some, so
+        # the empty-row rule below deleted its counters, and once formed the
+        # model was handed it to tidy, text the person corrected included.
+        # `memory_edges.live` keeps it out of every prompt by the same kind.
+        # It stays in `all_memories` and is saved back as it was read.
+        tidy_rows = [m for m in all_memories
+                     if memory_style.kind_of(m) == memory_style.KIND_MEMORY]
+
         # Built-in housekeeping can run without an owner. In that case scan all
         # memories, but keep every AI prompt/apply step owner-local.
         if _owner_clean:
             memory_groups = {
-                _owner_clean: [m for m in all_memories if _memory_owner(m) == _owner_clean]
+                _owner_clean: [m for m in tidy_rows if _memory_owner(m) == _owner_clean]
             }
         else:
             memory_groups = {}
-            for mem in all_memories:
+            for mem in tidy_rows:
                 memory_groups.setdefault(_memory_owner(mem), []).append(mem)
 
         memory_groups = {group_owner: group for group_owner, group in memory_groups.items() if group}

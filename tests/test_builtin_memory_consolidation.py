@@ -169,3 +169,87 @@ async def test_consolidate_memory_leaves_near_duplicates_for_ai(monkeypatch, tmp
     assert set(saved) == {"b", "c"}
     assert saved["b"]["pinned"] is True
     assert received_ids == [{"a", "b", "c"}]
+
+
+@pytest.mark.asyncio
+async def test_a_style_profile_still_forming_survives_the_tidy(monkeypatch, tmp_path):
+    """`B1952`. The style profile (`P13-17`) is not a memory. It has no text
+    until twenty messages give it some, only the counters folded in so far,
+    and the duplicate pass deleted every row with empty text, so each tidy
+    before then threw the counts away and the profile started over."""
+    from src import constants
+    from src import memory_style
+    from src import task_endpoint
+    action_consolidate_memory = _import_consolidate_action()
+
+    style = {"id": "style", "owner": "alice", "text": "", "category": "style",
+             "kind": memory_style.KIND_STYLE, "source": "auto",
+             "style": {"messages": 12, "words": 180}}
+    data_dir = _write_memories(
+        tmp_path,
+        [
+            style,
+            {"id": "a", "owner": "alice", "text": "Alice likes local models.", "category": "preference"},
+            {"id": "b", "owner": "alice", "text": "Alice likes local models.", "category": "preference"},
+        ],
+    )
+    monkeypatch.setattr(constants, "DATA_DIR", str(data_dir))
+    monkeypatch.setattr(task_endpoint, "resolve_task_candidates", lambda *args, **kwargs: [])
+
+    message, ok = await action_consolidate_memory("alice")
+
+    assert ok is True
+    assert "Removed 1 duplicate" in message
+    saved = {m["id"]: m for m in _read_memories(data_dir)}
+    assert set(saved) == {"style", "a"}
+    assert saved["style"]["style"] == {"messages": 12, "words": 180}
+
+
+@pytest.mark.asyncio
+async def test_a_formed_style_profile_is_never_handed_to_the_model(monkeypatch, tmp_path):
+    """`B1952`. Once formed, the profile went to the model as a memory to
+    tidy, which may drop it or "clean" its text. A text the person corrected
+    (`style_edited`) is never re-rendered, so the model's version replaced
+    their correction for good."""
+    from src import constants
+    from src import llm_core
+    from src import memory_style
+    from src import task_endpoint
+    action_consolidate_memory = _import_consolidate_action()
+
+    data_dir = _write_memories(
+        tmp_path,
+        [
+            {"id": "style", "owner": "alice", "text": "Writes in short lines, no greeting.",
+             "category": "style", "kind": memory_style.KIND_STYLE, "source": "auto",
+             "style": {"messages": 40}, "style_edited": 1},
+            {"id": "a", "owner": "alice", "text": "Alice likes local models.", "category": "preference"},
+            {"id": "b", "owner": "alice", "text": "Alice prefers local models.", "category": "preference"},
+        ],
+    )
+    monkeypatch.setattr(constants, "DATA_DIR", str(data_dir))
+    monkeypatch.setattr(
+        task_endpoint,
+        "resolve_task_candidates",
+        lambda *args, **kwargs: [("http://llm", "model", {})],
+    )
+    received_ids = []
+
+    async def fake_llm_call_async(_candidates, **kwargs):
+        items = json.loads(kwargs["messages"][0]["content"].split("MEMORIES:\n", 1)[1])
+        received_ids.append({item["id"] for item in items})
+        keep = [{"id": "a", "text": "Alice likes local models.", "category": "preference"}]
+        if "style" in received_ids[-1]:
+            keep.append({"id": "style", "text": "The user writes tersely.", "category": "preference"})
+        return json.dumps({"keep": keep, "drop": [{"id": "b", "reason": "Same as a"}]})
+
+    monkeypatch.setattr(llm_core, "llm_call_async_with_fallback", fake_llm_call_async)
+
+    message, ok = await action_consolidate_memory("alice")
+
+    assert ok is True
+    assert received_ids == [{"a", "b"}]
+    saved = {m["id"]: m for m in _read_memories(data_dir)}
+    assert set(saved) == {"style", "a"}
+    assert saved["style"]["text"] == "Writes in short lines, no greeting."
+    assert saved["style"]["category"] == "style"
