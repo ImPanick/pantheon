@@ -121,6 +121,14 @@ from src.agent_stops import (
 )
 from src.run_limits import CAPS_FROM_CALLER, RunLimits, bind_run_limits
 from src.interactive_gate import bind_tool_call_started_by  # `B1061`
+# `B1876`. The words that ask for a workflow, one rule for the keyword selector
+# and the domain classifier below (`Law 7`). Bound here, at import, and not in
+# the classifier: the classifier is not tool retrieval and runs on every turn,
+# guide-only ones too, so it must not reach for the retrieval module at call
+# time (`test_tool_policy.test_guide_only_skips_tool_retrieval` stands that
+# module in with one that refuses to be asked). `tool_index` imports nothing
+# of this module's, so there is no cycle.
+from src.tool_index import asks_for_a_workflow
 from src.agent_tools import (
     parse_tool_blocks,
     strip_tool_blocks,
@@ -3586,8 +3594,7 @@ def _classify_agent_request(messages: List[Dict], last_user: str,
         domains.add("skills")
     # `B1876`. The same test the keyword selector asks (`Law 7`): the word
     # "workflow", "automation", "automate", "the Workbench", or a sentence that
-    # describes one by its event.
-    from src.tool_index import asks_for_a_workflow
+    # describes one by its event. (Imported at the top of this module.)
     if asks_for_a_workflow(q):
         domains.add("workflows")
 
