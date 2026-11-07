@@ -6494,10 +6494,13 @@ import { PDF_FONT_COVERAGE } from './pdfFontCoverage.js';   // `B1687`
 
     renderTabs();
 
-    // If no docs loaded, show empty state with helpful placeholder
-    if (docs.size === 0 || !activeDocId) {
-      showEmptyState();
-    }
+    // `B1935`. The editor built above is empty, so it shows the empty state and
+    // is bound to no document, whatever activeDocId named (a chip's document,
+    // a close this open interrupted, a pane torn down under a stale isOpen).
+    // Left bound, the next switchToDoc saved the empty editor into that
+    // document: untitled, empty, python, then saved or deleted as such. Every
+    // caller draws the document it opens.
+    showEmptyState();
   }
 
   /** Apply markdown formatting to the textarea selection */
@@ -7626,14 +7629,18 @@ import { PDF_FONT_COVERAGE } from './pdfFontCoverage.js';   // `B1687`
         // Coming back to a chat with documents should advertise the doc without
         // stealing half the screen. Default to a docked chip; only reopen the
         // full editor when this session explicitly persisted an open state.
-        activeDocId = target.id;
         _minimizedDocId = target.id;
         _markDocVisibleState(sessionId, 'minimized');
         _ensureDocChipRegistered();
         if (isOpen) {
+          // `B1935`: switchToDoc binds it. Bound first, the switch saved the
+          // editor still showing the chat being left into this document.
           try { switchToDoc(target.id); } catch (e) { console.error('Minimize restored doc failed:', e); }
           closePanel('down');
         } else {
+          // No editor on screen: the chip names its document (a chat message
+          // still carries it as active_doc_id).
+          activeDocId = target.id;
           Modals.minimize('doc-panel');
         }
         return;
@@ -11664,7 +11671,8 @@ import { PDF_FONT_COVERAGE } from './pdfFontCoverage.js';   // `B1687`
     activeDocId = docId;
     _syncDocIndicator();
 
-    if (!isOpen) openPanel();
+    // `B1935`: a panel opened here starts unbound, so bind the stream again.
+    if (!isOpen) { openPanel(); activeDocId = docId; }
 
     // Force doc button visible
     const toggleBtn = document.getElementById('overflow-doc-btn');
