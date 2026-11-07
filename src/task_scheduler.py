@@ -6516,6 +6516,9 @@ class TaskScheduler:
 
         config = node.get("config") or {}
         kind = node.get("kind")
+        if node.get(wd.DISABLED_KEY) is True:
+            # `B1856`. Planned as it would run: not at all.
+            return [shape_run_step({"kind": "dry-run", "detail": wd.STEP_SWITCHED_OFF_PLAN})], None
         if kind == wd.NODE_KIND_RUN_TASK:
             target = db.query(ScheduledTask).filter(
                 ScheduledTask.id == config.get("task_id")).first()
@@ -6662,6 +6665,10 @@ class TaskScheduler:
                 if node["id"] in w.started:
                     continue
                 kind = node.get("kind")
+                if node.get(wd.DISABLED_KEY) is True:
+                    self._pass_switched_off(w, node)       # `B1856`
+                    progressed = True
+                    continue
                 if kind == wd.NODE_KIND_WAIT:
                     self._start_wait(w, node)
                     progressed = True
@@ -6901,6 +6908,29 @@ class TaskScheduler:
                               label=node.get("label") or node["id"], status="waiting",
                               detail=(f"Waiting until {self._clock_words(w, until)}, or as "
                                       f"soon after as Pantheon is idle"))
+
+    def _pass_switched_off(self, w, node: dict) -> None:
+        """`B1856`. A step switched off in this workflow does nothing, at
+        once and without a coroutine of its own: its record is `skipped` with
+        `STEP_SWITCHED_OFF`, its output is what it was handed (as a Wait's is,
+        `_wait_passes_on`, so a reference to it reads its input), and the run
+        goes on along its FIRST way out — "if it works", "then", a Switch's
+        first way (`ports_of`) — so switching a step off never ends its
+        branch. `skipped` fires an arrow (`RunState.fired`), as it always
+        could; a run whose every step is off ends `skipped` (`outcome`)."""
+        from src import workflow_document as wd
+        from src import workflow_runs as wr
+        from src.builtin_actions import NODE_STATUS_SKIPPED
+
+        rec = wr.record_node_start(
+            w.db, run_id=w.run_id, node=node, seq=w.state.next_seq(),
+            input_envelope=self._handed(w, node), workflow_version=w.version,
+            owner=w.task.owner)
+        w.state.note_record(rec)
+        w.started.add(node["id"])
+        ports = wd.ports_of(node)
+        self._end_record(w, node, rec, status=NODE_STATUS_SKIPPED, text=wd.STEP_SWITCHED_OFF,
+                         data=self._wait_passes_on(w, node), port=ports[0] if ports else None)
 
     def _wait_passes_on(self, w, node: dict):
         """A Wait makes nothing; it hands on what it was handed — the `data`

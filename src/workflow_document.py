@@ -184,6 +184,21 @@ WORKFLOW_VERSION_SOURCES = (VERSION_SOURCE_USER, VERSION_SOURCE_CONVERTED, VERSI
 # `assistant`, even one a person had checked — otherwise the assistant could
 # clear every mark by touching each step and then switch the draft on itself.
 UNCHECKED_KEY = "unchecked"
+
+# `B1856`. A step switched off in this workflow: `"disabled": true` on the step
+# itself, beside its settings — not inside them, because it is not a setting
+# of its kind and every kind can be switched off. A run does not run it: its
+# record is `skipped` with `STEP_SWITCHED_OFF`, it hands on what it was handed
+# (as a Wait does, `TaskScheduler._wait_passes_on`) and the run goes on along
+# its FIRST way out (`ports_of`: "if it works", "then", a Switch's first way),
+# so switching a step off is never the end of the branch it is on. A step that
+# is on has no key at all, so an ordinary save does not change a stored
+# document's bytes or its fingerprint.
+DISABLED_KEY = "disabled"
+STEP_SWITCHED_OFF = "Switched off in this workflow — passed its input on"
+STEP_SWITCHED_OFF_PLAN = ("Switched off in this workflow — it would pass its input on "
+                          "and do nothing else.")
+
 ORIGIN_DRAFTED = "drafted"
 ORIGIN_IMPORTED = "imported"
 ORIGIN_ASSISTANT = "assistant"
@@ -537,6 +552,8 @@ def parse_graph(raw) -> dict:
     `P22-19`: a step that carries an `unchecked` mark keeps it, shaped
     (`_mark`); a step with none has no `unchecked` key at all (read it as
     null), so an ordinary save does not change a stored document's bytes.
+    `B1856`: a step switched off keeps `disabled: true`; `false` is dropped
+    (it is the default) and anything that is not true or false is refused.
     Every other key is still dropped.
     """
     if isinstance(raw, (bytes, bytearray)):
@@ -601,6 +618,13 @@ def parse_graph(raw) -> dict:
         mark = _mark(node.get(UNCHECKED_KEY), label, node_id)
         if mark is not None:
             shaped[UNCHECKED_KEY] = mark
+        disabled = node.get(DISABLED_KEY)
+        if disabled is not None and not isinstance(disabled, bool):
+            _fail(REFUSE_UNREADABLE, (node_id,),
+                  f"{_called(label)} is switched on or off by something that is neither "
+                  f"true nor false")
+        if disabled:
+            shaped[DISABLED_KEY] = True                 # `B1856`
         nodes.append(shaped)
     edges = []
     for index, edge in enumerate(edges_in, start=1):
@@ -1573,6 +1597,19 @@ def validate_document(graph: dict, *, owner: str | None, tasks_by_id: dict,
         problem = _setting_problem(kind, config)
         if problem:
             return _refusal(REFUSE_BAD_SETTING, (node_id,), f"{_called(node)}: {problem}")
+        if node.get(DISABLED_KEY) is True:
+            # `B1856`. A step switched off does not run, so it need not be
+            # complete: what it reads, what it needs and what it reaches are
+            # asked when it is switched back on (a save, like any). Its
+            # settings' shapes are still asked (above), and an admin-only
+            # action is still refused — the run's own gate counts every step
+            # (`task_action_policy.admin_only_action_of`), and so does this.
+            found = _kind_problem(node, owner=owner, tasks_by_id=tasks_by_id,
+                                  crew_ids=crew_ids, owner_is_admin=owner_is_admin,
+                                  own_task_id=own_task_id, resources=resources)
+            if found is not None and found.reason == REFUSE_ADMIN_ONLY:
+                return found
+            continue
         found = _inner_kind_problem(node) or _reference_problem(node, resources)
         if found:
             return found
@@ -1646,6 +1683,8 @@ def validate_document(graph: dict, *, owner: str | None, tasks_by_id: dict,
                                (arrival.node_id, arrival.first["from"], arrival.second["from"]),
                                sentence)
     for node in nodes:
+        if node.get(DISABLED_KEY) is True:
+            continue                     # `B1856`: it reads nothing, it does not run
         found = _upstream_problem(node, graph, by_id)
         if found:
             return found
@@ -1717,10 +1756,16 @@ def content_fingerprint(name: str, graph: dict) -> str:
     the bookkeeping exclusion `services/memory/skills.py` makes for a skill —
     and not the order steps or arrows are listed in, which changes nothing a
     run does.
+
+    `B1856`: a step switched off is an edit (a run does something else), and
+    is in the fingerprint only when it is off, so every fingerprint taken
+    before it existed is unchanged.
     """
     nodes = sorted(
         ({"id": n.get("id"), "kind": n.get("kind"), "label": n.get("label"),
-          "config": n.get("config") or {}} for n in graph.get("nodes") or ()),
+          "config": n.get("config") or {},
+          **({DISABLED_KEY: True} if n.get(DISABLED_KEY) is True else {})}
+         for n in graph.get("nodes") or ()),
         key=lambda n: str(n["id"]))
     edges = sorted(
         ({"from": e.get("from"), "port": e.get("port"), "to": e.get("to")}
@@ -1885,9 +1930,12 @@ def node_needs_model(node: dict) -> bool:
     Research, AI or skill step does; an action does when it is model-backed
     (`MODEL_BACKED_ACTIONS`, `P8-22`'s one statement); a Run task step may (its
     task runs inside this run's slot); a For-each does when the step it
-    repeats does. HTTP, MCP, Code, If, Switch, Set, Merge and Wait do not."""
+    repeats does. HTTP, MCP, Code, If, Switch, Set, Merge and Wait do not.
+    `B1856`: a step switched off calls nothing."""
     from src.builtin_actions import MODEL_BACKED_ACTIONS
 
+    if isinstance(node, dict) and node.get(DISABLED_KEY) is True:
+        return False
     kind = node.get("kind") if isinstance(node, dict) else None
     config = (node.get("config") if isinstance(node, dict) else None) or {}
     if kind in MODEL_KINDS or kind == NODE_KIND_RUN_TASK:
