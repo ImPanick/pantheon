@@ -146,3 +146,56 @@ def test_stream_agent_reasoning_not_duplicated_as_normal_delta():
     assert chunk is None, (
         f"reasoning text was re-emitted as a normal delta chunk: {chunk!r}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Thinking off: reasoning never stands in for the answer. Ported from
+# upstream Odysseus e4cc8ef (#7054): a 50-token search-query call on a
+# reasoning model sent its thinking to the search engine as the query.
+# ---------------------------------------------------------------------------
+
+def test_llm_call_with_thinking_off_returns_empty_instead_of_reasoning(monkeypatch):
+    monkeypatch.setattr(
+        llm_core, "_post_routed",
+        lambda *a, **kw: _sync_response(_openai_msg("", "* User message: ...")),
+    )
+    result = llm_core.llm_call(
+        "http://test-off/v1", "qwen3-8b",
+        [{"role": "user", "content": "extract"}],
+        thinking=False,
+    )
+    assert result == ""
+
+
+def test_llm_call_async_with_thinking_off_returns_empty_instead_of_reasoning(monkeypatch):
+    class _FakeAsyncClient:
+        async def post(self, *a, **kw):
+            req = httpx.Request("POST", "http://test-async-off/v1/chat/completions")
+            return httpx.Response(200, request=req,
+                                  json=_openai_msg("", "* User message: ..."))
+
+    monkeypatch.setattr(llm_core, "_get_http_client",
+                        lambda: _FakeAsyncClient())
+    result = asyncio.run(llm_core.llm_call_async(
+        "http://test-async-off/v1", "qwen3-8b",
+        [{"role": "user", "content": "extract"}],
+        thinking=False,
+    ))
+    assert result == ""
+
+
+def test_llm_call_with_thinking_off_drops_mistral_structured_thinking(monkeypatch):
+    content = [
+        {"type": "thinking", "thinking": [{"type": "text", "text": "reasoning"}]},
+        {"type": "text", "text": "answer"},
+    ]
+    monkeypatch.setattr(
+        llm_core, "_post_routed",
+        lambda *a, **kw: _sync_response(_openai_msg(content)),
+    )
+    result = llm_core.llm_call(
+        "http://test-off2/v1", "some-model",
+        [{"role": "user", "content": "extract"}],
+        thinking=False,
+    )
+    assert result == "answer"
