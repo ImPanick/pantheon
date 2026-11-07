@@ -6167,7 +6167,7 @@ class TaskScheduler:
         """Execute a deep research task using DeepResearcher."""
         from core.database import Session as DbSession, ChatMessage
         from src.deep_research import DeepResearcher
-        from src.research_handler import RESEARCH_DATA_DIR, ResearchHandler
+        from src.research_handler import RESEARCH_DATA_DIR, ResearchHandler, research_run_settings
         from src.research_utils import strip_thinking
         from src.settings import get_setting
 
@@ -6205,9 +6205,9 @@ class TaskScheduler:
         if not headers_from_resolver:
             headers = _registered_endpoint_headers(endpoint_url, task.owner or None, db=db)
 
-        max_tokens = int(get_setting("research_max_tokens", 8192))
-        extraction_timeout = int(get_setting("research_extraction_timeout_seconds", 90) or 90)
-        extraction_concurrency = int(get_setting("research_extraction_concurrency", 3) or 3)
+        # `B1796`: read as the research panel reads them, so one stored value
+        # that is not a number is its default here too, not a dead run.
+        max_tokens, extraction_timeout, extraction_concurrency = research_run_settings(get_setting)
 
         researcher = DeepResearcher(
             llm_endpoint=endpoint_url,
