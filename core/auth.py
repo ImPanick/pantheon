@@ -889,8 +889,18 @@ class AuthManager:
         Refuses to remove the last remaining admin so the instance can never
         be locked out of admin access; self-demotion is allowed as long as
         another admin remains. Admin status is re-checked live on every
-        request, so unlike delete/rename no session or token revocation is
-        needed — a demoted admin simply fails the next is_admin() gate.
+        request, so a demoted admin's browser sessions are kept and simply
+        fail the next is_admin() gate.
+
+        Their API tokens are not kept (`B1819`). Only an admin mints one and
+        only its owner, while an admin, revokes or narrows it, and a token keeps
+        whatever its scopes reach (cookbook and metrics answer a token by scope
+        and a browser by `require_operator`), so after a demotion they kept
+        working and nobody could revoke them. Demotion deletes them, a phone
+        pairing's included; that cannot be undone, and a later promotion does
+        not bring them back. The delete runs before the flag flips: if the
+        token store fails, the exception propagates and the person is still
+        an admin, as `delete_user` fails closed.
 
         Promotion stashes the user's current privilege map and demotion
         restores it, so a temporary admin stint can't silently broaden a
@@ -918,6 +928,17 @@ class AuthManager:
                 admin_count = sum(1 for d in self.users.values() if d.get("is_admin"))
                 if admin_count <= 1:
                     return SetAdminResult.LAST_ADMIN
+                # `B1819`. Their API tokens go with the role (see above), and
+                # the bearer map is told to rebuild, as for any token deleted.
+                from core.database import get_db_session, ApiToken
+                with get_db_session() as db:
+                    removed_tokens = db.query(ApiToken).filter(ApiToken.owner == username).delete()
+                from core.api_tokens import invalidate_token_cache
+                invalidate_token_cache()
+                if removed_tokens:
+                    logger.info(
+                        f"Revoked {removed_tokens} API token(s) owned by demoted admin '{username}'"
+                    )
             # Write order matters for lock-free readers: get_privileges()
             # reads without _config_lock and trusts is_admin, so the admin
             # flag must be flipped while the stored map is safe to expose —

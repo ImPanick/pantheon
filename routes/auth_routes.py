@@ -1053,7 +1053,9 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
         """
         require_admin(request)
         user = get_current_user(request)
-        result = auth_manager.set_admin(username, body.is_admin, user)
+        # `B1819`: a demotion deletes the person's API tokens, which is database
+        # work, so it runs off the event loop (`B1223`).
+        result = await asyncio.to_thread(auth_manager.set_admin, username, body.is_admin, user)
         if result is not SetAdminResult.OK:
             await _audit("admin_change", actor=user, subject=username,
                          outcome="error",
