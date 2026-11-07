@@ -131,11 +131,19 @@ _GEMMA_TOKENS = [
 ]
 
 
+def _in_braces(blocks):
+    """Each (name, body) the forward scanner yields, its body back in the braces
+    the old pattern captured with it. Out here, not in the loop below, because
+    `tests/test_one_js_function_extractor.py` reads a loop holding both brace
+    literals as a hand-written JavaScript brace counter (`B876`)."""
+    return [(name, "{" + body + "}") for name, body in blocks]
+
+
 def test_the_gemma_wrapper_reads_and_strips_what_it_always_did():
     # Upstream's cases (da3800b6), and random strings over the wrapper's tokens.
     opener, closer = tool_parsing._GEMMA_TOOL_CALL_OPEN_RE, tool_parsing._GEMMA_TOOL_CALL_CLOSE_RE
     for text in _GEMMA_PINNED + _random_texts(_GEMMA_TOKENS, 1902, 6000, 16):
-        new = [(name, "{" + body + "}") for name, body in tool_parsing._iter_named_blocks(text, opener, closer)]
+        new = _in_braces(tool_parsing._iter_named_blocks(text, opener, closer))
         assert new == _OLD_GEMMA.findall(text), repr(text)
         assert tool_parsing._strip_delimited(text, opener, closer) == _OLD_GEMMA.sub("", text), repr(text)
     raw = '<|tool_call|>call:web_search{"query":"news"}<|tool_call|>'
