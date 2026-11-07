@@ -132,8 +132,17 @@ def _message_to_context(msg: DBChatMessage) -> dict[str, Any]:
     }
 
 
-def _escape_like(value: str) -> str:
+def escape_like_pattern(value: str) -> str:
+    """``value`` with LIKE's wildcards (``%``, ``_``) and its escape character
+    escaped, for ``ilike(f"%{...}%", escape="\\\\")`` over what a person typed.
+
+    Backslash goes first, or it would double the escapes added for ``%`` and
+    ``_``. Shared with the Gallery's search (`B2004`).
+    """
     return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
+_escape_like = escape_like_pattern
 
 
 def _snippet(content: str, query: str, radius: int = 60) -> str:

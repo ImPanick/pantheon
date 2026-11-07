@@ -26,6 +26,7 @@ from src.upload_limits import (
 from src.constants import GENERATED_IMAGES_DIR
 from src.image_model_ids import SD_FORGE_LABEL   # `B471`
 from src.optional_deps import patch_realesrgan_torchvision_compat
+from src.session_search import escape_like_pattern
 
 from routes.gallery.gallery_helpers import (
     GalleryPatch, _extract_exif, _image_to_dict, _owner_filter,
@@ -35,6 +36,11 @@ logger = logging.getLogger(__name__)
 
 _SAM_STATE: Dict[str, Any] = {}
 _GROUNDING_STATE: Dict[str, Any] = {}
+
+#: `B2004`. The library search requires each word typed, one LIKE clause per
+#: word, so it reads only the first sixteen: SQLite refuses an expression
+#: nested about a thousand deep, and a pasted paragraph would be a 500.
+_SEARCH_MAX_WORDS = 16
 
 
 def _b64_to_pil_image(image_b64: str, *, mode: str = "RGBA"):
@@ -752,15 +758,19 @@ def setup_gallery_routes() -> APIRouter:
             )
             q = _owner_filter(q, user)
 
-            # Search filter (prompt + tags + ai_tags)
+            # Search filter (prompt + tags + ai_tags). `B2004`: each word must
+            # match, in any order (one `%{search}%` was the exact phrase, so
+            # "red car" missed "a car that is red"), and `%`, `_` and `\` are
+            # matched as themselves.
             if search:
-                term = f"%{search}%"
                 from sqlalchemy import or_
-                q = q.filter(or_(
-                    GalleryImage.prompt.ilike(term),
-                    GalleryImage.tags.ilike(term),
-                    GalleryImage.ai_tags.ilike(term),
-                ))
+                for word in search.split()[:_SEARCH_MAX_WORDS]:
+                    term = f"%{escape_like_pattern(word)}%"
+                    q = q.filter(or_(
+                        GalleryImage.prompt.ilike(term, escape="\\"),
+                        GalleryImage.tags.ilike(term, escape="\\"),
+                        GalleryImage.ai_tags.ilike(term, escape="\\"),
+                    ))
 
             # Tag filter. The UI stacks multiple tag pills by passing them
             # comma-separated — each tag adds a separate AND-filter so the
@@ -771,9 +781,10 @@ def setup_gallery_routes() -> APIRouter:
                 for one in (t.strip() for t in tag.split(",")):
                     if not one:
                         continue
+                    safe_tag = f"%{escape_like_pattern(one)}%"  # `B2004`
                     q = q.filter(_or(
-                        GalleryImage.tags.ilike(f"%{one}%"),
-                        GalleryImage.ai_tags.ilike(f"%{one}%"),
+                        GalleryImage.tags.ilike(safe_tag, escape="\\"),
+                        GalleryImage.ai_tags.ilike(safe_tag, escape="\\"),
                     ))
 
             # Model filter
