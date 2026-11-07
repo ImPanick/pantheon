@@ -25,6 +25,7 @@ from services.memory.skill_format import (
     Skill,
     _emit_scalar,
     _parse_scalar,
+    emit_frontmatter,
     parse_frontmatter,
 )
 from services.memory.skills import SkillsManager
@@ -213,3 +214,58 @@ def test_description_survives_real_save_load_cycles_on_disk(tmp_path):
         encoding="utf-8"
     )
     assert GERMAN in on_disk
+
+
+# ---------------------------------------------------------------------------
+# `B1976`. A quote inside a list item
+# ---------------------------------------------------------------------------
+#
+# Every list is written inline, `tags: [a, "b, c"]`, and an item that needs
+# quotes is written with json.dumps, so a `"` inside it goes to disk as `\"`.
+# `_split_top_level`, which cuts a list into items, ended a quoted item at the
+# next `"` whether or not a backslash came before it. An item holding an odd
+# number of quotes, anywhere but last, ran on into the items after it:
+# `['12" pipe', 'plumbing']` read back as one item, and the next save wrote
+# that. The tags of the Add form, the raw editor and the model's own edits all
+# take this path. Ported from upstream Odysseus 2019a973 (#6265), with its
+# cases and a few more.
+
+
+@pytest.mark.parametrize(
+    "tags",
+    [
+        ['review "release, notes', 'use "search", then summarize', "publish"],
+        ['12" pipe', "plumbing"],
+        ['a"b', "c"],
+        ['a"b"c"d', "e"],
+    ],
+    ids=["quote-and-comma", "inch-mark", "one-quote", "three-quotes"],
+)
+def test_a_list_item_holding_a_quote_survives_repeated_saves(tags):
+    skill = Skill(name="release-review", tags=tags)
+    for _ in range(5):
+        skill = _cycle(skill)
+        assert skill.tags == tags
+
+
+@pytest.mark.parametrize("field", ["tags", "platforms", "requires_toolsets", "fallback_for_toolsets"])
+def test_every_list_field_keeps_a_quoted_item_whole(field):
+    values = ['review "release, notes', "publish"]
+    restored = _cycle(Skill(name="release-review", **{field: values}))
+    assert getattr(restored, field) == values
+
+
+def test_a_backslash_escapes_inside_double_quotes_and_is_literal_inside_single_ones():
+    for count in range(1, 5):
+        values = ["review " + "\\" * count + '"release, notes', "path, " + "\\" * count, "publish"]
+        parsed, _ = parse_frontmatter(f"---\n{emit_frontmatter({'tags': values})}\n---\n")
+        assert parsed["tags"] == values, f"{count} backslash(es)"
+    # Only a double-quoted item is JSON; a single-quoted one reads as written.
+    parsed, _ = parse_frontmatter("---\ntags: ['C:\\', next]\n---\n")
+    assert parsed["tags"] == ["C:\\", "next"]
+
+
+def test_a_nested_list_keeps_a_quoted_bracket_and_comma():
+    values = [['review "], notes', "publish"], "archive"]
+    parsed, _ = parse_frontmatter(f"---\n{emit_frontmatter({'tags': values})}\n---\n")
+    assert parsed["tags"] == values
