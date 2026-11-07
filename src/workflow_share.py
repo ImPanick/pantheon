@@ -63,6 +63,16 @@ FILE_TOO_BIG = "The file is larger than 1 MiB, so it was not read. Nothing was s
 # and the step says which task to pick (`needs`). The file's id is never kept:
 # an id that happened to be one of the importer's own tasks would run it.
 MISSING_TASK_ID = "not-on-this-install"
+# `B1871`. The same door for an Integration and an MCP tool. The file's id was
+# kept and a stand-in put at it for the import-time check only, so an id that
+# happened to be one of the importer's own (`victim01`, their "Home") hid the
+# real one from the check and then bound the stored step to it — its real key
+# and base URL — while the reply named the file's Integration and said "Add
+# it". A missing one is now checked and stored under one of these instead, one
+# per resource the file names (a second gets "-2", and so on, never an id this
+# install has), and the step says which to pick (`needs`).
+MISSING_INTEGRATION_ID = "integration-not-on-this-install"
+MISSING_MCP_TOOL_ID = "mcp__not-on-this-install__tool"
 _BEARER_VALUE = re.compile(r"(?i)\bbearer\s+[A-Za-z0-9._~+/=-]{8,}")
 
 
@@ -269,6 +279,23 @@ def import_file(db, owner, data, *, tz=None) -> Imported:
         if sentence not in missing:
             missing.append(sentence)
 
+    # `B1871`. What the file names is matched against THIS install's own
+    # resources only — never a stand-in an earlier step left, which made a
+    # second step using the same missing Integration "found" and silent — and
+    # what is not matched gets an id no real resource has, one per file ref.
+    real_integrations = dict(real.integrations or {})
+    real_mcp_tools = dict(real.mcp_tools or {})
+    stand_ins = {}
+
+    def stand_in_id(kind, ref, base, taken):
+        if (kind, ref) not in stand_ins:
+            made, n = base, 1
+            while made in taken or made in stand_ins.values():
+                n += 1
+                made = f"{base}-{n}"
+            stand_ins[(kind, ref)] = made
+        return stand_ins[(kind, ref)]
+
     for node in graph["nodes"]:
         node["config"] = _clean_config(node.get("config") or {}, node["label"], notes)
         called = f"“{node['label']}”"
@@ -281,16 +308,21 @@ def import_file(db, owner, data, *, tz=None) -> Imported:
                 ref = config["integration"]
                 said = requires["integrations"].get(ref) or {"name": ref, "preset": ""}
                 name, preset = _text(said.get("name") or ref), _text(said.get("preset"))
-                found = [i for i, info in integrations.items() if info.get("enabled", True)
+                found = [i for i, info in real_integrations.items() if info.get("enabled", True)
                          and preset and str(info.get("preset") or "") == preset]
-                found = [i for i in found if str(integrations[i].get("name") or "").lower()
+                found = [i for i in found if str(real_integrations[i].get("name") or "").lower()
                          == name.lower()] or found
-                found = found or [i for i, info in integrations.items() if info.get("enabled", True)
+                found = found or [i for i, info in real_integrations.items()
+                                  if info.get("enabled", True)
                                   and str(info.get("name") or "").lower() == name.lower()]
                 if found:
                     config["integration"] = found[0]
                 else:
-                    integrations[ref] = {"id": ref, "name": name, "preset": preset, "enabled": True}
+                    stand_in = stand_in_id("integration", ref, MISSING_INTEGRATION_ID,
+                                           real_integrations)
+                    config["integration"] = stand_in
+                    integrations[stand_in] = {"id": stand_in, "name": name, "preset": preset,
+                                              "enabled": True}
                     need(node, {"field": f"{inner}integration", "name": name, "preset": preset},
                          f"{called} uses an Integration called “{name}”"
                          + (f" ({preset})" if preset else "")
@@ -305,7 +337,7 @@ def import_file(db, owner, data, *, tz=None) -> Imported:
                 ref = config["tool"]
                 said = requires["mcp_tools"].get(ref) or {}
                 server, tool = _text(said.get("server")), _text(said.get("tool") or ref)
-                found = [q for q, info in mcp_tools.items()
+                found = [q for q, info in real_mcp_tools.items()
                          if str(info.get("server_name") or "").lower() == server.lower()
                          and str(info.get("name") or "") == tool]
                 if found:
@@ -313,8 +345,10 @@ def import_file(db, owner, data, *, tz=None) -> Imported:
                 else:
                     schema = said.get("input_schema") if isinstance(said.get("input_schema"), dict) \
                         else {}
-                    mcp_tools[ref] = {"input_schema": schema, "disabled": False,
-                                      "is_readonly": None, "server_name": server, "name": tool}
+                    stand_in = stand_in_id("mcp", ref, MISSING_MCP_TOOL_ID, real_mcp_tools)
+                    config["tool"] = stand_in
+                    mcp_tools[stand_in] = {"input_schema": schema, "disabled": False,
+                                           "is_readonly": None, "server_name": server, "name": tool}
                     need(node, {"field": f"{inner}tool", "name": f"{server} · {tool}",
                                 "server": server, "tool": tool},
                          f"{called} calls the tool “{tool}” on an MCP server called "
