@@ -263,6 +263,9 @@ _QWEN_BARE_MARKER_RE = re.compile(
 # existing XML parser + stripper handle it (parse → execute; strip →
 # never show the garbage to the user). The pipe run is tolerant of
 # fullwidth (U+FF5C) and ascii '|' in any count.
+# `B1800`. The outer wrapper is `tool_calls` (V4), `function_calls`
+# (V3.2) or the short `calls` hosted variants write; any other word left
+# the two wrapper tags in the saved reply after the call inside had run.
 _DSML_PIPES = r"[｜|]+"
 def _normalize_dsml(text: str) -> str:
     if not isinstance(text, str):
@@ -270,8 +273,8 @@ def _normalize_dsml(text: str) -> str:
     if "DSML" not in text:
         return text
     t = text
-    t = re.sub(rf"<\s*{_DSML_PIPES}\s*DSML\s*{_DSML_PIPES}\s*tool_calls\s*>", "<tool_call>", t, flags=re.IGNORECASE)
-    t = re.sub(rf"<\s*/\s*{_DSML_PIPES}\s*DSML\s*{_DSML_PIPES}\s*tool_calls\s*>", "</tool_call>", t, flags=re.IGNORECASE)
+    t = re.sub(rf"<\s*{_DSML_PIPES}\s*DSML\s*{_DSML_PIPES}\s*(?:tool_calls|function_calls|calls)\s*>", "<tool_call>", t, flags=re.IGNORECASE)
+    t = re.sub(rf"<\s*/\s*{_DSML_PIPES}\s*DSML\s*{_DSML_PIPES}\s*(?:tool_calls|function_calls|calls)\s*>", "</tool_call>", t, flags=re.IGNORECASE)
     t = re.sub(rf"<\s*{_DSML_PIPES}\s*DSML\s*{_DSML_PIPES}\s*invoke\s+name=", "<invoke name=", t, flags=re.IGNORECASE)
     t = re.sub(rf"<\s*/\s*{_DSML_PIPES}\s*DSML\s*{_DSML_PIPES}\s*invoke\s*>", "</invoke>", t, flags=re.IGNORECASE)
     # parameter open tag — drop any extra attrs (e.g. string="true").
