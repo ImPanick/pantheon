@@ -1267,11 +1267,10 @@ def _raw_openai_tool_call_to_block(value) -> Optional[ToolBlock]:
         from src.agent_tools.filesystem_tools import write_file_content
         content = write_file_content(args)
     elif tool_type == "create_document":
-        parts = [args.get("title", "Untitled")]
-        if args.get("language"):
-            parts.append(args["language"])
-        parts.append(args.get("content", ""))
-        content = "\n".join(parts)
+        # `B2026`: the native call's own conversion, so the language is one
+        # the editor has or none.
+        from src.agent_tools.document_tools import create_document_text
+        content = create_document_text(args)
     elif tool_type == "update_document":
         content = args.get("content", "")
     elif tool_type in ("edit_document", "suggest_document"):

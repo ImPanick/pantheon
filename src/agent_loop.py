@@ -139,6 +139,7 @@ from src.agent_tools import (
 )
 from src.active_plan import ActivePlan, bind_active_plan   # `B1415`
 from src.agent_tools.document_tools import bind_turn_document, new_turn_document  # `B1599`
+from src.agent_tools.document_tools import normalize_document_language  # `B2026`
 from src.run_files import RunFiles, bind_run_files   # `B1660`
 from src.agent_tools.computer_tools import (
     ACTIONS as _COMPUTER_ACTIONS,
@@ -11080,10 +11081,14 @@ async def stream_agent_loop(
                     continue
                 if lang_tag in TOOL_TAGS:
                     continue  # already handled as a tool execution
-                # Auto-create a document from this code block
-                lang_map = {"py": "python", "js": "javascript", "ts": "typescript", "": "text"}
-                doc_lang = lang_map.get(lang_tag, lang_tag or "text")
-                doc_title = f"Code ({doc_lang})"
+                # Auto-create a document from this code block. `B2026`: the
+                # second line is the editor language the tag names (`sh` is
+                # bash, `jsx` javascript) or text, never a tag the editor has
+                # no language for (`kotlin`), which the tool kept as the
+                # document's first line. Such a tag stays in the title.
+                known_lang = normalize_document_language(lang_tag)
+                doc_lang = known_lang or "text"
+                doc_title = f"Code ({known_lang or lang_tag or doc_lang})"
                 tb = ToolBlock("create_document", f"{doc_title}\n{doc_lang}\n{code_body}")
                 tool_blocks.append(tb)
                 logger.info(f"Auto-created document from {lang_tag} code block ({code_body.count(chr(10))+1} lines)")

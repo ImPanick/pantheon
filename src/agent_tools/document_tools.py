@@ -443,6 +443,54 @@ def _create_pdf_text_derivative(db, *, source_doc, content: str, owner: Optional
     }
 
 
+# Known languages the editor understands (match the <select> in HTML).
+# `B2026`: at module level, so every door a `create_document` language word
+# comes in by reads the same set.
+_KNOWN_LANGS = frozenset({
+    "python", "javascript", "typescript", "html", "css", "markdown", "json",
+    "yaml", "bash", "sql", "rust", "go", "java", "c", "cpp", "xml", "toml",
+    "ini", "ruby", "php", "csv", "email", "text", "plain", "svg",
+})
+
+
+def normalize_document_language(value: Any) -> Optional[str]:
+    """`B2026`. The editor language a `create_document` language word names,
+    or `None` when it names none.
+
+    A model fills the word freely: `python`, but also `py`, `md`, `sh`, or
+    `English` for the language the text is in. A short name is the language
+    of the file suffix it is, read from the one register of those
+    (`src.document_processor.LANGUAGE_ALIASES`, `B100`), so `py` is python
+    and `yml` is yaml. A word the editor has no language for is no language,
+    and a caller leaves it out rather than write it into the document."""
+    if not isinstance(value, str):
+        return None
+    word = value.strip().lower()
+    if not word:
+        return None
+    from src.document_processor import LANGUAGE_ALIASES
+    word = LANGUAGE_ALIASES.get("." + word, word)
+    return word if word in _KNOWN_LANGS else None
+
+
+def create_document_text(args: Dict[str, Any]) -> str:
+    """`B2026`. A `create_document` call's arguments (a native call's object)
+    as the text the tool reads: the title, the language if the editor has
+    it, and the content, a line each. The one conversion both ways a native
+    call arrives share (`tool_schemas.function_call_to_tool_block`, and a raw
+    call leaked into text, `tool_parsing`), as `write_file_content` is.
+
+    The language was written as it came, and the tool keeps a second line
+    only when it is a language it knows, so `English` or `py` became the
+    document's first line."""
+    parts = [args.get("title", "Untitled")]
+    language = normalize_document_language(args.get("language"))
+    if language:
+        parts.append(language)
+    parts.append(args.get("content", ""))
+    return "\n".join(parts)
+
+
 class CreateDocumentTool:
     async def execute(self, content: str, ctx: dict) -> dict:
         """Create a new document. Supports two formats:
@@ -455,13 +503,6 @@ class CreateDocumentTool:
         raw = content or ""
         session_id = ctx.get("session_id")
         owner = ctx.get("owner")
-
-        # Known languages the editor understands (match the <select> in HTML)
-        _KNOWN_LANGS = {
-            "python", "javascript", "typescript", "html", "css", "markdown", "json",
-            "yaml", "bash", "sql", "rust", "go", "java", "c", "cpp", "xml", "toml",
-            "ini", "ruby", "php", "csv", "email", "text", "plain", "svg",
-        }
 
         # Try XML tag extraction first
         title = None
@@ -482,18 +523,18 @@ class CreateDocumentTool:
             if title is None:
                 title = lines[0].strip() if lines else "Untitled"
                 lines = lines[1:]
-            # Only consume second line as language if it looks like a valid short lang token
+            # Only consume second line as language if it names one the editor
+            # has. `B2026`: a short name too, so a written `py` line is python.
             if language is None and lines:
-                candidate = lines[0].strip().lower()
-                if candidate and len(candidate) < 20 and " " not in candidate and candidate in _KNOWN_LANGS:
+                candidate = normalize_document_language(lines[0])
+                if candidate:
                     language = candidate
                     lines = lines[1:]
             if content is None:
                 content = "\n".join(lines)
 
         # Validate language: must be in known set, else default based on content
-        if language and language not in _KNOWN_LANGS:
-            language = None
+        language = normalize_document_language(language)
         if not language:
             # No explicit language — sniff it from the content so an SVG / HTML / JSON
             # / code document isn't silently saved as markdown. Prose → markdown.
