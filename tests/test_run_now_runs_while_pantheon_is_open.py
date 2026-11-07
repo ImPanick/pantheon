@@ -120,7 +120,7 @@ def _seed(factory, *, wire_failure=True):
 def _runs(factory, task_id):
     db = factory()
     try:
-        return [{"status": r.status, "error": r.error, "result": r.result,
+        return [{"id": r.id, "status": r.status, "error": r.error, "result": r.result,
                  "steps": json.loads(r.steps) if r.steps else []}
                 for r in db.query(TaskRun).filter(TaskRun.task_id == task_id)
                 .order_by(TaskRun.started_at).all()]
@@ -373,6 +373,8 @@ async def test_run_now_with_pantheon_open_runs_the_step_and_its_failure_branch(
     await _heartbeat(s)
 
     reply = await run_now("bk")
+    # `B1866` adds the id of the run it started; every other key is as it was.
+    run_id = reply.pop("run_id")
     assert reply == {"ok": True, "dry": False, "message": "Task triggered"}
     # The page carries on: its polls, another heartbeat, one more poll.
     await _page_request(s)
@@ -385,6 +387,7 @@ async def test_run_now_with_pantheon_open_runs_the_step_and_its_failure_branch(
     (head,) = _runs(task_db, "bk")
     (branch,) = _runs(task_db, "msg")
     assert head["status"] == "error" and NO_MODEL in head["error"]
+    assert head["id"] == run_id, "the reply named the run it started"
     assert head["steps"][-1]["detail"] == "Failed, so continued to Message me"
     assert branch["status"] == "error"
     assert branch["steps"][0]["kind"] == "trigger"

@@ -1588,8 +1588,13 @@ def setup_task_routes(task_scheduler) -> APIRouter:
         # reply in progress and is not stopped by the page they pressed it on;
         # background work keeps the idle gate (`src.interactive_gate.STARTED_BY`).
         from src.interactive_gate import STARTED_BY_PERSON
+        # `B1866`. A real run's id is chosen here, so the reply can name the
+        # run it started and a page can open it at once (`run_task_now`
+        # writes its `queued` row under this id before it is spawned). A dry
+        # run answers with its own (`P22-04`, below).
+        run_id = None if dry else str(uuid.uuid4())
         started = await task_scheduler.run_task_now(
-            task_id, force=force, dry=dry, started_by=STARTED_BY_PERSON)
+            task_id, force=force, dry=dry, started_by=STARTED_BY_PERSON, run_id=run_id)
         if not started:
             # `B674` / `P22-11`. A workflow whose run is parked says which run
             # and what it waits for — the `skipped` row's own sentence.
@@ -1634,8 +1639,10 @@ def setup_task_routes(task_scheduler) -> APIRouter:
                     name_of=_display_task_name,
                 )
             return out
+        # `B1866`: `run_id` is added; every key that was here still is.
         return {"ok": True, "dry": False,
-                "message": "Task triggered" + (" in parallel" if force else "")}
+                "message": "Task triggered" + (" in parallel" if force else ""),
+                "run_id": run_id}
 
     @router.post("/{task_id}/stop")
     async def stop_task_now(request: Request, task_id: str):
@@ -1995,13 +2002,20 @@ def setup_task_routes(task_scheduler) -> APIRouter:
             # which `node_input_shape` reads for a workflow's first step too.
             fields=WEBHOOK_PAYLOAD_FIELDS,
         )
-        started = await task_scheduler.run_task_now(task_id, trigger=trigger)
+        # `B1866`. The caller is told which run its call started — the id the
+        # `queued` row is written under before the run is spawned — so a
+        # sender that keeps it can match its call to the run in the Runs list.
+        # It names a run of the caller's own making and nothing else; the token
+        # is still the only key (`Law 17`: whoever holds the address already
+        # starts runs with it).
+        run_id = str(uuid.uuid4())
+        started = await task_scheduler.run_task_now(task_id, trigger=trigger, run_id=run_id)
         if not started:
             # `B674` / `P22-11`. The 409 stays; for a workflow whose run is
             # parked it says which run and what it waits for.
             raise HTTPException(409, task_scheduler.in_flight_sentence(task_id)
                                 or "Task is already running")
-        return {"ok": True, "message": "Task triggered via webhook"}
+        return {"ok": True, "message": "Task triggered via webhook", "run_id": run_id}
 
     @router.post("/{task_id}/webhook-regenerate")
     def regenerate_webhook(request: Request, task_id: str):

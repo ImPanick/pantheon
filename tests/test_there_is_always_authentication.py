@@ -137,7 +137,7 @@ db = SessionLocal()
 db.add(ScheduledTask(id="hook", owner=ADMIN, name="Hook", task_type="llm", prompt="hi",
                      status="active", webhook_token="the-token"))
 db.commit(); db.close()
-async def _run_now(task_id, trigger=None):
+async def _run_now(task_id, trigger=None, run_id=None):
     return True
 app_module.task_scheduler.run_task_now = _run_now
 RESULT["webhook"] = {"right token": ask(client(None), "POST", "/api/tasks/hook/webhook/the-token"),

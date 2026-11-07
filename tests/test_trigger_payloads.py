@@ -183,7 +183,7 @@ async def test_the_webhook_carries_the_request_it_was_sent(task_db, monkeypatch)
     got = {}
 
     class _Sched:
-        async def run_task_now(self, task_id, *, trigger=None):
+        async def run_task_now(self, task_id, *, trigger=None, run_id=None):
             got["trigger"] = trigger
             return True
 
@@ -217,7 +217,7 @@ async def test_the_webhook_does_not_carry_a_signature_header(task_db, monkeypatc
     got = {}
 
     class _Sched:
-        async def run_task_now(self, task_id, *, trigger=None):
+        async def run_task_now(self, task_id, *, trigger=None, run_id=None):
             got["trigger"] = trigger
             return True
 
@@ -243,7 +243,7 @@ async def test_an_empty_webhook_still_rings_the_doorbell(task_db, monkeypatch):
     got = {}
 
     class _Sched:
-        async def run_task_now(self, task_id, *, trigger=None):
+        async def run_task_now(self, task_id, *, trigger=None, run_id=None):
             got["trigger"] = trigger
             return True
 
