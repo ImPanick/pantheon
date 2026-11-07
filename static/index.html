@@ -2295,8 +2295,13 @@
 
     function reposition() {
       const barRect = chatBar.getBoundingClientRect();
-      bottomBtn.style.bottom = (window.innerHeight - barRect.top + 16) + 'px';
-      bottomBtn.style.right = (window.innerWidth - barRect.right + 8) + 'px';
+      // Centred on the composer's top edge, half over the composer and half
+      // over the history's bottom fade. Parked on the right gutter it covered
+      // a user turn's ✎ ✕ ··· and a code block's Copy as they scrolled past.
+      const w = bottomBtn.offsetWidth || 38, h = bottomBtn.offsetHeight || 38;
+      bottomBtn.style.bottom = (window.innerHeight - barRect.top - h / 2) + 'px';
+      bottomBtn.style.left = (barRect.left + barRect.width / 2 - w / 2) + 'px';
+      bottomBtn.style.right = 'auto';
     }
 
     function update() {

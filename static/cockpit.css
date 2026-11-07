@@ -2411,3 +2411,37 @@ html.cockpit .overflow-chevron { position: relative; top: -1.5px; }
   /* The tucked workspace's tab keeps to the frame's edge, clear of the chat's Resume pills. */
   html.cockpit #ck-ws-tab { right: 4px; }
 }
+
+/* ── alignment audit 2026-11-07: chat ── */
+/* The reaction palette's emoji sat 3px right of its round: the global `button` padding squeezed its box. */
+html.cockpit .reaction-option { padding: 0; }
+/* A markdown table's frame hugs its rows; a table wider than the column still fills it and scrolls sideways
+   (`B1745`). The `!important` beats the inline `width: 100%` markdown.js writes on the table. */
+html.cockpit .msg .body table { width: max-content !important; min-width: 0; max-width: 100%; }
+/* The chat's ⋯ sat flush on the panel's edge, so its hover round was cut flat: it keeps 6px of the bar's padding. */
+html.cockpit .export-dropdown-wrap { margin-right: -14px; }
+/* On a phone the fixed hamburger covered the chat's ⋯: the bar keeps its 44px clear, both on the bar's centre line. */
+@media (max-width: 768px) {
+  html.cockpit .chat-top-bar { padding-right: 52px !important; }
+  html.cockpit .export-dropdown-wrap { margin-right: 0; }
+  html.cockpit .hamburger-btn { top: 4px; }
+}
+/* The reply header's variant arrows and count took the global 32px button height and pushed the name row down 8px. */
+html.cockpit .variant-nav :is(.variant-btn, .variant-num) { height: 20px; padding-top: 0; padding-bottom: 0; display: inline-flex; align-items: center; justify-content: center; }
+/* The footer's memory, skill, promoted and fallback pills were 32px beside 26px actions, their label lifted off the icon. */
+html.cockpit :is(.memory-used-pill, .skills-used-pill, .promoted-pill, .fallback-chain-pill) { height: 24px; padding: 0 9px; gap: 5px; }
+html.cockpit :is(.memory-used-pill, .skills-used-pill, .promoted-pill, .fallback-chain-pill) > svg { margin: 0 !important; vertical-align: 0 !important; flex: none; }
+html.cockpit :is(.memory-used-pill-text, .skills-used-pill-text, .promoted-pill-text, .fallback-chain-pill-text) { top: 0; }
+/* The header's Auto-approve badge was a 32px button; it is a 22px pill beside the 30px Nobody and ⋯. */
+html.cockpit .chat-auto-approve-badge { height: 22px; padding: 0 9px !important; }
+/* The ⋯ menu's download formats were 32px tall and made their row 14px taller than the rest (the phone keeps its touch size). */
+@media (min-width: 769px) {
+  html.cockpit .export-file-fmt { height: 22px; padding: 0 6px; display: inline-flex; align-items: center; }
+}
+/* Compact history kept its legacy gap, and on a phone its own margin and height, so it sat off the other menu rows. */
+html.cockpit #export-compact-btn { gap: 11px; margin: 0; min-height: 32px; }
+/* The footer's ✂ ? ✕ kept legacy 1-2px nudges tuned for bigger glyphs, so they sat off the row's centre line. */
+html.cockpit .msg-footer .msg-action-btn { top: 0; }
+/* An ask-user option's one-line label sat at the top of its 39px row, and Send's label 1px high. */
+html.cockpit .ask-user-card .ask-user-option { align-content: center; }
+html.cockpit .ask-user-card .confirm-btn { padding-top: 4px; padding-bottom: 4px; }
