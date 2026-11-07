@@ -139,8 +139,21 @@ def test_a_dry_run_is_never_the_last_run(db):
 
 
 def test_a_record_cut_to_fit_offers_no_fields(db, monkeypatch):
+    """A cut record's PREVIEW is never read for fields — offering half of
+    them would offer paths that resolve to nothing. `B1890`: what it made is
+    kept whole beside it now, with the picker's view taken before the cut,
+    and that is what is offered; a cut record with no such copy (one kept
+    before there was one) still offers nothing."""
+    from core.database import TaskRunNodeOutput
+
     monkeypatch.setattr("src.workflow_runs.node_record_max_chars", lambda owner=None: 60)
-    _record(db, "run-1", "fetch", seq=1, text="HTTP 200", data={"body": "x" * 500})
+    rec = _record(db, "run-1", "fetch", seq=1, text="HTTP 200", data={"body": "x" * 500})
+    whole = _by(_fields(db, "sum"), "fetch", "last_run")
+    refs = {f["ref"]: f["example"] for f in whole["fields"]}
+    assert refs["{{ steps.fetch.text }}"] == "HTTP 200"
+    assert refs["{{ steps.fetch.data.body }}"].startswith("xxx"), "from the whole value, not the preview"
+    db.query(TaskRunNodeOutput).filter(TaskRunNodeOutput.record_id == rec.id).delete()
+    db.commit()
     assert _by(_fields(db, "sum"), "fetch", "last_run") is None
 
 

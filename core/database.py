@@ -1696,6 +1696,37 @@ class TaskRunNode(Base):
     )
 
 
+class TaskRunNodeOutput(Base):
+    """`B1890` (`big-outputs-dropped`). What one step made, WHOLE, for a step
+    whose record had to be cut to `workflow_node_record_max_chars`.
+
+    The record (`TaskRunNode.output`) is what the Runs view shows, and it is
+    capped so a polling view stays light; past the cap it is a preview. That
+    preview was all there was, so after a run paused (a Wait, a card, a
+    takeover) the walker read records instead of live data and every
+    reference into a large output — an HTTP reply, an MCP result, a For-each's
+    items — read nothing, and the run still said it worked. This row keeps the
+    whole `{text, data}` beside the record (`output`), and `fields`, the
+    picker's view of it taken before anything was cut (`workflow_refs.
+    flatten_fields`), so a later step can read and pick from all of it.
+
+    One row per cut record, keyed by the record's id and ON DELETE CASCADE,
+    so it goes exactly when the record goes — the record's retention
+    (`workflow_node_records_days`), a run deleted, a task deleted. A new table
+    and no ALTER of an existing one, so `init_db`'s `create_all` is the whole
+    migration.
+    """
+    __tablename__ = "task_run_node_outputs"
+
+    record_id  = Column(String, ForeignKey("task_run_nodes.id", ondelete="CASCADE"),
+                        primary_key=True)
+    run_id     = Column(String, nullable=True, index=True)
+    output     = Column(Text, nullable=True)     # JSON: the whole {text, data}
+    fields     = Column(Text, nullable=True)     # JSON: {text, data} as flatten_fields saw them
+    chars      = Column(Integer, nullable=True)  # how long `output` is
+    created_at = Column(DateTime, nullable=True, default=utcnow_naive)
+
+
 # ── `P24-03` · a hire is one row; it compiles to tasks ─────────────────────
 #
 # `D-2026-10-22-01`. An agent is a file (`src/agents/manifest.py`); a hire is

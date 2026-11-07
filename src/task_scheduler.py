@@ -7099,7 +7099,9 @@ class TaskScheduler:
             # none there, and `RunState` reads its first step's record, as it
             # always did.
             trigger = wr.stored_run_trigger(db, run_id)
-        state = wr.RunState(graph, records, trigger=trigger)
+        # `B1890`: a cut record is read whole after a pause.
+        state = wr.RunState(graph, records, trigger=trigger,
+                            whole=wr.whole_outputs(db, records))
         if state.trigger is not None and run_slot.get("trigger") is None:
             run_slot["trigger"] = state.trigger
         w = _Walk(task=task, db=db, run_id=run_id, wf=wf, graph=graph, state=state,
@@ -7565,24 +7567,34 @@ class TaskScheduler:
         now = _utcnow()
         cap = wr.wait_max_hours()
         if mode == "until":
-            raw = str(config.get("time") or "")
-            try:
-                hour, minute = (int(part) for part in raw.split(":", 1))
-                if not (0 <= hour < 24 and 0 <= minute < 60):
-                    raise ValueError(raw)
-            except ValueError:
-                return None, f"“{node.get('label')}” has no time to wait until (HH:MM)."
+            # `B1884`: a time its author opened is read from the earlier step
+            # now (`workflow_slots.opened_text`); it may also be a date and
+            # time. A typed one is the author's, as before.
+            raw, moment, problem = self._wait_time_text(w, node)
+            if problem:
+                return None, problem
             tz_name = valid_timezone(config.get("tz")) or _resolve_task_timezone(w.db, w.task)
             try:
                 from zoneinfo import ZoneInfo
                 zone = ZoneInfo(tz_name) if tz_name else timezone.utc
             except Exception:
                 zone = timezone.utc
-            local_now = now.replace(tzinfo=timezone.utc).astimezone(zone)
-            target = local_now.replace(hour=hour, minute=minute, second=0, microsecond=0)
-            if target <= local_now:
-                target = target + timedelta(days=1)
-            until = target.astimezone(timezone.utc).replace(tzinfo=None)
+            if moment is not None:
+                if moment.tzinfo is None:
+                    moment = moment.replace(tzinfo=zone)
+                until = moment.astimezone(timezone.utc).replace(tzinfo=None)
+            else:
+                try:
+                    hour, minute = (int(part) for part in raw.split(":", 1))
+                    if not (0 <= hour < 24 and 0 <= minute < 60):
+                        raise ValueError(raw)
+                except ValueError:
+                    return None, f"“{node.get('label')}” has no time to wait until (HH:MM)."
+                local_now = now.replace(tzinfo=timezone.utc).astimezone(zone)
+                target = local_now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+                if target <= local_now:
+                    target = target + timedelta(days=1)
+                until = target.astimezone(timezone.utc).replace(tzinfo=None)
         else:
             minutes = config.get("minutes")
             if isinstance(minutes, bool) or not isinstance(minutes, (int, float)) or minutes < 0:
@@ -7592,6 +7604,35 @@ class TaskScheduler:
             return None, (f"“{node.get('label')}” would wait longer than {cap} hours, "
                           f"which workflow_wait_max_hours allows.")
         return until, None
+
+    def _wait_time_text(self, w, node: dict) -> tuple:
+        """`B1884`. `(text, moment, problem)` for a Wait until a time: the time
+        as typed (`moment` None), or — when its author opened it — as the
+        earlier step's value reads, which may be a time of day (HH:MM) or a
+        date and time (`moment`, aware or not; ISO 8601, `Z` allowed). Anything
+        else is `problem`, a sentence that names what it was handed."""
+        from src import workflow_slots as ws
+
+        config = node.get("config") or {}
+        label = node.get("label") or node.get("id")
+        if not ws.slot_for(node, ("time",)).opened:
+            return str(config.get("time") or ""), None, None
+        try:
+            text = ws.opened_text(node, "time", w.state.context())
+        except ws.SlotError as refused:
+            return "", None, f"“{label}”: {refused.sentence} It did not wait."
+        text = str(text or "").strip()
+        if re.fullmatch(r"[0-9]{1,2}:[0-9]{2}", text):
+            return text, None, None
+        try:
+            moment = datetime.fromisoformat(text.replace("Z", "+00:00")) if "T" in text else None
+        except ValueError:
+            moment = None
+        if moment is None:
+            return "", None, (f"“{label}” was handed “{text[:40]}” for its time, which is not a "
+                              f"time written HH:MM or a date and time such as "
+                              f"2026-11-08T09:00. It did not wait.")
+        return text, moment, None
 
     def _clock_words(self, w, when) -> str:
         from src import workflow_runs as wr
@@ -8036,7 +8077,8 @@ class TaskScheduler:
                     and not (retrying and prev.status == NODE_STATUS_ERROR)):
                 out = wr._loads(prev.output) or {}
                 if wr.is_truncated(out):
-                    out = {}
+                    # `B1890`: an item cut to its cap is read whole.
+                    out = wr.whole_output(walk.db if walk is not None else db, prev) or {}
                 results.append({"index": index, "status": prev.status,
                                 "text": (out.get("text") if isinstance(out, dict) else "") or
                                         (prev.error or ""),
@@ -8262,10 +8304,15 @@ class TaskScheduler:
             return await we.run_code_step(node, dict(code_input or {}), owner=task.owner,
                                           timeout=None)
         runner = we.run_http_step if kind == wd.NODE_KIND_HTTP else we.run_mcp_step
+        # `B1885`: an HTTP step hands on its status and headers too when its
+        # `response` says so; it is not part of the call the gate sealed.
+        more = ({"response": (node.get("config") or {}).get("response")}
+                if kind == wd.NODE_KIND_HTTP and (node.get("config") or {}).get("response")
+                else {})
         if exact is not None:
             return await runner(call, owner=task.owner, security_context=context,
-                                exact_approval=exact)
-        return await runner(call, owner=task.owner, security_context=context)
+                                exact_approval=exact, **more)
+        return await runner(call, owner=task.owner, security_context=context, **more)
 
     def _headless_card(self, task, node: dict, call, context, decision, run_id: str,
                        item_part: str):
@@ -8281,7 +8328,10 @@ class TaskScheduler:
         pending = tool_approval_store.create(
             owner=task.owner, session_id="", origin_run_id=f"{run_id}:{item_part}",
             tool_name=call.tool, content=call.content, workspace=None,
-            external_untrusted_context_seen=False,
+            # `B1884`: a call whose opened setting an earlier step filled is
+            # built tainted; the card says so, and only a card sealed tainted
+            # may be spent in a tainted run (`tool_execution`'s replay check).
+            external_untrusted_context_seen=bool(context.external_untrusted_context_seen),
             capabilities=capabilities_for_action(call.tool, call.content),
             gate_decision=decision, taint_trail=context.taint_trail,
             ttl_seconds=wr.workflow_approval_ttl_seconds(task.owner), held_by_run=True)
@@ -8536,7 +8586,8 @@ class TaskScheduler:
         self._end_parked_run(db, target, run, status=status, sentence=sentence)
 
     async def test_workflow_node(self, task, workflow_name: str, node: dict, *,
-                                 input_envelope=None, timeout=None, graph=None) -> dict:
+                                 input_envelope=None, timeout=None, graph=None,
+                                 source=None, outputs=None) -> dict:
         """`P22-08` — run ONE step, now, with the input the person chose.
 
         Under a slot of its own (`test:<uuid>`) that no row has, so it writes
@@ -8553,6 +8604,12 @@ class TaskScheduler:
         references read the input chosen (as `start`) and, for the steps
         before it, their last real records (`graph`, the document it is in).
         A test never parks: a step that would ask for a yes says so instead.
+
+        `B1887` / `B1888`: `source` (the `TEST_SOURCES` word the input came
+        from) and `outputs` (what the person typed for the steps it reads,
+        `workflow_test_context.check_outputs`'s answer) decide what its
+        references read (`_test_context`); the answer gains `reads` — each
+        step its settings name, what the test read for it and from where.
         """
         from core.database import SessionLocal
         from src.builtin_actions import NODE_STATUS_ERROR, NodeResult
@@ -8565,7 +8622,9 @@ class TaskScheduler:
         started = time.monotonic()
         db = SessionLocal()
         try:
-            ctx = self._test_context(db, task, graph, node, input_envelope)
+            reads = []
+            ctx = self._test_context(db, task, graph, node, input_envelope,
+                                     source=source, outputs=outputs, reads=reads)
             port = None
             with run_origin(task.id, workflow_name, slot, test=True):
                 try:
@@ -8588,6 +8647,7 @@ class TaskScheduler:
                 "took_ms": _human_ms(time.monotonic() - started),
                 "port": port or (EDGE_WHEN_SUCCESS if res.status == "success"
                                  else EDGE_WHEN_ERROR if res.status == "error" else None),
+                "reads": reads,
             }
         finally:
             # `B1093`. A test delivers nothing, and that includes a chat: a
@@ -8623,30 +8683,24 @@ class TaskScheduler:
             logger.warning("A step test's chat %s could not be removed", session_id,
                            exc_info=True)
 
-    def _test_context(self, db, task, graph, node: dict, input_envelope) -> dict:
-        """What a tested step's references read: the chosen input as the start,
-        and each other step's newest real record (`last_node_record` — never a
-        dry plan)."""
-        from src import workflow_runs as wr
-        from src.event_bus import trigger_summary
+    def _test_context(self, db, task, graph, node: dict, input_envelope, *,
+                      source=None, outputs=None, reads=None) -> dict:
+        """What a tested step's references read — `workflow_test_context.build`,
+        the one rule (`B1887` / `B1888`): `steps.start` is always the trigger
+        (the chosen input only for a step the start leads to), the step before
+        it made what the chosen input says it made, pinned samples and the
+        last run's records fill in the rest, and `outputs` — what the person
+        typed for the steps it reads — goes on top. It was the chosen input as
+        `steps.start` for every step, so a later step's pin and its trigger
+        never resolved in a test. `reads`, a list, is filled with what was read
+        for each step the step names."""
+        from src import workflow_test_context as wtc
 
-        steps = {}
-        for other in (graph or {}).get("nodes") or ():
-            if other.get("id") == node.get("id"):
-                continue
-            rec = wr.last_node_record(db, task.id, other["id"])
-            if rec is None or rec.status not in wr.STEP_FINISHED:
-                continue
-            out = wr._loads(rec.output)
-            if not isinstance(out, dict) or wr.is_truncated(out):
-                continue
-            steps[other["id"]] = {"status": rec.status, "text": out.get("text") or "",
-                                  "data": out.get("data")}
-        envelope = input_envelope if isinstance(input_envelope, dict) else None
-        steps[wr._start_key()] = {"status": "success",
-                                  "data": (envelope or {}).get("data"),
-                                  "text": trigger_summary(envelope) if envelope else ""}
-        return {"steps": json.loads(json.dumps(steps, default=str))}
+        ctx, found = wtc.build(db, task_id=getattr(task, "id", None), graph=graph, node=node,
+                               envelope=input_envelope, source=source, outputs=outputs)
+        if reads is not None:
+            reads.extend(found)
+        return ctx
 
     async def _run_chained(self, task_id: str, *, handoff: dict | None = None,
                            started_by: str = STARTED_BY_BACKGROUND):

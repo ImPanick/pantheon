@@ -270,10 +270,23 @@ export function createWorkflowApi({ fetch } = {}) {
     /** Test one step as it stands on the canvas (`P22-08`). `source` is
      *  `last | pinned | custom | example | none`. → `{ outcome:
      *  "needs_confirmation", plan, effects }` or `{ outcome: "ran", status,
-     *  text, data, steps, model, took_ms, input_used, dropped }` */
-    testNode(id, nodeId, { node, source = 'none', input, confirm = false } = {}) {
+     *  text, data, steps, model, took_ms, input_used, dropped }`
+     *
+     *  `B1887` / `B1888`, both optional (left out, the body is exactly as
+     *  before):
+     *   - `outputs` — `{ "<step id>": { data, text } }` (`"start"` for what
+     *     started it): what the steps this step reads made, as the person
+     *     typed them. Every reference into them reads it; the entry of the
+     *     step just before this one is also what this step is handed.
+     *   - `contextOnly` — run nothing and ask nothing: → `{ outcome:
+     *     "context", reads, input_used, dropped, source }`, to pre-fill one
+     *     editor per step the step reads.
+     *  Every answer has `reads`: `[{ node_id, label, origin, data, text }]`,
+     *  one per step its settings name, `origin` one of `typed | handed | pin |
+     *  last_run | none`. */
+    testNode(id, nodeId, { node, source = 'none', input, confirm = false, outputs, contextOnly = false } = {}) {
       return call('POST', `/api/workflows/${enc(id)}/nodes/${enc(nodeId)}/test`,
-        given({ node, source, input, confirm: !!confirm }));
+        given({ node, source, input, confirm: !!confirm, outputs, context_only: contextOnly ? true : undefined }));
     },
     /** `B1209`. A workflow's start, written to its trigger task through the
      *  door every task is edited by (`PUT /api/tasks/{id}`) — the fields the

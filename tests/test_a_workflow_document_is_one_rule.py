@@ -447,7 +447,10 @@ def test_contract_c1_is_exactly_what_the_routes_import():
     assert [p[:2] for p in sig(TaskScheduler.test_workflow_node)[4:]] == [
         ("input_envelope", kw), ("timeout", kw),
         # `P22-10` (`C-W`): the document the step stands in, for its references.
-        ("graph", kw)]
+        ("graph", kw),
+        # `B1887` / `B1888`: where the earlier steps' outputs come from, and the
+        # outputs a person typed for them.
+        ("source", kw), ("outputs", kw)]
     register = inspect.signature(TaskScheduler._execute_task).parameters["register_handle"]
     assert (register.kind.name, register.default) == (kw, True)
     assert [p[0] for p in sig(task_action_policy.admin_only_action_of)] == ["db", "task"]

@@ -168,7 +168,31 @@ async def _dispatch(tool: str, content: str, *, owner, security_context, exact_a
 
 # ── P22-13 · HTTP through an Integration ─────────────────────────────────────
 
-async def run_http_step(call, *, owner, security_context, exact_approval=None) -> StepOutcome:
+def http_step_data(result: Any, response: Any = None) -> Any:
+    """`B1885`. What an HTTP step hands on, from `execute_api_call`'s
+    structured answer: its parsed JSON body (`body_json`), as always — or, for
+    a step whose `response` is `full`, `{http_status, headers, body}`: the
+    status, the reply's headers (`response_headers`: lower-cased names, no
+    cookie) and the body, parsed when it is JSON and its text otherwise."""
+    from src.workflow_document import HTTP_RESPONSE_FULL
+    if not isinstance(result, dict):
+        return None
+    if response != HTTP_RESPONSE_FULL:
+        return result.get("body_json")
+    if "body_json" in result:
+        body = result["body_json"]
+    else:
+        said = result.get("output") if result.get("output") is not None else result.get("error")
+        first, _sep, rest = str(said or "").partition("\n")
+        body = rest if first.startswith("HTTP ") else str(said or "")
+    headers = result.get("response_headers")
+    return {"http_status": result.get("http_status"),
+            "headers": dict(headers) if isinstance(headers, dict) else {},
+            "body": body}
+
+
+async def run_http_step(call, *, owner, security_context, exact_approval=None,
+                        response=None) -> StepOutcome:
     """One `api_call` to a registered Integration, through the real dispatcher.
 
     `call.content` is dispatched exactly as rendered: the Integration, method,
@@ -182,6 +206,8 @@ async def run_http_step(call, *, owner, security_context, exact_approval=None) -
 
     `exact_approval` (added to C-E, defaulted): the walker's replay of a sealed
     call after an Allow at a strict rung — the same argument the dispatcher takes.
+    `response` (`B1885`, defaulted): the step's `response` setting — `full`
+    hands on the status and headers with the body (`http_step_data`).
     """
     _require_rendered(call, "http")
     if call.tool != "api_call":
@@ -203,7 +229,7 @@ async def run_http_step(call, *, owner, security_context, exact_approval=None) -
     _desc, result = await _dispatch(
         "api_call", call.content, owner=owner, security_context=security_context,
         exact_approval=exact_approval, disabled_tools=disabled)
-    return _outcome(result, data=(result or {}).get("body_json") if isinstance(result, dict) else None)
+    return _outcome(result, data=http_step_data(result, response))
 
 
 # ── P22-14 · An MCP tool is a step ───────────────────────────────────────────
@@ -872,17 +898,27 @@ def _slot_json(slot) -> dict:
     return {"mapping": slot.mapping, "why": slot.why}
 
 
+# `B1884`. The settings a step's author may open whatever is typed beside
+# them — an HTTP step's path, a Wait's time (when it waits until one). The
+# palette says `openable` on them; an HTTP query or body value is answered by
+# its name (`POST /api/workflows/slot`), an MCP argument on `mcp_tools[].args`.
+OPENABLE_BY_KIND = {"http": ("path",), "wait": ("time",)}
+
+
 def _kind_slots(kind: str) -> dict:
     """`{field pattern: {mapping, why}}` from `workflow_slots.NODE_SLOTS`. A
     field decided per entry is said fail-closed with the classifier's or the
     table's sentence (the browser offers no picker there and says why); one
     the palette answers elsewhere is left out — an MCP tool's arguments
-    (`mcp_tools[].args`) and a For-each's inner step (its own kind's entry)."""
+    (`mcp_tools[].args`) and a For-each's inner step (its own kind's entry).
+    `B1884`: a setting its author may open says `openable: true`."""
     from src import workflow_slots as ws
     out = {}
     for pattern, rule in (ws.NODE_SLOTS.get(kind) or {}).items():
         if isinstance(rule, ws.Slot):
             out[pattern] = _slot_json(rule)
+            if pattern in OPENABLE_BY_KIND.get(kind, ()):
+                out[pattern]["openable"] = True
         elif rule is ws.BY_ENTRY_NAME:
             out[pattern] = {"mapping": ws.MAPPING_NEVER, "why": ws.WHY_NOT_TEXT}
         elif rule is ws.BY_PARAM:
@@ -891,7 +927,7 @@ def _kind_slots(kind: str) -> dict:
 
 
 def _mcp_tool_entry(tool: dict) -> dict:
-    from src.workflow_slots import classify_argument
+    from src.workflow_slots import argument_opens, classify_argument
     props = (tool.get("input_schema") or {}).get("properties")
     props = props if isinstance(props, dict) else {}
     return {
@@ -904,7 +940,12 @@ def _mcp_tool_entry(tool: dict) -> dict:
         "is_readonly": tool.get("is_readonly"),
         "readonly_source": tool.get("readonly_source"),
         "override": tool.get("override"),
-        "args": {name: _slot_json(classify_argument(name, schema)) for name, schema in props.items()},
+        # `B1884`: `openable: true` on an argument its author may open to a
+        # value from an earlier step (`workflow_slots.argument_opens`) — said
+        # only where it holds, so every other argument reads as it did.
+        "args": {name: {**_slot_json(classify_argument(name, schema)),
+                        **({"openable": True} if argument_opens(name, schema) else {})}
+                 for name, schema in props.items()},
     }
 
 
@@ -1021,6 +1062,29 @@ def _fields_of(node_id: str, text, data) -> list:
     return out
 
 
+def _fields_of_whole(node_id: str, snapshot: dict) -> list:
+    """`B1890`. `_fields_of`'s answer for a step whose record was cut, from
+    the picker's view of what it made taken BEFORE the cut
+    (`workflow_runs.whole_output_fields`) — the same refs, types and
+    examples a record that fit would have given."""
+    from src.workflow_refs import format_ref
+    out = []
+    text = snapshot.get("text") if isinstance(snapshot, dict) else None
+    if isinstance(text, dict):
+        out.append({"ref": format_ref(node_id, "text"), "path": [], "type": text.get("type"),
+                    "example": text.get("example")})
+    for f in (snapshot.get("data") if isinstance(snapshot, dict) else None) or ():
+        if not isinstance(f, dict) or not isinstance(f.get("path"), list):
+            continue
+        try:
+            ref = format_ref(node_id, "data", f["path"])
+        except ValueError:
+            continue
+        out.append({"ref": ref, "path": f["path"], "type": f.get("type"),
+                    "example": f.get("example")})
+    return out
+
+
 def _declared_fields(node_id: str, names_types) -> list:
     from src.workflow_refs import format_ref
     out = []
@@ -1060,6 +1124,14 @@ def _promised(graph: dict, nodes: dict, node_id: str, start_declared, seen=froze
     if kind == "set" and isinstance(config.get("fields"), list):
         return [(f.get("name"), None) for f in config["fields"]
                 if isinstance(f, dict) and isinstance(f.get("name"), str)]
+    if kind == "http":
+        # `B1885`: an HTTP step that hands on its status, headers and body
+        # promises those three names before it ever runs.
+        from src.workflow_document import HTTP_FULL_KEYS, HTTP_RESPONSE_FULL
+        if config.get("response") == HTTP_RESPONSE_FULL:
+            return [(name, "number" if name == "http_status" else None)
+                    for name in HTTP_FULL_KEYS]
+        return []
     if kind not in ("if", "switch") or node_id in seen:
         return []
     out = []
@@ -1122,6 +1194,11 @@ def available_fields(db, wf, trigger, graph, node_id, *, recorded=None) -> dict:
     for first in starters:
         rec = _last(first)
         envelope = _loads(rec.input) if rec is not None else None
+        if is_truncated(envelope):
+            # `B1890`: a large trigger cut on its step's record is kept whole
+            # on its run's row (`B1861`), so the picker reads that.
+            from src.workflow_runs import stored_run_trigger
+            envelope = stored_run_trigger(db, rec.run_id)
         if isinstance(envelope, dict) and not is_truncated(envelope) \
                 and isinstance(envelope.get("data"), dict):
             sources.append(_source(START_KEY, "What started it", "start", ORIGIN_LAST_RUN,
@@ -1154,6 +1231,15 @@ def available_fields(db, wf, trigger, graph, node_id, *, recorded=None) -> dict:
             sources.append(_source(up_id, label, kind, ORIGIN_LAST_RUN,
                                    _iso(rec.finished_at or rec.started_at),
                                    _fields_of(up_id, output.get("text"), output.get("data"))))
+        elif is_truncated(output):
+            # `B1890`: a record cut to its cap is offered from the view of
+            # what it made taken before the cut — it was offered as nothing.
+            from src.workflow_runs import whole_output_fields
+            snapshot = whole_output_fields(db, rec)
+            if snapshot:
+                sources.append(_source(up_id, label, kind, ORIGIN_LAST_RUN,
+                                       _iso(rec.finished_at or rec.started_at),
+                                       _fields_of_whole(up_id, snapshot)))
         for nxt in _successors(graph, up_id):
             pinned = (nodes.get(nxt) or {}).get("pinned")
             handed = pinned.get("data") if isinstance(pinned, dict) else None

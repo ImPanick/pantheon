@@ -662,8 +662,9 @@ async def test_testing_a_step_runs_it_alone_and_writes_nothing(task_db, monkeypa
     step["config"].update(model="m", endpoint_url="http://127.0.0.1:9/v1",
                           prompt="Classify it, edited and not yet saved.")
     out = await s.test_workflow_node(trigger, "Morning digest", step, input_envelope=sample)
-    # `P22-10` (`C-W`): a test also says which port the step left by.
-    assert set(out) == {"status", "text", "data", "steps", "model", "took_ms", "port"}
+    # `P22-10` (`C-W`): a test also says which port the step left by — and
+    # (`B1887`) what it read for each step its settings name.
+    assert set(out) == {"status", "text", "data", "steps", "model", "took_ms", "port", "reads"}
     assert (out["status"], out["text"], out["model"]) == ("success", "Looks like a bill.", "m")
     assert seen[0][0] == "Morning digest · Classify" and seen[0][2] is None
     assert '"message_key": "9"' in seen[0][1]["content"]

@@ -688,9 +688,13 @@ def test_contract_c_r_is_what_the_other_three_packages_import():
             assert hasattr(module, name), f"{module.__name__}.{name}"
     assert wd.DocumentRefusal._fields == ("reason", "node_ids", "sentence", "field")
     assert wd.DocumentRefusal("r", (), "s").field == ""
+    # `B1884` adds `opened` at the end of both, defaulted (the settings the
+    # workflow's author opened to a value from an earlier step, and whether a
+    # slot is one), so a positional build of the first fields still reads.
     assert workflow_slots.RenderedCall._fields == ("kind", "tool", "content", "value_paths",
-                                                    "missing")
-    assert workflow_slots.Slot._fields == ("mapping", "carry", "why")
+                                                    "missing", "opened")
+    assert workflow_slots.Slot._fields == ("mapping", "carry", "why", "opened")
+    assert workflow_slots.Slot("value", None, "").opened is False
     # `B1857` adds the step cap at the end, so a positional build still reads.
     assert wd.WorkflowResources._fields == ("integrations", "mcp_tools", "skills", "ai_tools",
                                             "workstation_why", "foreach_max_items",
