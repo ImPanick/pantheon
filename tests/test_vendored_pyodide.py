@@ -67,6 +67,7 @@ def app_csp(script_hashes: tuple = ()) -> str:
     """
     request = SimpleNamespace(
         url=SimpleNamespace(path="/", scheme="http"),
+        scope={"type": "http", "path": "/", "root_path": ""},   # `B1957`: the route path
         headers={},
         state=SimpleNamespace(csp_script_hashes=tuple(script_hashes)),
     )

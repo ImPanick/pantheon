@@ -255,8 +255,13 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         nonce = secrets.token_hex(16)
         request.state.csp_nonce = nonce
 
+        # `B1957`. The path Starlette routes by, not `request.url.path`: under
+        # `--root-path` that carries the prefix and no branch below matched, so
+        # an upload lost its sandbox and every framed page its frame policy.
+        # Read before dispatch, because the `/static` mount rewrites the
+        # scope's `root_path` in place.
+        path = get_application_route_path(request.scope)
         response = await call_next(request)
-        path = request.url.path
 
         # Tool render endpoints
         is_tool_render = path.startswith("/api/tools/") and path.endswith("/render")
@@ -269,8 +274,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         is_design_preview = path.startswith("/api/design/designs/") and path.endswith("/preview")
         # Served-back uploads: `GET /api/upload/{file_id}` (and `?thumb=1`),
         # plus the sibling stats/cleanup/vision routes. Matched on the same
-        # `path` form as the three above; see the NOTE on prefix deployments
-        # in the `elif is_upload` branch below.
+        # route path as the three above.
         is_upload = path.startswith("/api/upload/")
         # `B1474`. The frame a person's Python block runs in (Pyodide), and
         # the vendored runtime it loads from an opaque origin.
@@ -406,16 +410,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             # Defence in depth *behind* the route's `Content-Disposition:
             # attachment` and the nosniff set above — neither of which moves.
             #
-            # NOTE: like the three branches above, this matches on
-            # `request.url.path`, which still carries any ASGI `root_path`
-            # prefix. Under a prefixed deployment the match misses and the
-            # response falls through to the app CSP in the else-branch. The
-            # whole method has that property; switching it to
-            # `get_application_route_path(request.scope)` (the form
-            # `AuthMiddleware` in app.py uses) is the fix, but this dispatch is
-            # pinned by the `_FakeRequest` stub in
-            # tests/test_document_render_pdf_iframe.py, which has no `.scope`
-            # — so the two have to move together.
+            # Matched on the route path, so a `--root-path` prefix keeps it (`B1957`).
             response.headers["X-Frame-Options"] = "DENY"
             response.headers["Content-Security-Policy"] = (
                 # `default-src 'none'` costs nothing here and is strictly
