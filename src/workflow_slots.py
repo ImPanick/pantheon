@@ -76,7 +76,17 @@ WHY_WHEN = ("This decides when the step runs, so it only takes what you type her
             "never a value from another step.")
 # `P23-05` (Doc 2 § 5): the reason in one line, under the setting it is on.
 WHY_NOT_TEXT = "Typed only: this could be an address or a command."
-WHYS = (WHY_WHERE, WHY_WHAT, WHY_WHEN, WHY_NOT_TEXT)
+# `B1882`: a Code step's source is typed only like the rest, but code holds
+# `{{` of its own (a Python f-string's `f"{{item}}"` reads as a reference and
+# was refused, with no way to write it). There, and only there, `\{{` is the
+# text `{{`: the reference after it is passed over when the step is saved
+# (`references_in_text(escapes=True)`) and the backslash is taken out before
+# the code runs (`workflow_refs.unescape_references`). The sentence says so,
+# since a person meets the rule only when their code is refused.
+WHY_CODE = ("This is the code the step runs, so it only takes what you type here, never "
+            "a value from another step. Where the code's own {{ reads as a field, as in "
+            "f\"{{item}}\", write \\{{ there; the \\ is taken out before it runs.")
+WHYS = (WHY_WHERE, WHY_WHAT, WHY_WHEN, WHY_NOT_TEXT, WHY_CODE)
 
 
 class Slot(NamedTuple):
@@ -100,6 +110,8 @@ NEVER_WHEN = Slot(MAPPING_NEVER, None, WHY_WHEN)
 NEVER_NOT_TEXT = Slot(MAPPING_NEVER, None, WHY_NOT_TEXT)
 # `B1884`: a `never` setting its author opened.
 OPENED_INLINE = Slot(MAPPING_VALUE, CARRY_INLINE, "", True)
+# `B1882`: the one `never` slot that takes `\{{` as the text `{{` (above).
+NEVER_CODE = Slot(MAPPING_NEVER, None, WHY_CODE)
 # A setting no table names. Fail closed.
 UNDECLARED = NEVER_WHAT
 
@@ -327,6 +339,7 @@ NODE_SLOTS = {
         "fields": NEVER_WHAT,
         "fields[].name": NEVER_WHAT,
         "fields[].value": VALUE_INLINE,
+        "on_missing": NEVER_WHAT,        # `B1881`: stop, or leave it empty
     },
     "merge": {
         "mode": NEVER_WHAT,
@@ -385,7 +398,7 @@ NODE_SLOTS = {
     },
     "code": {
         "language": NEVER_WHAT,
-        "source": NEVER_WHAT,
+        "source": NEVER_CODE,            # `B1882`: `\{{` is the text `{{`
         "timeout_seconds": NEVER_WHEN,
         "input": NEVER_WHAT,
         "input[].name": NEVER_WHAT,
@@ -925,11 +938,12 @@ class _Renderer:
         # `B1884`: the opened settings a reference filled.
         self.opened = []
 
-    def never(self, path: tuple, value):
+    def never(self, path: tuple, value, *, escapes: bool = False):
         """A `never` slot: the author's value, verbatim — refused if anything
-        in it reads as a reference."""
+        in it reads as a reference. `escapes` (`B1882`, a Code step's source
+        only): a reference right after `\\` is the code's own text."""
         for leaf_path, text in config_leaves(value, path):
-            if references_in_text(text):
+            if references_in_text(text, escapes=escapes):
                 raise SlotError(f"“{path_text(leaf_path)}” only takes what you typed, and it "
                                 f"holds a reference, so nothing was sent.",
                                 path_text(leaf_path))
@@ -1171,7 +1185,7 @@ def render_call(node: dict, ctx, *, mcp_schema=None) -> RenderedCall:
                 call[name] = r.never(("args", name), raw)
     elif kind == "code":
         for key in ("language", "source", "timeout_seconds"):
-            r.never((key,), config.get(key))
+            r.never((key,), config.get(key), escapes=(key == "source"))
         tool = config.get("language")
         call = r.entries("input", schema_for_name=lambda _n: None)
     elif kind == "action":
@@ -1213,7 +1227,8 @@ def opened_text(node: dict, key: str, ctx):
 
 __all__ = [
     "MAPPING_VALUE", "MAPPING_NEVER", "MAPPINGS", "CARRY_INLINE", "CARRY_CONTEXT",
-    "CARRIES", "WHY_WHERE", "WHY_WHAT", "WHY_WHEN", "WHY_NOT_TEXT", "WHYS", "Slot",
+    "CARRIES", "WHY_WHERE", "WHY_WHAT", "WHY_WHEN", "WHY_NOT_TEXT", "WHY_CODE",
+    "NEVER_CODE", "WHYS", "Slot",
     "NODE_SLOTS", "CONTENT_WORDS", "FORMAT_WORDS", "ARGUMENT_WORDS", "ADDRESS_FORMATS",
     "classify_argument", "effective_schema", "action_param_slots", "slot_for", "declared_fields", "path_of",
     "path_text", "config_leaves", "name_parts", "SlotError", "RenderedCall",

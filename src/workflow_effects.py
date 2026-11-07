@@ -895,6 +895,12 @@ NO_SKILLS_SENTENCE = "No skills yet. Make one in Skills."
 
 
 def _slot_json(slot) -> dict:
+    # `B1882`: the one `never` slot where `\{{` is the text `{{` (a Code
+    # step's source) says so, so the field's "Not here" warning, typed live,
+    # passes over an escaped reference as the save does.
+    from src.workflow_slots import NEVER_CODE
+    if slot == NEVER_CODE:
+        return {"mapping": slot.mapping, "why": slot.why, "escape": True}
     return {"mapping": slot.mapping, "why": slot.why}
 
 
@@ -1089,11 +1095,12 @@ def _declared_fields(node_id: str, names_types) -> list:
     from src.workflow_refs import format_ref
     out = []
     for name, kind in names_types:
+        path = list(name) if isinstance(name, tuple) else [name]   # `B1879`: a Set's path
         try:
-            ref = format_ref(node_id, "data", [name])
+            ref = format_ref(node_id, "data", path)
         except ValueError:
             continue                       # a name no reference can name is not offered
-        out.append({"ref": ref, "path": [name], "type": kind, "example": None})
+        out.append({"ref": ref, "path": path, "type": kind, "example": None})
     return out
 
 
@@ -1122,7 +1129,15 @@ def _promised(graph: dict, nodes: dict, node_id: str, start_declared, seen=froze
         return [(f.get("name"), f.get("type")) for f in config["answer_fields"]
                 if isinstance(f, dict) and isinstance(f.get("name"), str)]
     if kind == "set" and isinstance(config.get("fields"), list):
-        return [(f.get("name"), None) for f in config["fields"]
+        # `B1879`: a dotted name is a path (`customer.name` is `customer`'s
+        # `name`), and a field that says its type promises it.
+        from src.workflow_logic import SET_TYPE_JSON, set_name_parts
+
+        def path_of(name):
+            parts = set_name_parts(name)
+            return parts if parts and len(parts) > 1 else name
+        return [(path_of(f["name"]), None if f.get("type") == SET_TYPE_JSON else f.get("type"))
+                for f in config["fields"]
                 if isinstance(f, dict) and isinstance(f.get("name"), str)]
     if kind == "http":
         # `B1885`: an HTTP step that hands on its status, headers and body

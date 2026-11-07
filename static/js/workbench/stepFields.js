@@ -36,13 +36,15 @@ import { KIND_WORDS } from '../tasks/workflowDiagram.js';
 import { mountArgsForm, mountOpenBox, OPENED_SLOT } from './argsForm.js';
 import { SKILL_GATE_NOTE } from '../skillGateNote.js';
 import { ROOM_NAMES } from './rooms.js';
+import { parseRefAt } from './fieldPicker.js';
 
 /** The kinds this file draws. */
 export const STEP_FIELD_KINDS = Object.freeze(['if', 'switch', 'set', 'merge', 'wait', 'foreach', 'http', 'mcp', 'skill', 'code']);
 
-/** `P22-10`. The six operators, in the words a person reads, when the
+/** `P22-10`. The operators, in the words a person reads, when the
  *  palette does not say its own (`operators: [{ op, word }]`, C-W). The stored
- *  words are `workflow_logic.OPERATORS`. */
+ *  words are `workflow_logic.OPERATORS` (`B1880`: and the eleven it added,
+ *  which a test holds equal to the server's). */
 export const DEFAULT_OPERATORS = Object.freeze([
   { op: 'equals', word: 'is' },
   { op: 'contains', word: 'contains' },
@@ -50,7 +52,41 @@ export const DEFAULT_OPERATORS = Object.freeze([
   { op: 'greater_than', word: 'is more than' },
   { op: 'less_than', word: 'is less than' },
   { op: 'one_of', word: 'is one of' },
+  { op: 'not_equals', word: 'is not' },
+  { op: 'not_contains', word: 'does not contain' },
+  { op: 'is_not_empty', word: 'is not empty' },
+  { op: 'not_one_of', word: 'is not one of' },
+  { op: 'starts_with', word: 'starts with' },
+  { op: 'ends_with', word: 'ends with' },
+  { op: 'matches', word: 'matches the pattern' },
+  { op: 'at_least', word: 'is at least' },
+  { op: 'at_most', word: 'is at most' },
+  { op: 'is_before', word: 'is before' },
+  { op: 'is_after', word: 'is after' },
 ]);
+/** `B1880`. Operators that read no value, whose value is choices, and that
+ *  read dates — `workflow_logic.UNARY_OPERATORS`, `LIST_OPERATORS` and
+ *  `DATE_OPERATORS`, which a test holds equal to these. */
+export const UNARY_OPERATORS = Object.freeze(['is_empty', 'is_not_empty']);
+export const LIST_OPERATORS = Object.freeze(['one_of', 'not_one_of']);
+export const DATE_OPERATORS = Object.freeze(['is_before', 'is_after']);
+const _isListOp = (o) => LIST_OPERATORS.includes(o);
+/** `B1880`. What a condition compares its two sides as: the stored words
+ *  (`workflow_logic.COMPARE_AS`; `''` writes none — "as it looks") and the
+ *  words shown (`COMPARE_AS_WORDS`, held equal by a test). */
+export const COMPARE_AS = Object.freeze([
+  ['', 'as it looks'], ['text', 'text (capitals do not count)'], ['exact', 'exact text (capitals count)'],
+  ['number', 'a number'], ['date', 'a date or a time'], ['yes/no', 'yes or no'],
+  ['length', 'how many (items, or letters of text)'],
+]);
+/** `B1880`. Under "matches the pattern" — what a pattern may say
+ *  (`src/workflow_pattern.py`, which reads it at save and at run). */
+const PATTERN_HINT = 'A pattern: . any character, \\d a digit, \\w a letter or digit, \\s a space, '
+  + '[abc] one of these, [a-z] a range, a* none or more, a+ one or more, a? maybe, a{2,5} two to five, '
+  + '(a|b) one or the other, ^ the start, $ the end. Capitals do not count unless compared as exact text.';
+/** `B1880`. Under "is before" / "is after". */
+const DATE_HINT = 'A date or a time, such as 2026-11-07 or 2026-11-07T08:00, or words: now, today, '
+  + 'yesterday, tomorrow, 3 days ago, in 2 hours. Counted from when the step runs; a day starts at midnight UTC.';
 
 /** `P22-12`. What a For-each step may run for each item (design § 1.4: not
  *  If, Switch, Merge, Wait or another For-each). */
@@ -87,6 +123,23 @@ export const ANSWER_TYPES = Object.freeze([
 ]);
 const KEY_RE = /^[A-Za-z_][A-Za-z0-9_]{0,63}$/;
 const ANSWER_MAX = 20;
+/** `B1879`. What a Set field's value is made: the stored words
+ *  (`workflow_logic.SET_TYPES`, `''` for none — "as it comes", what every Set
+ *  field always was) and the words its chooser shows
+ *  (`workflow_logic.SET_TYPE_WORDS`, which a test holds equal to these). */
+export const SET_TYPES = Object.freeze([
+  ['', 'as it comes'], ['text', 'text'], ['number', 'a number'], ['yes/no', 'yes or no'],
+  ['json', 'JSON (a list or an object)'],
+]);
+/** `B1881`. What a Set step does when a field reads nothing
+ *  (`workflow_logic.SET_ON_MISSING`, `SET_ON_MISSING_WORDS`, held equal by a
+ *  test); "stop" is what a step that says nothing does. */
+export const SET_ON_MISSING = Object.freeze([
+  ['stop', 'stop the run and say which'], ['empty', 'leave it empty and go on'],
+]);
+/** `B1879`. A Set field's name: up to eight names joined by dots, each
+ *  letters, digits and _ (`workflow_logic.set_name_parts`). */
+const SET_NAME_RE = /^[A-Za-z_][A-Za-z0-9_]{0,63}(?:\.[A-Za-z_][A-Za-z0-9_]{0,63}){0,7}$/;
 
 // ── `P22-24` (wb-canvas-e). What an imported step needs ────────────────────
 // A step brought in from a file that refers to something this Pantheon does
@@ -340,8 +393,9 @@ function _rows(parent, items, { addLabel, draw, empty = '', min = 0 }) {
   };
 }
 
-/** `P22-10`. A list of conditions — field, one of six words, value — and
- *  whether all or any must hold. Shared by If and each Switch case. */
+/** `P22-10`. A list of conditions — field, one of the operator words, value
+ *  (`B1880`: or choices, and what both are compared as) — and whether all
+ *  or any must hold. Shared by If and each Switch case. */
 function _conditions(parent, value, { prefix, decorate, operators, joinLabel }) {
   const v = value && typeof value === 'object' ? value : {};
   const join = _selectField(parent, joinLabel,
@@ -360,24 +414,71 @@ function _conditions(parent, value, { prefix, decorate, operators, joinLabel }) 
       const op = _selectField(row, 'Is', ops.map((o) => [o.op, o.word]), { value: c.op || 'equals', field: `${base}[${i}].op` });
       const rightBox = _el('div', 'wf-sf-right');
       row.appendChild(rightBox);
-      const right = _textField(rightBox, 'This value', { value: c.right == null ? '' : c.right, field: `${base}[${i}].right`,
-        placeholder: 'Type a value, or pick a field' });
+      // `B1880`. One value in a text box; "is one of" / "is not one of" take
+      // choices, one on each line, kept as a list — so a choice may hold a
+      // comma ("Smith, John"), which text split on commas never could.
+      const oneBox = _el('div', 'wf-sf-group');
+      const manyBox = _el('div', 'wf-sf-group');
+      rightBox.appendChild(oneBox);
+      rightBox.appendChild(manyBox);
+      const listed = Array.isArray(c.right) ? c.right.map((x) => (typeof x === 'string' ? x : JSON.stringify(x))).join('\n') : null;
+      const right = _textField(oneBox, 'This value', { value: c.right == null || listed != null ? '' : c.right,
+        field: `${base}[${i}].right`, placeholder: 'Type a value, or pick a field' });
       const hr = decorate(right, `${base}[${i}].right`);
-      const oneOf = _el('p', 'wf-sf-hint', 'Separate the choices with commas.');
-      rightBox.appendChild(oneOf);
-      const sync = () => { rightBox.hidden = op.value === 'is_empty'; oneOf.hidden = op.value !== 'one_of'; };
+      const firstChoices = listed != null ? listed : (_isListOp(c.op) && c.right != null ? String(c.right) : '');
+      const choices = _textField(manyBox, 'These choices', { value: firstChoices, area: true, rows: 4,
+        field: `${base}[${i}].choices`, placeholder: 'One on each line', hint: 'One choice on each line.' });
+      const patternHint = _el('p', 'wf-sf-hint', PATTERN_HINT);
+      const dateHint = _el('p', 'wf-sf-hint', DATE_HINT);
+      rightBox.appendChild(patternHint);
+      rightBox.appendChild(dateHint);
+      // What the two sides are compared as — "as it looks" writes no `as`.
+      const asBox = _el('div', 'wf-sf-group');
+      rightBox.appendChild(asBox);
+      const asSel = _selectField(asBox, 'Compared as', COMPARE_AS,
+        { value: COMPARE_AS.some(([k]) => k && k === c.as) ? c.as : '', field: `${base}[${i}].as` });
+      let was = op.value;
+      const sync = () => {
+        const o = op.value;
+        // Moving between one value and choices carries what was typed.
+        if (_isListOp(o) && !_isListOp(was) && !String(choices.value).trim()) choices.value = String(right.value);
+        if (!_isListOp(o) && _isListOp(was) && !String(right.value).trim()) right.value = String(choices.value).split('\n')[0] || '';
+        was = o;
+        rightBox.hidden = UNARY_OPERATORS.includes(o);
+        oneBox.hidden = _isListOp(o);
+        manyBox.hidden = !_isListOp(o);
+        patternHint.hidden = o !== 'matches';
+        dateHint.hidden = !DATE_OPERATORS.includes(o);
+        asBox.hidden = DATE_OPERATORS.includes(o);
+      };
       op.addEventListener('change', sync);
       sync();
+      const choiceList = () => String(choices.value).split('\n').map((s) => s.trim()).filter(Boolean);
+      const rightNow = () => {
+        if (!_isListOp(op.value)) return String(right.value);
+        // Unchanged since the form opened: as it came (a list, or the text
+        // of a document written before choices were a list).
+        if (String(choices.value) === firstChoices && c.right != null) return c.right;
+        const lines = choiceList();
+        // One line that is exactly a picked field (a list from an earlier
+        // step) stays that field.
+        const one = lines.length === 1 ? parseRefAt(lines[0], 0) : null;
+        return one && one.end === lines[0].length ? lines[0] : lines;
+      };
       return {
-        snapshot: () => ({ left: left.value, op: op.value, right: right.value }),
+        snapshot: () => ({ left: left.value, op: op.value, right: rightNow(), ...(asSel.value ? { as: asSel.value } : {}) }),
         read: (j) => {
           const field = `${base}[${j}]`;
           if (!String(left.value).trim()) return { refusal: 'Pick the field this condition looks at.', field: `${field}.left` };
-          if (op.value !== 'is_empty' && !String(right.value).trim() && op.value !== 'equals') {
+          if (_isListOp(op.value)) {
+            if (!choiceList().length) return { refusal: 'Give the choices, one on each line.', field: `${field}.choices` };
+          } else if (!UNARY_OPERATORS.includes(op.value) && !String(right.value).trim()
+              && op.value !== 'equals' && op.value !== 'not_equals') {
             return { refusal: `Give the value “${(ops.find((o) => o.op === op.value) || {}).word || op.value}” compares with.`, field: `${field}.right` };
           }
           const out = { left: String(left.value).trim(), op: op.value };
-          if (op.value !== 'is_empty') out.right = String(right.value);
+          if (!UNARY_OPERATORS.includes(op.value)) out.right = rightNow();
+          if (asSel.value && !DATE_OPERATORS.includes(op.value) && !UNARY_OPERATORS.includes(op.value)) out.as = asSel.value;
           return { value: out };
         },
         destroy() { for (const h of [hl, hr]) { try { if (h && h.destroy) h.destroy(); } catch (_) { /* gone */ } } },
@@ -465,33 +566,64 @@ function buildSet(ctx) {
       const f = item && typeof item === 'object' ? item : {};
       const name = _textField(row, 'Name', { value: f.name || '', field: `fields[${i}].name`, placeholder: 'e.g. headline' });
       const hn = ctx.decorate(name, `fields[${i}].name`);
-      const value = _textField(row, 'Value', { value: f.value == null ? '' : f.value, field: `fields[${i}].value`,
+      // `B1879`. What the value is made — "as it comes" (no `type`, what a
+      // Set field always was) unless the person says. A typed value that is
+      // not what it says fails the step at run, naming the field.
+      const type = _selectField(row, 'It is', SET_TYPES,
+        { value: SET_TYPES.some(([v]) => v && v === f.type) ? f.type : '', field: `fields[${i}].type` });
+      // A value that is not text (a number, yes/no, a list a file or the
+      // agent wrote) is shown as JSON — `[1,2]`, not `1,2`.
+      const shown = f.value == null ? '' : (typeof f.value === 'string' ? f.value : JSON.stringify(f.value));
+      const value = _textField(row, 'Value', { value: shown, field: `fields[${i}].value`,
         placeholder: 'Type it, or pick a field' });
       const hv = ctx.decorate(value, `fields[${i}].value`);
       return {
-        snapshot: () => ({ name: name.value, value: value.value }),
+        snapshot: () => ({ name: name.value, value: value.value, ...(type.value ? { type: type.value } : {}) }),
         read: (j) => {
           const n = String(name.value).trim();
-          if (!KEY_RE.test(n)) {
-            return { refusal: 'A field’s name is letters, digits and _ (not starting with a digit), such as headline.', field: `fields[${j}].name` };
+          if (!SET_NAME_RE.test(n)) {
+            return { refusal: 'A field’s name is letters, digits and _ (not starting with a digit), such as headline; '
+              + 'a dot puts one inside another, such as customer.name.', field: `fields[${j}].name` };
           }
-          return { value: { name: n, value: String(value.value) } };
+          // `B1879`. A value the form was opened with that is not text (a
+          // number or yes/no a file or the agent wrote) is handed back as it
+          // came unless it was changed — opening a step and pressing Done no
+          // longer turns the number 7 into the text "7".
+          const typedValue = typeof f.value !== 'string' && f.value != null && String(value.value) === shown
+            ? f.value : String(value.value);
+          const out = { name: n, value: typedValue };
+          if (type.value) out.type = type.value;
+          return { value: out };
         },
         destroy() { for (const h of [hn, hv]) { try { if (h && h.destroy) h.destroy(); } catch (_) { /* gone */ } } },
       };
     },
   });
   ctx.onDestroy(() => rows.destroy());
+  // `B1881`. A field that reads nothing stops the run (the default, as in
+  // every other step), or is left empty — what a Set step did before. Written
+  // only when it says "leave it empty", or the step already said, so a step
+  // saved before this row comes back as it was.
+  const onMissing = _selectField(body, 'If a field is not there', SET_ON_MISSING,
+    { value: cfg.on_missing === 'empty' ? 'empty' : 'stop', field: 'on_missing',
+      hint: 'A field can also end in | default:"…" for when it is not there.' });
   return () => {
     const fields = [];
     const names = new Set();
+    const tail = onMissing.value === 'empty' || cfg.on_missing != null ? { on_missing: onMissing.value } : {};
     for (const [j, r] of rows.read().entries()) {
       if (r.refusal) return r;
       if (names.has(r.value.name)) return { refusal: `“${r.value.name}” is set twice. Each name once.`, field: `fields[${j}].name` };
+      // `B1879`. `a` and `a.b` cannot both be set (`set_names_clash`).
+      const outer = [...names].find((m) => r.value.name.startsWith(`${m}.`) || m.startsWith(`${r.value.name}.`));
+      if (outer) {
+        const [inner, out] = outer.length > r.value.name.length ? [outer, r.value.name] : [r.value.name, outer];
+        return { refusal: `“${inner}” is inside “${out}”, which is set as well. Set one or the other.`, field: `fields[${j}].name` };
+      }
       names.add(r.value.name);
       fields.push(r.value);
     }
-    return { config: { fields } };
+    return { config: { fields, ...tail } };
   };
 }
 

@@ -71,6 +71,20 @@ WAIT_MAX_HOURS_RANGE = (1, 720)
 MAX_STEPS_SETTING = "workflow_max_steps"
 MAX_STEPS_DEFAULT = 100
 MAX_STEPS_RANGE = (20, 500)
+
+# `B1883`. How much of the values an AI step reads (its prompt's references)
+# the model is shown, in characters, all of them together. They were shown at
+# a trigger payload's numbers — each cut to 2,000 and the block to 6,000 — so
+# "Summarise {{ steps.fetch.data.body }}" summarised the first 2,000
+# characters of a page with nothing said. Within this every value is shown
+# whole; past it the longest are cut first and the step's log names them and
+# this setting (`workflow_refs.fit_values`). Mistake prevention, not a control
+# (`Law 17`): a model's context is finite. The floor is the old per-value cut,
+# the top the sanity ceiling the record cap uses. Settings-only, like the
+# longest Wait: one number for the install.
+PROMPT_VALUES_MAX_CHARS_SETTING = "workflow_prompt_values_max_chars"
+PROMPT_VALUES_MAX_CHARS_DEFAULT = 20_000
+PROMPT_VALUES_MAX_CHARS_RANGE = (2_000, 1_000_000)
 # These defaults and ranges are stated HERE and nowhere else (`Law 7`,
 # `integrate-d`): `workflow_document` (the save-time check, `WorkflowResources`)
 # and `src/settings.py` (`DEFAULT_SETTINGS`) import them. This module imports
@@ -164,6 +178,18 @@ def wait_max_hours() -> int:
     lo, hi = WAIT_MAX_HOURS_RANGE
     value, _source = resolve_limit(
         WAIT_MAX_HOURS_SETTING, WAIT_MAX_HOURS_DEFAULT, minimum=lo, maximum=hi)
+    return value
+
+
+def prompt_values_max_chars() -> int:
+    """`B1883`. How much of the values an AI step reads its model is shown, in
+    characters, together (`workflow_prompt_values_max_chars`)."""
+    from src.settings import resolve_limit
+
+    lo, hi = PROMPT_VALUES_MAX_CHARS_RANGE
+    value, _source = resolve_limit(
+        PROMPT_VALUES_MAX_CHARS_SETTING, PROMPT_VALUES_MAX_CHARS_DEFAULT,
+        minimum=lo, maximum=hi)
     return value
 
 
@@ -1252,12 +1278,16 @@ class RunState:
         return (rec is not None and is_truncated(_loads(rec.output))
                 and rec.id not in self.whole)
 
-    def context(self, *, item=None, has_item: bool = False) -> dict:
+    def context(self, *, item=None, has_item: bool = False, run_id=None,
+                workflow=None) -> dict:
         """The pure-JSON context a reference reads (`workflow_refs`): every
         finished step's `{data, text, status}` and the start's. A step whose
         record was cut past `workflow_node_record_max_chars` after a resume
-        has no `data` or `text`, so a reference into it is `MISSING`."""
+        has no `data` or `text`, so a reference into it is `MISSING`.
+        `B1879`: and `{{ now }}` (read now, as the step starts) and
+        `{{ run.id }}` / `{{ run.workflow }}` (`workflow_refs.run_roots`)."""
         from src.event_bus import trigger_summary
+        from src.workflow_refs import run_roots
 
         steps = {}
         trigger = self.trigger if isinstance(self.trigger, dict) else None
@@ -1276,6 +1306,7 @@ class RunState:
                 entry["data"] = out.get("data")
             steps[node_id] = entry
         ctx = {"steps": json.loads(json.dumps(steps, default=str))}
+        ctx.update(run_roots(run_id, workflow))
         if has_item:
             ctx["item"] = json.loads(json.dumps(item, default=str))
         return ctx

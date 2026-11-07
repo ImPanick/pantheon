@@ -33,7 +33,9 @@ def cond(left, op, right=None):
 
 
 def test_the_closed_list_is_six_operators_and_two_joins_each_with_its_words():
-    assert wl.OPERATORS == ("equals", "contains", "is_empty", "greater_than", "less_than", "one_of")
+    # `B1880` added eleven after these six (`Law 1`: none of the six moved);
+    # `test_a_condition_can_say_not_and_how_it_compares.py` holds the rest.
+    assert wl.OPERATORS[:6] == ("equals", "contains", "is_empty", "greater_than", "less_than", "one_of")
     assert wl.JOINS == ("all", "any")
     assert set(wl.OPERATOR_WORDS) == set(wl.OPERATORS) and set(wl.JOIN_WORDS) == set(wl.JOINS)
 
@@ -101,7 +103,9 @@ def test_no_operator_ever_raises_whatever_it_is_handed():
 
 
 def test_an_unknown_operator_is_false_and_nan_is_not_a_number():
-    assert wl.compare("matches", "a", "a") is False
+    # `B1880`: `matches` is an operator now (a bounded pattern); `regex`,
+    # which is not one, is the unknown word.
+    assert wl.compare("regex", "a", "a") is False
     assert wl.evaluate_condition(cond("a", "eval", "a"), CTX) is False
     assert wl.compare("equals", math.nan, math.nan) is False
 

@@ -75,14 +75,27 @@ from src.task_scheduler import (
 )
 from src.workflow_logic import (
     CASE_PORT_PREFIX,
+    COMPARE_AS,
+    CONDITION_AS_KEY,
+    DATE_OPERATORS,
     JOIN_WORDS,
     JOINS,
+    OP_MATCHES,
     OPERATORS,
     PORT_OTHERWISE,
     PORT_THEN,
+    SET_ON_MISSING,
+    SET_ON_MISSING_KEY,
+    SET_TYPE_WORDS,
+    SET_TYPES,
     case_port,
     describe_condition,
+    reads_as_moment,
+    set_name_parts,
+    set_names_clash,
+    set_stops_on_missing,
 )
+from src.workflow_pattern import PATTERN_HELP, pattern_problem
 from src.workflow_refs import (
     NODE_ID_MAX,
     NODE_ID_RE,
@@ -105,6 +118,7 @@ from src.workflow_slots import (
     FILLED_MAX,
     MAPPING_NEVER,
     SlotError,
+    NEVER_CODE,
     config_leaves,
     filled_fields,
     leaf_name,
@@ -291,7 +305,7 @@ NODE_CONFIG_FIELDS = {
     NODE_KIND_RUN_TASK: ("task_id",),
     NODE_KIND_IF: ("conditions", "join"),
     NODE_KIND_SWITCH: ("cases",),
-    NODE_KIND_SET: ("fields",),
+    NODE_KIND_SET: ("fields", "on_missing"),   # `B1881`: on_missing
     NODE_KIND_MERGE: ("mode",),
     NODE_KIND_WAIT: ("mode", "minutes", "time", "tz", FILLED_KEY),
     NODE_KIND_FOREACH: ("list", "step", "on_error"),
@@ -1197,10 +1211,14 @@ def _check_answer_fields(key, value):
 
 
 def _condition_problem(condition) -> str | None:
-    if not isinstance(condition, dict) or set(condition) - {"left", "op", "right"}:
+    # `B1880`: and what its sides are compared as (`as`), when it says.
+    if not isinstance(condition, dict) or set(condition) - {"left", "op", "right", CONDITION_AS_KEY}:
         return "each condition is a field, a test and a value"
     if not isinstance(condition.get("op"), str):
         return "each condition needs a test"
+    if condition.get(CONDITION_AS_KEY) is not None and condition.get(CONDITION_AS_KEY) not in COMPARE_AS:
+        return (f"a condition compares as {', '.join(COMPARE_AS)}, or says nothing and "
+                f"compares as it looks")
     if not _is_scalar(condition.get("left")):
         return "a condition's field must be text"
     right = condition.get("right")
@@ -1318,6 +1336,26 @@ def _check_filled(key, value):
     return None
 
 
+def _check_set_fields(key, value):
+    """`B1879`. A Set step's fields: `_check_entries`' name and value, and an
+    optional `type` from `workflow_logic.SET_TYPES`."""
+    if value is None:
+        return None
+    if not isinstance(value, list) or len(value) > ENTRIES_MAX:
+        return f"“{key}” must be a list of up to {ENTRIES_MAX} names and values"
+    for entry in value:
+        if not isinstance(entry, dict) or set(entry) - {"name", "value", "type"}:
+            return f"each of “{key}” is a name, a value and what the value is"
+        if not isinstance(entry.get("name"), str):
+            return f"each of “{key}” needs a name"
+        if not _is_json(entry.get("value")):
+            return f"a value in “{key}” is not text, a number, yes/no or a list"
+        if entry.get("type") is not None and entry.get("type") not in SET_TYPES:
+            return (f"the field {entry['name']!r} is {entry.get('type')!r}; a field is "
+                    f"{', '.join(SET_TYPES)}, or says nothing and is as it comes")
+    return None
+
+
 def _check_args(key, value):
     if value is None:
         return None
@@ -1414,7 +1452,7 @@ _FIELD_CHECKS = {
     "answer_fields": _check_answer_fields,
     "conditions": _check_conditions,
     "cases": _check_cases,
-    "fields": _check_entries,
+    "fields": _check_set_fields,
     "headers": _check_entries,
     "query": _check_entries,
     "body": _check_body_entries,
@@ -1463,6 +1501,7 @@ _FIELD_WORDS = {
     "args": "Argument", "skill": "Skill", "language": "Language", "source": "Code",
     "timeout_seconds": "Time limit", "input": "Input",
     FILLED_KEY: "Filled from an earlier step",
+    "on_missing": "If a field is not there",
 }
 
 
@@ -1547,7 +1586,8 @@ def _reference_problem(node: dict, resources: WorkflowResources) -> DocumentRefu
         slot = slot_for(node, path, mcp_schema=schema)
         field = path_text(path)
         if slot.mapping == MAPPING_NEVER:
-            if references_in_text(text):
+            # `B1882`: a Code step's source takes `\{{` as the text `{{`.
+            if references_in_text(text, escapes=(slot == NEVER_CODE)):
                 return _refusal(REFUSE_MAPPED_NEVER, (node_id,),
                                 f"{_called(node)}, {field_words(node, path)}. {slot.why}", field)
             continue
@@ -1598,7 +1638,8 @@ def _upstream_problem(node: dict, graph: dict, by_id: dict) -> DocumentRefusal |
     return None
 
 
-def _conditions_semantics(node, conditions, join, where: str) -> DocumentRefusal | None:
+def _conditions_semantics(node, conditions, join, where: str,
+                          prefix: str = "conditions") -> DocumentRefusal | None:
     node_id = node["id"]
     if not conditions:
         return _refusal(REFUSE_MISSING_SETTING, (node_id,),
@@ -1606,11 +1647,30 @@ def _conditions_semantics(node, conditions, join, where: str) -> DocumentRefusal
     if join is not None and join not in JOINS:
         return _refusal(REFUSE_BAD_SETTING, (node_id,),
                         f"{_called(node)}: “join” must be all or any")
-    for condition in conditions:
+    for k, condition in enumerate(conditions):
         if condition.get("op") not in OPERATORS:
             return _refusal(REFUSE_BAD_SETTING, (node_id,),
                             f"{_called(node)}: {condition.get('op')!r} is not a test this "
                             f"Pantheon has")
+        # `B1880`. A typed pattern, or a typed date, that cannot be read is
+        # said at save, on its field — not found false at every run. (One
+        # that holds a reference is read at run, where a pattern that does
+        # not read is never found.)
+        right = condition.get("right")
+        if not isinstance(right, str) or references_in_text(right):
+            continue
+        field = f"{prefix}[{k}].right"
+        if condition.get("op") == OP_MATCHES:
+            why = pattern_problem(right)
+            if why:
+                return _refusal(REFUSE_BAD_SETTING, (node_id,),
+                                f"{_called(node)}: the pattern “{right}” {why} {PATTERN_HELP}",
+                                field)
+        if condition.get("op") in DATE_OPERATORS and not reads_as_moment(right):
+            return _refusal(REFUSE_BAD_SETTING, (node_id,),
+                            f"{_called(node)}: “{right}” is not a date or a time. Write one "
+                            f"such as 2026-11-07 or 2026-11-07T08:00, or words such as now, "
+                            f"today, yesterday, 3 days ago or in 2 hours", field)
     return None
 
 
@@ -1737,7 +1797,7 @@ def _kind_problem(node: dict, *, owner, tasks_by_id, crew_ids, owner_is_admin,
             return _refusal(REFUSE_MISSING_SETTING, (node_id,),
                             f"{_called(node)} needs at least one way to go")
         ids = set()
-        for case in cases:
+        for k, case in enumerate(cases):
             if not _CASE_ID_RE.fullmatch(case["id"]) or case["id"] in ids:
                 return _refusal(REFUSE_BAD_SETTING, (node_id,),
                                 f"{_called(node)}: two ways share the id {case['id']!r}, or it "
@@ -1749,7 +1809,7 @@ def _kind_problem(node: dict, *, owner, tasks_by_id, crew_ids, owner_is_admin,
                                 f"{_called(node)}: each way needs a name of up to "
                                 f"{CASE_LABEL_MAX} characters")
             found = _conditions_semantics(node, case.get("conditions"), case.get("join"),
-                                          f" for “{label}”")
+                                          f" for “{label}”", f"cases[{k}].conditions")
             if found:
                 return found
     if kind == NODE_KIND_SET:
@@ -1762,12 +1822,27 @@ def _kind_problem(node: dict, *, owner, tasks_by_id, crew_ids, owner_is_admin,
                             f"{_called(node)} makes more than {SET_FIELDS_MAX} fields")
         names = set()
         for field in fields:
-            if not _FIELD_NAME_RE.fullmatch(field["name"]) or field["name"] in names:
+            # `B1879`: a name may be a dotted path (`customer.name`), each
+            # name in it read by the old rule (`workflow_logic.set_name_parts`).
+            if set_name_parts(field["name"]) is None or field["name"] in names:
                 return _refusal(REFUSE_BAD_SETTING, (node_id,),
                                 f"{_called(node)}: a field is called {field['name']!r}, twice or "
                                 f"in a way a reference cannot read. A name is letters, digits "
-                                f"and _, starting with a letter")
+                                f"and _, starting with a letter, and a dot between names puts "
+                                f"one inside the other (customer.name)")
             names.add(field["name"])
+        clash = set_names_clash(names)
+        if clash:
+            inner, outer = clash
+            return _refusal(REFUSE_BAD_SETTING, (node_id,),
+                            f"{_called(node)}: “{inner}” is inside “{outer}”, which is set as "
+                            f"well. Set one or the other")
+        if (config.get(SET_ON_MISSING_KEY) is not None
+                and config.get(SET_ON_MISSING_KEY) not in SET_ON_MISSING):
+            # `B1881`.
+            return _refusal(REFUSE_BAD_SETTING, (node_id,),
+                            f"{_called(node)}: when a field is not there it stops or leaves it "
+                            f"empty", SET_ON_MISSING_KEY)
     if kind == NODE_KIND_MERGE:
         if config.get("mode") is not None and config.get("mode") not in MERGE_MODES:
             return _refusal(REFUSE_BAD_SETTING, (node_id,),
@@ -2458,7 +2533,13 @@ def plan_lines(node: dict, resources: WorkflowResources | None = None) -> list:
     elif kind == NODE_KIND_SET:
         lines.append("Would make these fields:")
         for field in config.get("fields") or ():
-            lines.append(f"{field.get('name')} ← {_shown(field.get('value'))}")
+            # `B1879`: and what the value is made, when the field says.
+            kind = SET_TYPE_WORDS.get(field.get("type"))
+            lines.append(f"{field.get('name')} ← {_shown(field.get('value'))}"
+                         + (f", as {kind}" if kind else ""))
+        if not set_stops_on_missing(config):
+            # `B1881`: said only when it does not stop, which is the default.
+            lines.append("A field that is not there would be left empty, and it would go on.")
     elif kind == NODE_KIND_MERGE:
         lines.append("Would go on as soon as the first branch arrives."
                      if config.get("mode") == MERGE_FIRST else

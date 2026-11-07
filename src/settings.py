@@ -20,6 +20,8 @@ from src.constants import SETTINGS_FILE, FEATURES_FILE
 from src.workflow_runs import FOREACH_MAX_ITEMS_DEFAULT, WAIT_MAX_HOURS_DEFAULT
 # `B1857`. The most steps one workflow may hold, the same way.
 from src.workflow_runs import MAX_STEPS_DEFAULT as WORKFLOW_MAX_STEPS_DEFAULT
+# `B1883`. What an AI step's model is shown of the values it reads, the same way.
+from src.workflow_runs import PROMPT_VALUES_MAX_CHARS_DEFAULT
 # `B1861`. The trigger envelope's cap, stated once in `src/event_bus.py` beside
 # its range. That module imports nothing of the product at load but
 # `src.constants`, so this adds no cycle either.
@@ -342,6 +344,13 @@ DEFAULT_SETTINGS = {
     # run of a document over it is refused in the same words. Settings-only,
     # like the longest Wait: one number for the whole install.
     "workflow_max_steps": WORKFLOW_MAX_STEPS_DEFAULT,
+    # `B1883`. How much of the values an AI step reads (its prompt's
+    # references) its model is shown, in characters, together: 20,000
+    # (`src/workflow_runs.py` owns the number and the bounds, 2,000 to
+    # 1,000,000). Each was cut to 2,000 before, with nothing said. Past it the
+    # longest values are cut first and the step's log names them and this
+    # setting. Settings-only, like the longest Wait.
+    "workflow_prompt_values_max_chars": PROMPT_VALUES_MAX_CHARS_DEFAULT,
     # `P22-17` (`D-2026-10-02-01` §1). How long a parked workflow step's
     # approval card waits for an answer: twelve hours, so an overnight
     # question is still answerable in the morning. Its own key, beside
@@ -1153,6 +1162,8 @@ def int_setting_ranges() -> dict[str, tuple[int, int]]:
         NODE_RECORD_MAX_CHARS_SETTING,
         NODE_RECORDS_DAYS_RANGE,
         NODE_RECORDS_DAYS_SETTING,
+        PROMPT_VALUES_MAX_CHARS_RANGE,
+        PROMPT_VALUES_MAX_CHARS_SETTING,
         WAIT_MAX_HOURS_RANGE,
         WAIT_MAX_HOURS_SETTING,
         WORKFLOW_APPROVAL_TIMEOUT_SETTING,
@@ -1249,6 +1260,8 @@ def int_setting_ranges() -> dict[str, tuple[int, int]]:
         WAIT_MAX_HOURS_SETTING: WAIT_MAX_HOURS_RANGE,
         # `B1857`. The most steps one workflow may hold.
         WORKFLOW_MAX_STEPS_SETTING: WORKFLOW_MAX_STEPS_RANGE,
+        # `B1883`. What an AI step's model is shown of the values it reads.
+        PROMPT_VALUES_MAX_CHARS_SETTING: PROMPT_VALUES_MAX_CHARS_RANGE,
         WORKFLOW_APPROVAL_TIMEOUT_SETTING: (
             MIN_APPROVAL_TTL_SECONDS, MAX_APPROVAL_TTL_SECONDS,
         ),

@@ -7250,7 +7250,8 @@ class TaskScheduler:
 
         step_db = SessionLocal()
         try:
-            ctx = w.state.context()
+            # `B1879`: with `{{ run.id }}`, `{{ run.workflow }}` and `{{ now }}`.
+            ctx = w.state.context(run_id=w.run_id, workflow=w.name)
 
             async def attempt(answer, limit=0):
                 # `B1855`: the time limit bounds the step's own work, not its
@@ -7892,8 +7893,20 @@ class TaskScheduler:
             return StepDone(NodeResult("success", payload=passed, text=text), port)
         if kind == wd.NODE_KIND_SET:
             from src import workflow_logic as wl
-            data, missing = wl.build_set(node, ctx)
-            text = "Set " + ", ".join(f"“{k}”" for k in (data or {})) + "."
+            made = wl.make_set(node, ctx)
+            data, missing = made.data, made.missing
+            if made.wrong:
+                # `B1879`. A field whose value is not the type it says.
+                return StepDone(NodeResult(NODE_STATUS_ERROR, payload=" ".join(made.wrong)), None)
+            if made.absent and wl.set_stops_on_missing(node.get("config")):
+                # `B1881`. A field that read nothing stops the run, as it does
+                # in every other step — unless the step says to leave it empty.
+                return StepDone(NodeResult(NODE_STATUS_ERROR, payload=(
+                    wl.set_missing_sentence(node.get("label") or node["id"], made.absent)
+                    + self._cut_tail(walk))), None)
+            names = [f.get("name") for f in (node.get("config") or {}).get("fields") or ()
+                     if isinstance(f, dict) and isinstance(f.get("name"), str)]
+            text = "Set " + ", ".join(f"“{k}”" for k in dict.fromkeys(names)) + "."
             if missing:
                 text += " Not found, so left empty: " + ", ".join(str(m) for m in missing) + "."
             return StepDone(NodeResult("success", payload=data or {}, text=text), None)
@@ -7936,12 +7949,18 @@ class TaskScheduler:
         """Why a step could not read what it refers to. A record cut past
         `workflow_node_record_max_chars` after a resume is named so."""
         names = ", ".join(str(m) for m in (missing or ()))
+        return f"“{node.get('label')}” refers to something that is not there: {names}.{self._cut_tail(walk)}"
+
+    @staticmethod
+    def _cut_tail(walk) -> str:
+        """" A step it reads was kept only in part …" when a record this run
+        reads was cut after a resume, else "" (shared with a Set step that
+        stops, `B1881`)."""
         cut = []
         if walk is not None:
             cut = [n for n in walk.state.own if walk.state.truncated(n)]
-        tail = (" A step it reads was kept only in part (workflow_node_record_max_chars), "
+        return (" A step it reads was kept only in part (workflow_node_record_max_chars), "
                 "so after a pause its value is not there." if cut else "")
-        return f"“{node.get('label')}” refers to something that is not there: {names}.{tail}"
 
     async def _run_model_step(self, task, workflow_name: str, node: dict, db, slot: str, *,
                               ctx: dict, answer, deliver: bool, may_wait: bool):
@@ -7951,7 +7970,9 @@ class TaskScheduler:
           * `P22-09`: a reference in the prompt becomes a named slot —
             "Summarise the issue titled [title]." — and the values travel in
             their own untrusted block (`untrusted_context_message`, the gate
-            armed), clipped as a trigger payload is (`clip_field`).
+            armed), clipped as a trigger payload is (`clip_field`) — until
+            `B1883`: now held together to `workflow_prompt_values_max_chars`,
+            the longest cut first, and the step's log says which.
           * `P22-15`: a Skill step follows the skill read at run time, wrapped
             as the skill tester wraps it, with skills not injected again.
           * `P22-16`: `tools` limits what it may call; `answer_fields` asks for
@@ -7961,7 +7982,6 @@ class TaskScheduler:
         """
         from src import workflow_document as wd
         from src.builtin_actions import NODE_STATUS_ERROR, NODE_STATUS_SUCCESS, NodeResult
-        from src.event_bus import TRIGGER_FIELD_MAX_CHARS, TRIGGER_MAX_CHARS, clip_field
 
         config = dict(node.get("config") or {})
         state = self._state_for(slot)
@@ -7986,13 +8006,26 @@ class TaskScheduler:
             if missing:
                 return StepDone(NodeResult(NODE_STATUS_ERROR, payload=self._missing_words(
                     node, missing, None)), None)
-            lines = []
-            for slot_name, _ref, value in named:
-                shown = value if isinstance(value, str) else json.dumps(value, default=str)
-                lines.append(f"[{slot_name}] = {clip_field(shown, TRIGGER_FIELD_MAX_CHARS)}")
-            body = "\n".join(lines)
-            if len(body) > TRIGGER_MAX_CHARS:
-                body = body[:TRIGGER_MAX_CHARS].rstrip() + "\n… (truncated)"
+            # `B1883`: each value was cut to 2,000 characters and the block
+            # to 6,000 (a trigger payload's numbers, `clip_field`) with
+            # nothing said. Now they are held together to
+            # `workflow_prompt_values_max_chars`, the longest cut first
+            # (`fit_values`), and the step's log says which were cut.
+            from src import workflow_runs as wr
+            texts = [(value if isinstance(value, str) else json.dumps(value, default=str)).strip()
+                     for _slot, _ref, value in named]
+            cap = wr.prompt_values_max_chars()
+            shown, cut = refs.fit_values(texts, cap)
+            body = "\n".join(f"[{slot_name}] = {text}"
+                             for (slot_name, _ref, _value), text in zip(named, shown))
+            if cut:
+                which = ", ".join(f"{named[i][1]} (the first {kept:,} of {total:,} characters)"
+                                  for i, kept, total in cut)
+                self._record_run_step(slot, kind="progress", detail=(
+                    f"The model was shown only the start of {which}: the values this step "
+                    f"reads come to {sum(len(t) for t in texts):,} characters, more than the "
+                    f"{cap:,} characters it may be shown "
+                    f"({wr.PROMPT_VALUES_MAX_CHARS_SETTING}). Raise it to show more."))
             extra.append(untrusted_context_message(
                 "values this step was handed", body,
                 provenance_origin="external", arm_tool_gate=True))
@@ -8051,8 +8084,10 @@ class TaskScheduler:
             return StepDone(NodeResult(NODE_STATUS_ERROR, payload=self._missing_words(
                 node, missing or [source], walk)), None)
         if not isinstance(value, list):
+            # `B1881`: in words — "was handed text", never Python's "str".
+            from src.workflow_logic import type_words
             return StepDone(NodeResult(NODE_STATUS_ERROR, payload=(
-                f"“{label}” was handed {type(value).__name__}, not a list, so there was "
+                f"“{label}” was handed {type_words(value)}, not a list, so there was "
                 f"nothing to go through.")), None)
         cap = wr.foreach_max_items(task.owner)
         total = len(value)
@@ -8238,7 +8273,13 @@ class TaskScheduler:
                     return StepDone(NodeResult(NODE_STATUS_ERROR, payload=self._missing_words(
                         node, rendered.missing)), None)
                 input_obj = json.loads(rendered.content)
-                call = rendered._replace(content=str(config.get("source") or ""), missing=())
+                # `B1882`: `\{{` written where the code itself holds `{{`
+                # (an f-string's `f"\{{item}}"`) runs as `{{`; the gate, the
+                # seal and the workstation all see the code as it runs.
+                from src.workflow_refs import unescape_references
+                source = unescape_references(str(config.get("source") or ""))
+                node = {**node, "config": {**config, "source": source}}
+                call = rendered._replace(content=source, missing=())
             else:
                 mcp_schema = None
                 if kind == wd.NODE_KIND_MCP:
@@ -8700,7 +8741,10 @@ class TaskScheduler:
                                envelope=input_envelope, source=source, outputs=outputs)
         if reads is not None:
             reads.extend(found)
-        return ctx
+        # `B1879`: a step tested alone is in no run, so `{{ run.id }}` is null;
+        # `{{ run.workflow }}` and `{{ now }}` read as in a run.
+        from src.workflow_refs import run_roots
+        return {**ctx, **run_roots(None, getattr(task, "name", None))}
 
     async def _run_chained(self, task_id: str, *, handoff: dict | None = None,
                            started_by: str = STARTED_BY_BACKGROUND):

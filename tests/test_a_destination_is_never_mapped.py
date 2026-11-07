@@ -93,7 +93,7 @@ FULL = {
     "if": {"conditions": [{"left": "l", "op": "equals", "right": "r"}], "join": "all"},
     "switch": {"cases": [{"id": "a", "label": "A", "join": "any",
                           "conditions": [{"left": "l", "op": "one_of", "right": ["x", "y"]}]}]},
-    "set": {"fields": [{"name": "n", "value": "v"}]},
+    "set": {"fields": [{"name": "n", "value": "v"}], "on_missing": "empty"},   # `B1881`
     "merge": {"mode": "all"},
     # `B1884`: `filled` — the settings the author opened; none here, so the
     # table below reads every setting as declared.
@@ -370,7 +370,9 @@ def test_a_command_s_own_braces_are_its_own_text(text):
 
 @pytest.mark.parametrize("text", [
     "{{ STEPS.fetch.data.x }}", "{{ steps . fetch.data.x }}", "{{ {{ steps.fetch.data.x }} }}",
-    "{{ steps.fetch.data.x | upper }}", "{{ steps.fetch.status }}", "{{ steps.fetch.data.x",
+    # `B1879`: `| upper` is a change a reference may now end in; a change
+    # off the closed list (`workflow_refs.FILTERS`) is still refused.
+    "{{ steps.fetch.data.x | shout }}", "{{ steps.fetch.status }}", "{{ steps.fetch.data.x",
 ])
 def test_a_value_setting_refuses_a_brace_that_is_not_a_reference(text):
     refusal = after_fetch(step("p", prompt=f"Summarise {text}"))
