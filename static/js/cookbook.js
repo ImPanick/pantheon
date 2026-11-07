@@ -1209,11 +1209,13 @@ async function _fetchDependencies() {
       // For backends with a recipe catalog (vllm / sglang / llama_cpp),
       // append a caret button that toggles a per-row recipe panel below.
       const hasRecipe = RECIPE_BACKENDS.has(pkg.name);
-      // Standalone recipe-caret button removed — the "Pick install
-      // command" action lives inside the Installed ▾ dropdown menu
-      // (see _showDepMenu) so each row only has ONE caret to click.
-      // Kept the variable so downstream concat code stays the same.
-      const recipeCaret = '';
+      // `B1969`. The caret is the only control that opens the recipe panel
+      // (the Installed ▾ menu has no recipe item), and the HW Fit and serve
+      // card deep links open the panel by clicking it. The chevron comes from
+      // the icon table (`B230`); the toggle below rotates its svg.
+      const recipeCaret = hasRecipe
+        ? `<button type="button" class="cookbook-dep-tag cookbook-dep-recipe-caret" data-dep-recipe-toggle="${esc(pkg.name)}" title="Pick a model to see the exact install commands" aria-label="Install commands for ${esc(pkg.name)}" aria-expanded="false" style="background:none;border:1px solid var(--border);padding:2px 6px;display:inline-flex;align-items:center;cursor:pointer;">${chevronIcon({ size: 11, style: 'transition:transform 0.15s' })}</button>`
+        : '';
       const recipePanel = hasRecipe ? _recipePanelHtml(pkg.name) : '';
       // When llama_cpp (or any future engine) reports build_deps_missing
       // from its system_prereqs probe, surface a one-tap install button
