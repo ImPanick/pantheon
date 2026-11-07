@@ -560,7 +560,7 @@ export function createWorkflowPanels({
    * the list of what earlier steps made (`fields()`, C-W), plus `extra`
    * sources (a For-each step's item); a `never` box says why.
    */
-  function slotDecorator({ upstream = [], fields = null, extra = () => [] } = {}) {
+  function slotDecorator({ upstream = [], fields = null, extra = () => [], hide = null } = {}) {
     const labelOf = (id) => {
       if (id === 'start') return 'The start';
       const u = (Array.isArray(upstream) ? upstream : []).find((x) => x && String(x.id) === String(id));
@@ -570,8 +570,9 @@ export function createWorkflowPanels({
       slot, field, labelOf,
       pick: async (anchor) => {
         const load = typeof fields === 'function' ? fields : async () => ({ ok: true, sources: [] });
-        const res = await load();
-        return openFieldPicker(anchor, { load: () => res, extra: extra(res), holdEscape: hold, layer });
+        const got = await load();
+        const res = typeof hide === 'function' ? hide(got) : got;
+        return openFieldPicker(anchor, { load: () => res, extra: extra(got), holdEscape: hold, layer });
       },
     });
   }
@@ -580,24 +581,60 @@ export function createWorkflowPanels({
   const entryOf = (pal, kind) => (pal && Array.isArray(pal.kinds) ? pal.kinds.find((k) => k && k.kind === kind) || {} : {});
 
   /** `P22-12`. What `{{ item }}` holds inside a For-each step whose list is
-   *  `listRef`: the whole item, and — when the fields listed show an example
-   *  of that list — each key of its first item. */
+   *  `listRef`: the whole item, and each field of an item — from an example
+   *  of the list when one is shown, and (`B1848`) from the fields the list's
+   *  first item was flattened into (`…issues[0].title`), the shape the
+   *  fields route sends (it says a list's example in words, "3 items", so
+   *  only "the whole item" was ever offered). */
   function itemSources(listRef, res) {
     const fieldsOut = [{ ref: '{{ item }}', path: 'the whole item', type: '' }];
+    const seen = new Set(['{{ item }}']);
+    const add = (rest, example, type = '') => {
+      const ref = `{{ item.${rest} }}`;
+      if (seen.has(ref)) return;
+      seen.add(ref);
+      fieldsOut.push({ ref, path: `item.${rest}`, type, example });
+    };
     const ref = String(listRef || '').trim();
+    const inner = innerOf(ref);
     const sources = res && Array.isArray(res.sources) ? res.sources : [];
     for (const src of sources) {
       for (const f of (src && Array.isArray(src.fields) ? src.fields : [])) {
-        if (!f || String(f.ref) !== ref || !Array.isArray(f.example) || !f.example.length) continue;
-        const first = f.example[0];
-        if (first && typeof first === 'object' && !Array.isArray(first)) {
-          for (const k of Object.keys(first)) {
-            if (/^[A-Za-z_][A-Za-z0-9_]{0,63}$/.test(k)) fieldsOut.push({ ref: `{{ item.${k} }}`, path: `item.${k}`, type: '', example: first[k] });
+        if (!f) continue;
+        if (String(f.ref) === ref && Array.isArray(f.example) && f.example.length) {
+          const first = f.example[0];
+          if (first && typeof first === 'object' && !Array.isArray(first)) {
+            for (const k of Object.keys(first)) {
+              if (/^[A-Za-z_][A-Za-z0-9_]{0,63}$/.test(k)) add(k, first[k]);
+            }
           }
+          continue;
+        }
+        const at = inner ? innerOf(String(f.ref || '')) : '';
+        if (inner && at.startsWith(inner + '[0].')) {
+          const rest = at.slice(inner.length + 4);
+          if (/^[A-Za-z_][A-Za-z0-9_.[\]]{0,200}$/.test(rest)) add(rest, f.example, f.type || '');
         }
       }
     }
     return [{ node_id: 'item', label: 'Each item', origin: '', fields: fieldsOut }];
+  }
+  /** `{{ steps.a.data.x }}` → `steps.a.data.x` ('' for anything else). */
+  function innerOf(ref) {
+    const m = /^\{\{\s*([^{}]+?)\s*\}\}$/.exec(String(ref || '').trim());
+    return m ? m[1] : '';
+  }
+  /** `B1848`. Inside a For-each, the looped list's own `[0]` fields are a
+   *  trap — they read the FIRST item on every pass — so they are left out of
+   *  the step's picker; `{{ item.… }}` is offered for each instead. */
+  function withoutFirstItem(listRef, res) {
+    const inner = innerOf(listRef);
+    if (!inner || !res || !Array.isArray(res.sources)) return res;
+    return {
+      ...res,
+      sources: res.sources.map((src) => (src && Array.isArray(src.fields)
+        ? { ...src, fields: src.fields.filter((f) => !(f && innerOf(f.ref).startsWith(inner + '[0]'))) } : src)),
+    };
   }
 
   /** One step's editor in `formHost`: the task form for a task kind (with
@@ -610,6 +647,7 @@ export function createWorkflowPanels({
     const pickField = slotDecorator({
       upstream, fields,
       extra: (res) => (inForeach ? itemSources(inForeach(), res) : []),
+      hide: inForeach ? (res) => withoutFirstItem(inForeach(), res) : null,
     });
     if (TASK_KINDS.has(kind)) {
       if (typeof mountTaskFields !== 'function') return null;
