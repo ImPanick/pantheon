@@ -2067,6 +2067,9 @@ FUNCTION_TOOL_SCHEMAS = [
             # inventing a contract. No `enum` is added to `quality`: the
             # handler accepts any string and defaults, and § `B1303` is
             # explicit that a schema here is normalised, never narrowed.
+            # `B2006`: `quality` said "(default medium)", so a model wrote
+            # medium where nobody had asked for a quality, and a named one now
+            # overrules the quality in Settings.
             "description": "Generate an AI image from a text prompt. Specify model, size, and quality. Art, illustrations, photos.",
             "parameters": {
                 "type": "object",
@@ -2074,7 +2077,7 @@ FUNCTION_TOOL_SCHEMAS = [
                     "prompt": {"type": "string", "description": "Image description prompt"},
                     "model": {"type": "string", "description": "Model name (auto-detects if omitted)"},
                     "size": {"type": "string", "description": "Image size (default 1024x1024)"},
-                    "quality": {"type": "string", "description": "Quality: low, medium, high, auto (default medium)"},
+                    "quality": {"type": "string", "description": "Quality: low, medium, high or auto. Leave it out unless the person asked for one; the quality set in Settings is used."},
                 },
                 "required": ["prompt"]
             }

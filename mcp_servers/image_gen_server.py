@@ -52,7 +52,10 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
     prompt = arguments.get("prompt", "")
     model_spec = arguments.get("model", "")
     size = arguments.get("size", "1024x1024")
-    quality = arguments.get("quality", "medium")
+    # `B2006`: the quality the call names, or "" for none. This defaulted to
+    # "medium", so a call that asked for medium read as one that asked for
+    # nothing and was given the quality in Settings.
+    quality = str(arguments.get("quality") or "").strip()
 
     if not prompt:
         return [TextContent(type="text", text="Error: Image prompt is required")]
@@ -69,8 +72,8 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
 
         if not model_spec:
             model_spec = _settings.get("image_model", "")
-        if quality == "medium" and _settings.get("image_quality"):
-            quality = _settings["image_quality"]
+        if not quality:
+            quality = _settings.get("image_quality") or "medium"
 
         # Auto-detect best available image model
         if not model_spec:
