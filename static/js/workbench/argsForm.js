@@ -33,9 +33,37 @@ function _el(tag, cls, text) {
   return n;
 }
 
+/** `B1886` (`anyof-optional-args-never`). An optional argument as the type it
+ *  is optional of — `workflow_slots.effective_schema`'s rule, the same one
+ *  the server classifies and coerces with, so the box and the slot agree.
+ *  pydantic v2 and FastMCP write `count: int | None` as
+ *  `{ anyOf: [{ type: 'integer' }, { type: 'null' }] }`, with no `type` of
+ *  its own, and this form called it plain "text", gave it a text box and
+ *  sent `"3"` as a string. Only an `anyOf`/`oneOf` of ONE schema and
+ *  `{ type: 'null' }` is unwrapped; every other shape is read as it was. */
+export function effectiveSchema(prop) {
+  const p = prop && typeof prop === 'object' ? prop : {};
+  if ('type' in p) return p;
+  const keys = ['anyOf', 'oneOf'].filter((k) => Array.isArray(p[k]));
+  if (keys.length !== 1) return p;
+  const members = p[keys[0]];
+  const isNull = (m) => m && typeof m === 'object' && m.type === 'null' && Object.keys(m).length === 1;
+  const real = members.filter((m) => !isNull(m));
+  if (members.length !== 2 || real.length !== 1 || !real[0] || typeof real[0] !== 'object') return p;
+  const member = real[0];
+  const types = typeof member.type === 'string' ? [member.type]
+    : (Array.isArray(member.type) && member.type.every((t) => typeof t === 'string') ? member.type : []);
+  if (!types.length || 'anyOf' in member || 'oneOf' in member) return p;
+  const out = {};
+  for (const [k, v] of Object.entries(p)) if (k !== keys[0]) out[k] = v;
+  for (const [k, v] of Object.entries(member)) if (k !== 'type' && !(k in out)) out[k] = v;
+  out.type = types.includes('null') ? types.slice() : [...types, 'null'];
+  return out;
+}
+
 /** The type of one property, in a word a person reads. */
 export function typeWord(prop) {
-  const p = prop && typeof prop === 'object' ? prop : {};
+  const p = effectiveSchema(prop);
   if (Array.isArray(p.enum) && p.enum.length) return 'one of a list';
   const t = Array.isArray(p.type) ? p.type.filter((x) => x !== 'null')[0] : p.type;
   return ({ string: 'text', number: 'a number', integer: 'a whole number', boolean: 'yes or no',
@@ -43,7 +71,7 @@ export function typeWord(prop) {
 }
 
 const _kind = (prop) => {
-  const p = prop && typeof prop === 'object' ? prop : {};
+  const p = effectiveSchema(prop);
   if (Array.isArray(p.enum) && p.enum.length) return 'enum';
   const t = Array.isArray(p.type) ? p.type.filter((x) => x !== 'null')[0] : p.type;
   if (t === 'boolean') return 'boolean';
@@ -100,7 +128,9 @@ export function mountArgsForm(host, { tool, values = {}, pickField = null, lenie
   const rows = [];
   const handles = {};
   for (const name of names) {
-    const prop = props[name] && typeof props[name] === 'object' ? props[name] : {};
+    // `B1886`: an optional argument is drawn as the type it is optional of —
+    // its choices, its default and its description included.
+    const prop = effectiveSchema(props[name] && typeof props[name] === 'object' ? props[name] : {});
     const kind = _kind(prop);
     const row = _el('div', 'wf-arg');
     row.dataset.arg = name;
@@ -200,4 +230,4 @@ export function mountArgsForm(host, { tool, values = {}, pickField = null, lenie
   };
 }
 
-export default { mountArgsForm, typeWord };
+export default { mountArgsForm, typeWord, effectiveSchema };

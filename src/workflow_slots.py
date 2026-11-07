@@ -337,17 +337,70 @@ def _schema_types(schema) -> tuple:
     return ()
 
 
+# `B1886` (`anyof-optional-args-never`). The two keys a JSON schema writes an
+# "either this or nothing" with. pydantic v2 and FastMCP — which most Python
+# MCP servers are built on — describe `message: str | None = None` as
+#
+#     {"anyOf": [{"type": "string"}, {"type": "null"}], "default": null}
+#
+# with no `type` of its own, so `_schema_types` read no type and
+# `classify_argument` said `never`: every optional text argument on those
+# servers could not take a value from an earlier step, even one named `text`
+# or `message`, and the form called a whole number "text".
+_EITHER_KEYS = ("anyOf", "oneOf")
+
+
+def effective_schema(schema):
+    """`schema` as the classifier and the coercion read it (`B1886`): an
+    `anyOf`/`oneOf` of ONE schema and `{"type": "null"}` is that one schema
+    with `null` added to its type — its `format`, `enum` and the rest kept, so
+    `{"anyOf": [{"type": "string", "format": "uri"}, {"type": "null"}]}` is
+    still an address and still `never`. The outer schema's own words (its
+    `description`, `default`, `title`) stay on top.
+
+    Anything else is handed back as it is, so it reads exactly as before:
+    a choice of two real types, a member that is a `$ref` (no `type`, so
+    `never`), a schema that also names a `type` beside its `anyOf`. Fail
+    closed is the point — this only ever turns the one shape a person means
+    by "optional" into the shape it stands for."""
+    if not isinstance(schema, dict) or "type" in schema:
+        return schema
+    keys = [k for k in _EITHER_KEYS if isinstance(schema.get(k), list)]
+    if len(keys) != 1:
+        return schema
+    members = schema[keys[0]]
+    real = [m for m in members if not (isinstance(m, dict) and m.get("type") == "null"
+                                       and len(m) == 1)]
+    if len(real) != 1 or len(members) != 2 or not isinstance(real[0], dict):
+        return schema
+    member = real[0]
+    member_types = _schema_types(member)
+    if not member_types or any(k in member for k in _EITHER_KEYS):
+        return schema
+    out = {k: v for k, v in schema.items() if k != keys[0]}
+    for key, value in member.items():
+        if key != "type":
+            out.setdefault(key, value)
+    out["type"] = [*member_types, *(() if "null" in member_types else ("null",))]
+    return out
+
+
 def classify_argument(name, schema) -> Slot:
     """May outside data fill the argument `name`, whose JSON schema is
     `schema`? Fails closed: `value` only when every part of the name is in
     `ARGUMENT_WORDS`, the type is text, a number or a yes/no, and the schema
     names no `format`. Everything else is `never` — any object, any list, any
-    address format, any schema that is missing or not an object."""
+    address format, any schema that is missing or not an object.
+
+    `B1886`: an optional argument (`anyOf` of one type and `null`) is read as
+    that type (`effective_schema`), so `message: str | None` is answered as
+    `message: str` is — and an optional address is still an address."""
     parts = name_parts(name)
     if not parts or any(p not in ARGUMENT_WORDS for p in parts):
         return NEVER_NOT_TEXT
     if not isinstance(schema, dict):
         return NEVER_NOT_TEXT
+    schema = effective_schema(schema)
     types = [t for t in _schema_types(schema) if t != "null"]
     if not types or any(t not in ARGUMENT_TYPES for t in types):
         return NEVER_NOT_TEXT
@@ -490,6 +543,9 @@ def _coerce(value, schema, label: str):
     structure: the JSON value as it is."""
     if schema is None:
         return value
+    # `B1886`: an optional argument is coerced as the type it is optional of,
+    # and `null` handed to it stays `null`.
+    schema = effective_schema(schema) if isinstance(schema, dict) else schema
     types = [t for t in _schema_types(schema) if t != "null"] or ["string"]
     if value is None and "null" in _schema_types(schema):
         return None
@@ -681,7 +737,7 @@ __all__ = [
     "MAPPING_VALUE", "MAPPING_NEVER", "MAPPINGS", "CARRY_INLINE", "CARRY_CONTEXT",
     "CARRIES", "WHY_WHERE", "WHY_WHAT", "WHY_WHEN", "WHY_NOT_TEXT", "WHYS", "Slot",
     "NODE_SLOTS", "CONTENT_WORDS", "FORMAT_WORDS", "ARGUMENT_WORDS", "ADDRESS_FORMATS",
-    "classify_argument", "action_param_slots", "slot_for", "declared_fields", "path_of",
+    "classify_argument", "effective_schema", "action_param_slots", "slot_for", "declared_fields", "path_of",
     "path_text", "config_leaves", "name_parts", "SlotError", "RenderedCall",
     "render_call", "SLOT_MAX_CHARS", "CALL_MAX_BYTES", "MISSING",
 ]
