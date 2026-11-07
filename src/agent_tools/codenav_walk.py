@@ -142,7 +142,9 @@ def grep_walk(root, pattern, ignore_case, glob_pat, max_hits, skip_dirs,
     on PATH, Python's `re` over a pruned walk when it is not."""
     rg = shutil.which("rg")
     if rg:
-        cmd = [rg, "--line-number", "--no-heading", "--color=never",
+        # `--null` ends each hit's path with a NUL, so the path can be split
+        # off whatever the line holds and asked `is_sensitive` below.
+        cmd = [rg, "--line-number", "--no-heading", "--color=never", "--null",
                "--max-count", str(max_hits)]
         if ignore_case:
             cmd.append("--ignore-case")
@@ -164,7 +166,27 @@ def grep_walk(root, pattern, ignore_case, glob_pat, max_hits, skip_dirs,
             # here its line is kept, with the undecodable bytes marked.
             p = subprocess.run(cmd, capture_output=True, text=True, errors="replace",
                                timeout=20)
-            lines = [ln for ln in (p.stdout or "").splitlines() if ln][:max_hits]
+            # The globs above are names; the rule is `is_sensitive`, the one
+            # the walk below asks. A `--glob` the call passes re-includes what
+            # a negated one left out (a project's `.env`), and the data
+            # directory's own records have no name to exclude by — so every
+            # hit's file is asked here too. Split on newlines only: a line's
+            # own text may hold a character `splitlines` would cut at.
+            lines, verdicts = [], {}
+            for ln in (p.stdout or "").split("\n"):
+                ln = ln[:-1] if ln.endswith("\r") else ln
+                if not ln:
+                    continue
+                path, nul, rest = ln.partition("\0")
+                if nul:
+                    if path not in verdicts:
+                        verdicts[path] = is_sensitive(os.path.realpath(path))
+                    if verdicts[path]:
+                        continue
+                    ln = f"{path}:{rest}"
+                lines.append(ln)
+                if len(lines) >= max_hits:
+                    break
             return lines, None
         except subprocess.TimeoutExpired:
             return None, "grep: timed out"

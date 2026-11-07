@@ -179,6 +179,22 @@ def _is_install_record(resolved: str) -> bool:
         return False
 
 
+def _hidden_from_search(resolved: str) -> bool:
+    """What `grep`, `glob` and `ls` leave out of a walk: what `read_file` refuses. `B1782`.
+
+    `_resolve_tool_path` refuses a sensitive path and an install record
+    (`B1418`), but the three search tools walk a root and never pass each file
+    through it. With no workspace bound the root is the data directory, so
+    `grep` printed the lines of `auth.json` (TOTP secrets), `sessions.json`
+    (live login tokens) and `.app_key` (the key every stored secret is
+    encrypted with), and `glob`/`ls` listed them, with no card at any rung.
+    Upstream Odysseus closed the same hole in its advisory 934d23c0; this is
+    Pantheon's rule applied to the walks, not upstream's allowlist, so a
+    project's own `auth.json` and every content folder stay searchable.
+    """
+    return _is_sensitive_path(resolved) or _is_install_record(resolved)
+
+
 def _tool_path_roots() -> list[str]:
     """Return the list of directory roots that read_file / write_file
     may touch. Default: project data/ + system temp dirs. Extra roots

@@ -567,7 +567,12 @@ def _ls_text(root: str, rows: List[Tuple[bool, str, int]]) -> str:
 
 class LsTool:
     async def execute(self, content: str, ctx: dict) -> dict:
-        from src.tool_execution import _resolve_tool_path, _resolve_search_root, _truncate
+        from src.tool_execution import (
+            _is_install_record,
+            _resolve_tool_path,
+            _resolve_search_root,
+            _truncate,
+        )
         raw_path = _ls_args(content)
         try:
             root = _resolve_search_root(raw_path)
@@ -582,6 +587,11 @@ class LsTool:
                 with os.scandir(root) as it:
                     for entry in it:
                         if entry.name.startswith("."):
+                            continue
+                        # The install's own records and its `ssh/` are not
+                        # listed: `read_file` refuses them (`B1418`), and a
+                        # listing of the data directory named them all.
+                        if _is_install_record(os.path.realpath(entry.path)):
                             continue
                         try:
                             is_dir = entry.is_dir(follow_symlinks=False)
@@ -655,7 +665,7 @@ class GlobTool:
     async def execute(self, content: str, ctx: dict) -> dict:
         from src.tool_execution import (
             _SENSITIVE_BASENAMES,
-            _is_sensitive_path,
+            _hidden_from_search,
             _resolve_tool_path,
             _resolve_search_root,
             _truncate,
@@ -670,18 +680,19 @@ class GlobTool:
             return {"error": f"glob: {e}", "exit_code": 1}
 
         # `P20-03`: the walk is `codenav_walk.glob_walk`, the text the
-        # workstation runs too. The sensitive-path rule it applies here is
-        # `_is_sensitive_path` itself.
+        # workstation runs too. The rule it applies here is
+        # `_hidden_from_search`: `_is_sensitive_path` and the install's own
+        # records (`B1418`), the two things `read_file` refuses.
         paths, err = await asyncio.to_thread(
             _codenav.glob_walk, root, pattern, _CODENAV_SKIP_DIRS, _SENSITIVE_BASENAMES,
-            _is_sensitive_path, _CODENAV_MAX_HITS)
+            _hidden_from_search, _CODENAV_MAX_HITS)
         return _glob_result(paths, err, pattern, root)
 
 class GrepTool:
     async def execute(self, content: str, ctx: dict) -> dict:
         from src.tool_execution import (
             _SENSITIVE_FILE_PATTERNS,
-            _is_sensitive_path,
+            _hidden_from_search,
             _resolve_tool_path,
             _resolve_search_root,
             _truncate,
@@ -698,10 +709,11 @@ class GrepTool:
 
         # `P20-03`: `codenav_walk.grep_walk` — ripgrep when it is on PATH,
         # Python's `re` over a pruned walk when not — shared with the
-        # workstation, which runs the same text.
+        # workstation, which runs the same text. Every hit's file is asked
+        # `_hidden_from_search`, the rule `read_file` applies (`B1418`).
         lines, err = await asyncio.to_thread(
             _codenav.grep_walk, root, pattern, ignore_case, glob_pat, max_hits,
-            _CODENAV_SKIP_DIRS, _SENSITIVE_FILE_PATTERNS, _is_sensitive_path, _CODENAV_MAX_LINE)
+            _CODENAV_SKIP_DIRS, _SENSITIVE_FILE_PATTERNS, _hidden_from_search, _CODENAV_MAX_LINE)
         return _grep_result(lines, err, pattern, root, max_hits)
 
 class GetWorkspaceTool:

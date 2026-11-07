@@ -158,6 +158,129 @@ def test_the_refusal_says_where_the_work_belongs(data_dir):
     assert "projects folder" in message
 
 
+# ── B1782: grep, glob and ls ask the question read_file asks ────────────────
+#
+# Upstream Odysseus advisory 934d23c0. `_resolve_tool_path` refused the
+# records, but the search tools walk a root and never asked: with no workspace
+# bound, `grep` printed the lines of `auth.json`, `sessions.json` and the key
+# file, `glob` and `ls` listed them, and nothing asked for a card.
+
+_SECRET = "needle-7f3a"
+
+
+def _seed_secrets(data):
+    """The records and the Cookbook identity carry the token; so do the
+    person's own files, which must still be found."""
+    for name in ("auth.json", "sessions.json", "settings.json", ".app_key"):
+        (data / name).write_text(f'{{"totp_secret": "{_SECRET}"}}\n')
+    (data / "ssh" / "config").write_text(f"Host {_SECRET}\n")
+    site = data / "projects" / "site"
+    site.mkdir(parents=True, exist_ok=True)
+    (site / "auth.json").write_text(f'{{"theirs": "{_SECRET}"}}\n')
+    (data / "KeystoneInc" / "app.js").write_text(f"// {_SECRET}\n")
+    (data / "uploads" / "2026" / "notes.txt").write_text(f"{_SECRET}\n")
+    return site
+
+
+def _run(tool, args):
+    import json
+    from src.agent_tools import TOOL_HANDLERS
+    return asyncio.run(TOOL_HANDLERS[tool](json.dumps(args), {}))
+
+
+@pytest.fixture(params=["ripgrep", "walk"])
+def grep_engine(request, monkeypatch):
+    """Both of grep's engines: ripgrep when it is on PATH, the Python walk
+    when it is not."""
+    import shutil
+    real_which = shutil.which
+    if request.param == "ripgrep":
+        if not real_which("rg"):
+            pytest.skip("ripgrep not on PATH")
+    else:
+        monkeypatch.setattr(shutil, "which",
+                            lambda name, *a, **k: None if name == "rg" else real_which(name, *a, **k))
+    return request.param
+
+
+def _hit_files(output):
+    return {line.split(":", 1)[0] for line in output.splitlines() if ":" in line}
+
+
+def test_grep_does_not_print_the_installs_records(data_dir, grep_engine):
+    site = _seed_secrets(data_dir)
+    out = _run("grep", {"pattern": _SECRET})
+    assert "error" not in out, out
+    files = _hit_files(out["output"])
+    for record in ("auth.json", "sessions.json", "settings.json", ".app_key"):
+        assert str(data_dir / record) not in files, (record, out["output"])
+    assert not any("/ssh/" in f for f in files), out["output"]
+    # The person's own files, a project's own auth.json among them, are found.
+    assert str(site / "auth.json") in files
+    assert str(data_dir / "KeystoneInc" / "app.js") in files
+    assert str(data_dir / "uploads" / "2026" / "notes.txt") in files
+
+
+def test_grep_inside_a_workspace_bound_to_the_data_directory(data_dir, grep_engine):
+    _seed_secrets(data_dir)
+    token = te._active_workspace.set(str(data_dir))
+    try:
+        out = _run("grep", {"pattern": _SECRET})
+    finally:
+        te._active_workspace.reset(token)
+    files = _hit_files(out["output"])
+    assert str(data_dir / "auth.json") not in files, out["output"]
+    assert str(data_dir / "KeystoneInc" / "app.js") in files
+
+
+def test_grep_does_not_follow_a_link_from_a_project_to_a_record(data_dir, grep_engine):
+    site = _seed_secrets(data_dir)
+    (site / "innocent.json").symlink_to(data_dir / "sessions.json")
+    out = _run("grep", {"pattern": _SECRET})
+    assert str(site / "innocent.json") not in _hit_files(out["output"]), out["output"]
+
+
+def test_a_glob_the_call_passes_does_not_reopen_a_key_file(data_dir):
+    """ripgrep only: a `--glob` the call passes re-includes what the negated
+    name globs left out, so the hit's own path is asked the sensitive rule."""
+    import shutil
+    if not shutil.which("rg"):
+        pytest.skip("ripgrep not on PATH")
+    site = _seed_secrets(data_dir)
+    (site / ".env").write_text(f"API_KEY={_SECRET}\n")
+    (site / ".ssh").mkdir()
+    (site / ".ssh" / "config").write_text(f"Host {_SECRET}\n")
+    for glob in (".env", "config", "*"):
+        out = _run("grep", {"pattern": _SECRET, "path": str(site), "glob": glob})
+        files = _hit_files(out.get("output", ""))
+        assert str(site / ".env") not in files, (glob, out)
+        assert str(site / ".ssh" / "config") not in files, (glob, out)
+
+
+@pytest.mark.parametrize("pattern", ["auth.json", "**/*.json", "*", "ssh"])
+def test_glob_does_not_list_the_installs_records(data_dir, pattern):
+    site = _seed_secrets(data_dir)
+    out = _run("glob", {"pattern": pattern})
+    assert "error" not in out, out
+    listed = set(out["output"].splitlines())
+    for record in ("auth.json", "sessions.json", "settings.json", "app.db"):
+        assert str(data_dir / record) not in listed, (pattern, record, out["output"])
+    assert str(data_dir / "ssh") not in listed and str(data_dir / "ssh" / "config") not in listed
+    if pattern in ("auth.json", "**/*.json"):
+        assert str(site / "auth.json") in listed, out["output"]
+
+
+def test_ls_of_the_data_directory_lists_content_not_records(data_dir):
+    _seed_secrets(data_dir)
+    out = _run("ls", {"path": ""})
+    assert "error" not in out, out
+    names = {ln.strip().split("  ")[0].rstrip("/") for ln in out["output"].splitlines()[1:]}
+    for record in ("auth.json", "app.db", "sessions.json", "settings.json", "ssh"):
+        assert record not in names, (record, out["output"])
+    for folder in ("projects", "uploads", "KeystoneInc"):
+        assert folder in names, (folder, out["output"])
+
+
 # ── B1417: the projects folder ──────────────────────────────────────────────
 
 def test_the_projects_folder_is_made_under_the_data_directory(data_dir):
