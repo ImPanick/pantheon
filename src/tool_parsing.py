@@ -1734,6 +1734,52 @@ def _parse_tool_code_block(raw: str) -> Optional[ToolBlock]:
         return ToolBlock(tool_name, content.strip())
     return None
 
+
+# `B1904`. The k:v fallback a Gemma call's body falls back to when neither JSON
+# reading works was `(\w+)\s*:\s*["']?(.*?)["']?(?=\s*,\s*\w+\s*:|\s*\})`, and
+# `re.finditer` retried it from every word character. Measured on `62c93ba2`:
+# 20 KB of hex took 9.8 s and a value holding 40 KB of spaces 4.1 s, both
+# quadratic, on the server's event loop. Upstream Odysseus ee48c9c5's one
+# pass, verbatim: the same (key, value) pairs, in the same order.
+_GEMMA_FALLBACK_KEY_RE = re.compile(r"\w++")
+_GEMMA_FALLBACK_COLON_RE = re.compile(r"\s*+:")
+_GEMMA_FALLBACK_BOUNDARY_RE = re.compile(r"(?<!\s)(\s*+)(?:,\s*+\w++\s*+:|})")
+
+
+def _iter_gemma_fallback_items(body):
+    """Preserve permissive k:v recovery with one pass over keys/boundaries."""
+    boundaries = list(_GEMMA_FALLBACK_BOUNDARY_RE.finditer(body))
+    boundary_index = 0
+    pos = 0
+    newline = body.find("\n")
+    while key := _GEMMA_FALLBACK_KEY_RE.search(body, pos):
+        colon = _GEMMA_FALLBACK_COLON_RE.match(body, key.end())
+        if colon is None:
+            pos = key.end()
+            continue
+        start = colon.end()
+        while start < len(body) and body[start].isspace():
+            start += 1
+        if start < len(body) and body[start] in "\"'":
+            start += 1
+        while boundary_index < len(boundaries) and boundaries[boundary_index].end(1) < start:
+            boundary_index += 1
+        if boundary_index == len(boundaries):
+            return
+        boundary = boundaries[boundary_index]
+        end = max(start, boundary.start())
+        if 0 <= newline < start:
+            newline = body.find("\n", start)
+        if newline >= 0 and newline < end:
+            pos = key.end()
+            continue
+        capture_end = end
+        if capture_end > start and body[capture_end - 1] in "\"'":
+            capture_end -= 1
+        yield key.group(0), body[start:capture_end].strip()
+        pos = end
+
+
 def _parse_gemma_tool_call(tool_name: str, body: str) -> Optional[ToolBlock]:
     """Parse a Gemma-style call:tool_name{...} block into a ToolBlock."""
     tool_name = tool_name.strip().lower().replace("-", "_")
@@ -1758,12 +1804,9 @@ def _parse_gemma_tool_call(tool_name: str, body: str) -> Optional[ToolBlock]:
             if not isinstance(params, dict):
                 params = {}
         except Exception:
-            # Simple regex key-value extraction fallback
-            params = {}
-            for m in re.finditer(r'(\w+)\s*:\s*["\']?(.*?)["\']?(?=\s*,\s*\w+\s*:|\s*\})', body):
-                k = m.group(1)
-                v = m.group(2).strip()
-                params[k] = v
+            # Simple key-value extraction fallback (`B1904`: one pass, see
+            # `_iter_gemma_fallback_items`; the last of a repeated key wins).
+            params = dict(_iter_gemma_fallback_items(body))
 
     from src.tool_schemas import function_call_to_tool_block
     return function_call_to_tool_block(tool_name, json.dumps(params))

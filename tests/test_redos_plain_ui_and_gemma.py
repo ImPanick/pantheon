@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""`B1902`. Two of the tool parser's patterns took seconds on one model reply.
+"""`B1902`, `B1904`. Three tool parser patterns took seconds on one model reply.
 
 Every reply on the agent path goes through `parse_tool_blocks` and
-`strip_tool_blocks`, synchronously, on the server's one event loop, and two of
+`strip_tool_blocks`, synchronously, on the server's one event loop, and three of
 their patterns were super-linear in the reply's length:
 
   * **the plain `ui_control open_panel …` rescue** (Pattern 7) was
@@ -13,12 +13,17 @@ their patterns were super-linear in the reply's length:
     and 13.6 s again to strip, and 1,000 lines of a space took 17.6 s (cubic);
   * **the Gemma wrapper** (Pattern 4b) was one lazy pattern that rescanned to
     the end of the reply from every `<|tool_call|>call:x{` opener: 4,000 of them
-    with no closer took 6.4 s (quadratic).
+    with no closer took 6.4 s (quadratic);
+  * **the Gemma call's k:v fallback** (`B1904`), read when neither JSON reading
+    of the call's body works, was `(\\w+)\\s*:\\s*["']?(.*?)["']?(?=…)` under
+    `re.finditer`, retried from every word character: 20 KB of hex took 9.8 s,
+    and a value holding 40 KB of spaces 4.1 s (both quadratic).
 
 A local model's runaway blank-line output is enough, and so is text a prompt
 injection asks for. Now the rescue is tried once per `ui_control` in the reply,
-with a pattern that matches exactly what the old one matched, and the Gemma
-wrapper is read by the forward-only scanner the other delimited patterns use.
+with a pattern that matches exactly what the old one matched, the Gemma
+wrapper is read by the forward-only scanner the other delimited patterns use,
+and the fallback is one pass over the body.
 
 Two halves, as `tests/test_redos_llm_parsers.py` pins its fixes:
 
@@ -30,8 +35,9 @@ Two halves, as `tests/test_redos_llm_parsers.py` pins its fixes:
     imports, against a 4 s budget. The new code takes well under a second on
     each; the old code is still running when the process is killed.
 
-The Gemma split is upstream Odysseus da3800b6's. Its plain-UI helper changed
-what a reply with a fenced command saves, so the rescue here is Pantheon's own.
+The Gemma split is upstream Odysseus da3800b6's and the fallback's one pass
+ee48c9c5's. da3800b6's plain-UI helper changed what a reply with a fenced
+command saves, so the rescue here is Pantheon's own.
 """
 
 import random
@@ -137,6 +143,23 @@ def test_the_gemma_wrapper_reads_and_strips_what_it_always_did():
     assert strip_tool_blocks(raw) == ""
 
 
+def test_gemma_fallback_preserves_permissive_values_and_multiline_failures():
+    """`B1904`. Upstream Odysseus ee48c9c5's test, its helpers read from the
+    module: the one pass yields the (key, value) pairs the old pattern found,
+    in the same order."""
+    legacy = re.compile(r'''(\w+)\s*:\s*["']?(.*?)["']?(?=\s*,\s*\w+\s*:|\s*\})''')
+    cases = ["{query: hello, x: 'world'}", "{query:'a,b:c'}", "a:\n\t}", "0:\t\tX", "a:'', b: }", "a: multiline\nfails, b: ok}"]
+    rng = random.Random(1128)
+    tokens = ["a", "b", "0", ":", ",", "}", "'", '"', " ", "\t", "\n", "\u2003"]
+    cases += ["".join(rng.choices(tokens, k=40)) for _ in range(15000)]
+    for text in cases:
+        expected = [(match.group(1), match.group(2).strip()) for match in legacy.finditer(text)]
+        assert list(tool_parsing._iter_gemma_fallback_items(text)) == expected, text
+    block = tool_parsing._parse_gemma_tool_call("web_search", "{query: hello world}")
+    assert block.tool_type == "web_search"
+    assert block.content == "hello world"
+
+
 @pytest.mark.parametrize("flood", [
     r"'\n' * 100_000",
     r"' \n' * 100_000",
@@ -144,8 +167,11 @@ def test_the_gemma_wrapper_reads_and_strips_what_it_always_did():
     r"' ' * 100_000 + 'Xui_control open_panel notes'",
     r"'ui_control open_panel notes' + ' ' * 100_000 + 'X'",
     r"'<|tool_call|>call:x{' * 20_000",
+    # `B1904`: a call whose body neither JSON reading takes, read by the fallback.
+    r"'<|tool_call>call:web_search{' + '0123456789abcdef' * 4_000 + '}<tool_call|>'",
+    r"'<|tool_call>call:web_search{k: a' + ' ' * 100_000 + 'b}<tool_call|>'",
 ], ids=["blank-lines", "space-lines", "blank-lines-then-a-near-miss", "spaces-then-a-mid-line-command",
-        "a-command-then-spaces", "gemma-openers"])
+        "a-command-then-spaces", "gemma-openers", "gemma-fallback-hex", "gemma-fallback-spaces"])
 def test_a_flood_is_parsed_and_stripped_within_the_budget(flood):
     seconds = seconds_in_a_fresh_process(
         "import src.agent_tools\n"
