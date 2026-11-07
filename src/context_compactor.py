@@ -605,10 +605,17 @@ async def maybe_compact(
 
     # Split into system preface and conversation
     system_msgs = []
+    kept = []
     convo_msgs = []
     for msg in messages:
         if msg.get("role") == "system":
             system_msgs.append(msg)
+        elif msg.get("_protected") and (msg.get("metadata") or {}).get("research_spinoff_from"):
+            # `B1955`. A Discuss chat's report, read out of its system primer
+            # row as untrusted context (`Session.get_context_messages`): kept
+            # whole beside the system messages, never summarised, and not a
+            # stored row of its own, so it is not counted in `split_point`.
+            kept.append(msg)
         else:
             convo_msgs.append(msg)
 
@@ -683,7 +690,7 @@ async def maybe_compact(
         "content": f"[Conversation summary — earlier messages were compacted]\n{summary}",
     }
 
-    compacted = system_msgs + [summary_msg] + recent
+    compacted = system_msgs + kept + [summary_msg] + recent   # `B1955`: `kept`
     new_used = estimate_tokens(compacted)
 
     # Update session history to match. Pass len(system_msgs) so the
