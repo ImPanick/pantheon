@@ -1014,6 +1014,44 @@ def render_named_slots(t: Template, ctx) -> tuple:
     return "".join(out), slots
 
 
+def _cut_mark(kept: int, total: int) -> str:
+    return f"\n… (cut here: the first {kept:,} of its {total:,} characters are shown)"
+
+
+def fit_values(texts, budget: int) -> tuple:
+    """`B1883`. `(shown, cut)`: the values a Prompt step is handed, as text,
+    held to `budget` characters together — what its model is shown.
+
+    Within the budget every value is shown whole. Past it the longest are
+    cut first, each to the same length (the most every value may keep such
+    that together they fit), so a short title beside a long page is never
+    cut. A cut value is its start and a line saying how much of it is shown.
+    `cut` is `((index, kept, total), …)` for the step's log. Pure: the same
+    texts and budget give the same answer."""
+    texts = list(texts)
+    lens = [len(t) for t in texts]
+    if sum(lens) <= budget:
+        return texts, ()
+    lo, hi = 0, max(lens)
+    while lo < hi:                                   # the most each may keep
+        mid = (lo + hi + 1) // 2
+        if sum(min(n, mid) for n in lens) <= budget:
+            lo = mid
+        else:
+            hi = mid - 1
+    level = lo
+    shown, cut = [], []
+    for i, text in enumerate(texts):
+        if lens[i] <= level:
+            shown.append(text)
+            continue
+        kept = max(0, level - len(_cut_mark(level, lens[i])))
+        start = text[:kept].rstrip()
+        shown.append(start + _cut_mark(len(start), lens[i]))
+        cut.append((i, len(start), lens[i]))
+    return shown, tuple(cut)
+
+
 # ── Writing ──────────────────────────────────────────────────────────────────
 
 def _format_path(path) -> str:

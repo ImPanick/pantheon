@@ -7612,7 +7612,9 @@ class TaskScheduler:
           * `P22-09`: a reference in the prompt becomes a named slot —
             "Summarise the issue titled [title]." — and the values travel in
             their own untrusted block (`untrusted_context_message`, the gate
-            armed), clipped as a trigger payload is (`clip_field`).
+            armed), clipped as a trigger payload is (`clip_field`) — until
+            `B1883`: now held together to `workflow_prompt_values_max_chars`,
+            the longest cut first, and the step's log says which.
           * `P22-15`: a Skill step follows the skill read at run time, wrapped
             as the skill tester wraps it, with skills not injected again.
           * `P22-16`: `tools` limits what it may call; `answer_fields` asks for
@@ -7622,7 +7624,6 @@ class TaskScheduler:
         """
         from src import workflow_document as wd
         from src.builtin_actions import NODE_STATUS_ERROR, NODE_STATUS_SUCCESS, NodeResult
-        from src.event_bus import TRIGGER_FIELD_MAX_CHARS, TRIGGER_MAX_CHARS, clip_field
 
         config = dict(node.get("config") or {})
         state = self._state_for(slot)
@@ -7647,13 +7648,26 @@ class TaskScheduler:
             if missing:
                 return StepDone(NodeResult(NODE_STATUS_ERROR, payload=self._missing_words(
                     node, missing, None)), None)
-            lines = []
-            for slot_name, _ref, value in named:
-                shown = value if isinstance(value, str) else json.dumps(value, default=str)
-                lines.append(f"[{slot_name}] = {clip_field(shown, TRIGGER_FIELD_MAX_CHARS)}")
-            body = "\n".join(lines)
-            if len(body) > TRIGGER_MAX_CHARS:
-                body = body[:TRIGGER_MAX_CHARS].rstrip() + "\n… (truncated)"
+            # `B1883`: each value was cut to 2,000 characters and the block
+            # to 6,000 (a trigger payload's numbers, `clip_field`) with
+            # nothing said. Now they are held together to
+            # `workflow_prompt_values_max_chars`, the longest cut first
+            # (`fit_values`), and the step's log says which were cut.
+            from src import workflow_runs as wr
+            texts = [(value if isinstance(value, str) else json.dumps(value, default=str)).strip()
+                     for _slot, _ref, value in named]
+            cap = wr.prompt_values_max_chars()
+            shown, cut = refs.fit_values(texts, cap)
+            body = "\n".join(f"[{slot_name}] = {text}"
+                             for (slot_name, _ref, _value), text in zip(named, shown))
+            if cut:
+                which = ", ".join(f"{named[i][1]} (the first {kept:,} of {total:,} characters)"
+                                  for i, kept, total in cut)
+                self._record_run_step(slot, kind="progress", detail=(
+                    f"The model was shown only the start of {which}: the values this step "
+                    f"reads come to {sum(len(t) for t in texts):,} characters, more than the "
+                    f"{cap:,} characters it may be shown "
+                    f"({wr.PROMPT_VALUES_MAX_CHARS_SETTING}). Raise it to show more."))
             extra.append(untrusted_context_message(
                 "values this step was handed", body,
                 provenance_origin="external", arm_tool_gate=True))
