@@ -251,15 +251,16 @@ def test_a_starts_form_is_the_trigger_and_hands_over_only_the_trigger(sandbox):
 def test_a_start_says_what_runs_after_the_workflow_when_it_works_and_when_it_fails(sandbox):
     """`B1897`. A workflow's start picks the workflow or task that runs once
     this one has finished — one for when it works, one for when it fails —
-    from the person's own, never itself, and a workflow is told apart from a
-    task of the same name."""
+    from the person's own, never itself; a workflow is told apart from a
+    task of the same name, and one switched off says so."""
     trigger = {"id": "tw", "name": "Morning brief", "task_type": "workflow", "status": "active",
                "trigger_type": "schedule", "schedule": "daily", "scheduled_time": "08:00",
                "max_retries": 0, "timeout_seconds": 0, "notifications_enabled": True,
                "prompt": "", "output_target": "session", "then_task_id": "t2", "else_task_id": None}
     tasks = [trigger,
              {"id": "t2", "name": "Post the brief", "task_type": "llm"},
-             {"id": "w3", "name": "Page me", "task_type": "workflow"}]
+             {"id": "w3", "name": "Page me", "task_type": "workflow"},
+             {"id": "w4", "name": "Night shift", "task_type": "workflow", "status": "paused"}]
     out = _run_case(sandbox, dict(_ROUTES), """
         const got = [];
         const host = hostIn();
@@ -277,7 +278,8 @@ def test_a_start_says_what_runs_after_the_workflow_when_it_works_and_when_it_fai
     """ % (json.dumps(trigger), json.dumps(tasks)))
     assert out["label"].startswith("After it finishes")
     assert out["before"] == {"works": "t2", "fails": ""}
-    want = [["", "None"], ["t2", "Post the brief"], ["w3", "Page me (workflow)"]]
+    want = [["", "None"], ["t2", "Post the brief"], ["w3", "Page me (workflow)"],
+            ["w4", "Night shift (workflow, off)"]]
     assert out["works"] == want and out["fails"] == want, "never itself"
     assert out["errors"] == [] and out["writes"] == []
     (body,) = out["got"]

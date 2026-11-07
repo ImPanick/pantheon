@@ -1740,8 +1740,12 @@ ${(isNode && taskType === 'research') ? '' : `
       const opt = document.createElement('option');
       opt.value = t.id;
       // `B1897`. From a workflow's start, a workflow and a task of the same
-      // name are told apart.
-      opt.textContent = isTrigger && t.task_type === 'workflow' ? `${t.name} (workflow)` : t.name;
+      // name are told apart, and one that is switched off says so: the
+      // engine does not continue into it ("Did not continue to X: it is
+      // paused").
+      const notes = isTrigger
+        ? [t.task_type === 'workflow' ? 'workflow' : '', t.status === 'paused' ? 'off' : ''].filter(Boolean) : [];
+      opt.textContent = notes.length ? `${t.name} (${notes.join(', ')})` : t.name;
       if (existing?.[field] === t.id) opt.selected = true;
       sel.appendChild(opt);
     }
