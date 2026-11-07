@@ -33,6 +33,7 @@ import datetime
 import imaplib
 import ipaddress
 import json
+import logging
 import socket
 import ssl
 import threading
@@ -616,6 +617,73 @@ async def test_a_saved_accounts_test_and_trust_use_the_pins_its_own_connections_
     assert answer == {"ok": True}
     eh._imap_connect("acct-legacy", owner=USER).logout()
     assert len(server.signins()) == 2
+
+
+GOOD = "sha256:" + "ab" * 32
+NOT_UPDATED = ("The certificate was not trusted: the list of trusted mail certificates "
+               "could not be updated. The server log says why.")
+
+
+async def _trust_answer(trust, body):
+    response = await trust(req=_Req(body), owner="alice")
+    return response.status_code, json.loads(response.body)["error"]
+
+
+@pytest.mark.asyncio
+async def test_the_trust_button_is_told_why_in_a_sentence_of_its_own(endpoint):
+    """CodeQL on the port's pull request: the Trust route answered with an
+    exception's text. A refusal is now `trust_refusal`'s sentence, which the
+    route shows and nothing else. JSON's `Infinity` as the port was an
+    `OverflowError` out of the route, a 500 the form could not read; it is a
+    port out of range."""
+    trust = endpoint("POST", "/api/email/accounts/trust-certificate")
+
+    port_range = (400, "The port must be a number from 1 to 65535.")
+    assert await _trust_answer(trust, {"host": "mail.home.test", "port": 70000,
+                                       "fingerprint": GOOD}) == port_range
+    assert await _trust_answer(trust, {"host": "mail.home.test", "port": float("inf"),
+                                       "fingerprint": GOOD}) == port_range
+    assert await _trust_answer(trust, {"host": "mail.home.test", "port": 993,
+                                       "fingerprint": "sha1:00"}) == (
+        400, "That is not a certificate fingerprint.")
+    assert await _trust_answer(trust, {"host": " ", "port": 993, "fingerprint": GOOD}) == (
+        400, "Name the mail server's host.")
+    status, said = await _trust_answer(trust, {"host": "IMAP.Gmail.com.", "port": 993,
+                                               "fingerprint": GOOD})
+    assert status == 400 and said.startswith("imap.gmail.com belongs to a mail provider"), said
+    assert _pins() == {}
+
+
+@pytest.mark.asyncio
+async def test_a_pin_file_that_cannot_be_read_or_written_is_said_without_its_path(
+        endpoint, serve, certs, monkeypatch, caplog):
+    """The pin file's own error can name a path on this host. It goes to the
+    log; the Trust button and a refused connection say so in a sentence."""
+    trust = endpoint("POST", "/api/email/accounts/trust-certificate")
+    path = Path(constants.MAIL_TLS_PINS_FILE)
+    path.mkdir(parents=True)        # reading it is `IsADirectoryError`, naming the path
+
+    with caplog.at_level(logging.ERROR):
+        assert await _trust_answer(trust, {"host": "mail.home.test", "port": 993,
+                                           "fingerprint": GOOD}) == (503, NOT_UPDATED)
+    assert str(path) in caplog.text, "the log no longer says why"
+
+    server = serve("imap", "starttls", _certificate(certs, "dovecot"))
+    refused = _attempt(_Door("app", "imap", "starttls", monkeypatch), server)
+    assert server.signins() == []
+    assert refused is not None and refused.reason == "unreadable"
+    assert str(path) not in str(refused), str(refused)
+    assert str(refused).endswith("could not be read. The server log says why.")
+
+    # Read, and refused on the write.
+    path.rmdir()
+
+    def refuse(*args, **kwargs):
+        raise PermissionError(13, "Permission denied", str(path))
+
+    monkeypatch.setattr("core.atomic_io.atomic_write_json", refuse)
+    assert await _trust_answer(trust, {"host": "mail.home.test", "port": 993,
+                                       "fingerprint": GOOD}) == (503, NOT_UPDATED)
 
 
 # ── the shape of the defect ───────────────────────────────────────────────────

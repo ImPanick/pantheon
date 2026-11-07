@@ -114,8 +114,11 @@ class MailCertificateError(ssl.SSLError):
                     "sent to it. If you replaced the server's certificate, trust the new one "
                     "from the account's Test; if you did not, something else is answering for it.")
         if self.reason == "unreadable":
+            # `detail` is the file's own error, which can name a path on this
+            # host. `_unreadable` logs it; the sentence a route shows does not
+            # carry it.
             return (f"The mail server at {where} was not sent a password: the list of trusted "
-                    f"mail certificates could not be read ({self.detail}).")
+                    "mail certificates could not be read. The server log says why.")
         why = f" ({self.detail})" if self.detail else ""
         return (f"The mail server at {where} showed a certificate no trusted authority signed "
                 f"for that name{why}. Nothing was sent to it. If this is your own server, "
@@ -279,28 +282,48 @@ def _write_pin(owner: str, host: str, port, value: str, how: str,
     return value
 
 
-def trust(owner: str, host: str, port, value: str) -> None:
-    """A person trusted the certificate with fingerprint `value` for `host:port`.
+def _port_number(port) -> int:
+    """`port` as a number, or 0. JSON's `Infinity` is a float `int()` cannot
+    take, so `OverflowError` is a port out of range too."""
+    try:
+        return int(port)
+    except (TypeError, ValueError, OverflowError):
+        return 0
 
-    Raises `ValueError` with a sentence for a request the account form should
-    not have made: no host, a port out of range, a value that is not a
-    fingerprint, or a mail provider's own host.
+
+def trust_refusal(host: str, port, value) -> str | None:
+    """The sentence refusing a request to trust `value` for `host:port`, or `None`.
+
+    A request the account form should not have made: no host, a port out of
+    range, a value that is not a fingerprint, or a mail provider's own host.
+    It is a sentence returned rather than an exception's text, so the route
+    that shows it shows nothing else.
     """
     name = (host or "").strip().rstrip(".").lower()
     if not name or len(name) > 253 or any(ch.isspace() for ch in name):
-        raise ValueError("Name the mail server's host.")
-    try:
-        number = int(port)
-    except (TypeError, ValueError):
-        number = 0
-    if not 1 <= number <= 65535:
-        raise ValueError("The port must be a number from 1 to 65535.")
+        return "Name the mail server's host."
+    if not 1 <= _port_number(port) <= 65535:
+        return "The port must be a number from 1 to 65535."
     if not is_fingerprint(value):
-        raise ValueError("That is not a certificate fingerprint.")
+        return "That is not a certificate fingerprint."
     if is_provider_host(name):
-        raise ValueError(f"{name} belongs to a mail provider, whose real certificate is "
-                         "always signed by an authority, so a certificate it did not sign "
-                         "is not trusted by hand.")
+        return (f"{name} belongs to a mail provider, whose real certificate is always "
+                "signed by an authority, so a certificate it did not sign is not trusted "
+                "by hand.")
+    return None
+
+
+def trust(owner: str, host: str, port, value: str) -> None:
+    """A person trusted the certificate with fingerprint `value` for `host:port`.
+
+    Raises `ValueError` with `trust_refusal`'s sentence for a request the
+    account form should not have made, and `MailCertificateError` or `OSError`
+    when the pin file cannot be read or written.
+    """
+    refusal = trust_refusal(host, port, value)
+    if refusal:
+        raise ValueError(refusal)
+    name, number = (host or "").strip().rstrip(".").lower(), _port_number(port)
     _write_pin(owner, name, number, value, "trusted", replace=True)
     logger.info("mail certificate for %s trusted by hand: %s", _key(name, number), value)
 

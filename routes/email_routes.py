@@ -6773,10 +6773,14 @@ def setup_email_routes():
 
         The pin goes where the account's own connections will read it: the
         saved account's owner's pins, after the owner check, or the caller's
-        for an account not saved yet. `src/mail_tls.trust` refuses a mail
-        provider's own host, a port out of range and a value that is not a
-        fingerprint. Nothing is connected to here; the form's next Test is
+        for an account not saved yet. `src/mail_tls.trust_refusal` refuses a
+        mail provider's own host, a port out of range and a value that is not
+        a fingerprint. Nothing is connected to here; the form's next Test is
         the check that the server shows what was trusted.
+
+        The form is shown `trust_refusal`'s sentence or a sentence of the
+        route's own, never an exception's text: a pin file's error can name a
+        path on this host, and that goes to the log.
         """
         try:
             body = await req.json()
@@ -6800,14 +6804,19 @@ def setup_email_routes():
             if found is None:
                 return JSONResponse({"ok": False, "error": "Account not found"}, status_code=404)
             pin_owner = found
+        host, port, fingerprint = str(body.get("host") or ""), body.get("port"), body.get("fingerprint")
+        refusal = _mail_tls.trust_refusal(host, port, fingerprint)
+        if refusal:
+            return JSONResponse({"ok": False, "error": refusal}, status_code=400)
         try:
-            await asyncio.to_thread(
-                _mail_tls.trust, pin_owner, str(body.get("host") or ""),
-                body.get("port"), body.get("fingerprint"))
-        except _mail_tls.MailCertificateError as exc:   # the pin file cannot be read
-            return JSONResponse({"ok": False, "error": str(exc)}, status_code=503)
-        except ValueError as exc:
-            return JSONResponse({"ok": False, "error": str(exc)}, status_code=400)
+            await asyncio.to_thread(_mail_tls.trust, pin_owner, host, port, fingerprint)
+        except (OSError, ValueError) as exc:
+            # The pin file could not be read or written (`MailCertificateError`
+            # is an `OSError`). Its error stays in the log.
+            logger.error("a mail certificate for %s:%s was not trusted: %s", host, port, exc)
+            return JSONResponse({"ok": False, "error": (
+                "The certificate was not trusted: the list of trusted mail certificates "
+                "could not be updated. The server log says why.")}, status_code=503)
         return {"ok": True}
 
     @router.post("/accounts/{account_id}/set-default")
