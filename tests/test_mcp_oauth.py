@@ -1,6 +1,9 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 import asyncio
 import json
+
+import pytest
+
 from src import mcp_oauth
 
 
@@ -437,3 +440,138 @@ def test_a_tampered_or_someone_elses_state_is_refused(tmp_path, monkeypatch):
         resp = google.come_back(refused, user=user)
         assert resp.status_code == 400 and b"expired" in resp.body.lower(), (refused, user)
     assert google.sent == [] and not google.token_file.exists()
+
+
+# ── An expired or unfinished sign-in (`B1829`) ────────────────────
+#
+# `code` and `state` were required query parameters, so a provider's redirect
+# without a code (consent declined) answered FastAPI's 422 JSON; and any state
+# the pending registry did not hold was taken for a Google server's id, so a
+# generic sign-in that had outlived its wait was told "Server not found.", and
+# pasted back, "No OAuth config.". Upstream Odysseus fixed both in 9712a540
+# (#6434) and moved `require_admin` below the registry to do it. Here it stays
+# the first thing the callback asks (`FORBIDDEN.md` Part 2), so these are
+# upstream's cases asked by an admin, plus the refusal of everyone else.
+
+GOOGLE_SERVER = {"id": "google-srv", "name": "Google Workspace", "transport": "stdio",
+                 "command": "npx", "oauth_config": json.dumps({"scopes": ["openid"]})}
+REMOTE_SERVER = {"id": "remote-srv", "name": "Remote MCP", "transport": "streamable_http",
+                 "url": "https://mcp.example/mcp", "oauth_config": None}
+# A Google server whose config names no keys file: reaching its exchange is
+# what this page says, which tells a Google callback apart from every other.
+REACHED_GOOGLE = "OAuth keys/token file not configured"
+
+
+@pytest.fixture
+def signed_in_as(monkeypatch):
+    """The real MCP router over a real database holding the two servers; call
+    it with who is signed in (`ada` is the admin) for a client."""
+    from types import SimpleNamespace
+
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from sqlalchemy.pool import StaticPool
+
+    from core.database import Base, McpServer
+    from routes.mcp import mcp_routes
+    from tests.helpers.signed_in import as_person
+
+    engine = create_engine("sqlite://", connect_args={"check_same_thread": False},
+                           poolclass=StaticPool)
+    Base.metadata.create_all(engine)
+    factory = sessionmaker(bind=engine)
+    db = factory()
+    db.add_all([McpServer(**GOOGLE_SERVER), McpServer(**REMOTE_SERVER)])
+    db.commit()
+    db.close()
+    monkeypatch.setattr(mcp_routes, "SessionLocal", factory)
+    admins = SimpleNamespace(is_configured=True, is_admin=lambda name: name == "ada")
+
+    def client(person):
+        app = FastAPI()
+        app.include_router(mcp_routes.setup_mcp_routes(SimpleNamespace()))
+        return TestClient(as_person(app, person, auth_manager=admins))
+
+    yield client
+    engine.dispose()
+
+
+def _callback(client, **query):
+    return client.get("/api/mcp/oauth/callback", params=query)
+
+
+def _paste(client, server_id, url):
+    return client.post(f"/api/mcp/oauth/exchange/{server_id}", data={"callback_url": url})
+
+
+def test_a_sign_in_pantheon_stopped_waiting_for_is_told_so_not_that_its_server_is_missing(signed_in_as):
+    admin = signed_in_as("ada")
+    res = _callback(admin, code="the-code", state="round-that-expired")
+    assert res.status_code == 400
+    assert "Authorization Expired" in res.text and "Press Reconnect" in res.text
+    assert "Server not found" not in res.text
+
+    # A Google server's bare id is no longer a Google callback (`B1956` signs
+    # that state), so it gets the same page, never "Server not found".
+    res = _callback(admin, code="the-code", state=GOOGLE_SERVER["id"])
+    assert res.status_code == 400
+    assert "Authorization Expired" in res.text and REACHED_GOOGLE not in res.text
+
+
+def test_a_pasted_url_from_an_expired_sign_in_is_told_so_not_that_the_server_has_no_config(signed_in_as):
+    admin = signed_in_as("ada")
+    res = _paste(admin, REMOTE_SERVER["id"],
+                 "http://localhost:7000/api/mcp/oauth/callback?code=the-code&state=round-that-expired")
+    assert res.status_code == 400
+    assert "Authorization Expired" in res.text
+    assert "No OAuth config" not in res.text
+
+    # The same paste with no state at all says that, rather than "expired".
+    res = _paste(admin, REMOTE_SERVER["id"], "http://localhost:7000/api/mcp/oauth/callback?code=the-code")
+    assert res.status_code == 400
+    assert "No OAuth state parameter" in res.text
+    assert "Authorization Expired" not in res.text
+
+    # A Google server's paste-back goes to Google as before, state or none.
+    for url in ("http://localhost:7000/api/mcp/oauth/callback?code=the-code&state=google-srv",
+                "http://localhost:7000/api/mcp/oauth/callback?code=the-code"):
+        assert REACHED_GOOGLE in _paste(admin, GOOGLE_SERVER["id"], url).text, url
+
+
+def test_a_redirect_without_a_code_or_a_state_is_a_page_that_says_so_not_a_422(signed_in_as):
+    admin = signed_in_as("ada")
+    declined = _callback(admin, state="round-1", error="access_denied")
+    assert declined.status_code == 400
+    assert declined.headers["content-type"].startswith("text/html")
+    assert "No authorization code came back" in declined.text
+    assert "Authorization Expired" not in declined.text
+
+    for query in ({"code": "the-code"}, {}):
+        res = _callback(admin, **query)
+        assert res.status_code == 400, query
+        assert res.headers["content-type"].startswith("text/html"), query
+        assert "No OAuth state parameter" in res.text, query
+
+
+def test_a_person_who_is_not_an_admin_is_refused_before_the_callback_reads_anything(signed_in_as):
+    """Upstream's port answered these without asking who was there, and
+    resolved a pending sign-in for anyone holding its state. Not here: only an
+    admin starts one, so only an admin finishes one, whatever the URL holds."""
+    member = signed_in_as("bob")
+    for query in ({"code": "c", "state": "round-that-expired"}, {"state": "round-1"},
+                  {"code": "c"}, {}):
+        assert _callback(member, **query).status_code == 403, query
+    assert _paste(member, REMOTE_SERVER["id"],
+                  "http://localhost:7000/api/mcp/oauth/callback?code=c&state=x").status_code == 403
+
+    async def a_pending_round():
+        fut = mcp_oauth.register_pending("live-round")
+        try:
+            res = _callback(member, code="c", state="live-round")
+            return res.status_code, fut.done()
+        finally:
+            mcp_oauth._discard_pending("live-round")
+
+    assert asyncio.run(a_pending_round()) == (403, False)

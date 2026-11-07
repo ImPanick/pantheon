@@ -212,6 +212,42 @@ def _mcp_oauth_redirect_uri() -> str:
     return REDIRECT_URI
 
 
+def _is_legacy_google_flow(server_id: str) -> bool:
+    """`B1829`. Whether *server_id* names a server with a Google OAuth config.
+
+    The paste-back form (`oauth_exchange`) finishes that sign-in itself, with
+    the server named in its own path, whatever state the pasted URL carries;
+    a server without one signs in through the pending registry, so a paste
+    the registry no longer holds is a sign-in Pantheon has stopped waiting
+    for. (The callback names a Google server only by `B1956`'s signed state.)
+    It reads the database, so it is called in a worker thread.
+    """
+    if not server_id:
+        return False
+    db = SessionLocal()
+    try:
+        srv = db.query(McpServer).filter(McpServer.id == server_id).first()
+        return bool(srv and srv.oauth_config)
+    finally:
+        db.close()
+
+
+#: `B1829`. The pages an unfinished sign-in gets instead of a 422 or a
+#: "Server not found.", each saying what happened and what to do (`Law 15`).
+_OAUTH_EXPIRED = (
+    "Authorization Expired",
+    "Pantheon is no longer waiting for this sign-in: it took too long, it was "
+    "already finished, or Pantheon restarted since it began. Press Reconnect on "
+    "the server in Settings and try again.")
+_OAUTH_NO_STATE = (
+    "No OAuth state parameter found in the callback URL, so Pantheon cannot tell "
+    "which sign-in it finishes. Make sure you copied the full URL from your browser, "
+    "or start the sign-in again from the server in Settings.")
+_OAUTH_NO_CODE = (
+    "No authorization code came back with this sign-in. If you declined access, "
+    "start the sign-in again from the server in Settings.")
+
+
 def setup_mcp_routes(mcp_manager: McpManager):
     """Setup MCP routes with the provided manager."""
     # B53. This `APIRouter` used to be a module global, decorated by this
@@ -1441,11 +1477,24 @@ def setup_mcp_routes(mcp_manager: McpManager):
             db.close()
 
     @router.get("/oauth/callback")
-    async def oauth_callback(code: str, state: str, request: Request, iss: Optional[str] = None):
+    async def oauth_callback(request: Request, code: str = "", state: str = "",
+                             iss: Optional[str] = None):
         """Handle OAuth callback. Generic MCP OAuth flows resolve via the
         pending-state registry; Google flows fall through to the legacy path.
-        `B621`: `iss` (RFC 9207) is passed on — see `resolve_pending`."""
+        `B621`: `iss` (RFC 9207) is passed on — see `resolve_pending`.
+
+        `B1829`. `code` and `state` were required, so a provider's redirect
+        without a code (consent declined) answered FastAPI's 422 JSON; and any
+        state the registry did not hold was taken for a Google server's id, so
+        a generic sign-in that had outlived its wait was told "Server not
+        found." Each now gets a page that says what happened. `require_admin`
+        stays the first thing asked (`FORBIDDEN.md` Part 2): upstream's fix
+        moved it below the registry, and that half is not taken."""
         require_admin(request)
+        if not state:
+            return HTMLResponse(_oauth_result_page("Error", _OAUTH_NO_STATE), status_code=400)
+        if not code:
+            return HTMLResponse(_oauth_result_page("Error", _OAUTH_NO_CODE), status_code=400)
         from src.mcp_oauth import resolve_pending
         if resolve_pending(state, code, iss):
             return HTMLResponse(_oauth_result_page(
@@ -1457,11 +1506,17 @@ def setup_mcp_routes(mcp_manager: McpManager):
         # the person signed in now, names the server. A bare server id was a
         # link anyone could build, and a lax session cookie rides a top-level
         # GET, so one click by an admin swapped the server's Google account.
+        # `B1829`: a state that signs nothing for an MCP server is a sign-in
+        # Pantheon is no longer waiting for (a generic one that outlived its
+        # wait or was cut off by a restart, or a link nobody here started),
+        # and its page says so rather than "Server not found.".
         from routes.email_helpers import verify_oauth_state
         signed = verify_oauth_state(state) or {}
         account = str(signed.get("a") or "")
         person = getattr(request.state, "current_user", None) or ""
-        if not account.startswith("mcp:") or (signed.get("o") or "") != person:
+        if not account.startswith("mcp:"):
+            return HTMLResponse(_oauth_result_page(*_OAUTH_EXPIRED), status_code=400)
+        if (signed.get("o") or "") != person:
             return HTMLResponse(_oauth_result_page(
                 "Authorization expired",
                 "This sign-in was not started from your Pantheon session. "
@@ -1493,7 +1548,15 @@ def setup_mcp_routes(mcp_manager: McpManager):
                 success=True,
             ))
 
-        return await _exchange_and_connect(server_id, code, request)
+        # `B1829`. A Google server's paste-back goes to Google as it always
+        # did, a state in the URL or not. Anything else is a generic sign-in
+        # the registry no longer holds, which was told "No OAuth config." (the
+        # server has none: it signs in another way).
+        if await asyncio.to_thread(_is_legacy_google_flow, server_id):
+            return await _exchange_and_connect(server_id, code, request)
+        if not state:
+            return HTMLResponse(_oauth_result_page("Error", _OAUTH_NO_STATE), status_code=400)
+        return HTMLResponse(_oauth_result_page(*_OAUTH_EXPIRED), status_code=400)
 
     async def _exchange_and_connect(server_id: str, code: str, request: Request):
         """Exchange auth code for tokens and connect the MCP server."""
