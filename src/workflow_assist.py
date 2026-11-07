@@ -760,7 +760,7 @@ def fix_problem(before: dict, after: dict, graph: dict, *, resources, tasks_by_i
     if grown:
         said = "; ".join(EFFECT_SENTENCES.get(e, e) for e in sorted(grown))
         return FixRefused(f"It also suggested a change that would let this step do more than it "
-                          f"does now (it would {said}). {YOURS_TO_DECIDE}", "")
+                          f"does now (with it, the step {said}). {YOURS_TO_DECIDE}", "")
     patched = dict(graph)
     patched["nodes"] = [after if n.get("id") == before.get("id") else n
                         for n in graph.get("nodes") or ()]
