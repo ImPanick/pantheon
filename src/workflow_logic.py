@@ -284,6 +284,44 @@ def choose_port(node: dict, ctx) -> str:
     raise ValueError(f"a {kind!r} step does not choose a way")
 
 
+#: `B1863`. The key a logic step's passed-on data carries the way it went
+#: under, so `{{ steps.<if>.data.port }}` — what the step made until this
+#: row — keeps reading it.
+PASSED_ON_PORT_KEY = "port"
+
+
+def passes_on(handed, port: str):
+    """`B1863`. What an If or a Switch makes: the data it was handed, so the
+    step after a branch works on that and not on a sentence about the branch.
+
+    Until this row a logic step made `{"port": <port>}` and nothing else, so
+    the step after it was handed "Went the “then” way." with the port as its
+    only data — a Prompt step after "Is it urgent?" never saw the mail. A Wait
+    already hands on what it was handed (`_wait_passes_on`); this is the same
+    for If and Switch. The way it went is still the record's own `port`
+    column, which is what the walker and the Runs view read. The rule, written
+    once:
+
+      * handed an object with no `port` key → that object, with `port` added
+        — so a document that reads `{{ steps.<if>.data.port }}` still reads
+        the way it went, and one that reads `{{ steps.<if>.data.title }}` now
+        reads the title;
+      * handed an object that has its own `port` key → that object, untouched:
+        the data's own field is never overwritten, and `data.port` reads it;
+      * handed a list, a number or yes/no → that, as it is (there is no key
+        to add; the way it went is the record's `port`);
+      * handed nothing, or text alone → `{"port": <port>}`, what a logic step
+        always made (text is the hand-off's `result`, not its data).
+    """
+    if isinstance(handed, dict):
+        if PASSED_ON_PORT_KEY in handed:
+            return handed
+        return {**handed, PASSED_ON_PORT_KEY: port}
+    if isinstance(handed, (list, int, float, bool)):
+        return handed
+    return {PASSED_ON_PORT_KEY: port}
+
+
 def build_set(node: dict, ctx) -> tuple:
     """`(data, missing)` — a Set step's object: each field's name (typed by the
     author) and its value, a picked field's raw value or typed text rendered,

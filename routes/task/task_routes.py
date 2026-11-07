@@ -24,6 +24,7 @@ from src.event_bus import (
     TRIGGER_SOURCE_WEBHOOK,
     WEBHOOK_PAYLOAD_FIELDS,
     build_trigger,
+    trigger_payload_max_chars,
 )
 from src.task_action_policy import (
     admin_only_action_of,
@@ -1875,11 +1876,23 @@ def setup_task_routes(task_scheduler) -> APIRouter:
     # here: a signature in a prompt is a secret in a prompt.
     _WEBHOOK_HEADERS = ("content-type", "user-agent", "x-request-id",
                         "x-event-name", "x-webhook-event")
-    # How much of the body is read at all. `build_trigger` caps each field again
-    # at `TRIGGER_FIELD_MAX_CHARS` and `trigger_as_text` caps the whole envelope
-    # on the way to the model, so this is the outermost of three and exists to
-    # stop a megabyte being decoded before any of them apply.
-    _WEBHOOK_BODY_MAX = TRIGGER_FIELD_MAX_CHARS * 4
+    # How much of the body is read at all. `build_trigger` caps the whole
+    # envelope at `trigger_payload_max_chars` and `trigger_as_text` caps each
+    # field and the whole block on the way to the model, so this is the
+    # outermost of three and exists to stop a megabyte being decoded before
+    # any of them apply.
+    #
+    # `B1861`. It was `TRIGGER_FIELD_MAX_CHARS * 4` — 8,000 characters — when
+    # `build_trigger` clipped every field to 2,000: a JSON body between the
+    # two was parsed and then flattened, and one over 8,000 was cut here and
+    # not parsed at all. Now it is HALF the envelope's cap, read per request so
+    # a changed setting applies at once, because the envelope keeps the body
+    # twice — as text (`body`) and parsed (`json`). Where the two copies
+    # together are over the cap, the text copy is the one cut
+    # (`event_bus._fit_envelope` cuts text first), so the parsed one — the
+    # copy a step refers to — has the whole cap to itself.
+    def _webhook_body_max() -> int:
+        return trigger_payload_max_chars() // 2
 
     async def _webhook_payload(request) -> dict:
         """Everything the caller sent that a task can be told about.
@@ -1904,8 +1917,9 @@ def setup_task_routes(task_scheduler) -> APIRouter:
                 text = raw.decode("utf-8", errors="replace")
             except Exception:
                 text = ""
-        if len(text) > _WEBHOOK_BODY_MAX:
-            text = text[:_WEBHOOK_BODY_MAX].rstrip() + "\u2026"
+        body_max = _webhook_body_max()
+        if len(text) > body_max:
+            text = text[:body_max].rstrip() + "\u2026"
         payload: Dict[str, Any] = {}
         if text:
             payload["body"] = text

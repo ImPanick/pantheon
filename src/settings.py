@@ -20,6 +20,10 @@ from src.constants import SETTINGS_FILE, FEATURES_FILE
 from src.workflow_runs import FOREACH_MAX_ITEMS_DEFAULT, WAIT_MAX_HOURS_DEFAULT
 # `B1857`. The most steps one workflow may hold, the same way.
 from src.workflow_runs import MAX_STEPS_DEFAULT as WORKFLOW_MAX_STEPS_DEFAULT
+# `B1861`. The trigger envelope's cap, stated once in `src/event_bus.py` beside
+# its range. That module imports nothing of the product at load but
+# `src.constants`, so this adds no cycle either.
+from src.event_bus import TRIGGER_PAYLOAD_MAX_CHARS_DEFAULT
 
 logger = logging.getLogger(__name__)
 
@@ -317,6 +321,18 @@ DEFAULT_SETTINGS = {
     # owns the bounds). Over it the step is refused with this name; nothing is
     # cut silently. Resolves with the owner, so a role may carry it.
     "workflow_foreach_max_items": FOREACH_MAX_ITEMS_DEFAULT,
+    # `B1861`. How much of what started a run — a webhook's request, an
+    # event's payload, the step before this one — a run keeps, in characters
+    # of JSON, the whole envelope (256 KB). Up to it the envelope keeps its
+    # structure, so `{{ steps.start.data.json.issue.title }}` reads the title;
+    # past it the envelope's text is cut first and the run's first line says
+    # what was cut and names this setting. What a MODEL is shown of it is
+    # capped separately, at the same numbers as before (`event_bus.
+    # trigger_as_text`). Resolved without an owner: a trigger is built before
+    # anyone's run starts. `src/event_bus.py` owns the default and the bounds.
+    #
+    # SETTINGS-ONLY, for the reason spelled out at `events_retention_days`.
+    "trigger_payload_max_chars": TRIGGER_PAYLOAD_MAX_CHARS_DEFAULT,
     # `P22-11`. The longest a Wait step may wait, in hours (7 days;
     # `src/workflow_runs.py` owns the number and the bounds).
     "workflow_wait_max_hours": WAIT_MAX_HOURS_DEFAULT,
@@ -1150,6 +1166,10 @@ def int_setting_ranges() -> dict[str, tuple[int, int]]:
         MIN_UPLOAD_BURST_WINDOW_SECONDS,
     )
     from src.events import RETENTION_DAYS_RANGE
+    from src.event_bus import (
+        TRIGGER_PAYLOAD_MAX_CHARS_RANGE,
+        TRIGGER_PAYLOAD_MAX_CHARS_SETTING,
+    )
     # Per-key validation for numeric settings: coerce to int and clamp to a
     # sane range so a bad value can't disable the agent or let it run away.
     #
@@ -1232,6 +1252,8 @@ def int_setting_ranges() -> dict[str, tuple[int, int]]:
         WORKFLOW_APPROVAL_TIMEOUT_SETTING: (
             MIN_APPROVAL_TTL_SECONDS, MAX_APPROVAL_TTL_SECONDS,
         ),
+        # `B1861`. The trigger envelope's cap, from `src/event_bus.py`.
+        TRIGGER_PAYLOAD_MAX_CHARS_SETTING: TRIGGER_PAYLOAD_MAX_CHARS_RANGE,
     }
 
 

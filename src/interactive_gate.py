@@ -12,6 +12,7 @@ import asyncio
 from contextlib import asynccontextmanager
 import json
 import os
+import re
 import time
 
 
@@ -101,6 +102,34 @@ _PASSIVE_PREFIXES = (
     "/api/prefs",
 )
 
+# `B1864`. Machine traffic and the Workbench's own reads, by shape: `(method,
+# pattern)`, where a method of `None` is any method. Each `[^/]+` is one path
+# segment, so `/api/tasks/<id>/webhook-regenerate` (a person's button) is not
+# the webhook, and `/api/workflows/<id>/runs/<run>/answer` (a person's yes) is
+# not a run's read.
+#
+#   * The webhook trigger route — `POST /api/tasks/{task_id}/webhook/{token}`,
+#     `FORBIDDEN.md`'s pinned shape — is another machine ringing the doorbell,
+#     never a person at Pantheon. Counted as foreground, every inbound webhook
+#     held all background work for the quiet window and stopped what was
+#     running, the very run it had just started among them.
+#   * The Workbench polls `GET /api/workflows` every 4 s while a run is in
+#     flight, and reads the open workflow, its run and the task's runs list
+#     the same way. Counted as foreground, an open Workbench kept "busy" true
+#     for as long as it was open, so the background run it was showing waited
+#     for the page that was watching it to close (`B1047`'s defect, in the
+#     Workbench's own polls). They join the list above for the reason those
+#     are on it: a poll is not a person. A person at the page is still seen —
+#     by the tab's heartbeat (a key, a pointer, a scroll) and by every request
+#     that is not one of these.
+_PASSIVE_PATTERNS = (
+    (None, re.compile(r"^/api/tasks/[^/]+/webhook/[^/]+/?$")),
+    ("GET", re.compile(r"^/api/workflows/?$")),
+    ("GET", re.compile(r"^/api/workflows/[^/]+/?$")),
+    ("GET", re.compile(r"^/api/workflows/[^/]+/runs/[^/]+/?$")),
+    ("GET", re.compile(r"^/api/tasks/[^/]+/runs/?$")),
+)
+
 
 async def maybe_stop_background_tasks_for_heartbeat(stop_background) -> bool:
     """Stop background work for browser activity only when the gate is enabled.
@@ -124,6 +153,10 @@ def should_track_interactive_request(path: str, method: str = "GET") -> bool:
         return False
     if any(path.startswith(prefix) for prefix in _PASSIVE_PREFIXES):
         return False
+    verb = (method or "GET").upper()
+    if any((want is None or want == verb) and pattern.match(path)
+           for want, pattern in _PASSIVE_PATTERNS):
+        return False                                   # `B1864`
     return True
 
 
