@@ -56,6 +56,8 @@ from src.mail_headers import decode_header as _shared_decode_header
 # opens: a charset with no codec, an HTML-first alternative read once, and a
 # single-part HTML message as its text rather than its markup.
 from src.mail_headers import extract_text as _extract_text
+# `B1980`. And what a UID is, the rule the routes ask: one message, never a set.
+from src.mail_headers import one_uid as _one_uid
 # `B131`, then `B1118`. `src.agent_tools` is imported before `src.tool_schemas`
 # here, and since `B1118` the order no longer matters: the facade re-exports
 # `tool_schemas` and `tool_parsing` lazily, so either can be imported first in a
@@ -2006,6 +2008,9 @@ def _reply_to_email(uid, body, folder="INBOX", reply_all=False, account=None):
 
 def _set_flag(uid, folder, flag, add=True, account=None):
     """Add or remove an IMAP flag (e.g. \\Seen, \\Answered, \\Deleted)."""
+    uid = _one_uid(uid)
+    if not uid:  # `B1980`: one message; `1:*` with \Deleted expunged the folder
+        return False
     conn = _imap_connect(account)
     conn.select(_q(folder))
     op = "+FLAGS" if add else "-FLAGS"
@@ -2026,12 +2031,17 @@ def _bulk_set_flag(uids, folder, flag, add=True, account=None):
     (IMAP supports message-set syntax). Returns count attempted."""
     if not uids:
         return 0
+    # `B1980`: each one message, as text. A set among them (`1:*`) would be
+    # the whole folder, and SEARCH answers bytes, which joined as `b'5'`.
+    uids = [_one_uid(u) for u in uids]
+    if not all(uids):
+        return 0
     conn = _imap_connect(account)
     touched = []
     try:
         conn.select(_q(folder))
         op = "+FLAGS" if add else "-FLAGS"
-        msg_set = ",".join(str(u) for u in uids)
+        msg_set = ",".join(uids)
         try:
             status, data = conn.uid("FETCH", _b(msg_set), "(UID)")
         except Exception:
@@ -2053,12 +2063,15 @@ def _bulk_move(uids, source_folder, dest_folder, account=None, role: str = ""):
     """Move MANY messages between folders in one connection."""
     if not uids:
         return 0
+    uids = [_one_uid(u) for u in uids]  # `B1980`, as in _bulk_set_flag
+    if not all(uids):
+        return 0
     conn = _imap_connect(account)
     moved = 0
     try:
         conn.select(_q(source_folder))
         dest_folder = _resolve_folder(conn, dest_folder, role or _folder_role_from_name(dest_folder))
-        msg_set = ",".join(str(u) for u in uids)
+        msg_set = ",".join(uids)
         try:
             status, data = conn.uid("FETCH", _b(msg_set), "(UID)")
         except Exception:
@@ -2099,6 +2112,9 @@ def _search_uids(folder="INBOX", criteria="UNSEEN", account=None):
 
 def _move_message(uid, source_folder, dest_folder, account=None, role: str = ""):
     """Move a message between folders. Tries IMAP MOVE, falls back to copy+delete."""
+    uid = _one_uid(uid)
+    if not uid:  # `B1980`: one message; `1:*` moved the whole folder
+        return False
     conn = _imap_connect(account)
     conn.select(_q(source_folder))
     try:
@@ -2242,6 +2258,36 @@ async def list_tools() -> list[Tool]:
     ]
 
 
+def _uid_set_refusal(arguments: dict) -> str | None:
+    """`B1980`. Why a UID the model handed in is not one message, or None.
+
+    Every IMAP command that takes a UID also takes a set (`1:*` is the whole
+    folder, `5,7` two messages, `*` the last), and the tools passed theirs
+    through: `delete_email` with `permanent` and uid `1:*` flagged and
+    expunged the folder. Every `uid` these tools take is an email UID and
+    `uids` is `bulk_email`'s list (a string is one entry, not characters), so
+    this is asked once, before any tool connects. What passes is put back as
+    text, so a number sent as `5` reaches the tools as "5".
+    """
+    def refuse(value) -> str:
+        return (f"Error: {value!r} is not an email UID. A UID is one number, such as 5031, "
+                "from list_emails or search_emails.")
+
+    uid = arguments.get("uid")
+    if uid is not None and uid != "":
+        if not _one_uid(uid):
+            return refuse(uid)
+        arguments["uid"] = _one_uid(uid)
+    uids = arguments.get("uids")
+    if uids:
+        listed = list(uids) if isinstance(uids, (list, tuple)) else [uids]
+        for each in listed:
+            if not _one_uid(each):
+                return refuse(each)
+        arguments["uids"] = [_one_uid(each) for each in listed]
+    return None
+
+
 async def call_tool(name: str, arguments: dict) -> list[TextContent]:
     arguments = dict(arguments) if isinstance(arguments, dict) else {}
     owner = str(arguments.pop(_MCP_OWNER_ARG, "") or "").strip()
@@ -2250,6 +2296,9 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
         all_db_accounts = _read_accounts_from_db()
         if _mcp_owner_required(all_db_accounts):
             return [TextContent(type="text", text=_OWNER_SCOPE_ERROR)]
+        refusal = _uid_set_refusal(arguments)  # `B1980`
+        if refusal:
+            return [TextContent(type="text", text=refusal)]
 
         if name == "list_email_accounts":
             rows = _filter_accounts_for_owner(all_db_accounts)

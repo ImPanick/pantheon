@@ -812,14 +812,28 @@ def _uid_bytes(uid: str | bytes) -> bytes:
     return uid if isinstance(uid, bytes) else str(uid).encode()
 
 
-def _one_uid(uid: str | bytes | None) -> str:
-    """`B2010`. `uid` as text when it is one plain ASCII number, else "".
+# `B2010` wrote the one-UID rule here: `1:*`, `5,7` and `*` are IMAP sets of
+# messages, and a fullwidth or Arabic digit is no number IMAP knows. `B1980`
+# moved it to `src/mail_headers.py`, so the agent's mail tools (their own
+# process, which imports `src/`) ask the same one; `_one_uid` is that function.
+from src.mail_headers import one_uid as _one_uid  # noqa: E402
 
-    `1:*`, `5,7` and `*` are IMAP sets of messages and a fullwidth or Arabic
-    digit is no number IMAP knows, so none of them names one message.
+#: `B1980`. What an email route answers a UID that is not one number.
+_NOT_ONE_UID = "An email UID is one number, such as 5031."
+
+
+def _uid_names_one_message(request: Request) -> None:
+    """`B1980`. A `{uid}` in an email route's path names one message.
+
+    Every IMAP command that takes a UID also takes a set, and no route
+    checked: `DELETE /api/email/delete/1:*` moved the whole folder to Trash,
+    and `GET /api/email/read/1:*` fetched every message and marked each one
+    read. It is on the router (`setup_email_routes`), so a route added later
+    is held to it too; a route with no `{uid}` passes untouched.
     """
-    text = uid.decode("ascii", "replace") if isinstance(uid, bytes) else str(uid if uid is not None else "")
-    return text if text.isascii() and text.isdigit() else ""
+    uid = request.path_params.get("uid")
+    if uid is not None and not _one_uid(uid):
+        raise HTTPException(400, _NOT_ONE_UID)
 
 
 def _uid_exists(conn, uid: str | bytes, *, strict: bool = False) -> bool:
@@ -1873,9 +1887,11 @@ def setup_email_routes():
     from src.tool_privileges import everyone_switch as _everyone_switch, tool_privilege as _tool_privilege
     router = APIRouter(prefix="/api/email", tags=["email"],
                        # `B1488`: the switch for everyone first (it refuses everyone, in
-                       # the door's *everyone* words), then the person's.
+                       # the door's *everyone* words), then the person's. `B1980`: then a
+                       # `{uid}` in the path is one message, after both doors have spoken.
                        dependencies=[_Depends(_everyone_switch("can_use_email")),
-                                     _Depends(_tool_privilege("can_use_email"))])
+                                     _Depends(_tool_privilege("can_use_email")),
+                                     _Depends(_uid_names_one_message)])
 
     # ── In-memory cache + prefetch + IMAP connection pool ──
     # Three layers stacked because every cold click was hitting Dovecot
@@ -3068,6 +3084,8 @@ def setup_email_routes():
         move_to_spam = bool((data or {}).get("move_to_spam"))
         if not uid:
             raise HTTPException(400, "Missing uid")
+        if not _one_uid(uid):  # `B1980`: one message's header, never a folder's
+            raise HTTPException(400, _NOT_ONE_UID)
         if account_id:
             _assert_owns_account(account_id, owner)
         try:
@@ -3144,7 +3162,8 @@ def setup_email_routes():
             uid = str(raw_uid or "").strip()
             if not uid or uid in seen:
                 continue
-            if not uid.isdigit():
+            # `B1980`: the one rule (`isdigit` passed a fullwidth digit, U+FF15).
+            if not _one_uid(uid):
                 continue
             seen.add(uid)
             uids.append(uid)

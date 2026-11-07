@@ -16,6 +16,9 @@ the same reason (`P18-02`). So the one definition is here and both import it
 `B1822`, `B1823`. A message's body is read here too, for the same reason: the
 routes and the MCP server each had their own `_extract_text`, with the same
 faults. `extract_text` and `extract_html` are the one definition now.
+
+`B1980`. And what a UID is (`one_uid`), so a set such as `1:*` reaches no
+command from either process.
 """
 from __future__ import annotations
 
@@ -296,3 +299,19 @@ def is_own_origin(msg) -> bool:
     """A parsed message carries Pantheon's (or, before the rename, Odysseus's)
     origin header."""
     return any(str(msg.get(h) or "").strip().lower() == v for h, v in OWN_ORIGIN_HEADERS)
+
+
+def one_uid(uid) -> str:
+    """`uid` as text when it is one plain ASCII number, else "".
+
+    An IMAP UID names one message, but every command that takes one also takes
+    a set: `1:*` is every message in the folder, `5,7` two of them, `*` the
+    last. A fullwidth or Arabic digit is no number IMAP knows. Bytes (a SEARCH
+    answer) are read as ASCII and an int as its digits.
+
+    `B2010` wrote this rule for the routes (`_one_uid`); `B1980` moved it here,
+    because the agent's mail tools (`mcp_servers/email_server.py`) run in their
+    own process and import `src/`, never `routes/`.
+    """
+    text = uid.decode("ascii", "replace") if isinstance(uid, bytes) else str(uid if uid is not None else "")
+    return text if text.isascii() and text.isdigit() else ""
