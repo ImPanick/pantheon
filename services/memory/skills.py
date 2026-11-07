@@ -1936,6 +1936,13 @@ class SkillsManager:
             # Rename
             new_name = slugify(updates.get("name") or sk.name)
             if new_name != sk.name:
+                # `B1978`. Not onto a name this owner uses in any category: the
+                # folder check below sees only this one, and two skills with
+                # one name are edited, deleted and grouped by whichever is
+                # walked first.
+                if self._find_skill_path(new_name, owner) is not None:
+                    logger.warning("Skill rename target name in use: %s", new_name)
+                    return False
                 sk.name = new_name
 
             # Write to potentially new path

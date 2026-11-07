@@ -3190,6 +3190,13 @@ def setup_skills_routes(skills_manager: SkillsManager) -> APIRouter:
         updates = body.dict(exclude_none=True)
         if not updates:
             return {"ok": True}
+        if "name" in updates:
+            # `B1978`. update_skill refuses a name this owner already uses, and
+            # its False would read below as "Skill not found". Say what it is.
+            from services.memory.skill_format import slugify
+            new_name = slugify(updates["name"] or match.get("name"))
+            if new_name != match.get("name") and skills_manager._find_skill_path(new_name, user) is not None:
+                raise HTTPException(409, f"A skill named '{new_name}' already exists")
         ok = skills_manager.update_skill(match.get("name"), updates, owner=user,
                                          why="you changed it")   # `P13-08`
         if not ok:
