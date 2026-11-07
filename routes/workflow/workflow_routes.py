@@ -83,6 +83,11 @@ TEST_SOURCES = ("last", "pinned", "custom", "example", "none")
 # The test's two answers: the plan and a question, or what it made.
 TEST_NEEDS_CONFIRMATION = "needs_confirmation"
 TEST_RAN = "ran"
+# `B1887` / `B1888`. The third answer, to a request with `context_only: true`:
+# nothing runs and nothing is asked — only what the step's references would
+# read (`reads`) and what it would be handed, so the panel can fill one editor
+# per step the step reads before the person presses Test.
+TEST_CONTEXT = "context"
 
 
 def _answers(handler):
@@ -816,10 +821,24 @@ def setup_workflow_routes(task_scheduler) -> APIRouter:
         `outcome: "needs_confirmation"`; the same request with `confirm: true`
         runs it. That is mistake prevention, not a control against an
         adversary (`Law 17`): the owner can already run the whole workflow.
+
+        `B1887` / `B1888`. Two keys added, both optional, so the request the
+        panel sends today is answered as before:
+
+          * `outputs` — `{"<step id>": {"data": …, "text": "…"}}`, what the
+            start (`"start"`) and the steps before this one made, as the
+            person typed it; every reference into them reads it, and the
+            step before this one's entry is also what this step is handed;
+          * `context_only: true` — run nothing and ask nothing: answer
+            `{outcome: "context", reads, input_used, dropped, source}`.
+
+        Every answer gains `reads`: `[{node_id, label, origin, data, text}]`
+        for each step this step's settings name (`workflow_test_context`).
         """
         body = await _body(request)
         node = body.get("node")
         source = body.get("source") or "none"
+        context_only = body.get("context_only") is True
         if not isinstance(node, dict):
             raise WorkflowRefused(400, "Send the step to test, as it stands on the canvas (node).")
         if str(node.get("id")) != str(node_id):
@@ -857,8 +876,18 @@ def setup_workflow_routes(task_scheduler) -> APIRouter:
                 graph = _with_node(stored, checked)
                 return wf, trigger, rows, stored, checked, graph
             wf, trigger, rows, stored, checked, graph = await asyncio.to_thread(_check)
+            outputs = _checked_outputs(graph, str(node_id), body.get("outputs"))
             envelope, dropped = await _test_input(
                 db, wf, trigger, stored, graph, checked, source, body.get("input"))
+            envelope, dropped = _with_outputs(graph, checked, trigger, envelope, dropped, outputs)
+            if context_only:
+                def _reads():
+                    from src import workflow_test_context as wtc
+                    _ctx, found = wtc.build(db, task_id=trigger.id, graph=graph, node=checked,
+                                            envelope=envelope, source=source, outputs=outputs)
+                    return found
+                return {"outcome": TEST_CONTEXT, "reads": await asyncio.to_thread(_reads),
+                        "input_used": envelope, "dropped": dropped, "source": source}
 
             def _plan():
                 tasks_by_id = rows[0]
@@ -887,7 +916,8 @@ def setup_workflow_routes(task_scheduler) -> APIRouter:
             # `B1093`. Only for as long as somebody is waiting for the answer.
             result = await _while_the_request_waits(
                 request, task_scheduler.test_workflow_node(
-                    trigger, name, checked, input_envelope=envelope, timeout=None, graph=graph))
+                    trigger, name, checked, input_envelope=envelope, timeout=None, graph=graph,
+                    source=source, outputs=outputs))
         except WorkflowRefused:
             raise
         except Exception as err:
@@ -1355,6 +1385,72 @@ def test_source_offers(db, trigger, graph) -> dict:
     return out
 
 
+def _checked_outputs(graph, node_id: str, outputs) -> dict:
+    """`B1888`. What the person typed for the steps this one reads, checked
+    against the document (`workflow_test_context.check_outputs`), or a 400
+    in its words."""
+    from src import workflow_test_context as wtc
+    try:
+        return wtc.check_outputs(graph, node_id, outputs)
+    except wtc.OutputsRefused as err:
+        raise WorkflowRefused(400, err.sentence) from None
+
+
+def _with_outputs(graph, node, trigger, envelope, dropped, outputs):
+    """`B1888`. What the step is handed, when the person typed what the step
+    before it made: that step's hand-off, built from what they typed — so
+    what a model step or an If is handed and what its references read are
+    one answer. For a step the start leads to, a typed `start` is the
+    trigger it is handed. Anything else is left as the chosen source made
+    it."""
+    from src import workflow_test_context as wtc
+    from src.workflow_document import START_KEY
+
+    from src.workflow_document import node_input_shape
+
+    node_id = str(node.get("id"))
+    if not outputs:
+        return envelope, dropped
+    if wtc.is_first(graph, node_id):
+        made = outputs.get(START_KEY)
+        # A first step on a schedule is handed nothing, whatever is typed for
+        # the start; its references still read it (`workflow_test_context`).
+        if (made is not None and isinstance(made.get("data"), dict)
+                and node_input_shape(graph, node_id, trigger).source is not None):
+            return _pinned_envelope(graph, node_id, trigger, made["data"])
+        return envelope, dropped
+    parent = wtc.parent_of(graph, node_id)
+    if parent is not None and parent in outputs:
+        return wtc.handoff_from(graph, parent, outputs[parent],
+                                task_id=getattr(trigger, "id", "") or ""), []
+    return envelope, dropped
+
+
+def _custom_handoff(raw, fields):
+    """`B1888` (`test-custom-input-ignored`). A sample typed for a step that
+    is handed the step before it's hand-off (`TASK_HANDOFF_FIELDS`), when it
+    is a JSON object naming anything that is not one of those fields, is what
+    the step before it MADE — its `data` — and not a hand-off with every key
+    cut: `{"greeting": "goodbye"}` typed on an If after "Make greeting" was
+    answered "Left out, because this step is not handed them: greeting." and
+    the If went the same way whatever was typed. A sample that names only
+    hand-off fields (`{"result": …, "data": …}`) is read as it always was.
+    `None` when the rule does not apply."""
+    from src.event_bus import TASK_HANDOFF_FIELDS
+
+    if tuple(fields or ()) != tuple(TASK_HANDOFF_FIELDS):
+        return None
+    value = raw
+    if isinstance(raw, str):
+        try:
+            value = json.loads(raw)
+        except (TypeError, ValueError):
+            return None
+    if isinstance(value, dict) and value and any(k not in TASK_HANDOFF_FIELDS for k in value):
+        return {"data": value}
+    return None
+
+
 async def _test_input(db, wf, trigger, stored, graph, node, source, raw):
     """The envelope the step would really be handed, from the chosen source,
     and the keys a sample lost because the step is never handed them."""
@@ -1384,6 +1480,9 @@ async def _test_input(db, wf, trigger, stored, graph, node, source, raw):
     if source == "custom":
         if raw is None or (isinstance(raw, str) and not raw.strip()):
             raise WorkflowRefused(400, "Paste the sample to test with.")
+        made = _custom_handoff(raw, fields)
+        if made is not None:
+            return _pinned_envelope(graph, node_id, trigger, made)
         return _pinned_envelope(graph, node_id, trigger, _sample_data(raw, fields, label))
     # example (a step handed no fields is refused above)
     data = await _write_example(wf.owner, node.get("label") or node_id, fields)

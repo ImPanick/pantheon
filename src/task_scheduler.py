@@ -8219,7 +8219,8 @@ class TaskScheduler:
         self._end_parked_run(db, target, run, status=status, sentence=sentence)
 
     async def test_workflow_node(self, task, workflow_name: str, node: dict, *,
-                                 input_envelope=None, timeout=None, graph=None) -> dict:
+                                 input_envelope=None, timeout=None, graph=None,
+                                 source=None, outputs=None) -> dict:
         """`P22-08` — run ONE step, now, with the input the person chose.
 
         Under a slot of its own (`test:<uuid>`) that no row has, so it writes
@@ -8236,6 +8237,12 @@ class TaskScheduler:
         references read the input chosen (as `start`) and, for the steps
         before it, their last real records (`graph`, the document it is in).
         A test never parks: a step that would ask for a yes says so instead.
+
+        `B1887` / `B1888`: `source` (the `TEST_SOURCES` word the input came
+        from) and `outputs` (what the person typed for the steps it reads,
+        `workflow_test_context.check_outputs`'s answer) decide what its
+        references read (`_test_context`); the answer gains `reads` — each
+        step its settings name, what the test read for it and from where.
         """
         from core.database import SessionLocal
         from src.builtin_actions import NODE_STATUS_ERROR, NodeResult
@@ -8248,7 +8255,9 @@ class TaskScheduler:
         started = time.monotonic()
         db = SessionLocal()
         try:
-            ctx = self._test_context(db, task, graph, node, input_envelope)
+            reads = []
+            ctx = self._test_context(db, task, graph, node, input_envelope,
+                                     source=source, outputs=outputs, reads=reads)
             port = None
             with run_origin(task.id, workflow_name, slot, test=True):
                 try:
@@ -8271,6 +8280,7 @@ class TaskScheduler:
                 "took_ms": _human_ms(time.monotonic() - started),
                 "port": port or (EDGE_WHEN_SUCCESS if res.status == "success"
                                  else EDGE_WHEN_ERROR if res.status == "error" else None),
+                "reads": reads,
             }
         finally:
             # `B1093`. A test delivers nothing, and that includes a chat: a
@@ -8306,30 +8316,24 @@ class TaskScheduler:
             logger.warning("A step test's chat %s could not be removed", session_id,
                            exc_info=True)
 
-    def _test_context(self, db, task, graph, node: dict, input_envelope) -> dict:
-        """What a tested step's references read: the chosen input as the start,
-        and each other step's newest real record (`last_node_record` — never a
-        dry plan)."""
-        from src import workflow_runs as wr
-        from src.event_bus import trigger_summary
+    def _test_context(self, db, task, graph, node: dict, input_envelope, *,
+                      source=None, outputs=None, reads=None) -> dict:
+        """What a tested step's references read — `workflow_test_context.build`,
+        the one rule (`B1887` / `B1888`): `steps.start` is always the trigger
+        (the chosen input only for a step the start leads to), the step before
+        it made what the chosen input says it made, pinned samples and the
+        last run's records fill in the rest, and `outputs` — what the person
+        typed for the steps it reads — goes on top. It was the chosen input as
+        `steps.start` for every step, so a later step's pin and its trigger
+        never resolved in a test. `reads`, a list, is filled with what was read
+        for each step the step names."""
+        from src import workflow_test_context as wtc
 
-        steps = {}
-        for other in (graph or {}).get("nodes") or ():
-            if other.get("id") == node.get("id"):
-                continue
-            rec = wr.last_node_record(db, task.id, other["id"])
-            if rec is None or rec.status not in wr.STEP_FINISHED:
-                continue
-            out = wr._loads(rec.output)
-            if not isinstance(out, dict) or wr.is_truncated(out):
-                continue
-            steps[other["id"]] = {"status": rec.status, "text": out.get("text") or "",
-                                  "data": out.get("data")}
-        envelope = input_envelope if isinstance(input_envelope, dict) else None
-        steps[wr._start_key()] = {"status": "success",
-                                  "data": (envelope or {}).get("data"),
-                                  "text": trigger_summary(envelope) if envelope else ""}
-        return {"steps": json.loads(json.dumps(steps, default=str))}
+        ctx, found = wtc.build(db, task_id=getattr(task, "id", None), graph=graph, node=node,
+                               envelope=input_envelope, source=source, outputs=outputs)
+        if reads is not None:
+            reads.extend(found)
+        return ctx
 
     async def _run_chained(self, task_id: str, *, handoff: dict | None = None,
                            started_by: str = STARTED_BY_BACKGROUND):
