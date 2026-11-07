@@ -85,6 +85,8 @@ import { EDGE_WORDS, KIND_WORDS, PORT_WORDS, ONLY_WAY_WORD, waitingWords } from 
 import { runStatusTone, runStatusLabel } from '../runStatus.js';
 import { PORTS } from './graphLayout.js';
 import { WorkflowRefusal } from './workflowApi.js';
+import { startGlyph } from './kindIcons.js';
+import { settingsOf, settingsWords } from './stepSettings.js';
 
 /** The start's item id on the canvas. Never a step's id: a step's id is
  *  `[A-Za-z0-9_-]`, so it can never hold the start's underscores-only shape
@@ -224,6 +226,8 @@ const STARTS_LABEL = 'starts';
  *  line of what it does, from its own settings. */
 const WAIT_UNIT = (m) => (m % 60 === 0 && m >= 60 ? `${m / 60} h` : `${m} min`);
 const NOT_REACHED = 'Not reached in this run';
+/** `B1840`. What a copied set of steps says it is, on the clipboard. */
+export const CLIP_KIND = 'pantheon.workflow.steps';
 const PINNED_MARK = 'Sample pinned';
 const READ_ONLY = 'This is a record, so it cannot be changed here.';
 const START_FIXED = 'The start always leads to the step that goes first; draw arrows between steps.';
@@ -244,6 +248,35 @@ function stable(value) {
   return JSON.stringify(value === undefined ? null : value);
 }
 
+/** `B1837`. How long a step took, in a few characters ("0.4 s", "12 s",
+ *  "3 min"), or '' while it has not finished. */
+export function spentWords(start, end) {
+  const a = Date.parse(start || '');
+  const b = Date.parse(end || '');
+  if (!Number.isFinite(a) || !Number.isFinite(b) || b < a) return '';
+  const s = (b - a) / 1000;
+  if (s < 10) return `${s.toFixed(1)} s`;
+  if (s < 90) return `${Math.round(s)} s`;
+  if (s < 5400) return `${Math.round(s / 60)} min`;
+  return `${(s / 3600).toFixed(1)} h`;
+}
+
+/** `B1834`. A step's settings with what the forms write by default filled
+ *  in (`join: 'all'` on an If and on each Switch way, `mode: 'all'` on a
+ *  Merge — the engine's own defaults, `workflow_logic.py`), so a stored step
+ *  without them and a form's copy with them read the same. */
+function withDefaults(kind, config) {
+  const c = clone(config && typeof config === 'object' ? config : {}) || {};
+  if (kind === 'if' && c.join == null) c.join = 'all';
+  if (kind === 'merge' && c.mode == null) c.mode = 'all';
+  if (kind === 'switch' && Array.isArray(c.cases)) {
+    c.cases = c.cases.map((w) => (w && typeof w === 'object' && w.join == null ? { ...w, join: 'all' } : w));
+  }
+  return c;
+}
+
+const sameSettings = (kind, a, b) => stable(withDefaults(String(kind || ''), a)) === stable(withDefaults(String(kind || ''), b));
+
 const nodesOf = (g) => (Array.isArray(g && g.nodes) ? g.nodes.filter((n) => n && n.id != null) : []);
 const edgesOf = (g) => (Array.isArray(g && g.edges)
   ? g.edges.filter((e) => e && e.from != null && e.to != null) : []);
@@ -257,6 +290,10 @@ export function contentOf(name, graph) {
     name: String(name || ''),
     nodes: nodesOf(graph).map((n) => ({
       id: String(n.id), kind: String(n.kind || ''), label: String(n.label || ''), config: n.config || {},
+      // `B1855`, `B1856`: a step's retries and time limit, and its switch, are
+      // what it does — a change to either is a new version.
+      ...(n.settings && typeof n.settings === 'object' && Object.keys(n.settings).length ? { settings: n.settings } : {}),
+      ...(n.disabled ? { disabled: true } : {}),
     })).sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
     edges: edgesOf(graph).map((e) => [String(e.from), String(e.port || ''), String(e.to)]).sort(),
   });
@@ -324,6 +361,12 @@ export function createWorkflowSource({
     // `PUT /api/tasks/{id}` takes, or null. Part of the draft — it makes the
     // workflow dirty, Save sends it with the steps, Discard drops it.
     startPatch: null,
+    // `B1839`. Undo and Redo: the draft as it was before each edit (`undo`)
+    // and as it was before each undo (`redo`); `snap` is the draft now.
+    undo: [], redo: [], snap: null, lastKind: null, lastAt: 0,
+    // `B1851`. Every refusal a save of the draft would give (the problems
+    // route), or null when it has not answered.
+    problems: null,
   };
   const isRun = mode === 'run';
   const describe = (task) => {
@@ -387,6 +430,9 @@ export function createWorkflowSource({
       .filter((r) => String(r.node_id) === String(id) && (r.item == null));
     return recs.length ? recs[recs.length - 1] : null;
   }
+
+  /** Every step record of the run being drawn. */
+  const runRecords = () => (S.run && Array.isArray(S.run.nodes) ? S.run.nodes : []).filter(Boolean);
 
   /** `P22-12`. A For-each step's item records, in item order. */
   function itemRecordsOf(id) {
@@ -502,6 +548,8 @@ export function createWorkflowSource({
       loadError: S.loadError ? S.loadError.sentence : null,
       palette: S.palette,
       paletteError: S.paletteError,
+      history: { undo: S.undo.length, redo: S.redo.length },
+      problems: isRun ? [] : problems(),
     };
   }
 
@@ -520,10 +568,115 @@ export function createWorkflowSource({
     if (follow) {
       S.draft = { name: String(doc.name || ''), graph: clone(doc.graph) || { nodes: [], edges: [] } };
       S.base = doc.version;
+      S.snap = snapshot();
     }
   }
 
-  function edited() {
+  // ── `B1839`: undo and redo ───────────────────────────────────────────────
+  // Every edit of the draft goes through `edited()`, so the draft as it was
+  // before an edit is the one held since the last (`S.snap`). Typing a name
+  // is one edit however many keys it took (`kind: 'name'`, within a pause);
+  // where steps sit is an edit too (`savePositions`), so *Tidy up* — which
+  // wrote every place away at once — is undone like anything else. A save
+  // keeps the history (an undo after it is a change again); Discard and
+  // reopening drop it.
+  const UNDO_MAX = 100;
+  const COALESCE_MS = 1200;
+  const FOLLOW_MS = 4000;
+  function snapshot() {
+    if (!S.draft) return null;
+    return { name: S.draft.name, graph: clone(S.draft.graph), startPatch: clone(S.startPatch),
+      fresh: Array.from(S.fresh) };
+  }
+  function remember(kind = null) {
+    const now = Date.now();
+    // A step's arrow and place, given straight after it is added or pasted,
+    // are part of that one step: one Undo takes them all back.
+    const follows = (kind === 'follow' || kind === 'place')
+      && ['new', 'paste', 'follow'].includes(S.lastKind) && now - S.lastAt < FOLLOW_MS;
+    const same = follows || (kind && kind === S.lastKind && now - S.lastAt < COALESCE_MS);
+    if (S.snap && !same) {
+      S.undo.push(S.snap);
+      if (S.undo.length > UNDO_MAX) S.undo.shift();
+    }
+    if (!same) S.redo = [];
+    S.lastKind = kind;
+    S.lastAt = now;
+    S.snap = snapshot();
+  }
+  function restore(snap) {
+    S.draft = { name: snap.name, graph: clone(snap.graph) };
+    S.startPatch = clone(snap.startPatch);
+    S.fresh = new Set(snap.fresh || []);
+    S.snap = snapshot();
+    S.lastKind = null;
+  }
+  /** The saved steps' places as the draft has them now, written (they are
+   *  written at once, never a version — `savePositions`). */
+  async function writeSavedPositions() {
+    if (!S.doc || !S.draft) return;
+    const body = {};
+    const drafted = new Map(nodesOf(S.draft.graph).map((n) => [String(n.id), point(n.position)]));
+    for (const n of nodesOf(S.doc.graph)) {
+      if (!drafted.has(String(n.id))) continue;
+      const p = drafted.get(String(n.id));
+      if (!samePoint(n.position, p)) body[String(n.id)] = p;
+    }
+    const startNow = point(S.draft.graph && S.draft.graph[START_KEY] && S.draft.graph[START_KEY].position);
+    if (!samePoint(S.doc.graph && S.doc.graph[START_KEY] && S.doc.graph[START_KEY].position, startNow)) body[START_KEY] = startNow;
+    if (!Object.keys(body).length) return;
+    try {
+      await api.savePositions(workflowId, body);
+      for (const n of nodesOf(S.doc.graph)) if (Object.prototype.hasOwnProperty.call(body, String(n.id))) n.position = body[String(n.id)];
+      if (Object.prototype.hasOwnProperty.call(body, START_KEY)) S.doc.graph[START_KEY] = { ...(S.doc.graph[START_KEY] || {}), position: body[START_KEY] };
+    } catch (_) { /* drawn where the draft says; written with the next move */ }
+  }
+  /** What changed from snapshot `a` to snapshot `b`, in a few words: what an
+   *  Undo or a Redo says it put back. */
+  function whatChanged(a, b) {
+    if (!a || !b) return '';
+    const named = (n) => `“${String((n && n.label) || (n && n.id) || 'a step')}”`;
+    const an = new Map(nodesOf(a.graph).map((n) => [String(n.id), n]));
+    const bn = new Map(nodesOf(b.graph).map((n) => [String(n.id), n]));
+    const added = Array.from(bn.keys()).filter((id) => !an.has(id)).map((id) => bn.get(id));
+    const gone = Array.from(an.keys()).filter((id) => !bn.has(id)).map((id) => an.get(id));
+    if (added.length && !gone.length) return added.length === 1 ? `adding ${named(added[0])}` : `adding ${added.length} steps`;
+    if (gone.length && !added.length) return gone.length === 1 ? `removing ${named(gone[0])}` : `removing ${gone.length} steps`;
+    if (added.length || gone.length) return 'changing the steps';
+    if (a.name !== b.name) return 'the new name';
+    const changed = Array.from(bn.keys()).filter((id) => {
+      const x = an.get(id);
+      const y = bn.get(id);
+      return stable({ l: x.label, c: x.config || {}, s: x.settings || null, d: !!x.disabled })
+        !== stable({ l: y.label, c: y.config || {}, s: y.settings || null, d: !!y.disabled });
+    });
+    if (changed.length) return changed.length === 1 ? `the change to ${named(bn.get(changed[0]))}` : `the changes to ${changed.length} steps`;
+    const arrows = (g) => edgesOf(g).map((e) => `${e.from}\u0000${e.port}\u0000${e.to}`).sort().join('\u0001');
+    if (arrows(a.graph) !== arrows(b.graph)) return 'the arrow';
+    if (stable(a.startPatch) !== stable(b.startPatch)) return 'the change to the start';
+    return 'moving steps';
+  }
+  async function stepHistory(from, to, verb) {
+    await ready;
+    if (readOnly() || !S.draft) return { ok: false, sentence: READ_ONLY };
+    if (!from.length) return { ok: false, sentence: `Nothing to ${verb}.` };
+    const here = snapshot();
+    const back = from.pop();
+    const what = verb === 'undo' ? whatChanged(back, here) : whatChanged(here, back);
+    to.push(here);
+    restore(back);
+    S.gen += 1;
+    emit();
+    await writeSavedPositions();
+    await recheck();
+    const head = verb === 'undo' ? 'Undid' : 'Redid';
+    return { ok: true, sentence: what ? `${head} ${what}.` : (verb === 'undo' ? 'Undone.' : 'Done again.'), left: from.length };
+  }
+  const undo = () => stepHistory(S.undo, S.redo, 'undo');
+  const redo = () => stepHistory(S.redo, S.undo, 'redo');
+
+  function edited(kind = null) {
+    remember(kind);
     S.gen += 1;
     emit();
   }
@@ -606,13 +759,15 @@ export function createWorkflowSource({
       const cause = steps.find((s) => s && s.kind === 'trigger');
       outcome = { tone: 'info', word: String((cause && cause.detail) || 'Started') };
     }
+    const took = isRun ? (runRecords().length ? ['success'] : []) : null;
     // `P22-11`. The start has one port, *starts*: an arrow drawn from it is
     // a real arrow of the document, and several may leave it.
     return {
-      id: START_ID, name: 'Starts', kind: 'start',
+      id: START_ID, name: 'Starts', kind: 'start', glyph: startGlyph(t), cat: 'trigger',
       sub: describe(t) || (t ? '' : 'Its start could not be read'),
       paused: !isRun && !isOn(), outcome, ports: ['success'], portWords: { success: STARTS_LABEL },
       entry: true, marks: [], accepts: false, missing: false, fixed: true,
+      ...(took ? { took } : {}),
     };
   }
 
@@ -696,6 +851,9 @@ export function createWorkflowSource({
       } else {
         outcome = { tone: 'none', word: NOT_REACHED };
       }
+      // `B1837`. How long it took, on its box: a run read at a glance.
+      const took = rec ? spentWords(rec.started_at, rec.finished_at) : '';
+      if (took && rec.status !== 'waiting') outcome = { ...outcome, word: `${outcome.word} · ${took}` };
     }
     const ports = portsOfNode(n, S.palette);
     // `P22-19`, `P22-24`. Not checked yet: its words first, then any pin.
@@ -703,6 +861,9 @@ export function createWorkflowSource({
     const marks = [];
     if (mark) marks.push(MARK_WORDS[mark.origin]);
     if (!isRun && !S.viewing && n.pinned) marks.push(PINNED_MARK);
+    // `B1855`, `B1856`. Tries, a time limit, switched off: words on the box.
+    const extra = settingsWords(n.settings, !!n.disabled);
+    if (extra) marks.push(extra);
     const item = {
       id, name: String(n.label || KIND_WORDS[kind] || kind), kind,
       sub: [KIND_WORDS[kind] || kind, detail].filter(Boolean).join(' · '),
@@ -711,7 +872,20 @@ export function createWorkflowSource({
       accepts: !readOnly(), missing: false,
     };
     if (mark) item.unchecked = mark.origin;
+    if (n.disabled) item.off = true;
+    // `B1837`. The ports this step left by in the run, so the arrows it
+    // took are drawn lit and the rest set aside.
+    if (isRun) item.took = portsTaken(id);
     return item;
+  }
+
+  /** `B1837`. The ports a step's run left by: its record's, or its items'. */
+  function portsTaken(id) {
+    const rec = recordOf(id);
+    const out = new Set();
+    if (rec && rec.port && rec.status !== 'waiting') out.add(String(rec.port));
+    for (const r of itemRecordsOf(id)) if (r && r.port && r.status !== 'waiting') out.add(String(r.port));
+    return Array.from(out);
   }
 
   /** `P22-11`. The document's own start arrows (`from: "start"`). */
@@ -769,7 +943,7 @@ export function createWorkflowSource({
   async function recheck() {
     if (readOnly() || !S.draft) return;
     const gen = S.gen;
-    const res = await check(S.draft.graph);
+    const [res] = await Promise.all([check(S.draft.graph), checkAll()]);
     if (gen !== S.gen) return;
     if (res.ok) S.problem = null;
     else if (res.refusal.status === 409) S.stale = true;
@@ -777,14 +951,53 @@ export function createWorkflowSource({
     emit();
   }
 
+  // ── `B1851`: every problem at once ───────────────────────────────────────
+  // Save's check names the first refusal only; the problems route names every
+  // one a save of this draft would give, so each step that would stop Save is
+  // marked where it stands. Without the route (an older Pantheon) the one
+  // refusal the check names is what is marked.
+  async function checkAll() {
+    if (readOnly() || !S.draft || !api || typeof api.listProblems !== 'function') return;
+    const gen = S.gen;
+    let list = null;
+    try {
+      const r = await api.listProblems(workflowId, { name: S.draft.name, graph: S.draft.graph });
+      list = Array.isArray(r && r.problems) ? r.problems : [];
+    } catch (_) {
+      list = null;
+    }
+    if (gen !== S.gen) return;
+    S.problems = list && list.map((p) => ({
+      nodeIds: (Array.isArray(p && p.node_ids) ? p.node_ids : []).map(String),
+      sentence: String((p && p.sentence) || ''), field: (p && p.field) || null, reason: (p && p.reason) || null,
+    })).filter((p) => p.sentence);
+  }
+  /** What would stop Save now: `[{ nodeIds, sentence, field, reason }]`. */
+  function problems() {
+    if (readOnly() || !S.draft) return [];
+    if (Array.isArray(S.problems)) return S.problems.map((p) => ({ ...p, nodeIds: p.nodeIds.slice() }));
+    return S.problem && S.problem.sentence ? [{ ...S.problem, nodeIds: (S.problem.nodeIds || []).map(String) }] : [];
+  }
+
+  /** `B1851`. The other steps that read what step `id` makes — a
+   *  `steps.<id>.` field in their settings — by name. Removing `id` leaves
+   *  them reading nothing. */
+  function referencesTo(id) {
+    const g = S.draft ? S.draft.graph : shown();
+    const key = String(id).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const pat = new RegExp(`steps\\s*(?:\\.\\s*${key}(?![\\w-])|\\[\\s*\\\\?['"]${key}\\\\?['"]\\s*\\])`);
+    return nodesOf(g).filter((n) => String(n.id) !== String(id) && pat.test(JSON.stringify(n.config || {})))
+      .map((n) => String(n.label || n.id));
+  }
+
   /** An edit that the server may refuse because of itself: an arrow. */
-  async function tryEdit(after) {
+  async function tryEdit(after, kind = null) {
     const before = S.draft.graph;
     const res = await check(after);
     if (res.ok) {
       S.draft.graph = after;
       S.problem = null;
-      edited();
+      edited(kind);
       return { ok: true };
     }
     const r = res.refusal;
@@ -802,14 +1015,14 @@ export function createWorkflowSource({
       if (same) {
         S.draft.graph = after;
         S.problem = problemOf(r);
-        edited();
+        edited(kind);
         return { ok: true, sentence: r.sentence };
       }
     }
     return { ok: false, status: r.status, sentence: r.sentence, reason: r.reason, nodeIds: r.nodeIds, field: r.field || null };
   }
 
-  async function connect(from, when, to) {
+  async function connect(from, when, to, kind = null) {
     await ready;
     if (readOnly()) return { ok: false, sentence: READ_ONLY };
     const a = String(from);
@@ -830,7 +1043,7 @@ export function createWorkflowSource({
         if (first && String(first.id) !== b) g.edges = [...edgesOf(g), { from: START_KEY, port: 'success', to: String(first.id) }];
       }
       g.edges = [...edgesOf(g), { from: START_KEY, port: 'success', to: b }];
-      return tryEdit(g);
+      return tryEdit(g, kind);
     }
     const n = draftNode(a);
     if (!n) return { ok: false, sentence: 'That step is not in this workflow.' };
@@ -844,7 +1057,7 @@ export function createWorkflowSource({
       return { ok: false, sentence: 'That arrow is already there.' };
     }
     g.edges = [...edgesOf(g), { from: a, port, to: b }];
-    return tryEdit(g);
+    return tryEdit(g, kind);
   }
 
   async function disconnect(from, when, to) {
@@ -897,7 +1110,13 @@ export function createWorkflowSource({
       for (const n of nodesOf(g)) n.position = points.get(String(n.id)) || null;
       if (g && typeof g === 'object') g[START_KEY] = { ...(g[START_KEY] || {}), position: points.get(START_ID) || null };
     };
+    const was = stable(nodesOf(S.draft.graph).map((n) => [String(n.id), point(n.position)]))
+      + stable(point(S.draft.graph && S.draft.graph[START_KEY] && S.draft.graph[START_KEY].position));
     placeIn(S.draft.graph);
+    const now = stable(nodesOf(S.draft.graph).map((n) => [String(n.id), point(n.position)]))
+      + stable(point(S.draft.graph && S.draft.graph[START_KEY] && S.draft.graph[START_KEY].position));
+    // `B1839`. A move is undone like any edit; it is not a change to save.
+    if (was !== now) { remember('place'); emit(); }
     const body = {};
     for (const n of nodesOf(S.doc.graph)) {
       const p = points.get(String(n.id)) || null;
@@ -922,7 +1141,7 @@ export function createWorkflowSource({
     return { destroy() { host.textContent = ''; } };
   }
 
-  function openPanel(host, item, { onSaved, onCancel } = {}) {
+  function openPanel(host, item, { onSaved, onCancel, onApplying } = {}) {
     const id = item && item.id != null ? String(item.id) : null;
     const saved = (out) => { if (typeof onSaved === 'function') onSaved(out); };
     if (id === START_ID) {
@@ -1002,10 +1221,32 @@ export function createWorkflowSource({
       problem,
       check,
       onApply: async (change) => {
+        // `B1836`. Said at once, before anything is awaited, so the canvas
+        // knows a Close it pressed for the person was taken (`onApplying`).
+        if (typeof onApplying === 'function') onApplying();
         let n = draftNode(id);
         if (!n || !change) return;
-        if (change.label != null) n.label = String(change.label);
-        if (change.config && typeof change.config === 'object') n.config = clone(change.config);
+        const nextLabel = change.label != null ? String(change.label) : String(n.label || '');
+        const nextConfig = change.config && typeof change.config === 'object' ? clone(change.config) : n.config;
+        // `B1855`, `B1856`. The step's "If it fails" settings and its switch,
+        // when the panel drew them (absent: kept as they were).
+        const hasExtras = Object.prototype.hasOwnProperty.call(change, 'settings');
+        const nextSettings = hasExtras ? settingsOf(change.settings) : settingsOf(n.settings);
+        const nextOff = hasExtras ? !!change.disabled : !!n.disabled;
+        const sameExtras = stable(nextSettings) === stable(settingsOf(n.settings)) && nextOff === !!n.disabled;
+        // `B1834`. Done on a step nobody changed is not a change: the forms
+        // write a few defaults the stored step leaves out (an If's "all of
+        // these", a Merge's "wait for all"), and every such Done made the
+        // workflow "Unsaved changes" and its Save a new version.
+        if (!S.fresh.has(id) && nextLabel === String(n.label || '')
+            && sameSettings(n.kind, n.config, nextConfig) && sameExtras) {
+          saved({ id, name: n.label, sentence: `Nothing changed in “${n.label || 'the step'}”.` });
+          return;
+        }
+        n.label = nextLabel;
+        n.config = nextConfig;
+        if (nextSettings) n.settings = nextSettings; else delete n.settings;
+        if (nextOff) n.disabled = true; else delete n.disabled;
         // `P22-09`. A step added in this draft takes its id from the label it
         // is first given, and keeps it after (`fresh` is spent here).
         let nowId = id;
@@ -1083,6 +1324,17 @@ export function createWorkflowSource({
     if (!api || typeof api.listFields !== 'function') {
       return { ok: false, sentence: 'This Pantheon cannot list the fields other steps made.' };
     }
+    // `B1850`. A step only the draft has (or a draft whose arrows moved) is
+    // asked about as the draft has it, so a new step's fields are listed
+    // before anything is saved.
+    if ((!savedNode(id) || stepsDirty()) && typeof api.listDraftFields === 'function' && S.draft) {
+      try {
+        const out = await api.listDraftFields(workflowId, String(id), S.draft.graph);
+        return { ok: true, sources: Array.isArray(out && out.sources) ? out.sources : [] };
+      } catch (err) {
+        if (!savedNode(id)) return answer(err);
+      }
+    }
     if (!savedNode(id)) {
       return { ok: false, sentence: 'Save the workflow first: the fields other steps made are listed for a saved step.' };
     }
@@ -1094,10 +1346,20 @@ export function createWorkflowSource({
     }
   }
 
-  async function newItem(anchor) {
+  /** A new step, of the kind the palette is asked for. `after` (`B1833`):
+   *  `{ from, when }` — the port it was added from (a step's "+"), so it is
+   *  added with that arrow; `{ from, when, to }` — an arrow it was dropped on,
+   *  which it now stands in the middle of. Answers the new step's id, or
+   *  `{ id, sentence }` when the arrow was refused (the step is kept). */
+  async function newItem(anchor, after = null) {
     await ready;
     if (readOnly() || !S.draft || typeof panels.palette !== 'function') return null;
-    const kind = await panels.palette(anchor, { palette: S.palette, paletteError: S.paletteError });
+    // `B1842`. The picker says where the step goes.
+    const fromName = after && after.from != null
+      ? (String(after.from) === START_ID ? 'the start' : `“${(draftNode(after.from) || {}).label || after.from}”`) : '';
+    const toName = after && after.to != null ? `“${(draftNode(after.to) || {}).label || after.to}”` : '';
+    const title = !after ? 'Add a step' : toName ? `Add a step between ${fromName} and ${toName}` : `Add a step after ${fromName}`;
+    const kind = await panels.palette(anchor, { palette: S.palette, paletteError: S.paletteError, after, title });
     if (!kind) return null;
     const nodes = nodesOf(S.draft.graph);
     const word = KIND_WORDS[kind] || String(kind);
@@ -1109,9 +1371,150 @@ export function createWorkflowSource({
     const id = freeId(label, new Set(nodes.map((n) => String(n.id))));
     S.fresh.add(id);
     S.draft.graph = { ...S.draft.graph, nodes: [...nodes, { id, kind: String(kind), label, config: {}, position: null, pinned: null }] };
-    edited();
+    edited('new');
+    if (after && after.from != null && after.when != null) {
+      const joined = await joinNew(String(after.from), String(after.when), id, after.to != null ? String(after.to) : null);
+      if (joined && joined.ok === false) { await recheck(); return { id, sentence: joined.sentence || '' }; }
+    }
     await recheck();
     return id;
+  }
+
+  /** `B1833`. Join a step just added: from the port it was added after, and
+   *  — when it was dropped on an arrow — on to where that arrow went, by its
+   *  own first way out, the arrow it replaced taken away. One edit, asked of
+   *  the server once (`tryEdit`), so a refusal leaves the draft as it was
+   *  with the step added. */
+  async function joinNew(from, when, id, to) {
+    if (to == null) return connect(from, when, id, 'follow');
+    const g = clone(S.draft.graph);
+    const a = from === START_ID ? START_KEY : from;
+    const node = draftNode(id);
+    const out = portsOfNode(node, S.palette)[0] || 'success';
+    g.edges = edgesOf(g).filter((e) => !(String(e.from) === a && String(e.port) === when && String(e.to) === to));
+    if (a === START_KEY && !startEdgesOf(S.draft.graph).length) {
+      // The implied entry is the arrow dropped on: written out, then moved.
+      g.edges = g.edges.filter((e) => !(String(e.from) === START_KEY && String(e.to) === to));
+    }
+    g.edges = [...g.edges, { from: a, port: when, to: id }, { from: id, port: out, to }];
+    return tryEdit(g, 'follow');
+  }
+
+  // ── `B1840`: copy, paste and duplicate ───────────────────────────────────
+  /** The steps `ids` and the arrows between them, as a clip another canvas
+   *  (this workflow's, or another's) can paste: `{ v, kind, nodes, edges }`.
+   *  The start is never copied. */
+  function copyItems(ids) {
+    if (!S.draft && !S.doc) return null;
+    const g = shown();
+    const want = new Set((ids || []).map(String).filter((x) => x !== START_ID));
+    const nodes = nodesOf(g).filter((n) => want.has(String(n.id)))
+      .map((n) => ({ id: String(n.id), kind: String(n.kind || 'llm'), label: String(n.label || ''),
+        config: clone(n.config || {}), position: point(n.position),
+        ...(n.settings ? { settings: clone(n.settings) } : {}), ...(n.disabled ? { disabled: true } : {}) }));
+    if (!nodes.length) return null;
+    const edges = edgesOf(g).filter((e) => want.has(String(e.from)) && want.has(String(e.to)))
+      .map((e) => ({ from: String(e.from), port: String(e.port || ''), to: String(e.to) }));
+    return { v: 1, kind: CLIP_KIND, nodes, edges };
+  }
+
+  /**
+   * A clip's steps added to the draft with ids of their own — a reference
+   * from one pasted step to another (`{{ steps.old.… }}`) follows it to its
+   * new id; one to a step that is not in the clip is kept as it was (it may
+   * name a step of this workflow). Placed `offset` from where they were, or
+   * from `at` (the top-left of the group). Answers `{ ok, ids, sentence }`.
+   */
+  async function pasteItems(clip, { offset = { x: 40, y: 40 }, at = null } = {}) {
+    await ready;
+    if (readOnly() || !S.draft) return { ok: false, sentence: READ_ONLY };
+    if (!clip || clip.kind !== CLIP_KIND || !Array.isArray(clip.nodes) || !clip.nodes.length) {
+      return { ok: false, sentence: 'There are no steps to paste.' };
+    }
+    const g = clone(S.draft.graph);
+    const taken = new Set(nodesOf(g).map((n) => String(n.id)));
+    const labels = new Set(nodesOf(g).map((n) => String(n.label || '')));
+    const ids = new Map();
+    for (const n of clip.nodes) {
+      if (!n || n.id == null) continue;
+      let label = String(n.label || KIND_WORDS[n.kind] || 'Step');
+      if (labels.has(label)) {
+        const base = label.replace(/ \(copy(?: \d+)?\)$/, '');
+        label = `${base} (copy)`;
+        for (let i = 2; labels.has(label); i += 1) label = `${base} (copy ${i})`;
+      }
+      labels.add(label);
+      const id = freeId(label, taken);
+      taken.add(id);
+      ids.set(String(n.id), { id, label });
+    }
+    const pts = clip.nodes.map((n) => point(n.position)).filter(Boolean);
+    const minX = pts.length ? Math.min(...pts.map((p) => p[0])) : 0;
+    const minY = pts.length ? Math.min(...pts.map((p) => p[1])) : 0;
+    const placed = (p) => {
+      if (!p) return null;
+      if (at) return [Math.round(at.x + (p[0] - minX)), Math.round(at.y + (p[1] - minY))];
+      return [p[0] + Math.round(offset.x || 0), p[1] + Math.round(offset.y || 0)];
+    };
+    const rewrite = (value) => {
+      let text = JSON.stringify(value == null ? {} : value);
+      for (const [old, { id }] of ids) {
+        const esc = old.replace(/[.*+?^${}()|[\]\\-]/g, '\\$&');
+        text = text.replace(new RegExp(`(steps\\.)${esc}(?=[.\\s}\\]|"]|$)`, 'g'), `$1${id}`);
+      }
+      return JSON.parse(text);
+    };
+    const added = [];
+    for (const n of clip.nodes) {
+      const m = n && ids.get(String(n.id));
+      if (!m) continue;
+      added.push({ id: m.id, kind: String(n.kind || 'llm'), label: m.label, config: rewrite(n.config || {}),
+        position: placed(point(n.position)), pinned: null,
+        ...(n.settings ? { settings: clone(n.settings) } : {}), ...(n.disabled ? { disabled: true } : {}) });
+    }
+    const inner = (Array.isArray(clip.edges) ? clip.edges : [])
+      .filter((e) => e && ids.has(String(e.from)) && ids.has(String(e.to)))
+      .map((e) => ({ from: ids.get(String(e.from)).id, port: String(e.port || ''), to: ids.get(String(e.to)).id }));
+    g.nodes = [...nodesOf(g), ...added];
+    g.edges = [...edgesOf(g), ...inner];
+    S.draft.graph = g;
+    edited('paste');
+    await recheck();
+    const n = added.length;
+    return { ok: true, ids: added.map((x) => x.id),
+      sentence: `Pasted ${n === 1 ? `“${added[0].label}”` : `${n} steps`}. Join ${n === 1 ? 'it' : 'them'} to the rest, then Save the workflow to keep ${n === 1 ? 'it' : 'them'}.` };
+  }
+
+  /** `B1856` (the engine's): a step switched off is passed over in a run,
+   *  its input handed on. Kept in the draft until Save. */
+  async function setDisabled(id, off) {
+    await ready;
+    if (readOnly() || !S.draft) return { ok: false, sentence: READ_ONLY };
+    const n = draftNode(id);
+    if (!n) return { ok: false, sentence: 'That step is not in this workflow.' };
+    if (!!n.disabled === !!off) return { ok: true, sentence: '' };
+    if (off) n.disabled = true; else delete n.disabled;
+    edited();
+    await recheck();
+    return { ok: true, sentence: off
+      ? `“${n.label || n.id}” is switched off: a run passes over it and hands its input on. Save the workflow to keep it.`
+      : `“${n.label || n.id}” is switched on again. Save the workflow to keep it.` };
+  }
+
+  /** `B1841`. Several steps taken away as one edit (one Undo puts them all
+   *  back), with every arrow to or from them. */
+  async function removeItems(ids) {
+    await ready;
+    if (readOnly()) return { ok: false, sentence: READ_ONLY };
+    const gone = new Set((ids || []).map(String).filter((x) => x !== START_ID && draftNode(x)));
+    if (!gone.size) return { ok: false, sentence: 'None of those steps is in this workflow.' };
+    const g = clone(S.draft.graph);
+    g.nodes = nodesOf(g).filter((n) => !gone.has(String(n.id)));
+    g.edges = edgesOf(g).filter((e) => !gone.has(String(e.from)) && !gone.has(String(e.to)));
+    S.draft.graph = g;
+    edited();
+    await recheck();
+    return { ok: true, sentence: 'Save the workflow to keep the change.' };
   }
 
   async function removeItem(id) {
@@ -1169,7 +1572,7 @@ export function createWorkflowSource({
   function rename(name) {
     if (readOnly() || !S.draft) return { ok: false, sentence: READ_ONLY };
     S.draft.name = String(name == null ? '' : name);
-    edited();
+    edited('name');
     return { ok: true };
   }
 
@@ -1224,6 +1627,26 @@ export function createWorkflowSource({
     }
   }
 
+  /**
+   * `B1838`. "Keep mine": the workflow was saved somewhere else since this
+   * draft began (another tab, the assistant). The draft is kept and the next
+   * Save is made over the newest version — which stays in Versions…, so
+   * nothing is lost — instead of every edit being refused until the draft
+   * is thrown away. Answers `{ ok, version }`.
+   */
+  async function keepMine() {
+    await ready;
+    if (isRun || readOnly()) return { ok: false, sentence: READ_ONLY };
+    const r = await refresh();
+    if (!r.ok) return r;
+    const v = S.doc ? S.doc.version : null;
+    S.base = v;
+    S.stale = false;
+    S.checks = [];
+    emit();
+    return { ok: true, version: v };
+  }
+
   /** Throw the draft away and read the saved workflow again (it may have
    *  moved on, if this draft was stale). */
   async function discard() {
@@ -1239,7 +1662,11 @@ export function createWorkflowSource({
     S.stale = false;
     S.checks = [];
     S.startPatch = null;     // `B1209`: the start's unsaved change goes with the steps'
-    edited();
+    S.gen += 1;
+    S.undo = [];
+    S.redo = [];
+    S.snap = snapshot();
+    emit();
     return { ok: true };
   }
 
@@ -1304,6 +1731,22 @@ export function createWorkflowSource({
       ok: true,
       sentence: dirty() ? 'Started the workflow as saved. Your unsaved changes are not in this run.'
         : 'Started. It is under Runs.',
+    };
+  }
+
+  /** `B1852`. Run the SAVED workflow once now, even while it is switched
+   *  off; the switch and when it next runs stay as they are. → `{ ok,
+   *  runId, sentence }`. */
+  async function testRun() {
+    await ready;
+    if (isRun || !S.doc) return { ok: false, sentence: 'This workflow has not loaded.' };
+    if (!api || typeof api.testRun !== 'function') return { ok: false, sentence: 'This Pantheon cannot test a workflow while it is off.' };
+    let out;
+    try { out = await api.testRun(workflowId); } catch (err) { return answer(err); }
+    return {
+      ok: true, runId: out && out.run_id != null ? String(out.run_id) : null,
+      sentence: (isOn() ? 'Test run started.' : 'Test run started. The workflow stays switched off.')
+        + (dirty() ? ' It runs the saved version; your unsaved changes are not in it.' : ''),
     };
   }
 
@@ -1534,10 +1977,32 @@ export function createWorkflowSource({
     }
   }
 
+  /**
+   * `B1837`. A run read again, as each step's mark (`canvas.refreshOutcomes`):
+   * `{ tone, word, active, took }` by step id. A run's canvas was drawn once,
+   * when it opened, and a step that finished or began after that was not
+   * shown until the run's overall status changed (measured: "Waiting until
+   * 10:38 AM" a minute after the run had ended).
+   */
+  async function outcomes() {
+    await ready;
+    if (!isRun) return new Map();
+    const r = await refresh();
+    if (!r.ok) return new Map();
+    const { items } = await load();
+    return new Map(items.map((it) => [String(it.id), {
+      tone: it.outcome.tone, word: it.outcome.word, active: it.outcome.tone === 'pending',
+      took: Array.isArray(it.took) ? it.took : null,
+    }]));
+  }
+
   const self = {
     get readOnly() { return readOnly(); },
     /** `P22-11`. Several arrows may leave one port of a document's step. */
     get fanOut() { return !isRun; },
+    /** `B1833`. A step can be added straight after a port, or on an arrow,
+     *  joined as it is added (`newItem(anchor, after)`). */
+    get addsAfter() { return !isRun; },
     get words() {
       if (!isRun) return EDIT_WORDS;
       if (!(S.run && S.run.cleared)) return RUN_WORDS;
@@ -1549,16 +2014,27 @@ export function createWorkflowSource({
     },
     ready,
     load, connect, disconnect, loadPositions, savePositions, openPanel, newItem, removeItem, dryRun,
-    state, refresh, reloadPalette, rename, save, discard, setPin, fieldSlot, test, runNow, switchOn, restoreChain,
+    state, refresh, reloadPalette, rename, save, discard, keepMine, setPin,
+    undo, redo, copyItems, pasteItems, setDisabled, removeItems, fieldSlot, test, runNow, switchOn, restoreChain,
+    problems, referencesTo, testRun,
     versions, showVersion, restoreVersion, answer: answerStep, listFields, upstreamOf,
     // Slice E (C-A).
     marked, checkSteps, planLines, fix, exportFile, explain: explainStep,
   };
+  if (isRun) self.outcomes = outcomes;
   if (isRun) {
     // A run cannot be added to or taken from: the optional verbs are absent,
     // so the canvas draws no New and no Delete (`readOnly` says the rest).
     delete self.newItem;
     delete self.removeItem;
+    delete self.removeItems;
+    delete self.pasteItems;
+    delete self.setDisabled;
+    delete self.undo;
+    delete self.redo;
+    delete self.problems;
+    delete self.referencesTo;
+    delete self.testRun;
   }
   return self;
 }

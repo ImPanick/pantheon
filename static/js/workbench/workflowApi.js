@@ -173,6 +173,12 @@ export function createWorkflowApi({ fetch } = {}) {
     deleteWorkflow(id) {
       return call('DELETE', `/api/workflows/${enc(id)}`);
     },
+    /** `B1845`. A copy of the saved workflow, as a new workflow of the same
+     *  person: named "<name> (copy)", switched off, its steps as they are
+     *  (no marks: the person made them). → `{ workflow }` */
+    duplicateWorkflow(id) {
+      return call('POST', `/api/workflows/${enc(id)}/duplicate`);
+    },
     /** → `{ versions: [{ version, name, saved_at, source, step_count, current }] }` */
     listVersions(id) {
       return call('GET', `/api/workflows/${enc(id)}/versions`);
@@ -210,6 +216,13 @@ export function createWorkflowApi({ fetch } = {}) {
     },
     /** Run the workflow now, through its trigger task — or (`dry`) plan it:
      *  the reply then carries `nodes`, one plan per step. */
+    /** `B1869`. Stop a workflow run: one that is running is cancelled, one
+     *  that waits (a Wait, a yes, an answer) is ended where it waits. Its
+     *  record says who stopped it. → `{ ok, sentence }`; a 409 when the run
+     *  has already ended. */
+    stopRun(workflowId, runId) {
+      return call('POST', `/api/workflows/${enc(workflowId)}/runs/${enc(runId)}/stop`);
+    },
     runWorkflow(taskId, { dry = false } = {}) {
       return dry
         ? call('POST', `/api/tasks/${enc(taskId)}/run?dry=true`)

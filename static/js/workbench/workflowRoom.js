@@ -54,7 +54,7 @@
 import { mountCanvas } from './canvas.js';
 import { createWorkflowPanels } from './workflowPanels.js';
 import { needLine, needDoor, NEED_DOORS } from './stepFields.js';
-import { runStatusTone, runStatusLabel, RUN_ACTIVE_STATUSES } from '../runStatus.js';
+import { runStatusTone, runStatusLabel, RUN_ACTIVE_STATUSES, RUN_PARKED_STATUSES } from '../runStatus.js';
 import { registerMenuDismiss } from '../escMenuStack.js';
 
 const OUTCOME_MARKS = { ok: '✓', error: '✗', pending: '…', info: '·', none: '○' };
@@ -71,6 +71,11 @@ export const SHELF_WATCH_MS = 4000;
  *  run is in flight, this otherwise — a scheduled task can start at any
  *  moment, so the canvas cannot wait for one it knows of. */
 export const TASKS_IDLE_WATCH_MS = 10000;
+/** `B1837`. How often the shelf is read again while the only runs it lists
+ *  are parked — waiting for a time, a yes or Pantheon to be idle. Such a run
+ *  goes on by itself (or is answered from a notification), and the room read
+ *  it as "Waiting" until it was opened again. */
+export const PARKED_WATCH_MS = 15000;
 /** Said when a workflow is off — the design's words (§ 6.2). */
 // `P23-05` (Doc 2 § 5): the switch itself reads *On* / *Off*; the word beside
 // it adds only what the switch cannot say (driven: "On On" on the merged tree).
@@ -126,6 +131,15 @@ function _button(cls, text, title) {
   b.type = 'button';
   if (title) b.title = title;
   return b;
+}
+
+/** `B1837`. A watch's timer. Under Node (the module's tests) it is
+ *  `unref`'d, so a watch on a run that waits for hours never holds the
+ *  process open by itself; a browser's timer id has no such method. */
+function _later(fn, ms) {
+  const t = setTimeout(fn, ms);
+  if (t && typeof t.unref === 'function') t.unref();
+  return t;
 }
 
 /** The words of a refusal a door threw (`WorkflowRefusal`) or answered. */
@@ -280,7 +294,27 @@ export function mountAutomations(host, opts = {}) {
   // with it; empty (and not drawn) on *Tasks and chains*.
   const pickLast = _el('span', 'wf-shelf-pick-last');
   pickLabel.appendChild(pickLast);
-  for (const n of [pickLabel, shelfList, newWfBtn, newForm, shelfNote]) shelf.appendChild(n);
+  // `B1833`. The shelf tucks away to give the canvas the window: one button
+  // at its top, remembered for this browser. Tucked, the shelf is a narrow
+  // strip with the button that brings it back.
+  const TUCK_KEY = 'pantheon.workbench.shelf';
+  const tuckBtn = _button('wf-shelf-tuck', '‹', 'Tuck the list away');
+  tuckBtn.setAttribute('aria-expanded', 'true');
+  const tuck = (tucked, keep = true) => {
+    host.classList.toggle('wf-shelf-tucked', tucked);
+    tuckBtn.textContent = tucked ? '›' : '‹';
+    tuckBtn.title = tucked ? 'Show the list of workflows' : 'Tuck the list away';
+    tuckBtn.setAttribute('aria-label', tuckBtn.title);
+    tuckBtn.setAttribute('aria-expanded', tucked ? 'false' : 'true');
+    if (keep) { try { localStorage.setItem(TUCK_KEY, tucked ? 'tucked' : 'open'); } catch (_) { /* this visit only */ } }
+  };
+  tuckBtn.addEventListener('click', () => tuck(!host.classList.contains('wf-shelf-tucked')));
+  let tuckedBefore = false;
+  try { tuckedBefore = localStorage.getItem(TUCK_KEY) === 'tucked'; } catch (_) { /* storage off */ }
+  tuck(tuckedBefore, false);
+  // The pick's words stay the shelf's first line (`B1241`); the tuck is drawn
+  // above them (`order`), at the shelf's top corner.
+  for (const n of [pickLabel, tuckBtn, shelfList, newWfBtn, newForm, shelfNote]) shelf.appendChild(n);
 
   const main = _el('div', 'wf-main');
   const ask = _el('div', 'wf-ask');
@@ -311,6 +345,10 @@ export function mountAutomations(host, opts = {}) {
   const saveBtn = _button('wf-save', 'Save', 'Keep these steps as a new version of the workflow');
   const dirtyWord = _el('span', 'wf-dirty');
   dirtyWord.setAttribute('aria-live', 'polite');
+  // `B1851`. How many things would stop Save, and each in turn when pressed.
+  const problemsBtn = _button('wf-problems', '', 'Show each step that stops Save, one at a time');
+  problemsBtn.hidden = true;
+  let problemAt = -1;
   const versionsBtn = _button('wf-versions', 'Versions…', 'Every saved version of this workflow; look at one or put it back');
   const switchBtn = _button('wf-switch', 'Off');
   switchBtn.setAttribute('role', 'switch');
@@ -322,6 +360,11 @@ export function mountAutomations(host, opts = {}) {
   const runBtn = _button('wf-run-now', 'Run now', 'Run the saved workflow once, now');
   // `P22-24`. The saved workflow as a file.
   const exportBtn = _button('wf-export', 'Export', 'Download the saved workflow as a file. ' + EXPORT_WORDS);
+  // `B1845`. A workflow can be copied and thrown away from where it is made
+  // (the route was there; nothing called it, and the Tasks window refuses to
+  // delete a workflow's start).
+  const dupBtn = _button('wf-duplicate', 'Duplicate', 'Make a copy of the saved workflow, switched off, to change without touching this one');
+  const deleteBtn = _button('wf-delete', 'Delete…', 'Delete this workflow, its start and its versions. Asks first.');
   const dryBtn = _button('wf-dry', 'Show me what this would do',
     'Plans a run of the saved workflow and shows the plan on the canvas. Nothing runs and nothing changes.');
   const tabs = _el('div', 'wf-tabs');
@@ -338,12 +381,13 @@ export function mountAutomations(host, opts = {}) {
   nameGroup.appendChild(nameInput);
   nameGroup.appendChild(saveBtn);
   nameGroup.appendChild(dirtyWord);
+  nameGroup.appendChild(problemsBtn);
   const switchGroup = _el('span', 'wf-bar-group');
   switchGroup.appendChild(switchBtn);
   switchGroup.appendChild(switchWord);
   switchGroup.appendChild(chainBtn);
   const runGroup = _el('span', 'wf-bar-group wf-bar-runs');
-  for (const n of [versionsBtn, runBtn, dryBtn, exportBtn]) runGroup.appendChild(n);
+  for (const n of [versionsBtn, runBtn, dryBtn, exportBtn, dupBtn, deleteBtn]) runGroup.appendChild(n);
   // `P23-06` (WB-U-13). On a phone the toolbar took 280 px over a 434 px
   // canvas. There it is the name, the switch and this ⋯, which shows the
   // rest (Versions…, Run now, the plan, Export) when pressed; on a desktop
@@ -366,6 +410,31 @@ export function mountAutomations(host, opts = {}) {
   const viewingCurrent = _button('wf-viewing-current', 'Back to the current one');
   for (const n of [viewingText, viewingBack, viewingCurrent]) viewing.appendChild(n);
 
+  // `B1838`. Saved somewhere else since this draft began: said as soon as it
+  // is known, with both ways out. It was known (`state().stale`) and never
+  // shown — each arrow drawn was refused instead, and only Save's refusal
+  // offered a way back, which threw the draft away.
+  const staleBox = _el('div', 'wf-viewing wf-stale');
+  staleBox.setAttribute('role', 'status');
+  staleBox.hidden = true;
+  const staleText = _el('span', 'wf-viewing-text');
+  const staleOpen = _button('wf-stale-open', 'Open theirs', 'Drop your unsaved changes and open the workflow as it is saved now');
+  const staleKeep = _button('wf-stale-keep', 'Keep mine', 'Keep editing your changes; Save then makes them the newest version (the other one stays in Versions…)');
+  for (const n of [staleText, staleOpen, staleKeep]) staleBox.appendChild(n);
+  staleOpen.addEventListener('click', () => reopenSaved());
+  staleKeep.addEventListener('click', async () => {
+    const w = R.wf;
+    if (!w || !w.source || typeof w.source.keepMine !== 'function') return;
+    staleKeep.disabled = true;
+    const r = await w.source.keepMine();
+    staleKeep.disabled = false;
+    if (R.destroyed || R.wf !== w) return;
+    syncBar();
+    say(r && r.ok
+      ? `Your changes are kept. Save makes them version ${Number(r.version) + 1}; version ${r.version} stays in Versions….`
+      : `Not kept: ${_sentence(r, 'the workflow could not be read')}`, { refusal: !(r && r.ok) });
+  });
+
   const editHost = _el('div', 'wf-edit');
   editHost.id = 'wf-edit-panel';
   editHost.setAttribute('role', 'tabpanel');
@@ -380,7 +449,17 @@ export function mountAutomations(host, opts = {}) {
   runsView.appendChild(runHost);
   editTab.setAttribute('aria-controls', editHost.id);
   runsTab.setAttribute('aria-controls', runsView.id);
-  for (const n of [bar, viewing, editHost, runsView]) view.appendChild(n);
+  for (const n of [bar, viewing, staleBox, editHost, runsView]) view.appendChild(n);
+  // `B1841`. Ctrl+S (Cmd+S) saves the open workflow from anywhere in it —
+  // a step's field included, the browser's own "save the page" being of no
+  // use here. A version being looked at, or a run, saves nothing.
+  view.addEventListener('keydown', (e) => {
+    if (!e || !(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey || String(e.key || '').toLowerCase() !== 's') return;
+    const w = R.wf;
+    if (!w || !w.source || w.tab !== 'edit' || viewingOf(w.source) != null) return;
+    e.preventDefault();
+    save();
+  });
 
   // ── Escape: the room's own layers ────────────────────────────────────────
   // The question, Versions…, the palette and *New workflow* are layers on
@@ -595,6 +674,14 @@ export function mountAutomations(host, opts = {}) {
     pickLast.textContent = pickWords
       ? (pickWords.tone === 'none' ? pickWords.word : `Last run: ${pickWords.word}`) : '';
     pickLast.dataset.tone = pickWords ? pickWords.tone : 'none';
+    // `B1846`. The open entry in sight in the list (a workflow just made
+    // is listed first, and was scrolled out of view).
+    const sel = shelfList.querySelector('.wf-shelf-selected');
+    if (sel && typeof shelfList.getBoundingClientRect === 'function' && typeof sel.getBoundingClientRect === 'function') {
+      const lr = shelfList.getBoundingClientRect();
+      const sr = sel.getBoundingClientRect();
+      if (lr.height > 0 && (sr.top < lr.top || sr.bottom > lr.bottom)) shelfList.scrollTop += sr.top - lr.top - 8;
+    }
   }
 
   // The arrow keys go along the shelf; Tab leaves it.
@@ -634,11 +721,29 @@ export function mountAutomations(host, opts = {}) {
     if (R.destroyed) return false;
     R.workflows = Array.isArray(reply && reply.workflows) ? reply.workflows : [];
     R.listed = true;
+    noticeSavedElsewhere();
     newWfBtn.disabled = false;
     shelfNote.textContent = R.workflows.length ? '' : 'No workflows yet. A workflow is a named set of steps with one start.';
     drawShelf();
     watchShelf();
     return true;
+  }
+
+  /** `B1838`. The shelf says each workflow's version: when the open one's
+   *  moved past the draft's, the source reads it again — a draft with no
+   *  edits follows it and is redrawn, one with edits is told it is stale. */
+  async function noticeSavedElsewhere() {
+    const w = R.wf;
+    if (!w || !w.source || typeof w.source.refresh !== 'function') return;
+    const row = R.workflows.find((x) => String(x.id) === String(w.id));
+    const st = stateOf(w.source);
+    if (!row || row.version == null || st.base == null || st.stale || st.busy) return;
+    if (Number(row.version) <= Number(st.base)) return;
+    const wasDirty = !!st.dirty;
+    await w.source.refresh();
+    if (R.destroyed || R.wf !== w) return;
+    if (!wasDirty && w.canvas) await w.canvas.reload();
+    syncBar();
   }
 
   // ── `B1108`: the shelf reads a run's state as it changes ───────────────────
@@ -666,14 +771,18 @@ export function mountAutomations(host, opts = {}) {
     if (R.destroyed) return;
     const inFlight = R.workflows.some((w) => w.last_run && !w.last_run.dry
       && RUN_ACTIVE_STATUSES.includes(w.last_run.status));
-    if (!inFlight) return;
-    R.shelfTimer = setTimeout(async () => {
+    // `B1837`. A parked run is read again too, more slowly.
+    const parked = !inFlight && R.workflows.some((w) => w.last_run && !w.last_run.dry
+      && RUN_PARKED_STATUSES.includes(w.last_run.status));
+    if (!inFlight && !parked) return;
+    const tick = async () => {
       R.shelfTimer = null;
       const before = lastOpenRun();
       await refreshShelf();
       if (R.destroyed || !R.wf || R.wf.tab !== 'runs' || lastOpenRun() === before) return;
       loadRuns();
-    }, SHELF_WATCH_MS);
+    };
+    R.shelfTimer = inFlight ? setTimeout(tick, SHELF_WATCH_MS) : _later(tick, PARKED_WATCH_MS);
   }
 
   /** The open workflow's shelf row, from a Runs list just read (newest first). */
@@ -798,9 +907,38 @@ export function mountAutomations(host, opts = {}) {
   }
 
   // ── a workflow ───────────────────────────────────────────────────────────
+  /**
+   * `B1837`. The open run, read again while it is in flight or parked: each
+   * step's mark and the arrows it took (`refreshOutcomes`, the source's
+   * `outcomes()`), every `SHELF_WATCH_MS` — `PARKED_WATCH_MS` while it waits.
+   * When the run's own status moves, the Runs list is read again, which
+   * redraws the run whole (`loadRuns`). Stops when the run ends, another run
+   * is opened, the tab changes or the room closes.
+   */
+  function watchRun() {
+    const w = R.wf;
+    if (!w) return;
+    if (w.runTimer) { clearTimeout(w.runTimer); w.runTimer = null; }
+    const rs = w.runSource;
+    const rc = w.runCanvas;
+    const status = () => { const r = stateOf(rs).run; return r ? String(r.status || '') : ''; };
+    const was = status();
+    const live = (st) => RUN_ACTIVE_STATUSES.includes(st) || RUN_PARKED_STATUSES.includes(st);
+    if (!rs || !rc || !live(was) || typeof rc.refreshOutcomes !== 'function') return;
+    w.runTimer = _later(async () => {
+      w.runTimer = null;
+      if (R.destroyed || R.wf !== w || w.runCanvas !== rc || w.tab !== 'runs') return;
+      try { await rc.refreshOutcomes(); } catch (_) { /* read again next time */ }
+      if (R.destroyed || R.wf !== w || w.runCanvas !== rc) return;
+      if (status() !== was) { loadRuns(); refreshShelf(); return; }
+      watchRun();
+    }, RUN_PARKED_STATUSES.includes(was) ? PARKED_WATCH_MS : SHELF_WATCH_MS);
+  }
+
   function teardownRun() {
     const w = R.wf;
     if (!w) return;
+    if (w.runTimer) { clearTimeout(w.runTimer); w.runTimer = null; }
     if (w.runCanvas) { try { w.runCanvas.destroy(); } catch (_) { /* gone */ } }
     if (w.runSource && typeof w.runSource.destroy === 'function') { try { w.runSource.destroy(); } catch (_) { /* gone */ } }
     w.runCanvas = null;
@@ -889,7 +1027,12 @@ export function mountAutomations(host, opts = {}) {
     try {
       source = mods.createWorkflowSource({
         api: R.api, workflowId: w.id, mode: 'edit', describeTrigger: describe, panels,
-        onState: () => { if (R.wf === w) syncBar(); },
+        onState: () => {
+          if (R.wf !== w) return;
+          syncBar();
+          // `B1839`: the canvas's Undo and Redo follow the draft's history.
+          if (w.canvas && typeof w.canvas.syncTools === 'function') w.canvas.syncTools();
+        },
       });
       w.source = source;
       await source.ready;
@@ -966,11 +1109,50 @@ export function mountAutomations(host, opts = {}) {
     if (v != null) {
       viewingText.textContent = `You are looking at version ${v}. It cannot be changed here.`;
     }
-    for (const b of [saveBtn, switchBtn, runBtn, dryBtn, exportBtn]) b.disabled = v != null;
+    for (const b of [saveBtn, switchBtn, runBtn, dryBtn, exportBtn, dupBtn, deleteBtn]) b.disabled = v != null;
+    dupBtn.hidden = !(R.api && typeof R.api.duplicateWorkflow === 'function');
+    deleteBtn.hidden = !(R.api && typeof R.api.deleteWorkflow === 'function');
+    const stale = !!st.stale && v == null && st.mode !== 'run';
+    staleBox.hidden = !stale;
+    if (stale) {
+      staleText.textContent = dirty
+        ? 'This workflow was saved somewhere else while you were changing it.'
+        : 'This workflow was saved somewhere else.';
+    }
     // `P22-24`. Offered only where the data layer can export (C-A).
     exportBtn.hidden = !(R.api && typeof R.api.exportWorkflow === 'function');
     nameInput.readOnly = v != null;
+    // `B1851`. What would stop Save, counted.
+    const probs = v == null && st.mode !== 'run' && Array.isArray(st.problems) ? st.problems : [];
+    problemsBtn.hidden = !probs.length;
+    problemsBtn.textContent = probs.length === 1 ? '1 problem' : `${probs.length} problems`;
+    if (!probs.length) problemAt = -1;
+    // `B1852`. Switched off, Run now is a test run: it runs once and the
+    // switch stays off.
+    const testing = !on && canTestRun(w);
+    runBtn.textContent = testing ? 'Test run' : 'Run now';
+    runBtn.title = testing
+      ? 'Run the saved workflow once, now. It stays switched off: nothing about when it runs changes.'
+      : 'Run the saved workflow once, now';
   }
+  const canTestRun = (w) => !!(w && w.source && typeof w.source.testRun === 'function'
+    && R.api && typeof R.api.testRun === 'function');
+
+  problemsBtn.addEventListener('click', () => {
+    const w = R.wf;
+    if (!w || !w.source) return;
+    const probs = stateOf(w.source).problems || [];
+    if (!probs.length) return;
+    problemAt = (problemAt + 1) % probs.length;
+    const p = probs[problemAt];
+    const id = (p.nodeIds || [])[0];
+    if (id && w.canvas) { w.canvas.focusChain(String(id)); }
+    say(`${probs.length > 1 ? `${problemAt + 1} of ${probs.length}: ` : ''}${p.sentence}`, {
+      refusal: true,
+      action: probs.length > 1 ? { label: 'Next problem', run: () => problemsBtn.click() }
+        : (id && w.canvas ? { label: 'Open the step', run: () => w.canvas.select(String(id)) } : null),
+    });
+  });
 
   nameInput.addEventListener('input', () => {
     const w = R.wf;
@@ -1044,10 +1226,28 @@ export function mountAutomations(host, opts = {}) {
 
   /** On or Off — the other way from now, or `want`. Answers `{ on, words,
    *  action }` (what it said, or with `quiet` would have), or null. */
-  async function toggleSwitch(want = null, { quiet = false } = {}) {
+  async function toggleSwitch(want = null, { quiet = false, sure = false } = {}) {
     const w = R.wf;
     if (!w || !w.source) return null;
     const on = want == null ? !isOn(docOf(w.source)) : !!want;
+    // `B1847`. Switching off ends a run that waits (a Wait, a yes): said
+    // first, with the step it waits in, and done on the second press. It was
+    // "Switched off." and the run was later found "Stopped".
+    if (!on && !sure && R.api && typeof R.api.listWaiting === 'function') {
+      let waits = [];
+      try {
+        const r = await R.api.listWaiting();
+        waits = (Array.isArray(r && r.waiting) ? r.waiting : []).filter((x) => String(x.workflow_id) === String(w.id));
+      } catch (_) { waits = []; }
+      if (R.destroyed || R.wf !== w) return null;
+      if (waits.length) {
+        const where = waits[0].label ? ` in “${waits[0].label}”` : '';
+        say(`A run is waiting${where}. Switching off ends it there; the steps it finished keep what they made.`, {
+          action: { label: 'Switch off and end it', run: () => toggleSwitch(false, { quiet, sure: true }) },
+        });
+        return null;
+      }
+    }
     switchBtn.disabled = true;
     let reply = null;
     let err = null;
@@ -1116,6 +1316,7 @@ export function mountAutomations(host, opts = {}) {
     // and the room had already said "Started". A new workflow is made
     // switched off, so that was the first thing a person met. It says so
     // before asking, and offers the one click they meant.
+    if (!isOn(docOf(w.source)) && canTestRun(w)) { testRunNow(); return; }
     if (!isOn(docOf(w.source))) {
       say(`“${wfName(w.source)}” is switched off, so it would not run. Switch it on to run it; `
         + 'Show me what this would do and Test this step work while it is off.', {
@@ -1147,6 +1348,34 @@ export function mountAutomations(host, opts = {}) {
     refreshShelf();      // `B1108`: the run just started, as the server has it
   }
 
+  /** `B1852`. Run the saved workflow once while it is switched off, and show
+   *  that run as it goes. Unsaved changes are offered a Save first: a test
+   *  run runs the saved version. */
+  async function testRunNow({ anyway = false } = {}) {
+    const w = R.wf;
+    if (!w || !w.source) return;
+    if (!anyway && stateOf(w.source).dirty) {
+      say('A test run runs the saved version, and this one has unsaved changes.', {
+        action: { label: 'Save and test', run: async () => { if (await save()) testRunNow({ anyway: true }); } },
+      });
+      return;
+    }
+    runBtn.disabled = true;
+    const reply = await w.source.testRun().catch((e) => ({ ok: false, sentence: _sentence(e, 'the server refused') }));
+    if (R.destroyed || R.wf !== w) return;
+    runBtn.disabled = false;
+    if (!reply || reply.ok === false) {
+      say(`Not started: ${String((reply && reply.sentence) || 'the server refused').replace(/^Did not start:\s*/i, '')}`, { refusal: true });
+      return;
+    }
+    if (reply.runId) w.runId = String(reply.runId);
+    setTab('runs', { quiet: true });
+    await loadRuns();
+    refreshShelf();
+    if (R.destroyed || R.wf !== w) return;
+    if (w.runCanvas) w.runCanvas.say(reply.sentence + ' Each step lights up as it runs.');
+  }
+
   function dryRun() {
     const w = R.wf;
     if (!w || !w.canvas) return;
@@ -1155,6 +1384,8 @@ export function mountAutomations(host, opts = {}) {
   }
 
   exportBtn.addEventListener('click', () => exportIt());
+  dupBtn.addEventListener('click', () => duplicateIt());
+  deleteBtn.addEventListener('click', () => deleteIt());
   saveBtn.addEventListener('click', () => save());
   switchBtn.addEventListener('click', () => toggleSwitch());
   chainBtn.addEventListener('click', () => restoreChain());
@@ -1360,6 +1591,7 @@ export function mountAutomations(host, opts = {}) {
     // redraw its canvas so the overall status, the steps and the sentence agree
     // without the person reselecting it.
     if (keep.status !== openWasStatus) openRun(w.runId);
+    else watchRun();
   }
 
   function drawRuns() {
@@ -1376,6 +1608,9 @@ export function mountAutomations(host, opts = {}) {
       mark.setAttribute('aria-hidden', 'true');
       b.appendChild(mark);
       b.appendChild(_el('span', 'wf-run-word', dry ? 'Dry run' : words.word));
+      // `B1852`. A test run says so (it ran while the workflow was off, or
+      // by its Test run).
+      if (r.test === true) b.appendChild(_el('span', 'wf-run-test', 'Test'));
       b.appendChild(_el('span', 'wf-run-when', _when(r.started_at || r.finished_at)));
       b.setAttribute('aria-label', `${dry ? 'Dry run' : words.word}, ${_when(r.started_at || r.finished_at)}`);
       // `P23-06` (WB-U-4): folded to its mark while a step's panel is open,
@@ -1409,7 +1644,17 @@ export function mountAutomations(host, opts = {}) {
     return bad.length ? String(bad[bad.length - 1].id) : null;
   }
 
-  async function openRun(runId) {
+  /** Open run `runId` on the Runs tab. The promise is kept on the
+   *  workflow (`runOpening`) so a press that reads the runs again (Stop,
+   *  Retry) can wait for the canvas the read redraws. */
+  function openRun(runId) {
+    const w = R.wf;
+    const p = drawRun(runId);
+    if (w) w.runOpening = p;
+    return p;
+  }
+
+  async function drawRun(runId) {
     const w = R.wf;
     if (!w || !R.mods) return;
     teardownRun();
@@ -1434,8 +1679,15 @@ export function mountAutomations(host, opts = {}) {
     w.runCanvas = rc;
     await rc.ready;
     if (R.destroyed || R.wf !== w || w.runCanvas !== rc) return;
+    watchRun();
     const run = (w.runs || []).find((r) => String(r.id) === w.runId) || {};
     const failed = failedStep(rs, rc);
+    // `B1869`, `B1854`. What Stop or Retry said of this run is its opening
+    // sentence: the read after the press redraws the run, and the redraw's
+    // own "This run ended: stopped" used to replace "Stopped where it waited".
+    // A run that waits or failed says that instead — it is newer news.
+    const note = w.runNote && w.runNote.runId === w.runId ? w.runNote.text : '';
+    if (note) w.runNote = null;
     // `P22-11`, `P22-17` (wf-canvas). A run that is waiting opens on the step
     // it waits on, with what it waits for — and, for a yes, its card — open
     // beside it.
@@ -1444,7 +1696,7 @@ export function mountAutomations(host, opts = {}) {
       const id = String(waiting.nodeId);
       rc.select(id);
       rc.focusChain(id);
-      rc.say(waitingSentence(waiting));
+      rc.say(waitingSentence(waiting), { action: stopAction() });
       return;
     }
     if (failed) {
@@ -1458,18 +1710,78 @@ export function mountAutomations(host, opts = {}) {
       w.failSentence = '';
       rc.select(failed);
       rc.focusChain(failed);
-      if (w.failSentence) rc.say(w.failSentence);
+      if (w.failSentence) rc.say(w.failSentence, { action: retryAction(failed) });
       return;
     }
     // `audit-P2-run-status`. A run still queued or running has NOT ended, so it
     // must not read "This run ended: running" — a word contradicting itself. It
     // is said as in-flight; a finished run reads "worked" or "ended: <word>".
     const _active = RUN_ACTIVE_STATUSES.includes(run.status);
+    if (note) { rc.say(note, { action: _active && !isDryRun(run) ? stopAction() : null }); return; }
     rc.say(isDryRun(run)
       ? 'A dry run: each step says what it would have done. Nothing ran.'
       : _active
         ? `This run is ${runWords(run).word.toLowerCase()}. Click a step for what it was handed and what it made so far.`
-        : `This run ${runWords(run).word === 'Success' ? 'worked' : 'ended: ' + runWords(run).word.toLowerCase()}. Click a step for what it was handed and what it made.`);
+        : `This run ${runWords(run).word === 'Success' ? 'worked' : 'ended: ' + runWords(run).word.toLowerCase()}. Click a step for what it was handed and what it made.`,
+    { action: _active && !isDryRun(run) ? stopAction() : null });
+  }
+
+  // ── `B1854`, `B1869`: retry a failed run from its step; stop a run ───────
+  /** The action that starts a failed run again from step `nodeId`: the
+   *  steps before it are kept from this run, not run again. */
+  function retryAction(nodeId) {
+    const w = R.wf;
+    if (!w || !R.api || typeof R.api.retryRun !== 'function' || !w.runSource) return null;
+    const node = (stateOf(w.runSource).failed || {});
+    const label = node.label || (w.runCanvas && typeof w.runCanvas.items === 'function'
+      ? ((w.runCanvas.items().find((i) => String(i.id) === String(nodeId)) || {}).name || '') : '');
+    return { label: label ? `Retry from “${label}”` : 'Retry from this step', run: () => retryFrom(nodeId) };
+  }
+  async function retryFrom(nodeId) {
+    const w = R.wf;
+    if (!w || !w.runId || !R.api || typeof R.api.retryRun !== 'function') return;
+    const from = w.runId;
+    let reply = null;
+    try { reply = await R.api.retryRun(w.id, from, nodeId); } catch (e) { reply = { ok: false, sentence: _sentence(e, 'the server refused') }; }
+    if (R.destroyed || R.wf !== w) return;
+    if (!reply || reply.ok === false) {
+      say(`Not retried: ${String((reply && (reply.sentence || reply.detail)) || 'the server refused')}`, { refusal: true });
+      return;
+    }
+    if (reply.run_id != null) w.runId = String(reply.run_id);
+    await sayOnRun(w, 'Retrying. The steps before it are kept from the last run and not run again.');
+  }
+  /** The action that stops the open run (running, or waiting). */
+  function stopAction() {
+    const w = R.wf;
+    if (!w || !R.api || typeof R.api.stopRun !== 'function') return null;
+    return { label: 'Stop this run', run: () => stopRun() };
+  }
+  async function stopRun() {
+    const w = R.wf;
+    if (!w || !w.runId || !R.api || typeof R.api.stopRun !== 'function') return;
+    let reply = null;
+    try { reply = await R.api.stopRun(w.id, w.runId); } catch (e) { reply = { ok: false, sentence: _sentence(e, 'the server refused') }; }
+    if (R.destroyed || R.wf !== w) return;
+    if (!reply || reply.ok === false) {
+      say(`Not stopped: ${String((reply && (reply.sentence || reply.detail)) || 'the server refused')}`, { refusal: true });
+      return;
+    }
+    await sayOnRun(w, reply.sentence || 'Stopped. The steps that had finished keep what they made.');
+  }
+
+  /** Read the runs again and say `text` on the open run: as its opening
+   *  sentence when the read redraws it, or on it as it is. */
+  async function sayOnRun(w, text) {
+    w.runNote = { runId: w.runId, text };
+    w.runOpening = null;
+    await loadRuns();
+    refreshShelf();
+    if (w.runOpening) await w.runOpening;
+    if (R.destroyed || R.wf !== w) return;
+    if (!w.runNote) return;                  // the redraw said it
+    w.runNote = null;
+    if (w.runCanvas) w.runCanvas.say(text);
   }
 
   /** What a waiting run's line says when it opens on its waiting step. */
@@ -1516,7 +1828,7 @@ export function mountAutomations(host, opts = {}) {
     const own = `“${label}” `;
     const told = line.startsWith(own) ? 'it ' + line.slice(own.length) : line;
     w.failSentence = `“${label}” failed: ${told.replace(/\.$/, '')}.`;
-    w.runCanvas.say(w.failSentence);
+    w.runCanvas.say(w.failSentence, { action: retryAction(id) });
   }
 
   // ── New workflow, and a chain made one ───────────────────────────────────
@@ -1946,6 +2258,53 @@ export function mountAutomations(host, opts = {}) {
   }
 
   /** `P22-24`. *Export*: the saved workflow, downloaded as a file. */
+  /** `B1845`. A copy of the saved workflow, switched off, opened. */
+  async function duplicateIt() {
+    const w = R.wf;
+    if (!w || !R.api || typeof R.api.duplicateWorkflow !== 'function') return;
+    dupBtn.disabled = true;
+    let r = null;
+    try { r = await R.api.duplicateWorkflow(w.id); } catch (e) { r = { ok: false, sentence: _sentence(e, 'the server refused') }; }
+    if (R.destroyed || R.wf !== w) return;
+    dupBtn.disabled = false;
+    const made = r && r.workflow;
+    if (!made || !made.id) {
+      say(`Not copied: ${_sentence(r, 'the server refused')}`, { refusal: true });
+      return;
+    }
+    await refreshShelf();
+    const unsaved = stateOf(w.source).dirty;
+    await showWorkflow(made.id, { notes: [`This is a copy of “${wfName(w.source)}”, switched off.`
+      + (unsaved ? ' It copied the saved version; your unsaved changes stayed in the original.' : '')] });
+  }
+
+  /** `B1845`. Delete the workflow: said first, done on the second press. */
+  async function deleteIt({ sure = false } = {}) {
+    const w = R.wf;
+    if (!w || !R.api || typeof R.api.deleteWorkflow !== 'function') return;
+    const name = wfName(w.source);
+    if (!sure) {
+      say(`Delete “${name}”? Its start, its versions and its runs go with it. This cannot be undone.`, {
+        refusal: true,
+        action: { label: `Delete “${name}”`, run: () => deleteIt({ sure: true }) },
+      });
+      return;
+    }
+    deleteBtn.disabled = true;
+    let r = null;
+    try { r = await R.api.deleteWorkflow(w.id); } catch (e) { r = { ok: false, sentence: _sentence(e, 'the server refused') }; }
+    if (R.destroyed || R.wf !== w) return;
+    deleteBtn.disabled = false;
+    if (!r || r.ok === false) {
+      say(`Not deleted: ${_sentence(r, 'the server refused')}`, { refusal: true });
+      return;
+    }
+    const notes = (Array.isArray(r.notes) ? r.notes : []).map(String).filter(Boolean);
+    await refreshShelf();
+    showTasks();
+    say([`Deleted “${name}”.`, ...notes].join(' '));
+  }
+
   async function exportIt() {
     const w = R.wf;
     if (!w || !w.source || typeof w.source.exportFile !== 'function') return;
@@ -2096,7 +2455,7 @@ export function mountAutomations(host, opts = {}) {
     teardownWorkflow();
     leaveTasksView();
     host.replaceChildren();
-    host.classList.remove('wf-room', 'wb-room');
+    host.classList.remove('wf-room', 'wb-room', 'wf-shelf-tucked');
     delete host.dataset.escLayer;
   }
 

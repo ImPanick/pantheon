@@ -323,6 +323,7 @@ function _scheduleLabel(task) {
     return n > 1 ? `Every ${n} ${words[1]}` : `Every ${words[0]}`;
   }
   if (tt === 'webhook') return 'Webhook';
+  if (tt === 'manual') return 'Only when you run it';   // `B1853`
   const t = task.scheduled_time || '00:00';
   // `P22-03`. A task with its own zone stores its time on that zone's clock
   // (`compute_next_run`), so the card says it that way — "Daily at 09:00

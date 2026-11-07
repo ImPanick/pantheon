@@ -344,6 +344,7 @@ function _wire() {
   _wired = true;
   window.addEventListener('keydown', _markForEscape, true);
   document.getElementById('workbench-close')?.addEventListener('click', closeWorkbench);
+  _wireMaximize(modal);
   const bar = document.getElementById('workbench-rooms');
   if (bar) {
     bar.replaceChildren(...ROOMS.map((room) => {
@@ -368,6 +369,50 @@ function _wire() {
       enableDock: true, enableLeftDock: true,
     });
   }
+}
+
+/**
+ * `B1833`. A node editor wants the room a screen has: a maximize button in
+ * the header, beside the window's own buttons, fills the safe area the way a
+ * drag to the top edge does and puts the window back on a second press.
+ * Double-clicking the header's title does the same. Not drawn on a phone,
+ * where every window is already a full-screen sheet.
+ */
+const MAX_WORDS = { on: 'Restore the window', off: 'Fill the screen' };
+function _wireMaximize(modal) {
+  const header = modal.querySelector('.modal-header');
+  const close = document.getElementById('workbench-close');
+  if (!header || !close || header.querySelector('.workbench-maximize')) return;
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'modal-maximize-btn workbench-maximize';
+  btn.id = 'workbench-maximize';
+  // The snap is `tileManager.js`'s (loaded with the page); asked for when
+  // pressed, so the window's module does not import the tile manager.
+  const content = modal.querySelector('.modal-content');
+  const isMax = () => !!(content && (content.dataset._tileZone === 'maximize' || content.dataset._tileZone === 'fullscreen'));
+  const draw = () => {
+    const on = isMax();
+    btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    btn.title = on ? MAX_WORDS.on : MAX_WORDS.off;
+    btn.setAttribute('aria-label', btn.title);
+    btn.textContent = on ? '❐' : '□';
+  };
+  const toggle = () => {
+    import('../tileManager.js').then((m) => {
+      m.setModalMaximized(modal, !isMax());
+      draw();
+      // The canvas fits again when its viewport changes size (`P23-06`).
+    }).catch((err) => console.error('The window could not be maximized:', err));
+  };
+  btn.addEventListener('click', toggle);
+  const title = header.querySelector('h4');
+  if (title) title.addEventListener('dblclick', toggle);
+  if (close.parentNode) close.parentNode.insertBefore(btn, close);
+  draw();
+  // A drag off the top edge (`tileManager.js`) unsnaps it behind the button's
+  // back; the button reads the window again whenever it is pointed at.
+  btn.addEventListener('pointerenter', draw);
 }
 
 /** Move an open room to what the door asked for. */

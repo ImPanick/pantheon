@@ -47819,6 +47819,7 @@ button.task-card-toggle {
   background-size: 16px 16px;
 }
 .wb-panning .wb-viewport { cursor: grabbing; }
+.wb-viewport:focus { outline: none; }
 .wb-world {
   position: absolute;
   left: 0;
@@ -47943,6 +47944,112 @@ button.task-card-toggle {
 }
 .wb-edge-ghost { fill: none; stroke: var(--fg); stroke-width: 2; stroke-dasharray: 3 4; opacity: 0.8; }
 .wb-guide { stroke: var(--color-muted-alt); stroke-width: 1; stroke-dasharray: 4 4; }
+/* `B1833`. The parts a node editor floats on its canvas — the view's dock
+   (zoom, Fit, Tidy up, the map's switch) on the lower left, the map on the
+   lower right — a step's glyph tile, the handle arrows come in by, and the
+   "+" beside a way out with nothing after it. Placement only; the material
+   is `cockpit.css`'s. */
+.wb-dock {
+  /* above the drawing by order (it comes after the world), not a z-index */
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  max-width: calc(100% - 24px);
+}
+.wb-dock .wb-toolbar-zoom { display: inline-flex; align-items: center; gap: 2px; }
+.wb-minimap {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  line-height: 0;
+  cursor: pointer;
+  touch-action: none;
+}
+.wb-minimap[hidden] { display: none; }
+.wb-minimap-node { fill: color-mix(in srgb, var(--fg) 40%, transparent); }
+.wb-minimap-frame { fill: color-mix(in srgb, var(--fg) 8%, transparent); stroke: var(--fg); stroke-width: 1; }
+.wb-node-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+}
+.wb-port-in {
+  position: absolute;
+  left: -5px;
+  top: 50%;
+  width: 8px;
+  height: 14px;
+  margin-top: -7px;
+  box-sizing: border-box;
+  border-radius: 3px;
+  background: var(--panel);
+  border: 2px solid var(--fg);
+  pointer-events: none;
+}
+.wb-port-add {
+  position: absolute;
+  right: -44px;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  font: inherit;
+  font-size: 14px;
+  line-height: 1;
+  color: var(--fg);
+  background: var(--panel);
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+}
+.wb-port-add::before {
+  content: "";
+  position: absolute;
+  right: 100%;
+  top: 50%;
+  width: 17px;
+  border-top: 1px dashed var(--border);
+}
+.wb-node-actions[hidden] { display: none; }
+/* `B1841`: steps picked together, and the box that picks them */
+.wb-node.wb-node-picked { outline: 2px solid var(--fg); outline-offset: 3px; }
+.wb-select-box {
+  position: absolute; pointer-events: none;
+  border: 1px dashed var(--fg); background: color-mix(in srgb, var(--fg) 8%, transparent);
+}
+/* `B1842`: a "+" on an arrow puts a step between its ends */
+.wb-edge-add { cursor: pointer; pointer-events: all; opacity: 0; }
+.wb-edge:is(:hover, :focus-within) .wb-edge-add, .wb-edge-add:focus { opacity: 1; }
+.wb-edge-add-ring { fill: var(--panel); stroke: var(--fg); stroke-width: 1.2; }
+.wb-edge-add-plus { stroke: var(--fg); stroke-width: 1.6; stroke-linecap: round; fill: none; }
+.wb-read-only .wb-edge-add, .wb-linking .wb-edge-add { display: none; }
+/* `B1841`: the right-click menu and the keys sheet, on the stage */
+.wb-menu, .wb-keys {
+  position: absolute; box-sizing: border-box;
+  display: flex; flex-direction: column; gap: 2px; padding: 6px;
+  color: var(--fg); background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+  box-shadow: 0 10px 30px color-mix(in srgb, var(--bg) 70%, transparent);
+}
+.wb-menu { width: 220px; }
+.wb-menu-item {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 6px 8px; font: inherit; font-size: 12px; text-align: left; color: inherit;
+  background: transparent; border: 0; border-radius: 5px; cursor: pointer;
+}
+.wb-menu-item:hover:not(:disabled), .wb-menu-item:focus-visible { background: color-mix(in srgb, var(--fg) 10%, transparent); }
+.wb-menu-item[data-tone="danger"] { color: var(--red); }
+.wb-menu-keys { font: inherit; font-size: 10.5px; opacity: .6; }
+.wb-menu-sep { height: 1px; margin: 3px 4px; background: var(--border); }
+.wb-keys { right: 12px; bottom: 56px; width: min(380px, calc(100% - 24px)); max-height: calc(100% - 80px); overflow: auto; padding: 12px 14px; gap: 8px; }
+.wb-keys-head { margin: 0; font-weight: 700; font-size: 12.5px; }
+.wb-keys-list { display: grid; grid-template-columns: auto 1fr; gap: 5px 14px; margin: 0; font-size: 11.5px; }
+.wb-keys-list dt { font-weight: 600; white-space: nowrap; }
+.wb-keys-list dd { margin: 0; opacity: .8; }
+.wb-keys-close { align-self: flex-end; }
 .wb-empty {
   position: absolute;
   inset: 0;
@@ -48192,6 +48299,11 @@ button.task-card-toggle {
 }
 .wf-shelf-head { margin: 0 0 2px; font-size: 11px; font-weight: 700; color: var(--color-muted-alt); }
 .wf-shelf-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 2px; }
+/* `B1846`: New workflow, its form and what they say stay in view above the
+   list; only the list scrolls (they sat under 20 workflows, out of sight). */
+.wf-room > .wf-shelf { overflow: hidden; }
+.wf-room > .wf-shelf > .wf-shelf-list { order: 2; flex: 1 1 auto; min-height: 0; overflow: auto; }
+.wf-room > .wf-shelf > .wf-new { flex: 0 1 auto; min-height: 0; overflow: auto; }
 .wf-shelf-item {
   width: 100%;
   height: auto;
@@ -48435,10 +48547,12 @@ button.task-card-toggle {
 .wf-palette-head { margin: 0 0 2px; font-weight: 700; }
 .wf-palette-kind {
   height: auto;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 1px;
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  column-gap: 9px;
+  align-items: center;
+  justify-items: start;
+  row-gap: 1px;
   padding: 6px 8px;
   font: inherit;
   text-align: left;
@@ -48562,6 +48676,7 @@ button.task-card-toggle {
   }
   .wf-shelf-head,
   .wf-shelf-list { display: none; }
+  .wf-room > .wf-shelf { overflow: visible; }
   .wf-shelf-pick { display: inline-flex; flex: 1 1 180px; min-width: 0; }
   .wf-shelf-select { flex: 1 1 auto; min-width: 0; }
   .wf-shelf-pick-last { display: inline; flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
@@ -48597,6 +48712,18 @@ button.task-card-toggle {
 /* The palette: every kind, grouped; one the person may not use is greyed and says why. */
 .wf-palette { max-height: min(72vh, 560px); overflow-y: auto; }
 .wf-palette-group { display: flex; flex-direction: column; gap: 4px; }
+.wf-palette-group[hidden], .wf-palette-kind[hidden] { display: none; }
+.wf-palette-kind > :not(.wf-palette-glyph) { grid-column: 2; }
+.wf-palette-glyph {
+  grid-column: 1; grid-row: 1 / span 3; align-self: center;
+  width: 28px; height: 28px; display: grid; place-items: center; border-radius: 7px;
+  background: color-mix(in srgb, var(--fg) 8%, transparent); font-style: normal;
+}
+.wf-palette-search {
+  box-sizing: border-box; width: 100%; margin: 2px 0 4px; padding: 6px 9px; font: inherit; font-size: 12px;
+  color: var(--fg); background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
+}
+.wf-palette-none { margin: 4px 2px; font-size: 11.5px; opacity: .75; }
 .wf-palette-group + .wf-palette-group { margin-top: 4px; padding-top: 6px; border-top: 1px solid var(--border); }
 .wf-palette-group-head { margin: 0; font-size: 11px; font-weight: 700; color: var(--color-muted-alt); }
 .wf-palette-kind:disabled {
@@ -48898,6 +49025,20 @@ button.task-card-toggle {
    "Checked.", a proposed value that changes where a request goes or came out
    of the run is barred and said in words. */
 .wb-node[data-unchecked] { border-width: 2px; border-style: dashed; }
+/* `B1856`: a step switched off; `B1851`: a step that would stop Save */
+.wb-node[data-off="true"] { opacity: .6; border-style: dashed; }
+.wb-node-problem {
+  position: absolute; top: -8px; right: -8px; width: 18px; height: 18px; border-radius: 50%;
+  display: grid; place-items: center; font-size: 11px; font-weight: 700; line-height: 1;
+  background: var(--color-warning, #f0ad4e); color: var(--bg); pointer-events: auto; cursor: help;
+}
+.wf-step-settings { margin: 12px 0 4px; border-top: 1px solid var(--border); padding-top: 8px; }
+.wf-step-settings-head { cursor: pointer; display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.wf-step-settings-now { font-size: 12px; opacity: .75; }
+.wf-step-settings-body { display: grid; gap: 8px; padding-top: 8px; }
+.wf-step-settings-body [hidden] { display: none; }
+.wf-step-off { display: flex; gap: 8px; align-items: flex-start; }
+.wf-problems[hidden] { display: none; }
 .wb-node[data-unchecked] .wb-node-badge { font-weight: 700; }
 @media (min-width: 769px) {
   /* The New workflow form takes room for a sentence while it is open. */
