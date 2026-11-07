@@ -1542,8 +1542,13 @@ def setup_cookbook_routes() -> APIRouter:
 
         return {"models": models, "host": host or "local"}
 
-    def _auto_register_image_endpoint(req: ServeRequest, remote: str | None) -> str | None:
-        """Register a diffusion model as an image endpoint so it appears in the model selector."""
+    def _auto_register_image_endpoint(
+        req: ServeRequest, remote: str | None, serve_session_id: str | None = None,
+    ) -> str | None:
+        """Register a diffusion model as an image endpoint so it appears in the model selector.
+
+        `B1928`: the row records `serve_session_id`, the serve that owns it now,
+        so a scheduled stop of an older serve at the same URL leaves it alone."""
         import re
         from core.database import SessionLocal, ModelEndpoint
         from src.settings import load_settings, save_settings
@@ -1583,6 +1588,7 @@ def setup_cookbook_routes() -> APIRouter:
                 # server ever came up.
                 existing.model_refresh_mode = "auto"
                 existing.cached_models = None
+                existing.cookbook_serve_session_id = serve_session_id   # `B1928`
                 if pinned_models:
                     existing.pinned_models = json.dumps(pinned_models)
                 db.commit()
@@ -1605,6 +1611,7 @@ def setup_cookbook_routes() -> APIRouter:
                 model_refresh_mode="auto",       # `D-2026-10-07-02` §1, as above
                 cached_models=None,
                 pinned_models=json.dumps(pinned_models) if pinned_models else None,
+                cookbook_serve_session_id=serve_session_id,   # `B1928`
             )
             db.add(ep)
             db.commit()
@@ -1750,12 +1757,32 @@ def setup_cookbook_routes() -> APIRouter:
                 # let the probe layer mark it offline if nothing's listening.
                 logger.info(f"crash-watchdog: serve {session_id} exited cleanly (0); leaving endpoint {endpoint_id}")
                 return
-            # Non-zero exit — drop the endpoint.
+            # Non-zero exit — drop the endpoint, but only a row the Forge
+            # registered (`local-…`) that this serve still owns (`B1928`).
+            # Registration reuses any row at the serve's URL, so the id can be
+            # a hand-added endpoint with its API key, or a row a newer serve
+            # at the same URL has taken over since: neither is this serve's.
+            if not str(endpoint_id or "").startswith("local-") or not session_id:
+                logger.info(
+                    f"crash-watchdog: serve {session_id} exited {exit_code}; endpoint "
+                    f"{endpoint_id} is not one the Forge registered, leaving it"
+                )
+                return
             try:
                 from core.database import SessionLocal as _SL, ModelEndpoint as _ME
+
+                def _owned(query):
+                    return query.filter(_ME.id == endpoint_id,
+                                        _ME.cookbook_serve_session_id == session_id)
+
                 db = _SL()
                 try:
-                    ep = db.query(_ME).filter(_ME.id == endpoint_id).first()
+                    ep = _owned(db.query(_ME)).first()
+                    if not ep:
+                        logger.info(
+                            f"crash-watchdog: endpoint {endpoint_id} is gone or belongs to a "
+                            f"newer serve; serve {session_id} leaves it"
+                        )
                     if ep:
                         # A scheduled serve can leave old non-zero exit markers
                         # in tmux scrollback while the current OpenAI endpoint is
@@ -1777,7 +1804,9 @@ def setup_cookbook_routes() -> APIRouter:
                             f"crash-watchdog: dropping endpoint {endpoint_id} "
                             f"({ep.name} @ {ep.base_url}) — serve exited {exit_code}"
                         )
-                        db.delete(ep)
+                        # Ownership is asked again in the DELETE itself: a
+                        # serve that took the row over during the probe keeps it.
+                        _owned(db.query(_ME)).delete(synchronize_session=False)
                         db.commit()
                 finally:
                     db.close()
@@ -1786,7 +1815,9 @@ def setup_cookbook_routes() -> APIRouter:
             return
         logger.debug(f"crash-watchdog: no exit marker for {session_id} within window; leaving endpoint {endpoint_id}")
 
-    def _auto_register_llm_endpoint(req: ServeRequest, remote: str | None) -> str | None:
+    def _auto_register_llm_endpoint(
+        req: ServeRequest, remote: str | None, serve_session_id: str | None = None,
+    ) -> str | None:
         """Register a freshly-served LLM as a model endpoint so it appears in the
         model picker without a manual /setup step — the text-model sibling of
         _auto_register_image_endpoint.
@@ -1796,6 +1827,10 @@ def setup_cookbook_routes() -> APIRouter:
         endpoint at that server's /v1; the picker auto-discovers the model id by
         probing /v1/models and dims the endpoint until the server is reachable,
         so registering immediately (before the server finishes loading) is safe.
+
+        `B1928`: registering deletes no other endpoint. The row records
+        `serve_session_id`, the serve that owns it now, and only that serve's
+        crash watchdog or scheduled stop removes it.
         """
         logger.info(
             f"_auto_register_llm_endpoint: ENTRY repo_id={req.repo_id!r} "
@@ -1876,6 +1911,9 @@ def setup_cookbook_routes() -> APIRouter:
                 existing.name = display_name
                 existing.endpoint_kind = "local"
                 existing.model_refresh_mode = "auto"
+                # `B1928`: the row now belongs to this serve; an older serve's
+                # watchdog or scheduled stop at this URL leaves it alone.
+                existing.cookbook_serve_session_id = serve_session_id
                 if pinned_models:
                     try:
                         existing_pinned = json.loads(existing.pinned_models or "[]")
@@ -1913,22 +1951,12 @@ def setup_cookbook_routes() -> APIRouter:
                             db.commit()
                 except Exception as _pe:
                     logger.warning(f"Re-probe failed for {base_url}: {_pe!r}")
-                # Sweep stale dupes: other endpoints with the same display name
-                # at DIFFERENT URLs (likely failed earlier-attempt ports) get
-                # deleted so the picker doesn't show an offline ghost next to
-                # the working one. Only sweeps endpoints whose id starts with
-                # `local-` so we never touch a user's hand-added DeepSeek/OpenAI/
-                # etc. entry with a coincidentally matching name.
-                stale = (db.query(ModelEndpoint)
-                         .filter(ModelEndpoint.name == display_name)
-                         .filter(ModelEndpoint.base_url != base_url)
-                         .filter(ModelEndpoint.id.like("local-%"))
-                         .all())
-                for s in stale:
-                    logger.info(f"Sweeping stale local endpoint {s.id} ({s.base_url})")
-                    db.delete(s)
-                if stale:
-                    db.commit()
+                # `B1928`: no sweep of other rows with this display name. The
+                # name is the repo's short name, which every quant of a repo,
+                # one repo on two hosts and same-named repos of two orgs share,
+                # and the sweep deleted a serve that was still running (the
+                # Forge's "Launch anyway" keeps the first serve on its port).
+                # A dead serve's row is its own watchdog's or stop's to remove.
                 return existing.id
 
             ep_id = f"local-{uuid.uuid4().hex[:8]}"
@@ -1946,22 +1974,13 @@ def setup_cookbook_routes() -> APIRouter:
                 cached_models=None,
                 pinned_models=json.dumps(pinned_models) if pinned_models else None,
                 supports_tools=supports_tools,
+                cookbook_serve_session_id=serve_session_id,   # `B1928`
             )
             db.add(ep)
             db.commit()
             logger.info(f"Auto-registered local model endpoint: {display_name} @ {base_url}")
-            # Same sweep on first-register path: drop any pre-existing local-*
-            # endpoints with this display name pointed elsewhere.
-            stale = (db.query(ModelEndpoint)
-                     .filter(ModelEndpoint.name == display_name)
-                     .filter(ModelEndpoint.id != ep_id)
-                     .filter(ModelEndpoint.id.like("local-%"))
-                     .all())
-            for s in stale:
-                logger.info(f"Sweeping stale local endpoint {s.id} ({s.base_url})")
-                db.delete(s)
-            if stale:
-                db.commit()
+            # `B1928`: no sweep of same-named rows here either (see the reuse
+            # path above).
             # Probe /v1/models NOW and write cached_models so the chat
             # picker actually shows the model on the next /api/models
             # call. Without this immediate probe, the endpoint has empty
@@ -2835,10 +2854,11 @@ def setup_cookbook_routes() -> APIRouter:
         # a local LLM endpoint pointed at its /v1.
         endpoint_id = None
         is_image_endpoint = "diffusion_server.py" in req.cmd or "mlx_image_server.py" in req.cmd
+        # `B1928`: the row is stamped with this serve's session, its owner.
         if is_image_endpoint:
-            endpoint_id = _auto_register_image_endpoint(req, remote)
+            endpoint_id = _auto_register_image_endpoint(req, remote, serve_session_id=session_id)
         elif not is_pip_install:
-            endpoint_id = _auto_register_llm_endpoint(req, remote)
+            endpoint_id = _auto_register_llm_endpoint(req, remote, serve_session_id=session_id)
 
         # Crash watchdog: the auto-register above writes the endpoint row
         # IMMEDIATELY (before the server has even bound its port) so the

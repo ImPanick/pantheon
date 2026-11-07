@@ -984,6 +984,11 @@ class ModelEndpoint(TimestampMixin, Base):
     # Optional OAuth/session-backed credential row. Used by subscription-backed
     # providers that need refresh tokens instead of a static API key.
     provider_auth_id = Column(String, nullable=True, index=True)
+    # `B1928`: the Forge serve (its tmux session id) that registered or last
+    # reused this row. A serve's crash watchdog and scheduled stop delete only
+    # a row their own serve still owns. NULL = registered before this column,
+    # or added by hand: never deleted automatically.
+    cookbook_serve_session_id = Column(String, nullable=True)
 
 
 class ProviderAuthSession(TimestampMixin, Base):
@@ -2707,6 +2712,35 @@ def _migrate_add_pinned_models_column():
         except Exception:
             pass
 
+
+def _migrate_add_cookbook_serve_session_id_column():
+    """Add cookbook_serve_session_id to model_endpoints if it doesn't exist. `B1928`.
+
+    Rows that predate it stay NULL, and a NULL row is never deleted by a
+    Forge serve's crash watchdog or scheduled stop."""
+    import sqlite3
+    db_path = DATABASE_URL.replace("sqlite:///", "")
+    if not os.path.exists(db_path):
+        return
+    conn = None
+    try:
+        conn = sqlite3.connect(db_path)
+        cursor = conn.execute("PRAGMA table_info(model_endpoints)")
+        columns = [row[1] for row in cursor.fetchall()]
+        if columns and "cookbook_serve_session_id" not in columns:
+            conn.execute("ALTER TABLE model_endpoints ADD COLUMN cookbook_serve_session_id VARCHAR")
+            conn.commit()
+            logging.getLogger(__name__).info(
+                "Migrated: added 'cookbook_serve_session_id' column to model_endpoints")
+    except Exception as e:
+        logging.getLogger(__name__).warning(f"cookbook_serve_session_id migration failed: {e}")
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass   # `conn` is None when connect() failed: there is nothing to close
+
+
 def _migrate_add_notes_sort_order():
     """Add sort_order, image_url, repeat columns to notes if they don't exist."""
     import sqlite3
@@ -3785,6 +3819,7 @@ def init_db():
     _migrate_add_model_endpoint_owner_column()
     _migrate_add_provider_auth_id_column()
     _migrate_add_supports_tools_column()
+    _migrate_add_cookbook_serve_session_id_column()   # `B1928`
     _migrate_add_comparison_vote_meta_column()
     _migrate_add_task_run_model_column()
     _migrate_add_vault_item_agents()
