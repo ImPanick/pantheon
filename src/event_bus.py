@@ -760,13 +760,18 @@ async def _handle_event(event_name: str, owner: Optional[str] = None,
         due = await asyncio.to_thread(_count_event, event_name, resolved_owner, trigger, origin)
         for task_id, name, threshold in due:
             if _task_scheduler:
-                logger.info(f"Event '{event_name}' triggered task '{name}' (every {threshold})")
                 # `P8-23`. The Nth event is the one the task runs for, so
                 # that is the payload it is handed. The N-1 events that only
                 # moved the counter are not carried: a task set to fire every
                 # fifth document wants the fifth document, and a list of five
                 # would be a different feature nobody asked for.
-                await _task_scheduler.run_task_now(task_id, trigger=trigger)
+                started = await _task_scheduler.run_task_now(task_id, trigger=trigger)
+                # `B1865`. Said after the answer, not before it: this logged
+                # "triggered" for every event and threw `run_task_now`'s
+                # `False` away, so an event that started nothing — it waits
+                # its turn on the row, or a parked run answered it with a
+                # `skipped` run — read in the log as a run that started.
+                await _say_what_the_event_did(task_id, name, event_name, threshold, started)
             else:
                 logger.warning(f"Event triggered task '{name}' but no scheduler available")
     except Exception:
@@ -813,6 +818,16 @@ def _count_event(event_name: str, resolved_owner: Optional[str], trigger: dict,
 
             if task.trigger_counter >= threshold:
                 task.trigger_counter = 0
+                # `B1865`. Behind the events already waiting for this task,
+                # in the order they came — or, with `PENDING_TRIGGERS_MAX`
+                # waiting, not at all: a `skipped` run says so, and the task
+                # is not handed this event (it is due already, for the oldest).
+                queued = change_pending_triggers(db, task.id, _append_if_room(trigger))
+                if queued is False:
+                    sentence = _record_queue_full(db, task)
+                    db.commit()
+                    logger.info("Event '%s': task '%s' — %s", event_name, task.name, sentence)
+                    continue
                 # Persist the trigger before handing off to the in-memory
                 # scheduler. If the process restarts while the task is queued
                 # behind a model call, `next_run <= now` makes the trigger
@@ -824,7 +839,12 @@ def _count_event(event_name: str, resolved_owner: Optional[str], trigger: dict,
                 # all that crossed to the main process, whose loop then ran the
                 # task as a plain due task with no payload. The run that starts
                 # takes this (`TaskScheduler._take_pending_trigger`).
-                task.pending_trigger = json.dumps(trigger, default=str)
+                #
+                # `B1865`. It was one envelope, written over whatever was
+                # there: three documents created while the task ran left the
+                # third waiting and the second gone, and the run after read
+                # the third. It is a queue now (`change_pending_triggers`,
+                # above), oldest first, one event to a run.
                 db.commit()
                 due.append((task.id, task.name, threshold))
             else:
@@ -833,3 +853,150 @@ def _count_event(event_name: str, resolved_owner: Optional[str], trigger: dict,
     finally:
         db.close()
     return due
+
+
+# ── `B1865` · the events waiting for a task's next run ─────────────────────
+#
+# `ScheduledTask.pending_trigger` holds what fired a task and has not been
+# handed to a run yet, oldest first: what `_count_event` appends and
+# `TaskScheduler._take_pending_trigger` takes, one event to a run, and what
+# keeps the task due while it holds anything (`_settle_event_next_run`).
+#
+# Written as it always was while one event waits — that envelope, alone — and
+# as a JSON list of envelopes while two or more do; read either way
+# (`pending_triggers_of`), so a row written before is a queue of one. Up to
+# `PENDING_TRIGGERS_MAX` wait; past that an event is answered with a `skipped`
+# run that says so (`_record_queue_full`), in `_record_parked_skip`'s words,
+# rather than dropped with no word or allowed to grow the row without end — a
+# chatty source firing every second while a long run holds the task.
+
+PENDING_TRIGGERS_MAX = 20
+
+
+def pending_triggers_of(raw) -> list:
+    """`B1865`. The events a row's `pending_trigger` holds, oldest first: a
+    JSON list of envelopes, or a single envelope (a queue of one, as every
+    row was written before). Nothing, or text that is not JSON, is none."""
+    if not raw:
+        return []
+    try:
+        value = json.loads(raw)
+    except (TypeError, ValueError):
+        logger.warning("A task's queued trigger is not JSON; its run starts without it")
+        return []
+    if isinstance(value, dict):
+        return [value]
+    if isinstance(value, list):
+        return [envelope for envelope in value if isinstance(envelope, dict)]
+    return []
+
+
+def pending_triggers_text(queue: list) -> Optional[str]:
+    """`B1865`. What the column holds for `queue`: `None` for none, the one
+    envelope alone for one (the bytes `B1075` wrote), a JSON list for more."""
+    if not queue:
+        return None
+    return json.dumps(queue[0] if len(queue) == 1 else queue, default=str)
+
+
+def change_pending_triggers(db, task_id: str, change, *, tries: int = 8):
+    """`B1865`. Change a task's queue of waiting events, and answer what
+    `change` answered.
+
+    `change(queue)` is handed the queue as it stands and answers
+    `(new_queue, answer)`; handing back the very list it was given means
+    "nothing to write". The write is one compare-and-set — `UPDATE … WHERE
+    pending_trigger` is still what was read — because the bus appends (in this
+    process or in the email server's) while a scheduler takes: two writers
+    that each read and wrote the whole column would lose or repeat an event.
+    When another writer got there first, the column is read again and `change`
+    asked again. Not committed: the caller commits with its own writes. Answers
+    `None` when the task's row is gone or the column stayed contended.
+    """
+    from core.database import ScheduledTask
+
+    for _ in range(tries):
+        row = (db.query(ScheduledTask.pending_trigger)
+               .filter(ScheduledTask.id == task_id).first())
+        if row is None:
+            return None
+        raw = row[0]
+        queue = pending_triggers_of(raw)
+        new_queue, answer = change(queue)
+        if new_queue is queue:
+            return answer
+        new_raw = pending_triggers_text(new_queue)
+        if new_raw == raw:
+            return answer
+        held = (ScheduledTask.pending_trigger.is_(None) if raw is None
+                else ScheduledTask.pending_trigger == raw)
+        written = (db.query(ScheduledTask)
+                   .filter(ScheduledTask.id == task_id, held)
+                   .update({ScheduledTask.pending_trigger: new_raw},
+                           synchronize_session=False))
+        if written:
+            return answer
+    logger.warning("Task %s's queued events kept changing under this write; left as they are",
+                   task_id)
+    return None
+
+
+def _append_if_room(trigger: dict):
+    """`change_pending_triggers`' change for a new event: behind the others
+    while fewer than `PENDING_TRIGGERS_MAX` wait (answers `True`), else
+    nothing written (answers `False`)."""
+    envelope = json.loads(json.dumps(trigger, default=str))
+
+    def append(queue):
+        if len(queue) >= PENDING_TRIGGERS_MAX:
+            return queue, False
+        return [*queue, envelope], True
+    return append
+
+
+def queue_full_sentence(task) -> str:
+    """`B1865`. Why an event started nothing: the task's queue was full."""
+    what = "workflow" if (getattr(task, "task_type", None) or "llm") == "workflow" else "task"
+    return (f"Did not start: {PENDING_TRIGGERS_MAX} events were already waiting "
+            f"for this {what}.")
+
+
+def _record_queue_full(db, task) -> str:
+    """`B1865`. An event past the queue's cap is a `skipped` run that says
+    why — as `_record_parked_skip` writes one for an event a parked run
+    answers — and nobody is notified (the task is already due for the
+    events before it). The task's `next_run` is left as it is. Not
+    committed. Answers the sentence."""
+    import uuid
+    from core.database import TaskRun
+
+    sentence = queue_full_sentence(task)
+    now = datetime.utcnow()
+    db.add(TaskRun(id=str(uuid.uuid4()), task_id=task.id, started_at=now, finished_at=now,
+                   status="skipped", result=sentence, error=sentence))
+    return sentence
+
+
+async def _say_what_the_event_did(task_id: str, name: str, event_name: str,
+                                  threshold: int, started) -> None:
+    """`B1865`. The log line for an event the bus handed to `run_task_now`,
+    from its answer: it started the task; or it did not, because a run of
+    the task is parked (the event was answered with a `skipped` run that
+    says why); or because a run of it is going (it waits its turn on the
+    row, and the loop starts it when that run ends)."""
+    if started:
+        logger.info("Event '%s' started task '%s' (every %s)", event_name, name, threshold)
+        return
+    sentence = None
+    asks = getattr(_task_scheduler, "in_flight_sentence", None)
+    if asks is not None:
+        try:
+            sentence = await asyncio.to_thread(asks, task_id)
+        except Exception:
+            logger.debug("Could not read whether task %s is parked", task_id, exc_info=True)
+    if sentence:
+        logger.info("Event '%s' did not start task '%s' — a skipped run says: %s",
+                    event_name, name, sentence)
+    else:
+        logger.info("Event '%s' did not start task '%s' yet: a run of it is going, "
+                    "and the event waits its turn", event_name, name)

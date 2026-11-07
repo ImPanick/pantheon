@@ -3019,7 +3019,8 @@ class TaskScheduler:
                 raise
         await self._execute_task(task_id)
 
-    def _take_pending_trigger(self, task_id: str, *, matching: dict | None = None) -> dict | None:
+    def _take_pending_trigger(self, task_id: str, *, matching: dict | None = None,
+                              in_turn: bool = False) -> dict | None:
         """`B1075`. Read and clear the trigger an event queued on the row
         (`ScheduledTask.pending_trigger`), or `None`. Cleared in the same
         commit it is read in, so one queued event is handed to one run.
@@ -3027,34 +3028,48 @@ class TaskScheduler:
         `B1512`. `matching` is the trigger a run was handed itself (the bus's
         own run in this process): the queued copy is cleared only when it is
         that same event, so a webhook's run does not throw away an event that
-        is still waiting for its own."""
-        from core.database import SessionLocal, ScheduledTask
+        is still waiting for its own.
+
+        `B1865`. The row holds a queue now, oldest first
+        (`event_bus.pending_triggers_of`), and this takes ONE event from it:
+        with no `matching`, the oldest, which it answers; with `matching`, that
+        event, wherever it waits (a parked run's `skipped` row answers it,
+        `_record_parked_skip`). With `in_turn` as well — a run starting with
+        the event it was handed — the run goes in the queue's order: when an
+        older event still waits (the loop had not reached it yet), the run
+        takes that one and answers it, and the event it was handed keeps its
+        place for the run after. Answers `None` when its own event was first
+        in line, or is not queued at all (a webhook's run)."""
+        from core.database import SessionLocal
+        from src.event_bus import change_pending_triggers
+
+        want = None
+        if matching is not None:
+            try:
+                want = json.loads(json.dumps(matching, default=str))
+            except (TypeError, ValueError):
+                return None
+
+        def take(queue):
+            if want is None:
+                return (queue[1:], queue[0]) if queue else ([], None)
+            if want not in queue:
+                return queue, None
+            if in_turn:
+                return queue[1:], (None if queue[0] == want else queue[0])
+            at = queue.index(want)
+            return queue[:at] + queue[at + 1:], None
+
         db = SessionLocal()
         try:
-            row = db.query(ScheduledTask).filter(ScheduledTask.id == task_id).first()
-            raw = getattr(row, "pending_trigger", None) if row is not None else None
-            if not raw:
-                return None
-            if matching is not None:
-                try:
-                    same = json.loads(raw) == json.loads(json.dumps(matching, default=str))
-                except (TypeError, ValueError):
-                    same = False
-                if not same:
-                    return None
-            row.pending_trigger = None
+            taken = change_pending_triggers(db, task_id, take)
             db.commit()
         except Exception:
             logger.warning("Could not read the queued trigger of task %s", task_id, exc_info=True)
             return None
         finally:
             db.close()
-        try:
-            envelope = json.loads(raw)
-        except (TypeError, ValueError):
-            logger.warning("Task %s's queued trigger is not JSON; it runs without it", task_id)
-            return None
-        return envelope if isinstance(envelope, dict) else None
+        return taken if isinstance(taken, dict) else None
 
     def _new_queued_run(self, task_id: str) -> str:
         """Write a `queued` run row and answer its id.
@@ -3179,9 +3194,15 @@ class TaskScheduler:
         # after it with its own payload (`_queued_event_due` keeps it due).
         # And a run handed a trigger takes the queued copy only when it is
         # the same event.
+        #
+        # `B1865`. One event at a time, oldest first: a run handed its own
+        # event while older ones still wait takes the oldest instead, and its
+        # own keeps its place (`_take_pending_trigger`'s `in_turn`).
         if resume_run_id is None and not dry:
             if trigger is not None:
-                self._take_pending_trigger(task_id, matching=trigger)
+                older = self._take_pending_trigger(task_id, matching=trigger, in_turn=True)
+                if older is not None:
+                    trigger = older
             elif started_by != STARTED_BY_PERSON:
                 trigger = self._take_pending_trigger(task_id)
         run_id = resume_run_id or self._new_queued_run(task_id)
@@ -4453,7 +4474,9 @@ class TaskScheduler:
         set_committed_value(task, "next_run", None)
         db.query(ScheduledTask).filter(
             ScheduledTask.id == task.id,
-            or_(ScheduledTask.pending_trigger.is_(None), ScheduledTask.pending_trigger == ""),
+            # `B1865`: and an empty queue, which is never written, is none.
+            or_(ScheduledTask.pending_trigger.is_(None), ScheduledTask.pending_trigger == "",
+                ScheduledTask.pending_trigger == "[]"),
         ).update({ScheduledTask.next_run: None}, synchronize_session=False)
 
     def _queued_event_due(self, db, task):
@@ -4477,7 +4500,9 @@ class TaskScheduler:
         except Exception:
             logger.warning("Could not read task %s's queued event", task.id, exc_info=True)
             return None
-        if row is None or not row[0]:
+        # `B1865`. While the queue holds anything, the task stays due — one
+        # run for each event in it, the oldest first.
+        if row is None or not row[0] or row[0].strip() == "[]":
             return None
         return row[1] or _utcnow()
 
