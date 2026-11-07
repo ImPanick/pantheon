@@ -102,20 +102,24 @@ _PLAIN_FRONT_MATTER_RE = re.compile(
 #   - **label:** value <!-- field=NAME-ENC type=text -->
 #   - **label** [opts]: value <!-- field=NAME-ENC type=choice -->
 #   - [x] **label** <!-- field=NAME-ENC type=checkbox -->
+# The name accepts Unicode word characters because markers saved before
+# `B1792` hold non-ASCII letters and digits literally; new markers are ASCII.
 _FIELD_BULLET_RE = re.compile(
-    r'^\s*-\s+(?P<body>.*?)\s*<!--\s*field=(?P<name>[A-Za-z0-9_.%-]+)\s+type=(?P<type>\w+)\s*-->\s*$'
+    r'^\s*-\s+(?P<body>.*?)\s*<!--\s*field=(?P<name>[\w.%-]+)\s+type=(?P<type>\w+)\s*-->\s*$'
 )
 
 
 def _encode_name(name: str) -> str:
     """Percent-encode any char that's not a regex/HTML-comment-safe token.
 
-    Keeps A-Z a-z 0-9 _ . - . Everything else (spaces, newlines, parens,
-    commas, quotes, etc.) becomes %XX. JS side must use the same scheme.
+    Keeps ASCII A-Z a-z 0-9 _ . - . Everything else (spaces, newlines, parens,
+    commas, quotes, non-ASCII letters, etc.) becomes %XX of its UTF-8 bytes.
+    `_encodeFieldName` in static/js/document.js uses the same scheme (`B1792`:
+    `str.isalnum()` alone kept `é` literal, which the parser could not read).
     """
     out = []
     for ch in name or "":
-        if ch.isalnum() or ch in ("_", ".", "-"):
+        if (ch.isascii() and ch.isalnum()) or ch in ("_", ".", "-"):
             out.append(ch)
         else:
             for b in ch.encode("utf-8"):
