@@ -16,6 +16,18 @@ in it is ever run as code. The semantics are written once, here:
   * `one_of` takes a list, or text split on commas and new lines;
   * a type mismatch is false, and **no operator ever raises**.
 
+`B1880` adds to the closed list (`OPERATORS`, still closed): `not_equals`,
+`not_contains`, `is_not_empty` and `not_one_of`, each the exact opposite of
+its plain word; `starts_with`, `ends_with`; `matches`, a pattern checked in
+time proportional to the text (`src/workflow_pattern.py`, never Python's
+backtracking `re`); `at_least`, `at_most`; and `is_before`, `is_after`,
+which read dates and times and words such as "2 days ago" counted from the
+run's `{{ now }}`. A condition may say what it compares its sides AS (its
+`as`: text, exact text, a number, a date, yes/no, or how many). And two
+texts are the same number only when both are written as plain numbers, so
+"02134" is not "2134" (`_equals`); one-of text with new lines in it is one
+choice on each line, so a choice may hold a comma.
+
 If and Switch have no error port: a condition cannot fail, it can only be
 false. Switch takes the FIRST case that matches, else `otherwise`.
 
@@ -34,13 +46,15 @@ from __future__ import annotations
 
 import json
 import re
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import NamedTuple
 
+from src.workflow_pattern import pattern_found
 from src.workflow_refs import (
     MISSING,
     RefError,
     as_text,
+    moment_of,
     parse_template,
     read_json,
     render_value,
@@ -54,7 +68,33 @@ OP_IS_EMPTY = "is_empty"
 OP_GREATER_THAN = "greater_than"
 OP_LESS_THAN = "less_than"
 OP_ONE_OF = "one_of"
-OPERATORS = (OP_EQUALS, OP_CONTAINS, OP_IS_EMPTY, OP_GREATER_THAN, OP_LESS_THAN, OP_ONE_OF)
+# `B1880` (`condition-operators-and-coercion`). The audit found no way to say
+# "status is not closed", "does not contain", "is not empty", "starts with",
+# a pattern, "at least", or "older than 2 days". Added, never replacing the
+# six: each "not" is exactly the opposite of its plain word (so a field that
+# is not there "is not" anything, and "does not contain" anything).
+OP_NOT_EQUALS = "not_equals"
+OP_NOT_CONTAINS = "not_contains"
+OP_IS_NOT_EMPTY = "is_not_empty"
+OP_NOT_ONE_OF = "not_one_of"
+OP_STARTS_WITH = "starts_with"
+OP_ENDS_WITH = "ends_with"
+OP_MATCHES = "matches"
+OP_AT_LEAST = "at_least"
+OP_AT_MOST = "at_most"
+OP_IS_BEFORE = "is_before"
+OP_IS_AFTER = "is_after"
+OPERATORS = (OP_EQUALS, OP_CONTAINS, OP_IS_EMPTY, OP_GREATER_THAN, OP_LESS_THAN, OP_ONE_OF,
+             OP_NOT_EQUALS, OP_NOT_CONTAINS, OP_IS_NOT_EMPTY, OP_NOT_ONE_OF,
+             OP_STARTS_WITH, OP_ENDS_WITH, OP_MATCHES, OP_AT_LEAST, OP_AT_MOST,
+             OP_IS_BEFORE, OP_IS_AFTER)
+# Each "not" and the word it is the opposite of.
+NEGATED = {OP_NOT_EQUALS: OP_EQUALS, OP_NOT_CONTAINS: OP_CONTAINS,
+           OP_IS_NOT_EMPTY: OP_IS_EMPTY, OP_NOT_ONE_OF: OP_ONE_OF}
+# Operators whose value is a list of choices (the editor: one on each line).
+LIST_OPERATORS = (OP_ONE_OF, OP_NOT_ONE_OF)
+# Operators that always read dates and times — and words such as "2 days ago".
+DATE_OPERATORS = (OP_IS_BEFORE, OP_IS_AFTER)
 JOIN_ALL = "all"
 JOIN_ANY = "any"
 JOINS = (JOIN_ALL, JOIN_ANY)
@@ -67,10 +107,57 @@ OPERATOR_WORDS = {
     OP_GREATER_THAN: "is more than",
     OP_LESS_THAN: "is less than",
     OP_ONE_OF: "is one of",
+    OP_NOT_EQUALS: "is not",
+    OP_NOT_CONTAINS: "does not contain",
+    OP_IS_NOT_EMPTY: "is not empty",
+    OP_NOT_ONE_OF: "is not one of",
+    OP_STARTS_WITH: "starts with",
+    OP_ENDS_WITH: "ends with",
+    OP_MATCHES: "matches the pattern",
+    OP_AT_LEAST: "is at least",
+    OP_AT_MOST: "is at most",
+    OP_IS_BEFORE: "is before",
+    OP_IS_AFTER: "is after",
 }
 JOIN_WORDS = {JOIN_ALL: "all of these", JOIN_ANY: "any of these"}
 # Operators that read no `right`.
-UNARY_OPERATORS = (OP_IS_EMPTY,)
+UNARY_OPERATORS = (OP_IS_EMPTY, OP_IS_NOT_EMPTY)
+
+# `B1880`. What a condition compares its two sides AS — its optional `as`.
+# Without one (the editor's "as it looks"), a condition reads as it always
+# did, but for one thing: two TEXTS are the same number only when both are
+# written as plain numbers, so the zip code "02134" is not "2134", the order
+# "007" is not "7" and "1e3" is not "1000" (text beside a real number — a
+# webhook's `7` — still reads as a number, as it always did). With one:
+#   text    — capitals and the spaces around do not count, and text orders
+#             as text ("b" is after "a");
+#   exact   — capitals and spaces count;
+#   number  — both sides read as numbers (a side that is not one: false);
+#   date    — both sides read as dates or times, or words such as "today";
+#   yes/no  — both sides read as yes or no (true/yes/on/1, false/no/off/0);
+#   length  — how many items (a list) or characters (text) the field has,
+#             against a number.
+CONDITION_AS_KEY = "as"
+COMPARE_TEXT = "text"
+COMPARE_EXACT = "exact"
+COMPARE_NUMBER = "number"
+COMPARE_DATE = "date"
+COMPARE_YES_NO = "yes/no"
+COMPARE_LENGTH = "length"
+COMPARE_AS = (COMPARE_TEXT, COMPARE_EXACT, COMPARE_NUMBER, COMPARE_DATE, COMPARE_YES_NO,
+              COMPARE_LENGTH)
+COMPARE_AS_WORDS = {COMPARE_TEXT: "text (capitals do not count)",
+                    COMPARE_EXACT: "exact text (capitals count)",
+                    COMPARE_NUMBER: "a number", COMPARE_DATE: "a date or a time",
+                    COMPARE_YES_NO: "yes or no",
+                    COMPARE_LENGTH: "how many (items, or letters of text)"}
+# "3 days ago", "in 2 hours": the number is at most six digits.
+_RELATIVE_RE = re.compile(r"(?:(in) )?([0-9]{1,6}) (minute|hour|day|week)s?(?: (ago))?")
+_RELATIVE_DAYS = {"today": 0, "yesterday": -1, "tomorrow": 1}
+RELATIVE_WORDS = ("now", "today", "yesterday", "tomorrow", "N minutes/hours/days/weeks ago",
+                  "in N minutes/hours/days/weeks")
+# A number written plainly: what two texts must both be to equal as numbers.
+_PLAIN_NUMBER_RE = re.compile(r"-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?")
 
 _NUMBER_RE = re.compile(r"[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?")
 _WHOLE_RE = re.compile(r"[+-]?[0-9]+")
@@ -132,6 +219,12 @@ def _equals(left, right) -> bool:
     if left is MISSING or right is MISSING:
         return False
     a, b = _number(left), _number(right)
+    if (isinstance(left, str) and isinstance(right, str)
+            and not (_PLAIN_NUMBER_RE.fullmatch(left.strip())
+                     and _PLAIN_NUMBER_RE.fullmatch(right.strip()))):
+        # `B1880`. Two texts are the same number only when both are written
+        # as plain numbers: "02134" is not "2134", "1e3" is not "1000".
+        a = b = None
     if a is not None and b is not None:
         return a == b
     if isinstance(left, bool) or isinstance(right, bool):
@@ -190,34 +283,195 @@ def _order(left, right):
 
 
 def _choices(right) -> list:
+    """`one_of`'s choices: a list as it is; text with a new line in it, one
+    choice on each line (`B1880`: so a choice may hold a comma — "Smith,
+    John"); text on one line, split on commas, as it always was."""
     if isinstance(right, list):
         return right
     if isinstance(right, str):
-        return [part.strip() for part in re.split(r"[,\n]", right) if part.strip()]
+        parts = right.split("\n") if "\n" in right else right.split(",")
+        return [part.strip() for part in parts if part.strip()]
     return [] if right is None or right is MISSING else [right]
 
 
-def compare(op: str, left, right=None) -> bool:
-    """Does `left op right` hold? Never raises; an unknown operator is false."""
+# ── `B1880`. Reading a side as what the condition compares it as ─────────────
+
+def moment_when(value, now: datetime):
+    """A date or time (`workflow_refs.moment_of`: ISO, or seconds since
+    1970), or words for one counted from `now` — "now", "today" (midnight,
+    UTC), "yesterday", "tomorrow", "3 days ago", "in 2 hours" — as an aware
+    datetime; `None` for anything else."""
+    moment = moment_of(value)
+    if moment is not None or not isinstance(value, str):
+        return moment
+    words = " ".join(value.strip().lower().split())
+    if words == "now":
+        return now
+    if words in _RELATIVE_DAYS:
+        midnight = now.astimezone(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+        return midnight + timedelta(days=_RELATIVE_DAYS[words])
+    m = _RELATIVE_RE.fullmatch(words)
+    if not m or bool(m.group(1)) == bool(m.group(4)):
+        return None                  # "in 3 days ago", or neither "in" nor "ago"
     try:
-        if op == OP_EQUALS:
-            return _equals(left, right)
-        if op == OP_CONTAINS:
+        delta = timedelta(**{m.group(3) + "s": int(m.group(2))})
+        return now + delta if m.group(1) else now - delta
+    except OverflowError:            # past the year 9999 or before the year 1
+        return None
+
+
+def reads_as_moment(value) -> bool:
+    """`B1880`. Whether a typed value is a date, a time or words for one —
+    what `is_before` and `is_after` are checked for at save."""
+    return moment_when(value, datetime.now(timezone.utc)) is not None
+
+
+def _yes_no(value):
+    """True, False, or `MISSING` for a value that is not yes or no."""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)) and value in (0, 1):
+        return bool(value)
+    if isinstance(value, str):
+        word = value.strip().lower()
+        if word in _YES_WORDS:
+            return True
+        if word in _NO_WORDS:
+            return False
+    return MISSING
+
+
+def _length(value):
+    """How many items a list (or keys an object) has, or characters text
+    has; nothing has none; anything else has no length (`MISSING`)."""
+    if value is None:
+        return 0
+    if isinstance(value, (str, list, dict)):
+        return len(value)
+    return MISSING
+
+
+def _as(kind: str, value, now: datetime, *, left: bool = True):
+    """`value` read as `kind` (one of `COMPARE_AS`), or `MISSING`. `length`
+    reads the LEFT side's length and the right side as a number."""
+    if value is MISSING:
+        return MISSING
+    if kind == COMPARE_TEXT:
+        return _fold(as_text(value))
+    if kind == COMPARE_EXACT:
+        return as_text(value)
+    if kind == COMPARE_NUMBER or (kind == COMPARE_LENGTH and not left):
+        return to_number(value)
+    if kind == COMPARE_LENGTH:
+        return _length(value)
+    if kind == COMPARE_DATE:
+        moment = moment_when(value, now)
+        return MISSING if moment is None else moment
+    if kind == COMPARE_YES_NO:
+        return _yes_no(value)
+    return MISSING
+
+
+def _same(left, right, kind, now) -> bool:
+    """`equals`, as `kind` (`None`: as it looks)."""
+    if kind is None:
+        return _equals(left, right)
+    a, b = _as(kind, left, now), _as(kind, right, now, left=False)
+    return a is not MISSING and b is not MISSING and a == b
+
+
+def _ordered(left, right, kind, now):
+    """`(a, b)` that order, as `kind`, or `None`."""
+    if kind is None:
+        return _order(left, right)
+    if kind == COMPARE_YES_NO:
+        return None
+    a, b = _as(kind, left, now), _as(kind, right, now, left=False)
+    if a is MISSING or b is MISSING:
+        return None
+    return a, b
+
+
+def _text_side(value, exact: bool) -> str:
+    return as_text(value) if exact else as_text(value).casefold()
+
+
+def _needle(right, exact: bool) -> str:
+    return as_text(right) if exact else _fold(as_text(right))
+
+
+def _holds(op, left, right, kind, now) -> bool:
+    """The plain (not negated) operators. May raise; `compare` catches."""
+    exact = kind == COMPARE_EXACT
+    if op == OP_EQUALS:
+        return _same(left, right, kind, now)
+    if op == OP_CONTAINS:
+        if kind is None:
             return _contains(left, right)
-        if op == OP_IS_EMPTY:
-            return _is_empty(left)
-        if op in (OP_GREATER_THAN, OP_LESS_THAN):
-            pair = _order(left, right)
-            if pair is None:
-                return False
-            return pair[0] > pair[1] if op == OP_GREATER_THAN else pair[0] < pair[1]
-        if op == OP_ONE_OF:
-            if left is MISSING:
-                return False
-            return any(_equals(left, choice) for choice in _choices(right))
+        if left is MISSING or right is MISSING or right is None:
+            return False
+        if isinstance(left, list):
+            return any(_same(item, right, kind, now) for item in left)
+        if isinstance(left, dict):
+            needle = _needle(right, exact)
+            return bool(needle) and any(isinstance(k, str) and _needle(k, exact) == needle
+                                        for k in left)
+        needle = _needle(right, exact)
+        return bool(needle) and needle in _text_side(left, exact)
+    if op == OP_IS_EMPTY:
+        return _is_empty(left)
+    if op in (OP_STARTS_WITH, OP_ENDS_WITH):
+        if left is MISSING or right is MISSING or right is None:
+            return False
+        if isinstance(left, list):
+            return bool(left) and _same(left[0] if op == OP_STARTS_WITH else left[-1],
+                                        right, kind, now)
+        needle = _needle(right, exact)
+        text = _text_side(left, exact).strip() if not exact else _text_side(left, exact)
+        if not needle:
+            return False
+        return text.startswith(needle) if op == OP_STARTS_WITH else text.endswith(needle)
+    if op == OP_MATCHES:
+        if left is MISSING or not isinstance(right, str):
+            return False
+        return pattern_found(right, as_text(left), fold=not exact)
+    if op in (OP_GREATER_THAN, OP_LESS_THAN, OP_AT_LEAST, OP_AT_MOST):
+        pair = _ordered(left, right, kind, now)
+        if pair is None:
+            return False
+        a, b = pair
+        return {OP_GREATER_THAN: a > b, OP_LESS_THAN: a < b,
+                OP_AT_LEAST: a >= b, OP_AT_MOST: a <= b}[op]
+    if op in DATE_OPERATORS:
+        a, b = moment_when(left, now), moment_when(right, now)
+        if a is None or b is None:
+            return False
+        return a < b if op == OP_IS_BEFORE else a > b
+    if op == OP_ONE_OF:
+        if left is MISSING:
+            return False
+        return any(_same(left, choice, kind, now) for choice in _choices(right))
+    return False
+
+
+def compare(op: str, left, right=None, *, as_type=None, now: datetime | None = None) -> bool:
+    """Does `left op right` hold? Never raises; an unknown operator, or an
+    `as_type` that is not one of `COMPARE_AS`, is false. `as_type` is the
+    condition's `as` (`B1880`; `None`: as it looks); `now` the moment
+    "today" and "2 days ago" count from (the run's `{{ now }}`; the clock
+    when none is given)."""
+    if as_type is not None and as_type not in COMPARE_AS:
+        return False
+    if op not in OPERATORS:
+        return False
+    try:
+        if now is None:
+            now = datetime.now(timezone.utc)
+        if op in NEGATED:
+            return not _holds(NEGATED[op], left, right, as_type, now)
+        return bool(_holds(op, left, right, as_type, now))
     except Exception:  # noqa: BLE001 - "operators never throw" is the contract
         return False
-    return False
 
 
 # ── A condition, a group, a step ─────────────────────────────────────────────
@@ -246,7 +500,9 @@ def operand(value, ctx):
 
 
 def evaluate_condition(condition: dict, ctx) -> bool:
-    """One `{left, op, right}`, against `ctx` (`workflow_refs.build_context`)."""
+    """One `{left, op, right}` — and `as` (`B1880`) — against `ctx`
+    (`workflow_refs.build_context`); "today" and "2 days ago" count from the
+    run's `{{ now }}` (`B1879`), the moment the step started."""
     if not isinstance(condition, dict):
         return False
     op = condition.get("op")
@@ -254,7 +510,8 @@ def evaluate_condition(condition: dict, ctx) -> bool:
         return False
     left = operand(condition.get("left"), ctx)
     right = None if op in UNARY_OPERATORS else operand(condition.get("right"), ctx)
-    return compare(op, left, right)
+    now = moment_of(ctx.get("now")) if isinstance(ctx, dict) else None
+    return compare(op, left, right, as_type=condition.get(CONDITION_AS_KEY), now=now)
 
 
 def evaluate_group(conditions, join: str | None, ctx) -> bool:
@@ -514,4 +771,6 @@ def describe_condition(condition: dict) -> str:
         return f"{left} {OPERATOR_WORDS.get(op, op)}"
     right = condition.get("right")
     right = ", ".join(as_text(r) for r in right) if isinstance(right, list) else as_text(right)
-    return f"{left} {OPERATOR_WORDS.get(op, op)} “{right}”"
+    # `B1880`: and what it is compared as, when the condition says.
+    kind = COMPARE_AS_WORDS.get(condition.get(CONDITION_AS_KEY))
+    return f"{left} {OPERATOR_WORDS.get(op, op)} “{right}”" + (f", as {kind}" if kind else "")

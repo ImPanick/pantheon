@@ -75,8 +75,12 @@ from src.task_scheduler import (
 )
 from src.workflow_logic import (
     CASE_PORT_PREFIX,
+    COMPARE_AS,
+    CONDITION_AS_KEY,
+    DATE_OPERATORS,
     JOIN_WORDS,
     JOINS,
+    OP_MATCHES,
     OPERATORS,
     PORT_OTHERWISE,
     PORT_THEN,
@@ -84,9 +88,11 @@ from src.workflow_logic import (
     SET_TYPES,
     case_port,
     describe_condition,
+    reads_as_moment,
     set_name_parts,
     set_names_clash,
 )
+from src.workflow_pattern import PATTERN_HELP, pattern_problem
 from src.workflow_refs import (
     NODE_ID_MAX,
     NODE_ID_RE,
@@ -1139,10 +1145,14 @@ def _check_answer_fields(key, value):
 
 
 def _condition_problem(condition) -> str | None:
-    if not isinstance(condition, dict) or set(condition) - {"left", "op", "right"}:
+    # `B1880`: and what its sides are compared as (`as`), when it says.
+    if not isinstance(condition, dict) or set(condition) - {"left", "op", "right", CONDITION_AS_KEY}:
         return "each condition is a field, a test and a value"
     if not isinstance(condition.get("op"), str):
         return "each condition needs a test"
+    if condition.get(CONDITION_AS_KEY) is not None and condition.get(CONDITION_AS_KEY) not in COMPARE_AS:
+        return (f"a condition compares as {', '.join(COMPARE_AS)}, or says nothing and "
+                f"compares as it looks")
     if not _is_scalar(condition.get("left")):
         return "a condition's field must be text"
     right = condition.get("right")
@@ -1453,7 +1463,8 @@ def _upstream_problem(node: dict, graph: dict, by_id: dict) -> DocumentRefusal |
     return None
 
 
-def _conditions_semantics(node, conditions, join, where: str) -> DocumentRefusal | None:
+def _conditions_semantics(node, conditions, join, where: str,
+                          prefix: str = "conditions") -> DocumentRefusal | None:
     node_id = node["id"]
     if not conditions:
         return _refusal(REFUSE_MISSING_SETTING, (node_id,),
@@ -1461,11 +1472,30 @@ def _conditions_semantics(node, conditions, join, where: str) -> DocumentRefusal
     if join is not None and join not in JOINS:
         return _refusal(REFUSE_BAD_SETTING, (node_id,),
                         f"{_called(node)}: “join” must be all or any")
-    for condition in conditions:
+    for k, condition in enumerate(conditions):
         if condition.get("op") not in OPERATORS:
             return _refusal(REFUSE_BAD_SETTING, (node_id,),
                             f"{_called(node)}: {condition.get('op')!r} is not a test this "
                             f"Pantheon has")
+        # `B1880`. A typed pattern, or a typed date, that cannot be read is
+        # said at save, on its field — not found false at every run. (One
+        # that holds a reference is read at run, where a pattern that does
+        # not read is never found.)
+        right = condition.get("right")
+        if not isinstance(right, str) or references_in_text(right):
+            continue
+        field = f"{prefix}[{k}].right"
+        if condition.get("op") == OP_MATCHES:
+            why = pattern_problem(right)
+            if why:
+                return _refusal(REFUSE_BAD_SETTING, (node_id,),
+                                f"{_called(node)}: the pattern “{right}” {why} {PATTERN_HELP}",
+                                field)
+        if condition.get("op") in DATE_OPERATORS and not reads_as_moment(right):
+            return _refusal(REFUSE_BAD_SETTING, (node_id,),
+                            f"{_called(node)}: “{right}” is not a date or a time. Write one "
+                            f"such as 2026-11-07 or 2026-11-07T08:00, or words such as now, "
+                            f"today, yesterday, 3 days ago or in 2 hours", field)
     return None
 
 
@@ -1551,7 +1581,7 @@ def _kind_problem(node: dict, *, owner, tasks_by_id, crew_ids, owner_is_admin,
             return _refusal(REFUSE_MISSING_SETTING, (node_id,),
                             f"{_called(node)} needs at least one way to go")
         ids = set()
-        for case in cases:
+        for k, case in enumerate(cases):
             if not _CASE_ID_RE.fullmatch(case["id"]) or case["id"] in ids:
                 return _refusal(REFUSE_BAD_SETTING, (node_id,),
                                 f"{_called(node)}: two ways share the id {case['id']!r}, or it "
@@ -1563,7 +1593,7 @@ def _kind_problem(node: dict, *, owner, tasks_by_id, crew_ids, owner_is_admin,
                                 f"{_called(node)}: each way needs a name of up to "
                                 f"{CASE_LABEL_MAX} characters")
             found = _conditions_semantics(node, case.get("conditions"), case.get("join"),
-                                          f" for “{label}”")
+                                          f" for “{label}”", f"cases[{k}].conditions")
             if found:
                 return found
     if kind == NODE_KIND_SET:
