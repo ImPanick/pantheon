@@ -320,14 +320,21 @@ async def run_code_step(node, input_obj, *, owner, timeout) -> StepOutcome:
 # ── P22-15 · A skill is a step ───────────────────────────────────────────────
 
 def _saved_at(sm, name: str, owner) -> Optional[str]:
+    """`7 Nov 08:00 UTC`: when the skill was last saved. `B1895`: this was the
+    server machine's own clock, unnamed, in a run's sentence; it is UTC now,
+    and says so (`workflow_runs.CLOCK_UTC_WORDS`, the rule for a time in a
+    run's sentence)."""
+    from datetime import timezone
+
+    from src.workflow_runs import CLOCK_UTC_WORDS
     try:
         path = sm._find_skill_path(name, owner)
         if not path:
             return None
-        when = datetime.fromtimestamp(os.path.getmtime(path))
+        when = datetime.fromtimestamp(os.path.getmtime(path), timezone.utc)
     except Exception:  # noqa: BLE001 — the time is a courtesy, never a refusal
         return None
-    return f"{when.day} {when:%b %H:%M}"
+    return f"{when.day} {when:%b %H:%M} {CLOCK_UTC_WORDS}"
 
 
 def skill_context(owner, name) -> Tuple[List[dict], str]:

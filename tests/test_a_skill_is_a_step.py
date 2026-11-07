@@ -42,7 +42,8 @@ def test_the_skill_arrives_as_untrusted_context_and_the_log_says_so(store):
     assert msg["metadata"]["trusted"] is False and msg["metadata"]["tool_gate_untrusted"] is True
     body = msg["content"].split(GUARD_OPEN, 1)[1]
     assert "Source: the skill “print-queue”" in body and "Cancel the oldest" in body
-    assert re.fullmatch(r"Followed the skill “print-queue” \(saved \d{1,2} [A-Z][a-z]{2} \d\d:\d\d\)\.",
+    # `B1895`: the time it was saved says its clock.
+    assert re.fullmatch(r"Followed the skill “print-queue” \(saved \d{1,2} [A-Z][a-z]{2} \d\d:\d\d UTC\)\.",
                         line), line
 
 
