@@ -193,6 +193,43 @@ async def test_a_test_run_is_owner_scoped(factory, monkeypatch):
         db.close()
 
 
+@pytest.mark.parametrize("edge,outcome", [
+    ("then_task_id", None),
+    ("else_task_id", "error")], ids=["when-it-works", "when-it-fails"])
+async def test_a_test_run_does_not_continue_to_what_runs_after_it(factory, monkeypatch, edge, outcome):
+    """`B1897`. The start now sets "when it works / when it fails, run…" from
+    the Workbench. A test tries this workflow and nothing past it: the next
+    one would send its email. A real run still continues (`Law 1`)."""
+    from src.builtin_actions import NodeResult
+    seed_workflow(factory, *SET_THEN_ACT, status="active", trigger_type="webhook",
+                  webhook_token="tok", schedule=None)
+    seed_workflow(factory, [node("t", "Tell me", "action", action="tidy_documents")],
+                  [arrow("start", "t")], task_id="nx", name="Page me", status="active",
+                  trigger_type="webhook", webhook_token="tok2", schedule=None)
+    db = factory()
+    try:
+        setattr(db.query(ScheduledTask).filter(ScheduledTask.id == "wf").first(), edge, "nx")
+        db.commit()
+    finally:
+        db.close()
+    outs = {"Morning digest · Tidy": NodeResult("error", payload="it broke")} if outcome else None
+    s = recording_scheduler(outs)
+    async with client_for(app_for(factory, s, monkeypatch)) as client:
+        res = await client.post("/api/workflows/w-wf/test-run", headers=ALICE)
+        assert res.status_code == 200, res.text
+        await settle(s)
+        [tried] = runs_of(factory, "wf")
+        assert tried["steps"][-1]["detail"] == "A test run does not continue to Page me."
+        assert runs_of(factory, "nx") == [] and [c["name"] for c in s.calls] == ["Morning digest · Tidy"]
+        res = await client.post("/api/tasks/wf/run", headers=ALICE)
+        assert res.status_code == 200, res.text
+        await settle(s)
+    real = next(r for r in runs_of(factory, "wf") if r["id"] != tried["id"])
+    lead = "Continued to" if outcome is None else "Failed, so continued to"
+    assert real["steps"][-1]["detail"] == f"{lead} Page me"
+    assert [r["status"] for r in runs_of(factory, "nx")] == ["success"]
+
+
 def test_a_test_runs_envelope_is_nothing_anybody_wrote():
     """A model step of a test run is handed no untrusted block: the envelope
     is the server's own, with no data (`trigger_context_message`)."""

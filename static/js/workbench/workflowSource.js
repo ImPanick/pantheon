@@ -368,6 +368,9 @@ export function createWorkflowSource({
     // route), or null when it has not answered.
     problems: null,
   };
+  // `B1894`. A server that answers the problems route 404 (an older
+  // Pantheon) is asked once, not twice for every arrow after it.
+  let problemsRoute = true;
   const isRun = mode === 'run';
   const describe = (task) => {
     if (typeof describeTrigger !== 'function' || !task) return '';
@@ -965,7 +968,8 @@ export function createWorkflowSource({
     emit();
   }
 
-  const canListProblems = () => !!(api && typeof api.listProblems === 'function');
+  const canListProblems = () => problemsRoute && !!(api && typeof api.listProblems === 'function');
+  const noRoute = (e) => { if (e && (e.status === 404 || e.status === 405)) problemsRoute = false; };
 
   /** `B1894`. Every problem a save of `graph` would name, as the room marks
    *  them, or null when the route is not there or did not answer. */
@@ -977,7 +981,8 @@ export function createWorkflowSource({
         nodeIds: (Array.isArray(p && p.node_ids) ? p.node_ids : []).map(String),
         sentence: String((p && p.sentence) || ''), field: (p && p.field) || null, reason: (p && p.reason) || null,
       })).filter((p) => p.sentence);
-    } catch (_) {
+    } catch (e) {
+      noRoute(e);
       return null;
     }
   }
@@ -988,13 +993,14 @@ export function createWorkflowSource({
   // marked where it stands. Without the route (an older Pantheon) the one
   // refusal the check names is what is marked.
   async function checkAll() {
-    if (readOnly() || !S.draft || !api || typeof api.listProblems !== 'function') return;
+    if (readOnly() || !S.draft || !canListProblems()) return;
     const gen = S.gen;
     let list = null;
     try {
       const r = await api.listProblems(workflowId, { name: S.draft.name, graph: S.draft.graph });
       list = Array.isArray(r && r.problems) ? r.problems : [];
-    } catch (_) {
+    } catch (e) {
+      noRoute(e);
       list = null;
     }
     if (gen !== S.gen) return;

@@ -329,9 +329,15 @@ def test_an_arrow_is_a_draft_edit_checked_by_the_server_and_written_by_nothing(b
               dirty: s.state().dirty, saved: server.doc.graph.edges, lastState: states[states.length - 1] });
     """)
     assert o["r"] == {"ok": True} and o["moved"] == {"ok": True}
-    assert [c[0:2] for c in o["calls"]] == [["PUT", "/api/workflows/wf1?check=true"]] * 2
-    assert o["calls"][0][2]["base_version"] == 2
-    assert {"from": "n1", "port": "error", "to": "n3"} in o["calls"][0][2]["graph"]["edges"]
+    # `B1894`. The problems route is asked first; this fake has none, so the
+    # first arrow asks it (the draft with and without the arrow) and finds it
+    # missing, and every arrow after that goes straight to the check.
+    asked = [c[0:2] for c in o["calls"] if c[1].endswith("/problems")]
+    assert asked == [["POST", "/api/workflows/wf1/problems"]] * 2, asked
+    checks = [c for c in o["calls"] if not c[1].endswith("/problems")]
+    assert [c[0:2] for c in checks] == [["PUT", "/api/workflows/wf1?check=true"]] * 2
+    assert checks[0][2]["base_version"] == 2
+    assert {"from": "n1", "port": "error", "to": "n3"} in checks[0][2]["graph"]["edges"]
     # `P22-11` (wf-canvas): fan-out. Drawing from a port that already has an
     # arrow ADDS one there (it was one per outcome, moved, in Slice B).
     assert sorted((e["from"], e["when"], e["to"]) for e in o["edges"]) == [

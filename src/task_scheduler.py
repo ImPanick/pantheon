@@ -2348,6 +2348,22 @@ class TaskScheduler:
                 f"Did not continue to the next task: {chain_id} is missing "
                 f"or belongs to somebody else")
             return
+        # `B1897`. A *Test run* tries the workflow and nothing past it: the
+        # Workbench's start now draws the "when it works / when it fails, run…"
+        # pickers, and a test that started the next workflow — which sends
+        # its email, posts its message — would not be a test. Read from the
+        # run's own log (the buffer, else the row), never its words.
+        state = self._runs().get(run_id)
+        steps = state["steps"] if state else None
+        if not steps:
+            from core.database import TaskRun
+            row = db.query(TaskRun).filter(TaskRun.id == run_id).first()
+            steps = getattr(row, "steps", None)
+        if is_test_run_log(steps):
+            label = chain_task.name or chain_id
+            self._record_chain_outcome(
+                db, run_id, f"A test run does not continue to {label}.")
+            return
         refusal = self._chain_refusal(db, chain_id, owner=task.owner)
         label = chain_task.name or chain_id
         lead = "Continued to" if when == EDGE_WHEN_SUCCESS else "Failed, so continued to"

@@ -18,9 +18,10 @@ drifted from them: the `P22-03` incident. So `mountTaskFields` takes a `mode`
     request** — the step lives in the workflow's draft until the workflow is
     saved. A Run task step picks the task from the person's own, never a
     workflow.
-  * `'trigger'` — a workflow's start: the Trigger section, Time limit and
-    Notifications only, carrying none of `task_type`, output, model, chain,
-    prompt or name — so a start cannot change what the task is. Since `B1209`
+  * `'trigger'` — a workflow's start: the Trigger section, Time limit,
+    "After it finishes" (`B1897`: the two edges, as "if it works / if it
+    fails, run…") and Notifications, carrying none of `task_type`, output,
+    model, prompt or name — so a start cannot change what the task is. Since `B1209`
     its button is Done and it hands the fields `PUT /api/tasks/{id}` takes to
     its owner without a request: the workflow's toolbar Save sends them.
 
@@ -54,7 +55,9 @@ _NODE_KEYS = {
 }
 _TRIGGER_KEYS = {"trigger_type", "schedule", "scheduled_time", "scheduled_day", "scheduled_date",
                  "cron_expression", "tz_name", "max_retries", "trigger_event", "trigger_count",
-                 "timeout_seconds", "notifications_enabled"}
+                 "timeout_seconds", "notifications_enabled",
+                 # `B1897`: what runs after the workflow, the trigger task's edges.
+                 "then_task_id", "else_task_id"}
 
 _ACTIONS = {"actions": [
     {"name": "tidy_sessions", "description": "Clean up empty chat sessions", "category": "Chats",
@@ -233,14 +236,52 @@ def test_a_starts_form_is_the_trigger_and_hands_over_only_the_trigger(sandbox):
     # request; the toolbar's Save sends them (`workflowSource.save`). It saved
     # itself on its own Save, while a step waited for the toolbar's.
     assert d["heading"] == "What starts it" and d["button"] == "Done"
-    assert (d["trigger"], d["timeout"], d["notif"]) == (True, True, True)
-    assert (d["name"], d["type"], d["output"], d["model"], d["chain"]) == (False, False, False, False, False), d
+    # `B1897`: and its "After it finishes" — the trigger task's two edges.
+    assert (d["trigger"], d["timeout"], d["chain"], d["notif"]) == (True, True, True, True)
+    assert (d["name"], d["type"], d["output"], d["model"]) == (False, False, False, False), d
     assert out["errors"] == []
     assert out["writes"] == [], "Done writes nothing"
     (body,) = out["got"]
     assert set(body) <= _TRIGGER_KEYS, sorted(set(body) - _TRIGGER_KEYS)
     assert body["trigger_type"] == "schedule" and body["scheduled_time"] == "07:30"
     assert body["timeout_seconds"] == 300 and body["notifications_enabled"] is True
+    assert (body["then_task_id"], body["else_task_id"]) == ("", ""), "none picked, none sent"
+
+
+def test_a_start_says_what_runs_after_the_workflow_when_it_works_and_when_it_fails(sandbox):
+    """`B1897`. A workflow's start picks the workflow or task that runs once
+    this one has finished — one for when it works, one for when it fails —
+    from the person's own, never itself, and a workflow is told apart from a
+    task of the same name."""
+    trigger = {"id": "tw", "name": "Morning brief", "task_type": "workflow", "status": "active",
+               "trigger_type": "schedule", "schedule": "daily", "scheduled_time": "08:00",
+               "max_retries": 0, "timeout_seconds": 0, "notifications_enabled": True,
+               "prompt": "", "output_target": "session", "then_task_id": "t2", "else_task_id": None}
+    tasks = [trigger,
+             {"id": "t2", "name": "Post the brief", "task_type": "llm"},
+             {"id": "w3", "name": "Page me", "task_type": "workflow"}]
+    out = _run_case(sandbox, dict(_ROUTES), """
+        const got = [];
+        const host = hostIn();
+        mountTaskFields(host, { mode: 'trigger', task: %s, tasks: %s, onSaved: (r) => got.push(r) });
+        await tick();
+        const opts = (id) => q(host, id).querySelectorAll('option').map((o) => [o.value, o.textContent]);
+        const label = q(host, 'task-form-chain-label').textContent;
+        const before = { works: q(host, 'task-form-chain').value, fails: q(host, 'task-form-chain-else').value };
+        const works = opts('task-form-chain'), fails = opts('task-form-chain-else');
+        q(host, 'task-form-chain').value = '';
+        q(host, 'task-form-chain-else').value = 'w3';
+        click(q(host, 'task-form-save'));
+        await tick();
+        console.log(JSON.stringify({ label, before, works, fails, got, writes: writes(), errors: ui.errors }));
+    """ % (json.dumps(trigger), json.dumps(tasks)))
+    assert out["label"].startswith("After it finishes")
+    assert out["before"] == {"works": "t2", "fails": ""}
+    want = [["", "None"], ["t2", "Post the brief"], ["w3", "Page me (workflow)"]]
+    assert out["works"] == want and out["fails"] == want, "never itself"
+    assert out["errors"] == [] and out["writes"] == []
+    (body,) = out["got"]
+    assert (body["then_task_id"], body["else_task_id"]) == ("", "w3"), "an empty pick clears the edge"
 
 
 def test_a_start_can_be_manual_and_hands_over_no_time(sandbox):

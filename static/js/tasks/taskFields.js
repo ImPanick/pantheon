@@ -1073,8 +1073,10 @@ export function mountTaskFields(host, {
         <div class="task-form-hint">Its runs are refused every address outside the networks picked. “internet” is every address in no declared network.</div>
       </div>
 `,
+    // `B1897`. A workflow's start says it in the workflow's words: what runs
+    // once this workflow has finished, another workflow or a task.
     chain: `
-      <label class="task-form-label" id="task-form-chain-label">Chain <span style="opacity:0.5;font-weight:normal;font-size:10px;">(optional — what runs after this one)</span></label>
+      <label class="task-form-label" id="task-form-chain-label">${isTrigger ? 'After it finishes' : 'Chain'} <span style="opacity:0.5;font-weight:normal;font-size:10px;">(optional — ${isTrigger ? 'run another workflow or task' : 'what runs after this one'})</span></label>
       <div class="task-form-chain" role="group" aria-labelledby="task-form-chain-label">
         <label class="task-form-chain-row">
           <span class="task-form-chain-when">${_escHtml(_edgeWhenLabel('success'))}</span>
@@ -1133,7 +1135,11 @@ export function mountTaskFields(host, {
       ...(curTaskType === 'llm' || curTaskType === 'research' ? ['model'] : []),
       ...(typeof extra === 'function' ? ['extra'] : []), 'actions']
     : isTrigger
-      ? ['head', 'trigger', 'timeout', 'notif', 'actions']
+      // `B1897`. A start carries its workflow's "when it works / when it
+      // fails, run…": the engine follows the trigger task's two edges when
+      // the workflow's run ends (`_advance_chain`), and the only way to set
+      // them was the Tasks window or the API.
+      ? ['head', 'trigger', 'timeout', ...(chain === false ? [] : ['chain']), 'notif', 'actions']
       // `P23-06` (WB-M-14): `chain: false` — the Workbench's chains canvas,
       // where the arrows themselves are the chain; two selects listing every
       // task were a third way to draw one, in a panel 1,247 px tall.
@@ -1733,7 +1739,9 @@ ${(isNode && taskType === 'research') ? '' : `
     for (const t of otherTasks) {
       const opt = document.createElement('option');
       opt.value = t.id;
-      opt.textContent = t.name;
+      // `B1897`. From a workflow's start, a workflow and a task of the same
+      // name are told apart.
+      opt.textContent = isTrigger && t.task_type === 'workflow' ? `${t.name} (workflow)` : t.name;
       if (existing?.[field] === t.id) opt.selected = true;
       sel.appendChild(opt);
     }
@@ -1828,7 +1836,8 @@ ${(isNode && taskType === 'research') ? '' : `
   // `P22-05` (wf-ui). A workflow's start: its trigger, time limit and
   // notifications — the fields its trigger task is edited by, and nothing
   // else, so a start cannot change what the task is (`task_type`), what it
-  // says (`prompt`), where it delivers, its model or a chain. `B1209`: handed
+  // says (`prompt`), where it delivers or its model — its chain only through
+  // the "After it finishes" pickers (`B1897`). `B1209`: handed
   // to the owner (`onSaved(patch)`) for the workflow's draft; the toolbar's
   // Save writes it through `PUT /api/tasks/{id}` with the steps.
   const _saveTrigger = async (readTrigger) => {
@@ -1838,6 +1847,13 @@ ${(isNode && taskType === 'research') ? '' : `
     }
     const payload = { trigger_type: triggerType };
     if (!readTrigger(payload)) return;
+    // `B1897`. The two edges, as the task's save sends them: `''` clears one.
+    if (chain !== false) {
+      for (const [selectId, field] of CHAIN_FIELDS) {
+        const sel = $(selectId);
+        if (sel) payload[field] = sel.value || '';
+      }
+    }
     const notifEl = $('task-form-notif');
     if (notifEl) payload.notifications_enabled = !!notifEl.checked;
     if (typeof onSaved === 'function') await onSaved(payload);
