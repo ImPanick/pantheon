@@ -48,15 +48,20 @@ const W = {
 };
 
 function load() {
-  try {
-    const s = JSON.parse(localStorage.getItem(LS) || 'null');
-    if (s && typeof s === 'object') {
-      if (['one', 'cols', 'rows', 'main'].includes(s.layout)) W.layout = s.layout;
-      W.off = !!s.off;
-      if (typeof s.width === 'string' && /^\d+(\.\d+)?(px|%)$/.test(s.width)) W.width = s.width;
-      if (Array.isArray(s.floating)) s.floating.filter((k) => SURFACES[k]).forEach((k) => W.floating.add(k));
-    }
-  } catch (_) { /* a fresh column */ }
+  let s = null;
+  try { s = JSON.parse(localStorage.getItem(LS) || 'null'); } catch (_) { /* a fresh column */ }
+  if (s && typeof s === 'object') {
+    if (['one', 'cols', 'rows', 'main'].includes(s.layout)) W.layout = s.layout;
+    W.off = !!s.off;
+    if (typeof s.width === 'string' && /^\d+(\.\d+)?(px|%)$/.test(s.width)) W.width = s.width;
+    if (Array.isArray(s.floating)) s.floating.filter((k) => SURFACES[k]).forEach((k) => W.floating.add(k));
+  } else if (window.matchMedia('(max-width: 1023px)').matches) {
+    // A fresh column on a tablet starts tucked. Beside the rail and the drawer,
+    // the workspace's 280px minimum left the chat 162px at 820 wide: the ready
+    // screen's cards one letter per line, the header title gone (alignment
+    // audit, 2026-11-07). The tab opens it; the person's own choice is saved.
+    W.off = true;
+  }
 }
 function save() {
   try { localStorage.setItem(LS, JSON.stringify({ layout: W.layout, off: W.off, width: W.width, floating: [...W.floating] })); } catch (_) {}
