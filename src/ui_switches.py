@@ -72,6 +72,13 @@ MODES = ("agent", "chat")
 # themes, a model switch, an email draft — is read by `do_ui_control` itself.
 SWITCH_ACTIONS = frozenset({"toggle", "set_mode"})
 
+#: `B1878`. The names `ui_control open_panel` takes for the Workbench, which
+#: alone of the panels takes a second word: the workflow to open it on. Here,
+#: beside the switches, because the two call channels that build the command
+#: (`tool_schemas`, `tool_parsing`) and the one that reads it
+#: (`ai_interaction`) all import this module already, and none of them each other.
+WORKBENCH_PANEL_NAMES = frozenset({"workbench", "automations", "workflows", "workflow"})
+
 
 def command_parts(content: Any) -> list[str]:
     """`do_ui_control`'s tokenisation of a command: the first line, split in three.

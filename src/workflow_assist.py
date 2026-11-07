@@ -1006,3 +1006,90 @@ async def explain_step(owner, *, node: dict, record: dict, graph: dict, base_ver
         proposal = {"base_version": base_version, "node_id": node.get("id"), "item": item,
                     "config": config, "changes": rows}
     return Explained(said, proposal, left_out)
+
+
+class StepToExplain(NamedTuple):
+    """`B1878`. What *Why did this fail?* reads of one step of one run: the
+    step as the document holds it now, its record in that run, and whether it
+    changed since. Read by `step_to_explain`, asked by `explain_answer`."""
+    base_version: int
+    changed: bool
+    current: dict
+    node: dict
+    owner: str
+    record: dict
+    rows: tuple
+    trigger: object
+    item: object
+
+
+def step_to_explain(db, wf, run_id, node_id, item=None) -> StepToExplain:
+    """`B1878`. The read half of `POST /api/workflows/{id}/runs/{run_id}/explain`
+    — moved here, word for word, so the route and the assistant's
+    `manage_workflows explain` read one step of one run the same way (`Law
+    14`). `wf` is already the caller's own (`owned_workflow`). Raises
+    `WorkflowRefused` (404) for a run, a record or a step that is not there."""
+    from core.database import TaskRun, TaskRunNode
+    from src import workflow_store as store
+    from src.workflow_document import DocumentError, parse_graph
+    from src.workflow_runs import node_record_to_dict
+    from src.workflow_store import WorkflowRefused
+
+    node_id = str(node_id or "")
+    run = (db.query(TaskRun).filter(TaskRun.id == run_id, TaskRun.task_id == wf.task_id)
+           .first() if wf.task_id else None)
+    if run is None:
+        raise WorkflowRefused(404, "No such run of this workflow.")
+    q = db.query(TaskRunNode).filter(TaskRunNode.run_id == run.id,
+                                     TaskRunNode.node_id == node_id,
+                                     TaskRunNode.dry.is_(False))
+    q = q.filter(TaskRunNode.item.is_(None)) if item is None else \
+        q.filter(TaskRunNode.item == item)
+    rec = q.order_by(TaskRunNode.attempt.desc(), TaskRunNode.seq.desc()).first()
+    if rec is None:
+        raise WorkflowRefused(404, "That step has no record in this run.")
+    record = node_record_to_dict(rec)
+    try:
+        current = parse_graph(store.stored_graph(wf))
+    except DocumentError as err:
+        raise store._document_error_refusal(err) from None
+    node = next((n for n in store.nodes_of(current) if str(n.get("id")) == node_id), None)
+    if node is None:
+        raise WorkflowRefused(404, "That step is not in the workflow any more.")
+    ran_graph, kept = store.graph_of_version(db, wf, rec.workflow_version)
+    ran = next((n for n in store.nodes_of(ran_graph) if str(n.get("id")) == node_id), None)
+    changed = (ran is None or store._step_content(ran) != store._step_content(node)
+               or (not kept and rec.workflow_version != wf.version))
+    rows = store.owner_rows(db, wf.owner)
+    trigger = store.trigger_of(db, wf)
+    return StepToExplain(wf.version, changed, current, node, wf.owner, record, rows, trigger,
+                         item)
+
+
+async def explain_answer(step: StepToExplain) -> dict:
+    """`B1878`. The ask half of the explain route, moved here with the read:
+    `{why, model, changed_since_run, proposal, left_out}` (C-A). Raises
+    `WorkflowRefused` — 503 with no model, 422 when its answer cannot be
+    read. Writes nothing."""
+    from src.task_action_policy import owner_has_admin_task_privileges
+    from src.workflow_effects import workflow_resources
+    from src.workflow_store import WorkflowRefused
+
+    # `B1609`: the resources read which MCP tools are switched off — a session.
+    resources = await asyncio.to_thread(workflow_resources, step.owner)
+    try:
+        explained = await explain_step(
+            step.owner, node=step.node, record=step.record, graph=step.current,
+            base_version=step.base_version, item=step.item, resources=resources,
+            tasks_by_id=step.rows[0], crew_ids=step.rows[1],
+            owner_is_admin=owner_has_admin_task_privileges(step.owner),
+            own_task_id=step.trigger.id if step.trigger is not None else None)
+    except NoModelSetUp:
+        raise WorkflowRefused(503, NO_MODEL_TO_EXPLAIN) from None
+    except ValueError:
+        raise WorkflowRefused(422, EXPLAIN_UNREADABLE) from None
+    # `B1598`: the model's name is an endpoint-row read, made off the loop.
+    model = await asyncio.to_thread(model_name, step.owner)
+    return {"why": explained.why, "model": model,
+            "changed_since_run": step.changed, "proposal": explained.proposal,
+            "left_out": explained.left_out}

@@ -87,6 +87,9 @@ NON_ADMIN_BLOCKED_TOOLS = BUILTIN_EMAIL_TOOLS | {
     "manage_memory",
     "manage_skills",
     "manage_tasks",
+    # `B1878`. With `manage_tasks`, whose `run` it shares: a test run runs a
+    # workflow under its owner, as a task run does.
+    "manage_workflows",
     "manage_endpoints",
     "manage_mcp",
     "manage_webhooks",
@@ -188,6 +191,10 @@ NON_ADMIN_BLOCKED_REASONS: dict = {
     "manage_memory": "writes the long-term memory every later turn is fed",
     "manage_skills": "writes skill files that are injected into later prompts",
     "manage_tasks": "creates and runs scheduled work under the operator's identity",
+    "manage_workflows": (
+        "test-runs a workflow, whose steps send and call what they were built to, "
+        "and reads its runs' records — `manage_tasks`' run, one tool wider (`B1878`)"
+    ),
     # `manage_documents` left this register with `B995` — its reason, made
     # true, is in `DELEGATED_CREDENTIAL_ONLY_BLOCKED_REASONS` below.
     "manage_settings": "writes instance settings, including every limit in `P12`",
@@ -403,7 +410,7 @@ _PLAN_MODE_KNOWN_MUTATORS = {
     "create_document", "edit_document", "update_document",
     "suggest_document", "manage_documents", "create_session", "manage_session",
     "send_to_session", "pipeline", "manage_memory", "manage_skills",
-    "manage_tasks", "manage_notes", "ledger_table", "manage_endpoints", "manage_mcp",
+    "manage_tasks", "manage_workflows", "manage_notes", "ledger_table", "manage_endpoints", "manage_mcp",
     "manage_webhooks", "manage_tokens", "manage_settings", "manage_contact",
     "manage_calendar", "api_call", "app_api", "ui_control",
     "send_email", "reply_to_email", "bulk_email", "delete_email",
@@ -516,7 +523,8 @@ _FEATURE_NOTES = {
     ),
     "workbench": (
         "The Workbench's agent-facing work is its workflows, which run as "
-        "scheduled tasks: off holds them (`held_by_switch`) and refuses its routes."
+        "scheduled tasks: off holds them (`held_by_switch`) and refuses its routes. "
+        "`B1878`: and it takes `manage_workflows`, the assistant's door to them."
     ),
 }
 

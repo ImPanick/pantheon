@@ -214,6 +214,7 @@ export function finishToolCard(currentToolBubble, json, opts = {}) {
   applyAgentThreadNode(currentToolBubble, {
     tool: json.tool, state: 'done', ok, round: shownStep(json), approved: json.approved,   // `B1199`
     ranIn: json.ran_in, ranAs: json.ran_as,   // `P20-03`: where it ran
+    workflowId: json.workflow_id,             // `B1878`: its workflow's door
     command: cmd, fullCommand: json.full_command,
     output: outcome ? '' : outHtml, diff: diffHtml, todo: todoHtml,
     outcome: outcome || undefined,

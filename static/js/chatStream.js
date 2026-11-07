@@ -830,6 +830,12 @@ export function handleUIControl(uiData) {
           var fn = mod.open || (mod.default && mod.default.open);
           if (fn) fn();
         }).catch(function(){});
+      } else if (panel === 'workbench') {
+        // `B1878`. The Workbench, on the workflow the assistant named — the
+        // door the Tasks window and a workflow's notice already use.
+        import('/static/js/workbench/workbench.js').then(function(m) {
+          m.openWorkbench({ workflowId: uiData.workflow_id || null });
+        }).catch(function(){});
       } else if (panel === 'notes') {
         import('./notes.js').then(function(mod) {
           var fn = mod.openPanel || mod.openNotes || (mod.default && (mod.default.openPanel || mod.default.openNotes));

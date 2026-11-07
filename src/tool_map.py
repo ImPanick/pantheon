@@ -56,6 +56,8 @@ AREAS: Tuple[Tuple[str, Dict[str, str]], ...] = (
     ("Planner and people", {
         # `B1876`: the room is called Automations and its page the Workbench.
         "manage_calendar": "", "manage_tasks": "scheduled jobs, automations and workflows",
+        # `B1878`: offered on a workflow turn only (`tool_index.ON_REQUEST_ONLY`).
+        "manage_workflows": "a workflow's runs, tests, why a step failed",
         "manage_notes": "notes, todos, reminders", "manage_contact": "address book",
         "resolve_contact": "a person's email address", "ledger_table": "money",
     }),

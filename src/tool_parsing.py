@@ -1253,6 +1253,10 @@ def _raw_openai_tool_call_to_block(value) -> Optional[ToolBlock]:
         value = args.get("value", "")
         if action == "open_panel":
             content = f"open_panel {name_arg or value}"
+            # `B1878`: the Workbench opens on one workflow when `value` names it.
+            from src.ui_switches import WORKBENCH_PANEL_NAMES
+            if name_arg and value and str(name_arg).strip().lower() in WORKBENCH_PANEL_NAMES:
+                content += f" {value}"
         elif action == "toggle":
             content = f"toggle {name_arg} {value}"
         else:
