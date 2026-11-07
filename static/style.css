@@ -48803,7 +48803,8 @@ button.task-card-toggle {
 .wf-picker-note { margin: 0; font-size: 11px; color: var(--color-muted-alt); overflow-wrap: anywhere; }
 .wf-picker-note:empty { display: none; }
 .wf-picker-list { display: flex; flex-direction: column; gap: 8px; }
-.wf-picker-source { display: flex; flex-direction: column; gap: 3px; }
+.wf-picker-source,
+.wf-picker-run { display: flex; flex-direction: column; gap: 3px; }
 .wf-picker-step { margin: 0; display: flex; flex-wrap: wrap; gap: 2px 8px; align-items: baseline; }
 .wf-picker-step-name { font-weight: 600; overflow-wrap: anywhere; }
 .wf-picker-origin { font-size: 11px; color: var(--color-muted-alt); }
