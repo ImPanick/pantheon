@@ -2148,10 +2148,11 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
             # 3) Fetch the source email's headers so we can build a clean reply
             #    context (To/Subject/In-Reply-To/References).
             try:
-                from routes.email_routes import _imap, _decode_header
+                from routes.email_routes import _imap, _decode_header, _imap_uid_fetch
                 from routes.email_helpers import _q
             except Exception:
                 _imap = None
+                _imap_uid_fetch = None
                 _decode_header = lambda x: x or ""
                 _q = lambda x: x or ""
 
@@ -2162,12 +2163,21 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
             references = in_reply_to
             if _imap:
                 try:
-                    with _imap(doc.source_email_account_id or None) as conn:
+                    # `B1965`: the stored id is the message's IMAP UID, so it is
+                    # fetched by UID (a plain FETCH reads it as a sequence
+                    # number, another message once an older one was expunged),
+                    # from the signed-in person's mailbox. Upstream Odysseus #7069.
+                    with _imap(doc.source_email_account_id or None, owner=user or "") as conn:
                         conn.select(_q(doc.source_email_folder), readonly=True)
-                        status, data = conn.fetch(doc.source_email_uid.encode(), "(RFC822.HEADER)")
-                    if status == "OK" and data and data[0]:
-                        raw_hdr = data[0][1]
-                        m = _email_mod.message_from_bytes(raw_hdr)
+                        status, data = _imap_uid_fetch(conn, doc.source_email_uid, "(RFC822.HEADER)")
+                    part = next((d for d in (data or []) if isinstance(d, tuple) and len(d) > 1), None)
+                    m = _email_mod.message_from_bytes(part[1]) if status == "OK" and part else None
+                    if m is not None and doc.source_email_message_id and (
+                            (m.get("Message-ID") or "").strip() != doc.source_email_message_id.strip()):
+                        # The UID names another message now (the folder's
+                        # UIDVALIDITY changed): not the mail this answers.
+                        m = None
+                    if m is not None:
                         sender = _decode_header(m.get("From", ""))
                         from_name, to_addr = _email_mod.utils.parseaddr(sender)
                         if not to_addr:
