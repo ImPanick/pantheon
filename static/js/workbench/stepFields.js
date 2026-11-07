@@ -71,6 +71,17 @@ export const ANSWER_TYPES = Object.freeze([
 ]);
 const KEY_RE = /^[A-Za-z_][A-Za-z0-9_]{0,63}$/;
 const ANSWER_MAX = 20;
+/** `B1879`. What a Set field's value is made: the stored words
+ *  (`workflow_logic.SET_TYPES`, `''` for none — "as it comes", what every Set
+ *  field always was) and the words its chooser shows
+ *  (`workflow_logic.SET_TYPE_WORDS`, which a test holds equal to these). */
+export const SET_TYPES = Object.freeze([
+  ['', 'as it comes'], ['text', 'text'], ['number', 'a number'], ['yes/no', 'yes or no'],
+  ['json', 'JSON (a list or an object)'],
+]);
+/** `B1879`. A Set field's name: up to eight names joined by dots, each
+ *  letters, digits and _ (`workflow_logic.set_name_parts`). */
+const SET_NAME_RE = /^[A-Za-z_][A-Za-z0-9_]{0,63}(?:\.[A-Za-z_][A-Za-z0-9_]{0,63}){0,7}$/;
 
 // ── `P22-24` (wb-canvas-e). What an imported step needs ────────────────────
 // A step brought in from a file that refers to something this Pantheon does
@@ -433,17 +444,34 @@ function buildSet(ctx) {
       const f = item && typeof item === 'object' ? item : {};
       const name = _textField(row, 'Name', { value: f.name || '', field: `fields[${i}].name`, placeholder: 'e.g. headline' });
       const hn = ctx.decorate(name, `fields[${i}].name`);
-      const value = _textField(row, 'Value', { value: f.value == null ? '' : f.value, field: `fields[${i}].value`,
+      // `B1879`. What the value is made — "as it comes" (no `type`, what a
+      // Set field always was) unless the person says. A typed value that is
+      // not what it says fails the step at run, naming the field.
+      const type = _selectField(row, 'It is', SET_TYPES,
+        { value: SET_TYPES.some(([v]) => v && v === f.type) ? f.type : '', field: `fields[${i}].type` });
+      // A value that is not text (a number, yes/no, a list a file or the
+      // agent wrote) is shown as JSON — `[1,2]`, not `1,2`.
+      const shown = f.value == null ? '' : (typeof f.value === 'string' ? f.value : JSON.stringify(f.value));
+      const value = _textField(row, 'Value', { value: shown, field: `fields[${i}].value`,
         placeholder: 'Type it, or pick a field' });
       const hv = ctx.decorate(value, `fields[${i}].value`);
       return {
-        snapshot: () => ({ name: name.value, value: value.value }),
+        snapshot: () => ({ name: name.value, value: value.value, ...(type.value ? { type: type.value } : {}) }),
         read: (j) => {
           const n = String(name.value).trim();
-          if (!KEY_RE.test(n)) {
-            return { refusal: 'A field’s name is letters, digits and _ (not starting with a digit), such as headline.', field: `fields[${j}].name` };
+          if (!SET_NAME_RE.test(n)) {
+            return { refusal: 'A field’s name is letters, digits and _ (not starting with a digit), such as headline; '
+              + 'a dot puts one inside another, such as customer.name.', field: `fields[${j}].name` };
           }
-          return { value: { name: n, value: String(value.value) } };
+          // `B1879`. A value the form was opened with that is not text (a
+          // number or yes/no a file or the agent wrote) is handed back as it
+          // came unless it was changed — opening a step and pressing Done no
+          // longer turns the number 7 into the text "7".
+          const typedValue = typeof f.value !== 'string' && f.value != null && String(value.value) === shown
+            ? f.value : String(value.value);
+          const out = { name: n, value: typedValue };
+          if (type.value) out.type = type.value;
+          return { value: out };
         },
         destroy() { for (const h of [hn, hv]) { try { if (h && h.destroy) h.destroy(); } catch (_) { /* gone */ } } },
       };
@@ -456,6 +484,12 @@ function buildSet(ctx) {
     for (const [j, r] of rows.read().entries()) {
       if (r.refusal) return r;
       if (names.has(r.value.name)) return { refusal: `“${r.value.name}” is set twice. Each name once.`, field: `fields[${j}].name` };
+      // `B1879`. `a` and `a.b` cannot both be set (`set_names_clash`).
+      const outer = [...names].find((m) => r.value.name.startsWith(`${m}.`) || m.startsWith(`${r.value.name}.`));
+      if (outer) {
+        const [inner, out] = outer.length > r.value.name.length ? [outer, r.value.name] : [r.value.name, outer];
+        return { refusal: `“${inner}” is inside “${out}”, which is set as well. Set one or the other.`, field: `fields[${j}].name` };
+      }
       names.add(r.value.name);
       fields.push(r.value);
     }

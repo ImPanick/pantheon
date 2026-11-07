@@ -64,7 +64,11 @@ def test_a_reference_parses_into_where_it_reads(text, root, node, field, path):
     "{{ steps.a.DATA.x }}",
     "{{ steps.a.database }}",               # `data` must end at a boundary
     "{{ steps.a.data.x() }}",               # no calls
-    "{{ steps.a.data.x | upper }}",         # no filters
+    # `B1879`: a change from the closed list (`| upper`) is a reference now
+    # (`test_a_reference_can_change_what_it_reads.py`); anything else is not.
+    "{{ steps.a.data.x | shout }}",         # no change that is not on the list
+    "{{ steps.a.data.x | upper() }}",       # no calls, even of one that is
+    "{{ steps.a.data.x | UPPER }}",         # the words are lower case, exactly
     "{{ steps.a.data.n + 1 }}",             # no arithmetic
     "{{ steps.a.data.x[-1] }}",             # no negative index
     "{{ steps.a.data.x[0:2] }}",            # no slice

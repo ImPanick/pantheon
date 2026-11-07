@@ -80,8 +80,12 @@ from src.workflow_logic import (
     OPERATORS,
     PORT_OTHERWISE,
     PORT_THEN,
+    SET_TYPE_WORDS,
+    SET_TYPES,
     case_port,
     describe_condition,
+    set_name_parts,
+    set_names_clash,
 )
 from src.workflow_refs import (
     NODE_ID_MAX,
@@ -1193,6 +1197,26 @@ def _check_entries(key, value):
     return None
 
 
+def _check_set_fields(key, value):
+    """`B1879`. A Set step's fields: `_check_entries`' name and value, and an
+    optional `type` from `workflow_logic.SET_TYPES`."""
+    if value is None:
+        return None
+    if not isinstance(value, list) or len(value) > ENTRIES_MAX:
+        return f"“{key}” must be a list of up to {ENTRIES_MAX} names and values"
+    for entry in value:
+        if not isinstance(entry, dict) or set(entry) - {"name", "value", "type"}:
+            return f"each of “{key}” is a name, a value and what the value is"
+        if not isinstance(entry.get("name"), str):
+            return f"each of “{key}” needs a name"
+        if not _is_json(entry.get("value")):
+            return f"a value in “{key}” is not text, a number, yes/no or a list"
+        if entry.get("type") is not None and entry.get("type") not in SET_TYPES:
+            return (f"the field {entry['name']!r} is {entry.get('type')!r}; a field is "
+                    f"{', '.join(SET_TYPES)}, or says nothing and is as it comes")
+    return None
+
+
 def _check_args(key, value):
     if value is None:
         return None
@@ -1289,7 +1313,7 @@ _FIELD_CHECKS = {
     "answer_fields": _check_answer_fields,
     "conditions": _check_conditions,
     "cases": _check_cases,
-    "fields": _check_entries,
+    "fields": _check_set_fields,
     "headers": _check_entries,
     "query": _check_entries,
     "body": _check_entries,
@@ -1552,12 +1576,21 @@ def _kind_problem(node: dict, *, owner, tasks_by_id, crew_ids, owner_is_admin,
                             f"{_called(node)} makes more than {SET_FIELDS_MAX} fields")
         names = set()
         for field in fields:
-            if not _FIELD_NAME_RE.fullmatch(field["name"]) or field["name"] in names:
+            # `B1879`: a name may be a dotted path (`customer.name`), each
+            # name in it read by the old rule (`workflow_logic.set_name_parts`).
+            if set_name_parts(field["name"]) is None or field["name"] in names:
                 return _refusal(REFUSE_BAD_SETTING, (node_id,),
                                 f"{_called(node)}: a field is called {field['name']!r}, twice or "
                                 f"in a way a reference cannot read. A name is letters, digits "
-                                f"and _, starting with a letter")
+                                f"and _, starting with a letter, and a dot between names puts "
+                                f"one inside the other (customer.name)")
             names.add(field["name"])
+        clash = set_names_clash(names)
+        if clash:
+            inner, outer = clash
+            return _refusal(REFUSE_BAD_SETTING, (node_id,),
+                            f"{_called(node)}: “{inner}” is inside “{outer}”, which is set as "
+                            f"well. Set one or the other")
     if kind == NODE_KIND_MERGE:
         if config.get("mode") is not None and config.get("mode") not in MERGE_MODES:
             return _refusal(REFUSE_BAD_SETTING, (node_id,),
@@ -2233,7 +2266,10 @@ def plan_lines(node: dict, resources: WorkflowResources | None = None) -> list:
     elif kind == NODE_KIND_SET:
         lines.append("Would make these fields:")
         for field in config.get("fields") or ():
-            lines.append(f"{field.get('name')} ← {_shown(field.get('value'))}")
+            # `B1879`: and what the value is made, when the field says.
+            kind = SET_TYPE_WORDS.get(field.get("type"))
+            lines.append(f"{field.get('name')} ← {_shown(field.get('value'))}"
+                         + (f", as {kind}" if kind else ""))
     elif kind == NODE_KIND_MERGE:
         lines.append("Would go on as soon as the first branch arrives."
                      if config.get("mode") == MERGE_FIRST else

@@ -81,25 +81,185 @@ export function exampleText(value, max = 80) {
   return t.length > max ? t.slice(0, max - 1) + '…' : t;
 }
 
-// ── references, read for the words under a field ──────────────────────────
-// The grammar is `src/workflow_refs.py`'s (§ 1.1). This reading is for the
-// "Uses:" line only — what a person is told a field reads — and decides
-// nothing: a reference this misses or reads wrongly is still checked whole by
-// the server at save and at run.
-const SEG = String.raw`(?:\.[A-Za-z_][A-Za-z0-9_]{0,63}|\[(?:0|[1-9][0-9]{0,5})\]|\["[^"\\]{0,128}"\])`;
-const REF_RE = new RegExp(String.raw`(\\)?\{\{\s*(?:steps\.([A-Za-z0-9_-]{1,64})\.(data|text)(` + SEG + String.raw`*)|item(` + SEG + String.raw`*))\s*\}\}`, 'g');
+// ── references: the server's grammar, read the server's way ───────────────
+// The grammar is `src/workflow_refs.py`'s (§ 1.1, widened by `B1879`), and
+// this is a port of its reader (`_parse_ref_at`), character for character:
+// the same roots (`steps`, `item`, `run`, `now`), the same segments and
+// bounds, the same closed list of changes after `|`. It decides nothing — the
+// server checks every reference whole at save and at run — but what it SAYS
+// must agree with the server: the "Uses:" line names what a field reads,
+// changes included (a reference with `| upper` was not one to the old
+// pattern here, so the line left it out).
 
-/** Every reference in `text`: `[{ ref, node, field, path, item }]`, in order.
- *  `\{{` is literal text and is not one. */
+/** `B1879`. The changes a reference may end in — `workflow_refs.FILTERS`,
+ *  which a test holds equal to this list. Closed: a name not here is not a
+ *  reference. */
+export const FILTERS = Object.freeze(['default', 'upper', 'lower', 'trim', 'length', 'join', 'split',
+  'json', 'from_json', 'number', 'date', 'first', 'last']);
+/** Which changes take an argument after `:`, and what they read bare. */
+export const FILTER_ARG_DEFAULTS = Object.freeze({ default: '', join: ', ', split: ',', date: '%Y-%m-%d' });
+const DATE_DIRECTIVES = 'YmdHMSyjIpaAbBzZ%';
+const RUN_KEYS = ['id', 'workflow'];
+const WS = ' \t\r\n';
+const KEY_CHAR = /^[A-Za-z0-9_]$/;
+const REF_MAX_SEGMENTS = 16;
+const FILTERS_MAX = 8;
+
+const isWs = (c) => c !== undefined && c !== '' && WS.includes(c);
+const isKeyChar = (c) => c !== undefined && KEY_CHAR.test(c);
+const skipWs = (t, i) => { while (i < t.length && isWs(t[i])) i += 1; return i; };
+const wordAt = (t, i, w) => t.startsWith(w, i) && !isKeyChar(t[i + w.length]);
+/** The match of sticky `re` at `i`, or null. */
+function matchAt(re, t, i) { re.lastIndex = i; const m = re.exec(t); return m ? m[0] : null; }
+const KEY_RE = /[A-Za-z_][A-Za-z0-9_]*/y;
+const NODE_RE = /[A-Za-z0-9_-]+/y;
+const INDEX_RE = /0|[1-9][0-9]*/y;
+const ARG_NUMBER_RE = /-?(?:0|[1-9][0-9]{0,14})(?:\.[0-9]{1,6})?/y;
+const controlIn = (s) => Array.from(s).some((c) => c.charCodeAt(0) < 0x20 || c.charCodeAt(0) === 0x7F);
+/** How many characters `s` has as the server counts them (code points: an
+ *  emoji is one, where `.length` counts two). */
+const chars = (s) => Array.from(s).length;
+
+function dateOk(p) {
+  for (let i = 0; i < p.length; i += 1) {
+    if (p[i] !== '%') continue;
+    if (i + 1 >= p.length || !DATE_DIRECTIVES.includes(p[i + 1])) return false;
+    i += 1;
+  }
+  return true;
+}
+
+/** The changes after a path: `{ filters: [[name, arg]], end }` (`end` before
+ *  the blank that ends it), or null when one is not on the list or takes no
+ *  such argument — the server's `_parse_filters`. */
+function parseFilters(t, i) {
+  const filters = [];
+  for (;;) {
+    let j = skipWs(t, i);
+    if (t[j] !== '|') return { filters, end: i };
+    j = skipWs(t, j + 1);
+    const name = matchAt(KEY_RE, t, j);
+    if (!name || !FILTERS.includes(name)) return null;
+    j += name.length;
+    let arg = null;
+    const k = skipWs(t, j);
+    if (t[k] === ':') {
+      if (!(name in FILTER_ARG_DEFAULTS)) return null;
+      const a = skipWs(t, k + 1);
+      if (t[a] === '"') {
+        const close = t.indexOf('"', a + 1);
+        if (close < 0) return null;
+        arg = t.slice(a + 1, close);
+        if (chars(arg) > 64 ||/[\\{}]/.test(arg) || controlIn(arg)) return null;
+        j = close + 1;
+      } else {
+        const num = matchAt(ARG_NUMBER_RE, t, a);
+        if (!num || isKeyChar(t[a + num.length])) return null;
+        if (name !== 'default') return null;          // join, split, date take text
+        arg = Number(num);
+        j = a + num.length;
+      }
+      if (name === 'split' && arg === '') return null;
+      if (name === 'date' && (arg === '' || !dateOk(arg))) return null;
+    }
+    filters.push([name, arg]);
+    if (filters.length > FILTERS_MAX) return null;
+    i = j;
+  }
+}
+
+/**
+ * The reference whose `{{` is at `at` in `t`, read as the server reads one —
+ * `{ ref, root, node, field, path, item, filters, end }` (`path` the segments
+ * as written, `items[0].title`; `end` just past its `}}`) — or null when what
+ * is there is not a reference.
+ */
+export function parseRefAt(t, at) {
+  t = String(t == null ? '' : t);
+  if (!t.startsWith('{{', at)) return null;
+  let i = skipWs(t, at + 2);
+  let root;
+  let node = null;
+  let field = null;
+  let pathFrom;
+  if (wordAt(t, i, 'now')) {
+    root = 'now'; i += 3;
+    if (t[i] === '.' || t[i] === '[') return null;
+    pathFrom = i;
+  } else if (wordAt(t, i, 'run')) {
+    root = 'run'; i += 3;
+    pathFrom = i;
+    if (t[i] === '.') {
+      const key = matchAt(KEY_RE, t, i + 1);
+      if (!key || !RUN_KEYS.includes(key)) return null;
+      i += 1 + key.length;
+    }
+    if (t[i] === '.' || t[i] === '[') return null;
+  } else {
+    if (t.startsWith('steps.', i)) {
+      root = 'steps'; i += 6;
+      const id = matchAt(NODE_RE, t, i);
+      if (!id || id.length > 64) return null;
+      node = id; i += id.length;
+      if (t[i] !== '.') return null;
+      i += 1;
+      for (const word of ['data', 'text']) {
+        if (wordAt(t, i, word)) { field = word; i += word.length; break; }
+      }
+      if (!field) return null;
+    } else if (wordAt(t, i, 'item')) {
+      root = 'item'; i += 4;
+    } else {
+      return null;
+    }
+    pathFrom = i;
+    let segs = 0;
+    while (i < t.length) {
+      if (t[i] === '.') {
+        const key = matchAt(KEY_RE, t, i + 1);
+        if (!key || key.length > 64) return null;
+        i += 1 + key.length;
+      } else if (t[i] === '[') {
+        if (t[i + 1] === '"') {
+          const close = t.indexOf('"', i + 2);
+          if (close < 0) return null;
+          const key = t.slice(i + 2, close);
+          if (!key || chars(key) > 128 ||key.includes('\\') || controlIn(key)) return null;
+          if (t[close + 1] !== ']') return null;
+          i = close + 2;
+        } else {
+          const n = matchAt(INDEX_RE, t, i + 1);
+          if (!n || t[i + 1 + n.length] !== ']' || n.length > 6) return null;
+          i += 2 + n.length;
+        }
+      } else {
+        break;
+      }
+      segs += 1;
+      if (segs > REF_MAX_SEGMENTS) return null;
+    }
+  }
+  const pathText = t.slice(pathFrom, i).replace(/^\./, '');
+  const f = parseFilters(t, i);
+  if (!f) return null;
+  i = skipWs(t, f.end);
+  if (!t.startsWith('}}', i)) return null;
+  const end = i + 2;
+  return { ref: t.slice(at, end), root, node, field, path: pathText, item: root === 'item', filters: f.filters, end };
+}
+
+/** Every reference in `text`, in order, as the server's `parse_template`
+ *  finds them: `\{{` is literal text and is not one, and a `{{` that is not a
+ *  reference is passed over (here: the server refuses the text at save).
+ *  `[{ ref, root, node, field, path, item, filters }]`. */
 export function refsIn(text) {
   const out = [];
   const t = String(text == null ? '' : text);
-  REF_RE.lastIndex = 0;
-  let m;
-  while ((m = REF_RE.exec(t))) {
-    if (m[1]) continue;
-    if (m[2] != null) out.push({ ref: m[0], node: m[2], field: m[3], path: (m[4] || '').replace(/^\./, ''), item: false });
-    else out.push({ ref: m[0], node: null, field: null, path: (m[5] || '').replace(/^\./, ''), item: true });
+  let i = t.indexOf('{{');
+  while (i >= 0) {
+    if (i > 0 && t[i - 1] === '\\') { i = t.indexOf('{{', i + 2); continue; }
+    const r = parseRefAt(t, i);
+    if (r) { out.push(r); i = t.indexOf('{{', r.end); } else { i = t.indexOf('{{', i + 1); }
   }
   return out;
 }
@@ -107,6 +267,28 @@ export function refsIn(text) {
 /** Whether `text` holds anything that looks like a reference — what a
  *  `never` field says no to as it is typed. */
 export const looksLikeRef = (text) => /\{\{/.test(String(text == null ? '' : text).replace(/\\\{\{/g, ''));
+
+/** `B1879`. A change in a person's words: "in capitals", "or “none” when it
+ *  is not there". */
+function changeWords([name, arg]) {
+  const a = arg == null ? FILTER_ARG_DEFAULTS[name] : arg;
+  switch (name) {
+    case 'default': return a === '' ? 'or nothing when it is not there' : `or “${a}” when it is not there`;
+    case 'upper': return 'in capitals';
+    case 'lower': return 'in small letters';
+    case 'trim': return 'without spaces around it';
+    case 'length': return 'how many';
+    case 'join': return `joined with “${a}”`;
+    case 'split': return `split at “${a}”`;
+    case 'json': return 'as JSON text';
+    case 'from_json': return 'read as JSON';
+    case 'number': return 'as a number';
+    case 'date': return `as a date, written “${a}”`;
+    case 'first': return 'the first of it';
+    case 'last': return 'the last of it';
+    default: return name;
+  }
+}
 
 /** "Uses: title, from “Fetch issue”; its text, from “Summarise”." or ''.
  *  `labelOf(id)` names a step (`start` → the start). */
@@ -116,14 +298,29 @@ export function usesLine(text, labelOf) {
   for (const r of refsIn(text)) {
     if (seen.has(r.ref)) continue;
     seen.add(r.ref);
-    if (r.item) { parts.push(r.path ? `${r.path}, from each item` : 'each item'); continue; }
-    const what = r.field === 'text' ? 'its text' : (r.path || 'everything it made');
-    const name = r.node === 'start' ? 'the start'
-      : `“${(typeof labelOf === 'function' && labelOf(r.node)) || r.node}”`;
-    parts.push(`${what}, from ${name}`);
+    let said;
+    if (r.root === 'now') said = 'the time the step starts';
+    else if (r.root === 'run') said = r.path === 'workflow' ? 'the workflow’s name' : (r.path === 'id' ? 'this run’s id' : 'this run');
+    else if (r.item) said = r.path ? `${r.path}, from each item` : 'each item';
+    else {
+      const what = r.field === 'text' ? 'its text' : (r.path || 'everything it made');
+      const name = r.node === 'start' ? 'the start'
+        : `“${(typeof labelOf === 'function' && labelOf(r.node)) || r.node}”`;
+      said = `${what}, from ${name}`;
+    }
+    if (r.filters && r.filters.length) said += ` (${r.filters.map(changeWords).join(', ')})`;
+    parts.push(said);
   }
   return parts.length ? `Uses: ${parts.join('; ')}.` : '';
 }
+
+/** `B1879`. What the run itself holds, offered under the steps' fields in
+ *  every list: they read the same in every step. */
+export const RUN_FIELDS = Object.freeze([
+  { ref: '{{ run.id }}', path: 'run.id', example: 'the id of the run it is in' },
+  { ref: '{{ run.workflow }}', path: 'run.workflow', example: 'this workflow’s name' },
+  { ref: '{{ now }}', path: 'now', example: 'the time the step starts, such as 2026-11-07T08:00:00Z' },
+]);
 
 /** The words a field is listed by: its path as the server's own reference
  *  spells it — `title`, `json.subject`, `items[0].title`,
@@ -134,6 +331,8 @@ export function usesLine(text, labelOf) {
  *  item's, which the panel lists itself) is read as it is. */
 export function pathWords(f) {
   const r = refsIn(String((f && f.ref) || ''))[0];
+  if (r && r.root === 'now') return 'now';
+  if (r && r.root === 'run') return r.path ? `run.${r.path}` : 'run';
   if (r && r.path) return r.path;
   if (f && typeof f.path === 'string' && f.path) return f.path;
   return String((f && f.ref) || '').includes('.text') ? 'its text' : 'everything it made';
@@ -216,8 +415,16 @@ export function openFieldPicker(anchor, { load, extra = [], holdEscape = null, l
     note.setAttribute('role', 'status');
     box.appendChild(note);
     box.appendChild(list);
-    const cancel = _button('wf-picker-cancel', 'Cancel');
-    box.appendChild(cancel);
+    // `B1879`. What the run itself holds — its id, its workflow's name, the
+    // time — is the same for every step, so it is offered under every list,
+    // and how to change a field after it is picked is said once, under it.
+    // Its own section (not a `.wf-picker-source`: the steps' groups are
+    // what earlier steps made, and this is not one of them).
+    const runBox = _el('section', 'wf-picker-run');
+    const runHead = _el('p', 'wf-picker-step');
+    runHead.appendChild(_el('span', 'wf-picker-step-name', 'This run'));
+    runBox.appendChild(runHead);
+    const runButtons = [];
     let done = false;
     let release = () => {};
     const finish = (ref) => {
@@ -228,7 +435,30 @@ export function openFieldPicker(anchor, { load, extra = [], holdEscape = null, l
       if (!ref && anchor && typeof anchor.focus === 'function') anchor.focus();
       resolve(ref || null);
     };
+    for (const f of RUN_FIELDS) {
+      const b = _button('wf-picker-field', null);
+      b.dataset.ref = f.ref;
+      b.appendChild(_el('span', 'wf-picker-path', f.path));
+      b.appendChild(_el('span', 'wf-picker-example', f.example));
+      b.setAttribute('aria-label', `${f.path}: ${f.example}`);
+      b.addEventListener('click', () => finish(f.ref));
+      runButtons.push(b);
+      runBox.appendChild(b);
+    }
+    runBox.appendChild(_el('p', 'wf-picker-lede',
+      'After a field, a change can follow: | default:"none" when it is not there, | lower, | trim, | number, '
+      + '| from_json, | join:", ", | date:"%Y-%m-%d" and a few more.'));
+    box.appendChild(runBox);
+    const cancel = _button('wf-picker-cancel', 'Cancel');
+    box.appendChild(cancel);
     cancel.addEventListener('click', () => finish(null));
+    let nav = runButtons;
+    box.addEventListener('keydown', (e) => {
+      const i = nav.indexOf(e.target);
+      if (i < 0 || (e.key !== 'ArrowDown' && e.key !== 'ArrowUp')) return;
+      e.preventDefault();
+      nav[(i + (e.key === 'ArrowDown' ? 1 : nav.length - 1)) % nav.length].focus();
+    });
     room.appendChild(box);
     placeNear(box, anchor);
     if (typeof holdEscape === 'function') release = holdEscape(() => finish(null));
@@ -271,12 +501,7 @@ export function openFieldPicker(anchor, { load, extra = [], holdEscape = null, l
         }
         list.appendChild(group);
       }
-      box.addEventListener('keydown', (e) => {
-        const i = buttons.indexOf(e.target);
-        if (i < 0 || (e.key !== 'ArrowDown' && e.key !== 'ArrowUp')) return;
-        e.preventDefault();
-        buttons[(i + (e.key === 'ArrowDown' ? 1 : buttons.length - 1)) % buttons.length].focus();
-      });
+      nav = [...buttons, ...runButtons];
       placeNear(box, anchor);   // as tall as its list now
       if (buttons[0]) buttons[0].focus();
     };
@@ -379,5 +604,5 @@ export function decorateField(input, { slot = null, pick = null, labelOf = null,
 export default {
   pathWords,
   openFieldPicker, decorateField, refsIn, usesLine, insertAtCaret, originWords, exampleText, looksLikeRef,
-  NEVER_FALLBACK, placeNear,
+  NEVER_FALLBACK, placeNear, parseRefAt, FILTERS, FILTER_ARG_DEFAULTS, RUN_FIELDS,
 };

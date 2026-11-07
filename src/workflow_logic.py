@@ -19,6 +19,12 @@ in it is ever run as code. The semantics are written once, here:
 If and Switch have no error port: a condition cannot fail, it can only be
 false. Switch takes the FIRST case that matches, else `otherwise`.
 
+A Set step makes an object from named fields (`make_set`). `B1879`: a field
+may say what its value is — text, a number, yes or no, or JSON (`SET_TYPES`)
+— and its name may be a dotted path that builds the object it names
+(`customer.name`); a value that is not the type it says fails the step,
+naming the field.
+
 `Accepted residual (SLICE-CD-DESIGN § 1.6, said aloud)`: routing on content
 lets whoever wrote the content choose which of the AUTHOR'S branches runs.
 That is what routing on content means; the branches are the author's.
@@ -29,13 +35,16 @@ from __future__ import annotations
 import json
 import re
 from datetime import date, datetime, timezone
+from typing import NamedTuple
 
 from src.workflow_refs import (
     MISSING,
     RefError,
     as_text,
     parse_template,
+    read_json,
     render_value,
+    to_number,
 )
 
 # ── Stored words (`FORBIDDEN.md` Part 1 at the merge) ────────────────────────
@@ -322,24 +331,176 @@ def passes_on(handed, port: str):
     return {PASSED_ON_PORT_KEY: port}
 
 
-def build_set(node: dict, ctx) -> tuple:
-    """`(data, missing)` — a Set step's object: each field's name (typed by the
-    author) and its value, a picked field's raw value or typed text rendered,
-    a typed number or yes/no as itself. `missing` the references that reached
-    nothing; their fields are `null`."""
+# ── `B1879`. A Set field's type, and a name that is a path ───────────────────
+#
+# The audit (`no-transforms`) found the Set step wrote every typed value as
+# text ("5", "true", '{"a":1}'), had no type choice, no nested names, and could
+# build a list or an object only by copying one that already existed. So a
+# field may say what its value IS — the stored words below, on the field as
+# `type` — and its name may be a dotted path (`customer.name`), which builds
+# the object it names. A field with no `type` is what every Set field always
+# was: a picked field's value as it came, typed words as text, a typed number
+# or yes/no as itself ("as it comes" in the form).
+SET_TYPE_TEXT = "text"
+SET_TYPE_NUMBER = "number"
+SET_TYPE_YES_NO = "yes/no"
+SET_TYPE_JSON = "json"
+SET_TYPES = (SET_TYPE_TEXT, SET_TYPE_NUMBER, SET_TYPE_YES_NO, SET_TYPE_JSON)
+# The words the form's chooser shows, and a refusal says.
+SET_TYPE_WORDS = {SET_TYPE_TEXT: "text", SET_TYPE_NUMBER: "a number",
+                  SET_TYPE_YES_NO: "yes or no", SET_TYPE_JSON: "JSON (a list or an object)"}
+# A dotted name is at most this many names deep — the depth a reference
+# reading it back can reach with room to spare (`REF_MAX_SEGMENTS`, 16).
+SET_NAME_MAX_PARTS = 8
+_SET_PART_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]{0,63}")
+_YES_WORDS = frozenset({"true", "yes", "1", "on"})
+_NO_WORDS = frozenset({"false", "no", "0", "off", ""})
+
+
+def set_name_parts(name) -> tuple | None:
+    """`customer.name` → `("customer", "name")`; `None` for a name that is
+    not one to `SET_NAME_MAX_PARTS` names of letters, digits and _ (not
+    starting with a digit) joined by dots. One rule, read by the save
+    (`workflow_document`), the run (`make_set`) and the picker's promise of
+    what a Set makes (`workflow_effects._promised`)."""
+    if not isinstance(name, str):
+        return None
+    parts = tuple(name.split("."))
+    if not parts or len(parts) > SET_NAME_MAX_PARTS:
+        return None
+    if not all(_SET_PART_RE.fullmatch(p) for p in parts):
+        return None
+    return parts
+
+
+def set_names_clash(names) -> tuple | None:
+    """`(inner, outer)` when one field's name is inside another's — `a` and
+    `a.b` cannot both be set, since `a` would be a value and an object at
+    once — or two names are the same; `None` when every name has its own
+    place."""
+    seen = {}
+    for name in names:
+        parts = set_name_parts(name)
+        if parts is None:
+            continue
+        seen.setdefault(parts, name)
+    ordered = sorted(seen)
+    for i, parts in enumerate(ordered):
+        for other in ordered[i + 1:]:
+            if other[:len(parts)] == parts:
+                return seen[other], seen[parts]
+    return None
+
+
+def _as_type(kind: str, value):
+    """`value` as a Set field's `type`, or `MISSING` when it is not one.
+    `None` (a field that reached nothing) stays `None` — what is missing is
+    said separately, not as a wrong type."""
+    if value is None:
+        return None
+    if kind == SET_TYPE_TEXT:
+        return as_text(value)
+    if kind == SET_TYPE_NUMBER:
+        return to_number(value)
+    if kind == SET_TYPE_YES_NO:
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, (int, float)) and value in (0, 1):
+            return bool(value)
+        if isinstance(value, str):
+            word = value.strip().lower()
+            if word in _YES_WORDS:
+                return True
+            if word in _NO_WORDS:
+                return False
+        return MISSING
+    if kind == SET_TYPE_JSON:
+        return read_json(value)
+    return value
+
+
+def type_words(value) -> str:
+    """The words for what a value is — "text", "a number", "yes or no", "a
+    list", "an object", "nothing" — never Python's `str` or `dict`."""
+    if value is None or value is MISSING:
+        return "nothing"
+    if isinstance(value, bool):
+        return "yes or no"
+    if isinstance(value, (int, float)):
+        return "a number"
+    if isinstance(value, str):
+        return "text"
+    if isinstance(value, list):
+        return "a list"
+    if isinstance(value, dict):
+        return "an object"
+    return "something else"
+
+
+def _shown(value, limit: int = 40) -> str:
+    text = " ".join(as_text(value).split())
+    return text if len(text) <= limit else text[:limit - 1] + "…"
+
+
+def _place(data: dict, parts: tuple, value) -> None:
+    """Put `value` at `parts` in `data`, making each object on the way. A
+    name inside another field's value (refused at save: `set_names_clash`)
+    makes that place an object."""
+    cur = data
+    for part in parts[:-1]:
+        nxt = cur.get(part)
+        if not isinstance(nxt, dict):
+            nxt = {}
+            cur[part] = nxt
+        cur = nxt
+    cur[parts[-1]] = value
+
+
+class SetMade(NamedTuple):
+    """`B1879`. What a Set step makes: `data`, the object; `missing`, the
+    references that reached nothing (their fields are `null`); `wrong`, a
+    sentence for each field whose value is not the type it says (its field
+    is `null` too)."""
+    data: dict
+    missing: tuple
+    wrong: tuple
+
+
+def make_set(node: dict, ctx) -> SetMade:
+    """A Set step's object: each field's name (typed by the author; a dotted
+    name builds the object it names, `B1879`) and its value — a picked
+    field's raw value or typed text rendered, a typed number or yes/no as
+    itself — made the field's `type` when it has one."""
     data = {}
     missing = []
+    wrong = []
     for field in (node.get("config") or {}).get("fields") or ():
         if not isinstance(field, dict) or not isinstance(field.get("name"), str):
             continue
+        name = field["name"]
         value = field.get("value")
         if isinstance(value, str):
-            rendered, miss = render_value(parse_template(value), ctx)
+            value, miss = render_value(parse_template(value), ctx)
             missing.extend(miss)
-            data[field["name"]] = rendered
         else:
-            data[field["name"]] = json.loads(json.dumps(value, default=str))
-    return data, tuple(dict.fromkeys(missing))
+            value = json.loads(json.dumps(value, default=str))
+        kind = field.get("type")
+        if kind in SET_TYPES:
+            typed = _as_type(kind, value)
+            if typed is MISSING:
+                wrong.append(f"“{name}” should be {SET_TYPE_WORDS[kind]}, and it was handed "
+                             f"{type_words(value)}: “{_shown(value)}”.")
+                typed = None
+            value = typed
+        _place(data, set_name_parts(name) or (name,), value)
+    return SetMade(data, tuple(dict.fromkeys(missing)), tuple(wrong))
+
+
+def build_set(node: dict, ctx) -> tuple:
+    """`(data, missing)` — `make_set`'s object and what reached nothing, as
+    every caller before `B1879` read it."""
+    made = make_set(node, ctx)
+    return made.data, made.missing
 
 
 def describe_condition(condition: dict) -> str:

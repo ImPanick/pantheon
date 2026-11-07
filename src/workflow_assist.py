@@ -220,6 +220,7 @@ Rules:
   {{ steps.start.data.<field> }} is what started the run (an event's or a webhook's fields),
   {{ steps.<step id>.text }} is what a step said, {{ steps.<step id>.data.<field> }} a field of
   what it answered, and {{ item.<field> }} the item, only inside a For-each step.
+  {{ now }} is the time; a reference may end in a change such as | default:"x" or | lower.
 - The first step is the one no arrow leads to. Arrows leave a step by one of its ports.
 - An action step's config is {"action": "<name>"}, and "prompt" holds its one input when it has
   one. An MCP step's config is {"tool": "<name>", "args": {...}}. An HTTP step's config is

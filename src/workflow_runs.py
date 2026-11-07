@@ -1041,12 +1041,16 @@ class RunState:
         rec = self.own.get(node_id)
         return rec is not None and is_truncated(_loads(rec.output))
 
-    def context(self, *, item=None, has_item: bool = False) -> dict:
+    def context(self, *, item=None, has_item: bool = False, run_id=None,
+                workflow=None) -> dict:
         """The pure-JSON context a reference reads (`workflow_refs`): every
         finished step's `{data, text, status}` and the start's. A step whose
         record was cut past `workflow_node_record_max_chars` after a resume
-        has no `data` or `text`, so a reference into it is `MISSING`."""
+        has no `data` or `text`, so a reference into it is `MISSING`.
+        `B1879`: and `{{ now }}` (read now, as the step starts) and
+        `{{ run.id }}` / `{{ run.workflow }}` (`workflow_refs.run_roots`)."""
         from src.event_bus import trigger_summary
+        from src.workflow_refs import run_roots
 
         steps = {}
         trigger = self.trigger if isinstance(self.trigger, dict) else None
@@ -1065,6 +1069,7 @@ class RunState:
                 entry["data"] = out.get("data")
             steps[node_id] = entry
         ctx = {"steps": json.loads(json.dumps(steps, default=str))}
+        ctx.update(run_roots(run_id, workflow))
         if has_item:
             ctx["item"] = json.loads(json.dumps(item, default=str))
         return ctx

@@ -6933,7 +6933,8 @@ class TaskScheduler:
 
         step_db = SessionLocal()
         try:
-            ctx = w.state.context()
+            # `B1879`: with `{{ run.id }}`, `{{ run.workflow }}` and `{{ now }}`.
+            ctx = w.state.context(run_id=w.run_id, workflow=w.name)
 
             async def attempt(answer, limit=0):
                 # `B1855`: the time limit bounds the step's own work, not its
@@ -7534,8 +7535,14 @@ class TaskScheduler:
             return StepDone(NodeResult("success", payload=passed, text=text), port)
         if kind == wd.NODE_KIND_SET:
             from src import workflow_logic as wl
-            data, missing = wl.build_set(node, ctx)
-            text = "Set " + ", ".join(f"“{k}”" for k in (data or {})) + "."
+            made = wl.make_set(node, ctx)
+            data, missing = made.data, made.missing
+            if made.wrong:
+                # `B1879`. A field whose value is not the type it says.
+                return StepDone(NodeResult(NODE_STATUS_ERROR, payload=" ".join(made.wrong)), None)
+            names = [f.get("name") for f in (node.get("config") or {}).get("fields") or ()
+                     if isinstance(f, dict) and isinstance(f.get("name"), str)]
+            text = "Set " + ", ".join(f"“{k}”" for k in dict.fromkeys(names)) + "."
             if missing:
                 text += " Not found, so left empty: " + ", ".join(str(m) for m in missing) + "."
             return StepDone(NodeResult("success", payload=data or {}, text=text), None)
@@ -8329,7 +8336,11 @@ class TaskScheduler:
         steps[wr._start_key()] = {"status": "success",
                                   "data": (envelope or {}).get("data"),
                                   "text": trigger_summary(envelope) if envelope else ""}
-        return {"steps": json.loads(json.dumps(steps, default=str))}
+        # `B1879`: a step tested alone is in no run, so `{{ run.id }}` is null;
+        # `{{ run.workflow }}` and `{{ now }}` read as in a run.
+        from src.workflow_refs import run_roots
+        return {"steps": json.loads(json.dumps(steps, default=str)),
+                **run_roots(None, getattr(task, "name", None))}
 
     async def _run_chained(self, task_id: str, *, handoff: dict | None = None,
                            started_by: str = STARTED_BY_BACKGROUND):

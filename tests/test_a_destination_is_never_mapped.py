@@ -366,7 +366,9 @@ def test_a_command_s_own_braces_are_its_own_text(text):
 
 @pytest.mark.parametrize("text", [
     "{{ STEPS.fetch.data.x }}", "{{ steps . fetch.data.x }}", "{{ {{ steps.fetch.data.x }} }}",
-    "{{ steps.fetch.data.x | upper }}", "{{ steps.fetch.status }}", "{{ steps.fetch.data.x",
+    # `B1879`: `| upper` is a change a reference may now end in; a change
+    # off the closed list (`workflow_refs.FILTERS`) is still refused.
+    "{{ steps.fetch.data.x | shout }}", "{{ steps.fetch.status }}", "{{ steps.fetch.data.x",
 ])
 def test_a_value_setting_refuses_a_brace_that_is_not_a_reference(text):
     refusal = after_fetch(step("p", prompt=f"Summarise {text}"))
