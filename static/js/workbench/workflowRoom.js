@@ -1644,7 +1644,17 @@ export function mountAutomations(host, opts = {}) {
     return bad.length ? String(bad[bad.length - 1].id) : null;
   }
 
-  async function openRun(runId) {
+  /** Open run `runId` on the Runs tab. The promise is kept on the
+   *  workflow (`runOpening`) so a press that reads the runs again (Stop,
+   *  Retry) can wait for the canvas the read redraws. */
+  function openRun(runId) {
+    const w = R.wf;
+    const p = drawRun(runId);
+    if (w) w.runOpening = p;
+    return p;
+  }
+
+  async function drawRun(runId) {
     const w = R.wf;
     if (!w || !R.mods) return;
     teardownRun();
@@ -1672,6 +1682,12 @@ export function mountAutomations(host, opts = {}) {
     watchRun();
     const run = (w.runs || []).find((r) => String(r.id) === w.runId) || {};
     const failed = failedStep(rs, rc);
+    // `B1869`, `B1854`. What Stop or Retry said of this run is its opening
+    // sentence: the read after the press redraws the run, and the redraw's
+    // own "This run ended: stopped" used to replace "Stopped where it waited".
+    // A run that waits or failed says that instead — it is newer news.
+    const note = w.runNote && w.runNote.runId === w.runId ? w.runNote.text : '';
+    if (note) w.runNote = null;
     // `P22-11`, `P22-17` (wf-canvas). A run that is waiting opens on the step
     // it waits on, with what it waits for — and, for a yes, its card — open
     // beside it.
@@ -1701,6 +1717,7 @@ export function mountAutomations(host, opts = {}) {
     // must not read "This run ended: running" — a word contradicting itself. It
     // is said as in-flight; a finished run reads "worked" or "ended: <word>".
     const _active = RUN_ACTIVE_STATUSES.includes(run.status);
+    if (note) { rc.say(note, { action: _active && !isDryRun(run) ? stopAction() : null }); return; }
     rc.say(isDryRun(run)
       ? 'A dry run: each step says what it would have done. Nothing ran.'
       : _active
@@ -1732,10 +1749,7 @@ export function mountAutomations(host, opts = {}) {
       return;
     }
     if (reply.run_id != null) w.runId = String(reply.run_id);
-    await loadRuns();
-    refreshShelf();
-    if (R.destroyed || R.wf !== w || !w.runCanvas) return;
-    w.runCanvas.say('Retrying. The steps before it are kept from the last run and not run again.');
+    await sayOnRun(w, 'Retrying. The steps before it are kept from the last run and not run again.');
   }
   /** The action that stops the open run (running, or waiting). */
   function stopAction() {
@@ -1753,10 +1767,21 @@ export function mountAutomations(host, opts = {}) {
       say(`Not stopped: ${String((reply && (reply.sentence || reply.detail)) || 'the server refused')}`, { refusal: true });
       return;
     }
+    await sayOnRun(w, reply.sentence || 'Stopped. The steps that had finished keep what they made.');
+  }
+
+  /** Read the runs again and say `text` on the open run: as its opening
+   *  sentence when the read redraws it, or on it as it is. */
+  async function sayOnRun(w, text) {
+    w.runNote = { runId: w.runId, text };
+    w.runOpening = null;
     await loadRuns();
     refreshShelf();
-    if (R.destroyed || R.wf !== w || !w.runCanvas) return;
-    w.runCanvas.say(reply.sentence || 'Stopped. The steps that had finished keep what they made.');
+    if (w.runOpening) await w.runOpening;
+    if (R.destroyed || R.wf !== w) return;
+    if (!w.runNote) return;                  // the redraw said it
+    w.runNote = null;
+    if (w.runCanvas) w.runCanvas.say(text);
   }
 
   /** What a waiting run's line says when it opens on its waiting step. */

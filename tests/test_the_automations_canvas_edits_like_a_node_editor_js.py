@@ -1,13 +1,15 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-r"""`B1839`…`B1848`, `B1855`, `B1856`, `B1845` — the Automations canvas edits a
-workflow the way a node editor does.
+r"""`B1833`, `B1834`, `B1836`, `B1839`…`B1843`, `B1845` — the Automations
+canvas edits a workflow the way a node editor does.
 
 **Measured before this file** (the canvas-editor and live-UX audits,
 2026-11-07, in Chromium against the real server): Ctrl+Z, Ctrl+C/V/D,
 Shift-click and Ctrl+S did nothing; a new step was added unjoined in the
 corner under the start; removing a step that others read said nothing about
-them; a step had no retries, time limit or off switch; the bar had no Delete
-and no Duplicate, though the delete route was there.
+them; the bar had no Delete and no Duplicate, though the delete route was
+there. Every step was the same grey box; Done on a step nobody touched made a
+version; Close dropped what was typed without a word; a step just added left
+the keyboard on the page behind the Workbench.
 
 Each case drives the real room, canvas, panels, source and `workflowApi.js`
 in node against the REAL server on a loopback port
@@ -170,3 +172,108 @@ def test_delete_asks_then_deletes_and_duplicate_makes_a_switched_off_copy(box, l
     assert o["left"] == 2, "said first: nothing is deleted on the first press"
     assert o["after"] == ["Morning digest"]
     assert o["said"].startswith("Deleted “Morning digest (copy)”.")
+
+
+# ── `B1833`, `B1834`, `B1836`, `B1841`, `B1842`, `B1843` ────────────────────
+# The shim's `input` does not bubble either: what the panel's own listener
+# hears (`.wb-panel-host`) is fired on it, as a keystroke in its form would be.
+_PANEL = """
+const panelHost = (r) => r.querySelector('.wf-edit').querySelector('.wb-panel-host');
+const field = (r, f) => panelHost(r).querySelectorAll('[data-field]').find((x) => x.dataset.field === f) || null;
+const typeIn = (r, f, value) => { const el = field(r, f); typed(el, value); fire(panelHost(r), 'input', { target: el }); };
+const open = async (r, id) => { fire(nodeEl(r, id), 'click'); await quiet(); };
+// The shim's `click()` records a download; a button's is its click listeners,
+// as a browser's is (Close presses the form's own Done through it).
+const shimClick = Node.prototype.click;
+Node.prototype.click = function click() {
+  if (this.tagName === 'BUTTON') { fire(this, 'click'); return; }
+  return shimClick.call(this);
+};
+"""
+
+
+def _panel_case(box, live, script):
+    return _run(box, LIVE_PREAMBLE(live.server.base) + _HELPERS + _PANEL, script)
+
+
+def test_each_step_wears_its_kinds_glyph_on_its_familys_tile(box, live):
+    o = _case(box, live, """
+        const { r } = await room({ workflowId: 'w-wf' });
+        const face = (id) => { const n = nodeEl(r, id); const i = n.querySelector('.wb-node-icon');
+          return { cat: n.dataset.cat, tile: i ? i.dataset.cat : null,
+                   glyph: !!(i && i.childNodes.length && i.childNodes[0].tagName === 'SVG'), inPort: !!n.querySelector('.wb-port-in') }; };
+        out({ a: face('a'), w: face('w'), start: face('__start__') });
+    """)
+    assert o["a"] == {"cat": "logic", "tile": "logic", "glyph": True, "inPort": True}
+    assert o["w"]["cat"] == "flow" and o["w"]["glyph"] is True
+    assert o["start"]["cat"] == "trigger" and o["start"]["inPort"] is False, "nothing comes into the start"
+
+
+def test_done_on_a_step_nobody_changed_is_not_a_change(box, live):
+    o = _panel_case(box, live, """
+        const { r } = await room({ workflowId: 'w-wf' });
+        await open(r, 'a');
+        fire(panelHost(r).querySelector('.wf-step-done'), 'click'); await quiet();
+        out({ dirty: by(r, 'wf-dirty').textContent, said: sayOf(r), puts: calls('PUT').length });
+    """)
+    assert o["dirty"] != "Unsaved changes", "Done on an unchanged step changes nothing"
+
+
+def test_close_keeps_what_was_typed(box, live):
+    o = _panel_case(box, live, """
+        const { r } = await room({ workflowId: 'w-wf' });
+        await open(r, 'a');
+        typeIn(r, 'label', 'Light it');
+        fire(by(r, 'wb-panel-close'), 'click'); await quiet();
+        const title = nodeEl(r, 'a').querySelector('.wb-node-title').textContent;
+        out({ title, open: !by(r, 'wb-panel').hidden, dirty: by(r, 'wf-dirty').textContent });
+    """)
+    assert o["title"] == "Light it", "Close applied the form, as Done does"
+    assert o["open"] is False and o["dirty"] == "Unsaved changes"
+
+
+def test_a_step_just_added_has_the_keyboard_on_its_name(box, live):
+    o = _panel_case(box, live, """
+        const { r } = await room({ workflowId: 'w-wf' });
+        fire(nodeEl(r, 'w').querySelector('.wb-port-add'), 'click'); await quiet();
+        fire(kindButton(r, 'set'), 'click'); await quiet();
+        const name = field(r, 'label');
+        out({ focused: !!(name && name.focused), value: name && name.value });
+    """)
+    assert o["focused"] is True, "the new step's Name has the keyboard"
+    assert o["value"] == "Set fields"
+
+
+def test_a_step_added_on_an_arrow_stands_between_its_ends(box, live):
+    o = _case(box, live, """
+        const { r } = await room({ workflowId: 'w-wf' });
+        const edge = r.querySelector('.wf-edit').querySelectorAll('g')
+          .find((g) => g.getAttribute('data-from') === 'a' && g.getAttribute('data-to') === 'b');
+        const plus = edge.childNodes.find((n) => n.getAttribute('class') === 'wb-edge-add');   // an SVG node: its class is an attribute
+        fire(plus, 'click'); await quiet();
+        const title = by(r, 'wf-palette-head').textContent;
+        fire(kindButton(r, 'set'), 'click'); await quiet();
+        fire(by(r, 'wb-panel-close'), 'click'); await quiet();
+        fire(by(r, 'wf-save'), 'click'); await quiet();
+        out({ label: plus.getAttribute('aria-label'), title, edges: lastPut().graph.edges });
+    """)
+    assert o["label"] == "Add a step between Make it and Shout it"
+    assert o["title"] == "Add a step between “Make it” and “Shout it”"
+    joined = [(e["from"], e["to"]) for e in o["edges"]]
+    new = next(t for f, t in joined if f == "a")
+    assert new not in ("b", "w") and (new, "b") in joined, joined
+    assert ("a", "b") not in joined, "the arrow it was put on is taken away"
+
+
+def test_ctrl_a_picks_every_step_and_a_right_click_offers_the_steps_own_menu(box, live):
+    o = _case(box, live, """
+        const { r } = await room({ workflowId: 'w-wf' });
+        key(r, 'a', { ctrlKey: true }); await quiet();
+        const picked = r.querySelectorAll('.wb-node-picked').map((n) => n.dataset.itemId).sort();
+        fire(nodeEl(r, 'b'), 'contextmenu', { clientX: 40, clientY: 40 }); await quiet();
+        const words = r.querySelectorAll('.wb-menu-word').map((w) => w.textContent);
+        out({ picked, words });
+    """)
+    assert o["picked"] == ["a", "b", "w"], "the start is not a step that can be picked"
+    for word in ("Duplicate", "Copy", "Remove"):
+        assert any(w.startswith(word) for w in o["words"]), o["words"]

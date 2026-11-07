@@ -251,6 +251,43 @@ def test_for_each_edits_its_inner_step_in_place_and_its_picker_offers_the_item(b
                                                   "config": {"prompt": "Summarise {{ item.subject }}"}}}
 
 
+def test_for_each_offers_each_items_own_fields_and_not_the_first_items(box):
+    """`B1848`. The fields route says a list's example in words ("3 items")
+    and flattens its first item into `…issues[0].title`: inside a For-each
+    only "the whole item" was offered, and `[0]` paths — which read the FIRST
+    item on every pass — were. Now each `[0].` field is offered as
+    `{{ item.… }}`, and the list's own `[0]` fields are left out."""
+    o = _case(box, """
+        const mounts = [];
+        const mountTaskFields = (h, args) => { mounts.push(args); const i = h.appendChild(new Node('textarea'));
+          i.className = 'stub-prompt'; i.value = ''; args.pickField(i, { field: 'prompt', slot: { mapping: 'value', why: '' } });
+          return { destroy() {} }; };
+        const root = host();
+        const panels = createWorkflowPanels({ mountTaskFields, layer: () => root });
+        const fields = async () => ({ ok: true, sources: [{ node_id: 'get', label: 'Get issues', origin: 'last_run',
+          fields: [{ ref: '{{ steps.get.data.issues }}', path: 'issues', type: 'list', example: '3 items' },
+                   { ref: '{{ steps.get.data.issues[0].title }}', path: 'issues[0].title', type: 'text', example: 'Printer on fire' },
+                   { ref: '{{ steps.get.data.issues[0].user.login }}', path: 'issues[0].user.login', type: 'text', example: 'ada' },
+                   { ref: '{{ steps.get.data.count }}', path: 'count', type: 'number', example: 3 }] }] });
+        const h = root.appendChild(new Node('div'));
+        panels.node(h, { node: { id: 'each', kind: 'foreach', label: 'Each issue',
+          config: { list: '{{ steps.get.data.issues }}', on_error: 'continue' } },
+          palette: PAL, upstream: [{ id: 'get', label: 'Get issues', kind: 'http' }], fields, onApply: () => {} });
+        changed(byField(h, 'step.kind'), 'llm');
+        fire(h.querySelector('.wf-sf-inner-edit'), 'click');
+        await settle(2);
+        fire(h.querySelector('.stub-prompt').parentNode.querySelector('.wf-slot-pick'), 'click');
+        await settle(5);
+        const pick = root.querySelector('.wf-picker');
+        out({ listed: pick.querySelectorAll('.wf-picker-source').map((s) => [s.querySelector('.wf-picker-step-name').textContent,
+          s.querySelectorAll('.wf-picker-field').map((b) => b.dataset.ref)]) });
+    """)
+    assert o["listed"] == [
+        ["Each item", ["{{ item }}", "{{ item.title }}", "{{ item.user.login }}"]],
+        ["Get issues", ["{{ steps.get.data.issues }}", "{{ steps.get.data.count }}"]],
+    ]
+
+
 def test_an_ai_step_chooses_its_tools_and_the_shape_of_its_answer(box):
     o = _case(box, """
         const read = (config, act) => { const h = host(); const v = SF.mountAiOptions(h, { node: { config }, palette: PAL });
