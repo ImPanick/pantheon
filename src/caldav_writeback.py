@@ -19,7 +19,9 @@ network.
 
 import asyncio
 import logging
-from datetime import timezone
+# `B1962`: `datetime` too; without it each exdate's strptime raised NameError and
+# no EXDATE reached the CalDAV server.
+from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 
