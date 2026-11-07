@@ -35,6 +35,8 @@ from __future__ import annotations
 
 import asyncio
 import io
+import json
+import shutil
 import struct
 import wave
 import zipfile
@@ -44,6 +46,7 @@ import pytest
 
 from helpers.office_fixtures import OFFICE_SENTINEL, office_fixture
 from test_attachment_extension_registers import _minimal_pdf
+from test_tool_effect_surfaces_js import _run, card_sandbox  # noqa: F401  (`card_sandbox` is a fixture)
 
 
 def _wav() -> bytes:
@@ -263,3 +266,89 @@ def test_a_video_is_not_sent_to_speech_to_text(send):
     assert send.heard == [], "the video was handed to speech-to-text"
     assert "should not appear" not in _text(content)
     assert meta["clip.webm"]["reach_note"] == "Not read: the model can't be given a video."
+
+
+# ── a description given to a model that cannot see (`B1790`) ────────────────
+#
+# `B1790`. A picture sent to a model whose endpoint says it cannot see is
+# described by the vision model set in Settings → Vision, and the description
+# was appended to the person's own message under only the `[Image: name]`
+# marker, saved with it and sent again on every later turn. The chat model read
+# the describer's prose, and any text it read off the picture, as the person's
+# own writing. Now a label under the marker says what it is. Pantheon's own
+# bracketed notes in that place ("[No vision model configured …]") are not a
+# description and get no label, and the marker stays first: the page strips
+# the block by it. Upstream Odysseus 516f046f (#6223), with its cases.
+
+LABEL = "[Image description — context only, not part of the user's message]:"
+NO_DESCRIBER = "[No vision model configured — set one in Settings → Vision]"
+
+
+def _blind(monkeypatch, sees=False):
+    import src.chat_handler as ch
+    monkeypatch.setattr(ch, "vision_answer", lambda model, url="": sees)
+
+
+@pytest.mark.parametrize("described, sent", [
+    ("an orange circle", "What does it say?\n\n[Image: cat.jpg]\n" + LABEL + "\nan orange circle"),
+    (NO_DESCRIBER, "What does it say?\n\n[Image: cat.jpg]\n" + NO_DESCRIBER),
+    # Nothing described: the bare marker and no label (the text-only collapse
+    # trims the newline after it, as it always has).
+    ("", "What does it say?\n\n[Image: cat.jpg]"),
+], ids=["description", "pantheon-note", "nothing"])
+def test_a_description_given_to_a_blind_model_is_labelled_as_not_the_persons_words(
+        send, monkeypatch, described, sent):
+    _blind(monkeypatch)
+    content, meta = send([("cat.jpg", _jpeg(), "image/jpeg")], model="text-box-7b",
+                         describer=lambda path, owner=None: {"text": described, "model": "vl"})
+    assert _text(content) == sent
+    assert meta["cat.jpg"]["vision"] == described, "the caption a person edits is the describer's own words"
+
+
+@pytest.mark.parametrize("sees", [False, True], ids=["blind", "sees"])
+def test_a_cached_caption_is_labelled_for_a_blind_model_and_unchanged_for_one_that_sees(
+        send, monkeypatch, tmp_path, sees):
+    """The caption cache (`UPLOAD_DIR/.vision/<id>.txt`) holds the describer's
+    words or the person's correction from the Caption editor; to a model that
+    cannot see it is a description of the picture either way. A model that
+    sees keeps the line Pantheon already gives a correction."""
+    _blind(monkeypatch, sees)
+    cache = tmp_path / "uploads" / ".vision"
+    cache.mkdir(parents=True, exist_ok=True)
+    (cache / "a0.txt").write_text("a cat on a red mat", encoding="utf-8")
+
+    def no_describer(path, owner=None):
+        raise AssertionError("the caption was cached; the describer must not be asked")
+
+    content, meta = send([("cat.jpg", _jpeg(), "image/jpeg")], model="text-box-7b",
+                         describer=no_describer)
+    text = _text(content)
+    if sees:
+        assert ("[User-corrected caption / OCR for this image — treat as authoritative]:\n"
+                "a cat on a red mat") in text
+        assert LABEL not in text
+    else:
+        assert text == "What does it say?\n\n[Image: cat.jpg]\n" + LABEL + "\na cat on a red mat"
+    assert meta["cat.jpg"]["vision"] == "a cat on a red mat"
+
+
+@pytest.mark.skipif(not shutil.which("node"), reason="node binary not on PATH")
+def test_a_reloaded_bubble_shows_the_persons_words_and_not_the_label(send, monkeypatch, card_sandbox):  # noqa: F811
+    """The label is in the saved message, and the real `addMessage` takes the
+    whole block out of the bubble, as it did before the label."""
+    _blind(monkeypatch)
+    content, _meta = send([("cat.jpg", _jpeg(), "image/jpeg")], model="text-box-7b",
+                          describer=lambda path, owner=None: {"text": "an orange circle", "model": "vl"})
+    saved = _text(content)
+    assert LABEL in saved, "the model was not told the description is not the person's"
+    out = _run(card_sandbox, (
+        "import { document, history } from './shim.js';\n"
+        "const cr = await import('./chatRenderer.js');\n"
+    ), """
+        history.childNodes = [];
+        cr.addMessage('user', %s, null, {});
+        const bubble = history.querySelector('.msg-user') || history.childNodes[0];
+        console.log(JSON.stringify({ raw: bubble.dataset.raw, text: bubble.readable }));
+    """ % json.dumps(saved))
+    assert out["raw"] == "What does it say?", out["raw"]
+    assert "context only" not in out["text"] and "an orange circle" not in out["text"]
