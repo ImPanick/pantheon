@@ -47,8 +47,9 @@ def _held_once():
 
 async def _park_by_a_takeover(factory, **task_kw):
     inside, slow = _held_once()
-    seed_workflow(factory, [node("fetch", "Fetch", "action", action="tidy_documents")], [],
-                  **task_kw)
+    # A Prompt step: since `B1864` a takeover stops only a run that uses a
+    # model — a workflow of housekeeping steps goes on beside the person.
+    seed_workflow(factory, [node("fetch", "Fetch")], [], **task_kw)
     s = recording_scheduler({"Morning digest · Fetch": slow})
     assert await s.run_task_now("wf") is True        # as the due tick would (background)
     await asyncio.wait_for(inside.wait(), timeout=5)

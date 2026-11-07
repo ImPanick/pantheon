@@ -3201,13 +3201,20 @@ class TaskScheduler:
                 # go idle. Queueing a plan behind a real run's semaphore would
                 # make the one button that is safe to press the slowest one.
                 if dry or bypass_model_slot or not self._task_needs_model_slot(task_id):
-                    if idle_first:
+                    # `B1864`. A background run of a workflow whose document
+                    # drives no model — logic, Set, Wait, HTTP, MCP, Code and
+                    # housekeeping steps — neither waits for Pantheon to be
+                    # idle nor is stopped when somebody arrives
+                    # (`_runs_beside_a_person`). A run a person started is
+                    # handed `gate_foreground` exactly as before.
+                    beside = idle_first and self._runs_beside_a_person(task_id)
+                    if idle_first and not beside:
                         waited = await self._wait_until_idle(task_id, run_id)
                     outcome = await self._execute_scoped(
                         task_id,
                         run_id,
                         release_executing=False,
-                        gate_foreground=gated,
+                        gate_foreground=gated and not beside,
                         trigger=trigger,
                         dry=dry,
                         started_by=started_by,
@@ -4862,6 +4869,41 @@ class TaskScheduler:
             return self._action_needs_model(getattr(task, "action", ""))
         finally:
             db.close()
+
+    def _runs_beside_a_person(self, task_id: str) -> bool:
+        """`B1864`. Does this task's background run go on while somebody uses
+        Pantheon — no wait for idle before it starts (`_wait_until_idle`), no
+        foreground monitor and no takeover while it runs? Only a WORKFLOW
+        whose document drives no model (`_workflow_needs_model_slot` false).
+
+        The gate exists so background MODEL work does not compete with the
+        person for the model (`B1047`: "no new model work starts while a chat
+        reply is being written"; `B1060` moved the wait before the model slot
+        so a waiting run holds nothing). A workflow of If, Set, Wait, HTTP,
+        MCP, Code and housekeeping steps takes no model slot at all
+        (`P22-05`/`P22-11` already let it skip the model queue), and yet every
+        background run of one waited for idle and was parked by a takeover at
+        whatever step it was on — a webhook-fed router held for as long as a
+        tab stayed open, and an HTTP POST stopped mid-flight to run again
+        later. A run that uses a model keeps the gate exactly as it is, and so
+        does every task that is not a workflow (a housekeeping action task
+        still waits, as it always has). Read fresh, like `_task_type_of`: an
+        edit that adds a Prompt step puts the next run back behind the gate.
+        """
+        from core.database import SessionLocal, ScheduledTask
+
+        try:
+            db = SessionLocal()
+            try:
+                task = db.query(ScheduledTask).filter(ScheduledTask.id == task_id).first()
+                if task is None or (task.task_type or "llm") != "workflow":
+                    return False
+                return not self._workflow_needs_model_slot(db, task)
+            finally:
+                db.close()
+        except Exception:
+            logger.debug("Could not read whether task %s drives a model", task_id, exc_info=True)
+            return False
 
     def _workflow_needs_model_slot(self, db, task) -> bool:
         """`P22-05`. A workflow waits in the model queue if any step may call a
