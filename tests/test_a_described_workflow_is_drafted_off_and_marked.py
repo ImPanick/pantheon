@@ -291,7 +291,9 @@ async def test_no_model_is_a_503_and_garbage_is_a_422(world, monkeypatch):
     monkeypatch.setattr(er, "resolve_endpoint", lambda *a, **k: (None, None, None))
     none = await _describe(w, "Post new issues to #dev")
     assert none.status_code == 503 and none.json()["detail"] == wa.NO_MODEL_TO_DRAFT
-    script_model(monkeypatch, "Sure! Here is your workflow: first, read the issue…")
+    # `B1877`: an answer in words is asked again once, so garbage is twice.
+    script_model(monkeypatch, "Sure! Here is your workflow: first, read the issue…",
+                 "Sure! Here is your workflow: first, read the issue…")
     garbage = await _describe(w, "Post new issues to #dev")
     assert garbage.status_code == 422
     assert garbage.json()["detail"] == ("The model's draft could not be used: its answer was not "

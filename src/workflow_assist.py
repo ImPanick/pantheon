@@ -461,6 +461,29 @@ class Drafted(NamedTuple):
     destinations: list
 
 
+#: `B1877`. What the drafter says back to an answer that was not a JSON object.
+NOT_JSON_AGAIN = ("That was not a JSON object. Answer again with only the whole draft, as one "
+                  "JSON object.")
+#: How much of an answer in words is handed back with it.
+SAID_BACK_MAX_CHARS = 4000
+
+
+def _said_in_words(raw) -> str:
+    """`B1877`. An answer that was not JSON, as it is handed back: without a
+    reasoning block (`first_json_object`'s own strip), capped. Never empty —
+    a turn of the model's own with nothing in it is refused by some servers."""
+    from src.text_helpers import strip_think
+    from src.workflow_effects import _THINK_RE
+
+    text = str(raw or "")
+    try:
+        text = _THINK_RE.sub("", strip_think(text, prose=False, prompt_echo=False))
+    except Exception:  # noqa: BLE001 - the strip is a nicety; the words as given still go back
+        logger.debug("draft: could not strip a reasoning block", exc_info=True)
+    text = text.strip()[:SAID_BACK_MAX_CHARS]
+    return text or "(an empty answer)"
+
+
 def _could_not_use(sentence: str) -> str:
     said = str(sentence or "").strip().rstrip(".")
     return (f"The model's draft could not be used: {said}. Nothing was saved. Say it "
@@ -474,7 +497,8 @@ async def draft_workflow(db, owner, description, tz=None) -> Drafted:
     One call; on a refusal — the rule's, in its own words, or `NOT_DRAFTED` —
     ONE repair round carrying the previous answer and our sentence only
     ("That draft was refused: …"); still refused is a 422 and nothing is
-    saved. No model is a 503."""
+    saved. An answer that is not a JSON object at all spends that same round
+    (`B1877`: "That was not a JSON object. …"). No model is a 503."""
     from src import workflow_store as store
     from src.task_scheduler import valid_timezone
     from src.workflow_document import ORIGIN_DRAFTED, WORKFLOW_TASK_TYPE, destination_lines
@@ -508,6 +532,19 @@ async def draft_workflow(db, owner, description, tz=None) -> Drafted:
     answer, why = await ask(messages)
     draft = None
     for attempt in (1, 2):
+        # `B1877`. An answer in words, or a fence cut short, is the round's
+        # other use: a small model often answers so the first time, and the
+        # draft it would give when told was never asked for. Its words go
+        # back (without a reasoning block — the model's scratch only spends
+        # the window) with one sentence, and that IS the repair round: words
+        # twice, or words and then a draft the rule refuses, is the 422.
+        if why is not None and why.kind == ASK_NOT_JSON and attempt == 1:
+            messages = messages + [
+                {"role": "assistant", "content": _said_in_words(why.raw)},
+                {"role": "user", "content": NOT_JSON_AGAIN},
+            ]
+            answer, why = await ask(messages)
+            continue
         if why is not None:
             raise WorkflowRefused(422, _could_not_use(why.sentence))
         try:
