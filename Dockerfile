@@ -16,7 +16,7 @@
 # which raises KeyError on Python 3.13+ (PEP 667). Build patched wheels here so
 # the final image / the Forge never has to compile the broken sdists. See
 # docker/build-realesrgan-wheels.sh for the full rationale.
-FROM python:3.14.10-slim AS realesrgan-wheels
+FROM python:3.15.0-slim AS realesrgan-wheels
 RUN apt-get update && apt-get install -y --no-install-recommends curl \
     && rm -rf /var/lib/apt/lists/*
 COPY docker/build-realesrgan-wheels.sh /usr/local/bin/build-realesrgan-wheels.sh
@@ -35,7 +35,7 @@ RUN bash /usr/local/bin/build-realesrgan-wheels.sh /wheels
 # package-lock.json, at an exact version whose sha512 `npm ci` checks. The
 # stage runs on the base the other two use, with Debian's node (the one the
 # app's stage installs below), so no new image enters the build.
-FROM python:3.14.10-slim AS js-without-comments
+FROM python:3.15.0-slim AS js-without-comments
 RUN apt-get update && apt-get install -y --no-install-recommends nodejs npm \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /build
@@ -65,7 +65,7 @@ RUN node scripts/strip-js-comments.mjs /build /out
 # refused on a mismatch), for the final stage to install — the screen Pantheon's
 # own browser runs on for a person without a workstation, which the same
 # client draws.
-FROM python:3.14.10-slim AS desktop-client
+FROM python:3.15.0-slim AS desktop-client
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl \
     && rm -rf /var/lib/apt/lists/*
 COPY workstation/provision.sh /build/provision.sh
@@ -75,7 +75,7 @@ RUN --mount=type=secret,id=build-ca,required=false,mode=0444 \
     && sh /build/provision.sh server /server \
     && rm -f /out/LICENSES/README.md
 
-FROM python:3.14.10-slim
+FROM python:3.15.0-slim
 
 # P0-18. A published image is a distribution, and this one declared no licence
 # anywhere in its metadata — the same failure class as P0-30, where the desktop
