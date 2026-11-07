@@ -898,6 +898,42 @@ def _source(node_id, label, kind, origin, at, fields) -> dict:
             "at": at, "fields": fields}
 
 
+def _promised(graph: dict, nodes: dict, node_id: str, start_declared, seen=frozenset()) -> list:
+    """`[(name, type)]` a step promises before any run: an AI step's answer
+    fields, a Set step's names — and, `B1863`, an If's or a Switch's: what it
+    hands on, which is what it was handed (`workflow_logic.passes_on`) — the
+    promises of the steps whose arrows lead into it, the start's declared
+    fields for an arrow from the start — and `port`, the way it went. A name
+    is offered once; a loop of logic steps is followed once."""
+    from src.workflow_document import START_KEY
+    from src.workflow_logic import PASSED_ON_PORT_KEY
+
+    node = nodes.get(node_id) or {}
+    kind, config = node.get("kind"), node.get("config") or {}
+    if kind == "llm" and isinstance(config.get("answer_fields"), list):
+        return [(f.get("name"), f.get("type")) for f in config["answer_fields"]
+                if isinstance(f, dict) and isinstance(f.get("name"), str)]
+    if kind == "set" and isinstance(config.get("fields"), list):
+        return [(f.get("name"), None) for f in config["fields"]
+                if isinstance(f, dict) and isinstance(f.get("name"), str)]
+    if kind not in ("if", "switch") or node_id in seen:
+        return []
+    out = []
+    for edge in graph.get("edges") or ():
+        if edge.get("to") != node_id:
+            continue
+        source = edge.get("from")
+        if source == START_KEY:
+            out.extend((f, None) for f in start_declared)
+        elif source in nodes:
+            out.extend(_promised(graph, nodes, source, start_declared, seen | {node_id}))
+    out.append((PASSED_ON_PORT_KEY, "text"))
+    named = {}
+    for name, kind_of in out:
+        named.setdefault(name, kind_of)
+    return list(named.items())
+
+
 def available_fields(db, wf, trigger, graph, node_id) -> dict:
     """`{sources: [...]}` — the fields `node_id` can pick from: the start's and
     every step upstream of it (`workflow_document.upstream_of`), each from up
@@ -909,7 +945,9 @@ def available_fields(db, wf, trigger, graph, node_id) -> dict:
         that step would be handed: the step's result and data, or for the
         start the trigger's data;
       * `declared` — what the step promises before any run: an AI step's
-        answer fields, a Set step's names, the start's event or webhook fields.
+        answer fields, a Set step's names, the start's event or webhook fields,
+        and (`B1863`) an If's or a Switch's — what it was handed, and `port`
+        (`_promised`).
 
     A record cut to fit its cap is not read for fields: its fields are not
     all there, and offering half of them would offer a path that resolves to
@@ -968,14 +1006,7 @@ def available_fields(db, wf, trigger, graph, node_id) -> dict:
                 sources.append(_source(up_id, label, kind, ORIGIN_PIN, None,
                                        _fields_of(up_id, handed.get("result"), handed.get("data"))))
                 break
-        config = node.get("config") or {}
-        promised = []
-        if kind == "llm" and isinstance(config.get("answer_fields"), list):
-            promised = [(f.get("name"), f.get("type")) for f in config["answer_fields"]
-                        if isinstance(f, dict) and isinstance(f.get("name"), str)]
-        elif kind == "set" and isinstance(config.get("fields"), list):
-            promised = [(f.get("name"), None) for f in config["fields"]
-                        if isinstance(f, dict) and isinstance(f.get("name"), str)]
+        promised = _promised(graph, nodes, up_id, declared)
         if promised:
             sources.append(_source(up_id, label, kind, ORIGIN_DECLARED, None,
                                    _declared_fields(up_id, promised)))

@@ -6851,6 +6851,22 @@ class TaskScheduler:
                 return out.get("data")
         return None
 
+    def _logic_was_handed(self, w, node: dict, slot: str):
+        """`B1863`. The data an If or a Switch was handed, which it hands on:
+        in a run, read from the state as a Wait's is (`_wait_passes_on`); in
+        *Test this step* (no walk), the `data` of the input the person chose —
+        a hand-off's `data.data`, the start's `data` — off the step's slot."""
+        if w is not None:
+            return self._wait_passes_on(w, node)
+        from src.event_bus import TRIGGER_SOURCE_TASK
+        envelope = self.run_trigger(slot)
+        if not isinstance(envelope, dict):
+            return None
+        data = envelope.get("data")
+        if envelope.get("source") == TRIGGER_SOURCE_TASK:
+            return data.get("data") if isinstance(data, dict) else None
+        return data
+
     def _wait_until(self, w, node: dict) -> tuple:
         """`(until, problem)` — when a Wait is over, as UTC, or why it cannot
         wait. `{mode: "for", minutes}` or `{mode: "until", time: "HH:MM",
@@ -7141,7 +7157,10 @@ class TaskScheduler:
             text = (f"Went the “{word}” way." if port != wd.PORT_OTHERWISE
                     else "None of its conditions held, so it went the “otherwise” way.")
             self._record_run_step(slot, kind="progress", detail=text)
-            return StepDone(NodeResult("success", payload={"port": port}, text=text), port)
+            # `B1863`. It hands on the data it was handed (`workflow_logic.
+            # passes_on`, the rule), with the way it went added as `port`.
+            passed = wl.passes_on(self._logic_was_handed(walk, node, slot), port)
+            return StepDone(NodeResult("success", payload=passed, text=text), port)
         if kind == wd.NODE_KIND_SET:
             from src import workflow_logic as wl
             data, missing = wl.build_set(node, ctx)
