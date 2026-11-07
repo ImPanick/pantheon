@@ -355,7 +355,9 @@ def parse_edit_blocks(content: str) -> list:
 def parse_suggest_blocks(content: str) -> list:
     """Parse <<<FIND>>>...<<<SUGGEST>>>...<<<REASON>>>...<<<END>>> blocks."""
     suggestions = []
-    _skip_phrases = ["no change", "clear", "fine as", "looks good", "no improvement", "keep as"]
+    # `B1913`: not "clear", which as a substring dropped every reason that
+    # said "clearer", "unclear" or "clearly".
+    _skip_phrases = ["no change", "fine as", "looks good", "no improvement", "keep as"]
     pattern = r'<<<FIND>>>\n(.*?)\n<<<SUGGEST>>>\n(.*?)\n<<<REASON>>>\n(.*?)\n<<<END>>>'
     for m in re.finditer(pattern, content, re.DOTALL):
         find_text = m.group(1)
