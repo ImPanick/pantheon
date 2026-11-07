@@ -89,6 +89,16 @@ def _q(name: str) -> str:
 def _uid_fetch_rows(data) -> list:
     return [d for d in (data or []) if isinstance(d, bytes) and b"UID " in d]
 
+
+def _uids_from_fetch_rows(data, wanted) -> set:
+    """`B2012`. The UIDs a `(UID)` FETCH answered with, of those in `wanted`."""
+    found = set()
+    for row in _uid_fetch_rows(data):
+        m = re.search(rb"\bUID\s+(\d+)\b", row)
+        if m and m.group(1).decode() in wanted:
+            found.add(m.group(1).decode())
+    return found
+
 # ── Config ──
 # Multi-account aware. Accounts live in data/app.db :: email_accounts.
 # Callers can pass `account=` (match by name, user, or id) to pick a specific
@@ -2060,14 +2070,22 @@ def _bulk_set_flag(uids, folder, flag, add=True, account=None):
 
 
 def _bulk_move(uids, source_folder, dest_folder, account=None, role: str = ""):
-    """Move MANY messages between folders in one connection."""
+    """Move MANY messages between folders in one connection.
+
+    `B2012`. Returns how many of `uids` left the folder. The count was fixed
+    before the MOVE (how many the folder held), so a server that answers OK
+    without moving, or a fallback whose EXPUNGE removes nothing, read as done;
+    and a MOVE answered NO after moving part of the set (RFC 6851) read as
+    none. The folder is asked again afterwards instead, on this same selected
+    connection; only when that read fails is the server's answer taken.
+    """
     if not uids:
         return 0
     uids = [_one_uid(u) for u in uids]  # `B1980`, as in _bulk_set_flag
     if not all(uids):
         return 0
+    wanted = set(uids)
     conn = _imap_connect(account)
-    moved = 0
     try:
         conn.select(_q(source_folder))
         dest_folder = _resolve_folder(conn, dest_folder, role or _folder_role_from_name(dest_folder))
@@ -2076,24 +2094,28 @@ def _bulk_move(uids, source_folder, dest_folder, account=None, role: str = ""):
             status, data = conn.uid("FETCH", _b(msg_set), "(UID)")
         except Exception:
             return 0
-        existing = _uid_fetch_rows(data)
+        existing = _uids_from_fetch_rows(data, wanted) if status == "OK" else set()
         if not existing:
             return 0
-        moved = len(existing)
         dest_arg = _q(dest_folder)
         status, _ = conn.uid("MOVE", _b(msg_set), dest_arg)
         if status != "OK":
-            # Fallback: UID copy + flag-delete + expunge
+            # Fallback: UID copy + flag-delete + expunge, each step only once
+            # the one before it answered OK.
             status, _ = conn.uid("COPY", _b(msg_set), dest_arg)
-            if status != "OK":
-                return 0
-            status, _ = conn.uid("STORE", _b(msg_set), "+FLAGS", "\\Deleted")
-            if status != "OK":
-                return 0
-            conn.expunge()
+            if status == "OK":
+                status, _ = conn.uid("STORE", _b(msg_set), "+FLAGS", "\\Deleted")
+            if status == "OK":
+                conn.expunge()
+        try:
+            read_back, after = conn.uid("FETCH", _b(msg_set), "(UID)")
+        except Exception:
+            read_back, after = None, None
+        if read_back == "OK":
+            return len(existing - _uids_from_fetch_rows(after, wanted))
+        return len(existing) if status == "OK" else 0
     finally:
         conn.logout()
-    return moved
 
 
 def _search_uids(folder="INBOX", criteria="UNSEEN", account=None):
@@ -2727,9 +2749,13 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                     return [TextContent(type="text", text=f"Unknown bulk action: {action!r}. Use mark_read/mark_unread/archive/delete/junk.")]
             except Exception as e:
                 return [TextContent(type="text", text=f"Bulk {action} failed after partial work: {e}")]
+            # `B2012`: a move's count is what left the folder, so nothing moved
+            # may be a server that did not apply it, not only UIDs not there.
             if changed_n <= 0:
-                return [TextContent(type="text", text=f"No matching UIDs found in {folder}; 0 of {requested_n} email(s) {verb}.")]
-            suffix = "" if changed_n == requested_n else f" ({changed_n} of {requested_n} requested UIDs matched)"
+                return [TextContent(type="text", text=(
+                    f"0 of {requested_n} email(s) {verb} in {folder}: none of those UIDs is there, "
+                    "or the server did not apply the change."))]
+            suffix = "" if changed_n == requested_n else f" ({changed_n} of {requested_n} requested)"
             return [TextContent(type="text", text=f"Done — {changed_n} email(s) {verb}{suffix}.")]
 
         else:
