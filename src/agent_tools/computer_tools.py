@@ -52,7 +52,12 @@ SCREENSHOT = "screenshot"
 # Every action the tool takes, in the order the schema lists them: the
 # screenshot, then the protocol's input actions exactly as the protocol names
 # them (`Law 7` — a new input action reaches the model by being added there).
-ACTIONS: Tuple[str, ...] = (SCREENSHOT,) + tuple(P.INPUT_ACTIONS)
+#: `B1756`. The phone's own controls — what a person presses in its window
+#: (the side and navigation keys, rotate, fold, an address, the device list) —
+#: so the agent works the phone exactly as a person does, through the same
+#: route and the same holder, not a side channel. Each one is on the phone.
+PHONE_CONTROLS: Tuple[str, ...] = ("press", "rotate", "fold", "unfold", "open_url", "use_device")
+ACTIONS: Tuple[str, ...] = (SCREENSHOT,) + tuple(P.INPUT_ACTIONS) + PHONE_CONTROLS
 
 # Spellings a model trained on another computer-use tool reaches for. Accepted
 # rather than refused because a refusal of a synonym is a wasted round that the
@@ -132,6 +137,8 @@ def parse_args(content: Any) -> Tuple[Dict[str, Any], Optional[str]]:
         return {}, (f"“{args.get('action')}” is not an action `{TOOL_NAME}` knows. It is one "
                     f"of {', '.join(ACTIONS)}.")
     args["action"] = action
+    if action in PHONE_CONTROLS:
+        args["screen"] = "phone"   # `B1756`: the phone's own controls
     screen = str(args.get("screen") or "desktop").strip().lower()
     if screen in ("android", "mobile", "device"):
         screen = "phone"
@@ -172,6 +179,13 @@ def describe_action(args: Dict[str, Any]) -> str:
     card's command line and the screenshot's summary are both this, so the card
     says what was done without the raw arguments (they stay one click away)."""
     action = args.get("action")
+    if action in PHONE_CONTROLS:  # `B1756`
+        return "phone: " + {
+            "press": f"press {str(args.get('button') or '').replace('_', ' ')}",
+            "rotate": "rotate", "fold": "fold", "unfold": "unfold",
+            "open_url": f"open {args.get('url')}",
+            "use_device": f"use the {_device_name(args.get('device'))}",
+        }[action]
     if args.get("screen") == "phone":  # `B1751`
         return "phone: " + describe_action({k: v for k, v in args.items() if k != "screen"})
     if action == SCREENSHOT:
@@ -210,6 +224,43 @@ def describe_action(args: Dict[str, Any]) -> str:
     if action == "wait":
         return f"wait {args.get('ms', 1000)} ms"
     return str(action or TOOL_NAME)
+
+
+def _device_name(device: Any) -> str:
+    d = P.PHONE_DEVICES.get(str(device or ""))
+    return d["name"] if d else str(device or "device")
+
+
+def _control_request(args: Dict[str, Any]) -> Tuple[Optional[Tuple[str, Dict[str, Any]]], Optional[str]]:
+    """`B1756`. A phone control as the phone route's action and fields — the
+    window's own requests — or a sentence saying what is missing."""
+    action = args["action"]
+    if action == "press":
+        button = str(args.get("button") or "").strip().lower().replace(" ", "_").replace("-", "_")
+        if button not in P.PHONE_BUTTONS:
+            return None, f"`press` needs “button”: one of {', '.join(P.PHONE_BUTTONS)}."
+        return ("button", {"button": button}), None
+    if action == "rotate":
+        return ("rotate", {}), None
+    if action in ("fold", "unfold"):
+        return ("posture", {"posture": "closed" if action == "fold" else "open"}), None
+    if action == "open_url":
+        url = str(args.get("url") or "").strip()
+        if not url:
+            return None, "`open_url` needs “url”, such as https://example.org."
+        return ("open_url", {"url": url}), None
+    device = str(args.get("device") or "").strip().lower()
+    if device not in P.PHONE_DEVICES:
+        return None, ("`use_device` needs “device”: one of "
+                      + ", ".join(f"{k} ({v['name']})" for k, v in P.PHONE_DEVICES.items()) + ".")
+    return ("install", {"device": device}), None
+
+
+def _installing_line(state: Dict[str, Any]) -> str:
+    inst = state.get("install") if isinstance(state.get("install"), dict) else {}
+    step = inst.get("step_label") or "Installing"
+    pct = inst.get("percent")
+    return f"{step}{f' ({pct}%)' if isinstance(pct, int) else ''}"
 
 
 def command_line(content: Any) -> str:
@@ -343,6 +394,13 @@ async def _phone_on(client, account: str) -> Optional[Dict[str, Any]]:
         return e.as_result()
     if state.get("state") == "on":
         return None
+    if state.get("state") == "installing":  # `B1756`
+        name = next((d.get("name") for d in state.get("devices") or []
+                     if d.get("id") == state.get("device")), state.get("device"))
+        return {"output": (f"The phone ({name}) is being installed in the workstation: "
+                           f"{_installing_line(state)}. The first device downloads Android "
+                           "(a few GB) and takes minutes. Wait (`wait` with ms, on the phone) "
+                           "and look again."), "exit_code": 0}
     if state.get("state") == "starting":
         name = next((d.get("name") for d in state.get("devices") or []
                      if d.get("id") == state.get("device")), state.get("device"))
@@ -360,6 +418,51 @@ async def _phone_on(client, account: str) -> Optional[Dict[str, Any]]:
 
 class ComputerTool:
     """One action on the person's workstation display."""
+
+    async def _control(self, client, account: str, args: Dict[str, Any], owner: Optional[str],
+                       what: str) -> Dict[str, Any]:
+        """`B1756`. One of the phone's own controls, sent as the person's window
+        sends it (`ROUTES["phone"]`), then the phone looked at."""
+        from src.workstation_client import WorkstationError
+        req, problem = _control_request(args)
+        if problem:
+            return {"error": problem, "exit_code": 1}
+        verb, fields = req
+        if verb != "install":
+            started = await _phone_on(client, account)
+            if started:
+                return started
+        try:
+            state = await client.phone(account, verb, **fields)
+        except WorkstationError as e:
+            if e.code == "busy":
+                return {"error": f"{e.message} {BUSY_ADVICE}", "exit_code": 1,
+                        "workstation_error": e.code}
+            return e.as_result()
+        if verb == "install" and isinstance(state, dict) and state.get("state") != "on":
+            waiting = await _phone_on(client, account)
+            if waiting:
+                waiting = dict(waiting)
+                if "output" in waiting:
+                    waiting["output"] = f"Did: {what}. " + waiting["output"]
+                return waiting
+        import asyncio
+        await asyncio.sleep(0.6)
+        try:
+            shot = await client.phone(account, "screenshot")
+        except WorkstationError:
+            shot = None
+        if not isinstance(shot, dict) or not shot.get("data_b64"):
+            return {"output": f"Did: {what}. No screenshot came back after it — take one "
+                              "before the next action.", "exit_code": 0}
+        from src import screen_marks
+        listed = ""
+        if screen_marks.ENABLED:
+            shot, listed = await _marked(client, account, shot, owner, "phone")
+        output = f"Did: {what}. {_shot_line(shot, 'phone')}" + (f"\n{listed}" if listed else "")
+        return {"output": output, "exit_code": 0,
+                "images": [{"data": shot["data_b64"], "mimeType": shot.get("mime") or "image/png"}],
+                "screenshot_caption": f"Phone after {what}"}
 
     async def execute(self, content: str, ctx: Optional[dict] = None) -> Dict[str, Any]:
         from src.workstation_access import ensure_ready
@@ -383,6 +486,8 @@ class ComputerTool:
 
         what = describe_action(args)
         on_phone = args.get("screen") == "phone"
+        if action in PHONE_CONTROLS:
+            return await self._control(client, account, args, owner, what)
         if on_phone:
             if action == "wait":
                 # Waiting is what a booting phone needs, so it is done here,
@@ -460,5 +565,5 @@ class ComputerTool:
         }
 
 
-__all__ = ["ACTIONS", "BUSY_ADVICE", "ComputerTool", "MARK_ACTIONS", "SCREENSHOT", "TOOL_NAME", "command_line",
+__all__ = ["ACTIONS", "BUSY_ADVICE", "PHONE_CONTROLS", "ComputerTool", "MARK_ACTIONS", "SCREENSHOT", "TOOL_NAME", "command_line",
            "describe_action", "parse_args", "unavailable_reason"]

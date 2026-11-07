@@ -261,12 +261,19 @@ Size the VM for the people who work at once: each running machine takes up to
 **A phone in the workstation.** Each person can have a real Android device in
 their container workstation: Google's Android Emulator running Android 15
 (Google APIs), as a Pixel 9 Pro, Pixel 9 Pro Fold, Pixel 8, Galaxy S25 Ultra,
-Galaxy Z Fold6 or Pixel Tablet. The + menu's *Phone* opens it in a window drawn
-as the device, with its side keys working; the mouse is a finger (click to tap,
-drag to swipe, scroll to fling, right click for Back), and the agent uses it
-too (`computer` with `screen: phone`, and `adb` from its shell). It is built in
-only when asked for, because it is about 4 GB and building it accepts the
-[Android SDK License](https://developer.android.com/studio/terms):
+Galaxy Z Fold6 or Pixel Tablet. The Workbench's **Devices** room lists them:
+pick one and Pantheon downloads, installs and sets up what that device needs
+(the first time, after you accept the
+[Android SDK License](https://developer.android.com/studio/terms) there, about
+4 GB), then turns it on beside the list. The + menu's *Phone* opens the same
+phone in a window of its own. Either way it is drawn as the device, with its
+side keys working; the mouse is a finger (click to tap, drag to swipe, scroll
+to fling, right click for Back). The agent uses it exactly as you do: the same
+screen, taps, keys, rotate and fold, and the same device list (`computer` with
+`screen: phone`, `press`, `rotate`, `fold`, `open_url`, `use_device`), plus
+`adb` from its shell. What is installed is kept in the `workstation-android-sdk`
+volume, so a rebuild does not download it again. To have it in the image from
+the start instead (for a machine that will be offline later):
 
 ```sh
 echo WORKSTATION_PHONE=on >> .env
@@ -275,7 +282,7 @@ docker compose up -d --build workstation
 
 It needs KVM. On Linux that is `/dev/kvm` on the host; on Docker Desktop for
 Windows it is the nested virtualization above (`.wslconfig`, Windows 11). The
-window says when it is missing. Without KVM (or without `WORKSTATION_PHONE`),
+window says when it is missing. Without KVM,
 the phone opens as a **mobile view** instead: the workstation's Firefox alone on
 the phone's screen, at the chosen device's shape and CSS width, with a mobile
 user agent and touch on, so a website lays itself out as it does on that phone.

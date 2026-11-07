@@ -219,6 +219,7 @@ def test_the_container_is_in_the_stack_beside_the_vm():
     assert ct["cap_drop"] == ["NET_RAW"]
     assert not ct.get("privileged") and not ct.get("cap_add") and not ct.get("ports")
     assert ct["volumes"] == ["workstation-homes:/home", "workstation-pairing:/workstation-pairing",
+                             "workstation-android-sdk:/opt/android-sdk",   # `B1756`
                              "${APP_DATA_DIR:-./data}/projects:/projects:z"]
     assert gate["cap_drop"] == ["ALL"] and gate["cap_add"] == ["NET_ADMIN", "CHOWN"]
     assert not gate.get("ports")

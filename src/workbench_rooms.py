@@ -22,6 +22,8 @@ relay import this, and neither may pull in the app.
 INTEGRATIONS_ROOM = "MCP & Integrations"
 # The Skills room and the Skills window share a name.
 SKILLS_ROOM = "Skills"
+# `B1756`. The phone's room: its device list beside the phone itself.
+DEVICES_ROOM = "Devices"
 
 # A sentence's "in …": where the room is.
 INTEGRATIONS_PLACE = f"the Workbench's {INTEGRATIONS_ROOM} tab"

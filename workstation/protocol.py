@@ -364,6 +364,18 @@ ROUTES: Dict[str, Tuple[str, str]] = {
     #                           "screenshot_after"), in that screen's own pixels
     #   marks {}             -> `ROUTES["marks"]`'s, read from the device's own UI tree
     #                           (uiautomator), boxes in the phone screen's pixels
+    #   install {device?, accept_license?}
+    #                        -> `B1756`: the state; what the device needs (the SDK's
+    #                           tools the first time, its system image) installed by
+    #                           `provision.sh phone`, then the device booted. The
+    #                           Android SDK License is accepted once, by a person
+    #                           ("accept_license": true with holder "person"); `start`
+    #                           of a device not installed yet installs it the same way.
+    # `B1756`: each device in "devices" also says "installed" and "android" (its
+    # Android version); the state says "installed", "license": {"accepted", "url"},
+    # "install": {"state": idle|running|done|failed, "step"?, "step_label"?,
+    # "percent"?, "said"?, "why"?, "android"?} and, for a device not installed,
+    # "can_install". State "installing" is a device being installed.
     # The state: {"ok", "action", "available": bool, "why"?: str, "state": one of
     #   PHONE_STATES, "device": a PHONE_DEVICES key, "devices": [{"id", "name",
     #   "maker", "kind", "foldable", "width", "height", "density"}], "posture":
@@ -397,10 +409,10 @@ MAX_DESKTOP_HANDSHAKE_BYTES = 16_384
 NETWORK_ACTIONS = ("interfaces", "reach")
 # `B1751`. The phone (`ROUTES["phone"]`, `workstation/phone.py`).
 PHONE_ACTIONS = ("status", "start", "stop", "device", "button", "posture", "rotate",
-                 "open_url", "screenshot", "input", "marks")
+                 "open_url", "screenshot", "input", "marks", "install")
 #: The ones that never move the phone, so never `busy`.
 PHONE_LOOK_ACTIONS = ("status", "screenshot", "marks")
-PHONE_STATES = ("off", "starting", "on", "unavailable")
+PHONE_STATES = ("off", "installing", "starting", "on", "unavailable")
 #: `B1753`. What runs as the phone: the real Android ("android", which needs
 #: KVM), or, where there is none, the mobile view ("mobile_view": the
 #: workstation's Firefox shaped and identified as the device). The state's

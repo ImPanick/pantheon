@@ -50958,6 +50958,64 @@ body.plan-mode-active .chat-input-top > .model-picker-wrap:has(> .model-picker-m
   .phw-bezel { transition-duration: 0.01ms; }
 }
 
+/* ── `B1756` · the Devices room ─────────────────────────────────────────────
+   The Workbench's room for the phone: the device list on the left, the same
+   phone as the window on the right. The list uses the theme's panel and edge;
+   the device in use is marked with the edge's own colour, no new accent. */
+.devices-room { height: 100%; min-height: 0; }
+.phw-room {
+  display: grid;
+  grid-template-columns: minmax(240px, 320px) minmax(320px, 1fr);
+  gap: 14px;
+  height: 100%;
+  min-height: 0;
+}
+.phw-catalogue { display: flex; flex-direction: column; gap: 8px; min-height: 0; overflow-y: auto; padding-right: 4px; }
+.phw-cat-head { margin: 0; font-size: 14px; }
+.phw-cat-lede { margin: 0; font-size: 12px; line-height: 1.45; }
+.phw-cat-groups { display: flex; flex-direction: column; gap: 10px; }
+.phw-cat-maker { margin: 0 0 4px; font-size: 12px; font-weight: 600; letter-spacing: 0.02em; }
+.phw-cat-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.phw-cat-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+}
+.phw-cat-current { box-shadow: inset 3px 0 0 var(--border-control, var(--border)); border-color: var(--border-control, var(--border)); }
+.phw-cat-text { display: flex; flex-direction: column; min-width: 0; }
+.phw-cat-name { font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.phw-cat-facts { font-size: 11.5px; }
+.phw-cat-use { flex-shrink: 0; }
+.phw-cat-empty { margin: 0; font-size: 12px; }
+.phw-room-device { display: flex; flex-direction: column; gap: 8px; min-width: 0; min-height: 0; }
+.phw-room-head { display: flex; align-items: center; }
+.phw-room-head .phw-heading { margin: 0; font-size: 14px; }
+.phw-room-moved { margin: 24px auto; max-width: 420px; text-align: center; font-size: 13px; }
+.phw-progress { display: flex; flex-direction: column; gap: 4px; font-size: 12px; }
+.phw-progress[hidden], .phw-license[hidden] { display: none; }
+.phw-progress-bar { width: 100%; height: 8px; accent-color: var(--fg); }
+.phw-license {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+}
+.phw-license-text { margin: 0; font-size: 12.5px; line-height: 1.5; }
+.phw-license-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.phw-license-link { margin-right: auto; font-size: 12.5px; color: var(--link-fg); }
+@media (max-width: 768px) {
+  .phw-room { grid-template-columns: 1fr; grid-template-rows: auto 1fr; overflow-y: auto; }
+  .phw-catalogue { overflow: visible; }
+}
+
 /* ── `P26-01` … `P26-03` · notes pinned to the page ─────────────────────────
    The pins and marks take the theme's accent from the layer's `color`, which
    `pageNotes.js` reads from `--accent` (the hand's rule): no new accent site. */

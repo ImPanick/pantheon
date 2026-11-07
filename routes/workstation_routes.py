@@ -1023,8 +1023,9 @@ _BROWSER_FIELDS = ("url", "x", "y", "text", "submit", "keys", "dx", "dy", "tab",
 # `B1751`. What a person's phone window may ask, and the fields it may carry;
 # the daemon validates every one (`workstation/phone.py`). Touch is not here:
 # it is the stream's, while the person holds the screens.
-_PHONE_PERSON_ACTIONS = ("start", "stop", "device", "button", "posture", "rotate", "open_url")
-_PHONE_FIELDS = ("device", "button", "posture", "url")
+_PHONE_PERSON_ACTIONS = ("start", "stop", "device", "button", "posture", "rotate", "open_url",
+                         "install")
+_PHONE_FIELDS = ("device", "button", "posture", "url", "accept_license")
 
 
 def _phone_state(answer: Dict[str, Any]) -> Dict[str, Any]:
@@ -1036,7 +1037,10 @@ def _phone_state(answer: Dict[str, Any]) -> Dict[str, Any]:
             devices.append({"id": d["id"], "name": str(d.get("name") or "")[:80],
                             "maker": str(d.get("maker") or "")[:40],
                             "kind": d.get("kind") if d.get("kind") in ("phone", "foldable", "tablet") else "phone",
-                            "foldable": bool(d.get("foldable"))})
+                            "foldable": bool(d.get("foldable")),
+                            # `B1756`: whether picking it boots it now or installs it first.
+                            "installed": d.get("installed") is not False,
+                            "android": str(d.get("android") or "")[:40]})
     if not devices:
         devices = [{"id": k, "name": v["name"], "maker": v["maker"], "kind": v["kind"],
                     "foldable": v["kind"] == "foldable"} for k, v in P.PHONE_DEVICES.items()]
@@ -1059,6 +1063,23 @@ def _phone_state(answer: Dict[str, Any]) -> Dict[str, Any]:
     if out["mode"] == "mobile_view":
         out["why_not_android"] = str(answer.get("why_not_android") or "")[:500]
         out["user_agent"] = str(answer.get("user_agent") or "")[:200]
+    # `B1756`: the install a pick starts, and the licence it needs once.
+    out["installed"] = answer.get("installed") is not False
+    lic = answer.get("license") if isinstance(answer.get("license"), dict) else {}
+    out["license"] = {"accepted": bool(lic.get("accepted")),
+                      "url": "https://developer.android.com/studio/terms"}
+    inst = answer.get("install") if isinstance(answer.get("install"), dict) else {}
+    shaped: Dict[str, Any] = {"state": inst.get("state") if inst.get("state") in
+                              ("idle", "running", "done", "failed") else "idle"}
+    for key, limit in (("step", 20), ("step_label", 80), ("said", 160), ("why", 400), ("android", 40)):
+        if inst.get(key):
+            shaped[key] = str(inst[key])[:limit]
+    pct = inst.get("percent")
+    if isinstance(pct, int) and not isinstance(pct, bool):
+        shaped["percent"] = max(0, min(100, pct))
+    out["install"] = shaped
+    if "can_install" in answer:
+        out["can_install"] = bool(answer.get("can_install"))
     if answer.get("why"):
         out["why"] = str(answer["why"])[:500]
     return out
