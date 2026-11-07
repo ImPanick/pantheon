@@ -90,3 +90,31 @@ def test_router_reports_non_calendar_categories():
     assert classify_tool_intent("reply to that email").category == "email"
     assert classify_tool_intent("open my calendar").category == "ui"
     assert classify_tool_intent("research cost effective local models").category == "research"
+
+
+# Ported from upstream Odysseus e4cc8ef (#7054): "from <word>" and "on <word>"
+# alone sent questions about people and topics to the shell tools.
+import pytest as _pytest
+
+
+@_pytest.mark.parametrize("prompt", [
+    "Who is Jensen Huang from NVIDIA?", "Who is Tim Cook from Apple?",
+    "What happened on Monday?", "What is the best book on Rome?",
+    "Tell me a story from Japan", "What is the best GPU from NVIDIA?",
+    "Who is running from the police?",
+])
+def test_people_and_topics_are_not_mistaken_for_named_computers(prompt):
+    from src.action_intents import classify_tool_intent
+    assert classify_tool_intent(prompt).reason != "named computer task request"
+
+
+@_pytest.mark.parametrize("prompt", [
+    "check disk usage on gpu-box", "how much free disk on gpu-box?",
+    "what's the uptime on nas01", "list running processes on gpu-box",
+    "is nginx running on gpu-box", "is ffmpeg installed on workstation",
+    "what is the gpu usage on gpu-box", "copy the logs from gpu-box",
+    "fetch the config file from prod-db", "download the checkpoint from gpu-box",
+])
+def test_computer_tasks_on_a_named_host_keep_shell_tools(prompt):
+    from src.action_intents import classify_tool_intent
+    assert classify_tool_intent(prompt).category == "workspace"

@@ -252,7 +252,7 @@ def trend_summary(text: str, n: int = 10) -> dict:
     return {
         "waves": waves, "steps": len(waves) - 1, "filed": filed, "closed": closed,
         "opened": (last[0] - last[1]) - (first[0] - first[1]),
-        "ratio": f"{filed / closed:.3f}" if closed else "",
+        "ratio": f"{filed / closed:.3f}" if closed else "∞",   # nothing closed: unbounded, not blank
         "done_from": f"{100 * first[1] / first[0]:.1f}",
         "done_to": f"{100 * last[1] / last[0]:.1f}",
         "open_from": first[0] - first[1], "open_to": last[0] - last[1],

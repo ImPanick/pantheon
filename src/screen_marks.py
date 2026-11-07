@@ -42,6 +42,7 @@ from __future__ import annotations
 
 import base64
 import io
+import re
 import logging
 import shutil
 import subprocess
@@ -398,6 +399,58 @@ def listing(marks: Sequence[Dict[str, Any]], *, verb: str = '"mark": N') -> str:
         lines.append("(seen) marks were read from the picture, not described by the app: check the "
                      "screenshot when one matters.")
     return "\n".join(lines)
+
+
+# The owner's Gemma run, 2026-11-07: "it worked... However - it was insanely
+# slow." Every `computer` step answered with the whole screen's marks (70 on
+# the RuneScape page, OCR fragments included) and every one stayed in the
+# conversation, so each step re-read all the screens before it. Only the
+# newest screen's marks can be used (`resolve` reads the last screenshot), so
+# an older list is cut to one line. The newest is never touched, and only the
+# messages after the first cut change, so a local server's cached prefix up
+# to there holds.
+_LISTING_RE = re.compile(
+    r"Numbered marks on the screenshot \(use [^\n]*\):\n"
+    r"(?:\[\d+\][^\n]*(?:\n|$))+"
+    r"(?:\(seen\) marks were read[^\n]*(?:\n|$))?")
+SUPERSEDED_MARKS = "(Marks of this earlier screen left out: a newer screenshot replaced them.)\n"
+
+
+def _text_parts(message: Dict[str, Any]):
+    content = message.get("content")
+    if isinstance(content, str):
+        yield None, content
+    elif isinstance(content, list):
+        for i, part in enumerate(content):
+            if isinstance(part, dict) and isinstance(part.get("text"), str):
+                yield i, part["text"]
+
+
+def shed_superseded_marks(messages: List[Dict[str, Any]]) -> int:
+    """Cut every marks listing but the newest one in `messages`, in place.
+    Returns how many were cut."""
+    newest_seen = False
+    cut = 0
+    for message in reversed(messages or []):
+        if not isinstance(message, dict):
+            continue
+        for index, text in reversed(list(_text_parts(message))):
+            found = list(_LISTING_RE.finditer(text))
+            if not found:
+                continue
+            keep_last = not newest_seen
+            newest_seen = True
+            targets = found[:-1] if keep_last else found
+            if not targets:
+                continue
+            for match in reversed(targets):
+                text = text[:match.start()] + SUPERSEDED_MARKS + text[match.end():]
+                cut += 1
+            if index is None:
+                message["content"] = text
+            else:
+                message["content"][index] = {**message["content"][index], "text": text}
+    return cut
 
 
 # ── the last screenshot's marks, per person ─────────────────────────────────

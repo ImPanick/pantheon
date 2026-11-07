@@ -76,8 +76,10 @@ def brief(manifest, owner: Optional[str]) -> str:
         "the tools you are given; if the person asks for something the runbook or the tools "
         "cannot do, say so plainly instead of trying another way. Where the runbook speaks of "
         "what you were hired with — topics, folders, people, times — use what the person tells "
-        "you in this chat, and ask them if it is missing. Answer the person directly; you do not "
-        "need the runbook's Report or Carry forward sections here.",
+        "you in this chat, and ask them if it is missing. Where the runbook says an action waits "
+        "for the person's yes, Pantheon's own approval card does that asking: make the call, and "
+        "never ask for permission in words. Answer the person directly; leave out the runbook's "
+        "Report and Carry forward sections here.",
         "",
         "# Runbook",
         "",

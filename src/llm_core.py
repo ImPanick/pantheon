@@ -531,6 +531,39 @@ def _is_host_dead(url: str) -> bool:
             return False
         return True
 
+# The owner's LM Studio log, 2026-11-07: "Failed to load model
+# "qwen/qwen3.8-27b"" seven times in fifteen minutes, each attempt holding the
+# server ~17 s before the call fell through to the chat's own Gemma. A model
+# the server just said it cannot load is skipped for a while instead of
+# asked again on every side call and every turn.
+_UNLOADABLE_TTL = 300.0
+_unloadable: Dict[Tuple[str, str], float] = {}
+_UNLOADABLE_SIGNS = ("failed to load model", "model does not exist",
+                     "engine protocol startup was aborted")
+
+
+def _note_unloadable(url: str, model: str, status: int, text: str) -> None:
+    low = str(text or "").lower()
+    if status >= 400 and model and any(sign in low for sign in _UNLOADABLE_SIGNS):
+        with _host_health_lock:
+            _unloadable[(_host_key(url), str(model))] = time.time() + _UNLOADABLE_TTL
+        logger.warning("[llm] %s could not load %s; skipping it for %ds",
+                       _host_key(url), model, int(_UNLOADABLE_TTL))
+
+
+def _unloadable_reason(url: str, model: str) -> Optional[str]:
+    key = (_host_key(url), str(model or ""))
+    with _host_health_lock:
+        until = _unloadable.get(key)
+        if until is None:
+            return None
+        if time.time() >= until:
+            _unloadable.pop(key, None)
+            return None
+    return (f"{model} could not be loaded on {key[0]} a few minutes ago "
+            "(not enough memory beside the model already loaded?); skipped.")
+
+
 def _mark_host_dead(url: str) -> bool:
     """Record a connect failure. Only actually cools the host after
     _HOST_FAIL_THRESHOLD consecutive failures. Returns True if the host
@@ -2263,8 +2296,12 @@ def normalize_model_id(
 def llm_call(url: str, model: str, messages: List[Dict], temperature: float = LLMConfig.DEFAULT_TEMPERATURE,
              max_tokens: int = LLMConfig.DEFAULT_MAX_TOKENS, headers: Optional[Dict] = None,
              timeout: int = LLMConfig.DEFAULT_TIMEOUT, prompt_type: Optional[str] = None,
-             explicit_params=frozenset()) -> str:
+             explicit_params=frozenset(), thinking: Optional[bool] = None) -> str:
     """Synchronous LLM call with optional prompt type enhancement.
+
+    ``thinking=False`` is `llm_call_async`'s (`B1755`): a self-hosted thinking
+    model is asked not to reason, and the answer alone is returned — never its
+    reasoning in its place (upstream Odysseus e4cc8ef).
 
     ``explicit_params`` names the sampling parameters a person chose (`P2-13`,
     see ``_apply_local_generation_stability``); empty for every caller that
@@ -2350,6 +2387,8 @@ def llm_call(url: str, model: str, messages: List[Dict], temperature: float = LL
         _apply_local_generation_stability(payload, target_url, model, explicit_params)
         if provider == "mistral" and _supports_thinking(model):
             payload["reasoning_effort"] = _MISTRAL_REASONING_EFFORT
+        if thinking is False and _supports_thinking(model):
+            _turn_thinking_off(payload, url)
     try:
         note_model_activity(target_url, model)
         r = httpx_post_kimi_aware(target_url, h, json=payload, timeout=timeout)
@@ -2360,7 +2399,7 @@ def llm_call(url: str, model: str, messages: List[Dict], temperature: float = LL
         if _openai_responses.learn_from_refusal(target_url, model, r.status_code, r.text):
             return llm_call(url, model, messages, temperature=temperature, max_tokens=max_tokens,
                             headers=headers, timeout=timeout, prompt_type=prompt_type,
-                            explicit_params=explicit_params)
+                            explicit_params=explicit_params, thinking=thinking)
         raise HTTPException(502, f"Upstream {target_url} -> {r.status_code}: {r.text}")
     data = r.json()
     try:
@@ -2374,15 +2413,16 @@ def llm_call(url: str, model: str, messages: List[Dict], temperature: float = LL
         else:
             msg = data["choices"][0]["message"]
             content = msg.get("content")
+            _reasoning = "" if thinking is False else msg.get("reasoning_content")
             if isinstance(content, list):
                 # Mistral structured content — extract thinking + text
                 text_part, thinking_part = _normalize_mistral_content(content)
-                if thinking_part:
+                if thinking_part and thinking is not False:
                     response = thinking_part + "\n\n" + (text_part or "")
                 else:
-                    response = text_part or msg.get("reasoning_content") or ""
+                    response = text_part or _reasoning or ""
             else:
-                response = content or msg.get("reasoning_content") or ""
+                response = content or _reasoning or ""
         _set_cached_response(cache_key, response)
         return response
     except Exception:
@@ -2756,6 +2796,9 @@ async def llm_call_async(
 
     if _is_host_dead(target_url):
         raise HTTPException(503, f"Upstream {_host_key(target_url)} marked unreachable (cooldown active)")
+    _skip = _unloadable_reason(target_url, model)
+    if _skip:
+        raise HTTPException(503, _skip)
 
     call_timeout = _call_timeout(timeout)
     attempt = 0
@@ -2797,7 +2840,9 @@ async def llm_call_async(
                         availability_only_transport=availability_only_transport,
                         return_model_metadata=return_model_metadata,
                         explicit_params=explicit_params, max_tokens_floor=max_tokens_floor,
+                        thinking=thinking,
                     )
+                _note_unloadable(target_url, model, r.status_code, r.text)
                 friendly = _format_upstream_error(r.status_code, r.text, target_url, model=model)
                 logger.warning(
                     f"LLM async call to {target_url} failed in {duration:.2f}s "
@@ -2861,16 +2906,22 @@ async def llm_call_async(
                 else:
                     msg = data["choices"][0]["message"]
                     content = msg.get("content")
+                    # Upstream Odysseus e4cc8ef (#7054): a caller that turned
+                    # thinking off wants the answer only. A model that spent
+                    # its whole budget reasoning answers "", not its reasoning
+                    # handed back as a title, a query or a suggestion.
+                    _answer_only = thinking is False
+                    _reasoning = "" if _answer_only else msg.get("reasoning_content")
                     if isinstance(content, list):
                         # Mistral structured content — extract thinking + text
                         # (same contract as llm_call / stream_llm; see #5435).
                         text_part, thinking_part = _normalize_mistral_content(content)
-                        if thinking_part:
+                        if thinking_part and not _answer_only:
                             response = thinking_part + "\n\n" + (text_part or "")
                         else:
-                            response = text_part or msg.get("reasoning_content") or ""
+                            response = text_part or _reasoning or ""
                     else:
-                        response = content or msg.get("reasoning_content") or ""
+                        response = content or _reasoning or ""
                 _set_cached_response(
                     cache_key,
                     response,
@@ -3503,6 +3554,10 @@ async def _stream_llm_inner(url: str, model: str, messages: List[Dict], temperat
     if _is_host_dead(target_url):
         yield f'event: error\ndata: {json.dumps({"error": f"Upstream {_host_key(target_url)} unreachable (cooldown active)", "status": 503})}\n\n'
         return
+    _skip = _unloadable_reason(target_url, model)
+    if _skip:
+        yield f'event: error\ndata: {json.dumps({"error": _skip, "status": 503})}\n\n'
+        return
     note_model_activity(target_url, model)
     degenerate_guard = _DegenerateStreamGuard(model)
 
@@ -3948,6 +4003,7 @@ async def _stream_llm_inner(url: str, model: str, messages: List[Dict], temperat
             _clear_host_dead(target_url)
             if r.status_code != 200:
                 raw = (await r.aread()).decode(errors="replace")
+                _note_unloadable(target_url, model, r.status_code, raw)
                 # `B1029`. A length refusal stating what the server can serve:
                 # once more, asking for that, and nothing else about the request
                 # changed. No floor is passed down, so it is asked once.
