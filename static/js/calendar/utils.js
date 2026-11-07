@@ -179,3 +179,20 @@ export function _localDateOf(isoStr) {
   }
   return isoStr.slice(0, 10);
 }
+
+// `B1906`. The uid suffix the server gives a series' first occurrence
+// (`_expand_rrule` in routes/calendar_routes.py): `YYYY-MM-DD` for an all-day
+// series, `YYYY-MM-DDTHH:MM` for a timed one, in the frame its start is stored
+// in. A start that carries `Z` or an offset is stored as a UTC instant, so it
+// is keyed in UTC; a floating one is keyed by the wall time as written. '' when
+// the row has no start to key.
+export function _firstOccurrenceKey(ev) {
+  const start = typeof ev?.dtstart === 'string' ? ev.dtstart.trim() : '';
+  if (!/^\d{4}-\d{2}-\d{2}/.test(start)) return '';
+  if (ev.all_day) return start.slice(0, 10);
+  if (/[Zz]$|[+\-]\d{2}:?\d{2}$/.test(start)) {
+    const d = new Date(start);
+    return isNaN(d) ? '' : d.toISOString().slice(0, 16);
+  }
+  return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(start) ? start.slice(0, 16) : '';
+}

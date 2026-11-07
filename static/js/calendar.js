@@ -18,7 +18,7 @@ import {
   _trashIcon, _moreIcon, _bellIcon,
   _isCalBgImage, _calBgImageUrl, _calBgCss, _cssUrlEscape,
   _calReadableTextColor,
-  _ds, _addDays, _shiftDT, _tzOffset, _localDateOf,
+  _ds, _addDays, _shiftDT, _tzOffset, _localDateOf, _firstOccurrenceKey,
 } from './calendar/utils.js';
 
 const API_BASE = window.location.origin;
@@ -319,11 +319,24 @@ async function _deleteEvent(uid, { scope = 'series' } = {}) {
   //      other days kept rendering until the next full refresh.
   //   3. If the user clicked the master, strip every "master::*"
   //      expansion (same prefix scan).
-  const deleteOccurrenceOnly = scope === 'occurrence' && uid.includes('::');
+  // `B1906`: "This event only" always deletes one occurrence. A series held
+  // under its own uid (the row a create, or an edit that adds a repeat, leaves
+  // in the pool) went out as a series delete. It is now sent as its first
+  // occurrence, keyed the way the server keys it, and only those rows go.
+  const deleteOccurrenceOnly = scope === 'occurrence';
+  let target = uid;
+  if (deleteOccurrenceOnly && !uid.includes('::')) {
+    const key = _firstOccurrenceKey(_findEventByUid(uid));
+    if (!key) {
+      if (window.uiModule) window.uiModule.showError('Failed to delete event: could not tell which occurrence this is. Reload the calendar and try again.');
+      return { ok: false };
+    }
+    target = `${uid}::${key}`;
+  }
   const masterUid = uid.includes('::') ? uid.split('::')[0] : uid;
   const backups = {};
   const _matches = deleteOccurrenceOnly
-    ? (k) => k === uid
+    ? (k) => k === uid || k === target
     : (k) => k === uid || k === masterUid || k.startsWith(masterUid + '::');
 
   for (const k of Object.keys(_allEvents)) {
@@ -337,9 +350,9 @@ async function _deleteEvent(uid, { scope = 'series' } = {}) {
   }
   if (_open) _render();
   _updateBadge && _updateBadge();
-  const isRecurring = uid.includes('::');
+  const isRecurring = target.includes('::');
   const scopeParam = deleteOccurrenceOnly ? '?scope=occurrence' : '';
-  fetch(`${API_BASE}/api/calendar/events/${encodeURIComponent(uid)}${scopeParam}`, {
+  fetch(`${API_BASE}/api/calendar/events/${encodeURIComponent(target)}${scopeParam}`, {
     method: 'DELETE', credentials: 'same-origin',
   }).then(r => {
     // 404 = the event was already deleted by another session/device. That's

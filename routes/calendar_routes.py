@@ -1343,6 +1343,11 @@ def setup_calendar_routes(upload_handler=None) -> APIRouter:
             try:
                 ev = _get_or_404_event(db, base_uid, owner)
                 is_occurrence_delete = scope in {"occurrence", "instance"} and "::" in uid and bool(ev.rrule)
+                # `B1906`: a request for one occurrence never falls through to
+                # deleting the whole series (a series uid, or a series that no
+                # longer repeats). Nothing is committed yet.
+                if scope in {"occurrence", "instance"} and not is_occurrence_delete:
+                    raise HTTPException(400, "Occurrence delete requires a recurring occurrence uid")
                 is_caldav = ev.calendar and ev.calendar.source == "caldav"
                 if is_occurrence_delete:
                     key = _occurrence_exdate_key(uid, ev)
