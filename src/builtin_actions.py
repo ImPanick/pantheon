@@ -685,6 +685,9 @@ async def action_consolidate_memory(owner: str, **kwargs) -> Tuple[str, bool]:
 
         manager = MemoryManager(DATA_DIR)
         all_memories = manager.load_all()
+        # `B1953`. What each row said when this run read it, so the save below
+        # can tell this run's changes from what was written while it waited.
+        read_as = {m.get("id"): (m.get("text"), m.get("category")) for m in all_memories}
 
         _owner_clean = (owner or "").strip()
         text_limit = 2000
@@ -927,7 +930,26 @@ async def action_consolidate_memory(owner: str, **kwargs) -> Tuple[str, bool]:
             await _try_ai_tidy_group(group_owner, group_memories)
 
         if total_removed or total_cleaned:
-            manager.save(all_memories)
+            # `B1953`. Onto the store as it is now, not the copy read before the
+            # wait for a quiet chat and the model call (up to two minutes a
+            # group). This task starts on `memory_added`, so memories were
+            # being written meanwhile, and saving that copy overwrote them. A
+            # row this run removed or rewrote is changed only if it still says
+            # what this run read; one added, edited or deleted meanwhile stays
+            # as it is. The strict read: an unreadable store is not written.
+            tidied = {m.get("id"): m for m in all_memories}
+            current = []
+            for row in manager.load_all_for_update():
+                rid = row.get("id")
+                if read_as.get(rid) != (row.get("text"), row.get("category")):
+                    current.append(row)
+                    continue
+                mine = tidied.get(rid)
+                if mine is None:
+                    continue
+                row["text"], row["category"] = mine.get("text"), mine.get("category")
+                current.append(row)
+            manager.save(current)
             if ai_used:
                 reasons = ai_reasons[:3]
                 reason_text = f": {'; '.join(reasons)}" if reasons else ""

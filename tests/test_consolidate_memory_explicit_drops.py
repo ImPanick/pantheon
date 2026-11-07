@@ -24,6 +24,9 @@ class _FakeMM:
             {"id": "c", "owner": "alice", "text": "Lives in Cairo", "category": "fact"},
         ]
 
+    # `B1953`. The tidy reads the store again, strictly, right before it saves.
+    load_all_for_update = load_all
+
     def save(self, entries):
         _FakeMM.saved = list(entries)
 
