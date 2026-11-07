@@ -270,6 +270,14 @@ _TIMEOUT_EXEMPT_PREFIXES = (
 import re as _re_ceiling
 _TIMEOUT_EXEMPT_PATTERNS = (
     _re_ceiling.compile(r"^/api/workflows/[^/]+/nodes/[^/]+/test/?$"),
+    # `B1961`. *Compact* (`POST /api/session/{id}/compact`) asks the utility
+    # model and then the chat's own for the summary, each with the time a
+    # local reasoning model needs (`B1731`: 180 s local, 90 s remote), and
+    # condenses the chat itself when neither answers, so it is bounded
+    # already. Under the ceiling a slow summary was answered "Request exceeded
+    # 45s timeout" while the compaction finished behind that answer and
+    # rewrote the chat (`B1093`). Matched on the route path (`B1958`).
+    _re_ceiling.compile(r"^/api/session/[^/]+/compact/?$"),
 )
 
 

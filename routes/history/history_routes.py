@@ -267,6 +267,25 @@ def _window_used_tokens(session) -> int:
         return used
 
 
+def _stored_since(snapshot: list, current: list) -> list:
+    """`B1961`. The messages stored after ``snapshot`` was read, when the chat
+    (``current``) still begins with it. None when it was rewritten meanwhile:
+    a compaction then writes what it wrote, as it always did."""
+    current = list(current or [])
+    if len(current) <= len(snapshot):
+        return []
+
+    def same(read, now) -> bool:
+        if read is now:
+            return True
+        read_id = (getattr(read, "metadata", None) or {}).get("_db_id")
+        return read_id is not None and read_id == (getattr(now, "metadata", None) or {}).get("_db_id")
+
+    if not all(same(read, now) for read, now in zip(snapshot, current)):
+        return []
+    return current[len(snapshot):]
+
+
 async def _wheel_window(request: Request, session, row) -> tuple:
     """`(window, context_length, known, mode, agent_budget)` — the window the
     context wheel draws a chat against, and how it got there.
@@ -1226,6 +1245,14 @@ def setup_history_routes(session_manager, upload_handler=None) -> APIRouter:
                           **({"context_breakdown": last_request} if last_request else {})},
             )
             new_history = [system_summary, summary_msg] + list(recent)
+            # `B1961`. A turn the person sent while the summary was being
+            # written is newer than everything read above. It is kept, after
+            # the kept messages, instead of going with the rows this rewrite
+            # deletes.
+            try:
+                new_history += _stored_since(history, session_manager.get_session(session_id).history)
+            except KeyError:
+                pass
 
             # `B1506`. The stored order is the order in memory: the whole
             # history in one transaction, in order, through the seam

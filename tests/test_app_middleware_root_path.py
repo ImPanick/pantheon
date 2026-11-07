@@ -69,8 +69,10 @@ for prefix in PREFIXES:
         RESULT["stops"][prefix][path] = len(stopped) - before
 '''
 
-#: A route the ceiling leaves alone, and one it does not.
-CEILING = {"/api/upload/x": 200, "/api/sessions/x": 504}
+#: A route the ceiling leaves alone, and one it does not. `B1961`: a chat's
+#: compaction is left alone, its context reading is not.
+CEILING = {"/api/upload/x": 200, "/api/sessions/x": 504,
+           "/api/session/c1/compact": 200, "/api/session/c1/context": 504}
 #: The page's own polls stop nothing; a person's request stops background work.
 GATE = {"/api/activity/heartbeat": 0, "/api/health": 0, "/api/chat/stream_status/c1": 0,
         "/api/sessions": 1}
