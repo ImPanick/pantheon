@@ -100,6 +100,38 @@ async def do_manage_calendar(content: str, owner: Optional[str] = None) -> Dict:
             q = q.filter(CalendarCal.owner == owner)
         return q
 
+    def _event_uid_candidates(raw_uid) -> list:
+        """`B1907`. The uid as given, then the uid inside an event anchor.
+
+        Replies write an event as `[Summary](#event-<uid>)`, and list_events and
+        create_event print the same anchors, so a model copies `#event-<uid>`
+        (or `event-<uid>`) into `uid`. The exact text is tried first, so a real
+        uid that begins with `event-` still finds itself.
+        """
+        text = str(raw_uid or "").strip()
+        candidates = [text]
+        if text.startswith("#event-"):
+            candidates.append(text[len("#event-"):])
+        elif text.startswith("event-"):
+            candidates.append(text[len("event-"):])
+        return [c for i, c in enumerate(candidates) if c and c not in candidates[:i]]
+
+    def _find_event(raw_uid):
+        """`(event, series uid, None)` for the event `raw_uid` names, or
+        `(None, "", error)` with the error the tool has always answered."""
+        malformed = None
+        for index, candidate in enumerate(_event_uid_candidates(raw_uid)):
+            try:
+                candidate_base = _resolve_base_uid(candidate)
+            except ValueError as e:
+                if index == 0:
+                    malformed = str(e)
+                continue
+            found = _event_query().filter(CalendarEvent.uid == candidate_base).first()
+            if found is not None:
+                return found, candidate_base, None
+        return None, "", malformed or f"Event {raw_uid} not found"
+
     def _reminder_minutes(raw_args) -> Optional[int]:
         raw = (
             raw_args.get("reminder_minutes")
@@ -478,13 +510,9 @@ async def do_manage_calendar(content: str, owner: Optional[str] = None) -> Dict:
             uid = args.get("uid")
             if not uid:
                 return {"error": "uid is required", "exit_code": 1}
-            try:
-                base_uid = _resolve_base_uid(uid)
-            except ValueError as e:
-                return {"error": str(e), "exit_code": 1}
-            ev = _event_query().filter(CalendarEvent.uid == base_uid).first()
+            ev, base_uid, lookup_error = _find_event(uid)
             if not ev:
-                return {"error": f"Event {uid} not found", "exit_code": 1}
+                return {"error": lookup_error, "exit_code": 1}
             missing_id = reserve_upload_references(
                 get_upload_handler(),
                 owner,
@@ -502,6 +530,8 @@ async def do_manage_calendar(content: str, owner: Optional[str] = None) -> Dict:
                 ev.description = args["description"]
             if args.get("location") is not None:
                 ev.location = args["location"]
+            prev_span = (ev.dtend - ev.dtstart) if (ev.dtstart and ev.dtend) else None
+            prev_all_day = bool(ev.all_day)
             if args.get("dtstart") is not None:
                 # Anchor naive/natural-language input to the USER's timezone and
                 # refresh is_utc, exactly like create_event. Parsing with the
@@ -512,6 +542,15 @@ async def do_manage_calendar(content: str, owner: Optional[str] = None) -> Dict:
                 )
                 ev.dtstart, _su = _parse_event_dt(args["dtstart"])
                 ev.is_utc = bool(_su and not _eff_all_day)
+                if args.get("dtend") is None:
+                    # `B1907`: a new start with no end moves the event and keeps
+                    # its length; the old end stayed, so a later start ended
+                    # before it began. A changed all-day flag takes create_event's
+                    # default span.
+                    if bool(_eff_all_day) == prev_all_day and prev_span and prev_span > timedelta(0):
+                        ev.dtend = ev.dtstart + prev_span
+                    else:
+                        ev.dtend = ev.dtstart + (timedelta(days=1) if _eff_all_day else timedelta(hours=1))
             if args.get("dtend") is not None:
                 ev.dtend, _eu = _parse_event_dt(args["dtend"])
             if args.get("all_day") is not None:
@@ -539,13 +578,9 @@ async def do_manage_calendar(content: str, owner: Optional[str] = None) -> Dict:
             uid = args.get("uid")
             if not uid:
                 return {"error": "uid is required", "exit_code": 1}
-            try:
-                base_uid = _resolve_base_uid(uid)
-            except ValueError as e:
-                return {"error": str(e), "exit_code": 1}
-            ev = _event_query().filter(CalendarEvent.uid == base_uid).first()
+            ev, base_uid, lookup_error = _find_event(uid)
             if not ev:
-                return {"error": f"Event {uid} not found", "exit_code": 1}
+                return {"error": lookup_error, "exit_code": 1}
             is_caldav = ev.calendar and ev.calendar.source == "caldav" and ev.remote_href
             if is_caldav:
                 _record_caldav_delete_tombstone(db, ev, owner)
