@@ -158,11 +158,15 @@ async def test_a_one_off_task_the_tool_has_no_date_for_is_not_created(tasks):
 
 @pytest.mark.asyncio
 async def test_a_task_made_for_a_crew_member_first_runs_in_their_zone(tasks):
+    # The model sends UTC, as `manage_tasks`' schema tells it to (`B1873`):
+    # 22:00 UTC is 09:00 in Sydney, stored as Sydney's wall clock.
     answer = await _ask(action="create", name="Ops check", prompt="Check the queue",
-                        schedule="daily", scheduled_time="09:00", crew_member_id="sydney")
+                        schedule="daily", scheduled_time="22:00", crew_member_id="sydney")
 
     assert answer["exit_code"] == 0, answer
-    assert _row(tasks, answer["task_id"])["next_run"] == datetime(2026, 11, 9, 22, 0)   # 09:00 in Sydney
+    made = _row(tasks, answer["task_id"])
+    assert made["scheduled_time"] == "09:00"
+    assert made["next_run"] == datetime(2026, 11, 9, 22, 0)   # 09:00 in Sydney
 
 
 @pytest.mark.asyncio
