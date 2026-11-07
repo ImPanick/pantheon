@@ -811,7 +811,10 @@ def _parse_qualified_mcp_args(tool: str, content: str) -> tuple[Dict, Optional[s
 
 
 def _parse_generate_image(content: str) -> Dict:
-    lines = content.strip().split("\n")
+    # `B2007`: split first. A native call with no prompt arrives with line 1
+    # empty; stripping the whole content dropped it, and the size, quality or
+    # model was drawn as the prompt. Each value is stripped where it is read.
+    lines = content.split("\n")
     args = {"prompt": lines[0].strip() if lines else ""}
     for i, key in enumerate(["model", "size", "quality"], 1):
         if len(lines) > i and lines[i].strip():
