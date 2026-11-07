@@ -1187,6 +1187,14 @@ def _resolve_skill_test_model(user, body: dict) -> tuple:
     resolution for the comparison. A second copy would be two answers to "which
     model tested this skill?", and a comparison whose halves could resolve
     differently is not a comparison (`Law 14`).
+
+    `B1818`. "The caller's" is an endpoint this person has added, never a URL.
+    The request names one (the Workshop sends the open chat's), and the test
+    runs at that endpoint's own chat URL with that endpoint's own credentials.
+    The request's `endpoint_url` and `headers` used to be taken as they came,
+    so anyone with a skill could have the server dial loopback, the LAN or a
+    metadata address with an `Authorization` of their choosing, which the
+    session routes refuse (`B541`). The request's headers are never read.
     """
     from src.endpoint_resolver import resolve_endpoint
 
@@ -1195,10 +1203,31 @@ def _resolve_skill_test_model(user, body: dict) -> tuple:
     # session's model. Fall back to the caller's session model only if unset.
     url, model, headers = resolve_endpoint("utility", owner=user)
     if not url or not model:
-        url = url or ((body.get("endpoint_url") or "").strip() or None)
+        named = body.get("endpoint_url")
+        named = named.strip() if isinstance(named, str) else ""
+        if not url and named:
+            from core.database import SessionLocal
+            from src.endpoint_resolver import (
+                build_chat_url, build_headers, registered_endpoint_for_url,
+                resolve_endpoint_runtime,
+            )
+            db = SessionLocal()
+            try:
+                endpoint = registered_endpoint_for_url(db, named, user)
+            finally:
+                db.close()
+            if endpoint is None:
+                raise HTTPException(400, "Pick a model endpoint you have added in Settings.")
+            try:
+                base, api_key = resolve_endpoint_runtime(endpoint, owner=user)
+            except Exception as exc:
+                logger.warning("Skill test: endpoint %s could not be signed in to: %s",
+                               getattr(endpoint, "id", "?"), exc)
+                raise HTTPException(
+                    400, "That model endpoint could not be signed in to. Check it in Settings.",
+                ) from exc
+            url, headers = build_chat_url(base), build_headers(api_key, base)
         model = model or ((body.get("model") or "").strip() or None)
-        if headers is None and isinstance(body.get("headers"), dict):
-            headers = body.get("headers")
     if not url or not model:
         raise HTTPException(400, "No model configured — set a Default or Utility model in Settings.")
 
