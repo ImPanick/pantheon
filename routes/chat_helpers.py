@@ -20,6 +20,7 @@ from src.model_context import estimate_tokens, get_context_length
 from src.auth_helpers import effective_user, request_is_a_person
 from src.prompt_security import untrusted_context_message
 from src.attachment_refs import attachment_ref
+from src.tool_policy import tool_toggle_enabled
 from routes.prefs_routes import _load_for_user as load_prefs_for_user
 
 from fastapi import HTTPException
@@ -1073,7 +1074,10 @@ async def build_chat_context(
     _preface_kwargs = dict(
         message=_ctx_msg,
         session=sess,
-        use_web=use_web and not skip_web,
+        # `B2017`: `use_web` is the raw form string on `/api/chat_stream`, and
+        # `"false"` is truthy. Read it as the route's own web gate does
+        # (`web_search_enabled_for_turn`); `B97` keeps network toggles strict.
+        use_web=tool_toggle_enabled(use_web) and not skip_web,
         use_memory=mem_enabled,
         time_filter=time_filter,
         preset_system_prompt=preset.system_prompt,
