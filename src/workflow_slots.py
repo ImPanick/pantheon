@@ -163,6 +163,7 @@ NODE_SLOTS = {
         "fields": NEVER_WHAT,
         "fields[].name": NEVER_WHAT,
         "fields[].value": VALUE_INLINE,
+        "on_missing": NEVER_WHAT,        # `B1881`: stop, or leave it empty
     },
     "merge": {
         "mode": NEVER_WHAT,

@@ -613,6 +613,30 @@ _SET_PART_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]{0,63}")
 _YES_WORDS = frozenset({"true", "yes", "1", "on"})
 _NO_WORDS = frozenset({"false", "no", "0", "off", ""})
 
+# `B1881` (`set-missing-silent-and-type-words`). The audit found a Set step
+# whose field read nothing stored `null`, said so only in its text, and the
+# run ended green — which is how a webhook clipped short, or data lost past a
+# Wait, showed as a successful run — while an HTTP, MCP, Code or AI step that
+# reads nothing fails. So a Set step now STOPS the run, naming the field and
+# what it read, unless its `on_missing` says to leave the field empty and go
+# on (what every Set step did before this row; the form offers it, and a
+# field may also end in `| default:"…"`, `B1879`).
+SET_ON_MISSING_KEY = "on_missing"
+SET_MISSING_STOP = "stop"
+SET_MISSING_EMPTY = "empty"
+SET_ON_MISSING = (SET_MISSING_STOP, SET_MISSING_EMPTY)
+SET_ON_MISSING_WORDS = {SET_MISSING_STOP: "stop the run and say which",
+                        SET_MISSING_EMPTY: "leave it empty and go on"}
+# Said after which field read what, when a Set step stops.
+SET_MISSING_HELP = ("Pick a field that is there, end the reference in | default:\"…\" for when "
+                    "it is not, or set “If a field is not there” to leave it empty and go on.")
+
+
+def set_stops_on_missing(config) -> bool:
+    """`B1881`. Whether a Set step with these settings stops when a field
+    reads nothing — yes, unless `on_missing` is "empty"."""
+    return not (isinstance(config, dict) and config.get(SET_ON_MISSING_KEY) == SET_MISSING_EMPTY)
+
 
 def set_name_parts(name) -> tuple | None:
     """`customer.name` → `("customer", "name")`; `None` for a name that is
@@ -717,10 +741,12 @@ class SetMade(NamedTuple):
     """`B1879`. What a Set step makes: `data`, the object; `missing`, the
     references that reached nothing (their fields are `null`); `wrong`, a
     sentence for each field whose value is not the type it says (its field
-    is `null` too)."""
+    is `null` too); `absent` (`B1881`), `(name, references)` for each field
+    that read nothing, so a step that stops can say which field."""
     data: dict
     missing: tuple
     wrong: tuple
+    absent: tuple = ()
 
 
 def make_set(node: dict, ctx) -> SetMade:
@@ -731,6 +757,7 @@ def make_set(node: dict, ctx) -> SetMade:
     data = {}
     missing = []
     wrong = []
+    absent = []
     for field in (node.get("config") or {}).get("fields") or ():
         if not isinstance(field, dict) or not isinstance(field.get("name"), str):
             continue
@@ -739,6 +766,8 @@ def make_set(node: dict, ctx) -> SetMade:
         if isinstance(value, str):
             value, miss = render_value(parse_template(value), ctx)
             missing.extend(miss)
+            if miss:
+                absent.append((name, tuple(miss)))
         else:
             value = json.loads(json.dumps(value, default=str))
         kind = field.get("type")
@@ -750,7 +779,17 @@ def make_set(node: dict, ctx) -> SetMade:
                 typed = None
             value = typed
         _place(data, set_name_parts(name) or (name,), value)
-    return SetMade(data, tuple(dict.fromkeys(missing)), tuple(wrong))
+    return SetMade(data, tuple(dict.fromkeys(missing)), tuple(wrong), tuple(absent))
+
+
+def set_missing_sentence(label: str, absent) -> str:
+    """`B1881`. Why a Set step stopped: "“Shape” stopped: “title” read
+    nothing from {{ steps.mail.data.title }}. Pick a field that is there, …"
+    — each field and what it read, as written (`missing_text`: with the
+    change that could not use it, when one could not)."""
+    said = "; ".join(f"“{name}” read nothing from {', '.join(str(r) for r in refs)}"
+                     for name, refs in absent)
+    return f"“{label}” stopped: {said}. {SET_MISSING_HELP}"
 
 
 def build_set(node: dict, ctx) -> tuple:

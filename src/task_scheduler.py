@@ -7540,6 +7540,12 @@ class TaskScheduler:
             if made.wrong:
                 # `B1879`. A field whose value is not the type it says.
                 return StepDone(NodeResult(NODE_STATUS_ERROR, payload=" ".join(made.wrong)), None)
+            if made.absent and wl.set_stops_on_missing(node.get("config")):
+                # `B1881`. A field that read nothing stops the run, as it does
+                # in every other step — unless the step says to leave it empty.
+                return StepDone(NodeResult(NODE_STATUS_ERROR, payload=(
+                    wl.set_missing_sentence(node.get("label") or node["id"], made.absent)
+                    + self._cut_tail(walk))), None)
             names = [f.get("name") for f in (node.get("config") or {}).get("fields") or ()
                      if isinstance(f, dict) and isinstance(f.get("name"), str)]
             text = "Set " + ", ".join(f"“{k}”" for k in dict.fromkeys(names)) + "."
@@ -7585,12 +7591,18 @@ class TaskScheduler:
         """Why a step could not read what it refers to. A record cut past
         `workflow_node_record_max_chars` after a resume is named so."""
         names = ", ".join(str(m) for m in (missing or ()))
+        return f"“{node.get('label')}” refers to something that is not there: {names}.{self._cut_tail(walk)}"
+
+    @staticmethod
+    def _cut_tail(walk) -> str:
+        """" A step it reads was kept only in part …" when a record this run
+        reads was cut after a resume, else "" (shared with a Set step that
+        stops, `B1881`)."""
         cut = []
         if walk is not None:
             cut = [n for n in walk.state.own if walk.state.truncated(n)]
-        tail = (" A step it reads was kept only in part (workflow_node_record_max_chars), "
+        return (" A step it reads was kept only in part (workflow_node_record_max_chars), "
                 "so after a pause its value is not there." if cut else "")
-        return f"“{node.get('label')}” refers to something that is not there: {names}.{tail}"
 
     async def _run_model_step(self, task, workflow_name: str, node: dict, db, slot: str, *,
                               ctx: dict, answer, deliver: bool, may_wait: bool):
@@ -7700,8 +7712,10 @@ class TaskScheduler:
             return StepDone(NodeResult(NODE_STATUS_ERROR, payload=self._missing_words(
                 node, missing or [source], walk)), None)
         if not isinstance(value, list):
+            # `B1881`: in words — "was handed text", never Python's "str".
+            from src.workflow_logic import type_words
             return StepDone(NodeResult(NODE_STATUS_ERROR, payload=(
-                f"“{label}” was handed {type(value).__name__}, not a list, so there was "
+                f"“{label}” was handed {type_words(value)}, not a list, so there was "
                 f"nothing to go through.")), None)
         cap = wr.foreach_max_items(task.owner)
         total = len(value)

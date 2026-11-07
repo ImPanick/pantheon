@@ -84,6 +84,8 @@ from src.workflow_logic import (
     OPERATORS,
     PORT_OTHERWISE,
     PORT_THEN,
+    SET_ON_MISSING,
+    SET_ON_MISSING_KEY,
     SET_TYPE_WORDS,
     SET_TYPES,
     case_port,
@@ -91,6 +93,7 @@ from src.workflow_logic import (
     reads_as_moment,
     set_name_parts,
     set_names_clash,
+    set_stops_on_missing,
 )
 from src.workflow_pattern import PATTERN_HELP, pattern_problem
 from src.workflow_refs import (
@@ -271,7 +274,7 @@ NODE_CONFIG_FIELDS = {
     NODE_KIND_RUN_TASK: ("task_id",),
     NODE_KIND_IF: ("conditions", "join"),
     NODE_KIND_SWITCH: ("cases",),
-    NODE_KIND_SET: ("fields",),
+    NODE_KIND_SET: ("fields", "on_missing"),   # `B1881`: on_missing
     NODE_KIND_MERGE: ("mode",),
     NODE_KIND_WAIT: ("mode", "minutes", "time", "tz"),
     NODE_KIND_FOREACH: ("list", "step", "on_error"),
@@ -1368,6 +1371,7 @@ _FIELD_WORDS = {
     "query": "Query", "body": "Body", "body_mode": "Body", "tool": "Tool",
     "args": "Argument", "skill": "Skill", "language": "Language", "source": "Code",
     "timeout_seconds": "Time limit", "input": "Input",
+    "on_missing": "If a field is not there",
 }
 
 
@@ -1621,6 +1625,12 @@ def _kind_problem(node: dict, *, owner, tasks_by_id, crew_ids, owner_is_admin,
             return _refusal(REFUSE_BAD_SETTING, (node_id,),
                             f"{_called(node)}: “{inner}” is inside “{outer}”, which is set as "
                             f"well. Set one or the other")
+        if (config.get(SET_ON_MISSING_KEY) is not None
+                and config.get(SET_ON_MISSING_KEY) not in SET_ON_MISSING):
+            # `B1881`.
+            return _refusal(REFUSE_BAD_SETTING, (node_id,),
+                            f"{_called(node)}: when a field is not there it stops or leaves it "
+                            f"empty", SET_ON_MISSING_KEY)
     if kind == NODE_KIND_MERGE:
         if config.get("mode") is not None and config.get("mode") not in MERGE_MODES:
             return _refusal(REFUSE_BAD_SETTING, (node_id,),
@@ -2300,6 +2310,9 @@ def plan_lines(node: dict, resources: WorkflowResources | None = None) -> list:
             kind = SET_TYPE_WORDS.get(field.get("type"))
             lines.append(f"{field.get('name')} ← {_shown(field.get('value'))}"
                          + (f", as {kind}" if kind else ""))
+        if not set_stops_on_missing(config):
+            # `B1881`: said only when it does not stop, which is the default.
+            lines.append("A field that is not there would be left empty, and it would go on.")
     elif kind == NODE_KIND_MERGE:
         lines.append("Would go on as soon as the first branch arrives."
                      if config.get("mode") == MERGE_FIRST else

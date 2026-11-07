@@ -93,7 +93,7 @@ FULL = {
     "if": {"conditions": [{"left": "l", "op": "equals", "right": "r"}], "join": "all"},
     "switch": {"cases": [{"id": "a", "label": "A", "join": "any",
                           "conditions": [{"left": "l", "op": "one_of", "right": ["x", "y"]}]}]},
-    "set": {"fields": [{"name": "n", "value": "v"}]},
+    "set": {"fields": [{"name": "n", "value": "v"}], "on_missing": "empty"},   # `B1881`
     "merge": {"mode": "all"},
     "wait": {"mode": "until", "minutes": 5, "time": "08:00", "tz": "UTC"},
     "foreach": {"list": "{{ steps.a.data.l }}", "on_error": "stop",

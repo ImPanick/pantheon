@@ -115,6 +115,12 @@ export const SET_TYPES = Object.freeze([
   ['', 'as it comes'], ['text', 'text'], ['number', 'a number'], ['yes/no', 'yes or no'],
   ['json', 'JSON (a list or an object)'],
 ]);
+/** `B1881`. What a Set step does when a field reads nothing
+ *  (`workflow_logic.SET_ON_MISSING`, `SET_ON_MISSING_WORDS`, held equal by a
+ *  test); "stop" is what a step that says nothing does. */
+export const SET_ON_MISSING = Object.freeze([
+  ['stop', 'stop the run and say which'], ['empty', 'leave it empty and go on'],
+]);
 /** `B1879`. A Set field's name: up to eight names joined by dots, each
  *  letters, digits and _ (`workflow_logic.set_name_parts`). */
 const SET_NAME_RE = /^[A-Za-z_][A-Za-z0-9_]{0,63}(?:\.[A-Za-z_][A-Za-z0-9_]{0,63}){0,7}$/;
@@ -562,9 +568,17 @@ function buildSet(ctx) {
     },
   });
   ctx.onDestroy(() => rows.destroy());
+  // `B1881`. A field that reads nothing stops the run (the default, as in
+  // every other step), or is left empty — what a Set step did before. Written
+  // only when it says "leave it empty", or the step already said, so a step
+  // saved before this row comes back as it was.
+  const onMissing = _selectField(body, 'If a field is not there', SET_ON_MISSING,
+    { value: cfg.on_missing === 'empty' ? 'empty' : 'stop', field: 'on_missing',
+      hint: 'A field can also end in | default:"…" for when it is not there.' });
   return () => {
     const fields = [];
     const names = new Set();
+    const tail = onMissing.value === 'empty' || cfg.on_missing != null ? { on_missing: onMissing.value } : {};
     for (const [j, r] of rows.read().entries()) {
       if (r.refusal) return r;
       if (names.has(r.value.name)) return { refusal: `“${r.value.name}” is set twice. Each name once.`, field: `fields[${j}].name` };
@@ -577,7 +591,7 @@ function buildSet(ctx) {
       names.add(r.value.name);
       fields.push(r.value);
     }
-    return { config: { fields } };
+    return { config: { fields, ...tail } };
   };
 }
 
