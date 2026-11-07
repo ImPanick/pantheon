@@ -677,7 +677,7 @@ async def action_consolidate_memory(owner: str, **kwargs) -> Tuple[str, bool]:
     try:
         import json
         import re
-        from difflib import SequenceMatcher
+        import unicodedata
         from src.constants import DATA_DIR
         from src.llm_core import llm_call_async_with_fallback
         from src.memory import MemoryManager
@@ -714,9 +714,11 @@ async def action_consolidate_memory(owner: str, **kwargs) -> Tuple[str, bool]:
         ai_used = False
 
         def _normalized_memory_text(mem: dict) -> str:
-            text = (mem.get("text") or "").lower()
-            text = re.sub(r"[^a-z0-9@._+-]+", " ", text)
-            return " ".join(text.split())
+            # `B1947`. Case, spacing and Unicode form only. Turning everything
+            # but a-z, 0-9 and @._+- into spaces erased Cyrillic, Greek, CJK
+            # and accented letters, so two different facts compared equal.
+            text = unicodedata.normalize("NFC", mem.get("text") or "")
+            return " ".join(unicodedata.normalize("NFC", text.casefold()).split())
 
         def _memory_rank(mem: dict) -> tuple:
             text = (mem.get("text") or "").strip()
@@ -737,12 +739,12 @@ async def action_consolidate_memory(owner: str, **kwargs) -> Tuple[str, bool]:
             b_text = _normalized_memory_text(b)
             if not a_text or not b_text:
                 return False
-            if a_text == b_text:
-                return True
-            shorter, longer = sorted((a_text, b_text), key=len)
-            if len(shorter) >= 24 and shorter in longer:
-                return True
-            return SequenceMatcher(None, a_text, b_text).ratio() >= 0.88
+            # `B1947`. Similarity and containment do not make two memories one
+            # fact: a different name, number or a "not" changes it, and this
+            # pass deletes without asking anyone. Only the same text counts
+            # here; a near-duplicate is left for the AI step, which deletes
+            # only what the model explicitly drops.
+            return a_text == b_text
 
         def _dedupe_group(group_memories: list) -> tuple[list, int]:
             kept = []
@@ -891,7 +893,7 @@ async def action_consolidate_memory(owner: str, **kwargs) -> Tuple[str, bool]:
                                 ])
                             return True
             except Exception as ai_err:
-                logger.warning("AI memory tidy failed; falling back to duplicate cleanup: %s", ai_err)
+                logger.warning("AI memory tidy failed; only exact duplicates were removed: %s", ai_err)
             return False
 
         for group_owner, group_memories in memory_groups.items():
@@ -907,35 +909,12 @@ async def action_consolidate_memory(owner: str, **kwargs) -> Tuple[str, bool]:
                 total_removed += group_removed
                 group_memories = deduped_group
 
-            if await _try_ai_tidy_group(group_owner, group_memories):
-                continue
-
-            seen = {}
-            keep_refs = set()
-            for mem in group_memories:
-                text = (mem.get("text") or "").strip()
-                key = " ".join(text.lower().split())
-                if not key:
-                    if len(removed_examples) < 3:
-                        removed_examples.append("(empty)")
-                    continue
-                if key in seen:
-                    if len(removed_examples) < 3:
-                        removed_examples.append(text[:60] + ("..." if len(text) > 60 else ""))
-                    continue
-                seen[key] = mem
-                keep_refs.add(id(mem))
-
-            group_removed = len(group_memories) - len(keep_refs)
-            if group_removed == 0:
-                continue
-
-            group_ref_ids = {id(m) for m in group_memories}
-            all_memories = [
-                m for m in all_memories
-                if id(m) not in group_ref_ids or id(m) in keep_refs
-            ]
-            total_removed += group_removed
+            # `B1947`. Exact duplicates and empty rows were removed above, per
+            # category and by rank. The text-only pass that ran here whenever
+            # the AI step did not ignored both: it deleted the same words filed
+            # as a fact and as an instruction, and kept whichever copy came
+            # first, pinned or not.
+            await _try_ai_tidy_group(group_owner, group_memories)
 
         if total_removed or total_cleaned:
             manager.save(all_memories)
