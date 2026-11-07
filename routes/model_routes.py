@@ -639,6 +639,9 @@ _NON_CHAT_CONTAINS = (
     "topic-control", "calibration",
     "ai-synthetic-video", "cosmos-reason2",
     "bge", "llama-guard",
+    # `B1789`: embedding and reranker names as Ollama lists them
+    # (nomic-embed-text, mxbai-embed-large, qwen3-embedding, jina-reranker-v2).
+    "-embed", "rerank",
 )
 _NON_CHAT_EXACT_PREFIXES = (
     "gpt-audio",  # gpt-audio, gpt-audio-mini etc. (not gpt-4o-audio-preview which is chat)
