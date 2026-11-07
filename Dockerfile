@@ -95,7 +95,8 @@ LABEL org.opencontainers.image.licenses="AGPL-3.0-or-later"
 # firefox-esr is the agent browser for a person without a workstation — their
 # own headless Firefox, which they watch and take over in the app and the
 # agent drives (`src/local_browser.py`, over WebDriver BiDi like the
-# workstation's); fonts-dejavu-core gives its pages letters to draw.
+# workstation's); fonts-dejavu-core gives its pages letters to draw, and
+# fontconfig's fc-cache registers the CJK face linked after `COPY . .` (`B1982`).
 # `D-2026-11-01-01`: KasmVNC's X server (the package the `desktop-client` stage
 # fetched and checked) gives that browser a screen of its own, which the person
 # watches live and takes over, and xdotool fits Firefox's window to it; the
@@ -113,6 +114,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     chromium \
     firefox-esr \
     fonts-dejavu-core \
+    fontconfig \
     tmux \
     openssh-client \
     gosu \
@@ -277,6 +279,17 @@ COPY . .
 # from, which `scripts/pantheon-deploy`'s byte check reads. The record is
 # outside `static/`, so it is never served.
 COPY --from=js-without-comments /out/ ./
+
+# `B1982`. Chinese, Japanese and Korean text drew as boxes in both built-in
+# browsers (Firefox above, the Browser MCP's Chromium): no face in the image
+# had those glyphs. The Noto Sans CJK SC face the fallback PDF already ships
+# (`B1674`) is linked where fontconfig looks, and each browser falls back to it
+# glyph by glyph, so Latin text keeps DejaVu. A link, not a copy: the image
+# gains no font bytes, and `static/lib/` is read, never changed. Only this face
+# is linked; Inter and the symbols subset stay the PDF's.
+RUN install -d /usr/local/share/fonts/pantheon \
+    && ln -s /app/static/lib/pdf-fonts/NotoSansCJKsc-Regular.subset.ttf /usr/local/share/fonts/pantheon/ \
+    && fc-cache -f /usr/local/share/fonts
 
 # `B453`. The commit this image was built from, read by `GET /api/version`
 # (`src/constants.build_commit`). `.git` is not copied in, so the build has to
