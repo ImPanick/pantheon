@@ -643,6 +643,65 @@ def workstation_why(owner) -> Optional[str]:
     return None
 
 
+def model_why(owner) -> Optional[str]:
+    """`B1891`. `None` when this person has a model a Prompt, Research or Skill
+    step could run on, else the sentence the palette greys those three with:
+    *"No model yet. An admin adds one in Settings → Added Models."*
+    (`endpoint_resolver.NO_MODEL_FOR_RUN` — the very words a run with no model
+    records, so the greyed step, the dry run, the switch's note and the failed
+    run all say one thing).
+
+    "Has a model" is the chat composer's rule (`chat_routes._any_endpoint_for`,
+    the reading behind its *No model yet.*): an enabled endpoint this person may
+    use — their own or a shared one. It is asked of the database and never of
+    the endpoint, so opening the Automations room reaches no server. Whether the
+    model a given step names is listed right now is the dry run's question
+    (`TaskScheduler._model_step_problem`, the real run's own check), not the
+    palette's: a server that is down for a minute is not "no model yet".
+
+    The audit (`model-steps-not-gated`): with no model, the palette offered
+    Prompt and Research as available, the dry run said "Model: the default.",
+    switching on went ahead, and every run failed with *No model yet.* — while
+    HTTP and Code were greyed with their reasons beside them."""
+    from core import database as cdb
+    from src.endpoint_resolver import NO_MODEL_FOR_RUN
+
+    try:
+        db = cdb.SessionLocal()
+        try:
+            q = db.query(cdb.ModelEndpoint).filter(cdb.ModelEndpoint.is_enabled == True)  # noqa: E712
+            if owner:
+                from src.auth_helpers import owner_filter
+                q = owner_filter(q, cdb.ModelEndpoint, owner)
+            found = q.first() is not None
+        finally:
+            db.close()
+    except Exception as exc:  # noqa: BLE001 — unreadable is not "no model": the run says
+        logger.warning("Could not read the model endpoints for the palette: %s", exc)
+        return None
+    return None if found else NO_MODEL_FOR_RUN
+
+
+def model_steps_of(graph) -> list:
+    """`B1891`. The steps of `graph` a model drives — a Prompt, Research or
+    Skill step (`workflow_document.MODEL_KINDS`), or a For-each that repeats
+    one — that are switched on (`B1856`: a step switched off runs nothing). In
+    the document's order. What the switch's "needs a model" note names."""
+    from src.workflow_document import DISABLED_KEY, MODEL_KINDS, NODE_KIND_FOREACH
+
+    out = []
+    for node in (graph or {}).get("nodes") or ():
+        if not isinstance(node, dict) or node.get(DISABLED_KEY) is True:
+            continue
+        kind = node.get("kind")
+        if kind == NODE_KIND_FOREACH:
+            inner = (node.get("config") or {}).get("step")
+            kind = inner.get("kind") if isinstance(inner, dict) else None
+        if kind in MODEL_KINDS:
+            out.append(node)
+    return out
+
+
 def _usable_mcp_tools(owner, disabled: set) -> list:
     """The MCP tools a step may call: ones this person's agent reaches,
     switched on by the server and not switched off for everyone."""
@@ -794,7 +853,7 @@ def build_palette(owner) -> dict:
     the sentence that says why; the Integrations' keys and base URLs are never
     in it.
     """
-    from src.workflow_document import NODE_KINDS, ports_of
+    from src.workflow_document import MODEL_KINDS, NODE_KINDS, ports_of
     from src.workflow_logic import OPERATOR_WORDS, OPERATORS
 
     reaches = {"http": _reaches(owner, "api_call"), "mcp": _reaches(owner, _ANY_MCP_TOOL)}
@@ -803,8 +862,16 @@ def build_palette(owner) -> dict:
     mcp_tools = [_mcp_tool_entry(t) for t in _usable_mcp_tools(owner, disabled)]
     skills = _own_skills(owner)
     station_why = workstation_why(owner)
+    # `B1891`. Asked once, before the kinds: a Prompt, Research or Skill step
+    # with no model is greyed with the run's own sentence, worded as the other
+    # greyed kinds are ("No … yet. An admin adds one in …"). It comes before the
+    # Skill step's own reason — a skill to follow is no use with nothing to
+    # follow it.
+    no_model = model_why(owner)
 
     def availability(kind: str) -> Tuple[bool, str]:
+        if kind in MODEL_KINDS and no_model:
+            return False, no_model
         if kind in _ADMIN_ONLY_WHY and not reaches[kind]:
             return False, _ADMIN_ONLY_WHY[kind]
         if kind == "http" and not integrations:
@@ -842,6 +909,13 @@ def build_palette(owner) -> dict:
         "workstation": {"available": station_why is None, "why": station_why or ""},
         "limits": _limits(owner),
         "operators": [{"op": op, "word": OPERATOR_WORDS.get(op, op)} for op in OPERATORS],
+        # `B1891`. Added, nothing renamed: whether this person has a model at
+        # all, and the sentence when not — what the room reads to say why
+        # Prompt, Research and Skill are greyed anywhere it offers them
+        # outside the kinds list. (Drafting has its own model and its own two
+        # fields, `drafter_model` / `drafter_why`, added by the route.)
+        "has_model": no_model is None,
+        "model_why": no_model or "",
     }
 
 

@@ -1692,6 +1692,32 @@ def _next_run_of(db, task):
                             tz_name=_resolve_task_timezone(db, task))
 
 
+def needs_a_model(nodes) -> str:
+    """`B1891`. "“Summarise” needs a model." / "“A” and “B” need a model." /
+    "“A”, “B” and “C” need a model." — the steps named as the canvas names
+    them."""
+    names = [quoted(n.get("label") or n.get("id")) for n in nodes]
+    if len(names) == 1:
+        return f"{names[0]} needs a model."
+    return f"{', '.join(names[:-1])} and {names[-1]} need a model."
+
+
+def _model_notes(graph, owner) -> list:
+    """`B1891`. Switching on a workflow whose Prompt, Research or Skill steps
+    have no model to run on says so — a note, never a refusal: the switch is
+    the person's, a model may be added before the first run, and a refusal
+    here would block a schedule set up ahead of time. The sentence is the
+    palette's and the run's (`workflow_effects.model_why`): "“Summarise”
+    needs a model. No model yet. An admin adds one in Settings → Added Models."
+    Before this, the switch said only "Switched on." and every run failed."""
+    from src import workflow_effects as we
+    steps = we.model_steps_of(graph)
+    if not steps:
+        return []
+    why = we.model_why(owner)
+    return [f"{needs_a_model(steps)} {why}"] if why else []
+
+
 def switch_workflow(db, wf, trigger, *, on: bool, name_of=None) -> tuple:
     """On or Off. Returns `(chain_paused, notes)`.
 
@@ -1735,6 +1761,7 @@ def switch_workflow(db, wf, trigger, *, on: bool, name_of=None) -> tuple:
         # `B1853`. On means it MAY be run; nothing will start it by itself.
         notes.append(f"{MANUAL_TRIGGER_WORDS}: Run now, your assistant or the API start it, "
                      f"and nothing starts it by itself.")
+    notes.extend(_model_notes(stored_graph(wf), wf.owner))
     chain_paused = None
     if head is not None and (head.status or "active") == "active":
         head.status = "paused"

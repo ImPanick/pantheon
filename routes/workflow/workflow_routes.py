@@ -377,11 +377,24 @@ def setup_workflow_routes(task_scheduler) -> APIRouter:
 
         `examples` (`P22-19`, `D-2026-10-02-02` §1): the sentences *Describe
         it* offers to start from — `workflow_assist.EXAMPLE_SENTENCES`, the one
-        place they are written, read by the drafter's tests and the browser."""
+        place they are written, read by the drafter's tests and the browser.
+
+        `B1891`. `has_model` / `model_why` (the builder's: whether this person
+        has a model at all, and the sentence when not), and `drafter_model` /
+        `drafter_why` — the model *Describe it* would draft with
+        (`workflow_assist.model_name`, the utility model else the default, the
+        name *Why did this fail?* is titled with), or `null` and the very
+        sentence the draft route refuses with (`NO_MODEL_TO_DRAFT`), so the
+        room can hold *Draft it* and the examples back before a press that
+        can only be refused."""
         from src import workflow_effects as we
-        from src.workflow_assist import EXAMPLE_SENTENCES
-        out = dict(we.build_palette(_owner(request)) or {})
+        from src.workflow_assist import EXAMPLE_SENTENCES, NO_MODEL_TO_DRAFT, model_name
+        owner = _owner(request)
+        out = dict(we.build_palette(owner) or {})
         out["examples"] = list(EXAMPLE_SENTENCES)
+        drafter = model_name(owner)
+        out["drafter_model"] = drafter or None
+        out["drafter_why"] = "" if drafter else NO_MODEL_TO_DRAFT
         return out
 
     @router.get("/waiting")

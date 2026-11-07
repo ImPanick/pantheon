@@ -35,9 +35,11 @@ BASE = "http://feeds.lan:8080"
 @pytest.fixture
 def world(monkeypatch, tmp_path):
     """One admin's world: two Integrations (one off), a chat MCP server with a
-    switched-off tool, a skill, and the workstation switched on."""
+    switched-off tool, a skill, the workstation switched on — and (`B1891`)
+    a model endpoint, without which Prompt, Research and Skill are greyed
+    (`test_a_model_step_says_when_there_is_no_model.py`)."""
     import src.settings as S
-    from core.database import Base, McpServer
+    from core.database import Base, McpServer, ModelEndpoint
     from services.memory.skills import SkillsManager, invalidate_skill_cache
     from src.mcp_manager import McpManager
     from tests.helpers.sqlite_db import make_temp_sqlite
@@ -57,6 +59,8 @@ def world(monkeypatch, tmp_path):
     db = SessionLocal()
     db.add(McpServer(id="chat", name="Chat", transport="stdio", command="chat-mcp",
                      disabled_tools=json.dumps(["delete_channel"])))
+    db.add(ModelEndpoint(id="local", name="Local", is_enabled=True,
+                         base_url="http://127.0.0.1:9/v1", endpoint_kind="local"))
     db.commit()
     db.close()
     mgr = McpManager()

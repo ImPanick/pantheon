@@ -1780,6 +1780,10 @@ TAKEOVER_PARKED = ("Waiting for Pantheon to be idle: it became active while this
                    "ran, so the step it was on stopped. It goes on from that step once "
                    "Pantheon is idle; the steps that finished are kept.")
 SWITCHED_OFF_WHILE_WAITING = "Switched off while it waited"
+# `B1891`. A dry run's last line for a Prompt, Research or Skill step a real run
+# would stop on for want of a model; `why` is the run's own sentence
+# (`_model_step_problem`).
+MODEL_STEP_WOULD_NOT_RUN = "It would not run: {why}"
 
 # `P22-11`. How many deterministic and logic steps of one run run side by side
 # — stated once, in `workflow_runs` beside the walker's other limits, where the
@@ -6716,7 +6720,58 @@ class TaskScheduler:
                 endpoint_url=config.get("endpoint_url"), noun="step",
                 extra=[f"Result goes to: "
                        f"{result_place(target) if target else 'only the next step'}"])
+        # `B1891`. A step a model drives says when a real run would stop on it
+        # for want of one — the run's own sentence, last, after what it would do.
+        problem = self._model_step_problem(db, task, node)
+        if problem:
+            lines = [*lines, MODEL_STEP_WOULD_NOT_RUN.format(why=problem)]
         return [shape_run_step({"kind": "dry-run", "detail": line}) for line in lines], None
+
+    def _model_step_problem(self, db, task, node: dict) -> str:
+        """`B1891`. Why a real run of this Prompt, Research or Skill step (or of
+        a For-each repeating one) would stop for want of a model — the sentence
+        that run would record — or `""` when it would find one, or the step is
+        of another kind.
+
+        Asked of `_usable_route`, the very check the run makes before its model
+        call (`D-2026-10-07-02` §1), on the model and endpoint the step names or,
+        naming none, on the configured chain; a Research step that names none is
+        looked up first on the research model, as `_execute_research_task` does.
+        So the plan says what the run would say: *"No model yet. An admin adds
+        one in Settings → Added Models."*, or that the model the step names is
+        not listed now. The dry run used to say "Model: the default." for a step
+        that could only fail (`model-steps-not-gated`). Asking may list an
+        endpoint that lists nothing, once, within its back-off — as the real run
+        would; it calls no model."""
+        from src import workflow_document as wd
+        from src.endpoint_resolver import NoUsableModel
+
+        kind, config = node.get("kind"), node.get("config") or {}
+        if kind == wd.NODE_KIND_FOREACH:
+            inner = config.get("step")
+            if not isinstance(inner, dict):
+                return ""
+            kind, config = inner.get("kind"), inner.get("config") or {}
+        if kind not in wd.MODEL_KINDS:
+            return ""
+        owner = getattr(task, "owner", None)
+        endpoint_url = config.get("endpoint_url") or None
+        model = config.get("model") or None
+        stand_in = wd.WorkflowNodeTask(owner=owner)
+        try:
+            if kind == wd.NODE_KIND_RESEARCH and not (endpoint_url and model):
+                from src.endpoint_resolver import resolve_endpoint
+                url, found, _headers = resolve_endpoint("research", endpoint_url, model, None,
+                                                        owner=owner or None)
+                endpoint_url, model = url or endpoint_url, found or model
+            self._usable_route(db, stand_in, endpoint_url, model)
+        except NoUsableModel as exc:
+            return str(exc)
+        except Exception:
+            # Not knowing is not "it cannot run": the plan says nothing more.
+            logger.debug("Could not ask whether step %s has a model", node.get("id"),
+                         exc_info=True)
+        return ""
 
     async def _run_workflow(self, task, db, run_id: str):
         """Walk the document. Answers a `NodeResult`; raises `TaskWaiting` when
