@@ -90,6 +90,30 @@ function mountSkillsRoom(panel, opts = {}) {
   };
 }
 
+/** `B1756`. Devices: the phone (`phoneWindow.js`, the module the Phone window
+ *  runs) with its device list beside it. Picking a device installs it when the
+ *  workstation lacks it, then turns it on. Loaded on first show; the Phone
+ *  window and the room never stream at once — the module gives way. */
+function mountDevicesRoom(panel) {
+  const host = panel.querySelector('#devices-room') || panel;
+  let handle = null;
+  const ready = import('../phoneWindow.js').then((mod) => {
+    const mount = mod.mountPhoneRoom || (mod.default && mod.default.mountPhoneRoom);
+    handle = typeof mount === 'function' ? mount(host) : null;
+    if (!handle) host.textContent = 'The phone did not load. Reload the page and try again.';
+    return !!handle;
+  }).catch((err) => {
+    console.error('The Devices room did not load:', err);
+    host.textContent = 'The phone did not load. Reload the page and try again.';
+    return false;
+  });
+  return {
+    ready,
+    shown() { ready.then(() => handle && handle.shown()); },
+    destroy() { ready.then(() => handle && handle.destroy()); },
+  };
+}
+
 /** `P22-21`. MCP & Integrations: the card moved here with its ids, drawn by
  *  `settings.js` (`initUnifiedIntegrations`, which returns at once after its
  *  first run). Spelled as `app.js` imports `settings.js`, so it is the one
@@ -182,6 +206,7 @@ export const ROOMS = [
   },
   { id: 'skills', label: ROOM_NAMES.skills, panel: 'workbench-room-skills', mount: mountSkillsRoom },
   { id: 'integrations', label: ROOM_NAMES.integrations, panel: 'workbench-room-integrations', mount: mountIntegrationsRoom },
+  { id: 'devices', label: ROOM_NAMES.devices, panel: 'workbench-room-devices', mount: mountDevicesRoom },
 ];
 
 let _wired = false;
@@ -448,6 +473,11 @@ export function closeWorkbench() {
   const automations = _handles.get('automations');
   if (automations && typeof automations.destroy === 'function') automations.destroy();
   _handles.delete('automations');
+  // `B1756`. The phone stops streaming and gives the screens back; shown
+  // again, the room draws afresh.
+  const devices = _handles.get('devices');
+  if (devices && typeof devices.destroy === 'function') devices.destroy();
+  _handles.delete('devices');
   const intg = _handles.get('integrations');
   if (intg && typeof intg.releaseEscape === 'function') intg.releaseEscape();
   _lastRoom = _current;   // `BRAIN-M-16` (P23-02, fx-brain)

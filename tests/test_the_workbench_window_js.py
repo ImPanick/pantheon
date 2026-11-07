@@ -401,6 +401,9 @@ def test_opening_draws_the_rooms_wires_the_window_once_and_focuses_the_workflow(
          "controls": "workbench-room-skills", "id": "workbench-room-tab-skills"},
         {"text": "MCP & Integrations", "role": "tab", "selected": "false",
          "controls": "workbench-room-integrations", "id": "workbench-room-tab-integrations"},
+        # `B1756`: the phone's room.
+        {"text": "Devices", "role": "tab", "selected": "false",
+         "controls": "workbench-room-devices", "id": "workbench-room-tab-devices"},
     ]
     assert f["labelled"] == "workbench-room-tab-automations"
     assert f["drag"] == [{"id": "workbench-modal", "content": True, "header": True, "dock": True, "left": True}]

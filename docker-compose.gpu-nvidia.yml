@@ -364,6 +364,9 @@ services:
     volumes:
       - workstation-homes:/home
       - workstation-pairing:/workstation-pairing
+      # `B1756`: the phone's Android SDK, kept across rebuilds — a device picked
+      # in the Devices room is downloaded once, not after every rebuild.
+      - workstation-android-sdk:/opt/android-sdk
       - ${APP_DATA_DIR:-./data}/projects:/projects:z
     # Firefox's content processes share memory through /dev/shm, and Docker's
     # 64 MB default crashes tabs. A tmpfs limit, not memory set aside.
@@ -547,6 +550,7 @@ volumes:
   ntfy-cache:
   workstation-homes:
   workstation-pairing:
+  workstation-android-sdk:
   workstation-net-pairing:
   workstation-vm:
   workstation-vm-pairing:

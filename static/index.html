@@ -904,6 +904,11 @@
         <!-- `P22-21`. MCP & Integrations: the card that was Settings →
              Integrations, moved with its ids (`P9-06`'s precedent), so
              `settings.js` draws the same list and the same forms here. -->
+        <!-- `B1756`. Devices: the phone and its device list, drawn by
+             `phoneWindow.js` (the Phone window's module) on first show. -->
+        <div class="workbench-room workbench-room-devices" id="workbench-room-devices" role="tabpanel" hidden>
+          <div id="devices-room" class="devices-room"></div>
+        </div>
         <div class="workbench-room workbench-room-integrations" id="workbench-room-integrations" role="tabpanel" hidden>
           <div class="wb-intg">
             <p class="wb-intg-head">Mail, calendars, MCP servers, APIs — and the logins and git hosts your agents sign in with.</p>
