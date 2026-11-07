@@ -39,20 +39,42 @@ for spec in $SPECS; do
   ver="${spec##*==}"
   # pip download builds metadata (and trips the same bug), so fetch the raw
   # sdist URL from the PyPI JSON API instead.
-  url="$(python - "$name" "$ver" <<'PY'
-import json, sys, urllib.request
-name, ver = sys.argv[1], sys.argv[2]
-data = json.load(urllib.request.urlopen(f"https://pypi.org/pypi/{name}/{ver}/json"))
-for f in data["urls"]:
-    if f["packagetype"] == "sdist":
-        print(f["url"]); break
+  # `B1972`: both fetches retry, so one dropped TLS connection to pypi.org or
+  # files.pythonhosted.org no longer fails the build (--retry alone does not
+  # retry a connection error; --retry-all-errors does).
+  metadata="${name}-${ver}.json"
+  curl --fail --silent --show-error --location \
+    --retry 8 \
+    --retry-delay 3 \
+    --retry-max-time 120 \
+    --retry-all-errors \
+    "https://pypi.org/pypi/${name}/${ver}/json" \
+    -o "$metadata"
+  url="$(python - "$metadata" "$name" "$ver" <<'PY'
+import json, sys
+
+with open(sys.argv[1], encoding="utf-8") as f:
+    data = json.load(f)
+for item in data["urls"]:
+    if item["packagetype"] == "sdist":
+        print(item["url"])
+        break
 else:
-    sys.exit(f"no sdist found for {name}=={ver}")
+    sys.exit(f"no sdist found for {sys.argv[2]}=={sys.argv[3]}")
 PY
-)"
+  )"
+  # Removed now: its name matches the ./basicsr-* handed to pip wheel below.
+  rm -f "$metadata"
   echo ">> fetching ${name} ${ver}: ${url}"
-  curl -fsSL "$url" -o "${name}.tar.gz"
+  curl --fail --silent --show-error --location \
+    --retry 8 \
+    --retry-delay 3 \
+    --retry-max-time 120 \
+    --retry-all-errors \
+    "$url" \
+    -o "${name}.tar.gz"
   tar xzf "${name}.tar.gz"
+  rm -f "${name}.tar.gz"
 done
 
 echo ">> patching get_version()"
