@@ -982,6 +982,20 @@ def _fixture_read_email(uid=None, message_id=None, folder="INBOX", account=None)
 # ── Tool implementations ──
 
 
+def _result_count(value, default: int = 20, ceiling: int | None = None) -> int:
+    """`B1981`. The model's `max_results` as a whole number a slice can take.
+    The schema check lets `20.0` through as an integer, and the slice raised;
+    `0` found nothing and `-1` took every match but one. Not a number, or below
+    one, is the default; a ceiling, where one is given, bounds the rest."""
+    try:
+        count = int(value)
+    except (TypeError, ValueError, OverflowError):
+        return default
+    if count < 1:
+        return default
+    return min(count, ceiling) if ceiling else count
+
+
 def _list_emails(folder="INBOX", max_results=20, unresponded_only=False,
                  unread_only=False, account=None):
     """List emails newest-first. By default returns the latest messages,
@@ -989,6 +1003,8 @@ def _list_emails(folder="INBOX", max_results=20, unresponded_only=False,
     Pass unread_only=True and/or unresponded_only=True for attention scans.
     account selects mailbox (None = default).
     """
+    # `B1981`. No ceiling on a listing: whether to cap one is the owner's call.
+    max_results = _result_count(max_results)
     fixture = _fixture_list_emails(folder, max_results, unresponded_only, unread_only, account)
     if fixture is not None:
         return fixture
@@ -1073,6 +1089,7 @@ def _result_sort_time(result: dict) -> datetime:
 
 def _list_emails_across_accounts(folder="INBOX", max_results=20,
                                  unresponded_only=False, unread_only=False):
+    max_results = _result_count(max_results)  # `B1981`
     fixture = _fixture_list_emails(folder, max_results, unresponded_only, unread_only, None)
     if fixture is not None:
         return fixture, []
@@ -1107,6 +1124,9 @@ def _search_emails(query, folders=None, max_results=20, account=None):
     body TEXT. Walks multiple folders so older threads outside INBOX
     (Sent/Archive) are still findable. Returns the same shape as
     _list_emails plus an `_folder` tag."""
+    # `B1981`. At most 100 a folder, as the unsubscribe scan bounds its own:
+    # each match is one header round trip inside the MCP call's time limit.
+    max_results = _result_count(max_results, 20, 100)
     if not query or not str(query).strip():
         return []
     fixture = _fixture_search_emails(query, folders=folders, max_results=max_results, account=account)
