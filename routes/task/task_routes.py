@@ -37,6 +37,7 @@ from src.task_scheduler import (
     build_task_graph,
     compute_next_run,
     task_edges,
+    is_test_run_log,
 )
 from routes.prefs_routes import _load_for_user, _save_for_user
 
@@ -464,6 +465,11 @@ def _run_to_dict(r: TaskRun, *, is_workflow: bool = False) -> dict:
         # workflow's run, and None for any other run. `step_count` is still
         # the log's length (`Law 1`).
         "node_count": _run_node_count(steps) if is_workflow else None,
+        # `B1852`. A workflow's *Test run* — started from the Workbench, run
+        # while the workflow may be switched off, moving nothing about when it
+        # runs. Read off the run's own log (`TEST_RUN_KEY` on its `trigger`
+        # line, whose `detail` is "Test run"), so the Runs list can mark it.
+        "test": is_test_run_log(steps),
     }
 
 

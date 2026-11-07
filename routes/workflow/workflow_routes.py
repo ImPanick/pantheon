@@ -33,6 +33,10 @@ and, from `/work/notes/SLICE-EF-DESIGN.md` § 3's contract **C-A** (wave E):
     POST   /api/workflows/{id}/runs/{run_id}/explain        "Why did this fail?" (P22-20)
     POST   /api/workflows/{id}/nodes/{node_id}/fix          apply a fix (P22-20)
 
+and the run engine's own (`B1852`):
+
+    POST   /api/workflows/{id}/test-run                     the saved version, once, even off
+
 The two literal ones are declared before `/{workflow_id}`, or FastAPI would
 read "palette" as a workflow's id.
 
@@ -602,6 +606,52 @@ def setup_workflow_routes(task_scheduler) -> APIRouter:
             }
         finally:
             db.close()
+
+    # ── `B1852`: try the whole workflow, switched off or on ──────────────────
+
+    @router.post("/{workflow_id}/test-run")
+    @_answers
+    async def test_run(request: Request, workflow_id: str):
+        """Run the SAVED current version once, as a person's run, even while
+        the workflow is switched off — so trying what you built does not mean
+        switching it on and arming its schedule, its event or its webhook.
+
+        It is a real run (`TaskScheduler.run_task_now(test=True)`): in the
+        Runs list, every gate but the switch asked as for *Run now* — the
+        owner (another owner's workflow is a 404), the admin rule
+        (`admin_only_action_of`, as `POST /api/tasks/{id}/run` asks it), one
+        run at a time (`B674`: a 409 with the sentence Run now's says) — and
+        its Waits and questions go on while it is off. It is marked a test
+        (`run.test`; its cause line says "Test run") and it never touches the
+        switch, the next run or the schedule. `{ok: true, run_id}` — the run
+        is written before the reply, so it can be opened at once."""
+        import uuid
+        from src.interactive_gate import STARTED_BY_PERSON
+        from src.task_action_policy import (
+            admin_only_action_of, admin_refusal_message, owner_has_admin_task_privileges,
+        )
+        user = _owner(request)
+
+        def _check():
+            db = SessionLocal()
+            try:
+                wf = store.owned_workflow(db, workflow_id, user)
+                trigger = store.require_trigger(db, wf)
+                found = admin_only_action_of(db, trigger)
+                if found and not owner_has_admin_task_privileges(user):
+                    raise WorkflowRefused(403, admin_refusal_message(found))
+                return trigger.id
+            finally:
+                db.close()
+        # `B1223`: the workflow is checked off the event loop; the run is the scheduler's.
+        task_id = await asyncio.to_thread(_check)
+        run_id = str(uuid.uuid4())
+        started = await task_scheduler.run_task_now(
+            task_id, started_by=STARTED_BY_PERSON, test=True, run_id=run_id)
+        if not started:
+            raise WorkflowRefused(409, task_scheduler.in_flight_sentence(task_id)
+                                  or "Task is already running")
+        return {"ok": True, "run_id": run_id}
 
     # ── 10: test one step (`P22-08`) ─────────────────────────────────────────
 
