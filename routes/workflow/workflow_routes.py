@@ -36,6 +36,7 @@ and, from `/work/notes/SLICE-EF-DESIGN.md` § 3's contract **C-A** (wave E):
 and, for the builder's draft (the Workbench's elevation):
 
     POST   /api/workflows/{id}/fields  {node_id, graph}     a draft step's fields (B1850)
+    POST   /api/workflows/{id}/problems  {graph, name?}     every problem a save would name (B1851)
 
 The two literal ones are declared before `/{workflow_id}`, or FastAPI would
 read "palette" as a workflow's id.
@@ -455,6 +456,39 @@ def setup_workflow_routes(task_scheduler) -> APIRouter:
                 if saved == "check":
                     return {"ok": True, "check": True}
                 return {"workflow": doc(db, wf, trigger), "saved": saved}
+            finally:
+                db.close()
+        return await asyncio.to_thread(_off_the_loop)
+
+    @router.post("/{workflow_id}/problems")
+    @_answers
+    async def list_problems(request: Request, workflow_id: str):
+        """`B1851`. Every refusal a save of this draft would give, at once:
+        body `{graph, name?}` → `{problems: [{node_ids, field, reason,
+        sentence}], count, more}`. Writes nothing.
+
+        `PUT ?check=true` answers with the first refusal only — a save stops
+        at the first — so the canvas could mark one broken step and no other.
+        Here each step is checked where it stands on the draft's arrows, and
+        then the whole (`workflow_store.document_problems_of`, the engine's
+        one rule asked past its first answer): the same sentences on the same
+        steps and fields a save would refuse with, de-duplicated, in the order
+        a save would name them, at most fifty. An empty list is "Save would
+        pass" — the same draft through `?check=true` answers `ok`. Owner-
+        scoped as the save is: another owner's workflow is a 404."""
+        body = await _body(request)
+        graph = body.get("graph")
+        if not isinstance(graph, (dict, str)):
+            raise WorkflowRefused(400, "Send the draft as it stands on the canvas (graph).")
+        name = body.get("name")
+
+        # `B1223`: the database work, off the event loop.
+        def _off_the_loop():
+            db = SessionLocal()
+            try:
+                wf = store.owned_workflow(db, workflow_id, _owner(request))
+                return store.document_problems_of(db, wf, store.trigger_of(db, wf),
+                                                  graph=graph, name=name)
             finally:
                 db.close()
         return await asyncio.to_thread(_off_the_loop)

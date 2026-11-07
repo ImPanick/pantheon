@@ -5,6 +5,8 @@ and body, and the reply or refusal it hands back is the real route's.
 
   * `listDraftFields(id, nodeId, graph)` — `B1850`, `POST …/fields`: a step
     only the draft has is offered what runs before it on the draft's arrows.
+  * `listProblems(id, { name, graph })` — `B1851`, `POST …/problems`: every
+    refusal a save of the draft would give, at once; none for one Save passes.
 
 `Law 13`: a route ships with its caller; this file is the caller reaching it.
 """
@@ -78,3 +80,25 @@ def test_list_draft_fields_sends_the_draft_and_reads_the_real_answer(box, served
     assert o["missing"] == {"name": "WorkflowRefusal", "status": 404,
                             "sentence": "No such step in this draft.", "reason": None,
                             "nodeIds": [], "field": None}
+
+
+def test_list_problems_sends_the_draft_and_reads_every_problem(box, served):
+    saved = {"v": 1, "nodes": DRAFT["nodes"][:2], "edges": DRAFT["edges"][:1]}
+    o = _case(box, served, """
+        const broken = await api.listProblems('w-wf', { name: 'Morning digest', graph: DRAFT });
+        const clean = await api.listProblems('w-wf', { graph: SAVED });
+        const empty = await refusal(api.listProblems('w-wf'));
+        out({ wire: calls('POST'), broken, clean, empty });
+    """, DRAFT=DRAFT, SAVED=saved)
+    # Spelled out at its call; a name left out is not sent at all.
+    assert o["wire"][:2] == [["/api/workflows/w-wf/problems", {"name": "Morning digest",
+                                                                 "graph": DRAFT}],
+                             ["/api/workflows/w-wf/problems", {"graph": saved}]]
+    assert [(p["reason"], p["node_ids"], p["field"]) for p in o["broken"]["problems"]] == [
+        ("missing_setting", ["n3"], None)]
+    assert "“Not written yet”" in o["broken"]["problems"][0]["sentence"]
+    assert o["broken"]["count"] == 1 and o["broken"]["more"] is False
+    assert o["clean"] == {"problems": [], "count": 0, "more": False}
+    assert o["empty"] == {"name": "WorkflowRefusal", "status": 400,
+                          "sentence": "Send the draft as it stands on the canvas (graph).",
+                          "reason": None, "nodeIds": [], "field": None}

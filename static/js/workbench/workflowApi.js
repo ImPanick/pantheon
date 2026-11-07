@@ -19,8 +19,8 @@
 // (`C-A`, `P22-19`/`20`/`24`) adds three — a workflow's file, a step's "why did
 // this fail?" and its fix — and two bodies on routes already here (a draft or a
 // file on `POST /api/workflows`, the steps a person checked on `PUT`). The
-// builder's elevation adds a draft step's fields (`B1850`), spelled out the
-// same way.
+// builder's elevation adds a draft step's fields (`B1850`) and every problem
+// a save of the draft would name (`B1851`), each spelled out the same way.
 //
 // **A refusal is a `WorkflowRefusal`**, carrying the status and the server's
 // own sentence (`{detail}`, read by `refusal.js`), and — for a document the
@@ -166,6 +166,15 @@ export function createWorkflowApi({ fetch } = {}) {
     /** The same body, checked and not written. → `{ ok: true, check: true }` */
     checkWorkflow(id, { name, graph, baseVersion } = {}) {
       return call('PUT', `/api/workflows/${enc(id)}?check=true`, given({ name, graph, base_version: baseVersion }));
+    },
+    /** `B1851`. Every refusal a save of this draft would give, at once —
+     *  `checkWorkflow` answers with the first only. Each step checked where
+     *  it stands, then the whole (loops, steps nothing leads to, unknown
+     *  arrows…), in the order a save names them, at most fifty; nothing is
+     *  written. An empty list is "Save would pass".
+     *  → `{ problems: [{ node_ids, field, reason, sentence }], count, more }` */
+    listProblems(id, { name, graph } = {}) {
+      return call('POST', `/api/workflows/${enc(id)}/problems`, given({ name, graph }));
     },
     /** `{ "<step id>" | "start": [x, y] }` — never a version. */
     savePositions(id, positions) {

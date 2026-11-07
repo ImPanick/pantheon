@@ -433,6 +433,104 @@ def check_document(db, graph, *, owner: str | None, own_task_id: str | None,
     return parsed
 
 
+# `B1851`. How many problems one ask of `document_problems_of` lists at most:
+# enough to mark every broken step of any draft a person is part-way through,
+# few enough that a pasted document of five hundred broken steps is one short
+# answer, not five hundred sentences.
+PROBLEMS_MAX = 50
+
+
+def _problem(sentence: str, *, reason=None, node_ids=(), field=None) -> dict:
+    """One problem as `POST …/problems` answers it — the shape of a refusal's
+    body (`WorkflowRefused.body`), its `detail` called `sentence`, and every
+    key always there (`field` and `reason` null when there is none)."""
+    return {"node_ids": [str(i) for i in node_ids or ()], "field": field or None,
+            "reason": reason or None, "sentence": sentence}
+
+
+def document_problems_of(db, wf, trigger, *, graph, name=None,
+                         limit: int = PROBLEMS_MAX) -> dict:
+    """`B1851`. Every refusal a save of this draft would give, in the order a
+    save asks — `{problems: [{node_ids, field, reason, sentence}], count,
+    more}` — and nothing written. Empty `problems` is "Save would pass".
+
+    `PUT ?check=true` answers only the FIRST (a save stops there), so the
+    canvas could mark one broken step at a time; this asks every question a
+    save asks and goes on past each answer:
+
+      * the workflow's start (`require_trigger`: `LOST_TRIGGER`), then the
+        `name` when one is sent (`clean_name`'s sentence, `field: "name"`,
+        about no step), as the save route asks them;
+      * a draft that is not a document at all (`parse_graph`) is that one
+        problem — there is nothing to walk;
+      * then the engine's rule, every answer of it (`document_problems`, whose
+        first answer is `validate_document`'s): each step checked in place,
+        the arrows, and the whole — loop, steps nothing leads to, two
+        branches meeting outside a Merge, references to steps that do not run
+        before. Against the owner's tasks, crew and what they can reach now
+        (`owner_rows`, `workflow_resources`), as `check_document` checks it.
+
+    Two questions a save asks are left to the save. An action only an admin
+    may run is `check_document`'s 403 first, before the rule; here it is the
+    rule's own `admin_only` problem ON the step, whose sentence holds the
+    403's words — one problem where the step is, rather than the same one
+    twice. And whether the draft is stale (`base_version`, a 409) is about
+    the moment of saving, not the draft: the canvas learns it from the save.
+
+    De-duplicated (same reason, steps, field and sentence), in that order,
+    and bounded: at most `limit` problems, `more` true when the walk stopped
+    with more to say — the walk is lazy, so it stops there too.
+    """
+    from src.task_action_policy import owner_has_admin_task_privileges
+    from src.workflow_document import DocumentError, document_problems, parse_graph
+
+    found, keys = [], set()
+    more = False
+
+    def add(problem: dict) -> bool:
+        nonlocal more
+        key = (problem["reason"], tuple(problem["node_ids"]), problem["field"],
+               problem["sentence"])
+        if key in keys:
+            return True
+        if len(found) >= limit:
+            more = True
+            return False
+        keys.add(key)
+        found.append(problem)
+        return True
+
+    def answer() -> dict:
+        return {"problems": found, "count": len(found), "more": more}
+
+    if trigger is None:
+        add(_problem(LOST_TRIGGER))
+    if name is not None:
+        try:
+            clean_name(name)
+        except WorkflowRefused as err:
+            add(_problem(err.sentence, field="name"))
+    raw = graph if isinstance(graph, str) else json.dumps(graph)
+    try:
+        parsed = parse_graph(raw)
+    except DocumentError as err:
+        refused = _document_error_refusal(err)
+        add(_problem(refused.sentence, reason=refused.reason, node_ids=refused.node_ids,
+                     field=refused.field))
+        return answer()
+    from src.workflow_effects import workflow_resources
+    tasks_by_id, crew_ids = owner_rows(db, wf.owner)
+    for refusal in document_problems(
+            parsed, owner=wf.owner, tasks_by_id=tasks_by_id, crew_ids=crew_ids,
+            owner_is_admin=owner_has_admin_task_privileges(wf.owner),
+            own_task_id=trigger.id if trigger is not None else None,
+            resources=workflow_resources(wf.owner)):
+        if not add(_problem(refusal.sentence, reason=refusal.reason,
+                            node_ids=refusal.node_ids, field=refusal.field)):
+            break
+    return answer()
+
+
 # ── names ────────────────────────────────────────────────────────────────────
 
 def clean_name(name, *, required: bool = True) -> str | None:

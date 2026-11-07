@@ -1596,64 +1596,127 @@ def validate_document(graph: dict, *, owner: str | None, tasks_by_id: dict,
     label), a step nothing leads to, two branches meeting outside a Merge
     (`concurrent_arrivals`), and last what each reference names
     (`not_upstream`).
+
+    `B1851`: the first of `document_problems`, which asks the same questions in
+    the same order and goes on past the first answer — one rule, so the list
+    the canvas marks and the refusal a save gives cannot drift apart.
+    """
+    return next(document_problems(
+        graph, owner=owner, tasks_by_id=tasks_by_id, crew_ids=crew_ids,
+        owner_is_admin=owner_is_admin, own_task_id=own_task_id, resources=resources), None)
+
+
+def document_problems(graph: dict, *, owner: str | None, tasks_by_id: dict,
+                      crew_ids, owner_is_admin: bool,
+                      own_task_id: str | None,
+                      resources: WorkflowResources | None = None):
+    """`B1851`. Every reason this document may not run, in document order —
+    a generator of `DocumentRefusal`, lazy, so whoever asks stops it when it
+    has enough (`POST /api/workflows/{id}/problems` stops at fifty). Pure.
+
+    Its first answer IS `validate_document`'s (which is `next()` of this), and
+    the questions are its questions in its order. What changes is that an
+    answer does not end the walk:
+
+      * Each step is checked in place — its id, name, kind, settings, the
+        references in them and what its kind needs, stopping at that step's
+        FIRST problem (the one a save names; mending it shows the next) and
+        going on to the next step.
+      * Each arrow is checked; one that fails is told and left out of the
+        "drawn twice" count. An arrow out of a step whose kind this Pantheon
+        does not run is not asked its port — the step's kind is already told,
+        and a kind with no ports would make every arrow out of it wrong.
+      * Then the whole: a loop (the first one, as a save names it), the steps
+        nothing leads to (one problem, naming them all), two branches meeting
+        outside a Merge (one problem per step they meet at), and what each
+        step's references name — asked of every step whose id and kind are
+        sound, on the arrows as drawn (`upstream_of`, `find_loop` and
+        `concurrent_arrivals` already pass over an arrow to a step that is not
+        there).
+
+    No steps, or more than the cap (`step_cap`), is the one problem: the walks
+    after it are bounded by the cap, and a document over it is not one to
+    mark step by step — it is one to split.
     """
     resources = resources if isinstance(resources, WorkflowResources) else EMPTY_RESOURCES
     nodes = list(graph.get("nodes") or ())
     edges = list(graph.get("edges") or ())
     if not nodes:
-        return _refusal(REFUSE_NO_STEPS, detail="add a step after the start")
+        yield _refusal(REFUSE_NO_STEPS, detail="add a step after the start")
+        return
     if len(nodes) > step_cap(resources):
-        return too_many_steps_refusal(len(nodes), step_cap(resources))
+        yield too_many_steps_refusal(len(nodes), step_cap(resources))
+        return
     crew_ids = set(crew_ids or ())
     tasks_by_id = tasks_by_id or {}
     seen = set()
+    unsound = set()     # ids whose step is not one the later walks can stand on
     for node in nodes:
         node_id, kind, label = node["id"], node["kind"], node["label"]
         if (not node_id or len(node_id) > NODE_ID_MAX or not NODE_ID_RE.fullmatch(node_id)
                 or node_id == START_KEY or node_id.startswith("__")):
-            return _refusal(REFUSE_BAD_ID, (node_id,),
-                            f"{_called(node)} is called {node_id!r}")
+            unsound.add(node_id)
+            yield _refusal(REFUSE_BAD_ID, (node_id,),
+                           f"{_called(node)} is called {node_id!r}")
+            continue
         if node_id in seen:
-            return _refusal(REFUSE_DUPLICATE_ID, (node_id,), f"{node_id!r}")
+            unsound.add(node_id)
+            yield _refusal(REFUSE_DUPLICATE_ID, (node_id,), f"{node_id!r}")
+            continue
         seen.add(node_id)
-        if not label.strip():
-            return _refusal(REFUSE_BAD_LABEL, (node_id,), "every step needs a name")
-        if len(label) > NODE_LABEL_MAX:
-            return _refusal(REFUSE_BAD_LABEL, (node_id,),
-                            f"{_called(label[:40] + '…')} is longer than "
-                            f"{NODE_LABEL_MAX} characters")
         if kind not in NODE_KINDS:
-            return _refusal(REFUSE_BAD_KIND, (node_id,), f"{_called(node)} is a {kind!r} step")
+            # Asked after the name below, as a save asks it; marked here, before
+            # the name can end this step's turn, so the arrows and references
+            # below never stand on a kind this Pantheon does not run.
+            unsound.add(node_id)
+        if not label.strip():
+            yield _refusal(REFUSE_BAD_LABEL, (node_id,), "every step needs a name")
+            continue
+        if len(label) > NODE_LABEL_MAX:
+            yield _refusal(REFUSE_BAD_LABEL, (node_id,),
+                           f"{_called(label[:40] + '…')} is longer than "
+                           f"{NODE_LABEL_MAX} characters")
+            continue
+        if kind not in NODE_KINDS:
+            yield _refusal(REFUSE_BAD_KIND, (node_id,), f"{_called(node)} is a {kind!r} step")
+            continue
         config = node.get("config") or {}
         problem = _setting_problem(kind, config)
         if problem:
-            return _refusal(REFUSE_BAD_SETTING, (node_id,), f"{_called(node)}: {problem}")
+            yield _refusal(REFUSE_BAD_SETTING, (node_id,), f"{_called(node)}: {problem}")
+            continue
         found = _inner_kind_problem(node) or _reference_problem(node, resources)
         if found:
-            return found
+            yield found
+            continue
         found = _kind_problem(node, owner=owner, tasks_by_id=tasks_by_id, crew_ids=crew_ids,
                               owner_is_admin=owner_is_admin, own_task_id=own_task_id,
                               resources=resources)
         if found:
-            return found
+            yield found
     by_id = _nodes_by_id(graph)
     taken = set()
     for edge in edges:
         if edge["from"] == START_KEY:
             if edge["to"] not in by_id:
-                return _refusal(REFUSE_BAD_EDGE, (),
-                                "it points at a step that is not in the workflow")
+                yield _refusal(REFUSE_BAD_EDGE, (),
+                               "it points at a step that is not in the workflow")
+                continue
             if edge["port"] not in START_PORTS:
-                return _refusal(REFUSE_BAD_EDGE, (edge["to"],),
-                                f"the arrow out of the start leaves by {edge['port']!r}; the "
-                                f"start has one way out")
+                yield _refusal(REFUSE_BAD_EDGE, (edge["to"],),
+                               f"the arrow out of the start leaves by {edge['port']!r}; the "
+                               f"start has one way out")
+                continue
         else:
             if edge["from"] not in by_id or edge["to"] not in by_id:
-                return _refusal(REFUSE_BAD_EDGE,
-                                tuple(i for i in (edge["from"], edge["to"]) if i in by_id),
-                                "it points at a step that is not in the workflow")
+                yield _refusal(REFUSE_BAD_EDGE,
+                               tuple(i for i in (edge["from"], edge["to"]) if i in by_id),
+                               "it points at a step that is not in the workflow")
+                continue
             source = by_id[edge["from"]]
             if edge["port"] not in ports_of(source):
+                if edge["from"] in unsound and source.get("kind") not in NODE_KINDS:
+                    continue  # its kind is told above; it has no ports to name
                 if ports_of(source) == PORTS:
                     detail = (f"the arrow out of {_called(source)} is "
                               f"neither “if it works” nor “if it fails”")
@@ -1661,14 +1724,16 @@ def validate_document(graph: dict, *, owner: str | None, tasks_by_id: dict,
                     ways = ", ".join(f"“{port_words(source, p)}”" for p in ports_of(source))
                     detail = (f"the arrow out of {_called(source)} leaves by "
                               f"{edge['port']!r}, and it leaves by {ways}")
-                return _refusal(REFUSE_BAD_EDGE, (edge["from"],), detail)
+                yield _refusal(REFUSE_BAD_EDGE, (edge["from"],), detail)
+                continue
         key = (edge["from"], edge["port"], edge["to"])
         if key in taken:
             source = by_id.get(edge["from"])
             where = "the start" if edge["from"] == START_KEY else _called(source)
-            return _refusal(REFUSE_TWO_ARROWS, (edge["from"],),
-                            f"{where} → {_called(by_id[edge['to']])}, "
-                            f"{port_words(source, edge['port'])}, is drawn twice. Remove one")
+            yield _refusal(REFUSE_TWO_ARROWS, (edge["from"],),
+                           f"{where} → {_called(by_id[edge['to']])}, "
+                           f"{port_words(source, edge['port'])}, is drawn twice. Remove one")
+            continue
         taken.add(key)
     loop = find_loop(graph)
     if loop is not None:
@@ -1676,35 +1741,38 @@ def validate_document(graph: dict, *, owner: str | None, tasks_by_id: dict,
             loop, names={n["id"]: n["label"] for n in nodes},
             lead=WORKFLOW_REFUSAL_REASONS[REFUSE_CYCLE])
         ids = tuple(dict.fromkeys(e["from"] for e in loop.path))
-        return DocumentRefusal(REFUSE_CYCLE, ids, sentence)
+        yield DocumentRefusal(REFUSE_CYCLE, ids, sentence)
     entries = _entries(graph)
     if start_edges(graph):
         led_from_start = {e["to"] for e in start_edges(graph)}
         unled = [n for n in entries if n["id"] not in led_from_start]
         if unled:
             named = ", ".join(_called(n) for n in unled[:4])
-            return _refusal(REFUSE_SEVERAL_STARTS, tuple(n["id"] for n in unled),
-                            f"{named}. Connect each to the start or to the step before it, "
-                            f"or remove it")
+            yield _refusal(REFUSE_SEVERAL_STARTS, tuple(n["id"] for n in unled),
+                           f"{named}. Connect each to the start or to the step before it, "
+                           f"or remove it")
     elif len(entries) > 1:
         named = ", ".join(_called(n) for n in entries[:4])
-        return _refusal(REFUSE_SEVERAL_STARTS, tuple(n["id"] for n in entries),
-                        f"{named}. Connect each to the step before it, or remove it")
+        yield _refusal(REFUSE_SEVERAL_STARTS, tuple(n["id"] for n in entries),
+                       f"{named}. Connect each to the step before it, or remove it")
+    met = set()
     for arrival in concurrent_arrivals(graph):
         target = by_id[arrival.node_id]
-        if target["kind"] == NODE_KIND_MERGE:
+        if target["kind"] == NODE_KIND_MERGE or arrival.node_id in met:
             continue
+        met.add(arrival.node_id)
         # § 1.3's sentence, whole: the reason's lead would read as a list.
         sentence = (f"Two branches that run at the same time both reach {_called(target)}. "
                     f"Put a Merge step before it.")
-        return DocumentRefusal(REFUSE_NEEDS_MERGE,
-                               (arrival.node_id, arrival.first["from"], arrival.second["from"]),
-                               sentence)
+        yield DocumentRefusal(REFUSE_NEEDS_MERGE,
+                              (arrival.node_id, arrival.first["from"], arrival.second["from"]),
+                              sentence)
     for node in nodes:
+        if node["id"] in unsound:
+            continue
         found = _upstream_problem(node, graph, by_id)
         if found:
-            return found
-    return None
+            yield found
 
 
 # ── Versions, positions, pins ───────────────────────────────────────────────
