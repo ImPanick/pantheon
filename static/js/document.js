@@ -3388,7 +3388,9 @@ import { PDF_FONT_COVERAGE } from './pdfFontCoverage.js';   // `B1687`
   }
 
   async function _handleAttachUpload(e) {
-    const files = e.target.files;
+    // `B1826`. A copy: the FileList is live in Chromium, and the reset below
+    // empties it, so the uploader was handed nothing.
+    const files = Array.from(e.target.files || []);
     e.target.value = ''; // reset for next upload
     await _uploadComposeFiles(files);
   }
@@ -3804,7 +3806,7 @@ import { PDF_FONT_COVERAGE } from './pdfFontCoverage.js';   // `B1687`
   }
 
   async function _handleMarkdownImageUpload(e) {
-    const files = e.target.files;
+    const files = Array.from(e.target.files || []); // `B1826`: copied before the reset
     e.target.value = '';
     await _uploadMarkdownImages(files);
   }
