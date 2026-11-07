@@ -204,11 +204,17 @@ function buildCategoryChips() {
   const container = document.getElementById('memory-category-filters');
   if (!container) return;
 
+  // `B1805`. A chosen category that nothing is in any more would empty the
+  // list with no chip lit, so it goes back to "all" before anything is drawn:
+  // `buildStatusChips`' rule (`B710`) for the row beside this one. Above the
+  // early return, so an emptied store puts it back too.
+  const cats = new Set(memories.map(m => m.category || 'fact'));
+  if (activeCategory !== 'all' && !cats.has(activeCategory)) activeCategory = 'all';
+
   // Hide the chip row entirely when there are no memories — no point showing
   // an "all" chip with nothing to filter.
   if (!memories.length) { container.innerHTML = ''; return; }
 
-  const cats = new Set(memories.map(m => m.category || 'fact'));
   const sorted = ['all', ...Array.from(cats).sort()];
 
   container.innerHTML = '';
