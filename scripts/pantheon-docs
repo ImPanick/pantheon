@@ -9,7 +9,7 @@ has a content blob + version history.
     pantheon-docs show DOC_ID                # current content + metadata
     pantheon-docs versions DOC_ID            # version history (no content)
     pantheon-docs export DOC_ID --version N  # full content of a specific version
-    pantheon-docs search "invoice"           # title + current_content match
+    pantheon-docs search "invoice"           # each word, in title or current_content
     pantheon-docs delete DOC_ID              # soft-delete (is_active=False)
 
 Reads `data/app.db` directly.
@@ -137,12 +137,19 @@ def cmd_export(args):
 
 
 def cmd_search(args):
+    # `B2002`. One `%{query}%` LIKE found only the exact phrase, and a `%` or
+    # `_` in it matched every document. Each word now has to appear, in the
+    # title or the text, matched as typed. Imported here: the content-length
+    # test loads this script over a `core.database` stub with no chat tables.
+    from src.session_search import _escape_like
     db = SessionLocal()
     try:
-        like = f"%{args.query}%"
-        rows = db.query(Document).filter(
-            (Document.title.ilike(like)) | (Document.current_content.ilike(like))
-        ).order_by(Document.updated_at.desc()).limit(args.limit).all()
+        q = db.query(Document)
+        for word in args.query.split():
+            term = f"%{_escape_like(word)}%"
+            q = q.filter(Document.title.ilike(term, escape="\\")
+                         | Document.current_content.ilike(term, escape="\\"))
+        rows = q.order_by(Document.updated_at.desc()).limit(args.limit).all()
         emit([_serialize(d) for d in rows], args)
     finally:
         db.close()
