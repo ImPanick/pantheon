@@ -82,9 +82,16 @@ CASES = [
      wd.REFUSE_TOO_BIG, "256 KiB"),
     ("a newer version", lambda: parse_refusal({"v": 2, "nodes": []}), wd.REFUSE_VERSION, "version 2"),
     ("no steps", lambda: check(doc([])), wd.REFUSE_NO_STEPS, "add a step"),
-    ("21 steps", lambda: check(doc([step(f"n{i}") for i in range(21)],
-                                   [arrow(f"n{i}", f"n{i + 1}") for i in range(20)])),
-     wd.REFUSE_TOO_MANY_STEPS, "it has 21"),
+    # `B1857`: the cap is `workflow_max_steps` now, arriving in the resources;
+    # twenty, the old constant, is its floor.
+    ("21 steps at a cap of 20", lambda: check(doc([step(f"n{i}") for i in range(21)],
+                                                  [arrow(f"n{i}", f"n{i + 1}") for i in range(20)]),
+                                              resources=wd.WorkflowResources(max_steps=20)),
+     wd.REFUSE_TOO_MANY_STEPS, "more than 20 steps (the “workflow_max_steps” setting): it has 21"),
+    ("101 steps at the cap as shipped", lambda: check(doc([step(f"n{i}") for i in range(101)],
+                                                          [arrow(f"n{i}", f"n{i + 1}")
+                                                           for i in range(100)])),
+     wd.REFUSE_TOO_MANY_STEPS, "more than 100 steps"),
     ("an id called start", lambda: check(doc([step("start")])), wd.REFUSE_BAD_ID, "'start'"),
     ("an id with a colon", lambda: check(doc([step("a:b")])), wd.REFUSE_BAD_ID, "'a:b'"),
     ("two steps one id", lambda: check(doc([step("n1"), step("n1")])), wd.REFUSE_DUPLICATE_ID, "'n1'"),

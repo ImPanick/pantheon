@@ -18,6 +18,8 @@ from src.constants import SETTINGS_FILE, FEATURES_FILE
 # ranges and imported here (`Law 7`; the merge held three copies). That module
 # imports nothing of the product at load, so this adds no cycle.
 from src.workflow_runs import FOREACH_MAX_ITEMS_DEFAULT, WAIT_MAX_HOURS_DEFAULT
+# `B1857`. The most steps one workflow may hold, the same way.
+from src.workflow_runs import MAX_STEPS_DEFAULT as WORKFLOW_MAX_STEPS_DEFAULT
 
 logger = logging.getLogger(__name__)
 
@@ -318,6 +320,12 @@ DEFAULT_SETTINGS = {
     # `P22-11`. The longest a Wait step may wait, in hours (7 days;
     # `src/workflow_runs.py` owns the number and the bounds).
     "workflow_wait_max_hours": WAIT_MAX_HOURS_DEFAULT,
+    # `B1857`. The most steps one workflow may hold (100; `src/workflow_runs.py`
+    # owns the number and the bounds, 20 to 500). It was a constant, 20. Over
+    # it a save is refused naming this setting and the number it is at, and a
+    # run of a document over it is refused in the same words. Settings-only,
+    # like the longest Wait: one number for the whole install.
+    "workflow_max_steps": WORKFLOW_MAX_STEPS_DEFAULT,
     # `P22-17` (`D-2026-10-02-01` §1). How long a parked workflow step's
     # approval card waits for an answer: twelve hours, so an overnight
     # question is still answerable in the morning. Its own key, beside
@@ -1133,6 +1141,8 @@ def int_setting_ranges() -> dict[str, tuple[int, int]]:
         WAIT_MAX_HOURS_SETTING,
         WORKFLOW_APPROVAL_TIMEOUT_SETTING,
     )
+    from src.workflow_runs import MAX_STEPS_RANGE as WORKFLOW_MAX_STEPS_RANGE
+    from src.workflow_runs import MAX_STEPS_SETTING as WORKFLOW_MAX_STEPS_SETTING
     from src.upload_limits import (
         MAX_UPLOAD_BURST_LIMIT,
         MAX_UPLOAD_BURST_WINDOW_SECONDS,
@@ -1217,6 +1227,8 @@ def int_setting_ranges() -> dict[str, tuple[int, int]]:
         # `P22-11` / `P22-12` / `P22-17`, the same way.
         FOREACH_MAX_ITEMS_SETTING: FOREACH_MAX_ITEMS_RANGE,
         WAIT_MAX_HOURS_SETTING: WAIT_MAX_HOURS_RANGE,
+        # `B1857`. The most steps one workflow may hold.
+        WORKFLOW_MAX_STEPS_SETTING: WORKFLOW_MAX_STEPS_RANGE,
         WORKFLOW_APPROVAL_TIMEOUT_SETTING: (
             MIN_APPROVAL_TTL_SECONDS, MAX_APPROVAL_TTL_SECONDS,
         ),

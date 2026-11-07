@@ -353,7 +353,8 @@ def import_file(db, owner, data, *, tz=None) -> Imported:
     resources = WorkflowResources(
         integrations=integrations, mcp_tools=mcp_tools, skills=frozenset(skills),
         ai_tools=frozenset(ai_tools), workstation_why=None,
-        foreach_max_items=real.foreach_max_items, wait_max_hours=real.wait_max_hours)
+        foreach_max_items=real.foreach_max_items, wait_max_hours=real.wait_max_hours,
+        max_steps=real.max_steps)
     check_rows = (rows, crew_ids)
     store.check_document(db, graph, owner=owner, own_task_id=None, rows=check_rows,
                          resources=resources)

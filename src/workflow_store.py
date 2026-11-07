@@ -1230,12 +1230,16 @@ def convert_chain(db, *, owner, from_task_id, name=None, positions=None, name_of
     """
     from src.task_scheduler import describe_graph_refusal, load_chain_rows, validate_graph
     from src.workflow_document import (
-        TRIGGER_FIELDS, VERSION_SOURCE_CONVERTED, WORKFLOW_MAX_NODES, DocumentError,
-        chain_to_document,
+        REFUSE_TOO_MANY_STEPS, TRIGGER_FIELDS, VERSION_SOURCE_CONVERTED,
+        WORKFLOW_MAX_STEPS_RANGE, DocumentError, chain_to_document, too_many_steps_refusal,
     )
+    from src.workflow_runs import max_steps
     _, _, Workflow, _ = _models()
     name_of = name_of or (lambda task: task.name)
-    depth = WORKFLOW_MAX_NODES + 1
+    # `B1857`. Read as far as `chain_to_document` walks — the most the step cap
+    # may be set to — and held to the cap in force by `check_document` below.
+    top = WORKFLOW_MAX_STEPS_RANGE[1]
+    depth = top + 1
 
     tasks_by_id, crew_ids = owner_rows(db, owner)
     picked = tasks_by_id.get(str(from_task_id or ""))
@@ -1266,6 +1270,10 @@ def convert_chain(db, *, owner, from_task_id, name=None, positions=None, name_of
     try:
         graph, trigger_fields, engine_notes = chain_to_document(rows, head.id, positions=positions)
     except DocumentError as err:
+        if getattr(err.refusal, "reason", None) == REFUSE_TOO_MANY_STEPS:
+            # Longer than any cap allows: said with the cap in force, which is
+            # the number the person can look up and move (`Law 10`).
+            raise refusal_from(too_many_steps_refusal(top, max_steps(), exact=False)) from None
         raise _document_error_refusal(err) from None
     name = clean_name(name, required=False) or clean_name(f"{name_of(head)}{CONVERTED_SUFFIX}")
     fields = {k: v for k, v in dict(trigger_fields or {}).items() if k in TRIGGER_FIELDS}

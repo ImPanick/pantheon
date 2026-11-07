@@ -653,11 +653,15 @@ def _usable_mcp_tools(owner, disabled: set) -> list:
 
 def _limits(owner) -> dict:
     """The For-each cap and the longest Wait, resolved by the walker's own
-    readers (`workflow_runs`, wf-walker), and the steps a run takes side by side."""
+    readers (`workflow_runs`, wf-walker), and the steps a run takes side by side.
+
+    `B1857`: and the most steps a workflow may hold (`workflow_max_steps`), so
+    the canvas can say the cap before a save is refused by it."""
     from src import workflow_runs
     return {"foreach_max_items": int(workflow_runs.foreach_max_items(owner)),
             "wait_max_hours": int(workflow_runs.wait_max_hours()),
-            "parallel_steps": int(workflow_runs.WORKFLOW_PARALLEL_STEPS)}
+            "parallel_steps": int(workflow_runs.WORKFLOW_PARALLEL_STEPS),
+            "max_steps": int(workflow_runs.max_steps())}
 
 
 def workflow_resources(owner):
@@ -679,6 +683,7 @@ def workflow_resources(owner):
         workstation_why=workstation_why(owner),
         foreach_max_items=limits["foreach_max_items"],
         wait_max_hours=limits["wait_max_hours"],
+        max_steps=limits["max_steps"],
     )
 
 

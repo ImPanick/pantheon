@@ -261,11 +261,24 @@ STAND_IN_FIELDS = (
 
 # ── Caps (mistake prevention, not a control — `Law 17`) ─────────────────────
 #
-# Twenty steps also bounds every walk here. `concurrent_arrivals` and
+# The step cap also bounds every walk here. `concurrent_arrivals` and
 # `find_loop` do NOT enumerate paths (with fan-out the worst DAG on 20 steps has
 # 2^18 of them): the loop check is one depth-first pass, and the merge rule a
-# reachability over pairs of steps, at most 21² states.
-WORKFLOW_MAX_NODES = 20
+# reachability over pairs of steps, at most (cap + 1)² states.
+#
+# `B1857`. The cap is a setting now, `workflow_max_steps` (default 100, from 20
+# to 500 — the walker's module states the number and its bounds, as it does the
+# For-each cap's and the longest Wait's), and it arrives here resolved, in
+# `WorkflowResources.max_steps`, so this module still reads no settings. It was
+# this constant, twenty. `WORKFLOW_MAX_NODES` stays, the name contract C1 holds
+# (`SLICE-B-DESIGN` § 7), and now means the cap as shipped — the setting's
+# default — not the cap in force (`step_cap`).
+from src.workflow_runs import (  # noqa: E402
+    MAX_STEPS_DEFAULT as WORKFLOW_MAX_STEPS_DEFAULT,
+    MAX_STEPS_RANGE as WORKFLOW_MAX_STEPS_RANGE,
+    MAX_STEPS_SETTING as WORKFLOW_MAX_STEPS_SETTING,
+)
+WORKFLOW_MAX_NODES = WORKFLOW_MAX_STEPS_DEFAULT
 WORKFLOW_GRAPH_MAX_BYTES = 256 * 1024
 NODE_LABEL_MAX = 120
 CASE_LABEL_MAX = 60
@@ -341,7 +354,9 @@ WORKFLOW_REFUSAL_REASONS = {
     REFUSE_TOO_BIG: f"the workflow is larger than {WORKFLOW_GRAPH_MAX_BYTES // 1024} KiB",
     REFUSE_VERSION: "the workflow was saved by a newer Pantheon",
     REFUSE_NO_STEPS: "the workflow has no steps",
-    REFUSE_TOO_MANY_STEPS: f"the workflow has more than {WORKFLOW_MAX_NODES} steps",
+    # `B1857`: the number is the cap in force, said in the sentence
+    # (`too_many_steps_refusal`), not this lead's.
+    REFUSE_TOO_MANY_STEPS: "the workflow has more steps than it may hold",
     REFUSE_BAD_ID: "a step has an id that cannot be used",
     REFUSE_DUPLICATE_ID: "two steps have the same id",
     REFUSE_BAD_KIND: "a step is of a kind this Pantheon does not run",
@@ -447,9 +462,35 @@ class WorkflowResources(NamedTuple):
     workstation_why: str | None = WORKSTATION_UNCHECKED
     foreach_max_items: int = WORKFLOW_FOREACH_MAX_ITEMS_DEFAULT
     wait_max_hours: int = WORKFLOW_WAIT_MAX_HOURS_DEFAULT
+    # `B1857`. The most steps the document may hold (`workflow_max_steps`).
+    max_steps: int = WORKFLOW_MAX_NODES
 
 
 EMPTY_RESOURCES = WorkflowResources()
+
+
+def step_cap(resources) -> int:
+    """`B1857`. The cap in force: `resources.max_steps`, held to the setting's
+    bounds whatever a caller built (a stand-in of a file's import, a test), so
+    no `WorkflowResources` can lift the walks past what they were measured at."""
+    lo, hi = WORKFLOW_MAX_STEPS_RANGE
+    cap = getattr(resources, "max_steps", None)
+    if isinstance(cap, bool) or not isinstance(cap, int):
+        cap = WORKFLOW_MAX_NODES
+    return max(lo, min(hi, cap))
+
+
+def too_many_steps_refusal(count: int, cap: int, *, exact: bool = True) -> DocumentRefusal:
+    """`B1857`. The refusal of a document over the cap, naming the cap in force
+    and the setting that moves it — the For-each cap's and the longest Wait's
+    move — so the number a person reads is the number that refused them.
+    `exact=False` when only a lower bound of `count` is known (a chain whose
+    walk stopped at its bound): "it has more than N"."""
+    has = f"it has {count}" if exact else f"it has more than {count}"
+    return DocumentRefusal(
+        REFUSE_TOO_MANY_STEPS, (),
+        f"The workflow has more than {cap} steps (the “{WORKFLOW_MAX_STEPS_SETTING}” "
+        f"setting): {has}. Split it, or run part of it as its own task.")
 
 
 def _mcp_info(resources: WorkflowResources, tool) -> dict | None:
@@ -903,9 +944,13 @@ def concurrent_arrivals(g: dict) -> list:
     if not start_edges(g):
         for node in _entries(g):
             out[START_KEY].setdefault(PORT_SUCCESS, []).append(node["id"])
+    # `B1857`. What each step reaches, as a bit set over `order` (a step is
+    # its own bit): the cap went from twenty steps to as many as five hundred,
+    # and a set of ids per step was twenty steps' worth of work.
+    bit = {node_id: 1 << i for i, node_id in enumerate(order)}
     reach = {}
     for node_id in reversed(order):
-        found = {node_id}
+        found = bit[node_id]
         for targets in out[node_id].values():
             for t in targets:
                 found |= reach[t]
@@ -924,20 +969,32 @@ def concurrent_arrivals(g: dict) -> list:
             if state not in states:
                 states.add(state)
                 frontier.append(state)
+    # `B1857`. "A walker stands on X1 while the other stands on a later step
+    # that reaches X2", gathered once per X1 — `beside[a]`, every step reached
+    # from a state `(a, later)` — so a pair of arrows is one lookup. It was a
+    # pass over every state for every pair: at the new cap's top, a fan-in of
+    # 498 arrows into one Merge asked it 124,000 times over 250,000 states and
+    # had not finished after ten minutes. The same states, the same rule.
+    beside = {}
+    for a, b in states:
+        if b != START_KEY and index[b] > index[a]:
+            beside[a] = beside.get(a, 0) | reach[b]
+    into = {}
+    for e in arrows:
+        into.setdefault(e["to"], []).append(e)
     found = []
     for node_id in order:
-        incoming = list({(e["from"], e["port"]): e for e in reversed(arrows)
-                         if e["to"] == node_id}.values())[::-1]
+        incoming = list({(e["from"], e["port"]): e
+                         for e in reversed(into.get(node_id, ()))}.values())[::-1]
         for i, e1 in enumerate(incoming):
             for e2 in incoming[i + 1:]:
                 if e1["from"] == e2["from"]:
                     continue  # one step, two ports: it leaves by one
                 x1, x2 = (e1, e2) if index[e1["from"]] < index[e2["from"]] else (e2, e1)
                 a, b = x1["from"], x2["from"]
-                together = any(s[0] == a and s[1] != START_KEY and index[s[1]] > index[a]
-                               and b in reach.get(s[1], ()) for s in states)
+                together = bool(beside.get(a, 0) & bit[b])
                 if not together and (a, a) in states:
-                    together = any(b in reach.get(t, ()) for t in out[a].get(x1["port"], ()))
+                    together = any(reach[t] & bit[b] for t in out[a].get(x1["port"], ()))
                 if together:
                     found.append(Arrival(node_id, e1, e2))
     return found
@@ -1545,10 +1602,8 @@ def validate_document(graph: dict, *, owner: str | None, tasks_by_id: dict,
     edges = list(graph.get("edges") or ())
     if not nodes:
         return _refusal(REFUSE_NO_STEPS, detail="add a step after the start")
-    if len(nodes) > WORKFLOW_MAX_NODES:
-        return _refusal(REFUSE_TOO_MANY_STEPS,
-                        detail=f"it has {len(nodes)}. Split it, or run part of it "
-                               f"as its own task")
+    if len(nodes) > step_cap(resources):
+        return too_many_steps_refusal(len(nodes), step_cap(resources))
     crew_ids = set(crew_ids or ())
     tasks_by_id = tasks_by_id or {}
     seen = set()
@@ -2214,16 +2269,23 @@ def chain_to_document(rows, head_id: str, *, positions=None) -> tuple:
 
     Refused (`DocumentError`) where the engine would refuse the chain or the
     document could not hold it: a loop, another owner's task, a member that is
-    itself a workflow, more than `WORKFLOW_MAX_NODES` steps. `positions` maps
+    itself a workflow, more steps than any cap allows. `positions` maps
     task id to `[x, y]` (the canvas's), carried onto the steps.
+
+    `B1857`. "Any cap": this module reads no settings, so the walk is bounded at
+    the most `workflow_max_steps` may be (`WORKFLOW_MAX_STEPS_RANGE`' top), never
+    stricter than the cap in force; `workflow_store.convert_chain` checks the
+    document against the cap in force (`check_document`) right after, and words
+    a refusal from here with that cap.
     """
     by_task = {row.id: row for row in rows}
     head = by_task.get(head_id)
     if head is None:
         _fail(REFUSE_UNKNOWN_TASK, detail="the chain's first task")
     owner = getattr(head, "owner", None)
+    top = WORKFLOW_MAX_STEPS_RANGE[1]
     refusal = validate_graph(list(rows), starts=[head_id], owner=owner,
-                             max_depth=WORKFLOW_MAX_NODES + 1)
+                             max_depth=top + 1)
     if refusal is not None:
         names = {r.id: getattr(r, "name", None) for r in rows
                  if getattr(r, "owner", None) == owner}
@@ -2233,7 +2295,7 @@ def chain_to_document(rows, head_id: str, *, positions=None) -> tuple:
         if refusal.reason == CHAIN_CROSS_OWNER:
             raise DocumentError(DocumentRefusal(
                 REFUSE_CROSS_OWNER, (), describe_graph_refusal(refusal, names)))
-        _fail(REFUSE_TOO_MANY_STEPS, detail=f"a workflow holds at most {WORKFLOW_MAX_NODES}")
+        raise DocumentError(too_many_steps_refusal(top, top, exact=False))
     order = [head]
     seen = {head_id}
     frontier = [head]
@@ -2248,8 +2310,8 @@ def chain_to_document(rows, head_id: str, *, positions=None) -> tuple:
                 order.append(target)
                 following.append(target)
         frontier = following
-    if len(order) > WORKFLOW_MAX_NODES:
-        _fail(REFUSE_TOO_MANY_STEPS, detail=f"it has {len(order)}")
+    if len(order) > top:
+        raise DocumentError(too_many_steps_refusal(len(order), top))
     for row in order:
         if (getattr(row, "task_type", None) or "llm") == WORKFLOW_TASK_TYPE:
             _fail(REFUSE_WORKFLOW_MEMBER, detail=f"“{row.name}” is a workflow, and a "

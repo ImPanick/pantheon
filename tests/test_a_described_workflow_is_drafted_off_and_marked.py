@@ -266,7 +266,16 @@ async def test_a_step_only_an_admin_may_use_is_refused_for_anyone_else(world, mo
 
 
 async def test_more_than_twenty_steps_is_refused(world, monkeypatch):
+    """`B1857`: twenty was the cap as a constant; it is `workflow_max_steps`
+    now (100 as shipped, 20 at its floor), set here to its floor so the draft's
+    door is shown to read the setting."""
     w = world
+    import src.settings as S
+    real, real_explicit = S.get_setting, S.setting_is_explicit
+    monkeypatch.setattr(S, "get_setting", lambda key, default=None:
+                        20 if key == "workflow_max_steps" else real(key, default))
+    monkeypatch.setattr(S, "setting_is_explicit", lambda key:
+                        key == "workflow_max_steps" or real_explicit(key))
     many = {"name": "Long", "trigger": {"type": "webhook"},
             "steps": [{"id": f"s{i}", "kind": "llm", "label": f"Step {i}",
                        "config": {"prompt": "Say hi."}} for i in range(21)],
