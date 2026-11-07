@@ -83,6 +83,25 @@ def test_a_design_is_a_folder_and_every_change_elsewhere_becomes_a_version(proje
     assert {d["slug"]: d.get("has_page", False) for d in listed} == {"shop-home": True, "shop-home-2": False}
 
 
+def test_a_page_listed_before_its_design_json_still_counts(project, monkeypatch):
+    """CI's runner listed `shop-home/index.html` before `shop-home/design.json`
+    (ext4 hands a folder's files back in hash order, not by name), and the
+    listing said the design had no page. Whatever order the files come in,
+    a design with an `index.html` has a page."""
+    run(F.create("alice", str(project), {"name": "Shop home", "kind": "mockup"}))
+    run(F.create("alice", str(project), {"name": "Blank", "kind": "mockup"}))
+    _agent_writes(project / "design/shop-home")
+    real_list = F._Fs.list
+
+    async def pages_first(self, rel):
+        got = await real_list(self, rel)
+        return sorted(got, key=lambda e: (not e["path"].endswith("/index.html"), e["path"]))
+
+    monkeypatch.setattr(F._Fs, "list", pages_first)
+    listed = run(F.listing("alice", str(project)))
+    assert {d["slug"]: d.get("has_page", False) for d in listed} == {"shop-home": True, "blank": False}
+
+
 def test_stepping_back_keeps_the_present_and_is_itself_a_version(project):
     run(F.create("alice", str(project), {"name": "Page", "kind": "document"}))
     folder = project / "design/page"
