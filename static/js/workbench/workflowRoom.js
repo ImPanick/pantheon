@@ -1953,7 +1953,8 @@ export function mountAutomations(host, opts = {}) {
     newSays(`Opening “${name}”…`);
     let reply = null;
     let err = null;
-    try { reply = await R.api.createWorkflow({ file: data }); } catch (e) { err = e; }
+    // `B1867`. A file whose start names no zone starts on this person's clock.
+    try { reply = await R.api.createWorkflow({ file: data, tz: _timeZone() }); } catch (e) { err = e; }
     if (R.destroyed) return;
     making(false);
     if (err || !reply || !reply.workflow) {
@@ -2340,7 +2341,8 @@ export function mountAutomations(host, opts = {}) {
     newGo.disabled = true;
     let reply = null;
     let err = null;
-    try { reply = await R.api.createWorkflow(name ? { name } : {}); } catch (e) { err = e; }
+    // `B1867`. A new workflow's start is on this person's clock, not UTC's.
+    try { reply = await R.api.createWorkflow(name ? { name, tz: _timeZone() } : { tz: _timeZone() }); } catch (e) { err = e; }
     if (R.destroyed) return;
     newGo.disabled = false;
     if (err || !reply || !reply.workflow) {

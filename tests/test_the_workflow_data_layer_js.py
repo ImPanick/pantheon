@@ -485,7 +485,7 @@ def test_new_change_and_remove_are_draft_edits_and_discard_takes_them_back(box):
         out({ a, b, items, start, gone, edgesAfter, dirty, saidOnSaved,
               panelArgs: Object.keys(opened[0]).sort(), panelNodeIsACopy: opened[0].node !== null,
               after: (await s.load()).items.map((i) => i.id), clean: s.state().dirty,
-              writes: sent().filter((c) => c[0] !== 'GET' && !c[1].includes('check')) });
+              writes: sent().filter((c) => c[0] !== 'GET' && !c[1].includes('check') && !c[1].endsWith('/problems')) });
     """)
     # `P22-09` (wf-canvas): a new step's id is the slug of its label, and the
     # label it is first given re-keys it once ("Tidy chats" → `tidy-chats`).

@@ -559,7 +559,10 @@ def test_new_workflow_is_named_then_made_switched_off(box):
               shelf: shelf(root).map((s) => [s.key, s.current]) });
     """)
     assert o["form"] is True
-    assert o["call"] == [["createWorkflow", {"name": "Bank mail"}]]
+    # `B1867`: with the person's time zone, so the new start is on their clock.
+    [[what, body]] = o["call"]
+    assert what == "createWorkflow" and body.pop("tz"), "the zone this browser is in"
+    assert body == {"name": "Bank mail"}
     assert o["said"] == "Made “Bank mail”. It is switched off: it will not run until you switch it on."
     assert o["name"] == "Bank mail"
     assert o["shelf"] == [["tasks", False], ["w1", False], ["w2", True]]
