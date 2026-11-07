@@ -33,7 +33,7 @@
 // (`textContent`, `.value`): integration names, tool descriptions, case labels.
 
 import { KIND_WORDS } from '../tasks/workflowDiagram.js';
-import { mountArgsForm } from './argsForm.js';
+import { mountArgsForm, mountOpenBox, OPENED_SLOT } from './argsForm.js';
 import { SKILL_GATE_NOTE } from '../skillGateNote.js';
 import { ROOM_NAMES } from './rooms.js';
 
@@ -203,6 +203,22 @@ const _nextId = () => `wf-sf-${++_ids}`;
 export const CLASSIFY_DELAY_MS = 250;
 
 const clone = (v) => (v == null ? v : JSON.parse(JSON.stringify(v)));
+
+/** `B1884` (`identifiers-cannot-be-mapped`). What ticking *Fill from an
+ *  earlier step* means on an HTTP step's path and on a Wait's time — said
+ *  under the box while it is ticked (`argsForm.mountOpenBox`). */
+export const PATH_OPEN_NOTE = 'Pantheon reads what an earlier step puts here as text from outside: a webhook or a mail may '
+  + 'have written it. So whenever an earlier step fills it, this step asks you first wherever your approval setting '
+  + 'asks once outside text has been read. The path’s first part stays what you type, such as /items/, and each '
+  + 'value goes in as one piece of it: never a /, a ? or a ..';
+export const OPEN_PATH_HEAD = 'A path filled from an earlier step starts with a part you type, such as /items/{{ steps.read.data.id }}.';
+const OPEN_PATH_HEAD_RE = /^\/[^/?#{}\s]+\//;
+export function timeOpenNote(maxH) {
+  return `An earlier step may give the time: a time of day (HH:MM) or a date and time such as 2026-11-08T09:00, at most ${maxH} `
+    + 'hours away. Anything else ends the step, and says why.';
+}
+/** The fields a step's author opened (`config.filled`), as a set. */
+const filledOf = (cfg) => new Set(cfg && Array.isArray(cfg.filled) ? cfg.filled.map(String) : []);
 
 /** A text box (or area) with its label and, under it, a hint. */
 function _textField(parent, label, { value = '', field = '', area = false, rows = 3, placeholder = '', hint = '', mono = false } = {}) {
@@ -506,7 +522,22 @@ function buildWait(ctx) {
   const ha = ctx.decorate(amount, 'minutes');
   const unit = _selectField(forBox, 'In', [['1', 'minutes'], ['60', 'hours']], { value: byHours ? '60' : '1' });
   const time = _textField(untilBox, 'Until (HH:MM, 24-hour)', { value: cfg.time || '08:00', field: 'time', placeholder: '08:00' });
-  const ht = ctx.decorate(time, 'time');
+  // `B1884`. A Wait until a time may take the time from an earlier step, when
+  // its author ticks the box the palette offers (`openable`) — a time of day
+  // or a date and time, read when the step is reached.
+  const timeSlot = slotFor(ctx.slots, 'time');
+  const opened = filledOf(cfg);
+  let ht = null;
+  const timeOpen = timeSlot && timeSlot.mapping === 'never' && (timeSlot.openable === true || opened.has('time'))
+    ? mountOpenBox(untilBox, { field: 'time', checked: opened.has('time'), note: timeOpenNote(maxH),
+      onChange: (on) => {
+        try { if (ht && ht.destroy) ht.destroy(); } catch (_) { /* gone */ }
+        ht = on ? ctx.decorateSlot(time, { field: 'time', slot: OPENED_SLOT }) : ctx.decorate(time, 'time');
+        sync();
+      } })
+    : null;
+  const fromData = () => !!(timeOpen && timeOpen.checked()) && String(time.value).includes('{{');
+  ht = timeOpen && timeOpen.checked() ? ctx.decorateSlot(time, { field: 'time', slot: OPENED_SLOT }) : ctx.decorate(time, 'time');
   const tz = _textField(untilBox, 'Time zone (optional)', { value: cfg.tz || '', field: 'tz',
     placeholder: 'The start’s time zone', hint: 'Leave it blank for the time zone the workflow’s start uses.' });
   const htz = ctx.decorate(tz, 'tz');
@@ -517,25 +548,36 @@ function buildWait(ctx) {
     forBox.hidden = mode.value !== 'for';
     untilBox.hidden = mode.value !== 'until';
     said.textContent = mode.value === 'until'
-      ? `It runs at ${String(time.value || '08:00').trim()}, or as soon after as Pantheon is idle.`
+      ? (fromData() ? 'It runs at the time an earlier step hands it, or as soon after as Pantheon is idle.'
+        : `It runs at ${String(time.value || '08:00').trim()}, or as soon after as Pantheon is idle.`)
       : 'Then it runs on as soon as Pantheon is idle.';
   };
   for (const n of [mode, time]) n.addEventListener(n === mode ? 'change' : 'input', sync);
   sync();
   ctx.onDestroy(() => { for (const h of [ha, ht, htz]) { try { if (h && h.destroy) h.destroy(); } catch (_) { /* gone */ } } });
   return () => {
+    const isOpen = !!(timeOpen && timeOpen.checked());
     if (mode.value === 'until') {
       const t = String(time.value).trim();
-      if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(t)) return { refusal: 'Write the time as HH:MM, such as 08:00.', field: 'time' };
+      if (!fromData() && !/^([01]\d|2[0-3]):[0-5]\d$/.test(t)) {
+        return { refusal: isOpen ? 'Write the time as HH:MM, such as 08:00, or pick it from an earlier step.'
+          : 'Write the time as HH:MM, such as 08:00.', field: 'time' };
+      }
       const out = { mode: 'until', time: t };
       if (String(tz.value).trim()) out.tz = String(tz.value).trim();
+      // `B1884`: a Wait that opened nothing, and had nothing open, stays
+      // without the key.
+      if (isOpen || Array.isArray(cfg.filled)) out.filled = isOpen ? ['time'] : [];
       return { config: out };
     }
     const n = Number(String(amount.value).trim());
     if (!Number.isFinite(n) || n <= 0) return { refusal: 'Say how long, as a number above 0.', field: 'minutes' };
     const total = Math.round(n * Number(unit.value));
     if (total > maxH * 60) return { refusal: `A wait is at most ${maxH} hours (workflow_wait_max_hours).`, field: 'minutes' };
-    return { config: { mode: 'for', minutes: total } };
+    const out = { mode: 'for', minutes: total };
+    // A Wait for a while opens nothing: only a time is ever filled from a step.
+    if (Array.isArray(cfg.filled)) out.filled = [];
+    return { config: out };
   };
 }
 
@@ -613,7 +655,22 @@ function buildHttp(ctx) {
   const method = _selectField(body, 'Method', HTTP_METHODS.map((m) => [m, m]),
     { value: String(cfg.method || 'GET').toUpperCase(), field: 'method' });
   const path = _textField(body, 'Path', { value: cfg.path || '', field: 'path', placeholder: '/v1/entries' });
-  const hp = ctx.decorate(path, 'path');
+  // `B1884` (`identifiers-cannot-be-mapped`). The path, and a query or body
+  // value whose name allows it, may be opened to a value from an earlier step
+  // with *Fill from an earlier step* — offered where the server says
+  // `openable` (the palette for the path, the rule's answer for an entry as
+  // its name is typed), kept ticked where the step already opened it.
+  const opened = filledOf(cfg);
+  const pathSlot = slotFor(ctx.slots, 'path');
+  let hp = null;
+  const pathOpen = pathSlot && pathSlot.mapping === 'never' && (pathSlot.openable === true || opened.has('path'))
+    ? mountOpenBox(body, { field: 'path', checked: opened.has('path'), note: PATH_OPEN_NOTE,
+      onChange: (on) => {
+        try { if (hp && hp.destroy) hp.destroy(); } catch (_) { /* gone */ }
+        hp = on ? ctx.decorateSlot(path, { field: 'path', slot: OPENED_SLOT }) : ctx.decorate(path, 'path');
+      } })
+    : null;
+  hp = pathOpen && pathOpen.checked() ? ctx.decorateSlot(path, { field: 'path', slot: OPENED_SLOT }) : ctx.decorate(path, 'path');
   // `B1885` (`http-body-strings-no-headers`). The headers the step sends. The
   // server always kept, checked and sent them, but there was no list here, so
   // a header that came in a file was sent unseen and could not be removed —
@@ -687,6 +744,22 @@ function buildHttp(ctx) {
         const type = typed
           ? _selectField(row, 'Sent as', BODY_TYPES, { value: it.type || 'text', field: `${list}[${i}].type` })
           : null;
+        // `B1884`: offered once the rule says this name may be opened; a row
+        // the step already opened keeps its tick (a new row starts unticked).
+        let said = slotFor(ctx.slots, field);
+        const open = mountOpenBox(row, {
+          field,
+          checked: item == null ? false : (typeof it.opened === 'boolean' ? it.opened : opened.has(field)),
+          onChange: (on) => {
+            try { if (hv && hv.destroy) hv.destroy(); } catch (_) { /* gone */ }
+            hv = on ? ctx.decorateSlot(v, { field, slot: OPENED_SLOT }) : ctx.decorateSlot(v, { field, slot: said });
+          },
+        });
+        open.offer(false);
+        if (open.checked()) {
+          try { if (hv && hv.destroy) hv.destroy(); } catch (_) { /* gone */ }
+          hv = ctx.decorateSlot(v, { field, slot: OPENED_SLOT });
+        }
         // `B1099`. Whether another step may fill this value depends on the
         // entry's name (`classify_argument`), which the palette cannot say
         // once per kind (it says `never`). The rule is asked as the name is
@@ -707,8 +780,10 @@ function buildHttp(ctx) {
           try { r = await ctx.classify({ kind: 'http', config: { [list]: [entry] } }, `${list}[0].value`); } catch (_) { r = null; }
           if (!alive || String(k.value).trim() !== name || !r || r.ok === false) return;
           if (r.mapping !== 'value' && r.mapping !== 'never') return;
+          said = { mapping: r.mapping, why: r.why || '' };
+          open.offer(r.mapping === 'never' && r.openable === true);
           try { if (hv && hv.destroy) hv.destroy(); } catch (_) { /* gone */ }
-          hv = ctx.decorateSlot(v, { field, slot: { mapping: r.mapping, why: r.why || '' } });
+          hv = ctx.decorateSlot(v, { field, slot: open.checked() ? OPENED_SLOT : said });
         };
         k.addEventListener('input', () => {
           if (timer) clearTimeout(timer);
@@ -718,7 +793,7 @@ function buildHttp(ctx) {
         if (String(k.value).trim()) ask();
         const sentAs = () => (type ? type.value : 'text');
         return {
-          snapshot: () => ({ name: k.value, value: v.value, ...(type ? { type: type.value } : {}) }),
+          snapshot: () => ({ name: k.value, value: v.value, ...(type ? { type: type.value } : {}), opened: open.checked() }),
           read: (j) => {
             const name = String(k.value).trim();
             if (!name) return { refusal: 'Give this a name, or remove it.', field: `${list}[${j}].name` };
@@ -739,7 +814,7 @@ function buildHttp(ctx) {
             const out = { name, value };
             // No `type` is text, as before; a field that said text keeps saying it.
             if (type && (word !== 'text' || it.type === 'text')) out.type = word;
-            return { value: out };
+            return { value: out, opens: open.checked() };
           },
           destroy() {
             alive = false;
@@ -801,10 +876,18 @@ function buildHttp(ctx) {
     if (!integ.value) return { refusal: 'Choose the integration it calls.', field: 'integration' };
     const p = String(path.value).trim();
     if (p && !p.startsWith('/')) return { refusal: 'A path starts with /, such as /v1/entries.', field: 'path' };
-    const read = (rows) => {
+    const pathOpened = !!(pathOpen && pathOpen.checked());
+    if (pathOpened && p.includes('{{') && !OPEN_PATH_HEAD_RE.test(p)) return { refusal: OPEN_PATH_HEAD, field: 'path' };
+    // `opens`: the `B1884` fields of a list ticked open, as the panel names them.
+    const read = (rows, list = '') => {
       const out = [];
-      for (const r of rows.read()) { if (r.refusal) return r; out.push(r.value); }
-      return { value: out };
+      const opens = [];
+      for (const [j, r] of rows.read().entries()) {
+        if (r.refusal) return r;
+        out.push(r.value);
+        if (list && r.opens) opens.push(`${list}[${j}].value`);
+      }
+      return { value: out, opens };
     };
     const h = read(headerRows);
     if (h.refusal) return h;
@@ -814,10 +897,10 @@ function buildHttp(ctx) {
       if (seen.has(lower)) return { refusal: `“${one.name}” is sent twice. Each header once.`, field: `headers[${j}].name` };
       seen.add(lower);
     }
-    const q = read(query.rows);
+    const q = read(query.rows, 'query');
     if (q.refusal) return q;
     const writes = method.value !== 'GET' && bodyMode.value === 'raw';
-    const b = method.value === 'GET' || writes ? { value: [] } : read(bodyKv.rows);
+    const b = method.value === 'GET' || writes ? { value: [], opens: [] } : read(bodyKv.rows, 'body');
     if (b.refusal) return b;
     let rawBody;
     if (writes) {
@@ -838,6 +921,10 @@ function buildHttp(ctx) {
     else if ('raw_body' in cfg) out.raw_body = undefined;
     if (response.value === 'full') out.response = 'full';
     else if (cfg.response != null) out.response = 'body';
+    // `B1884`: what is open, by where it is now; a step that opened nothing,
+    // and had nothing open, stays without the key.
+    const filled = [...(pathOpened ? ['path'] : []), ...q.opens, ...b.opens];
+    if (filled.length || Array.isArray(cfg.filled)) out.filled = filled;
     return { config: out };
   };
 }
@@ -869,14 +956,20 @@ function buildMcp(ctx) {
   body.appendChild(argsHost);
   let form = null;
   let args = cfg.args && typeof cfg.args === 'object' ? clone(cfg.args) : {};
+  // `B1884`: the arguments its author opened to a value from an earlier step.
+  let filled = Array.isArray(cfg.filled) ? cfg.filled.map(String) : [];
   const sync = () => {
-    if (form) { const r = form.read(); if (r.args) args = { ...args, ...r.args }; form.destroy(); form = null; }
+    if (form) {
+      const r = form.read();
+      if (r.args) { args = { ...args, ...r.args }; filled = Array.isArray(r.filled) ? r.filled : []; }
+      form.destroy(); form = null;
+    }
     const t = tools.find((x) => x.qualified_name === choice.value);
     desc.textContent = t && t.description ? String(t.description) : '';
-    if (t) form = mountArgsForm(argsHost, { tool: t, values: args, pickField: ctx.decorateSlot });
+    if (t) form = mountArgsForm(argsHost, { tool: t, values: args, pickField: ctx.decorateSlot, filled });
     ctx.argsHandles = form ? form.handles : {};
   };
-  choice.addEventListener('change', () => { args = {}; sync(); });
+  choice.addEventListener('change', () => { args = {}; filled = []; sync(); });
   sync();
   // `B1136`. A server added in the room this step's door opens: its tools
   // are offered here once the palette is read again. The arguments typed so
@@ -891,7 +984,10 @@ function buildMcp(ctx) {
     if (!choice.value) return { refusal: 'Choose the tool it calls.', field: 'tool' };
     const r = form ? form.read() : { args: {} };
     if (r.refusal) return r;
-    return { config: { tool: choice.value, args: r.args } };
+    const out = { tool: choice.value, args: r.args };
+    // `B1884`: a step that opened none, and had none, stays without the key.
+    if ((r.filled && r.filled.length) || Array.isArray(cfg.filled)) out.filled = r.filled || [];
+    return { config: out };
   };
 }
 
@@ -1248,5 +1344,5 @@ export function mountAiOptions(host, { node, palette = null } = {}) {
 export default {
   mountStepFields, mountAiOptions, slotFor, STEP_FIELD_KINDS, DEFAULT_OPERATORS, INNER_EXCLUDED, CODE_TEMPLATES,
   HTTP_METHODS, ANSWER_TYPES, NEED_DOORS, needField, needKind, needDoor, needWords, needLine,
-  BODY_TYPES, headerIsSecret,
+  BODY_TYPES, headerIsSecret, PATH_OPEN_NOTE, OPEN_PATH_HEAD, timeOpenNote,
 };

@@ -80,6 +80,56 @@ const _kind = (prop) => {
   return 'string';
 };
 
+/** `B1884` (`identifiers-cannot-be-mapped`). The words of the box that opens
+ *  one typed-only setting — a ticket's id, an HTTP path, a Wait's time — to
+ *  a value from an earlier step, and what ticking it means. Only a setting
+ *  the server says `openable: true` on is offered one (`workflow_slots.
+ *  opening_problem`: never a recipient, a channel, a host, a command, a file
+ *  or a key), and the save asks the rule again. */
+export const OPEN_WORDS = 'Fill from an earlier step';
+export const OPENED_NOTE = 'Pantheon reads what an earlier step puts here as text from outside: a webhook or a mail may '
+  + 'have written it. So whenever an earlier step fills it, this step asks you first wherever your approval setting '
+  + 'asks once outside text has been read.';
+
+/**
+ * `B1884`. Draw the box that opens `field` beside its input, and the note
+ * that says what that means while it is ticked. `onChange(checked)` is told
+ * each time it is ticked or not, so the caller decorates the input again —
+ * *Insert a field…* while it is open, the reason it is typed only while it
+ * is not. Returns `{ box, label, note, checked(), destroy() }`.
+ */
+export function mountOpenBox(parent, { field, checked = false, note = OPENED_NOTE, onChange = null } = {}) {
+  const label = _el('label', 'wf-sf-label');
+  const box = _el('input');
+  box.type = 'checkbox';
+  box.checked = !!checked;
+  box.dataset.opens = String(field || '');
+  label.appendChild(box);
+  label.appendChild(_el('span', null, ` ${OPEN_WORDS}`));
+  const said = _el('p', 'wf-sf-gate', note);
+  said.dataset.opens = String(field || '');
+  parent.appendChild(label);
+  parent.appendChild(said);
+  const sync = () => { said.hidden = !box.checked; };
+  box.addEventListener('change', () => {
+    sync();
+    if (typeof onChange === 'function') onChange(box.checked);
+  });
+  sync();
+  return {
+    box,
+    label,
+    note: said,
+    checked: () => !!box.checked,
+    /** Shown or not, keeping a tick that is there (a person unticks it). */
+    offer(on) { label.hidden = !on && !box.checked; said.hidden = !box.checked; },
+    destroy() { label.remove(); said.remove(); },
+  };
+}
+
+/** The slot an opened setting has: `value`, so it offers *Insert a field…*. */
+export const OPENED_SLOT = Object.freeze({ mapping: 'value', why: '' });
+
 /** The literal JSON of a value for an object/list box. */
 function _jsonText(v) {
   if (v === undefined || v === null || v === '') return '';
@@ -103,15 +153,21 @@ function _jsonText(v) {
  *            enforces its own schema (`D-2026-09-27-02`) — is the one that
  *            answers. A workflow step keeps the refusals (the default).
  *
- * Returns `{ read() → { args } | { refusal, field }, handles, destroy() }`.
+ * `filled`  — `B1884`: the step's `config.filled`, the fields its author
+ *            opened. An argument the palette says `openable: true` on (or one
+ *            already opened) is drawn with *Fill from an earlier step*.
+ *
+ * Returns `{ read() → { args, filled? } | { refusal, field }, handles,
+ * destroy() }` — `filled` the `args.<name>` fields ticked open, when any are.
  */
-export function mountArgsForm(host, { tool, values = {}, pickField = null, lenient = false } = {}) {
+export function mountArgsForm(host, { tool, values = {}, pickField = null, lenient = false, filled = [] } = {}) {
   const t = tool && typeof tool === 'object' ? tool : {};
   const schema = t.input_schema && typeof t.input_schema === 'object' ? t.input_schema : {};
   const props = schema.properties && typeof schema.properties === 'object' ? schema.properties : {};
   const required = new Set(Array.isArray(schema.required) ? schema.required.map(String) : []);
   const slots = t.args && typeof t.args === 'object' ? t.args : {};
   const given = values && typeof values === 'object' ? values : {};
+  const opened = new Set(Array.isArray(filled) ? filled.map(String) : []);
 
   const wrap = _el('div', 'wf-args');
   // Whether it writes, as Settings → MCP says it (`P8-48`).
@@ -171,11 +227,22 @@ export function mountArgsForm(host, { tool, values = {}, pickField = null, lenie
     wrap.appendChild(row);
     // A text box is where a reference could be typed: it is told what its
     // slot allows. A choice cannot hold one.
+    let open = null;
     if ((kind === 'string' || kind === 'number' || kind === 'integer' || kind === 'json') && typeof pickField === 'function') {
+      const field = `args.${name}`;
       const slot = slots[name] || null;
-      handles[`args.${name}`] = pickField(input, { field: `args.${name}`, slot });
+      // `B1884`: an argument the server says may be opened (a ticket's id,
+      // not a channel) offers the box; ticking it offers *Insert a field…*.
+      const offered = !lenient && kind !== 'json' && slot && slot.mapping === 'never'
+        && (slot.openable === true || opened.has(field));
+      const decorate = (isOpen) => {
+        try { if (handles[field] && handles[field].destroy) handles[field].destroy(); } catch (_) { /* gone */ }
+        handles[field] = pickField(input, { field, slot: isOpen ? OPENED_SLOT : slot });
+      };
+      if (offered) open = mountOpenBox(row, { field, checked: opened.has(field), onChange: decorate });
+      decorate(!!(open && open.checked()));
     }
-    rows.push({ name, kind, prop, input });
+    rows.push({ name, kind, prop, input, open });
   }
   host.appendChild(wrap);
 
@@ -217,7 +284,10 @@ export function mountArgsForm(host, { tool, values = {}, pickField = null, lenie
       }
       args[r.name] = text;
     }
-    return { args };
+    // `B1884`: the arguments ticked open, named as the panel names them —
+    // said only when there are some, so a form with none reads as it did.
+    const ticked = rows.filter((r) => r.open && r.open.checked()).map((r) => `args.${r.name}`);
+    return ticked.length ? { args, filled: ticked } : { args };
   }
 
   return {
@@ -230,4 +300,4 @@ export function mountArgsForm(host, { tool, values = {}, pickField = null, lenie
   };
 }
 
-export default { mountArgsForm, typeWord, effectiveSchema };
+export default { mountArgsForm, typeWord, effectiveSchema, mountOpenBox, OPEN_WORDS, OPENED_NOTE, OPENED_SLOT };

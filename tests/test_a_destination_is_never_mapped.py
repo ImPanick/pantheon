@@ -95,15 +95,17 @@ FULL = {
                           "conditions": [{"left": "l", "op": "one_of", "right": ["x", "y"]}]}]},
     "set": {"fields": [{"name": "n", "value": "v"}]},
     "merge": {"mode": "all"},
-    "wait": {"mode": "until", "minutes": 5, "time": "08:00", "tz": "UTC"},
+    # `B1884`: `filled` — the settings the author opened; none here, so the
+    # table below reads every setting as declared.
+    "wait": {"mode": "until", "minutes": 5, "time": "08:00", "tz": "UTC", "filled": []},
     "foreach": {"list": "{{ steps.a.data.l }}", "on_error": "stop",
                 "step": {"kind": "llm", "label": "L", "config": {"prompt": "p", "model": "m"}}},
     "http": {"integration": "i", "method": "POST", "path": "/p",
              "headers": [{"name": "H", "value": "v"}], "query": [{"name": "text", "value": "v"}],
              "body": [{"name": "url", "value": "v", "type": "text"}], "body_mode": "json",
              # `B1885`: JSON written whole, and what the step hands on.
-             "raw_body": {"text": "v", "items": ["v"]}, "response": "full"},
-    "mcp": {"tool": "mcp__chat__send_message", "args": {"text": "v", "channel": "c"}},
+             "raw_body": {"text": "v", "items": ["v"]}, "response": "full", "filled": []},
+    "mcp": {"tool": "mcp__chat__send_message", "args": {"text": "v", "channel": "c"}, "filled": []},
     "skill": {"skill": "s", "prompt": "p", "model": "m", "endpoint_url": "u", "max_steps": 3,
               "output_target": "o"},
     "code": {"language": "python", "source": "print(1)", "timeout_seconds": 30,

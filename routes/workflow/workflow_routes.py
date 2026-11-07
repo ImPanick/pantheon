@@ -1222,8 +1222,15 @@ def field_slot_answer(body) -> dict:
     path = ws.path_of(field)
     if path is None:
         raise WorkflowRefused(400, "Name the field as the panel does, for example body[0].value.")
-    slot = ws.slot_for({"kind": node["kind"], "config": node.get("config") or {}}, path)
-    return {"mapping": slot.mapping, "why": slot.why}
+    step = {"kind": node["kind"], "config": node.get("config") or {}}
+    slot = ws.slot_for(step, path)
+    out = {"mapping": slot.mapping, "why": slot.why}
+    # `B1884`: `openable: true` where its author may open it to a value from
+    # an earlier step (a query or body value whose name and type allow it) —
+    # said only where it holds, so every other answer is as it was.
+    if slot.mapping == ws.MAPPING_NEVER and ws.opening_problem(step, path) is None:
+        out["openable"] = True
+    return out
 
 
 def _field(record, key):

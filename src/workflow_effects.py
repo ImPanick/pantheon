@@ -774,17 +774,27 @@ def _slot_json(slot) -> dict:
     return {"mapping": slot.mapping, "why": slot.why}
 
 
+# `B1884`. The settings a step's author may open whatever is typed beside
+# them — an HTTP step's path, a Wait's time (when it waits until one). The
+# palette says `openable` on them; an HTTP query or body value is answered by
+# its name (`POST /api/workflows/slot`), an MCP argument on `mcp_tools[].args`.
+OPENABLE_BY_KIND = {"http": ("path",), "wait": ("time",)}
+
+
 def _kind_slots(kind: str) -> dict:
     """`{field pattern: {mapping, why}}` from `workflow_slots.NODE_SLOTS`. A
     field decided per entry is said fail-closed with the classifier's or the
     table's sentence (the browser offers no picker there and says why); one
     the palette answers elsewhere is left out — an MCP tool's arguments
-    (`mcp_tools[].args`) and a For-each's inner step (its own kind's entry)."""
+    (`mcp_tools[].args`) and a For-each's inner step (its own kind's entry).
+    `B1884`: a setting its author may open says `openable: true`."""
     from src import workflow_slots as ws
     out = {}
     for pattern, rule in (ws.NODE_SLOTS.get(kind) or {}).items():
         if isinstance(rule, ws.Slot):
             out[pattern] = _slot_json(rule)
+            if pattern in OPENABLE_BY_KIND.get(kind, ()):
+                out[pattern]["openable"] = True
         elif rule is ws.BY_ENTRY_NAME:
             out[pattern] = {"mapping": ws.MAPPING_NEVER, "why": ws.WHY_NOT_TEXT}
         elif rule is ws.BY_PARAM:
@@ -793,7 +803,7 @@ def _kind_slots(kind: str) -> dict:
 
 
 def _mcp_tool_entry(tool: dict) -> dict:
-    from src.workflow_slots import classify_argument
+    from src.workflow_slots import argument_opens, classify_argument
     props = (tool.get("input_schema") or {}).get("properties")
     props = props if isinstance(props, dict) else {}
     return {
@@ -806,7 +816,12 @@ def _mcp_tool_entry(tool: dict) -> dict:
         "is_readonly": tool.get("is_readonly"),
         "readonly_source": tool.get("readonly_source"),
         "override": tool.get("override"),
-        "args": {name: _slot_json(classify_argument(name, schema)) for name, schema in props.items()},
+        # `B1884`: `openable: true` on an argument its author may open to a
+        # value from an earlier step (`workflow_slots.argument_opens`) — said
+        # only where it holds, so every other argument reads as it did.
+        "args": {name: {**_slot_json(classify_argument(name, schema)),
+                        **({"openable": True} if argument_opens(name, schema) else {})}
+                 for name, schema in props.items()},
     }
 
 

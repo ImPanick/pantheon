@@ -38,15 +38,18 @@ from __future__ import annotations
 import json
 import re
 from typing import NamedTuple
+from urllib.parse import quote
 
 from src.workflow_refs import (
     MISSING,
+    Ref,
     RefError,
     as_text,
     parse_template,
     references_in_text,
     render_text,
     render_value,
+    resolve,
 )
 
 # ── Stored words (`FORBIDDEN.md` Part 1 at the merge) ────────────────────────
@@ -79,10 +82,14 @@ WHYS = (WHY_WHERE, WHY_WHAT, WHY_WHEN, WHY_NOT_TEXT)
 class Slot(NamedTuple):
     """What a setting may be filled with. `mapping` is a `MAPPINGS` word,
     `carry` a `CARRIES` word for a `value` slot and `None` for `never`, `why`
-    the sentence a `never` field shows (empty for `value`)."""
+    the sentence a `never` field shows (empty for `value`). `opened`
+    (`B1884`): a `never` setting its author opened to a value from an earlier
+    step (`FILLED_KEY`) — `value` while it is, and every value that fills it
+    arms the gate (`RenderedCall.opened`)."""
     mapping: str
     carry: str | None
     why: str
+    opened: bool = False
 
 
 VALUE_CONTEXT = Slot(MAPPING_VALUE, CARRY_CONTEXT, "")
@@ -91,6 +98,8 @@ NEVER_WHERE = Slot(MAPPING_NEVER, None, WHY_WHERE)
 NEVER_WHAT = Slot(MAPPING_NEVER, None, WHY_WHAT)
 NEVER_WHEN = Slot(MAPPING_NEVER, None, WHY_WHEN)
 NEVER_NOT_TEXT = Slot(MAPPING_NEVER, None, WHY_NOT_TEXT)
+# `B1884`: a `never` setting its author opened.
+OPENED_INLINE = Slot(MAPPING_VALUE, CARRY_INLINE, "", True)
 # A setting no table names. Fail closed.
 UNDECLARED = NEVER_WHAT
 
@@ -136,6 +145,133 @@ ENTRY_TYPE_NUMBER = "number"
 ENTRY_TYPE_YES_NO = "yes/no"
 ENTRY_TYPE_JSON = "json"
 ENTRY_TYPES = (ENTRY_TYPE_TEXT, ENTRY_TYPE_NUMBER, ENTRY_TYPE_YES_NO, ENTRY_TYPE_JSON)
+
+# ── `B1884` (`identifiers-cannot-be-mapped`): a setting its author opens ─────
+#
+# Every `never` setting stayed the author's to type, so "close the ticket the
+# webhook names", "fetch /items/<the id the mail carried>" and "wait until the
+# time the form said" could not be built at all: `ticket_id`, `issue_number`,
+# an HTTP path and a Wait's time are not words a person reads, so the
+# allowlist said `never`, and nothing but the allowlist could say otherwise.
+#
+# Now the author may OPEN one, on the step, with a box that says what it means
+# (`FILLED_KEY`: the fields opened, named as a panel names them). Only:
+#
+#   * an MCP argument that is one text, number or whole number — never an
+#     object, a list, a choice (an `enum` or a yes/no: the form draws those as
+#     a choice), an address `format` or any `format` but a date, a time or an
+#     id (`OPEN_FORMATS`);
+#   * an HTTP step's query or body value (not one sent as JSON);
+#   * an HTTP step's path, whose first part stays typed (`/items/…`), each
+#     value written into it URL-encoded on its own (`quote(…, safe="")`), so
+#     a value is never a `/`, a `?`, a `#`, a `..` or a new host;
+#   * a Wait's time, when it waits until a time — a time of day or a date
+#     and time, at most `workflow_wait_max_hours` away, as a typed one is.
+#
+# and, of the first two, only one whose NAME says nothing about who the work
+# reaches, where it is written (a repository, a calendar, a document, a
+# project — a place someone else could share with the owner, so naming it
+# would be naming a recipient), a host, a command, a file, a key, an access
+# level or what the step does (`CLOSED_WORDS`, every part as `name_parts`
+# splits it; a credential `key` by `_KEY_QUALIFIERS`). So `ticket_id`,
+# `issue_number`, `order_id`, `query`, `page`, `status` and `due_date` open;
+# `to`, `chat_id`, `channel`, `recipients`, `url`, `host`, `webhook`, `repo`,
+# `calendar_id`, `owner`, `command`, `sql`, `path`, `api_key`, `role` and
+# `force` never do, whatever the author ticks — the document rule refuses the
+# tick at save, with why, on that field.
+#
+# **The adversary (`Law 17`)** is still whoever writes the inbound mail or
+# webhook body, and through a model's output whoever steered it. What they
+# may now choose is which ticket, which item, which day — never who receives
+# the work, where it is sent, a host, a command or a key. And because an
+# opened setting decides WHICH thing the step acts on, every call whose opened
+# setting a reference filled is built tainted (`RenderedCall.opened`, read by
+# `tool_capabilities.authored_call_context`): the person's approval rung
+# applies exactly as it does after a model has read a web page — at the
+# default rung a step that writes, deletes or calls an Integration parks on a
+# card with the exact call, and Allow replays that call once. Pantheon cannot
+# prove a value did not come from outside (a Set step may pass a webhook's
+# words on), so EVERY filled opened setting is read as outside text: fail
+# closed. A Wait makes no call; its time from data only moves when the run
+# goes on, within the same cap.
+#
+# A draft the model writes never opens a setting (`workflow_assist`), and a
+# fix may not change `filled` (`FIX_FIELDS` does not name it).
+FILLED_KEY = "filled"
+FILLED_MAX = 100
+# Every part of a name is checked against these, after `name_parts` splits it.
+CLOSED_WORDS = frozenset({
+    # who the work reaches
+    "to", "cc", "bcc", "from", "recipient", "recipients", "email", "emails", "mail", "mailbox",
+    "address", "addresses", "addr", "phone", "mobile", "sms", "fax", "channel", "channels", "chat",
+    "chats", "room", "rooms", "user", "users", "username", "usernames", "login", "member",
+    "members", "account", "accounts", "contact", "contacts", "sender", "target", "targets",
+    "dest", "destination", "destinations", "webhook", "webhooks", "group", "groups", "owner",
+    "owners", "assignee", "assignees", "reviewer", "reviewers", "invite", "invitee", "invitees",
+    "attendee", "attendees", "participant", "participants", "subscriber", "subscribers",
+    "follower", "followers", "collaborator", "collaborators", "mention", "mentions", "notify",
+    "share", "forward", "audience", "team", "teams", "org", "orgs", "organization",
+    "organisation", "tenant",
+    # where it is written: a place someone else could share with the owner
+    "repo", "repos", "repository", "repositories", "bucket", "buckets", "calendar", "calendars",
+    "drive", "drives", "doc", "docs", "document", "documents", "sheet", "sheets", "spreadsheet",
+    "spreadsheets", "notebook", "notebooks", "board", "boards", "project", "projects",
+    "workspace", "workspaces", "space", "spaces", "inbox", "queue", "queues", "topic", "topics",
+    "list", "lists", "playlist", "album", "feed", "feeds", "container", "parent", "database",
+    "databases", "db", "table", "tables", "collection", "collections", "namespace",
+    "conversation", "conversations", "cluster", "region", "zone", "env", "environment",
+    # where it goes on the network
+    "url", "urls", "uri", "uris", "href", "link", "links", "endpoint", "endpoints", "host",
+    "hosts", "hostname", "server", "servers", "domain", "domains", "port", "ip", "base",
+    "proxy", "callback", "redirect", "origin", "remote", "upstream", "dns", "site", "registry",
+    # a command or code
+    "command", "commands", "cmd", "script", "scripts", "code", "sql", "shell", "exec", "eval",
+    "program", "expression", "expr", "template", "regex", "pattern", "jq",
+    # a file
+    "path", "paths", "file", "files", "filename", "filepath", "dir", "directory", "folder",
+    "folders", "cwd", "workdir", "mount", "volume",
+    # a credential
+    "token", "tokens", "secret", "secrets", "password", "passwd", "passphrase", "auth",
+    "authorization", "cookie", "cookies", "credential", "credentials", "apikey", "session",
+    "signature", "otp", "pin", "cert", "certificate",
+    # an access level
+    "role", "roles", "permission", "permissions", "scope", "scopes", "access", "visibility",
+    "public", "private", "admin", "acl", "grant", "privilege", "privileges",
+    # what the step does
+    "tool", "tools", "action", "actions", "function", "method", "operation", "op", "verb",
+    "mode", "force", "confirm", "confirmed", "overwrite", "recursive", "cascade", "purge",
+    "permanent", "unsafe", "sudo", "dry", "header", "headers",
+})
+# `key` names a credential (`api_key`, `private_key`, a lone `key`) or the
+# thing a step acts on (`issue_key`, `project_key`): closed alone or beside
+# one of these.
+_KEY_WORDS = frozenset({"key", "keys"})
+_KEY_QUALIFIERS = frozenset({
+    "api", "access", "private", "public", "secret", "ssh", "signing", "encryption", "license",
+    "licence", "client", "app", "master", "auth", "gpg", "pgp", "session", "service",
+    "bearer", "deploy", "webhook", "account", "user", "host", "server", "crypto",
+})
+# The string formats an opened argument may have: none of them an address.
+OPEN_FORMATS = frozenset({"date", "date-time", "time", "uuid", "duration"})
+# Why a field cannot be opened — the sentence the save refuses with, after the
+# step and the field (`workflow_document._filled_problem`).
+OPEN_NOT_HERE = ("Only an MCP argument, an HTTP step's path, query or body value, and a "
+                 "Wait's time can be filled from an earlier step.")
+OPEN_CLOSED_NAME = ("Its name says who or where the step's work goes, a command, a file, a "
+                    "key, an access level or what the step does, so it only takes what you "
+                    "type, even when you choose otherwise.")
+OPEN_NOT_ONE_VALUE = ("It takes JSON, a list or an object, so an earlier step could hand it "
+                      "names you did not write; it only takes what you type.")
+OPEN_CHOICE = "It is a choice you pick here, so it only takes what you choose."
+OPEN_FORMAT = ("Its tool says it is an address, or text of a kind Pantheon cannot check, so "
+               "it only takes what you type.")
+OPEN_UNKNOWN = "Pantheon does not know what this tool takes here, so it only takes what you type."
+OPEN_NO_ENTRY = "This step has no such field."
+OPEN_WAIT_FOR = "Only a Wait until a time takes its time from an earlier step."
+OPEN_PATH_HEAD = ("A path filled from an earlier step starts with a part you type, such as "
+                  "/items/{{ steps.read.data.id }}.")
+# The longest value an opened path takes from one reference.
+PATH_VALUE_MAX = 1_000
 
 # ── The table (`SLICE-CD-DESIGN` § 2) ───────────────────────────────────────
 #
@@ -200,6 +336,8 @@ NODE_SLOTS = {
         "minutes": NEVER_WHEN,
         "time": NEVER_WHEN,
         "tz": NEVER_WHEN,
+        # `B1884`: the settings its author opened (here, its time).
+        "filled": NEVER_WHAT,
     },
     "foreach": {
         "list": VALUE_INLINE,
@@ -226,11 +364,16 @@ NODE_SLOTS = {
         "body_mode": NEVER_WHAT,
         "raw_body": BY_LEAF_NAME,
         "response": NEVER_WHAT,
+        # `B1884`: the settings its author opened to a value from an earlier
+        # step — its path, a query or body value.
+        "filled": NEVER_WHAT,
     },
     "mcp": {
         "tool": NEVER_WHAT,
         "args": NEVER_NOT_TEXT,
         "args.*": BY_SCHEMA,
+        # `B1884`: the arguments its author opened.
+        "filled": NEVER_WHAT,
     },
     "skill": {
         "skill": NEVER_WHAT,
@@ -488,11 +631,126 @@ def leaf_name(path: tuple):
     return None
 
 
+def _closed_name(parts: tuple) -> bool:
+    """`B1884`. Whether a name, split by `name_parts`, says who or where the
+    work goes, a command, a file, a key, an access level or what the step
+    does (`CLOSED_WORDS`). A `key` is closed alone or beside a word that
+    makes it a credential (`api_key`), and open beside one that makes it the
+    thing acted on (`issue_key`)."""
+    if not parts or any(p in CLOSED_WORDS for p in parts):
+        return True
+    if any(p in _KEY_WORDS for p in parts):
+        others = [p for p in parts if p not in _KEY_WORDS]
+        return not others or any(p in _KEY_QUALIFIERS for p in others)
+    return False
+
+
+def argument_opening_problem(name, schema, *, choice_ok: bool = False) -> str | None:
+    """`B1884`. Why the argument or entry `name`, of JSON schema `schema`,
+    cannot be opened to a value from an earlier step — or `None` when it can.
+    `choice_ok`: an HTTP field drawn as a text box may be a yes/no; an MCP
+    argument with a choice (`enum`, a yes/no) is drawn as one, and is not.
+    Fails closed, as `classify_argument` does: a name off `name_parts`, a
+    schema that is not one, a type that is not one value, a `format` not in
+    `OPEN_FORMATS`."""
+    if _closed_name(name_parts(name)):
+        return OPEN_CLOSED_NAME
+    if not isinstance(schema, dict):
+        return OPEN_UNKNOWN
+    schema = effective_schema(schema)
+    types = [t for t in _schema_types(schema) if t != "null"]
+    if not types or any(t not in ARGUMENT_TYPES for t in types):
+        return OPEN_NOT_ONE_VALUE
+    if not choice_ok and ("boolean" in types or isinstance(schema.get("enum"), list)):
+        return OPEN_CHOICE
+    fmt = schema.get("format")
+    if fmt is not None and fmt not in OPEN_FORMATS:
+        return OPEN_FORMAT
+    return None
+
+
+def argument_opens(name, schema) -> bool:
+    """`B1884`. Whether the MCP argument `name` is one its author may open: it
+    is `never` by `classify_argument` and nothing in `argument_opening_problem`
+    stops it. What the palette says on each argument (`openable`)."""
+    return (classify_argument(name, schema).mapping == MAPPING_NEVER
+            and argument_opening_problem(name, schema) is None)
+
+
+def opening_problem(node: dict, path, *, mcp_schema=None) -> str | None:
+    """`B1884`. Why the setting at `path` of `node` cannot be opened to a value
+    from an earlier step, or `None` when it can (see `FILLED_KEY`)."""
+    path = tuple(path)
+    kind = node.get("kind") if isinstance(node, dict) else None
+    config = (node.get("config") if isinstance(node, dict) else None) or {}
+    if not isinstance(config, dict):
+        return OPEN_NOT_HERE
+    if kind == "mcp" and len(path) == 2 and path[0] == "args" and isinstance(path[1], str):
+        props = mcp_schema.get("properties") if isinstance(mcp_schema, dict) else None
+        prop = props.get(path[1]) if isinstance(props, dict) else None
+        return argument_opening_problem(path[1], prop)
+    if kind == "http":
+        if path == ("path",):
+            return None
+        if (len(path) == 3 and path[0] in ("query", "body") and type(path[1]) is int
+                and path[2] == "value"):
+            entries = config.get(path[0])
+            if not isinstance(entries, list) or not 0 <= path[1] < len(entries) \
+                    or not isinstance(entries[path[1]], dict):
+                return OPEN_NO_ENTRY
+            return argument_opening_problem(_entry_name(config, path),
+                                            entry_schema(kind, config, path), choice_ok=True)
+    if kind == "wait" and path == ("time",):
+        return None if config.get("mode") == "until" else OPEN_WAIT_FOR
+    return OPEN_NOT_HERE
+
+
+def filled_fields(node: dict) -> frozenset:
+    """`B1884`. The settings `node`'s author opened (`FILLED_KEY`), as paths;
+    an entry that is not a field as a panel names it is left out (the
+    document rule refuses it at save)."""
+    config = (node.get("config") if isinstance(node, dict) else None) or {}
+    listed = config.get(FILLED_KEY) if isinstance(config, dict) else None
+    if not isinstance(listed, list):
+        return frozenset()
+    return frozenset(p for p in (path_of(f) for f in listed if isinstance(f, str)) if p)
+
+
+def opened_path_problem(text) -> str | None:
+    """`B1884`. An opened HTTP path holding a reference starts with a part the
+    author typed (`/items/…`), so a value never chooses the API it reaches —
+    `OPEN_PATH_HEAD` — or `None`. A path with no reference is the author's."""
+    if not isinstance(text, str):
+        return None
+    try:
+        template = parse_template(text)
+    except RefError:
+        return None  # the rule says what is wrong with the reference itself
+    if not template.refs:
+        return None
+    first = template.parts[0] if template.parts and isinstance(template.parts[0], str) else ""
+    return None if _OPEN_PATH_HEAD.match(first) else OPEN_PATH_HEAD
+
+
+_OPEN_PATH_HEAD = re.compile(r"/[^/?#{}\s]+/")
+
+
 def slot_for(node: dict, path, *, mcp_schema=None) -> Slot:
     """The `Slot` for the setting at `path` (a tuple of keys and positions
     under `config`) in `node`. A path the table does not declare is `never`.
     `mcp_schema` is an MCP step's tool `input_schema`; without it every
-    argument is `never`."""
+    argument is `never`.
+
+    `B1884`: a `never` setting the author opened (`FILLED_KEY`) that may be
+    opened (`opening_problem`) is `OPENED_INLINE` — `value`, and marked."""
+    slot = _declared_slot(node, path, mcp_schema=mcp_schema)
+    if slot.mapping == MAPPING_NEVER and tuple(path) in filled_fields(node) \
+            and opening_problem(node, path, mcp_schema=mcp_schema) is None:
+        return OPENED_INLINE
+    return slot
+
+
+def _declared_slot(node: dict, path, *, mcp_schema=None) -> Slot:
     path = tuple(path)
     kind = node.get("kind") if isinstance(node, dict) else None
     config = (node.get("config") if isinstance(node, dict) else None) or {}
@@ -594,12 +852,15 @@ class RenderedCall(NamedTuple):
     is the tool name (`api_call`, `mcp__…`), the action key, or Code's
     language; `content` the exact text dispatched (for Code: the stdin JSON);
     `value_paths` the settings outside data filled; `missing` the references
-    that reached nothing."""
+    that reached nothing; `opened` (`B1884`) the settings its author opened
+    that a reference filled — when there are any, `authored_call_context`
+    builds the call tainted, so the person's approval rung applies."""
     kind: str
     tool: str | None
     content: str
     value_paths: tuple
     missing: tuple
+    opened: tuple = ()
 
 
 _NUMBER_RE = re.compile(r"[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?")
@@ -661,6 +922,8 @@ class _Renderer:
         self.ctx = ctx
         self.value_paths = []
         self.missing = []
+        # `B1884`: the opened settings a reference filled.
+        self.opened = []
 
     def never(self, path: tuple, value):
         """A `never` slot: the author's value, verbatim — refused if anything
@@ -672,8 +935,10 @@ class _Renderer:
                                 path_text(leaf_path))
         return json.loads(json.dumps(value)) if isinstance(value, (dict, list)) else value
 
-    def fill(self, path: tuple, raw, schema):
-        """A `value` slot: its references resolved in one pass, then coerced."""
+    def fill(self, path: tuple, raw, schema, *, opened: bool = False):
+        """A `value` slot: its references resolved in one pass, then coerced.
+        `opened` (`B1884`): a `never` setting its author opened — one a
+        reference fills is noted, so the call is built tainted."""
         label = path_text(path)
         if isinstance(raw, str):
             try:
@@ -682,9 +947,15 @@ class _Renderer:
                 raise SlotError(f"“{label}”: {exc.sentence}", label) from None
             if template.refs:
                 self.value_paths.append(label)
+                if opened:
+                    self.opened.append(label)
             value, missing = render_value(template, self.ctx)
             self.missing.extend(missing)
         elif isinstance(raw, (dict, list)):
+            if opened:
+                # An opened setting takes one value; structure is the
+                # author's to type, and a typed one holds no reference.
+                return self.never(path, raw)
             value = self._fill_nested(path, raw)
         else:
             value = raw
@@ -730,7 +1001,7 @@ class _Renderer:
             schema = (entry_schema(self.node.get("kind"), config, (key, index))
                       if typed else schema_for_name(name))
             if slot.mapping == MAPPING_VALUE:
-                out[name] = self.fill((key, index, "value"), raw, schema)
+                out[name] = self.fill((key, index, "value"), raw, schema, opened=slot.opened)
             else:
                 out[name] = typed_literal(self.never((key, index, "value"), raw), word,
                                           path_text((key, index, "value")))
@@ -767,6 +1038,51 @@ class _Renderer:
             raise SlotError(f"“{label}” would be {len(out):,} characters; a step takes at "
                             f"most {SLOT_MAX_CHARS:,} in one setting.", label)
         return out
+
+    def path(self, raw):
+        """`B1884`. An HTTP path its author opened: what they typed, as typed,
+        and each reference's value URL-encoded on its own (`quote`, nothing
+        kept), so a value is one piece of the path — never a `/`, a `?`, a
+        `#`, a `:` or a `%` the server reads as one. Refused, with nothing
+        sent: a path whose first part is not typed, a value that is a list or
+        an object, nothing, or only dots (`.`/`..` would climb out of the
+        path the author wrote), one longer than `PATH_VALUE_MAX`."""
+        label = "path"
+        if not isinstance(raw, str):
+            return self.never(("path",), raw)
+        try:
+            template = parse_template(raw)
+        except RefError as exc:
+            raise SlotError(f"“{label}”: {exc.sentence}", label) from None
+        if not template.refs:
+            return raw
+        if opened_path_problem(raw):
+            raise SlotError(f"“{label}”: {OPEN_PATH_HEAD}", label)
+        out = []
+        for part in template.parts:
+            if not isinstance(part, Ref):
+                out.append(part)
+                continue
+            value = resolve(part, self.ctx)
+            if value is MISSING:
+                self.missing.append(part.text)
+                continue
+            if isinstance(value, (dict, list)):
+                raise SlotError(f"“{label}” takes one piece of text or a number from "
+                                f"{part.text}, and it was handed a list or an object, so "
+                                f"nothing was sent.", label)
+            text = as_text(value)
+            if not text.strip(" .\t\r\n"):
+                raise SlotError(f"“{label}” was handed “{text[:20]}” from {part.text}, which "
+                                f"would change which address is called, so nothing was sent.",
+                                label)
+            if len(text) > PATH_VALUE_MAX:
+                raise SlotError(f"“{label}” would take {len(text):,} characters from "
+                                f"{part.text}; it takes at most {PATH_VALUE_MAX:,}.", label)
+            out.append(quote(text, safe=""))
+        self.value_paths.append(label)
+        self.opened.append(label)
+        return "".join(out)
 
 
 def typed_literal(value, word, label: str):
@@ -805,7 +1121,10 @@ def render_call(node: dict, ctx, *, mcp_schema=None) -> RenderedCall:
         call = {
             "integration": r.never(("integration",), config.get("integration")),
             "method": r.never(("method",), config.get("method") or "GET"),
-            "path": r.never(("path",), config.get("path") or "/"),
+            # `B1884`: a path its author opened takes values from earlier
+            # steps, each URL-encoded on its own (`_Renderer.path`).
+            "path": (r.path(config.get("path") or "/") if slot_for(node, ("path",)).opened
+                     else r.never(("path",), config.get("path") or "/")),
         }
         headers = {}
         for index, entry in enumerate(config.get("headers") or ()):
@@ -847,7 +1166,7 @@ def render_call(node: dict, ctx, *, mcp_schema=None) -> RenderedCall:
         for name, raw in args.items():
             slot = slot_for(node, ("args", name), mcp_schema=mcp_schema)
             if slot.mapping == MAPPING_VALUE:
-                call[name] = r.fill(("args", name), raw, props.get(name))
+                call[name] = r.fill(("args", name), raw, props.get(name), opened=slot.opened)
             else:
                 call[name] = r.never(("args", name), raw)
     elif kind == "code":
@@ -871,7 +1190,25 @@ def render_call(node: dict, ctx, *, mcp_schema=None) -> RenderedCall:
     if len(content.encode("utf-8")) > CALL_MAX_BYTES:
         raise SlotError(f"The call would be larger than {CALL_MAX_BYTES // 1024} KiB.", "")
     return RenderedCall(kind, tool, content, tuple(dict.fromkeys(r.value_paths)),
-                        tuple(dict.fromkeys(r.missing)))
+                        tuple(dict.fromkeys(r.missing)), tuple(dict.fromkeys(r.opened)))
+
+
+def opened_text(node: dict, key: str, ctx):
+    """`B1884`. A top-level setting that is not part of a call — a Wait's
+    `time` — as a run reads it: the author's own text when it is not opened
+    (a reference in it refused, as in any `never` slot), else filled as text
+    from `ctx` (`workflow_refs.build_context`). Raises `SlotError`, naming a
+    reference that reached nothing."""
+    config = (node.get("config") if isinstance(node, dict) else None) or {}
+    r = _Renderer(node, ctx)
+    raw = config.get(key) if isinstance(config, dict) else None
+    if not slot_for(node, (key,)).opened:
+        return r.never((key,), raw)
+    out = r.fill((key,), raw, TEXT_SCHEMA, opened=True)
+    if r.missing:
+        raise SlotError(f"“{key}” reads {', '.join(dict.fromkeys(r.missing))}, which reached "
+                        f"nothing.", key)
+    return out
 
 
 __all__ = [
@@ -883,4 +1220,7 @@ __all__ = [
     "render_call", "SLOT_MAX_CHARS", "CALL_MAX_BYTES", "MISSING",
     "BODY_MODE_RAW", "ENTRY_TYPE_TEXT", "ENTRY_TYPE_NUMBER", "ENTRY_TYPE_YES_NO", "ENTRY_TYPE_JSON",
     "ENTRY_TYPES", "ENTRY_TYPE_SCHEMAS", "entry_schema", "leaf_name", "typed_literal",
+    "FILLED_KEY", "FILLED_MAX", "CLOSED_WORDS", "OPEN_FORMATS", "OPENED_INLINE",
+    "argument_opening_problem", "argument_opens", "opening_problem", "filled_fields",
+    "opened_path_problem", "opened_text", "PATH_VALUE_MAX",
 ]

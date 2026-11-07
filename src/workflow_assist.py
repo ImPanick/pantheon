@@ -368,8 +368,13 @@ def _drafted_config(kind: str, config, label: str, notes: list) -> dict:
     takes, none of `INSTALL_FIELDS`; what was left out is said."""
     from src.workflow_document import NODE_CONFIG_FIELDS, NODE_KIND_FOREACH
 
+    from src.workflow_slots import FILLED_KEY
+
     config = config if isinstance(config, dict) else {}
-    allowed = [k for k in NODE_CONFIG_FIELDS.get(kind, ()) if k not in INSTALL_FIELDS]
+    # `B1884`: a draft never opens a setting to a value from an earlier step
+    # (`FILLED_KEY`) — that is the person's choice, made on the step.
+    allowed = [k for k in NODE_CONFIG_FIELDS.get(kind, ())
+               if k not in INSTALL_FIELDS and k != FILLED_KEY]
     out = {k: v for k, v in config.items() if k in allowed}
     dropped = sorted(k for k in config if k not in allowed)
     if dropped:

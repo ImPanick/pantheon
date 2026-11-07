@@ -7252,24 +7252,34 @@ class TaskScheduler:
         now = _utcnow()
         cap = wr.wait_max_hours()
         if mode == "until":
-            raw = str(config.get("time") or "")
-            try:
-                hour, minute = (int(part) for part in raw.split(":", 1))
-                if not (0 <= hour < 24 and 0 <= minute < 60):
-                    raise ValueError(raw)
-            except ValueError:
-                return None, f"“{node.get('label')}” has no time to wait until (HH:MM)."
+            # `B1884`: a time its author opened is read from the earlier step
+            # now (`workflow_slots.opened_text`); it may also be a date and
+            # time. A typed one is the author's, as before.
+            raw, moment, problem = self._wait_time_text(w, node)
+            if problem:
+                return None, problem
             tz_name = valid_timezone(config.get("tz")) or _resolve_task_timezone(w.db, w.task)
             try:
                 from zoneinfo import ZoneInfo
                 zone = ZoneInfo(tz_name) if tz_name else timezone.utc
             except Exception:
                 zone = timezone.utc
-            local_now = now.replace(tzinfo=timezone.utc).astimezone(zone)
-            target = local_now.replace(hour=hour, minute=minute, second=0, microsecond=0)
-            if target <= local_now:
-                target = target + timedelta(days=1)
-            until = target.astimezone(timezone.utc).replace(tzinfo=None)
+            if moment is not None:
+                if moment.tzinfo is None:
+                    moment = moment.replace(tzinfo=zone)
+                until = moment.astimezone(timezone.utc).replace(tzinfo=None)
+            else:
+                try:
+                    hour, minute = (int(part) for part in raw.split(":", 1))
+                    if not (0 <= hour < 24 and 0 <= minute < 60):
+                        raise ValueError(raw)
+                except ValueError:
+                    return None, f"“{node.get('label')}” has no time to wait until (HH:MM)."
+                local_now = now.replace(tzinfo=timezone.utc).astimezone(zone)
+                target = local_now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+                if target <= local_now:
+                    target = target + timedelta(days=1)
+                until = target.astimezone(timezone.utc).replace(tzinfo=None)
         else:
             minutes = config.get("minutes")
             if isinstance(minutes, bool) or not isinstance(minutes, (int, float)) or minutes < 0:
@@ -7279,6 +7289,35 @@ class TaskScheduler:
             return None, (f"“{node.get('label')}” would wait longer than {cap} hours, "
                           f"which workflow_wait_max_hours allows.")
         return until, None
+
+    def _wait_time_text(self, w, node: dict) -> tuple:
+        """`B1884`. `(text, moment, problem)` for a Wait until a time: the time
+        as typed (`moment` None), or — when its author opened it — as the
+        earlier step's value reads, which may be a time of day (HH:MM) or a
+        date and time (`moment`, aware or not; ISO 8601, `Z` allowed). Anything
+        else is `problem`, a sentence that names what it was handed."""
+        from src import workflow_slots as ws
+
+        config = node.get("config") or {}
+        label = node.get("label") or node.get("id")
+        if not ws.slot_for(node, ("time",)).opened:
+            return str(config.get("time") or ""), None, None
+        try:
+            text = ws.opened_text(node, "time", w.state.context())
+        except ws.SlotError as refused:
+            return "", None, f"“{label}”: {refused.sentence} It did not wait."
+        text = str(text or "").strip()
+        if re.fullmatch(r"[0-9]{1,2}:[0-9]{2}", text):
+            return text, None, None
+        try:
+            moment = datetime.fromisoformat(text.replace("Z", "+00:00")) if "T" in text else None
+        except ValueError:
+            moment = None
+        if moment is None:
+            return "", None, (f"“{label}” was handed “{text[:40]}” for its time, which is not a "
+                              f"time written HH:MM or a date and time such as "
+                              f"2026-11-08T09:00. It did not wait.")
+        return text, moment, None
 
     def _clock_words(self, w, when) -> str:
         from src import workflow_runs as wr
@@ -7972,7 +8011,10 @@ class TaskScheduler:
         pending = tool_approval_store.create(
             owner=task.owner, session_id="", origin_run_id=f"{run_id}:{item_part}",
             tool_name=call.tool, content=call.content, workspace=None,
-            external_untrusted_context_seen=False,
+            # `B1884`: a call whose opened setting an earlier step filled is
+            # built tainted; the card says so, and only a card sealed tainted
+            # may be spent in a tainted run (`tool_execution`'s replay check).
+            external_untrusted_context_seen=bool(context.external_untrusted_context_seen),
             capabilities=capabilities_for_action(call.tool, call.content),
             gate_decision=decision, taint_trail=context.taint_trail,
             ttl_seconds=wr.workflow_approval_ttl_seconds(task.owner), held_by_run=True)

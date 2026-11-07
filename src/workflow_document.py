@@ -101,10 +101,16 @@ from src.workflow_slots import (
     ENTRY_TYPE_TEXT,
     ENTRY_TYPE_YES_NO,
     ENTRY_TYPES,
+    FILLED_KEY,
+    FILLED_MAX,
     MAPPING_NEVER,
     SlotError,
     config_leaves,
+    filled_fields,
     leaf_name,
+    opened_path_problem,
+    opening_problem,
+    path_of,
     path_text,
     slot_for,
     typed_literal,
@@ -287,11 +293,13 @@ NODE_CONFIG_FIELDS = {
     NODE_KIND_SWITCH: ("cases",),
     NODE_KIND_SET: ("fields",),
     NODE_KIND_MERGE: ("mode",),
-    NODE_KIND_WAIT: ("mode", "minutes", "time", "tz"),
+    NODE_KIND_WAIT: ("mode", "minutes", "time", "tz", FILLED_KEY),
     NODE_KIND_FOREACH: ("list", "step", "on_error"),
     NODE_KIND_HTTP: ("integration", "method", "path", "headers", "query", "body", "body_mode",
-                     "raw_body", "response"),
-    NODE_KIND_MCP: ("tool", "args"),
+                     "raw_body", "response", FILLED_KEY),
+    # `B1884`: `filled` (`workflow_slots.FILLED_KEY`) — the settings the
+    # author opened to a value from an earlier step, on the kinds that have one.
+    NODE_KIND_MCP: ("tool", "args", FILLED_KEY),
     NODE_KIND_SKILL: ("skill", "prompt", "model", "endpoint_url", "max_steps", "output_target"),
     NODE_KIND_CODE: ("language", "source", "timeout_seconds", "input"),
 }
@@ -1265,6 +1273,22 @@ def _check_raw_body(key, value):
     return None
 
 
+def _check_filled(key, value):
+    """`B1884`. The settings a step's author opened: a list of at most
+    `FILLED_MAX` fields, each named as a panel names it (`path`,
+    `args.ticket_id`, `query[0].value`), none twice. Which may be opened is
+    `_filled_problem`'s, which needs the tool's schema."""
+    if value is None:
+        return None
+    if not isinstance(value, list) or len(value) > FILLED_MAX:
+        return f"“{key}” must be a list of up to {FILLED_MAX} fields"
+    if not all(isinstance(f, str) and path_of(f) for f in value):
+        return f"each of “{key}” names one of the step's fields, such as args.ticket_id"
+    if len(set(value)) != len(value):
+        return f"“{key}” names a field twice"
+    return None
+
+
 def _check_args(key, value):
     if value is None:
         return None
@@ -1368,6 +1392,7 @@ _FIELD_CHECKS = {
     "raw_body": _check_raw_body,
     "input": _check_entries,
     "args": _check_args,
+    FILLED_KEY: _check_filled,
     "step": _check_step,
     "timeout_seconds": _check_whole(*CODE_TIMEOUT_RANGE),
     "minutes": _check_whole(1, WORKFLOW_WAIT_MAX_HOURS_RANGE[1] * 60),
@@ -1408,6 +1433,7 @@ _FIELD_WORDS = {
     "raw_body": "Body", "response": "What it hands on",
     "args": "Argument", "skill": "Skill", "language": "Language", "source": "Code",
     "timeout_seconds": "Time limit", "input": "Input",
+    FILLED_KEY: "Filled from an earlier step",
 }
 
 
@@ -1445,12 +1471,49 @@ def field_words(node: dict, path) -> str:
     return _FIELD_WORDS.get(path[0], str(path[0]))
 
 
+def _filled_problem(node: dict, schema) -> DocumentRefusal | None:
+    """`B1884`. Every setting a step's author opened (`FILLED_KEY`) is one
+    that may be opened (`workflow_slots.opening_problem`): an MCP argument of
+    one value whose name says nothing about who or where the work goes, a
+    command, a file, a key or an access level; an HTTP step's path, query or
+    body value; a Wait's time. Refused on that field, with why — so ticking
+    `to`, `channel` or `url` open is a refusal the person reads, never a
+    setting that quietly stays typed. A For-each's inner step is asked as
+    its own."""
+    config = node.get("config") or {}
+    steps = [(node, ())]
+    inner = config.get("step") if node.get("kind") == NODE_KIND_FOREACH else None
+    if isinstance(inner, dict) and isinstance(inner.get("config"), dict):
+        steps.append(({"id": node["id"], "kind": inner.get("kind"),
+                       "config": inner["config"]}, ("step", "config")))
+    for one, prefix in steps:
+        for field in (one.get("config") or {}).get(FILLED_KEY) or ():
+            path = path_of(field)
+            why = opening_problem(one, path, mcp_schema=schema) if path else OPEN_NO_FIELD
+            if why is None:
+                continue
+            where = (*prefix, *path) if path else (*prefix, FILLED_KEY)
+            return _refusal(REFUSE_MAPPED_NEVER, (node["id"],),
+                            f"{_called(node)}, {field_words(node, where)}, cannot be filled "
+                            f"from an earlier step. {why}", path_text(where))
+    return None
+
+
+# `B1884`: a `filled` entry that names no field (`_check_filled` refuses it
+# first; this is the sentence if it is ever reached).
+OPEN_NO_FIELD = "It names no field of this step."
+
+
 def _reference_problem(node: dict, resources: WorkflowResources) -> DocumentRefusal | None:
     """`P22-09`, the part that needs no arrows: every text in a `never` setting
     holds no reference; every text in a `value` setting parses; `item` is read
-    only by the step inside a For-each."""
+    only by the step inside a For-each. `B1884`: first, every setting the
+    author opened may be opened (`_filled_problem`)."""
     node_id = node["id"]
     schema = _mcp_schema(node, resources)
+    found = _filled_problem(node, schema)
+    if found is not None:
+        return found
     for path, text in config_leaves(node.get("config") or {}):
         slot = slot_for(node, path, mcp_schema=schema)
         field = path_text(path)
@@ -1693,7 +1756,13 @@ def _kind_problem(node: dict, *, owner, tasks_by_id, crew_ids, owner_is_admin,
                                 f"{_called(node)} waits from 1 minute to {resources.wait_max_hours} "
                                 f"hours (the “workflow_wait_max_hours” setting)", "minutes")
         else:
-            if not isinstance(config.get("time"), str) or not _TIME_RE.fullmatch(config["time"]):
+            time_text = config.get("time")
+            # `B1884`: a time its author opened may be a reference, read when
+            # the step is reached (`task_scheduler._wait_until`).
+            from_data = (slot_for(node, ("time",)).opened and isinstance(time_text, str)
+                         and bool(references_in_text(time_text)))
+            if not from_data and (not isinstance(time_text, str)
+                                  or not _TIME_RE.fullmatch(time_text)):
                 return _refusal(REFUSE_BAD_SETTING, (node_id,),
                                 f"{_called(node)} waits until a time written like 08:00", "time")
             tz = config.get("tz")
@@ -1750,6 +1819,10 @@ def _kind_problem(node: dict, *, owner, tasks_by_id, crew_ids, owner_is_admin,
             return _refusal(REFUSE_BAD_SETTING, (node_id,),
                             f"{_called(node)}: the path starts with / and holds no address or #",
                             "path")
+        if slot_for(node, ("path",)).opened and opened_path_problem(path):
+            # `B1884`: the API a path reaches is the author's to type.
+            return _refusal(REFUSE_BAD_SETTING, (node_id,),
+                            f"{_called(node)}: {opened_path_problem(path)}", "path")
         if config.get("body_mode") not in (None, *BODY_MODES):
             return _refusal(REFUSE_BAD_SETTING, (node_id,),
                             f"{_called(node)}: the body is sent as JSON", "body_mode")
@@ -2429,7 +2502,31 @@ def plan_lines(node: dict, resources: WorkflowResources | None = None) -> list:
         lines.append(f"It would: {CODE_EFFECT_SENTENCE}")
     else:
         lines.append(f"A {kind!r} step is not one this Pantheon runs.")
+    lines.extend(_opened_lines(node, resources))
     return lines
+
+
+# `B1884`. What the plan and the dry run say of a setting its author opened.
+OPENED_RUNG_SENTENCE = ("A webhook or a mail may have written that value, so whenever an "
+                        "earlier step fills it, this step asks you first wherever your approval "
+                        "setting asks once outside text has been read.")
+
+
+def _opened_lines(node: dict, resources: WorkflowResources) -> list:
+    """`B1884`. One line naming the settings the author opened, and what that
+    means: for a call, that the approval rung applies to it as to outside
+    text; for a Wait, what its time may be."""
+    config = node.get("config") or {}
+    opened = [p for p in (path_of(f) for f in config.get(FILLED_KEY) or ()
+                          if isinstance(f, str)) if p]
+    if not opened:
+        return []
+    if node.get("kind") == NODE_KIND_WAIT:
+        return [f"Its time is filled from an earlier step, because you chose it: a time of day "
+                f"(HH:MM) or a date and time, at most {resources.wait_max_hours} hours away."]
+    words = ", ".join(field_words(node, p) for p in opened)
+    return [f"Filled from an earlier step, because you chose it: {words}. "
+            f"{OPENED_RUNG_SENTENCE}"]
 
 
 def _sends(node: dict, resources: WorkflowResources) -> list:
@@ -2447,7 +2544,11 @@ def _sends(node: dict, resources: WorkflowResources) -> list:
         info = (resources.integrations or {}).get(integration) if isinstance(integration, str) \
             else None
         name = (info or {}).get("name") or integration
-        out.append(f"sends {config.get('method') or 'GET'} {config.get('path') or '/'} to {name}")
+        # `B1884`: a path its author opened says so.
+        opened = (" (its path filled from an earlier step)"
+                  if slot_for(node, ("path",)).opened else "")
+        out.append(f"sends {config.get('method') or 'GET'} {config.get('path') or '/'} to "
+                   f"{name}{opened}")
     elif kind == NODE_KIND_MCP:
         tool = config.get("tool")
         info = _mcp_info(resources, tool) or {}
@@ -2455,8 +2556,15 @@ def _sends(node: dict, resources: WorkflowResources) -> list:
         schema = info.get("input_schema") if isinstance(info.get("input_schema"), dict) else None
         # The arguments that decide where it goes — the ones only a person
         # types (`never`); what it says (`value`) is left to the plan.
-        fixed = [f"{name}: {_shown(value)}" for name, value in (config.get("args") or {}).items()
-                 if slot_for(node, ("args", name), mcp_schema=schema).mapping == MAPPING_NEVER]
+        # `B1884`: one its author opened is said too, as filled from an
+        # earlier step — it chooses which thing the call acts on.
+        fixed = []
+        for name, value in (config.get("args") or {}).items():
+            slot = slot_for(node, ("args", name), mcp_schema=schema)
+            if slot.mapping == MAPPING_NEVER:
+                fixed.append(f"{name}: {_shown(value)}")
+            elif slot.opened:
+                fixed.append(f"{name}: {_shown(value)} (filled from an earlier step)")
         out.append(f"sends to {said}" + (f" — {', '.join(fixed)}" if fixed else ""))
     elif kind == NODE_KIND_CODE:
         out.append(f"{CODE_EFFECT_SENTENCE}, and the code reaches whatever that account can")
