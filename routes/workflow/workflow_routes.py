@@ -1002,8 +1002,15 @@ def setup_workflow_routes(task_scheduler) -> APIRouter:
 
         The seal, the TTL, single use and owner binding are the store's,
         unchanged (`FORBIDDEN.md` Part 2).
+
+        `B1870`. And a person's only, asked first: the assistant's loopback
+        and a bearer token arrive in the owner's name, and either could
+        otherwise read the card at `GET /waiting` and allow its own sealed
+        action — the gate would be asking the agent, not the person.
         """
         from src.task_scheduler import QuestionRefused, _resolve_task_timezone
+        if not request_is_a_person(request):
+            raise WorkflowRefused(403, store.ONLY_A_PERSON_ANSWERS)
         body = await _body(request)
         decision = str(body.get("decision") or "").strip().lower()
         if decision == "approve":

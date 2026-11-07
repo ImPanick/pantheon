@@ -14,7 +14,7 @@ from pydantic import BaseModel
 
 from core.database import SessionLocal, ScheduledTask, TaskRun, CrewMember
 from core.constants import internal_api_base
-from src.auth_helpers import get_current_user
+from src.auth_helpers import get_current_user, request_is_a_person
 from src import paced_http  # `B1014`: NO_PROXY ranges, read for every client
 from src.constants import DATA_DIR, EMAIL_URGENCY_CACHE_DIR
 from src.event_bus import (
@@ -1088,9 +1088,16 @@ def setup_task_routes(task_scheduler) -> APIRouter:
             PLAIN_TASK_NODE, QuestionRefused, _resolve_task_timezone,
         )
         from src.workflow_runs import WAITING_APPROVAL, waiting_of
-        from src.workflow_store import ANSWER_DECISIONS, NO_CHAT_TO_REMEMBER
+        from src.workflow_store import (
+            ANSWER_DECISIONS, NO_CHAT_TO_REMEMBER, ONLY_A_PERSON_ANSWERS,
+        )
         from core.database import TaskRunNode
 
+        # `B1870`. The workflow door's first question, asked here too: not a
+        # bearer token, not the assistant's loopback — nothing is read or
+        # consumed for them.
+        if not request_is_a_person(request):
+            raise HTTPException(403, ONLY_A_PERSON_ANSWERS)
         decision = (body.decision or "").strip().lower()
         if decision == "approve":
             raise HTTPException(400, NO_CHAT_TO_REMEMBER)
