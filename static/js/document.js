@@ -151,6 +151,11 @@ import { PDF_FONT_COVERAGE } from './pdfFontCoverage.js';   // `B1687`
   let _lastSessionId = '';          // session context for "+" button
   const docs = new Map();           // docId -> { id, title, language, content, version, sessionId }
   let _emailSendInFlight = false;
+  // `B1941`: while "No attachments found" waits for its answer. One press on
+  // Send reaches `_sendEmail` once per pointerdown, pointerup and click, and
+  // `_emailSendInFlight` is set only after the answer, so one press asked
+  // three times and "Send anyway" on each sent the email three times.
+  let _emailSendConfirming = false;
   // `B1938`: counts AI Reply requests, so an answer knows a later one began.
   let _emailAiReplyGeneration = 0;
   // `P23-08` (DOCS-M-2): Create opens a blank editor and nothing is stored
@@ -4054,6 +4059,9 @@ import { PDF_FONT_COVERAGE } from './pdfFontCoverage.js';   // `B1687`
       const overlay = document.createElement('div');
       overlay.className = 'modal';
       overlay.style.display = 'flex';
+      // `B1941`: Go back is this window's close control (`data-action`), so
+      // Escape presses it. Escape only hides a window that has none (`ui.js`),
+      // which left this question unanswered and Send waiting on it.
       overlay.innerHTML = `
         <div class="modal-content" style="width:360px;max-width:90vw;">
           <div class="modal-header"><h4>No attachments found</h4></div>
@@ -4061,7 +4069,7 @@ import { PDF_FONT_COVERAGE } from './pdfFontCoverage.js';   // `B1687`
             Your message mentions an attachment, but nothing is attached. Send anyway?
           </div>
           <div class="modal-footer" style="display:flex;gap:8px;justify-content:flex-end;">
-            <button class="memory-toolbar-btn" id="att-warn-cancel">Go back</button>
+            <button class="memory-toolbar-btn" id="att-warn-cancel" data-action="close">Go back</button>
             <button class="memory-toolbar-btn" id="att-warn-send" style="background:var(--accent-primary,var(--red));color:#fff;border-color:var(--accent-primary,var(--red));">Send anyway</button>
           </div>
         </div>
@@ -4107,6 +4115,8 @@ import { PDF_FONT_COVERAGE } from './pdfFontCoverage.js';   // `B1687`
   async function _sendEmail() {
     // Says nothing: nothing was asked of an email.
     if (!_activeDocIsEmail()) return;
+    // `B1941`: "No attachments found" is open, and its answer decides this send.
+    if (_emailSendConfirming) return;
     if (_emailSendInFlight) {
       if (uiModule) uiModule.showToast('Already sending');
       return;
@@ -4142,7 +4152,9 @@ import { PDF_FONT_COVERAGE } from './pdfFontCoverage.js';   // `B1687`
     }
     // Warn if body mentions attachments but none are actually attached
     if (attachments.length === 0 && _bodyMentionsAttachment(body)) {
-      const proceed = await _confirmMissingAttachment();
+      _emailSendConfirming = true;
+      let proceed = false;
+      try { proceed = await _confirmMissingAttachment(); } finally { _emailSendConfirming = false; }
       if (!proceed) return;
     }
     const btn = Array.from(document.querySelectorAll('#doc-email-send-btn')).find((candidate) => candidate.offsetParent !== null) || document.getElementById('doc-email-send-btn');
