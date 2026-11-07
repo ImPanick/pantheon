@@ -491,50 +491,137 @@ def create_document_text(args: Dict[str, Any]) -> str:
     return "\n".join(parts)
 
 
+# `B2027`. The wrapper `create_document` takes besides its lines, read only
+# as a run at the start of the text: a title or a language whose value is
+# one line, on its tags' line or between tags set out a line each, and the
+# content up to its last closing tag.
+_HEAD_ELEMENT_OPENER = re.compile(r"\s*<(?:(?P<title>title)|(?P<language>language))>", re.IGNORECASE)
+_HEAD_ELEMENT_CLOSERS = {name: re.compile(rf"</{name}>", re.IGNORECASE) for name in ("title", "language")}
+_LEADING_CONTENT_ELEMENT = re.compile(r"\s*<content>(.*)</content>", re.IGNORECASE | re.DOTALL)
+_CONTENT_OPENER = re.compile(r"\s*<content>", re.IGNORECASE)
+_CONTENT_CLOSER = re.compile(r"</content>\s*\Z", re.IGNORECASE)
+
+
+def _leading_head_element(text: str, pos: int) -> Optional[tuple[str, str, int]]:
+    """`B2027`. The `<title>` or `<language>` element at `pos`: its name, its
+    value and where it ends. None when none starts there, or when what
+    stands between its tags, less the blank space around it, is more than
+    one line, as after a bare label: that runs on to a page's own `</title>`.
+
+    One match at `pos` and one search for the closing tag, so it takes time
+    in proportion to the text whatever the text holds. One pattern for the
+    element, such as `[ \\t]*([^\\r\\n]*?)[ \\t]*</title>`, splits a run of
+    blank space every way it can before it gives up: cubic, as the search
+    before `B2027` was, the class `B1902` mends."""
+    opened = _HEAD_ELEMENT_OPENER.match(text, pos)
+    if not opened:
+        return None
+    # The group's name, not its text lowered: under IGNORECASE `<tıtle>`
+    # opens a title too, and "tıtle".lower() is not "title".
+    name = opened.lastgroup
+    closed = _HEAD_ELEMENT_CLOSERS[name].search(text, opened.end())
+    if not closed:
+        return None
+    value = text[opened.end():closed.start()].strip()
+    if "\n" in value or "\r" in value:
+        return None
+    return name, value, closed.end()
+
+
+def _header_line(lines: List[str], i: int, name: str) -> tuple[str, int, bool]:
+    """`B2027`. Line `i` read as the `name` line of the line shape: its text
+    without a `<name>` label a model began it with or a `</name>` it ended it
+    with, the index of the line after it, and whether it had the label. A
+    label alone on its line is followed by its value, and a `</name>` alone
+    on the line after the value closes it: the element set out a tag to a
+    line, as the run at the start reads it too."""
+    def unclosed(line: str) -> str:
+        return re.sub(rf"</{name}>\s*\Z", "", line, flags=re.IGNORECASE)
+
+    line = unclosed(lines[i])
+    labelled = re.match(rf"\s*<{name}>(.*)\Z", line, re.IGNORECASE | re.DOTALL)
+    if not labelled:
+        return line.strip(), i + 1, False
+    value, after = labelled.group(1).strip(), i + 1
+    if not value and after < len(lines):
+        value, after = unclosed(lines[after]).strip(), after + 1
+    if after < len(lines) and _HEAD_ELEMENT_CLOSERS[name].fullmatch(lines[after].strip()):
+        after += 1
+    return value, after, True
+
+
+def _parse_create_document(raw: Optional[str]) -> tuple[Optional[str], Optional[str], str]:
+    """`B2027`. `create_document`'s text as its title, language and content.
+
+    The text comes in two shapes, and models mix them: lines (the title, the
+    language if it names one, the content) and a wrapper of `<title>`,
+    `<language>` and `<content>` elements. The elements were searched for
+    anywhere in the text and every such tag was then stripped from it, so a
+    page with a `<title>` of its own (an HTML page, an SVG, a note quoting
+    the tag) was saved under that title, with the call's title and `html`
+    left above it and its `<title>` element gone. Now the elements count
+    only as a run at the start, with their tags on the value's line or a
+    line each around it, and what the run does not give is read from
+    the rest as lines, where a line begun with a bare `<title>`,
+    `<language>` or `<content>` label still counts as that line. Nothing
+    inside the content is read as the wrapper or stripped from it."""
+    text = raw or ""
+    found: Dict[str, str] = {}
+    pos = 0
+    while True:
+        head = _leading_head_element(text, pos)
+        if head:
+            name, value, end = head
+        else:
+            m = _LEADING_CONTENT_ELEMENT.match(text, pos)
+            if not m:
+                break
+            name, value, end = "content", m.group(1).strip(), m.end()
+        if name in found:
+            break
+        found[name] = value
+        pos = end
+    title = found.get("title")
+    language = normalize_document_language(found.get("language"))
+    content = found.get("content")
+    if content is None:
+        lines = text[pos:].strip().split("\n")
+        i = 0
+        if title is None:
+            title, i, _ = _header_line(lines, 0, "title")
+        # Only consume the next line as the language if it names one the
+        # editor has, or a model labelled it as the language.
+        if "language" not in found and i < len(lines):
+            word, after, labelled = _header_line(lines, i, "language")
+            if labelled or normalize_document_language(word):
+                language, i = normalize_document_language(word), after
+        body = lines[i:]
+        # A `<content>` that opens the rest is the wrapper's, closed or not,
+        # and so is a `</content>` that ends it after one.
+        opened = _CONTENT_OPENER.match(body[0]) if body else None
+        if opened:
+            first = body[0][opened.end():]
+            body = ([first] if first.strip() else []) + body[1:]
+            if body and _CONTENT_CLOSER.search(body[-1]):
+                last = _CONTENT_CLOSER.sub("", body[-1])
+                body = body[:-1] + ([last] if last.strip() else [])
+        content = "\n".join(body)
+    return title or None, language, content
+
+
 class CreateDocumentTool:
     async def execute(self, content: str, ctx: dict) -> dict:
         """Create a new document. Supports two formats:
         1) Line-based: line 1 = title, line 2 (optional) = language, rest = content
         2) XML-like tags: <title>...</title><language>...</language><content>...</content>
-        Some models mix them — strip any XML-style tags and fall back to line parsing."""
-        import uuid, re as _re
+        Some models mix them; `_parse_create_document` reads both (`B2027`)."""
+        import uuid
         from src.database import SessionLocal, Document, DocumentVersion, Session as DbSession
 
-        raw = content or ""
         session_id = ctx.get("session_id")
         owner = ctx.get("owner")
 
-        # Try XML tag extraction first
-        title = None
-        language = None
-        content = None
-        mt = _re.search(r"<title>\s*(.*?)\s*</title>", raw, _re.DOTALL | _re.IGNORECASE)
-        ml = _re.search(r"<language>\s*(.*?)\s*</language>", raw, _re.DOTALL | _re.IGNORECASE)
-        mc = _re.search(r"<content>\s*(.*?)\s*</content>", raw, _re.DOTALL | _re.IGNORECASE)
-        if mt or mc:
-            title = mt.group(1).strip() if mt else None
-            language = ml.group(1).strip().lower() if ml else None
-            content = mc.group(1) if mc else None
-
-        # Fall back to line-based parsing. First strip any stray XML-ish tags.
-        if title is None or content is None:
-            cleaned = _re.sub(r"</?(?:title|language|content)>", "", raw)
-            lines = cleaned.strip().split("\n")
-            if title is None:
-                title = lines[0].strip() if lines else "Untitled"
-                lines = lines[1:]
-            # Only consume second line as language if it names one the editor
-            # has. `B2026`: a short name too, so a written `py` line is python.
-            if language is None and lines:
-                candidate = normalize_document_language(lines[0])
-                if candidate:
-                    language = candidate
-                    lines = lines[1:]
-            if content is None:
-                content = "\n".join(lines)
-
-        # Validate language: must be in known set, else default based on content
-        language = normalize_document_language(language)
+        title, language, content = _parse_create_document(content)
         if not language:
             # No explicit language — sniff it from the content so an SVG / HTML / JSON
             # / code document isn't silently saved as markdown. Prose → markdown.
