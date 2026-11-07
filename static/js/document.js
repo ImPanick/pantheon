@@ -3559,8 +3559,13 @@ import { PDF_FONT_COVERAGE } from './pdfFontCoverage.js';   // `B1687`
     if (!list) return;
     menu.dataset.odyAttachKind = kind;
     list.replaceChildren(spinnerModule.createLoadingRow('Loading…', 14));
+    // `B2031`: a tab's kind is its own `data-pan-attach-kind`. `P0-31` renamed
+    // that attribute and left this read and the tab press on the old name,
+    // which no button has, so no tab lit on opening, a press lit both, and
+    // Gallery listed documents. `menu.dataset.odyAttachKind` above is the
+    // menu's own note of what it shows, for the search box.
     menu.querySelectorAll('[data-pan-attach-kind]').forEach(btn => {
-      btn.classList.toggle('active', btn.dataset.odyAttachKind === kind);
+      btn.classList.toggle('active', btn.dataset.panAttachKind === kind);
     });
     const q = (menu.querySelector('.email-pantheon-attach-search')?.value || '').trim();
     try {
@@ -3686,8 +3691,9 @@ import { PDF_FONT_COVERAGE } from './pdfFontCoverage.js';   // `B1687`
       _closePantheonAttachMenu();
       document.getElementById('doc-email-file-input')?.click();
     });
+    // `B2031`: the tab's own attribute, as in `_loadPantheonAttachItems`.
     menu.querySelectorAll('[data-pan-attach-kind]').forEach(btn => {
-      btn.addEventListener('click', () => _loadPantheonAttachItems(menu, btn.dataset.odyAttachKind));
+      btn.addEventListener('click', () => _loadPantheonAttachItems(menu, btn.dataset.panAttachKind));
     });
     let attachSearchTimer = null;
     menu.querySelector('.email-pantheon-attach-search')?.addEventListener('input', () => {
