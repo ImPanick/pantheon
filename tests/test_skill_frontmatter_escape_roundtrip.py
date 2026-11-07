@@ -269,3 +269,81 @@ def test_a_nested_list_keeps_a_quoted_bracket_and_comma():
     values = [['review "], notes', "publish"], "archive"]
     parsed, _ = parse_frontmatter(f"---\n{emit_frontmatter({'tags': values})}\n---\n")
     assert parsed["tags"] == values
+
+
+# ---------------------------------------------------------------------------
+# `B1977`. The version's spelling
+# ---------------------------------------------------------------------------
+#
+# Every frontmatter value was read as a number when it looked like one, the
+# version too, so `version: 1.10` read back as 1.1, `01` as 1, `0` as the
+# default 1.0.0 and `true` as "True". The writer puts a version on disk bare,
+# so even a quoted "1.10" lost its zero at the second save. `P8-10` bumps the
+# last part of the version on every real edit, which made it worse: a skill at
+# 1.9 became 1.10, read back as 1.1, and went on 1.2, 1.3 — its version ran
+# backwards, and so did the labels on its History. Now the version is read as
+# it is written, and only the version: every other key reads as before. A
+# version written `null` still reads as 1.0.0, as it always has, rather than as
+# the word, which the bump would turn into `null.1`. Ported from upstream
+# Odysseus 02d28c06 (#6888); its on-disk case expects no bump, and Pantheon
+# bumps, so that case is Pantheon's.
+
+
+@pytest.mark.parametrize(
+    "raw, expected",
+    [
+        ("1.10", "1.10"),
+        ("2.20", "2.20"),
+        ("01", "01"),
+        ("0", "0"),
+        ("true", "true"),
+        ('"1.10"', "1.10"),
+        ("'2.20'", "2.20"),
+    ],
+)
+def test_a_version_keeps_its_spelling_across_saves(raw, expected):
+    markdown = f"---\nname: demo\nversion: {raw}\nconfidence: 0.80\n---\n"
+    for _ in range(3):
+        skill = Skill.from_markdown(markdown)
+        assert skill.version == expected
+        assert skill.confidence == 0.8
+        markdown = skill.to_markdown()
+
+
+def test_only_the_version_is_read_as_written_and_a_missing_one_is_still_the_default():
+    fm, _ = parse_frontmatter(
+        "---\nversion: 1.10\nconfidence: 0.80\nuses: 3\nenabled: true\ntags: [one, two]\n---\n"
+    )
+    assert fm == {"version": "1.10", "confidence": 0.8, "uses": 3, "enabled": True,
+                  "tags": ["one", "two"]}
+    # What read the same before still does: a quoted version is decoded, and
+    # an absent, empty or null one is the default.
+    for raw, expected in (("1.0.0", "1.0.0"), ('"release\\u002d01"', "release-01"),
+                          ("null", "1.0.0"), ("~", "1.0.0"), ('""', "1.0.0")):
+        assert Skill.from_markdown(f"---\nname: demo\nversion: {raw}\n---\n").version == expected, raw
+    for line in ("", "version:\n"):
+        assert Skill.from_markdown(f"---\nname: demo\n{line}---\n").version == "1.0.0"
+
+
+def test_an_edited_skill_counts_its_version_up_from_how_it_is_written(tmp_path):
+    manager = SkillsManager(str(tmp_path), library_root="")
+    manager.add_skill(name="demo", description="Before", version="1.10", owner="alice", source="user")
+    seen = []
+    for i in range(3):
+        assert manager.update_skill("demo", {"description": f"Edit {i}"}, owner="alice")
+        stored = manager.load(owner="alice")
+        assert stored[0]["description"] == f"Edit {i}"
+        seen.append(stored[0]["version"])
+    assert seen == ["1.11", "1.12", "1.13"]   # `P8-10`: one patch bump per edit
+    markdown = next((tmp_path / "skills").rglob("SKILL.md")).read_text(encoding="utf-8")
+    assert "version: 1.13\n" in markdown
+
+
+def test_a_version_bumped_into_two_digits_does_not_run_backwards(tmp_path):
+    manager = SkillsManager(str(tmp_path), library_root="")
+    manager.add_skill(name="nine", description="Before", version="1.9", owner="alice", source="user")
+    seen = []
+    for i in range(2):
+        assert manager.update_skill("nine", {"description": f"Edit {i}"}, owner="alice")
+        seen.append(manager.load(owner="alice")[0]["version"])
+    assert seen == ["1.10", "1.11"]

@@ -87,10 +87,14 @@ _FM_KEY_RE = re.compile(r"^([a-z_][a-z0-9_]*):\s*(.*)$", re.IGNORECASE)
 _FM_BLOCK_LIST_RE = re.compile(r"^\s*-\s*(.*)$")
 
 
-def _parse_scalar(raw: str) -> Any:
+def _parse_scalar(raw: str, *, string_only: bool = False) -> Any:
     raw = raw.strip()
     if raw == "":
         return ""
+    # `B1977`. A version is text as written: 1.10 is not 1.1, nor `true` True.
+    # Null stays None, which reads as the default 1.0.0, as it always has.
+    if string_only and not (raw[0] == raw[-1] and raw[0] in ("'", '"')):
+        return None if raw.lower() in ("null", "none", "~") else raw
     if raw.startswith("[") and raw.endswith("]"):
         inner = raw[1:-1].strip()
         if not inner:
@@ -182,7 +186,7 @@ def parse_frontmatter(text: str) -> tuple[Dict[str, Any], str]:
                 pending_key = key
                 fm[key] = []
             else:
-                fm[key] = _parse_scalar(val)
+                fm[key] = _parse_scalar(val, string_only=(key == "version"))   # `B1977`
                 pending_key = None
             continue
         m2 = _FM_BLOCK_LIST_RE.match(line)
