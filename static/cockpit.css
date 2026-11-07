@@ -2135,3 +2135,53 @@ html.cockpit .msg .body pre.mermaid {
    tuck chevron, and every pane's Float, Fill and Close (Panick, 2026-11-07). */
 html.cockpit .ck-layouts button,
 html.cockpit .ck-ibtn { padding: 0 !important; min-width: 0; }
+
+/* ── alignment audit 2026-11-07: workspace ── */
+/* Each pane is a query container, so its header and its window's bars answer to the pane's width, not the viewport's. */
+html.cockpit .ck-pane { container: ckpane / inline-size; }
+/* The pane header sits on the docked window's 10px gutter (was 13px left, 6px right), so icon and Close line up with the body. */
+html.cockpit .ck-pane-h { padding: 0 10px; }
+/* In a narrow pane the header keeps title, holder and all three buttons inside: tighter gaps, and a long holder ends in an ellipsis. */
+@container ckpane (max-width: 300px) {
+  html.cockpit .ck-pane-h { gap: 4px; }
+  html.cockpit .ck-pane-h .ck-holder:not(:empty) { display: inline-block; flex-shrink: 0; max-width: 35%; overflow: hidden; text-overflow: ellipsis; }
+  html.cockpit .ck-pane-h .ck-holder.agent::before { display: inline-block; vertical-align: middle; margin-right: 5px; }
+}
+
+/* The document footer's Undo is a pill that holds its arrow and its word (the 28px round hid the arrow and let the word spill). */
+@container docpane (width > 300px) { html.cockpit .ck-pane #doc-undo-btn { width: auto !important; padding: 0 10px !important; } }
+html.cockpit .ck-pane #doc-undo-btn { flex: none; }
+html.cockpit .ck-pane #doc-undo-btn > svg { flex: none; }
+/* The footer's row sits in the middle of its band: the 30px under it was room for the Source link, which sits below the workspace. */
+html.cockpit .ck-pane .doc-email-actions { padding-bottom: 10px; }
+/* A narrow document pane wraps its footer rather than push Save past the edge, and shows Undo and Save as icons, as a phone does. */
+html.cockpit .ck-pane #doc-actions-footer { flex-wrap: wrap; row-gap: 6px; }
+@container docpane (max-width: 300px) {
+  html.cockpit .ck-pane #doc-actions-footer { gap: 6px; padding-left: 8px; padding-right: 8px; }
+  html.cockpit .ck-pane #doc-undo-btn > span { display: none; }
+  html.cockpit .ck-pane #doc-footer-copy-btn:not([data-mode="reply"]) { font-size: 0; gap: 0; padding: 0 10px; }
+}
+
+/* The browser's address field and its buttons share one 28px height (the field was a 32px box between 24px pills). */
+html.cockpit #agent-browser-modal .abw-address { min-height: 0; height: 28px; padding: 0 10px; }
+html.cockpit .abw-bar > .memory-toolbar-btn { height: 28px; }
+/* In a narrow pane the address takes its own row instead of shrinking to a sliver; Back, Forward, Reload and Go go under it. */
+@container ckpane (max-width: 360px) {
+  html.cockpit .abw-bar { flex-wrap: wrap; row-gap: 6px; }
+  html.cockpit .abw-address { order: -1; flex: 1 1 100%; }
+  html.cockpit .abw-go { margin-left: auto; }
+}
+/* The tab strip keeps its height in a short pane (it was squeezed to 0) and takes no room or gap while it is empty. */
+html.cockpit .abw-tabs { flex: none; }
+html.cockpit .abw-tabs:empty { display: none; }
+/* Each tab is one pill holding its name and its ×, not a bordered box around a second pill; the current tab is the brighter one. */
+html.cockpit .abw-tab { height: 26px; border-radius: 999px; border-color: var(--ck-edge-lo); background: var(--ck-tint); }
+html.cockpit .abw-tab.abw-tab-current { background: var(--ck-tint-2); border-color: var(--ck-edge); }
+html.cockpit .abw-tab .memory-toolbar-btn { border: 0 !important; background: transparent !important; box-shadow: none !important; }
+html.cockpit .abw-tabs .abw-tab-new { align-self: center; }
+/* The notes bar's Note, mark picker, Send notes and note tools are 24px pills like Point at… above them (were 32px, 10px corners). */
+html.cockpit #agent-browser-modal :is(.abw-notes-btn, .abw-note-tool) { height: 24px; padding: 0 9px; border-radius: 999px; line-height: 1; }
+html.cockpit #agent-browser-modal .abw-notes-kind { min-height: 0; height: 24px; padding: 0 6px 0 9px; border-radius: 999px !important; line-height: 1; }
+
+/* The Workstation's Screen picker is a 24px pill like the bar's buttons beside it (was a 32px box with 10px corners). */
+html.cockpit #workstation-screen-modal .wsv-who-select { min-height: 0; height: 24px; padding: 0 6px 0 10px; border-radius: 999px !important; }

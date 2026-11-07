@@ -181,6 +181,26 @@ function seat(key) {
 
 /* ───────────── render ───────────── */
 
+// 'cols' and 'main' set panes side by side. A pane narrower than this cannot
+// keep its own header (title, holder, Float, Fill, Close) or its window's
+// toolbar inside it, so those layouts stack as 'rows' until the column is wide
+// enough again. W.layout keeps the person's choice; only the grid falls back.
+const MIN_PANE_W = 260;
+let settledW = 0;    // the grid's inner width the last time the column stood still
+let fitted = '', fittedN = 0;
+
+function fitLayout(lay, n) {
+  const across = lay === 'cols' ? n : (lay === 'main' && n === 3 ? 2 : 1);
+  if (across < 2) return lay;
+  const cs = getComputedStyle(grid);
+  // While the column is tucked or sliding in or out its width is not the one
+  // it will have, so the answer from when it last stood still holds.
+  const sliding = document.documentElement.classList.contains('ck-ws-off') || (ws.getAnimations?.() || []).some((a) => a.playState === 'running');
+  if (!sliding) settledW = grid.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+  if (settledW <= 0) return lay;
+  return (settledW - (parseFloat(cs.columnGap) || 0) * (across - 1)) / across < MIN_PANE_W ? 'rows' : lay;
+}
+
 function render() {
   if (!ws) return;
   const docked = ORDER.filter((k) => isOpen(k) && !W.floating.has(k));
@@ -203,8 +223,9 @@ function render() {
   empty.hidden = shown.length > 0;
   const n = shown.length;
   let cols = '1fr', rows = '1fr';
+  const lay = fitLayout(W.max ? 'one' : W.layout, n);
+  fitted = lay; fittedN = n;
   if (n > 1) {
-    const lay = W.max ? 'one' : W.layout;
     if (lay === 'cols') cols = `repeat(${n}, minmax(0,1fr))`;
     else if (lay === 'rows') rows = `repeat(${n}, minmax(0,1fr))`;
     else if (lay === 'main') {
@@ -245,8 +266,9 @@ function floatSurface(key, at) {
   if (key === 'doc') {
     pane.classList.add('ck-floating');
     const w = Math.min(560, window.innerWidth - 80), h = Math.min(480, window.innerHeight - 120);
+    // Near the pane, but whole on screen, so its Fill, Close and Save stay in reach.
     const to = at ? { left: at.x, top: at.y, width: w, height: h }
-      : { left: Math.max(20, from.left - 80), top: Math.max(60, from.top + 20), width: w, height: h };
+      : { left: Math.max(20, Math.min(from.left - 80, window.innerWidth - w - 20)), top: Math.max(60, Math.min(from.top + 20, window.innerHeight - h - 20)), width: w, height: h };
     Object.assign(pane.style, px(to));
     document.body.appendChild(pane);
     $('.act-pop', pane).innerHTML = icon('dockin');
@@ -260,11 +282,21 @@ function floatSurface(key, at) {
   // The tool window takes its own place again: where it was before, or near the pane.
   const content = node && $('.modal-content', node);
   if (content) {
-    const to = at ? { left: at.x, top: at.y } : { left: Math.max(20, from.left - 60), top: Math.max(60, from.top + 20) };
     content.style.position = 'fixed';
+    content.style.margin = '0';
+    // The window keeps its own size (980×720, 1040×780; read once it is fixed,
+    // since inside its overlay it is narrower) unless the viewport is smaller,
+    // and lands whole on screen with 20px clear: placed only by the pane, its
+    // title bar's Minimize and Close fell past the right edge.
+    let to = { left: at?.x, top: at?.y };
+    if (!at) {
+      const cw = Math.min(content.offsetWidth, window.innerWidth - 40), ch = Math.min(content.offsetHeight, window.innerHeight - 40);
+      if (cw < content.offsetWidth) content.style.width = cw + 'px';
+      if (ch < content.offsetHeight) content.style.height = ch + 'px';
+      to = { left: Math.max(20, Math.min(from.left - 60, window.innerWidth - cw - 20)), top: Math.max(20, Math.min(Math.max(60, from.top + 20), window.innerHeight - ch - 20)) };
+    }
     content.style.left = to.left + 'px';
     content.style.top = to.top + 'px';
-    content.style.margin = '0';
     if (!reduced() && from.width && !at) content.animate([{ transform: `translate(${from.left - to.left}px, ${from.top - to.top}px) scale(.96)`, opacity: .6 }, { transform: 'none', opacity: 1 }], { duration: 480, easing: EASE });
   }
 }
@@ -464,6 +496,11 @@ function build() {
   document.addEventListener('pantheon:toggle-workspace', () => toggleWorkspace());
   bindResizer();
   watchWindowDrops();
+  // The resizer, a window resize or the end of the tuck slide can move the
+  // column across MIN_PANE_W: lay the grid out again only when the fit changed.
+  const refit = () => { if (fitLayout(W.max ? 'one' : W.layout, fittedN) !== fitted) render(); };
+  if (typeof ResizeObserver === 'function') new ResizeObserver(refit).observe(ws);
+  ws.addEventListener('transitionend', (e) => { if (e.target === ws) refit(); });
 
   // A surface opened anywhere — the + menu, a slash command, an agent's door —
   // lands in the column; one closed anywhere leaves it.
