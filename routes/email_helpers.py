@@ -266,8 +266,47 @@ def _send_smtp_message(cfg: dict, from_addr: str, recipients: list[str], message
         smtp.sendmail(from_addr, recipients, message)
 
 
-def _friendly_email_auth_error(protocol: str, host: str, error: object) -> str:
-    """Return a clearer setup error for known provider auth policies."""
+def _mail_door_failure(host: str, port, error: object) -> str | None:
+    """`B2032`. The sentence for a mail connection that failed at the door,
+    naming the host and port that were typed and nothing the server sent, or
+    `None` past the door (a sign-in the server refused says what it said)."""
+    import socket
+    import ssl
+
+    if isinstance(error, smtplib.SMTPConnectError):   # it did not greet as SMTP
+        return _smtp_send_failure(host, port, error)   # `P23-08`'s sentence, said once
+    cause = error.__context__ if isinstance(error, smtplib.SMTPServerDisconnected) else None
+    if isinstance(cause, OSError) and not isinstance(cause, smtplib.SMTPException):
+        error = cause   # smtplib's hang-up over a socket's error: say which
+    where = f"{host}:{port}" if host and port else (host or "the mail server")
+    if isinstance(error, smtplib.SMTPServerDisconnected):
+        return f"The server at {where} closed the connection. Check the host, the port and the security setting."
+    if not isinstance(error, OSError) or isinstance(error, smtplib.SMTPException):
+        return None
+    if isinstance(error, ssl.SSLCertVerificationError):
+        return f"The server at {where} sent a TLS certificate that could not be verified. Check the host name."
+    if isinstance(error, ssl.SSLError):
+        return f"The TLS handshake with {where} failed. Check the port and the security setting."
+    if isinstance(error, TimeoutError):   # keeps "timed out": the list's 504 reads it
+        return f"The server at {where} did not answer in time (timed out). Check the host and the port."
+    if isinstance(error, ConnectionRefusedError):
+        return f"The server at {where} refused the connection. Check the host and the port."
+    if isinstance(error, socket.gaierror):
+        return f"No address was found for {host}. Check the host."
+    return f"The connection to {where} failed. Check the host and the port."
+
+
+def _friendly_email_auth_error(protocol: str, host: str, error: object, port=None) -> str:
+    """Return a clearer setup error for known provider auth policies.
+
+    `B2032`: a connection that failed at the door is said in our words first
+    (`_mail_door_failure`). `str(e)` of one carried the first line whatever
+    listened on that host and port sent (an SSH banner, say), and the account
+    form's Test takes any host and port. An IMAP greeting is worded where the
+    connection is opened (`_open_imap_connection`), once for every route."""
+    door = _mail_door_failure(host, port, error)
+    if door:
+        return door
     raw = str(error or "")
     lower = raw.lower()
     host_lower = (host or "").lower()
@@ -1423,6 +1462,23 @@ _IMAP_TIMEOUT_SECONDS = _coerce_imap_timeout_seconds(os.environ.get("PANTHEON_IM
 _MAIL_CONNECT_SECONDS = 5
 _IMAP_CONNECT_SECONDS = _MAIL_CONNECT_SECONDS
 
+#: `B2032`. Bound at import: tests put fakes with no `error` in for `imaplib.IMAP4`.
+_IMAP_ERROR = imaplib.IMAP4.error
+
+
+def _imap_greeted(open_imap, host, port, **kwargs):
+    """`B2032`. ``open_imap(host, port, **kwargs)``, imaplib's IMAP4 or
+    IMAP4_SSL, with a greeting that is not an IMAP server's said in our words.
+    imaplib's error quotes the first line the server sent, an SSH banner say,
+    and every route that shows `str(e)` for a mail connection repeated it. The
+    same class is raised, so every handler catches what it caught; a timeout or
+    a refused connection is not this error and is left as it is."""
+    try:
+        return open_imap(host, port, **kwargs)
+    except _IMAP_ERROR as exc:
+        logger.warning("IMAP server %s:%s did not greet as one: %r", host, port, str(exc)[:200])
+        raise type(exc)(f"The server at {host}:{port} did not answer like an IMAP server.") from None
+
 
 def _open_imap_connection(
     host: str,
@@ -1443,7 +1499,7 @@ def _open_imap_connection(
     full = timeout
     timeout = min(full, _IMAP_CONNECT_SECONDS) if full else _IMAP_CONNECT_SECONDS
     if starttls:
-        conn = imaplib.IMAP4(host, port, timeout=timeout)
+        conn = _imap_greeted(imaplib.IMAP4, host, port, timeout=timeout)
         try:
             if ssl_context:
                 conn.starttls(ssl_context=ssl_context)
@@ -1459,9 +1515,9 @@ def _open_imap_connection(
             raise
     elif port == 993:
         kwargs = {"ssl_context": ssl_context} if ssl_context else {}
-        conn = imaplib.IMAP4_SSL(host, port, timeout=timeout, **kwargs)
+        conn = _imap_greeted(imaplib.IMAP4_SSL, host, port, timeout=timeout, **kwargs)
     else:
-        conn = imaplib.IMAP4(host, port, timeout=timeout)
+        conn = _imap_greeted(imaplib.IMAP4, host, port, timeout=timeout)
     try:
         conn.sock.settimeout(full)   # the session's reads: the full timeout
     except Exception:

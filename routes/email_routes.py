@@ -6658,7 +6658,7 @@ def setup_email_routes():
                     try: conn.logout()
                     except Exception: pass
             except Exception as e:
-                imap_result = {"ok": False, "error": _friendly_email_auth_error("IMAP", imap_host, e)}
+                imap_result = {"ok": False, "error": _friendly_email_auth_error("IMAP", imap_host, e, port=imap_port)}
 
         smtp_host = (body.get("smtp_host") or "").strip()
         smtp_port, smtp_port_err = _coerce_port(body.get("smtp_port"), 465)
@@ -6732,7 +6732,7 @@ def setup_email_routes():
                     smtp.login(smtp_user, smtp_pass)
                 smtp_result = {"ok": True}
             except Exception as e:
-                smtp_result = {"ok": False, "error": _friendly_email_auth_error("SMTP", smtp_host, e)}
+                smtp_result = {"ok": False, "error": _friendly_email_auth_error("SMTP", smtp_host, e, port=smtp_port)}
             finally:
                 if smtp is not None:
                     try:
