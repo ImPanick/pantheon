@@ -1552,13 +1552,29 @@ def _classification_array(raw: str, tries: int = 20):
     return first
 
 
+def _unowned_rows_are_shared() -> bool:
+    """Whether a calendar or note stored with no owner is everyone's.
+
+    v2 review HIGH-12, the daily brief's rule: only on a single-user
+    (unconfigured) install. Once there are accounts, one person's run must
+    not read another's rows that happen to carry owner=None. False when the
+    accounts cannot be read. One helper since `B2030`, so `classify_events`
+    asks the brief's question rather than a copy of it.
+    """
+    try:
+        from src.auth_manager_access import shared_auth_manager  # `P23-07` (`PERF-M-15`)
+        return not shared_auth_manager().is_configured
+    except Exception:
+        return False
+
+
 async def action_classify_events(owner: str, **kwargs) -> Tuple[str, bool]:
     """Hybrid classification of upcoming calendar events: fast heuristic for
     obvious cases, LLM fallback for ambiguous ones. Assigns event_type +
     importance + color. Re-classifies anything not already set."""
     try:
         from datetime import timedelta
-        from core.database import SessionLocal, CalendarEvent
+        from core.database import SessionLocal, CalendarEvent, CalendarCal
         from src.llm_core import llm_call_async_with_fallback
         import re as _re, json as _json
 
@@ -1566,11 +1582,21 @@ async def action_classify_events(owner: str, **kwargs) -> Tuple[str, bool]:
         try:
             now = datetime.utcnow()
             horizon = now + timedelta(days=30)
-            events = db.query(CalendarEvent).filter(
+            # `B2030`. Only the owner's calendars. This read every person's
+            # next 30 days, sent their titles and places to this owner's
+            # model and wrote type, colour and importance onto their events.
+            # A calendar holds the owner (the check-in digest's join); an
+            # unowned one counts where the daily brief counts it, and a run
+            # for nobody reads nothing once there are accounts (`B1271`).
+            events_q = db.query(CalendarEvent).join(
+                CalendarCal, CalendarEvent.calendar_id == CalendarCal.id,
+            ).filter(
                 CalendarEvent.dtstart >= now,
                 CalendarEvent.dtstart <= horizon,
                 CalendarEvent.status != "cancelled",
-            ).all()
+            )
+            events = owner_filter(events_q, CalendarCal, owner,
+                                  include_shared=_unowned_rows_are_shared()).all()
             if not events:
                 return "No upcoming events to classify", True
 
@@ -2043,11 +2069,7 @@ async def action_daily_brief(owner: str, **kwargs) -> Tuple[str, bool]:
         # (unconfigured) deploys only. In a multi-user deploy, one
         # user's daily brief must not include another user's notes or
         # events that happen to be stored with owner=None.
-        try:
-            from src.auth_manager_access import shared_auth_manager  # `P23-07` (`PERF-M-15`)
-            _allow_null = not shared_auth_manager().is_configured
-        except Exception:
-            _allow_null = False
+        _allow_null = _unowned_rows_are_shared()
         db = SessionLocal()
         try:
             ev_q = db.query(CalendarEvent).join(CalendarCal).filter(
