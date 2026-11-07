@@ -15,6 +15,7 @@ from fastapi import HTTPException
 from pydantic import BaseModel
 
 from routes._validators import validate_remote_host, validate_ssh_port
+from routes.cookbook_output import HF_PARTIAL_BLOB_HELPER  # `B1932`
 from core.platform_compat import _ssh_exec_argv
 
 logger = logging.getLogger(__name__)
@@ -379,6 +380,7 @@ def _cached_model_scan_script(model_dirs: list[str] | None = None, add_hf_cache:
     """
     lines = [
         "import json, os, re, shutil, subprocess, urllib.request",
+        *HF_PARTIAL_BLOB_HELPER.splitlines(),  # `B1932`
         "models = []",
         "seen = set()",
         "BLOCKED_ROOTS = ('/sys', '/proc', '/dev', '/run', '/var/run')",
@@ -436,9 +438,13 @@ def _cached_model_scan_script(model_dirs: list[str] | None = None, add_hf_cache:
         "        blobs = os.path.join(cache, d, 'blobs')",
         "        sz, nf, ic = 0, 0, False",
         "        if os.path.isdir(blobs):",
+        # `B1932`: an empty marker beside its finished blob is neither a
+        # download to finish nor a file of the model.
         "            for f in os.scandir(blobs):",
+        "                if f.name.endswith('.incomplete'):",
+        "                    if not is_partial_blob(f.path): continue",
+        "                    ic = True",
         "                if f.is_file(): nf += 1; sz += f.stat().st_size",
-        "                if f.name.endswith('.incomplete'): ic = True",
         "        snap = os.path.join(cache, d, 'snapshots')",
         "        def snapshot_size():",
         "            total, count, incomplete = 0, 0, False",
