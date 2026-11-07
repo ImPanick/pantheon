@@ -186,7 +186,10 @@ def test_the_blocking_set_is_the_size_the_proposal_states():
     assert stated, "§ 3's heading no longer states a count"
     words = {"ten": 10, "eleven": 11, "twelve": 12, "thirteen": 13, "fourteen": 14,
              "fifteen": 15, "sixteen": 16, "seventeen": 17, "eighteen": 18,
-             "nineteen": 19, "twenty": 20, "twenty-one": 21, "twenty-two": 22}
+             "nineteen": 19, "twenty": 20, "twenty-one": 21, "twenty-two": 22,
+             "twenty-three": 23, "twenty-four": 24, "twenty-five": 25,
+             "twenty-six": 26, "twenty-seven": 27, "twenty-eight": 28,
+             "twenty-nine": 29, "thirty": 30}
     assert words[stated.group(1)] == len(blocking) + len(landed), (
         f"§ 3 says {stated.group(1)} and the register holds {len(blocking)} blocking "
         f"+ {len(landed)} landed")
@@ -259,6 +262,10 @@ EXAMPLES: dict[str, tuple[str, str]] = {
     r"only \w+ (?:are|is) gated": ("security", "four handlers and only two are gated"),
     r"(?:GET|POST|PUT|DELETE|endpoint|route)s?\b[^.]{0,40}\b(?:are|is) open\b":
         ("security", "both GETs are open"),
+    r"(?:check|verif)\w* (?:the |a |any |no )?(?:server'?s? |TLS |SSL )?certificate":
+        ("security", "nothing checks the server's certificate"),
+    r"unverified[_ ]context": ("security", "the client takes ssl's unverified context"),
+    r"\bimpostor\b": ("security", "an impostor on the path reads the password"),
     # licence
     r"AGPL": ("licence", "the AGPL obliges it"),
     r"Apache-2\.0": ("licence", "the file is Apache-2.0"),

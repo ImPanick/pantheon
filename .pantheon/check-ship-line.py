@@ -150,6 +150,11 @@ SIGNALS: dict[str, tuple[str, ...]] = {
         # rule that misses the row naming two ungated endpoints is not a triage.
         r"\bungated\b", r"\bnot gated\b", r"only \w+ (?:are|is) gated",
         r"(?:GET|POST|PUT|DELETE|endpoint|route)s?\b[^.]{0,40}\b(?:are|is) open\b",
+        # `B2096` said *"no mail connection checks the server's certificate"*, and
+        # nothing above reads that either. A connection that trusts whoever
+        # answers hands over the password with no "plain text" in the row.
+        r"(?:check|verif)\w* (?:the |a |any |no )?(?:server'?s? |TLS |SSL )?certificate",
+        r"unverified[_ ]context", r"\bimpostor\b",
     ),
     # A shipped dependency is read every time, whatever the row says about it.
     # `B336` is the reason this group exists and the reason it is not a verdict:

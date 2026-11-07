@@ -379,6 +379,10 @@ Re-measured 2026-10-31, after the forty-fifth wave: **25 filed, 23 closed**, ope
 
 **Direction as of 2026-10-31, after the forty-fifth wave: the open count is rising.**
 
+Re-measured 2026-11-07, after the eightieth wave, the audit of what Odysseus fixed after the fork: **252 filed, 0 closed**, open **60 → 312** — rising, by 235 in this wave, six in the alignment audit's before it and eleven in the seven before that. None closed: 182 rows were ported or found and fixed while porting, each claimed until the owner has tested it, and 53 were filed open, seven of them the owner's call. Four are gates (§ 3): `B1780`, `B1782` and `B1817` are met on the port branch, and `B2096`, no mail connection checking the server's certificate, stands. The window moved on, so its start reads 60. The ship-line composition is 1 of the last 40 `B` rows (`B2063`–`B2102`): `B2096`.
+
+**Direction as of 2026-11-07, after the eightieth wave: the open count is rising, mostly by rows built and claimed until the owner has tested them, and one gate stands.**
+
 ### A second number, which is the one that moves
 
 Of the last 40 `B` rows filed — `B360` through `B455`, four waves of sweeps plus
@@ -419,7 +423,7 @@ rows are marked `second-line` in the register.
 
 ---
 
-## 3. The blocking set — twenty-two rows, all met
+## 3. The blocking set — twenty-six rows, one open
 
 Fifteen of 234 open rows when this was written; **seven have since been met and three
 have been added, and the met ones are marked `landed` in the register rather than deleted,
@@ -478,7 +482,23 @@ names them whenever its caller names nobody, so every tool loopback is asked wha
 the shell's own admin gate asks the same of a named person; and measured on the real app, bob's assistant is refused
 each Forge read where bob is, and starts no `ssh` to a host it names.
 So the set is twenty-two rows, all met, and 245 open rows are *clear by rule,
-not read*. One line of reasoning each below; the row carries the measurement.
+not read*.
+**Four were added on 2026-11-07, by the audit of what Odysseus fixed after the fork, and three of them were met on
+the branch that found them.** Each is a fault upstream fixed and Pantheon still had: one request to the MLX image
+server could run code on the machine serving it, which the Forge binds to every address for a remote or agent-planned
+launch (`B1780`); the agent's grep, glob and ls walked the install's own records, which `B1418` keeps `read_file` away
+from, and printed its TOTP secrets, login tokens and `.app_key` (`B1782`); and an API token of any scope could read and
+rewrite a chat whose id it knew, through the history router `B70` missed, while a teacher's takeover dropped the turn's
+limits (`B1817`). All three are `landed`: built and tested on the port branch and claimed until the owner has tested
+them, so `dev` and `main` keep the faults until it merges. **The fourth stands (`B2096`).** No mail connection checks
+the server's certificate — `imaplib` and `smtplib` take an unverified context when none is passed, and none is — so an
+impostor on the network path reads each account's password or OAuth token, measured on that branch. It is a gate by
+§ 2's first test; what is the owner's to decide is how existing accounts switch over, because checking every server
+cuts off a self-signed one. Two other rows the audit read were nearer the line and are not on it: a sender's image
+fetched unasked when Reply opened (`B1903`, fixed) or a forward drew it (`B2084`, open) is an unasked fetch beside a
+reader that keeps `ask`, registered as `B1229`'s and `B1259`'s were. So the set is twenty-six rows, twenty-five met and
+one open, and 292 open rows are *clear by rule, not read*. One line of reasoning each below; the row carries the
+measurement.
 
 ### Security — the control does not hold (5)
 
@@ -708,7 +728,9 @@ recall-oriented on purpose. A false positive costs one reading; a false negative
 ships a gate as a nice-to-have. Measured on today's tracker its 53 signals call
 **43 of 234 open rows candidates** and catch **14 of the 15** in the blocking
 set; the one it misses is `P10-12`, an absence of an artefact, which no prose
-signal can find and which is registered by hand.
+signal can find and which is registered by hand. On 2026-11-07 `B2096`, a mail
+certificate nobody checks, carried none of the 53, so three were added for a
+connection that trusts whoever answers, and the rule now has 56.
 
 **It has already earned its place.** Five rows were filed while this document was
 being written (`B450`–`B455`). `--check` named two of them unclassified — `B451`
@@ -882,6 +904,20 @@ weakest one in this document: it means nobody adjudicated them individually.
 | `B1729` | tracked | security | the rule reads *privilege* in "an unprivileged user": the Chatterbox container runs as a system user of its own (uid 10040), which narrows what it can do. Not a gate: nothing is opened. It is opt-in (`COMPOSE_PROFILES=chatterbox` beside the NVIDIA overlay), publishes no port, answers only on the compose network, and Pantheon sends it the text of a reply to say and nothing of the person's. Built and tested against a stand-in for the model; the image has not been built on a GPU (filed and claimed 2026-11-01) |
 | `P24-27` | tracked | supply | the owner's audit of the shipped agents' runbooks, worked a slice per wave (104 of 173 at the bar). The supply reading is its note that Web Performance ran `npx --yes lighthouse` — fixed in that agent's file in the same slice; the row is content work a stranger can use the product without, and no agent below the bar is unsafe, only thin |
 | `B01` | tracked | supply | `chromadb/chroma:latest` and an untagged `ntfy` in the three compose files — folded into `B445`, which states the same two images with the consequence measured. Restored as a row by `B831` (its marker had been glued onto `B54`'s line since 2026-10-03). Not a gate: a breaking upstream release stops a `--build` from starting cleanly, which the operator sees at once, and nothing a stranger relies on is exposed while it waits |
+| `B1780` | landed | security | one request to the MLX image server could run code on the machine serving it: a request could name a folder as its model and the server ran the script inside it, with no auth, bound to every address for a remote-host or agent-planned launch. Met 2026-11-07 on the Odysseus port branch, from upstream's advisory `d0d8edf5`: the server serves only the model it was launched with. Claimed until the owner has tested it |
+| `B1782` | landed | security | the agent's grep, glob and ls walked the install's own records, which `B1418` keeps `read_file` away from, and printed the TOTP secrets in `auth.json`, the login tokens in `sessions.json` and `.app_key`. Met 2026-11-07 on the port branch, from upstream's advisory `934d23c0`: the walks ask the rule `read_file` asks. Claimed until the owner has tested it |
+| `B1817` | landed | security | an API token of any scope that knew a chat's id could read and rewrite the chat, through the history router `B70` missed, and a teacher's takeover dropped the turn's `delegated_credential` and outside-content taint. Met 2026-11-07 on the port branch, from upstream's advisory `f88e2d1f`: the router asks the chat scope and the takeover passes both on. Claimed until the owner has tested it |
+| `B2096` | blocking | security | no mail connection checks the server's certificate — `imaplib` and `smtplib` take an unverified context when none is passed, and none is — so an impostor on the network path reads each account's password or OAuth token; measured 2026-11-07. § 2's first test: TLS that accepts any certificate is not doing the job it is named for. The owner's call is how existing accounts switch over, since checking cuts off a self-signed server |
+| `B1798` | tracked | defect | the rule read *plaintext* in its test file's name (`test_web_fetch_plaintext.py`): a feed or an XML API read as empty, fixed on the port branch with the SSRF checks and byte caps still run first |
+| `B1829` | tracked | security | the rule read *require_admin* in "keeping `require_admin` first": a declined or expired MCP sign-in now gets a page that says so, and the callback still asks for an admin before anything and keeps `B1956`'s signed state; fixed on the port branch |
+| `B1900` | tracked | security | a per-person privilege set through the API was stored as sent, so "false" read as on. Admin's own toggles send booleans and numbers, which were stored and read right, so it was a mistyped call's hole and not a control that does not hold; every value is now checked first and a mistype refused by name (port branch) |
+| `B1903` | tracked | security | the rule read *PlainText* in `_emailHtmlToPlainText`: opening Reply fetched a sender's image, in the default `ask` mode through the image proxy, so the sender learned the mail was read. An unasked fetch beside a reader that keeps `ask`, registered as `B1229` and `B1259` were; fixed on the port branch |
+| `B2084` | tracked | security | `B1903`'s unasked fetch on a forward, open: `GET /api/img` enforces only `block`, so a forward's draw still reaches it; the reader keeps `ask` |
+| `B2083` | tracked | defect | the rule read *attribution* in `_strip_trailing_attribution`: a mail with a long run of "<" before its quote holds the server for seconds when it is opened — a slow pattern on outside text, `B1902`'s class, open; it gets past no control |
+| `B2091` | tracked | display | the rule read *privilege* in the route's path: after a refused save Admin shows a model limit the server never stored, and the server enforces the one it kept |
+| `B2097` | tracked | decision | Nobody mode promises "nothing saved", and an image made in it is saved with its prompt and the prompt logged; what Nobody keeps of an image is the owner's call |
+| `B2098` | tracked | decision | a skill learned from a chat is published at 0.6 while the Brain's switches say the Skills Audit publishes; the path from an outside page runs only through what the model wrote, 500 characters a message, and whether learned skills wait for the audit is the owner's call |
+| `B2102` | tracked | second-line | a member can still tell the box's and the LAN's open ports from closed ones through the mail Test; the banners no longer come back (`B2032`) and the server no longer stalls (`B1921`), and which hosts a member may name is the owner's call — `B492`'s line |
 
 ---
 
