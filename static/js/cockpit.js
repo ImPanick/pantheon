@@ -168,7 +168,10 @@ function buildRail() {
     if (!named && b.id !== 'rail-delete-session') rail.appendChild(b);
   });
   $$('.rail-separator, .icon-rail-divider', rail).forEach((s) => s.remove());
-  Array.from(rail.children).forEach((c) => { if (c.tagName === 'DIV' && c.style.flex === '1') c.remove(); });
+  // The markup's own `flex:1` spacer goes, or it lands above every band and
+  // pushes the rail down. Chromium reads `flex: 1` back as `1 1 0%`, so the
+  // test is on the grow alone.
+  Array.from(rail.children).forEach((c) => { if (c.tagName === 'DIV' && !c.className && c.style.flexGrow === '1') c.remove(); });
   const spacer = document.createElement('div');
   spacer.style.flex = '1';
   spacer.className = 'ck-rail-spacer';

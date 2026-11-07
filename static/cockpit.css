@@ -2445,3 +2445,48 @@ html.cockpit .msg-footer .msg-action-btn { top: 0; }
 /* An ask-user option's one-line label sat at the top of its 39px row, and Send's label 1px high. */
 html.cockpit .ask-user-card .ask-user-option { align-content: center; }
 html.cockpit .ask-user-card .confirm-btn { padding-top: 4px; padding-bottom: 4px; }
+
+/* ── alignment audit 2026-11-07: sidebar ── */
+/* The Chats sort menu's Group and Rearrange rows are rows, not separators: they
+   keep the menu's left edge, height and clear background, and one hairline
+   above Group marks them off. */
+html.cockpit .sort-dropdown-item.sort-dropdown-sep { height: auto !important; margin: 7px 0 0 !important; position: relative; overflow: visible; }
+html.cockpit .sort-dropdown-item.sort-dropdown-sep:not(:hover) { background: transparent !important; }
+html.cockpit .sort-dropdown-item.sort-dropdown-sep::before { content: ""; position: absolute; left: 8px; right: 8px; top: -4px; height: 1px; background: var(--ck-edge-lo); }
+html.cockpit #session-rearrange-toggle.sort-dropdown-sep { margin-top: 0 !important; }
+html.cockpit #session-rearrange-toggle.sort-dropdown-sep::before { display: none; }
+/* The Group row's label starts where the other labels start. */
+html.cockpit #auto-sort-sessions-btn { padding: 0 !important; }
+/* The active-sort and Rearrange marks are a small lamp at the row's right end,
+   not a 20px bullet trailing the label (their inline float does nothing in a flex row). */
+html.cockpit #session-sort-dropdown :is(.sort-check, .rearrange-check) {
+  margin-left: auto; font-size: 0 !important; width: 6px; height: 6px; border-radius: 50%; background: var(--ck-accent); top: 0 !important; flex: none;
+}
+/* The Theme window's tab pill lines up with the panel under it, not the window's border. */
+html.cockpit #theme-popup .admin-tabs { margin: 0 0 8px; }
+/* The search palette's field draws no square ring inside the rounded palette; its hairline lights instead. */
+html.cockpit #search-input { --focus-ring-width: 0px; }
+html.cockpit .search-popup input#search-input:focus-visible { border-bottom-color: var(--ck-accent-line) !important; }
+/* Group headers and the status line start on the same edge as the results and the typed query. */
+html.cockpit :is(.search-group-header, .search-palette-status) { padding-left: 14px !important; padding-right: 14px !important; }
+/* Chats gets the same gap above it as Email (style.css pulled it up 1px with an id rule). */
+html.cockpit #sessions-section { margin-top: 14px; }
+/* The user card's gear is a round 30px button, not a 28x32 oval. */
+html.cockpit .sidebar-user-bar .user-bar-btn { width: 30px; height: 30px; padding: 0; }
+/* A chat with a provider logo keeps the 16px lamp column, so every chat name starts on one edge. */
+html.cockpit .sidebar .session-item .session-star.provider-logo { width: 16px !important; height: 16px !important; }
+/* In select mode the Cancel cross sits level with Archive and Delete, and the select-all circle level with "All". */
+html.cockpit #session-bulk-cancel svg { top: 0; }
+html.cockpit #session-select-all-dot { top: 0; }
+/* The hover-only "manage" label is tall enough to show the tail of its g. */
+html.cockpit #sessions-section .chats-manage-btn .list-item-plus-label { line-height: 14px; }
+/* The wordmark row uses the 18px inset of the rows under it. */
+html.cockpit .sidebar-header { padding-left: 18px !important; padding-right: 18px !important; }
+/* Section-header buttons are not square, so their hover is a rounded box, not a squashed oval. */
+html.cockpit .sidebar .section-header-btn { border-radius: 8px; }
+@media (min-width: 769px) {
+  /* The select-all circle stands over the row circles below it. */
+  html.cockpit #session-select-all-dot { margin-left: 3px; }
+  /* The Chats funnel sits in the same right-hand column as Email's + and the chevrons. */
+  html.cockpit #session-sort-btn { position: relative; left: 2.5px; }
+}
