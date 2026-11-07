@@ -3988,6 +3988,19 @@ class TaskScheduler:
                         run_obj.finished_at = None
                         self._attach_run_steps(run_id, run_obj)
                         task.last_run = _utcnow()
+                        # `B1859`. The task's next time moves on here, as the
+                        # `TaskWaiting` park above moves it. This branch left
+                        # it where the due tick found it — in the past — so a
+                        # scheduled workflow parked by a takeover was due again
+                        # on the very next tick, which wrote a `skipped` run
+                        # ("Did not start: … is waiting for Pantheon to be
+                        # idle") for a time that had already run. The parked
+                        # run itself goes on from its waiting step through the
+                        # sweeper (`_resume_due_waits`), which reads the step
+                        # records, never `next_run`. An event or webhook task
+                        # gets what a finished run gets: a queued event's time,
+                        # or none (`_settle_event_next_run`).
+                        self._set_next_run_after(db, task)
                         db.commit()
                         logger.info("Workflow '%s' parked for Pantheon to be idle", task.name)
                         return
