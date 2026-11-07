@@ -201,15 +201,36 @@ async def do_manage_contact(content: str, owner: Optional[str] = None) -> Dict:
             uid = (args.get("uid") or "").strip()
             if not uid:
                 return {"error": "uid is required for update (use action=list to find it)", "exit_code": 1}
+            # `B1911`: an update is a patch. `_update_contact` rewrites the whole
+            # contact, so every field the call does not name comes from the
+            # stored one. A list given is the whole new list (`[]` clears it);
+            # an empty name, email or address names nothing.
             name = (args.get("name") or "").strip()
-            emails = args.get("emails")
-            if emails is None and args.get("email"):
-                emails = [args["email"]]
-            emails = [e.strip() for e in (emails or []) if e and e.strip()]
-            phones = [p.strip() for p in (args.get("phones") or []) if p and p.strip()]
+            email = (args.get("email") or "").strip()
             address = (args.get("address") or "").strip()
-            if not name and not emails and not phones and not address:
+            emails, phones = args.get("emails"), args.get("phones")
+            emails = [emails] if isinstance(emails, str) else emails
+            phones = [phones] if isinstance(phones, str) else phones
+            if not (name or email or address) and emails is None and phones is None:
                 return {"error": "Provide a name, emails, phones, or address to update", "exit_code": 1}
+            read = {}
+            existing = await asyncio.to_thread(cc._fetch_contacts, True, read)
+            if read.get("unread"):
+                # Merged into the last copy read, old values would be written back.
+                return {"error": f"The address book was not read: {read['unread']}; "
+                                 "the contact was not changed.", "exit_code": 1}
+            current = next((c for c in existing or [] if c.get("uid") == uid), None)
+            if current is None:
+                # `_update_contact` would add a contact for a uid it does not hold.
+                return {"error": "Contact not found", "exit_code": 1}
+            if emails is None:
+                emails = [email] if email else current.get("emails") or []
+            if phones is None:
+                phones = current.get("phones") or []
+            emails = [e.strip() for e in emails if e and e.strip()]
+            phones = [p.strip() for p in phones if p and p.strip()]
+            name = name or current.get("name") or ""
+            address = address or current.get("address") or ""
             if not name and emails:
                 name = emails[0].split("@")[0]
             ok = await asyncio.to_thread(cc._update_contact, uid, name, emails, phones, address)
