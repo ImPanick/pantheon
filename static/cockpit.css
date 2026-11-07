@@ -2128,3 +2128,10 @@ html.cockpit .msg .body pre.mermaid {
   background: transparent !important; border: 0 !important; box-shadow: none !important; padding: 0 !important; margin: 0 !important;
   border-radius: 0 !important; overflow: visible !important; white-space: normal;
 }
+
+/* ── the workspace's icon buttons hold their icon in the middle ──
+   style.css gives every `button` `padding: 0 10px`, so in a 26–30px icon
+   button the glyph was pushed 3–4px right of its circle: the layout pill, the
+   tuck chevron, and every pane's Float, Fill and Close (Panick, 2026-11-07). */
+html.cockpit .ck-layouts button,
+html.cockpit .ck-ibtn { padding: 0 !important; min-width: 0; }
