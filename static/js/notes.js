@@ -3195,7 +3195,13 @@ function _commitOpenInPlaceEditor() {
   if (!form) return;
   const d = _collectFormDraft(form);
   if (_isDraftEmpty(d)) { form.querySelector('.note-form-cancel')?.click(); return; }
-  form.querySelector('.note-form-save')?.click();
+  // `B1940`: a button still in archive-mode means the form has heard no
+  // edit, so there is nothing to save, and pressing it archived a note the
+  // person had only read. Left as it is (Cancel would also drop a stored
+  // draft); the pane goes with the panel.
+  const saveBtn = form.querySelector('.note-form-save');
+  if (saveBtn?.classList.contains('archive-mode')) return;
+  saveBtn?.click();
 }
 // Merge a stored draft over a note so _buildForm renders the unsaved edits.
 function _applyDraftToNote(note, id) {
@@ -5267,7 +5273,13 @@ function _editNote(id) {
   const { note: _n, restored } = _applyDraftToNote(note, id);
   const form = _buildForm(_n);
   card.replaceWith(form);
-  if (restored) uiModule.showToast('Restored unsaved changes');
+  if (restored) {
+    uiModule.showToast('Restored unsaved changes');
+    // `B1940`: restored changes are unsaved changes, so the form starts as
+    // edited: on a narrow window its button says Update, not Archive, and
+    // closing Notes saves them.
+    form.dispatchEvent(new Event('input', { bubbles: true }));
+  }
   // Pinned notes live in the first masonry column — the edit form has
   // column-span:all, which can leave the form rendered above the fold or
   // visually buried under neighboring pinned cards. Bring it into view
@@ -5362,7 +5374,12 @@ function _openMobileFullscreenEdit(id, fromCard) {
   const { note: _n, restored } = _applyDraftToNote(note, id);
   const form = _buildForm(_n);
   body.appendChild(form);
-  if (restored) uiModule.showToast('Restored unsaved changes');
+  if (restored) {
+    uiModule.showToast('Restored unsaved changes');
+    // `B1940`: as in `_editNote` — the form starts as edited, so its button
+    // says Update and Back saves the restored changes.
+    form.dispatchEvent(new Event('input', { bubbles: true }));
+  }
   document.body.appendChild(overlay);
   _mobileFsOverlay = overlay;
 
@@ -5547,9 +5564,13 @@ function _closeMobileFullscreenEdit(opts = {}) {
   _mobileFsOverlay = null;
   // If the form has a Save button, click it on close so edits aren't lost
   // when the user uses the back arrow instead of an explicit Save.
+  // `B1940`: not while it is still in archive-mode. That form has heard no
+  // edit, so there is nothing to save, and the press archived a note the
+  // person had only opened to read; Back, closing and minimising Notes all
+  // came through here.
   if (opts.save) {
     const saveBtn = overlay.querySelector('.note-form-save, [data-action="save"]');
-    if (saveBtn) try { saveBtn.click(); } catch {}
+    if (saveBtn && !saveBtn.classList.contains('archive-mode')) try { saveBtn.click(); } catch {}
   }
   overlay.classList.remove('open');
   overlay.classList.add('closing');
