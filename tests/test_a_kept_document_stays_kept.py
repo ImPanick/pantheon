@@ -21,6 +21,7 @@ with only the model's reply faked.
 import asyncio
 import hashlib
 import json
+import re
 
 import pytest
 from fastapi import FastAPI
@@ -280,7 +281,10 @@ def test_the_library_s_ai_tidy_never_judges_a_kept_document(world, mess, routed,
 
     async def model(url, model_name, messages, **kwargs):
         asked.append(messages[-1]["content"])
-        return json.dumps(["junk"] * 30)
+        # "junk" for every document it was sent, one verdict each: `B1948`
+        # refuses an answer whose count is off.
+        listed = re.findall(r"^\[\d+\] title=", messages[-1]["content"], re.MULTILINE)
+        return json.dumps(["junk"] * len(listed))
 
     monkeypatch.setattr(llm_core, "llm_call_async", model)
     monkeypatch.setattr(task_endpoint, "resolve_task_endpoint",
@@ -291,9 +295,13 @@ def test_the_library_s_ai_tidy_never_judges_a_kept_document(world, mess, routed,
     app.include_router(droutes.setup_document_routes(None, None))
     res = TestClient(app).post("/api/documents/ai-tidy")
     assert res.status_code == 200, res.text
-    assert res.json()["reviewed"] == 3, res.json()
+    # `B1948`: of the three unreviewed, "fresh" was made a minute ago and is
+    # left alone, as the dialog says of the last 15 minutes.
+    assert res.json()["reviewed"] == 2, res.json()
     for key in PROPOSED:
         assert alive(world, mess[key]), key
         assert verdicts(world)[mess[key]].startswith("kept:"), key
+    assert alive(world, mess["fresh"]) and verdicts(world)[mess["fresh"]] is None
     [prompt] = asked
-    assert prompt.count("[") >= 3 and "[3]" not in prompt, "only the three unreviewed were sent"
+    assert len(re.findall(r"^\[\d+\] title=", prompt, re.MULTILINE)) == 2, (
+        "only the two unreviewed documents older than 15 minutes were sent")

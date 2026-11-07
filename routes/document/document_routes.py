@@ -1167,10 +1167,13 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
             fixed_titles = 0
             deleted = 0
 
-            # Same junk-detection logic as the scheduled tidy_documents
-            # action (src/document_actions.py). Keep these two in sync.
+            # The junk words are the scheduled tidy's (src/document_actions.py),
+            # but this deletes for good on one click, so a title is never enough
+            # here (`B1948`): what holds text, now or in a saved version, stays.
+            # The scheduled proposal keeps its title rule because it lists each
+            # reason and asks first (`B1006`).
             import re as _re
-            from src.document_actions import _JUNK_TITLES, is_mail_draft
+            from src.document_actions import _JUNK_TITLES, has_saved_text, is_mail_draft
 
             to_delete = []
             now = datetime.now(timezone.utc)
@@ -1220,15 +1223,18 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
                     if body_lines and not has_real_body:
                         _is_email_stub = True
 
-                # Hard-delete obviously empty / junk documents
-                if not content or content in ("", "# Untitled"):
+                # Hard-delete obviously empty / junk documents. `B1948`: an
+                # empty page whose saved versions hold text is not empty — the
+                # delete would take those versions with it.
+                if (not content or content in ("", "# Untitled")) and not has_saved_text(doc):
                     to_delete.append(doc); deleted += 1; continue
                 if _is_email_stub:
                     to_delete.append(doc); deleted += 1; continue
                 # `P23-08` (DOCS-M-3): a draft's title is "New Email" or the
                 # mail's subject by construction — never a reason to delete
                 # one somebody typed into (`document_actions.is_mail_draft`).
-                if title in _JUNK_TITLES and not is_mail_draft(doc):
+                # `B1948`: nor is any title a reason to delete what holds text.
+                if title in _JUNK_TITLES and not is_mail_draft(doc) and not has_saved_text(doc):
                     to_delete.append(doc); deleted += 1; continue
 
                 # Fix empty or placeholder titles on survivors
@@ -1304,7 +1310,18 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
                 # Only review docs that haven't been reviewed yet. `P23-08`
                 # (DOCS-M-3): never a mail draft — a model reading a short reply
                 # would call it junk, and this pass deletes what it calls junk.
-                to_review = [d for d in docs if not d.tidy_verdict and not is_mail_draft(d)]
+                # `B1948`: nor one made in the last 15 minutes, which the
+                # dialog promises and the rules pass already leaves alone.
+                now = datetime.now(timezone.utc)
+
+                def _fresh(d):
+                    created = d.created_at
+                    if created and created.tzinfo is None:
+                        created = created.replace(tzinfo=timezone.utc)
+                    return bool(created) and (now - created).total_seconds() < 900
+
+                to_review = [d for d in docs
+                             if not d.tidy_verdict and not is_mail_draft(d) and not _fresh(d)]
                 # Build a batch prompt — review up to 30 at a time
                 batch = [(d.id, d.title, d.language, (d.current_content or "")[:300].strip())
                          for d in to_review[:30]]
@@ -1378,6 +1395,12 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
 
             import json as _json
             verdicts = _json.loads(match.group())
+            # `B1948`: verdicts are applied by position, so an answer that
+            # skipped one gave each later document its neighbour's verdict and
+            # deleted the wrong one. A count that is off changes nothing.
+            if len(verdicts) != len(batch):
+                raise HTTPException(500, f"AI returned {len(verdicts)} verdicts for "
+                                         f"{len(batch)} documents, so nothing was changed")
 
             deleted, reviewed = await asyncio.to_thread(_write_verdicts, batch, verdicts)
             return {

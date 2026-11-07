@@ -39,6 +39,31 @@ def is_mail_draft(doc) -> bool:
     return (getattr(doc, "language", None) or "").strip().lower() == "email"
 
 
+def has_saved_text(doc) -> bool:
+    """`B1948`. Whether a document holds text, now or in any saved version.
+
+    The library's Tidy deleted for good every document titled "Untitled",
+    "Document", "Draft", "test"…, whatever was written in it, and every
+    document whose current text was empty, though its saved versions went with
+    it (`Document.versions` cascades). A title is no evidence either way: the
+    agent's and the API's documents are "Untitled" when nobody names them, an
+    import is named after its file ("Untitled document.docx"), and a person's
+    own "Draft" is a draft. `B1781` found the same of chats.
+
+    Text is anything left once markdown noise is stripped (as `_real_len`
+    strips it) that is not itself a throwaway word (`_JUNK_TITLES`, which also
+    covers "# Untitled"). The versions are read only when the current text has
+    none, so a caller pays for them on the few rows a rule would delete.
+    """
+    def _has_text(content) -> bool:
+        plain = _plain_text(content).lower()
+        return bool(plain) and plain not in _JUNK_TITLES
+
+    if _has_text(getattr(doc, "current_content", None)):
+        return True
+    return any(_has_text(v.content) for v in (getattr(doc, "versions", None) or ()))
+
+
 def _norm_title(t: str) -> str:
     """Normalize a title for grouping: trim, collapse whitespace, lowercase."""
     t = t if isinstance(t, str) else ""
@@ -60,13 +85,17 @@ def _content_fingerprint(content: str) -> str:
     return c
 
 
-def _real_len(content: str) -> int:
-    """Length of content with markdown noise stripped — a 'completeness' proxy."""
+def _plain_text(content: str) -> str:
+    """Content with markdown noise stripped and whitespace collapsed."""
     content = content if isinstance(content, str) else ""
     stripped = re.sub(r"^#{1,6}\s+", "", content, flags=re.MULTILINE)
     stripped = re.sub(r"[*_`>\-=]+", "", stripped)
-    stripped = re.sub(r"\s+", " ", stripped).strip()
-    return len(stripped)
+    return re.sub(r"\s+", " ", stripped).strip()
+
+
+def _real_len(content: str) -> int:
+    """Length of content with markdown noise stripped — a 'completeness' proxy."""
+    return len(_plain_text(content))
 
 
 def tidy_verdicts(docs, now=None) -> dict:

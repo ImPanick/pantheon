@@ -146,7 +146,10 @@ def test_the_library_tidy_keeps_a_typed_draft_and_clears_an_empty_envelope(world
     typed = draft(world, "New Email", "To: ana@example.test\nSubject: lunch\n---\nFriday at one?")
     reply = draft(world, REPLY_SUBJECT, REPLY_BODY)
     envelope = draft(world, "New Email", "To: \nSubject: \n---\n")
-    junk = doc(world, "test")
+    # `B1948`: the title rule deletes a "test" with a throwaway in it, and no
+    # longer one with text.
+    junk = doc(world, "test", content="asdf")
+    written = doc(world, "test", content="the figures for Friday's review")
     import routes.document.document_routes as droutes
 
     app = FastAPI()
@@ -158,7 +161,7 @@ def test_the_library_tidy_keeps_a_typed_draft_and_clears_an_empty_envelope(world
         left = {d.id for d in db.query(cdb.Document).all()}
     finally:
         db.close()
-    assert typed in left and reply in left
+    assert typed in left and reply in left and written in left
     assert envelope not in left and junk not in left
 
 

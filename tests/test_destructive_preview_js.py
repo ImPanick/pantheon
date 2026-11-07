@@ -648,6 +648,11 @@ def test_the_document_tidy_reports_a_pass_that_did_not_run():
         "both passes must carry the server's own words, per `P9-08`"
     )
     assert "failures" in body
+    # The dialog's own words, comments blanked: what it asks the person.
+    asked = body[body.index("styledConfirm("):body.index("confirmText", body.index("styledConfirm("))]
+    assert "never deleted for its title" in asked, (
+        "B1948: a document with text is never deleted for its title, and the dialog says so")
+    assert "15 minutes" in asked, "both passes leave the last 15 minutes alone, as it says"
 
 
 def test_the_research_tidy_shows_the_rows_before_it_deletes_them():
