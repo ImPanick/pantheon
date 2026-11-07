@@ -33,6 +33,11 @@ and, from `/work/notes/SLICE-EF-DESIGN.md` § 3's contract **C-A** (wave E):
     POST   /api/workflows/{id}/runs/{run_id}/explain        "Why did this fail?" (P22-20)
     POST   /api/workflows/{id}/nodes/{node_id}/fix          apply a fix (P22-20)
 
+and, for the builder's draft (the Workbench's elevation):
+
+    POST   /api/workflows/{id}/fields  {node_id, graph}     a draft step's fields (B1850)
+    POST   /api/workflows/{id}/problems  {graph, name?}     every problem a save would name (B1851)
+
 The two literal ones are declared before `/{workflow_id}`, or FastAPI would
 read "palette" as a workflow's id.
 
@@ -285,7 +290,14 @@ def setup_workflow_routes(task_scheduler) -> APIRouter:
         task is a step of, or (`describe`, `P22-19`) a draft from the person's
         words, or (`file`, `P22-24`) a workflow file. Every way it is created
         switched off; a draft and a file come back with every step marked
-        `unchecked`, what is `missing`, and every step's `destinations` (C-A)."""
+        `unchecked`, what is `missing`, and every step's `destinations` (C-A).
+
+        `B1867`. `tz` — the person's time zone, as the browser names it — is
+        the new start's `tz_name` for an empty workflow and a draft, and for a
+        file that names no zone of its own; one this machine does not know is
+        left out, never refused (`workflow_store.person_zone`). A chain made a
+        workflow keeps its first step's own zone: it is the clock the chain
+        already runs on, and the workflow starts where the chain does."""
         user = _owner(request)
         body = await _body(request)
         from_task_id = body.get("from_task_id")
@@ -313,7 +325,8 @@ def setup_workflow_routes(task_scheduler) -> APIRouter:
             try:
                 if "file" in ways:
                     from src import workflow_share
-                    made = workflow_share.import_file(db, user, body.get("file"))
+                    made = workflow_share.import_file(db, user, body.get("file"),
+                                                      tz=body.get("tz"))
                     return {"workflow": doc(db, made.wf, made.trigger), "notes": made.notes,
                             "missing": made.missing, "destinations": made.destinations}
                 if from_task_id:
@@ -321,7 +334,8 @@ def setup_workflow_routes(task_scheduler) -> APIRouter:
                         db, owner=user, from_task_id=str(from_task_id), name=body.get("name"),
                         positions=_task_canvas_positions(user), name_of=_name_of)
                 else:
-                    wf, trigger, notes = store.create_workflow(db, owner=user, name=body.get("name"))
+                    wf, trigger, notes = store.create_workflow(db, owner=user, name=body.get("name"),
+                                                               tz=body.get("tz"))
                 return {"workflow": doc(db, wf, trigger), "notes": notes}
             finally:
                 db.close()
@@ -442,6 +456,39 @@ def setup_workflow_routes(task_scheduler) -> APIRouter:
                 if saved == "check":
                     return {"ok": True, "check": True}
                 return {"workflow": doc(db, wf, trigger), "saved": saved}
+            finally:
+                db.close()
+        return await asyncio.to_thread(_off_the_loop)
+
+    @router.post("/{workflow_id}/problems")
+    @_answers
+    async def list_problems(request: Request, workflow_id: str):
+        """`B1851`. Every refusal a save of this draft would give, at once:
+        body `{graph, name?}` → `{problems: [{node_ids, field, reason,
+        sentence}], count, more}`. Writes nothing.
+
+        `PUT ?check=true` answers with the first refusal only — a save stops
+        at the first — so the canvas could mark one broken step and no other.
+        Here each step is checked where it stands on the draft's arrows, and
+        then the whole (`workflow_store.document_problems_of`, the engine's
+        one rule asked past its first answer): the same sentences on the same
+        steps and fields a save would refuse with, de-duplicated, in the order
+        a save would name them, at most fifty. An empty list is "Save would
+        pass" — the same draft through `?check=true` answers `ok`. Owner-
+        scoped as the save is: another owner's workflow is a 404."""
+        body = await _body(request)
+        graph = body.get("graph")
+        if not isinstance(graph, (dict, str)):
+            raise WorkflowRefused(400, "Send the draft as it stands on the canvas (graph).")
+        name = body.get("name")
+
+        # `B1223`: the database work, off the event loop.
+        def _off_the_loop():
+            db = SessionLocal()
+            try:
+                wf = store.owned_workflow(db, workflow_id, _owner(request))
+                return store.document_problems_of(db, wf, store.trigger_of(db, wf),
+                                                  graph=graph, name=name)
             finally:
                 db.close()
         return await asyncio.to_thread(_off_the_loop)
@@ -764,6 +811,47 @@ def setup_workflow_routes(task_scheduler) -> APIRouter:
             return we.available_fields(db, wf, trigger, graph, str(node_id))
         finally:
             db.close()
+
+    @router.post("/{workflow_id}/fields")
+    @_answers
+    async def list_draft_fields(request: Request, workflow_id: str):
+        """`B1850`. `GET …/nodes/{node_id}/fields`' answer, for a step as it
+        stands in the DRAFT: body `{node_id, graph}`, where `graph` is the
+        document on the canvas — saved or not, finished or not.
+
+        The GET reads only the stored document, so *Insert a field…* on a step
+        that existed only in the draft was refused, and a person had to save a
+        throwaway version first — which Save refused while that step was still
+        incomplete. Here the arrows and what each step promises (an AI step's
+        answer fields, a Set step's names) are the draft's; the last run's
+        records and the pinned samples are read only for the steps the saved
+        document also has (`available_fields`' `recorded`; `_pins_kept`, a
+        save's own rule for pins). The draft is never checked as a save is
+        (`workflow_store.draft_graph`: only "is it a draft at all") and nothing
+        is written. Owner-scoped as the GET is: another owner's workflow is a
+        404."""
+        body = await _body(request)
+        node_id = body.get("node_id")
+        if not isinstance(node_id, str) or not node_id.strip():
+            raise WorkflowRefused(400, "Say which step's fields to list (node_id).")
+        draft = store.draft_graph(body.get("graph"))
+
+        # `B1223`: the database work, off the event loop.
+        def _off_the_loop():
+            from src import workflow_effects as we
+            db = SessionLocal()
+            try:
+                wf = store.owned_workflow(db, workflow_id, _owner(request))
+                if not any(n["id"] == node_id for n in draft["nodes"]):
+                    raise WorkflowRefused(404, "No such step in this draft.")
+                stored = store.stored_graph(wf)
+                saved_ids = {str(n.get("id")) for n in store.nodes_of(stored)}
+                graph = store._pins_kept(draft, stored)
+                return we.available_fields(db, wf, store.trigger_of(db, wf), graph, node_id,
+                                           recorded=saved_ids)
+            finally:
+                db.close()
+        return await asyncio.to_thread(_off_the_loop)
 
     @router.post("/slot")
     @_answers

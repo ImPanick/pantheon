@@ -188,6 +188,11 @@ NOT_DRAFTED = "Pantheon does not draft commands or code; add that step yourself.
 # a draft never chooses (and a workflow file never carries, `workflow_share`).
 INSTALL_FIELDS = ("endpoint_url", "model", "character_id", "crew_member_id")
 
+# `B1857`. "At most 20 steps" below is the size of a DRAFT — what one sentence
+# should become — and was also the document's cap until the cap became a
+# setting (`workflow_max_steps`, default 100). It stays twenty on purpose: a
+# draft is checked step by step by a person before it runs, and the rule's cap
+# is still what refuses a longer one.
 _SYSTEM = """You draft automations ("workflows") for Pantheon, a self-hosted assistant.
 A person describes what they want. You answer with ONE JSON object and nothing else: no prose,
 no markdown fences.
@@ -399,7 +404,8 @@ def normalise_draft(answer: dict, *, tz=None) -> Draft:
     step's settings only those its kind takes (`_drafted_config`), positions
     null, and whatever the answer said about samples or marks dropped —
     `create_from_document` marks every step itself. A Code step or a command
-    action is refused (§ 6); more than 20 steps is the rule's refusal."""
+    action is refused (§ 6); more steps than `workflow_max_steps` is the rule's
+    refusal (`B1857`: it was twenty, a constant)."""
     from src.workflow_document import GRAPH_VERSION, NODE_LABEL_MAX, START_KEY
 
     if not isinstance(answer, dict):

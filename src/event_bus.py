@@ -11,6 +11,8 @@ import contextvars
 import json
 import logging
 import os
+import threading
+import time
 from contextlib import contextmanager
 from datetime import datetime
 from typing import NamedTuple, Optional
@@ -557,6 +559,82 @@ def fire_event(event_name: str, owner: Optional[str] = None,
         pass
     # No app loop at all (a script, a test): run it here, as before.
     asyncio.run(_handle_event(event_name, owner, payload, origin=origin))
+
+
+# `B1862`. `document_updated` was in the catalogue and in the picker, and the
+# only place that fired it was the email MCP server merging a draft into a
+# document: a task set to run "when a document is edited" never ran for a
+# person's edit, a restore, a rename or the agent's own `update_document` /
+# `edit_document`. Those doors fire it now — through this, and only this.
+#
+# **Once a minute per document, not once per keystroke.** The editor saves as
+# the person types (`PUT /api/document/{id}` coalesces those into one version
+# a minute, `VERSION_COALESCE_SECONDS`), so an event per save would run a task
+# per pause in typing. The first edit fires; the next edits of that document
+# within the minute do not; the first one after it fires again. A task woken
+# reads the document when it runs, so what it reads is the latest text.
+#
+# **Who edited is part of "which document".** The minute is kept per document
+# AND per run that made the edit (`RunOrigin.task_ids`, none for a person):
+# a run's own edit wakes every task but that run's (`_count_event`), so if it
+# used up the document's minute, a person's edit just after — which must wake
+# that task too — would be swallowed. A step test (`origin.test`) wakes
+# nothing and uses up nothing.
+#
+# **No loop.** A workflow on `document_updated` whose step edits the document
+# is not woken by its own edit (`run_origin`, read in the caller's context by
+# `fire_event`, exactly as for every event). Two tasks that each edit the
+# document the other listens to wake each other at most once a minute each —
+# bounded, never a burst.
+#
+# A dict in this process is enough: it forgets on restart, which at worst is
+# one more event; it is pruned as it grows, so it holds about a minute of
+# documents.
+DOCUMENT_UPDATED_QUIET_SECONDS = 60
+_DOCUMENT_UPDATED_PRUNE_AT = 512
+_document_updated_at: dict = {}
+_document_updated_lock = threading.Lock()
+_clock = time.monotonic
+
+
+def fire_document_updated(owner: Optional[str], document_id: str,
+                          title: Optional[str]) -> bool:
+    """`B1862`. Fire `document_updated` for this document — `document_id` and
+    `title`, the same envelope as `document_created` — unless it fired for
+    the same document, edited by the same run (or by no run), in the last
+    `DOCUMENT_UPDATED_QUIET_SECONDS`. Call it AFTER the edit is committed.
+
+    Answers whether it fired. Never raises for the bus's sake: the callers
+    are the edit's own doors, and an edit that was saved is saved."""
+    origin = _RUN_ORIGIN.get()
+    payload = {"document_id": document_id, "title": title}
+    if origin is not None and origin.test:
+        # Wakes nothing (`_handle_event`), and so takes no minute from anyone.
+        _fire_document_updated(owner, payload)
+        return False
+    key = (owner or "", str(document_id), origin.task_ids() if origin is not None else ())
+    now = _clock()
+    with _document_updated_lock:
+        last = _document_updated_at.get(key)
+        if last is not None and now - last < DOCUMENT_UPDATED_QUIET_SECONDS:
+            return False
+        _document_updated_at[key] = now
+        if len(_document_updated_at) > _DOCUMENT_UPDATED_PRUNE_AT:
+            for stale in [k for k, at in _document_updated_at.items()
+                          if now - at >= DOCUMENT_UPDATED_QUIET_SECONDS]:
+                del _document_updated_at[stale]
+    return _fire_document_updated(owner, payload)
+
+
+def _fire_document_updated(owner: Optional[str], payload: dict) -> bool:
+    # The name spelled at the call, so `tests/test_event_catalogue.py`'s walk
+    # of every `fire_event(...)` site reads it.
+    try:
+        fire_event(EVENT_DOCUMENT_UPDATED, owner, payload)
+        return True
+    except Exception:
+        logger.debug("document_updated event dispatch failed", exc_info=True)
+        return False
 
 
 def _resolve_event_owner(owner: Optional[str]) -> Optional[str]:

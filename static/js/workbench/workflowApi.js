@@ -18,7 +18,9 @@
 // each spelled out the same way, so the count still does not move. Wave E
 // (`C-A`, `P22-19`/`20`/`24`) adds three — a workflow's file, a step's "why did
 // this fail?" and its fix — and two bodies on routes already here (a draft or a
-// file on `POST /api/workflows`, the steps a person checked on `PUT`).
+// file on `POST /api/workflows`, the steps a person checked on `PUT`). The
+// builder's elevation adds a draft step's fields (`B1850`) and every problem
+// a save of the draft would name (`B1851`), each spelled out the same way.
 //
 // **A refusal is a `WorkflowRefusal`**, carrying the status and the server's
 // own sentence (`{detail}`, read by `refusal.js`), and — for a document the
@@ -93,11 +95,16 @@ export function createWorkflowApi({ fetch } = {}) {
     },
     /** A new, empty workflow; or (`fromTaskId`, `P22-06`) the chain that task
      *  is a step of; or (`describe`, `P22-19`) a draft the model makes from
-     *  the person's words — send `tz` (`Intl…resolvedOptions().timeZone`) so
-     *  "at 8" means their 8; or (`file`, `P22-24`) a workflow file's parsed
+     *  the person's words; or (`file`, `P22-24`) a workflow file's parsed
      *  JSON. Created switched off. → `{ workflow, notes }`, and for a draft
      *  or a file also `{ missing: [sentence], destinations: [line] }`, with
-     *  every step of `workflow.graph` marked `unchecked` (C-A). */
+     *  every step of `workflow.graph` marked `unchecked` (C-A).
+     *  `tz` (optional, `Intl…resolvedOptions().timeZone`) is the person's time
+     *  zone, so "at 8" and a Wait "until 08:00" mean their 8: the new start's
+     *  own zone for an empty workflow and a draft (`B1867`), and for a file
+     *  that names none. A chain keeps its first step's zone; a zone this
+     *  machine does not know is left out, never refused. Omitted, the start
+     *  is on the server's clock, as before. */
     createWorkflow({ name, fromTaskId, describe, tz, file } = {}) {
       return call('POST', `/api/workflows`,
         given({ name, from_task_id: fromTaskId, describe, tz, file }));
@@ -159,6 +166,15 @@ export function createWorkflowApi({ fetch } = {}) {
     /** The same body, checked and not written. → `{ ok: true, check: true }` */
     checkWorkflow(id, { name, graph, baseVersion } = {}) {
       return call('PUT', `/api/workflows/${enc(id)}?check=true`, given({ name, graph, base_version: baseVersion }));
+    },
+    /** `B1851`. Every refusal a save of this draft would give, at once —
+     *  `checkWorkflow` answers with the first only. Each step checked where
+     *  it stands, then the whole (loops, steps nothing leads to, unknown
+     *  arrows…), in the order a save names them, at most fifty; nothing is
+     *  written. An empty list is "Save would pass".
+     *  → `{ problems: [{ node_ids, field, reason, sentence }], count, more }` */
+    listProblems(id, { name, graph } = {}) {
+      return call('POST', `/api/workflows/${enc(id)}/problems`, given({ name, graph }));
     },
     /** `{ "<step id>" | "start": [x, y] }` — never a version. */
     savePositions(id, positions) {
@@ -267,6 +283,16 @@ export function createWorkflowApi({ fetch } = {}) {
      *  kind, origin, at, fields: [{ ref, path, type, example }] }] }` */
     listFields(id, nodeId) {
       return call('GET', `/api/workflows/${enc(id)}/nodes/${enc(nodeId)}/fields`);
+    },
+    /** `B1850`. `listFields`' answer for a step as it stands in the DRAFT —
+     *  one not saved yet, or in a draft Save would still refuse: `graph` is
+     *  the document on the canvas. The arrows and what each step promises are
+     *  the draft's; the last run's records and the pinned samples come only
+     *  from steps the saved document also has. Writes nothing. A 404
+     *  `WorkflowRefusal` when `nodeId` is not in `graph`, a 400 when `graph`
+     *  is not a draft at all. → `{ sources: [...] }`, as `listFields`. */
+    listDraftFields(id, nodeId, graph) {
+      return call('POST', `/api/workflows/${enc(id)}/fields`, { node_id: nodeId, graph });
     },
     /** `C-W`. Every step of this person's workflows that waits now — for a
      *  yes (`approval` is the card while it can still be answered), a time,

@@ -261,11 +261,24 @@ STAND_IN_FIELDS = (
 
 # ── Caps (mistake prevention, not a control — `Law 17`) ─────────────────────
 #
-# Twenty steps also bounds every walk here. `concurrent_arrivals` and
+# The step cap also bounds every walk here. `concurrent_arrivals` and
 # `find_loop` do NOT enumerate paths (with fan-out the worst DAG on 20 steps has
 # 2^18 of them): the loop check is one depth-first pass, and the merge rule a
-# reachability over pairs of steps, at most 21² states.
-WORKFLOW_MAX_NODES = 20
+# reachability over pairs of steps, at most (cap + 1)² states.
+#
+# `B1857`. The cap is a setting now, `workflow_max_steps` (default 100, from 20
+# to 500 — the walker's module states the number and its bounds, as it does the
+# For-each cap's and the longest Wait's), and it arrives here resolved, in
+# `WorkflowResources.max_steps`, so this module still reads no settings. It was
+# this constant, twenty. `WORKFLOW_MAX_NODES` stays, the name contract C1 holds
+# (`SLICE-B-DESIGN` § 7), and now means the cap as shipped — the setting's
+# default — not the cap in force (`step_cap`).
+from src.workflow_runs import (  # noqa: E402
+    MAX_STEPS_DEFAULT as WORKFLOW_MAX_STEPS_DEFAULT,
+    MAX_STEPS_RANGE as WORKFLOW_MAX_STEPS_RANGE,
+    MAX_STEPS_SETTING as WORKFLOW_MAX_STEPS_SETTING,
+)
+WORKFLOW_MAX_NODES = WORKFLOW_MAX_STEPS_DEFAULT
 WORKFLOW_GRAPH_MAX_BYTES = 256 * 1024
 NODE_LABEL_MAX = 120
 CASE_LABEL_MAX = 60
@@ -341,7 +354,9 @@ WORKFLOW_REFUSAL_REASONS = {
     REFUSE_TOO_BIG: f"the workflow is larger than {WORKFLOW_GRAPH_MAX_BYTES // 1024} KiB",
     REFUSE_VERSION: "the workflow was saved by a newer Pantheon",
     REFUSE_NO_STEPS: "the workflow has no steps",
-    REFUSE_TOO_MANY_STEPS: f"the workflow has more than {WORKFLOW_MAX_NODES} steps",
+    # `B1857`: the number is the cap in force, said in the sentence
+    # (`too_many_steps_refusal`), not this lead's.
+    REFUSE_TOO_MANY_STEPS: "the workflow has more steps than it may hold",
     REFUSE_BAD_ID: "a step has an id that cannot be used",
     REFUSE_DUPLICATE_ID: "two steps have the same id",
     REFUSE_BAD_KIND: "a step is of a kind this Pantheon does not run",
@@ -447,9 +462,35 @@ class WorkflowResources(NamedTuple):
     workstation_why: str | None = WORKSTATION_UNCHECKED
     foreach_max_items: int = WORKFLOW_FOREACH_MAX_ITEMS_DEFAULT
     wait_max_hours: int = WORKFLOW_WAIT_MAX_HOURS_DEFAULT
+    # `B1857`. The most steps the document may hold (`workflow_max_steps`).
+    max_steps: int = WORKFLOW_MAX_NODES
 
 
 EMPTY_RESOURCES = WorkflowResources()
+
+
+def step_cap(resources) -> int:
+    """`B1857`. The cap in force: `resources.max_steps`, held to the setting's
+    bounds whatever a caller built (a stand-in of a file's import, a test), so
+    no `WorkflowResources` can lift the walks past what they were measured at."""
+    lo, hi = WORKFLOW_MAX_STEPS_RANGE
+    cap = getattr(resources, "max_steps", None)
+    if isinstance(cap, bool) or not isinstance(cap, int):
+        cap = WORKFLOW_MAX_NODES
+    return max(lo, min(hi, cap))
+
+
+def too_many_steps_refusal(count: int, cap: int, *, exact: bool = True) -> DocumentRefusal:
+    """`B1857`. The refusal of a document over the cap, naming the cap in force
+    and the setting that moves it — the For-each cap's and the longest Wait's
+    move — so the number a person reads is the number that refused them.
+    `exact=False` when only a lower bound of `count` is known (a chain whose
+    walk stopped at its bound): "it has more than N"."""
+    has = f"it has {count}" if exact else f"it has more than {count}"
+    return DocumentRefusal(
+        REFUSE_TOO_MANY_STEPS, (),
+        f"The workflow has more than {cap} steps (the “{WORKFLOW_MAX_STEPS_SETTING}” "
+        f"setting): {has}. Split it, or run part of it as its own task.")
 
 
 def _mcp_info(resources: WorkflowResources, tool) -> dict | None:
@@ -903,9 +944,13 @@ def concurrent_arrivals(g: dict) -> list:
     if not start_edges(g):
         for node in _entries(g):
             out[START_KEY].setdefault(PORT_SUCCESS, []).append(node["id"])
+    # `B1857`. What each step reaches, as a bit set over `order` (a step is
+    # its own bit): the cap went from twenty steps to as many as five hundred,
+    # and a set of ids per step was twenty steps' worth of work.
+    bit = {node_id: 1 << i for i, node_id in enumerate(order)}
     reach = {}
     for node_id in reversed(order):
-        found = {node_id}
+        found = bit[node_id]
         for targets in out[node_id].values():
             for t in targets:
                 found |= reach[t]
@@ -924,20 +969,32 @@ def concurrent_arrivals(g: dict) -> list:
             if state not in states:
                 states.add(state)
                 frontier.append(state)
+    # `B1857`. "A walker stands on X1 while the other stands on a later step
+    # that reaches X2", gathered once per X1 — `beside[a]`, every step reached
+    # from a state `(a, later)` — so a pair of arrows is one lookup. It was a
+    # pass over every state for every pair: at the new cap's top, a fan-in of
+    # 498 arrows into one Merge asked it 124,000 times over 250,000 states and
+    # had not finished after ten minutes. The same states, the same rule.
+    beside = {}
+    for a, b in states:
+        if b != START_KEY and index[b] > index[a]:
+            beside[a] = beside.get(a, 0) | reach[b]
+    into = {}
+    for e in arrows:
+        into.setdefault(e["to"], []).append(e)
     found = []
     for node_id in order:
-        incoming = list({(e["from"], e["port"]): e for e in reversed(arrows)
-                         if e["to"] == node_id}.values())[::-1]
+        incoming = list({(e["from"], e["port"]): e
+                         for e in reversed(into.get(node_id, ()))}.values())[::-1]
         for i, e1 in enumerate(incoming):
             for e2 in incoming[i + 1:]:
                 if e1["from"] == e2["from"]:
                     continue  # one step, two ports: it leaves by one
                 x1, x2 = (e1, e2) if index[e1["from"]] < index[e2["from"]] else (e2, e1)
                 a, b = x1["from"], x2["from"]
-                together = any(s[0] == a and s[1] != START_KEY and index[s[1]] > index[a]
-                               and b in reach.get(s[1], ()) for s in states)
+                together = bool(beside.get(a, 0) & bit[b])
                 if not together and (a, a) in states:
-                    together = any(b in reach.get(t, ()) for t in out[a].get(x1["port"], ()))
+                    together = any(reach[t] & bit[b] for t in out[a].get(x1["port"], ()))
                 if together:
                     found.append(Arrival(node_id, e1, e2))
     return found
@@ -1539,66 +1596,127 @@ def validate_document(graph: dict, *, owner: str | None, tasks_by_id: dict,
     label), a step nothing leads to, two branches meeting outside a Merge
     (`concurrent_arrivals`), and last what each reference names
     (`not_upstream`).
+
+    `B1851`: the first of `document_problems`, which asks the same questions in
+    the same order and goes on past the first answer — one rule, so the list
+    the canvas marks and the refusal a save gives cannot drift apart.
+    """
+    return next(document_problems(
+        graph, owner=owner, tasks_by_id=tasks_by_id, crew_ids=crew_ids,
+        owner_is_admin=owner_is_admin, own_task_id=own_task_id, resources=resources), None)
+
+
+def document_problems(graph: dict, *, owner: str | None, tasks_by_id: dict,
+                      crew_ids, owner_is_admin: bool,
+                      own_task_id: str | None,
+                      resources: WorkflowResources | None = None):
+    """`B1851`. Every reason this document may not run, in document order —
+    a generator of `DocumentRefusal`, lazy, so whoever asks stops it when it
+    has enough (`POST /api/workflows/{id}/problems` stops at fifty). Pure.
+
+    Its first answer IS `validate_document`'s (which is `next()` of this), and
+    the questions are its questions in its order. What changes is that an
+    answer does not end the walk:
+
+      * Each step is checked in place — its id, name, kind, settings, the
+        references in them and what its kind needs, stopping at that step's
+        FIRST problem (the one a save names; mending it shows the next) and
+        going on to the next step.
+      * Each arrow is checked; one that fails is told and left out of the
+        "drawn twice" count. An arrow out of a step whose kind this Pantheon
+        does not run is not asked its port — the step's kind is already told,
+        and a kind with no ports would make every arrow out of it wrong.
+      * Then the whole: a loop (the first one, as a save names it), the steps
+        nothing leads to (one problem, naming them all), two branches meeting
+        outside a Merge (one problem per step they meet at), and what each
+        step's references name — asked of every step whose id and kind are
+        sound, on the arrows as drawn (`upstream_of`, `find_loop` and
+        `concurrent_arrivals` already pass over an arrow to a step that is not
+        there).
+
+    No steps, or more than the cap (`step_cap`), is the one problem: the walks
+    after it are bounded by the cap, and a document over it is not one to
+    mark step by step — it is one to split.
     """
     resources = resources if isinstance(resources, WorkflowResources) else EMPTY_RESOURCES
     nodes = list(graph.get("nodes") or ())
     edges = list(graph.get("edges") or ())
     if not nodes:
-        return _refusal(REFUSE_NO_STEPS, detail="add a step after the start")
-    if len(nodes) > WORKFLOW_MAX_NODES:
-        return _refusal(REFUSE_TOO_MANY_STEPS,
-                        detail=f"it has {len(nodes)}. Split it, or run part of it "
-                               f"as its own task")
+        yield _refusal(REFUSE_NO_STEPS, detail="add a step after the start")
+        return
+    if len(nodes) > step_cap(resources):
+        yield too_many_steps_refusal(len(nodes), step_cap(resources))
+        return
     crew_ids = set(crew_ids or ())
     tasks_by_id = tasks_by_id or {}
     seen = set()
+    unsound = set()     # ids whose step is not one the later walks can stand on
     for node in nodes:
         node_id, kind, label = node["id"], node["kind"], node["label"]
         if (not node_id or len(node_id) > NODE_ID_MAX or not NODE_ID_RE.fullmatch(node_id)
                 or node_id == START_KEY or node_id.startswith("__")):
-            return _refusal(REFUSE_BAD_ID, (node_id,),
-                            f"{_called(node)} is called {node_id!r}")
+            unsound.add(node_id)
+            yield _refusal(REFUSE_BAD_ID, (node_id,),
+                           f"{_called(node)} is called {node_id!r}")
+            continue
         if node_id in seen:
-            return _refusal(REFUSE_DUPLICATE_ID, (node_id,), f"{node_id!r}")
+            unsound.add(node_id)
+            yield _refusal(REFUSE_DUPLICATE_ID, (node_id,), f"{node_id!r}")
+            continue
         seen.add(node_id)
-        if not label.strip():
-            return _refusal(REFUSE_BAD_LABEL, (node_id,), "every step needs a name")
-        if len(label) > NODE_LABEL_MAX:
-            return _refusal(REFUSE_BAD_LABEL, (node_id,),
-                            f"{_called(label[:40] + '…')} is longer than "
-                            f"{NODE_LABEL_MAX} characters")
         if kind not in NODE_KINDS:
-            return _refusal(REFUSE_BAD_KIND, (node_id,), f"{_called(node)} is a {kind!r} step")
+            # Asked after the name below, as a save asks it; marked here, before
+            # the name can end this step's turn, so the arrows and references
+            # below never stand on a kind this Pantheon does not run.
+            unsound.add(node_id)
+        if not label.strip():
+            yield _refusal(REFUSE_BAD_LABEL, (node_id,), "every step needs a name")
+            continue
+        if len(label) > NODE_LABEL_MAX:
+            yield _refusal(REFUSE_BAD_LABEL, (node_id,),
+                           f"{_called(label[:40] + '…')} is longer than "
+                           f"{NODE_LABEL_MAX} characters")
+            continue
+        if kind not in NODE_KINDS:
+            yield _refusal(REFUSE_BAD_KIND, (node_id,), f"{_called(node)} is a {kind!r} step")
+            continue
         config = node.get("config") or {}
         problem = _setting_problem(kind, config)
         if problem:
-            return _refusal(REFUSE_BAD_SETTING, (node_id,), f"{_called(node)}: {problem}")
+            yield _refusal(REFUSE_BAD_SETTING, (node_id,), f"{_called(node)}: {problem}")
+            continue
         found = _inner_kind_problem(node) or _reference_problem(node, resources)
         if found:
-            return found
+            yield found
+            continue
         found = _kind_problem(node, owner=owner, tasks_by_id=tasks_by_id, crew_ids=crew_ids,
                               owner_is_admin=owner_is_admin, own_task_id=own_task_id,
                               resources=resources)
         if found:
-            return found
+            yield found
     by_id = _nodes_by_id(graph)
     taken = set()
     for edge in edges:
         if edge["from"] == START_KEY:
             if edge["to"] not in by_id:
-                return _refusal(REFUSE_BAD_EDGE, (),
-                                "it points at a step that is not in the workflow")
+                yield _refusal(REFUSE_BAD_EDGE, (),
+                               "it points at a step that is not in the workflow")
+                continue
             if edge["port"] not in START_PORTS:
-                return _refusal(REFUSE_BAD_EDGE, (edge["to"],),
-                                f"the arrow out of the start leaves by {edge['port']!r}; the "
-                                f"start has one way out")
+                yield _refusal(REFUSE_BAD_EDGE, (edge["to"],),
+                               f"the arrow out of the start leaves by {edge['port']!r}; the "
+                               f"start has one way out")
+                continue
         else:
             if edge["from"] not in by_id or edge["to"] not in by_id:
-                return _refusal(REFUSE_BAD_EDGE,
-                                tuple(i for i in (edge["from"], edge["to"]) if i in by_id),
-                                "it points at a step that is not in the workflow")
+                yield _refusal(REFUSE_BAD_EDGE,
+                               tuple(i for i in (edge["from"], edge["to"]) if i in by_id),
+                               "it points at a step that is not in the workflow")
+                continue
             source = by_id[edge["from"]]
             if edge["port"] not in ports_of(source):
+                if edge["from"] in unsound and source.get("kind") not in NODE_KINDS:
+                    continue  # its kind is told above; it has no ports to name
                 if ports_of(source) == PORTS:
                     detail = (f"the arrow out of {_called(source)} is "
                               f"neither “if it works” nor “if it fails”")
@@ -1606,14 +1724,16 @@ def validate_document(graph: dict, *, owner: str | None, tasks_by_id: dict,
                     ways = ", ".join(f"“{port_words(source, p)}”" for p in ports_of(source))
                     detail = (f"the arrow out of {_called(source)} leaves by "
                               f"{edge['port']!r}, and it leaves by {ways}")
-                return _refusal(REFUSE_BAD_EDGE, (edge["from"],), detail)
+                yield _refusal(REFUSE_BAD_EDGE, (edge["from"],), detail)
+                continue
         key = (edge["from"], edge["port"], edge["to"])
         if key in taken:
             source = by_id.get(edge["from"])
             where = "the start" if edge["from"] == START_KEY else _called(source)
-            return _refusal(REFUSE_TWO_ARROWS, (edge["from"],),
-                            f"{where} → {_called(by_id[edge['to']])}, "
-                            f"{port_words(source, edge['port'])}, is drawn twice. Remove one")
+            yield _refusal(REFUSE_TWO_ARROWS, (edge["from"],),
+                           f"{where} → {_called(by_id[edge['to']])}, "
+                           f"{port_words(source, edge['port'])}, is drawn twice. Remove one")
+            continue
         taken.add(key)
     loop = find_loop(graph)
     if loop is not None:
@@ -1621,35 +1741,38 @@ def validate_document(graph: dict, *, owner: str | None, tasks_by_id: dict,
             loop, names={n["id"]: n["label"] for n in nodes},
             lead=WORKFLOW_REFUSAL_REASONS[REFUSE_CYCLE])
         ids = tuple(dict.fromkeys(e["from"] for e in loop.path))
-        return DocumentRefusal(REFUSE_CYCLE, ids, sentence)
+        yield DocumentRefusal(REFUSE_CYCLE, ids, sentence)
     entries = _entries(graph)
     if start_edges(graph):
         led_from_start = {e["to"] for e in start_edges(graph)}
         unled = [n for n in entries if n["id"] not in led_from_start]
         if unled:
             named = ", ".join(_called(n) for n in unled[:4])
-            return _refusal(REFUSE_SEVERAL_STARTS, tuple(n["id"] for n in unled),
-                            f"{named}. Connect each to the start or to the step before it, "
-                            f"or remove it")
+            yield _refusal(REFUSE_SEVERAL_STARTS, tuple(n["id"] for n in unled),
+                           f"{named}. Connect each to the start or to the step before it, "
+                           f"or remove it")
     elif len(entries) > 1:
         named = ", ".join(_called(n) for n in entries[:4])
-        return _refusal(REFUSE_SEVERAL_STARTS, tuple(n["id"] for n in entries),
-                        f"{named}. Connect each to the step before it, or remove it")
+        yield _refusal(REFUSE_SEVERAL_STARTS, tuple(n["id"] for n in entries),
+                       f"{named}. Connect each to the step before it, or remove it")
+    met = set()
     for arrival in concurrent_arrivals(graph):
         target = by_id[arrival.node_id]
-        if target["kind"] == NODE_KIND_MERGE:
+        if target["kind"] == NODE_KIND_MERGE or arrival.node_id in met:
             continue
+        met.add(arrival.node_id)
         # § 1.3's sentence, whole: the reason's lead would read as a list.
         sentence = (f"Two branches that run at the same time both reach {_called(target)}. "
                     f"Put a Merge step before it.")
-        return DocumentRefusal(REFUSE_NEEDS_MERGE,
-                               (arrival.node_id, arrival.first["from"], arrival.second["from"]),
-                               sentence)
+        yield DocumentRefusal(REFUSE_NEEDS_MERGE,
+                              (arrival.node_id, arrival.first["from"], arrival.second["from"]),
+                              sentence)
     for node in nodes:
+        if node["id"] in unsound:
+            continue
         found = _upstream_problem(node, graph, by_id)
         if found:
-            return found
-    return None
+            yield found
 
 
 # ── Versions, positions, pins ───────────────────────────────────────────────
@@ -2214,16 +2337,23 @@ def chain_to_document(rows, head_id: str, *, positions=None) -> tuple:
 
     Refused (`DocumentError`) where the engine would refuse the chain or the
     document could not hold it: a loop, another owner's task, a member that is
-    itself a workflow, more than `WORKFLOW_MAX_NODES` steps. `positions` maps
+    itself a workflow, more steps than any cap allows. `positions` maps
     task id to `[x, y]` (the canvas's), carried onto the steps.
+
+    `B1857`. "Any cap": this module reads no settings, so the walk is bounded at
+    the most `workflow_max_steps` may be (`WORKFLOW_MAX_STEPS_RANGE`' top), never
+    stricter than the cap in force; `workflow_store.convert_chain` checks the
+    document against the cap in force (`check_document`) right after, and words
+    a refusal from here with that cap.
     """
     by_task = {row.id: row for row in rows}
     head = by_task.get(head_id)
     if head is None:
         _fail(REFUSE_UNKNOWN_TASK, detail="the chain's first task")
     owner = getattr(head, "owner", None)
+    top = WORKFLOW_MAX_STEPS_RANGE[1]
     refusal = validate_graph(list(rows), starts=[head_id], owner=owner,
-                             max_depth=WORKFLOW_MAX_NODES + 1)
+                             max_depth=top + 1)
     if refusal is not None:
         names = {r.id: getattr(r, "name", None) for r in rows
                  if getattr(r, "owner", None) == owner}
@@ -2233,7 +2363,7 @@ def chain_to_document(rows, head_id: str, *, positions=None) -> tuple:
         if refusal.reason == CHAIN_CROSS_OWNER:
             raise DocumentError(DocumentRefusal(
                 REFUSE_CROSS_OWNER, (), describe_graph_refusal(refusal, names)))
-        _fail(REFUSE_TOO_MANY_STEPS, detail=f"a workflow holds at most {WORKFLOW_MAX_NODES}")
+        raise DocumentError(too_many_steps_refusal(top, top, exact=False))
     order = [head]
     seen = {head_id}
     frontier = [head]
@@ -2248,8 +2378,8 @@ def chain_to_document(rows, head_id: str, *, positions=None) -> tuple:
                 order.append(target)
                 following.append(target)
         frontier = following
-    if len(order) > WORKFLOW_MAX_NODES:
-        _fail(REFUSE_TOO_MANY_STEPS, detail=f"it has {len(order)}")
+    if len(order) > top:
+        raise DocumentError(too_many_steps_refusal(len(order), top))
     for row in order:
         if (getattr(row, "task_type", None) or "llm") == WORKFLOW_TASK_TYPE:
             _fail(REFUSE_WORKFLOW_MEMBER, detail=f"“{row.name}” is a workflow, and a "

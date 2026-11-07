@@ -690,9 +690,10 @@ def test_contract_c_r_is_what_the_other_three_packages_import():
     assert workflow_slots.RenderedCall._fields == ("kind", "tool", "content", "value_paths",
                                                     "missing")
     assert workflow_slots.Slot._fields == ("mapping", "carry", "why")
+    # `B1857` adds the step cap at the end, so a positional build still reads.
     assert wd.WorkflowResources._fields == ("integrations", "mcp_tools", "skills", "ai_tools",
                                             "workstation_why", "foreach_max_items",
-                                            "wait_max_hours")
+                                            "wait_max_hours", "max_steps")
 
     def params(fn):
         return [(p.name, p.kind.name) for p in inspect.signature(fn).parameters.values()]

@@ -76,7 +76,9 @@ async def test_the_palette_route_answers_with_the_walkers_limits(factory, monkey
     limits = res.json()["limits"]
     assert limits == {"foreach_max_items": wr.foreach_max_items("alice"),
                       "wait_max_hours": wr.wait_max_hours(),
-                      "parallel_steps": ts.WORKFLOW_PARALLEL_STEPS}
+                      "parallel_steps": ts.WORKFLOW_PARALLEL_STEPS,
+                      # `B1857`
+                      "max_steps": wr.max_steps()}
     assert len(res.json()["kinds"]) == 14
 
 

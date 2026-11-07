@@ -118,6 +118,17 @@ def _file_imported_document(db, doc: Document, user: Optional[str],
     file_new_document(db, _scope(user), doc, folder)
 
 
+def _document_updated(doc) -> None:
+    """`B1862`. `document_updated` for a document a person just edited, after
+    the commit — `event_bus.fire_document_updated`, which keeps it to once a
+    minute per document and never raises."""
+    try:
+        from src.event_bus import fire_document_updated
+        fire_document_updated(doc.owner, doc.id, doc.title)
+    except Exception:
+        logger.debug("document_updated event dispatch failed", exc_info=True)
+
+
 def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
     # `H05` — the `document_editor` flag. The UI hid two launchers; the routes
     # answered regardless, and so did the document tools.
@@ -983,9 +994,15 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
                 doc.version_count = new_ver
                 db.add(ver)
 
+            moved = doc.current_content != incoming_content
             doc.current_content = incoming_content
             db.commit()
             db.refresh(doc)
+            if moved:
+                # `B1862`. After the commit, and only when the text moved (a
+                # checkpoint of the same text is a version, not an edit); once
+                # a minute per document however often the editor saves.
+                _document_updated(doc)
             return _doc_to_dict(doc)
         except HTTPException:
             raise
@@ -1005,6 +1022,10 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
             if not doc:
                 raise HTTPException(404, "Document not found")
             _verify_doc_owner(db, doc, user)
+            # `B1862`. A new name or language is an edit of the document;
+            # linking it to a chat (or closing its tab) is not.
+            edited = ((req.title is not None and req.title != doc.title)
+                      or (req.language is not None and req.language != doc.language))
             if req.title is not None:
                 doc.title = req.title
             if req.language is not None:
@@ -1025,6 +1046,8 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
                         logger.warning("Failed to clear active document %r on detach", doc_id, exc_info=e)
             db.commit()
             db.refresh(doc)
+            if edited:
+                _document_updated(doc)   # `B1862`
             return _doc_to_dict(doc)
         except HTTPException:
             raise
@@ -1135,11 +1158,14 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
                 summary=f"Restored from v{num}",
                 source="user",
             )
+            moved = doc.current_content != old_ver.content
             doc.current_content = old_ver.content
             doc.version_count = new_ver_num
             db.add(ver)
             db.commit()
             db.refresh(doc)
+            if moved:
+                _document_updated(doc)   # `B1862`: a restore that changes the text
             return _doc_to_dict(doc)
         except HTTPException:
             raise

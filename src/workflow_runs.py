@@ -58,7 +58,20 @@ FOREACH_MAX_ITEMS_RANGE = (1, 1000)
 WAIT_MAX_HOURS_SETTING = "workflow_wait_max_hours"
 WAIT_MAX_HOURS_DEFAULT = 168
 WAIT_MAX_HOURS_RANGE = (1, 720)
-# These two defaults and ranges are stated HERE and nowhere else (`Law 7`,
+
+# `B1857`. How many steps one workflow may hold. It was a constant, twenty
+# (`workflow_document.WORKFLOW_MAX_NODES`), which a person building anything
+# n8n-shaped met within an afternoon, with nothing to move it. Mistake
+# prevention, not a control (`Law 17`): the floor is the old cap, so no
+# document that was ever saved is refused by a lower one, and the top is what
+# the document rule's walks were measured at (`find_loop` is one depth-first
+# pass, `concurrent_arrivals` a reachability over pairs of steps — 501² states
+# at most) and what a 256 KiB document can hold of steps worth drawing.
+# Settings-only, like the longest Wait: one number for the whole install.
+MAX_STEPS_SETTING = "workflow_max_steps"
+MAX_STEPS_DEFAULT = 100
+MAX_STEPS_RANGE = (20, 500)
+# These defaults and ranges are stated HERE and nowhere else (`Law 7`,
 # `integrate-d`): `workflow_document` (the save-time check, `WorkflowResources`)
 # and `src/settings.py` (`DEFAULT_SETTINGS`) import them. This module imports
 # nothing of the product at load, so both can.
@@ -151,6 +164,16 @@ def wait_max_hours() -> int:
     lo, hi = WAIT_MAX_HOURS_RANGE
     value, _source = resolve_limit(
         WAIT_MAX_HOURS_SETTING, WAIT_MAX_HOURS_DEFAULT, minimum=lo, maximum=hi)
+    return value
+
+
+def max_steps() -> int:
+    """`B1857`. How many steps one workflow may hold (`workflow_max_steps`)."""
+    from src.settings import resolve_limit
+
+    lo, hi = MAX_STEPS_RANGE
+    value, _source = resolve_limit(
+        MAX_STEPS_SETTING, MAX_STEPS_DEFAULT, minimum=lo, maximum=hi)
     return value
 
 

@@ -44,7 +44,9 @@ async def test_the_palette_is_a_literal_route_with_this_engines_limits(world, mo
         waiting = await client.get("/api/workflows/waiting", headers={"x-test-user": "alice"})
     assert res.status_code == 200, res.text
     body = res.json()
-    assert body["limits"] == {"foreach_max_items": 7, "wait_max_hours": 168, "parallel_steps": 4}
+    # `B1857` adds the step cap, `workflow_max_steps`, as shipped.
+    assert body["limits"] == {"foreach_max_items": 7, "wait_max_hours": 168, "parallel_steps": 4,
+                              "max_steps": 100}
     assert "kinds" in body, "the rest is wf-effects' palette, passed through"
     assert waiting.status_code == 200 and waiting.json() == {"waiting": []}
 
