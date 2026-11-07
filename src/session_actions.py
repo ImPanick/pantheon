@@ -18,7 +18,7 @@ _THROWAWAY_NAMES = {
     "test", "testing", "asdf", "asd", "hello", "hi", "hey",
     "yo", "sup", "hola", "hii", "hiii", "heyo",
     "foo", "bar", "baz", "tmp", "temp", "scratch", "untitled",
-    "new chat", "delete", "remove", "junk", "trash", "xxx",
+    "delete", "remove", "junk", "trash", "xxx",
     "abc", "qwerty", "blah", "stuff", "whatever", "idk",
     "ok", "lol", "bruh", "hmm", "hm", "meh",
 }
@@ -109,16 +109,20 @@ async def run_auto_sort(owner: str, skip_llm: bool = False, delete_throwaway: bo
                 should_delete = True
                 deleted_empty += 1
             elif delete_throwaway and msg_count <= _THROWAWAY_MAX_MESSAGES:
+                # `B1781`: a chat the model answered is never a throwaway, so
+                # the short-prompt and short-text rules below never reach one.
+                assistant_count = db.query(DbMsg.id).filter(
+                    DbMsg.session_id == row.id, DbMsg.role == "assistant"
+                ).limit(1).count()
+                if assistant_count > 0:
+                    continue
                 name = (row.name or "").strip().lower()
                 first_msg = db.query(DbMsg.content).filter(
                     DbMsg.session_id == row.id, DbMsg.role == "user"
                 ).order_by(DbMsg.timestamp).first()
                 first_text = (first_msg[0] or "").strip().lower() if first_msg else ""
-                assistant_count = db.query(DbMsg.id).filter(
-                    DbMsg.session_id == row.id, DbMsg.role == "assistant"
-                ).limit(1).count()
 
-                if name in _THROWAWAY_NAMES or name.startswith("chat:") or first_text in _THROWAWAY_NAMES:
+                if name in _THROWAWAY_NAMES or first_text in _THROWAWAY_NAMES:
                     should_delete = True
                     deleted_throwaway += 1
                 elif msg_count == 1 and assistant_count == 0:

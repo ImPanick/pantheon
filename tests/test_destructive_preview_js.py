@@ -413,6 +413,8 @@ def test_the_chat_tidy_asks_first_and_says_the_deletion_is_permanent(ui_sandbox)
     )
     assert "no undo" in ai["foot"]
     assert "Important" in ai["foot"], "what is protected is half the answer"
+    assert "answered" in ai["foot"], (
+        "B1781: a chat the model answered is never deleted, and the dialog says so")
     assert "Sends the titles" in ai["flat"], "the AI path spends a model call and must say so"
     assert "one call" in ai["flat"]
     assert "Sends the titles" not in out["noAi"]["flat"], (

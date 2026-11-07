@@ -1360,7 +1360,7 @@ def setup_session_routes(
             "test", "testing", "asdf", "asd", "hello", "hi", "hey",
             "yo", "sup", "hola", "hii", "hiii", "heyo",
             "foo", "bar", "baz", "tmp", "temp", "scratch", "untitled",
-            "new chat", "delete", "remove", "junk", "trash", "xxx",
+            "delete", "remove", "junk", "trash", "xxx",
             "abc", "qwerty", "blah", "stuff", "whatever", "idk",
             "ok", "lol", "bruh", "hmm", "hm", "meh",
         }
@@ -1401,7 +1401,11 @@ def setup_session_routes(
                 if msg_count == 0:
                     should_delete = True
                     deleted_empty += 1
-                elif msg_count <= _THROWAWAY_MAX_MESSAGES:
+                # `B1781`: a chat the model answered is never a throwaway. Its
+                # title is no evidence either way: "New chat" is the title of
+                # every chat not yet named (`P23-04`), "Chat: …" another, and a
+                # 1-3 word prompt like "Explain quicksort" has a real answer.
+                elif msg_count <= _THROWAWAY_MAX_MESSAGES and _asst_counts.get(row.id, 0) == 0:
                     name = (row.name or "").strip().lower()
                     # Check first user message content (AI renames sessions, so
                     # "hi" becomes "Casual Greeting Exchange" — name alone won't match)
@@ -1411,7 +1415,7 @@ def setup_session_routes(
                     first_text = (first_msg[0] or "").strip().lower() if first_msg else ""
                     # Count assistant messages — if user sent something but AI never replied, it's dead
                     assistant_count = _asst_counts.get(row.id, 0)
-                    if name in _THROWAWAY_NAMES or name.startswith("chat:") or first_text in _THROWAWAY_NAMES:
+                    if name in _THROWAWAY_NAMES or first_text in _THROWAWAY_NAMES:
                         should_delete = True
                         deleted_throwaway += 1
                     # Single user message with no AI response = dead session
