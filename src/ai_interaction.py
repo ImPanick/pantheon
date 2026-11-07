@@ -373,6 +373,10 @@ async def do_manage_memory(content: str, session_id: Optional[str] = None, owner
             return {"error": "Edit needs line 2: memory_id, line 3: new text"}
         memory_id = lines[1].strip()
         new_text = lines[2].strip()
+        # `B1801`. A blank id is a prefix of every id, so the match below
+        # took the first stored memory and overwrote it.
+        if not memory_id:
+            return {"error": "Edit needs line 2: memory_id (list or search first to get it)"}
         if not new_text:
             return {"error": "New text cannot be empty"}
 
@@ -406,6 +410,9 @@ async def do_manage_memory(content: str, session_id: Optional[str] = None, owner
         if len(lines) < 2:
             return {"error": "Delete needs line 2: memory_id"}
         memory_id = lines[1].strip()
+        # `B1801`. As for edit: a blank id would delete the first stored memory.
+        if not memory_id:
+            return {"error": "Delete needs line 2: memory_id (list or search first to get it)"}
 
         memories = _memory_manager.load_all()
         original_len = len(memories)
