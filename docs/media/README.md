@@ -4,7 +4,8 @@ Every picture in this folder is made by one command, from this checkout, against
 fictional world — nothing here was taken by hand, so nothing here goes stale on purpose:
 
 ```bash
-python3 scripts/showcase/capture.py --workstation
+sh workstation/provision.sh client /tmp/kasmvnc-client     # once: the live-desktop client
+python3 scripts/showcase/capture.py --workstation --desktop-client /tmp/kasmvnc-client/www
 ```
 
 Run it before a release. It takes about six minutes and needs Python with
@@ -15,7 +16,9 @@ requirements, pass the one that does: `--server-python .venv/bin/python`.
 
 | Option | |
 |---|---|
-| `--workstation` | also start a `pantheon-workstation` container and photograph the agent's desktop. Without it the two workstation pictures are left as they are. |
+| `--workstation` | also start a `pantheon-workstation` container and photograph the agent's desktop, the Devices room and the desktop GIF. Without it those are left as they are. |
+| `--workstation-image` | the image to use (default: the newest `pantheon-workstation:*`) |
+| `--desktop-client DIR` | KasmVNC's unpacked web client, so the desktop is drawn live as in the Docker image rather than as pictures |
 | `--only chat,workbench` | just those scenes; `--list` prints them all |
 | `--no-gifs` | screenshots only |
 | `--force` | rewrite every file, even one that did not visibly change |
@@ -42,26 +45,29 @@ requirements, pass the one that does: `--server-python .venv/bin/python`.
    and three at phone width, and records the GIFs. Chromium is given a proxy address
    that answers nothing, with loopback the only exception, and any page request to
    another host fails the run.
-5. Writes PNGs reduced to 256 colours where that is visually lossless (each is kept
-   lossless otherwise) and two-pass palette GIFs at 900 px and 12 fps, then stops
-   everything it started.
+5. Writes screenshots as WebP at quality 90 — the cockpit's grain is what lossless
+   formats cannot compress (`media.py` has the measurement) — and two-pass palette
+   GIFs at 900 px and 12 fps, then stops everything it started. While a GIF records,
+   the cockpit's slow background drift is held still, or every frame is stored whole.
 
 **Churn.** A picture whose pixels moved by less than 0.4% — a clock, "5m ago" — is left
 as committed, and so is a GIF with as many frames that opens and closes on the same
 picture, so a release-day run changes only what really changed. The live agent turn
-waits on the product, so `agent.gif` is rewritten every run. The budgets (400 KB a PNG,
-3 MB a GIF, 15 MB in all) are in `scripts/showcase/media.py`, and
+waits on the product, so `agent.gif` and `desktop.gif` are rewritten every run. The
+budgets (400 KB a screenshot, 3 MB a GIF, 15 MB in all) are in `scripts/showcase/media.py`, and
 `tests/test_the_showcase_pipeline.py` holds the README to them.
 
 ## What each file shows
 
-Each screenshot exists as `-dark.png` and `-light.png`; the README shows whichever
+Each screenshot exists as `-dark.webp` and `-light.webp`; the README shows whichever
 matches the reader's GitHub theme.
 
 | File | Shows |
 |---|---|
-| `workstation-*` | the agent's Ubuntu desktop docked beside its chat: it wrote a page, ran a command and opened it in Firefox |
+| `workstation-*` | the agent's Ubuntu desktop live in the workspace column beside its chat: it wrote a page, checked it in a shell, opened a terminal and started a server |
 | `chat-*` | an agent turn — each tool call, the approval card it raised, the answer |
+| `agents-*` | the Agents hall: teams, departments, the agents to summon |
+| `devices-*` | the Workbench's Devices room: the phones and tablets, one drawn with its keys |
 | `workbench-*` | the Workbench canvas after *Show me what this would do* on a chain with a failure branch, the shelf of workflows beside it |
 | `tasks-*` | the Tasks window |
 | `documents-*` | the Library's documents, in folders |
@@ -70,9 +76,11 @@ matches the reader's GitHub theme.
 | `palette-*` | the command palette (Ctrl+K) |
 | `themes-*` | the twenty palettes |
 | `brain-*` | the Brain's memories |
-| `phone-chat`, `phone-documents`, `phone-tasks` | the same at 390×844 |
+| `phone-chat`, `phone-documents`, `phone-tasks` | the same at 390×844 (`.webp`) |
 | `describe.gif` | *Describe it*: the bank-mail example drafted into three steps marked *check me*, *Check them now*, *All look right*, switched on. The scene registers `scripts/showcase/demo_chat.py` — a chat server that writes posts to a file — through the admin route, and removes it and the workflow after |
 | `agent.gif` | a turn live: thinking, the approval card, the tool calls, the answer |
+| `desktop.gif` | the workstation turn live, its desktop docked beside the chat: the terminal opened, the command typed, the server started |
+| `composer.gif` | the message box: `/` for skills and commands, `@` for agents to summon |
 | `workflow.gif` | wiring *if it fails* by dragging, then a dry run of the chain |
 | `filing.gif` | dragging documents into folders |
 | `palette.gif` | Ctrl+K: what *work* finds, then *skills* and Enter |

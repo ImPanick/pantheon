@@ -6,9 +6,10 @@ Ctrl+K, drag a port — never a DOM edit. The browser state a capture sets is th
 state a person's own choices leave: the palette they picked (`pantheon-theme`),
 first-run tours switched off (Settings → Appearance), the snap tip seen.
 
-**Two things only a capture adds, both to the picture and neither to the
+**Three things only a capture adds, all to the picture and none to the
 product:** in a GIF, a drawn pointer that follows the real mouse events
-(headless Chromium draws none), and a fixed 1440×900 or 390×844 window.
+(headless Chromium draws none) and the cockpit's slow background drift held
+still (`Recorder`), and a fixed 1440×900 or 390×844 window.
 
 **Motion.** Captures run with `prefers-reduced-motion: no-preference`. With
 `reduce`, opening the Workbench or the Forge window freezes the tab — `ui.js`'s
@@ -70,7 +71,7 @@ _CURSOR_JS = r"""
 @dataclass
 class Scene:
     name: str
-    kind: str          # "png" (dark + light), "phone" (one PNG), "gif"
+    kind: str          # "png" (a still, dark + light; written as WebP), "phone" (one still), "gif"
     what: str          # the caption-sized sentence `--list` prints
     run: Callable
     needs: str = ""    # "workstation" — skipped without it
@@ -90,16 +91,26 @@ class Recorder:
 
     FRAME = 1.0 / media.GIF_FPS
 
-    def __init__(self, page):
+    def __init__(self, page, clip: Optional[Dict[str, float]] = None):
         self.page = page
+        # A part of the window, for an animation about one part of it: the
+        # same pixels, fewer of them, so the words stay readable at GIF width.
+        self.clip = clip
         self.frames: List[Tuple[float, bytes]] = []
         self.clock = 0.0
         self.pos = (DESKTOP[0] * 0.55, DESKTOP[1] * 0.6)
         page.evaluate(_CURSOR_JS)
+        # The third thing a capture adds: the cockpit's light field drifts
+        # over 34-52 s, so every pixel of every frame moves a little and a GIF
+        # stores each frame whole (measured: 8.3 MB for the agent turn). It is
+        # held still where it is for the recording; nothing else is touched.
+        page.evaluate("() => document.querySelectorAll('#ck-field span')"
+                      ".forEach(s => { s.style.animationPlayState = 'paused'; })")
         page.mouse.move(*self.pos)
 
     def snap(self) -> None:
-        self.frames.append((self.clock, self.page.screenshot()))
+        self.frames.append((self.clock, self.page.screenshot(clip=self.clip) if self.clip
+                            else self.page.screenshot()))
         self.clock += self.FRAME
 
     def hold(self, seconds: float) -> None:
@@ -166,11 +177,13 @@ class Studio:
     def __init__(self, pw, base: str, username: str, password: str, colours: Dict[str, Dict[str, str]],
                  out: Path, *, force: bool = False, model=None, client=None,
                  report: Optional[dict] = None, workstation: bool = False,
-                 python: Optional[str] = None):
+                 python: Optional[str] = None, tidy_workstation: Optional[Callable] = None):
         self.base, self.username, self.password = base, username, password
         self.colours, self.out, self.force = colours, out, force
         self.model, self.client, self.report = model, client, report or {}
         self.workstation = workstation
+        # Closes what the seeded workstation turn left running (`capture.Workstation.tidy`).
+        self.tidy_workstation = tidy_workstation
         # The interpreter Pantheon runs with (it has the `mcp` package): what a
         # scene's demo MCP server is started with (`gif_describe`).
         self.python = python
@@ -240,8 +253,8 @@ class Studio:
     def shot(self, page, name: str, settle: int = 700) -> None:
         page.wait_for_timeout(settle)
         self.dismiss_hints(page)
-        how = media.write_png(self.out / f"{name}.png", page.screenshot(), force=self.force)
-        self.results.append((f"{name}.png", how))
+        how = media.write_webp(self.out / f"{name}.webp", page.screenshot(), force=self.force)
+        self.results.append((f"{name}.webp", how))
 
     def gif(self, rec: Recorder, name: str, **kw) -> None:
         how = media.encode_gif(rec.frames, self.out / f"{name}.gif", force=self.force, **kw)
@@ -290,10 +303,20 @@ class Studio:
 
 # ── the scenes ──────────────────────────────────────────────────────────────
 
+def _tuck(page) -> None:
+    """Tuck the empty workspace column by its own button (Ctrl+\\), so the
+    chat has the window — what a person with nothing docked does."""
+    btn = page.locator("#ck-ws-tuck")
+    if btn.count() and btn.first.is_visible():
+        btn.first.click()
+        page.wait_for_timeout(900)
+
+
 def _hero(st: Studio, theme: str, size=DESKTOP, name: Optional[str] = None, phone=False):
     page = st.open(theme, size, "/#" + st.chat_id("week"), phone=phone)
     page.wait_for_selector(".msg-ai >> visible=true", timeout=30000)   # B1247: a step that only thought leaves a hidden bubble
     if not phone:
+        _tuck(page)
         page.locator("#chats-section-title").click()       # show the chats in the sidebar
         page.locator("#mode-agent-btn").click()            # the composer in the mode the turn ran in
     page.mouse.move(5, size[1] - 5)
@@ -308,7 +331,7 @@ def scene_chat(st: Studio, theme: str):
 
 def scene_workbench(st: Studio, theme: str):
     page = st.open(theme, path="/#" + st.chat_id("week"))
-    page.locator("#tool-workbench-btn").click()
+    page.locator("#rail-workbench").click()
     page.wait_for_selector("#workbench-modal .wb-node", timeout=30000)
     page.wait_for_timeout(800)
     _node(page, "Collect weekly metrics").locator(".wb-node-title").click()
@@ -338,7 +361,7 @@ def _node(page, title: str):
 
 def scene_tasks(st: Studio, theme: str):
     page = st.open(theme, path="/#" + st.chat_id("week"))
-    page.locator("#tool-tasks-btn").click()
+    page.locator("#rail-tasks").click()
     page.wait_for_selector("#tasks-modal .task-card", timeout=30000)
     page.mouse.move(5, 895)
     st.shot(page, f"tasks-{theme}", settle=1200)
@@ -347,7 +370,7 @@ def scene_tasks(st: Studio, theme: str):
 
 def scene_documents(st: Studio, theme: str):
     page = st.open(theme, path="/#" + st.chat_id("week"))
-    page.locator("#tool-library-btn").click()
+    page.locator("#rail-archive").click()
     page.wait_for_selector("#doclib-grid .doclib-card", timeout=30000)
     page.mouse.move(5, 895)
     st.shot(page, f"documents-{theme}", settle=1200)
@@ -367,7 +390,7 @@ def scene_skills(st: Studio, theme: str):
 def scene_settings(st: Studio, theme: str):
     page = st.open(theme, path="/#" + st.chat_id("week"))
     st.palette(page, "workstation")
-    page.locator("#search-results").get_by_text("Administration").first.click()
+    page.locator("#search-results").get_by_text("Admin", exact=True).first.click()
     page.wait_for_selector("[data-settings-panel='workstation']:not(.hidden)", timeout=30000)
     page.mouse.move(5, 895)
     st.shot(page, f"settings-{theme}", settle=1500)
@@ -383,7 +406,7 @@ def scene_palette(st: Studio, theme: str):
 
 def scene_themes(st: Studio, theme: str):
     page = st.open(theme, path="/#" + st.chat_id("week"))
-    page.locator("#tool-theme-btn").click()
+    page.locator("#rail-theme").click()
     page.wait_for_selector("#theme-modal .theme-swatch", timeout=30000)
     page.mouse.move(5, 895)
     st.shot(page, f"themes-{theme}", settle=900)
@@ -394,7 +417,7 @@ def scene_brain(st: Studio, theme: str):
     import seed
 
     page = st.open(theme, path="/#" + st.chat_id("week"))
-    page.locator("#tool-memory-btn").click()
+    page.locator("#rail-memory").click()
     # The window asks for its list when it opens and says "Loading memories..."
     # until it arrives (`B1070`; it used to say "No memories yet" for 7.4 s on
     # the seeded demo). Measured since: the list is drawn ~300 ms after the
@@ -410,28 +433,32 @@ def scene_brain(st: Studio, theme: str):
 
 
 def scene_workstation(st: Studio, theme: str):
-    """The chat where the agent worked in the workstation, and its screen beside it."""
+    """The chat where the agent worked in the workstation, and its live
+    screen beside it in the cockpit's workspace column — the Workstation
+    surface switched on from the column's own header."""
     page = st.open(theme, path="/#" + st.chat_id("workstation"))
     page.wait_for_selector(".msg-ai >> visible=true", timeout=30000)   # B1247
-    page.keyboard.press("Control+b")                       # the sidebar folds to its rail
-    page.wait_for_timeout(600)
-    st.palette(page, "workstation screen")
-    page.locator("#search-results").get_by_text("Workstation screen").first.click()
-    page.wait_for_function(
-        "() => [...document.querySelectorAll('#workstation-screen-modal img')]"
-        ".some(i => i.src.startsWith('data:image/') && i.naturalWidth >= 1000)", timeout=90000)
-    # Dock it to the right edge by its title bar, then widen it by the dock's
-    # own edge — the two drags a person makes.
-    head = page.locator("#workstation-screen-modal .modal-header").first.bounding_box()
-    _drag(page, (head["x"] + 200, head["y"] + head["height"] / 2), (DESKTOP[0] - 1, DESKTOP[1] / 2))
+    page.keyboard.press("Control+Alt+b")                   # the sidebar folds to its rail
+    page.wait_for_timeout(800)
+    page.locator("#ck-workspace .ck-surf[data-surf='vm']").first.click()
     page.wait_for_timeout(1000)
-    edge = page.locator(".edge-dock-resize-handle-right").first.bounding_box()
+    # Widen the column by its own edge, the drag a person makes.
+    edge = page.locator("#ck-resizer").bounding_box()
     if edge and edge["width"]:
-        x = edge["x"] + edge["width"] / 2
-        _drag(page, (x, DESKTOP[1] / 2), (600, DESKTOP[1] / 2))
+        _drag(page, (edge["x"] + edge["width"] / 2, DESKTOP[1] / 2), (560, DESKTOP[1] / 2))
+    # The live screen is a KasmVNC client in a frame: wait until it draws.
+    page.wait_for_timeout(12000)
     page.mouse.move(5, 895)
     st.shot(page, f"workstation-{theme}", settle=2500)
+    _unfold(page)
     st.close_page(page)
+
+
+def _unfold(page) -> None:
+    """The folded sidebar is kept with the account: open it again, so the
+    scenes after this one find the sidebar where a new account has it."""
+    page.keyboard.press("Control+Alt+b")
+    page.wait_for_timeout(1200)
 
 
 def _drag(page, start, end, steps: int = 16) -> None:
@@ -480,7 +507,7 @@ def gif_workflow(st: Studio, theme: str):
     st.client.put(f"/api/tasks/{head}", json={"else_task_id": ""}).raise_for_status()
     try:
         page = st.open(theme, path="/#" + st.chat_id("week"))
-        page.locator("#tool-workbench-btn").click()
+        page.locator("#rail-workbench").click()
         page.wait_for_selector("#workbench-modal .wb-node", timeout=30000)
         _fit(page)
         rec = Recorder(page)
@@ -503,7 +530,7 @@ def gif_workflow(st: Studio, theme: str):
 def gif_filing(st: Studio, theme: str):
     """Drag two loose documents into folders."""
     page = st.open(theme, path="/#" + st.chat_id("week"))
-    page.locator("#tool-library-btn").click()
+    page.locator("#rail-archive").click()
     page.wait_for_selector("#doclib-grid .doclib-card", timeout=30000)
     page.wait_for_timeout(1000)
     rec = Recorder(page)
@@ -564,7 +591,7 @@ def gif_describe(st: Studio, theme: str):
     server_id = made.json()["id"]
     try:
         page = st.open(theme, path="/#" + st.chat_id("week"))
-        page.locator("#tool-workbench-btn").click()
+        page.locator("#rail-workbench").click()
         page.wait_for_selector("#workbench-modal .wf-shelf-new", timeout=30000)
         page.wait_for_timeout(800)
         rec = Recorder(page)
@@ -598,14 +625,14 @@ def gif_describe(st: Studio, theme: str):
 
 
 def gif_themes(st: Studio, theme: str):
-    """Sixteen palettes; a few of them, one click each."""
+    """Twenty palettes; a few of them, one click each."""
     page = st.open(theme, path="/#" + st.chat_id("week"))
-    page.locator("#tool-theme-btn").click()
+    page.locator("#rail-theme").click()
     page.wait_for_selector("#theme-modal .theme-swatch", timeout=30000)
     page.wait_for_timeout(600)
     rec = Recorder(page)
     rec.hold(0.6)
-    for name in ("light", "paper", "copper", "cyberpunk", "lavender", "claude", "dark"):
+    for name in ("light", "paper", "forest", "ocean", "copper", "lavender", "dark"):
         rec.click(page.locator(f"#theme-modal .theme-swatch[data-theme='{name}']").first,
                   seconds=0.45, settle=0.9)
     rec.hold(0.6)
@@ -613,15 +640,28 @@ def gif_themes(st: Studio, theme: str):
     st.close_page(page)
 
 
-def gif_agent(st: Studio, theme: str):
-    """A turn, live: the question, the trace as it runs, the approval, the answer."""
+def _live_turn(st: Studio, theme: str, key: str, name: str, desktop: bool = False):
+    """A scripted turn played live in a new chat: the question typed, the trace
+    as it runs, the approval answered, the answer. With `desktop`, the
+    workspace column shows the workstation's live screen while it works."""
     import re
     from demo_model import CONVERSATIONS
 
-    turn = next(c for c in CONVERSATIONS if c["key"] == "survey")["turns"][0]
+    turn = next(c for c in CONVERSATIONS if c["key"] == key)["turns"][0]
     # The reply's last words, as the page will show them (markdown removed).
     tail = " ".join(re.sub(r"[*_`|#]", "", turn["steps"][-1]["say"]).split()[-4:])
     page = st.open(theme, path="/")
+    if desktop:
+        page.keyboard.press("Control+Alt+b")                   # the sidebar folds to its rail
+        page.wait_for_timeout(800)
+        page.locator("#ck-workspace .ck-surf[data-surf='vm']").first.click()
+        page.wait_for_timeout(1000)
+        edge = page.locator("#ck-resizer").bounding_box()
+        if edge and edge["width"]:
+            _drag(page, (edge["x"] + edge["width"] / 2, DESKTOP[1] / 2), (560, DESKTOP[1] / 2))
+        page.wait_for_timeout(8000)                            # the live screen draws
+    else:
+        _tuck(page)
     page.locator("#mode-agent-btn").click()
     st.model.set_pace(0.03)
     try:
@@ -637,24 +677,88 @@ def gif_agent(st: Studio, theme: str):
         if allow.count():
             rec.hold(0.8)
             rec.click(allow.first, seconds=0.6, settle=0.2)
-        deadline = time.monotonic() + 90
+        deadline = time.monotonic() + 150
         while time.monotonic() < deadline and tail not in page.locator(".msg-ai").last.inner_text():
             rec.snap()
         # Clicking the card stops the chat following the stream, as it does for
         # anyone; scroll down to the answer the way they would.
-        rec.move(DESKTOP[0] * 0.55, DESKTOP[1] * 0.55, 0.4)
+        rec.move(280 if desktop else DESKTOP[0] * 0.55, DESKTOP[1] * 0.55, 0.4)
         rec.wheel(2400, steps=10)
         rec.move(DESKTOP[0] - 80, DESKTOP[1] - 60, 0.5)
         rec.hold(2.5)
-        st.gif(rec, "agent")
+        st.gif(rec, name)
     finally:
         st.model.set_pace(0.0)
+    if desktop:
+        _unfold(page)
+    st.close_page(page)
+
+
+def gif_agent(st: Studio, theme: str):
+    """A turn, live: the question, the trace as it runs, the approval, the answer."""
+    _live_turn(st, theme, "survey", "agent")
+
+
+def gif_desktop(st: Studio, theme: str):
+    """The agent at work in its own desktop, watched live beside the chat."""
+    if st.tidy_workstation:
+        st.tidy_workstation()
+    _live_turn(st, theme, "workstation", "desktop", desktop=True)
+
+
+def scene_agents(st: Studio, theme: str):
+    """The Agents hall: the agents a person can hire, and the teams."""
+    page = st.open(theme, path="/#" + st.chat_id("week"))
+    page.locator("#rail-agents").click()
+    page.wait_for_selector("#agents-modal:not(.hidden)", timeout=30000)
+    page.wait_for_timeout(2000)
+    page.mouse.move(5, 895)
+    st.shot(page, f"agents-{theme}", settle=1200)
+    st.close_page(page)
+
+
+def scene_devices(st: Studio, theme: str):
+    """The Workbench's Devices room: every phone and tablet, each drawn as it looks."""
+    page = st.open(theme, path="/#" + st.chat_id("week"))
+    page.locator("#rail-workbench").click()
+    page.wait_for_selector("#workbench-modal", timeout=30000)
+    page.wait_for_timeout(800)
+    page.wait_for_selector("#workbench-rooms [data-room='devices']", timeout=30000)
+    page.locator("#workbench-rooms [data-room='devices']").first.click()
+    page.wait_for_timeout(3000)
+    page.mouse.move(5, 895)
+    st.shot(page, f"devices-{theme}", settle=1500)
+    st.close_page(page)
+
+
+def gif_composer(st: Studio, theme: str):
+    """The message box: `/` for a skill, `@` for an agent."""
+    page = st.open(theme, path="/#" + st.chat_id("week"))
+    _tuck(page)
+    page.locator("#mode-agent-btn").click()
+    box = page.locator("#message").first.bounding_box()
+    top = max(0, box["y"] - 470)
+    rec = Recorder(page, clip={"x": 300, "y": top, "width": DESKTOP[0] - 300, "height": DESKTOP[1] - top})
+    rec.hold(0.6)
+    rec.click(page.locator("#message").first, seconds=0.5, settle=0.2)
+    rec.type("/", per_char=0.1)
+    rec.hold(1.0)
+    rec.type("res", per_char=0.12)
+    rec.hold(1.6)
+    page.keyboard.press("Escape")
+    for _ in "/res":
+        rec.key("Backspace", settle=0.05)
+    rec.type("@", per_char=0.1)
+    rec.hold(1.0)
+    rec.type("re", per_char=0.12)
+    rec.hold(1.8)
+    st.gif(rec, "composer")
     st.close_page(page)
 
 
 SCENES: List[Scene] = [
     Scene("chat", "png", "the agent's trace and its answer, in the launch-week chat", scene_chat),
-    Scene("workstation", "png", "the Workstation window: the agent's Ubuntu desktop, Firefox open on the page it wrote",
+    Scene("workstation", "png", "the agent's Ubuntu desktop live beside its chat, serving the page it wrote",
           scene_workstation, needs="workstation"),
     Scene("workbench", "png", "the Workbench canvas after Show me what this would do", scene_workbench),
     Scene("tasks", "png", "the Tasks window", scene_tasks),
@@ -663,14 +767,20 @@ SCENES: List[Scene] = [
     Scene("settings", "png", "Settings → Workstation", scene_settings),
     Scene("palette", "png", "the command palette (Ctrl+K)", scene_palette),
     Scene("themes", "png", "the twenty palettes", scene_themes),
+    Scene("agents", "png", "the Agents hall: agents to hire, and their teams", scene_agents),
+    Scene("devices", "png", "the Workbench's Devices room: phones and tablets the agent drives", scene_devices,
+          needs="workstation"),
     Scene("brain", "png", "the Brain's memories", scene_brain),
     Scene("phone-chat", "phone", "the chat at phone width", scene_phone_chat),
     Scene("phone-documents", "phone", "the Library at phone width", scene_phone_documents),
     Scene("phone-tasks", "phone", "the Tasks window at phone width", scene_phone_tasks),
     Scene("workflow", "gif", "wire *if it fails* by dragging, then dry-run the chain", gif_workflow),
     Scene("agent", "gif", "an agent turn live: trace, approval, answer", gif_agent),
+    Scene("desktop", "gif", "the agent working in its desktop, watched live beside the chat", gif_desktop,
+          needs="workstation"),
     Scene("filing", "gif", "drag documents into folders", gif_filing),
     Scene("palette-gif", "gif", "Ctrl+K: what matches work, then skills, Enter", gif_palette),
+    Scene("composer", "gif", "the message box: / for a skill, @ for an agent", gif_composer),
     Scene("themes-gif", "gif", "switching palettes", gif_themes),
     # Last: it registers a demo chat server for its own length (see its doc).
     Scene("describe", "gif", "describe it: a drafted workflow, its steps checked, switched on", gif_describe),
