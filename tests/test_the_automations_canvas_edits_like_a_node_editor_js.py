@@ -277,3 +277,41 @@ def test_ctrl_a_picks_every_step_and_a_right_click_offers_the_steps_own_menu(box
     assert o["picked"] == ["a", "b", "w"], "the start is not a step that can be picked"
     for word in ("Duplicate", "Copy", "Remove"):
         assert any(w.startswith(word) for w in o["words"]), o["words"]
+
+
+# ── `B1894`: the draft is checked without an error per edit ─────────────────
+
+def test_an_unfinished_draft_is_checked_without_a_refused_request_and_a_loop_on_it_is_still_refused(box, live):
+    """`PUT ?check=true` answered every unfinished draft with an HTTP 400 —
+    nine console errors for a five-step build (the live-UX audit) — and an
+    arrow was judged by the FIRST refusal alone, so a loop drawn while a step
+    was unfinished was let through (the unfinished step was named first with
+    and without it). The problems route answers 200 with every problem; an
+    arrow is refused when it adds one."""
+    o = _case(box, live, """
+        const { r } = await room({ workflowId: 'w-wf' });
+        fire(nodeEl(r, 'w').querySelector('.wb-port-add'), 'click'); await quiet();
+        fire(kindButton(r, 'set'), 'click'); await quiet();
+        fire(by(r, 'wb-panel-close'), 'click'); await quiet();
+        fire(by(r, 'wb-panel-close'), 'click'); await quiet();
+        const marked = r.querySelector('.wf-edit').querySelectorAll('.wb-node').filter((n) => n.dataset.problem === 'true').map((n) => n.dataset.itemId);
+        const refusedBefore = wire.filter((c) => c.status >= 400).length;
+        // A loop: "Pause" back to "Make it".
+        fire(nodeEl(r, 'w').querySelector('.wb-node-connect'), 'click');
+        const cbox = r.querySelector('.wb-connect');
+        const to = cbox.querySelector('.wb-connect-to');
+        to.value = 'a';
+        fire(cbox.querySelector('.wb-connect-go'), 'click'); await quiet();
+        const loopSaid = sayOf(r);
+        const arrows = r.querySelector('.wf-edit').querySelectorAll('g').filter((g) => g.getAttribute('data-from') === 'w' && g.getAttribute('data-to') === 'a').length;
+        out({ marked, refusedBefore, refused: wire.filter((c) => c.status >= 400).map((c) => c.method + ' ' + c.url),
+              checks: calls('PUT', (u) => u.includes('check=true')).length,
+              problems: calls('POST', (u) => u.endsWith('/problems')).length, loopSaid, arrows,
+              button: by(r, 'wf-problems').textContent });
+    """)
+    assert len(o["marked"]) == 1, "the unfinished step is marked where it stands"
+    assert o["button"] == "1 problem"
+    assert o["refused"] == [], "no request is answered with an error for a draft that is not finished yet"
+    assert o["checks"] == 0 and o["problems"] >= 1
+    assert o["arrows"] == 0, "the loop is refused although another step is unfinished"
+    assert "again" in o["loopSaid"] or "loop" in o["loopSaid"].lower(), o["loopSaid"]

@@ -943,12 +943,43 @@ export function createWorkflowSource({
   async function recheck() {
     if (readOnly() || !S.draft) return;
     const gen = S.gen;
-    const [res] = await Promise.all([check(S.draft.graph), checkAll()]);
+    // `B1894`. With the problems route the draft is asked once, and its first
+    // problem is the one Save would name (the route asks the save's questions
+    // in the save's order, `document_problems`). `PUT ?check=true` answered a
+    // draft that was not finished yet with an HTTP 400 — one console error per
+    // edit (nine for a five-step build, measured), hiding real errors.
+    if (canListProblems()) {
+      await checkAll();
+      if (gen !== S.gen) return;
+      if (Array.isArray(S.problems)) {
+        S.problem = S.problems.length ? { ...S.problems[0], nodeIds: S.problems[0].nodeIds.slice() } : null;
+        emit();
+        return;
+      }
+    }
+    const [res] = await Promise.all([check(S.draft.graph), canListProblems() ? null : checkAll()]);
     if (gen !== S.gen) return;
     if (res.ok) S.problem = null;
     else if (res.refusal.status === 409) S.stale = true;
     else if (res.refusal.status) S.problem = problemOf(res.refusal);
     emit();
+  }
+
+  const canListProblems = () => !!(api && typeof api.listProblems === 'function');
+
+  /** `B1894`. Every problem a save of `graph` would name, as the room marks
+   *  them, or null when the route is not there or did not answer. */
+  async function problemsOf(graph) {
+    if (!canListProblems() || !S.draft) return null;
+    try {
+      const r = await api.listProblems(workflowId, { name: S.draft.name, graph });
+      return (Array.isArray(r && r.problems) ? r.problems : []).map((p) => ({
+        nodeIds: (Array.isArray(p && p.node_ids) ? p.node_ids : []).map(String),
+        sentence: String((p && p.sentence) || ''), field: (p && p.field) || null, reason: (p && p.reason) || null,
+      })).filter((p) => p.sentence);
+    } catch (_) {
+      return null;
+    }
   }
 
   // ── `B1851`: every problem at once ───────────────────────────────────────
@@ -993,6 +1024,30 @@ export function createWorkflowSource({
   /** An edit that the server may refuse because of itself: an arrow. */
   async function tryEdit(after, kind = null) {
     const before = S.draft.graph;
+    // `B1894`. Is it this arrow, or the draft it was drawn on? Asked of every
+    // problem, not the first: a problem `after` has that `before` did not is
+    // this arrow's. Comparing first refusals let a loop drawn on an
+    // unfinished draft through — the unfinished step was named first both
+    // times — and each refused draft logged an HTTP 400.
+    if (canListProblems()) {
+      const gen = S.gen;
+      const [now, was] = await Promise.all([problemsOf(after), problemsOf(before)]);
+      if (now && was) {
+        if (gen !== S.gen) return { ok: false, sentence: 'The workflow changed while this was being checked. Try again.' };
+        const key = (p) => `${p.reason || ''}\u0000${p.sentence}`;
+        const had = new Set(was.map(key));
+        const fresh = now.find((p) => !had.has(key(p)));
+        if (fresh) {
+          return { ok: false, status: 400, sentence: fresh.sentence, reason: fresh.reason,
+            nodeIds: fresh.nodeIds, field: fresh.field || null };
+        }
+        S.draft.graph = after;
+        S.problems = now;
+        S.problem = now.length ? { ...now[0], nodeIds: now[0].nodeIds.slice() } : null;
+        edited(kind);
+        return now.length ? { ok: true, sentence: now[0].sentence } : { ok: true };
+      }
+    }
     const res = await check(after);
     if (res.ok) {
       S.draft.graph = after;
