@@ -810,11 +810,33 @@ def _workflow_refusal(db, task, args) -> Optional[Dict]:
     return None
 
 
+def _no_next_run(task) -> str:
+    """`B1813`. Why a schedule task has no next run, in a sentence for the model."""
+    name = task.name or "This task"
+    if task.schedule == "once":
+        if not task.scheduled_date:
+            return (f"Task '{name}' has no next run: a one-off task runs on a date, and this "
+                    "tool cannot set one (the Tasks window can)")
+        return f"Task '{name}' has no next run: its one-off date has passed"
+    if task.schedule == "cron":
+        return (f"Task '{name}' has no next run: its cron expression "
+                f"({task.cron_expression or 'none'}) gives none")
+    if task.schedule not in ("daily", "weekly", "monthly"):
+        return (f"Task '{name}' has no next run: '{task.schedule}' is not daily, weekly, "
+                "monthly or once")
+    return f"Task '{name}' has no next run: its time '{task.scheduled_time}' is not HH:MM"
+
+
 async def do_manage_tasks(content: str, owner: Optional[str] = None) -> Dict:
     """Handle manage_tasks tool calls: CRUD on scheduled tasks."""
     import uuid as _uuid
     from core.database import SessionLocal, ScheduledTask, CrewMember
-    from src.task_scheduler import compute_next_run
+    # `B1813`. The scheduler's one formula for a task's next run: its cron
+    # expression, its date and its zone (`P8-32`) with the rest, as the Tasks
+    # window's routes and the engine read them. Worked out here from the
+    # frequency, time and day alone, a cron task resumed from chat had no next
+    # run and never ran, and a zoned task first ran at the UTC hour.
+    from src.workflow_store import _next_run_of
 
     try:
         args = _parse_tool_args(content)
@@ -888,15 +910,6 @@ async def do_manage_tasks(content: str, owner: Optional[str] = None) -> Dict:
             if refused:
                 return refused
 
-            # Compute next_run for schedule triggers
-            next_run = None
-            if trigger_type == "schedule":
-                schedule = args.get("schedule", "daily")
-                next_run = compute_next_run(
-                    schedule, args.get("scheduled_time", "09:00"),
-                    args.get("scheduled_day"),
-                )
-
             # `P8-31`. An event trigger with no count fires on every event.
             # The bus has always read a missing count that way; this stops the
             # tool writing a NULL where the REST route now writes a 1.
@@ -922,18 +935,25 @@ async def do_manage_tasks(content: str, owner: Optional[str] = None) -> Dict:
                 prompt=args.get("prompt"),
                 task_type=task_type,
                 action=args.get("action_name"),
-                schedule=args.get("schedule") if trigger_type == "schedule" else None,
+                # `B1813`: the frequency its next run is worked out from. The
+                # next run assumed daily when none was named and the row kept
+                # none, so the task ran once and never again.
+                schedule=(args.get("schedule") or "daily") if trigger_type == "schedule" else None,
                 scheduled_time=args.get("scheduled_time", "09:00") if trigger_type == "schedule" else None,
                 scheduled_day=args.get("scheduled_day"),
                 trigger_type=trigger_type,
                 trigger_event=args.get("trigger_event"),
                 trigger_count=trigger_count,
                 trigger_counter=0,
-                next_run=next_run,
                 status="active",
                 output_target=args.get("output_target", "session"),
                 crew_member_id=crew_id,
             )
+            # `B1813`. From the row, so a crew member's zone counts as it does
+            # at the Tasks window's create; one that cannot run is not stored.
+            task.next_run = _next_run_of(db, task)
+            if task.next_run is None and (task.trigger_type or "schedule") == "schedule":
+                return {"error": f"{_no_next_run(task)}, so it was not created.", "exit_code": 1}
             db.add(task)
             db.commit()
             return {"response": f"Created task '{name}' (id: {task_id})", "task_id": task_id, "exit_code": 0}
@@ -970,6 +990,15 @@ async def do_manage_tasks(content: str, owner: Optional[str] = None) -> Dict:
                 db=db, task=task)
             if refused:
                 return refused
+            # `B1813`. A cron task's time is in its expression, which this tool
+            # cannot write. A time or day set beside it was stored and the
+            # next run cleared, so a task that was running stopped.
+            if (task.schedule == "cron" and args.get("schedule") in (None, "cron")
+                    and (args.get("scheduled_time") is not None
+                         or args.get("scheduled_day") is not None)):
+                return {"error": f"'{task.name}' runs on a cron schedule ({task.cron_expression}); "
+                                 "its time is changed in the Tasks window. Nothing was changed.",
+                        "exit_code": 1}
 
             changed = []
             for field in ("name", "prompt", "output_target"):
@@ -1009,9 +1038,11 @@ async def do_manage_tasks(content: str, owner: Optional[str] = None) -> Dict:
                     schedule_changed = True
 
             if schedule_changed and (task.trigger_type or "schedule") == "schedule":
-                task.next_run = compute_next_run(
-                    task.schedule, task.scheduled_time, task.scheduled_day,
-                )
+                task.next_run = _next_run_of(db, task)   # `B1813`
+                if task.next_run is None:
+                    said = _no_next_run(task)
+                    db.rollback()
+                    return {"error": f"{said}, so nothing was changed.", "exit_code": 1}
 
             db.commit()
             return {"response": f"Updated task '{task.name}': {', '.join(changed)}", "exit_code": 0}
@@ -1067,9 +1098,11 @@ async def do_manage_tasks(content: str, owner: Optional[str] = None) -> Dict:
             else:
                 task.status = "active"
                 if (task.trigger_type or "schedule") == "schedule":
-                    task.next_run = compute_next_run(
-                        task.schedule, task.scheduled_time, task.scheduled_day,
-                    )
+                    task.next_run = _next_run_of(db, task)   # `B1813`
+                    if task.next_run is None:
+                        said = _no_next_run(task)
+                        db.rollback()
+                        return {"error": f"{said}, so it was not resumed.", "exit_code": 1}
             db.commit()
             return {"response": f"Task '{task.name}' {action}d", "exit_code": 0}
 
