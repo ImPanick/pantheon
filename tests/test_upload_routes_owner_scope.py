@@ -346,3 +346,153 @@ def test_put_vision_text_returns_400_on_malformed_json(tmp_path, monkeypatch):
     with pytest.raises(HTTPException) as exc:
         asyncio.run(put_vision_text(_BadJsonRequest(), alice_id))
     assert exc.value.status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# `B1820`. A bearer token is not its owner's browser.
+#
+# Only an admin mints a token, so every token resolves to an admin
+# (`auth_helpers.is_delegated_credential`), and the three owner gates above ask
+# `is_admin(owner)`: a token of any scope, a `metrics:read` scrape token
+# included, could read, re-caption and run vision on any upload whose id it
+# held, and any token could upload. A token now needs an upload scope (`chat`,
+# or `documents:read` to read and `documents:write` to write) and reaches only
+# its owner's own files. Every cookie case above is unchanged. Ported from
+# upstream Odysseus c74f4756's token half; its no-login half is not, because
+# there is always authentication (`D-2026-10-07-02` §2).
+# ---------------------------------------------------------------------------
+
+
+class _TokenRequest(_Request):
+    """What `app.py`'s auth middleware stamps on a matched bearer token. Its
+    owner, bob, is an admin, as the owner of every token is."""
+
+    def __init__(self, scopes, owner="bob", body=None):
+        super().__init__(user="api", auth_manager=_AuthManager(admins={"bob"}), body=body)
+        self.state.api_token = True
+        self.state.api_token_owner = owner
+        self.state.api_token_scopes = list(scopes)
+
+
+def _a_text_file():
+    import io
+
+    from fastapi import UploadFile
+
+    return [UploadFile(filename="notes.txt", file=io.BytesIO(b"plain words\n"))]
+
+
+@pytest.fixture
+def token_world(tmp_path, monkeypatch):
+    handler, alice_id, bob_id, upload_dir = _make_upload_store(tmp_path, monkeypatch)
+    ownerless_id = "f" * 32 + ".png"
+    ownerless_path = upload_dir / "2026" / "06" / "02" / ownerless_id
+    ownerless_path.write_bytes(b"nobody's image bytes")
+    _add_upload_row(upload_dir, {
+        "id": ownerless_id, "path": str(ownerless_path), "mime": "image/png",
+        "size": ownerless_path.stat().st_size, "name": "old.png",
+        "original_name": "old.png", "owner": None,
+    })
+    described = []
+
+    def _vision(path, owner=None):
+        described.append(path)
+        return "described"
+
+    monkeypatch.setattr("src.document_processor.analyze_image_with_vl", _vision)
+    return SimpleNamespace(
+        handler=handler, endpoints=_upload_endpoints(handler, monkeypatch),
+        alice_id=alice_id, bob_id=bob_id, ownerless_id=ownerless_id,
+        vision=upload_dir / ".vision", described=described,
+    )
+
+
+def test_a_chat_token_reaches_only_its_owners_uploads_though_its_owner_is_an_admin(token_world):
+    w, endpoints = token_world, token_world.endpoints
+
+    response = asyncio.run(endpoints["download_file"](_TokenRequest(["chat"]), w.bob_id))
+    assert response.path.endswith(w.bob_id)
+
+    # An admin's browser reads alice's file and a row nobody owns; the
+    # admin's token reads neither, and writes neither's caption.
+    for file_id in (w.alice_id, w.ownerless_id):
+        for name, call in (
+            ("download_file", lambda: endpoints["download_file"](_TokenRequest(["chat"]), file_id)),
+            ("download_file_head", lambda: endpoints["download_file_head"](
+                _TokenRequest(["chat"]), file_id)),
+            ("get_vision_text", lambda: endpoints["get_vision_text"](
+                _TokenRequest(["chat"]), file_id, force=1)),
+            ("put_vision_text", lambda: endpoints["put_vision_text"](
+                _TokenRequest(["chat"], body={"text": "rewritten"}), file_id)),
+        ):
+            with pytest.raises(HTTPException) as exc:
+                asyncio.run(call())
+            assert exc.value.status_code == 404, (name, file_id)
+    assert w.described == []
+    assert not (w.vision / f"{w.alice_id}.txt").exists()
+
+
+@pytest.mark.parametrize("scopes", [["metrics:read"], ["todos:read", "todos:write"],
+                                    ["cookbook:read", "cookbook:launch"]])
+def test_a_token_without_an_upload_scope_touches_no_upload_even_its_owners(token_world, scopes):
+    w, endpoints = token_world, token_world.endpoints
+    for name, call in (
+        ("download_file", lambda: endpoints["download_file"](_TokenRequest(scopes), w.bob_id)),
+        ("download_file_head", lambda: endpoints["download_file_head"](
+            _TokenRequest(scopes), w.bob_id)),
+        ("get_vision_text", lambda: endpoints["get_vision_text"](
+            _TokenRequest(scopes), w.bob_id, force=1)),
+        ("put_vision_text", lambda: endpoints["put_vision_text"](
+            _TokenRequest(scopes, body={"text": "rewritten"}), w.bob_id)),
+        ("api_upload", lambda: endpoints["api_upload"](
+            _TokenRequest(scopes), files=_a_text_file(), session_id=None)),
+    ):
+        with pytest.raises(HTTPException) as exc:
+            asyncio.run(call())
+        assert exc.value.status_code == 403, name
+        assert "API token missing required scope" in exc.value.detail, name
+    assert w.described == []
+    assert not (w.vision / f"{w.bob_id}.txt").exists()
+    assert len(w.handler._load_upload_index()) == 3   # nothing was saved
+
+
+def test_documents_read_reads_its_owners_uploads_and_only_a_write_scope_changes_them(token_world):
+    w, endpoints = token_world, token_world.endpoints
+    reader = ["documents:read"]
+
+    assert asyncio.run(endpoints["download_file"](_TokenRequest(reader), w.bob_id)).path.endswith(w.bob_id)
+    assert asyncio.run(endpoints["get_vision_text"](_TokenRequest(reader), w.bob_id))["text"] == "described"
+    for name, call in (
+        ("put_vision_text", lambda: endpoints["put_vision_text"](
+            _TokenRequest(reader, body={"text": "rewritten"}), w.bob_id)),
+        ("api_upload", lambda: endpoints["api_upload"](
+            _TokenRequest(reader), files=_a_text_file(), session_id=None)),
+    ):
+        with pytest.raises(HTTPException) as exc:
+            asyncio.run(call())
+        assert exc.value.status_code == 403, name
+    assert (w.vision / f"{w.bob_id}.txt").read_text(encoding="utf-8") == "described"
+
+    for scopes, text in ((["documents:write"], "by an integration"), (["chat"], "by the phone")):
+        assert asyncio.run(endpoints["put_vision_text"](
+            _TokenRequest(scopes, body={"text": text}), w.bob_id)) == {"ok": True}
+        assert (w.vision / f"{w.bob_id}.txt").read_text(encoding="utf-8") == text
+        saved = asyncio.run(endpoints["api_upload"](
+            _TokenRequest(scopes), files=_a_text_file(), session_id=None))
+        assert len(saved["files"]) == 1, scopes
+
+
+def test_a_token_with_no_owner_is_refused(token_world):
+    w, endpoints = token_world, token_world.endpoints
+    for name, call in (
+        ("download_file", lambda: endpoints["download_file"](
+            _TokenRequest(["chat"], owner=None), w.bob_id)),
+        ("put_vision_text", lambda: endpoints["put_vision_text"](
+            _TokenRequest(["chat"], owner=None, body={"text": "rewritten"}), w.bob_id)),
+        ("api_upload", lambda: endpoints["api_upload"](
+            _TokenRequest(["chat"], owner=None), files=_a_text_file(), session_id=None)),
+    ):
+        with pytest.raises(HTTPException) as exc:
+            asyncio.run(call())
+        assert exc.value.status_code == 403, name
+        assert exc.value.detail == "API token has no owner", name
