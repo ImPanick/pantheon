@@ -135,7 +135,8 @@ def test_a_toggle_without_an_item_index_changes_nothing_and_asks_for_one(monkeyp
     """`B1816`. With no index the tool flipped the first item and said it was
     done, and `true` flipped the second. `remove_item`, a model's likeliest
     call to name an item by its text, lands in the same branch. Upstream
-    Odysseus refused these in e5e23e64."""
+    Odysseus refused these in e5e23e64. (`B1991`: `remove_item` is refused
+    before that branch now, in words that still name the index.)"""
     items = [{"text": "eggs", "done": False}, {"text": "milk", "done": False}]
     note = _note(owner="alice", note_type="checklist", items=json.dumps(items))
     db = _install_fakes(monkeypatch, note)
@@ -144,5 +145,30 @@ def test_a_toggle_without_an_item_index_changes_nothing_and_asks_for_one(monkeyp
 
     assert result["exit_code"] == 1
     assert "index" in result["error"] and "Nothing changed" in result["error"]
+    assert json.loads(note.items) == items
+    assert db.commits == 0
+
+
+@pytest.mark.parametrize("args", [
+    pytest.param({"action": "remove_item", "index": 1}, id="by-its-index"),
+    pytest.param({"action": "remove_item", "index": 1, "item": "milk"}, id="by-index-and-text"),
+    pytest.param({"action": "remove-item", "index": 0}, id="hyphenated"),
+])
+def test_removing_a_checklist_item_never_ticks_it(monkeypatch, args):
+    """`B1991`. `remove_item` was an alias of `toggle_item`, so a model asked
+    to remove a checklist item that passed the item's index had it ticked, and
+    was told it was "marked done". `B1816` refused it only with no index. Now
+    it is refused whatever it carries, and the refusal says how an item is
+    removed: `update` with the complete remaining `checklist_items`. Upstream
+    Odysseus refused it the same way in 84aa9a91."""
+    items = [{"text": "eggs", "done": False}, {"text": "milk", "done": False}]
+    note = _note(owner="alice", note_type="checklist", items=json.dumps(items))
+    db = _install_fakes(monkeypatch, note)
+
+    result = _run({"id": "abc12345", **args})
+
+    assert result["exit_code"] == 1, result
+    assert "update" in result["error"] and "checklist_items" in result["error"]
+    assert "Nothing changed" in result["error"]
     assert json.loads(note.items) == items
     assert db.commits == 0
