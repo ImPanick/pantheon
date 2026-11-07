@@ -3669,7 +3669,7 @@ async function openCalendarTo(target) {
       const now = new Date();
       await _fetchEvents(`${now.getFullYear()}-01-01`, `${now.getFullYear() + 2}-01-01`);
       _currentDate = now;
-      _selectedDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      _selectedDay = _ds(now);   // `B1937`: a 'YYYY-MM-DD' string, as every reader compares it
       _view = 'month';
       _render();
       return;
@@ -3677,17 +3677,22 @@ async function openCalendarTo(target) {
     // If target looks like an ISO date (YYYY-MM-DD...), go straight there.
     let dt = null;
     const isoMatch = /^\d{4}-\d{2}-\d{2}/.test(targetStr);
+    // `B1937`. The day as `_localDateOf` reads it (a date as it is, a Z or
+    // offset timestamp as the local day), at local midnight as the year view's
+    // day click does: `new Date('2026-12-01')` is midnight UTC, the evening
+    // before west of UTC.
     if (isoMatch) {
-      dt = new Date(targetStr);
+      dt = new Date(_localDateOf(targetStr) + 'T00:00:00');
     } else {
       // Treat as an event uid — find it among loaded events.
       const ev = Object.values(_allEvents || {}).find(e => e.uid === targetStr || (e.uid || '').startsWith(targetStr));
-      if (ev && ev.dtstart) dt = new Date(ev.dtstart);
+      if (ev && ev.dtstart) dt = new Date(_localDateOf(ev.dtstart) + 'T00:00:00');
       if (ev) _highlightEventUid = ev.uid;
     }
     if (dt && !isNaN(dt.getTime())) {
       _currentDate = new Date(dt);
-      _selectedDay = new Date(dt.getFullYear(), dt.getMonth(), dt.getDate());
+      // `B1937`: stored as the string every other writer stores, not a Date.
+      _selectedDay = _ds(dt);
       _view = 'month';
       _render();
     }
