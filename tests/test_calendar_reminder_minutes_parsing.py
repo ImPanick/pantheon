@@ -87,3 +87,56 @@ async def test_no_reminder_when_offset_absent():
     res = await do_manage_calendar(json.dumps(payload), owner=owner)
     assert res.get("exit_code") == 0, res
     assert "reminder set" not in res.get("response", ""), res
+
+
+# `B1909` (upstream Odysseus 84aa9a91, corrected). A reminder of 0 minutes ("at
+# the event's start", which the Calendar offers beside "No reminder") was
+# dropped: the alias chain `a or b or ...` skipped 0 as falsy, and the guard
+# `raw in (None, "", False)` is True for 0 in Python, so upstream's alias fix
+# alone still dropped it. And deleting an event left its reminder note behind,
+# to fire for an event that no longer exists.
+
+
+def _reminders(owner):
+    db = _TS()
+    try:
+        return sorted((n.title, n.due_date) for n in db.query(Note).filter(Note.owner == owner).all())
+    finally:
+        db.close()
+
+
+async def test_a_reminder_at_the_event_start_is_set():
+    for zero in (0, 0.0):
+        owner = "tester-" + uuid.uuid4().hex[:6]
+        res = await _create_with_reminder(zero, owner)
+        assert res.get("exit_code") == 0, res
+        assert "with reminder 0 min before" in res["response"], res
+        assert _reminders(owner) == [("Reminder: Dentist", "2030-01-01T10:00:00")]
+
+    # "No reminder" still means none.
+    for none in (False, "", "none"):
+        owner = "tester-" + uuid.uuid4().hex[:6]
+        res = await _create_with_reminder(none, owner)
+        assert res.get("exit_code") == 0, res
+        assert "reminder" not in res["response"], res
+        assert _reminders(owner) == []
+
+
+async def test_deleting_an_event_deletes_its_reminder_and_no_other():
+    from src.tool_implementations import do_manage_calendar
+
+    owner = "tester-" + uuid.uuid4().hex[:6]
+    first = await _create_with_reminder(15, owner)
+    # A second event of the same name a week later, with its own reminder.
+    second = await do_manage_calendar(json.dumps({
+        "action": "create_event", "summary": "Dentist",
+        "dtstart": "2030-01-08T10:00:00", "reminder_minutes": 15,
+    }), owner=owner)
+    assert first.get("exit_code") == 0 and second.get("exit_code") == 0, (first, second)
+    assert _reminders(owner) == [("Reminder: Dentist", "2030-01-01T09:45:00"),
+                                 ("Reminder: Dentist", "2030-01-08T09:45:00")]
+
+    deleted = await do_manage_calendar(json.dumps({"action": "delete_event", "uid": first["uid"]}),
+                                       owner=owner)
+    assert deleted.get("exit_code") == 0, deleted
+    assert _reminders(owner) == [("Reminder: Dentist", "2030-01-08T09:45:00")]

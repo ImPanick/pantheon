@@ -11,7 +11,7 @@ was already fixed for the analogous issue.
 """
 import json
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -291,3 +291,86 @@ async def test_a_days_list_west_of_utc_holds_that_days_events(anchorage_offset):
 
     assert sorted(event["summary"] for event in listed["events"]) == ["All day 2026-06-10", "Dinner"]
     assert "between 2026-06-10 and 2026-06-11" in listed["response"]
+
+
+# `B1909` (upstream Odysseus 84aa9a91). An all-day date from the agent was read
+# as the person's midnight and stored as its UTC instant: east of UTC that is
+# the day before, so a birthday was shown, listed and synced a day early. It is
+# now kept as the calendar day written, the way CalDAV, .ics and the Calendar
+# store all-day rows, and its reminder is timed against the person's clock.
+
+
+async def test_create_all_day_date_preserves_literal_calendar_day(tokyo_offset):
+    from src.tool_implementations import do_manage_calendar
+
+    owner = "all-day-date-" + uuid.uuid4().hex[:6]
+    created = await do_manage_calendar(json.dumps({
+        "action": "create_event",
+        "summary": "My Birthday",
+        "dtstart": "2026-10-24",
+        "all_day": True,
+        "rrule": "FREQ=YEARLY",
+    }), owner=owner)
+    assert created.get("exit_code", 0) == 0, created
+
+    db = _TS()
+    try:
+        ev = db.query(CalendarEvent).filter(CalendarEvent.uid == created["uid"]).first()
+        assert bool(ev.all_day) is True
+        assert bool(ev.is_utc) is False
+        assert ev.dtstart.isoformat() == "2026-10-24T00:00:00"
+        assert ev.dtend.isoformat() == "2026-10-25T00:00:00"
+    finally:
+        db.close()
+
+    listed = await _listed(owner, "2026-10-24T00:00:00", "2026-10-25T00:00:00")
+    assert [event["dtstart"] for event in listed["events"]] == ["2026-10-24"]
+    assert (await _listed(owner, "2026-10-23T00:00:00", "2026-10-24T00:00:00"))["events"] == []
+
+
+async def test_an_all_day_event_keeps_its_days_when_written_with_times_or_moved(tokyo_offset):
+    from src.tool_implementations import do_manage_calendar
+
+    owner = "all-day-times-" + uuid.uuid4().hex[:6]
+    # An end later on the start's own day is that one day; one later on a
+    # following day keeps that day too (all-day ends are exclusive).
+    one = await do_manage_calendar(json.dumps({
+        "action": "create_event", "summary": "Holiday", "all_day": True,
+        "dtstart": "2026-10-24T00:00:00", "dtend": "2026-10-24T23:59:59",
+    }), owner=owner)
+    trip = await do_manage_calendar(json.dumps({
+        "action": "create_event", "summary": "Trip", "all_day": True,
+        "dtstart": "2026-10-24", "dtend": "2026-10-26T18:00:00",
+    }), owner=owner)
+    assert _stored(one["uid"])[1:] == (datetime(2026, 10, 24), datetime(2026, 10, 25))
+    assert _stored(trip["uid"])[1:] == (datetime(2026, 10, 24), datetime(2026, 10, 27))
+
+    # Moved with update_event, it lands on the day written and keeps its length.
+    await _update(owner, uid=trip["uid"], dtstart="2026-11-03")
+    assert _stored(trip["uid"])[1:] == (datetime(2026, 11, 3), datetime(2026, 11, 6))
+    await _update(owner, uid=one["uid"], dtstart="2026-11-01T00:00:00", dtend="2026-11-01")
+    assert _stored(one["uid"])[1:] == (datetime(2026, 11, 1), datetime(2026, 11, 2))
+
+
+async def test_an_all_day_reminder_is_timed_by_the_persons_clock(anchorage_offset, monkeypatch):
+    import src.user_time as user_time
+    from core.database import Note
+    from src.tool_implementations import do_manage_calendar
+
+    # 20:00 on 9 June in Anchorage is already 10 June in UTC.
+    evening = datetime(2026, 6, 9, 20, 0, tzinfo=timezone(timedelta(hours=-9)))
+    monkeypatch.setattr(user_time, "now_user_local", lambda now_utc=None: evening)
+    owner = "all-day-remind-" + uuid.uuid4().hex[:6]
+    created = await do_manage_calendar(json.dumps({
+        "action": "create_event", "summary": "Moving day", "all_day": True,
+        "dtstart": "2026-06-10", "reminder_minutes": 30,
+    }), owner=owner)
+    assert created.get("exit_code", 0) == 0, created
+    assert "with reminder 30 min before" in created["response"], created
+
+    db = _TS()
+    try:
+        note = db.query(Note).filter(Note.owner == owner).one()
+        assert note.due_date == "2026-06-09T23:30:00"
+    finally:
+        db.close()
