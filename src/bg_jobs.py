@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shlex
 import subprocess
 import time
@@ -32,11 +33,13 @@ from typing import Any, Dict, List, Optional
 
 from core.atomic_io import atomic_write_json
 from core.platform_compat import (
+    IS_WINDOWS,
     detached_popen_kwargs,
     find_bash,
     git_bash_path,
     kill_process_tree,
     pid_alive,
+    process_start_token,
 )
 
 from src.constants import BG_JOBS_DIR, BG_JOBS_FILE
@@ -77,6 +80,73 @@ def _pid_alive(pid: Optional[int]) -> bool:
     # job we're only trying to check. core.platform_compat.pid_alive handles
     # both OSes correctly.
     return pid_alive(pid)
+
+
+# `B1927`. What a stored pid is now, asked before any signal. The store keeps
+# a job's pid across restarts, and after a reboot or a container restart (pids
+# count from 1 again) that number can be another program, or one of Pantheon's
+# own threads or children.
+OWNED, GONE, FOREIGN, UNVERIFIABLE = "owned", "gone", "foreign", "unverifiable"
+_NOT_SIGNALLED_WHY = {
+    GONE: "its process had already ended",
+    FOREIGN: "its process id now belongs to another program",
+    UNVERIFIABLE: "Pantheon cannot confirm its process is still this job, so it may still be running",
+}
+
+
+def _command_line(pid: int) -> Optional[str]:
+    """The command line ``pid`` runs, its arguments joined by spaces: "" when
+    no process has that pid, None when it cannot be read."""
+    if Path("/proc/self/cmdline").exists():
+        try:
+            raw = Path(f"/proc/{pid}/cmdline").read_bytes()
+        except FileNotFoundError:
+            return ""
+        except OSError:
+            return None
+        return raw.replace(b"\0", b" ").decode("utf-8", "replace").strip()
+    try:   # macOS and the BSDs: no /proc
+        done = subprocess.run(["ps", "-ww", "-o", "command=", "-p", str(pid)],
+                              capture_output=True, text=True, timeout=2)
+    except Exception:
+        return None
+    line = (done.stdout or "").strip()
+    if not line and done.returncode != 0:
+        return ""
+    return line
+
+
+def _owned(rec: Dict[str, Any]) -> str:
+    """`B1927`. Whether ``rec``'s pid is still its job: OWNED, GONE (no such
+    process), FOREIGN (another program holds the pid) or UNVERIFIABLE.
+
+    On POSIX `launch` starts the job's wrapper as ``bash <jobs dir>/<id>.sh``,
+    so its command line names the job. Windows has no command line to trust
+    and hands pids out again quickly, so `launch` keeps when the process
+    started (`process_start_token`); a record from before that proves nothing.
+    """
+    pid, job_id = rec.get("pid"), str(rec.get("id") or "")
+    if type(pid) is not int or pid <= 0 or not job_id:
+        return UNVERIFIABLE
+    if IS_WINDOWS:
+        started = process_start_token(pid)
+        if started is None:
+            return UNVERIFIABLE if _pid_alive(pid) else GONE
+        if not rec.get("start_token"):
+            return UNVERIFIABLE
+        return OWNED if started == rec["start_token"] else FOREIGN
+    line = _command_line(pid)
+    if line is None:
+        return UNVERIFIABLE
+    if not line:
+        return GONE
+    names_the_job = re.search(r"(?:^|[\s/\\])" + re.escape(job_id) + r"\.(?:sh|cmd)(?:\s|$)", line)
+    return OWNED if names_the_job else FOREIGN
+
+
+def not_signalled_reason(rec: Dict[str, Any]) -> str:
+    """`B1927`. Why a job's pid was not signalled, in words; "" when it was."""
+    return _NOT_SIGNALLED_WHY.get(rec.get("not_signalled") or "", "")
 
 
 def launch(command: str, session_id: str, cwd: Optional[str] = None,
@@ -143,6 +213,7 @@ def launch(command: str, session_id: str, cwd: Optional[str] = None,
         env=env,
         **detached_popen_kwargs(),  # detach from the request lifecycle (setsid / DETACHED_PROCESS)
     )
+    start_token = process_start_token(proc.pid)   # `B1927`: Windows only; None elsewhere
 
     rec = {
         "id": job_id,
@@ -158,6 +229,8 @@ def launch(command: str, session_id: str, cwd: Optional[str] = None,
         "log_path": str(log_path),
         "exit_path": str(exit_path),
     }
+    if start_token:
+        rec["start_token"] = start_token
     jobs = _load()
     jobs[job_id] = rec
     _save(jobs)
@@ -213,8 +286,14 @@ def refresh() -> Dict[str, Dict[str, Any]]:
             rec["ended_at"] = now
             changed = True
         elif (now - rec.get("started_at", now)) > rec.get("max_runtime_s", DEFAULT_MAX_RUNTIME_S):
-            # Runaway / stuck — reap it but STILL surface a follow-up.
-            _kill(rec.get("pid"))
+            # Runaway / stuck — reap it but STILL surface a follow-up. `B1927`:
+            # only while its pid is still the job; otherwise nothing is sent
+            # and the follow-up says why.
+            whose = _owned(rec)
+            if whose == OWNED:
+                _kill(rec.get("pid"))
+            else:
+                rec["not_signalled"] = whose
             rec["status"] = "failed"
             rec["exit_code"] = -1
             rec["ended_at"] = now
@@ -272,17 +351,29 @@ def kill(job_id: str) -> Optional[Dict[str, Any]]:
     """Terminate a running job's process tree and mark it killed. Returns the
     updated record, or None if the id is unknown. Idempotent: a job that already
     finished is returned unchanged. Sets followed_up so the monitor does not also
-    fire an auto-continue for a job the agent deliberately stopped."""
+    fire an auto-continue for a job the agent deliberately stopped.
+
+    `B1927`: the pid is signalled only while it is still this job (`_owned`).
+    A pid that is gone or now another program's gets nothing and the job is
+    closed with ``not_signalled``. One that cannot be identified is left
+    running and unchanged, since it may still be the job and its result would
+    be lost; the copy returned carries ``not_signalled`` to say so."""
     jobs = _load()
     rec = jobs.get(job_id)
     if rec is None:
         return None
     if rec.get("status") == "running":
-        _kill(rec.get("pid"))
+        whose = _owned(rec)
+        if whose == UNVERIFIABLE:
+            return {**rec, "not_signalled": whose}
+        if whose == OWNED:
+            _kill(rec.get("pid"))
+            rec["killed"] = True
+        else:
+            rec["not_signalled"] = whose
         rec["status"] = "failed"
         rec["exit_code"] = -1
         rec["ended_at"] = time.time()
-        rec["killed"] = True
         rec["followed_up"] = True
         _save(jobs)
     return rec
@@ -291,10 +382,15 @@ def kill(job_id: str) -> Optional[Dict[str, Any]]:
 def result_text(rec: Dict[str, Any]) -> str:
     """Human/agent-readable summary of a finished job, for the follow-up."""
     out = _read_output(rec)
+    why = not_signalled_reason(rec)   # `B1927`
     if rec.get("killed"):
         head = "Background job was killed."
     elif rec.get("timed_out"):
         head = f"Background job timed out after {rec.get('max_runtime_s')}s."
+        if why:
+            head += f" It was not signalled: {why}."
+    elif why:
+        head = f"Background job was closed without a signal: {why}."
     elif rec.get("died"):
         head = "Background job process died unexpectedly (no exit code)."
     else:

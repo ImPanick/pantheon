@@ -3,8 +3,11 @@
 
 import importlib.util
 import io
+import os
+import signal
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 
 _MODULE_PATH = Path(__file__).resolve().parents[1] / "core" / "platform_compat.py"
@@ -271,3 +274,107 @@ def test_run_ssh_command_uses_built_argv(monkeypatch):
     assert captured["kwargs"]["timeout"] == 7
     assert captured["kwargs"]["capture_output"] is True
     assert captured["kwargs"]["text"] is False
+
+
+# ── `B1927`: a stored pid never reaches Pantheon itself ─────────────────────
+
+
+def test_a_pid_that_is_not_a_positive_whole_number_is_never_probed_or_signalled(monkeypatch):
+    """`B1927`. ``0`` and a negative number name process groups (``-1`` is
+    every process Pantheon may signal) and ``True`` is pid 1. ``pid_alive(-1)``
+    probed them all and ``kill_process_tree(-1)`` sent SIGTERM to them all; a
+    hand-edited job record was enough. Now neither reaches a signal."""
+    calls = []
+    monkeypatch.setattr(platform_compat, "IS_WINDOWS", False)
+    for name in ("kill", "killpg", "getpgid"):
+        monkeypatch.setattr(platform_compat.os, name,
+                            lambda *args, _name=name: calls.append((_name, *args)) or 0)
+    for pid in (-1, 0, -4321, True, None, "4321", 4321.0):
+        assert platform_compat.pid_alive(pid) is False, pid
+        assert platform_compat.kill_process_tree(pid) is None
+    assert calls == []
+
+
+def _process_table(monkeypatch, groups):
+    """`os.getpgid`, `os.killpg` and `os.kill` as a process table of
+    ``{pid: its group}`` answers them, each signal recorded and none sent. A
+    group exists while a pid in the table is in it."""
+    sent = []
+
+    def getpgid(pid):
+        if pid not in groups:
+            raise ProcessLookupError(pid)
+        return groups[pid]
+
+    def killpg(pgid, sig):
+        if pgid not in set(groups.values()):
+            raise ProcessLookupError(pgid)
+        sent.append(("killpg", pgid, sig))
+
+    def kill(pid, sig):
+        if pid not in groups:
+            raise ProcessLookupError(pid)
+        sent.append(("kill", pid, sig))
+
+    monkeypatch.setattr(platform_compat, "IS_WINDOWS", False)
+    monkeypatch.setattr(platform_compat.os, "getpgid", getpgid)
+    monkeypatch.setattr(platform_compat.os, "killpg", killpg)
+    monkeypatch.setattr(platform_compat.os, "kill", kill)
+    return sent
+
+
+def test_kill_process_tree_never_signals_pantheons_own_group(monkeypatch):
+    """`B1927`. It sent SIGTERM to the whole of ``getpgid(pid)``'s group. A
+    stored job pid that the system handed out again to one of Pantheon's own
+    threads, or to a child started without a session of its own, is in
+    Pantheon's group, so that ended Pantheon (`B964` kept its shell tools off
+    this branch for the same reason). Now the group signalled is one ``pid``
+    leads, a plain ``kill`` never reaches a process in Pantheon's group, and a
+    detached job, which leads its own group, still stops with its children."""
+    ours, me = os.getpgrp(), os.getpid()
+    member, stranger, leader = 434343, 444444, 424242
+    sent = _process_table(monkeypatch, {me: ours, ours: ours, member: ours,
+                                        stranger: 454545, leader: leader})
+    for pid in (me, ours, member):
+        platform_compat.kill_process_tree(pid)
+    assert sent == [], "nothing reached Pantheon's own group"
+    platform_compat.kill_process_tree(stranger)
+    assert sent == [("kill", stranger, signal.SIGTERM)], "one process, not its group"
+    sent.clear()
+    platform_compat.kill_process_tree(leader)
+    assert sent == [("killpg", leader, signal.SIGTERM)], "a detached job stops with its children"
+
+
+def test_on_windows_a_process_start_time_names_the_process(monkeypatch):
+    """`B1927`. Windows hands a pid out again quickly, so `bg_jobs` keeps when
+    its job's process started (``GetProcessTimes``) beside the pid and asks
+    again before a signal. Against a stand-in kernel32: the token is the
+    creation time as one number and the handle is closed; a pid nobody holds
+    has none, and on POSIX there is none (the command line proves the job)."""
+    import ctypes
+
+    class Kernel32:
+        def __init__(self):
+            self.closed = []
+
+        def OpenProcess(self, access, inherit, pid):
+            assert access == 0x1000, "PROCESS_QUERY_LIMITED_INFORMATION, as pid_alive asks"
+            return 77 if pid == 4321 else 0
+
+        def GetProcessTimes(self, handle, created, exited, kernel, user):
+            created._obj.dwHighDateTime, created._obj.dwLowDateTime = 3, 5
+            return 1
+
+        def CloseHandle(self, handle):
+            self.closed.append(handle)
+            return 1
+
+    kernel32 = Kernel32()
+    monkeypatch.setattr(ctypes, "windll", SimpleNamespace(kernel32=kernel32), raising=False)
+    monkeypatch.setattr(platform_compat, "IS_WINDOWS", True)
+    assert platform_compat.process_start_token(4321) == str((3 << 32) | 5)
+    assert kernel32.closed == [77]
+    assert platform_compat.process_start_token(999) is None
+    assert platform_compat.process_start_token(-1) is None
+    monkeypatch.setattr(platform_compat, "IS_WINDOWS", False)
+    assert platform_compat.process_start_token(4321) is None

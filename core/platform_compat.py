@@ -73,6 +73,14 @@ def detached_popen_kwargs() -> dict:
     return {"start_new_session": True}
 
 
+def _one_process(pid) -> bool:
+    """`B1927`. Whether ``pid`` can name one process: a positive whole number.
+    ``0`` and a negative number name process groups (``-1`` is every process
+    this one may signal), and ``True`` is the number 1, so none of them may
+    reach a probe or a signal from here."""
+    return type(pid) is int and pid > 0
+
+
 def pid_alive(pid: Optional[int]) -> bool:
     """True if a process with ``pid`` is currently running.
 
@@ -82,7 +90,7 @@ def pid_alive(pid: Optional[int]) -> bool:
     the process it is checking. We instead open the process and read its exit
     code via the Win32 API.
     """
-    if not pid:
+    if not _one_process(pid):
         return False
     if IS_WINDOWS:
         import ctypes
@@ -113,12 +121,17 @@ def pid_alive(pid: Optional[int]) -> bool:
 def kill_process_tree(pid: Optional[int]) -> None:
     """Terminate ``pid`` and all of its descendants.
 
-    POSIX: signal the whole process group (``killpg``), falling back to a plain
-    ``kill`` if the pid isn't a group leader.
+    POSIX: signal the process group ``pid`` leads (``killpg``), falling back to
+    a plain ``kill`` if the pid leads none — and never Pantheon's own group or
+    Pantheon itself (`B1927`).
     Windows: ``taskkill /T /F`` walks and kills the child tree (there is no
     process-group signalling).
+
+    A caller holding a pid it stored checks that the pid is still its process
+    before calling this (`bg_jobs._owned`): a pid is a number the system hands
+    out again.
     """
-    if not pid:
+    if not _one_process(pid):
         return
     if IS_WINDOWS:
         try:
@@ -133,13 +146,52 @@ def kill_process_tree(pid: Optional[int]) -> None:
         return
     import signal
 
-    try:
-        os.killpg(os.getpgid(pid), signal.SIGTERM)
-    except Exception:
+    # `B1927`. Not `killpg(getpgid(pid))`: a pid handed out again to one of
+    # Pantheon's own threads, or to a child started without a session of its
+    # own, is in Pantheon's group, and that ended Pantheon. As `B964`'s
+    # `kill_tree` does, the group signalled is the one `pid` leads (a detached
+    # job leads its own); a pid that leads none raises `ProcessLookupError`.
+    own_group = os.getpgrp()
+    if pid not in (os.getpid(), own_group):
         try:
-            os.kill(pid, signal.SIGTERM)
+            os.killpg(pid, signal.SIGTERM)
+            return
         except Exception:
             pass
+    try:
+        if os.getpgid(pid) != own_group:
+            os.kill(pid, signal.SIGTERM)
+    except Exception:
+        pass
+
+
+def process_start_token(pid: Optional[int]) -> Optional[str]:
+    """`B1927`. When the process now holding ``pid`` started, as a string to
+    keep beside the pid and compare later: a pid that Windows handed out again
+    (it does so quickly) belongs to a process with another start. Windows only
+    — on POSIX a job's own command line proves it (`bg_jobs._owned`) — and
+    ``None`` whenever it cannot be read."""
+    if not IS_WINDOWS or not _one_process(pid):
+        return None
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+        kernel32 = ctypes.windll.kernel32
+        handle = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+        if not handle:
+            return None
+        try:
+            created, exited, kernel, user = (wintypes.FILETIME() for _ in range(4))
+            if not kernel32.GetProcessTimes(handle, ctypes.byref(created), ctypes.byref(exited),
+                                            ctypes.byref(kernel), ctypes.byref(user)):
+                return None
+            return str((created.dwHighDateTime << 32) | created.dwLowDateTime)
+        finally:
+            kernel32.CloseHandle(handle)
+    except Exception:
+        return None
 
 
 # ── Shell / executable resolution ───────────────────────────────────────────

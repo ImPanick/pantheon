@@ -87,8 +87,17 @@ class ManageBgJobsTool:
             if action in _KILL_ACTIONS:
                 if rec.get("status") != "running":
                     return {"output": f"Job `{job_id}` already {_status_label(rec)}; nothing to kill.", "exit_code": 0}
-                killed = bg_jobs.kill(job_id)
-                return {"output": f"Killed background job `{job_id}` ({(killed or {}).get('command', '').splitlines()[0][:80]}).", "exit_code": 0}
+                killed = bg_jobs.kill(job_id) or {}
+                if killed.get("killed"):
+                    return {"output": f"Killed background job `{job_id}` ({killed.get('command', '').splitlines()[0][:80]}).", "exit_code": 0}
+                # `B1927`: "Killed" only when the job's own process was signalled.
+                why = bg_jobs.not_signalled_reason(killed)
+                if not why:   # it ended between the look and the kill
+                    return {"output": f"Job `{job_id}` already {_status_label(killed)}; nothing to kill.", "exit_code": 0}
+                note = f"Job `{job_id}` was not signalled: {why}."
+                if killed.get("not_signalled") == bg_jobs.UNVERIFIABLE:
+                    return {"error": note, "exit_code": 1}
+                return {"output": note, "exit_code": 0}
 
             out = rec.get("output") or "(no output yet)"
             return {
