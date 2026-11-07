@@ -9,7 +9,7 @@ scheduler without needing an LLM call.
 import logging
 import os
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Tuple
 
 from src.auth_helpers import owner_filter
@@ -1915,19 +1915,68 @@ async def action_learn_sender_signatures(owner: str, **kwargs) -> Tuple[str, boo
         return str(e), False
 
 
+def _daily_brief_utc_boundary(local_dt, tz=None):
+    """Convert a local wall-clock boundary using the offset at that boundary.
+
+    `B1804`. Each end of the day is converted on its own, so a 23- or 25-hour
+    daylight-saving day keeps its length. `tz` None is the server's zone.
+    """
+    if local_dt.tzinfo is None and tz is not None:
+        local_dt = local_dt.replace(tzinfo=tz)
+    return local_dt.astimezone(timezone.utc).replace(tzinfo=None)
+
+
+def _daily_brief_local_start(event, tz=None):
+    """Keep date-only/floating rows local; convert only stored UTC instants.
+
+    `B1804`. A row with `is_utc` holds a naive UTC instant, which is read in
+    `tz` (the server's zone when None); any other row is already local.
+    """
+    start = event.dtstart
+    if event.is_utc and not event.all_day:
+        if start.tzinfo is None:
+            start = start.replace(tzinfo=timezone.utc)
+        return start.astimezone(tz).replace(tzinfo=None)
+    return start
+
+
 async def action_daily_brief(owner: str, **kwargs) -> Tuple[str, bool]:
     """Build a short morning digest: today's calendar events, unread email count
-    + top-N senders/subjects, active todos."""
+    + top-N senders/subjects, active todos.
+
+    `tz_name` (from the scheduler, `B1804`) is the zone the task fires in: the
+    day and the hours are that zone's. Without one they are the server's, and
+    the calendar heading says so.
+    """
     try:
         from datetime import datetime as _dt, timedelta as _td
         import json as _json
 
         from core.database import SessionLocal, CalendarEvent, CalendarCal, Note
         from routes.email_helpers import _imap_connect, _decode_header
+        from sqlalchemy import and_, or_
 
         # ----- Calendar: today's events -----
-        today = _dt.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        # `B1804`. A row with `is_utc` (one made in the calendar, by the
+        # calendar tool or by CalDAV) is a UTC instant, so it is compared with
+        # the day's two ends converted to UTC and printed in local time; a
+        # floating or all-day row is compared and printed as stored. Every row
+        # used to be compared with the server's midnight and printed at its
+        # stored hour, so a UTC row showed its UTC hour and an evening event
+        # that falls on the next UTC day was left out.
+        tz = None
+        tz_name = str(kwargs.get("tz_name") or "").strip()
+        if tz_name:
+            try:
+                from zoneinfo import ZoneInfo
+                tz = ZoneInfo(tz_name)
+            except Exception:
+                logger.warning("daily_brief: unknown time zone %r; using the server's clock", tz_name)
+        now = _dt.now(tz).replace(tzinfo=None) if tz else _dt.now()
+        today = now.replace(hour=0, minute=0, second=0, microsecond=0)
         tomorrow = today + _td(days=1)
+        utc_today = _daily_brief_utc_boundary(today, tz)
+        utc_tomorrow = _daily_brief_utc_boundary(tomorrow, tz)
         # v2 review HIGH-12: gate the OR-null branch on single-user
         # (unconfigured) deploys only. In a multi-user deploy, one
         # user's daily brief must not include another user's notes or
@@ -1940,13 +1989,26 @@ async def action_daily_brief(owner: str, **kwargs) -> Tuple[str, bool]:
         db = SessionLocal()
         try:
             ev_q = db.query(CalendarEvent).join(CalendarCal).filter(
-                CalendarEvent.dtstart < tomorrow,
-                CalendarEvent.dtend > today,
+                or_(
+                    and_(
+                        CalendarEvent.is_utc.is_(True),
+                        CalendarEvent.all_day.is_not(True),
+                        CalendarEvent.dtstart < utc_tomorrow,
+                        CalendarEvent.dtend > utc_today,
+                    ),
+                    and_(
+                        or_(CalendarEvent.is_utc.is_not(True), CalendarEvent.all_day.is_(True)),
+                        CalendarEvent.dtstart < tomorrow,
+                        CalendarEvent.dtend > today,
+                    ),
+                ),
                 CalendarEvent.status != "cancelled",
             )
             if owner:
                 ev_q = owner_filter(ev_q, CalendarCal, owner, include_shared=_allow_null)
-            events = ev_q.order_by(CalendarEvent.dtstart).all()
+            # Ordered by local start: stored UTC and local times do not sort together.
+            events = ev_q.all()
+            events.sort(key=lambda e: _daily_brief_local_start(e, tz))
             # ----- Notes: pinned + non-archived todos with at least one undone item -----
             n_q = db.query(Note).filter(Note.archived == False)  # noqa: E712
             if owner:
@@ -2014,9 +2076,12 @@ async def action_daily_brief(owner: str, **kwargs) -> Tuple[str, bool]:
 
         plain = [f"Daily brief — {date_label}", ""]
         if events:
-            plain.append("Calendar:")
+            # `B1804` (`Law 10`). With no zone handed over, the hours are the
+            # server's clock, which is UTC in the default container: said once.
+            plain.append("Calendar:" if tz else
+                         f"Calendar (server time, {_dt.now().astimezone().tzname()}):")
             for e in events:
-                t = e.dtstart.strftime("%H:%M") if not e.all_day else "all day"
+                t = _daily_brief_local_start(e, tz).strftime("%H:%M") if not e.all_day else "all day"
                 loc = f" @ {e.location}" if e.location else ""
                 plain.append(f"  {t}  {e.summary}{loc}")
             plain.append("")

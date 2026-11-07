@@ -4899,6 +4899,19 @@ class TaskScheduler:
             # through as `command` so action_cookbook_serve can json.loads it.
             elif task.action == "cookbook_serve" and task.prompt:
                 kwargs["command"] = task.prompt
+            if task.action == "daily_brief":
+                # `B1804`. The brief's day and hours are the zone this task
+                # fires in, asked of the one resolver (`P8-32`): its own zone,
+                # then its crew member's. With neither it keeps the server's
+                # clock, and says so.
+                from core.database import SessionLocal
+                db = SessionLocal()
+                try:
+                    zone = _resolve_task_timezone(db, task)
+                finally:
+                    db.close()
+                if zone:
+                    kwargs["tz_name"] = zone
             return coerce_node_result(await action_fn(**kwargs))
         except (TaskNoop, TaskDeferred) as signal:
             # `P8-24`. The two signals the engine has always had, spoken in the
