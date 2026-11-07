@@ -1082,7 +1082,11 @@ async def build_chat_context(
         agent_mode=agent_mode,
         incognito=incognito,
     )
-    if use_rag is not None or is_research_spinoff or casual_low_signal:
+    # `B152`: a `use_rag` nobody sent stays off the preface, whose own default
+    # answers yes. `B1788`: a no is always said, so an incognito turn or one
+    # whose policy blocks tools no longer searches the person's documents
+    # because the composer left the field out.
+    if use_rag is not None or not use_rag_val:
         _preface_kwargs["use_rag"] = use_rag_val
     preface, rag_sources, web_sources = chat_processor.build_context_preface(**_preface_kwargs)
 

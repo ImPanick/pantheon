@@ -230,3 +230,84 @@ async def test_incognito_still_overrides_an_explicit_yes(monkeypatch):
         session_id="session-D", use_rag="true", incognito=True,
     )
     assert seen["use_rag"] is False
+
+
+# ══ a suppression wins over a field nobody sent ═══════════════════════════
+#
+# `B1788`. The four suppressions above set the effective answer to no, and the
+# preface was told only when the caller had sent `use_rag` (or the turn was a
+# spin-off or low-signal). The composer sends nothing while the RAG chip is on
+# and `/api/chat` never sends the field, so an incognito turn, or one whose
+# policy blocks every tool, reached the preface without `use_rag`; its default
+# is yes, and the person's documents were searched and put in front of the
+# model. Now a no is always said; a plain turn with the field omitted still
+# leaves the keyword off (the `B152` test above).
+# Upstream Odysseus 2a413814 (#7025) fixed it by always forwarding the value,
+# which turns `test_a_caller_who_says_nothing_still_gets_retrieval` red.
+
+@pytest.mark.asyncio
+async def test_incognito_stops_retrieval_when_the_caller_said_nothing(monkeypatch):
+    import routes.chat_helpers as chat_helpers
+    seen, sess, processor = _harness(monkeypatch, chat_helpers)
+    await chat_helpers.build_chat_context(
+        sess=sess, request=SimpleNamespace(), chat_handler=SimpleNamespace(),
+        chat_processor=processor, message="what is in my personal documents?",
+        session_id="session-E", incognito=True,
+    )
+    assert seen.get("use_rag") is False
+
+
+@pytest.mark.asyncio
+async def test_a_turn_that_may_not_use_tools_stops_retrieval_when_the_caller_said_nothing(
+        monkeypatch):
+    import routes.chat_helpers as chat_helpers
+    seen, sess, processor = _harness(monkeypatch, chat_helpers)
+    await chat_helpers.build_chat_context(
+        sess=sess, request=SimpleNamespace(), chat_handler=SimpleNamespace(),
+        chat_processor=processor, message="what is in my personal documents?",
+        session_id="session-F", allow_tool_preprocessing=False,
+    )
+    assert seen.get("use_rag") is False
+
+
+class _Index:
+    """The personal-documents index, with one document above the threshold."""
+
+    def __init__(self):
+        self.searched = []
+
+    def search(self, message, k=5, owner=None):
+        self.searched.append(message)
+        return [{"similarity": 0.99, "metadata": {"filename": "lease.txt"},
+                 "document": "Pets are allowed with a deposit."}]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("turn,searched", [
+    ({}, True),
+    ({"incognito": True}, False),
+    ({"allow_tool_preprocessing": False}, False),
+], ids=["plain", "incognito", "no-tools"])
+async def test_the_documents_are_searched_only_on_a_turn_that_may_search_them(
+        monkeypatch, turn, searched):
+    """The real `ChatProcessor.build_context_preface` behind the real call
+    site, with `use_rag` omitted as the composer omits it with the chip on."""
+    import routes.chat_helpers as chat_helpers
+    from src.chat_processor import ChatProcessor
+
+    _seen, sess, _fake = _harness(monkeypatch, chat_helpers)
+    index = _Index()
+    processor = ChatProcessor(
+        memory_manager=SimpleNamespace(load=lambda owner=None: [],
+                                       increment_uses=lambda ids: None),
+        personal_docs_manager=SimpleNamespace(rag_manager=index),
+    )
+    ctx = await chat_helpers.build_chat_context(
+        sess=sess, request=SimpleNamespace(), chat_handler=SimpleNamespace(),
+        chat_processor=processor, message="what did the lease say about pets?",
+        session_id="session-G", **turn,
+    )
+    sent = "\n".join(str(m.get("content") or "") for m in ctx.messages)
+    assert bool(index.searched) is searched
+    assert ("Pets are allowed with a deposit." in sent) is searched
+    assert bool(ctx.rag_sources) is searched
