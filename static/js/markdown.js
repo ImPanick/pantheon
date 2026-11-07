@@ -8,6 +8,9 @@
 import uiModule from './ui.js';
 import { splitTableRow } from './markdown/tableRow.js';
 import { applyMermaidTheme, documentScheme } from './markdown/mermaidTheme.js';
+// `B1996`: KaTeX's loader and the renderer for deferred math, in a module that
+// a research report page imports on its own.
+import { _loadScript, ensureKatex, renderMath, KATEX_CSS, MATH_PENDING_CLASS } from './markdown/math.js';
 import { replaceEmojiShortcodes, hasEmojiShortcode } from './emojiShortcodes.js';
 import { playIcon } from './icons.js';
 import { langIcon } from './langIcons.js';
@@ -20,13 +23,8 @@ var escapeHtml = uiModule.esc;
 // *promise* rather than the resolved library, so concurrent callers share one
 // fetch and a double trigger cannot start two loads. A failed load clears the
 // memo so the next diagram/formula retries instead of being poisoned forever.
+// KaTeX's half, `ensureKatex` and its sources, is in `markdown/math.js`.
 const MERMAID_SRC = '/static/lib/mermaid.min.js';
-const KATEX_SRC = '/static/lib/katex/katex.min.js';
-const KATEX_CSS = '/static/lib/katex/katex.min.css';
-// Marks math emitted before KaTeX finished loading; renderMath() swaps these
-// for typeset output. The source stays as readable text inside the span, so a
-// load that never completes degrades to plain text rather than to nothing.
-const MATH_PENDING_CLASS = 'pan-math-pending';
 
 // KaTeX has no entity syntax: it reads a bare "&" as an alignment marker and
 // errors out on anything that is not a valid column break, so "a &lt; b" comes
@@ -72,31 +70,7 @@ let _schemeMoved = false;
 // actually out of date.
 const MERMAID_SRC_ATTR = 'data-mermaid-src';
 const MERMAID_SCHEME_ATTR = 'data-mermaid-scheme';
-let _katexPromise = null;
 let _mathFlushScheduled = false;
-
-function _loadScript(src) {
-  return new Promise((resolve, reject) => {
-    const script = document.createElement('script');
-    script.src = src;
-    script.addEventListener('load', () => resolve(), { once: true });
-    script.addEventListener('error', () => reject(new Error('Failed to load ' + src)), { once: true });
-    document.head.appendChild(script);
-  });
-}
-
-function _loadStylesheet(href) {
-  // Resolves either way: without the stylesheet KaTeX still produces correct
-  // markup, just unstyled, which beats failing the whole math render.
-  return new Promise((resolve) => {
-    const link = document.createElement('link');
-    link.rel = 'stylesheet';
-    link.href = href;
-    link.addEventListener('load', () => resolve(), { once: true });
-    link.addEventListener('error', () => resolve(), { once: true });
-    document.head.appendChild(link);
-  });
-}
 
 /**
  * Load Mermaid on first use and theme it for the palette that is up.
@@ -284,20 +258,9 @@ function _watchScheme() {
   _schemeWatcher.observe(root, { attributes: true, attributeFilter: ['style'] });
 }
 
-/**
- * Load KaTeX (script + stylesheet) on first use.
- */
-export function ensureKatex() {
-  return (_katexPromise ??= Promise.all([_loadScript(KATEX_SRC), _loadStylesheet(KATEX_CSS)])
-    .then(() => {
-      if (!window.katex) throw new Error('katex global missing after load');
-      return window.katex;
-    })
-    .catch((err) => {
-      _katexPromise = null;
-      throw err;
-    }));
-}
+// `B1996`. `ensureKatex` and `renderMath` are `markdown/math.js`'s; the chat's
+// callers keep reaching them here.
+export { ensureKatex, renderMath };
 
 // mdToHtml() is synchronous and its callers insert the returned string into the
 // DOM themselves, so the placeholders are usually not attached yet when this
@@ -1291,29 +1254,6 @@ function _keepDiagramWidth(nodes) {
     if (!box || !(box.width > 0)) return;
     svg.style.minWidth = Math.round(Math.min(box.width, _DIAGRAM_MAX_FLOOR)) + 'px';
   });
-}
-
-/**
- * Typeset any math that mdToHtml() had to defer because KaTeX was not loaded
- * yet. Once KaTeX is in, mdToHtml() renders inline and this finds nothing.
- */
-export function renderMath(container) {
-  const target = container || document;
-  if (!target || typeof target.querySelectorAll !== 'function') return Promise.resolve();
-  if (target.querySelectorAll('.' + MATH_PENDING_CLASS).length === 0) return Promise.resolve();
-  return ensureKatex()
-    .then((katex) => {
-      target.querySelectorAll('.' + MATH_PENDING_CLASS).forEach((el) => {
-        const displayMode = el.getAttribute('data-display') === 'true';
-        try {
-          el.outerHTML = katex.renderToString(el.textContent || '', { displayMode, throwOnError: false });
-        } catch (e) {
-          // Leave the source visible — readable, just not typeset.
-          el.classList.remove(MATH_PENDING_CLASS);
-        }
-      });
-    })
-    .catch((e) => { console.warn('KaTeX render error:', e); });
 }
 
 const markdownModule = {

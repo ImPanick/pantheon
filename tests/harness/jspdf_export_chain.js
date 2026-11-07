@@ -49,9 +49,10 @@ if (from < 0 || to < 0 || to <= from) {
   process.exit(2);
 }
 const span = source.slice(from, to);
-// `B1675`: the clone keeps KaTeX's own sheet, named where `markdown.js` loads
-// it — read from there rather than written here a second time.
-const KATEX_CSS = (fs.readFileSync(path.join(__dirname, '..', '..', 'static', 'js', 'markdown.js'), 'utf8')
+// `B1675`: the clone keeps KaTeX's own sheet, named where it is loaded from —
+// `markdown/math.js` since `B1996` — and read from there rather than written
+// here a second time.
+const KATEX_CSS = (fs.readFileSync(path.join(__dirname, '..', '..', 'static', 'js', 'markdown', 'math.js'), 'utf8')
   .match(/const KATEX_CSS = '([^']+)';/) || [])[1];
 // `B1687`: `_pdfFontsNeeded` asks Inter's own table, which `document.js`
 // imports from the module `scripts/build-pdf-font-coverage.mjs` writes. Its

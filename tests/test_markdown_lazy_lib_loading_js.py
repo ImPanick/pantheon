@@ -41,8 +41,9 @@ def _module_const(rel, name):
     return match.group(1)
 
 
-# `static/js/markdown.js` puts this on every formula it banks for later.
-MATH_PENDING_CLASS = _module_const("static/js/markdown.js", "MATH_PENDING_CLASS")
+# `static/js/markdown.js` puts this on every formula it banks for later. It is
+# defined in `static/js/markdown/math.js`, the renderer's own module (`B1996`).
+MATH_PENDING_CLASS = _module_const("static/js/markdown/math.js", "MATH_PENDING_CLASS")
 
 
 @pytest.fixture(scope="module")
