@@ -170,6 +170,9 @@ def _allow_rule_owner(request: Request) -> str:
 # life — so a refusal that borrowed one would retire a working feature. The
 # same rule binds the ownership refusal, which is why `chat_steer` re-stamps
 # `_verify_session_owner`'s 404 as 403 instead of letting it through.
+# The next-step suggestion's ceiling, reasoning included (`/api/chat/next-step`).
+NEXT_STEP_MAX_TOKENS = 320
+
 _STEER_REFUSAL_STATUS = {
     "no_active_run": 409,   # the session is the caller's; the run is over
     "too_many": 429,        # STEER_MAX_PENDING, counted in agent_loop
@@ -4473,9 +4476,13 @@ def setup_chat_routes(
         messages = _next_step.build_messages(getattr(sess, "history", None) or [])
         if not messages or not sess.endpoint_url or not sess.model:
             return {"suggestion": ""}
+        # The owner's LM Studio log, 2026-11-07: Gemma ignored the thinking
+        # switch and reasoned 221-616 tokens (15-60 s of the one GPU) for a
+        # five-word suggestion. A ceiling bounds that; a suggestion that does
+        # not fit is simply not offered.
         call = asyncio.ensure_future(llm_call_async(
             sess.endpoint_url, sess.model, messages, headers=sess.headers,
-            temperature=0.4, max_tokens=0, timeout=60, max_retries=1,
+            temperature=0.4, max_tokens=NEXT_STEP_MAX_TOKENS, timeout=60, max_retries=1,
             thinking=False,   # `B1755`: one short sentence needs no reasoning pass
         ))
         try:

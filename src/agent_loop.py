@@ -2210,13 +2210,57 @@ _PARTIAL_SUITE_WHY = {
 # away, so the notice says so instead of telling the model to stop and ask.
 _PARTIAL_SUITE_NOTICE_FINDABLE = (
     "## This turn's tool set is partial\n"
-    "You have {n} of your {total} tools loaded — {why}. The rest exist. When "
-    "the job needs a tool that is not listed, call `find_tools` with a few "
-    "words describing it (JSON: {{\"query\": \"calendar events\"}}); the "
-    "tools it finds are loaded and callable from your next step. Do not "
-    "conclude a capability does not exist before searching, and do not "
-    "substitute a shell command for a tool you could load."
+    "You have {n} of your {total} tools loaded — {why}. The rest are listed "
+    "below. To use one, call `find_tools` with its name (JSON: "
+    "{{\"names\": [\"computer\"]}}) or a few words for the job (JSON: "
+    "{{\"query\": \"calendar events\"}}); it is callable from your next "
+    "step. Do not conclude a capability does not exist before looking, and do "
+    "not substitute a shell command for a tool you could load."
 )
+
+
+def _find_tools_refusal(name: str, access, *, outside_step: bool = False,
+                        owner: Optional[str] = None) -> str:
+    """Why `find_tools` could not load `name` this turn, in words a model can
+    pass on. Read from the turn's own record of why it withheld the name
+    (`TurnToolAccess.reasons_for`), never guessed."""
+    from src.tool_policy import (
+        WITHHELD_BY_FEATURE, WITHHELD_BY_PLAN_MODE, WITHHELD_BY_POLICY,
+        WITHHELD_BY_PRIVILEGE, WITHHELD_BY_STEP_TOOLS, WITHHELD_BY_WORKSTATION,
+    )
+    if outside_step:
+        return "not in this agent's own tools."
+    try:
+        why = set(access.reasons_for(name)) if hasattr(access, "reasons_for") else set()
+    except Exception:
+        why = set()
+    if WITHHELD_BY_PRIVILEGE in why:
+        return "this account may not use it; an admin can allow it."
+    if WITHHELD_BY_PLAN_MODE in why:
+        return "plan mode is read-only; it works once the plan is approved."
+    if WITHHELD_BY_WORKSTATION in why:
+        if name in ("computer", "agent_browser", "network"):
+            try:
+                from src.agent_tools.computer_tools import unavailable_reason
+                said = unavailable_reason(owner) if name != "agent_browser" else None
+            except Exception:
+                said = None
+            return (said or "the workstation is not set up or not allowed for this "
+                    "person.") + " Tell the person; do not look for another way."
+        return "the workstation is not available to this person."
+    if WITHHELD_BY_FEATURE in why:
+        return "switched off in Settings by an admin."
+    if WITHHELD_BY_STEP_TOOLS in why:
+        return "not in this agent's own tools."
+    if WITHHELD_BY_POLICY in why:
+        if name in ("computer", "bash", "host_shell", "shell_with_login", "python"):
+            return ("switched off for this chat: the Shell switch in the composer "
+                    "also governs the workstation desktop. Ask the person to turn "
+                    "Shell on, then try again.")
+        if name in ("web_search", "web_fetch"):
+            return "web search is switched off for this chat; ask the person to turn it on."
+        return "switched off for this chat."
+    return "switched off for this chat."
 
 
 def _partial_suite_notice(offered: int, total: int, reason: str,
@@ -5605,6 +5649,28 @@ def _suite_tally(tool_suite, names, disabled_tools) -> Optional[Dict[str, Any]]:
     }
 
 
+def _switched_off_here(disabled) -> str:
+    """One line naming the desktop, shell and web tools this chat's own
+    switches took away, so a model asked to use the workstation says "turn
+    Shell on" instead of searching for a tool it cannot have (the owner's
+    Gemma run, 2026-11-07). `""` when none is, or nothing says why."""
+    from src.tool_policy import WITHHELD_BY_POLICY
+    try:
+        off = [n for n in ("computer", "bash", "web_search")
+               if WITHHELD_BY_POLICY in set(disabled.reasons_for(n))]
+    except Exception:
+        return ""
+    if not off:
+        return ""
+    how = []
+    if "computer" in off or "bash" in off:
+        how.append("Shell (also governs the workstation desktop)")
+    if "web_search" in off:
+        how.append("Web search")
+    return ("- Switched off for this chat: " + ", ".join(off)
+            + " — ask the person to turn on " + " and ".join(how) + ".")
+
+
 def _suite_notice_for(tool_suite, tool_names, disabled) -> str:
     """`_partial_suite_notice` for the names this route actually ships.
 
@@ -5622,10 +5688,24 @@ def _suite_notice_for(tool_suite, tool_names, disabled) -> str:
         tally = _suite_tally(tool_suite, tool_names, disabled)
         if not tally:
             return ""
-        return _partial_suite_notice(len(tally["offered"]),
-                                     len(tally["candidates"]),
-                                     tally["reason"],
-                                     findable="find_tools" in tally["offered"])
+        findable = "find_tools" in tally["offered"]
+        notice = _partial_suite_notice(len(tally["offered"]),
+                                       len(tally["candidates"]),
+                                       tally["reason"],
+                                       findable=findable)
+        # The owner, 2026-11-07: a small model should know every tool's name
+        # and what it is for before it searches. The left-out tools by area,
+        # a few words each (`src/tool_map.py`); the same bytes every turn the
+        # set holds still, so a local server's cached prefix survives.
+        if notice and findable:
+            from src.tool_map import index_text
+            index = index_text(tally["withheld"])
+            if index:
+                notice += "\n\n" + index
+            off = _switched_off_here(disabled)
+            if off:
+                notice += "\n" + off
+        return notice
     except Exception as exc:
         logger.debug("[tool-suite] notice skipped: %s", exc)
         return ""
@@ -6107,6 +6187,13 @@ def _append_tool_results(
     if images_message is not None:
         messages.append(images_message)
         tool_result_images.bound_images(messages)
+    # Only the newest screen's numbered marks can be clicked; the older lists
+    # are cut to a line so a desktop run does not re-read every screen.
+    try:
+        from src.screen_marks import shed_superseded_marks
+        shed_superseded_marks(messages)
+    except Exception:
+        logger.debug("[computer] older marks not shed", exc_info=True)
     _mark_in_turn(messages, appended_from)
 
 
@@ -10581,6 +10668,14 @@ async def stream_agent_loop(
                             )
                             if _pan_qwen_finetune_model:
                                 _delta_text = _normalize_pan_qwen_text_artifacts(_delta_text)
+                            # The owner's Gemma chat, 2026-11-07: "…start a
+                            # task.Understood. Ready for your inference test." —
+                            # a later round's first words were glued onto the
+                            # last round's. Each round's text starts a new
+                            # paragraph of the reply.
+                            if (not round_response and _delta_text.strip()
+                                    and full_response and not full_response[-1:].isspace()):
+                                _delta_text = "\n\n" + _delta_text.lstrip()
                             round_response += _delta_text
                             full_response += _delta_text
                             data["delta"] = _delta_text
@@ -11917,9 +12012,21 @@ async def stream_agent_loop(
                     if _already:
                         _parts.append("Already in your list: " + ", ".join(_already) + ".")
                     if _refused:
-                        _parts.append("Not available on this turn: " + ", ".join(_refused) + ".")
+                        # The owner's Gemma run, 2026-11-07: three searches
+                        # answered "Not available on this turn: computer" and
+                        # the model went guessing. Say why, and who can change
+                        # it, so it tells the person instead.
+                        _parts.append("Not available on this turn:")
+                        for _n in _refused:
+                            _parts.append(f"- {_n} — " + _find_tools_refusal(
+                                _n, disabled_tools, outside_step=bool(
+                                    _allowed_tools is not None
+                                    and _n not in _within_allowed({_n})),
+                                owner=owner))
                     if not _parts:
                         _parts.append(str(result.get("output") or "No tool matched."))
+                    if result.get("skills_line"):
+                        _parts.append(str(result["skills_line"]))
                     result["output"] = "\n".join(_parts)
                 except Exception as _e:
                     logger.warning("find_tools load skipped: %s", _e)
