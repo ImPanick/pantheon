@@ -872,7 +872,9 @@ def _uid_exists(conn, uid: str | bytes, *, strict: bool = False) -> bool:
         if status == "OK":
             # This exact UID: an unsolicited FETCH row for another message
             # (a flag change the server pushes meanwhile) is not this one.
-            exact = re.compile(rb"\bUID\s+" + token + rb"\b")
+            # `re.escape`: `one_uid` already made `token` digits, so this
+            # changes nothing it matches; the pattern is safe on its own.
+            exact = re.compile(rb"\bUID\s+" + re.escape(token) + rb"\b")
             for part in data or []:
                 meta = part[0] if isinstance(part, tuple) else part
                 meta_b = meta if isinstance(meta, bytes) else str(meta).encode()

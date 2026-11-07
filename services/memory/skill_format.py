@@ -303,7 +303,13 @@ _KEY_TO_HEADING = {
 }
 
 
-_HEADING_RE = re.compile(r"^##\s+(.*?)\s*$")
+# `B2103`. A heading is `##`, whitespace, then its title, which each caller
+# strips. It was `^##\s+(.*?)\s*$`, whose lazy title and trailing `\s*` tried
+# every split of a run of spaces: a line of `## a`, 20,000 spaces and `b` took
+# a second, and Python's `re` holds the GIL, so a SKILL.md with one long line
+# stalled the whole process while its skill loaded. With no end anchor nothing
+# can fail after `## `, so nothing is tried twice.
+_HEADING_RE = re.compile(r"^##\s+(.*)")
 
 # `B1951`. A fenced code block is example text, so a `## Procedure` line in a
 # skill that shows how to write a SKILL.md is not this skill's procedure.

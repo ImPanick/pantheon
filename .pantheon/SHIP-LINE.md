@@ -379,7 +379,7 @@ Re-measured 2026-10-31, after the forty-fifth wave: **25 filed, 23 closed**, ope
 
 **Direction as of 2026-10-31, after the forty-fifth wave: the open count is rising.**
 
-Re-measured 2026-11-07, after the eightieth wave, the audit of what Odysseus fixed after the fork: **252 filed, 0 closed**, open **60 → 312** — rising, by 235 in this wave, six in the alignment audit's before it and eleven in the seven before that. None closed: 183 rows were ported or found and fixed while porting, each claimed until the owner has tested it, and 52 were filed open, six of them the owner's call. Four are gates (§ 3), and all four are met on the port branch: `B1780`, `B1782`, `B1817`, and `B2096`, no mail connection checking the server's certificate, built on the owner's ruling the same day. The window moved on, so its start reads 60. The ship-line composition is 0 of the last 40 `B` rows (`B2063`–`B2102`): `B2096` was the one, and it is met.
+Re-measured 2026-11-07, after the eightieth wave, the audit of what Odysseus fixed after the fork: **253 filed, 0 closed**, open **60 → 313** — rising, by 236 in this wave, six in the alignment audit's before it and eleven in the seven before that. None closed: 184 rows were ported or found and fixed while porting, each claimed until the owner has tested it, and 52 were filed open, six of them the owner's call. Four are gates (§ 3), and all four are met on the port branch: `B1780`, `B1782`, `B1817`, and `B2096`, no mail connection checking the server's certificate, built on the owner's ruling the same day. The window moved on, so its start reads 60. The ship-line composition is 0 of the last 40 `B` rows (`B2064`–`B2103`): `B2096` was the one, and it is met.
 
 **Direction as of 2026-11-07, after the eightieth wave: the open count is rising, mostly by rows built and claimed until the owner has tested them, and no gate stands.**
 
@@ -499,7 +499,7 @@ certificate an authority signed for its name, a private host has its first certi
 then on, and a certificate trusted from the account form's Test is pinned whatever the host. It is `landed` as the
 other three are. Two other rows the audit read were nearer the line and are not on it: a sender's image
 fetched unasked when Reply opened (`B1903`, fixed) or a forward drew it (`B2084`, open) is an unasked fetch beside a
-reader that keeps `ask`, registered as `B1229`'s and `B1259`'s were. So the set is twenty-six rows, all met, and 292 open rows are *clear by rule, not read*. One line of reasoning each below; the row carries the
+reader that keeps `ask`, registered as `B1229`'s and `B1259`'s were. So the set is twenty-six rows, all met, and 293 open rows are *clear by rule, not read*. One line of reasoning each below; the row carries the
 measurement.
 
 ### Security — the control does not hold (5)
