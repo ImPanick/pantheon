@@ -172,7 +172,11 @@ async def _local_model_slot(target_url: str, model: str, workload: Optional[str]
         })
         yield
     finally:
-        if kind == "foreground":
+        # `B2024`. A call that got the lock came off the count then; only one
+        # that never got it (cancelled or failed while waiting) comes off
+        # here. Taking it off twice made the count miss a request still
+        # waiting, and let background work queue ahead of it.
+        if kind == "foreground" and not acquired:
             _LOCAL_MODEL_WAITING_FOREGROUND = max(0, _LOCAL_MODEL_WAITING_FOREGROUND - 1)
         if acquired and _LOCAL_MODEL_LOCK.locked():
             owner = _LOCAL_MODEL_CURRENT.get("task")
