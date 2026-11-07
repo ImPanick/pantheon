@@ -255,6 +255,10 @@ async def _ensure_snapshot(fs: _Fs, base: str, note: str) -> Tuple[Dict[str, byt
 async def listing(owner: Optional[str], project: str) -> List[Dict[str, Any]]:
     fs = await _Fs(owner, project).open()
     designs: Dict[str, Dict[str, Any]] = {}
+    # A folder's files come in the file system's order, not by name: on ext4
+    # a design's `index.html` can come before its `design.json`, so the page is
+    # noted first and matched to its design once every design is known.
+    pages = set()
     for e in await fs.list(DESIGN_DIR):
         parts = e["path"].split("/")
         if len(parts) == 2 and parts[1] == META and _SLUG.fullmatch(parts[0]):
@@ -264,8 +268,10 @@ async def listing(owner: Optional[str], project: str) -> List[Dict[str, Any]]:
                 meta = {}
             designs[parts[0]] = {"slug": parts[0], "name": str(meta.get("name") or parts[0]),
                                  "kind": meta.get("kind") or "", "created": meta.get("created")}
-        if len(parts) >= 2 and parts[0] in designs and parts[1] == "index.html":
-            designs[parts[0]]["has_page"] = True
+        if len(parts) >= 2 and parts[1] == "index.html":
+            pages.add(parts[0])
+    for slug in pages & designs.keys():
+        designs[slug]["has_page"] = True
     return sorted(designs.values(), key=lambda d: -(d.get("created") or 0))
 
 
