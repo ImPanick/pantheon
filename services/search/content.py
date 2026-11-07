@@ -239,8 +239,10 @@ def fetch_webpage_content(url: str, timeout: int = 5, retry_attempt: int = 0,
     # fetch without one — the cache is read before any address is checked.
     # And the extraction's version (`B1807`), so a page read by an older
     # extractor is read again; it goes before `#lan`, which ends the key.
+    # `B1946` raised it to 3: a PDF cached as "Failed to extract PDF text" is
+    # read again by pypdf.
     cache_key = generate_cache_key(
-        f"{url}#cap={effective_cap}#extract=2#lan={int(_outbound_fetch.lan_allowed())}")
+        f"{url}#cap={effective_cap}#extract=3#lan={int(_outbound_fetch.lan_allowed())}")
     cache_file = CONTENT_CACHE_DIR / f"{cache_key}.cache"
 
     # Check cache
@@ -321,16 +323,25 @@ def fetch_webpage_content(url: str, timeout: int = 5, retry_attempt: int = 0,
                 + (f" (size {_declared:,} bytes)" if _declared else "")
                 + "; retry with a larger budget if it fits under the hard cap",
             )
-        if pdf_extract_text is None:
-            logger.error("pdfminer.six is not installed; cannot extract PDF text.")
-            pdf_text = ""
-        else:
+        # `B1946`. Read by pypdf, the core pin (`B1743`) that reads email
+        # attachments and indexed PDFs, through the same function. This read
+        # pdfminer.six alone, which no requirements file installs, so on a
+        # stock install every PDF came back "Failed to extract PDF text".
+        # pdfminer, where it is installed, is still asked when pypdf finds no
+        # text. Imported in the branch that uses it, so that loading this
+        # module loads nothing it did not load before.
+        from src.personal_docs import extract_pdf_text
+        pdf_text = extract_pdf_text(io.BytesIO(response.content), name=url)
+        if not pdf_text.strip() and pdf_extract_text is not None:
             try:
                 pdf_bytes = io.BytesIO(response.content)
-                pdf_text = pdf_extract_text(pdf_bytes)
+                pdf_text = pdf_extract_text(pdf_bytes) or ""
             except Exception as e:
                 logger.warning(f"PDF extraction failed for {url}: {e}")
                 pdf_text = ""
+        if not pdf_text.strip():
+            # A page break or a space is not a text layer.
+            pdf_text = ""
         result = {
             "url": url,
             "title": os.path.basename(url),
