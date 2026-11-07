@@ -1434,6 +1434,12 @@ def _open_imap_connection(
 ):
     """Open an IMAP connection using the configured security mode."""
     port = int(port or 993)
+    # `B1963`: 993 is implicit TLS (RFC 8314), so the port wins over a STARTTLS
+    # flag left on (the column default, and the form's for a custom host): a
+    # plain socket there waits for a greeting the server never sends. Upstream
+    # Odysseus #6990.
+    if starttls and port == 993:
+        starttls = False
     full = timeout
     timeout = min(full, _IMAP_CONNECT_SECONDS) if full else _IMAP_CONNECT_SECONDS
     if starttls:
@@ -1484,8 +1490,8 @@ def _imap_connect(account_id: str | None = None, owner: str = "",
             f"IMAP is not configured for account {cfg.get('account_name') or 'default'!r}"
         )
     # Connection mode:
-    #   STARTTLS on → plain + upgrade
-    #   STARTTLS off + port 993 → implicit SSL (IMAPS)
+    #   port 993 → implicit SSL (IMAPS), whatever the STARTTLS flag (`B1963`)
+    #   STARTTLS on + any other port → plain + upgrade
     #   STARTTLS off + any other port → plain (local Dovecot, custom ports)
     # The last branch is critical: previously this fell into IMAP4_SSL
     # for any non-STARTTLS port, which would fail the TLS handshake on

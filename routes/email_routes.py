@@ -6576,8 +6576,9 @@ def setup_email_routes():
             imap_result = {"ok": False, "error": providers.imap_transport_error(oauth_record)}
         else:
             # Connection mode resolution:
-            #   STARTTLS on  → plain IMAP4 + .starttls() (upgrade)
-            #   STARTTLS off + port 993 → IMAP4_SSL (implicit SSL, "IMAPS")
+            #   port 993 → IMAP4_SSL (implicit SSL, "IMAPS"), whatever the
+            #     STARTTLS flag (`B1963`)
+            #   STARTTLS on + any other port → plain IMAP4 + .starttls() (upgrade)
             #   STARTTLS off + any other port → plain IMAP4 (no encryption)
             # Without the last branch, local servers exposed on a non-993
             # port (Dovecot on 31143, etc.) would always fail the SSL

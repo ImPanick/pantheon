@@ -433,6 +433,13 @@ def _load_config(account: str | None = None) -> dict:
         except Exception:
             pass
 
+    # `B1963`: 993 is implicit TLS (RFC 8314) whatever the STARTTLS flag says,
+    # as `routes/email_helpers._open_imap_connection` dials it; for a row and
+    # for the env/settings fallback alike. Upstream Odysseus #6990.
+    if int(cfg.get("imap_port") or 0) == 993:
+        cfg["imap_ssl"] = True
+        cfg["imap_starttls"] = False
+
     if not cfg["from_address"]:
         cfg["from_address"] = cfg["imap_user"]
 
