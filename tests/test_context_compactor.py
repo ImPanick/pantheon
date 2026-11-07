@@ -112,6 +112,36 @@ class TestTrimForContext:
         assert "pasted message was too large" in trimmed[-1]["content"]
         assert "old-0" not in "\n".join(str(m.get("content", "")) for m in trimmed)
 
+    def test_dense_unicode_current_message_is_trimmed_to_budget(self):
+        """`B1944`. A Japanese message cut to fit was sized at 3.3 characters a
+        budget token, and each character costs about a token, so the cut kept
+        about three times what fits."""
+        japanese = "世田谷区の燃えるごみ" * 2000   # 20,000 characters
+        trimmed = trim_for_context([{"role": "system", "content": "You are helpful."},
+                                    {"role": "user", "content": japanese}],
+                                   context_length=2048, reserve_tokens=512)
+
+        kept = trimmed[-1]["content"]
+        assert "pasted message was too large" in kept
+        assert kept.startswith("世田谷区") and kept.endswith("燃えるごみ")
+        assert sum(1 for ch in kept if 0x3040 <= ord(ch) <= 0x9FFF) <= 2048 - 512, "a token each"
+        assert estimate_tokens(trimmed) <= 2048 - 512
+
+    def test_dense_unicode_tool_arguments_use_shared_estimator(self):
+        """`B1944`. A tool call's arguments were measured at 0.3 a character
+        against their share, so Japanese arguments three times their share
+        were kept whole."""
+        args = json.dumps({"path": "notes.md", "content": "世田谷区の燃えるごみ" * 200},
+                          ensure_ascii=False)
+        call = {"role": "assistant", "content": None, "tool_calls": [{
+            "id": "call-1", "type": "function",
+            "function": {"name": "write_file", "arguments": args}}]}
+
+        cut = cc._truncate_tool_call_args(call, 1000)
+
+        assert "_truncated_for_context" in cut["tool_calls"][0]["function"]["arguments"]
+        assert cut["tool_calls"][0]["id"] == "call-1"
+
 
 class TestTheTrimKeepsThePersonsRequest:
     """`B1943`. The trim kept the newest message and dropped the rest from the

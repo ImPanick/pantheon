@@ -12,7 +12,7 @@ import logging
 import re
 from typing import Any, Dict, List, Optional
 
-from src.model_context import get_context_length, estimate_tokens
+from src.model_context import get_context_length, estimate_tokens, estimate_text_tokens
 from src.llm_core import llm_call_async
 from src.endpoint_resolver import resolve_endpoint
 from core.models import ChatMessage
@@ -130,7 +130,7 @@ def _sanitize_tool_messages(msgs: List[Dict]) -> List[Dict]:
 def _message_text_token_estimate(text: str) -> int:
     if not isinstance(text, str):
         return 4
-    return int(len(text) * 0.3) + 4
+    return estimate_text_tokens(text) + 4   # `B1944`: the shared estimate
 
 
 # The words a cut leaves where it cut, by default: a person's pasted message.
@@ -169,6 +169,12 @@ def _truncate_text_to_token_budget(text: str, token_budget: int, *,
         # string rather than the raw non-string (which would move the crash
         # into the caller that concatenates/measures the result).
         return ""
+    # `B1944`. Dense text (Chinese, Japanese, Korean) costs about a token a
+    # character, so it is cut to what the shared estimate says fits; sized at
+    # 0.3 below, the cut kept about three times that. Text without dense
+    # characters is estimated at 0.3 either way and takes the rule below.
+    if estimate_text_tokens(text) > int(len(text) * 0.3):
+        return _dense_text_cut(text, token_budget - 16, notice)
     # Match src.model_context.estimate_tokens' rough chars * 0.3 estimate.
     max_chars = max(200, int((token_budget - 16) / 0.3))
     if len(text) <= max_chars:
@@ -178,6 +184,28 @@ def _truncate_text_to_token_budget(text: str, token_budget: int, *,
     head_len = max(100, int(keep_chars * 0.7))
     tail_len = max(80, keep_chars - head_len)
     return text[:head_len].rstrip() + notice + "\n\n" + text[-tail_len:].lstrip()
+
+
+def _dense_text_cut(text: str, room: int, notice: str) -> str:
+    """`B1944`. `text` whole when the shared estimate says it fits `room`, or
+    else the most of its beginning and end that fits, around `notice`: seven
+    parts head to three parts tail, as the rule for other text keeps."""
+    if estimate_text_tokens(text) <= room:
+        return text
+
+    def cut(keep: int) -> str:
+        head = max(1, int(keep * 0.7))
+        tail = keep - head
+        return text[:head].rstrip() + notice + ("\n\n" + text[-tail:].lstrip() if tail > 0 else "")
+
+    low, high, best = 1, len(text) - 1, 1
+    while low <= high:
+        keep = (low + high) // 2
+        if estimate_text_tokens(cut(keep)) <= room:
+            best, low = keep, keep + 1
+        else:
+            high = keep - 1
+    return cut(best)
 
 
 def _truncate_tool_call_args(msg: Dict[str, Any], token_budget: int) -> Dict[str, Any]:
@@ -204,7 +232,7 @@ def _truncate_tool_call_args(msg: Dict[str, Any], token_budget: int) -> Dict[str
     for tc in tool_calls:
         fn = tc.get("function") if isinstance(tc, dict) else None
         args = fn.get("arguments") if isinstance(fn, dict) else None
-        if isinstance(args, str) and int(len(args) * 0.3) > per_call:
+        if isinstance(args, str) and estimate_text_tokens(args) > per_call:   # `B1944`
             new_fn = dict(fn)
             new_fn["arguments"] = json.dumps({"_truncated_for_context": len(args)})
             new_tc = dict(tc)

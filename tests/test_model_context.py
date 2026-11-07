@@ -155,6 +155,27 @@ class TestEstimateTokens:
         long = estimate_tokens([{"role": "user", "content": long_text}])
         assert long > short * 10
 
+    def test_cjk_text_is_not_estimated_with_latin_character_ratio(self):
+        """`B1944`. Real tokenizers spend about a token on each Chinese,
+        Japanese or Korean character, and the estimate counted them at 0.3,
+        so a prompt it said would fit could go out two to four times over the
+        budget. Text without those characters is counted exactly as before:
+        English and Russian here, and accented Latin, Greek and the rest."""
+        assert estimate_tokens([{"role": "user", "content": "a" * 1000}]) == 304
+        russian = "Привет, как дела? Всё хорошо. " * 40
+        assert estimate_tokens([{"role": "user", "content": russian}]) == 4 + int(len(russian) * 0.3)
+        french = "Déjà vu, café crème et naïveté. " * 40
+        assert estimate_tokens([{"role": "user", "content": french}]) == 4 + int(len(french) * 0.3)
+
+        japanese = "世田谷区の燃えるごみ" * 200   # 2,000 characters
+        assert estimate_tokens([{"role": "user", "content": japanese}]) >= 2000
+        assert estimate_tokens([{"role": "user", "content": "诉讼时效期间" * 20}]) == 124
+        korean = "안녕하세요 반갑습니다 " * 100
+        assert estimate_tokens([{"role": "user", "content": korean}]) >= 1000
+        call = {"role": "assistant", "content": None, "tool_calls": [
+            {"function": {"name": "write_file", "arguments": japanese}}]}
+        assert estimate_tokens([call]) >= 2000, "tool-call arguments are counted the same way"
+
 
 class TestLookupKnown:
     def test_claude_sonnet(self):
