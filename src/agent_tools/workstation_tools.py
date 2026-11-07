@@ -1086,8 +1086,8 @@ async def _search_root(st: _Station, tool: str, raw: str, *, file_ok: bool) -> T
         except WorkstationError as e2:
             if e2.code != "not_found":
                 return None, _file_answer(tool, e2)
-            # Nothing there: the host searches a missing root, finds nothing,
-            # and says so under the path it was given.
+            # Nothing there: the walk says it is not there (`B1912`), under
+            # the path it was given, as it does on the host.
             root = await st.shown(raw)
     if _sensitive(root):
         return None, {"error": f"{tool}: {_sensitive_message(raw)}", "exit_code": 1}
