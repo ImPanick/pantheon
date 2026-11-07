@@ -62,6 +62,7 @@ from routes.cookbook_helpers import (
     _user_shell_path_bootstrap, _venv_safe_local_pip_install_cmd,
     _append_pip_install_runner_lines, _pip_install_command_without_break_system_packages,
     _normalize_llama_cpp_python_cache_types,
+    _append_llama_server_shim_reconciliation_lines, _append_llama_server_finalization_lines,  # `B1931`
     ModelDownloadRequest, ServeRequest,
 )
 
@@ -2008,7 +2009,8 @@ def setup_cookbook_routes() -> APIRouter:
                 ps_lines.append('}')
             elif "llama_cpp" in req.cmd or "llama-server" in req.cmd:
                 ps_lines.append('# Auto-install llama-cpp-python if missing')
-                ps_lines.append('try { python -c "import llama_cpp" 2>$null } catch {}')
+                # `B1931`: the server extra, not the bare bindings, is what the launch needs.
+                ps_lines.append('try { python -c "import llama_cpp.server" 2>$null } catch {}')
                 ps_lines.append('if ($LASTEXITCODE -ne 0) {')
                 ps_lines.append('  Write-Host "Installing llama-cpp-python..."')
                 ps_lines.append('  python -m pip install llama-cpp-python[server]')
@@ -2096,14 +2098,27 @@ def setup_cookbook_routes() -> APIRouter:
                 # ollama is found (otherwise macOS falls back to a slow source build).
                 # /opt/homebrew = Apple Silicon, /usr/local = Intel; harmless on Linux.
                 runner_lines.append('export PATH="$HOME/.local/bin:$HOME/bin:$HOME/llama.cpp/build/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"')
+                # `B1931`: decide by what answers, not by what is on PATH. A
+                # shim the Forge wrote into ~/bin when only the Python bindings
+                # were there outlives them, and `command -v` kept finding it:
+                # the build and the pip fallback never ran and the launch died
+                # in the shim, or it shadowed a working native binary later on
+                # PATH. The shim is now retired or removed first (see
+                # `_append_llama_server_resolution_definition_lines`).
+                _launches_llama_server = (
+                    bool(re.search(r"(?:^|[\s/])llama-server(?=\s|$)", req.cmd))
+                    and not re.search(r"-m\s+llama_cpp\.server\b", req.cmd)
+                )
+                _append_llama_server_shim_reconciliation_lines(runner_lines, launches_binary=_launches_llama_server)
                 runner_lines.append('if [ -d /data/data/com.termux ]; then')
                 runner_lines.append('  # Termux: no native build — use the Python bindings (CPU).')
-                runner_lines.append('  if ! python3 -c "import llama_cpp" 2>/dev/null; then')
+                runner_lines.append('  if ! python3 -c "import llama_cpp.server" 2>/dev/null; then')
                 runner_lines.append('    pkg install -y cmake 2>/dev/null')
                 runner_lines.append('    pip install numpy diskcache jinja2 2>/dev/null')
                 runner_lines.append('    CMAKE_ARGS="-DGGML_BLAS=OFF -DGGML_LLAMAFILE=OFF" pip install \'llama-cpp-python[server]\' --no-build-isolation --no-cache-dir 2>&1 || true')
                 runner_lines.append('  fi')
-                runner_lines.append('elif ! command -v llama-server &>/dev/null; then')
+                _append_llama_server_finalization_lines(runner_lines, platform_hint="Termux")
+                runner_lines.append('elif [ -z "$_pantheon_llama_bin" ]; then')
                 runner_lines.append('  echo "Native llama-server not found — building from source (one-time, may take a few minutes)..."')
                 runner_lines.append('  mkdir -p ~/bin')
                 runner_lines.append('  cd ~ && [ -d llama.cpp ] || git clone --depth 1 https://github.com/ggml-org/llama.cpp')
@@ -2145,58 +2160,17 @@ def setup_cookbook_routes() -> APIRouter:
                 runner_lines.append('      fi')
                 runner_lines.append('    fi')
                 runner_lines.append('  fi')
-                # SHORT-CIRCUIT before the build/pip fallback: if the
-                # native binary is missing but llama_cpp Python is already
-                # installed, drop a wrapper at ~/bin/llama-server that
-                # translates llama-server CLI args to llama_cpp.server's
-                # underscore-style flags. The user's serve command stays
-                # `llama-server ...` and "just works" — no build, no cmake,
-                # no second install. This is the path that unblocks every
-                # remote where pip-installed llama-cpp-python is already
-                # working but Forge used to insist on a native binary.
-                runner_lines.append('  if ! command -v llama-server >/dev/null 2>&1 && python3 -c "import llama_cpp" 2>/dev/null; then')
-                runner_lines.append('    mkdir -p ~/bin')
-                runner_lines.append('    cat > ~/bin/llama-server <<\'_PAN_LLAMA_SHIM_EOF\'')
-                runner_lines.append('#!/usr/bin/env bash')
-                runner_lines.append('# Auto-generated by Pantheon Forge: a `llama-server` lookalike')
-                runner_lines.append('# that translates the native CLI to `python -m llama_cpp.server`.')
-                runner_lines.append('# Lets cookbook-generated launch commands run unchanged on hosts')
-                runner_lines.append('# where only the pip llama-cpp-python package is installed.')
-                runner_lines.append('ARGS=()')
-                runner_lines.append('while [ $# -gt 0 ]; do')
-                runner_lines.append('  case "$1" in')
-                runner_lines.append('    -ngl|--gpu-layers|--n-gpu-layers) ARGS+=(--n_gpu_layers "$2"); shift 2 ;;')
-                runner_lines.append('    -c|--ctx-size) ARGS+=(--n_ctx "$2"); shift 2 ;;')
-                runner_lines.append('    -b|--batch-size) ARGS+=(--n_batch "$2"); shift 2 ;;')
-                runner_lines.append('    -ub|--ubatch-size) shift 2 ;;  # llama-cpp-python has no separate ubatch')
-                runner_lines.append('    --flash-attn) ARGS+=(--flash_attn true); shift 2 ;;')
-                runner_lines.append('    --cache-type-k) ARGS+=(--type_k "$2"); shift 2 ;;')
-                runner_lines.append('    --cache-type-v) ARGS+=(--type_v "$2"); shift 2 ;;')
-                runner_lines.append('    --n-cpu-moe) ARGS+=(--n_cpu_moe "$2"); shift 2 ;;')
-                runner_lines.append('    --mmproj) ARGS+=(--clip_model_path "$2"); shift 2 ;;')
-                runner_lines.append('    --image-max-tokens) shift 2 ;;  # native-only')
-                runner_lines.append('    --no-mmap) ARGS+=(--no_mmap true); shift ;;')
-                runner_lines.append('    --no-warmup) shift ;;  # native-only')
-                runner_lines.append('    --chat-template) ARGS+=(--chat_format "$2"); shift 2 ;;')
-                runner_lines.append('    --fit|--split-mode|--tensor-split|--main-gpu|--parallel) shift 2 ;;  # native-only')
-                runner_lines.append('    --mlock) ARGS+=(--use_mlock true); shift ;;')
-                runner_lines.append('    *) ARGS+=("$1"); shift ;;')
-                runner_lines.append('  esac')
-                runner_lines.append('done')
-                runner_lines.append('exec python3 -m llama_cpp.server "${ARGS[@]}"')
-                runner_lines.append('_PAN_LLAMA_SHIM_EOF')
-                runner_lines.append('    chmod +x ~/bin/llama-server')
-                runner_lines.append('    echo "[pantheon] Created llama-server shim → python -m llama_cpp.server (no native binary needed)"')
-                runner_lines.append('  fi')
+                # `B1931`: the shim is written after the fallbacks now, by the
+                # finalization below, so the launch that installs the Python
+                # bindings gets one too; the checks ask for llama_cpp.server,
+                # which is what a shim runs.
+                runner_lines.append('  _pantheon_resolve_llama_server || true')
                 runner_lines.append('  # If the native build failed, fall back to the Python bindings.')
-                runner_lines.append('  if ! command -v llama-server &>/dev/null && ! python3 -c "import llama_cpp" 2>/dev/null; then')
+                runner_lines.append('  if [ -z "$_pantheon_llama_bin" ] && ! python3 -c "import llama_cpp.server" 2>/dev/null; then')
                 runner_lines.append('    echo "llama-server build failed — installing Python bindings as fallback..."')
                 runner_lines.append(f"    {_pip_install_fallback_chain('llama-cpp-python[server]', python_cmd='pip')} || true")
                 runner_lines.append('  fi')
-                runner_lines.append('  if ! command -v llama-server &>/dev/null && ! python3 -c "import llama_cpp" 2>/dev/null; then')
-                runner_lines.append('    echo "ERROR: llama.cpp serving is not available after install/build attempts."')
-                runner_lines.append('    PANTHEON_PREFLIGHT_EXIT=127')
-                runner_lines.append('  fi')
+                _append_llama_server_finalization_lines(runner_lines)
                 runner_lines.append('fi')
             elif re.search(r"\bollama\s+serve\b", req.cmd):
                 handled_ollama_serve = True
