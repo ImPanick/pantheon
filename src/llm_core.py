@@ -2296,8 +2296,12 @@ def normalize_model_id(
 def llm_call(url: str, model: str, messages: List[Dict], temperature: float = LLMConfig.DEFAULT_TEMPERATURE,
              max_tokens: int = LLMConfig.DEFAULT_MAX_TOKENS, headers: Optional[Dict] = None,
              timeout: int = LLMConfig.DEFAULT_TIMEOUT, prompt_type: Optional[str] = None,
-             explicit_params=frozenset()) -> str:
+             explicit_params=frozenset(), thinking: Optional[bool] = None) -> str:
     """Synchronous LLM call with optional prompt type enhancement.
+
+    ``thinking=False`` is `llm_call_async`'s (`B1755`): a self-hosted thinking
+    model is asked not to reason, and the answer alone is returned — never its
+    reasoning in its place (upstream Odysseus e4cc8ef).
 
     ``explicit_params`` names the sampling parameters a person chose (`P2-13`,
     see ``_apply_local_generation_stability``); empty for every caller that
@@ -2383,6 +2387,8 @@ def llm_call(url: str, model: str, messages: List[Dict], temperature: float = LL
         _apply_local_generation_stability(payload, target_url, model, explicit_params)
         if provider == "mistral" and _supports_thinking(model):
             payload["reasoning_effort"] = _MISTRAL_REASONING_EFFORT
+        if thinking is False and _supports_thinking(model):
+            _turn_thinking_off(payload, url)
     try:
         note_model_activity(target_url, model)
         r = httpx_post_kimi_aware(target_url, h, json=payload, timeout=timeout)
@@ -2393,7 +2399,7 @@ def llm_call(url: str, model: str, messages: List[Dict], temperature: float = LL
         if _openai_responses.learn_from_refusal(target_url, model, r.status_code, r.text):
             return llm_call(url, model, messages, temperature=temperature, max_tokens=max_tokens,
                             headers=headers, timeout=timeout, prompt_type=prompt_type,
-                            explicit_params=explicit_params)
+                            explicit_params=explicit_params, thinking=thinking)
         raise HTTPException(502, f"Upstream {target_url} -> {r.status_code}: {r.text}")
     data = r.json()
     try:
@@ -2407,15 +2413,16 @@ def llm_call(url: str, model: str, messages: List[Dict], temperature: float = LL
         else:
             msg = data["choices"][0]["message"]
             content = msg.get("content")
+            _reasoning = "" if thinking is False else msg.get("reasoning_content")
             if isinstance(content, list):
                 # Mistral structured content — extract thinking + text
                 text_part, thinking_part = _normalize_mistral_content(content)
-                if thinking_part:
+                if thinking_part and thinking is not False:
                     response = thinking_part + "\n\n" + (text_part or "")
                 else:
-                    response = text_part or msg.get("reasoning_content") or ""
+                    response = text_part or _reasoning or ""
             else:
-                response = content or msg.get("reasoning_content") or ""
+                response = content or _reasoning or ""
         _set_cached_response(cache_key, response)
         return response
     except Exception:
@@ -2833,6 +2840,7 @@ async def llm_call_async(
                         availability_only_transport=availability_only_transport,
                         return_model_metadata=return_model_metadata,
                         explicit_params=explicit_params, max_tokens_floor=max_tokens_floor,
+                        thinking=thinking,
                     )
                 _note_unloadable(target_url, model, r.status_code, r.text)
                 friendly = _format_upstream_error(r.status_code, r.text, target_url, model=model)
@@ -2898,16 +2906,22 @@ async def llm_call_async(
                 else:
                     msg = data["choices"][0]["message"]
                     content = msg.get("content")
+                    # Upstream Odysseus e4cc8ef (#7054): a caller that turned
+                    # thinking off wants the answer only. A model that spent
+                    # its whole budget reasoning answers "", not its reasoning
+                    # handed back as a title, a query or a suggestion.
+                    _answer_only = thinking is False
+                    _reasoning = "" if _answer_only else msg.get("reasoning_content")
                     if isinstance(content, list):
                         # Mistral structured content — extract thinking + text
                         # (same contract as llm_call / stream_llm; see #5435).
                         text_part, thinking_part = _normalize_mistral_content(content)
-                        if thinking_part:
+                        if thinking_part and not _answer_only:
                             response = thinking_part + "\n\n" + (text_part or "")
                         else:
-                            response = text_part or msg.get("reasoning_content") or ""
+                            response = text_part or _reasoning or ""
                     else:
-                        response = content or msg.get("reasoning_content") or ""
+                        response = content or _reasoning or ""
                 _set_cached_response(
                     cache_key,
                     response,

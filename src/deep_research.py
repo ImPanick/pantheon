@@ -411,9 +411,11 @@ class DeepResearcher:
     # LLM helper
     # ------------------------------------------------------------------
     async def _llm(self, messages: List[Dict], temperature: float = 0.3,
-                   max_tokens: int = 4096, timeout: int = 60) -> str:
+                   max_tokens: int = 4096, timeout: int = 60,
+                   thinking: Optional[bool] = None) -> str:
         """Call the LLM asynchronously and strip thinking tags."""
         from src.llm_core import llm_call_async
+        kwargs = {"thinking": thinking} if thinking is not None else {}
         response = await llm_call_async(
             url=self.llm_endpoint,
             model=self.llm_model,
@@ -422,6 +424,7 @@ class DeepResearcher:
             max_tokens=max_tokens,
             headers=self.llm_headers,
             timeout=timeout,
+            **kwargs,
         )
         return strip_thinking(response)
 
@@ -469,6 +472,7 @@ class DeepResearcher:
             result = await self._llm(
                 [{"role": "user", "content": prompt}],
                 temperature=0, max_tokens=20, timeout=15,
+                thinking=False,   # upstream Odysseus e4cc8ef: one word needs no reasoning
             )
             cat = (result or "").strip().lower()
             # Clean one-word answer first.
