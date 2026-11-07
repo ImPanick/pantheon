@@ -1166,9 +1166,9 @@ export function createWorkflowPanels({
           : (READ_ORIGIN_WORDS[r.origin] || READ_ORIGIN_WORDS.none)));
         row.appendChild(head);
         const area = _el('textarea', 'wf-test-read-input');
-        area.rows = 3;
         area.setAttribute('aria-label', `What “${String(r.label || id)}” made, in this test`);
         area.value = was ? was.area.value : shownOf(r);
+        area.rows = Math.max(2, Math.min(8, area.value.split('\n').length));
         const entry = { area, edited: !!was };
         area.addEventListener('input', () => {
           entry.edited = true;
