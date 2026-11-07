@@ -920,6 +920,10 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
     # seconds, update it in-place (user is still actively editing).
     # Once the gap exceeds this, the next save creates a new version.
     VERSION_COALESCE_SECONDS = 60
+    # `B1949`: the label only an autosave's version carries, and the only one
+    # the window above extends. An import's version, the "Saved version" a
+    # person pressed Save for and a "Restored from vN" are checkpoints.
+    AUTOSAVE_SUMMARY = "Manual edit"
 
     @router.put("/api/document/{doc_id}")
     def update_document(request: Request, doc_id: str, req: DocumentUpdate) -> Dict[str, Any]:
@@ -957,7 +961,8 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
 
             now = datetime.now(timezone.utc)
             coalesced = False
-            if latest_ver and latest_ver.source == "user" and not req.force_version:
+            if (latest_ver and latest_ver.source == "user"
+                    and latest_ver.summary == AUTOSAVE_SUMMARY and not req.force_version):
                 ver_time = latest_ver.created_at
                 if ver_time.tzinfo is None:
                     ver_time = ver_time.replace(tzinfo=timezone.utc)
@@ -977,7 +982,9 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
                     document_id=doc_id,
                     version_number=new_ver,
                     content=incoming_content,
-                    summary=req.summary or "Manual edit",
+                    # `B1949`: a forced save is a checkpoint, so one that names
+                    # nothing is not given the autosave's label.
+                    summary=req.summary or ("Saved version" if req.force_version else AUTOSAVE_SUMMARY),
                     source="user",
                 )
                 doc.version_count = new_ver
