@@ -1055,6 +1055,11 @@ _DOMAIN_TOOL_MAP = {
     # `_classify_agent_request`, so a turn that names a skill gets the tool that
     # opens one by the words it used, not only when the catalogue ships.
     "skills": {"manage_skills"},
+    # `B1876`. A turn that asks for a workflow — by the word, by the room's
+    # name, or by its event ("when a document is created, …") — is seeded the
+    # tool that drafts and runs one. No rule pack of its own: `manage_tasks`'
+    # section says how, as for `skills` above.
+    "workflows": {"manage_tasks"},
 }
 
 _WORKSPACE_TERMINUS_TOOLS = (
@@ -3575,6 +3580,12 @@ def _classify_agent_request(messages: List[Dict], last_user: str,
     if has(r"\b(?:skills?|runbooks?|procedure for|how do we usually)\b",
            r"\bsave (?:this|that|it) as a skill\b"):
         domains.add("skills")
+    # `B1876`. The same test the keyword selector asks (`Law 7`): the word
+    # "workflow", "automation", "automate", "the Workbench", or a sentence that
+    # describes one by its event.
+    from src.tool_index import asks_for_a_workflow
+    if asks_for_a_workflow(q):
+        domains.add("workflows")
 
     # `B1414`. The second pass: the person's words said nothing about any
     # domain, so the plan they told us to execute is what this turn is about.

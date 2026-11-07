@@ -275,6 +275,37 @@ def builtin_index_fingerprint(schema_desc: Optional[Dict[str, str]] = None) -> s
     return hashlib.sha256(payload.encode()).hexdigest()
 
 
+# `B1876`. A turn that asks for a workflow — by the word, by the room's own
+# name ("Automations", "the Workbench"), or by describing one by its event
+# ("when a document is created, …") — is offered the tool that drafts and runs
+# workflows. `manage_tasks` reached a turn only through schedule words, so
+# "draft a workflow that summarises new mail" and the drafter's own example
+# "When a document is created, write a three-line summary of it." were turns
+# without it. One pair of patterns, asked by both the keyword selector below
+# and the domain classifier (`agent_loop._classify_agent_request`), so the two
+# cannot disagree about what a workflow request is (`Law 7`).
+#
+# The event pattern wants "when"/"whenever" AND, in the same sentence, a thing
+# that happens to something — "arrives", "comes in", "is created", "is added",
+# a webhook. "When I was young we lived by the sea" says neither, and is
+# offered what it always was.
+WORKFLOW_WORDS_RE = re.compile(
+    r"\b(?:workflows?|automations?|automat(?:e|ed|es|ing)|workbench)\b", re.I)
+WORKFLOW_EVENT_RE = re.compile(
+    r"\bwhen(?:ever)?\b[^.?!;\n]{0,80}?\b(?:arrives?|comes? in|lands?|fires?|webhooks?"
+    r"|(?:is|are) (?:created|added|updated|uploaded|saved|received|posted|opened)"
+    r"|gets? (?:created|added|uploaded))\b",
+    re.I,
+)
+
+
+def asks_for_a_workflow(text: str) -> bool:
+    """`B1876`. True when the request names a workflow or describes one by
+    its event. The one test both selectors ask."""
+    body = str(text or "")
+    return bool(WORKFLOW_WORDS_RE.search(body) or WORKFLOW_EVENT_RE.search(body))
+
+
 class ToolIndex:
     """ChromaDB-backed tool index for RAG-based tool selection."""
 
@@ -876,6 +907,10 @@ class ToolIndex:
         # the agent can actually create the cron job instead of fumbling.
         # `B502`: "every file" / "every time" are not cadences.
         if ToolIndex._SCHEDULE_RE.search(ql) or ToolIndex.every_is_a_cadence(ql):
+            base.add("manage_tasks")
+        # `B1876`: "workflow", "automation", "the Workbench", or an event
+        # phrased as a sentence ("when a document is created, …").
+        if asks_for_a_workflow(ql):
             base.add("manage_tasks")
         # `B503`: a session verb and a session noun with words between them.
         if ToolIndex._SESSION_NOUN_RE.search(ql):

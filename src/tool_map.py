@@ -54,7 +54,8 @@ AREAS: Tuple[Tuple[str, Dict[str, str]], ...] = (
         "list_email_accounts": "", "scan_email_unsubscribes": "", "unsubscribe_email": "",
     }),
     ("Planner and people", {
-        "manage_calendar": "", "manage_tasks": "scheduled jobs",
+        # `B1876`: the room is called Automations and its page the Workbench.
+        "manage_calendar": "", "manage_tasks": "scheduled jobs, automations and workflows",
         "manage_notes": "notes, todos, reminders", "manage_contact": "address book",
         "resolve_contact": "a person's email address", "ledger_table": "money",
     }),
@@ -97,6 +98,7 @@ ALSO_KNOWN_AS: Dict[str, str] = {
     "ui_control": "panel open show toggle switch theme",
     "manage_calendar": "schedule meeting appointment event",
     "manage_notes": "todo reminder checklist",
+    "manage_tasks": "automate workbench cron recurring",
     "web_search": "google lookup internet",
 }
 
