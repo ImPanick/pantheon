@@ -18,7 +18,9 @@
 // each spelled out the same way, so the count still does not move. Wave E
 // (`C-A`, `P22-19`/`20`/`24`) adds three — a workflow's file, a step's "why did
 // this fail?" and its fix — and two bodies on routes already here (a draft or a
-// file on `POST /api/workflows`, the steps a person checked on `PUT`).
+// file on `POST /api/workflows`, the steps a person checked on `PUT`). The
+// builder's elevation adds a draft step's fields (`B1850`) and every problem
+// a save of the draft would name (`B1851`), each spelled out the same way.
 //
 // **A refusal is a `WorkflowRefusal`**, carrying the status and the server's
 // own sentence (`{detail}`, read by `refusal.js`), and — for a document the
@@ -93,11 +95,16 @@ export function createWorkflowApi({ fetch } = {}) {
     },
     /** A new, empty workflow; or (`fromTaskId`, `P22-06`) the chain that task
      *  is a step of; or (`describe`, `P22-19`) a draft the model makes from
-     *  the person's words — send `tz` (`Intl…resolvedOptions().timeZone`) so
-     *  "at 8" means their 8; or (`file`, `P22-24`) a workflow file's parsed
+     *  the person's words; or (`file`, `P22-24`) a workflow file's parsed
      *  JSON. Created switched off. → `{ workflow, notes }`, and for a draft
      *  or a file also `{ missing: [sentence], destinations: [line] }`, with
-     *  every step of `workflow.graph` marked `unchecked` (C-A). */
+     *  every step of `workflow.graph` marked `unchecked` (C-A).
+     *  `tz` (optional, `Intl…resolvedOptions().timeZone`) is the person's time
+     *  zone, so "at 8" and a Wait "until 08:00" mean their 8: the new start's
+     *  own zone for an empty workflow and a draft (`B1867`), and for a file
+     *  that names none. A chain keeps its first step's zone; a zone this
+     *  machine does not know is left out, never refused. Omitted, the start
+     *  is on the server's clock, as before. */
     createWorkflow({ name, fromTaskId, describe, tz, file } = {}) {
       return call('POST', `/api/workflows`,
         given({ name, from_task_id: fromTaskId, describe, tz, file }));
@@ -160,6 +167,15 @@ export function createWorkflowApi({ fetch } = {}) {
     checkWorkflow(id, { name, graph, baseVersion } = {}) {
       return call('PUT', `/api/workflows/${enc(id)}?check=true`, given({ name, graph, base_version: baseVersion }));
     },
+    /** `B1851`. Every refusal a save of this draft would give, at once —
+     *  `checkWorkflow` answers with the first only. Each step checked where
+     *  it stands, then the whole (loops, steps nothing leads to, unknown
+     *  arrows…), in the order a save names them, at most fifty; nothing is
+     *  written. An empty list is "Save would pass".
+     *  → `{ problems: [{ node_ids, field, reason, sentence }], count, more }` */
+    listProblems(id, { name, graph } = {}) {
+      return call('POST', `/api/workflows/${enc(id)}/problems`, given({ name, graph }));
+    },
     /** `{ "<step id>" | "start": [x, y] }` — never a version. */
     savePositions(id, positions) {
       return call('PUT', `/api/workflows/${enc(id)}`, { positions });
@@ -172,6 +188,12 @@ export function createWorkflowApi({ fetch } = {}) {
     /** → `{ ok, notes }`; 409 while it runs. */
     deleteWorkflow(id) {
       return call('DELETE', `/api/workflows/${enc(id)}`);
+    },
+    /** `B1845`. A copy of the saved workflow, as a new workflow of the same
+     *  person: named "<name> (copy)", switched off, its steps as they are
+     *  (no marks: the person made them). → `{ workflow }` */
+    duplicateWorkflow(id) {
+      return call('POST', `/api/workflows/${enc(id)}/duplicate`);
     },
     /** → `{ versions: [{ version, name, saved_at, source, step_count, current }] }` */
     listVersions(id) {
@@ -210,18 +232,61 @@ export function createWorkflowApi({ fetch } = {}) {
     },
     /** Run the workflow now, through its trigger task — or (`dry`) plan it:
      *  the reply then carries `nodes`, one plan per step. */
+    /** `B1869`. Stop a workflow run: one that is running is cancelled, one
+     *  that waits (a Wait, a yes, an answer) is ended where it waits. Its
+     *  record says who stopped it. → `{ ok, sentence }`; a 409 when the run
+     *  has already ended. */
+    stopRun(workflowId, runId) {
+      return call('POST', `/api/workflows/${enc(workflowId)}/runs/${enc(runId)}/stop`);
+    },
     runWorkflow(taskId, { dry = false } = {}) {
       return dry
         ? call('POST', `/api/tasks/${enc(taskId)}/run?dry=true`)
         : call('POST', `/api/tasks/${enc(taskId)}/run`);
     },
+    /** `B1852`. Run the SAVED current version once, as your run, even while
+     *  the workflow is switched off — nothing about when it runs moves (not
+     *  the switch, not its next run). The run is in the Runs list with
+     *  `run.test === true` and its cause line reads "Test run"; its Waits and
+     *  questions go on while it is off. A 409 `WorkflowRefusal` (with Run
+     *  now's sentence) while a run is going or waiting. → `{ ok, run_id }` */
+    testRun(id) {
+      return call('POST', `/api/workflows/${enc(id)}/test-run`);
+    },
+    /** `B1854`. Retry a FAILED run from one of its steps — `nodeId`, or
+     *  (left out) the step it failed on: a new run of the version that run
+     *  ran, in which the steps it finished before and beside that step are
+     *  kept (their records carry `kept_from: <failed run id>` and a first
+     *  log line "Kept from the run at 10:42") and that step and those after
+     *  it run again. The new run's `retry_of` is the failed run's id. A 400
+     *  `WorkflowRefusal` says why it cannot (it did not fail; its version is
+     *  not kept; the step did not run); a 409 while a run is going or
+     *  waiting, or for a real run of a workflow switched off.
+     *  → `{ ok, run_id }` */
+    retryRun(id, runId, nodeId) {
+      return call('POST', `/api/workflows/${enc(id)}/runs/${enc(runId)}/retry`,
+        nodeId ? { node_id: nodeId } : undefined);
+    },
     /** Test one step as it stands on the canvas (`P22-08`). `source` is
      *  `last | pinned | custom | example | none`. → `{ outcome:
      *  "needs_confirmation", plan, effects }` or `{ outcome: "ran", status,
-     *  text, data, steps, model, took_ms, input_used, dropped }` */
-    testNode(id, nodeId, { node, source = 'none', input, confirm = false } = {}) {
+     *  text, data, steps, model, took_ms, input_used, dropped }`
+     *
+     *  `B1887` / `B1888`, both optional (left out, the body is exactly as
+     *  before):
+     *   - `outputs` — `{ "<step id>": { data, text } }` (`"start"` for what
+     *     started it): what the steps this step reads made, as the person
+     *     typed them. Every reference into them reads it; the entry of the
+     *     step just before this one is also what this step is handed.
+     *   - `contextOnly` — run nothing and ask nothing: → `{ outcome:
+     *     "context", reads, input_used, dropped, source }`, to pre-fill one
+     *     editor per step the step reads.
+     *  Every answer has `reads`: `[{ node_id, label, origin, data, text }]`,
+     *  one per step its settings name, `origin` one of `typed | handed | pin |
+     *  last_run | none`. */
+    testNode(id, nodeId, { node, source = 'none', input, confirm = false, outputs, contextOnly = false } = {}) {
       return call('POST', `/api/workflows/${enc(id)}/nodes/${enc(nodeId)}/test`,
-        given({ node, source, input, confirm: !!confirm }));
+        given({ node, source, input, confirm: !!confirm, outputs, context_only: contextOnly ? true : undefined }));
     },
     /** `B1209`. A workflow's start, written to its trigger task through the
      *  door every task is edited by (`PUT /api/tasks/{id}`) — the fields the
@@ -239,7 +304,16 @@ export function createWorkflowApi({ fetch } = {}) {
      *  reason), integrations, MCP tools, skills, the AI step's tools, the
      *  workstation, the limits and the operators. The browser derives none of
      *  it. → `{ kinds, integrations, mcp_tools, skills, ai_tools, workstation,
-     *  limits, operators }` */
+     *  limits, operators, examples, has_model, model_why, drafter_model,
+     *  drafter_why }`
+     *
+     *  `B1891`. `has_model` is false when this person has no model at all;
+     *  `model_why` is then the sentence Prompt, Research and Skill are greyed
+     *  with in `kinds` ("No model yet. An admin adds one in Settings → Added
+     *  Models."), else "". `drafter_model` is the model *Draft it* would use,
+     *  or null; `drafter_why` is then the sentence the draft would be refused
+     *  with ("No model is set up to draft a workflow. Make it by hand."), else
+     *  "" — read it to hold *Draft it* and the examples back. */
     getPalette() {
       return call('GET', `/api/workflows/palette`);
     },
@@ -254,6 +328,16 @@ export function createWorkflowApi({ fetch } = {}) {
      *  kind, origin, at, fields: [{ ref, path, type, example }] }] }` */
     listFields(id, nodeId) {
       return call('GET', `/api/workflows/${enc(id)}/nodes/${enc(nodeId)}/fields`);
+    },
+    /** `B1850`. `listFields`' answer for a step as it stands in the DRAFT —
+     *  one not saved yet, or in a draft Save would still refuse: `graph` is
+     *  the document on the canvas. The arrows and what each step promises are
+     *  the draft's; the last run's records and the pinned samples come only
+     *  from steps the saved document also has. Writes nothing. A 404
+     *  `WorkflowRefusal` when `nodeId` is not in `graph`, a 400 when `graph`
+     *  is not a draft at all. → `{ sources: [...] }`, as `listFields`. */
+    listDraftFields(id, nodeId, graph) {
+      return call('POST', `/api/workflows/${enc(id)}/fields`, { node_id: nodeId, graph });
     },
     /** `C-W`. Every step of this person's workflows that waits now — for a
      *  yes (`approval` is the card while it can still be answered), a time,

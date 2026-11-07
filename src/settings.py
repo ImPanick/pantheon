@@ -18,6 +18,14 @@ from src.constants import SETTINGS_FILE, FEATURES_FILE
 # ranges and imported here (`Law 7`; the merge held three copies). That module
 # imports nothing of the product at load, so this adds no cycle.
 from src.workflow_runs import FOREACH_MAX_ITEMS_DEFAULT, WAIT_MAX_HOURS_DEFAULT
+# `B1857`. The most steps one workflow may hold, the same way.
+from src.workflow_runs import MAX_STEPS_DEFAULT as WORKFLOW_MAX_STEPS_DEFAULT
+# `B1883`. What an AI step's model is shown of the values it reads, the same way.
+from src.workflow_runs import PROMPT_VALUES_MAX_CHARS_DEFAULT
+# `B1861`. The trigger envelope's cap, stated once in `src/event_bus.py` beside
+# its range. That module imports nothing of the product at load but
+# `src.constants`, so this adds no cycle either.
+from src.event_bus import TRIGGER_PAYLOAD_MAX_CHARS_DEFAULT
 
 logger = logging.getLogger(__name__)
 
@@ -315,9 +323,34 @@ DEFAULT_SETTINGS = {
     # owns the bounds). Over it the step is refused with this name; nothing is
     # cut silently. Resolves with the owner, so a role may carry it.
     "workflow_foreach_max_items": FOREACH_MAX_ITEMS_DEFAULT,
+    # `B1861`. How much of what started a run — a webhook's request, an
+    # event's payload, the step before this one — a run keeps, in characters
+    # of JSON, the whole envelope (256 KB). Up to it the envelope keeps its
+    # structure, so `{{ steps.start.data.json.issue.title }}` reads the title;
+    # past it the envelope's text is cut first and the run's first line says
+    # what was cut and names this setting. What a MODEL is shown of it is
+    # capped separately, at the same numbers as before (`event_bus.
+    # trigger_as_text`). Resolved without an owner: a trigger is built before
+    # anyone's run starts. `src/event_bus.py` owns the default and the bounds.
+    #
+    # SETTINGS-ONLY, for the reason spelled out at `events_retention_days`.
+    "trigger_payload_max_chars": TRIGGER_PAYLOAD_MAX_CHARS_DEFAULT,
     # `P22-11`. The longest a Wait step may wait, in hours (7 days;
     # `src/workflow_runs.py` owns the number and the bounds).
     "workflow_wait_max_hours": WAIT_MAX_HOURS_DEFAULT,
+    # `B1857`. The most steps one workflow may hold (100; `src/workflow_runs.py`
+    # owns the number and the bounds, 20 to 500). It was a constant, 20. Over
+    # it a save is refused naming this setting and the number it is at, and a
+    # run of a document over it is refused in the same words. Settings-only,
+    # like the longest Wait: one number for the whole install.
+    "workflow_max_steps": WORKFLOW_MAX_STEPS_DEFAULT,
+    # `B1883`. How much of the values an AI step reads (its prompt's
+    # references) its model is shown, in characters, together: 20,000
+    # (`src/workflow_runs.py` owns the number and the bounds, 2,000 to
+    # 1,000,000). Each was cut to 2,000 before, with nothing said. Past it the
+    # longest values are cut first and the step's log names them and this
+    # setting. Settings-only, like the longest Wait.
+    "workflow_prompt_values_max_chars": PROMPT_VALUES_MAX_CHARS_DEFAULT,
     # `P22-17` (`D-2026-10-02-01` §1). How long a parked workflow step's
     # approval card waits for an answer: twelve hours, so an overnight
     # question is still answerable in the morning. Its own key, beside
@@ -1129,10 +1162,14 @@ def int_setting_ranges() -> dict[str, tuple[int, int]]:
         NODE_RECORD_MAX_CHARS_SETTING,
         NODE_RECORDS_DAYS_RANGE,
         NODE_RECORDS_DAYS_SETTING,
+        PROMPT_VALUES_MAX_CHARS_RANGE,
+        PROMPT_VALUES_MAX_CHARS_SETTING,
         WAIT_MAX_HOURS_RANGE,
         WAIT_MAX_HOURS_SETTING,
         WORKFLOW_APPROVAL_TIMEOUT_SETTING,
     )
+    from src.workflow_runs import MAX_STEPS_RANGE as WORKFLOW_MAX_STEPS_RANGE
+    from src.workflow_runs import MAX_STEPS_SETTING as WORKFLOW_MAX_STEPS_SETTING
     from src.upload_limits import (
         MAX_UPLOAD_BURST_LIMIT,
         MAX_UPLOAD_BURST_WINDOW_SECONDS,
@@ -1140,6 +1177,10 @@ def int_setting_ranges() -> dict[str, tuple[int, int]]:
         MIN_UPLOAD_BURST_WINDOW_SECONDS,
     )
     from src.events import RETENTION_DAYS_RANGE
+    from src.event_bus import (
+        TRIGGER_PAYLOAD_MAX_CHARS_RANGE,
+        TRIGGER_PAYLOAD_MAX_CHARS_SETTING,
+    )
     # Per-key validation for numeric settings: coerce to int and clamp to a
     # sane range so a bad value can't disable the agent or let it run away.
     #
@@ -1217,9 +1258,15 @@ def int_setting_ranges() -> dict[str, tuple[int, int]]:
         # `P22-11` / `P22-12` / `P22-17`, the same way.
         FOREACH_MAX_ITEMS_SETTING: FOREACH_MAX_ITEMS_RANGE,
         WAIT_MAX_HOURS_SETTING: WAIT_MAX_HOURS_RANGE,
+        # `B1857`. The most steps one workflow may hold.
+        WORKFLOW_MAX_STEPS_SETTING: WORKFLOW_MAX_STEPS_RANGE,
+        # `B1883`. What an AI step's model is shown of the values it reads.
+        PROMPT_VALUES_MAX_CHARS_SETTING: PROMPT_VALUES_MAX_CHARS_RANGE,
         WORKFLOW_APPROVAL_TIMEOUT_SETTING: (
             MIN_APPROVAL_TTL_SECONDS, MAX_APPROVAL_TTL_SECONDS,
         ),
+        # `B1861`. The trigger envelope's cap, from `src/event_bus.py`.
+        TRIGGER_PAYLOAD_MAX_CHARS_SETTING: TRIGGER_PAYLOAD_MAX_CHARS_RANGE,
     }
 
 

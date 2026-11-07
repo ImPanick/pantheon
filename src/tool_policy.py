@@ -122,6 +122,7 @@ _COMMON_TOOL_NAMES = {
     "manage_settings",
     "manage_skills",
     "manage_tasks",
+    "manage_workflows",   # `B1878`
     "manage_tokens",
     "manage_webhooks",
     "mark_email_read",

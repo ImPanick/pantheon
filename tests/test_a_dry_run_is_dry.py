@@ -370,7 +370,8 @@ async def test_the_route_passes_dry_through_and_says_which_it_did(
     _seed(task_db)
     seen = {}
 
-    async def _run_task_now(task_id, *, force=False, trigger=None, dry=False, started_by=None):
+    async def _run_task_now(task_id, *, force=False, trigger=None, dry=False, started_by=None,
+                            run_id=None):
         seen.update(task_id=task_id, force=force, dry=dry)
         return True
 

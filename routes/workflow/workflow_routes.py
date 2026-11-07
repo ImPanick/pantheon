@@ -33,6 +33,16 @@ and, from `/work/notes/SLICE-EF-DESIGN.md` § 3's contract **C-A** (wave E):
     POST   /api/workflows/{id}/runs/{run_id}/explain        "Why did this fail?" (P22-20)
     POST   /api/workflows/{id}/nodes/{node_id}/fix          apply a fix (P22-20)
 
+and, for the builder's draft (the Workbench's elevation):
+
+    POST   /api/workflows/{id}/fields  {node_id, graph}     a draft step's fields (B1850)
+    POST   /api/workflows/{id}/problems  {graph, name?}     every problem a save would name (B1851)
+
+and the run engine's own (`B1852`, `B1854`):
+
+    POST   /api/workflows/{id}/test-run                     the saved version, once, even off
+    POST   /api/workflows/{id}/runs/{run_id}/retry          a failed run, from a step  {node_id?}
+
 The two literal ones are declared before `/{workflow_id}`, or FastAPI would
 read "palette" as a workflow's id.
 
@@ -73,6 +83,11 @@ TEST_SOURCES = ("last", "pinned", "custom", "example", "none")
 # The test's two answers: the plan and a question, or what it made.
 TEST_NEEDS_CONFIRMATION = "needs_confirmation"
 TEST_RAN = "ran"
+# `B1887` / `B1888`. The third answer, to a request with `context_only: true`:
+# nothing runs and nothing is asked — only what the step's references would
+# read (`reads`) and what it would be handed, so the panel can fill one editor
+# per step the step reads before the person presses Test.
+TEST_CONTEXT = "context"
 
 
 def _answers(handler):
@@ -285,7 +300,14 @@ def setup_workflow_routes(task_scheduler) -> APIRouter:
         task is a step of, or (`describe`, `P22-19`) a draft from the person's
         words, or (`file`, `P22-24`) a workflow file. Every way it is created
         switched off; a draft and a file come back with every step marked
-        `unchecked`, what is `missing`, and every step's `destinations` (C-A)."""
+        `unchecked`, what is `missing`, and every step's `destinations` (C-A).
+
+        `B1867`. `tz` — the person's time zone, as the browser names it — is
+        the new start's `tz_name` for an empty workflow and a draft, and for a
+        file that names no zone of its own; one this machine does not know is
+        left out, never refused (`workflow_store.person_zone`). A chain made a
+        workflow keeps its first step's own zone: it is the clock the chain
+        already runs on, and the workflow starts where the chain does."""
         user = _owner(request)
         body = await _body(request)
         from_task_id = body.get("from_task_id")
@@ -313,7 +335,8 @@ def setup_workflow_routes(task_scheduler) -> APIRouter:
             try:
                 if "file" in ways:
                     from src import workflow_share
-                    made = workflow_share.import_file(db, user, body.get("file"))
+                    made = workflow_share.import_file(db, user, body.get("file"),
+                                                      tz=body.get("tz"))
                     return {"workflow": doc(db, made.wf, made.trigger), "notes": made.notes,
                             "missing": made.missing, "destinations": made.destinations}
                 if from_task_id:
@@ -321,7 +344,8 @@ def setup_workflow_routes(task_scheduler) -> APIRouter:
                         db, owner=user, from_task_id=str(from_task_id), name=body.get("name"),
                         positions=_task_canvas_positions(user), name_of=_name_of)
                 else:
-                    wf, trigger, notes = store.create_workflow(db, owner=user, name=body.get("name"))
+                    wf, trigger, notes = store.create_workflow(db, owner=user, name=body.get("name"),
+                                                               tz=body.get("tz"))
                 return {"workflow": doc(db, wf, trigger), "notes": notes}
             finally:
                 db.close()
@@ -358,11 +382,24 @@ def setup_workflow_routes(task_scheduler) -> APIRouter:
 
         `examples` (`P22-19`, `D-2026-10-02-02` §1): the sentences *Describe
         it* offers to start from — `workflow_assist.EXAMPLE_SENTENCES`, the one
-        place they are written, read by the drafter's tests and the browser."""
+        place they are written, read by the drafter's tests and the browser.
+
+        `B1891`. `has_model` / `model_why` (the builder's: whether this person
+        has a model at all, and the sentence when not), and `drafter_model` /
+        `drafter_why` — the model *Describe it* would draft with
+        (`workflow_assist.model_name`, the utility model else the default, the
+        name *Why did this fail?* is titled with), or `null` and the very
+        sentence the draft route refuses with (`NO_MODEL_TO_DRAFT`), so the
+        room can hold *Draft it* and the examples back before a press that
+        can only be refused."""
         from src import workflow_effects as we
-        from src.workflow_assist import EXAMPLE_SENTENCES
-        out = dict(we.build_palette(_owner(request)) or {})
+        from src.workflow_assist import EXAMPLE_SENTENCES, NO_MODEL_TO_DRAFT, model_name
+        owner = _owner(request)
+        out = dict(we.build_palette(owner) or {})
         out["examples"] = list(EXAMPLE_SENTENCES)
+        drafter = model_name(owner)
+        out["drafter_model"] = drafter or None
+        out["drafter_why"] = "" if drafter else NO_MODEL_TO_DRAFT
         return out
 
     @router.get("/waiting")
@@ -446,6 +483,39 @@ def setup_workflow_routes(task_scheduler) -> APIRouter:
                 db.close()
         return await asyncio.to_thread(_off_the_loop)
 
+    @router.post("/{workflow_id}/problems")
+    @_answers
+    async def list_problems(request: Request, workflow_id: str):
+        """`B1851`. Every refusal a save of this draft would give, at once:
+        body `{graph, name?}` → `{problems: [{node_ids, field, reason,
+        sentence}], count, more}`. Writes nothing.
+
+        `PUT ?check=true` answers with the first refusal only — a save stops
+        at the first — so the canvas could mark one broken step and no other.
+        Here each step is checked where it stands on the draft's arrows, and
+        then the whole (`workflow_store.document_problems_of`, the engine's
+        one rule asked past its first answer): the same sentences on the same
+        steps and fields a save would refuse with, de-duplicated, in the order
+        a save would name them, at most fifty. An empty list is "Save would
+        pass" — the same draft through `?check=true` answers `ok`. Owner-
+        scoped as the save is: another owner's workflow is a 404."""
+        body = await _body(request)
+        graph = body.get("graph")
+        if not isinstance(graph, (dict, str)):
+            raise WorkflowRefused(400, "Send the draft as it stands on the canvas (graph).")
+        name = body.get("name")
+
+        # `B1223`: the database work, off the event loop.
+        def _off_the_loop():
+            db = SessionLocal()
+            try:
+                wf = store.owned_workflow(db, workflow_id, _owner(request))
+                return store.document_problems_of(db, wf, store.trigger_of(db, wf),
+                                                  graph=graph, name=name)
+            finally:
+                db.close()
+        return await asyncio.to_thread(_off_the_loop)
+
     @router.get("/{workflow_id}/export")
     @_answers
     def export_workflow(request: Request, workflow_id: str):
@@ -476,6 +546,21 @@ def setup_workflow_routes(task_scheduler) -> APIRouter:
             running = trigger is not None and store.is_running(db, task_scheduler, trigger.id)
             notes = store.delete_workflow(db, wf, trigger, running=running)
             return {"ok": True, "notes": notes}
+        finally:
+            db.close()
+
+    @router.post("/{workflow_id}/duplicate")
+    @_answers
+    def duplicate_workflow(request: Request, workflow_id: str):
+        """`B1845`. A copy of the workflow as it is saved now, for the same
+        person: "<name> (copy)", switched off, its start's settings and its
+        steps as they are (a webhook start gets a new address)."""
+        db = SessionLocal()
+        try:
+            wf = store.owned_workflow(db, workflow_id, _owner(request))
+            trigger = store.trigger_of(db, wf)
+            made, made_trigger, notes = store.duplicate_workflow(db, wf, trigger)
+            return {"workflow": doc(db, made, made_trigger), "notes": notes}
         finally:
             db.close()
 
@@ -603,6 +688,137 @@ def setup_workflow_routes(task_scheduler) -> APIRouter:
         finally:
             db.close()
 
+    @router.post("/{workflow_id}/runs/{run_id}/stop")
+    @_answers
+    async def stop_run(request: Request, workflow_id: str, run_id: str):
+        """`B1869`. Stop one run of this workflow: one that is queued or
+        running is cancelled (`stop_task`), one that waits — a Wait, a yes,
+        an answer — is ended where it waits, its cards retired. The steps it
+        finished keep their records. 409 once the run has ended."""
+        from core.database import TaskRun
+        user = _owner(request)
+
+        def _read():
+            db = SessionLocal()
+            try:
+                wf = store.owned_workflow(db, workflow_id, user)
+                run = (db.query(TaskRun)
+                       .filter(TaskRun.id == run_id, TaskRun.task_id == wf.task_id).first()
+                       if wf.task_id else None)
+                if run is None:
+                    raise WorkflowRefused(404, "No such run of this workflow.")
+                return wf.task_id
+            finally:
+                db.close()
+        task_id = await asyncio.to_thread(_read)
+        sentence = await task_scheduler.stop_workflow_run(task_id, run_id)
+        if sentence is None:
+            raise WorkflowRefused(409, "This run has already ended.")
+        return {"ok": True, "sentence": sentence}
+
+    # ── `B1852`: try the whole workflow, switched off or on ──────────────────
+
+    @router.post("/{workflow_id}/test-run")
+    @_answers
+    async def test_run(request: Request, workflow_id: str):
+        """Run the SAVED current version once, as a person's run, even while
+        the workflow is switched off — so trying what you built does not mean
+        switching it on and arming its schedule, its event or its webhook.
+
+        It is a real run (`TaskScheduler.run_task_now(test=True)`): in the
+        Runs list, every gate but the switch asked as for *Run now* — the
+        owner (another owner's workflow is a 404), the admin rule
+        (`admin_only_action_of`, as `POST /api/tasks/{id}/run` asks it), one
+        run at a time (`B674`: a 409 with the sentence Run now's says) — and
+        its Waits and questions go on while it is off. It is marked a test
+        (`run.test`; its cause line says "Test run") and it never touches the
+        switch, the next run or the schedule. `{ok: true, run_id}` — the run
+        is written before the reply, so it can be opened at once."""
+        import uuid
+        from src.interactive_gate import STARTED_BY_PERSON
+        from src.task_action_policy import (
+            admin_only_action_of, admin_refusal_message, owner_has_admin_task_privileges,
+        )
+        user = _owner(request)
+
+        def _check():
+            db = SessionLocal()
+            try:
+                wf = store.owned_workflow(db, workflow_id, user)
+                trigger = store.require_trigger(db, wf)
+                found = admin_only_action_of(db, trigger)
+                if found and not owner_has_admin_task_privileges(user):
+                    raise WorkflowRefused(403, admin_refusal_message(found))
+                return trigger.id
+            finally:
+                db.close()
+        # `B1223`: the workflow is checked off the event loop; the run is the scheduler's.
+        task_id = await asyncio.to_thread(_check)
+        run_id = str(uuid.uuid4())
+        started = await task_scheduler.run_task_now(
+            task_id, started_by=STARTED_BY_PERSON, test=True, run_id=run_id)
+        if not started:
+            raise WorkflowRefused(409, task_scheduler.in_flight_sentence(task_id)
+                                  or "Task is already running")
+        return {"ok": True, "run_id": run_id}
+
+    # ── `B1854`: a failed run, retried from the step it failed on ────────────
+
+    @router.post("/{workflow_id}/runs/{run_id}/retry")
+    @_answers
+    async def retry_run(request: Request, workflow_id: str, run_id: str):
+        """A NEW run of the version the failed run ran, from one of its steps
+        — `{node_id}`, or by default the step it failed on — keeping what the
+        failed run finished before and beside that step (copied into the new
+        run, each "Kept from the run at 10:42", `kept_from` on its record), so
+        a step that worked, and sent its mail, is not run again. That step and
+        every step after it run. Built on the records the engine already keeps
+        as a run's state (`RunState`): the walker starts where they leave off.
+
+        400 with why when it cannot (`workflow_store.plan_retry`): the run did
+        not fail, the version it ran is not kept, the step is not one it ran.
+        The gates of *Run now*: the owner (a 404), the admin rule, the switch
+        (409 for a real run of a workflow switched off; a *Test run* is retried
+        as one, `B1852`), one run at a time (409, `B674`'s sentence, no row).
+        `{ok: true, run_id}` — written before the reply."""
+        import uuid
+        from core.database import TaskRun
+        from src.interactive_gate import STARTED_BY_PERSON
+        from src.task_action_policy import (
+            admin_only_action_of, admin_refusal_message, owner_has_admin_task_privileges,
+        )
+        body = await _body(request)
+        node_id = body.get("node_id")
+        if node_id is not None and not isinstance(node_id, str):
+            raise WorkflowRefused(400, "node_id is a step's id, or left out.")
+        user = _owner(request)
+
+        def _plan():
+            db = SessionLocal()
+            try:
+                wf = store.owned_workflow(db, workflow_id, user)
+                trigger = store.require_trigger(db, wf)
+                run = (db.query(TaskRun)
+                       .filter(TaskRun.id == run_id, TaskRun.task_id == trigger.id).first())
+                if run is None:
+                    raise WorkflowRefused(404, "No such run of this workflow.")
+                found = admin_only_action_of(db, trigger)
+                if found and not owner_has_admin_task_privileges(user):
+                    raise WorkflowRefused(403, admin_refusal_message(found))
+                return trigger.id, store.plan_retry(db, wf, trigger, run, node_id=node_id or None)
+            finally:
+                db.close()
+        # `B1223`: the run and its records are read off the event loop.
+        task_id, plan = await asyncio.to_thread(_plan)
+        new_id = str(uuid.uuid4())
+        started = await task_scheduler.run_task_now(
+            task_id, started_by=STARTED_BY_PERSON, trigger=plan["trigger"], test=plan["test"],
+            run_id=new_id, retry=plan)
+        if not started:
+            raise WorkflowRefused(409, task_scheduler.in_flight_sentence(task_id)
+                                  or "Task is already running")
+        return {"ok": True, "run_id": new_id}
+
     # ── 10: test one step (`P22-08`) ─────────────────────────────────────────
 
     @router.post("/{workflow_id}/nodes/{node_id}/test")
@@ -618,10 +834,24 @@ def setup_workflow_routes(task_scheduler) -> APIRouter:
         `outcome: "needs_confirmation"`; the same request with `confirm: true`
         runs it. That is mistake prevention, not a control against an
         adversary (`Law 17`): the owner can already run the whole workflow.
+
+        `B1887` / `B1888`. Two keys added, both optional, so the request the
+        panel sends today is answered as before:
+
+          * `outputs` — `{"<step id>": {"data": …, "text": "…"}}`, what the
+            start (`"start"`) and the steps before this one made, as the
+            person typed it; every reference into them reads it, and the
+            step before this one's entry is also what this step is handed;
+          * `context_only: true` — run nothing and ask nothing: answer
+            `{outcome: "context", reads, input_used, dropped, source}`.
+
+        Every answer gains `reads`: `[{node_id, label, origin, data, text}]`
+        for each step this step's settings name (`workflow_test_context`).
         """
         body = await _body(request)
         node = body.get("node")
         source = body.get("source") or "none"
+        context_only = body.get("context_only") is True
         if not isinstance(node, dict):
             raise WorkflowRefused(400, "Send the step to test, as it stands on the canvas (node).")
         if str(node.get("id")) != str(node_id):
@@ -659,8 +889,18 @@ def setup_workflow_routes(task_scheduler) -> APIRouter:
                 graph = _with_node(stored, checked)
                 return wf, trigger, rows, stored, checked, graph
             wf, trigger, rows, stored, checked, graph = await asyncio.to_thread(_check)
+            outputs = _checked_outputs(graph, str(node_id), body.get("outputs"))
             envelope, dropped = await _test_input(
                 db, wf, trigger, stored, graph, checked, source, body.get("input"))
+            envelope, dropped = _with_outputs(graph, checked, trigger, envelope, dropped, outputs)
+            if context_only:
+                def _reads():
+                    from src import workflow_test_context as wtc
+                    _ctx, found = wtc.build(db, task_id=trigger.id, graph=graph, node=checked,
+                                            envelope=envelope, source=source, outputs=outputs)
+                    return found
+                return {"outcome": TEST_CONTEXT, "reads": await asyncio.to_thread(_reads),
+                        "input_used": envelope, "dropped": dropped, "source": source}
 
             def _plan():
                 tasks_by_id = rows[0]
@@ -689,7 +929,8 @@ def setup_workflow_routes(task_scheduler) -> APIRouter:
             # `B1093`. Only for as long as somebody is waiting for the answer.
             result = await _while_the_request_waits(
                 request, task_scheduler.test_workflow_node(
-                    trigger, name, checked, input_envelope=envelope, timeout=None, graph=graph))
+                    trigger, name, checked, input_envelope=envelope, timeout=None, graph=graph,
+                    source=source, outputs=outputs))
         except WorkflowRefused:
             raise
         except Exception as err:
@@ -721,6 +962,47 @@ def setup_workflow_routes(task_scheduler) -> APIRouter:
             return we.available_fields(db, wf, trigger, graph, str(node_id))
         finally:
             db.close()
+
+    @router.post("/{workflow_id}/fields")
+    @_answers
+    async def list_draft_fields(request: Request, workflow_id: str):
+        """`B1850`. `GET …/nodes/{node_id}/fields`' answer, for a step as it
+        stands in the DRAFT: body `{node_id, graph}`, where `graph` is the
+        document on the canvas — saved or not, finished or not.
+
+        The GET reads only the stored document, so *Insert a field…* on a step
+        that existed only in the draft was refused, and a person had to save a
+        throwaway version first — which Save refused while that step was still
+        incomplete. Here the arrows and what each step promises (an AI step's
+        answer fields, a Set step's names) are the draft's; the last run's
+        records and the pinned samples are read only for the steps the saved
+        document also has (`available_fields`' `recorded`; `_pins_kept`, a
+        save's own rule for pins). The draft is never checked as a save is
+        (`workflow_store.draft_graph`: only "is it a draft at all") and nothing
+        is written. Owner-scoped as the GET is: another owner's workflow is a
+        404."""
+        body = await _body(request)
+        node_id = body.get("node_id")
+        if not isinstance(node_id, str) or not node_id.strip():
+            raise WorkflowRefused(400, "Say which step's fields to list (node_id).")
+        draft = store.draft_graph(body.get("graph"))
+
+        # `B1223`: the database work, off the event loop.
+        def _off_the_loop():
+            from src import workflow_effects as we
+            db = SessionLocal()
+            try:
+                wf = store.owned_workflow(db, workflow_id, _owner(request))
+                if not any(n["id"] == node_id for n in draft["nodes"]):
+                    raise WorkflowRefused(404, "No such step in this draft.")
+                stored = store.stored_graph(wf)
+                saved_ids = {str(n.get("id")) for n in store.nodes_of(stored)}
+                graph = store._pins_kept(draft, stored)
+                return we.available_fields(db, wf, store.trigger_of(db, wf), graph, node_id,
+                                           recorded=saved_ids)
+            finally:
+                db.close()
+        return await asyncio.to_thread(_off_the_loop)
 
     @router.post("/slot")
     @_answers
@@ -763,8 +1045,15 @@ def setup_workflow_routes(task_scheduler) -> APIRouter:
 
         The seal, the TTL, single use and owner binding are the store's,
         unchanged (`FORBIDDEN.md` Part 2).
+
+        `B1870`. And a person's only, asked first: the assistant's loopback
+        and a bearer token arrive in the owner's name, and either could
+        otherwise read the card at `GET /waiting` and allow its own sealed
+        action — the gate would be asking the agent, not the person.
         """
         from src.task_scheduler import QuestionRefused, _resolve_task_timezone
+        if not request_is_a_person(request):
+            raise WorkflowRefused(403, store.ONLY_A_PERSON_ANSWERS)
         body = await _body(request)
         decision = str(body.get("decision") or "").strip().lower()
         if decision == "approve":
@@ -821,13 +1110,12 @@ def setup_workflow_routes(task_scheduler) -> APIRouter:
         (another owner's run is a 404). The step is the CURRENT document's;
         `changed_since_run` says whether it differs from the one that ran.
         Nothing is written. `{why, model, changed_since_run, proposal,
-        left_out}` (C-A)."""
-        from core.database import TaskRun, TaskRunNode
+        left_out}` (C-A).
+
+        `B1878`: the read and the ask are `workflow_assist.step_to_explain`
+        and `explain_answer`, which the assistant's `manage_workflows explain`
+        calls too — one reading of a failed step, not two (`Law 14`)."""
         from src import workflow_assist
-        from src.task_action_policy import owner_has_admin_task_privileges
-        from src.workflow_document import DocumentError, parse_graph
-        from src.workflow_effects import workflow_resources
-        from src.workflow_runs import node_record_to_dict
         body = await _body(request)
         node_id = str(body.get("node_id") or "")
         item = body.get("item")
@@ -839,56 +1127,12 @@ def setup_workflow_routes(task_scheduler) -> APIRouter:
             db = SessionLocal()
             try:
                 wf = store.owned_workflow(db, workflow_id, user)
-                run = (db.query(TaskRun).filter(TaskRun.id == run_id, TaskRun.task_id == wf.task_id)
-                       .first() if wf.task_id else None)
-                if run is None:
-                    raise WorkflowRefused(404, "No such run of this workflow.")
-                q = db.query(TaskRunNode).filter(TaskRunNode.run_id == run.id,
-                                                 TaskRunNode.node_id == node_id,
-                                                 TaskRunNode.dry.is_(False))
-                q = q.filter(TaskRunNode.item.is_(None)) if item is None else \
-                    q.filter(TaskRunNode.item == item)
-                rec = q.order_by(TaskRunNode.attempt.desc(), TaskRunNode.seq.desc()).first()
-                if rec is None:
-                    raise WorkflowRefused(404, "That step has no record in this run.")
-                record = node_record_to_dict(rec)
-                try:
-                    current = parse_graph(store.stored_graph(wf))
-                except DocumentError as err:
-                    raise store._document_error_refusal(err) from None
-                node = next((n for n in store.nodes_of(current) if str(n.get("id")) == node_id), None)
-                if node is None:
-                    raise WorkflowRefused(404, "That step is not in the workflow any more.")
-                ran_graph, kept = store.graph_of_version(db, wf, rec.workflow_version)
-                ran = next((n for n in store.nodes_of(ran_graph) if str(n.get("id")) == node_id), None)
-                changed = (ran is None or store._step_content(ran) != store._step_content(node)
-                           or (not kept and rec.workflow_version != wf.version))
-                rows = store.owner_rows(db, wf.owner)
-                trigger = store.trigger_of(db, wf)
-                owner = wf.owner
-                base_version = wf.version
+                return workflow_assist.step_to_explain(db, wf, run_id, node_id, item)
             finally:
                 db.close()
-            return base_version, changed, current, node, owner, record, rows, trigger
         # `B1223`: the step's record is read off the event loop.
-        base_version, changed, current, node, owner, record, rows, trigger = await asyncio.to_thread(_read)
-        # `B1609`: the resources read which MCP tools are switched off — a session.
-        resources = await asyncio.to_thread(workflow_resources, owner)
-        try:
-            explained = await workflow_assist.explain_step(
-                owner, node=node, record=record, graph=current, base_version=base_version,
-                item=item, resources=resources, tasks_by_id=rows[0], crew_ids=rows[1],
-                owner_is_admin=owner_has_admin_task_privileges(owner),
-                own_task_id=trigger.id if trigger is not None else None)
-        except workflow_assist.NoModelSetUp:
-            raise WorkflowRefused(503, workflow_assist.NO_MODEL_TO_EXPLAIN) from None
-        except ValueError:
-            raise WorkflowRefused(422, workflow_assist.EXPLAIN_UNREADABLE) from None
-        # `B1598`: the model's name is an endpoint-row read, made off the loop.
-        model = await asyncio.to_thread(workflow_assist.model_name, owner)
-        return {"why": explained.why, "model": model,
-                "changed_since_run": changed, "proposal": explained.proposal,
-                "left_out": explained.left_out}
+        step = await asyncio.to_thread(_read)
+        return await workflow_assist.explain_answer(step)
 
     @router.post("/{workflow_id}/nodes/{node_id}/fix")
     @_answers
@@ -953,8 +1197,15 @@ def field_slot_answer(body) -> dict:
     path = ws.path_of(field)
     if path is None:
         raise WorkflowRefused(400, "Name the field as the panel does, for example body[0].value.")
-    slot = ws.slot_for({"kind": node["kind"], "config": node.get("config") or {}}, path)
-    return {"mapping": slot.mapping, "why": slot.why}
+    step = {"kind": node["kind"], "config": node.get("config") or {}}
+    slot = ws.slot_for(step, path)
+    out = {"mapping": slot.mapping, "why": slot.why}
+    # `B1884`: `openable: true` where its author may open it to a value from
+    # an earlier step (a query or body value whose name and type allow it) —
+    # said only where it holds, so every other answer is as it was.
+    if slot.mapping == ws.MAPPING_NEVER and ws.opening_problem(step, path) is None:
+        out["openable"] = True
+    return out
 
 
 def _field(record, key):
@@ -1116,6 +1367,72 @@ def test_source_offers(db, trigger, graph) -> dict:
     return out
 
 
+def _checked_outputs(graph, node_id: str, outputs) -> dict:
+    """`B1888`. What the person typed for the steps this one reads, checked
+    against the document (`workflow_test_context.check_outputs`), or a 400
+    in its words."""
+    from src import workflow_test_context as wtc
+    try:
+        return wtc.check_outputs(graph, node_id, outputs)
+    except wtc.OutputsRefused as err:
+        raise WorkflowRefused(400, err.sentence) from None
+
+
+def _with_outputs(graph, node, trigger, envelope, dropped, outputs):
+    """`B1888`. What the step is handed, when the person typed what the step
+    before it made: that step's hand-off, built from what they typed — so
+    what a model step or an If is handed and what its references read are
+    one answer. For a step the start leads to, a typed `start` is the
+    trigger it is handed. Anything else is left as the chosen source made
+    it."""
+    from src import workflow_test_context as wtc
+    from src.workflow_document import START_KEY
+
+    from src.workflow_document import node_input_shape
+
+    node_id = str(node.get("id"))
+    if not outputs:
+        return envelope, dropped
+    if wtc.is_first(graph, node_id):
+        made = outputs.get(START_KEY)
+        # A first step on a schedule is handed nothing, whatever is typed for
+        # the start; its references still read it (`workflow_test_context`).
+        if (made is not None and isinstance(made.get("data"), dict)
+                and node_input_shape(graph, node_id, trigger).source is not None):
+            return _pinned_envelope(graph, node_id, trigger, made["data"])
+        return envelope, dropped
+    parent = wtc.parent_of(graph, node_id)
+    if parent is not None and parent in outputs:
+        return wtc.handoff_from(graph, parent, outputs[parent],
+                                task_id=getattr(trigger, "id", "") or ""), []
+    return envelope, dropped
+
+
+def _custom_handoff(raw, fields):
+    """`B1888` (`test-custom-input-ignored`). A sample typed for a step that
+    is handed the step before it's hand-off (`TASK_HANDOFF_FIELDS`), when it
+    is a JSON object naming anything that is not one of those fields, is what
+    the step before it MADE — its `data` — and not a hand-off with every key
+    cut: `{"greeting": "goodbye"}` typed on an If after "Make greeting" was
+    answered "Left out, because this step is not handed them: greeting." and
+    the If went the same way whatever was typed. A sample that names only
+    hand-off fields (`{"result": …, "data": …}`) is read as it always was.
+    `None` when the rule does not apply."""
+    from src.event_bus import TASK_HANDOFF_FIELDS
+
+    if tuple(fields or ()) != tuple(TASK_HANDOFF_FIELDS):
+        return None
+    value = raw
+    if isinstance(raw, str):
+        try:
+            value = json.loads(raw)
+        except (TypeError, ValueError):
+            return None
+    if isinstance(value, dict) and value and any(k not in TASK_HANDOFF_FIELDS for k in value):
+        return {"data": value}
+    return None
+
+
 async def _test_input(db, wf, trigger, stored, graph, node, source, raw):
     """The envelope the step would really be handed, from the chosen source,
     and the keys a sample lost because the step is never handed them."""
@@ -1145,6 +1462,9 @@ async def _test_input(db, wf, trigger, stored, graph, node, source, raw):
     if source == "custom":
         if raw is None or (isinstance(raw, str) and not raw.strip()):
             raise WorkflowRefused(400, "Paste the sample to test with.")
+        made = _custom_handoff(raw, fields)
+        if made is not None:
+            return _pinned_envelope(graph, node_id, trigger, made)
         return _pinned_envelope(graph, node_id, trigger, _sample_data(raw, fields, label))
     # example (a step handed no fields is refused above)
     data = await _write_example(wf.owner, node.get("label") or node_id, fields)

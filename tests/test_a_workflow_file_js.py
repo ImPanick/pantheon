@@ -261,7 +261,10 @@ def test_open_a_file_posts_it_and_the_import_opens_off_marked_with_what_is_missi
     """, TEXT=two.export_text)
     assert o["status"] == 200, o["reply"]
     reply = o["reply"]
-    assert o["posts"] == [["/api/workflows", {"file": two.file}]], "the file's JSON, as C-A's {file}"
+    # `B1867`: with the person's time zone, for a file whose start names none.
+    [[url, body]] = o["posts"]
+    assert url == "/api/workflows" and body.pop("tz"), "the zone this browser is in"
+    assert body == {"file": two.file}, "the file's JSON, as C-A's {file}"
     assert o["switchWord"] == "Off" and reply["workflow"]["trigger_status"] == "paused"
     assert o["head"] == "Imported from a file"
     assert o["subs"] == (["Where it sends things:"] if reply["destinations"] else []) + ["What this Pantheon is missing:"]

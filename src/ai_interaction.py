@@ -27,7 +27,8 @@ from src import paced_http  # `B1014`: NO_PROXY ranges, read for every client
 from src.env_flags import env_flag, tool_arg_truthy
 from src.memory import MemoryStoreUnreadable
 from src.theme_advanced_keys import advanced_keys_prose, is_advanced_key
-from src.ui_switches import SWITCH_ACTIONS, TOGGLES, command_parts, switch_request
+from src.ui_switches import (SWITCH_ACTIONS, TOGGLES, WORKBENCH_PANEL_NAMES, command_parts,
+                             switch_request)
 
 logger = logging.getLogger(__name__)
 
@@ -493,7 +494,7 @@ async def do_ui_control(content: str, session_id: Optional[str] = None, owner: O
       switch_model <model>    — Change the model for the current session
       set_theme <preset>      — Apply a built-in theme preset (dark, light, midnight, paper, forest, ocean, ume, copper, organs, lavender, gpt, claude, cute, guild, codehost, grove, notebook, channel, video, mintchat)
       create_theme <name> <bg> <fg> <panel> <border> <accent> [key=val ...] — Create custom theme. Optional key=val: advanced color overrides AND background effects: bgPattern=<none|dots|synapse|rain|constellations|perlin-flow|petals|sparkles|embers|ascii>, bgEffectColor=#RRGGBB, bgEffectIntensity=<num>, bgEffectSize=<num>, frosted=true|false
-      open_panel <name>       — Open a panel (documents, gallery, email, sessions, notes, memories, skills, settings, cookbook)
+      open_panel <name>       — Open a panel (documents, gallery, email, sessions, notes, memories, skills, settings, cookbook, workbench [workflow id])
       open_email_reply <uid> [folder] [reply|reply-all|ai-reply] [body text] — Open a reply draft document for an email; does not send. ALWAYS append the body text when the user told you what to say (one-shot draft); only omit body when the user just asked to "open a reply" without content.
       get_toggles             — Return current toggle states (server-side knowledge)
     """
@@ -713,9 +714,21 @@ async def do_ui_control(content: str, session_id: Optional[str] = None, owner: O
             "serve": "cookbook",
             "serving": "cookbook",
         }
+        # `B1878`. The Workbench, on one workflow when an id follows — the
+        # door `openWorkbench({workflowId})` the Tasks window and a workflow's
+        # notice already use.
+        _panel_aliases.update({name: "workbench" for name in WORKBENCH_PANEL_NAMES})
         target = _panel_aliases.get(panel)
         if not target:
-            return {"error": f"Unknown panel '{panel}'. Valid: documents, gallery, email, sessions, notes, memories, skills, settings, cookbook."}
+            return {"error": f"Unknown panel '{panel}'. Valid: documents, gallery, email, sessions, notes, memories, skills, settings, cookbook, workbench."}
+        if target == "workbench":
+            workflow_id = parts[2].strip() if len(parts) > 2 else ""
+            out = {"ui_event": "open_panel", "panel": target,
+                   "results": "Opening the Workbench"}
+            if workflow_id:
+                out["workflow_id"] = workflow_id
+                out["results"] = f"Opening the Workbench on workflow {workflow_id}"
+            return out
         return {
             "ui_event": "open_panel",
             "panel": target,

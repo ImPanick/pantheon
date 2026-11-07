@@ -159,6 +159,33 @@ def test_a_wait_says_when_it_goes_on_and_every_wait_field_says_why_it_is_typed(b
     assert o["seen"] == [["minutes", "never"], ["time", "never"], ["tz", "never"]], "every Wait field is never (§ 2)"
 
 
+def test_a_skill_step_offers_the_built_in_skills_after_the_persons_own_and_says_which(box):
+    """`B1892`. The palette lists a person's own skills, then the built-in ones
+    the chat would offer their model (`built_in`); the picker says which is
+    which, and a built-in pick is saved by its name alone."""
+    o = _case(box, """
+        const pal = { ...PAL, skills: [...(PAL.skills || []),
+          { name: 'chart-the-numbers', description: 'Turn a table into a chart.', built_in: true }] };
+        const h = host();
+        const got = [];
+        SF.mountStepFields(h, { node: { kind: 'skill', label: 'Chart', config: {} }, palette: pal,
+          onApply: (x) => got.push(x), onCancel: () => {} });
+        const sel = byField(h, 'skill');
+        const offered = sel.querySelectorAll('option').map((x) => [x.value, x.textContent]);
+        changed(sel, 'chart-the-numbers');
+        const desc = h.querySelectorAll('.wf-sf-hint').map((x) => x.textContent);
+        fire(h.querySelector('.wf-step-done'), 'click');
+        out({ offered, desc, lede: h.querySelector('.wf-sf-lede').textContent, got });
+    """)
+    own = [s["name"] for s in json.loads(palette_json())["skills"]]
+    assert [v for v, _ in o["offered"]] == ["", *own, "chart-the-numbers"], "their own first"
+    assert o["offered"][-1] == ["chart-the-numbers", "chart-the-numbers (built in)"]
+    assert all(w == v for v, w in o["offered"][1:-1]), "their own are named as they are"
+    assert o["lede"].startswith("Runs a model that follows a skill: one of yours, or a built-in one.")
+    assert "Turn a table into a chart." in o["desc"], "its description, as one of yours says it"
+    assert o["got"][0]["config"]["skill"] == "chart-the-numbers"
+
+
 def test_a_skill_step_says_p8_18s_sentence_and_code_starts_from_a_three_line_template(box):
     o = _case(box, """
         const s = mount({ kind: 'skill', label: 'Print', config: {} });
@@ -249,6 +276,43 @@ def test_for_each_edits_its_inner_step_in_place_and_its_picker_offers_the_item(b
     assert o["applied"][0]["config"] == {"list": "{{ steps.read.data.emails }}", "on_error": "continue",
                                          "step": {"kind": "llm", "label": "Summarise",
                                                   "config": {"prompt": "Summarise {{ item.subject }}"}}}
+
+
+def test_for_each_offers_each_items_own_fields_and_not_the_first_items(box):
+    """`B1848`. The fields route says a list's example in words ("3 items")
+    and flattens its first item into `…issues[0].title`: inside a For-each
+    only "the whole item" was offered, and `[0]` paths — which read the FIRST
+    item on every pass — were. Now each `[0].` field is offered as
+    `{{ item.… }}`, and the list's own `[0]` fields are left out."""
+    o = _case(box, """
+        const mounts = [];
+        const mountTaskFields = (h, args) => { mounts.push(args); const i = h.appendChild(new Node('textarea'));
+          i.className = 'stub-prompt'; i.value = ''; args.pickField(i, { field: 'prompt', slot: { mapping: 'value', why: '' } });
+          return { destroy() {} }; };
+        const root = host();
+        const panels = createWorkflowPanels({ mountTaskFields, layer: () => root });
+        const fields = async () => ({ ok: true, sources: [{ node_id: 'get', label: 'Get issues', origin: 'last_run',
+          fields: [{ ref: '{{ steps.get.data.issues }}', path: 'issues', type: 'list', example: '3 items' },
+                   { ref: '{{ steps.get.data.issues[0].title }}', path: 'issues[0].title', type: 'text', example: 'Printer on fire' },
+                   { ref: '{{ steps.get.data.issues[0].user.login }}', path: 'issues[0].user.login', type: 'text', example: 'ada' },
+                   { ref: '{{ steps.get.data.count }}', path: 'count', type: 'number', example: 3 }] }] });
+        const h = root.appendChild(new Node('div'));
+        panels.node(h, { node: { id: 'each', kind: 'foreach', label: 'Each issue',
+          config: { list: '{{ steps.get.data.issues }}', on_error: 'continue' } },
+          palette: PAL, upstream: [{ id: 'get', label: 'Get issues', kind: 'http' }], fields, onApply: () => {} });
+        changed(byField(h, 'step.kind'), 'llm');
+        fire(h.querySelector('.wf-sf-inner-edit'), 'click');
+        await settle(2);
+        fire(h.querySelector('.stub-prompt').parentNode.querySelector('.wf-slot-pick'), 'click');
+        await settle(5);
+        const pick = root.querySelector('.wf-picker');
+        out({ listed: pick.querySelectorAll('.wf-picker-source').map((s) => [s.querySelector('.wf-picker-step-name').textContent,
+          s.querySelectorAll('.wf-picker-field').map((b) => b.dataset.ref)]) });
+    """)
+    assert o["listed"] == [
+        ["Each item", ["{{ item }}", "{{ item.title }}", "{{ item.user.login }}"]],
+        ["Get issues", ["{{ steps.get.data.issues }}", "{{ steps.get.data.count }}"]],
+    ]
 
 
 def test_an_ai_step_chooses_its_tools_and_the_shape_of_its_answer(box):

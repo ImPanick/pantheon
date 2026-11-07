@@ -14,7 +14,7 @@ from pydantic import BaseModel
 
 from core.database import SessionLocal, ScheduledTask, TaskRun, CrewMember
 from core.constants import internal_api_base
-from src.auth_helpers import get_current_user
+from src.auth_helpers import get_current_user, request_is_a_person
 from src import paced_http  # `B1014`: NO_PROXY ranges, read for every client
 from src.constants import DATA_DIR, EMAIL_URGENCY_CACHE_DIR
 from src.event_bus import (
@@ -24,6 +24,7 @@ from src.event_bus import (
     TRIGGER_SOURCE_WEBHOOK,
     WEBHOOK_PAYLOAD_FIELDS,
     build_trigger,
+    trigger_payload_max_chars,
 )
 from src.task_action_policy import (
     admin_only_action_of,
@@ -37,6 +38,8 @@ from src.task_scheduler import (
     build_task_graph,
     compute_next_run,
     task_edges,
+    is_test_run_log,
+    retry_of_log,
 )
 from routes.prefs_routes import _load_for_user, _save_for_user
 
@@ -168,7 +171,7 @@ class TaskCreate(BaseModel):
     scheduled_day: Optional[int] = None           # day-of-week (0=Mon) or day-of-month
     scheduled_date: Optional[str] = None          # ISO datetime for "once"
     cron_expression: Optional[str] = None         # cron string e.g. "*/5 * * * *"
-    trigger_type: str = "schedule"                # "schedule" | "event" | "webhook"
+    trigger_type: str = "schedule"                # "schedule" | "event" | "webhook" | "manual" (`B1853`)
     trigger_event: Optional[str] = None           # e.g. "session_created"
     trigger_count: Optional[int] = None           # fire every N events
     output_target: str = "session"
@@ -464,6 +467,14 @@ def _run_to_dict(r: TaskRun, *, is_workflow: bool = False) -> dict:
         # workflow's run, and None for any other run. `step_count` is still
         # the log's length (`Law 1`).
         "node_count": _run_node_count(steps) if is_workflow else None,
+        # `B1852`. A workflow's *Test run* — started from the Workbench, run
+        # while the workflow may be switched off, moving nothing about when it
+        # runs. Read off the run's own log (`TEST_RUN_KEY` on its `trigger`
+        # line, whose `detail` is "Test run"), so the Runs list can mark it.
+        "test": is_test_run_log(steps),
+        # `B1854`. The failed run this one retries from a step, or null —
+        # read off its log (`RETRY_OF_KEY`), as `test` is.
+        "retry_of": retry_of_log(steps),
     }
 
 
@@ -1009,7 +1020,10 @@ def setup_task_routes(task_scheduler) -> APIRouter:
                     trigger_count=trigger_count,
                     trigger_counter=0,
                     next_run=next_run,
-                    status="active" if (req.trigger_type in ("event", "webhook") or next_run) else "completed",
+                    # `B1853`: a manual start is on with no next time, as an
+                    # event's or a webhook's is.
+                    status="active" if (req.trigger_type in ("event", "webhook", "manual")
+                                        or next_run) else "completed",
                     output_target=req.output_target,
                     model=req.model or None,
                     endpoint_url=req.endpoint_url or None,
@@ -1074,9 +1088,16 @@ def setup_task_routes(task_scheduler) -> APIRouter:
             PLAIN_TASK_NODE, QuestionRefused, _resolve_task_timezone,
         )
         from src.workflow_runs import WAITING_APPROVAL, waiting_of
-        from src.workflow_store import ANSWER_DECISIONS, NO_CHAT_TO_REMEMBER
+        from src.workflow_store import (
+            ANSWER_DECISIONS, NO_CHAT_TO_REMEMBER, ONLY_A_PERSON_ANSWERS,
+        )
         from core.database import TaskRunNode
 
+        # `B1870`. The workflow door's first question, asked here too: not a
+        # bearer token, not the assistant's loopback — nothing is read or
+        # consumed for them.
+        if not request_is_a_person(request):
+            raise HTTPException(403, ONLY_A_PERSON_ANSWERS)
         decision = (body.decision or "").strip().lower()
         if decision == "approve":
             raise HTTPException(400, NO_CHAT_TO_REMEMBER)
@@ -1293,6 +1314,12 @@ def setup_task_routes(task_scheduler) -> APIRouter:
                 if req.trigger_type == "webhook" and not task.webhook_token:
                     task.webhook_token = secrets.token_urlsafe(32)
                 task.trigger_type = req.trigger_type
+                from src.task_scheduler import is_manual_trigger
+                if is_manual_trigger(task):
+                    # `B1853`. Never due: the next time a schedule left on the
+                    # row goes with it. Its schedule's fields stay, so switching
+                    # back to a schedule finds them.
+                    task.next_run = None
             if req.trigger_event is not None:
                 task.trigger_event = req.trigger_event
             if req.trigger_count is not None:
@@ -1466,6 +1493,8 @@ def setup_task_routes(task_scheduler) -> APIRouter:
                     cron_expression=task.cron_expression,
                     tz_name=_task_tz(db, task=task),
                 )
+            elif (task.trigger_type or "schedule") == "manual":
+                task.next_run = None             # `B1853`: on, and never due
             db.commit()
             return {"ok": True, "status": "active", "next_run": task.next_run.isoformat() + "Z" if task.next_run else None}
         finally:
@@ -1582,8 +1611,13 @@ def setup_task_routes(task_scheduler) -> APIRouter:
         # reply in progress and is not stopped by the page they pressed it on;
         # background work keeps the idle gate (`src.interactive_gate.STARTED_BY`).
         from src.interactive_gate import STARTED_BY_PERSON
+        # `B1866`. A real run's id is chosen here, so the reply can name the
+        # run it started and a page can open it at once (`run_task_now`
+        # writes its `queued` row under this id before it is spawned). A dry
+        # run answers with its own (`P22-04`, below).
+        run_id = None if dry else str(uuid.uuid4())
         started = await task_scheduler.run_task_now(
-            task_id, force=force, dry=dry, started_by=STARTED_BY_PERSON)
+            task_id, force=force, dry=dry, started_by=STARTED_BY_PERSON, run_id=run_id)
         if not started:
             # `B674` / `P22-11`. A workflow whose run is parked says which run
             # and what it waits for — the `skipped` row's own sentence.
@@ -1628,8 +1662,10 @@ def setup_task_routes(task_scheduler) -> APIRouter:
                     name_of=_display_task_name,
                 )
             return out
+        # `B1866`: `run_id` is added; every key that was here still is.
         return {"ok": True, "dry": False,
-                "message": "Task triggered" + (" in parallel" if force else "")}
+                "message": "Task triggered" + (" in parallel" if force else ""),
+                "run_id": run_id}
 
     @router.post("/{task_id}/stop")
     async def stop_task_now(request: Request, task_id: str):
@@ -1875,11 +1911,23 @@ def setup_task_routes(task_scheduler) -> APIRouter:
     # here: a signature in a prompt is a secret in a prompt.
     _WEBHOOK_HEADERS = ("content-type", "user-agent", "x-request-id",
                         "x-event-name", "x-webhook-event")
-    # How much of the body is read at all. `build_trigger` caps each field again
-    # at `TRIGGER_FIELD_MAX_CHARS` and `trigger_as_text` caps the whole envelope
-    # on the way to the model, so this is the outermost of three and exists to
-    # stop a megabyte being decoded before any of them apply.
-    _WEBHOOK_BODY_MAX = TRIGGER_FIELD_MAX_CHARS * 4
+    # How much of the body is read at all. `build_trigger` caps the whole
+    # envelope at `trigger_payload_max_chars` and `trigger_as_text` caps each
+    # field and the whole block on the way to the model, so this is the
+    # outermost of three and exists to stop a megabyte being decoded before
+    # any of them apply.
+    #
+    # `B1861`. It was `TRIGGER_FIELD_MAX_CHARS * 4` — 8,000 characters — when
+    # `build_trigger` clipped every field to 2,000: a JSON body between the
+    # two was parsed and then flattened, and one over 8,000 was cut here and
+    # not parsed at all. Now it is HALF the envelope's cap, read per request so
+    # a changed setting applies at once, because the envelope keeps the body
+    # twice — as text (`body`) and parsed (`json`). Where the two copies
+    # together are over the cap, the text copy is the one cut
+    # (`event_bus._fit_envelope` cuts text first), so the parsed one — the
+    # copy a step refers to — has the whole cap to itself.
+    def _webhook_body_max() -> int:
+        return trigger_payload_max_chars() // 2
 
     async def _webhook_payload(request) -> dict:
         """Everything the caller sent that a task can be told about.
@@ -1904,8 +1952,9 @@ def setup_task_routes(task_scheduler) -> APIRouter:
                 text = raw.decode("utf-8", errors="replace")
             except Exception:
                 text = ""
-        if len(text) > _WEBHOOK_BODY_MAX:
-            text = text[:_WEBHOOK_BODY_MAX].rstrip() + "\u2026"
+        body_max = _webhook_body_max()
+        if len(text) > body_max:
+            text = text[:body_max].rstrip() + "\u2026"
         payload: Dict[str, Any] = {}
         if text:
             payload["body"] = text
@@ -1989,13 +2038,20 @@ def setup_task_routes(task_scheduler) -> APIRouter:
             # which `node_input_shape` reads for a workflow's first step too.
             fields=WEBHOOK_PAYLOAD_FIELDS,
         )
-        started = await task_scheduler.run_task_now(task_id, trigger=trigger)
+        # `B1866`. The caller is told which run its call started — the id the
+        # `queued` row is written under before the run is spawned — so a
+        # sender that keeps it can match its call to the run in the Runs list.
+        # It names a run of the caller's own making and nothing else; the token
+        # is still the only key (`Law 17`: whoever holds the address already
+        # starts runs with it).
+        run_id = str(uuid.uuid4())
+        started = await task_scheduler.run_task_now(task_id, trigger=trigger, run_id=run_id)
         if not started:
             # `B674` / `P22-11`. The 409 stays; for a workflow whose run is
             # parked it says which run and what it waits for.
             raise HTTPException(409, task_scheduler.in_flight_sentence(task_id)
                                 or "Task is already running")
-        return {"ok": True, "message": "Task triggered via webhook"}
+        return {"ok": True, "message": "Task triggered via webhook", "run_id": run_id}
 
     @router.post("/{task_id}/webhook-regenerate")
     def regenerate_webhook(request: Request, task_id: str):

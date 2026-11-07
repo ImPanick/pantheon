@@ -58,7 +58,34 @@ FOREACH_MAX_ITEMS_RANGE = (1, 1000)
 WAIT_MAX_HOURS_SETTING = "workflow_wait_max_hours"
 WAIT_MAX_HOURS_DEFAULT = 168
 WAIT_MAX_HOURS_RANGE = (1, 720)
-# These two defaults and ranges are stated HERE and nowhere else (`Law 7`,
+
+# `B1857`. How many steps one workflow may hold. It was a constant, twenty
+# (`workflow_document.WORKFLOW_MAX_NODES`), which a person building anything
+# n8n-shaped met within an afternoon, with nothing to move it. Mistake
+# prevention, not a control (`Law 17`): the floor is the old cap, so no
+# document that was ever saved is refused by a lower one, and the top is what
+# the document rule's walks were measured at (`find_loop` is one depth-first
+# pass, `concurrent_arrivals` a reachability over pairs of steps — 501² states
+# at most) and what a 256 KiB document can hold of steps worth drawing.
+# Settings-only, like the longest Wait: one number for the whole install.
+MAX_STEPS_SETTING = "workflow_max_steps"
+MAX_STEPS_DEFAULT = 100
+MAX_STEPS_RANGE = (20, 500)
+
+# `B1883`. How much of the values an AI step reads (its prompt's references)
+# the model is shown, in characters, all of them together. They were shown at
+# a trigger payload's numbers — each cut to 2,000 and the block to 6,000 — so
+# "Summarise {{ steps.fetch.data.body }}" summarised the first 2,000
+# characters of a page with nothing said. Within this every value is shown
+# whole; past it the longest are cut first and the step's log names them and
+# this setting (`workflow_refs.fit_values`). Mistake prevention, not a control
+# (`Law 17`): a model's context is finite. The floor is the old per-value cut,
+# the top the sanity ceiling the record cap uses. Settings-only, like the
+# longest Wait: one number for the install.
+PROMPT_VALUES_MAX_CHARS_SETTING = "workflow_prompt_values_max_chars"
+PROMPT_VALUES_MAX_CHARS_DEFAULT = 20_000
+PROMPT_VALUES_MAX_CHARS_RANGE = (2_000, 1_000_000)
+# These defaults and ranges are stated HERE and nowhere else (`Law 7`,
 # `integrate-d`): `workflow_document` (the save-time check, `WorkflowResources`)
 # and `src/settings.py` (`DEFAULT_SETTINGS`) import them. This module imports
 # nothing of the product at load, so both can.
@@ -154,6 +181,28 @@ def wait_max_hours() -> int:
     return value
 
 
+def prompt_values_max_chars() -> int:
+    """`B1883`. How much of the values an AI step reads its model is shown, in
+    characters, together (`workflow_prompt_values_max_chars`)."""
+    from src.settings import resolve_limit
+
+    lo, hi = PROMPT_VALUES_MAX_CHARS_RANGE
+    value, _source = resolve_limit(
+        PROMPT_VALUES_MAX_CHARS_SETTING, PROMPT_VALUES_MAX_CHARS_DEFAULT,
+        minimum=lo, maximum=hi)
+    return value
+
+
+def max_steps() -> int:
+    """`B1857`. How many steps one workflow may hold (`workflow_max_steps`)."""
+    from src.settings import resolve_limit
+
+    lo, hi = MAX_STEPS_RANGE
+    value, _source = resolve_limit(
+        MAX_STEPS_SETTING, MAX_STEPS_DEFAULT, minimum=lo, maximum=hi)
+    return value
+
+
 def workflow_approval_ttl_seconds(owner: str | None = None) -> int:
     """`P22-17`. A parked workflow step's card deadline, through `P12`'s four
     layers exactly as `tool_approvals.resolve_approval_ttl_seconds` resolves
@@ -216,6 +265,127 @@ def _loads(text):
         return text
 
 
+# ── `B1890` · what a step made, kept whole beside its record ────────────────
+#
+# `big-outputs-dropped`. A step's record is capped (`workflow_node_record_max_
+# chars`, 16,000 by default) and past it becomes a preview marker. That was
+# right for the Runs view and wrong for everything that READ the record: the
+# picker skipped a cut record (so a step that made 20 KB offered no fields),
+# *Test this step* skipped it, and — the one that lost data — after a run
+# paused (a Wait, a card, a takeover) the walker reads records instead of live
+# data, so every reference into a large output read nothing and a Set step
+# "worked" with null. An HTTP reply (up to 1 MB of parsed JSON), an MCP result
+# and a For-each's items are often over 16 KB.
+#
+# Now a cut record keeps its whole output apart (`TaskRunNodeOutput`, the
+# record's retention by ON DELETE CASCADE), with the picker's view of it taken
+# before the cut (`fields`). The preview stays capped. Readers ask
+# `whole_output` / `whole_output_fields`; the record is unchanged in shape.
+#
+# The whole copy has a ceiling of its own — mistake prevention, not a
+# control (`Law 17`): a step that makes more than this is told so on its own
+# log, in words, and a step after a pause that reads it reads nothing (and
+# says "Not found, so left empty"), rather than a row of tens of megabytes.
+WHOLE_OUTPUT_MAX_CHARS = 4_000_000
+
+
+def _whole_fields(out: dict) -> dict:
+    """`{text: {type, example}, data: [{path, type, example}]}` — the
+    picker's view of what a step made (`workflow_refs.flatten_fields`), taken
+    from the WHOLE value."""
+    from src.workflow_refs import flatten_fields
+
+    text = out.get("text")
+    data = out.get("data")
+    return {"text": flatten_fields(text)[0] if text is not None else None,
+            "data": flatten_fields(data) if data is not None else None}
+
+
+def keep_whole_output(db, rec, out: dict) -> str | None:
+    """Keep what `rec` made (`out`, `{text, data}`) whole when its record
+    was cut, or drop a stale copy when it was not. Not committed (the
+    caller commits). Answers the sentence for the step's log when even the
+    whole copy could not be kept, else `None`."""
+    from core.database import TaskRunNodeOutput
+
+    if not is_truncated(_loads(rec.output)):
+        db.query(TaskRunNodeOutput).filter(TaskRunNodeOutput.record_id == rec.id) \
+            .delete(synchronize_session=False)
+        return None
+    try:
+        text = json.dumps(out, default=str, ensure_ascii=False)
+    except (TypeError, ValueError):
+        return None
+    try:
+        fields = json.dumps(_whole_fields(out), default=str, ensure_ascii=False)
+    except Exception:          # the picker's view is a courtesy, never a failed step
+        logger.warning("Could not describe the whole output of step record %s", rec.id,
+                       exc_info=True)
+        fields = None
+    over = len(text) > WHOLE_OUTPUT_MAX_CHARS
+    db.merge(TaskRunNodeOutput(record_id=rec.id, run_id=rec.run_id,
+                               output=None if over else text, fields=fields, chars=len(text)))
+    if over:
+        return (f"What it made was {len(text):,} characters, more than the "
+                f"{WHOLE_OUTPUT_MAX_CHARS:,} kept whole, so only a preview was kept: a step "
+                f"after a pause reads nothing from it.")
+    return None
+
+
+def whole_output(db, rec) -> dict | None:
+    """`{text, data}` a record made, whole: its own `output` when that is
+    whole, else the copy `keep_whole_output` kept — or `None` when neither
+    is (cut past even the whole copy's ceiling, or an older record)."""
+    from core.database import TaskRunNodeOutput
+
+    if rec is None:
+        return None
+    out = _loads(rec.output)
+    if out is None:
+        return {"text": "", "data": None}
+    if isinstance(out, dict) and not is_truncated(out):
+        return {"text": out.get("text") or "", "data": out.get("data")}
+    if db is None:
+        return None
+    row = db.query(TaskRunNodeOutput.output).filter(
+        TaskRunNodeOutput.record_id == rec.id).first()
+    whole = _loads(row[0]) if row is not None and row[0] else None
+    if not isinstance(whole, dict):
+        return None
+    return {"text": whole.get("text") or "", "data": whole.get("data")}
+
+
+def whole_outputs(db, records) -> dict:
+    """`{record id: {text, data}}` for every CUT record among `records` whose
+    whole copy is kept — one query, for a run read back after a pause
+    (`RunState`)."""
+    from core.database import TaskRunNodeOutput
+
+    cut = [r.id for r in records if is_truncated(_loads(getattr(r, "output", None)))]
+    if not cut or db is None:
+        return {}
+    out = {}
+    for record_id, text in (db.query(TaskRunNodeOutput.record_id, TaskRunNodeOutput.output)
+                            .filter(TaskRunNodeOutput.record_id.in_(cut)).all()):
+        whole = _loads(text) if text else None
+        if isinstance(whole, dict):
+            out[record_id] = {"text": whole.get("text") or "", "data": whole.get("data")}
+    return out
+
+
+def whole_output_fields(db, rec) -> dict | None:
+    """The picker's view of what a CUT record made, taken before the cut
+    (`_whole_fields`'s shape), or `None`."""
+    from core.database import TaskRunNodeOutput
+
+    if rec is None or db is None:
+        return None
+    row = db.query(TaskRunNodeOutput.fields).filter(
+        TaskRunNodeOutput.record_id == rec.id).first()
+    value = _loads(row[0]) if row is not None and row[0] else None
+    return value if isinstance(value, dict) else None
+
+
 def record_node_start(db, *, run_id: str, node: dict, seq: int,
                       input_envelope, workflow_version: int | None,
                       owner: str | None = None, dry: bool = False,
@@ -274,6 +444,12 @@ def record_node_end(db, rec, *, status: str, text: str | None = None,
     if text is not None or data is not None:
         out = {"text": text or "", "data": data}
         rec.output = cap_json(out, limit=node_record_max_chars(owner))
+        # `B1890`: a record cut to its cap keeps what it made whole, apart.
+        cut = keep_whole_output(db, rec, out)
+        if cut:
+            kept = _loads(rec.steps)
+            base = list(steps) if steps else (kept if isinstance(kept, list) else [])
+            steps = [*base, {"kind": "progress", "detail": cut, "at": _iso(_utcnow())}]
     if error:
         rec.error = str(error)[:NODE_ERROR_MAX_CHARS]
     if steps:
@@ -331,10 +507,13 @@ def input_summary(stored_input) -> str:
 def node_record_to_dict(rec) -> dict:
     """`NodeRecord`, contract C2 — and `P22-11`/`P22-12`'s two (C-W): `item`,
     the For-each index (null for a step's own record), and `waiting`
-    (`{kind, since, until, approval}` while the step waits, else null)."""
+    (`{kind, since, until, approval}` while the step waits, else null).
+    `B1854` adds `kept_from`: the id of the failed run a retry kept this
+    record from, or null for a step that ran in this run."""
     stored_input = _loads(rec.input)
     steps = _loads(rec.steps)
     return {
+        "kept_from": kept_from(rec),
         "item": getattr(rec, "item", None),
         "waiting": waiting_public(rec),
         "id": rec.id,
@@ -413,6 +592,16 @@ def last_node_record(db, task_id: str, node_id: str):
     `P22-08`'s *from the last run*. A dry run's plan is never "the last run"
     (`B1054`'s defect, closed here by the `dry` flag rather than by a sentence).
     Node ids are per document, so the trigger task's id scopes the search.
+
+    `B1889` (`foreach-last-record-is-an-item`). A For-each's items are kept
+    under the For-each's own step id (`item` is their index), and each starts
+    after the For-each's own record — so the newest record of the step was its
+    LAST ITEM. The picker then offered `{{ steps.fe.data.<the inner step's
+    field> }}` with the last item's value, which is nothing in a real run, and
+    never `items`, `worked` and `failed`; *Test this step* read that field and
+    missed the real one, the reverse of a run; and *What it was handed in the
+    last run* on the For-each was one item's input. A step's own record has
+    `item` null, and only that is "the last run" of the step.
     """
     from core.database import TaskRun, TaskRunNode
 
@@ -420,6 +609,7 @@ def last_node_record(db, task_id: str, node_id: str):
             .join(TaskRun, TaskRun.id == TaskRunNode.run_id)
             .filter(TaskRun.task_id == task_id,
                     TaskRunNode.node_id == str(node_id),
+                    TaskRunNode.item.is_(None),
                     TaskRunNode.dry.is_(False))
             .order_by(TaskRunNode.started_at.desc(), TaskRunNode.seq.desc())
             .first())
@@ -445,6 +635,13 @@ def prune_node_records(db, *, days: int | None = None, now: datetime | None = No
                        TaskRunNode.finished_at < cutoff,
                        ~TaskRunNode.run_id.in_(in_flight))
                .delete(synchronize_session=False))
+    # `B1890`. A whole copy goes with its record — ON DELETE CASCADE does it
+    # wherever foreign keys are on (every SQLite connection here, Postgres);
+    # this is the same rule said once more for a database where they are not.
+    from core.database import TaskRunNodeOutput
+    db.query(TaskRunNodeOutput).filter(
+        ~TaskRunNodeOutput.record_id.in_(db.query(TaskRunNode.id))
+    ).delete(synchronize_session=False)
     db.commit()
     return int(removed or 0)
 
@@ -546,6 +743,137 @@ def record_node_resumed(db, rec) -> dict | None:
     return waiting
 
 
+def record_node_attempt(db, rec) -> int:
+    """`B1855`. A step (or an item) is tried again — its own retries: the
+    record is `running` once more, what its last attempt ended with is
+    cleared, and `attempt` counts one more (`record_node_resumed` counts a
+    resume the same way). Committed. Answers the attempt it is on."""
+    rec.status = "running"
+    rec.attempt = (rec.attempt or 1) + 1
+    rec.finished_at = None
+    rec.port = None
+    rec.error = None
+    rec.output = None
+    rec.waiting = None
+    rec.resume_at = None
+    db.commit()
+    return rec.attempt
+
+
+def end_running_items(db, run_id: str, node_id: str, *, error: str) -> int:
+    """`B1855`. Every For-each item of this step still `running` — the one
+    the step's time limit cut — ended `error`, with why. Committed. Answers
+    how many."""
+    from core.database import TaskRunNode
+
+    rows = (db.query(TaskRunNode)
+            .filter(TaskRunNode.run_id == run_id, TaskRunNode.node_id == node_id,
+                    TaskRunNode.item.isnot(None), TaskRunNode.status == "running")
+            .all())
+    for rec in rows:
+        rec.status = "error"
+        rec.port = "error"
+        rec.error = str(error)[:NODE_ERROR_MAX_CHARS]
+        rec.finished_at = _utcnow()
+    if rows:
+        db.commit()
+    return len(rows)
+
+
+# ── `B1854` · a failed run, retried from one of its steps ───────────────────
+
+#: The key on a copied record's first step-log line naming the run it was kept
+#: from ("Kept from the run at 10:42"), read back as the record's `kept_from`.
+KEPT_FROM_KEY = "kept_from"
+
+
+def downstream_of(graph: dict, node_id: str) -> frozenset:
+    """The ids of every step a path of arrows leads to from `node_id` — along
+    any port — not `node_id` itself. `upstream_of`'s other direction."""
+    leads = {}
+    for edge in graph.get("edges") or ():
+        leads.setdefault(edge.get("from"), set()).add(edge.get("to"))
+    found, frontier = set(), [node_id]
+    while frontier:
+        following = []
+        for current in frontier:
+            for target in leads.get(current, ()):
+                if target != node_id and target not in found:
+                    found.add(target)
+                    following.append(target)
+        frontier = following
+    return frozenset(found)
+
+
+def retry_kept(records, graph: dict, node_id: str) -> list:
+    """`B1854`. The failed run's records a retry from `node_id` keeps: every
+    finished record of a step that is neither `node_id` nor after it — the
+    steps before it and those beside it on other branches, whatever they
+    did, so a step that worked (and sent its mail) is not run again — and,
+    when `node_id` is a For-each, the items of it that worked. `node_id` and
+    every step after it run again."""
+    again = {node_id} | downstream_of(graph, node_id)
+    kept = []
+    for rec in records:
+        if getattr(rec, "dry", False) or rec.status not in STEP_FINISHED:
+            continue
+        if rec.node_id in again:
+            if rec.node_id == node_id and rec.item is not None and rec.status == "success":
+                kept.append(rec)
+            continue
+        kept.append(rec)
+    return kept
+
+
+def copy_kept_records(db, *, run_id: str, records, from_run_id: str, words: str) -> int:
+    """`B1854`. The kept records, copied into the retry as they ended — the
+    same step, item, order, input, output and ending — each with `words`
+    ("Kept from the run at 10:42") as the first line of its own log, under
+    `KEPT_FROM_KEY`. The records ARE the run's state (`RunState`), so the
+    walker treats them as finished and starts what is ready after them.
+    Committed. Answers how many."""
+    from core.database import TaskRunNode, TaskRunNodeOutput
+
+    at = _iso(_utcnow())
+    # `B1890`: a kept record that was cut keeps its whole copy too, so the
+    # retry's later steps read all of what it made.
+    copies = {row.record_id: row for row in db.query(TaskRunNodeOutput).filter(
+        TaskRunNodeOutput.record_id.in_([r.id for r in records])).all()} if records else {}
+    wholes = []
+    for rec in records:
+        steps = _loads(rec.steps)
+        line = {"kind": "progress", "detail": words, KEPT_FROM_KEY: from_run_id, "at": at}
+        new_id = str(uuid.uuid4())
+        whole = copies.get(rec.id)
+        if whole is not None:
+            wholes.append(TaskRunNodeOutput(record_id=new_id, run_id=run_id, output=whole.output,
+                                            fields=whole.fields, chars=whole.chars))
+        db.add(TaskRunNode(
+            id=new_id, run_id=run_id, node_id=rec.node_id, kind=rec.kind,
+            label=rec.label, item=rec.item, seq=rec.seq, status=rec.status,
+            attempt=rec.attempt or 1, dry=False, port=rec.port, reached_by=rec.reached_by,
+            depth=rec.depth, workflow_version=rec.workflow_version,
+            started_at=rec.started_at, finished_at=rec.finished_at, input=rec.input,
+            output=rec.output, error=rec.error, model=rec.model,
+            steps=json.dumps([line, *(steps if isinstance(steps, list) else [])],
+                             default=str)))
+    if wholes:
+        db.flush()              # the records first: a copy names its record
+        db.add_all(wholes)
+    db.commit()
+    return len(records)
+
+
+def kept_from(rec) -> str | None:
+    """`B1854`. The run this record was kept from, for a record a retry
+    copied; `None` for one that ran in its own run."""
+    steps = _loads(rec.steps)
+    for line in steps if isinstance(steps, list) else ():
+        if isinstance(line, dict) and line.get(KEPT_FROM_KEY):
+            return str(line[KEPT_FROM_KEY])
+    return None
+
+
 def end_waiting_records(db, run_id: str, *, status: str, error: str) -> int:
     """Every `waiting` record of this run ended `status` with `error` — the run
     was stopped, switched off, or aborted by a restart, so what its steps
@@ -579,6 +907,42 @@ def waiting_of(rec) -> dict | None:
     return _waiting_of(rec)
 
 
+# ── `B1861` · what started a run, kept once, whole ──────────────────────────
+
+def keep_run_trigger(run, trigger) -> None:
+    """`B1861`. Write what started this run onto its row
+    (`TaskRun.trigger_envelope`), once, when it starts. The caller commits.
+
+    A parked run goes on in a new slot, so the walker read its trigger back
+    from the input of a step the start leads to (`RunState.
+    _trigger_from_records`) — a record held to `workflow_node_record_max_chars`
+    and marked cut past it, so a resumed run of a large webhook read no trigger
+    at all: `{{ steps.start.data… }}` after a Wait or a yes was null. The
+    envelope is already held to `trigger_payload_max_chars` by `build_trigger`,
+    so the row keeps it as it was handed."""
+    if run is None or not isinstance(trigger, dict):
+        return
+    try:
+        run.trigger_envelope = json.dumps(trigger, default=str)
+    except (TypeError, ValueError):
+        logger.warning("Could not keep the trigger of run %s", getattr(run, "id", "?"))
+
+
+def stored_run_trigger(db, run_id: str) -> dict | None:
+    """`B1861`. The trigger `keep_run_trigger` kept for this run, or `None` —
+    a run that had none, or one from before the column."""
+    from core.database import TaskRun
+
+    try:
+        row = (db.query(TaskRun.trigger_envelope)
+               .filter(TaskRun.id == run_id).first())
+    except Exception:
+        logger.warning("Could not read the kept trigger of run %s", run_id, exc_info=True)
+        return None
+    value = _loads(row[0]) if row is not None and row[0] else None
+    return value if isinstance(value, dict) else None
+
+
 # ── `B674` · one workflow runs once at a time, written once ──────────────────
 
 def run_in_flight(db, task_id: str, *, exclude: str | None = None):
@@ -607,18 +971,62 @@ def parked_run(db, task_id: str, *, exclude: str | None = None):
     return q.order_by(TaskRun.started_at.desc()).first()
 
 
+# `B1895` (`clock-words-no-zone`). A time in a run's sentence ("Waiting until
+# 08:00", "Did not start: the 07:00 run is still …", "Nobody answered by
+# 09:30 — …", "Denied by alice at 07:42: …", "Kept from the run at 10:42")
+# said no clock. With no zone on the start it was UTC, and a person in Sydney
+# read 22:00 as their evening; with a zone it was that zone's, and a person
+# elsewhere read it as theirs.
+#
+# The rule: such a time always says its clock. "UTC" when the start has no
+# zone (or one this machine no longer knows, which the time falls back to);
+# otherwise the zone's place, as the trigger form says it ("The time above is
+# Sydney time.", `taskFields.js:_zonePlace`) — "08:00 Sydney time". Always,
+# not only when the zone is not the reader's, because the sentence is written
+# once — into a step's record, a run's result, a skipped row — mostly by a run
+# nobody is watching, and read later by whoever opens it, in whatever zone
+# their browser is in: the server cannot know, when it writes, whose zone the
+# reader's will be.
+CLOCK_UTC_WORDS = "UTC"
+
+
+def zone_place(tz_name: str | None) -> str:
+    """The place in a zone name, as a person says it — the server's half of
+    `taskFields.js:_zonePlace` (`tests/test_a_time_says_its_clock.py` runs
+    that one and holds them equal): `Australia/Sydney` → `Sydney`,
+    `America/Argentina/Buenos_Aires` → `Buenos Aires`; a zone with no place in
+    it (`UTC`) is itself."""
+    name = str(tz_name or "").strip()
+    if "/" not in name:
+        return name
+    return name[name.rindex("/") + 1:].replace("_", " ")
+
+
+def clock_words(tz_name: str | None) -> str:
+    """Which clock a time is on, in words: "UTC", or "<place> time"."""
+    place = zone_place(tz_name)
+    if not place or place.upper() in ("UTC", "GMT"):
+        return CLOCK_UTC_WORDS
+    return f"{place} time"
+
+
 def _clock(value: datetime | None, tz_name: str | None) -> str:
-    """`07:00` on the task's clock (UTC when it has none)."""
+    """`07:00 UTC`, or `18:00 Sydney time` on the task's clock — the time and,
+    since `B1895`, which clock it is on (UTC when the task has no zone, or
+    one `zoneinfo` does not know)."""
     if value is None:
         return "?"
     try:
         from zoneinfo import ZoneInfo
         aware = value.replace(tzinfo=timezone.utc)
         if tz_name:
-            aware = aware.astimezone(ZoneInfo(tz_name))
-        return aware.strftime("%H:%M")
-    except Exception:
-        return value.strftime("%H:%M")
+            try:
+                return f"{aware.astimezone(ZoneInfo(tz_name)):%H:%M} {clock_words(tz_name)}"
+            except Exception:  # noqa: BLE001 — an unknown zone: the time is UTC's, and says so
+                pass
+        return f"{aware:%H:%M} {CLOCK_UTC_WORDS}"
+    except Exception:  # noqa: BLE001 — not a time this can convert: as stored, which is UTC
+        return f"{value.strftime('%H:%M')} {CLOCK_UTC_WORDS}"
 
 
 def _parse_iso(value) -> datetime | None:
@@ -697,8 +1105,13 @@ class RunState:
         least one has.
     """
 
-    def __init__(self, graph: dict, records, *, trigger=None):
+    def __init__(self, graph: dict, records, *, trigger=None, whole=None):
         self.graph = graph
+        # `B1890`. `{record id: {text, data}}` — what each CUT record made,
+        # whole (`whole_outputs`), so a run read back after a pause reads a
+        # large output as the live run did. Left out, a cut record reads
+        # nothing, as it always did.
+        self.whole = dict(whole or {})
         self.nodes = list(graph.get("nodes") or ())
         self.by_id = {n["id"]: n for n in self.nodes}
         self.edges = [e for e in graph.get("edges") or ()]
@@ -851,22 +1264,30 @@ class RunState:
         out = _loads(rec.output)
         if out is None:
             return {"text": "", "data": None}
+        if is_truncated(out) and rec.id in self.whole:
+            return self.whole[rec.id]          # `B1890`: the whole copy
         if is_truncated(out) or not isinstance(out, dict):
             return None
         return {"text": out.get("text") or "", "data": out.get("data")}
 
     def truncated(self, node_id: str) -> bool:
+        """Was what this step made cut, with no whole copy to read?"""
         if node_id in self.live:
             return False
         rec = self.own.get(node_id)
-        return rec is not None and is_truncated(_loads(rec.output))
+        return (rec is not None and is_truncated(_loads(rec.output))
+                and rec.id not in self.whole)
 
-    def context(self, *, item=None, has_item: bool = False) -> dict:
+    def context(self, *, item=None, has_item: bool = False, run_id=None,
+                workflow=None) -> dict:
         """The pure-JSON context a reference reads (`workflow_refs`): every
         finished step's `{data, text, status}` and the start's. A step whose
         record was cut past `workflow_node_record_max_chars` after a resume
-        has no `data` or `text`, so a reference into it is `MISSING`."""
+        has no `data` or `text`, so a reference into it is `MISSING`.
+        `B1879`: and `{{ now }}` (read now, as the step starts) and
+        `{{ run.id }}` / `{{ run.workflow }}` (`workflow_refs.run_roots`)."""
         from src.event_bus import trigger_summary
+        from src.workflow_refs import run_roots
 
         steps = {}
         trigger = self.trigger if isinstance(self.trigger, dict) else None
@@ -885,6 +1306,7 @@ class RunState:
                 entry["data"] = out.get("data")
             steps[node_id] = entry
         ctx = {"steps": json.loads(json.dumps(steps, default=str))}
+        ctx.update(run_roots(run_id, workflow))
         if has_item:
             ctx["item"] = json.loads(json.dumps(item, default=str))
         return ctx

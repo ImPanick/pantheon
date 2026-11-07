@@ -16,7 +16,8 @@ guards and `manage_tasks` all ask one place (`Law 7`).
     step or pinning a sample never makes one;
   * twenty are kept (`MAX_KEPT_VERSIONS`, imported), the oldest pruned, never
     the current one — one row per content version, the current one included, so
-    a run can be drawn on the exact graph it ran;
+    a run can be drawn on the exact graph it ran — and never one a run that has
+    not ended still stands on (`B1858`, `versions_held_by_runs`);
   * a restore writes a NEW version (`source="restored"`); history is linear and
     nothing is lost;
   * "no such workflow" and "no edits yet" are different answers.
@@ -89,6 +90,14 @@ ONLY_A_PERSON_CHECKS = ("Only you can say a step looks right, from the Workbench
                         "token and not your assistant.")
 ONLY_A_PERSON_FIXES = ("Only you can apply a fix, from the Workbench — not an API token and not "
                        "your assistant.")
+# `B1870`. A parked step's yes or no (`P22-17`), and a plain task's (`B1102`):
+# the answer doors refused nobody acting in the owner's name, so the
+# assistant's `app_api` loopback could list the card at `GET …/waiting` and
+# allow its own sealed action. Both doors now ask `request_is_a_person` first,
+# before anything is read or consumed, and say this.
+ONLY_A_PERSON_ANSWERS = ("Only you can answer a step that is waiting for your yes, from the "
+                         "notification or the Workbench — not an API token and not your "
+                         "assistant.")
 
 # `P22-19` (§ 1.2). What a drafted or imported start falls back to, said: the
 # trigger is off, so a wrong guess runs nothing.
@@ -432,6 +441,104 @@ def check_document(db, graph, *, owner: str | None, own_task_id: str | None,
     return parsed
 
 
+# `B1851`. How many problems one ask of `document_problems_of` lists at most:
+# enough to mark every broken step of any draft a person is part-way through,
+# few enough that a pasted document of five hundred broken steps is one short
+# answer, not five hundred sentences.
+PROBLEMS_MAX = 50
+
+
+def _problem(sentence: str, *, reason=None, node_ids=(), field=None) -> dict:
+    """One problem as `POST …/problems` answers it — the shape of a refusal's
+    body (`WorkflowRefused.body`), its `detail` called `sentence`, and every
+    key always there (`field` and `reason` null when there is none)."""
+    return {"node_ids": [str(i) for i in node_ids or ()], "field": field or None,
+            "reason": reason or None, "sentence": sentence}
+
+
+def document_problems_of(db, wf, trigger, *, graph, name=None,
+                         limit: int = PROBLEMS_MAX) -> dict:
+    """`B1851`. Every refusal a save of this draft would give, in the order a
+    save asks — `{problems: [{node_ids, field, reason, sentence}], count,
+    more}` — and nothing written. Empty `problems` is "Save would pass".
+
+    `PUT ?check=true` answers only the FIRST (a save stops there), so the
+    canvas could mark one broken step at a time; this asks every question a
+    save asks and goes on past each answer:
+
+      * the workflow's start (`require_trigger`: `LOST_TRIGGER`), then the
+        `name` when one is sent (`clean_name`'s sentence, `field: "name"`,
+        about no step), as the save route asks them;
+      * a draft that is not a document at all (`parse_graph`) is that one
+        problem — there is nothing to walk;
+      * then the engine's rule, every answer of it (`document_problems`, whose
+        first answer is `validate_document`'s): each step checked in place,
+        the arrows, and the whole — loop, steps nothing leads to, two
+        branches meeting outside a Merge, references to steps that do not run
+        before. Against the owner's tasks, crew and what they can reach now
+        (`owner_rows`, `workflow_resources`), as `check_document` checks it.
+
+    Two questions a save asks are left to the save. An action only an admin
+    may run is `check_document`'s 403 first, before the rule; here it is the
+    rule's own `admin_only` problem ON the step, whose sentence holds the
+    403's words — one problem where the step is, rather than the same one
+    twice. And whether the draft is stale (`base_version`, a 409) is about
+    the moment of saving, not the draft: the canvas learns it from the save.
+
+    De-duplicated (same reason, steps, field and sentence), in that order,
+    and bounded: at most `limit` problems, `more` true when the walk stopped
+    with more to say — the walk is lazy, so it stops there too.
+    """
+    from src.task_action_policy import owner_has_admin_task_privileges
+    from src.workflow_document import DocumentError, document_problems, parse_graph
+
+    found, keys = [], set()
+    more = False
+
+    def add(problem: dict) -> bool:
+        nonlocal more
+        key = (problem["reason"], tuple(problem["node_ids"]), problem["field"],
+               problem["sentence"])
+        if key in keys:
+            return True
+        if len(found) >= limit:
+            more = True
+            return False
+        keys.add(key)
+        found.append(problem)
+        return True
+
+    def answer() -> dict:
+        return {"problems": found, "count": len(found), "more": more}
+
+    if trigger is None:
+        add(_problem(LOST_TRIGGER))
+    if name is not None:
+        try:
+            clean_name(name)
+        except WorkflowRefused as err:
+            add(_problem(err.sentence, field="name"))
+    raw = graph if isinstance(graph, str) else json.dumps(graph)
+    try:
+        parsed = parse_graph(raw)
+    except DocumentError as err:
+        refused = _document_error_refusal(err)
+        add(_problem(refused.sentence, reason=refused.reason, node_ids=refused.node_ids,
+                     field=refused.field))
+        return answer()
+    from src.workflow_effects import workflow_resources
+    tasks_by_id, crew_ids = owner_rows(db, wf.owner)
+    for refusal in document_problems(
+            parsed, owner=wf.owner, tasks_by_id=tasks_by_id, crew_ids=crew_ids,
+            owner_is_admin=owner_has_admin_task_privileges(wf.owner),
+            own_task_id=trigger.id if trigger is not None else None,
+            resources=workflow_resources(wf.owner)):
+        if not add(_problem(refusal.sentence, reason=refusal.reason,
+                            node_ids=refusal.node_ids, field=refusal.field)):
+            break
+    return answer()
+
+
 # ── names ────────────────────────────────────────────────────────────────────
 
 def clean_name(name, *, required: bool = True) -> str | None:
@@ -484,19 +591,55 @@ def _write_version(db, wf, graph: dict, *, source: str) -> None:
     prune_versions(db, wf)
 
 
+def versions_held_by_runs(db, wf) -> frozenset:
+    """`B1858`. The versions a run of this workflow that has not ended still
+    stands on — queued, running or parked (`TASK_RUN_IN_FLIGHT_STATUSES`,
+    `workflow_runs.run_in_flight`'s words) — read from its step records
+    (`TaskRunNode.workflow_version`), the column the walker resumes from
+    (`TaskScheduler._run_workflow`: the first non-dry record's version).
+
+    A run that has not written its first record yet stands on the current
+    version, which `prune_versions` never takes anyway. A dry plan is never in
+    flight, and its records are left out exactly as the resume leaves them out.
+    """
+    from core.database import TASK_RUN_IN_FLIGHT_STATUSES, TaskRun, TaskRunNode
+    if not getattr(wf, "task_id", None):
+        return frozenset()
+    rows = (db.query(TaskRunNode.workflow_version)
+            .join(TaskRun, TaskRun.id == TaskRunNode.run_id)
+            .filter(TaskRun.task_id == wf.task_id,
+                    TaskRun.status.in_(TASK_RUN_IN_FLIGHT_STATUSES),
+                    TaskRunNode.workflow_version.isnot(None),
+                    TaskRunNode.dry.is_(False))
+            .distinct().all())
+    return frozenset(int(version) for (version,) in rows)
+
+
 def prune_versions(db, wf) -> int:
     """Keep the newest `MAX_KEPT_VERSIONS` rows and never the current one out.
 
     `P8-10`'s number, imported rather than typed again: a workflow's history and
     a skill's are one policy (`Law 7`). The import is a module the running app
     has already loaded (the skills manager), so it costs nothing here.
+
+    `B1858`. Nor a version a run still stands on (`versions_held_by_runs`). A
+    run parked on a Wait or a question resumes on the document it started
+    with, read back from its kept version (`graph_of_version`); measured on
+    the merged tree (the engine-triggers audit's t10), a parked run whose
+    workflow was saved twenty-one times while it waited woke to "version N is
+    no longer kept" and ended in error — a person's ordinary edits killed a
+    run they had not touched. Such a version is kept past the twenty for as
+    long as the run is in flight; the first save after it ends prunes it as
+    the policy always has. Nothing is ever kept for a run that has ended.
     """
     from services.memory.skills import MAX_KEPT_VERSIONS
     _, _, _, WorkflowVersion = _models()
     rows = (db.query(WorkflowVersion.id, WorkflowVersion.version)
             .filter(WorkflowVersion.workflow_id == wf.id)
             .order_by(WorkflowVersion.version.desc()).all())
-    doomed = [vid for vid, version in rows[MAX_KEPT_VERSIONS:] if version != wf.version]
+    beyond = [(vid, version) for vid, version in rows[MAX_KEPT_VERSIONS:] if version != wf.version]
+    held = versions_held_by_runs(db, wf) if beyond else frozenset()
+    doomed = [vid for vid, version in beyond if version not in held]
     if doomed:
         db.query(WorkflowVersion).filter(WorkflowVersion.id.in_(doomed)).delete(
             synchronize_session=False)
@@ -607,11 +750,73 @@ def _pins_kept(graph: dict, before: dict) -> dict:
     return out
 
 
+# ── a draft, as the canvas holds it (`B1850`) ────────────────────────────────
+
+DRAFT_NOT_A_DOCUMENT = ("Send the draft as it stands on the canvas (graph): an object whose "
+                        "steps (nodes) and arrows (edges) are lists.")
+
+
+def draft_graph(raw) -> dict:
+    """`B1850`. A draft as the canvas holds it — a step not saved yet, a setting
+    not filled in yet — read only as far as asking what a step can pick from
+    needs: `{nodes: [{id, kind, label, config}], edges: [{from, port, to}]}`.
+
+    Deliberately NOT `parse_graph` or `check_document`. A draft that Save would
+    refuse is exactly the one being built: a new AI step with no prompt yet, an
+    arrow to a step not drawn yet. Before this row the picker read only the
+    stored document, so *Insert a field…* on a step that existed only in the
+    draft was refused, and a person had to save a throwaway version first —
+    which Save refused while that step was incomplete. What is refused here is
+    only what is not a draft at all (400): not an object, or steps or arrows
+    that are not lists. A step without a text id, and an arrow without text
+    ends, cannot be pointed at by a reference, so they are left out rather than
+    refused; whatever else a step says is the save's to judge.
+    """
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except (TypeError, ValueError):
+            raise WorkflowRefused(400, DRAFT_NOT_A_DOCUMENT) from None
+    if not isinstance(raw, dict):
+        raise WorkflowRefused(400, DRAFT_NOT_A_DOCUMENT)
+    nodes_in, edges_in = raw.get("nodes"), raw.get("edges", [])
+    if not isinstance(nodes_in, list) or not isinstance(edges_in, list):
+        raise WorkflowRefused(400, DRAFT_NOT_A_DOCUMENT)
+    from src.workflow_document import PORT_SUCCESS
+    nodes = []
+    for node in nodes_in:
+        if not isinstance(node, dict) or not isinstance(node.get("id"), str) or not node["id"]:
+            continue
+        config = node.get("config")
+        nodes.append({
+            "id": node["id"],
+            "kind": node.get("kind") if isinstance(node.get("kind"), str) else None,
+            "label": node.get("label") if isinstance(node.get("label"), str) else None,
+            "config": dict(config) if isinstance(config, dict) else {},
+            "pinned": None,
+        })
+    edges = []
+    for edge in edges_in:
+        if not isinstance(edge, dict) or not all(isinstance(edge.get(k), str) for k in ("from", "to")):
+            continue
+        port = edge.get("port") if isinstance(edge.get("port"), str) else PORT_SUCCESS
+        edges.append({"from": edge["from"], "port": port, "to": edge["to"]})
+    return {"v": raw.get("v"), "nodes": nodes, "edges": edges}
+
+
 def _step_content(node: dict) -> str:
     """What a person changes when they change a step: its kind, its name and
-    its settings — `content_fingerprint`'s reading of one step, as text."""
-    return json.dumps([node.get("kind"), node.get("label"), node.get("config") or {}],
-                      sort_keys=True, default=str, ensure_ascii=False)
+    its settings — `content_fingerprint`'s reading of one step, as text.
+    `B1856`: and whether it is switched off, read only when it is, so a step
+    that is on reads as it always did. `B1855`: and its retries and time
+    limit, when it has some."""
+    from src.workflow_document import DISABLED_KEY, SETTINGS_KEY
+    content = [node.get("kind"), node.get("label"), node.get("config") or {}]
+    if node.get(DISABLED_KEY) is True:
+        content.append({DISABLED_KEY: True})
+    if node.get(SETTINGS_KEY):
+        content.append({SETTINGS_KEY: node[SETTINGS_KEY]})
+    return json.dumps(content, sort_keys=True, default=str, ensure_ascii=False)
 
 
 def _marks_kept(graph: dict, before: dict, *, by_person: bool) -> dict:
@@ -908,14 +1113,35 @@ def _new_trigger(*, owner, name, fields: dict):
     return task
 
 
-def create_workflow(db, *, owner, name=None):
+def person_zone(tz) -> str | None:
+    """`B1867`. The time zone the browser said the person is in
+    (`Intl.DateTimeFormat().resolvedOptions().timeZone`), when this machine
+    knows it — `valid_timezone`, the one function that decides which zones
+    exist (`P8-32`) — else `None`. Never a refusal: a zone the browser named
+    that this machine does not know leaves the start on the server's clock, as
+    every start was before this row, and the start's form still sets it."""
+    if not isinstance(tz, str) or not tz.strip() or len(tz.strip()) > 64:
+        return None
+    from src.task_scheduler import valid_timezone
+    return valid_timezone(tz.strip())
+
+
+def create_workflow(db, *, owner, name=None, tz=None):
     """A new, empty workflow, switched off. Returns `(wf, trigger, notes)`.
     Created from the engine's `empty_graph` WITHOUT validating it (an empty
-    document is refused at save — `no_steps` — and this one is off)."""
+    document is refused at save — `no_steps` — and this one is off).
+
+    `B1867`. `tz` is the person's time zone (`person_zone`). Before this row a
+    new workflow's start had no `tz_name`, so it was read as UTC: a Wait
+    "until 08:00" and a start "daily at 09:00" ran at the server's 08:00 and
+    09:00, hours from the person's, with nothing saying so — the drafter
+    (`describe`) already took the browser's zone, and an empty workflow did
+    not."""
     from src.workflow_document import VERSION_SOURCE_USER, empty_graph
     _, _, Workflow, _ = _models()
     name = unused_name(db, owner, clean_name(name, required=False) or NEW_WORKFLOW_NAME)
-    trigger = _new_trigger(owner=owner, name=name, fields={})
+    zone = person_zone(tz)
+    trigger = _new_trigger(owner=owner, name=name, fields={"tz_name": zone} if zone else {})
     db.add(trigger)
     db.flush()
     wf = Workflow(id=str(uuid.uuid4()), owner=owner, name=name, task_id=trigger.id,
@@ -929,8 +1155,9 @@ def create_workflow(db, *, owner, name=None):
 
 
 # `P22-19` / `P22-24`. The words a start may store, closed (`TRIGGER_FIELDS`'
-# enums, as the task form offers them).
-START_TRIGGER_TYPES = ("schedule", "event", "webhook")
+# enums, as the task form offers them). `B1853` adds `manual`: a start that is
+# never due and runs only when somebody runs it (`TRIGGER_TYPE_MANUAL`).
+START_TRIGGER_TYPES = ("schedule", "event", "webhook", "manual")
 START_SCHEDULES = ("once", "daily", "weekly", "monthly", "cron")
 START_TRIGGER_COUNT_MAX = 1000
 
@@ -1009,6 +1236,9 @@ def clean_trigger_fields(fields) -> tuple:
                 count = DEFAULT_TRIGGER_COUNT
             out.update({"trigger_type": "event", "trigger_event": event, "trigger_count": count,
                         "schedule": None, "scheduled_time": None})
+    elif kind == "manual":
+        # `B1853`. Nothing to check: it has no time, no event and no address.
+        out.update({"trigger_type": "manual", "schedule": None, "scheduled_time": None})
     else:
         out.update({"trigger_type": "webhook", "schedule": None, "scheduled_time": None})
     if not usable:
@@ -1172,12 +1402,16 @@ def convert_chain(db, *, owner, from_task_id, name=None, positions=None, name_of
     """
     from src.task_scheduler import describe_graph_refusal, load_chain_rows, validate_graph
     from src.workflow_document import (
-        TRIGGER_FIELDS, VERSION_SOURCE_CONVERTED, WORKFLOW_MAX_NODES, DocumentError,
-        chain_to_document,
+        REFUSE_TOO_MANY_STEPS, TRIGGER_FIELDS, VERSION_SOURCE_CONVERTED,
+        WORKFLOW_MAX_STEPS_RANGE, DocumentError, chain_to_document, too_many_steps_refusal,
     )
+    from src.workflow_runs import max_steps
     _, _, Workflow, _ = _models()
     name_of = name_of or (lambda task: task.name)
-    depth = WORKFLOW_MAX_NODES + 1
+    # `B1857`. Read as far as `chain_to_document` walks — the most the step cap
+    # may be set to — and held to the cap in force by `check_document` below.
+    top = WORKFLOW_MAX_STEPS_RANGE[1]
+    depth = top + 1
 
     tasks_by_id, crew_ids = owner_rows(db, owner)
     picked = tasks_by_id.get(str(from_task_id or ""))
@@ -1208,6 +1442,10 @@ def convert_chain(db, *, owner, from_task_id, name=None, positions=None, name_of
     try:
         graph, trigger_fields, engine_notes = chain_to_document(rows, head.id, positions=positions)
     except DocumentError as err:
+        if getattr(err.refusal, "reason", None) == REFUSE_TOO_MANY_STEPS:
+            # Longer than any cap allows: said with the cap in force, which is
+            # the number the person can look up and move (`Law 10`).
+            raise refusal_from(too_many_steps_refusal(top, max_steps(), exact=False)) from None
         raise _document_error_refusal(err) from None
     name = clean_name(name, required=False) or clean_name(f"{name_of(head)}{CONVERTED_SUFFIX}")
     fields = {k: v for k, v in dict(trigger_fields or {}).items() if k in TRIGGER_FIELDS}
@@ -1295,6 +1533,80 @@ def _json_list(raw) -> list:
     except (TypeError, ValueError):
         return []
     return value if isinstance(value, list) else []
+
+
+# `B1854`. Why a run is not retried from a step.
+RETRY_NOT_FAILED = "This run did not fail, so there is nothing to retry."
+RETRY_NO_STEP = ("This run stopped before any of its steps ran, so there is no step to "
+                 "retry it from. Run the workflow again instead.")
+RETRY_SWITCHED_OFF = ("The workflow is switched off, so this run is not retried. Switch it "
+                      "on, or use Test run.")
+
+
+def plan_retry(db, wf, trigger, run, *, node_id=None) -> dict:
+    """`B1854`. What retrying `run` from a step would do, or `WorkflowRefused`
+    (400) saying why it cannot: the run did not fail; no step of it ran; the
+    version it ran is no longer kept (a retry runs the SAME version, never an
+    edit made since); the step named is not in that version, or did not run.
+
+    `node_id` defaults to the step the run failed on (`RunState
+    .unhandled_error`, else its last step that failed or was stopped). The
+    plan: that step, its words, the records kept (`workflow_runs.retry_kept`),
+    what started the failed run (`RunState.trigger`, so a webhook's retry is
+    handed the same body), whether it was a *Test run* (a retry of one is
+    one, `B1852`), and the failed run's clock time for the kept lines. A
+    real run of a workflow switched off is not retried (409): the switch
+    holds a retry as it holds *Run now* (`Law 1`), without a row."""
+    from src import workflow_runs as wr
+    from src.task_scheduler import _resolve_task_timezone, is_test_run
+
+    if run.status != "error":
+        raise WorkflowRefused(400, RETRY_NOT_FAILED)
+    test = is_test_run(run)
+    if not test and (trigger.status or "") != "active":
+        raise WorkflowRefused(409, RETRY_SWITCHED_OFF)
+    records = [r for r in wr.run_node_records(db, run.id) if not r.dry]
+    version = next((r.workflow_version for r in records if r.workflow_version is not None),
+                   None)
+    if not records or version is None:
+        raise WorkflowRefused(400, RETRY_NO_STEP)
+    if version == wf.version:
+        graph = stored_graph(wf)
+    else:
+        graph, kept = graph_of_version(db, wf, version)
+        if not kept:
+            raise WorkflowRefused(
+                400, f"This run ran version {version} of the workflow, which is no longer "
+                     f"kept, so it cannot be retried from a step. Run the workflow again "
+                     f"instead.")
+    state = wr.RunState(graph, records)
+    if node_id:
+        node = state.by_id.get(node_id)
+        if node is None:
+            raise WorkflowRefused(400, f"“{node_id}” is not a step of the version this run ran.")
+        if state.record(node_id) is None:
+            raise WorkflowRefused(
+                400, f"“{node.get('label') or node_id}” did not run in this run, so there is "
+                     f"nothing to retry it from.")
+    else:
+        failed = state.unhandled_error() or next(
+            (state.record(n) for n in reversed(state.finish_order)
+             if (state.status(n) or "") in ("error", "aborted")), None)
+        if failed is None:
+            raise WorkflowRefused(400, "This run did not fail at a step, so there is no step "
+                                       "to retry it from.")
+        node_id = failed.node_id
+        node = state.by_id.get(node_id) or {"id": node_id}
+    return {
+        "from_run": run.id,
+        "node_id": node_id,
+        "label": node.get("label") or node_id,
+        "version": version,
+        "kept": [r.id for r in wr.retry_kept(records, graph, node_id)],
+        "trigger": state.trigger,
+        "test": test,
+        "at": wr._clock(run.started_at, _resolve_task_timezone(db, trigger)),
+    }
 
 
 def graph_of_version(db, wf, version) -> tuple:
@@ -1388,6 +1700,32 @@ def _next_run_of(db, task):
                             tz_name=_resolve_task_timezone(db, task))
 
 
+def needs_a_model(nodes) -> str:
+    """`B1891`. "“Summarise” needs a model." / "“A” and “B” need a model." /
+    "“A”, “B” and “C” need a model." — the steps named as the canvas names
+    them."""
+    names = [quoted(n.get("label") or n.get("id")) for n in nodes]
+    if len(names) == 1:
+        return f"{names[0]} needs a model."
+    return f"{', '.join(names[:-1])} and {names[-1]} need a model."
+
+
+def _model_notes(graph, owner) -> list:
+    """`B1891`. Switching on a workflow whose Prompt, Research or Skill steps
+    have no model to run on says so — a note, never a refusal: the switch is
+    the person's, a model may be added before the first run, and a refusal
+    here would block a schedule set up ahead of time. The sentence is the
+    palette's and the run's (`workflow_effects.model_why`): "“Summarise”
+    needs a model. No model yet. An admin adds one in Settings → Added Models."
+    Before this, the switch said only "Switched on." and every run failed."""
+    from src import workflow_effects as we
+    steps = we.model_steps_of(graph)
+    if not steps:
+        return []
+    why = we.model_why(owner)
+    return [f"{needs_a_model(steps)} {why}"] if why else []
+
+
 def switch_workflow(db, wf, trigger, *, on: bool, name_of=None) -> tuple:
     """On or Off. Returns `(chain_paused, notes)`.
 
@@ -1426,6 +1764,12 @@ def switch_workflow(db, wf, trigger, *, on: bool, name_of=None) -> tuple:
         # because "Switched on" alone would be a promise it cannot keep.
         notes.append("Its schedule has no time left to run at, so it will not run until "
                      "you change when it starts.")
+    from src.task_scheduler import MANUAL_TRIGGER_WORDS, is_manual_trigger
+    if is_manual_trigger(trigger):
+        # `B1853`. On means it MAY be run; nothing will start it by itself.
+        notes.append(f"{MANUAL_TRIGGER_WORDS}: Run now, your assistant or the API start it, "
+                     f"and nothing starts it by itself.")
+    notes.extend(_model_notes(stored_graph(wf), wf.owner))
     chain_paused = None
     if head is not None and (head.status or "active") == "active":
         head.status = "paused"
@@ -1536,3 +1880,38 @@ def find_waiting_step(db, wf, run_id: str, node_id: str, item, approval_id: str)
             or waiting.get("approval_id") != approval_id or asked_item != item):
         raise WorkflowRefused(409, "That step is not waiting on this question any more.")
     return run, rec, waiting
+
+
+def duplicate_workflow(db, wf, trigger):
+    """`B1845`. A copy of `wf` as it is saved now, for its own owner. Returns
+    `(wf, trigger, notes)`. The copy is switched off (design § 8) and named
+    "<name> (copy)" (or the next free name); its start takes the original's
+    settings (`TRIGGER_FIELDS`) and its steps are the stored graph as it is —
+    the same person made them, so nothing is marked to be checked. A
+    webhook start gets an address of its own (`_new_trigger`)."""
+    from src.workflow_document import TRIGGER_FIELDS, VERSION_SOURCE_USER
+    _, _, Workflow, _ = _models()
+    owner = wf.owner
+    base = clean_name(f"{wf.name or NEW_WORKFLOW_NAME} (copy)", required=False) or NEW_WORKFLOW_NAME
+    name = unused_name(db, owner, base)
+    fields = {}
+    if trigger is not None:
+        for key in TRIGGER_FIELDS:
+            value = getattr(trigger, key, None)
+            if value is not None:
+                fields[key] = value
+    made_trigger = _new_trigger(owner=owner, name=name, fields=fields)
+    db.add(made_trigger)
+    db.flush()
+    graph = stored_graph(wf)
+    made = Workflow(id=str(uuid.uuid4()), owner=owner, name=name, task_id=made_trigger.id,
+                    graph=json.dumps(graph), version=1)
+    db.add(made)
+    db.flush()
+    _write_version(db, made, graph, source=VERSION_SOURCE_USER)
+    db.commit()
+    notes = [f"Made {quoted(name)}, a copy of {quoted(wf.name)}. "
+             "It is switched off: it will not run until you switch it on."]
+    if fields.get("trigger_type") == "webhook":
+        notes.append("Its webhook has an address of its own.")
+    return made, made_trigger, notes

@@ -75,14 +75,27 @@ from src.task_scheduler import (
 )
 from src.workflow_logic import (
     CASE_PORT_PREFIX,
+    COMPARE_AS,
+    CONDITION_AS_KEY,
+    DATE_OPERATORS,
     JOIN_WORDS,
     JOINS,
+    OP_MATCHES,
     OPERATORS,
     PORT_OTHERWISE,
     PORT_THEN,
+    SET_ON_MISSING,
+    SET_ON_MISSING_KEY,
+    SET_TYPE_WORDS,
+    SET_TYPES,
     case_port,
     describe_condition,
+    reads_as_moment,
+    set_name_parts,
+    set_names_clash,
+    set_stops_on_missing,
 )
+from src.workflow_pattern import PATTERN_HELP, pattern_problem
 from src.workflow_refs import (
     NODE_ID_MAX,
     NODE_ID_RE,
@@ -95,10 +108,26 @@ from src.workflow_refs import (
     single_ref,
 )
 from src.workflow_slots import (
+    BODY_MODE_RAW,
+    ENTRY_TYPE_JSON,
+    ENTRY_TYPE_NUMBER,
+    ENTRY_TYPE_TEXT,
+    ENTRY_TYPE_YES_NO,
+    ENTRY_TYPES,
+    FILLED_KEY,
+    FILLED_MAX,
     MAPPING_NEVER,
+    SlotError,
+    NEVER_CODE,
     config_leaves,
+    filled_fields,
+    leaf_name,
+    opened_path_problem,
+    opening_problem,
+    path_of,
     path_text,
     slot_for,
+    typed_literal,
 )
 
 # ── Stored values (`FORBIDDEN.md` Part 1) ────────────────────────────────────
@@ -184,6 +213,38 @@ WORKFLOW_VERSION_SOURCES = (VERSION_SOURCE_USER, VERSION_SOURCE_CONVERTED, VERSI
 # `assistant`, even one a person had checked — otherwise the assistant could
 # clear every mark by touching each step and then switch the draft on itself.
 UNCHECKED_KEY = "unchecked"
+
+# `B1856`. A step switched off in this workflow: `"disabled": true` on the step
+# itself, beside its settings — not inside them, because it is not a setting
+# of its kind and every kind can be switched off. A run does not run it: its
+# record is `skipped` with `STEP_SWITCHED_OFF`, it hands on what it was handed
+# (as a Wait does, `TaskScheduler._wait_passes_on`) and the run goes on along
+# its FIRST way out (`ports_of`: "if it works", "then", a Switch's first way),
+# so switching a step off is never the end of the branch it is on. A step that
+# is on has no key at all, so an ordinary save does not change a stored
+# document's bytes or its fingerprint.
+DISABLED_KEY = "disabled"
+STEP_SWITCHED_OFF = "Switched off in this workflow — passed its input on"
+STEP_SWITCHED_OFF_PLAN = ("Switched off in this workflow — it would pass its input on "
+                          "and do nothing else.")
+
+# `B1855`. A step's own retries and time limit: `"settings"` on the step, beside
+# `disabled` and outside `config` — they are the engine's, asked of every kind
+# alike, not a setting of the kind (`NODE_CONFIG_FIELDS`). `retries` is how many
+# times a FAILED attempt is tried again (a step that parks, waits or asks is not
+# failing), `retry_wait_seconds` how long it waits first, and `timeout_seconds`
+# what one attempt may take (0 is none). A step with no `settings` has no key
+# and runs exactly as it always did: one attempt, no limit of its own. A Wait
+# and a Merge take none (they make nothing that can fail or take long). On a
+# For-each the settings are the whole step's — an attempt that left an item
+# failed is tried again for the items that did not work — and its repeated
+# step may carry its own (`config.step.settings`), which are each item's.
+SETTINGS_KEY = "settings"
+STEP_SETTINGS_DEFAULTS = {"retries": 0, "retry_wait_seconds": 30, "timeout_seconds": 0}
+STEP_RETRIES_RANGE = (0, 5)
+STEP_RETRY_WAIT_RANGE = (1, 3600)
+STEP_TIMEOUT_RANGE = (5, 86400)
+
 ORIGIN_DRAFTED = "drafted"
 ORIGIN_IMPORTED = "imported"
 ORIGIN_ASSISTANT = "assistant"
@@ -212,6 +273,21 @@ ON_ERROR_CONTINUE = "continue"
 FOREACH_ON_ERROR = (ON_ERROR_STOP, ON_ERROR_CONTINUE)
 HTTP_METHODS = ("GET", "POST", "PUT", "PATCH", "DELETE")
 BODY_MODE_JSON = "json"
+# `B1885`. `json` is the body's fields, sent as a JSON object (as it always
+# was); `raw` (`workflow_slots.BODY_MODE_RAW`) is `raw_body`, the JSON the
+# author writes whole. A body field's `type` is one of `workflow_slots.
+# ENTRY_TYPES`. What an HTTP step hands on (`response`): `body`, the answer's
+# parsed body as before (and what a step with no `response` hands on), or
+# `full` — `{http_status, headers, body}`.
+BODY_MODES = (BODY_MODE_JSON, BODY_MODE_RAW)
+HTTP_RESPONSE_BODY = "body"
+HTTP_RESPONSE_FULL = "full"
+HTTP_RESPONSES = (HTTP_RESPONSE_BODY, HTTP_RESPONSE_FULL)
+# The keys `full` hands on, in the step's `data`.
+HTTP_FULL_KEYS = ("http_status", "headers", "body")
+RAW_BODY_MAX_BYTES = 32 * 1024
+ENTRY_TYPE_WORDS = {ENTRY_TYPE_TEXT: "text", ENTRY_TYPE_NUMBER: "a number",
+                    ENTRY_TYPE_YES_NO: "yes or no", ENTRY_TYPE_JSON: "JSON"}
 CODE_LANGUAGES = ("python", "bash")
 ANSWER_TYPES = ("text", "number", "yes/no", "list")
 
@@ -229,12 +305,15 @@ NODE_CONFIG_FIELDS = {
     NODE_KIND_RUN_TASK: ("task_id",),
     NODE_KIND_IF: ("conditions", "join"),
     NODE_KIND_SWITCH: ("cases",),
-    NODE_KIND_SET: ("fields",),
+    NODE_KIND_SET: ("fields", "on_missing"),   # `B1881`: on_missing
     NODE_KIND_MERGE: ("mode",),
-    NODE_KIND_WAIT: ("mode", "minutes", "time", "tz"),
+    NODE_KIND_WAIT: ("mode", "minutes", "time", "tz", FILLED_KEY),
     NODE_KIND_FOREACH: ("list", "step", "on_error"),
-    NODE_KIND_HTTP: ("integration", "method", "path", "headers", "query", "body", "body_mode"),
-    NODE_KIND_MCP: ("tool", "args"),
+    NODE_KIND_HTTP: ("integration", "method", "path", "headers", "query", "body", "body_mode",
+                     "raw_body", "response", FILLED_KEY),
+    # `B1884`: `filled` (`workflow_slots.FILLED_KEY`) — the settings the
+    # author opened to a value from an earlier step, on the kinds that have one.
+    NODE_KIND_MCP: ("tool", "args", FILLED_KEY),
     NODE_KIND_SKILL: ("skill", "prompt", "model", "endpoint_url", "max_steps", "output_target"),
     NODE_KIND_CODE: ("language", "source", "timeout_seconds", "input"),
 }
@@ -261,11 +340,24 @@ STAND_IN_FIELDS = (
 
 # ── Caps (mistake prevention, not a control — `Law 17`) ─────────────────────
 #
-# Twenty steps also bounds every walk here. `concurrent_arrivals` and
+# The step cap also bounds every walk here. `concurrent_arrivals` and
 # `find_loop` do NOT enumerate paths (with fan-out the worst DAG on 20 steps has
 # 2^18 of them): the loop check is one depth-first pass, and the merge rule a
-# reachability over pairs of steps, at most 21² states.
-WORKFLOW_MAX_NODES = 20
+# reachability over pairs of steps, at most (cap + 1)² states.
+#
+# `B1857`. The cap is a setting now, `workflow_max_steps` (default 100, from 20
+# to 500 — the walker's module states the number and its bounds, as it does the
+# For-each cap's and the longest Wait's), and it arrives here resolved, in
+# `WorkflowResources.max_steps`, so this module still reads no settings. It was
+# this constant, twenty. `WORKFLOW_MAX_NODES` stays, the name contract C1 holds
+# (`SLICE-B-DESIGN` § 7), and now means the cap as shipped — the setting's
+# default — not the cap in force (`step_cap`).
+from src.workflow_runs import (  # noqa: E402
+    MAX_STEPS_DEFAULT as WORKFLOW_MAX_STEPS_DEFAULT,
+    MAX_STEPS_RANGE as WORKFLOW_MAX_STEPS_RANGE,
+    MAX_STEPS_SETTING as WORKFLOW_MAX_STEPS_SETTING,
+)
+WORKFLOW_MAX_NODES = WORKFLOW_MAX_STEPS_DEFAULT
 WORKFLOW_GRAPH_MAX_BYTES = 256 * 1024
 NODE_LABEL_MAX = 120
 CASE_LABEL_MAX = 60
@@ -341,7 +433,9 @@ WORKFLOW_REFUSAL_REASONS = {
     REFUSE_TOO_BIG: f"the workflow is larger than {WORKFLOW_GRAPH_MAX_BYTES // 1024} KiB",
     REFUSE_VERSION: "the workflow was saved by a newer Pantheon",
     REFUSE_NO_STEPS: "the workflow has no steps",
-    REFUSE_TOO_MANY_STEPS: f"the workflow has more than {WORKFLOW_MAX_NODES} steps",
+    # `B1857`: the number is the cap in force, said in the sentence
+    # (`too_many_steps_refusal`), not this lead's.
+    REFUSE_TOO_MANY_STEPS: "the workflow has more steps than it may hold",
     REFUSE_BAD_ID: "a step has an id that cannot be used",
     REFUSE_DUPLICATE_ID: "two steps have the same id",
     REFUSE_BAD_KIND: "a step is of a kind this Pantheon does not run",
@@ -447,9 +541,35 @@ class WorkflowResources(NamedTuple):
     workstation_why: str | None = WORKSTATION_UNCHECKED
     foreach_max_items: int = WORKFLOW_FOREACH_MAX_ITEMS_DEFAULT
     wait_max_hours: int = WORKFLOW_WAIT_MAX_HOURS_DEFAULT
+    # `B1857`. The most steps the document may hold (`workflow_max_steps`).
+    max_steps: int = WORKFLOW_MAX_NODES
 
 
 EMPTY_RESOURCES = WorkflowResources()
+
+
+def step_cap(resources) -> int:
+    """`B1857`. The cap in force: `resources.max_steps`, held to the setting's
+    bounds whatever a caller built (a stand-in of a file's import, a test), so
+    no `WorkflowResources` can lift the walks past what they were measured at."""
+    lo, hi = WORKFLOW_MAX_STEPS_RANGE
+    cap = getattr(resources, "max_steps", None)
+    if isinstance(cap, bool) or not isinstance(cap, int):
+        cap = WORKFLOW_MAX_NODES
+    return max(lo, min(hi, cap))
+
+
+def too_many_steps_refusal(count: int, cap: int, *, exact: bool = True) -> DocumentRefusal:
+    """`B1857`. The refusal of a document over the cap, naming the cap in force
+    and the setting that moves it — the For-each cap's and the longest Wait's
+    move — so the number a person reads is the number that refused them.
+    `exact=False` when only a lower bound of `count` is known (a chain whose
+    walk stopped at its bound): "it has more than N"."""
+    has = f"it has {count}" if exact else f"it has more than {count}"
+    return DocumentRefusal(
+        REFUSE_TOO_MANY_STEPS, (),
+        f"The workflow has more than {cap} steps (the “{WORKFLOW_MAX_STEPS_SETTING}” "
+        f"setting): {has}. Split it, or run part of it as its own task.")
 
 
 def _mcp_info(resources: WorkflowResources, tool) -> dict | None:
@@ -537,6 +657,10 @@ def parse_graph(raw) -> dict:
     `P22-19`: a step that carries an `unchecked` mark keeps it, shaped
     (`_mark`); a step with none has no `unchecked` key at all (read it as
     null), so an ordinary save does not change a stored document's bytes.
+    `B1856`: a step switched off keeps `disabled: true`; `false` is dropped
+    (it is the default) and anything that is not true or false is refused.
+    `B1855`: a step's `settings` (its retries and time limit) are kept when
+    it has any, as given — `validate_document` reads them; `{}` is dropped.
     Every other key is still dropped.
     """
     if isinstance(raw, (bytes, bytearray)):
@@ -601,6 +725,19 @@ def parse_graph(raw) -> dict:
         mark = _mark(node.get(UNCHECKED_KEY), label, node_id)
         if mark is not None:
             shaped[UNCHECKED_KEY] = mark
+        disabled = node.get(DISABLED_KEY)
+        if disabled is not None and not isinstance(disabled, bool):
+            _fail(REFUSE_UNREADABLE, (node_id,),
+                  f"{_called(label)} is switched on or off by something that is neither "
+                  f"true nor false")
+        if disabled:
+            shaped[DISABLED_KEY] = True                 # `B1856`
+        settings = node.get(SETTINGS_KEY)
+        if settings is not None and not isinstance(settings, dict):
+            _fail(REFUSE_UNREADABLE, (node_id,),
+                  f"{_called(label)} has retries and a time limit that are not an object")
+        if settings:
+            shaped[SETTINGS_KEY] = dict(settings)       # `B1855`
         nodes.append(shaped)
     edges = []
     for index, edge in enumerate(edges_in, start=1):
@@ -656,32 +793,61 @@ def ports_of(node) -> tuple:
     return ()
 
 
-_PORT_PHRASES = {
+# `B1893` (`port-words`). The words a way out of a step is called by — the
+# server's half of the canvas's own table, kept in one place so a run's
+# sentence, a step test's, a save refusal's and a loop refusal's say what the
+# arrow on the canvas says. The browser's half is `PORT_WORDS` and
+# `ONLY_WAY_WORD` in `static/js/tasks/workflowDiagram.js`, and the rule for a
+# Switch case and a step with one way out is `portWordsOf` in
+# `static/js/workbench/workflowSource.js`. The audit found three wordings for
+# one arrow: the canvas said "if so", a run said "Went the “then” way."; the
+# canvas said "if Urgent", a run said "Went the “Urgent” way." and a loop
+# refusal "goes the “Urgent” way"; the canvas said "then" out of a Set step,
+# a loop refusal said "works". `tests/test_a_way_out_has_one_name.py` runs the
+# browser's table and rule under node and holds the two halves equal, so a
+# word changed on one side and not the other fails there.
+PORT_PHRASES = {
     PORT_SUCCESS: "if it works",
     PORT_ERROR: "if it fails",
-    PORT_THEN: "then",
+    PORT_THEN: "if so",
     PORT_OTHERWISE: "otherwise",
 }
+# A step with one way out (Set fields, Merge, Wait) leaves by `success`, and
+# "if it works" would say it might not: it says "then" (`ONLY_WAY_WORD`).
+ONLY_WAY_PHRASE = "then"
+# A Switch case reads "if <its label>", or "if this case" when it has none.
+CASE_PHRASE = "if {label}"
+CASE_NO_LABEL_PHRASE = "if this case"
+# The name this table had before `B1893`, kept (Law 1).
+_PORT_PHRASES = PORT_PHRASES
 
 
 def port_words(node, port: str) -> str:
-    """The words a person reads for `port` out of `node`: "if it works", "if
-    it fails", "then", "otherwise", or a Switch case's own label."""
-    if isinstance(port, str) and port.startswith(CASE_PORT_PREFIX) and isinstance(node, dict):
+    """The words a person reads for `port` out of `node`, as the canvas draws
+    them on that arrow (`portWordsOf`): "if it works", "if it fails", "if so",
+    "otherwise", "if <a case's label>" (or "if this case"), and "then" out of
+    a step whose only way out is `success`."""
+    if isinstance(port, str) and port.startswith(CASE_PORT_PREFIX):
         case_id = port[len(CASE_PORT_PREFIX):]
-        for case in (node.get("config") or {}).get("cases") or ():
-            if isinstance(case, dict) and case.get("id") == case_id:
-                return str(case.get("label") or case_id)
-        return case_id
-    return _PORT_PHRASES.get(port, str(port))
+        cases = (node.get("config") or {}).get("cases") if isinstance(node, dict) else None
+        for case in cases if isinstance(cases, list) else ():
+            if isinstance(case, dict) and str(case.get("id")) == case_id:
+                label = str(case.get("label") or "").strip()
+                return CASE_PHRASE.format(label=label) if label else CASE_NO_LABEL_PHRASE
+        return CASE_NO_LABEL_PHRASE
+    if port == PORT_SUCCESS and isinstance(node, dict) and ports_of(node) == (PORT_SUCCESS,):
+        return ONLY_WAY_PHRASE
+    return PORT_PHRASES.get(port, str(port))
 
 
 def _when_words(node, port: str) -> str:
     """An arrow's `when` for `describe_graph_refusal`, which reads the two
     task words itself ("works" / "fails") and any other `when` as written —
-    so a loop through a logic step's port is told "goes the “Urgent” way" at
-    save and at run without editing that function (§ 1.3)."""
-    if port in PORTS:
+    so a loop through a logic step's port is told "goes the “if Urgent” way"
+    at save and at run without editing that function (§ 1.3). `B1893`: out of
+    a step with one way out the canvas says "then", not "if it works", so the
+    loop is told "goes the “then” way" too."""
+    if port in PORTS and port_words(node, port) != ONLY_WAY_PHRASE:
         return port
     return f"goes the “{port_words(node, port)}” way"
 
@@ -903,9 +1069,13 @@ def concurrent_arrivals(g: dict) -> list:
     if not start_edges(g):
         for node in _entries(g):
             out[START_KEY].setdefault(PORT_SUCCESS, []).append(node["id"])
+    # `B1857`. What each step reaches, as a bit set over `order` (a step is
+    # its own bit): the cap went from twenty steps to as many as five hundred,
+    # and a set of ids per step was twenty steps' worth of work.
+    bit = {node_id: 1 << i for i, node_id in enumerate(order)}
     reach = {}
     for node_id in reversed(order):
-        found = {node_id}
+        found = bit[node_id]
         for targets in out[node_id].values():
             for t in targets:
                 found |= reach[t]
@@ -924,20 +1094,32 @@ def concurrent_arrivals(g: dict) -> list:
             if state not in states:
                 states.add(state)
                 frontier.append(state)
+    # `B1857`. "A walker stands on X1 while the other stands on a later step
+    # that reaches X2", gathered once per X1 — `beside[a]`, every step reached
+    # from a state `(a, later)` — so a pair of arrows is one lookup. It was a
+    # pass over every state for every pair: at the new cap's top, a fan-in of
+    # 498 arrows into one Merge asked it 124,000 times over 250,000 states and
+    # had not finished after ten minutes. The same states, the same rule.
+    beside = {}
+    for a, b in states:
+        if b != START_KEY and index[b] > index[a]:
+            beside[a] = beside.get(a, 0) | reach[b]
+    into = {}
+    for e in arrows:
+        into.setdefault(e["to"], []).append(e)
     found = []
     for node_id in order:
-        incoming = list({(e["from"], e["port"]): e for e in reversed(arrows)
-                         if e["to"] == node_id}.values())[::-1]
+        incoming = list({(e["from"], e["port"]): e
+                         for e in reversed(into.get(node_id, ()))}.values())[::-1]
         for i, e1 in enumerate(incoming):
             for e2 in incoming[i + 1:]:
                 if e1["from"] == e2["from"]:
                     continue  # one step, two ports: it leaves by one
                 x1, x2 = (e1, e2) if index[e1["from"]] < index[e2["from"]] else (e2, e1)
                 a, b = x1["from"], x2["from"]
-                together = any(s[0] == a and s[1] != START_KEY and index[s[1]] > index[a]
-                               and b in reach.get(s[1], ()) for s in states)
+                together = bool(beside.get(a, 0) & bit[b])
                 if not together and (a, a) in states:
-                    together = any(b in reach.get(t, ()) for t in out[a].get(x1["port"], ()))
+                    together = any(reach[t] & bit[b] for t in out[a].get(x1["port"], ()))
                 if together:
                     found.append(Arrival(node_id, e1, e2))
     return found
@@ -1029,10 +1211,14 @@ def _check_answer_fields(key, value):
 
 
 def _condition_problem(condition) -> str | None:
-    if not isinstance(condition, dict) or set(condition) - {"left", "op", "right"}:
+    # `B1880`: and what its sides are compared as (`as`), when it says.
+    if not isinstance(condition, dict) or set(condition) - {"left", "op", "right", CONDITION_AS_KEY}:
         return "each condition is a field, a test and a value"
     if not isinstance(condition.get("op"), str):
         return "each condition needs a test"
+    if condition.get(CONDITION_AS_KEY) is not None and condition.get(CONDITION_AS_KEY) not in COMPARE_AS:
+        return (f"a condition compares as {', '.join(COMPARE_AS)}, or says nothing and "
+                f"compares as it looks")
     if not _is_scalar(condition.get("left")):
         return "a condition's field must be text"
     right = condition.get("right")
@@ -1087,6 +1273,89 @@ def _check_entries(key, value):
     return None
 
 
+def _check_body_entries(key, value):
+    """`B1885`. An HTTP body: the entries `_check_entries` takes, each of which
+    may also say its `type` (`workflow_slots.ENTRY_TYPES`)."""
+    if value is None:
+        return None
+    if not isinstance(value, list) or len(value) > ENTRIES_MAX:
+        return f"“{key}” must be a list of up to {ENTRIES_MAX} names and values"
+    for entry in value:
+        if not isinstance(entry, dict) or set(entry) - {"name", "value", "type"}:
+            return f"each of “{key}” is a name, a value and what type it is sent as"
+        if not isinstance(entry.get("name"), str):
+            return f"each of “{key}” needs a name"
+        if not _is_json(entry.get("value")):
+            return f"a value in “{key}” is not text, a number, yes/no or a list"
+        if entry.get("type") is not None and entry.get("type") not in ENTRY_TYPES:
+            return (f"a field of “{key}” is sent as {entry.get('type')!r}; it is sent as "
+                    f"{', '.join(ENTRY_TYPES)}")
+    return None
+
+
+def _check_raw_body(key, value):
+    """`B1885`. The JSON an HTTP step's author writes whole: an object or a
+    list, every name text that holds no reference (a name is the author's,
+    never filled), at most `RAW_BODY_MAX_BYTES`."""
+    if value is None:
+        return None
+    if not isinstance(value, (dict, list)) or not _is_json(value):
+        return f"“{key}” must be a JSON object or list"
+    if len(json.dumps(value, ensure_ascii=False).encode("utf-8")) > RAW_BODY_MAX_BYTES:
+        return f"“{key}” is larger than {RAW_BODY_MAX_BYTES // 1024} KiB"
+
+    def names(v):
+        if isinstance(v, dict):
+            for k, item in v.items():
+                yield k
+                yield from names(item)
+        elif isinstance(v, list):
+            for item in v:
+                yield from names(item)
+
+    for name in names(value):
+        if references_in_text(name):
+            return (f"a name in “{key}” holds a reference; a name is typed, and only a "
+                    f"value may be filled from another step")
+    return None
+
+
+def _check_filled(key, value):
+    """`B1884`. The settings a step's author opened: a list of at most
+    `FILLED_MAX` fields, each named as a panel names it (`path`,
+    `args.ticket_id`, `query[0].value`), none twice. Which may be opened is
+    `_filled_problem`'s, which needs the tool's schema."""
+    if value is None:
+        return None
+    if not isinstance(value, list) or len(value) > FILLED_MAX:
+        return f"“{key}” must be a list of up to {FILLED_MAX} fields"
+    if not all(isinstance(f, str) and path_of(f) for f in value):
+        return f"each of “{key}” names one of the step's fields, such as args.ticket_id"
+    if len(set(value)) != len(value):
+        return f"“{key}” names a field twice"
+    return None
+
+
+def _check_set_fields(key, value):
+    """`B1879`. A Set step's fields: `_check_entries`' name and value, and an
+    optional `type` from `workflow_logic.SET_TYPES`."""
+    if value is None:
+        return None
+    if not isinstance(value, list) or len(value) > ENTRIES_MAX:
+        return f"“{key}” must be a list of up to {ENTRIES_MAX} names and values"
+    for entry in value:
+        if not isinstance(entry, dict) or set(entry) - {"name", "value", "type"}:
+            return f"each of “{key}” is a name, a value and what the value is"
+        if not isinstance(entry.get("name"), str):
+            return f"each of “{key}” needs a name"
+        if not _is_json(entry.get("value")):
+            return f"a value in “{key}” is not text, a number, yes/no or a list"
+        if entry.get("type") is not None and entry.get("type") not in SET_TYPES:
+            return (f"the field {entry['name']!r} is {entry.get('type')!r}; a field is "
+                    f"{', '.join(SET_TYPES)}, or says nothing and is as it comes")
+    return None
+
+
 def _check_args(key, value):
     if value is None:
         return None
@@ -1097,11 +1366,77 @@ def _check_args(key, value):
     return None
 
 
+def _settings_problem(settings) -> tuple | None:
+    """`B1855`. `(field, words)` — what is wrong with a step's retries and
+    time limit, said of the step ("tries again 9 times; …"), or `None`."""
+    if settings is None:
+        return None
+    if not isinstance(settings, dict):
+        return SETTINGS_KEY, "has retries and a time limit that are not an object"
+    for key in settings:
+        if key not in STEP_SETTINGS_DEFAULTS:
+            return f"{SETTINGS_KEY}.{key}", (f"has “{key}”, which is not one of its retries "
+                                             f"or its time limit")
+
+    def whole(value):
+        return isinstance(value, int) and not isinstance(value, bool)
+
+    retries = settings.get("retries")
+    lo, hi = STEP_RETRIES_RANGE
+    if retries is not None and not (whole(retries) and lo <= retries <= hi):
+        return f"{SETTINGS_KEY}.retries", (f"tries again {retries!r} times; a step tries again "
+                                           f"from {lo} to {hi} times")
+    wait = settings.get("retry_wait_seconds")
+    lo, hi = STEP_RETRY_WAIT_RANGE
+    if wait is not None and not (whole(wait) and lo <= wait <= hi):
+        return f"{SETTINGS_KEY}.retry_wait_seconds", (
+            f"waits {wait!r} seconds before it tries again; that is from {lo} to {hi} seconds")
+    limit = settings.get("timeout_seconds")
+    lo, hi = STEP_TIMEOUT_RANGE
+    if limit is not None and not (whole(limit) and (limit == 0 or lo <= limit <= hi)):
+        return f"{SETTINGS_KEY}.timeout_seconds", (
+            f"has a time limit of {limit!r} seconds; that is 0 (none) or from {lo} to {hi} "
+            f"seconds")
+    return None
+
+
+def step_settings(node) -> dict | None:
+    """`B1855`. A step's retries and time limit, the defaults filled in —
+    or `None` for a step that has none, which runs as every step always did.
+    Read after `validate_document` has passed the document."""
+    raw = node.get(SETTINGS_KEY) if isinstance(node, dict) else None
+    if not isinstance(raw, dict) or not raw:
+        return None
+    out = dict(STEP_SETTINGS_DEFAULTS)
+    out.update({k: v for k, v in raw.items() if k in STEP_SETTINGS_DEFAULTS})
+    return out
+
+
+def _step_settings_refusal(node: dict) -> DocumentRefusal | None:
+    """`B1855`. Why this step's retries and time limit cannot be used."""
+    settings = node.get(SETTINGS_KEY)
+    if settings is None:
+        return None
+    if node.get("kind") in (NODE_KIND_WAIT, NODE_KIND_MERGE):
+        what = "Wait" if node.get("kind") == NODE_KIND_WAIT else "Merge"
+        return _refusal(REFUSE_BAD_SETTING, (node["id"],),
+                        f"{_called(node)} is a {what}, which is not tried again and has no "
+                        f"time limit of its own", SETTINGS_KEY)
+    found = _settings_problem(settings)
+    if found is None:
+        return None
+    field, words = found
+    return _refusal(REFUSE_BAD_SETTING, (node["id"],), f"{_called(node)} {words}", field)
+
+
 def _check_step(key, value):
     if value is None:
         return None
-    if not isinstance(value, dict) or set(value) - {"kind", "label", "config"}:
+    if not isinstance(value, dict) or set(value) - {"kind", "label", "config", SETTINGS_KEY}:
         return f"“{key}” must be one step: a kind, a name and its settings"
+    found = _settings_problem(value.get(SETTINGS_KEY))
+    if found is not None:
+        return f"the step it repeats {found[1]}"
     if not isinstance(value.get("kind"), str):
         return f"“{key}” needs a kind"
     if value.get("label") is not None and not isinstance(value.get("label"), str):
@@ -1117,12 +1452,14 @@ _FIELD_CHECKS = {
     "answer_fields": _check_answer_fields,
     "conditions": _check_conditions,
     "cases": _check_cases,
-    "fields": _check_entries,
+    "fields": _check_set_fields,
     "headers": _check_entries,
     "query": _check_entries,
-    "body": _check_entries,
+    "body": _check_body_entries,
+    "raw_body": _check_raw_body,
     "input": _check_entries,
     "args": _check_args,
+    FILLED_KEY: _check_filled,
     "step": _check_step,
     "timeout_seconds": _check_whole(*CODE_TIMEOUT_RANGE),
     "minutes": _check_whole(1, WORKFLOW_WAIT_MAX_HOURS_RANGE[1] * 60),
@@ -1160,8 +1497,11 @@ _FIELD_WORDS = {
     "list": "List", "step": "Step", "on_error": "If an item fails",
     "integration": "Integration", "method": "Method", "path": "Path", "headers": "Header",
     "query": "Query", "body": "Body", "body_mode": "Body", "tool": "Tool",
+    "raw_body": "Body", "response": "What it hands on",
     "args": "Argument", "skill": "Skill", "language": "Language", "source": "Code",
     "timeout_seconds": "Time limit", "input": "Input",
+    FILLED_KEY: "Filled from an earlier step",
+    "on_missing": "If a field is not there",
 }
 
 
@@ -1183,6 +1523,9 @@ def field_words(node: dict, path) -> str:
         return next((p.get("label") for p in params if p.get("label")), "Settings")
     if kind == NODE_KIND_MCP and path[0] == "args" and len(path) > 1:
         return f"“{path[1]}”"
+    if kind == NODE_KIND_HTTP and path[0] == "raw_body" and leaf_name(path):
+        # `B1885`: a text in the body the author wrote, by the name it is under.
+        return f"Body “{leaf_name(path)}”"
     if path[0] in ("query", "body", "headers", "input", "fields") and len(path) > 1 \
             and isinstance(path[1], int):
         try:
@@ -1196,17 +1539,55 @@ def field_words(node: dict, path) -> str:
     return _FIELD_WORDS.get(path[0], str(path[0]))
 
 
+def _filled_problem(node: dict, schema) -> DocumentRefusal | None:
+    """`B1884`. Every setting a step's author opened (`FILLED_KEY`) is one
+    that may be opened (`workflow_slots.opening_problem`): an MCP argument of
+    one value whose name says nothing about who or where the work goes, a
+    command, a file, a key or an access level; an HTTP step's path, query or
+    body value; a Wait's time. Refused on that field, with why — so ticking
+    `to`, `channel` or `url` open is a refusal the person reads, never a
+    setting that quietly stays typed. A For-each's inner step is asked as
+    its own."""
+    config = node.get("config") or {}
+    steps = [(node, ())]
+    inner = config.get("step") if node.get("kind") == NODE_KIND_FOREACH else None
+    if isinstance(inner, dict) and isinstance(inner.get("config"), dict):
+        steps.append(({"id": node["id"], "kind": inner.get("kind"),
+                       "config": inner["config"]}, ("step", "config")))
+    for one, prefix in steps:
+        for field in (one.get("config") or {}).get(FILLED_KEY) or ():
+            path = path_of(field)
+            why = opening_problem(one, path, mcp_schema=schema) if path else OPEN_NO_FIELD
+            if why is None:
+                continue
+            where = (*prefix, *path) if path else (*prefix, FILLED_KEY)
+            return _refusal(REFUSE_MAPPED_NEVER, (node["id"],),
+                            f"{_called(node)}, {field_words(node, where)}, cannot be filled "
+                            f"from an earlier step. {why}", path_text(where))
+    return None
+
+
+# `B1884`: a `filled` entry that names no field (`_check_filled` refuses it
+# first; this is the sentence if it is ever reached).
+OPEN_NO_FIELD = "It names no field of this step."
+
+
 def _reference_problem(node: dict, resources: WorkflowResources) -> DocumentRefusal | None:
     """`P22-09`, the part that needs no arrows: every text in a `never` setting
     holds no reference; every text in a `value` setting parses; `item` is read
-    only by the step inside a For-each."""
+    only by the step inside a For-each. `B1884`: first, every setting the
+    author opened may be opened (`_filled_problem`)."""
     node_id = node["id"]
     schema = _mcp_schema(node, resources)
+    found = _filled_problem(node, schema)
+    if found is not None:
+        return found
     for path, text in config_leaves(node.get("config") or {}):
         slot = slot_for(node, path, mcp_schema=schema)
         field = path_text(path)
         if slot.mapping == MAPPING_NEVER:
-            if references_in_text(text):
+            # `B1882`: a Code step's source takes `\{{` as the text `{{`.
+            if references_in_text(text, escapes=(slot == NEVER_CODE)):
                 return _refusal(REFUSE_MAPPED_NEVER, (node_id,),
                                 f"{_called(node)}, {field_words(node, path)}. {slot.why}", field)
             continue
@@ -1257,7 +1638,8 @@ def _upstream_problem(node: dict, graph: dict, by_id: dict) -> DocumentRefusal |
     return None
 
 
-def _conditions_semantics(node, conditions, join, where: str) -> DocumentRefusal | None:
+def _conditions_semantics(node, conditions, join, where: str,
+                          prefix: str = "conditions") -> DocumentRefusal | None:
     node_id = node["id"]
     if not conditions:
         return _refusal(REFUSE_MISSING_SETTING, (node_id,),
@@ -1265,11 +1647,30 @@ def _conditions_semantics(node, conditions, join, where: str) -> DocumentRefusal
     if join is not None and join not in JOINS:
         return _refusal(REFUSE_BAD_SETTING, (node_id,),
                         f"{_called(node)}: “join” must be all or any")
-    for condition in conditions:
+    for k, condition in enumerate(conditions):
         if condition.get("op") not in OPERATORS:
             return _refusal(REFUSE_BAD_SETTING, (node_id,),
                             f"{_called(node)}: {condition.get('op')!r} is not a test this "
                             f"Pantheon has")
+        # `B1880`. A typed pattern, or a typed date, that cannot be read is
+        # said at save, on its field — not found false at every run. (One
+        # that holds a reference is read at run, where a pattern that does
+        # not read is never found.)
+        right = condition.get("right")
+        if not isinstance(right, str) or references_in_text(right):
+            continue
+        field = f"{prefix}[{k}].right"
+        if condition.get("op") == OP_MATCHES:
+            why = pattern_problem(right)
+            if why:
+                return _refusal(REFUSE_BAD_SETTING, (node_id,),
+                                f"{_called(node)}: the pattern “{right}” {why} {PATTERN_HELP}",
+                                field)
+        if condition.get("op") in DATE_OPERATORS and not reads_as_moment(right):
+            return _refusal(REFUSE_BAD_SETTING, (node_id,),
+                            f"{_called(node)}: “{right}” is not a date or a time. Write one "
+                            f"such as 2026-11-07 or 2026-11-07T08:00, or words such as now, "
+                            f"today, yesterday, 3 days ago or in 2 hours", field)
     return None
 
 
@@ -1291,6 +1692,47 @@ def _inner_kind_problem(node: dict) -> DocumentRefusal | None:
                         f"{_called(node)} repeats a step of kind {inner_kind!r}. It can "
                         f"repeat one step of any kind but If, Switch, Merge, Wait and "
                         f"For-each", "step.kind")
+    return None
+
+
+def _http_body_problem(node: dict) -> DocumentRefusal | None:
+    """`B1885`. What an HTTP step's body and `response` may be: the body is its
+    fields or the JSON written whole, never both; a written body is there when
+    it is chosen and only then; a typed field's own text reads as its type
+    (one filled from another step is coerced when the step runs)."""
+    config = node.get("config") or {}
+    node_id = node["id"]
+    if config.get("response") not in (None, *HTTP_RESPONSES):
+        return _refusal(REFUSE_BAD_SETTING, (node_id,),
+                        f"{_called(node)}: it hands on the answer's body, or its status, "
+                        f"headers and body", "response")
+    raw = config.get("raw_body")
+    if config.get("body_mode") == BODY_MODE_RAW:
+        if not isinstance(raw, (dict, list)):
+            return _refusal(REFUSE_MISSING_SETTING, (node_id,),
+                            f"{_called(node)} sends JSON you write, and none is written",
+                            "raw_body")
+        if config.get("body"):
+            return _refusal(REFUSE_BAD_SETTING, (node_id,),
+                            f"{_called(node)}: the body is its fields or JSON you write, "
+                            f"not both", "body")
+    elif raw is not None:
+        return _refusal(REFUSE_BAD_SETTING, (node_id,),
+                        f"{_called(node)}: JSON you write is sent only when the body is "
+                        f"set to it", "raw_body")
+    for index, entry in enumerate(config.get("body") or ()):
+        word = entry.get("type")
+        value = entry.get("value")
+        if word in (None, ENTRY_TYPE_TEXT) or (isinstance(value, str) and references_in_text(value)):
+            continue
+        field = f"body[{index}].value"
+        try:
+            typed_literal(value, word, field)
+        except SlotError:
+            return _refusal(REFUSE_BAD_SETTING, (node_id,),
+                            f"{_called(node)}: {field_words(node, ('body', index))} is sent as "
+                            f"{ENTRY_TYPE_WORDS.get(word, word)}, and "
+                            f"“{_shown(value)[:40]}” is not", field)
     return None
 
 
@@ -1355,7 +1797,7 @@ def _kind_problem(node: dict, *, owner, tasks_by_id, crew_ids, owner_is_admin,
             return _refusal(REFUSE_MISSING_SETTING, (node_id,),
                             f"{_called(node)} needs at least one way to go")
         ids = set()
-        for case in cases:
+        for k, case in enumerate(cases):
             if not _CASE_ID_RE.fullmatch(case["id"]) or case["id"] in ids:
                 return _refusal(REFUSE_BAD_SETTING, (node_id,),
                                 f"{_called(node)}: two ways share the id {case['id']!r}, or it "
@@ -1367,7 +1809,7 @@ def _kind_problem(node: dict, *, owner, tasks_by_id, crew_ids, owner_is_admin,
                                 f"{_called(node)}: each way needs a name of up to "
                                 f"{CASE_LABEL_MAX} characters")
             found = _conditions_semantics(node, case.get("conditions"), case.get("join"),
-                                          f" for “{label}”")
+                                          f" for “{label}”", f"cases[{k}].conditions")
             if found:
                 return found
     if kind == NODE_KIND_SET:
@@ -1380,12 +1822,27 @@ def _kind_problem(node: dict, *, owner, tasks_by_id, crew_ids, owner_is_admin,
                             f"{_called(node)} makes more than {SET_FIELDS_MAX} fields")
         names = set()
         for field in fields:
-            if not _FIELD_NAME_RE.fullmatch(field["name"]) or field["name"] in names:
+            # `B1879`: a name may be a dotted path (`customer.name`), each
+            # name in it read by the old rule (`workflow_logic.set_name_parts`).
+            if set_name_parts(field["name"]) is None or field["name"] in names:
                 return _refusal(REFUSE_BAD_SETTING, (node_id,),
                                 f"{_called(node)}: a field is called {field['name']!r}, twice or "
                                 f"in a way a reference cannot read. A name is letters, digits "
-                                f"and _, starting with a letter")
+                                f"and _, starting with a letter, and a dot between names puts "
+                                f"one inside the other (customer.name)")
             names.add(field["name"])
+        clash = set_names_clash(names)
+        if clash:
+            inner, outer = clash
+            return _refusal(REFUSE_BAD_SETTING, (node_id,),
+                            f"{_called(node)}: “{inner}” is inside “{outer}”, which is set as "
+                            f"well. Set one or the other")
+        if (config.get(SET_ON_MISSING_KEY) is not None
+                and config.get(SET_ON_MISSING_KEY) not in SET_ON_MISSING):
+            # `B1881`.
+            return _refusal(REFUSE_BAD_SETTING, (node_id,),
+                            f"{_called(node)}: when a field is not there it stops or leaves it "
+                            f"empty", SET_ON_MISSING_KEY)
     if kind == NODE_KIND_MERGE:
         if config.get("mode") is not None and config.get("mode") not in MERGE_MODES:
             return _refusal(REFUSE_BAD_SETTING, (node_id,),
@@ -1403,7 +1860,13 @@ def _kind_problem(node: dict, *, owner, tasks_by_id, crew_ids, owner_is_admin,
                                 f"{_called(node)} waits from 1 minute to {resources.wait_max_hours} "
                                 f"hours (the “workflow_wait_max_hours” setting)", "minutes")
         else:
-            if not isinstance(config.get("time"), str) or not _TIME_RE.fullmatch(config["time"]):
+            time_text = config.get("time")
+            # `B1884`: a time its author opened may be a reference, read when
+            # the step is reached (`task_scheduler._wait_until`).
+            from_data = (slot_for(node, ("time",)).opened and isinstance(time_text, str)
+                         and bool(references_in_text(time_text)))
+            if not from_data and (not isinstance(time_text, str)
+                                  or not _TIME_RE.fullmatch(time_text)):
                 return _refusal(REFUSE_BAD_SETTING, (node_id,),
                                 f"{_called(node)} waits until a time written like 08:00", "time")
             tz = config.get("tz")
@@ -1460,9 +1923,16 @@ def _kind_problem(node: dict, *, owner, tasks_by_id, crew_ids, owner_is_admin,
             return _refusal(REFUSE_BAD_SETTING, (node_id,),
                             f"{_called(node)}: the path starts with / and holds no address or #",
                             "path")
-        if config.get("body_mode") not in (None, BODY_MODE_JSON):
+        if slot_for(node, ("path",)).opened and opened_path_problem(path):
+            # `B1884`: the API a path reaches is the author's to type.
+            return _refusal(REFUSE_BAD_SETTING, (node_id,),
+                            f"{_called(node)}: {opened_path_problem(path)}", "path")
+        if config.get("body_mode") not in (None, *BODY_MODES):
             return _refusal(REFUSE_BAD_SETTING, (node_id,),
                             f"{_called(node)}: the body is sent as JSON", "body_mode")
+        found = _http_body_problem(node)
+        if found is not None:
+            return found
         for key in ("headers", "query", "body"):
             names = set()
             for index, entry in enumerate(config.get(key) or ()):
@@ -1539,66 +2009,144 @@ def validate_document(graph: dict, *, owner: str | None, tasks_by_id: dict,
     label), a step nothing leads to, two branches meeting outside a Merge
     (`concurrent_arrivals`), and last what each reference names
     (`not_upstream`).
+
+    `B1851`: the first of `document_problems`, which asks the same questions in
+    the same order and goes on past the first answer — one rule, so the list
+    the canvas marks and the refusal a save gives cannot drift apart.
+    """
+    return next(document_problems(
+        graph, owner=owner, tasks_by_id=tasks_by_id, crew_ids=crew_ids,
+        owner_is_admin=owner_is_admin, own_task_id=own_task_id, resources=resources), None)
+
+
+def document_problems(graph: dict, *, owner: str | None, tasks_by_id: dict,
+                      crew_ids, owner_is_admin: bool,
+                      own_task_id: str | None,
+                      resources: WorkflowResources | None = None):
+    """`B1851`. Every reason this document may not run, in document order —
+    a generator of `DocumentRefusal`, lazy, so whoever asks stops it when it
+    has enough (`POST /api/workflows/{id}/problems` stops at fifty). Pure.
+
+    Its first answer IS `validate_document`'s (which is `next()` of this), and
+    the questions are its questions in its order. What changes is that an
+    answer does not end the walk:
+
+      * Each step is checked in place — its id, name, kind, settings, the
+        references in them and what its kind needs, stopping at that step's
+        FIRST problem (the one a save names; mending it shows the next) and
+        going on to the next step.
+      * Each arrow is checked; one that fails is told and left out of the
+        "drawn twice" count. An arrow out of a step whose kind this Pantheon
+        does not run is not asked its port — the step's kind is already told,
+        and a kind with no ports would make every arrow out of it wrong.
+      * Then the whole: a loop (the first one, as a save names it), the steps
+        nothing leads to (one problem, naming them all), two branches meeting
+        outside a Merge (one problem per step they meet at), and what each
+        step's references name — asked of every step whose id and kind are
+        sound, on the arrows as drawn (`upstream_of`, `find_loop` and
+        `concurrent_arrivals` already pass over an arrow to a step that is not
+        there).
+
+    No steps, or more than the cap (`step_cap`), is the one problem: the walks
+    after it are bounded by the cap, and a document over it is not one to
+    mark step by step — it is one to split.
     """
     resources = resources if isinstance(resources, WorkflowResources) else EMPTY_RESOURCES
     nodes = list(graph.get("nodes") or ())
     edges = list(graph.get("edges") or ())
     if not nodes:
-        return _refusal(REFUSE_NO_STEPS, detail="add a step after the start")
-    if len(nodes) > WORKFLOW_MAX_NODES:
-        return _refusal(REFUSE_TOO_MANY_STEPS,
-                        detail=f"it has {len(nodes)}. Split it, or run part of it "
-                               f"as its own task")
+        yield _refusal(REFUSE_NO_STEPS, detail="add a step after the start")
+        return
+    if len(nodes) > step_cap(resources):
+        yield too_many_steps_refusal(len(nodes), step_cap(resources))
+        return
     crew_ids = set(crew_ids or ())
     tasks_by_id = tasks_by_id or {}
     seen = set()
+    unsound = set()     # ids whose step is not one the later walks can stand on
     for node in nodes:
         node_id, kind, label = node["id"], node["kind"], node["label"]
         if (not node_id or len(node_id) > NODE_ID_MAX or not NODE_ID_RE.fullmatch(node_id)
                 or node_id == START_KEY or node_id.startswith("__")):
-            return _refusal(REFUSE_BAD_ID, (node_id,),
-                            f"{_called(node)} is called {node_id!r}")
+            unsound.add(node_id)
+            yield _refusal(REFUSE_BAD_ID, (node_id,),
+                           f"{_called(node)} is called {node_id!r}")
+            continue
         if node_id in seen:
-            return _refusal(REFUSE_DUPLICATE_ID, (node_id,), f"{node_id!r}")
+            unsound.add(node_id)
+            yield _refusal(REFUSE_DUPLICATE_ID, (node_id,), f"{node_id!r}")
+            continue
         seen.add(node_id)
-        if not label.strip():
-            return _refusal(REFUSE_BAD_LABEL, (node_id,), "every step needs a name")
-        if len(label) > NODE_LABEL_MAX:
-            return _refusal(REFUSE_BAD_LABEL, (node_id,),
-                            f"{_called(label[:40] + '…')} is longer than "
-                            f"{NODE_LABEL_MAX} characters")
         if kind not in NODE_KINDS:
-            return _refusal(REFUSE_BAD_KIND, (node_id,), f"{_called(node)} is a {kind!r} step")
+            # Asked after the name below, as a save asks it; marked here, before
+            # the name can end this step's turn, so the arrows and references
+            # below never stand on a kind this Pantheon does not run.
+            unsound.add(node_id)
+        if not label.strip():
+            yield _refusal(REFUSE_BAD_LABEL, (node_id,), "every step needs a name")
+            continue
+        if len(label) > NODE_LABEL_MAX:
+            yield _refusal(REFUSE_BAD_LABEL, (node_id,),
+                           f"{_called(label[:40] + '…')} is longer than "
+                           f"{NODE_LABEL_MAX} characters")
+            continue
+        if kind not in NODE_KINDS:
+            yield _refusal(REFUSE_BAD_KIND, (node_id,), f"{_called(node)} is a {kind!r} step")
+            continue
         config = node.get("config") or {}
         problem = _setting_problem(kind, config)
         if problem:
-            return _refusal(REFUSE_BAD_SETTING, (node_id,), f"{_called(node)}: {problem}")
+            yield _refusal(REFUSE_BAD_SETTING, (node_id,), f"{_called(node)}: {problem}")
+            continue
+        found = _step_settings_refusal(node)            # `B1855`
+        if found:
+            yield found
+            continue
+        if node.get(DISABLED_KEY) is True:
+            # `B1856`. A step switched off does not run, so it need not be
+            # complete: what it reads, what it needs and what it reaches are
+            # asked when it is switched back on (a save, like any). Its
+            # settings' shapes are still asked (above), and an admin-only
+            # action is still refused — the run's own gate counts every step
+            # (`task_action_policy.admin_only_action_of`), and so does this.
+            found = _kind_problem(node, owner=owner, tasks_by_id=tasks_by_id,
+                                  crew_ids=crew_ids, owner_is_admin=owner_is_admin,
+                                  own_task_id=own_task_id, resources=resources)
+            if found is not None and found.reason == REFUSE_ADMIN_ONLY:
+                yield found
+            continue
         found = _inner_kind_problem(node) or _reference_problem(node, resources)
         if found:
-            return found
+            yield found
+            continue
         found = _kind_problem(node, owner=owner, tasks_by_id=tasks_by_id, crew_ids=crew_ids,
                               owner_is_admin=owner_is_admin, own_task_id=own_task_id,
                               resources=resources)
         if found:
-            return found
+            yield found
     by_id = _nodes_by_id(graph)
     taken = set()
     for edge in edges:
         if edge["from"] == START_KEY:
             if edge["to"] not in by_id:
-                return _refusal(REFUSE_BAD_EDGE, (),
-                                "it points at a step that is not in the workflow")
+                yield _refusal(REFUSE_BAD_EDGE, (),
+                               "it points at a step that is not in the workflow")
+                continue
             if edge["port"] not in START_PORTS:
-                return _refusal(REFUSE_BAD_EDGE, (edge["to"],),
-                                f"the arrow out of the start leaves by {edge['port']!r}; the "
-                                f"start has one way out")
+                yield _refusal(REFUSE_BAD_EDGE, (edge["to"],),
+                               f"the arrow out of the start leaves by {edge['port']!r}; the "
+                               f"start has one way out")
+                continue
         else:
             if edge["from"] not in by_id or edge["to"] not in by_id:
-                return _refusal(REFUSE_BAD_EDGE,
-                                tuple(i for i in (edge["from"], edge["to"]) if i in by_id),
-                                "it points at a step that is not in the workflow")
+                yield _refusal(REFUSE_BAD_EDGE,
+                               tuple(i for i in (edge["from"], edge["to"]) if i in by_id),
+                               "it points at a step that is not in the workflow")
+                continue
             source = by_id[edge["from"]]
             if edge["port"] not in ports_of(source):
+                if edge["from"] in unsound and source.get("kind") not in NODE_KINDS:
+                    continue  # its kind is told above; it has no ports to name
                 if ports_of(source) == PORTS:
                     detail = (f"the arrow out of {_called(source)} is "
                               f"neither “if it works” nor “if it fails”")
@@ -1606,14 +2154,16 @@ def validate_document(graph: dict, *, owner: str | None, tasks_by_id: dict,
                     ways = ", ".join(f"“{port_words(source, p)}”" for p in ports_of(source))
                     detail = (f"the arrow out of {_called(source)} leaves by "
                               f"{edge['port']!r}, and it leaves by {ways}")
-                return _refusal(REFUSE_BAD_EDGE, (edge["from"],), detail)
+                yield _refusal(REFUSE_BAD_EDGE, (edge["from"],), detail)
+                continue
         key = (edge["from"], edge["port"], edge["to"])
         if key in taken:
             source = by_id.get(edge["from"])
             where = "the start" if edge["from"] == START_KEY else _called(source)
-            return _refusal(REFUSE_TWO_ARROWS, (edge["from"],),
-                            f"{where} → {_called(by_id[edge['to']])}, "
-                            f"{port_words(source, edge['port'])}, is drawn twice. Remove one")
+            yield _refusal(REFUSE_TWO_ARROWS, (edge["from"],),
+                           f"{where} → {_called(by_id[edge['to']])}, "
+                           f"{port_words(source, edge['port'])}, is drawn twice. Remove one")
+            continue
         taken.add(key)
     loop = find_loop(graph)
     if loop is not None:
@@ -1621,35 +2171,40 @@ def validate_document(graph: dict, *, owner: str | None, tasks_by_id: dict,
             loop, names={n["id"]: n["label"] for n in nodes},
             lead=WORKFLOW_REFUSAL_REASONS[REFUSE_CYCLE])
         ids = tuple(dict.fromkeys(e["from"] for e in loop.path))
-        return DocumentRefusal(REFUSE_CYCLE, ids, sentence)
+        yield DocumentRefusal(REFUSE_CYCLE, ids, sentence)
     entries = _entries(graph)
     if start_edges(graph):
         led_from_start = {e["to"] for e in start_edges(graph)}
         unled = [n for n in entries if n["id"] not in led_from_start]
         if unled:
             named = ", ".join(_called(n) for n in unled[:4])
-            return _refusal(REFUSE_SEVERAL_STARTS, tuple(n["id"] for n in unled),
-                            f"{named}. Connect each to the start or to the step before it, "
-                            f"or remove it")
+            yield _refusal(REFUSE_SEVERAL_STARTS, tuple(n["id"] for n in unled),
+                           f"{named}. Connect each to the start or to the step before it, "
+                           f"or remove it")
     elif len(entries) > 1:
         named = ", ".join(_called(n) for n in entries[:4])
-        return _refusal(REFUSE_SEVERAL_STARTS, tuple(n["id"] for n in entries),
-                        f"{named}. Connect each to the step before it, or remove it")
+        yield _refusal(REFUSE_SEVERAL_STARTS, tuple(n["id"] for n in entries),
+                       f"{named}. Connect each to the step before it, or remove it")
+    met = set()
     for arrival in concurrent_arrivals(graph):
         target = by_id[arrival.node_id]
-        if target["kind"] == NODE_KIND_MERGE:
+        if target["kind"] == NODE_KIND_MERGE or arrival.node_id in met:
             continue
+        met.add(arrival.node_id)
         # § 1.3's sentence, whole: the reason's lead would read as a list.
         sentence = (f"Two branches that run at the same time both reach {_called(target)}. "
                     f"Put a Merge step before it.")
-        return DocumentRefusal(REFUSE_NEEDS_MERGE,
-                               (arrival.node_id, arrival.first["from"], arrival.second["from"]),
-                               sentence)
+        yield DocumentRefusal(REFUSE_NEEDS_MERGE,
+                              (arrival.node_id, arrival.first["from"], arrival.second["from"]),
+                              sentence)
     for node in nodes:
+        if node["id"] in unsound:
+            continue
+        if node.get(DISABLED_KEY) is True:
+            continue                     # `B1856`: it reads nothing, it does not run
         found = _upstream_problem(node, graph, by_id)
         if found:
-            return found
-    return None
+            yield found
 
 
 # ── Versions, positions, pins ───────────────────────────────────────────────
@@ -1717,10 +2272,18 @@ def content_fingerprint(name: str, graph: dict) -> str:
     the bookkeeping exclusion `services/memory/skills.py` makes for a skill —
     and not the order steps or arrows are listed in, which changes nothing a
     run does.
+
+    `B1856`: a step switched off is an edit (a run does something else), and
+    is in the fingerprint only when it is off, so every fingerprint taken
+    before it existed is unchanged. `B1855`: a step's retries and time limit
+    likewise, only when it has some.
     """
     nodes = sorted(
         ({"id": n.get("id"), "kind": n.get("kind"), "label": n.get("label"),
-          "config": n.get("config") or {}} for n in graph.get("nodes") or ()),
+          "config": n.get("config") or {},
+          **({DISABLED_KEY: True} if n.get(DISABLED_KEY) is True else {}),
+          **({SETTINGS_KEY: n[SETTINGS_KEY]} if n.get(SETTINGS_KEY) else {})}
+         for n in graph.get("nodes") or ()),
         key=lambda n: str(n["id"]))
     edges = sorted(
         ({"from": e.get("from"), "port": e.get("port"), "to": e.get("to")}
@@ -1885,9 +2448,12 @@ def node_needs_model(node: dict) -> bool:
     Research, AI or skill step does; an action does when it is model-backed
     (`MODEL_BACKED_ACTIONS`, `P8-22`'s one statement); a Run task step may (its
     task runs inside this run's slot); a For-each does when the step it
-    repeats does. HTTP, MCP, Code, If, Switch, Set, Merge and Wait do not."""
+    repeats does. HTTP, MCP, Code, If, Switch, Set, Merge and Wait do not.
+    `B1856`: a step switched off calls nothing."""
     from src.builtin_actions import MODEL_BACKED_ACTIONS
 
+    if isinstance(node, dict) and node.get(DISABLED_KEY) is True:
+        return False
     kind = node.get("kind") if isinstance(node, dict) else None
     config = (node.get("config") if isinstance(node, dict) else None) or {}
     if kind in MODEL_KINDS or kind == NODE_KIND_RUN_TASK:
@@ -1953,8 +2519,10 @@ def plan_lines(node: dict, resources: WorkflowResources | None = None) -> list:
         join = JOIN_WORDS.get(config.get("join") or "all", "all of these")
         tests = "; ".join(describe_condition(c) for c in config.get("conditions") or ())
         # `P23-05` (WB-U-7): the port's own words, as the canvas draws them
-        # (`workflowDiagram.js:PORT_WORDS`: then → "if so").
-        lines.append(f"Would go “if so” if {join} hold: {tests}; otherwise “otherwise”.")
+        # (`workflowDiagram.js:PORT_WORDS`: then → "if so"). `B1893`: read
+        # from the one server table (`PORT_PHRASES`), the same words.
+        lines.append(f"Would go “{PORT_PHRASES[PORT_THEN]}” if {join} hold: {tests}; "
+                     f"otherwise “{PORT_PHRASES[PORT_OTHERWISE]}”.")
     elif kind == NODE_KIND_SWITCH:
         lines.append("Would go the first way that matches:")
         for case in config.get("cases") or ():
@@ -1965,7 +2533,13 @@ def plan_lines(node: dict, resources: WorkflowResources | None = None) -> list:
     elif kind == NODE_KIND_SET:
         lines.append("Would make these fields:")
         for field in config.get("fields") or ():
-            lines.append(f"{field.get('name')} ← {_shown(field.get('value'))}")
+            # `B1879`: and what the value is made, when the field says.
+            kind = SET_TYPE_WORDS.get(field.get("type"))
+            lines.append(f"{field.get('name')} ← {_shown(field.get('value'))}"
+                         + (f", as {kind}" if kind else ""))
+        if not set_stops_on_missing(config):
+            # `B1881`: said only when it does not stop, which is the default.
+            lines.append("A field that is not there would be left empty, and it would go on.")
     elif kind == NODE_KIND_MERGE:
         lines.append("Would go on as soon as the first branch arrives."
                      if config.get("mode") == MERGE_FIRST else
@@ -2001,8 +2575,18 @@ def plan_lines(node: dict, resources: WorkflowResources | None = None) -> list:
             lines.append(f"Header {entry.get('name')}: as you typed it")
         for entry in config.get("query") or ():
             lines.append(f"Query {entry.get('name')}: {_shown(entry.get('value'))}")
-        for entry in config.get("body") or ():
-            lines.append(f"Body {entry.get('name')}: {_shown(entry.get('value'))}")
+        if config.get("body_mode") == BODY_MODE_RAW and config.get("raw_body") is not None:
+            # `B1885`: as written, references and all — never a value.
+            lines.append(f"Body, as you wrote it: {_shown(config['raw_body'])[:600]}")
+        else:
+            for entry in config.get("body") or ():
+                word = entry.get("type")
+                kind_of = (f" ({ENTRY_TYPE_WORDS[word]})"
+                           if word in ENTRY_TYPE_WORDS and word != ENTRY_TYPE_TEXT else "")
+                lines.append(f"Body {entry.get('name')}{kind_of}: {_shown(entry.get('value'))}")
+        if config.get("response") == HTTP_RESPONSE_FULL:
+            lines.append("It hands on the answer's status, headers and body "
+                         "(data.http_status, data.headers, data.body).")
         if (config.get("method") or "GET") != "GET":
             lines.append(f"It would: {EFFECT_SENTENCES[EFFECT_TOUCHES_REMOTE]}")
     elif kind == NODE_KIND_MCP:
@@ -2030,7 +2614,31 @@ def plan_lines(node: dict, resources: WorkflowResources | None = None) -> list:
         lines.append(f"It would: {CODE_EFFECT_SENTENCE}")
     else:
         lines.append(f"A {kind!r} step is not one this Pantheon runs.")
+    lines.extend(_opened_lines(node, resources))
     return lines
+
+
+# `B1884`. What the plan and the dry run say of a setting its author opened.
+OPENED_RUNG_SENTENCE = ("A webhook or a mail may have written that value, so whenever an "
+                        "earlier step fills it, this step asks you first wherever your approval "
+                        "setting asks once outside text has been read.")
+
+
+def _opened_lines(node: dict, resources: WorkflowResources) -> list:
+    """`B1884`. One line naming the settings the author opened, and what that
+    means: for a call, that the approval rung applies to it as to outside
+    text; for a Wait, what its time may be."""
+    config = node.get("config") or {}
+    opened = [p for p in (path_of(f) for f in config.get(FILLED_KEY) or ()
+                          if isinstance(f, str)) if p]
+    if not opened:
+        return []
+    if node.get("kind") == NODE_KIND_WAIT:
+        return [f"Its time is filled from an earlier step, because you chose it: a time of day "
+                f"(HH:MM) or a date and time, at most {resources.wait_max_hours} hours away."]
+    words = ", ".join(field_words(node, p) for p in opened)
+    return [f"Filled from an earlier step, because you chose it: {words}. "
+            f"{OPENED_RUNG_SENTENCE}"]
 
 
 def _sends(node: dict, resources: WorkflowResources) -> list:
@@ -2048,7 +2656,11 @@ def _sends(node: dict, resources: WorkflowResources) -> list:
         info = (resources.integrations or {}).get(integration) if isinstance(integration, str) \
             else None
         name = (info or {}).get("name") or integration
-        out.append(f"sends {config.get('method') or 'GET'} {config.get('path') or '/'} to {name}")
+        # `B1884`: a path its author opened says so.
+        opened = (" (its path filled from an earlier step)"
+                  if slot_for(node, ("path",)).opened else "")
+        out.append(f"sends {config.get('method') or 'GET'} {config.get('path') or '/'} to "
+                   f"{name}{opened}")
     elif kind == NODE_KIND_MCP:
         tool = config.get("tool")
         info = _mcp_info(resources, tool) or {}
@@ -2056,8 +2668,15 @@ def _sends(node: dict, resources: WorkflowResources) -> list:
         schema = info.get("input_schema") if isinstance(info.get("input_schema"), dict) else None
         # The arguments that decide where it goes — the ones only a person
         # types (`never`); what it says (`value`) is left to the plan.
-        fixed = [f"{name}: {_shown(value)}" for name, value in (config.get("args") or {}).items()
-                 if slot_for(node, ("args", name), mcp_schema=schema).mapping == MAPPING_NEVER]
+        # `B1884`: one its author opened is said too, as filled from an
+        # earlier step — it chooses which thing the call acts on.
+        fixed = []
+        for name, value in (config.get("args") or {}).items():
+            slot = slot_for(node, ("args", name), mcp_schema=schema)
+            if slot.mapping == MAPPING_NEVER:
+                fixed.append(f"{name}: {_shown(value)}")
+            elif slot.opened:
+                fixed.append(f"{name}: {_shown(value)} (filled from an earlier step)")
         out.append(f"sends to {said}" + (f" — {', '.join(fixed)}" if fixed else ""))
     elif kind == NODE_KIND_CODE:
         out.append(f"{CODE_EFFECT_SENTENCE}, and the code reaches whatever that account can")
@@ -2214,16 +2833,23 @@ def chain_to_document(rows, head_id: str, *, positions=None) -> tuple:
 
     Refused (`DocumentError`) where the engine would refuse the chain or the
     document could not hold it: a loop, another owner's task, a member that is
-    itself a workflow, more than `WORKFLOW_MAX_NODES` steps. `positions` maps
+    itself a workflow, more steps than any cap allows. `positions` maps
     task id to `[x, y]` (the canvas's), carried onto the steps.
+
+    `B1857`. "Any cap": this module reads no settings, so the walk is bounded at
+    the most `workflow_max_steps` may be (`WORKFLOW_MAX_STEPS_RANGE`' top), never
+    stricter than the cap in force; `workflow_store.convert_chain` checks the
+    document against the cap in force (`check_document`) right after, and words
+    a refusal from here with that cap.
     """
     by_task = {row.id: row for row in rows}
     head = by_task.get(head_id)
     if head is None:
         _fail(REFUSE_UNKNOWN_TASK, detail="the chain's first task")
     owner = getattr(head, "owner", None)
+    top = WORKFLOW_MAX_STEPS_RANGE[1]
     refusal = validate_graph(list(rows), starts=[head_id], owner=owner,
-                             max_depth=WORKFLOW_MAX_NODES + 1)
+                             max_depth=top + 1)
     if refusal is not None:
         names = {r.id: getattr(r, "name", None) for r in rows
                  if getattr(r, "owner", None) == owner}
@@ -2233,7 +2859,7 @@ def chain_to_document(rows, head_id: str, *, positions=None) -> tuple:
         if refusal.reason == CHAIN_CROSS_OWNER:
             raise DocumentError(DocumentRefusal(
                 REFUSE_CROSS_OWNER, (), describe_graph_refusal(refusal, names)))
-        _fail(REFUSE_TOO_MANY_STEPS, detail=f"a workflow holds at most {WORKFLOW_MAX_NODES}")
+        raise DocumentError(too_many_steps_refusal(top, top, exact=False))
     order = [head]
     seen = {head_id}
     frontier = [head]
@@ -2248,8 +2874,8 @@ def chain_to_document(rows, head_id: str, *, positions=None) -> tuple:
                 order.append(target)
                 following.append(target)
         frontier = following
-    if len(order) > WORKFLOW_MAX_NODES:
-        _fail(REFUSE_TOO_MANY_STEPS, detail=f"it has {len(order)}")
+    if len(order) > top:
+        raise DocumentError(too_many_steps_refusal(len(order), top))
     for row in order:
         if (getattr(row, "task_type", None) or "llm") == WORKFLOW_TASK_TYPE:
             _fail(REFUSE_WORKFLOW_MEMBER, detail=f"“{row.name}” is a workflow, and a "

@@ -105,7 +105,7 @@ class Scheduler:
         return False
 
     async def run_task_now(self, task_id, *, force=False, trigger=None, dry=False,
-                           started_by="background"):
+                           started_by="background", run_id=None):
         self.runs.append({"task_id": task_id, "dry": dry, "started_by": started_by,
                           "trigger": trigger})
         if not dry:
@@ -146,7 +146,8 @@ class Scheduler:
             db.close()
 
     async def test_workflow_node(self, task, workflow_name, node, *, input_envelope, timeout=None,
-                                 graph=None):
+                                 graph=None, **_also):
+        # `B1887` / `B1888`: the route also hands `source` and `outputs`.
         # `P22-09`/`P22-10` (`C-W`): the route also hands the document the step
         # stands in, so its references read the steps before it.
         self.tests.append({"task_id": task.id, "workflow_name": workflow_name, "node": node,

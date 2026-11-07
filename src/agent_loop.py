@@ -121,6 +121,14 @@ from src.agent_stops import (
 )
 from src.run_limits import CAPS_FROM_CALLER, RunLimits, bind_run_limits
 from src.interactive_gate import bind_tool_call_started_by  # `B1061`
+# `B1876`. The words that ask for a workflow, one rule for the keyword selector
+# and the domain classifier below (`Law 7`). Bound here, at import, and not in
+# the classifier: the classifier is not tool retrieval and runs on every turn,
+# guide-only ones too, so it must not reach for the retrieval module at call
+# time (`test_tool_policy.test_guide_only_skips_tool_retrieval` stands that
+# module in with one that refuses to be asked). `tool_index` imports nothing
+# of this module's, so there is no cycle.
+from src.tool_index import asks_for_a_workflow
 from src.agent_tools import (
     parse_tool_blocks,
     strip_tool_blocks,
@@ -1055,6 +1063,13 @@ _DOMAIN_TOOL_MAP = {
     # `_classify_agent_request`, so a turn that names a skill gets the tool that
     # opens one by the words it used, not only when the catalogue ships.
     "skills": {"manage_skills"},
+    # `B1876`. A turn that asks for a workflow — by the word, by the room's
+    # name, or by its event ("when a document is created, …") — is seeded the
+    # tool that drafts and runs one. No rule pack of its own: `manage_tasks`'
+    # section says how, as for `skills` above. `B1878`: and the one that
+    # reads, tests and explains the workflows that exist — on such a turn
+    # only (`tool_index.ON_REQUEST_ONLY`).
+    "workflows": {"manage_tasks", "manage_workflows"},
 }
 
 _WORKSPACE_TERMINUS_TOOLS = (
@@ -1757,6 +1772,8 @@ Generate an image. Line 1 = description, line 2 = model name, line 3 = WxH (e.g.
     # `B1755`.
     "find_tools": "- ```find_tools``` — Load tools that are not in this turn's list. Args (JSON): {\"query\": \"a few words for the job\"} or {\"names\": [\"manage_calendar\"]}. The tools it finds are callable from your next step.",
     "manage_tasks": "- ```manage_tasks``` — Create and manage scheduled background tasks (recurring AI jobs). Args (JSON): {\"action\": \"list|create|edit|delete|pause|resume|run|dry_run|draft_workflow\", ...}. For steps that run one after another, draft_workflow with {\"description\": \"<the user's words>\"} drafts a workflow, switched off, that a person checks in the Workbench.",
+    # `B1878`. Offered on a workflow turn only (`tool_index.ON_REQUEST_ONLY`).
+    "manage_workflows": "- ```manage_workflows``` — The person's workflows (Automations). Args (JSON): {\"action\": \"list|show|runs|explain|dry_run|test_run|export\", \"workflow_id\": \"<id or exact name>\"}. explain says why a run's step failed; test_run runs it once now, even switched off. It changes no workflow: checking a step, applying a fix and answering a waiting step are the person's, in the Workbench.",
     "manage_endpoints": "- ```manage_endpoints``` — Add, remove, or configure AI model API endpoints. Args (JSON): {\"action\": \"list|add|delete|enable|disable\", ...}. Use when user wants to add a new AI provider.",
     # `B1398`, second instance. The narrowing sentence below ended `` (`B871`) ``
     # — the id of the row that added it. Found by the property assertion, not by
@@ -1831,7 +1848,7 @@ If the user asks for a reminder/alarm before the event, pass `reminder_minutes` 
     # `B1621`.
     "read_chat": "- ```read_chat``` — Read one of the user's own past chats through, in order, a page at a time — to summarise, quote or learn from a whole conversation, where a search shows only a match and a few lines around it. Args (JSON): {\"session_id\": \"<id from list_sessions or search_chats>\", \"from\": <message number, default 1>}; the answer says where the next page starts.",
     "pipeline": "- ```pipeline``` — Run a multi-step AI pipeline. Args (JSON) with ordered steps, each specifying a model and prompt. Use for complex workflows.",
-    "ui_control": "- ```ui_control``` — Control the UI: toggle tools on/off, OPEN PANELS, open email reply drafts, switch models, change themes. Commands: `toggle <name> on/off` (names: bash/shell, web/search, research, incognito), `open_panel <name>` (panels: documents, gallery, email, sessions, notes, memories/brain, skills, settings, cookbook), `open_email_reply <uid> <folder> <reply|reply-all|ai-reply> <body text>` (opens an email compose document pre-filled with body, DOES NOT send; use this for normal “write/draft a reply saying X” requests), `set_mode agent/chat`, `switch_model <name>`, `set_theme <preset>`, `create_theme <name> <bg> <fg> <panel> <border> <accent>` (optional key=val for advanced colors AND background effects: bgPattern=<none|dots|synapse|rain|constellations|perlin-flow|petals|sparkles|embers|ascii>, bgEffectColor=#RRGGBB, bgEffectIntensity=<num>, bgEffectSize=<num>, frosted=true|false). \"open documents\" / \"open library\" / \"show gallery\" / \"open inbox\" / \"open notes\" / \"open cookbook\" all map to `open_panel <name>`. Built-in theme presets: dark, light, midnight, paper, forest, ocean, ume, copper, organs, lavender, gpt, claude, cute, guild, codehost, grove, notebook, channel, video, mintchat. For any other vibe/name, use create_theme.",
+    "ui_control": "- ```ui_control``` — Control the UI: toggle tools on/off, OPEN PANELS, open email reply drafts, switch models, change themes. Commands: `toggle <name> on/off` (names: bash/shell, web/search, research, incognito), `open_panel <name>` (panels: documents, gallery, email, sessions, notes, memories/brain, skills, settings, cookbook, workbench [workflow id]), `open_email_reply <uid> <folder> <reply|reply-all|ai-reply> <body text>` (opens an email compose document pre-filled with body, DOES NOT send; use this for normal “write/draft a reply saying X” requests), `set_mode agent/chat`, `switch_model <name>`, `set_theme <preset>`, `create_theme <name> <bg> <fg> <panel> <border> <accent>` (optional key=val for advanced colors AND background effects: bgPattern=<none|dots|synapse|rain|constellations|perlin-flow|petals|sparkles|embers|ascii>, bgEffectColor=#RRGGBB, bgEffectIntensity=<num>, bgEffectSize=<num>, frosted=true|false). \"open documents\" / \"open library\" / \"show gallery\" / \"open inbox\" / \"open notes\" / \"open cookbook\" all map to `open_panel <name>`. Built-in theme presets: dark, light, midnight, paper, forest, ocean, ume, copper, organs, lavender, gpt, claude, cute, guild, codehost, grove, notebook, channel, video, mintchat. For any other vibe/name, use create_theme.",
     "ask_user": "- ```ask_user``` — Ask the user a multiple-choice question when the task is genuinely ambiguous and the answer changes what you do next (pick an approach, confirm an assumption, choose a target). Args (JSON): {\"question\": \"...\", \"options\": [{\"label\": \"...\", \"description\": \"...\"?}, ...], \"multi\": false?}. 2-6 options. To ask several things at once (plan mode, before drafting a plan): {\"question\": \"one-line lead-in\", \"questions\": [{\"question\": \"...\", \"options\"?: [...], \"multi\"?: false}, ...]} — up to 5, options optional, the person can always type their own answer. The user gets clickable buttons; calling this ENDS your turn and their choice comes back as your next message. Prefer sensible defaults — only ask when you truly can't proceed well without their input. LOOK BEFORE YOU ASK: if any tool in this turn's list would answer the question, call it instead — a question whose answer a tool would have printed is the defect, not the caution. Never use this to ask permission for a step the user already asked for; take the step. Holding an act that needs a person is the approval gate's job, not this tool's.",
     "update_plan": "- ```update_plan``` — While executing an approved plan, write the plan back: tick steps done or revise them. Args (JSON): {\"plan\": \"- [x] done step\\n- [ ] next step\"}. Always pass the COMPLETE checklist, not a diff. Call it after finishing each step (mark it `- [x]`) and whenever the user asks to change the plan. The user's docked plan window updates live. Does nothing if there's no active plan. Writing the plan is not doing the work: after this call, take the next unchecked step in the same turn.",
     "list_served_models": "- ```list_served_models``` — Show what the Forge (LLM-serving subsystem) is currently running. NO args. Use this for ANY 'what's running' / 'what's serving' / 'show my cookbook' / 'is anything up' query. DO NOT shell out (`ps aux`, `docker ps`, etc.) — this tool is the source of truth. Failed serve tasks include recent logs plus diagnosis/retry suggestions.\n  Use those suggestions to call `serve_model` again with an adjusted command when appropriate.",
@@ -3575,6 +3592,11 @@ def _classify_agent_request(messages: List[Dict], last_user: str,
     if has(r"\b(?:skills?|runbooks?|procedure for|how do we usually)\b",
            r"\bsave (?:this|that|it) as a skill\b"):
         domains.add("skills")
+    # `B1876`. The same test the keyword selector asks (`Law 7`): the word
+    # "workflow", "automation", "automate", "the Workbench", or a sentence that
+    # describes one by its event. (Imported at the top of this module.)
+    if asks_for_a_workflow(q):
+        domains.add("workflows")
 
     # `B1414`. The second pass: the person's words said nothing about any
     # domain, so the plan they told us to execute is what this turn is about.
@@ -9852,6 +9874,8 @@ async def stream_agent_loop(
             # `P20-03`: where it ran, for the card's label.
             "ran_in",
             "ran_as",
+            # `B1878`: the workflow the result is about, for the card's door.
+            "workflow_id",
         ):
             if key in approved_result:
                 approved_event[key] = approved_result[key]
@@ -9944,6 +9968,7 @@ async def stream_agent_loop(
             "diff",
             "ran_in",
             "ran_as",
+            "workflow_id",      # `B1878`
         ):
             if approved_result.get(key):
                 approved_tool_event[key] = approved_result[key]
@@ -11982,7 +12007,10 @@ async def stream_agent_loop(
                 try:
                     _found = [str(n) for n in (result.get("found") or []) if n]
                     if _tool_suite is not None:
-                        _pool = set(_tool_suite.candidates)
+                        # `B1878`: a tool offered on request only is loaded
+                        # when the model looks for it.
+                        _pool = (set(_tool_suite.candidates)
+                                 | set(getattr(_tool_suite, "on_request", ()) or ()))
                     else:
                         from src.tool_policy import selectable_tool_names as _stn
                         _pool = set(_stn()) | set(_suite_mcp_names or ())
@@ -12252,6 +12280,10 @@ async def stream_agent_loop(
             for k in ("ran_in", "ran_as"):
                 if k in result:
                     tool_output_data[k] = result[k]
+            # `B1878`. A result about one workflow names it, and the card
+            # offers to open the Workbench on it (`agentThread.workflowDoorHtml`).
+            if result.get("workflow_id"):
+                tool_output_data["workflow_id"] = str(result["workflow_id"])
             yield f'data: {json.dumps(tool_output_data)}\n\n'
             if result.get("image_url"):
                 generated_image_data = {"type": "generated_image", "url": result.get("image_url")}
@@ -12535,6 +12567,9 @@ async def stream_agent_loop(
             for k in ("ran_in", "ran_as"):
                 if result.get(k):
                     tool_event[k] = result[k]
+            # `B1878`. Persisted, so a reloaded card still opens its workflow.
+            if result.get("workflow_id"):
+                tool_event["workflow_id"] = str(result["workflow_id"])
             # `P20-04`. The picture the live card drew, the same copy.
             tool_event.update(_card_shot_fields)
             if _pending_ask_user_event:

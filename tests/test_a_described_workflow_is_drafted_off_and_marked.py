@@ -136,7 +136,8 @@ async def test_descriptions_reach_the_model_only_inside_the_guard(world, monkeyp
     assert [t["tool"] for t in palette["mcp_tools"]] == [POST]
     assert palette["integrations"] == [{"id": "intg-miniflux", "name": "Miniflux",
                                         "preset": "miniflux"}]
-    assert palette["skills"] == ["triage"]
+    # The person's own skill, among the built-in ones (`B1892`), by name.
+    assert "triage" in palette["skills"] and palette["skills"] == sorted(palette["skills"])
     # § 6: no Code (the workstation is ON here) and no command action is offered.
     kinds = {k["kind"] for k in palette["kinds"]}
     assert "code" not in kinds and {"llm", "mcp", "http", "skill", "action"} <= kinds
@@ -266,7 +267,16 @@ async def test_a_step_only_an_admin_may_use_is_refused_for_anyone_else(world, mo
 
 
 async def test_more_than_twenty_steps_is_refused(world, monkeypatch):
+    """`B1857`: twenty was the cap as a constant; it is `workflow_max_steps`
+    now (100 as shipped, 20 at its floor), set here to its floor so the draft's
+    door is shown to read the setting."""
     w = world
+    import src.settings as S
+    real, real_explicit = S.get_setting, S.setting_is_explicit
+    monkeypatch.setattr(S, "get_setting", lambda key, default=None:
+                        20 if key == "workflow_max_steps" else real(key, default))
+    monkeypatch.setattr(S, "setting_is_explicit", lambda key:
+                        key == "workflow_max_steps" or real_explicit(key))
     many = {"name": "Long", "trigger": {"type": "webhook"},
             "steps": [{"id": f"s{i}", "kind": "llm", "label": f"Step {i}",
                        "config": {"prompt": "Say hi."}} for i in range(21)],
@@ -282,7 +292,9 @@ async def test_no_model_is_a_503_and_garbage_is_a_422(world, monkeypatch):
     monkeypatch.setattr(er, "resolve_endpoint", lambda *a, **k: (None, None, None))
     none = await _describe(w, "Post new issues to #dev")
     assert none.status_code == 503 and none.json()["detail"] == wa.NO_MODEL_TO_DRAFT
-    script_model(monkeypatch, "Sure! Here is your workflow: first, read the issue…")
+    # `B1877`: an answer in words is asked again once, so garbage is twice.
+    script_model(monkeypatch, "Sure! Here is your workflow: first, read the issue…",
+                 "Sure! Here is your workflow: first, read the issue…")
     garbage = await _describe(w, "Post new issues to #dev")
     assert garbage.status_code == 422
     assert garbage.json()["detail"] == ("The model's draft could not be used: its answer was not "

@@ -106,14 +106,15 @@ def test_the_new_words_are_added_and_none_renamed():
                                       "http", "mcp", "skill", "code"}
     assert wd.PORT_WORDS == ("success", "error", "then", "otherwise")
     assert wd.CASE_PORT_PREFIX == "case:" and wd.START_KEY == "start"
-    assert wd.port_words(step("a", "switch", cases=CASES), "case:boss") == "From the boss"
+    # `B1893`: a case reads as the canvas draws it, "if <its label>".
+    assert wd.port_words(step("a", "switch", cases=CASES), "case:boss") == "if From the boss"
     assert wd.port_words(step("a"), "error") == "if it fails"
 
 
 @pytest.mark.parametrize("node,port,words", [
     (step("a"), "then", "neither “if it works” nor “if it fails”"),
-    (step("a", "if", **IF), "success", "leaves by 'success', and it leaves by “then”, “otherwise”"),
-    (step("a", "switch", cases=CASES), "case:other", "“Urgent”, “From the boss”, “otherwise”"),
+    (step("a", "if", **IF), "success", "leaves by 'success', and it leaves by “if so”, “otherwise”"),
+    (step("a", "switch", cases=CASES), "case:other", "“if Urgent”, “if From the boss”, “otherwise”"),
     (step("a", "set", fields=[{"name": "x", "value": "1"}]), "error", "leaves by 'error'"),
 ])
 def test_an_arrow_on_a_port_its_step_does_not_have_is_refused(node, port, words):
@@ -282,7 +283,7 @@ def test_a_loop_through_a_case_port_is_told_in_its_words_at_save_and_at_run():
                 [arrow("t", "e", "case:urgent"), arrow("e", "t", "error")])
     refusal = check(graph)
     assert refusal.reason == wd.REFUSE_CYCLE
-    assert refusal.sentence == ("The workflow loops back on itself: if “Triage” goes the “Urgent” "
+    assert refusal.sentence == ("The workflow loops back on itself: if “Triage” goes the “if Urgent” "
                                 "way it runs “Escalate”, and if “Escalate” fails it runs “Triage” "
                                 "again. Remove one of those links to save it.")
     loop = wd.find_loop(graph)
@@ -687,12 +688,17 @@ def test_contract_c_r_is_what_the_other_three_packages_import():
             assert hasattr(module, name), f"{module.__name__}.{name}"
     assert wd.DocumentRefusal._fields == ("reason", "node_ids", "sentence", "field")
     assert wd.DocumentRefusal("r", (), "s").field == ""
+    # `B1884` adds `opened` at the end of both, defaulted (the settings the
+    # workflow's author opened to a value from an earlier step, and whether a
+    # slot is one), so a positional build of the first fields still reads.
     assert workflow_slots.RenderedCall._fields == ("kind", "tool", "content", "value_paths",
-                                                    "missing")
-    assert workflow_slots.Slot._fields == ("mapping", "carry", "why")
+                                                    "missing", "opened")
+    assert workflow_slots.Slot._fields == ("mapping", "carry", "why", "opened")
+    assert workflow_slots.Slot("value", None, "").opened is False
+    # `B1857` adds the step cap at the end, so a positional build still reads.
     assert wd.WorkflowResources._fields == ("integrations", "mcp_tools", "skills", "ai_tools",
                                             "workstation_why", "foreach_max_items",
-                                            "wait_max_hours")
+                                            "wait_max_hours", "max_steps")
 
     def params(fn):
         return [(p.name, p.kind.name) for p in inspect.signature(fn).parameters.values()]

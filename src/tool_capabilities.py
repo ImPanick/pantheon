@@ -373,6 +373,17 @@ _register(
     result_integrity=ResultIntegrity.EXTERNAL_UNTRUSTED,
 )
 _register(
+    # `B1878`. The tool as a whole, failing high: a test run may send what the
+    # workflow sends. Each action's own effects are `_ACTION_CAPABILITIES`'.
+    # Its results carry what runs recorded — a stranger's error, a step's
+    # output — so they are data.
+    {"manage_workflows"},
+    ToolEffect.READ_PRIVATE,
+    ToolEffect.WRITE_PRIVATE,
+    ToolEffect.EXTERNAL_SIDE_EFFECT,
+    result_integrity=ResultIntegrity.EXTERNAL_UNTRUSTED,
+)
+_register(
     {
         "api_call",
         "app_api",
@@ -914,6 +925,7 @@ _ACTION_DEFAULTS: Mapping[str, str] = MappingProxyType(
         "ledger_table": "list",      # `P24-30`
         "manage_research": "list",
         "manage_tasks": "list",
+        "manage_workflows": "list",      # `B1878`
     }
 )
 
@@ -1100,7 +1112,20 @@ _LOOK = _capabilities(ToolEffect.READ_PUBLIC, result_integrity=ResultIntegrity.E
 _REACH = _capabilities(ToolEffect.NETWORK_EGRESS, result_integrity=ResultIntegrity.EXTERNAL_UNTRUSTED)
 _SEND = _capabilities(ToolEffect.NETWORK_EGRESS, ToolEffect.EXTERNAL_SIDE_EFFECT,
                       result_integrity=ResultIntegrity.EXTERNAL_UNTRUSTED)
+_WORKFLOW_READ = _capabilities(ToolEffect.READ_PRIVATE,
+                               result_integrity=ResultIntegrity.EXTERNAL_UNTRUSTED)
 _ACTION_CAPABILITIES: Mapping[str, Mapping[str, ToolCapabilities]] = MappingProxyType({
+    # `B1878`. Reading a workflow, its runs and the model's reading of a
+    # failed step reads the person's own; a dry run writes its plan as a run
+    # of the workflow; a test run runs the workflow, whose steps may send.
+    "manage_workflows": MappingProxyType({
+        "list": _WORKFLOW_READ, "show": _WORKFLOW_READ, "runs": _WORKFLOW_READ,
+        "explain": _WORKFLOW_READ, "export": _WORKFLOW_READ,
+        "dry_run": _capabilities(ToolEffect.READ_PRIVATE, ToolEffect.WRITE_PRIVATE,
+                                 result_integrity=ResultIntegrity.EXTERNAL_UNTRUSTED),
+        "test_run": _capabilities(ToolEffect.WRITE_PRIVATE, ToolEffect.EXTERNAL_SIDE_EFFECT,
+                                  result_integrity=ResultIntegrity.EXTERNAL_UNTRUSTED),
+    }),
     # `P25-05`. Looking at what is open never asks; going somewhere reaches the
     # web; a click, typing and a key press can send a form, a message or an
     # order, so they are what a push is — outward, under the person's name.
@@ -3221,6 +3246,19 @@ def authored_call_context(call: Any, *, rung: Any, run_id: str,
     an untainted context is allowed; at a stricter one the person asked to be
     asked, and the step parks on a card. A step's RESULT stays untrusted — a
     Prompt step that reads it is wrapped and gated exactly as today.
+
+    `B1884` (`identifiers-cannot-be-mapped`): the one exception to "untainted
+    by construction". An author may open a `never` setting that picks WHICH
+    thing the call acts on — a ticket's id, an HTTP path — to a value from an
+    earlier step (`workflow_slots.FILLED_KEY`; never a recipient, a host, a
+    command or a key, which cannot be opened). When a reference filled one
+    (`call.opened`), the adversary's bytes chose part of the action, which is
+    the taint this gate exists for: the context starts tainted, its trail
+    names the settings (`TAINT_KIND_CONTEXT`), and the rung asks exactly as it
+    does after a model read a web page — at the default rung, a call that
+    writes, deletes or reaches an Integration parks on a card. Pantheon
+    cannot prove a value did not come from outside, so every filled opened
+    setting counts (fail closed). Nothing in `decision_for` changes.
     """
     from src.workflow_slots import RenderedCall
 
@@ -3229,7 +3267,7 @@ def authored_call_context(call: Any, *, rung: Any, run_id: str,
             "authored_call_context takes a workflow_slots.RenderedCall — a call "
             "the author fixed and render_call filled — and nothing else")
     run_rung = coerce_trust_rung(rung)
-    return ToolRunSecurityContext(
+    context = ToolRunSecurityContext(
         external_untrusted_context_seen=False,
         approval_gate_bypassed=False,
         delegated_credential=False,
@@ -3238,6 +3276,18 @@ def authored_call_context(call: Any, *, rung: Any, run_id: str,
         allow_rule_lookup=(allow_rule_lookup if rung_consults_allow_rules(run_rung)
                            else None),
     )
+    opened = tuple(str(field) for field in (call.opened or ()) if str(field or "").strip())
+    if opened:
+        context.external_untrusted_context_seen = True
+        context._note_taint(opened_settings_source(opened), TAINT_KIND_CONTEXT)
+    return context
+
+
+def opened_settings_source(opened) -> str:
+    """`B1884`. The taint trail's line for a call whose opened settings an
+    earlier step filled — what the card says armed the gate."""
+    return ("a value from an earlier step, in a setting the workflow's author opened: "
+            + ", ".join(opened))
 
 
 def blocked_tool_result(tool_name: Any, reason: str) -> tuple[str, dict]:

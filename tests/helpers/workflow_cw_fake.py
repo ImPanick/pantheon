@@ -92,7 +92,11 @@ def real_palette(*, admin: bool = True, workstation_why=None) -> dict:
     whose agent reaches what an admin's does (`admin=False`: the non-admin
     policy, so HTTP and MCP are greyed with the server's sentence), in the
     environment above. The workstation is switched off unless
-    `workstation_why` says otherwise (`""` for on)."""
+    `workstation_why` says otherwise (`""` for on). The person has a model
+    (`B1891`: with none, Prompt, Research and Skill are greyed — that is
+    `test_a_model_step_says_when_there_is_no_model.py`'s). Its skills are its
+    own, and no built-in one (`B1892`'s are
+    `test_a_skill_step_can_follow_a_built_in_skill.py`'s)."""
     from unittest import mock
 
     from src import workflow_effects as we
@@ -105,7 +109,9 @@ def real_palette(*, admin: bool = True, workstation_why=None) -> dict:
             mock.patch.object(we, "_mcp_tools", lambda: [dict(t) for t in ENV_MCP_TOOLS]), \
             mock.patch.object(we, "global_disabled_tools", lambda: set()), \
             mock.patch.object(we, "_own_skills", lambda owner: [dict(x) for x in ENV_SKILLS]), \
+            mock.patch.object(we, "_built_in_skills", lambda owner: []), \
             mock.patch.object(we, "workstation_why", lambda owner: why), \
+            mock.patch.object(we, "model_why", lambda owner: None), \
             mock.patch.object(we, "ai_tool_choices", lambda owner: [dict(t) for t in ENV_AI_TOOLS]):
         return json.loads(json.dumps(we.build_palette("rowan")))
 

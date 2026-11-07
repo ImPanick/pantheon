@@ -51,6 +51,7 @@ import uiModule from '../ui.js';
 import { sortModelIds } from '../modelSort.js';
 import { getSettings, invalidateSettings } from '../appConfig.js';
 import { EDGE_WORDS, EDGE_COLUMNS, KIND_WORDS } from './workflowDiagram.js';
+import { playIcon } from '../icons.js';
 
 const API_BASE = window.location.origin;
 
@@ -1033,6 +1034,7 @@ export function mountTaskFields(host, {
         <button class="task-toggle-btn ${curTriggerType === 'schedule' ? 'active' : ''}" data-val="schedule" style="position:relative;top:-4px;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:4px;"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>Schedule</button>
         <button class="task-toggle-btn ${curTriggerType === 'event' ? 'active' : ''}" data-val="event" style="position:relative;top:-4px;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:4px;"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>Event</button>
         <button class="task-toggle-btn ${curTriggerType === 'webhook' ? 'active' : ''}" data-val="webhook" style="position:relative;top:-4px;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:4px;"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>Webhook</button>
+        <button class="task-toggle-btn ${curTriggerType === 'manual' ? 'active' : ''}" data-val="manual" style="position:relative;top:-4px;" title="Runs only when you run it: Run now, your assistant or the API">${playIcon({ size: 12, outline: true, style: 'vertical-align:-1px;margin-right:4px;' })}Manual</button>
       </div>
 
       <div id="task-form-trigger-opts"></div>
@@ -1072,8 +1074,10 @@ export function mountTaskFields(host, {
         <div class="task-form-hint">Its runs are refused every address outside the networks picked. “internet” is every address in no declared network.</div>
       </div>
 `,
+    // `B1897`. A workflow's start says it in the workflow's words: what runs
+    // once this workflow has finished, another workflow or a task.
     chain: `
-      <label class="task-form-label" id="task-form-chain-label">Chain <span style="opacity:0.5;font-weight:normal;font-size:10px;">(optional — what runs after this one)</span></label>
+      <label class="task-form-label" id="task-form-chain-label">${isTrigger ? 'After it finishes' : 'Chain'} <span style="opacity:0.5;font-weight:normal;font-size:10px;">(optional — ${isTrigger ? 'run another workflow or task' : 'what runs after this one'})</span></label>
       <div class="task-form-chain" role="group" aria-labelledby="task-form-chain-label">
         <label class="task-form-chain-row">
           <span class="task-form-chain-when">${_escHtml(_edgeWhenLabel('success'))}</span>
@@ -1132,7 +1136,11 @@ export function mountTaskFields(host, {
       ...(curTaskType === 'llm' || curTaskType === 'research' ? ['model'] : []),
       ...(typeof extra === 'function' ? ['extra'] : []), 'actions']
     : isTrigger
-      ? ['head', 'trigger', 'timeout', 'notif', 'actions']
+      // `B1897`. A start carries its workflow's "when it works / when it
+      // fails, run…": the engine follows the trigger task's two edges when
+      // the workflow's run ends (`_advance_chain`), and the only way to set
+      // them was the Tasks window or the API.
+      ? ['head', 'trigger', 'timeout', ...(chain === false ? [] : ['chain']), 'notif', 'actions']
       // `P23-06` (WB-M-14): `chain: false` — the Workbench's chains canvas,
       // where the arrows themselves are the chain; two selects listing every
       // task were a third way to draw one, in a panel 1,247 px tall.
@@ -1567,6 +1575,13 @@ ${(isNode && taskType === 'research') ? '' : `
         triggerOpts.innerHTML = '<div style="font-size:11px;opacity:0.5;margin-top:4px;">Webhook URL will be generated when the task is saved.</div>'
           + _retryBoxHtml(existing);
       }
+    } else if (triggerType === 'manual') {
+      // `B1853`. A start that is never due: nothing starts it by itself.
+      // Switched on, it may be run — by Run now, the assistant or the API.
+      triggerOpts.innerHTML = _ids(triggerOpts, `
+        <div class="task-form-manual-words" style="font-size:11px;opacity:0.6;margin-top:4px;">Only when you run it: Run now, your assistant or the API start it. Nothing starts it by itself.</div>
+        ${_retryBoxHtml(existing)}
+      `);
     }
   }
 
@@ -1725,7 +1740,13 @@ ${(isNode && taskType === 'research') ? '' : `
     for (const t of otherTasks) {
       const opt = document.createElement('option');
       opt.value = t.id;
-      opt.textContent = t.name;
+      // `B1897`. From a workflow's start, a workflow and a task of the same
+      // name are told apart, and one that is switched off says so: the
+      // engine does not continue into it ("Did not continue to X: it is
+      // paused").
+      const notes = isTrigger
+        ? [t.task_type === 'workflow' ? 'workflow' : '', t.status === 'paused' ? 'off' : ''].filter(Boolean) : [];
+      opt.textContent = notes.length ? `${t.name} (${notes.join(', ')})` : t.name;
       if (existing?.[field] === t.id) opt.selected = true;
       sel.appendChild(opt);
     }
@@ -1820,7 +1841,8 @@ ${(isNode && taskType === 'research') ? '' : `
   // `P22-05` (wf-ui). A workflow's start: its trigger, time limit and
   // notifications — the fields its trigger task is edited by, and nothing
   // else, so a start cannot change what the task is (`task_type`), what it
-  // says (`prompt`), where it delivers, its model or a chain. `B1209`: handed
+  // says (`prompt`), where it delivers or its model — its chain only through
+  // the "After it finishes" pickers (`B1897`). `B1209`: handed
   // to the owner (`onSaved(patch)`) for the workflow's draft; the toolbar's
   // Save writes it through `PUT /api/tasks/{id}` with the steps.
   const _saveTrigger = async (readTrigger) => {
@@ -1830,6 +1852,13 @@ ${(isNode && taskType === 'research') ? '' : `
     }
     const payload = { trigger_type: triggerType };
     if (!readTrigger(payload)) return;
+    // `B1897`. The two edges, as the task's save sends them: `''` clears one.
+    if (chain !== false) {
+      for (const [selectId, field] of CHAIN_FIELDS) {
+        const sel = $(selectId);
+        if (sel) payload[field] = sel.value || '';
+      }
+    }
     const notifEl = $('task-form-notif');
     if (notifEl) payload.notifications_enabled = !!notifEl.checked;
     if (typeof onSaved === 'function') await onSaved(payload);
@@ -1906,6 +1935,7 @@ ${(isNode && taskType === 'research') ? '' : `
         payload.trigger_count = parseInt(countInput?.value || String(_defaultTriggerCount()), 10);
       }
       // webhook: no extra fields needed, token is auto-generated server-side
+      // manual (`B1853`): none either — it has no time, no event, no address
 
       // `B805`. Retries, for every trigger: a scheduled task's on its clock,
       // an event's or a webhook's with what started it. It was read and sent

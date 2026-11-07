@@ -33,16 +33,18 @@
 // (`textContent`, `.value`): integration names, tool descriptions, case labels.
 
 import { KIND_WORDS } from '../tasks/workflowDiagram.js';
-import { mountArgsForm } from './argsForm.js';
+import { mountArgsForm, mountOpenBox, OPENED_SLOT } from './argsForm.js';
 import { SKILL_GATE_NOTE } from '../skillGateNote.js';
 import { ROOM_NAMES } from './rooms.js';
+import { parseRefAt } from './fieldPicker.js';
 
 /** The kinds this file draws. */
 export const STEP_FIELD_KINDS = Object.freeze(['if', 'switch', 'set', 'merge', 'wait', 'foreach', 'http', 'mcp', 'skill', 'code']);
 
-/** `P22-10`. The six operators, in the words a person reads, when the
+/** `P22-10`. The operators, in the words a person reads, when the
  *  palette does not say its own (`operators: [{ op, word }]`, C-W). The stored
- *  words are `workflow_logic.OPERATORS`. */
+ *  words are `workflow_logic.OPERATORS` (`B1880`: and the eleven it added,
+ *  which a test holds equal to the server's). */
 export const DEFAULT_OPERATORS = Object.freeze([
   { op: 'equals', word: 'is' },
   { op: 'contains', word: 'contains' },
@@ -50,7 +52,41 @@ export const DEFAULT_OPERATORS = Object.freeze([
   { op: 'greater_than', word: 'is more than' },
   { op: 'less_than', word: 'is less than' },
   { op: 'one_of', word: 'is one of' },
+  { op: 'not_equals', word: 'is not' },
+  { op: 'not_contains', word: 'does not contain' },
+  { op: 'is_not_empty', word: 'is not empty' },
+  { op: 'not_one_of', word: 'is not one of' },
+  { op: 'starts_with', word: 'starts with' },
+  { op: 'ends_with', word: 'ends with' },
+  { op: 'matches', word: 'matches the pattern' },
+  { op: 'at_least', word: 'is at least' },
+  { op: 'at_most', word: 'is at most' },
+  { op: 'is_before', word: 'is before' },
+  { op: 'is_after', word: 'is after' },
 ]);
+/** `B1880`. Operators that read no value, whose value is choices, and that
+ *  read dates — `workflow_logic.UNARY_OPERATORS`, `LIST_OPERATORS` and
+ *  `DATE_OPERATORS`, which a test holds equal to these. */
+export const UNARY_OPERATORS = Object.freeze(['is_empty', 'is_not_empty']);
+export const LIST_OPERATORS = Object.freeze(['one_of', 'not_one_of']);
+export const DATE_OPERATORS = Object.freeze(['is_before', 'is_after']);
+const _isListOp = (o) => LIST_OPERATORS.includes(o);
+/** `B1880`. What a condition compares its two sides as: the stored words
+ *  (`workflow_logic.COMPARE_AS`; `''` writes none — "as it looks") and the
+ *  words shown (`COMPARE_AS_WORDS`, held equal by a test). */
+export const COMPARE_AS = Object.freeze([
+  ['', 'as it looks'], ['text', 'text (capitals do not count)'], ['exact', 'exact text (capitals count)'],
+  ['number', 'a number'], ['date', 'a date or a time'], ['yes/no', 'yes or no'],
+  ['length', 'how many (items, or letters of text)'],
+]);
+/** `B1880`. Under "matches the pattern" — what a pattern may say
+ *  (`src/workflow_pattern.py`, which reads it at save and at run). */
+const PATTERN_HINT = 'A pattern: . any character, \\d a digit, \\w a letter or digit, \\s a space, '
+  + '[abc] one of these, [a-z] a range, a* none or more, a+ one or more, a? maybe, a{2,5} two to five, '
+  + '(a|b) one or the other, ^ the start, $ the end. Capitals do not count unless compared as exact text.';
+/** `B1880`. Under "is before" / "is after". */
+const DATE_HINT = 'A date or a time, such as 2026-11-07 or 2026-11-07T08:00, or words: now, today, '
+  + 'yesterday, tomorrow, 3 days ago, in 2 hours. Counted from when the step runs; a day starts at midnight UTC.';
 
 /** `P22-12`. What a For-each step may run for each item (design § 1.4: not
  *  If, Switch, Merge, Wait or another For-each). */
@@ -65,12 +101,45 @@ export const CODE_TEMPLATES = Object.freeze({
 
 /** `P22-13`. The methods an HTTP step may use. */
 export const HTTP_METHODS = Object.freeze(['GET', 'POST', 'PUT', 'PATCH', 'DELETE']);
+/** `B1885`. What an HTTP body field is sent as (stored words,
+ *  `workflow_slots.ENTRY_TYPES`); no `type` is text, as before. */
+export const BODY_TYPES = Object.freeze([
+  ['text', 'text'], ['number', 'a number'], ['yes/no', 'yes or no'], ['json', 'JSON'],
+]);
+/** `B1885`. A header's name, as the server checks it (`_HEADER_NAME_RE`). */
+const HEADER_NAME_RE = /^[A-Za-z0-9!#$%&'*+.^_`|~-]{1,128}$/;
+/** `B1885`. A header whose name says it carries a key: its value is hidden on
+ *  the form as a password is (the Integration is where a key belongs). */
+const SECRET_HEADER_RE = /auth|token|key|secret|passw|cookie|session|signature|credential/i;
+const NUMBER_TEXT_RE = /^[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?$/;
+const YES_NO_RE = /^(?:yes|no|true|false)$/i;
+/** `B1885`. Whether a header named `name` is one whose value the form hides. */
+export function headerIsSecret(name) {
+  return SECRET_HEADER_RE.test(String(name || ''));
+}
 /** `P22-16`. The types an AI step's answer field may have (stored words). */
 export const ANSWER_TYPES = Object.freeze([
   ['text', 'text'], ['number', 'a number'], ['yes/no', 'yes or no'], ['list', 'a list'],
 ]);
 const KEY_RE = /^[A-Za-z_][A-Za-z0-9_]{0,63}$/;
 const ANSWER_MAX = 20;
+/** `B1879`. What a Set field's value is made: the stored words
+ *  (`workflow_logic.SET_TYPES`, `''` for none — "as it comes", what every Set
+ *  field always was) and the words its chooser shows
+ *  (`workflow_logic.SET_TYPE_WORDS`, which a test holds equal to these). */
+export const SET_TYPES = Object.freeze([
+  ['', 'as it comes'], ['text', 'text'], ['number', 'a number'], ['yes/no', 'yes or no'],
+  ['json', 'JSON (a list or an object)'],
+]);
+/** `B1881`. What a Set step does when a field reads nothing
+ *  (`workflow_logic.SET_ON_MISSING`, `SET_ON_MISSING_WORDS`, held equal by a
+ *  test); "stop" is what a step that says nothing does. */
+export const SET_ON_MISSING = Object.freeze([
+  ['stop', 'stop the run and say which'], ['empty', 'leave it empty and go on'],
+]);
+/** `B1879`. A Set field's name: up to eight names joined by dots, each
+ *  letters, digits and _ (`workflow_logic.set_name_parts`). */
+const SET_NAME_RE = /^[A-Za-z_][A-Za-z0-9_]{0,63}(?:\.[A-Za-z_][A-Za-z0-9_]{0,63}){0,7}$/;
 
 // ── `P22-24` (wb-canvas-e). What an imported step needs ────────────────────
 // A step brought in from a file that refers to something this Pantheon does
@@ -187,6 +256,22 @@ const _nextId = () => `wf-sf-${++_ids}`;
 export const CLASSIFY_DELAY_MS = 250;
 
 const clone = (v) => (v == null ? v : JSON.parse(JSON.stringify(v)));
+
+/** `B1884` (`identifiers-cannot-be-mapped`). What ticking *Fill from an
+ *  earlier step* means on an HTTP step's path and on a Wait's time — said
+ *  under the box while it is ticked (`argsForm.mountOpenBox`). */
+export const PATH_OPEN_NOTE = 'Pantheon reads what an earlier step puts here as text from outside: a webhook or a mail may '
+  + 'have written it. So whenever an earlier step fills it, this step asks you first wherever your approval setting '
+  + 'asks once outside text has been read. The path’s first part stays what you type, such as /items/, and each '
+  + 'value goes in as one piece of it: never a /, a ? or a ..';
+export const OPEN_PATH_HEAD = 'A path filled from an earlier step starts with a part you type, such as /items/{{ steps.read.data.id }}.';
+const OPEN_PATH_HEAD_RE = /^\/[^/?#{}\s]+\//;
+export function timeOpenNote(maxH) {
+  return `An earlier step may give the time: a time of day (HH:MM) or a date and time such as 2026-11-08T09:00, at most ${maxH} `
+    + 'hours away. Anything else ends the step, and says why.';
+}
+/** The fields a step's author opened (`config.filled`), as a set. */
+const filledOf = (cfg) => new Set(cfg && Array.isArray(cfg.filled) ? cfg.filled.map(String) : []);
 
 /** A text box (or area) with its label and, under it, a hint. */
 function _textField(parent, label, { value = '', field = '', area = false, rows = 3, placeholder = '', hint = '', mono = false } = {}) {
@@ -308,8 +393,9 @@ function _rows(parent, items, { addLabel, draw, empty = '', min = 0 }) {
   };
 }
 
-/** `P22-10`. A list of conditions — field, one of six words, value — and
- *  whether all or any must hold. Shared by If and each Switch case. */
+/** `P22-10`. A list of conditions — field, one of the operator words, value
+ *  (`B1880`: or choices, and what both are compared as) — and whether all
+ *  or any must hold. Shared by If and each Switch case. */
 function _conditions(parent, value, { prefix, decorate, operators, joinLabel }) {
   const v = value && typeof value === 'object' ? value : {};
   const join = _selectField(parent, joinLabel,
@@ -328,24 +414,71 @@ function _conditions(parent, value, { prefix, decorate, operators, joinLabel }) 
       const op = _selectField(row, 'Is', ops.map((o) => [o.op, o.word]), { value: c.op || 'equals', field: `${base}[${i}].op` });
       const rightBox = _el('div', 'wf-sf-right');
       row.appendChild(rightBox);
-      const right = _textField(rightBox, 'This value', { value: c.right == null ? '' : c.right, field: `${base}[${i}].right`,
-        placeholder: 'Type a value, or pick a field' });
+      // `B1880`. One value in a text box; "is one of" / "is not one of" take
+      // choices, one on each line, kept as a list — so a choice may hold a
+      // comma ("Smith, John"), which text split on commas never could.
+      const oneBox = _el('div', 'wf-sf-group');
+      const manyBox = _el('div', 'wf-sf-group');
+      rightBox.appendChild(oneBox);
+      rightBox.appendChild(manyBox);
+      const listed = Array.isArray(c.right) ? c.right.map((x) => (typeof x === 'string' ? x : JSON.stringify(x))).join('\n') : null;
+      const right = _textField(oneBox, 'This value', { value: c.right == null || listed != null ? '' : c.right,
+        field: `${base}[${i}].right`, placeholder: 'Type a value, or pick a field' });
       const hr = decorate(right, `${base}[${i}].right`);
-      const oneOf = _el('p', 'wf-sf-hint', 'Separate the choices with commas.');
-      rightBox.appendChild(oneOf);
-      const sync = () => { rightBox.hidden = op.value === 'is_empty'; oneOf.hidden = op.value !== 'one_of'; };
+      const firstChoices = listed != null ? listed : (_isListOp(c.op) && c.right != null ? String(c.right) : '');
+      const choices = _textField(manyBox, 'These choices', { value: firstChoices, area: true, rows: 4,
+        field: `${base}[${i}].choices`, placeholder: 'One on each line', hint: 'One choice on each line.' });
+      const patternHint = _el('p', 'wf-sf-hint', PATTERN_HINT);
+      const dateHint = _el('p', 'wf-sf-hint', DATE_HINT);
+      rightBox.appendChild(patternHint);
+      rightBox.appendChild(dateHint);
+      // What the two sides are compared as — "as it looks" writes no `as`.
+      const asBox = _el('div', 'wf-sf-group');
+      rightBox.appendChild(asBox);
+      const asSel = _selectField(asBox, 'Compared as', COMPARE_AS,
+        { value: COMPARE_AS.some(([k]) => k && k === c.as) ? c.as : '', field: `${base}[${i}].as` });
+      let was = op.value;
+      const sync = () => {
+        const o = op.value;
+        // Moving between one value and choices carries what was typed.
+        if (_isListOp(o) && !_isListOp(was) && !String(choices.value).trim()) choices.value = String(right.value);
+        if (!_isListOp(o) && _isListOp(was) && !String(right.value).trim()) right.value = String(choices.value).split('\n')[0] || '';
+        was = o;
+        rightBox.hidden = UNARY_OPERATORS.includes(o);
+        oneBox.hidden = _isListOp(o);
+        manyBox.hidden = !_isListOp(o);
+        patternHint.hidden = o !== 'matches';
+        dateHint.hidden = !DATE_OPERATORS.includes(o);
+        asBox.hidden = DATE_OPERATORS.includes(o);
+      };
       op.addEventListener('change', sync);
       sync();
+      const choiceList = () => String(choices.value).split('\n').map((s) => s.trim()).filter(Boolean);
+      const rightNow = () => {
+        if (!_isListOp(op.value)) return String(right.value);
+        // Unchanged since the form opened: as it came (a list, or the text
+        // of a document written before choices were a list).
+        if (String(choices.value) === firstChoices && c.right != null) return c.right;
+        const lines = choiceList();
+        // One line that is exactly a picked field (a list from an earlier
+        // step) stays that field.
+        const one = lines.length === 1 ? parseRefAt(lines[0], 0) : null;
+        return one && one.end === lines[0].length ? lines[0] : lines;
+      };
       return {
-        snapshot: () => ({ left: left.value, op: op.value, right: right.value }),
+        snapshot: () => ({ left: left.value, op: op.value, right: rightNow(), ...(asSel.value ? { as: asSel.value } : {}) }),
         read: (j) => {
           const field = `${base}[${j}]`;
           if (!String(left.value).trim()) return { refusal: 'Pick the field this condition looks at.', field: `${field}.left` };
-          if (op.value !== 'is_empty' && !String(right.value).trim() && op.value !== 'equals') {
+          if (_isListOp(op.value)) {
+            if (!choiceList().length) return { refusal: 'Give the choices, one on each line.', field: `${field}.choices` };
+          } else if (!UNARY_OPERATORS.includes(op.value) && !String(right.value).trim()
+              && op.value !== 'equals' && op.value !== 'not_equals') {
             return { refusal: `Give the value “${(ops.find((o) => o.op === op.value) || {}).word || op.value}” compares with.`, field: `${field}.right` };
           }
           const out = { left: String(left.value).trim(), op: op.value };
-          if (op.value !== 'is_empty') out.right = String(right.value);
+          if (!UNARY_OPERATORS.includes(op.value)) out.right = rightNow();
+          if (asSel.value && !DATE_OPERATORS.includes(op.value) && !UNARY_OPERATORS.includes(op.value)) out.as = asSel.value;
           return { value: out };
         },
         destroy() { for (const h of [hl, hr]) { try { if (h && h.destroy) h.destroy(); } catch (_) { /* gone */ } } },
@@ -433,33 +566,64 @@ function buildSet(ctx) {
       const f = item && typeof item === 'object' ? item : {};
       const name = _textField(row, 'Name', { value: f.name || '', field: `fields[${i}].name`, placeholder: 'e.g. headline' });
       const hn = ctx.decorate(name, `fields[${i}].name`);
-      const value = _textField(row, 'Value', { value: f.value == null ? '' : f.value, field: `fields[${i}].value`,
+      // `B1879`. What the value is made — "as it comes" (no `type`, what a
+      // Set field always was) unless the person says. A typed value that is
+      // not what it says fails the step at run, naming the field.
+      const type = _selectField(row, 'It is', SET_TYPES,
+        { value: SET_TYPES.some(([v]) => v && v === f.type) ? f.type : '', field: `fields[${i}].type` });
+      // A value that is not text (a number, yes/no, a list a file or the
+      // agent wrote) is shown as JSON — `[1,2]`, not `1,2`.
+      const shown = f.value == null ? '' : (typeof f.value === 'string' ? f.value : JSON.stringify(f.value));
+      const value = _textField(row, 'Value', { value: shown, field: `fields[${i}].value`,
         placeholder: 'Type it, or pick a field' });
       const hv = ctx.decorate(value, `fields[${i}].value`);
       return {
-        snapshot: () => ({ name: name.value, value: value.value }),
+        snapshot: () => ({ name: name.value, value: value.value, ...(type.value ? { type: type.value } : {}) }),
         read: (j) => {
           const n = String(name.value).trim();
-          if (!KEY_RE.test(n)) {
-            return { refusal: 'A field’s name is letters, digits and _ (not starting with a digit), such as headline.', field: `fields[${j}].name` };
+          if (!SET_NAME_RE.test(n)) {
+            return { refusal: 'A field’s name is letters, digits and _ (not starting with a digit), such as headline; '
+              + 'a dot puts one inside another, such as customer.name.', field: `fields[${j}].name` };
           }
-          return { value: { name: n, value: String(value.value) } };
+          // `B1879`. A value the form was opened with that is not text (a
+          // number or yes/no a file or the agent wrote) is handed back as it
+          // came unless it was changed — opening a step and pressing Done no
+          // longer turns the number 7 into the text "7".
+          const typedValue = typeof f.value !== 'string' && f.value != null && String(value.value) === shown
+            ? f.value : String(value.value);
+          const out = { name: n, value: typedValue };
+          if (type.value) out.type = type.value;
+          return { value: out };
         },
         destroy() { for (const h of [hn, hv]) { try { if (h && h.destroy) h.destroy(); } catch (_) { /* gone */ } } },
       };
     },
   });
   ctx.onDestroy(() => rows.destroy());
+  // `B1881`. A field that reads nothing stops the run (the default, as in
+  // every other step), or is left empty — what a Set step did before. Written
+  // only when it says "leave it empty", or the step already said, so a step
+  // saved before this row comes back as it was.
+  const onMissing = _selectField(body, 'If a field is not there', SET_ON_MISSING,
+    { value: cfg.on_missing === 'empty' ? 'empty' : 'stop', field: 'on_missing',
+      hint: 'A field can also end in | default:"…" for when it is not there.' });
   return () => {
     const fields = [];
     const names = new Set();
+    const tail = onMissing.value === 'empty' || cfg.on_missing != null ? { on_missing: onMissing.value } : {};
     for (const [j, r] of rows.read().entries()) {
       if (r.refusal) return r;
       if (names.has(r.value.name)) return { refusal: `“${r.value.name}” is set twice. Each name once.`, field: `fields[${j}].name` };
+      // `B1879`. `a` and `a.b` cannot both be set (`set_names_clash`).
+      const outer = [...names].find((m) => r.value.name.startsWith(`${m}.`) || m.startsWith(`${r.value.name}.`));
+      if (outer) {
+        const [inner, out] = outer.length > r.value.name.length ? [outer, r.value.name] : [r.value.name, outer];
+        return { refusal: `“${inner}” is inside “${out}”, which is set as well. Set one or the other.`, field: `fields[${j}].name` };
+      }
       names.add(r.value.name);
       fields.push(r.value);
     }
-    return { config: { fields } };
+    return { config: { fields, ...tail } };
   };
 }
 
@@ -490,7 +654,22 @@ function buildWait(ctx) {
   const ha = ctx.decorate(amount, 'minutes');
   const unit = _selectField(forBox, 'In', [['1', 'minutes'], ['60', 'hours']], { value: byHours ? '60' : '1' });
   const time = _textField(untilBox, 'Until (HH:MM, 24-hour)', { value: cfg.time || '08:00', field: 'time', placeholder: '08:00' });
-  const ht = ctx.decorate(time, 'time');
+  // `B1884`. A Wait until a time may take the time from an earlier step, when
+  // its author ticks the box the palette offers (`openable`) — a time of day
+  // or a date and time, read when the step is reached.
+  const timeSlot = slotFor(ctx.slots, 'time');
+  const opened = filledOf(cfg);
+  let ht = null;
+  const timeOpen = timeSlot && timeSlot.mapping === 'never' && (timeSlot.openable === true || opened.has('time'))
+    ? mountOpenBox(untilBox, { field: 'time', checked: opened.has('time'), note: timeOpenNote(maxH),
+      onChange: (on) => {
+        try { if (ht && ht.destroy) ht.destroy(); } catch (_) { /* gone */ }
+        ht = on ? ctx.decorateSlot(time, { field: 'time', slot: OPENED_SLOT }) : ctx.decorate(time, 'time');
+        sync();
+      } })
+    : null;
+  const fromData = () => !!(timeOpen && timeOpen.checked()) && String(time.value).includes('{{');
+  ht = timeOpen && timeOpen.checked() ? ctx.decorateSlot(time, { field: 'time', slot: OPENED_SLOT }) : ctx.decorate(time, 'time');
   const tz = _textField(untilBox, 'Time zone (optional)', { value: cfg.tz || '', field: 'tz',
     placeholder: 'The start’s time zone', hint: 'Leave it blank for the time zone the workflow’s start uses.' });
   const htz = ctx.decorate(tz, 'tz');
@@ -501,25 +680,36 @@ function buildWait(ctx) {
     forBox.hidden = mode.value !== 'for';
     untilBox.hidden = mode.value !== 'until';
     said.textContent = mode.value === 'until'
-      ? `It runs at ${String(time.value || '08:00').trim()}, or as soon after as Pantheon is idle.`
+      ? (fromData() ? 'It runs at the time an earlier step hands it, or as soon after as Pantheon is idle.'
+        : `It runs at ${String(time.value || '08:00').trim()}, or as soon after as Pantheon is idle.`)
       : 'Then it runs on as soon as Pantheon is idle.';
   };
   for (const n of [mode, time]) n.addEventListener(n === mode ? 'change' : 'input', sync);
   sync();
   ctx.onDestroy(() => { for (const h of [ha, ht, htz]) { try { if (h && h.destroy) h.destroy(); } catch (_) { /* gone */ } } });
   return () => {
+    const isOpen = !!(timeOpen && timeOpen.checked());
     if (mode.value === 'until') {
       const t = String(time.value).trim();
-      if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(t)) return { refusal: 'Write the time as HH:MM, such as 08:00.', field: 'time' };
+      if (!fromData() && !/^([01]\d|2[0-3]):[0-5]\d$/.test(t)) {
+        return { refusal: isOpen ? 'Write the time as HH:MM, such as 08:00, or pick it from an earlier step.'
+          : 'Write the time as HH:MM, such as 08:00.', field: 'time' };
+      }
       const out = { mode: 'until', time: t };
       if (String(tz.value).trim()) out.tz = String(tz.value).trim();
+      // `B1884`: a Wait that opened nothing, and had nothing open, stays
+      // without the key.
+      if (isOpen || Array.isArray(cfg.filled)) out.filled = isOpen ? ['time'] : [];
       return { config: out };
     }
     const n = Number(String(amount.value).trim());
     if (!Number.isFinite(n) || n <= 0) return { refusal: 'Say how long, as a number above 0.', field: 'minutes' };
     const total = Math.round(n * Number(unit.value));
     if (total > maxH * 60) return { refusal: `A wait is at most ${maxH} hours (workflow_wait_max_hours).`, field: 'minutes' };
-    return { config: { mode: 'for', minutes: total } };
+    const out = { mode: 'for', minutes: total };
+    // A Wait for a while opens nothing: only a time is ever filled from a step.
+    if (Array.isArray(cfg.filled)) out.filled = [];
+    return { config: out };
   };
 }
 
@@ -597,16 +787,82 @@ function buildHttp(ctx) {
   const method = _selectField(body, 'Method', HTTP_METHODS.map((m) => [m, m]),
     { value: String(cfg.method || 'GET').toUpperCase(), field: 'method' });
   const path = _textField(body, 'Path', { value: cfg.path || '', field: 'path', placeholder: '/v1/entries' });
-  const hp = ctx.decorate(path, 'path');
+  // `B1884` (`identifiers-cannot-be-mapped`). The path, and a query or body
+  // value whose name allows it, may be opened to a value from an earlier step
+  // with *Fill from an earlier step* — offered where the server says
+  // `openable` (the palette for the path, the rule's answer for an entry as
+  // its name is typed), kept ticked where the step already opened it.
+  const opened = filledOf(cfg);
+  const pathSlot = slotFor(ctx.slots, 'path');
+  let hp = null;
+  const pathOpen = pathSlot && pathSlot.mapping === 'never' && (pathSlot.openable === true || opened.has('path'))
+    ? mountOpenBox(body, { field: 'path', checked: opened.has('path'), note: PATH_OPEN_NOTE,
+      onChange: (on) => {
+        try { if (hp && hp.destroy) hp.destroy(); } catch (_) { /* gone */ }
+        hp = on ? ctx.decorateSlot(path, { field: 'path', slot: OPENED_SLOT }) : ctx.decorate(path, 'path');
+      } })
+    : null;
+  hp = pathOpen && pathOpen.checked() ? ctx.decorateSlot(path, { field: 'path', slot: OPENED_SLOT }) : ctx.decorate(path, 'path');
+  // `B1885` (`http-body-strings-no-headers`). The headers the step sends. The
+  // server always kept, checked and sent them, but there was no list here, so
+  // a header that came in a file was sent unseen and could not be removed —
+  // and the file's own need said "Type it on the step" about a box that did
+  // not exist. Every header is typed only (a `never` slot: it says how the
+  // request is read, never a value from another step). A value whose name says
+  // it is a key is hidden as a password is; the Integration is where a key
+  // belongs — kept encrypted, added when the step runs, and sent in place of a
+  // header here of the same name (`integrations._credentials`).
+  const headersBox = _el('div', 'wf-sf-group');
+  headersBox.appendChild(_el('p', 'wf-sf-sub', 'Headers'));
+  body.appendChild(headersBox);
+  const headerRows = _rows(headersBox, Array.isArray(cfg.headers) ? cfg.headers : [], {
+    addLabel: 'Add a header',
+    empty: 'None.',
+    draw(row, item, i) {
+      const it = item && typeof item === 'object' ? item : {};
+      const k = _textField(row, 'Name', { value: it.name || '', field: `headers[${i}].name`, placeholder: 'e.g. Accept' });
+      const hk = ctx.decorate(k, `headers[${i}].name`);
+      const v = _textField(row, 'Value', { value: it.value == null ? '' : it.value, field: `headers[${i}].value` });
+      v.autocomplete = 'off';
+      v.spellcheck = false;
+      const hv = ctx.decorate(v, `headers[${i}].value`);
+      const hide = () => {
+        const secret = headerIsSecret(k.value);
+        v.type = secret ? 'password' : 'text';
+        // A browser offers a saved login for a password box; this is not one.
+        v.autocomplete = secret ? 'new-password' : 'off';
+      };
+      k.addEventListener('input', hide);
+      hide();
+      return {
+        snapshot: () => ({ name: k.value, value: v.value }),
+        read: (j) => {
+          const n = String(k.value).trim();
+          if (!n) return { refusal: 'Give this header a name, or remove it.', field: `headers[${j}].name` };
+          if (!HEADER_NAME_RE.test(n)) {
+            return { refusal: 'A header’s name is letters, digits and - with no spaces, such as Accept.', field: `headers[${j}].name` };
+          }
+          return { value: { name: n, value: String(v.value) } };
+        },
+        destroy() { for (const h of [hk, hv]) { try { if (h && h.destroy) h.destroy(); } catch (_) { /* gone */ } } },
+      };
+    },
+  });
+  ctx.onDestroy(() => headerRows.destroy());
+  headersBox.appendChild(_el('p', 'wf-sf-hint', `A key or token belongs in the Integration (${ROOM_NAMES.integrations}): `
+    + 'Pantheon keeps it encrypted there and adds it when the step runs, in place of a header here of the same name. '
+    + 'A header typed here is kept with the workflow, hidden on this form when its name says it is a key, '
+    + 'never shown in a plan, and left out of an exported file.'));
   // `P22-13`. Each query or body entry is `{ name, value }` — the shape the
   // document rule checks and `render_call` sends (`src/workflow_document.py`
   // `_check_entries`, `src/workflow_slots.py`), as a Set field's and a Code
   // input's are. `integrate-d`: this wrote `{ key, value }`, which every save
-  // refused ("each of “query” is a name and a value").
-  const kv = (label, list, add, items) => {
+  // refused ("each of “query” is a name and a value"). `B1885`: a body field
+  // also says what it is sent as (`type`): text, a number, yes or no, or JSON.
+  const kv = (parent, label, list, add, items, { typed = false } = {}) => {
     const box = _el('div', 'wf-sf-group');
     box.appendChild(_el('p', 'wf-sf-sub', label));
-    body.appendChild(box);
+    parent.appendChild(box);
     const rows = _rows(box, items, {
       addLabel: add,
       empty: 'None.',
@@ -617,35 +873,81 @@ function buildHttp(ctx) {
         const hk = ctx.decorate(k, `${list}[${i}].name`);
         const v = _textField(row, 'Value', { value: it.value == null ? '' : it.value, field });
         let hv = ctx.decorate(v, field);
+        const type = typed
+          ? _selectField(row, 'Sent as', BODY_TYPES, { value: it.type || 'text', field: `${list}[${i}].type` })
+          : null;
+        // `B1884`: offered once the rule says this name may be opened; a row
+        // the step already opened keeps its tick (a new row starts unticked).
+        let said = slotFor(ctx.slots, field);
+        const open = mountOpenBox(row, {
+          field,
+          checked: item == null ? false : (typeof it.opened === 'boolean' ? it.opened : opened.has(field)),
+          onChange: (on) => {
+            try { if (hv && hv.destroy) hv.destroy(); } catch (_) { /* gone */ }
+            hv = on ? ctx.decorateSlot(v, { field, slot: OPENED_SLOT }) : ctx.decorateSlot(v, { field, slot: said });
+          },
+        });
+        open.offer(false);
+        if (open.checked()) {
+          try { if (hv && hv.destroy) hv.destroy(); } catch (_) { /* gone */ }
+          hv = ctx.decorateSlot(v, { field, slot: OPENED_SLOT });
+        }
         // `B1099`. Whether another step may fill this value depends on the
         // entry's name (`classify_argument`), which the palette cannot say
         // once per kind (it says `never`). The rule is asked as the name is
         // typed, and the value offers *Insert a field…* or says why not, before
         // Done. A Pantheon without the door keeps the palette's `never`.
+        // `B1885`: and on what it is sent as — JSON is never filled.
         let alive = true;
         let asked = null;
         let timer = null;
         const ask = async () => {
           const name = String(k.value).trim();
-          if (!ctx.classify || !name || name === asked) return;
-          asked = name;
+          const typeWord = type && type.value !== 'text' ? type.value : null;
+          const key = `${name}\u0000${typeWord || ''}`;
+          if (!ctx.classify || !name || key === asked) return;
+          asked = key;
+          const entry = typeWord ? { name, type: typeWord } : { name };
           let r = null;
-          try { r = await ctx.classify({ kind: 'http', config: { [list]: [{ name }] } }, `${list}[0].value`); } catch (_) { r = null; }
+          try { r = await ctx.classify({ kind: 'http', config: { [list]: [entry] } }, `${list}[0].value`); } catch (_) { r = null; }
           if (!alive || String(k.value).trim() !== name || !r || r.ok === false) return;
           if (r.mapping !== 'value' && r.mapping !== 'never') return;
+          said = { mapping: r.mapping, why: r.why || '' };
+          open.offer(r.mapping === 'never' && r.openable === true);
           try { if (hv && hv.destroy) hv.destroy(); } catch (_) { /* gone */ }
-          hv = ctx.decorateSlot(v, { field, slot: { mapping: r.mapping, why: r.why || '' } });
+          hv = ctx.decorateSlot(v, { field, slot: open.checked() ? OPENED_SLOT : said });
         };
         k.addEventListener('input', () => {
           if (timer) clearTimeout(timer);
           timer = setTimeout(() => { timer = null; ask(); }, CLASSIFY_DELAY_MS);
         });
+        if (type) type.addEventListener('change', () => { ask(); });
         if (String(k.value).trim()) ask();
+        const sentAs = () => (type ? type.value : 'text');
         return {
-          snapshot: () => ({ name: k.value, value: v.value }),
-          read: (j) => (String(k.value).trim()
-            ? { value: { name: String(k.value).trim(), value: String(v.value) } }
-            : { refusal: 'Give this a name, or remove it.', field: `${list}[${j}].name` }),
+          snapshot: () => ({ name: k.value, value: v.value, ...(type ? { type: type.value } : {}), opened: open.checked() }),
+          read: (j) => {
+            const name = String(k.value).trim();
+            if (!name) return { refusal: 'Give this a name, or remove it.', field: `${list}[${j}].name` };
+            const value = String(v.value);
+            const word = sentAs();
+            const typedOwn = !value.includes('{{');
+            if (typedOwn && word === 'number' && !NUMBER_TEXT_RE.test(value.trim())) {
+              return { refusal: `“${name}” is sent as a number, and “${value.slice(0, 40)}” is not one.`, field: `${list}[${j}].value` };
+            }
+            if (typedOwn && word === 'yes/no' && !YES_NO_RE.test(value.trim())) {
+              return { refusal: `“${name}” is sent as yes or no: write yes or no.`, field: `${list}[${j}].value` };
+            }
+            if (word === 'json') {
+              try { JSON.parse(value); } catch (_) {
+                return { refusal: `“${name}” is sent as JSON, and what is written is not JSON.`, field: `${list}[${j}].value` };
+              }
+            }
+            const out = { name, value };
+            // No `type` is text, as before; a field that said text keeps saying it.
+            if (type && (word !== 'text' || it.type === 'text')) out.type = word;
+            return { value: out, opens: open.checked() };
+          },
           destroy() {
             alive = false;
             if (timer) clearTimeout(timer);
@@ -657,18 +959,41 @@ function buildHttp(ctx) {
     ctx.onDestroy(() => rows.destroy());
     return { box, rows };
   };
-  const query = kv('Query', 'query', 'Add a query value', Array.isArray(cfg.query) ? cfg.query : []);
-  const bodyKv = kv('Body (sent as JSON)', 'body', 'Add a body field', Array.isArray(cfg.body) ? cfg.body : []);
+  const query = kv(body, 'Query', 'query', 'Add a query value', Array.isArray(cfg.query) ? cfg.query : []);
+  // `B1885`. The body is its fields (sent as a JSON object, as it always was)
+  // or JSON written whole, whose values may be references where their names
+  // say they are words — the same rule a field's name is held to.
+  const bodyBox = _el('div', 'wf-sf-group');
+  body.appendChild(bodyBox);
+  const bodyMode = _selectField(bodyBox, 'Body', [['json', 'fields, sent as JSON'], ['raw', 'JSON you write']],
+    { value: cfg.body_mode === 'raw' ? 'raw' : 'json', field: 'body_mode' });
+  const bodyKv = kv(bodyBox, 'Body fields', 'body', 'Add a body field', Array.isArray(cfg.body) ? cfg.body : [], { typed: true });
+  const rawBox = _el('div', 'wf-sf-group');
+  bodyBox.appendChild(rawBox);
+  const written = cfg.raw_body && typeof cfg.raw_body === 'object' ? JSON.stringify(cfg.raw_body, null, 2) : '';
+  const raw = _textField(rawBox, 'JSON you write', { value: written, field: 'raw_body', area: true, rows: 8, mono: true,
+    placeholder: '{ "title": "Daily brief", "text": "{{ steps.read.text }}", "priority": 4 }',
+    hint: 'Sent exactly as written. A value may be a reference, inside quotes, where its name says it is words '
+      + '(text, message, title…); a reference alone keeps its type, so a number stays a number.' });
+  raw.spellcheck = false;
   body.appendChild(_el('p', 'wf-sf-hint', 'Whether a value may come from an earlier step depends on its name: words that '
     + 'carry content (text, message, subject, title, summary…) may; a name that says where something goes never does. '
     + 'The value says which as you type the name.'));
+  // `B1885`. What the step hands on: the answer's body (as before), or its
+  // status and headers with it.
+  const response = _selectField(body, 'It hands on', [['body', 'the answer’s body'], ['full', 'its status, headers and body']],
+    { value: cfg.response === 'full' ? 'full' : 'body', field: 'response',
+      hint: 'With its status, headers and body, a later step reads data.http_status, data.headers and data.body.' });
   const sync = () => {
     const i = integrations.find((x) => String(x.id) === integ.value);
     desc.textContent = i && i.description ? String(i.description) : '';
-    bodyKv.box.hidden = method.value === 'GET';
+    bodyBox.hidden = method.value === 'GET';
+    bodyKv.box.hidden = bodyMode.value === 'raw';
+    rawBox.hidden = bodyMode.value !== 'raw';
   };
   integ.addEventListener('change', sync);
   method.addEventListener('change', sync);
+  bodyMode.addEventListener('change', sync);
   sync();
   // `B1136`. An Integration added in the room this step's door opens is
   // offered here once the palette is read again — no reopening the Workbench.
@@ -683,17 +1008,55 @@ function buildHttp(ctx) {
     if (!integ.value) return { refusal: 'Choose the integration it calls.', field: 'integration' };
     const p = String(path.value).trim();
     if (p && !p.startsWith('/')) return { refusal: 'A path starts with /, such as /v1/entries.', field: 'path' };
-    const read = (rows) => {
+    const pathOpened = !!(pathOpen && pathOpen.checked());
+    if (pathOpened && p.includes('{{') && !OPEN_PATH_HEAD_RE.test(p)) return { refusal: OPEN_PATH_HEAD, field: 'path' };
+    // `opens`: the `B1884` fields of a list ticked open, as the panel names them.
+    const read = (rows, list = '') => {
       const out = [];
-      for (const r of rows.read()) { if (r.refusal) return r; out.push(r.value); }
-      return { value: out };
+      const opens = [];
+      for (const [j, r] of rows.read().entries()) {
+        if (r.refusal) return r;
+        out.push(r.value);
+        if (list && r.opens) opens.push(`${list}[${j}].value`);
+      }
+      return { value: out, opens };
     };
-    const q = read(query.rows);
+    const h = read(headerRows);
+    if (h.refusal) return h;
+    const seen = new Set();
+    for (const [j, one] of h.value.entries()) {
+      const lower = one.name.toLowerCase();
+      if (seen.has(lower)) return { refusal: `“${one.name}” is sent twice. Each header once.`, field: `headers[${j}].name` };
+      seen.add(lower);
+    }
+    const q = read(query.rows, 'query');
     if (q.refusal) return q;
-    const b = method.value === 'GET' ? { value: [] } : read(bodyKv.rows);
+    const writes = method.value !== 'GET' && bodyMode.value === 'raw';
+    const b = method.value === 'GET' || writes ? { value: [], opens: [] } : read(bodyKv.rows, 'body');
     if (b.refusal) return b;
+    let rawBody;
+    if (writes) {
+      try { rawBody = JSON.parse(String(raw.value)); } catch (_) {
+        return { refusal: 'This is not JSON. A reference goes inside quotes, such as "text": "{{ steps.read.text }}".', field: 'raw_body' };
+      }
+      if (!rawBody || typeof rawBody !== 'object') {
+        return { refusal: 'Write a JSON object { … } or a list [ … ].', field: 'raw_body' };
+      }
+    }
     const out = { integration: integ.value, method: method.value, path: p, query: q.value, body: b.value };
-    if (method.value !== 'GET') out.body_mode = 'json';
+    // A step that had no headers and was given none stays without the key.
+    if (h.value.length || Array.isArray(cfg.headers)) out.headers = h.value;
+    if (method.value !== 'GET') out.body_mode = writes ? 'raw' : 'json';
+    else if (cfg.body_mode === 'raw') out.body_mode = 'json';
+    // Undefined drops a body written before, once it is not sent.
+    if (writes) out.raw_body = rawBody;
+    else if ('raw_body' in cfg) out.raw_body = undefined;
+    if (response.value === 'full') out.response = 'full';
+    else if (cfg.response != null) out.response = 'body';
+    // `B1884`: what is open, by where it is now; a step that opened nothing,
+    // and had nothing open, stays without the key.
+    const filled = [...(pathOpened ? ['path'] : []), ...q.opens, ...b.opens];
+    if (filled.length || Array.isArray(cfg.filled)) out.filled = filled;
     return { config: out };
   };
 }
@@ -725,14 +1088,20 @@ function buildMcp(ctx) {
   body.appendChild(argsHost);
   let form = null;
   let args = cfg.args && typeof cfg.args === 'object' ? clone(cfg.args) : {};
+  // `B1884`: the arguments its author opened to a value from an earlier step.
+  let filled = Array.isArray(cfg.filled) ? cfg.filled.map(String) : [];
   const sync = () => {
-    if (form) { const r = form.read(); if (r.args) args = { ...args, ...r.args }; form.destroy(); form = null; }
+    if (form) {
+      const r = form.read();
+      if (r.args) { args = { ...args, ...r.args }; filled = Array.isArray(r.filled) ? r.filled : []; }
+      form.destroy(); form = null;
+    }
     const t = tools.find((x) => x.qualified_name === choice.value);
     desc.textContent = t && t.description ? String(t.description) : '';
-    if (t) form = mountArgsForm(argsHost, { tool: t, values: args, pickField: ctx.decorateSlot });
+    if (t) form = mountArgsForm(argsHost, { tool: t, values: args, pickField: ctx.decorateSlot, filled });
     ctx.argsHandles = form ? form.handles : {};
   };
-  choice.addEventListener('change', () => { args = {}; sync(); });
+  choice.addEventListener('change', () => { args = {}; filled = []; sync(); });
   sync();
   // `B1136`. A server added in the room this step's door opens: its tools
   // are offered here once the palette is read again. The arguments typed so
@@ -747,16 +1116,22 @@ function buildMcp(ctx) {
     if (!choice.value) return { refusal: 'Choose the tool it calls.', field: 'tool' };
     const r = form ? form.read() : { args: {} };
     if (r.refusal) return r;
-    return { config: { tool: choice.value, args: r.args } };
+    const out = { tool: choice.value, args: r.args };
+    // `B1884`: a step that opened none, and had none, stays without the key.
+    if ((r.filled && r.filled.length) || Array.isArray(cfg.filled)) out.filled = r.filled || [];
+    return { config: out };
   };
 }
 
 function buildSkill(ctx) {
   const { body, cfg, palette } = ctx;
   let skills = palette && Array.isArray(palette.skills) ? palette.skills : [];
-  body.appendChild(_el('p', 'wf-sf-lede', 'Runs a model that follows one of your skills. The skill is read when the step runs, '
-    + 'so an edit to it reaches the next run.'));
-  const choices = () => [['', 'Choose one…'], ...skills.map((s) => [s.name, s.name])];
+  body.appendChild(_el('p', 'wf-sf-lede', 'Runs a model that follows a skill: one of yours, or a built-in one. '
+    + 'The skill is read when the step runs, so an edit to it reaches the next run.'));
+  // `B1892`. The palette lists the person's own skills first, then the
+  // built-in ones the chat would offer their model (`built_in`), said so.
+  const choices = () => [['', 'Choose one…'],
+    ...skills.map((s) => [s.name, s.built_in ? `${s.name} (built in)` : s.name])];
   const choice = _selectField(body, 'Skill', choices(), { value: cfg.skill || '', field: 'skill' });
   const desc = _el('p', 'wf-sf-hint');
   body.appendChild(desc);
@@ -1104,4 +1479,5 @@ export function mountAiOptions(host, { node, palette = null } = {}) {
 export default {
   mountStepFields, mountAiOptions, slotFor, STEP_FIELD_KINDS, DEFAULT_OPERATORS, INNER_EXCLUDED, CODE_TEMPLATES,
   HTTP_METHODS, ANSWER_TYPES, NEED_DOORS, needField, needKind, needDoor, needWords, needLine,
+  BODY_TYPES, headerIsSecret, PATH_OPEN_NOTE, OPEN_PATH_HEAD, timeOpenNote,
 };

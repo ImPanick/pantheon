@@ -116,7 +116,8 @@ def test_insert_a_field_lists_what_earlier_steps_made_and_puts_the_pick_at_the_c
         await settle(5);
         out({ up, listed, req, value: ta.value, uses: slotBox(ta).querySelector('.wf-slot-uses').textContent,
               gone: !root.querySelector('.wf-picker'), markup: markup(root),
-              unsaved: await src.listFields('nope') });
+              unsaved: await src.listFields('nope'),
+              draftReq: cw.calls.filter((c) => c.url.endsWith('/fields') && c.method === 'POST').map((c) => c.url) });
     """)
     assert o["up"] == [{"id": "classify", "label": "Classify", "kind": "llm"},
                        {"id": "fetch-issue", "label": "Fetch issue", "kind": "http"},
@@ -130,7 +131,12 @@ def test_insert_a_field_lists_what_earlier_steps_made_and_puts_the_pick_at_the_c
     assert o["value"] == "Summarise the issue {{ steps.fetch-issue.data.title }} for me.", "at the caret"
     assert o["uses"] == "Uses: title, from “Fetch issue”."
     assert o["gone"] is True and o["markup"] == [], "an example from outside is text"
-    assert o["unsaved"] == {"ok": False, "sentence": "Save the workflow first: the fields other steps made are listed for a saved step."}
+    # `B1850`. A step the saved workflow does not have is asked about as the
+    # draft has it (`POST …/fields`, driven against the real route in
+    # `test_the_builders_draft_reaches_the_server_js.py`); this fake has no
+    # such route, and its refusal is said, never a "save first".
+    assert o["draftReq"] == ["/api/workflows/wf1/fields"]
+    assert o["unsaved"]["ok"] is False and "Save the workflow first" not in o["unsaved"]["sentence"]
 
 
 def test_a_never_field_offers_no_picker_and_says_why_and_says_no_to_a_typed_reference(box):

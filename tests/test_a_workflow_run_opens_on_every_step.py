@@ -32,7 +32,9 @@ NODE_RECORD_KEYS = {"id", "node_id", "kind", "label", "seq", "status", "attempt"
                     "output", "error", "steps", "model",
                     # `P22-11`/`P22-12` (`C-W`): the For-each item and what a
                     # parked step waits for.
-                    "item", "waiting"}
+                    "item", "waiting",
+                    # `B1854`: the failed run a retry kept this record from.
+                    "kept_from"}
 # `B1066`: each entry carries `dry`, the verdict the canvas reads.
 PLAN_KEYS = {"node_id", "kind", "name", "when", "depth", "steps", "declined", "dry"}
 

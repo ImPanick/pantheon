@@ -2588,3 +2588,439 @@ html.cockpit .push-device-here {
   color: var(--ck-accent-2); background: var(--ck-accent-wash); border: 1px solid var(--ck-accent-line);
 }
 html.cockpit .push-device-meta { font: 400 11px/1.4 var(--ck-font-mono, monospace); color: var(--ck-text-3, var(--ck-text-2)); }
+
+/* ───────────── the Workbench's automations: a node editor (`B1833`) ─────────────
+   The canvas is a well a step darker than the window, its dot grid moving and
+   scaling with the drawing (`--wb-grid*`, set by canvas.js). A step is a lit
+   slab: a glyph tile tinted by its family (the palette's group), its name, what
+   it does, and how it last went on a chip. Families are hues turned from the
+   theme's own accent, so every palette draws them in its own key; a browser
+   without relative colour falls back to the accent and the semantic seeds.
+   How a step last went stays a SHAPE and a WEIGHT first (`P8-34`): the chip's
+   mark (✓ ✗ … ·) and its word; the ring's hue is the third signal. Glow only
+   on a step that is running. */
+html.cockpit :is(.wb-room, .wf-room, .wf-palette) {
+  --wb-cat-model: var(--ck-accent);
+  --wb-cat-trigger: var(--ck-accent-2);
+  --wb-cat-pantheon: color-mix(in oklab, var(--ck-accent) 50%, var(--fg));
+  --wb-cat-logic: var(--ck-warn);
+  --wb-cat-flow: color-mix(in oklab, var(--fg) 62%, var(--bg));
+  --wb-cat-reach: var(--ck-ok);
+  --wb-well: color-mix(in oklab, var(--bg) 78%, #000);
+  --wb-dot: color-mix(in oklab, var(--fg) 17%, transparent);
+  --wb-slab: color-mix(in oklab, var(--ck-glass-base) 94%, var(--bg));
+  --wb-slab-hi: color-mix(in oklab, var(--ck-glass-base) 88%, #fff);
+  --wb-wire: color-mix(in oklab, var(--fg) 40%, transparent);
+  --wb-wire-hi: color-mix(in oklab, var(--fg) 78%, transparent);
+}
+@supports (color: oklch(from red l c h)) {
+  html.cockpit :is(.wb-room, .wf-room, .wf-palette) {
+    --wb-cat-model: oklch(from var(--ck-hue) .74 .13 h);
+    --wb-cat-trigger: oklch(from var(--ck-hue) .82 .12 calc(h + 20));
+    --wb-cat-logic: oklch(from var(--ck-hue) .80 .12 calc(h + 55));
+    --wb-cat-flow: oklch(from var(--ck-hue) .78 .08 calc(h + 125));
+    --wb-cat-reach: oklch(from var(--ck-hue) .76 .11 calc(h + 185));
+    --wb-cat-pantheon: oklch(from var(--ck-hue) .74 .10 calc(h + 245));
+  }
+  html.cockpit[data-ck-tone="light"] :is(.wb-room, .wf-room, .wf-palette) {
+    --wb-cat-model: oklch(from var(--ck-hue) .55 .15 h);
+    --wb-cat-trigger: oklch(from var(--ck-hue) .52 .14 calc(h + 20));
+    --wb-cat-logic: oklch(from var(--ck-hue) .58 .13 calc(h + 55));
+    --wb-cat-flow: oklch(from var(--ck-hue) .52 .08 calc(h + 125));
+    --wb-cat-reach: oklch(from var(--ck-hue) .52 .12 calc(h + 185));
+    --wb-cat-pantheon: oklch(from var(--ck-hue) .50 .11 calc(h + 245));
+  }
+}
+html.cockpit[data-ck-tone="light"] :is(.wb-room, .wf-room, .wf-palette) {
+  --wb-well: color-mix(in oklab, var(--bg) 90%, var(--fg));
+  --wb-dot: color-mix(in oklab, var(--fg) 20%, transparent);
+  --wb-slab: color-mix(in oklab, var(--panel) 70%, #fff);
+  --wb-slab-hi: #fff;
+  --wb-wire: color-mix(in oklab, var(--fg) 42%, transparent);
+}
+html.cockpit .wb-room [data-cat="model"] { --wb-cat: var(--wb-cat-model); }
+html.cockpit .wb-room [data-cat="trigger"] { --wb-cat: var(--wb-cat-trigger); }
+html.cockpit .wb-room [data-cat="pantheon"] { --wb-cat: var(--wb-cat-pantheon); }
+html.cockpit .wb-room [data-cat="logic"] { --wb-cat: var(--wb-cat-logic); }
+html.cockpit .wb-room [data-cat="flow"] { --wb-cat: var(--wb-cat-flow); }
+html.cockpit .wb-room [data-cat="reach"] { --wb-cat: var(--wb-cat-reach); }
+
+/* the stage: no rule above it, a well with a moving grid */
+html.cockpit .wb-stage { border-top: 0; border-radius: var(--ck-r-l); overflow: hidden; margin: 0 10px 10px; box-shadow: inset 0 0 0 1px var(--ck-edge-lo); }
+html.cockpit .wb-viewport {
+  background-color: var(--wb-well);
+  background-image:
+    radial-gradient(circle at 50% 0%, color-mix(in oklab, var(--ck-hue) 7%, transparent), transparent 60%),
+    radial-gradient(circle, var(--wb-dot) 1.1px, transparent 1.3px);
+  background-size: 100% 100%, var(--wb-grid, 20px) var(--wb-grid, 20px);
+  background-position: 0 0, var(--wb-grid-x, 0) var(--wb-grid-y, 0);
+  background-attachment: local, local;
+}
+
+/* a step */
+html.cockpit .wb-node {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr);
+  grid-template-rows: auto auto 1fr;
+  column-gap: 10px;
+  row-gap: 1px;
+  align-content: start;
+  padding: 11px 12px 10px 11px;
+  color: var(--ck-text);
+  background: linear-gradient(180deg, var(--wb-slab-hi), var(--wb-slab) 46%);
+  border: 1px solid var(--ck-edge) !important;
+  border-radius: var(--ck-r-m) !important;
+  box-shadow: inset 0 1px 0 var(--ck-edge-hi), 0 1px 2px var(--ck-shade), 0 14px 28px -18px var(--ck-shade-deep);
+  font-family: var(--ck-font-ui);
+  transition: box-shadow var(--ck-t-fast) var(--ck-ease), border-color var(--ck-t-fast) var(--ck-ease), transform var(--ck-t-fast) var(--ck-ease);
+}
+html.cockpit .wb-node::before {
+  /* the family's lit edge down the left side */
+  content: ""; position: absolute; left: -1px; top: 14px; bottom: 14px; width: 3px; border-radius: 0 3px 3px 0;
+  background: var(--wb-cat, var(--ck-accent)); opacity: .85;
+}
+html.cockpit .wb-node:hover { border-color: color-mix(in oklab, var(--wb-cat, var(--fg)) 45%, var(--ck-edge)) !important; }
+html.cockpit .wb-node-icon {
+  grid-row: 1 / span 2; grid-column: 1;
+  width: 36px; height: 36px; border-radius: 11px;
+  color: color-mix(in oklab, var(--wb-cat, var(--ck-accent)) 82%, var(--fg));
+  background: linear-gradient(160deg, color-mix(in oklab, var(--wb-cat, var(--ck-accent)) 30%, transparent), color-mix(in oklab, var(--wb-cat, var(--ck-accent)) 12%, transparent));
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--wb-cat, var(--ck-accent)) 38%, transparent), inset 0 1px 0 var(--ck-edge-hi);
+}
+html.cockpit .wb-node-title { grid-column: 2; align-self: end; padding-right: 0; font: 600 13px/1.25 var(--ck-font-ui); letter-spacing: -.005em; color: var(--ck-text); }
+html.cockpit .wb-node-sub { grid-column: 2; padding-right: 0; font: 400 11.5px/1.3 var(--ck-font-ui); color: var(--ck-text-3); }
+html.cockpit .wb-node-last,
+html.cockpit .wb-node-plan {
+  grid-column: 1 / -1; align-self: end; justify-self: start; max-width: 100%;
+  display: inline-flex; align-items: center; gap: 5px; padding: 0 9px 0 7px; height: 20px; margin-top: 6px;
+  border-radius: 999px; background: var(--ck-tint); color: var(--ck-text-2);
+  font: 500 11px/1 var(--ck-font-ui); white-space: nowrap; overflow: hidden;
+}
+html.cockpit .wb-node-last:has(.wb-node-word:empty) { visibility: hidden; }
+html.cockpit .wb-node-word, html.cockpit .wb-node-plan-line { overflow: hidden; text-overflow: ellipsis; }
+html.cockpit .wb-node-mark { font: 700 11px/1 var(--ck-font-ui); }
+html.cockpit .wb-node-marks { grid-column: 1 / -1; align-self: end; display: inline-flex; gap: 4px; margin: 4px 0 0; }
+html.cockpit .wb-node-last + .wb-node-marks { margin-top: -20px; justify-self: end; }
+html.cockpit .wb-node-badge {
+  height: 18px; padding: 0 8px; display: inline-flex; align-items: center; border-radius: 999px;
+  font: 500 10.5px/1 var(--ck-font-ui) !important; color: var(--ck-warn-text) !important;
+  background: color-mix(in oklab, var(--ck-warn) 16%, transparent) !important; border: 1px solid color-mix(in oklab, var(--ck-warn) 40%, transparent) !important;
+}
+/* a step's actions float above it — shown on hover, on focus, and while it is
+   the one selected, so the keyboard still reaches Connect… from the step */
+html.cockpit .wb-node-actions {
+  position: absolute; left: 10px; bottom: calc(100% + 6px); margin: 0; gap: 4px; padding: 3px;
+  border-radius: 999px; background: var(--ck-glass-solid); box-shadow: inset 0 1px 0 var(--ck-edge-hi), var(--ck-lift-1);
+  opacity: 0; transform: translateY(4px); pointer-events: none;
+  transition: opacity var(--ck-t-fast) var(--ck-ease), transform var(--ck-t-fast) var(--ck-ease);
+}
+html.cockpit .wb-node:is(:hover, :focus-within, .wb-node-selected) .wb-node-actions { opacity: 1; transform: none; pointer-events: auto; }
+html.cockpit :is(.wb-node-connect, .wb-node-plan-btn) {
+  height: 24px !important; padding: 0 10px !important; border: 0 !important; border-radius: 999px !important;
+  background: transparent !important; color: var(--ck-text-2) !important; font: 500 11.5px/1 var(--ck-font-ui) !important;
+}
+html.cockpit :is(.wb-node-connect, .wb-node-plan-btn):hover { background: var(--ck-tint-2) !important; color: var(--ck-text) !important; }
+
+/* selected, picked up, dragged, joined to the focused chain */
+html.cockpit .wb-node-selected,
+html.cockpit .wb-node-target {
+  border-color: color-mix(in oklab, var(--wb-cat, var(--ck-accent)) 70%, transparent) !important;
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--wb-cat, var(--ck-accent)) 26%, transparent), inset 0 1px 0 var(--ck-edge-hi), 0 18px 34px -18px var(--ck-shade-deep) !important;
+}
+/* `B1841`: picked together — a lit outline, the family's hue */
+html.cockpit .wb-node.wb-node-picked {
+  outline: 0; border-color: color-mix(in oklab, var(--ck-accent) 80%, transparent) !important;
+  box-shadow: 0 0 0 2px var(--ck-accent-line), 0 0 0 6px var(--ck-accent-wash), inset 0 1px 0 var(--ck-edge-hi) !important;
+}
+html.cockpit .wb-select-box { border: 1px solid var(--ck-accent-line); background: var(--ck-accent-wash); border-radius: 4px; }
+html.cockpit .wb-node-dragging { transform: scale(1.015); box-shadow: inset 0 1px 0 var(--ck-edge-hi), 0 24px 44px -16px var(--ck-shade-deep) !important; }
+html.cockpit .wb-node-chain { box-shadow: 0 0 0 3px var(--ck-accent-wash), inset 0 1px 0 var(--ck-edge-hi) !important; }
+
+/* how it last went: the chip's mark and word, then the ring */
+html.cockpit .wb-node[data-outcome="ok"] .wb-node-last { color: var(--ck-text); background: color-mix(in oklab, var(--ck-ok) 18%, transparent); }
+html.cockpit .wb-node[data-outcome="ok"] .wb-node-mark { color: var(--ck-ok); }
+html.cockpit .wb-node[data-outcome="ok"] { border-color: color-mix(in oklab, var(--ck-ok) 55%, var(--ck-edge)) !important; }
+html.cockpit .wb-node[data-outcome="error"] { border-color: color-mix(in oklab, var(--ck-danger) 75%, transparent) !important; border-width: 1px !important; box-shadow: 0 0 0 3px color-mix(in oklab, var(--ck-danger) 22%, transparent), inset 0 1px 0 var(--ck-edge-hi) !important; }
+html.cockpit .wb-node[data-outcome="error"] .wb-node-last { color: var(--ck-danger-text); font-weight: 700; background: color-mix(in oklab, var(--ck-danger) 16%, transparent); }
+html.cockpit .wb-node[data-outcome="pending"] { border-style: dashed !important; border-color: color-mix(in oklab, var(--ck-warn) 70%, transparent) !important; }
+html.cockpit .wb-node[data-outcome="pending"] .wb-node-last { color: var(--ck-warn-text); background: color-mix(in oklab, var(--ck-warn) 16%, transparent); }
+html.cockpit .wb-node[data-outcome="info"] { border-style: dotted !important; }
+html.cockpit .wb-node[data-paused="true"] { opacity: .78; }
+html.cockpit .wb-node[data-unchecked] { border-style: dashed !important; }
+/* `B1856`: switched off — faded, dashed, its glyph greyed; still readable */
+html.cockpit .wb-node[data-off="true"] { opacity: .62; border-style: dashed !important; }
+html.cockpit .wb-node[data-off="true"] .wb-node-icon { filter: grayscale(1); }
+/* `B1851`: would stop Save — a warning ring and a "!" that says why */
+html.cockpit .wb-node[data-problem="true"] {
+  border-color: color-mix(in oklab, var(--ck-warn) 78%, transparent) !important;
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--ck-warn) 20%, transparent), inset 0 1px 0 var(--ck-edge-hi) !important;
+}
+html.cockpit .wb-node-problem {
+  background: var(--ck-warn) !important; color: var(--ck-glass-solid) !important;
+  box-shadow: 0 0 0 2px var(--ck-glass-solid), 0 2px 6px color-mix(in oklab, var(--ck-warn) 40%, transparent);
+  font-family: var(--ck-font-ui) !important;
+}
+html.cockpit .wf-run-test {
+  margin-left: 6px; padding: 1px 6px; border-radius: 999px; font: 600 10px/1.4 var(--ck-font-ui);
+  color: var(--ck-text); background: var(--ck-accent-wash); box-shadow: inset 0 0 0 1px var(--ck-accent-line);
+}
+html.cockpit .wf-problems {
+  color: var(--ck-warn-text) !important; background: color-mix(in oklab, var(--ck-warn) 14%, transparent) !important;
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--ck-warn) 45%, transparent) !important;
+}
+/* a step's "If it fails" settings: a quiet fold under its fields */
+html.cockpit .wf-step-settings { border-top: 1px solid var(--ck-edge-lo) !important; }
+html.cockpit .wf-step-settings-head { font: 600 12.5px/1.3 var(--ck-font-ui); color: var(--ck-text); list-style-position: inside; }
+html.cockpit .wf-step-settings-now { color: var(--ck-warn-text); font-weight: 500; opacity: 1; }
+html.cockpit .wb-node-missing { opacity: .55; }
+html.cockpit .wb-node[data-kind="research"],
+html.cockpit .wb-node[data-kind="action"],
+html.cockpit .wb-node[data-kind="if"],
+html.cockpit .wb-node[data-kind="switch"] { border-radius: var(--ck-r-m) !important; }
+/* the start: rounded on the side nothing comes in by */
+html.cockpit .wb-node[data-kind="start"] { border-radius: 40px var(--ck-r-m) var(--ck-r-m) 40px !important; padding-left: 13px; }
+html.cockpit .wb-node[data-kind="start"]::before { display: none; }
+html.cockpit .wb-node[data-kind="start"] .wb-node-icon { border-radius: 50%; }
+html.cockpit .wb-node:is([data-kind="workflow"], [data-kind="run_task"]) { box-shadow: inset 0 0 0 3px var(--wb-slab), inset 0 0 0 4px var(--ck-edge), 0 14px 28px -18px var(--ck-shade-deep); }
+
+/* ways out, ways in, and the "+" for what comes next */
+html.cockpit .wb-port {
+  right: -7px; width: 13px; height: 13px; border-width: 2px; border-color: color-mix(in oklab, var(--fg) 60%, transparent);
+  background: var(--wb-well); box-shadow: 0 0 0 3px var(--wb-slab);
+  transition: transform var(--ck-t-fast) var(--ck-spring), border-color var(--ck-t-fast) var(--ck-ease);
+}
+html.cockpit .wb-port:hover { transform: scale(1.25); border-color: var(--ck-accent); }
+html.cockpit .wb-port:is([data-when="success"], [data-when="then"]) { background: color-mix(in oklab, var(--fg) 70%, var(--bg)); border-color: color-mix(in oklab, var(--fg) 70%, var(--bg)); }
+html.cockpit .wb-port[data-when="error"] { border-color: color-mix(in oklab, var(--ck-danger) 75%, var(--fg)); border-style: solid; background: var(--wb-well); }
+html.cockpit .wb-port-label {
+  right: auto; left: 15px; top: auto; bottom: 8px; transform: none; max-width: 88px;
+  font: 500 10px/1 var(--ck-font-ui); letter-spacing: .01em; color: var(--ck-text-3); pointer-events: none;
+}
+html.cockpit .wb-port[data-when="error"] .wb-port-label { color: color-mix(in oklab, var(--ck-danger) 70%, var(--ck-text-3)); }
+html.cockpit .wb-port-in { left: -5px; width: 8px; height: 16px; margin-top: -8px; border-width: 2px; border-color: color-mix(in oklab, var(--fg) 45%, transparent); background: var(--wb-slab); }
+html.cockpit .wb-port-add {
+  width: 22px; height: 22px; right: -47px; border-radius: 7px; border: 1px dashed color-mix(in oklab, var(--fg) 34%, transparent);
+  background: var(--wb-well); color: var(--ck-text-3); font: 500 15px/1 var(--ck-font-ui);
+  transition: color var(--ck-t-fast) var(--ck-ease), border-color var(--ck-t-fast) var(--ck-ease), background var(--ck-t-fast) var(--ck-ease), transform var(--ck-t-fast) var(--ck-spring);
+}
+html.cockpit .wb-port-add::before { width: 18px; border-top: 1px dashed color-mix(in oklab, var(--fg) 30%, transparent); }
+html.cockpit .wb-port-add:hover { color: var(--ck-text); border-style: solid; border-color: var(--ck-accent-line); background: var(--ck-accent-wash); transform: scale(1.08); }
+html.cockpit .wb-linking .wb-port-add { visibility: hidden; }
+html.cockpit .wb-read-only .wb-port-add { display: none; }
+
+/* arrows: thin lit wires; a failure's way out runs red and dashed */
+html.cockpit .wb-edge-line { stroke: var(--wb-wire); stroke-width: 2; stroke-linecap: round; opacity: 1; }
+html.cockpit .wb-edge-head { fill: var(--wb-wire); opacity: 1; }
+html.cockpit .wb-edge[data-when="error"] .wb-edge-line { stroke: color-mix(in oklab, var(--ck-danger) 60%, transparent); stroke-dasharray: 5 5; }
+html.cockpit .wb-edge[data-when="error"] .wb-edge-head { fill: color-mix(in oklab, var(--ck-danger) 60%, transparent); }
+html.cockpit .wb-edge:is(:hover, :focus) .wb-edge-line { stroke: var(--ck-accent); stroke-width: 3; }
+html.cockpit .wb-edge:is(:hover, :focus) .wb-edge-head { fill: var(--ck-accent); }
+html.cockpit .wb-edge-label {
+  font: 500 10px/1 var(--ck-font-ui); fill: var(--ck-text-2); stroke: var(--wb-well); stroke-width: 5px; stroke-linejoin: round;
+  opacity: 0; transition: opacity var(--ck-t-fast) var(--ck-ease);
+}
+/* the words are on the port; on the arrow only while it is pointed at, or when
+   the arrow's words are its own (a start's) */
+html.cockpit .wb-edge:is(:hover, :focus) .wb-edge-label,
+html.cockpit .wb-edge-fixed .wb-edge-label { opacity: 1; }
+html.cockpit .wb-edge-ghost { stroke: var(--ck-accent); stroke-width: 2; stroke-dasharray: 4 5; }
+html.cockpit .wb-edge-fixed .wb-edge-line { stroke-dasharray: none; }
+/* `B1837`: on a run, the path the data took is lit and moving; the rest rests */
+html.cockpit .wb-edge[data-taken="true"] .wb-edge-line {
+  stroke: var(--ck-accent); stroke-width: 2.5; stroke-dasharray: 7 6; animation: wb-flow 900ms linear infinite;
+}
+html.cockpit .wb-edge[data-taken="true"] .wb-edge-head { fill: var(--ck-accent); }
+html.cockpit .wb-edge[data-taken="true"][data-when="error"] .wb-edge-line { stroke: var(--ck-danger); }
+html.cockpit .wb-edge[data-taken="true"][data-when="error"] .wb-edge-head { fill: var(--ck-danger); }
+html.cockpit .wb-edge[data-taken="false"] { opacity: .32; }
+@keyframes wb-flow { to { stroke-dashoffset: -13; } }
+
+/* `B1842`: the "+" on an arrow, a small lit well */
+html.cockpit .wb-edge-add-ring { fill: var(--ck-glass-solid); stroke: var(--ck-accent-line); stroke-width: 1.2; filter: drop-shadow(0 2px 4px var(--ck-shade)); }
+html.cockpit .wb-edge-add-plus { stroke: var(--ck-text); stroke-width: 1.7; }
+html.cockpit .wb-edge-add:hover .wb-edge-add-ring { fill: var(--ck-accent-wash); stroke: var(--ck-accent); }
+html.cockpit .wb-edge-add { transition: opacity var(--ck-t-fast) var(--ck-ease); }
+
+/* `B1841`: the right-click menu and the keys sheet are glass over the well */
+html.cockpit :is(.wb-menu, .wb-keys) {
+  background: var(--ck-glass-solid); border: 0; border-radius: var(--ck-r-m); color: var(--ck-text);
+  box-shadow: inset 0 1px 0 var(--ck-edge-hi), inset 0 0 0 1px var(--ck-edge-lo), var(--ck-lift-2, var(--ck-lift-1));
+  font-family: var(--ck-font-ui);
+}
+html.cockpit .wb-menu-item { color: var(--ck-text-2); border-radius: var(--ck-r-s, 6px); font-size: 12.5px; }
+html.cockpit .wb-menu-item:hover:not(:disabled), html.cockpit .wb-menu-item:focus-visible { background: var(--ck-tint-2); color: var(--ck-text); }
+html.cockpit .wb-menu-item[data-tone="danger"] { color: var(--ck-danger); }
+html.cockpit .wb-menu-keys { font: 500 10.5px/1 var(--ck-font-mono); color: var(--ck-text-3); opacity: 1; }
+html.cockpit .wb-menu-sep { background: var(--ck-edge-lo); }
+html.cockpit .wb-keys-head { font: 600 12.5px/1.2 var(--ck-font-ui); color: var(--ck-text); }
+html.cockpit .wb-keys-list dt { font: 500 11px/1.4 var(--ck-font-mono); color: var(--ck-text); }
+html.cockpit .wb-keys-list dd { color: var(--ck-text-3); opacity: 1; }
+html.cockpit :is(.wb-tool-undo, .wb-tool-redo) { font-size: 15px !important; }
+html.cockpit :is(.wb-tool-undo, .wb-tool-redo):disabled { opacity: .38; }
+
+/* the step picker: a search, then each kind on its family's tile */
+html.cockpit .wf-palette-search {
+  background: var(--wb-well, var(--bg)); border: 0; border-radius: var(--ck-r-s, 7px); color: var(--ck-text);
+  box-shadow: inset 0 0 0 1px var(--ck-edge-lo); padding: 8px 10px; font: 400 12.5px/1.2 var(--ck-font-ui);
+}
+html.cockpit .wf-palette-search:focus { outline: 0; box-shadow: inset 0 0 0 1px var(--ck-accent-line), 0 0 0 3px var(--ck-accent-wash); }
+html.cockpit .wf-palette-glyph {
+  width: 30px; height: 30px; border-radius: 9px;
+  color: color-mix(in oklab, var(--wb-cat, var(--ck-accent)) 82%, var(--fg));
+  background: linear-gradient(160deg, color-mix(in oklab, var(--wb-cat, var(--ck-accent)) 30%, transparent), color-mix(in oklab, var(--wb-cat, var(--ck-accent)) 12%, transparent));
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--wb-cat, var(--ck-accent)) 38%, transparent);
+}
+html.cockpit .wf-palette [data-cat="model"] { --wb-cat: var(--wb-cat-model); }
+html.cockpit .wf-palette [data-cat="trigger"] { --wb-cat: var(--wb-cat-trigger); }
+html.cockpit .wf-palette [data-cat="pantheon"] { --wb-cat: var(--wb-cat-pantheon); }
+html.cockpit .wf-palette [data-cat="logic"] { --wb-cat: var(--wb-cat-logic); }
+html.cockpit .wf-palette [data-cat="flow"] { --wb-cat: var(--wb-cat-flow); }
+html.cockpit .wf-palette [data-cat="reach"] { --wb-cat: var(--wb-cat-reach); }
+html.cockpit .wf-palette-kind[data-available="false"] .wf-palette-glyph { filter: grayscale(1); opacity: .55; }
+/* what Enter adds while the search is typed in */
+html.cockpit .wf-palette-kind[data-best="true"] { background: var(--ck-accent-wash) !important; box-shadow: inset 0 0 0 1px var(--ck-accent-line); }
+
+/* `B1838`: saved somewhere else — said in the room's own warning tone */
+html.cockpit .wf-stale {
+  border: 1px solid color-mix(in oklab, var(--ck-warn) 55%, transparent) !important;
+  background: color-mix(in oklab, var(--ck-warn) 9%, var(--ck-glass-solid)) !important; border-radius: var(--ck-r-m) !important;
+}
+html.cockpit .wf-stale-keep { font-weight: 600 !important; }
+
+/* a port is small to look at and large to hit: a finger or a pen finds it at
+   any zoom (`B1833`; measured: 9.8 px on screen at the usual fit) */
+.wb-port::after { content: ''; position: absolute; inset: -9px; border-radius: 50%; }
+
+/* the view's dock and the map float on the well */
+html.cockpit .wb-dock {
+  padding: 4px; border-radius: 999px; background: var(--ck-glass-solid);
+  box-shadow: inset 0 1px 0 var(--ck-edge-hi), inset 0 0 0 1px var(--ck-edge-lo), var(--ck-lift-1);
+}
+html.cockpit .wb-dock .wb-tool { height: 28px !important; min-width: 28px; padding: 0 11px !important; border: 0 !important; background: transparent !important; }
+html.cockpit .wb-dock .wb-tool:hover { background: var(--ck-tint-2) !important; }
+html.cockpit .wb-dock .wb-tool-icon { padding: 0 !important; width: 28px; font-size: 15px !important; }
+html.cockpit .wb-dock .wb-tool.active { color: var(--ck-text) !important; background: var(--ck-tint-2) !important; }
+html.cockpit .wb-dock .wb-zoom { min-width: 3.2em; font: 500 11px/1 var(--ck-font-mono); color: var(--ck-text-3); }
+html.cockpit .wb-minimap {
+  padding: 6px; border-radius: var(--ck-r-m); background: var(--ck-glass-solid);
+  box-shadow: inset 0 1px 0 var(--ck-edge-hi), inset 0 0 0 1px var(--ck-edge-lo), var(--ck-lift-1);
+}
+html.cockpit .wb-minimap-node { fill: color-mix(in oklab, var(--wb-cat, var(--fg)) 62%, transparent); }
+html.cockpit .wb-minimap-node[data-outcome="error"] { fill: var(--ck-danger); }
+html.cockpit .wb-minimap-node[data-cat="model"] { --wb-cat: var(--wb-cat-model); }
+html.cockpit .wb-minimap-node[data-cat="trigger"] { --wb-cat: var(--wb-cat-trigger); }
+html.cockpit .wb-minimap-node[data-cat="pantheon"] { --wb-cat: var(--wb-cat-pantheon); }
+html.cockpit .wb-minimap-node[data-cat="logic"] { --wb-cat: var(--wb-cat-logic); }
+html.cockpit .wb-minimap-node[data-cat="flow"] { --wb-cat: var(--wb-cat-flow); }
+html.cockpit .wb-minimap-node[data-cat="reach"] { --wb-cat: var(--wb-cat-reach); }
+html.cockpit .wb-minimap-frame { fill: var(--ck-accent-wash); stroke: var(--ck-accent-line); stroke-width: 1.2; }
+
+/* the canvas's own bar and its sentence line */
+html.cockpit .wb-toolbar { padding: 8px 12px 0; }
+html.cockpit .wb-tool-new {
+  background: linear-gradient(135deg, var(--ck-accent), var(--ck-accent-2)) !important; color: var(--ck-on-accent) !important; border: 0 !important;
+  font-weight: 600 !important; box-shadow: inset 0 1px 0 var(--ck-ring-hi), 0 6px 16px -8px var(--ck-accent-glow) !important;
+}
+html.cockpit .wb-tool-new:hover { filter: brightness(1.08); }
+html.cockpit .wb-hint { padding: 0 14px; color: var(--ck-text-3); font: 400 11.5px/1.4 var(--ck-font-ui); }
+html.cockpit .wb-say { margin: 0 12px; border-left-width: 2px; color: var(--ck-text-2); }
+html.cockpit .wb-say-refusal { border-left-color: var(--ck-danger); color: var(--ck-text); }
+@media (prefers-reduced-motion: reduce) {
+  html.cockpit :is(.wb-node, .wb-node-actions, .wb-port, .wb-port-add, .wb-edge-label) { transition: none; }
+  html.cockpit .wb-edge[data-taken="true"] .wb-edge-line { animation: none; stroke-dasharray: none; }
+}
+
+/* the room around the canvas: the shelf, the workflow's bar, one line of words */
+html.cockpit .wf-shelf { border-right: 0; padding: 10px 8px 10px 12px; gap: 4px; }
+html.cockpit .wf-shelf-tuck {
+  order: -1; align-self: flex-end; width: 26px !important; height: 26px !important; padding: 0 !important; margin: -2px 0 2px;
+  border-radius: 50% !important; border: 0 !important; background: transparent !important; color: var(--ck-text-3) !important;
+  font: 500 16px/1 var(--ck-font-ui) !important;
+}
+html.cockpit .wf-shelf-tuck:hover { background: var(--ck-tint-2) !important; color: var(--ck-text) !important; }
+html.cockpit .wf-room.wf-shelf-tucked > .wf-shelf { flex-basis: 40px; padding: 10px 6px; overflow: hidden; }
+html.cockpit .wf-room.wf-shelf-tucked > .wf-shelf > :not(.wf-shelf-tuck) { display: none !important; }
+html.cockpit .wf-room.wf-shelf-tucked > .wf-shelf > .wf-shelf-tuck { align-self: center; }
+html.cockpit .wf-shelf-item {
+  border-radius: var(--ck-r-m) !important; padding: 8px 10px 8px 12px; gap: 3px; border: 1px solid transparent !important;
+  transition: background var(--ck-t-fast) var(--ck-ease), border-color var(--ck-t-fast) var(--ck-ease);
+}
+html.cockpit .wf-shelf-item:hover { background: var(--ck-tint) !important; }
+html.cockpit .wf-shelf-selected {
+  background: var(--ck-glass-strong) !important; border-color: var(--ck-edge-lo) !important;
+  box-shadow: inset 0 1px 0 var(--ck-edge-hi), inset 3px 0 0 var(--ck-accent) !important;
+}
+html.cockpit .wf-shelf-name { font: 600 12.5px/1.3 var(--ck-font-ui); color: var(--ck-text); }
+html.cockpit .wf-shelf-sub { font: 400 11px/1.3 var(--ck-font-ui); color: var(--ck-text-3); align-items: center; }
+/* on/off as a lamp: lit means armed */
+html.cockpit .wf-shelf-state { display: inline-flex; align-items: center; gap: 5px; }
+html.cockpit .wf-shelf-state::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--ck-lamp-off); }
+html.cockpit .wf-shelf-state[data-on="true"] { color: var(--ck-text-2); }
+html.cockpit .wf-shelf-state[data-on="true"]::before { background: var(--ck-ok); box-shadow: 0 0 0 3px color-mix(in oklab, var(--ck-ok) 22%, transparent); }
+html.cockpit .wf-shelf-mark[data-tone="ok"] { color: var(--ck-ok); }
+html.cockpit .wf-shelf-mark[data-tone="error"] { color: var(--ck-danger-text); }
+
+html.cockpit .wf-bar { border-bottom: 0; padding: 10px 12px 4px; gap: 8px 10px; }
+html.cockpit .wf-name {
+  min-width: 180px; height: 34px !important; font: 600 14px/1 var(--ck-font-ui) !important; letter-spacing: -.005em;
+  background-color: transparent !important; border-color: transparent !important; padding: 0 10px !important;
+}
+html.cockpit .wf-name:is(:hover, :focus) { background-color: var(--ck-tint) !important; border-color: var(--ck-edge-lo) !important; }
+html.cockpit .wf-bar :is(.wf-save, .wf-versions, .wf-run-now, .wf-dry, .wf-export, .wf-chain-back, .wf-switch, .wf-bar-more) {
+  height: 30px; padding: 0 12px; border-radius: 999px !important; border: 1px solid var(--ck-edge-lo) !important;
+  background: var(--ck-tint) !important; color: var(--ck-text-2) !important; font: 500 12.5px/1 var(--ck-font-ui) !important;
+  box-shadow: none !important; align-items: center; gap: 7px;
+}
+html.cockpit .wf-bar :is(.wf-save, .wf-versions, .wf-run-now, .wf-dry, .wf-export, .wf-chain-back, .wf-switch) { display: inline-flex; }
+html.cockpit .wf-bar :is(.wf-save, .wf-versions, .wf-run-now, .wf-dry, .wf-export, .wf-chain-back, .wf-switch, .wf-bar-more):hover:not(:disabled) {
+  background: var(--ck-tint-2) !important; color: var(--ck-text) !important; border-color: var(--ck-edge) !important;
+}
+/* the one primary: run it */
+html.cockpit .wf-bar .wf-run-now {
+  background: linear-gradient(135deg, var(--ck-accent), var(--ck-accent-2)) !important; color: var(--ck-on-accent) !important; border: 0 !important;
+  font-weight: 600 !important; box-shadow: inset 0 1px 0 var(--ck-ring-hi), 0 6px 16px -8px var(--ck-accent-glow) !important;
+}
+html.cockpit .wf-bar .wf-run-now::before { content: ""; width: 9px; height: 10px; background: currentColor; clip-path: polygon(0 0, 100% 50%, 0 100%); }
+html.cockpit .wf-bar .wf-run-now:hover:not(:disabled) { filter: brightness(1.08); color: var(--ck-on-accent) !important; }
+/* Save lights when there is something to keep */
+html.cockpit .wf-bar:has(.wf-dirty[data-dirty="true"]) .wf-save {
+  color: var(--ck-text) !important; border-color: var(--ck-accent-line) !important; background: var(--ck-accent-wash) !important;
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--ck-accent) 12%, transparent) !important;
+}
+/* the switch: a lamp beside its word */
+html.cockpit .wf-bar .wf-switch::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--ck-lamp-off); }
+html.cockpit .wf-bar .wf-switch[aria-checked="true"] { color: var(--ck-text) !important; border-color: color-mix(in oklab, var(--ck-ok) 45%, transparent) !important; background: color-mix(in oklab, var(--ck-ok) 14%, transparent) !important; }
+html.cockpit .wf-bar .wf-switch[aria-checked="true"]::before { background: var(--ck-ok); box-shadow: 0 0 0 3px color-mix(in oklab, var(--ck-ok) 25%, transparent); }
+html.cockpit .wf-switch-word, html.cockpit .wf-dirty { font: 400 11.5px/1.2 var(--ck-font-ui); color: var(--ck-text-3); }
+html.cockpit .wf-dirty[data-dirty="true"] { color: var(--ck-text-2); font-weight: 600; }
+/* `B1847`: the word has its own room, so "Unsaved changes" coming and going
+   does not shove the switch and the run buttons along the bar */
+@media (min-width: 769px) { html.cockpit .wf-dirty { display: inline-block; min-width: 104px; } }
+html.cockpit .wf-tabs { border: 0; border-radius: 999px; padding: 3px; gap: 2px; background: var(--ck-tint); overflow: visible; }
+html.cockpit .wf-tab {
+  height: 28px; padding: 0 14px; border-radius: 999px !important; border: 0 !important; background: transparent !important;
+  color: var(--ck-text-3) !important; font: 500 12.5px/1 var(--ck-font-ui) !important; box-shadow: none !important;
+}
+html.cockpit .wf-tab[aria-selected="true"] { color: var(--ck-text) !important; background: var(--ck-glass-strong) !important; box-shadow: inset 0 1px 0 var(--ck-edge-hi), 0 4px 12px -8px var(--ck-shade-deep) !important; font-weight: 600 !important; }
+html.cockpit .wf-say { margin: 4px 14px 0; border-left-width: 2px; color: var(--ck-text-2); }
+
+/* the canvas's own row: on a desktop, *New step* and the canvas's line of
+   words share one row above the well; the how-to line stands in that row's
+   place while nothing is being said */
+@media (min-width: 769px) {
+  html.cockpit .wb-room:not(.wf-room) {
+    display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr);
+    column-gap: 12px; row-gap: 8px; align-items: center;
+  }
+  html.cockpit .wb-room:not(.wf-room) > .wb-toolbar { grid-column: 1; grid-row: 1; padding: 8px 0 0 12px; }
+  html.cockpit .wb-room:not(.wf-room) > .wb-toolbar .wb-toolbar-spacer { display: none; }
+  html.cockpit .wb-room:not(.wf-room) > .wb-hint,
+  html.cockpit .wb-room:not(.wf-room) > .wb-say { grid-column: 2; grid-row: 1; margin: 8px 14px 0 0; align-self: center; }
+  html.cockpit .wb-room:not(.wf-room):has(> .wb-say .wb-say-text:not(:empty)) > .wb-hint { visibility: hidden; }
+  html.cockpit .wb-room:not(.wf-room) > .wb-stage { grid-column: 1 / -1; grid-row: 2; align-self: stretch; }
+}
+
+/* the window's maximize, beside its minimize */
+html.cockpit .workbench-maximize { font-size: 13px !important; }
+html.cockpit .workbench-maximize[aria-pressed="true"] { color: var(--ck-text) !important; }
+@media (max-width: 768px) { .workbench-maximize { display: none !important; } }

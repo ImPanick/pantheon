@@ -429,11 +429,17 @@ def test_the_three_populations_hold_at_their_counts():
     # 884 -> 885, 876 -> 877 bare: the reasoning-effort menu's
     # `.reasoning-effort-item-desc` (`B1734`, ab406833), the same rung as the
     # approval picker's line.
-    assert len(uses) == 885, f"expected 885 uses of --fg-muted, found {len(uses)}"
+    # 885 -> 893, 877 -> 885 bare: the Workbench automations wave's eight
+    # quiet lines (`B1833`–`B1897`) — the canvas menu's keys and the shortcuts
+    # sheet's words, the palette's empty line, a switched-off step, the "If it
+    # fails" note, New workflow's no-model line and *Test this step*'s two
+    # "What it reads" lines — each a rung of the ladder, not an opacity, so
+    # `check-contrast.py`'s opacity count holds at 407. All text.
+    assert len(uses) == 893, f"expected 893 uses of --fg-muted, found {len(uses)}"
 
     bare = [expr for _, expr in uses if not _fallback(expr)]
-    assert len(bare) == 877, (
-        f"expected 877 bare `var(--fg-muted)` uses, found {len(bare)}. If a site "
+    assert len(bare) == 885, (
+        f"expected 885 bare `var(--fg-muted)` uses, found {len(bare)}. If a site "
         "was legitimately added or removed, move this number and say which in "
         "the commit — do not widen the assertion."
     )
@@ -495,7 +501,8 @@ def test_the_bare_uses_split_across_properties_as_measured():
     # `B1577` (above): `color` 332 -> 862, the opacity form moved onto it.
     # 862 -> 866: the four quiet lines counted above, all `color:`.
     # 866 -> 867: `B1734`'s `.reasoning-effort-item-desc`, `color:` too.
-    assert tally == {"color": 867, "border-color": 4, "background": 3, "--ctx-stroke": 3}, tally
+    # 867 -> 875: the Workbench automations wave's eight quiet lines (above).
+    assert tally == {"color": 875, "border-color": 4, "background": 3, "--ctx-stroke": 3}, tally
 
 
 def test_the_javascript_uses_are_recorded_but_not_this_rows_work():

@@ -215,7 +215,8 @@ async def test_if_routes_urgent_mail_one_way_and_the_rest_the_other(factory):
     r2 = {r["node_id"]: r for r in records_of(factory, second["id"])}
     assert r1["is-urgent"]["port"] == "then" and set(r1) == {"is-urgent", "page"}
     assert r2["is-urgent"]["port"] == "otherwise" and set(r2) == {"is-urgent", "file"}
-    assert any("Went the “then” way" in (st.get("detail") or "") for st in first["steps"])
+    # `B1893`: the canvas's words for the If's arrow.
+    assert any("Went the “if so” way" in (st.get("detail") or "") for st in first["steps"])
 
 
 async def test_a_switch_takes_its_first_matching_case_and_set_renames_a_field(factory):
@@ -245,4 +246,4 @@ async def test_a_switch_takes_its_first_matching_case_and_set_renames_a_field(fa
     handed = [c for c in s.calls if c["name"] == "Morning digest · Note it"][0]["trigger"]
     assert handed["data"]["data"] == {"headline": "Statement ready"}
     assert "else" not in by
-    assert any("“From the bank”" in (st.get("detail") or "") for st in run["steps"])
+    assert any("“if From the bank”" in (st.get("detail") or "") for st in run["steps"])

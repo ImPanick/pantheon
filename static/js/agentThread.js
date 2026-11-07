@@ -104,6 +104,7 @@ export const TOOL_LABELS = {
  *  the call asked for goes beside the name (`toolActionLabel`). */
 export const TOOL_NAMES = {
   'manage_tasks': 'Tasks',
+  'manage_workflows': 'Workflows',   // `B1878`
   'manage_documents': 'Documents',
   'manage_calendar': 'Calendar',
   'manage_notes': 'Notes',
@@ -538,6 +539,41 @@ export function workstationDoorHtml(tool, ranIn) {
 }
 
 /**
+ * `B1878`. The door from a tool result about one workflow to that workflow.
+ *
+ * A result that names a workflow — `manage_tasks draft_workflow`'s draft, a
+ * run, `manage_workflows show` — carries its `workflow_id`, persisted with the
+ * event so a reloaded card still has it. A real button in the header, beside
+ * *View screen*, answered by the one delegated listener below
+ * (`[data-open-workflow]`), never by one of its own (`B56`). The id is a
+ * data attribute, escaped; the Workbench opens on it, or on its list when it
+ * is not the person's.
+ */
+export function workflowDoorHtml(workflowId) {
+  if (typeof workflowId !== 'string' || !workflowId) return '';
+  return `<button type="button" class="agent-thread-ws-door" data-open-workflow="${esc(workflowId)}" `
+    + 'title="Open this workflow in the Workbench">Open in the Workbench</button>';
+}
+
+function _onWorkflowDoor(ev) {
+  const t = ev.target;
+  const door = t && typeof t.closest === 'function' ? t.closest('[data-open-workflow]') : null;
+  if (!door) return;
+  // The card's fold listener is on `document.body` (`chat.js`): a press on
+  // the door opens the Workbench without also folding the card.
+  ev.preventDefault();
+  ev.stopPropagation();
+  const workflowId = door.getAttribute('data-open-workflow') || null;
+  import('/static/js/workbench/workbench.js')
+    .then((m) => m.openWorkbench({ workflowId }))
+    .catch(() => {});
+}
+
+if (typeof document !== 'undefined' && document && typeof document.addEventListener === 'function') {
+  document.addEventListener('click', _onWorkflowDoor, true);
+}
+
+/**
  * `P4-09`. The command block, and the way back to the arguments behind it.
  *
  * `command` is what the card has always shown, and for two kinds of action it
@@ -697,6 +733,8 @@ export function nodeClassName(state, ok, outcome) {
  * @param {string} [o.ranAs]  the workstation account, for that label's tooltip
  *                            — and with `ranIn`, or a `computer` card, the
  *                            *View screen* door (`P20-05`)
+ * @param {string} [o.workflowId] the workflow a result is about: the
+ *                            *Open in the Workbench* door (`B1878`)
  *
  * A `diff` or a `todo` suppresses the command line. For a file edit the
  * "command" is the raw JSON arguments, which is redundant beside the diff; for
@@ -741,6 +779,7 @@ export function agentThreadNodeHtml(o) {
     + approvedBadgeHtml(o.approved)
     + whereBadgeHtml(o.ranIn, o.ranAs)
     + workstationDoorHtml(o.tool, o.ranIn)
+    + workflowDoorHtml(o.workflowId)
     + roundBadgeHtml(o.round)
     + tail
     + '</div>'

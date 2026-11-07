@@ -838,7 +838,7 @@ FUNCTION_TOOL_SCHEMAS = [
                 "properties": {
                     "action": {"type": "string", "enum": ["toggle", "open_panel", "open_email_reply", "set_mode", "switch_model", "set_theme", "create_theme", "get_toggles"],
                                "description": "The UI action. Use set_theme for presets, create_theme to build a custom theme with any hex colors"},
-                    "name": {"type": "string", "description": "For toggle: web, bash, research, incognito (aliases: shell, search, deepresearch). For open_panel: documents, gallery, email, sessions, notes, brain/memories, skills, settings, forge (alias: cookbook). For open_email_reply: email UID. For set_theme: a preset theme name. For create_theme: the custom theme name."},
+                    "name": {"type": "string", "description": "For toggle: web, bash, research, incognito (aliases: shell, search, deepresearch). For open_panel: documents, gallery, email, sessions, notes, brain/memories, skills, settings, forge (alias: cookbook), workbench (value: a workflow_id). For open_email_reply: email UID. For set_theme: a preset theme name. For create_theme: the custom theme name."},
                     "value": {"type": "string", "description": "Value: on/off for toggle, agent/chat for set_mode, model name for switch_model, theme name for set_theme, or folder for open_email_reply"},
                     "uid": {"type": "string", "description": "Email UID for open_email_reply"},
                     "folder": {"type": "string", "description": "Email folder for open_email_reply (default INBOX)"},
@@ -962,8 +962,8 @@ FUNCTION_TOOL_SCHEMAS = [
                     # `email_auto_translate` could not be named by the model.
                     "action_name": {"type": "string", "enum": [],
                                     "description": "Built-in action (for task_type=action)"},
-                    "trigger_type": {"type": "string", "enum": ["schedule", "event"],
-                                     "description": "schedule = time-based, event = count-based"},
+                    "trigger_type": {"type": "string", "enum": ["schedule", "event", "manual"],
+                                     "description": "schedule = time-based, event = count-based, manual = only when run"},
                     "schedule": {"type": "string", "enum": ["once", "daily", "weekly", "monthly"],
                                  "description": "Schedule frequency (for trigger_type=schedule)"},
                     "scheduled_time": {"type": "string", "description": "HH:MM in UTC (for schedule triggers). Convert the user's stated local time using the UTC offset given in the 'Current date and time' context."},
@@ -982,6 +982,28 @@ FUNCTION_TOOL_SCHEMAS = [
                     "trigger_count": {"type": "integer", "description": "Fire every N events (for trigger_type=event)"},
                     "output_target": {"type": "string", "description": "Where results go. Defaults to 'session' (results land in a dedicated chat session the user reads) — this is the right choice for 'summarize for me' / 'send to me'. Do NOT go hunting for the user's email address; only use an email MCP tool name here if the user explicitly asked to be emailed AND an address is already known."},
                     "crew_member_id": {"type": "string", "description": "Assign the task to a crew member (an assistant/persona the user has set up). The task then runs with that crew member's persona, model, endpoint, tool allowlist and timezone. Only use an id the user has actually given you or that came back from a crew listing — never invent one. Pass an empty string on edit to unassign."}
+                },
+                "required": ["action"]
+            }
+        }
+    },
+    # `B1878`. The workflows that already exist: read, test, explain. Served
+    # by `src/tools/workflows.do_manage_workflows`, offered and handled in one
+    # change (`Law 13`). Offered on a workflow turn only
+    # (`tool_index.ON_REQUEST_ONLY`), so the slim first message does not grow.
+    {
+        "type": "function",
+        "function": {
+            "name": "manage_workflows",
+            "description": "The person's workflows (Automations in the Workbench): list them; show one — its steps, when it starts, steps nobody has checked yet, where it sends things; runs — its last runs, step by step, with each error; explain — why a step of a run failed (by default its last failed run) and the change the model would make; dry_run — what it would do, nothing runs; test_run — runs the saved version once now, even switched off, and changes nothing about when it runs; export — the workflow as a file, without secrets. It changes no workflow: the person edits in the Workbench, and manage_tasks draft_workflow drafts a new one. Checking a step, applying a fix and answering a waiting step are the person's alone.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "action": {"type": "string", "enum": ["list", "show", "runs", "explain", "dry_run", "test_run", "export"]},
+                    "workflow_id": {"type": "string", "description": "The workflow's id from list, or its exact name (all but list)"},
+                    "run_id": {"type": "string", "description": "explain: which run (default: the last failed one)"},
+                    "node_id": {"type": "string", "description": "explain: which step (default: the one the run failed on)"},
+                    "limit": {"type": "integer", "description": "runs: how many, newest first (default 3, at most 10)"}
                 },
                 "required": ["action"]
             }
@@ -2584,6 +2606,10 @@ def function_call_to_tool_block(name: str, arguments: str) -> Optional[ToolBlock
             content = f"toggle {name} {value}"
         elif action == "open_panel":
             content = f"open_panel {name or value}"
+            # `B1878`: the Workbench opens on one workflow when `value` names it.
+            from src.ui_switches import WORKBENCH_PANEL_NAMES
+            if name and value and str(name).strip().lower() in WORKBENCH_PANEL_NAMES:
+                content += f" {value}"
         elif action == "open_email_reply":
             uid = args.get("uid") or name
             folder = args.get("folder") or value or "INBOX"

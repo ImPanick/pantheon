@@ -93,15 +93,19 @@ FULL = {
     "if": {"conditions": [{"left": "l", "op": "equals", "right": "r"}], "join": "all"},
     "switch": {"cases": [{"id": "a", "label": "A", "join": "any",
                           "conditions": [{"left": "l", "op": "one_of", "right": ["x", "y"]}]}]},
-    "set": {"fields": [{"name": "n", "value": "v"}]},
+    "set": {"fields": [{"name": "n", "value": "v"}], "on_missing": "empty"},   # `B1881`
     "merge": {"mode": "all"},
-    "wait": {"mode": "until", "minutes": 5, "time": "08:00", "tz": "UTC"},
+    # `B1884`: `filled` — the settings the author opened; none here, so the
+    # table below reads every setting as declared.
+    "wait": {"mode": "until", "minutes": 5, "time": "08:00", "tz": "UTC", "filled": []},
     "foreach": {"list": "{{ steps.a.data.l }}", "on_error": "stop",
                 "step": {"kind": "llm", "label": "L", "config": {"prompt": "p", "model": "m"}}},
     "http": {"integration": "i", "method": "POST", "path": "/p",
              "headers": [{"name": "H", "value": "v"}], "query": [{"name": "text", "value": "v"}],
-             "body": [{"name": "url", "value": "v"}], "body_mode": "json"},
-    "mcp": {"tool": "mcp__chat__send_message", "args": {"text": "v", "channel": "c"}},
+             "body": [{"name": "url", "value": "v", "type": "text"}], "body_mode": "json",
+             # `B1885`: JSON written whole, and what the step hands on.
+             "raw_body": {"text": "v", "items": ["v"]}, "response": "full", "filled": []},
+    "mcp": {"tool": "mcp__chat__send_message", "args": {"text": "v", "channel": "c"}, "filled": []},
     "skill": {"skill": "s", "prompt": "p", "model": "m", "endpoint_url": "u", "max_steps": 3,
               "output_target": "o"},
     "code": {"language": "python", "source": "print(1)", "timeout_seconds": 30,
@@ -366,7 +370,9 @@ def test_a_command_s_own_braces_are_its_own_text(text):
 
 @pytest.mark.parametrize("text", [
     "{{ STEPS.fetch.data.x }}", "{{ steps . fetch.data.x }}", "{{ {{ steps.fetch.data.x }} }}",
-    "{{ steps.fetch.data.x | upper }}", "{{ steps.fetch.status }}", "{{ steps.fetch.data.x",
+    # `B1879`: `| upper` is a change a reference may now end in; a change
+    # off the closed list (`workflow_refs.FILTERS`) is still refused.
+    "{{ steps.fetch.data.x | shout }}", "{{ steps.fetch.status }}", "{{ steps.fetch.data.x",
 ])
 def test_a_value_setting_refuses_a_brace_that_is_not_a_reference(text):
     refusal = after_fetch(step("p", prompt=f"Summarise {text}"))

@@ -11,6 +11,8 @@ import contextvars
 import json
 import logging
 import os
+import threading
+import time
 from contextlib import contextmanager
 from datetime import datetime
 from typing import NamedTuple, Optional
@@ -136,6 +138,18 @@ TRIGGER_SOURCE_WEBHOOK = "webhook"
 # event arrive in, because a task does not care what started it; it cares what
 # it can refer to (`Law 14`).
 TRIGGER_SOURCE_TASK = "task"
+# `B1852`. A person's *Test run* of a workflow, from the Workbench — the
+# saved version, once, even while the workflow is switched off. Its own
+# source and not a webhook or an event, because nothing outside the machine
+# and nothing in the app fired it: the envelope is built by the server and
+# carries no data anybody else wrote (`TEST_RUN_EVENT`, an empty `data`), so
+# `trigger_context_message` hands a model step nothing to wrap, and the run's
+# step log and its first step's *What it was handed* both read "Test run"
+# (`trigger_summary`). Stored in rows (the step records' `input`): a rename
+# orphans every test run's record of its cause.
+TRIGGER_SOURCE_TEST = "test"
+TEST_RUN_EVENT = "test_run"
+TEST_RUN_WORDS = "Test run"
 
 # The keys a task handoff carries. Fixed here rather than in a catalogue for
 # the same reason the webhook's are: there is no catalogue entry for "the step
@@ -160,6 +174,54 @@ WEBHOOK_PAYLOAD_FIELDS = ("body", "json", "query", "headers")
 # different failures and only the second is bounded by a field limit.
 TRIGGER_FIELD_MAX_CHARS = 2000
 TRIGGER_MAX_CHARS = 6000
+
+# `B1861`. The cap on the WHOLE envelope a run is handed and keeps, in
+# characters of JSON — a setting, read with `trigger_payload_max_chars()`.
+#
+# The two caps above were applied when the envelope was BUILT (`build_trigger`
+# clipped every field with `clip_field`), so they bounded what a run could
+# refer to and not only what a model was shown: a webhook whose JSON body was
+# over 2,000 characters reached the run as one truncated string, `{{
+# steps.start.data.json.issue.title }}` read null, and the run said success.
+# The same clip flattened a step's structured output in the hand-off to the
+# next step (`build_task_handoff`). Now the envelope keeps its structure whole
+# up to this generous cap, and the two caps above apply where they were for —
+# the text that goes into a model prompt (`trigger_as_text`, which
+# `trigger_context_message` wraps) — at the same numbers, so a prompt is the
+# same bytes it was. Past this cap the envelope keeps what fits: text fields
+# are cut to `TRIGGER_FIELD_MAX_CHARS` first (a webhook's `body` is its `json`
+# again, as text), then the largest structured ones, and the envelope names
+# what it cut under a `cut` key (added; nothing renamed), which the step log's
+# first line says in words.
+#
+# The bounds and the default are stated here and nowhere else (`Law 7`);
+# `src/settings.py` imports them, and the webhook route reads how much of a
+# request body it keeps off the same cap. The floor holds four fields at
+# today's per-field clip — a webhook's four (`WEBHOOK_PAYLOAD_FIELDS`); the top
+# is the sanity ceiling the step record's own cap uses — a megabyte of one
+# trigger in a row is a typo, not a decision.
+TRIGGER_PAYLOAD_MAX_CHARS_SETTING = "trigger_payload_max_chars"
+TRIGGER_PAYLOAD_MAX_CHARS_DEFAULT = 256 * 1024
+TRIGGER_PAYLOAD_MAX_CHARS_RANGE = (TRIGGER_FIELD_MAX_CHARS * 4, 1_000_000)
+#: `B1861`. The envelope key that names the fields cut to fit the cap.
+TRIGGER_CUT_KEY = "cut"
+
+
+def trigger_payload_max_chars() -> int:
+    """`B1861`. The cap on one trigger envelope, in characters of JSON: the
+    instance setting, held to its range, else the built-in default. Read on
+    every build, so a changed setting applies to the next trigger."""
+    lo, hi = TRIGGER_PAYLOAD_MAX_CHARS_RANGE
+    try:
+        from src.settings import resolve_limit
+        value, _source = resolve_limit(
+            TRIGGER_PAYLOAD_MAX_CHARS_SETTING, TRIGGER_PAYLOAD_MAX_CHARS_DEFAULT,
+            minimum=lo, maximum=hi)
+        return int(value)
+    except Exception:
+        logger.debug("Could not read %s; using the built-in default",
+                     TRIGGER_PAYLOAD_MAX_CHARS_SETTING, exc_info=True)
+        return TRIGGER_PAYLOAD_MAX_CHARS_DEFAULT
 
 # `P8-31`. How many events an event-triggered task waits for when nobody says.
 #
@@ -295,6 +357,12 @@ def build_trigger(source: str, name: str, data: Optional[dict] = None,
     `P22-05`. `origin` — the run whose step fired the event — is carried as a
     top-level `origin` key (added; nothing renamed), so a task it wakes can
     say what caused it. Absent when nothing caused it but a person.
+
+    `B1861`. Each field is kept WHOLE — a parsed webhook body stays a dict, a
+    step's structured output stays structured — and the whole envelope is held
+    to `trigger_payload_max_chars()` (`_fit_envelope`). The per-field clip that
+    was here is applied where it is for, to the text a model is shown
+    (`trigger_as_text`). Text is still stripped, as the clip stripped it.
     """
     allowed = EVENT_PAYLOAD_FIELDS.get(name, ()) if fields is None else tuple(fields)
     kept = {}
@@ -304,7 +372,7 @@ def build_trigger(source: str, name: str, data: Optional[dict] = None,
         value = data.get(key)
         if value is None or value == "":
             continue
-        kept[key] = _clip(value)
+        kept[key] = value.strip() if isinstance(value, str) else value
     if isinstance(data, dict):
         extra = sorted(set(data) - set(allowed))
         if extra:
@@ -321,7 +389,50 @@ def build_trigger(source: str, name: str, data: Optional[dict] = None,
         # workflow".
         envelope["origin"] = {"task_id": origin.task_id, "task": origin.task_name,
                               "run_id": origin.run_id, "kind": origin.kind}
+    cut = _fit_envelope(envelope, trigger_payload_max_chars())
+    if cut:
+        envelope[TRIGGER_CUT_KEY] = cut
+        logger.info("Trigger %r was over %s (%s characters); cut short: %s",
+                    name, TRIGGER_PAYLOAD_MAX_CHARS_SETTING,
+                    f"{trigger_payload_max_chars():,}", ", ".join(cut))
     return envelope
+
+
+def _json_size(value) -> int:
+    """How many characters of JSON a value is, as a row or a record keeps it."""
+    try:
+        return len(json.dumps(value, default=str))
+    except (TypeError, ValueError):
+        return len(str(value))
+
+
+def _fit_envelope(envelope: dict, limit: int) -> list:
+    """`B1861`. Hold one envelope to `limit` characters of JSON, in place, and
+    answer the fields it cut (none, nearly always).
+
+    Over the cap, fields are cut with `clip_field` — the per-field rule that
+    used to apply to every field — one at a time until the envelope fits: text
+    first, largest first (a webhook's `body` is its parsed `json` again, as
+    text, so the copy that can be referred to is the one kept), then the
+    largest structured field. A field already within `TRIGGER_FIELD_MAX_CHARS`
+    is never cut. An envelope that still does not fit after that is as small
+    as the rule could ever make it, which is what every envelope was before.
+    """
+    data = envelope.get("data")
+    if not isinstance(data, dict) or _json_size(envelope) <= limit:
+        return []
+    cut = []
+    order = sorted(data, key=lambda k: (not isinstance(data[k], str), -_json_size(data[k])))
+    for key in order:
+        before = data[key]
+        after = clip_field(before)
+        if _json_size(after) >= _json_size(before):
+            continue
+        data[key] = after
+        cut.append(key)
+        if _json_size(envelope) <= limit:
+            break
+    return cut
 
 
 def build_task_handoff(*, task_name: str, task_id: str, run_id: str,
@@ -350,6 +461,19 @@ def build_task_handoff(*, task_name: str, task_id: str, run_id: str,
         data["data"] = payload
     return build_trigger(TRIGGER_SOURCE_TASK, task_name or task_id, data,
                          fields=TASK_HANDOFF_FIELDS)
+
+
+def build_test_trigger() -> dict:
+    """`B1852`. The envelope a workflow's *Test run* hands its first steps:
+    `{"source": "test", "event": "test_run", "at": …, "data": {}}` — the one
+    envelope builder's, with nothing in it, so a reference into
+    `steps.start.data` reads what a scheduled run's does: nothing."""
+    return build_trigger(TRIGGER_SOURCE_TEST, TEST_RUN_EVENT, {}, fields=())
+
+
+def is_test_trigger(trigger) -> bool:
+    """`B1852`. Is this envelope a *Test run*'s?"""
+    return isinstance(trigger, dict) and trigger.get("source") == TRIGGER_SOURCE_TEST
 
 
 def _origin_clause(trigger: dict) -> str:
@@ -403,6 +527,18 @@ def _handoff_summary(name: str, data: dict, origin: str) -> str:
     return _clip(f"{lead}: {said}", TRIGGER_FIELD_MAX_CHARS)
 
 
+def _cut_clause(trigger: dict) -> str:
+    """`B1861`. An envelope cut to fit `trigger_payload_max_chars` says so, in
+    the line a person reads first, naming the fields and the setting — a
+    reference into a cut field reads nothing, and nothing is cut silently."""
+    cut = trigger.get(TRIGGER_CUT_KEY)
+    if not isinstance(cut, list) or not cut:
+        return ""
+    names = ", ".join(str(c) for c in cut)
+    return (f" (too large to keep whole, so {names} was cut short; the limit is "
+            f"{TRIGGER_PAYLOAD_MAX_CHARS_SETTING})")
+
+
 def trigger_summary(trigger: Optional[dict]) -> str:
     """One line naming what fired a run, for the run's step log."""
     if not isinstance(trigger, dict):
@@ -415,11 +551,16 @@ def trigger_summary(trigger: Optional[dict]) -> str:
         # line of its step log is the only place that says where. `B1096`:
         # said in words, without the envelope's ids.
         return _handoff_summary(name, data, _origin_clause(trigger))
+    if source == TRIGGER_SOURCE_TEST:
+        # `B1852`. A person pressed *Test run*: the cause is that, in words,
+        # with no "— no payload" after it (a test run never has one).
+        return TEST_RUN_WORDS
     if source == TRIGGER_SOURCE_EVENT:
         lead = f"Triggered by {name}"
     else:
         lead = f"Triggered by {source}"
     lead += _origin_clause(trigger)
+    lead += _cut_clause(trigger)
     if not data:
         # Said out loud rather than left blank: "no payload" and "the payload
         # did not survive" look identical in an empty string, and the first is
@@ -456,6 +597,14 @@ def trigger_context_message(trigger: Optional[dict]) -> Optional[dict]:
     """
     if not isinstance(trigger, dict):
         return None
+    if is_test_trigger(trigger):
+        # `B1852`. A *Test run*'s envelope is the server's own, with no data:
+        # there is nothing in it anybody else could have chosen, so there is
+        # nothing to wrap — and a model step of a test run builds the messages
+        # a scheduled run's builds (no trigger, no block), which is what a test
+        # is for. Asked on the source the server stamps, not on a field a
+        # sender could fill: a webhook's envelope is always `webhook`.
+        return None
     body = trigger_as_text(trigger)
     if not body:
         return None
@@ -490,16 +639,35 @@ def trigger_context_message(trigger: Optional[dict]) -> Optional[dict]:
 
 
 def trigger_as_text(trigger: Optional[dict]) -> str:
-    """The payload as the body of an untrusted-source block, capped."""
+    """The payload as the body of an untrusted-source block, capped.
+
+    `B1861`. Capped HERE, at today's limits, and only here: each field is cut
+    to `TRIGGER_FIELD_MAX_CHARS` by `clip_field` (`_prompt_view`) and the
+    whole block to `TRIGGER_MAX_CHARS`. Until `B1861` the field clip happened
+    when the envelope was built, which is why the run could not refer to a
+    field the model was never going to be shown whole; the model is shown
+    exactly what it was shown before."""
     if not isinstance(trigger, dict):
         return ""
     try:
-        text = json.dumps(trigger, indent=2, default=str, sort_keys=True)
+        text = json.dumps(_prompt_view(trigger), indent=2, default=str, sort_keys=True)
     except (TypeError, ValueError):
         return ""
     if len(text) > TRIGGER_MAX_CHARS:
         text = text[:TRIGGER_MAX_CHARS].rstrip() + "\n\u2026 (truncated)"
     return text
+
+
+def _prompt_view(trigger: dict) -> dict:
+    """`B1861`. A copy of the envelope with each `data` field clipped by the
+    per-field rule (`clip_field`), as `build_trigger` used to keep it. The
+    envelope itself is not touched — the run keeps it whole."""
+    data = trigger.get("data")
+    if not isinstance(data, dict):
+        return trigger
+    view = dict(trigger)
+    view["data"] = {key: clip_field(value) for key, value in data.items()}
+    return view
 
 
 def set_task_scheduler(scheduler):
@@ -557,6 +725,82 @@ def fire_event(event_name: str, owner: Optional[str] = None,
         pass
     # No app loop at all (a script, a test): run it here, as before.
     asyncio.run(_handle_event(event_name, owner, payload, origin=origin))
+
+
+# `B1862`. `document_updated` was in the catalogue and in the picker, and the
+# only place that fired it was the email MCP server merging a draft into a
+# document: a task set to run "when a document is edited" never ran for a
+# person's edit, a restore, a rename or the agent's own `update_document` /
+# `edit_document`. Those doors fire it now — through this, and only this.
+#
+# **Once a minute per document, not once per keystroke.** The editor saves as
+# the person types (`PUT /api/document/{id}` coalesces those into one version
+# a minute, `VERSION_COALESCE_SECONDS`), so an event per save would run a task
+# per pause in typing. The first edit fires; the next edits of that document
+# within the minute do not; the first one after it fires again. A task woken
+# reads the document when it runs, so what it reads is the latest text.
+#
+# **Who edited is part of "which document".** The minute is kept per document
+# AND per run that made the edit (`RunOrigin.task_ids`, none for a person):
+# a run's own edit wakes every task but that run's (`_count_event`), so if it
+# used up the document's minute, a person's edit just after — which must wake
+# that task too — would be swallowed. A step test (`origin.test`) wakes
+# nothing and uses up nothing.
+#
+# **No loop.** A workflow on `document_updated` whose step edits the document
+# is not woken by its own edit (`run_origin`, read in the caller's context by
+# `fire_event`, exactly as for every event). Two tasks that each edit the
+# document the other listens to wake each other at most once a minute each —
+# bounded, never a burst.
+#
+# A dict in this process is enough: it forgets on restart, which at worst is
+# one more event; it is pruned as it grows, so it holds about a minute of
+# documents.
+DOCUMENT_UPDATED_QUIET_SECONDS = 60
+_DOCUMENT_UPDATED_PRUNE_AT = 512
+_document_updated_at: dict = {}
+_document_updated_lock = threading.Lock()
+_clock = time.monotonic
+
+
+def fire_document_updated(owner: Optional[str], document_id: str,
+                          title: Optional[str]) -> bool:
+    """`B1862`. Fire `document_updated` for this document — `document_id` and
+    `title`, the same envelope as `document_created` — unless it fired for
+    the same document, edited by the same run (or by no run), in the last
+    `DOCUMENT_UPDATED_QUIET_SECONDS`. Call it AFTER the edit is committed.
+
+    Answers whether it fired. Never raises for the bus's sake: the callers
+    are the edit's own doors, and an edit that was saved is saved."""
+    origin = _RUN_ORIGIN.get()
+    payload = {"document_id": document_id, "title": title}
+    if origin is not None and origin.test:
+        # Wakes nothing (`_handle_event`), and so takes no minute from anyone.
+        _fire_document_updated(owner, payload)
+        return False
+    key = (owner or "", str(document_id), origin.task_ids() if origin is not None else ())
+    now = _clock()
+    with _document_updated_lock:
+        last = _document_updated_at.get(key)
+        if last is not None and now - last < DOCUMENT_UPDATED_QUIET_SECONDS:
+            return False
+        _document_updated_at[key] = now
+        if len(_document_updated_at) > _DOCUMENT_UPDATED_PRUNE_AT:
+            for stale in [k for k, at in _document_updated_at.items()
+                          if now - at >= DOCUMENT_UPDATED_QUIET_SECONDS]:
+                del _document_updated_at[stale]
+    return _fire_document_updated(owner, payload)
+
+
+def _fire_document_updated(owner: Optional[str], payload: dict) -> bool:
+    # The name spelled at the call, so `tests/test_event_catalogue.py`'s walk
+    # of every `fire_event(...)` site reads it.
+    try:
+        fire_event(EVENT_DOCUMENT_UPDATED, owner, payload)
+        return True
+    except Exception:
+        logger.debug("document_updated event dispatch failed", exc_info=True)
+        return False
 
 
 def _resolve_event_owner(owner: Optional[str]) -> Optional[str]:
@@ -631,13 +875,18 @@ async def _handle_event(event_name: str, owner: Optional[str] = None,
         due = await asyncio.to_thread(_count_event, event_name, resolved_owner, trigger, origin)
         for task_id, name, threshold in due:
             if _task_scheduler:
-                logger.info(f"Event '{event_name}' triggered task '{name}' (every {threshold})")
                 # `P8-23`. The Nth event is the one the task runs for, so
                 # that is the payload it is handed. The N-1 events that only
                 # moved the counter are not carried: a task set to fire every
                 # fifth document wants the fifth document, and a list of five
                 # would be a different feature nobody asked for.
-                await _task_scheduler.run_task_now(task_id, trigger=trigger)
+                started = await _task_scheduler.run_task_now(task_id, trigger=trigger)
+                # `B1865`. Said after the answer, not before it: this logged
+                # "triggered" for every event and threw `run_task_now`'s
+                # `False` away, so an event that started nothing — it waits
+                # its turn on the row, or a parked run answered it with a
+                # `skipped` run — read in the log as a run that started.
+                await _say_what_the_event_did(task_id, name, event_name, threshold, started)
             else:
                 logger.warning(f"Event triggered task '{name}' but no scheduler available")
     except Exception:
@@ -684,6 +933,16 @@ def _count_event(event_name: str, resolved_owner: Optional[str], trigger: dict,
 
             if task.trigger_counter >= threshold:
                 task.trigger_counter = 0
+                # `B1865`. Behind the events already waiting for this task,
+                # in the order they came — or, with `PENDING_TRIGGERS_MAX`
+                # waiting, not at all: a `skipped` run says so, and the task
+                # is not handed this event (it is due already, for the oldest).
+                queued = change_pending_triggers(db, task.id, _append_if_room(trigger))
+                if queued is False:
+                    sentence = _record_queue_full(db, task)
+                    db.commit()
+                    logger.info("Event '%s': task '%s' — %s", event_name, task.name, sentence)
+                    continue
                 # Persist the trigger before handing off to the in-memory
                 # scheduler. If the process restarts while the task is queued
                 # behind a model call, `next_run <= now` makes the trigger
@@ -695,7 +954,12 @@ def _count_event(event_name: str, resolved_owner: Optional[str], trigger: dict,
                 # all that crossed to the main process, whose loop then ran the
                 # task as a plain due task with no payload. The run that starts
                 # takes this (`TaskScheduler._take_pending_trigger`).
-                task.pending_trigger = json.dumps(trigger, default=str)
+                #
+                # `B1865`. It was one envelope, written over whatever was
+                # there: three documents created while the task ran left the
+                # third waiting and the second gone, and the run after read
+                # the third. It is a queue now (`change_pending_triggers`,
+                # above), oldest first, one event to a run.
                 db.commit()
                 due.append((task.id, task.name, threshold))
             else:
@@ -704,3 +968,150 @@ def _count_event(event_name: str, resolved_owner: Optional[str], trigger: dict,
     finally:
         db.close()
     return due
+
+
+# ── `B1865` · the events waiting for a task's next run ─────────────────────
+#
+# `ScheduledTask.pending_trigger` holds what fired a task and has not been
+# handed to a run yet, oldest first: what `_count_event` appends and
+# `TaskScheduler._take_pending_trigger` takes, one event to a run, and what
+# keeps the task due while it holds anything (`_settle_event_next_run`).
+#
+# Written as it always was while one event waits — that envelope, alone — and
+# as a JSON list of envelopes while two or more do; read either way
+# (`pending_triggers_of`), so a row written before is a queue of one. Up to
+# `PENDING_TRIGGERS_MAX` wait; past that an event is answered with a `skipped`
+# run that says so (`_record_queue_full`), in `_record_parked_skip`'s words,
+# rather than dropped with no word or allowed to grow the row without end — a
+# chatty source firing every second while a long run holds the task.
+
+PENDING_TRIGGERS_MAX = 20
+
+
+def pending_triggers_of(raw) -> list:
+    """`B1865`. The events a row's `pending_trigger` holds, oldest first: a
+    JSON list of envelopes, or a single envelope (a queue of one, as every
+    row was written before). Nothing, or text that is not JSON, is none."""
+    if not raw:
+        return []
+    try:
+        value = json.loads(raw)
+    except (TypeError, ValueError):
+        logger.warning("A task's queued trigger is not JSON; its run starts without it")
+        return []
+    if isinstance(value, dict):
+        return [value]
+    if isinstance(value, list):
+        return [envelope for envelope in value if isinstance(envelope, dict)]
+    return []
+
+
+def pending_triggers_text(queue: list) -> Optional[str]:
+    """`B1865`. What the column holds for `queue`: `None` for none, the one
+    envelope alone for one (the bytes `B1075` wrote), a JSON list for more."""
+    if not queue:
+        return None
+    return json.dumps(queue[0] if len(queue) == 1 else queue, default=str)
+
+
+def change_pending_triggers(db, task_id: str, change, *, tries: int = 8):
+    """`B1865`. Change a task's queue of waiting events, and answer what
+    `change` answered.
+
+    `change(queue)` is handed the queue as it stands and answers
+    `(new_queue, answer)`; handing back the very list it was given means
+    "nothing to write". The write is one compare-and-set — `UPDATE … WHERE
+    pending_trigger` is still what was read — because the bus appends (in this
+    process or in the email server's) while a scheduler takes: two writers
+    that each read and wrote the whole column would lose or repeat an event.
+    When another writer got there first, the column is read again and `change`
+    asked again. Not committed: the caller commits with its own writes. Answers
+    `None` when the task's row is gone or the column stayed contended.
+    """
+    from core.database import ScheduledTask
+
+    for _ in range(tries):
+        row = (db.query(ScheduledTask.pending_trigger)
+               .filter(ScheduledTask.id == task_id).first())
+        if row is None:
+            return None
+        raw = row[0]
+        queue = pending_triggers_of(raw)
+        new_queue, answer = change(queue)
+        if new_queue is queue:
+            return answer
+        new_raw = pending_triggers_text(new_queue)
+        if new_raw == raw:
+            return answer
+        held = (ScheduledTask.pending_trigger.is_(None) if raw is None
+                else ScheduledTask.pending_trigger == raw)
+        written = (db.query(ScheduledTask)
+                   .filter(ScheduledTask.id == task_id, held)
+                   .update({ScheduledTask.pending_trigger: new_raw},
+                           synchronize_session=False))
+        if written:
+            return answer
+    logger.warning("Task %s's queued events kept changing under this write; left as they are",
+                   task_id)
+    return None
+
+
+def _append_if_room(trigger: dict):
+    """`change_pending_triggers`' change for a new event: behind the others
+    while fewer than `PENDING_TRIGGERS_MAX` wait (answers `True`), else
+    nothing written (answers `False`)."""
+    envelope = json.loads(json.dumps(trigger, default=str))
+
+    def append(queue):
+        if len(queue) >= PENDING_TRIGGERS_MAX:
+            return queue, False
+        return [*queue, envelope], True
+    return append
+
+
+def queue_full_sentence(task) -> str:
+    """`B1865`. Why an event started nothing: the task's queue was full."""
+    what = "workflow" if (getattr(task, "task_type", None) or "llm") == "workflow" else "task"
+    return (f"Did not start: {PENDING_TRIGGERS_MAX} events were already waiting "
+            f"for this {what}.")
+
+
+def _record_queue_full(db, task) -> str:
+    """`B1865`. An event past the queue's cap is a `skipped` run that says
+    why — as `_record_parked_skip` writes one for an event a parked run
+    answers — and nobody is notified (the task is already due for the
+    events before it). The task's `next_run` is left as it is. Not
+    committed. Answers the sentence."""
+    import uuid
+    from core.database import TaskRun
+
+    sentence = queue_full_sentence(task)
+    now = datetime.utcnow()
+    db.add(TaskRun(id=str(uuid.uuid4()), task_id=task.id, started_at=now, finished_at=now,
+                   status="skipped", result=sentence, error=sentence))
+    return sentence
+
+
+async def _say_what_the_event_did(task_id: str, name: str, event_name: str,
+                                  threshold: int, started) -> None:
+    """`B1865`. The log line for an event the bus handed to `run_task_now`,
+    from its answer: it started the task; or it did not, because a run of
+    the task is parked (the event was answered with a `skipped` run that
+    says why); or because a run of it is going (it waits its turn on the
+    row, and the loop starts it when that run ends)."""
+    if started:
+        logger.info("Event '%s' started task '%s' (every %s)", event_name, name, threshold)
+        return
+    sentence = None
+    asks = getattr(_task_scheduler, "in_flight_sentence", None)
+    if asks is not None:
+        try:
+            sentence = await asyncio.to_thread(asks, task_id)
+        except Exception:
+            logger.debug("Could not read whether task %s is parked", task_id, exc_info=True)
+    if sentence:
+        logger.info("Event '%s' did not start task '%s' — a skipped run says: %s",
+                    event_name, name, sentence)
+    else:
+        logger.info("Event '%s' did not start task '%s' yet: a run of it is going, "
+                    "and the event waits its turn", event_name, name)

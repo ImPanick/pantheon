@@ -73,8 +73,15 @@ def test_each_workflow_route_is_reached_by_workflow_api_and_by_nothing_else():
     # and a workflow's file (`P22-24`), spelled out there the same way
     # (wb-assist; a draft and a file reuse `POST`, a check reuses `PUT`).
     # `B1099` adds `POST /api/workflows/slot` (a field's picker, asked as its
-    # name is typed), spelled out there too.
-    assert len(mounted) == 17 and all(p.startswith("/api/workflows") for p in mounted)
+    # name is typed), spelled out there too. `B1869` stops a run the Runs tab
+    # shows, and `B1845` copies a workflow (`stopRun`, `duplicateWorkflow`).
+    # `B1850` adds a draft step's fields (`POST /api/workflows/{id}/fields`,
+    # `listDraftFields`), and `B1851` every problem a save of the draft would
+    # name (`POST /api/workflows/{id}/problems`, `listProblems`). `B1852` adds
+    # a workflow's *Test run* (`POST /api/workflows/{id}/test-run`, `testRun`),
+    # and `B1854` a failed run's retry from a step (`.../runs/{run_id}/retry`,
+    # `retryRun`).
+    assert len(mounted) == 23 and all(p.startswith("/api/workflows") for p in mounted)
     assert not [p for p in as_is["findings"] if p.startswith("/api/workflows")]
     assert sorted(set(hidden["findings"]) - set(as_is["findings"])) == mounted
     assert as_is["exit"] == 0, f"over the ceiling with the caller: {len(as_is['findings'])}"

@@ -517,9 +517,14 @@ def add_integration(data: Dict[str, Any], owner: Optional[str] = None) -> Dict[s
     """Add a new integration. If 'preset' is given, merge preset defaults first.
 
     `P27-02`: it is `owner`'s, and shared only when `data["shared"]` is a
-    literal `true` — never whatever owner the body names."""
+    literal `true` — never whatever owner the body names.
+
+    `B1871`: and its id is always minted here, never the body's. A chosen id
+    let two Integrations share one, and let a workflow file be aimed at an id
+    the importer was known to have (`workflow_share.MISSING_INTEGRATION_ID`
+    closes the import's half)."""
     integration: Dict[str, Any] = {}
-    data = {k: v for k, v in dict(data).items() if k not in ("owner", "shared")} | {
+    data = {k: v for k, v in dict(data).items() if k not in ("owner", "shared", "id")} | {
         "owner": owner, "shared": data.get("shared") is True}
 
     preset_key = data.get("preset")
@@ -770,15 +775,75 @@ API_CALL_BODY_JSON_MAX_BYTES = 1024 * 1024
 
 _UNPARSED = object()
 
+# `B1885`. A structured call also answers the reply's headers
+# (`response_headers`), for a workflow's HTTP step that hands on its status,
+# headers and body. Names lower-cased, a repeated one joined with ", ", at most
+# this many of them and this long each. A cookie the service sets is left out:
+# it is a login of this machine's at that service, and a step's record is read
+# by whoever reads the run.
+RESPONSE_HEADERS_MAX = 100
+RESPONSE_HEADER_VALUE_MAX = 2000
+_RESPONSE_HEADERS_LEFT_OUT = frozenset({"set-cookie", "set-cookie2"})
 
-def _reply(status: int, content_type: str, text: str, size: int, structured: bool) -> Dict[str, Any]:
+
+def _is_json_type(content_type: str) -> bool:
+    """`application/json`, and (`B1885`) any `+json` type — JSON:API's
+    `application/vnd.api+json`, `application/problem+json` — which were read
+    as plain text, so a step had no fields from them."""
+    media = (content_type or "").split(";", 1)[0].strip().lower()
+    return media == "application/json" or media.endswith("+json") or "application/json" in media
+
+
+def _kept_headers(pairs) -> Dict[str, str]:
+    """`pairs` (`(name, value)`s, as `httpx.Headers.multi_items()` or a
+    header dump gives them) as `response_headers`."""
+    out: Dict[str, str] = {}
+    for name, value in pairs or ():
+        key = str(name).strip().lower()
+        if not key or key in _RESPONSE_HEADERS_LEFT_OUT:
+            continue
+        if key not in out and len(out) >= RESPONSE_HEADERS_MAX:
+            continue
+        text = str(value).strip()
+        out[key] = f"{out[key]}, {text}" if key in out else text
+        out[key] = out[key][:RESPONSE_HEADER_VALUE_MAX]
+    return out
+
+
+def _header_pairs(headers):
+    """`(name, value)`s of a reply's headers: every value of a repeated one
+    (`httpx.Headers.multi_items`), or a plain mapping's items."""
+    multi = getattr(headers, "multi_items", None)
+    if callable(multi):
+        return list(multi())
+    items = getattr(headers, "items", None)
+    return list(items()) if callable(items) else []
+
+
+def _dumped_headers(text: str):
+    """The last header block of a `curl -D` dump (an interim `100 Continue`
+    block comes first) as `(name, value)`s."""
+    blocks = [b for b in re.split(r"\r?\n\r?\n", text or "") if b.strip()]
+    if not blocks:
+        return []
+    pairs = []
+    for line in blocks[-1].splitlines()[1:]:
+        name, sep, value = line.partition(":")
+        if sep and name.strip() and not name[:1].isspace():
+            pairs.append((name.strip(), value.strip()))
+    return pairs
+
+
+def _reply(status: int, content_type: str, text: str, size: int, structured: bool,
+           response_headers=None) -> Dict[str, Any]:
     """An HTTP answer as `execute_api_call` answers it — whichever machine
     made the request (`B1573`: the server, or the owner's workstation).
-    `size` is the body's length in bytes."""
+    `size` is the body's length in bytes. `response_headers` (`B1885`): the
+    reply's headers as `(name, value)` pairs, answered when `structured`."""
     parsed_json: Any = _UNPARSED
 
     # Format response body
-    if "application/json" in content_type:
+    if _is_json_type(content_type):
         try:
             data = json.loads(text)
             parsed_json = data
@@ -862,6 +927,7 @@ def _reply(status: int, content_type: str, text: str, size: int, structured: boo
     extra: Dict[str, Any] = {}
     if structured:
         extra["http_status"] = status
+        extra["response_headers"] = _kept_headers(response_headers)
         if (parsed_json is not _UNPARSED
                 and size <= API_CALL_BODY_JSON_MAX_BYTES):
             extra["body_json"] = parsed_json
@@ -936,12 +1002,20 @@ def _credentials(integration: Dict[str, Any], params: Optional[Dict[str, Any]],
 WORKSTATION_CALL_TIMEOUT_S = 30
 WORKSTATION_BODY_MAX = 900_000
 _WORKSTATION_MARK = "\n@@pantheon-api-call@@ "
+# `B1885`. The reply's headers (`curl -D`) come first, to this mark: before
+# the body, so nothing the body holds can stand in for them, and the status
+# line is still the LAST mark, after both.
+WORKSTATION_HEADERS_MAX = 16_384
+_WORKSTATION_HEADERS_MARK = "\n@@pantheon-api-headers@@\n"
 _HTTP_METHOD = re.compile(r"^[A-Z]{1,16}$")
 _CURL_SCRIPT = (
     'f=$(mktemp) || exit 90\n'
-    "trap 'rm -f \"$f\"' EXIT\n"
-    "w=$(curl --config - -o \"$f\" -w '%{http_code} %{size_download} %{content_type}')\n"
+    'h=$(mktemp) || exit 90\n'
+    "trap 'rm -f \"$f\" \"$h\"' EXIT\n"
+    "w=$(curl --config - -o \"$f\" -D \"$h\" -w '%{http_code} %{size_download} %{content_type}')\n"
     'rc=$?\n'
+    f'head -c {WORKSTATION_HEADERS_MAX} "$h"\n'
+    'printf \'\\n@@pantheon-api-headers@@\\n\'\n'
     f'head -c {WORKSTATION_BODY_MAX} "$f"\n'
     'printf \'\\n@@pantheon-api-call@@ %s %s\\n\' "$rc" "$w"\n'
     'exit 0\n'
@@ -1034,6 +1108,9 @@ async def _call_from_workstation(integration: Dict[str, Any], method: str, url: 
         return {"error": f"Your workstation did not say how the call to {name} went: {why[0][:200]}",
                 "exit_code": 1, **_where(place)}
     text, tail = out.rsplit(_WORKSTATION_MARK, 1)
+    dumped = ""
+    if _WORKSTATION_HEADERS_MARK in text:
+        dumped, text = text.split(_WORKSTATION_HEADERS_MARK, 1)
     rc, code, size, ctype = (tail.strip().split(" ", 3) + ["", "", "", ""])[:4]
     if rc != "0":
         if rc == "28":
@@ -1045,7 +1122,8 @@ async def _call_from_workstation(integration: Dict[str, Any], method: str, url: 
     except ValueError:
         return {"error": f"Your workstation's answer from {name} could not be read.", "exit_code": 1,
                 **_where(place)}
-    return {**_reply(status, ctype.strip(), text, length, structured), **_where(place)}
+    return {**_reply(status, ctype.strip(), text, length, structured,
+                     response_headers=_dumped_headers(dumped)), **_where(place)}
 
 
 
@@ -1192,7 +1270,8 @@ async def execute_api_call(
             )
 
         return _reply(response.status_code, response.headers.get("content-type", ""),
-                      response.text, len(response.content or b""), structured)
+                      response.text, len(response.content or b""), structured,
+                      response_headers=_header_pairs(response.headers))
 
     except OutboundRateLimited as exc:
         # The host said stop, and the wait is longer than a call sits through.

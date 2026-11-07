@@ -188,13 +188,18 @@ NOT_DRAFTED = "Pantheon does not draft commands or code; add that step yourself.
 # a draft never chooses (and a workflow file never carries, `workflow_share`).
 INSTALL_FIELDS = ("endpoint_url", "model", "character_id", "crew_member_id")
 
+# `B1857`. "At most 20 steps" below is the size of a DRAFT — what one sentence
+# should become — and was also the document's cap until the cap became a
+# setting (`workflow_max_steps`, default 100). It stays twenty on purpose: a
+# draft is checked step by step by a person before it runs, and the rule's cap
+# is still what refuses a longer one.
 _SYSTEM = """You draft automations ("workflows") for Pantheon, a self-hosted assistant.
 A person describes what they want. You answer with ONE JSON object and nothing else: no prose,
 no markdown fences.
 
 The object:
 {"name": "a short name for the workflow",
- "trigger": {"type": "schedule" | "event" | "webhook",
+ "trigger": {"type": "schedule" | "event" | "webhook" | "manual",
              "schedule": "daily" | "weekly" | "monthly" | "once" | "cron",
              "time": "HH:MM, 24-hour, in the person's time zone",
              "day": 0-6 for weekly (0 is Monday) or 1-31 for monthly,
@@ -215,6 +220,7 @@ Rules:
   {{ steps.start.data.<field> }} is what started the run (an event's or a webhook's fields),
   {{ steps.<step id>.text }} is what a step said, {{ steps.<step id>.data.<field> }} a field of
   what it answered, and {{ item.<field> }} the item, only inside a For-each step.
+  {{ now }} is the time; a reference may end in a change such as | default:"x" or | lower.
 - The first step is the one no arrow leads to. Arrows leave a step by one of its ports.
 - An action step's config is {"action": "<name>"}, and "prompt" holds its one input when it has
   one. An MCP step's config is {"tool": "<name>", "args": {...}}. An HTTP step's config is
@@ -363,8 +369,13 @@ def _drafted_config(kind: str, config, label: str, notes: list) -> dict:
     takes, none of `INSTALL_FIELDS`; what was left out is said."""
     from src.workflow_document import NODE_CONFIG_FIELDS, NODE_KIND_FOREACH
 
+    from src.workflow_slots import FILLED_KEY
+
     config = config if isinstance(config, dict) else {}
-    allowed = [k for k in NODE_CONFIG_FIELDS.get(kind, ()) if k not in INSTALL_FIELDS]
+    # `B1884`: a draft never opens a setting to a value from an earlier step
+    # (`FILLED_KEY`) — that is the person's choice, made on the step.
+    allowed = [k for k in NODE_CONFIG_FIELDS.get(kind, ())
+               if k not in INSTALL_FIELDS and k != FILLED_KEY]
     out = {k: v for k, v in config.items() if k in allowed}
     dropped = sorted(k for k in config if k not in allowed)
     if dropped:
@@ -399,7 +410,8 @@ def normalise_draft(answer: dict, *, tz=None) -> Draft:
     step's settings only those its kind takes (`_drafted_config`), positions
     null, and whatever the answer said about samples or marks dropped —
     `create_from_document` marks every step itself. A Code step or a command
-    action is refused (§ 6); more than 20 steps is the rule's refusal."""
+    action is refused (§ 6); more steps than `workflow_max_steps` is the rule's
+    refusal (`B1857`: it was twenty, a constant)."""
     from src.workflow_document import GRAPH_VERSION, NODE_LABEL_MAX, START_KEY
 
     if not isinstance(answer, dict):
@@ -455,6 +467,29 @@ class Drafted(NamedTuple):
     destinations: list
 
 
+#: `B1877`. What the drafter says back to an answer that was not a JSON object.
+NOT_JSON_AGAIN = ("That was not a JSON object. Answer again with only the whole draft, as one "
+                  "JSON object.")
+#: How much of an answer in words is handed back with it.
+SAID_BACK_MAX_CHARS = 4000
+
+
+def _said_in_words(raw) -> str:
+    """`B1877`. An answer that was not JSON, as it is handed back: without a
+    reasoning block (`first_json_object`'s own strip), capped. Never empty —
+    a turn of the model's own with nothing in it is refused by some servers."""
+    from src.text_helpers import strip_think
+    from src.workflow_effects import _THINK_RE
+
+    text = str(raw or "")
+    try:
+        text = _THINK_RE.sub("", strip_think(text, prose=False, prompt_echo=False))
+    except Exception:  # noqa: BLE001 - the strip is a nicety; the words as given still go back
+        logger.debug("draft: could not strip a reasoning block", exc_info=True)
+    text = text.strip()[:SAID_BACK_MAX_CHARS]
+    return text or "(an empty answer)"
+
+
 def _could_not_use(sentence: str) -> str:
     said = str(sentence or "").strip().rstrip(".")
     return (f"The model's draft could not be used: {said}. Nothing was saved. Say it "
@@ -468,7 +503,8 @@ async def draft_workflow(db, owner, description, tz=None) -> Drafted:
     One call; on a refusal — the rule's, in its own words, or `NOT_DRAFTED` —
     ONE repair round carrying the previous answer and our sentence only
     ("That draft was refused: …"); still refused is a 422 and nothing is
-    saved. No model is a 503."""
+    saved. An answer that is not a JSON object at all spends that same round
+    (`B1877`: "That was not a JSON object. …"). No model is a 503."""
     from src import workflow_store as store
     from src.task_scheduler import valid_timezone
     from src.workflow_document import ORIGIN_DRAFTED, WORKFLOW_TASK_TYPE, destination_lines
@@ -502,6 +538,19 @@ async def draft_workflow(db, owner, description, tz=None) -> Drafted:
     answer, why = await ask(messages)
     draft = None
     for attempt in (1, 2):
+        # `B1877`. An answer in words, or a fence cut short, is the round's
+        # other use: a small model often answers so the first time, and the
+        # draft it would give when told was never asked for. Its words go
+        # back (without a reasoning block — the model's scratch only spends
+        # the window) with one sentence, and that IS the repair round: words
+        # twice, or words and then a draft the rule refuses, is the 422.
+        if why is not None and why.kind == ASK_NOT_JSON and attempt == 1:
+            messages = messages + [
+                {"role": "assistant", "content": _said_in_words(why.raw)},
+                {"role": "user", "content": NOT_JSON_AGAIN},
+            ]
+            answer, why = await ask(messages)
+            continue
         if why is not None:
             raise WorkflowRefused(422, _could_not_use(why.sentence))
         try:
@@ -711,7 +760,7 @@ def fix_problem(before: dict, after: dict, graph: dict, *, resources, tasks_by_i
     if grown:
         said = "; ".join(EFFECT_SENTENCES.get(e, e) for e in sorted(grown))
         return FixRefused(f"It also suggested a change that would let this step do more than it "
-                          f"does now (it would {said}). {YOURS_TO_DECIDE}", "")
+                          f"does now (with it, the step {said}). {YOURS_TO_DECIDE}", "")
     patched = dict(graph)
     patched["nodes"] = [after if n.get("id") == before.get("id") else n
                         for n in graph.get("nodes") or ()]
@@ -963,3 +1012,90 @@ async def explain_step(owner, *, node: dict, record: dict, graph: dict, base_ver
         proposal = {"base_version": base_version, "node_id": node.get("id"), "item": item,
                     "config": config, "changes": rows}
     return Explained(said, proposal, left_out)
+
+
+class StepToExplain(NamedTuple):
+    """`B1878`. What *Why did this fail?* reads of one step of one run: the
+    step as the document holds it now, its record in that run, and whether it
+    changed since. Read by `step_to_explain`, asked by `explain_answer`."""
+    base_version: int
+    changed: bool
+    current: dict
+    node: dict
+    owner: str
+    record: dict
+    rows: tuple
+    trigger: object
+    item: object
+
+
+def step_to_explain(db, wf, run_id, node_id, item=None) -> StepToExplain:
+    """`B1878`. The read half of `POST /api/workflows/{id}/runs/{run_id}/explain`
+    — moved here, word for word, so the route and the assistant's
+    `manage_workflows explain` read one step of one run the same way (`Law
+    14`). `wf` is already the caller's own (`owned_workflow`). Raises
+    `WorkflowRefused` (404) for a run, a record or a step that is not there."""
+    from core.database import TaskRun, TaskRunNode
+    from src import workflow_store as store
+    from src.workflow_document import DocumentError, parse_graph
+    from src.workflow_runs import node_record_to_dict
+    from src.workflow_store import WorkflowRefused
+
+    node_id = str(node_id or "")
+    run = (db.query(TaskRun).filter(TaskRun.id == run_id, TaskRun.task_id == wf.task_id)
+           .first() if wf.task_id else None)
+    if run is None:
+        raise WorkflowRefused(404, "No such run of this workflow.")
+    q = db.query(TaskRunNode).filter(TaskRunNode.run_id == run.id,
+                                     TaskRunNode.node_id == node_id,
+                                     TaskRunNode.dry.is_(False))
+    q = q.filter(TaskRunNode.item.is_(None)) if item is None else \
+        q.filter(TaskRunNode.item == item)
+    rec = q.order_by(TaskRunNode.attempt.desc(), TaskRunNode.seq.desc()).first()
+    if rec is None:
+        raise WorkflowRefused(404, "That step has no record in this run.")
+    record = node_record_to_dict(rec)
+    try:
+        current = parse_graph(store.stored_graph(wf))
+    except DocumentError as err:
+        raise store._document_error_refusal(err) from None
+    node = next((n for n in store.nodes_of(current) if str(n.get("id")) == node_id), None)
+    if node is None:
+        raise WorkflowRefused(404, "That step is not in the workflow any more.")
+    ran_graph, kept = store.graph_of_version(db, wf, rec.workflow_version)
+    ran = next((n for n in store.nodes_of(ran_graph) if str(n.get("id")) == node_id), None)
+    changed = (ran is None or store._step_content(ran) != store._step_content(node)
+               or (not kept and rec.workflow_version != wf.version))
+    rows = store.owner_rows(db, wf.owner)
+    trigger = store.trigger_of(db, wf)
+    return StepToExplain(wf.version, changed, current, node, wf.owner, record, rows, trigger,
+                         item)
+
+
+async def explain_answer(step: StepToExplain) -> dict:
+    """`B1878`. The ask half of the explain route, moved here with the read:
+    `{why, model, changed_since_run, proposal, left_out}` (C-A). Raises
+    `WorkflowRefused` — 503 with no model, 422 when its answer cannot be
+    read. Writes nothing."""
+    from src.task_action_policy import owner_has_admin_task_privileges
+    from src.workflow_effects import workflow_resources
+    from src.workflow_store import WorkflowRefused
+
+    # `B1609`: the resources read which MCP tools are switched off — a session.
+    resources = await asyncio.to_thread(workflow_resources, step.owner)
+    try:
+        explained = await explain_step(
+            step.owner, node=step.node, record=step.record, graph=step.current,
+            base_version=step.base_version, item=step.item, resources=resources,
+            tasks_by_id=step.rows[0], crew_ids=step.rows[1],
+            owner_is_admin=owner_has_admin_task_privileges(step.owner),
+            own_task_id=step.trigger.id if step.trigger is not None else None)
+    except NoModelSetUp:
+        raise WorkflowRefused(503, NO_MODEL_TO_EXPLAIN) from None
+    except ValueError:
+        raise WorkflowRefused(422, EXPLAIN_UNREADABLE) from None
+    # `B1598`: the model's name is an endpoint-row read, made off the loop.
+    model = await asyncio.to_thread(model_name, step.owner)
+    return {"why": explained.why, "model": model,
+            "changed_since_run": step.changed, "proposal": explained.proposal,
+            "left_out": explained.left_out}

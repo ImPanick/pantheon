@@ -12,7 +12,7 @@ from sqlalchemy import DDL, event, create_engine, Column, String, Text, Boolean,
 from sqlalchemy.engine import Engine, make_url
 from sqlalchemy.types import TypeDecorator
 from sqlalchemy.ext.declarative import declarative_base, declared_attr
-from sqlalchemy.orm import relationship, sessionmaker, backref
+from sqlalchemy.orm import relationship, sessionmaker, backref, deferred
 from sqlalchemy.pool import Pool, StaticPool
 
 from src.runtime_paths import get_app_root
@@ -1547,6 +1547,15 @@ class TaskRun(Base):
     # by nothing — every run said null. Gone; an install that has it keeps it.)
     steps       = Column(Text, nullable=True)             # JSON log of agent tool calls
     model       = Column(String, nullable=True)           # model that actually ran (resolved at execution)
+    # `B1861`. What started a workflow run — the `P8-23` envelope, as JSON,
+    # kept whole up to `trigger_payload_max_chars` — written once when the run
+    # starts (`workflow_runs.keep_run_trigger`) and read when a parked run goes
+    # on (`stored_run_trigger`), whose slot is new and whose first step's
+    # record holds the envelope only up to `workflow_node_record_max_chars`
+    # (and marked cut past it, so the resumed run read no trigger at all).
+    # NULL for every other run and every run from before the column. Deferred,
+    # so the runs list, which never shows it, does not load it.
+    trigger_envelope = deferred(Column(Text, nullable=True))
 
     task = relationship("ScheduledTask", backref=backref("runs", cascade="all, delete-orphan",
                         order_by="TaskRun.started_at.desc()"))
@@ -1685,6 +1694,37 @@ class TaskRunNode(Base):
         Index('ix_task_run_nodes_node', 'node_id'),
         Index('ix_task_run_nodes_wait', 'status', 'resume_at'),
     )
+
+
+class TaskRunNodeOutput(Base):
+    """`B1890` (`big-outputs-dropped`). What one step made, WHOLE, for a step
+    whose record had to be cut to `workflow_node_record_max_chars`.
+
+    The record (`TaskRunNode.output`) is what the Runs view shows, and it is
+    capped so a polling view stays light; past the cap it is a preview. That
+    preview was all there was, so after a run paused (a Wait, a card, a
+    takeover) the walker read records instead of live data and every
+    reference into a large output — an HTTP reply, an MCP result, a For-each's
+    items — read nothing, and the run still said it worked. This row keeps the
+    whole `{text, data}` beside the record (`output`), and `fields`, the
+    picker's view of it taken before anything was cut (`workflow_refs.
+    flatten_fields`), so a later step can read and pick from all of it.
+
+    One row per cut record, keyed by the record's id and ON DELETE CASCADE,
+    so it goes exactly when the record goes — the record's retention
+    (`workflow_node_records_days`), a run deleted, a task deleted. A new table
+    and no ALTER of an existing one, so `init_db`'s `create_all` is the whole
+    migration.
+    """
+    __tablename__ = "task_run_node_outputs"
+
+    record_id  = Column(String, ForeignKey("task_run_nodes.id", ondelete="CASCADE"),
+                        primary_key=True)
+    run_id     = Column(String, nullable=True, index=True)
+    output     = Column(Text, nullable=True)     # JSON: the whole {text, data}
+    fields     = Column(Text, nullable=True)     # JSON: {text, data} as flatten_fields saw them
+    chars      = Column(Integer, nullable=True)  # how long `output` is
+    created_at = Column(DateTime, nullable=True, default=utcnow_naive)
 
 
 # ── `P24-03` · a hire is one row; it compiles to tasks ─────────────────────
@@ -2417,6 +2457,35 @@ def _migrate_add_task_run_steps_column():
             logging.getLogger(__name__).info("Migrated: added 'steps' column to task_runs")
     except Exception as e:
         logging.getLogger(__name__).warning(f"task_runs steps migration failed: {e}")
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            # Never opened, or already closed by the error path above.
+            pass
+
+def _migrate_add_task_run_trigger_column():
+    """`B1861`. Add `task_runs.trigger_envelope` where it is missing — every
+    install from before the column (`P8-25`'s lesson: a declared column that
+    is never migrated works on a fresh box and raises on every upgraded one).
+    Nullable, so a run from before it reads as "no trigger kept", and the
+    walker falls back to its first step's record as it always did."""
+    import sqlite3
+    db_path = DATABASE_URL.replace("sqlite:///", "")
+    if not os.path.exists(db_path):
+        return
+    conn = None
+    try:
+        conn = sqlite3.connect(db_path)
+        cursor = conn.execute("PRAGMA table_info(task_runs)")
+        columns = [row[1] for row in cursor.fetchall()]
+        if columns and "trigger_envelope" not in columns:
+            conn.execute("ALTER TABLE task_runs ADD COLUMN trigger_envelope TEXT")
+            conn.commit()
+            logging.getLogger(__name__).info(
+                "Migrated: added 'trigger_envelope' column to task_runs")
+    except Exception as e:
+        logging.getLogger(__name__).warning(f"task_runs trigger_envelope migration failed: {e}")
     finally:
         try:
             conn.close()
@@ -3789,6 +3858,7 @@ def init_db():
     _migrate_add_task_run_model_column()
     _migrate_add_vault_item_agents()
     _migrate_add_task_run_steps_column()
+    _migrate_add_task_run_trigger_column()     # `B1861`
     _migrate_add_task_run_node_columns()
     _migrate_add_scheduled_task_else_column()
     _migrate_add_scheduled_task_execution_columns()

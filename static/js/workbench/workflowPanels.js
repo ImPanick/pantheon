@@ -40,6 +40,8 @@ import { runStatusTone, runStatusLabel } from '../runStatus.js';
 import { mountStepFields, mountAiOptions, STEP_FIELD_KINDS, needLine } from './stepFields.js';
 import { decorateField, openFieldPicker, exampleText } from './fieldPicker.js';
 import { approvalBox, ANSWER_TITLES } from '../approvalBox.js';
+import { kindIcon, kindCat } from './kindIcons.js';
+import { STEP_WAIT_DEFAULT, STEP_LIMITS, secondsWords, settingsOf, settingsWords } from './stepSettings.js';
 
 /** The kinds a step can be, in the palette's order, with what each does in
  *  the words a person meets (`D-2026-10-01-05`: the palette offers only what
@@ -66,6 +68,15 @@ export const TEST_SOURCES = Object.freeze([
 
 /** Said wherever a pin is: the promise the design makes about it (§ 4.3). */
 export const PIN_SENTENCE = 'A pinned sample is only used when you press Test. Scheduled runs never use it.';
+/** `B1888`. Where a value *Test this step* reads came from — the route's
+ *  `reads[].origin` (`workflow_test_context.ORIGINS`), one reading each. */
+export const READ_ORIGIN_WORDS = Object.freeze({
+  typed: 'what you typed here',
+  handed: 'the input chosen above',
+  pin: 'a pinned sample',
+  last_run: 'from its last run',
+  none: 'nothing yet: it has not run',
+});
 /** Said under every test result: a test runs one step and nothing else. */
 // `P23-05` (WB-U-2): said once, before the test (the lede); not again under its result.
 export const NOTHING_ELSE = 'Nothing is delivered.';
@@ -119,6 +130,117 @@ function _button(cls, text, title) {
   b.type = 'button';
   if (title) b.title = title;
   return b;
+}
+
+// ── `B1855`, `B1856`: how a step copes with failing, and switching it off ──
+const RETRY_WORDS = ['Stop, and take its “If it fails” way', 'Try once more', 'Try twice more',
+  'Try 3 more times', 'Try 4 more times', 'Try 5 more times'];
+
+/**
+ * The "If it fails" part of a step's panel: try again (how often, how long
+ * between), a time limit for one try, and switching the step off. Placed in
+ * `formHost` before the form's own Done row, so it reads as part of the
+ * form and its edits make the panel "changed" as any field does. `read()` →
+ * `{ settings, disabled }` | `{ refusal, field }`.
+ */
+export function stepSettings(formHost, step) {
+  const n = step || {};
+  const was = settingsOf(n.settings) || {};
+  const box = _el('details', 'wf-step-settings');
+  const head = _el('summary', 'wf-step-settings-head', 'If it fails · time limit · switch off');
+  box.appendChild(head);
+  const said = _el('span', 'wf-step-settings-now');
+  head.appendChild(said);
+  const body = _el('div', 'wf-step-settings-body');
+  box.appendChild(body);
+  const label = (text, field) => {
+    const l = _el('label', 'wf-sf-label');
+    l.appendChild(_el('span', 'wf-sf-label-text', text));
+    if (field) l.dataset.field = field;
+    return l;
+  };
+  // How often it tries again.
+  const triesL = label('If it fails', 'settings.retries');
+  const tries = _el('select', 'wf-step-retries');
+  tries.dataset.field = 'settings.retries';
+  RETRY_WORDS.forEach((w, i) => { const o = _el('option', null, w); o.value = String(i); tries.appendChild(o); });
+  tries.value = String(was.retries || 0);
+  triesL.appendChild(tries);
+  body.appendChild(triesL);
+  // How long it waits before trying again.
+  const waitL = label('Wait between tries (seconds)', 'settings.retry_wait_seconds');
+  const wait = _el('input', 'wf-step-retry-wait');
+  wait.type = 'number';
+  wait.min = '1';
+  wait.max = '3600';
+  wait.step = '1';
+  wait.dataset.field = 'settings.retry_wait_seconds';
+  wait.value = String(was.retry_wait_seconds || STEP_WAIT_DEFAULT);
+  waitL.appendChild(wait);
+  body.appendChild(waitL);
+  // How long one try may take.
+  const limitL = label('Time limit for one try', 'settings.timeout_seconds');
+  const limit = _el('select', 'wf-step-timeout');
+  limit.dataset.field = 'settings.timeout_seconds';
+  const known = new Set(STEP_LIMITS.map(([v]) => v));
+  const options = STEP_LIMITS.slice();
+  if (was.timeout_seconds && !known.has(was.timeout_seconds)) options.push([was.timeout_seconds, secondsWords(was.timeout_seconds)]);
+  for (const [v, w] of options) { const o = _el('option', null, w); o.value = String(v); limit.appendChild(o); }
+  limit.value = String(was.timeout_seconds || 0);
+  limitL.appendChild(limit);
+  body.appendChild(limitL);
+  body.appendChild(_el('p', 'wf-sf-hint',
+    'A try that runs past its limit is stopped and counts as a failure. A step that waits — for a time, a yes, an answer — is not tried again.'));
+  // Switched off.
+  const offL = _el('label', 'wf-step-off');
+  const off = _el('input', 'wf-step-off-box');
+  off.type = 'checkbox';
+  off.checked = !!n.disabled;
+  off.dataset.field = 'disabled';
+  offL.appendChild(off);
+  offL.appendChild(_el('span', null, 'Switch this step off: a run skips it and hands its input straight on'));
+  body.appendChild(offL);
+
+  const err = _el('p', 'wf-sf-problem wf-step-settings-problem');
+  err.setAttribute('role', 'alert');
+  err.hidden = true;
+  body.appendChild(err);
+  const sync = () => {
+    err.hidden = true;
+    waitL.hidden = Number(tries.value) === 0;
+    said.textContent = settingsWords({ retries: Number(tries.value), timeout_seconds: Number(limit.value) }, off.checked);
+  };
+  for (const el of [tries, limit, off, wait]) el.addEventListener('change', sync);
+  sync();
+  if (Object.keys(was).length || n.disabled) box.open = true;
+
+  // Before the form's own Done row, when there is one.
+  const done = formHost.querySelector('.wf-step-done, [id$="task-form-save"]');
+  const row = done && done.parentNode && done.parentNode !== formHost ? done.parentNode : null;
+  if (row && row.parentNode) row.parentNode.insertBefore(box, row);
+  else formHost.appendChild(box);
+
+  return {
+    box,
+    read() {
+      const retries = Number(tries.value) || 0;
+      let waitS = STEP_WAIT_DEFAULT;
+      if (retries > 0) {
+        waitS = Math.round(Number(wait.value));
+        if (!Number.isFinite(waitS) || waitS < 1 || waitS > 3600) {
+          box.open = true;
+          err.textContent = 'Wait between tries is a number of seconds from 1 to 3600.';
+          err.hidden = false;
+          try { wait.focus(); } catch (_) { /* no focus here */ }
+          return { refusal: true, field: 'settings.retry_wait_seconds', sentence: err.textContent };
+        }
+      }
+      return {
+        settings: settingsOf({ retries, retry_wait_seconds: waitS, timeout_seconds: Number(limit.value) || 0 }),
+        disabled: !!off.checked,
+      };
+    },
+  };
 }
 
 /** A value as a person reads it: text as it is, anything else as JSON. */
@@ -252,16 +374,29 @@ export function createWorkflowPanels({
     }));
   }
 
-  function palette(anchorEl, { palette: pal = null } = {}) {
+  function palette(anchorEl, { palette: pal = null, title = 'Add a step' } = {}) {
     return new Promise((resolve) => {
       const room = (typeof layer === 'function' && layer())
         || (anchorEl && typeof anchorEl.closest === 'function' && anchorEl.closest('.wf-room'))
         || document.body;
       const box = _el('div', 'wf-palette');
       box.setAttribute('role', 'dialog');
-      box.setAttribute('aria-label', 'Add a step');
-      box.appendChild(_el('p', 'wf-palette-head', 'Add a step'));
+      box.setAttribute('aria-label', String(title || 'Add a step'));
+      box.appendChild(_el('p', 'wf-palette-head', String(title || 'Add a step')));
+      // `B1842`. A search over the kinds: what each is called, what it does
+      // and its group. Typing anywhere in the list types here; Enter adds the
+      // first kind still shown. (Measured: "wai" typed into the list left the
+      // focus on Prompt.)
+      const search = _el('input', 'wf-palette-search');
+      search.type = 'search';
+      search.placeholder = 'Search steps…';
+      search.setAttribute('aria-label', 'Search the kinds of step');
+      search.autocomplete = 'off';
+      box.appendChild(search);
+      const none = _el('p', 'wf-palette-none', 'No kind of step matches. Try another word.');
+      none.hidden = true;
       const kinds = [];
+      const rows = [];
       let done = false;
       let release = () => {};
       const finish = (kind) => {
@@ -290,7 +425,15 @@ export function createWorkflowPanels({
         for (const k of members) {
           const b = _button('wf-palette-kind', null);
           b.dataset.kind = k.kind;
+          // `B1833`. The kind's glyph on its family's tile, as on the canvas.
+          const tile = _el('i', 'wf-palette-glyph');
+          tile.dataset.cat = kindCat(k.kind);
+          tile.setAttribute('aria-hidden', 'true');
+          tile.appendChild(kindIcon(k.kind, { size: 16 }));
+          b.appendChild(tile);
           b.appendChild(_el('span', 'wf-palette-word', k.word));
+          rows.push({ b, group, name: String(k.word || '').toLowerCase(), kind: String(k.kind || ''),
+            words: [k.word, k.hint, k.kind, groupName].join(' ').toLowerCase(), live: !!k.available });
           if (k.hint) b.appendChild(_el('span', 'wf-palette-hint', k.hint));
           if (!k.available) {
             // `D-2026-10-01-05`: the palette offers only what the person's agent
@@ -315,18 +458,75 @@ export function createWorkflowPanels({
           group.appendChild(b);
         }
       }
+      box.appendChild(none);
       const cancel = _button('wf-palette-cancel', 'Cancel');
       cancel.addEventListener('click', () => finish(null));
       box.appendChild(cancel);
+      const shownKinds = () => kinds.filter((b) => !b.hidden);
+      // What Enter adds: the kind whose name the typing matches best (a name
+      // that starts with it, then a word of the name that does, then a name
+      // holding it), not the first one a hint happens to mention.
+      let best = null;
+      const rank = (r, words) => {
+        const q = words.join(' ');
+        if (!q) return 0;
+        if (r.name === q || r.kind === q) return 5;
+        if (r.name.startsWith(q)) return 4;
+        if (r.name.split(/[^a-z0-9]+/).some((w) => w.startsWith(words[0]))) return 3;
+        if (r.name.includes(q)) return 2;
+        return 1;
+      };
+      const filter = () => {
+        const words = String(search.value || '').toLowerCase().split(/\s+/).filter(Boolean);
+        let any = false;
+        let top = -1;
+        best = null;
+        for (const r of rows) {
+          const hit = words.every((w) => r.words.includes(w));
+          r.b.hidden = !hit;
+          delete r.b.dataset.best;
+          if (hit) any = true;
+          if (hit && r.live) {
+            const n = rank(r, words);
+            if (n > top) { top = n; best = r.b; }
+          }
+        }
+        if (best && words.length) best.dataset.best = 'true';
+        for (const g of box.querySelectorAll('.wf-palette-group')) {
+          const live = Array.from(g.querySelectorAll('.wf-palette-kind')).some((b) => !b.hidden);
+          g.hidden = !live;
+        }
+        none.hidden = any;
+      };
+      search.addEventListener('input', filter);
+      search.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          const first = (best && !best.hidden) ? best : shownKinds()[0];
+          if (first) first.click();
+        } else if (e.key === 'ArrowDown') {
+          e.preventDefault();
+          const first = shownKinds()[0];
+          if (first) first.focus();
+        }
+      });
       // The arrow keys go between the kinds; Tab still works, and Escape is the
       // room's layer (so it closes this before the window).
       box.addEventListener('keydown', (e) => {
-        const i = kinds.indexOf(e.target);
+        const list = shownKinds();
+        const i = list.indexOf(e.target);
         if (i < 0) return;
         if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
           e.preventDefault();
-          const j = (i + (e.key === 'ArrowDown' ? 1 : kinds.length - 1)) % kinds.length;
-          kinds[j].focus();
+          if (e.key === 'ArrowUp' && i === 0) { search.focus(); return; }
+          const j = (i + (e.key === 'ArrowDown' ? 1 : list.length - 1)) % list.length;
+          list[j].focus();
+        } else if (e.key && e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey && e.key !== ' ') {
+          // A letter typed on the list goes to the search.
+          e.preventDefault();
+          search.value += e.key;
+          search.focus();
+          filter();
         }
       });
       try {
@@ -358,6 +558,7 @@ export function createWorkflowPanels({
       } catch (_) { /* no layout (a test): the sheet places it */ }
       room.appendChild(box);
       release = hold(() => finish(null));
+      // The first kind has the keyboard (Enter adds it, a letter searches).
       (kinds[0] || cancel).focus();
     });
   }
@@ -368,7 +569,7 @@ export function createWorkflowPanels({
    * the list of what earlier steps made (`fields()`, C-W), plus `extra`
    * sources (a For-each step's item); a `never` box says why.
    */
-  function slotDecorator({ upstream = [], fields = null, extra = () => [] } = {}) {
+  function slotDecorator({ upstream = [], fields = null, extra = () => [], hide = null } = {}) {
     const labelOf = (id) => {
       if (id === 'start') return 'The start';
       const u = (Array.isArray(upstream) ? upstream : []).find((x) => x && String(x.id) === String(id));
@@ -378,8 +579,9 @@ export function createWorkflowPanels({
       slot, field, labelOf,
       pick: async (anchor) => {
         const load = typeof fields === 'function' ? fields : async () => ({ ok: true, sources: [] });
-        const res = await load();
-        return openFieldPicker(anchor, { load: () => res, extra: extra(res), holdEscape: hold, layer });
+        const got = await load();
+        const res = typeof hide === 'function' ? hide(got) : got;
+        return openFieldPicker(anchor, { load: () => res, extra: extra(got), holdEscape: hold, layer });
       },
     });
   }
@@ -388,24 +590,60 @@ export function createWorkflowPanels({
   const entryOf = (pal, kind) => (pal && Array.isArray(pal.kinds) ? pal.kinds.find((k) => k && k.kind === kind) || {} : {});
 
   /** `P22-12`. What `{{ item }}` holds inside a For-each step whose list is
-   *  `listRef`: the whole item, and — when the fields listed show an example
-   *  of that list — each key of its first item. */
+   *  `listRef`: the whole item, and each field of an item — from an example
+   *  of the list when one is shown, and (`B1848`) from the fields the list's
+   *  first item was flattened into (`…issues[0].title`), the shape the
+   *  fields route sends (it says a list's example in words, "3 items", so
+   *  only "the whole item" was ever offered). */
   function itemSources(listRef, res) {
     const fieldsOut = [{ ref: '{{ item }}', path: 'the whole item', type: '' }];
+    const seen = new Set(['{{ item }}']);
+    const add = (rest, example, type = '') => {
+      const ref = `{{ item.${rest} }}`;
+      if (seen.has(ref)) return;
+      seen.add(ref);
+      fieldsOut.push({ ref, path: `item.${rest}`, type, example });
+    };
     const ref = String(listRef || '').trim();
+    const inner = innerOf(ref);
     const sources = res && Array.isArray(res.sources) ? res.sources : [];
     for (const src of sources) {
       for (const f of (src && Array.isArray(src.fields) ? src.fields : [])) {
-        if (!f || String(f.ref) !== ref || !Array.isArray(f.example) || !f.example.length) continue;
-        const first = f.example[0];
-        if (first && typeof first === 'object' && !Array.isArray(first)) {
-          for (const k of Object.keys(first)) {
-            if (/^[A-Za-z_][A-Za-z0-9_]{0,63}$/.test(k)) fieldsOut.push({ ref: `{{ item.${k} }}`, path: `item.${k}`, type: '', example: first[k] });
+        if (!f) continue;
+        if (String(f.ref) === ref && Array.isArray(f.example) && f.example.length) {
+          const first = f.example[0];
+          if (first && typeof first === 'object' && !Array.isArray(first)) {
+            for (const k of Object.keys(first)) {
+              if (/^[A-Za-z_][A-Za-z0-9_]{0,63}$/.test(k)) add(k, first[k]);
+            }
           }
+          continue;
+        }
+        const at = inner ? innerOf(String(f.ref || '')) : '';
+        if (inner && at.startsWith(inner + '[0].')) {
+          const rest = at.slice(inner.length + 4);
+          if (/^[A-Za-z_][A-Za-z0-9_.[\]]{0,200}$/.test(rest)) add(rest, f.example, f.type || '');
         }
       }
     }
     return [{ node_id: 'item', label: 'Each item', origin: '', fields: fieldsOut }];
+  }
+  /** `{{ steps.a.data.x }}` → `steps.a.data.x` ('' for anything else). */
+  function innerOf(ref) {
+    const m = /^\{\{\s*([^{}]+?)\s*\}\}$/.exec(String(ref || '').trim());
+    return m ? m[1] : '';
+  }
+  /** `B1848`. Inside a For-each, the looped list's own `[0]` fields are a
+   *  trap — they read the FIRST item on every pass — so they are left out of
+   *  the step's picker; `{{ item.… }}` is offered for each instead. */
+  function withoutFirstItem(listRef, res) {
+    const inner = innerOf(listRef);
+    if (!inner || !res || !Array.isArray(res.sources)) return res;
+    return {
+      ...res,
+      sources: res.sources.map((src) => (src && Array.isArray(src.fields)
+        ? { ...src, fields: src.fields.filter((f) => !(f && innerOf(f.ref).startsWith(inner + '[0]'))) } : src)),
+    };
   }
 
   /** One step's editor in `formHost`: the task form for a task kind (with
@@ -418,6 +656,7 @@ export function createWorkflowPanels({
     const pickField = slotDecorator({
       upstream, fields,
       extra: (res) => (inForeach ? itemSources(inForeach(), res) : []),
+      hide: inForeach ? (res) => withoutFirstItem(inForeach(), res) : null,
     });
     if (TASK_KINDS.has(kind)) {
       if (typeof mountTaskFields !== 'function') return null;
@@ -494,11 +733,21 @@ export function createWorkflowPanels({
     // entry's value, by its name), asked through the source.
     const classify = source && typeof source.fieldSlot === 'function'
       ? (node, field) => source.fieldSlot(node, field) : null;
+    // `B1855`, `B1856`. Done hands on the step's "If it fails" settings and
+    // its switch with the form's own change.
+    let extras = null;
+    const applyAll = (change) => {
+      if (typeof onApply !== 'function') return;
+      const more = extras ? extras.read() : null;
+      if (more && more.refusal) return;   // said on its field
+      onApply(more ? { ...change, settings: more.settings, disabled: more.disabled } : change);
+    };
     const form = mountEditor(formHost, {
-      step: n, tasks, pal, upstream, fields, problem, onApply, onCancel, editInner, classify,
+      step: n, tasks, pal, upstream, fields, problem, onApply: applyAll, onCancel, editInner, classify,
       needs: check && Array.isArray(check.needs) ? check.needs : null,
     });
     if (!form) formHost.textContent = 'The step form did not load. Close the Workbench and open it again to retry.';
+    else if (n.id != null && source && typeof source.setDisabled === 'function') extras = stepSettings(formHost, n);
     let edited = false;
     const markEdited = () => { edited = true; syncHint(); };
     formHost.addEventListener('input', markEdited);
@@ -799,6 +1048,18 @@ export function createWorkflowPanels({
     box.appendChild(text);
     const pinNote = _el('p', 'wf-test-pin-note', PIN_SENTENCE);
     box.appendChild(pinNote);
+    // `B1888`. What it reads: one box per step its settings name, filled with
+    // what the test would read there and saying where that came from. A box
+    // the person changes is what that step made in this test (`outputs`).
+    const reads = _el('details', 'wf-test-reads');
+    reads.hidden = true;
+    const readsHead = _el('summary', 'wf-test-reads-head', 'What it reads');
+    reads.appendChild(readsHead);
+    reads.appendChild(_el('p', 'wf-test-reads-lede',
+      'What each step it names would hand it in this test. Change one to test on that instead; nothing is saved.'));
+    const readsList = _el('div', 'wf-test-reads-list');
+    reads.appendChild(readsList);
+    box.appendChild(reads);
 
     const row = _el('div', 'wf-test-buttons');
     const go = _button('wf-test-go', 'Test');
@@ -867,8 +1128,73 @@ export function createWorkflowPanels({
       pinBtn.hidden = !(s === 'custom' ? text.value.trim() : lastUsed != null);
       pinNote.hidden = pinned == null && pinBtn.hidden;
     }
-    sel.addEventListener('change', () => { if (sel.value === 'custom' && text.readOnly) text.value = ''; syncInput(); });
-    text.addEventListener('input', syncInput);
+    sel.addEventListener('change', () => { if (sel.value === 'custom' && text.readOnly) text.value = ''; syncInput(); loadReads(); });
+    let typing = null;
+    text.addEventListener('input', () => {
+      syncInput();
+      clearTimeout(typing);
+      typing = setTimeout(() => { if (alive) loadReads(); }, 600);
+    });
+
+    // ── `B1888`: what it reads ──────────────────────────────────────────────
+    const readRows = new Map();   // step id → { area, edited }
+    let readsAsked = 0;
+    function shownOf(r) {
+      return r.data != null ? pretty(r.data) : String(r.text == null ? '' : r.text);
+    }
+    async function loadReads() {
+      if (!source || typeof source.test !== 'function') return;
+      const asked = ++readsAsked;
+      const args = { source: sel.value, contextOnly: true };
+      if (sel.value === 'custom') args.input = readCustom();
+      let reply = null;
+      try { reply = await source.test(step.id, args); } catch (_) { reply = null; }
+      if (!alive || asked !== readsAsked) return;
+      const list = reply && reply.ok !== false && reply.outcome === 'context' && Array.isArray(reply.reads)
+        ? reply.reads.filter((r) => r && r.node_id != null) : null;
+      if (!list) { reads.hidden = readRows.size === 0; return; }
+      const kept = new Map([...readRows].filter(([, row]) => row.edited));
+      readRows.clear();
+      readsList.replaceChildren();
+      for (const r of list) {
+        const id = String(r.node_id);
+        const row = _el('label', 'wf-test-read');
+        const head = _el('span', 'wf-test-read-head');
+        head.appendChild(_el('span', 'wf-test-read-name', String(r.label || id)));
+        const was = kept.get(id);
+        head.appendChild(_el('span', 'wf-test-read-from', was ? READ_ORIGIN_WORDS.typed
+          : (READ_ORIGIN_WORDS[r.origin] || READ_ORIGIN_WORDS.none)));
+        row.appendChild(head);
+        const area = _el('textarea', 'wf-test-read-input');
+        area.setAttribute('aria-label', `What “${String(r.label || id)}” made, in this test`);
+        area.value = was ? was.area.value : shownOf(r);
+        area.rows = Math.max(2, Math.min(8, area.value.split('\n').length));
+        const entry = { area, edited: !!was };
+        area.addEventListener('input', () => {
+          entry.edited = true;
+          head.querySelector('.wf-test-read-from').textContent = READ_ORIGIN_WORDS.typed;
+        });
+        row.appendChild(area);
+        readsList.appendChild(row);
+        readRows.set(id, entry);
+      }
+      readsHead.textContent = list.length === 1 ? 'What it reads: 1 step' : `What it reads: ${list.length} steps`;
+      reads.hidden = list.length === 0;
+    }
+    /** What the person typed for the steps it reads: `{ id: {data} | {text} }`. */
+    function typedOutputs() {
+      const out = {};
+      for (const [id, row] of readRows) {
+        if (!row.edited) continue;
+        const raw = String(row.area.value || '');
+        const t = raw.trim();
+        let parsed;
+        try { parsed = JSON.parse(t); } catch (_) { parsed = undefined; }
+        out[id] = parsed !== undefined && parsed !== null && typeof parsed === 'object'
+          ? { data: parsed } : { text: typeof parsed === 'string' ? parsed : raw };
+      }
+      return Object.keys(out).length ? out : undefined;
+    }
 
     function readCustom() {
       const raw = text.value;
@@ -891,6 +1217,8 @@ export function createWorkflowPanels({
       const chosen = sel.value;
       const args = { source: chosen, confirm: !!confirmed };
       if (chosen === 'custom') args.input = readCustom();
+      const outputs = typedOutputs();
+      if (outputs) args.outputs = outputs;
       sayLine(confirmed ? 'Running it for real…' : 'Testing…');
       let reply = null;
       let refusal = '';
@@ -1013,11 +1341,12 @@ export function createWorkflowPanels({
     });
     unpinBtn.addEventListener('click', () => setPin(null));
     syncSources();
+    loadReads();
 
     return {
       formEdited(on) { edits.hidden = !on; },
       hide(on) { box.hidden = !!on; },
-      destroy() { alive = false; box.remove(); },
+      destroy() { alive = false; clearTimeout(typing); box.remove(); },
     };
   }
 
