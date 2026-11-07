@@ -95,10 +95,19 @@ from src.workflow_refs import (
     single_ref,
 )
 from src.workflow_slots import (
+    BODY_MODE_RAW,
+    ENTRY_TYPE_JSON,
+    ENTRY_TYPE_NUMBER,
+    ENTRY_TYPE_TEXT,
+    ENTRY_TYPE_YES_NO,
+    ENTRY_TYPES,
     MAPPING_NEVER,
+    SlotError,
     config_leaves,
+    leaf_name,
     path_text,
     slot_for,
+    typed_literal,
 )
 
 # ── Stored values (`FORBIDDEN.md` Part 1) ────────────────────────────────────
@@ -244,6 +253,21 @@ ON_ERROR_CONTINUE = "continue"
 FOREACH_ON_ERROR = (ON_ERROR_STOP, ON_ERROR_CONTINUE)
 HTTP_METHODS = ("GET", "POST", "PUT", "PATCH", "DELETE")
 BODY_MODE_JSON = "json"
+# `B1885`. `json` is the body's fields, sent as a JSON object (as it always
+# was); `raw` (`workflow_slots.BODY_MODE_RAW`) is `raw_body`, the JSON the
+# author writes whole. A body field's `type` is one of `workflow_slots.
+# ENTRY_TYPES`. What an HTTP step hands on (`response`): `body`, the answer's
+# parsed body as before (and what a step with no `response` hands on), or
+# `full` — `{http_status, headers, body}`.
+BODY_MODES = (BODY_MODE_JSON, BODY_MODE_RAW)
+HTTP_RESPONSE_BODY = "body"
+HTTP_RESPONSE_FULL = "full"
+HTTP_RESPONSES = (HTTP_RESPONSE_BODY, HTTP_RESPONSE_FULL)
+# The keys `full` hands on, in the step's `data`.
+HTTP_FULL_KEYS = ("http_status", "headers", "body")
+RAW_BODY_MAX_BYTES = 32 * 1024
+ENTRY_TYPE_WORDS = {ENTRY_TYPE_TEXT: "text", ENTRY_TYPE_NUMBER: "a number",
+                    ENTRY_TYPE_YES_NO: "yes or no", ENTRY_TYPE_JSON: "JSON"}
 CODE_LANGUAGES = ("python", "bash")
 ANSWER_TYPES = ("text", "number", "yes/no", "list")
 
@@ -265,7 +289,8 @@ NODE_CONFIG_FIELDS = {
     NODE_KIND_MERGE: ("mode",),
     NODE_KIND_WAIT: ("mode", "minutes", "time", "tz"),
     NODE_KIND_FOREACH: ("list", "step", "on_error"),
-    NODE_KIND_HTTP: ("integration", "method", "path", "headers", "query", "body", "body_mode"),
+    NODE_KIND_HTTP: ("integration", "method", "path", "headers", "query", "body", "body_mode",
+                     "raw_body", "response"),
     NODE_KIND_MCP: ("tool", "args"),
     NODE_KIND_SKILL: ("skill", "prompt", "model", "endpoint_url", "max_steps", "output_target"),
     NODE_KIND_CODE: ("language", "source", "timeout_seconds", "input"),
@@ -1193,6 +1218,53 @@ def _check_entries(key, value):
     return None
 
 
+def _check_body_entries(key, value):
+    """`B1885`. An HTTP body: the entries `_check_entries` takes, each of which
+    may also say its `type` (`workflow_slots.ENTRY_TYPES`)."""
+    if value is None:
+        return None
+    if not isinstance(value, list) or len(value) > ENTRIES_MAX:
+        return f"“{key}” must be a list of up to {ENTRIES_MAX} names and values"
+    for entry in value:
+        if not isinstance(entry, dict) or set(entry) - {"name", "value", "type"}:
+            return f"each of “{key}” is a name, a value and what type it is sent as"
+        if not isinstance(entry.get("name"), str):
+            return f"each of “{key}” needs a name"
+        if not _is_json(entry.get("value")):
+            return f"a value in “{key}” is not text, a number, yes/no or a list"
+        if entry.get("type") is not None and entry.get("type") not in ENTRY_TYPES:
+            return (f"a field of “{key}” is sent as {entry.get('type')!r}; it is sent as "
+                    f"{', '.join(ENTRY_TYPES)}")
+    return None
+
+
+def _check_raw_body(key, value):
+    """`B1885`. The JSON an HTTP step's author writes whole: an object or a
+    list, every name text that holds no reference (a name is the author's,
+    never filled), at most `RAW_BODY_MAX_BYTES`."""
+    if value is None:
+        return None
+    if not isinstance(value, (dict, list)) or not _is_json(value):
+        return f"“{key}” must be a JSON object or list"
+    if len(json.dumps(value, ensure_ascii=False).encode("utf-8")) > RAW_BODY_MAX_BYTES:
+        return f"“{key}” is larger than {RAW_BODY_MAX_BYTES // 1024} KiB"
+
+    def names(v):
+        if isinstance(v, dict):
+            for k, item in v.items():
+                yield k
+                yield from names(item)
+        elif isinstance(v, list):
+            for item in v:
+                yield from names(item)
+
+    for name in names(value):
+        if references_in_text(name):
+            return (f"a name in “{key}” holds a reference; a name is typed, and only a "
+                    f"value may be filled from another step")
+    return None
+
+
 def _check_args(key, value):
     if value is None:
         return None
@@ -1292,7 +1364,8 @@ _FIELD_CHECKS = {
     "fields": _check_entries,
     "headers": _check_entries,
     "query": _check_entries,
-    "body": _check_entries,
+    "body": _check_body_entries,
+    "raw_body": _check_raw_body,
     "input": _check_entries,
     "args": _check_args,
     "step": _check_step,
@@ -1332,6 +1405,7 @@ _FIELD_WORDS = {
     "list": "List", "step": "Step", "on_error": "If an item fails",
     "integration": "Integration", "method": "Method", "path": "Path", "headers": "Header",
     "query": "Query", "body": "Body", "body_mode": "Body", "tool": "Tool",
+    "raw_body": "Body", "response": "What it hands on",
     "args": "Argument", "skill": "Skill", "language": "Language", "source": "Code",
     "timeout_seconds": "Time limit", "input": "Input",
 }
@@ -1355,6 +1429,9 @@ def field_words(node: dict, path) -> str:
         return next((p.get("label") for p in params if p.get("label")), "Settings")
     if kind == NODE_KIND_MCP and path[0] == "args" and len(path) > 1:
         return f"“{path[1]}”"
+    if kind == NODE_KIND_HTTP and path[0] == "raw_body" and leaf_name(path):
+        # `B1885`: a text in the body the author wrote, by the name it is under.
+        return f"Body “{leaf_name(path)}”"
     if path[0] in ("query", "body", "headers", "input", "fields") and len(path) > 1 \
             and isinstance(path[1], int):
         try:
@@ -1463,6 +1540,47 @@ def _inner_kind_problem(node: dict) -> DocumentRefusal | None:
                         f"{_called(node)} repeats a step of kind {inner_kind!r}. It can "
                         f"repeat one step of any kind but If, Switch, Merge, Wait and "
                         f"For-each", "step.kind")
+    return None
+
+
+def _http_body_problem(node: dict) -> DocumentRefusal | None:
+    """`B1885`. What an HTTP step's body and `response` may be: the body is its
+    fields or the JSON written whole, never both; a written body is there when
+    it is chosen and only then; a typed field's own text reads as its type
+    (one filled from another step is coerced when the step runs)."""
+    config = node.get("config") or {}
+    node_id = node["id"]
+    if config.get("response") not in (None, *HTTP_RESPONSES):
+        return _refusal(REFUSE_BAD_SETTING, (node_id,),
+                        f"{_called(node)}: it hands on the answer's body, or its status, "
+                        f"headers and body", "response")
+    raw = config.get("raw_body")
+    if config.get("body_mode") == BODY_MODE_RAW:
+        if not isinstance(raw, (dict, list)):
+            return _refusal(REFUSE_MISSING_SETTING, (node_id,),
+                            f"{_called(node)} sends JSON you write, and none is written",
+                            "raw_body")
+        if config.get("body"):
+            return _refusal(REFUSE_BAD_SETTING, (node_id,),
+                            f"{_called(node)}: the body is its fields or JSON you write, "
+                            f"not both", "body")
+    elif raw is not None:
+        return _refusal(REFUSE_BAD_SETTING, (node_id,),
+                        f"{_called(node)}: JSON you write is sent only when the body is "
+                        f"set to it", "raw_body")
+    for index, entry in enumerate(config.get("body") or ()):
+        word = entry.get("type")
+        value = entry.get("value")
+        if word in (None, ENTRY_TYPE_TEXT) or (isinstance(value, str) and references_in_text(value)):
+            continue
+        field = f"body[{index}].value"
+        try:
+            typed_literal(value, word, field)
+        except SlotError:
+            return _refusal(REFUSE_BAD_SETTING, (node_id,),
+                            f"{_called(node)}: {field_words(node, ('body', index))} is sent as "
+                            f"{ENTRY_TYPE_WORDS.get(word, word)}, and "
+                            f"“{_shown(value)[:40]}” is not", field)
     return None
 
 
@@ -1632,9 +1750,12 @@ def _kind_problem(node: dict, *, owner, tasks_by_id, crew_ids, owner_is_admin,
             return _refusal(REFUSE_BAD_SETTING, (node_id,),
                             f"{_called(node)}: the path starts with / and holds no address or #",
                             "path")
-        if config.get("body_mode") not in (None, BODY_MODE_JSON):
+        if config.get("body_mode") not in (None, *BODY_MODES):
             return _refusal(REFUSE_BAD_SETTING, (node_id,),
                             f"{_called(node)}: the body is sent as JSON", "body_mode")
+        found = _http_body_problem(node)
+        if found is not None:
+            return found
         for key in ("headers", "query", "body"):
             names = set()
             for index, entry in enumerate(config.get(key) or ()):
@@ -2269,8 +2390,18 @@ def plan_lines(node: dict, resources: WorkflowResources | None = None) -> list:
             lines.append(f"Header {entry.get('name')}: as you typed it")
         for entry in config.get("query") or ():
             lines.append(f"Query {entry.get('name')}: {_shown(entry.get('value'))}")
-        for entry in config.get("body") or ():
-            lines.append(f"Body {entry.get('name')}: {_shown(entry.get('value'))}")
+        if config.get("body_mode") == BODY_MODE_RAW and config.get("raw_body") is not None:
+            # `B1885`: as written, references and all — never a value.
+            lines.append(f"Body, as you wrote it: {_shown(config['raw_body'])[:600]}")
+        else:
+            for entry in config.get("body") or ():
+                word = entry.get("type")
+                kind_of = (f" ({ENTRY_TYPE_WORDS[word]})"
+                           if word in ENTRY_TYPE_WORDS and word != ENTRY_TYPE_TEXT else "")
+                lines.append(f"Body {entry.get('name')}{kind_of}: {_shown(entry.get('value'))}")
+        if config.get("response") == HTTP_RESPONSE_FULL:
+            lines.append("It hands on the answer's status, headers and body "
+                         "(data.http_status, data.headers, data.body).")
         if (config.get("method") or "GET") != "GET":
             lines.append(f"It would: {EFFECT_SENTENCES[EFFECT_TOUCHES_REMOTE]}")
     elif kind == NODE_KIND_MCP:

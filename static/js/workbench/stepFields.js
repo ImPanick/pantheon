@@ -65,6 +65,22 @@ export const CODE_TEMPLATES = Object.freeze({
 
 /** `P22-13`. The methods an HTTP step may use. */
 export const HTTP_METHODS = Object.freeze(['GET', 'POST', 'PUT', 'PATCH', 'DELETE']);
+/** `B1885`. What an HTTP body field is sent as (stored words,
+ *  `workflow_slots.ENTRY_TYPES`); no `type` is text, as before. */
+export const BODY_TYPES = Object.freeze([
+  ['text', 'text'], ['number', 'a number'], ['yes/no', 'yes or no'], ['json', 'JSON'],
+]);
+/** `B1885`. A header's name, as the server checks it (`_HEADER_NAME_RE`). */
+const HEADER_NAME_RE = /^[A-Za-z0-9!#$%&'*+.^_`|~-]{1,128}$/;
+/** `B1885`. A header whose name says it carries a key: its value is hidden on
+ *  the form as a password is (the Integration is where a key belongs). */
+const SECRET_HEADER_RE = /auth|token|key|secret|passw|cookie|session|signature|credential/i;
+const NUMBER_TEXT_RE = /^[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?$/;
+const YES_NO_RE = /^(?:yes|no|true|false)$/i;
+/** `B1885`. Whether a header named `name` is one whose value the form hides. */
+export function headerIsSecret(name) {
+  return SECRET_HEADER_RE.test(String(name || ''));
+}
 /** `P22-16`. The types an AI step's answer field may have (stored words). */
 export const ANSWER_TYPES = Object.freeze([
   ['text', 'text'], ['number', 'a number'], ['yes/no', 'yes or no'], ['list', 'a list'],
@@ -598,15 +614,66 @@ function buildHttp(ctx) {
     { value: String(cfg.method || 'GET').toUpperCase(), field: 'method' });
   const path = _textField(body, 'Path', { value: cfg.path || '', field: 'path', placeholder: '/v1/entries' });
   const hp = ctx.decorate(path, 'path');
+  // `B1885` (`http-body-strings-no-headers`). The headers the step sends. The
+  // server always kept, checked and sent them, but there was no list here, so
+  // a header that came in a file was sent unseen and could not be removed —
+  // and the file's own need said "Type it on the step" about a box that did
+  // not exist. Every header is typed only (a `never` slot: it says how the
+  // request is read, never a value from another step). A value whose name says
+  // it is a key is hidden as a password is; the Integration is where a key
+  // belongs — kept encrypted, added when the step runs, and sent in place of a
+  // header here of the same name (`integrations._credentials`).
+  const headersBox = _el('div', 'wf-sf-group');
+  headersBox.appendChild(_el('p', 'wf-sf-sub', 'Headers'));
+  body.appendChild(headersBox);
+  const headerRows = _rows(headersBox, Array.isArray(cfg.headers) ? cfg.headers : [], {
+    addLabel: 'Add a header',
+    empty: 'None.',
+    draw(row, item, i) {
+      const it = item && typeof item === 'object' ? item : {};
+      const k = _textField(row, 'Name', { value: it.name || '', field: `headers[${i}].name`, placeholder: 'e.g. Accept' });
+      const hk = ctx.decorate(k, `headers[${i}].name`);
+      const v = _textField(row, 'Value', { value: it.value == null ? '' : it.value, field: `headers[${i}].value` });
+      v.autocomplete = 'off';
+      v.spellcheck = false;
+      const hv = ctx.decorate(v, `headers[${i}].value`);
+      const hide = () => {
+        const secret = headerIsSecret(k.value);
+        v.type = secret ? 'password' : 'text';
+        // A browser offers a saved login for a password box; this is not one.
+        v.autocomplete = secret ? 'new-password' : 'off';
+      };
+      k.addEventListener('input', hide);
+      hide();
+      return {
+        snapshot: () => ({ name: k.value, value: v.value }),
+        read: (j) => {
+          const n = String(k.value).trim();
+          if (!n) return { refusal: 'Give this header a name, or remove it.', field: `headers[${j}].name` };
+          if (!HEADER_NAME_RE.test(n)) {
+            return { refusal: 'A header’s name is letters, digits and - with no spaces, such as Accept.', field: `headers[${j}].name` };
+          }
+          return { value: { name: n, value: String(v.value) } };
+        },
+        destroy() { for (const h of [hk, hv]) { try { if (h && h.destroy) h.destroy(); } catch (_) { /* gone */ } } },
+      };
+    },
+  });
+  ctx.onDestroy(() => headerRows.destroy());
+  headersBox.appendChild(_el('p', 'wf-sf-hint', `A key or token belongs in the Integration (${ROOM_NAMES.integrations}): `
+    + 'Pantheon keeps it encrypted there and adds it when the step runs, in place of a header here of the same name. '
+    + 'A header typed here is kept with the workflow, hidden on this form when its name says it is a key, '
+    + 'never shown in a plan, and left out of an exported file.'));
   // `P22-13`. Each query or body entry is `{ name, value }` — the shape the
   // document rule checks and `render_call` sends (`src/workflow_document.py`
   // `_check_entries`, `src/workflow_slots.py`), as a Set field's and a Code
   // input's are. `integrate-d`: this wrote `{ key, value }`, which every save
-  // refused ("each of “query” is a name and a value").
-  const kv = (label, list, add, items) => {
+  // refused ("each of “query” is a name and a value"). `B1885`: a body field
+  // also says what it is sent as (`type`): text, a number, yes or no, or JSON.
+  const kv = (parent, label, list, add, items, { typed = false } = {}) => {
     const box = _el('div', 'wf-sf-group');
     box.appendChild(_el('p', 'wf-sf-sub', label));
-    body.appendChild(box);
+    parent.appendChild(box);
     const rows = _rows(box, items, {
       addLabel: add,
       empty: 'None.',
@@ -617,20 +684,27 @@ function buildHttp(ctx) {
         const hk = ctx.decorate(k, `${list}[${i}].name`);
         const v = _textField(row, 'Value', { value: it.value == null ? '' : it.value, field });
         let hv = ctx.decorate(v, field);
+        const type = typed
+          ? _selectField(row, 'Sent as', BODY_TYPES, { value: it.type || 'text', field: `${list}[${i}].type` })
+          : null;
         // `B1099`. Whether another step may fill this value depends on the
         // entry's name (`classify_argument`), which the palette cannot say
         // once per kind (it says `never`). The rule is asked as the name is
         // typed, and the value offers *Insert a field…* or says why not, before
         // Done. A Pantheon without the door keeps the palette's `never`.
+        // `B1885`: and on what it is sent as — JSON is never filled.
         let alive = true;
         let asked = null;
         let timer = null;
         const ask = async () => {
           const name = String(k.value).trim();
-          if (!ctx.classify || !name || name === asked) return;
-          asked = name;
+          const typeWord = type && type.value !== 'text' ? type.value : null;
+          const key = `${name}\u0000${typeWord || ''}`;
+          if (!ctx.classify || !name || key === asked) return;
+          asked = key;
+          const entry = typeWord ? { name, type: typeWord } : { name };
           let r = null;
-          try { r = await ctx.classify({ kind: 'http', config: { [list]: [{ name }] } }, `${list}[0].value`); } catch (_) { r = null; }
+          try { r = await ctx.classify({ kind: 'http', config: { [list]: [entry] } }, `${list}[0].value`); } catch (_) { r = null; }
           if (!alive || String(k.value).trim() !== name || !r || r.ok === false) return;
           if (r.mapping !== 'value' && r.mapping !== 'never') return;
           try { if (hv && hv.destroy) hv.destroy(); } catch (_) { /* gone */ }
@@ -640,12 +714,33 @@ function buildHttp(ctx) {
           if (timer) clearTimeout(timer);
           timer = setTimeout(() => { timer = null; ask(); }, CLASSIFY_DELAY_MS);
         });
+        if (type) type.addEventListener('change', () => { ask(); });
         if (String(k.value).trim()) ask();
+        const sentAs = () => (type ? type.value : 'text');
         return {
-          snapshot: () => ({ name: k.value, value: v.value }),
-          read: (j) => (String(k.value).trim()
-            ? { value: { name: String(k.value).trim(), value: String(v.value) } }
-            : { refusal: 'Give this a name, or remove it.', field: `${list}[${j}].name` }),
+          snapshot: () => ({ name: k.value, value: v.value, ...(type ? { type: type.value } : {}) }),
+          read: (j) => {
+            const name = String(k.value).trim();
+            if (!name) return { refusal: 'Give this a name, or remove it.', field: `${list}[${j}].name` };
+            const value = String(v.value);
+            const word = sentAs();
+            const typedOwn = !value.includes('{{');
+            if (typedOwn && word === 'number' && !NUMBER_TEXT_RE.test(value.trim())) {
+              return { refusal: `“${name}” is sent as a number, and “${value.slice(0, 40)}” is not one.`, field: `${list}[${j}].value` };
+            }
+            if (typedOwn && word === 'yes/no' && !YES_NO_RE.test(value.trim())) {
+              return { refusal: `“${name}” is sent as yes or no: write yes or no.`, field: `${list}[${j}].value` };
+            }
+            if (word === 'json') {
+              try { JSON.parse(value); } catch (_) {
+                return { refusal: `“${name}” is sent as JSON, and what is written is not JSON.`, field: `${list}[${j}].value` };
+              }
+            }
+            const out = { name, value };
+            // No `type` is text, as before; a field that said text keeps saying it.
+            if (type && (word !== 'text' || it.type === 'text')) out.type = word;
+            return { value: out };
+          },
           destroy() {
             alive = false;
             if (timer) clearTimeout(timer);
@@ -657,18 +752,41 @@ function buildHttp(ctx) {
     ctx.onDestroy(() => rows.destroy());
     return { box, rows };
   };
-  const query = kv('Query', 'query', 'Add a query value', Array.isArray(cfg.query) ? cfg.query : []);
-  const bodyKv = kv('Body (sent as JSON)', 'body', 'Add a body field', Array.isArray(cfg.body) ? cfg.body : []);
+  const query = kv(body, 'Query', 'query', 'Add a query value', Array.isArray(cfg.query) ? cfg.query : []);
+  // `B1885`. The body is its fields (sent as a JSON object, as it always was)
+  // or JSON written whole, whose values may be references where their names
+  // say they are words — the same rule a field's name is held to.
+  const bodyBox = _el('div', 'wf-sf-group');
+  body.appendChild(bodyBox);
+  const bodyMode = _selectField(bodyBox, 'Body', [['json', 'fields, sent as JSON'], ['raw', 'JSON you write']],
+    { value: cfg.body_mode === 'raw' ? 'raw' : 'json', field: 'body_mode' });
+  const bodyKv = kv(bodyBox, 'Body fields', 'body', 'Add a body field', Array.isArray(cfg.body) ? cfg.body : [], { typed: true });
+  const rawBox = _el('div', 'wf-sf-group');
+  bodyBox.appendChild(rawBox);
+  const written = cfg.raw_body && typeof cfg.raw_body === 'object' ? JSON.stringify(cfg.raw_body, null, 2) : '';
+  const raw = _textField(rawBox, 'JSON you write', { value: written, field: 'raw_body', area: true, rows: 8, mono: true,
+    placeholder: '{ "title": "Daily brief", "text": "{{ steps.read.text }}", "priority": 4 }',
+    hint: 'Sent exactly as written. A value may be a reference, inside quotes, where its name says it is words '
+      + '(text, message, title…); a reference alone keeps its type, so a number stays a number.' });
+  raw.spellcheck = false;
   body.appendChild(_el('p', 'wf-sf-hint', 'Whether a value may come from an earlier step depends on its name: words that '
     + 'carry content (text, message, subject, title, summary…) may; a name that says where something goes never does. '
     + 'The value says which as you type the name.'));
+  // `B1885`. What the step hands on: the answer's body (as before), or its
+  // status and headers with it.
+  const response = _selectField(body, 'It hands on', [['body', 'the answer’s body'], ['full', 'its status, headers and body']],
+    { value: cfg.response === 'full' ? 'full' : 'body', field: 'response',
+      hint: 'With its status, headers and body, a later step reads data.http_status, data.headers and data.body.' });
   const sync = () => {
     const i = integrations.find((x) => String(x.id) === integ.value);
     desc.textContent = i && i.description ? String(i.description) : '';
-    bodyKv.box.hidden = method.value === 'GET';
+    bodyBox.hidden = method.value === 'GET';
+    bodyKv.box.hidden = bodyMode.value === 'raw';
+    rawBox.hidden = bodyMode.value !== 'raw';
   };
   integ.addEventListener('change', sync);
   method.addEventListener('change', sync);
+  bodyMode.addEventListener('change', sync);
   sync();
   // `B1136`. An Integration added in the room this step's door opens is
   // offered here once the palette is read again — no reopening the Workbench.
@@ -688,12 +806,38 @@ function buildHttp(ctx) {
       for (const r of rows.read()) { if (r.refusal) return r; out.push(r.value); }
       return { value: out };
     };
+    const h = read(headerRows);
+    if (h.refusal) return h;
+    const seen = new Set();
+    for (const [j, one] of h.value.entries()) {
+      const lower = one.name.toLowerCase();
+      if (seen.has(lower)) return { refusal: `“${one.name}” is sent twice. Each header once.`, field: `headers[${j}].name` };
+      seen.add(lower);
+    }
     const q = read(query.rows);
     if (q.refusal) return q;
-    const b = method.value === 'GET' ? { value: [] } : read(bodyKv.rows);
+    const writes = method.value !== 'GET' && bodyMode.value === 'raw';
+    const b = method.value === 'GET' || writes ? { value: [] } : read(bodyKv.rows);
     if (b.refusal) return b;
+    let rawBody;
+    if (writes) {
+      try { rawBody = JSON.parse(String(raw.value)); } catch (_) {
+        return { refusal: 'This is not JSON. A reference goes inside quotes, such as "text": "{{ steps.read.text }}".', field: 'raw_body' };
+      }
+      if (!rawBody || typeof rawBody !== 'object') {
+        return { refusal: 'Write a JSON object { … } or a list [ … ].', field: 'raw_body' };
+      }
+    }
     const out = { integration: integ.value, method: method.value, path: p, query: q.value, body: b.value };
-    if (method.value !== 'GET') out.body_mode = 'json';
+    // A step that had no headers and was given none stays without the key.
+    if (h.value.length || Array.isArray(cfg.headers)) out.headers = h.value;
+    if (method.value !== 'GET') out.body_mode = writes ? 'raw' : 'json';
+    else if (cfg.body_mode === 'raw') out.body_mode = 'json';
+    // Undefined drops a body written before, once it is not sent.
+    if (writes) out.raw_body = rawBody;
+    else if ('raw_body' in cfg) out.raw_body = undefined;
+    if (response.value === 'full') out.response = 'full';
+    else if (cfg.response != null) out.response = 'body';
     return { config: out };
   };
 }
@@ -1104,4 +1248,5 @@ export function mountAiOptions(host, { node, palette = null } = {}) {
 export default {
   mountStepFields, mountAiOptions, slotFor, STEP_FIELD_KINDS, DEFAULT_OPERATORS, INNER_EXCLUDED, CODE_TEMPLATES,
   HTTP_METHODS, ANSWER_TYPES, NEED_DOORS, needField, needKind, needDoor, needWords, needLine,
+  BODY_TYPES, headerIsSecret,
 };

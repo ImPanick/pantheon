@@ -1885,6 +1885,9 @@ _FORMATTER_HANDLED_KEYS = {
     # already in `output` (capped at 12,000 characters); echoed here it would
     # reach the model a second time, up to 8,000 characters more of it.
     "body_json", "http_status",
+    # `B1885`. And its headers, for a workflow's HTTP step that hands them on;
+    # a model that asks for a structured reply is not handed them as text.
+    "response_headers",
 }
 
 

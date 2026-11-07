@@ -168,7 +168,31 @@ async def _dispatch(tool: str, content: str, *, owner, security_context, exact_a
 
 # ── P22-13 · HTTP through an Integration ─────────────────────────────────────
 
-async def run_http_step(call, *, owner, security_context, exact_approval=None) -> StepOutcome:
+def http_step_data(result: Any, response: Any = None) -> Any:
+    """`B1885`. What an HTTP step hands on, from `execute_api_call`'s
+    structured answer: its parsed JSON body (`body_json`), as always — or, for
+    a step whose `response` is `full`, `{http_status, headers, body}`: the
+    status, the reply's headers (`response_headers`: lower-cased names, no
+    cookie) and the body, parsed when it is JSON and its text otherwise."""
+    from src.workflow_document import HTTP_RESPONSE_FULL
+    if not isinstance(result, dict):
+        return None
+    if response != HTTP_RESPONSE_FULL:
+        return result.get("body_json")
+    if "body_json" in result:
+        body = result["body_json"]
+    else:
+        said = result.get("output") if result.get("output") is not None else result.get("error")
+        first, _sep, rest = str(said or "").partition("\n")
+        body = rest if first.startswith("HTTP ") else str(said or "")
+    headers = result.get("response_headers")
+    return {"http_status": result.get("http_status"),
+            "headers": dict(headers) if isinstance(headers, dict) else {},
+            "body": body}
+
+
+async def run_http_step(call, *, owner, security_context, exact_approval=None,
+                        response=None) -> StepOutcome:
     """One `api_call` to a registered Integration, through the real dispatcher.
 
     `call.content` is dispatched exactly as rendered: the Integration, method,
@@ -182,6 +206,8 @@ async def run_http_step(call, *, owner, security_context, exact_approval=None) -
 
     `exact_approval` (added to C-E, defaulted): the walker's replay of a sealed
     call after an Allow at a strict rung — the same argument the dispatcher takes.
+    `response` (`B1885`, defaulted): the step's `response` setting — `full`
+    hands on the status and headers with the body (`http_step_data`).
     """
     _require_rendered(call, "http")
     if call.tool != "api_call":
@@ -203,7 +229,7 @@ async def run_http_step(call, *, owner, security_context, exact_approval=None) -
     _desc, result = await _dispatch(
         "api_call", call.content, owner=owner, security_context=security_context,
         exact_approval=exact_approval, disabled_tools=disabled)
-    return _outcome(result, data=(result or {}).get("body_json") if isinstance(result, dict) else None)
+    return _outcome(result, data=http_step_data(result, response))
 
 
 # ── P22-14 · An MCP tool is a step ───────────────────────────────────────────
@@ -944,6 +970,14 @@ def _promised(graph: dict, nodes: dict, node_id: str, start_declared, seen=froze
     if kind == "set" and isinstance(config.get("fields"), list):
         return [(f.get("name"), None) for f in config["fields"]
                 if isinstance(f, dict) and isinstance(f.get("name"), str)]
+    if kind == "http":
+        # `B1885`: an HTTP step that hands on its status, headers and body
+        # promises those three names before it ever runs.
+        from src.workflow_document import HTTP_FULL_KEYS, HTTP_RESPONSE_FULL
+        if config.get("response") == HTTP_RESPONSE_FULL:
+            return [(name, "number" if name == "http_status" else None)
+                    for name in HTTP_FULL_KEYS]
+        return []
     if kind not in ("if", "switch") or node_id in seen:
         return []
     out = []

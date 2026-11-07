@@ -100,7 +100,9 @@ FULL = {
                 "step": {"kind": "llm", "label": "L", "config": {"prompt": "p", "model": "m"}}},
     "http": {"integration": "i", "method": "POST", "path": "/p",
              "headers": [{"name": "H", "value": "v"}], "query": [{"name": "text", "value": "v"}],
-             "body": [{"name": "url", "value": "v"}], "body_mode": "json"},
+             "body": [{"name": "url", "value": "v", "type": "text"}], "body_mode": "json",
+             # `B1885`: JSON written whole, and what the step hands on.
+             "raw_body": {"text": "v", "items": ["v"]}, "response": "full"},
     "mcp": {"tool": "mcp__chat__send_message", "args": {"text": "v", "channel": "c"}},
     "skill": {"skill": "s", "prompt": "p", "model": "m", "endpoint_url": "u", "max_steps": 3,
               "output_target": "o"},

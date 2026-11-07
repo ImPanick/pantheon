@@ -108,6 +108,34 @@ BY_SCHEMA = _Rule("by_schema")
 BY_PARAM = _Rule("by_param")
 # A For-each's `step.config`: the inner step's own kind's slots.
 INNER = _Rule("inner")
+# `B1885`. A text inside an HTTP step's `raw_body` (the JSON the author writes
+# whole): classified by the name of the key it is under, as an entry is by its
+# name. A text under no name — an item of a top-level list — is `never`.
+BY_LEAF_NAME = _Rule("by_leaf_name")
+
+# `B1885` (`http-body-strings-no-headers`). Stored words (`FORBIDDEN.md` Part 1
+# lists them with the other setting words). An HTTP step's body was only ever
+# its fields, each sent as text, so `brightness: 128` went as "128" and
+# `enabled: true` as "true" — which Home Assistant, ntfy's priority and JSON:API
+# refuse. Now:
+#
+#   * a body field may say its `type` — text (the default, and what a field
+#     with no `type` is, as before), a number, yes/no, or JSON — and is sent as
+#     that type. A field filled from another step is coerced to it and refused
+#     when it is not one; a typed one is checked at save.
+#   * `body_mode` `raw` sends `raw_body`, the JSON the author writes whole.
+#     Every name in it is the author's; a text under a name that only ever
+#     holds words may be a reference, exactly as a field of that name may.
+#
+# A JSON field is never filled from another step, whatever its name: an object
+# or a list from outside data would be structure the author did not write —
+# the rule `classify_argument` already holds for an MCP argument.
+BODY_MODE_RAW = "raw"
+ENTRY_TYPE_TEXT = "text"
+ENTRY_TYPE_NUMBER = "number"
+ENTRY_TYPE_YES_NO = "yes/no"
+ENTRY_TYPE_JSON = "json"
+ENTRY_TYPES = (ENTRY_TYPE_TEXT, ENTRY_TYPE_NUMBER, ENTRY_TYPE_YES_NO, ENTRY_TYPE_JSON)
 
 # ── The table (`SLICE-CD-DESIGN` § 2) ───────────────────────────────────────
 #
@@ -184,13 +212,20 @@ NODE_SLOTS = {
         "method": NEVER_WHERE,
         "path": NEVER_WHERE,
         "headers": NEVER_WHERE,
+        # `B1885`: said per row, so the Headers list's boxes say why they are
+        # typed only (the whole list was already `never`).
+        "headers[].name": NEVER_WHERE,
+        "headers[].value": NEVER_WHERE,
         "query": NEVER_WHERE,
         "query[].name": NEVER_WHERE,
         "query[].value": BY_ENTRY_NAME,
         "body": NEVER_WHERE,
         "body[].name": NEVER_WHERE,
         "body[].value": BY_ENTRY_NAME,
+        "body[].type": NEVER_WHAT,
         "body_mode": NEVER_WHAT,
+        "raw_body": BY_LEAF_NAME,
+        "response": NEVER_WHAT,
     },
     "mcp": {
         "tool": NEVER_WHAT,
@@ -310,6 +345,15 @@ _CAMEL = re.compile(r"[A-Z]+(?![a-z])|[A-Z]?[a-z]+|[0-9]+")
 # The schema a key with no schema is read as: an HTTP query or body value is
 # text in the request.
 TEXT_SCHEMA = {"type": "string"}
+# `B1885`. The schema an HTTP body field of each `type` is classified and
+# coerced by. JSON's is an object or a list, so `classify_argument` says
+# `never` for it by its type, whatever the name.
+ENTRY_TYPE_SCHEMAS = {
+    ENTRY_TYPE_TEXT: TEXT_SCHEMA,
+    ENTRY_TYPE_NUMBER: {"type": "number"},
+    ENTRY_TYPE_YES_NO: {"type": "boolean"},
+    ENTRY_TYPE_JSON: {"type": ["object", "array"]},
+}
 
 
 def name_parts(name) -> tuple:
@@ -419,6 +463,31 @@ def _entry_name(config: dict, path: tuple):
         return None
 
 
+def entry_schema(kind, config: dict, path: tuple):
+    """`B1885`. The schema the entry at `path` is classified and coerced by: an
+    HTTP body field's by its `type` (none is text, as before; a word that is
+    not one is `None`, so `never`), every other entry's is text."""
+    if kind != "http" or not path or path[0] != "body":
+        return TEXT_SCHEMA
+    try:
+        word = config[path[0]][path[1]].get("type")
+    except (KeyError, IndexError, TypeError, AttributeError):
+        return TEXT_SCHEMA
+    if word is None:
+        return TEXT_SCHEMA
+    return ENTRY_TYPE_SCHEMAS.get(word) if isinstance(word, str) else None
+
+
+def leaf_name(path: tuple):
+    """`B1885`. The name a text inside `raw_body` sits under: the nearest key
+    above it (`("raw_body", "message", "text")` → `text`, `("raw_body",
+    "notes", 0)` → `notes`), or `None` for one under no name."""
+    for seg in reversed(tuple(path)[1:]):
+        if isinstance(seg, str):
+            return seg
+    return None
+
+
 def slot_for(node: dict, path, *, mcp_schema=None) -> Slot:
     """The `Slot` for the setting at `path` (a tuple of keys and positions
     under `config`) in `node`. A path the table does not declare is `never`.
@@ -437,7 +506,10 @@ def slot_for(node: dict, path, *, mcp_schema=None) -> Slot:
         if rule is BY_PARAM:
             return _action_prompt_slot(config.get("action") if isinstance(config, dict) else None)
         if rule is BY_ENTRY_NAME:
-            return classify_argument(_entry_name(config, path), TEXT_SCHEMA)
+            return classify_argument(_entry_name(config, path),
+                                     entry_schema(kind, config, path))
+        if rule is BY_LEAF_NAME:
+            return classify_argument(leaf_name(path), TEXT_SCHEMA)
         if rule is BY_SCHEMA:
             props = mcp_schema.get("properties") if isinstance(mcp_schema, dict) else None
             prop = props.get(path[1]) if isinstance(props, dict) else None
@@ -639,9 +711,11 @@ class _Renderer:
             return text
         return raw
 
-    def entries(self, key: str, *, schema_for_name):
+    def entries(self, key: str, *, schema_for_name, typed: bool = False):
         """An HTTP `query`/`body`, or Code's `input`: `[{name, value}]` → a
-        dict, each value's slot decided by its name."""
+        dict, each value's slot decided by its name. `typed` (`B1885`, an
+        HTTP body): each value is sent as its entry's `type` — filled and
+        coerced to it, or the author's own text read as it."""
         config = self.node.get("config") or {}
         out = {}
         for index, entry in enumerate(config.get(key) or ()):
@@ -652,11 +726,68 @@ class _Renderer:
                 raise SlotError(f"“{key}” has an entry with no name.", key)
             slot = slot_for(self.node, (key, index, "value"))
             raw = entry.get("value")
+            word = self.never((key, index, "type"), entry.get("type")) if typed else None
+            schema = (entry_schema(self.node.get("kind"), config, (key, index))
+                      if typed else schema_for_name(name))
             if slot.mapping == MAPPING_VALUE:
-                out[name] = self.fill((key, index, "value"), raw, schema_for_name(name))
+                out[name] = self.fill((key, index, "value"), raw, schema)
             else:
-                out[name] = self.never((key, index, "value"), raw)
+                out[name] = typed_literal(self.never((key, index, "value"), raw), word,
+                                          path_text((key, index, "value")))
         return out
+
+    def raw(self, path: tuple, value):
+        """`B1885`. The JSON an HTTP step's author wrote whole (`raw_body`):
+        every name and every non-text value as written; each text is a slot
+        decided by the name it sits under (`BY_LEAF_NAME`). A text that is one
+        reference alone takes the value's own type when it is a text, a
+        number, a yes/no or nothing — and an object or a list arrives as its
+        JSON text, so outside data never adds a name or an item."""
+        if isinstance(value, dict):
+            return {k: self.raw((*path, k), v) for k, v in value.items()}
+        if isinstance(value, list):
+            return [self.raw((*path, i), v) for i, v in enumerate(value)]
+        if not isinstance(value, str):
+            return value
+        if slot_for(self.node, path).mapping != MAPPING_VALUE:
+            return self.never(path, value)
+        label = path_text(path)
+        try:
+            template = parse_template(value)
+        except RefError as exc:
+            raise SlotError(f"“{label}”: {exc.sentence}", label) from None
+        if not template.refs:
+            return value
+        self.value_paths.append(label)
+        out, missing = render_value(template, self.ctx)
+        self.missing.extend(missing)
+        if isinstance(out, (dict, list)):
+            out = as_text(out)
+        if isinstance(out, str) and len(out) > SLOT_MAX_CHARS:
+            raise SlotError(f"“{label}” would be {len(out):,} characters; a step takes at "
+                            f"most {SLOT_MAX_CHARS:,} in one setting.", label)
+        return out
+
+
+def typed_literal(value, word, label: str):
+    """`B1885`. What the author typed in an HTTP body field, as its `type`:
+    no type (or text) is the value as typed, exactly as before; a number and a
+    yes/no are read as one (`_coerce`'s rule), JSON is parsed. Anything that
+    does not read as its type raises `SlotError` — the save refuses it first."""
+    if word is None or word == ENTRY_TYPE_TEXT:
+        return value
+    if word == ENTRY_TYPE_JSON:
+        if not isinstance(value, str):
+            return value
+        try:
+            return json.loads(value)
+        except ValueError:
+            raise SlotError(f"“{label}” is set to JSON, and what is typed is not JSON.",
+                            label) from None
+    schema = ENTRY_TYPE_SCHEMAS.get(word) if isinstance(word, str) else None
+    if schema is None:
+        raise SlotError(f"“{label}” has a type this Pantheon does not send.", label)
+    return _coerce(value, schema, label)
 
 
 def render_call(node: dict, ctx, *, mcp_schema=None) -> RenderedCall:
@@ -686,10 +817,20 @@ def render_call(node: dict, ctx, *, mcp_schema=None) -> RenderedCall:
         params = r.entries("query", schema_for_name=lambda _n: TEXT_SCHEMA)
         if params:
             call["params"] = params
-        r.never(("body_mode",), config.get("body_mode"))
-        body = r.entries("body", schema_for_name=lambda _n: TEXT_SCHEMA)
-        if body:
-            call["body"] = body
+        mode = r.never(("body_mode",), config.get("body_mode"))
+        # `B1885`: what the step hands on is the walker's business, not the
+        # request's — read here only so a reference in it is refused.
+        r.never(("response",), config.get("response"))
+        if mode == BODY_MODE_RAW:
+            written = config.get("raw_body")
+            if not isinstance(written, (dict, list)):
+                raise SlotError("The body is set to JSON you write, and none is written, "
+                                "so nothing was sent.", "raw_body")
+            call["body"] = r.raw(("raw_body",), written)
+        else:
+            body = r.entries("body", schema_for_name=lambda _n: TEXT_SCHEMA, typed=True)
+            if body:
+                call["body"] = body
         # `P22-13`: `do_api_call` hands the parsed body back as data.
         call["structured"] = True
         tool = API_CALL_TOOL
@@ -740,4 +881,6 @@ __all__ = [
     "classify_argument", "effective_schema", "action_param_slots", "slot_for", "declared_fields", "path_of",
     "path_text", "config_leaves", "name_parts", "SlotError", "RenderedCall",
     "render_call", "SLOT_MAX_CHARS", "CALL_MAX_BYTES", "MISSING",
+    "BODY_MODE_RAW", "ENTRY_TYPE_TEXT", "ENTRY_TYPE_NUMBER", "ENTRY_TYPE_YES_NO", "ENTRY_TYPE_JSON",
+    "ENTRY_TYPES", "ENTRY_TYPE_SCHEMAS", "entry_schema", "leaf_name", "typed_literal",
 ]

@@ -210,6 +210,19 @@ def test_a_json_answer_and_a_missing_service_read_as_the_servers_do(world):
     assert world.server_requests == []
 
 
+def test_a_structured_answer_from_the_workstation_carries_its_headers_too(world):
+    """`B1885`. A workflow's HTTP step may hand on the reply's headers; the
+    workstation's curl dumps them (`-D`) before the body, so a member's own
+    connection answers them as the server's request does."""
+    ann = world.client("ann")
+    _add(ann, world.base, name="Ann's Gitea", auth_type="bearer", api_key=ANN_KEY)
+    got = _agent({"integration": "Ann's Gitea", "path": "/x", "structured": True}, "ann")
+    assert got["http_status"] == 200 and got["body_json"] == {"ok": True, "path": "/x"}
+    assert got["response_headers"]["content-type"] == "application/json"
+    assert got["response_headers"]["content-length"] == str(len(json.dumps({"ok": True, "path": "/x"})))
+    assert world.server_requests == []
+
+
 def test_an_admins_own_is_still_called_by_the_server(world):
     """The control for every `server_requests == []` here: the spy sees the
     server's request when there is one."""

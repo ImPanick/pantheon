@@ -7948,10 +7948,15 @@ class TaskScheduler:
             return await we.run_code_step(node, dict(code_input or {}), owner=task.owner,
                                           timeout=None)
         runner = we.run_http_step if kind == wd.NODE_KIND_HTTP else we.run_mcp_step
+        # `B1885`: an HTTP step hands on its status and headers too when its
+        # `response` says so; it is not part of the call the gate sealed.
+        more = ({"response": (node.get("config") or {}).get("response")}
+                if kind == wd.NODE_KIND_HTTP and (node.get("config") or {}).get("response")
+                else {})
         if exact is not None:
             return await runner(call, owner=task.owner, security_context=context,
-                                exact_approval=exact)
-        return await runner(call, owner=task.owner, security_context=context)
+                                exact_approval=exact, **more)
+        return await runner(call, owner=task.owner, security_context=context, **more)
 
     def _headless_card(self, task, node: dict, call, context, decision, run_id: str,
                        item_part: str):
