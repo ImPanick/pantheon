@@ -3206,10 +3206,14 @@ async function _reconnectTask(el, task) {
       break;
     }
     try {
+      // `B1929`: -J joins the lines tmux wrapped at the pane's width (80 columns
+      // by default for a detached session). The card's diagnosis reads this
+      // capture, and a wrap inside "CUDA driver version is insufficie|nt" hid
+      // the error from it. The Windows translation reads only -S.
       const res = await fetch('/api/shell/exec', {
         method: 'POST', credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ command: _tmuxCmd(task, `capture-pane -t ${task.sessionId} -p -S -500`), timeout: 15 }),
+        body: JSON.stringify({ command: _tmuxCmd(task, `capture-pane -t ${task.sessionId} -p -J -S -500`), timeout: 15 }),
       });
       const data = await res.json();
 

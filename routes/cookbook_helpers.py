@@ -1326,6 +1326,23 @@ def _diagnose_serve_output(text: str) -> dict | None:
             [{"label": "retry on port 8001", "op": "replace", "flag": "--port", "value": "8001"}],
         ),
         (
+            # `B1929`: PyPI's torch/vLLM wheels now target CUDA 13, which needs
+            # NVIDIA driver 580 or newer. torch: "The NVIDIA driver on your system
+            # is too old (found version 12080)"; vLLM's kernels: "CUDA driver
+            # version is insufficient for CUDA runtime version". Ahead of the
+            # traceback fallback below, which would say only that it crashed.
+            # static/js/cookbook-diagnosis.js has the same entry for the card.
+            r"NVIDIA driver on your system is too old|CUDA driver version is insufficient",
+            "The installed PyTorch/vLLM build needs a newer NVIDIA driver than this server has.",
+            [
+                {
+                    "label": "install builds for the driver's CUDA version, e.g. vLLM's +cu129 wheel from its GitHub release with uv pip install … --torch-backend cu129",
+                    "op": "manual",
+                },
+                {"label": "or update the NVIDIA driver (CUDA 13 builds need driver 580 or newer)", "op": "manual"},
+            ],
+        ),
+        (
             r"No CUDA GPUs are available|no GPU.*found|CUDA_VISIBLE_DEVICES.*invalid",
             "No GPUs are visible to the serve process.",
             [{"label": "clear Forge GPU selection or choose available GPUs", "op": "settings", "field": "gpus", "value": ""}],

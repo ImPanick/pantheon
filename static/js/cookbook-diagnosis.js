@@ -408,6 +408,18 @@ export const ERROR_PATTERNS = [
     ],
   },
   {
+    // `B1929`: PyPI's torch/vLLM builds now target CUDA 13, which needs NVIDIA
+    // driver 580 or newer. torch says "The NVIDIA driver on your system is too
+    // old (found version 12080)", vLLM's own kernels "CUDA driver version is
+    // insufficient for CUDA runtime version". It sits ahead of the engine-start
+    // and traceback entries further down, which match the same output and say
+    // only that vLLM failed. routes/cookbook_helpers.py has the same entry.
+    pattern: /NVIDIA driver on your system is too old|CUDA driver version is insufficient/i,
+    message: 'The installed PyTorch/vLLM build needs a newer NVIDIA driver than this server has.',
+    suggestion: 'Suggested action: install builds for the driver’s CUDA version, e.g. vLLM’s +cu129 wheel from its GitHub release with uv pip install … --torch-backend cu129, or update the NVIDIA driver (CUDA 13 builds need driver 580 or newer).',
+    fixes: [],
+  },
+  {
     pattern: /No CUDA GPUs are available|no GPU.*found|CUDA_VISIBLE_DEVICES.*invalid/i,
     message: 'No GPUs visible. Check your GPU selection or driver.',
     fixes: [
