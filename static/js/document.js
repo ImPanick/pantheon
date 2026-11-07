@@ -246,15 +246,6 @@ import { PDF_FONT_COVERAGE } from './pdfFontCoverage.js';   // `B1687`
     }
   }
 
-  /** Switch chat to agent mode if not already */
-  function _ensureAgentMode() {
-    const ab = document.getElementById('mode-agent-btn');
-    const cb = document.getElementById('mode-chat-btn');
-    if (ab && !ab.classList.contains('active')) {
-      ab.click();
-    }
-  }
-
   export function init(apiBase) {
     API_BASE = apiBase;
     initLibrary({
@@ -5115,7 +5106,9 @@ import { PDF_FONT_COVERAGE } from './pdfFontCoverage.js';   // `B1687`
     // Doc was opened last → it goes in front of the email windows (clears the
     // email-front flag; the doc/email z-index alternation lives in CSS).
     document.body.classList.remove('email-front');
-    _ensureAgentMode();
+    // `B1793`: opening a document leaves the person's mode and Research as
+    // they set them; a turn sent with the editor open goes as Agent for that
+    // turn only (`chat.js`).
     _markDocVisibleState(_lastSessionId, 'open');
 
     document.body.classList.add('doc-view');
