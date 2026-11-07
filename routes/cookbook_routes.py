@@ -1194,12 +1194,12 @@ def setup_cookbook_routes() -> APIRouter:
     async def model_cached(request: Request, host: str | None = None, model_dir: str | None = None, ssh_port: str | None = None, platform: str | None = None):
         """List cached models. Scans HF cache + optional model directory."""
         require_operator(request)
-        # Validate shell-bound inputs, matching the sibling list_gpus endpoint —
-        # `host`/`ssh_port` are interpolated into an ssh command below, so an
-        # unvalidated value (e.g. "x'; rm -rf ~ #") would be command injection.
+        # Validate the ssh inputs, matching the sibling list_gpus endpoint —
+        # `host`/`ssh_port` go into the ssh argv below (`B2020`: no shell now),
+        # where an unvalidated value such as "-oProxyCommand=..." would be read
+        # as an ssh option.
         host = validate_remote_host(host)
         ssh_port = validate_ssh_port(ssh_port)
-        TMUX_LOG_DIR.mkdir(parents=True, exist_ok=True)
 
         model_dirs = []
         if model_dir:
@@ -1211,20 +1211,23 @@ def setup_cookbook_routes() -> APIRouter:
                     model_dirs.append(d)
         paths_code = _cached_model_scan_script(model_dirs)
 
-        scan_py = TMUX_LOG_DIR / "scan_cache.py"
-        scan_py.write_text(paths_code, encoding="utf-8")
-
+        # `B2020`. Each scan's process is handed its own script on stdin. Every
+        # request used to write its script to one TMUX_LOG_DIR/scan_cache.py,
+        # which the process read only once it was running, so scans started
+        # together (the assistant's list_cached_models scans this machine and
+        # every Forge server at once) ran each other's scripts and missed their
+        # own model dirs. The remote scan is an argv, with no shell between.
         async def _run_cached_scan_once():
             if host:
-                _ssh_opts = "-o BatchMode=yes -o ConnectTimeout=8 -o ServerAliveInterval=4 -o ServerAliveCountMax=1 "
-                _pf = f"-p {ssh_port} " if ssh_port and ssh_port != "22" else ""
-                if platform == "windows":
-                    # Windows: use 'python' and pipe via stdin with double-quote wrapping
-                    cmd = f'ssh {_ssh_opts}{_pf}{host} "python -" < \'{scan_py}\''
-                else:
-                    cmd = f"ssh {_ssh_opts}{_pf}{host} 'python3 -' < '{scan_py}'"
-                proc = await asyncio.create_subprocess_shell(
-                    cmd,
+                ssh_args = ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=8",
+                            "-o", "ServerAliveInterval=4", "-o", "ServerAliveCountMax=1"]
+                if ssh_port and ssh_port != "22":
+                    ssh_args.extend(["-p", ssh_port])
+                # A Windows host has `python`, not `python3`.
+                ssh_args.extend([host, "python -" if platform == "windows" else "python3 -"])
+                proc = await asyncio.create_subprocess_exec(
+                    *ssh_args,
+                    stdin=asyncio.subprocess.PIPE,
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE,
                     cwd=str(Path.home()),
@@ -1242,12 +1245,35 @@ def setup_cookbook_routes() -> APIRouter:
                     or which_tool("py") or "python"
                 )
                 proc = await asyncio.create_subprocess_exec(
-                    local_py, str(scan_py),
+                    local_py, "-",
+                    stdin=asyncio.subprocess.PIPE,
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE,
                     cwd=str(Path.home()),
                 )
-            return await asyncio.wait_for(proc.communicate(), timeout=60), proc.returncode
+            try:
+                output = await asyncio.wait_for(proc.communicate(paths_code.encode("utf-8")), timeout=60)
+                return output, proc.returncode
+            finally:
+                # `B2020`. A scan that timed out or was cancelled leaves no ssh
+                # or python behind: terminated, then killed if it is still there.
+                # The process is this request's own, never a model job.
+                if proc.returncode is None:
+                    try:
+                        proc.terminate()
+                    except ProcessLookupError:
+                        pass  # it ended on its own just now
+                    try:
+                        await asyncio.wait_for(proc.wait(), timeout=2)
+                    except asyncio.TimeoutError:
+                        try:
+                            proc.kill()
+                        except ProcessLookupError:
+                            pass  # it ended on its own just now
+                        try:
+                            await asyncio.wait_for(proc.wait(), timeout=2)
+                        except asyncio.TimeoutError:
+                            pass  # killed; the scan's own error is the one to raise
 
         (stdout_b, stderr_b), returncode = await _run_cached_scan_once()
         stderr_txt = stderr_b.decode(errors="replace").strip()
