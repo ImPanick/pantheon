@@ -131,7 +131,7 @@ def _admin_privileges(registry: Dict[str, Any], grants: Dict[str, Any]) -> Dict[
 # Admins get everything — every key at its declared granted value (`B532`).
 ADMIN_PRIVILEGES = _admin_privileges(DEFAULT_PRIVILEGES, ADMIN_GRANTS)
 
-from src.constants import AUTH_FILE, PASSWORD_MAX_BYTES, PASSWORD_MIN_LENGTH
+from src.constants import AUTH_FILE, PASSWORD_MAX_BYTES, PASSWORD_MIN_LENGTH, USERNAME_MAX_LENGTH
 from src.owner_identity import RESERVED_AUTH_USERNAMES
 # One spelling for the two `auth.json` keys `P11-02` adds. They are defined in
 # `src/roles.py` beside the rules that govern them and imported here rather
@@ -148,6 +148,31 @@ TOKEN_TTL = 60 * 60 * 24 * 7  # 7 days
 # scheduler/assistant/research paths. The Default/Local owner is a storage
 # bucket for explicit auth-disabled no-login mode, not a login username.
 RESERVED_USERNAMES = frozenset(RESERVED_AUTH_USERNAMES)
+
+
+def username_error(username: str | None) -> Optional[str]:
+    """`B1901`. Why a NEW username cannot be used, or `None` when it can.
+
+    The routes that name an account in the URL path (avatar, privileges,
+    role, rename, admin) cannot reach one whose name holds a `/` (the server
+    decodes `%2F` before it routes) or is `.` or `..` (the browser drops those
+    path segments), and a CR, LF or NUL breaks the person's loopback header
+    (`X-Pantheon-Owner`). `str.isprintable()` refuses those and every other
+    control or invisible character, a no-break space and a zero-width joiner
+    among them. Asked of a name being given (setup, sign-up, *Add user*, a
+    rename's new name), never of one an account already has, so an account
+    named before this rule still signs in and can be renamed out of it.
+    """
+    name = (username or "").strip()
+    if not name:
+        return "Username is required"
+    if len(name) > USERNAME_MAX_LENGTH:
+        return f"Username must be at most {USERNAME_MAX_LENGTH} characters"
+    if "/" in name or "\\" in name or not name.isprintable():
+        return "Username must not contain a slash, a backslash, or a control or invisible character"
+    if name in (".", ".."):
+        return 'Username cannot be "." or ".."'
+    return None
 
 
 def normalize_known_username(users: Dict[str, Any], username: str | None) -> Optional[str]:

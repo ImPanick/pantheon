@@ -16,7 +16,7 @@ from pathlib import Path
 from core.atomic_io import atomic_write_json, atomic_write_text
 from core.auth import (
     AuthManager, DEFAULT_PRIVILEGES, PASSWORD_TOO_LONG, RESERVED_USERNAMES, SetAdminResult,
-    TOKEN_TTL, clean_profile, password_too_long,
+    TOKEN_TTL, clean_profile, password_too_long, username_error,
 )
 from core.middleware import require_admin, require_operator
 from src.events import record_auth_event
@@ -263,8 +263,9 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
             raise HTTPException(400, f"Password must be at least {PASSWORD_MIN_LENGTH} characters")
         if password_too_long(body.password):
             raise HTTPException(400, PASSWORD_TOO_LONG)   # `B1812`: not bcrypt's 500
-        if len(body.username.strip()) < 1:
-            raise HTTPException(400, "Username is required")
+        name_error = username_error(body.username)   # `B1901`
+        if name_error:
+            raise HTTPException(400, name_error)
         if body.username.lower() in RESERVED_USERNAMES:
             raise HTTPException(403, "Username is reserved")
         try:
@@ -323,8 +324,9 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
             raise HTTPException(400, f"Password must be at least {PASSWORD_MIN_LENGTH} characters")
         if password_too_long(body.password):
             raise HTTPException(400, PASSWORD_TOO_LONG)   # `B1812`: not bcrypt's 500
-        if len(body.username.strip()) < 1:
-            raise HTTPException(400, "Username is required")
+        name_error = username_error(body.username)   # `B1901`
+        if name_error:
+            raise HTTPException(400, name_error)
         if body.username.lower() in RESERVED_USERNAMES:
             raise HTTPException(403, "Username is reserved")
         try:
@@ -648,8 +650,9 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
             raise HTTPException(400, f"Password must be at least {PASSWORD_MIN_LENGTH} characters")
         if password_too_long(body.password):
             raise HTTPException(400, PASSWORD_TOO_LONG)   # `B1812`: not bcrypt's 500
-        if len(body.username.strip()) < 1:
-            raise HTTPException(400, "Username is required")
+        name_error = username_error(body.username)   # `B1901`
+        if name_error:
+            raise HTTPException(400, name_error)
         if body.username.lower() in RESERVED_USERNAMES:
             raise HTTPException(403, "Username is reserved")
         # `B1580`: in a worker thread, as `signup` does — it hashes a password
@@ -793,6 +796,11 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
             raise HTTPException(400, "Username required")
         if old_username == new_username:
             return {"ok": True, "username": new_username, "renamed_self": old_username == user}
+        # `B1901`. The new name, and only it: the one the account has is not
+        # asked about, so a name given before the rule can be renamed out of.
+        name_error = username_error(new_username)
+        if name_error:
+            raise HTTPException(400, name_error)
         if old_username not in auth_manager.users:
             raise HTTPException(404, "User not found")
         if new_username in auth_manager.users:

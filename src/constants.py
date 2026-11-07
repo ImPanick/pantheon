@@ -190,6 +190,9 @@ PASSWORD_MIN_LENGTH = 8
 # `B1812`. bcrypt reads at most 72 bytes of a password, and bcrypt 5 refuses
 # a longer one with a ValueError. Counted in UTF-8 bytes, not characters.
 PASSWORD_MAX_BYTES = 72
+# `B1901`. The longest name a NEW account may be given, in characters
+# (`core.auth.username_error`); an account that already has a longer one keeps it.
+USERNAME_MAX_LENGTH = 64
 
 # Default parameters
 DEFAULT_TEMPERATURE = 1.0
