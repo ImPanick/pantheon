@@ -194,6 +194,21 @@ def _empty_result(url: str, error: str = "") -> dict:
 _FETCH_RETRIES = 1
 _TRANSIENT_STATUSES = frozenset({500, 502, 503, 504})
 
+# `B1799`. A bot-protection interstitial served with a 2xx status: the titles
+# such pages carry, and the words that say the page itself did not load. Both
+# are asked for, on a short page only, so an article about challenges stays
+# readable. Cloudflare's own challenge is a 403 and fails before extraction;
+# Fastly's "Client Challenge" (PyPI's front) is a 200, and is what this is for.
+_CHALLENGE_TITLES = frozenset({
+    "client challenge", "just a moment", "security verification", "verify you are human",
+})
+_CHALLENGE_TEXT = re.compile(
+    r"required part of this site|verify (?:that )?you are human|verifying you are human"
+    r"|checking your browser|enable javascript|security verification|performing security",
+    re.IGNORECASE,
+)
+_CHALLENGE_CHARS = 2000
+
 
 def fetch_webpage_content(url: str, timeout: int = 5, retry_attempt: int = 0,
                           max_bytes: int = None) -> dict:
@@ -414,6 +429,25 @@ def fetch_webpage_content(url: str, timeout: int = 5, retry_attempt: int = 0,
             body_text = re.sub(r"\s+", " ", body_copy.get_text(separator=" ", strip=True)).strip()
             if len(body_text) > len(main_content):
                 main_content = body_text
+
+    # `B1799`. An HTTP 200 is not the page. An interstitial came back as the
+    # page, `success` True, so a search counted the source as fetched and the
+    # model was handed the challenge text as evidence. It is a failed fetch now,
+    # said in words, and not cached: a challenge is transient.
+    if (title_text.strip().lower().rstrip(".!") in _CHALLENGE_TITLES
+            and len(main_content) < _CHALLENGE_CHARS
+            and _CHALLENGE_TEXT.search(main_content)):
+        return {
+            **_empty_result(
+                url,
+                "Page access challenge: the page itself was not retrieved. Try "
+                "agent_browser if it is available, or another source; do not treat "
+                "the challenge page as evidence.",
+            ),
+            "title": title_text,
+            "error_kind": "access_challenge",
+            **_size_fields,
+        }
 
     result = {
         "url": url,

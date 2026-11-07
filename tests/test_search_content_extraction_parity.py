@@ -131,3 +131,73 @@ def test_fetch_webpage_content_429_takes_distinct_rate_limit_path(tmp_path, monk
     assert "HTTP 429" not in result["error"]
     # The 429 short-circuit must happen before raise_for_status() is reached.
     assert raise_for_status_called is False
+
+
+# `B1799`. A bot-protection interstitial served with a 2xx status went through
+# the HTML branch and came back as the page, `success` True, so a search counted
+# the source as fetched and handed the model the challenge text as evidence.
+# Cloudflare's own challenge is a 403 and already failed before extraction; the
+# case this exists for is Fastly's "Client Challenge" (PyPI), a 200. Ported from
+# upstream Odysseus 7a11de9c, naming Pantheon's `agent_browser`.
+@pytest.mark.parametrize('title,body,blocked', [
+    ('Client Challenge', 'A required part of this site couldn’t load. Try using a different browser.', True),
+    ('Just a moment...', 'Checking your browser. Enable JavaScript to continue.', True),
+    ('Understanding browser challenges', 'Checking your browser is a common security message.', False),
+    ('Client Challenge', 'An article about designing client challenges for a programming exercise.', False),
+    ('Client Challenge', 'A required part of this site ' + 'substantive discussion ' * 150, False),
+], ids=['client-challenge', 'just-a-moment', 'an-article-on-challenges', 'an-article-titled-so',
+        'a-long-page-titled-so'])
+def test_access_interstitial_is_not_article_evidence(title, body, blocked, tmp_path, monkeypatch):
+    monkeypatch.setattr(service_content, 'CONTENT_CACHE_DIR', tmp_path)
+    html = f'<html><title>{title}</title><body><main>{body}</main></body></html>'
+    monkeypatch.setattr(service_content, '_get_public_url', lambda *a, **k: _FakeResponse(html))
+    result = service_content.fetch_webpage_content('https://example.com/challenge')
+    assert result['success'] is not blocked
+    if blocked:
+        assert result['content'] == ''
+        assert result['error_kind'] == 'access_challenge'
+        assert 'agent_browser' in result['error']
+        assert not list(tmp_path.iterdir()), 'Transient challenge must not be cached as article content'
+    else:
+        assert body.strip() in result['content']
+
+
+# The page PyPI's Fastly front serves a client it scores as a bot, with HTTP 200.
+FASTLY_CHALLENGE = """<!DOCTYPE html>
+<html lang="en"><head><title>Client Challenge</title>
+<style>#loading-error { font-size: 16px; }</style></head>
+<body>
+<noscript><div class="noscript">Please enable JavaScript to proceed.</div></noscript>
+<div id="loading-error" class="loading-error" role="alert" style="display: none;">A required part
+of this site couldn’t load. This may be due to a browser extension, network issues, or browser
+settings. Please check your connection, disable any ad blockers, or try using a different
+browser.</div>
+<script src="/_fs-ch-1T1wmsGaOgGaSxcX/script.js?reload=true"></script>
+</body></html>"""
+
+
+def test_a_challenge_page_served_with_200_is_a_fetch_failure(tmp_path, monkeypatch):
+    """Fastly's page as it arrives: the fetch fails and says why, keeps the
+    title it saw, caches nothing — and the model's `web_fetch` reads the
+    failure, not the challenge text as the page."""
+    import asyncio
+    import json
+    from src.agent_tools.web_tools import WebFetchTool
+
+    monkeypatch.setattr(service_content, 'CONTENT_CACHE_DIR', tmp_path)
+    service_content.content_cache_index.clear()
+    monkeypatch.setattr(service_content, '_get_public_url',
+                        lambda *a, **k: _FakeResponse(FASTLY_CHALLENGE))
+
+    result = service_content.fetch_webpage_content('https://pypi.org/project/requests/')
+    assert result['success'] is False
+    assert result['content'] == ''
+    assert result['title'] == 'Client Challenge'
+    assert result['error'].startswith('Page access challenge')
+    assert not list(tmp_path.iterdir())
+
+    out = asyncio.run(WebFetchTool().execute(
+        json.dumps({'url': 'https://pypi.org/project/requests/'}), ctx={}))
+    assert out['exit_code'] == 1
+    assert 'Page access challenge' in out['error']
+    assert 'couldn’t load' not in out.get('output', '')
