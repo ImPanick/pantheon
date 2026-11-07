@@ -151,6 +151,8 @@ import { PDF_FONT_COVERAGE } from './pdfFontCoverage.js';   // `B1687`
   let _lastSessionId = '';          // session context for "+" button
   const docs = new Map();           // docId -> { id, title, language, content, version, sessionId }
   let _emailSendInFlight = false;
+  // `B1938`: counts AI Reply requests, so an answer knows a later one began.
+  let _emailAiReplyGeneration = 0;
   // `P23-08` (DOCS-M-2): Create opens a blank editor and nothing is stored
   // until the first keystroke. While it is open this holds the chat the new
   // document will join ('' = none yet: one is made on the first keystroke).
@@ -4518,6 +4520,18 @@ import { PDF_FONT_COVERAGE } from './pdfFontCoverage.js';   // `B1687`
       if (uiModule) uiModule.showToast('Reply already has text');
       return;
     }
+    // `B1938`. The draft as it was asked for: this request, this document,
+    // this editor (a panel opened again builds a new one) and this text. The
+    // answer goes in only if all of it still holds when the answer comes.
+    const generationId = ++_emailAiReplyGeneration;
+    const generationDocId = activeDocId;
+    const generationRich = _emailRichbodyActive();
+    const generationRichHtml = generationRich ? generationRich.innerHTML : '';
+    const draftStillUnchanged = () => generationId === _emailAiReplyGeneration
+      && activeDocId === generationDocId
+      && document.getElementById('doc-editor-textarea') === textarea
+      && textarea.value === currentBody
+      && (!generationRich || generationRich.innerHTML === generationRichHtml);
 
     // Use the current chat model
     let currentModel = '';
@@ -4563,7 +4577,14 @@ import { PDF_FONT_COVERAGE } from './pdfFontCoverage.js';   // `B1687`
         cleanReply = cleanReply.replace(/\n*On\b[\s\S]*?\bwrote:[\s\S]*$/m, '').trim();
         const quote = splitCurrent.quote || '';
         const newBody = cleanReply + (quote ? `\n\n${quote}` : '');
-        await _streamEmailBodyText(textarea, newBody);
+        // `B1938`. Checked and written in one step: what was typed while it
+        // generated, or the other draft now on screen, is left as it is. So
+        // the answer goes in at once, not a few letters a frame.
+        if (!draftStillUnchanged()) {
+          if (uiModule) uiModule.showToast('AI reply ready, but draft was edited');
+          return;
+        }
+        _setEmailBodyText(textarea, newBody);
         _clearDocAiReplyContext(contextKey || _docAiReplyContextKey());
         if (uiModule) uiModule.showToast(`AI draft inserted (${data.model_used || 'AI'})`);
       } else {
