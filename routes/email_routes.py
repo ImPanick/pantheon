@@ -812,18 +812,52 @@ def _uid_bytes(uid: str | bytes) -> bytes:
     return uid if isinstance(uid, bytes) else str(uid).encode()
 
 
-def _uid_exists(conn, uid: str) -> bool:
-    try:
-        status, data = conn.uid("FETCH", _uid_bytes(uid), "(UID)")
-        if status != "OK":
-            return False
-        for part in data or []:
-            meta = part[0] if isinstance(part, tuple) else part
-            meta_b = meta if isinstance(meta, bytes) else str(meta).encode()
-            if re.search(rb"\bUID\s+\d+\b", meta_b):
-                return True
+def _one_uid(uid: str | bytes | None) -> str:
+    """`B2010`. `uid` as text when it is one plain ASCII number, else "".
+
+    `1:*`, `5,7` and `*` are IMAP sets of messages and a fullwidth or Arabic
+    digit is no number IMAP knows, so none of them names one message.
+    """
+    text = uid.decode("ascii", "replace") if isinstance(uid, bytes) else str(uid if uid is not None else "")
+    return text if text.isascii() and text.isdigit() else ""
+
+
+def _uid_exists(conn, uid: str | bytes, *, strict: bool = False) -> bool:
+    """Whether the selected mailbox holds the message with this one UID.
+
+    `B2010`. A uid that is not one plain number (`_one_uid`) is refused
+    before any command. A server that answers the `(UID)` probe with NO, or
+    without the UID item, is asked again by UID SEARCH, which must name this
+    exact UID.
+
+    `strict` tells absence from a lookup that failed: a uid that is not one
+    number, a refused SEARCH or an exception raises instead of answering
+    False.
+    """
+    text = _one_uid(uid)
+    if not text:
+        if strict:
+            raise ValueError("Invalid email UID")
         return False
+    token = text.encode()
+    try:
+        status, data = conn.uid("FETCH", token, "(UID)")
+        if status == "OK":
+            # This exact UID: an unsolicited FETCH row for another message
+            # (a flag change the server pushes meanwhile) is not this one.
+            exact = re.compile(rb"\bUID\s+" + token + rb"\b")
+            for part in data or []:
+                meta = part[0] if isinstance(part, tuple) else part
+                meta_b = meta if isinstance(meta, bytes) else str(meta).encode()
+                if exact.search(meta_b):
+                    return True
+        status, data = conn.uid("SEARCH", None, f"UID {text}")
+        if strict and status != "OK":
+            raise RuntimeError("Email UID lookup failed")
+        return status == "OK" and bool(data and data[0]) and token in data[0].split()
     except Exception:
+        if strict:
+            raise
         return False
 
 
