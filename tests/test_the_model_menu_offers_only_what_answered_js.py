@@ -22,6 +22,14 @@ Measured on `fcd559e` (the base):
 Driven (`Law 20`): each function cut out of the shipped module with the shared
 extractor (`tests/helpers/js_source.js_definition`) and run in node against the
 DOM shim (`tests/test_tool_effect_surfaces_js.py`).
+
+`B2022` (ported from Odysseus `8532f460`, #6949): a new chat that had opened on
+the first listed model, the page's stand-in when the default-chat read failed
+or named no model at load, kept it after the configured default became known.
+The default resolver returned for any pending chat that had a model, the
+stand-in included, so the repaint that called it to replace the stand-in did
+nothing; and when the page already held the default, that repaint painted its
+own older model over the one the resolver had just put in.
 """
 from __future__ import annotations
 
@@ -312,6 +320,132 @@ def test_the_boot_check_drops_the_pages_copy_when_the_server_says_the_default_is
     assert out["reason"] == "Office LLM isn't answering. Pick another from the model menu."
     assert out["events"] == [["pantheon:default-chat-unusable",
                               "Office LLM isn't answering. Pick another from the model menu."]]
+
+
+# ── the configured default after a fallback (`B2022`) ───────────────────────
+
+_U = "http://h/v1/chat/completions"
+_FALLBACK = {"url": _U, "modelId": "first", "endpointId": "office", "source": "fallback"}
+_PREFERRED = {"endpoint_id": "office", "endpoint_url": _U, "model": "preferred"}
+_UNLISTED = "preferred isn't listed by Office LLM now. Pick another from the model menu."
+
+
+def _resolve_script(answer: dict, body: str) -> str:
+    """The picker's own default resolver and repaint, cut from the shipped
+    module, with the page's default-chat read (`appConfig.getDefaultChat`,
+    `B1228`) answering `answer`. The one endpoint lists `first`, the model a
+    fallback opens on, and `preferred`, the configured default."""
+    return """
+        const label = document.createElement('span'); label.id = 'model-picker-label'; document.body.appendChild(label);
+        const wrap = document.createElement('div'); wrap.id = 'model-picker-wrap'; document.body.appendChild(wrap);
+        const U = %s;
+        const fallback = () => (%s);
+        let pending = null; let session = null; let reads = 0; let onRead = () => {};
+        const _deps = { getCurrentSessionId: () => session, getSessions: () => [],
+                        getPendingChat: () => pending, setPendingChat: (v) => { pending = v; } };
+        let _autoSelectingDefault = false; let _defaultChatPickInFlight = false; let _defaultPendingSeq = 0;
+        const providerLogo = () => '';
+        async function getDefaultChat() { reads += 1; onRead(); return %s; }
+        globalThis.window.modelsModule = { getCachedItems: () => [
+          { endpoint_id: 'office', endpoint_name: 'Office LLM', url: U, models: ['first', 'preferred'] }] };
+        const settle = () => new Promise((r) => setTimeout(r, 0));
+        %s
+        %s
+    """ % (json.dumps(_U), json.dumps(_FALLBACK), json.dumps(answer), "\n".join(_picker(anchor) for anchor in (
+        "function _modelExists(", "function _firstAvailableModel(",
+        "async function _ensureModelCacheForFallback(", "async function _ensureDefaultPendingChat(",
+        "function _notListedReason(", "function _forgetDefaultChat(", "function updateModelPicker(",
+    )), body)
+
+
+def test_a_fallback_gives_way_to_the_configured_default_and_nothing_else_does(sandbox):
+    """The first listed model, put in by the page when it had no default to
+    open on, is a stand-in: once the configured default is known, the default
+    takes its place. A model the person picked, a default already in place and
+    an open chat are not the resolver's to change, and it does not ask the
+    server about them."""
+    out = _run(sandbox, _PRE, _resolve_script(_PREFERRED, """
+        const out = {};
+        for (const start of ['fallback', 'manual', 'default', 'open chat']) {
+          reads = 0; session = start === 'open chat' ? 'chat-1' : null;
+          pending = { ...fallback(), source: start === 'open chat' ? 'fallback' : start };
+          globalThis.window.__pantheonDefaultChat = null;
+          await _ensureDefaultPendingChat();
+          out[start] = [pending.modelId, pending.source, reads, _defaultChatPickInFlight];
+        }
+        console.log(JSON.stringify(out));
+    """))
+    assert out["fallback"] == ["preferred", "default", 1, False], "the fallback kept the configured default out"
+    assert out["manual"] == ["first", "manual", 0, False]
+    assert out["default"] == ["first", "default", 0, False]
+    assert out["open chat"] == ["first", "fallback", 0, False]
+
+
+def test_a_model_picked_while_the_default_is_read_is_kept(sandbox):
+    """The read of the default takes a moment. A model the person picks before
+    it answers is theirs: the default that answers late does not replace it."""
+    out = _run(sandbox, _PRE, _resolve_script(_PREFERRED, """
+        pending = fallback();
+        onRead = () => { pending = { url: U, modelId: 'chosen', endpointId: 'office', source: 'manual' }; };
+        await _ensureDefaultPendingChat();
+        console.log(JSON.stringify({ pending, reads }));
+    """))
+    assert out["reads"] == 1, "a fallback never asked which model is the configured default"
+    assert out["pending"] == {"url": _U, "modelId": "chosen", "endpointId": "office", "source": "manual"}
+
+
+@pytest.mark.parametrize("held", [True, False], ids=["the page holds the default", "the default is read"])
+def test_the_picker_shows_the_default_that_took_the_fallbacks_place(sandbox, held):
+    """The repaint that finds a fallback asks for the default. When the page
+    already holds it, the answer comes at once and repaints the picker inside
+    that repaint, which then painted its own older model over it: the label
+    said `first` while the chat would open on `preferred`."""
+    out = _run(sandbox, _PRE, _resolve_script(_PREFERRED, """
+        if (%s) globalThis.window.__pantheonDefaultChat = { endpoint_url: U, endpoint_id: 'office', model: 'preferred' };
+        pending = fallback();
+        updateModelPicker();
+        await settle();
+        console.log(JSON.stringify({ label: label.textContent, title: label.title, pending, reads }));
+    """ % ("true" if held else "false")))
+    assert out["pending"] == {"url": _U, "modelId": "preferred", "endpointId": "office", "source": "default"}
+    assert (out["label"], out["title"]) == ("preferred", "preferred"), "the picker names a model the chat will not use"
+    assert out["reads"] == (0 if held else 1)
+
+
+def test_a_fallback_stays_when_no_default_is_configured(sandbox):
+    """The server names no default (`/api/default-chat` answers no model and
+    no reason): the fallback is the convenience it was, kept as it is, neither
+    cleared nor picked again."""
+    out = _run(sandbox, _PRE, _resolve_script(
+        {"endpoint_id": "", "endpoint_url": "", "model": "", "reason": ""}, """
+        pending = fallback();
+        updateModelPicker();
+        await settle();
+        console.log(JSON.stringify({ pending, reads, label: label.textContent }));
+    """))
+    assert out["reads"] == 1, "a fallback never asked which model is the configured default"
+    assert out["pending"] == _FALLBACK and out["label"] == "first"
+
+
+def test_a_default_that_is_not_listed_does_not_take_the_fallbacks_place(sandbox):
+    """With `D-2026-10-07-02` §1. Asked while a fallback shows, the server says
+    the saved default is not listed now: the page keeps the sentence that says
+    why and drops its own copy of the default, and neither the default nor
+    another model is put in. Whether the fallback already there should go too
+    is the owner's call, not this fix's; either is allowed here."""
+    out = _run(sandbox, _PRE, _resolve_script(
+        {"endpoint_id": "office", "endpoint_url": "", "model": "", "reason": _UNLISTED}, """
+        localStorage.setItem('pantheon-default-chat-cache', JSON.stringify(
+          { endpoint_id: 'office', endpoint_url: U, model: 'preferred' }));
+        pending = fallback();
+        updateModelPicker();
+        await settle();
+        console.log(JSON.stringify({ pending, reads, reason: globalThis.window.__pantheonDefaultChatReason,
+          cache: localStorage.getItem('pantheon-default-chat-cache') }));
+    """))
+    assert out["reads"] == 1, "a fallback never asked which model is the configured default"
+    assert out["reason"] == _UNLISTED and out["cache"] is None
+    assert out["pending"] in (None, _FALLBACK), "a model was put in the place of a default that is not listed"
 
 
 # ── the composer ────────────────────────────────────────────────────────────
