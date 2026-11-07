@@ -24,7 +24,7 @@ What it does, in order — and nothing here is a mock of the product:
      the tools for real;
   4. drives Chromium through each scene (`scenes.py`) in a dark and a light
      palette at 1440×900, three at phone width, and records the GIFs;
-  5. writes optimised PNGs and two-pass palette GIFs into `docs/media/`
+  5. writes WebP screenshots and two-pass palette GIFs into `docs/media/`
      (`media.py` holds the size budgets the test enforces), and prints what
      each file came to;
   6. stops everything it started and deletes the data directory.
@@ -246,6 +246,17 @@ class Workstation:
             raise RuntimeError(f"workstation not up: {state.get('sentence')}")
         seed._ok(client.get("/api/workstation/screen", timeout=120), "first workstation frame")
 
+    def tidy(self) -> None:
+        """Put the desktop back as the seed found it before a scene plays the
+        workstation turn again: the seeded run left its terminal open and its
+        server on the port the turn asks for, so a second run would fail on
+        *Address already in use* in the middle of the recording."""
+        if self.started:
+            for pattern in ("http.server", "xfce4-terminal"):
+                subprocess.run(["docker", "exec", self.name, "pkill", "-f", pattern],
+                               capture_output=True)
+            time.sleep(1.5)
+
     def stop(self) -> None:
         if self.started:
             subprocess.run(["docker", "rm", "-f", self.name], capture_output=True)
@@ -262,6 +273,9 @@ def main(argv: Optional[List[str]] = None) -> int:
     ap.add_argument("--workstation", action="store_true",
                     help="also start a workstation container and capture its desktop (needs Docker)")
     ap.add_argument("--workstation-image", help="image to use (default: the newest pantheon-workstation:*)")
+    ap.add_argument("--desktop-client", metavar="DIR",
+                    help="KasmVNC's unpacked web client (`sh workstation/provision.sh client DIR`, "
+                         "then DIR/www), so the workstation is drawn live, as in the Docker image")
     ap.add_argument("--force", action="store_true", help="rewrite files even when unchanged")
     ap.add_argument("--keep-data", action="store_true", help="keep the throwaway data directory")
     ap.add_argument("--list", action="store_true", help="list the scenes and exit")
@@ -298,7 +312,10 @@ def main(argv: Optional[List[str]] = None) -> int:
         subprocess.run([python, str(HERE / "offline_package.py"), "--data-dir", str(data),
                         "--owner", seed.PERSON["username"]], check=True, cwd=ROOT,
                        stdout=subprocess.DEVNULL)
-        server = Server(python, data, _free_port())
+        extra = {}
+        if args.desktop_client:
+            extra["PANTHEON_DESKTOP_CLIENT_DIR"] = str(Path(args.desktop_client).resolve())
+        server = Server(python, data, _free_port(), extra_env=extra)
         _say(f"starting Pantheon on {server.base} (data in {data})")
         server.start()
 
@@ -311,7 +328,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             _say("pairing the workstation and making the desktop")
             ws.pair(client)
             have.append("workstation")
-        with demo_model.DemoModel() as model:
+        with demo_model.DemoModel(max_model_len=1_048_576) as model:
             _say("seeding the demo world through the API")
             report = seed.seed_all(client, model_base_url=model.base_url, have=have)
             _say("seeded: " + ", ".join(f"{k} {n}" for k, n in seed.counts(report).items()))
@@ -320,6 +337,7 @@ def main(argv: Optional[List[str]] = None) -> int:
                 studio = scenes.Studio(pw, server.base, seed.PERSON["username"], password,
                                        theme_colours(), out, force=args.force, model=model,
                                        client=client, report=report, workstation=bool(ws),
+                                       tidy_workstation=ws.tidy if ws else None,
                                        python=python)
                 try:
                     results = studio.run(only=only, gifs=not args.no_gifs)

@@ -86,8 +86,9 @@ def test_every_picture_the_readme_shows_is_here_and_within_budget():
     for rel in shown:
         path = ROOT / rel
         assert path.is_file(), f"README shows {rel}, which does not exist"
-        budget = {".png": media.PNG_BUDGET, ".gif": media.GIF_BUDGET}.get(path.suffix)
-        assert budget, f"{rel}: only PNG and GIF are budgeted"
+        budget = {".png": media.PNG_BUDGET, ".webp": media.WEBP_BUDGET,
+                  ".gif": media.GIF_BUDGET}.get(path.suffix)
+        assert budget, f"{rel}: only WebP, PNG and GIF are budgeted"
         assert path.stat().st_size <= budget, (
             f"{rel} is {path.stat().st_size} bytes, over its {budget}-byte budget")
 
@@ -109,7 +110,7 @@ def test_the_showcase_points_only_at_files_in_this_repository():
 def test_docs_media_holds_only_what_a_page_shows_and_fits_its_budget():
     shown = set(_local_media(README.read_text(encoding="utf-8")))
     on_disk = {f"docs/media/{p.name}" for p in MEDIA_DIR.iterdir()
-               if p.suffix in (".png", ".gif")}
+               if p.suffix in (".png", ".webp", ".gif")}
     assert on_disk, "docs/media is empty"
     assert on_disk - shown == set(), f"in docs/media and shown nowhere: {sorted(on_disk - shown)}"
     total = sum(p.stat().st_size for p in MEDIA_DIR.iterdir() if p.is_file())
@@ -125,9 +126,9 @@ def test_every_shown_picture_is_one_the_pipeline_makes():
     for sc in scenes.SCENES:
         base = sc.name[:-4] if sc.name.endswith("-gif") else sc.name
         if sc.kind == "png":
-            made |= {f"{base}-{t}.png" for t in scenes.THEMES}
+            made |= {f"{base}-{t}.webp" for t in scenes.THEMES}
         elif sc.kind == "phone":
-            made.add(f"{base}.png")
+            made.add(f"{base}.webp")
         else:
             made.add(f"{base}.gif")
     for rel in set(_local_media(README.read_text(encoding="utf-8"))):

@@ -176,27 +176,30 @@ CONVERSATIONS: List[Dict[str, Any]] = [
         "title": "A first page for Bramblewick",
         "turns": [{
             "user": "In my workstation, start the Bramblewick menu site with a first page, "
-                    "then open it in Firefox so I can see it.",
+                    "then serve it from a terminal on the desktop so I can watch it run.",
             "allow_bash": True,
             "expect_tools": ["write_file", "bash", "computer"],
             "steps": [
                 {"think": "A folder in the workstation home, one HTML page with the menu, "
-                          "then open it on the desktop.",
+                          "then serve it from a terminal on the desktop.",
                  "call": "write_file",
                  "args": {"path": "sites/bramblewick/index.html", "content": BRAMBLEWICK_PAGE}},
                 {"call": "bash",
                  "args": {"command": "cd ~/sites/bramblewick && ls -l && wc -l index.html"}},
-                {"think": "The page is written. Opening it from the terminal on the desktop.",
-                 "call": "computer", "args": {"action": "click", "x": 480, "y": 320}},
+                {"think": "The page is written. Opening a terminal on the desktop to serve it.",
+                 "call": "computer", "args": {"action": "key", "keys": "ctrl+alt+t"}},
+                {"call": "computer", "args": {"action": "wait", "ms": 3000}},
                 {"call": "computer",
-                 "args": {"action": "type", "text": "firefox ~/sites/bramblewick/index.html &"}},
+                 "args": {"action": "type",
+                          "text": "cd ~/sites/bramblewick && head -n 12 index.html && python3 -m http.server 8080"}},
                 {"call": "computer", "args": {"action": "key", "keys": "Return"}},
-                {"call": "computer", "args": {"action": "wait", "ms": 15000}},
+                {"call": "computer", "args": {"action": "wait", "ms": 4000}},
                 {"call": "computer", "args": {"action": "screenshot"}},
                 {"say": "The site has a first page at `~/sites/bramblewick/index.html` in your "
-                        "workstation, and it is open in Firefox there — **Workstation screen** "
-                        "shows it. It is plain HTML with the menu, opening hours and a pre-order "
-                        "note; nothing is published anywhere."},
+                        "workstation, and a terminal on its desktop is serving it at "
+                        "`http://localhost:8080` — **Workstation screen** shows it running. It is "
+                        "plain HTML with the menu, opening hours and a pre-order note; nothing is "
+                        "published anywhere."},
             ],
         }],
     },

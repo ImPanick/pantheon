@@ -5,7 +5,16 @@
 imports them to check every image the README shows, so the number a reviewer
 reads in this file is the number CI enforces.
 
-**PNG.** A screenshot of this UI is flat colour and anti-aliased text, so a
+**WebP.** The cockpit (`static/cockpit.css`) lays a fine monochrome grain
+over every surface — the material the owner chose (`D-2026-10-29`) — and grain
+is what a lossless format cannot compress: measured on the Devices room at
+1440×900, 1260 KB as a lossless PNG and 710 KB at 256 colours, both over the
+budget, against 72 KB as WebP at quality 90 with no difference a reader can
+see. So screenshots are WebP (`write_webp`), which GitHub draws in a README
+like a PNG; the budget per picture is the one PNG had.
+
+**PNG** (kept for a still that wants it). A screenshot of the pre-cockpit UI
+was flat colour and anti-aliased text, so a
 256-colour palette usually holds it with no visible change. Each one is
 quantised (median cut, no dither) and kept only if the palette version is still
 within `PNG_MIN_PSNR` dB of the capture — measured across this pipeline's
@@ -39,11 +48,13 @@ from pathlib import Path
 from typing import List, Optional, Sequence, Tuple
 
 # ── budgets (the test reads these) ──────────────────────────────────────────
-PNG_BUDGET = 400 * 1024            # bytes, per screenshot
+PNG_BUDGET = 400 * 1024            # bytes, per PNG
+WEBP_BUDGET = 400 * 1024           # bytes, per screenshot
 GIF_BUDGET = 3 * 1024 * 1024       # bytes, per animation
 TOTAL_BUDGET = 15 * 1024 * 1024    # bytes, everything in docs/media
 
 # ── encoding ────────────────────────────────────────────────────────────────
+WEBP_QUALITY = 90                  # Pillow's 0-100; method 6 is its slowest, smallest
 PNG_MIN_PSNR = 42.0                # dB; below this the palette version is not kept
 GIF_FPS = 12
 GIF_WIDTH = 900
@@ -117,6 +128,27 @@ def write_png(path: Path, raw: bytes, force: bool = False) -> str:
     path.write_bytes(data)
     moved = "" if frac is None else f", {frac:.2%} of pixels changed"
     return f"{how}, {len(data) // 1024} KB{moved}"
+
+
+def write_webp(path: Path, raw: bytes, force: bool = False) -> str:
+    """Encode a screenshot as WebP and write it, unless the committed file
+    already shows the same (the churn rule PNGs follow)."""
+    pil = _pil()
+    if pil is None:
+        raise RuntimeError("Pillow is needed to write WebP screenshots")
+    Image = pil[0]
+    src = Image.open(io.BytesIO(raw)).convert("RGB")
+    buf = io.BytesIO()
+    src.save(buf, "WEBP", quality=WEBP_QUALITY, method=6)
+    data = buf.getvalue()
+    frac = changed_fraction(path, data)
+    if not force and frac is not None and frac < CHURN_PIXELS:
+        return f"kept (changed {frac:.2%} of pixels)"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(data)
+    score = psnr(src, Image.open(io.BytesIO(data)))
+    moved = "" if frac is None else f", {frac:.2%} of pixels changed"
+    return f"WebP q{WEBP_QUALITY}, {score:.1f} dB, {len(data) // 1024} KB{moved}"
 
 
 # ── GIFs ────────────────────────────────────────────────────────────────────
@@ -205,4 +237,4 @@ def _gif_difference(old: Path, new: bytes) -> Optional[str]:
 
 def sizes(directory: Path) -> List[Tuple[str, int]]:
     return sorted((p.name, p.stat().st_size) for p in directory.iterdir()
-                  if p.is_file() and p.suffix in (".png", ".gif"))
+                  if p.is_file() and p.suffix in (".png", ".webp", ".gif"))
