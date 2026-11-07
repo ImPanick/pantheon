@@ -3980,15 +3980,32 @@ def _migrate_chat_messages_fts():
             END;
             """
         )
+        # `B2018`. `message_id` is UNINDEXED, so a `NOT EXISTS` lookup per
+        # message read the whole index for every message, on every start. Its
+        # ids go once into a keyed temp table and one join finds the messages
+        # it lacks: the same rows as before. The write lock comes first, as the
+        # one statement took it: asked for after the read, SQLite refuses it at
+        # once while another process writes, and the backfill would be skipped.
+        # No row-count gate (upstream's): an index row left by a delete the
+        # triggers missed would hide a message they missed.
+        conn.execute(
+            "CREATE TEMP TABLE IF NOT EXISTS _pantheon_fts_message_ids "
+            "(message_id TEXT PRIMARY KEY) WITHOUT ROWID"
+        )
+        if not conn.in_transaction:
+            conn.execute("BEGIN IMMEDIATE")
+        conn.execute("DELETE FROM temp._pantheon_fts_message_ids")
+        conn.execute(
+            "INSERT OR IGNORE INTO temp._pantheon_fts_message_ids(message_id) "
+            "SELECT message_id FROM chat_messages_fts"
+        )
         conn.execute(
             f"""
             INSERT INTO chat_messages_fts(content, message_id, session_id, role)
             SELECT {fts_content_expr_cm}, cm.id, cm.session_id, cm.role
             FROM chat_messages cm
-            WHERE NOT EXISTS (
-                SELECT 1 FROM chat_messages_fts fts
-                WHERE fts.message_id = cm.id
-            )
+            LEFT JOIN temp._pantheon_fts_message_ids known ON known.message_id = cm.id
+            WHERE known.message_id IS NULL
             """
         )
         _scrub_legacy_chat_message_fts_media(conn)
