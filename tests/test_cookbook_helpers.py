@@ -3,6 +3,7 @@ import ast
 import json
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -1121,3 +1122,121 @@ def test_the_recipe_run_sends_a_repo_id_the_pip_install_check_accepts():
     spec = _model_serve_pip_spec()
     for backend in _dependency_recipes():
         assert re.fullmatch(spec, f"{backend}-setup"), backend
+
+
+# `B2019`. MiniMax-M3 vLLM serves named a path on upstream's machine. The
+# serve route rewrote `vllm serve cyankiwi/MiniMax-M3-AWQ-INT4` to a snapshot
+# under /home/pewds, local or remote, and the Forge's serve panel filled that
+# path into every MiniMax-M3 Model Path, so the launch failed everywhere else.
+# Now only a local serve is given a snapshot, the newest in this machine's
+# Hugging Face cache, and only one whose path has no shell characters, since it
+# is put into the command after the metacharacter gate; the old path, which
+# saved configs and stored serve tasks carry, is mapped back to the repo id.
+_MINIMAX_M3 = "cyankiwi/MiniMax-M3-AWQ-INT4"
+
+
+def _minimax_cache(root: Path) -> Path:
+    """A Hugging Face hub cache holding two snapshots, `bbb` the newer."""
+    snaps = root / "models--cyankiwi--MiniMax-M3-AWQ-INT4" / "snapshots"
+    for name, stamp in (("aaa", 1_700_000_000), ("bbb", 1_800_000_000)):
+        (snaps / name).mkdir(parents=True)
+        os.utime(snaps / name, (stamp, stamp))
+    return snaps
+
+
+async def _served_model(monkeypatch, tmp_path, cmd, *, remote_host=None):
+    """What the runner model_serve writes for `cmd` hands to `vllm serve`,
+    with only the launch replaced."""
+    import routes.cookbook_routes as cookbook_routes
+    from routes.cookbook_helpers import ServeRequest
+    from starlette.requests import Request
+
+    class _Stderr:
+        async def read(self):
+            return b"launch stopped by the test"
+
+    class _Proc:
+        returncode = 1
+        stderr = _Stderr()
+
+        async def wait(self):
+            return 1
+
+    async def _have(*args, **kwargs):
+        return True
+
+    async def _launch(*args, **kwargs):
+        return _Proc()
+
+    log_dir = tmp_path / f"tmux-{len(list(tmp_path.glob('tmux-*')))}"   # one per serve
+    monkeypatch.setattr(cookbook_routes, "require_operator", lambda request: None)
+    monkeypatch.setattr(cookbook_routes, "_binary_available", _have)
+    monkeypatch.setattr(cookbook_routes, "TMUX_LOG_DIR", log_dir)
+    monkeypatch.setattr(cookbook_routes, "load_stored_hf_token", lambda **kwargs: "")
+    monkeypatch.setattr(cookbook_routes.asyncio, "create_subprocess_shell", _launch)
+    router = cookbook_routes.setup_cookbook_routes()
+    serve = next(r.endpoint for r in router.routes
+                 if r.path == "/api/model/serve" and "POST" in r.methods)
+    request = Request({"type": "http", "method": "POST", "path": "/api/model/serve",
+                       "headers": [], "state": {}})
+    request.state.current_user = "admin"
+    out = await serve(request, ServeRequest(repo_id=_MINIMAX_M3, cmd=cmd, remote_host=remote_host))
+    assert out.get("error") == "launch stopped by the test", out
+    runner = next(log_dir.glob("serve-*_run.sh")).read_text(encoding="utf-8")
+    assert "/home/pewds" not in runner
+    line = next(ln for ln in runner.splitlines() if ln.startswith("PANTHEON_SERVE_CMD="))
+    parts = shlex.split(shlex.split(line.split("=", 1)[1])[0])
+    return parts[parts.index("serve") + 1]
+
+
+_STALE = ("/home/pewds/.cache/huggingface/hub/models--cyankiwi--MiniMax-M3-AWQ-INT4/"
+          "snapshots/4082acbbec1236d21828d55b6bb0fe02ade4ab5b")
+
+
+@pytest.mark.asyncio
+async def test_a_local_minimax_m3_serve_names_the_newest_snapshot_in_this_machines_cache(
+        monkeypatch, tmp_path):
+    snaps = _minimax_cache(tmp_path / "hub")
+    monkeypatch.setenv("HF_HUB_CACHE", str(tmp_path / "hub"))
+    for cmd in (f"vllm serve {_MINIMAX_M3} --port 8000", f"vllm serve {_STALE} --port 8000"):
+        assert await _served_model(monkeypatch, tmp_path, cmd) == str(snaps / "bbb"), cmd
+    # With nothing in the cache the repo id stays, for vLLM to resolve.
+    monkeypatch.setenv("HF_HUB_CACHE", str(tmp_path / "empty"))
+    for cmd in (f"vllm serve {_MINIMAX_M3} --port 8000", f"vllm serve {_STALE} --port 8000"):
+        assert await _served_model(monkeypatch, tmp_path, cmd) == _MINIMAX_M3, cmd
+
+
+@pytest.mark.asyncio
+async def test_a_remote_minimax_m3_serve_names_the_repo_and_no_path_from_this_machine(
+        monkeypatch, tmp_path):
+    _minimax_cache(tmp_path / "hub")
+    monkeypatch.setenv("HF_HUB_CACHE", str(tmp_path / "hub"))
+    for cmd in (f"vllm serve {_MINIMAX_M3} --port 8000", f"vllm serve {_STALE} --port 8000"):
+        assert await _served_model(monkeypatch, tmp_path, cmd, remote_host="gpu-box") == _MINIMAX_M3
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("cache_dir", ["hub $(id)", "hub cache", "hub;id", "hub'x"])
+async def test_a_snapshot_path_with_shell_characters_never_reaches_the_command(
+        monkeypatch, tmp_path, cache_dir):
+    """The path is put into the command after the metacharacter gate
+    (FORBIDDEN.md Part 2), so a path with anything but plain characters is
+    not used and the repo id stays."""
+    _minimax_cache(tmp_path / cache_dir)
+    monkeypatch.setenv("HF_HUB_CACHE", str(tmp_path / cache_dir))
+    assert await _served_model(monkeypatch, tmp_path, f"vllm serve {_MINIMAX_M3} --port 8000") == _MINIMAX_M3
+
+
+def test_no_serve_names_a_path_on_upstreams_machine():
+    """The client never offers it; the server holds it once, as the stale
+    path it maps back to the repo id."""
+    root = Path(__file__).resolve().parents[1]
+    client = [p.relative_to(root).as_posix() for p in (root / "static" / "js").rglob("*.js")
+              if "/home/pewds" in p.read_text(encoding="utf-8")]
+    assert client == []
+    from routes import cookbook_helpers
+    assert cookbook_helpers._MINIMAX_M3_STALE_PATHS == {
+        "/home/pewds/.cache/huggingface/hub/models--cyankiwi--MiniMax-M3-AWQ-INT4/": _MINIMAX_M3}
+    server = {p.relative_to(root).as_posix(): p.read_text(encoding="utf-8").count("/home/pewds")
+              for p in (root / "routes").rglob("*.py")}
+    assert {k: v for k, v in server.items() if v} == {"routes/cookbook_helpers.py": 1}

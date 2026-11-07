@@ -728,6 +728,125 @@ def _normalize_llama_cpp_python_cache_types(cmd: str | None) -> str | None:
     return _LLAMA_CPP_PYTHON_TYPE_FLAG_RE.sub(repl, cmd)
 
 
+# `B2019`. MiniMax-M3's nightly vLLM runtime wants the repo's files on disk, so
+# a local serve is given the snapshot in this machine's Hugging Face cache. It
+# used to be given a fixed snapshot under upstream's own home directory, local
+# or remote, which exists on no other machine. Saved launch configs, stored
+# serve tasks and old tabs still carry that path, so it maps back to the repo.
+_MINIMAX_M3_REPO = "cyankiwi/MiniMax-M3-AWQ-INT4"
+_MINIMAX_M3_STALE_PATHS = {
+    "/home/pewds/.cache/huggingface/hub/models--cyankiwi--MiniMax-M3-AWQ-INT4/": _MINIMAX_M3_REPO,
+}
+# The snapshot path is put into the command after _validate_serve_cmd's
+# metacharacter gate (FORBIDDEN.md Part 2), so only a path of these is used.
+_SAFE_SNAPSHOT_PATH_RE = re.compile(r"[A-Za-z0-9._/@+-]+")
+
+
+def _hf_hub_cache_dir(hf_cache: str | os.PathLike | None = None) -> Path:
+    """This machine's Hugging Face hub cache, found the way huggingface_hub
+    finds it."""
+    if hf_cache:
+        return Path(hf_cache).expanduser()
+    hub_cache = os.environ.get("HF_HUB_CACHE") or os.environ.get("HUGGINGFACE_HUB_CACHE")
+    if hub_cache:
+        return Path(hub_cache).expanduser()
+    hf_home = os.environ.get("HF_HOME")
+    if hf_home:
+        return Path(hf_home).expanduser() / "hub"
+    return Path.home() / ".cache" / "huggingface" / "hub"
+
+
+def _newest_local_snapshot(repo_id: str, hf_cache: str | os.PathLike | None = None) -> str | None:
+    """The newest snapshot of `repo_id` in the local cache, or None when there
+    is none or its path holds anything but plain characters."""
+    root = _hf_hub_cache_dir(hf_cache) / ("models--" + repo_id.replace("/", "--")) / "snapshots"
+    try:
+        snapshots = [(p.stat().st_mtime, p.name, p) for p in root.iterdir() if p.is_dir()]
+    except OSError:
+        return None
+    if not snapshots:
+        return None
+    path = str(max(snapshots)[2])
+    return path if _SAFE_SNAPSHOT_PATH_RE.fullmatch(path) else None
+
+
+def _normalize_minimax_m3_vllm_cmd(cmd: str, *, local: bool,
+                                   hf_cache: str | os.PathLike | None = None) -> str:
+    """Patch MiniMax M3 vLLM launches into the known-good form.
+
+    The browser form can be stale or omit advanced-only fields. MiniMax M3
+    is sensitive to several flags: block-size 128 with the HF repo id fails
+    KV-cache setup, and FlashInfer sampler JIT fails on a system nvcc. Normalize
+    server-side before writing the tmux runner. A local serve of the repo id is
+    given the newest cached snapshot when there is one (`B2019`); a remote one
+    keeps the repo id, which the remote host resolves in its own cache.
+    """
+    cmd_lower = (cmd or "").lower()
+    if not cmd or "vllm serve" not in cmd_lower or "minimax" not in cmd_lower or "m3" not in cmd_lower:
+        return cmd
+    try:
+        parts = shlex.split(cmd)
+    except ValueError:
+        return cmd
+    if "serve" not in parts:
+        return cmd
+
+    env_re = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
+    env_parts = [p for p in parts if env_re.match(p)]
+    body = [p for p in parts if not env_re.match(p)]
+    try:
+        serve_i = body.index("serve")
+    except ValueError:
+        return cmd
+    if serve_i + 1 >= len(body):
+        return cmd
+
+    repo_id = _MINIMAX_M3_REPO
+    model = body[serve_i + 1]
+    for stale, repo in _MINIMAX_M3_STALE_PATHS.items():
+        if model == stale.rstrip("/") or model.startswith(stale):
+            model = repo
+    if model == repo_id and local:
+        model = _newest_local_snapshot(repo_id, hf_cache) or model
+    body[serve_i + 1] = model
+
+    def add_env(key: str, value: str) -> None:
+        if not any(p.startswith(f"{key}=") for p in env_parts):
+            env_parts.append(f"{key}={value}")
+
+    def has_flag(flag: str) -> bool:
+        return any(p == flag or p.startswith(flag + "=") for p in body)
+
+    def set_flag(flag: str, value: str) -> None:
+        for i, part in enumerate(body):
+            if part == flag:
+                if i + 1 < len(body):
+                    body[i + 1] = value
+                else:
+                    body.append(value)
+                return
+            if part.startswith(flag + "="):
+                body[i] = f"{flag}={value}"
+                return
+        body.extend([flag, value])
+
+    def add_bool(flag: str) -> None:
+        if not has_flag(flag):
+            body.append(flag)
+
+    add_env("VLLM_TARGET_DEVICE", "cuda")
+    add_env("VLLM_USE_FLASHINFER_SAMPLER", "0")
+    set_flag("--served-model-name", repo_id)
+    set_flag("--tool-call-parser", "minimax_m3")
+    set_flag("--reasoning-parser", "minimax_m3")
+    set_flag("--attention-backend", "TRITON_ATTN")
+    set_flag("--block-size", "128")
+    add_bool("--language-model-only")
+    add_bool("--disable-custom-all-reduce")
+    add_bool("--enable-expert-parallel")
+    return shlex.join(env_parts + body)
+
+
 def _check_serve_binary(seg: str) -> None:
     """Validate that a single command segment starts with an allowlisted binary
     (after skipping leading env-var assignments like `CUDA_VISIBLE_DEVICES=0`)."""
