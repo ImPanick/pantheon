@@ -19,7 +19,7 @@ from src.constants import (
     TTS_CACHE_DIR, GENERATED_IMAGES_DIR, DEEP_RESEARCH_DIR, CHROMA_DIR,
     RAG_DIR, MEMORY_VECTORS_DIR, PASSWORD_MIN_LENGTH,
 )
-from core.auth import RESERVED_USERNAMES
+from core.auth import PASSWORD_TOO_LONG, RESERVED_USERNAMES, password_too_long
 
 DIRS = [
     DATA_DIR,
@@ -78,6 +78,9 @@ def _prompt_admin_credentials():
         if len(password) < PASSWORD_MIN_LENGTH:
             print(f"  Password must be at least {PASSWORD_MIN_LENGTH} characters.")
             continue
+        if password_too_long(password):   # `B1812`
+            print(f"  {PASSWORD_TOO_LONG}")
+            continue
         confirm = getpass.getpass("  Confirm password: ")
         if password != confirm:
             print("  Passwords don't match. Try again.")
@@ -109,6 +112,9 @@ def create_default_admin():
                 return "failed"
             if len(password) < PASSWORD_MIN_LENGTH:
                 print(f"  [error] PANTHEON_ADMIN_PASSWORD must be at least {PASSWORD_MIN_LENGTH} characters")
+                return "failed"
+            if password_too_long(password):   # `B1812`: not bcrypt's ValueError
+                print(f"  [error] PANTHEON_ADMIN_PASSWORD is too long. {PASSWORD_TOO_LONG}")
                 return "failed"
         elif sys.stdin.isatty() and not os.getenv("PANTHEON_SKIP_ADMIN_PROMPT"):
             # Interactive terminal — ask the user

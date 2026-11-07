@@ -187,6 +187,9 @@ CLEANUP_INTERVAL_HOURS = int(os.getenv("CLEANUP_INTERVAL_HOURS", "24"))
 
 # Auth policy
 PASSWORD_MIN_LENGTH = 8
+# `B1812`. bcrypt reads at most 72 bytes of a password, and bcrypt 5 refuses
+# a longer one with a ValueError. Counted in UTF-8 bytes, not characters.
+PASSWORD_MAX_BYTES = 72
 
 # Default parameters
 DEFAULT_TEMPERATURE = 1.0

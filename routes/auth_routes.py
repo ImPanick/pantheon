@@ -15,8 +15,8 @@ from pathlib import Path
 
 from core.atomic_io import atomic_write_json, atomic_write_text
 from core.auth import (
-    AuthManager, DEFAULT_PRIVILEGES, RESERVED_USERNAMES, SetAdminResult, TOKEN_TTL,
-    clean_profile,
+    AuthManager, DEFAULT_PRIVILEGES, PASSWORD_TOO_LONG, RESERVED_USERNAMES, SetAdminResult,
+    TOKEN_TTL, clean_profile, password_too_long,
 )
 from core.middleware import require_admin, require_operator
 from src.events import record_auth_event
@@ -261,6 +261,8 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
             raise HTTPException(400, "Already configured")
         if len(body.password) < PASSWORD_MIN_LENGTH:
             raise HTTPException(400, f"Password must be at least {PASSWORD_MIN_LENGTH} characters")
+        if password_too_long(body.password):
+            raise HTTPException(400, PASSWORD_TOO_LONG)   # `B1812`: not bcrypt's 500
         if len(body.username.strip()) < 1:
             raise HTTPException(400, "Username is required")
         if body.username.lower() in RESERVED_USERNAMES:
@@ -319,6 +321,8 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
             raise HTTPException(403, "Registration is disabled. Ask an admin for an account.")
         if len(body.password) < PASSWORD_MIN_LENGTH:
             raise HTTPException(400, f"Password must be at least {PASSWORD_MIN_LENGTH} characters")
+        if password_too_long(body.password):
+            raise HTTPException(400, PASSWORD_TOO_LONG)   # `B1812`: not bcrypt's 500
         if len(body.username.strip()) < 1:
             raise HTTPException(400, "Username is required")
         if body.username.lower() in RESERVED_USERNAMES:
@@ -519,6 +523,8 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
             raise HTTPException(401, "Not authenticated")
         if len(body.new_password) < PASSWORD_MIN_LENGTH:
             raise HTTPException(400, f"Password must be at least {PASSWORD_MIN_LENGTH} characters")
+        if password_too_long(body.new_password):
+            raise HTTPException(400, PASSWORD_TOO_LONG)   # `B1812`: not bcrypt's 500
         current_token = request.cookies.get(SESSION_COOKIE)
         ok = await asyncio.to_thread(auth_manager.change_password, user, body.current_password, body.new_password)
         if not ok:
@@ -640,6 +646,8 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
         user = get_current_user(request)
         if len(body.password) < PASSWORD_MIN_LENGTH:
             raise HTTPException(400, f"Password must be at least {PASSWORD_MIN_LENGTH} characters")
+        if password_too_long(body.password):
+            raise HTTPException(400, PASSWORD_TOO_LONG)   # `B1812`: not bcrypt's 500
         if len(body.username.strip()) < 1:
             raise HTTPException(400, "Username is required")
         if body.username.lower() in RESERVED_USERNAMES:

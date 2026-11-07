@@ -6,6 +6,7 @@ Config stored in data/auth.json. Uses bcrypt directly.
 
 import copy
 import enum
+import functools
 import json
 import os
 import secrets
@@ -130,7 +131,7 @@ def _admin_privileges(registry: Dict[str, Any], grants: Dict[str, Any]) -> Dict[
 # Admins get everything — every key at its declared granted value (`B532`).
 ADMIN_PRIVILEGES = _admin_privileges(DEFAULT_PRIVILEGES, ADMIN_GRANTS)
 
-from src.constants import AUTH_FILE, PASSWORD_MIN_LENGTH
+from src.constants import AUTH_FILE, PASSWORD_MAX_BYTES, PASSWORD_MIN_LENGTH
 from src.owner_identity import RESERVED_AUTH_USERNAMES
 # One spelling for the two `auth.json` keys `P11-02` adds. They are defined in
 # `src/roles.py` beside the rules that govern them and imported here rather
@@ -157,12 +158,41 @@ def normalize_known_username(users: Dict[str, Any], username: str | None) -> Opt
     return key
 
 
+# `B1812`. What every door that sets a password answers for one bcrypt cannot
+# take, in place of bcrypt's ValueError (a bare 500, or a traceback).
+PASSWORD_TOO_LONG = (f"Password must be at most {PASSWORD_MAX_BYTES} bytes: plain letters, "
+                     "digits and punctuation take one each, any other character two to four.")
+
+
+def password_too_long(password: str) -> bool:
+    """Whether ``password`` is longer than bcrypt takes (`B1812`)."""
+    return len(password.encode("utf-8")) > PASSWORD_MAX_BYTES
+
+
 def _hash_password(password: str) -> str:
+    if password_too_long(password):
+        raise ValueError(PASSWORD_TOO_LONG)
     return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
 
 
 def _verify_password(password: str, hashed: str) -> bool:
+    if password_too_long(password):
+        # `B1812`: bcrypt 5 raises here, and only for an account that exists, so
+        # a sign-in answered 500 for a real name and 401 for any other. bcrypt
+        # never kept more than 72 bytes of one, so this is a wrong password,
+        # checked at a wrong one's cost.
+        bcrypt.checkpw(b"", hashed.encode("utf-8"))
+        return False
     return bcrypt.checkpw(password.encode("utf-8"), hashed.encode("utf-8"))
+
+
+@functools.lru_cache(maxsize=1)
+def _dummy_password_hash() -> str:
+    """`B1812`. A bcrypt hash of a secret nobody holds, made once, at the cost a
+    stored one has, to check a password against when the account does not exist.
+    Made with bcrypt itself, not `_hash_password`, so a test's stand-in for that
+    can never leave a hash here that bcrypt cannot read."""
+    return bcrypt.hashpw(secrets.token_hex(16).encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
 
 
 class SetAdminResult(enum.Enum):
@@ -403,6 +433,7 @@ class AuthManager:
         """Return public auth policy constants for the frontend."""
         return {
             "password_min_length": PASSWORD_MIN_LENGTH,
+            "password_max_bytes": PASSWORD_MAX_BYTES,
             "reserved_usernames": sorted(RESERVED_USERNAMES),
             "signup_enabled": self.signup_enabled,
             "session_days": TOKEN_TTL // 86400,
@@ -1062,6 +1093,9 @@ class AuthManager:
     def verify_password(self, username: str, password: str) -> bool:
         username = username.strip().lower()
         if username not in self.users:
+            # `B1812`: the bcrypt work a wrong password costs, so the time the
+            # answer takes does not say whether the account exists.
+            _verify_password(password, _dummy_password_hash())
             return False
         return _verify_password(password, self.users[username]["password_hash"])
 
