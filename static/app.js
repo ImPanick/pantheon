@@ -503,6 +503,10 @@ function initializeEventListeners() {
         exportMenu.style.left = 'auto';
         exportMenu.style.right = (window.innerWidth - rect.right) + 'px';
         exportMenu.classList.add('open');
+        // Kept on screen: on a phone the ⋯ sits clear of the edge, and the
+        // 343px menu right-aligned to it ran off the left side below 405px.
+        const fit = Math.min(window.innerWidth - rect.right, window.innerWidth - exportMenu.offsetWidth - 8);
+        exportMenu.style.right = Math.max(8, fit) + 'px';
       }
     });
     document.addEventListener('click', () => exportMenu.classList.remove('open'));

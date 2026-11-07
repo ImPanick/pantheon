@@ -2129,6 +2129,377 @@ html.cockpit .msg .body pre.mermaid {
   border-radius: 0 !important; overflow: visible !important; white-space: normal;
 }
 
+/* ── the workspace's icon buttons hold their icon in the middle ──
+   style.css gives every `button` `padding: 0 10px`, so in a 26–30px icon
+   button the glyph was pushed 3–4px right of its circle: the layout pill, the
+   tuck chevron, and every pane's Float, Fill and Close (Panick, 2026-11-07). */
+html.cockpit .ck-layouts button,
+html.cockpit .ck-ibtn { padding: 0 !important; min-width: 0; }
+
+/* ── alignment audit 2026-11-07: workspace ── */
+/* Each pane is a query container, so its header and its window's bars answer to the pane's width, not the viewport's. */
+html.cockpit .ck-pane { container: ckpane / inline-size; }
+/* The pane header sits on the docked window's 10px gutter (was 13px left, 6px right), so icon and Close line up with the body. */
+html.cockpit .ck-pane-h { padding: 0 10px; }
+/* In a narrow pane the header keeps title, holder and all three buttons inside: tighter gaps, and a long holder ends in an ellipsis. */
+@container ckpane (max-width: 300px) {
+  html.cockpit .ck-pane-h { gap: 4px; }
+  html.cockpit .ck-pane-h .ck-holder:not(:empty) { display: inline-block; flex-shrink: 0; max-width: 35%; overflow: hidden; text-overflow: ellipsis; }
+  html.cockpit .ck-pane-h .ck-holder.agent::before { display: inline-block; vertical-align: middle; margin-right: 5px; }
+}
+
+/* The document footer's Undo is a pill that holds its arrow and its word (the 28px round hid the arrow and let the word spill). */
+@container docpane (width > 300px) { html.cockpit .ck-pane #doc-undo-btn { width: auto !important; padding: 0 10px !important; border-radius: 999px !important; } }
+html.cockpit .ck-pane #doc-undo-btn { flex: none; }
+html.cockpit .ck-pane #doc-undo-btn > svg { flex: none; }
+/* The footer's row sits in the middle of its band: the 30px under it was room for the Source link, which sits below the workspace. */
+html.cockpit .ck-pane .doc-email-actions { padding-bottom: 10px; }
+/* A narrow document pane wraps its footer rather than push Save past the edge, and shows Undo and Save as icons, as a phone does. */
+html.cockpit .ck-pane #doc-actions-footer { flex-wrap: wrap; row-gap: 6px; }
+@container docpane (max-width: 300px) {
+  html.cockpit .ck-pane #doc-actions-footer { gap: 6px; padding-left: 8px; padding-right: 8px; }
+  html.cockpit .ck-pane #doc-undo-btn > span { display: none; }
+  html.cockpit .ck-pane #doc-footer-copy-btn:not([data-mode="reply"]) { font-size: 0; gap: 0; padding: 0 10px; }
+}
+
+/* The browser's address field and its buttons share one 28px height (the field was a 32px box between 24px pills). */
+html.cockpit #agent-browser-modal .abw-address { min-height: 0; height: 28px; padding: 0 10px; }
+html.cockpit .abw-bar > .memory-toolbar-btn { height: 28px; }
+/* In a narrow pane the address takes its own row instead of shrinking to a sliver; Back, Forward, Reload and Go go under it. */
+@container ckpane (max-width: 360px) {
+  html.cockpit .abw-bar { flex-wrap: wrap; row-gap: 6px; }
+  html.cockpit .abw-address { order: -1; flex: 1 1 100%; }
+  html.cockpit .abw-go { margin-left: auto; }
+}
+/* The tab strip keeps its height in a short pane (it was squeezed to 0) and takes no room or gap while it is empty. */
+html.cockpit .abw-tabs { flex: none; }
+html.cockpit .abw-tabs:empty { display: none; }
+/* Each tab is one pill holding its name and its ×, not a bordered box around a second pill; the current tab is the brighter one. */
+html.cockpit .abw-tab { height: 26px; border-radius: 999px; border-color: var(--ck-edge-lo); background: var(--ck-tint); }
+html.cockpit .abw-tab.abw-tab-current { background: var(--ck-tint-2); border-color: var(--ck-edge); }
+html.cockpit .abw-tab .memory-toolbar-btn { border: 0 !important; background: transparent !important; box-shadow: none !important; }
+html.cockpit .abw-tabs .abw-tab-new { align-self: center; }
+/* The notes bar's Note, mark picker, Send notes and note tools are 24px pills like Point at… above them (were 32px, 10px corners). */
+html.cockpit #agent-browser-modal :is(.abw-notes-btn, .abw-note-tool) { height: 24px; padding: 0 9px; border-radius: 999px; line-height: 1; }
+html.cockpit #agent-browser-modal .abw-notes-kind { min-height: 0; height: 24px; padding: 0 6px 0 9px; border-radius: 999px !important; line-height: 1; }
+
+/* The Workstation's Screen picker is a 24px pill like the bar's buttons beside it (was a 32px box with 10px corners). */
+html.cockpit #workstation-screen-modal .wsv-who-select { min-height: 0; height: 24px; padding: 0 6px; border-radius: 999px !important; }
+
+/* ── alignment audit 2026-11-07: rail ── */
+/* rail-1: buttons in centred header and form rows drop the 6px top margin every window-body button gets, so they sit on the row's centre line */
+html.cockpit :is(.agents-tools, .agents-section-head, .agents-strip-head, .task-log-row-head, .wb-toolbar, .wb-toolbar-zoom, .settings-row,
+  .skills-side-head, .brain-explore-card, .brain-explore-head, .email-settings-section-head, .cal-detail-header) > button,
+html.cockpit #memory-panel-add .admin-card > div > button { margin-top: 0; }
+/* rail-1: the Agents search row centres "New agent" on the field rather than pinning it to the top (a phone's field is taller than the button) */
+html.cockpit .agents-tools { align-items: center; }
+/* rail-1: the day view's "+ Add" drops its 2px nudge and centres on the date label */
+html.cockpit #cal-add-day { top: 0; }
+
+/* rail-2: on desktop the Library, Tasks and Email toolbars hold the select and the pills at one 24px height on one centre line */
+@media (min-width: 769px) {
+  html.cockpit :is(#doclib-modal, #tasks-modal, #email-lib-modal) .memory-category-filters { align-items: center; }
+  html.cockpit :is(#doclib-modal, #tasks-modal, #email-lib-modal) .memory-category-filters > :is(.memory-sort-select, .memory-toolbar-btn, .email-filter-picker),
+  html.cockpit #email-lib-modal .email-filter-btn { height: 24px; min-height: 0; margin-top: 0; top: 0 !important; }
+}
+/* phone-6: on a phone the Library and Tasks toolbars share a 28px touch height instead (Email keeps its own 30px phone row) */
+@media (max-width: 768px) {
+  html.cockpit :is(#doclib-modal, #tasks-modal) .memory-category-filters { align-items: center; }
+  html.cockpit :is(#doclib-modal, #tasks-modal) .memory-category-filters > :is(.memory-sort-select, .memory-toolbar-btn) { height: 28px !important; min-height: 0; margin-top: 0; top: 0 !important; }
+}
+/* rail-2: those toolbar selects get back the caret `.admin-card select` wiped, and the pill shape of the buttons beside them */
+html.cockpit :is(#doclib-modal, #tasks-modal, #email-lib-modal) .memory-category-filters > select {
+  background-image: linear-gradient(45deg, transparent 38%, var(--ck-text-3) 38% 62%, transparent 62%), linear-gradient(135deg, transparent 38%, var(--ck-text-3) 38% 62%, transparent 62%);
+  background-position: right 13px center, right 8px center; background-size: 5px 5px; background-repeat: no-repeat; border-radius: 999px !important;
+}
+
+/* rail-3: the Tasks title and the Email count drop their inline 2px lift and centre on the header's controls */
+html.cockpit #tasks-modal .modal-header > h4, html.cockpit #email-lib-stats { top: 0 !important; }
+
+/* rail-4: the task card's status badge is a 22px pill on the kebab's centre line, not a 32px box */
+html.cockpit .task-card .task-status-badge { height: 22px; margin-top: 0; border-radius: 999px !important; }
+
+/* rail-5: the Activity log's "2 steps" pill sizes to its words and sits on the row's text line */
+html.cockpit .task-log-row-head > .task-log-steps { height: auto; margin-top: 0; border-radius: 999px !important; }
+/* rail-5: a Forge hardware chip's label and × are plain text inside the chip, not 32px bordered buttons shifted up */
+html.cockpit .hwfit-hw-chip :is(.hwfit-hw-chip-toggle, .hwfit-hw-chip-x) { height: auto; margin: 0; transform: none; border: 0 !important; background: none !important; }
+/* rail-5: the Brain upload zone grows to fit its padding and label */
+html.cockpit #rag-upload-zone { height: auto; }
+
+/* rail-6: the agent form's Send and "Build it now" share the textarea's bottom edge */
+html.cockpit .agents-talk-form > button { align-self: flex-end; margin-top: 0; }
+
+/* rail-7: the Notes title bar sits inside its pane (the window header's -10px margin assumes a padded window) */
+html.cockpit .notes-pane > .notes-pane-header { margin: 0 !important; }
+/* rail-7: docked Notes keeps the frame's 18px gutter and large radius, like the panels beside it (its docked size is inline) */
+@media (min-width: 769px) {
+  html.cockpit .notes-pane.modal-right-docked { inset: 18px 18px 18px auto !important; height: auto !important; max-height: none !important; border-radius: var(--ck-r-l) !important; }
+}
+/* rail-7: the Notes backdrop's fade-in no longer holds its last frame, which stopped the pane's glass blurring what lies behind it */
+html.cockpit .notes-pane-backdrop { animation-fill-mode: backwards; }
+
+/* rail-8: fields drawn borderless before the cockpit gave them a well get inline padding: note title, checklist rows, the event title and its hint */
+html.cockpit .note-form-title { padding-left: 10px; padding-right: 10px; }
+html.cockpit .note-cl-row input { padding-left: 10px; }
+html.cockpit .cal-input.cal-hero-title { padding-left: 10px; }
+html.cockpit .cal-title-hint { left: 11px; }
+
+/* rail-9: Forge Advanced's Engine button leaves room for its "?" and sits on the help's centre */
+html.cockpit .hwfit-advanced-panel .hwfit-engine-btn { padding-right: 40px; margin-top: 0; }
+
+/* rail-10: the inline "Library → Research" link reads as running text, on the sentence's baseline */
+html.cockpit .research-library-link { height: auto; margin-top: 0; line-height: inherit; }
+
+/* rail-12: on desktop the Gallery search and Select drop their 2px nudges and line up with the two selects (the phone row nudges the selects to match instead) */
+@media (min-width: 769px) {
+  html.cockpit .gallery-toolbar > .gallery-search-wrap { top: 0; }
+  html.cockpit .gallery-toolbar > #gallery-select-btn { top: 0; margin-top: 0 !important; }
+}
+
+/* rail-14: a card heading and its header buttons share one centre line (Tasks, Library Documents) */
+html.cockpit .admin-card > div:first-child:has(> h2 ~ .memory-toolbar-btn) { align-items: center !important; }
+html.cockpit .admin-card > div:first-child:has(> h2 ~ .memory-toolbar-btn) > :is(h2, .memory-toolbar-btn) { top: 0 !important; margin-top: 0; }
+/* rail-14: Compare's Scoreboard button drops its inline 5px lift beside the timeout field */
+html.cockpit #compare-model-overlay .modal-body > div:has(> input[type="number"]) > button { top: 0 !important; margin-top: 0; }
+/* rail-14: the model-folder "+ Add" (Forge and Settings) and the note's bell sit on their row's centre */
+html.cockpit .cookbook-modeldir-add { top: 0; margin-top: 0; }
+html.cockpit .note-form-header > .note-form-icon-btn { top: 0; }
+
+/* phone-5: the Library type chips start at the top of their row, so a phone's clipped row no longer cuts their outline */
+html.cockpit .doclib-lang-chips > button { margin-top: 0; }
+/* phone-7: on a narrow phone the Library's four tabs fit inside the pill */
+@media (max-width: 480px) { html.cockpit #doclib-modal .lib-tab { padding: 0 9px !important; gap: 5px; } }
+/* phone-8: the Library card's ⋮ glyph centres in its 32px phone circle */
+html.cockpit .doclib-card-menu-wrap > .memory-item-btn { justify-content: center; }
+
+/* ── alignment audit 2026-11-07: settings ── */
+/* The "…" More buttons (endpoint cards, user rows) hold their dots in the middle; the svg sat on the text baseline, 1.8px low. */
+html.cockpit #settings-modal :is(#adm-epLocalMoreBtn, #adm-epApiMoreBtn, [data-adm-user-more]) {
+  display: inline-flex; align-items: center; justify-content: center; width: 32px; padding: 0 !important;
+}
+/* Search > Provider: the picker and Test sat 2.5px under their label (inline top offsets and a stray bottom margin). */
+html.cockpit #search-provider-picker { top: 0 !important; margin-bottom: 0; }
+html.cockpit #set-searchTestBtn { top: 0 !important; }
+/* "Fallbacks" label sits level with "+ Add fallback": an empty list no longer adds a gap above the button. */
+html.cockpit #settings-modal .settings-fallbacks:empty { display: none; }
+html.cockpit #settings-modal .settings-row:has(> div > .settings-fallbacks) > .settings-label { margin-top: 11px !important; }
+/* AI Defaults: every model select starts on one edge; rows without a logo chip reserve the chip's room, and Vision / Image rows use the 8px row gap. */
+html.cockpit [data-settings-panel="ai"] .admin-card > div > div[style*="gap:0.75rem"] { gap: 8px !important; }
+html.cockpit [data-settings-panel="ai"] .settings-label + select.settings-select { margin-left: 22px; }
+/* Search tab's labels share one width, so "Results per query" no longer pushes its control right. */
+@media (min-width: 769px) { html.cockpit [data-settings-panel="search"] .settings-label { min-width: 104px; } }
+/* System: the env-flag selects and the two retention inputs line up on the right like the other controls. */
+html.cockpit #settings-envflags-rows .settings-row > .settings-select { flex: 0 1 382.5px; margin-left: auto; }
+html.cockpit :is(#set-eventsRetention, #set-authEventsRetention) { flex: 0 0 96px; margin-left: auto; }
+/* On a phone the env-flag select stacks under its label at full width, like the other wide settings controls. */
+@media (max-width: 768px) {
+  html.cockpit #settings-envflags-rows .settings-row { flex-wrap: wrap; }
+  html.cockpit #settings-envflags-rows .settings-row > .settings-select { flex: 1 1 100%; margin-left: 0; }
+}
+/* Wide controls keep one width per card: the label takes the slack, so a narrow window no longer gives each row its own edge.
+   Deep Research's "Search" select joins that column; its logo, when there is one, sits just left of it. */
+@media (min-width: 769px) {
+  html.cockpit #settings-modal .settings-row:has(> .settings-control-wide, > #set-researchSearch, > #set-eventsRetention, > #set-authEventsRetention) > .settings-label,
+  html.cockpit #settings-envflags-rows .settings-row > .settings-label { flex: 1 1 0; min-width: 0; }
+  html.cockpit #settings-envflags-rows .settings-row > .settings-select { max-width: 60%; }
+  html.cockpit #settings-modal .settings-row > .settings-control-wide { flex: 0 1 382.5px; width: auto; max-width: 60%; }
+  html.cockpit #set-researchSearch { flex: 0 1 382.5px !important; width: auto !important; max-width: 60% !important; margin-left: auto; }
+  html.cockpit #set-researchSearch-logo:empty { display: none !important; }
+  html.cockpit #set-researchSearch-logo:not(:empty) + #set-researchSearch { margin-left: 0; }
+}
+/* A switch that follows its label in a settings row sits at the right edge like every other switch. */
+html.cockpit #settings-modal .settings-row > .admin-switch:last-child { margin-left: auto; }
+/* Toggle rows keep a gap, so long sub-text no longer runs into its switch. */
+html.cockpit #settings-modal .admin-toggle-row { gap: 16px; }
+/* Card headings start their text 5px after the icon whatever gap the heading's inline style gives (was 32, 34 or 40px in). */
+html.cockpit #settings-modal .admin-card h2 > svg:first-child { margin-right: 5px !important; }
+html.cockpit #settings-modal .admin-card h2[style*="gap:8px"] > svg:first-child { margin-right: -3px !important; }
+html.cockpit #settings-modal .admin-card h2[style*="gap:6px"] > svg:first-child { margin-right: -1px !important; }
+/* Shortcuts: the top card uses the cards' 12px padding and its heading rule spans the card. */
+html.cockpit [data-settings-panel="shortcuts"] > .admin-card:first-child { padding: 12px !important; gap: 12px; }
+html.cockpit [data-settings-panel="shortcuts"] > .admin-card:first-child > div { flex: 1; min-width: 0; }
+/* A shortcut with no icon keeps the icon's 14px, so its label starts with the others. */
+html.cockpit #settings-modal .shortcut-icon:empty { width: 14px; }
+/* A key cap being rebound shows "Press keys..." in a 24px pill level with the check button, instead of an 8px sliver. */
+html.cockpit #settings-modal .shortcut-key { height: auto; min-height: 24px; }
+html.cockpit #settings-modal .shortcut-key.listening { font-size: 10px; height: 24px; padding: 0 8px; transition: background-color .15s; }
+/* Git and Vault: the Save / Add / Generate / Bring in / Export buttons and the file input match their 32px inputs. */
+html.cockpit #settings-modal .git-settings-row > button { height: 32px; }
+html.cockpit #settings-modal .git-settings-field input[type="file"] { height: 32px; padding-block: 0; }
+/* Forge: the two "+ Add" buttons drop their nudges and sit level with the tag and heading beside them. */
+html.cockpit #set-forgeServers .cookbook-modeldir-add { top: 0; }
+html.cockpit #set-forge-server-add { top: 0; }
+html.cockpit #set-forgeServers > div:has(> #set-forge-server-add) { align-items: center !important; }
+/* Forge server colour pill is wide enough for "Auto · Purple". */
+html.cockpit #set-forgeServers .cookbook-server-row .cookbook-srv-color-wrap { width: 114px; }
+/* …and the venv field beside it keeps room for its whole placeholder; the host field gives up the width instead. */
+html.cockpit #set-forgeServers .cookbook-server-row .cookbook-srv-path { flex-shrink: 0; min-width: 124px; }
+/* System > Terminal Logs: Refresh is as tall as the selects beside it. */
+html.cockpit #log-refresh-btn { height: 32px; }
+/* Trust rungs: thicker left borders no longer push the radio, mark and text right; each mark gets the triangle's 12px width. */
+html.cockpit #settings-modal .trust-rung[data-rung-cost="some"] { padding-left: 10px; }
+html.cockpit #settings-modal .trust-rung[data-rung-cost="high"] { padding-left: 8px; }
+html.cockpit #settings-modal .trust-rung:not([data-rung-cost="high"]) .trust-rung-mark { margin: 0 2.5px; }
+@media (max-width: 768px) {
+  html.cockpit #settings-modal .trust-rung[data-rung-cost="some"] { padding-left: 8px; }
+  html.cockpit #settings-modal .trust-rung[data-rung-cost="high"] { padding-left: 6px; }
+}
+@media (max-width: 640px) {
+  html.cockpit #settings-modal .trust-rung[data-rung-cost="some"] { padding-left: 7px; }
+  html.cockpit #settings-modal .trust-rung[data-rung-cost="high"] { padding-left: 5px; }
+}
+/* Added Models' empty state centres its message like its title and button. */
+html.cockpit :is(#adm-epList-local, #adm-epList-api) .empty-state { text-align: center; }
+
+/* ── alignment audit 2026-11-07: composer ──
+   The box keeps only +, dictation, voice and Send, with the model top-right;
+   the deck keeps the switches, mode, effort, approval and the ring. */
+/* The attachment hand fans above the box at its own 52x68 size: the loadout's `display: contents` let the cards fall to the box's corner under the +. */
+html.cockpit .ck-loadout .attach-strip.attach-hand { display: block; position: absolute; left: 0; right: 0; bottom: 100%; margin: 0 0 4px; }
+/* The loadout's chip rule (`.attach-strip > *`) must not shrink a card to its padding. */
+html.cockpit .attach-strip.attach-hand > .hand-card {
+  display: block; width: var(--hand-card-w) !important; height: var(--hand-card-h) !important; padding: 0 !important; max-width: none;
+  border-radius: 8px !important; background: none !important; font: inherit !important; animation: none;
+}
+/* With nothing in the loadout but the hand (which now sits above the box), the loadout adds no empty band. */
+html.cockpit .ck-loadout:not(:has(> :not(.attach-strip):not([hidden]):not([style*="display: none"]):not([style*="display:none"]))) { padding: 0; }
+/* A submenu row keeps its full height in a long list, which scrolls instead of crushing every row to 32px. */
+html.cockpit .composer-submenu-list > * { flex-shrink: 0; }
+/* The turn sheet's Agent and Chat show the composer toggle's lock and speech bubble instead of a solid square. */
+html.cockpit #turn-mode-agent { --ck-mode-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='5.5' y='11' width='13' height='9' rx='1.5'/%3E%3Cpath d='M8.5 11V8a3.5 3.5 0 0 1 7 0v3'/%3E%3C/svg%3E"); }
+html.cockpit body.ck-auto-approve #turn-mode-agent { --ck-mode-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='5.5' y='11' width='13' height='9' rx='1.5'/%3E%3Cpath d='M8.5 11V8a3.5 3.5 0 0 1 6.8-1.2'/%3E%3C/svg%3E"); }
+html.cockpit #turn-mode-chat { --ck-mode-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 5h14a1.5 1.5 0 0 1 1.5 1.5v9A1.5 1.5 0 0 1 19 17H10l-5 4V6.5A1.5 1.5 0 0 1 5 5z'/%3E%3C/svg%3E"); }
+/* The sheet's approval row has no icon, so it draws no square. */
+html.cockpit #turn-approval-seg .mode-toggle-btn::before { content: none; }
+/* The sheet's title lines up with the row labels under it. */
+html.cockpit .turn-sheet-head { padding-left: 8px; }
+/* The mode chip is 30px tall like the deck's other chips: style.css's 44px min-height beat the cockpit's height. */
+html.cockpit .turn-chip { min-height: 0; }
+/* The + is a 32px circle on a phone too, not a 32x44 oval: the phone's 44px min-height for icon buttons beat its height. */
+html.cockpit .overflow-plus-btn { min-height: 32px; }
+/* On a phone the model pill keeps its own height, so its label sits on the placeholder's line. */
+@media (max-width: 768px) { html.cockpit .model-picker-btn { min-height: 0; } }
+/* A thumb still gets about 44px on those three controls: an invisible halo around each. */
+@media (max-width: 768px), (pointer: coarse) {
+  html.cockpit :is(.turn-chip, .model-picker-btn) { position: relative; }
+  html.cockpit :is(.overflow-plus-btn, .turn-chip, .model-picker-btn)::after { content: ""; position: absolute; inset: -7px -2px; }
+  html.cockpit .model-picker-btn::after { inset: -12px -2px; }
+}
+/* A switch that app.js folds into + for room leaves the deck (the cockpit's own display rule kept it there), so the deck stays on one line. */
+html.cockpit :is(#plan-toggle-btn, #web-toggle-btn, #bash-toggle-btn).toolbar-collapsed { display: none !important; }
+/* The plan/queue/needs-you strip keeps its full height: the ready screen above gives way instead of the strip clipping its own buttons. */
+html.cockpit #ck-strip { flex: none; }
+/* A queued row's pills keep their words on one line; the message beside them truncates instead. */
+html.cockpit #ck-strip .queue-row :is(.queue-row-edit, .queue-steer-now, .queue-force-run) { white-space: nowrap; flex: none; }
+/* A queued row's × sits in the middle of its circle (drop the classic button's 1px nudge). */
+html.cockpit #ck-strip .queue-row :is(.queue-remove, .queue-stop) svg { transform: none; }
+/* The empty model picker shows what it holds (Add a model, the member's note, a down endpoint's Retry) instead of a 0px list. */
+html.cockpit .model-picker-list.is-empty:not(:empty) { max-height: none; overflow: visible; margin-top: 6px; }
+/* Add a model is a cockpit pill, like the deck's chips. */
+html.cockpit .model-picker-empty-add {
+  height: 30px; padding: 0 13px; border-radius: 999px; border: 0; background: var(--ck-tint); color: var(--ck-text);
+  font: 400 12.5px/1 var(--ck-font-ui); cursor: pointer;
+}
+html.cockpit .model-picker-empty-add:hover { background: var(--ck-tint-2); }
+/* A command's long usage line gives way to its help text and ends in an ellipsis instead of running off the row. */
+html.cockpit .slash-ac-row:not(.slash-ac-skill):not(.agent-mention-row) .slash-ac-usage { flex: 0 1 auto; min-width: 0; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The + menu's › sits on its row's centre line (the glyph draws low in its line box). */
+html.cockpit .overflow-chevron { position: relative; top: -1.5px; }
+@media (min-width: 769px) {
+  /* A narrow chat column wraps the ready screen's cards onto fewer columns (up to three) instead of stacking their words one letter per line. */
+  html.cockpit .ck-preflight { grid-template-columns: repeat(auto-fit, minmax(min(100%, max(110px, calc((100% - 20px) / 3 - 1px))), 1fr)); }
+}
+@media (min-width: 769px) and (max-width: 1199px) {
+  /* The tucked workspace's tab keeps to the frame's edge, clear of the chat's Resume pills. */
+  html.cockpit #ck-ws-tab { right: 4px; }
+}
+
+/* ── alignment audit 2026-11-07: chat ── */
+/* The reaction palette's emoji sat 3px right of its round: the global `button` padding squeezed its box. */
+html.cockpit .reaction-option { padding: 0; }
+/* A markdown table's frame hugs its rows; a table wider than the column still fills it and scrolls sideways
+   (`B1745`). The `!important` beats the inline `width: 100%` markdown.js writes on the table. */
+html.cockpit .msg .body table { width: max-content !important; min-width: 0; max-width: 100%; }
+/* The chat's ⋯ sat flush on the panel's edge, so its hover round was cut flat: it keeps 6px of the bar's padding. */
+html.cockpit .export-dropdown-wrap { margin-right: -14px; }
+/* On a phone the fixed hamburger covered the chat's ⋯: the bar keeps its 44px clear, both on the bar's centre line. */
+@media (max-width: 768px) {
+  html.cockpit .chat-top-bar { padding-right: 52px !important; }
+  html.cockpit .export-dropdown-wrap { margin-right: 0; }
+  html.cockpit .hamburger-btn { top: 4px; }
+}
+/* The reply header's variant arrows and count took the global 32px button height and pushed the name row down 8px. */
+html.cockpit .variant-nav :is(.variant-btn, .variant-num) { height: 20px; padding-top: 0; padding-bottom: 0; display: inline-flex; align-items: center; justify-content: center; }
+/* The footer's memory, skill, promoted and fallback pills were 32px beside 26px actions, their label lifted off the icon. */
+html.cockpit :is(.memory-used-pill, .skills-used-pill, .promoted-pill, .fallback-chain-pill) { height: 24px; padding: 0 9px; gap: 5px; }
+html.cockpit :is(.memory-used-pill, .skills-used-pill, .promoted-pill, .fallback-chain-pill) > svg { margin: 0 !important; vertical-align: 0 !important; flex: none; }
+html.cockpit :is(.memory-used-pill-text, .skills-used-pill-text, .promoted-pill-text, .fallback-chain-pill-text) { top: 0; }
+/* The header's Auto-approve badge was a 32px button; it is a 22px pill beside the 30px Nobody and ⋯. */
+html.cockpit .chat-auto-approve-badge { height: 22px; padding: 0 9px !important; }
+/* The ⋯ menu's download formats were 32px tall and made their row 14px taller than the rest (the phone keeps its touch size). */
+@media (min-width: 769px) {
+  html.cockpit .export-file-fmt { height: 22px; padding: 0 6px; display: inline-flex; align-items: center; }
+}
+/* Compact history kept its legacy gap, and on a phone its own margin and height, so it sat off the other menu rows. */
+html.cockpit #export-compact-btn { gap: 11px; margin: 0; min-height: 32px; }
+/* The footer's ✂ ? ✕ kept legacy 1-2px nudges tuned for bigger glyphs, so they sat off the row's centre line. */
+html.cockpit .msg-footer .msg-action-btn { top: 0; }
+/* An ask-user option's one-line label sat at the top of its 39px row, and Send's label 1px high. */
+html.cockpit .ask-user-card .ask-user-option { align-content: center; }
+html.cockpit .ask-user-card .confirm-btn { padding-top: 4px; padding-bottom: 4px; }
+
+/* ── alignment audit 2026-11-07: sidebar ── */
+/* The Chats sort menu's Group and Rearrange rows are rows, not separators: they
+   keep the menu's left edge, height and clear background, and one hairline
+   above Group marks them off. */
+html.cockpit .sort-dropdown-item.sort-dropdown-sep { height: auto !important; margin: 7px 0 0 !important; position: relative; overflow: visible; }
+html.cockpit .sort-dropdown-item.sort-dropdown-sep:not(:hover) { background: transparent !important; }
+html.cockpit .sort-dropdown-item.sort-dropdown-sep::before { content: ""; position: absolute; left: 8px; right: 8px; top: -4px; height: 1px; background: var(--ck-edge-lo); }
+html.cockpit #session-rearrange-toggle.sort-dropdown-sep { margin-top: 0 !important; }
+html.cockpit #session-rearrange-toggle.sort-dropdown-sep::before { display: none; }
+/* The Group row's label starts where the other labels start. */
+html.cockpit #auto-sort-sessions-btn { padding: 0 !important; }
+/* The active-sort and Rearrange marks are a small lamp at the row's right end,
+   not a 20px bullet trailing the label (their inline float does nothing in a flex row). */
+html.cockpit #session-sort-dropdown :is(.sort-check, .rearrange-check) {
+  margin-left: auto; font-size: 0 !important; width: 6px; height: 6px; border-radius: 50%; background: var(--ck-accent); top: 0 !important; flex: none;
+}
+/* The Theme window's tab pill lines up with the panel under it, not the window's border. */
+html.cockpit #theme-popup .admin-tabs { margin: 0 0 8px; }
+/* The search palette's field draws no square ring inside the rounded palette; its hairline lights instead. */
+html.cockpit #search-input { --focus-ring-width: 0px; }
+html.cockpit .search-popup input#search-input:focus-visible { border-bottom-color: var(--ck-accent-line) !important; }
+/* Group headers and the status line start on the same edge as the results and the typed query. */
+html.cockpit :is(.search-group-header, .search-palette-status) { padding-left: 14px !important; padding-right: 14px !important; }
+/* Chats gets the same gap above it as Email (style.css pulled it up 1px with an id rule). */
+html.cockpit #sessions-section { margin-top: 14px; }
+/* The user card's gear is a round 30px button, not a 28x32 oval. */
+html.cockpit .sidebar-user-bar .user-bar-btn { width: 30px; height: 30px; padding: 0; }
+/* A chat with a provider logo keeps the 16px lamp column, so every chat name starts on one edge. */
+html.cockpit .sidebar .session-item .session-star.provider-logo { width: 16px !important; height: 16px !important; }
+/* In select mode the Cancel cross sits level with Archive and Delete, and the select-all circle level with "All". */
+html.cockpit #session-bulk-cancel svg { top: 0; }
+html.cockpit #session-select-all-dot { top: 0; }
+/* The hover-only "manage" label is tall enough to show the tail of its g. */
+html.cockpit #sessions-section .chats-manage-btn .list-item-plus-label { line-height: 14px; }
+/* The wordmark row uses the 18px inset of the rows under it. */
+html.cockpit .sidebar-header { padding-left: 18px !important; padding-right: 18px !important; }
+/* Section-header buttons are not square, so their hover is a rounded box, not a squashed oval. */
+html.cockpit .sidebar .section-header-btn { border-radius: 8px; }
+@media (min-width: 769px) {
+  /* The select-all circle stands over the row circles below it. */
+  html.cockpit #session-select-all-dot { margin-left: 3px; }
+  /* The Chats funnel sits in the same right-hand column as Email's + and the chevrons. */
+  html.cockpit #session-sort-btn { position: relative; left: 2.5px; }
+}
+
+/* ── alignment audit 2026-11-07: after the slices were combined ──
+   A rail label is drawn above the chat's top bar. Removing the markup's
+   orphan spacer lifted the rail's first button level with the chat title,
+   and the rail (z 3) sat under the top bar (z 6), so "Sidebar Ctrl+Alt+B"
+   and "Pantheon Chat" were printed over each other. */
+html.cockpit #icon-rail:is(:hover, :focus-within) { z-index: calc(var(--ck-z-topbar) + 1); }
+
 /* ── `B1756` · `B1757` · the Devices room and the phone, in the cockpit ──
    The device list is the window's quiet cards (glass, a hairline, the lit
    edge), the device in use carries the accent wash every chosen chip has, the

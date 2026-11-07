@@ -647,6 +647,12 @@ export function autoResize(textarea) {
   clone.style.minHeight = '0';
   clone.style.maxHeight = 'none';
   clone.style.width = textarea.offsetWidth + 'px';
+  // The placeholder shapes an empty box, and `app.js` swaps it for a shorter
+  // one when the box narrows, after the copy was made: the copy's stale long
+  // one wrapped to three lines and held an empty 136px box at 72px.
+  const placeholder = textarea.getAttribute('placeholder');
+  if (placeholder === null) clone.removeAttribute('placeholder');
+  else clone.setAttribute('placeholder', placeholder);
   clone.value = textarea.value;
   clone.style.height = '0';
   const minHeight = Math.max(lineHeight, parseFloat(cs.minHeight) || 0);

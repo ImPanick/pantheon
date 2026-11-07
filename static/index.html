@@ -1276,7 +1276,7 @@
 
       <div class="section" id="sessions-section">
         <div class="section-header-flex">
-          <span class="section-title" id="chats-section-title"><svg class="section-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg><span id="chats-section-label" class="section-title-label">Chats</span><span id="chats-notif-dot" class="sidebar-notif-dot" style="display:none"></span></span>
+          <span class="section-title" id="chats-section-title"><svg class="section-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg><span id="chats-section-label" class="section-title-label">Chats</span></span>
           <div style="position:relative; display:inline-block; display:flex; gap:4px; align-items:center;">
             <button type="button" class="section-header-btn list-item-plus-btn chats-manage-btn" id="chats-library-btn" title="Manage chats and the archive">
               <span aria-hidden="true" style="display:inline-block;width:13px;height:13px;"></span>
@@ -1311,6 +1311,10 @@
               </div>
             </div>
           </div>
+          <!-- A direct header child after the buttons, as Email's unread dot
+               is: inside the title (flex:1) it stopped at the title's end,
+               in the empty middle of the header, not beside its controls. -->
+          <span id="chats-notif-dot" class="sidebar-notif-dot" style="display:none"></span>
         </div>
         <div id="session-bulk-bar" class="session-bulk-bar hidden">
           <span id="session-select-all-dot" style="cursor:pointer;font-size:14px;opacity:0.4;user-select:none;">○</span><input type="checkbox" id="session-select-all" style="display:none;"><span style="font-size:10px;cursor:pointer;opacity:0.5;" id="session-select-all-label">All</span>
@@ -1715,7 +1719,7 @@
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="2.5" width="6" height="12" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0"/><path d="M12 17.5V21"/></svg>
         </button>
         <button type="button" id="voice-call-end" class="voice-call-btn voice-call-end" title="End voice chat" aria-label="End voice chat">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.6 14.6c4.6-4.4 12.2-4.4 16.8 0l-1.9 2.6-3.4-1.3.2-2.3a11 11 0 0 0-6.6 0l.2 2.3-3.4 1.3z"/></svg>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.6 12.35c4.6-4.4 12.2-4.4 16.8 0l-1.9 2.6-3.4-1.3.2-2.3a11 11 0 0 0-6.6 0l.2 2.3-3.4 1.3z"/></svg>
         </button>
       </span>
     </section>
@@ -2300,8 +2304,13 @@
 
     function reposition() {
       const barRect = chatBar.getBoundingClientRect();
-      bottomBtn.style.bottom = (window.innerHeight - barRect.top + 16) + 'px';
-      bottomBtn.style.right = (window.innerWidth - barRect.right + 8) + 'px';
+      // Centred on the composer's top edge, half over the composer and half
+      // over the history's bottom fade. Parked on the right gutter it covered
+      // a user turn's ✎ ✕ ··· and a code block's Copy as they scrolled past.
+      const w = bottomBtn.offsetWidth || 38, h = bottomBtn.offsetHeight || 38;
+      bottomBtn.style.bottom = (window.innerHeight - barRect.top - h / 2) + 'px';
+      bottomBtn.style.left = (barRect.left + barRect.width / 2 - w / 2) + 'px';
+      bottomBtn.style.right = 'auto';
     }
 
     function update() {

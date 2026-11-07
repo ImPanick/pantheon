@@ -102,7 +102,7 @@ const classes = new Set();
 const el = (props) => Object.assign({ style: {}, addEventListener() {},
   classList: { add: (c) => classes.add(c), remove: (c) => classes.delete(c), contains: (c) => classes.has(c) } }, props);
 const container = el({ scrollHeight: 5000, clientHeight: 600, scrollTop: 4400 });
-const chatBar = el({ getBoundingClientRect() { counts.rect += 1; return { top: 700, right: 1300 }; } });
+const chatBar = el({ getBoundingClientRect() { counts.rect += 1; return { top: 700, right: 1300, left: 500, width: 800 }; } });
 const button = el({});
 globalThis.document = {
   getElementById: (id) => ({ 'chat-history': container, 'scroll-bottom-btn': button })[id] || null,
@@ -135,9 +135,10 @@ def test_the_button_still_follows_the_history():
         container.scrollTop = 4400;
         observer.fn([{ type: 'childList' }]); flush();
         console.log(JSON.stringify({ up, down: classes.has('show'), out: classes.has('slide-out'),
-                                     bottom: button.style.bottom }));
+                                     bottom: button.style.bottom, left: button.style.left }));
     """)
-    assert out == {"up": True, "down": False, "out": True, "bottom": "116px"}
+    # Centred on the composer's top edge (alignment audit, chat-5): 800 - 700 - 38/2, and 500 + 800/2 - 38/2.
+    assert out == {"up": True, "down": False, "out": True, "bottom": "81px", "left": "881px"}
 
 
 # ── the line-number gutter ─────────────────────────────────────────────────
