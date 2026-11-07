@@ -4646,19 +4646,16 @@ def setup_email_routes():
 
     def _load_pantheon_attachment_source(db, kind: str, item_id: str, owner: str):
         from core.database import Document as _Doc, GalleryImage as _GI
-        from core.database import Session as _Sess
 
         if kind == "document":
             doc = db.query(_Doc).filter(_Doc.id == item_id, _Doc.is_active == True).first()
             if not doc:
                 raise HTTPException(status_code=404, detail="Document not found")
-            if owner:
-                if doc.owner and doc.owner != owner:
-                    raise HTTPException(status_code=404, detail="Document not found")
-                if not doc.owner and doc.session_id:
-                    sess = db.query(_Sess).filter(_Sess.id == doc.session_id).first()
-                    if sess and sess.owner and sess.owner != owner:
-                        raise HTTPException(status_code=404, detail="Document not found")
+            # `B1967`: the documents' own rule, which a document with no owner
+            # and no owning chat does not pass (this let it through, auth-off's
+            # shape): the same 404. Upstream Odysseus #6559, for the gallery.
+            from routes.document.document_helpers import _verify_doc_owner
+            _verify_doc_owner(db, doc, owner)
             lang = (doc.language or "text").strip().lower()
             ext = {
                 "markdown": "md",
@@ -4680,10 +4677,14 @@ def setup_email_routes():
             return {"filename": base, "content": (doc.current_content or "").encode("utf-8")}
 
         if kind == "gallery":
-            img = db.query(_GI).filter(_GI.id == item_id, _GI.is_active == True).first()
+            # `B1967`: the gallery's own rule (its owner's, and an image with
+            # none is nobody's to attach), where `img.owner and ...` let an
+            # ownerless one through. Upstream Odysseus #6559.
+            from routes.gallery.gallery_helpers import _owner_filter
+            img = _owner_filter(
+                db.query(_GI).filter(_GI.id == item_id, _GI.is_active == True), owner or None,
+            ).first()
             if not img:
-                raise HTTPException(status_code=404, detail="Image not found")
-            if owner and img.owner and img.owner != owner:
                 raise HTTPException(status_code=404, detail="Image not found")
             from routes.gallery.gallery_routes import _gallery_image_path
             src = _gallery_image_path(img.filename)

@@ -334,11 +334,13 @@ def test_a_name_kept_beside_a_file_cannot_be_reached_by_another_token(mailbox):
 
 def test_a_document_is_attached_under_its_title(mailbox, monkeypatch):
     """`compose-from-pantheon` names a document by its title; a `/` in the
-    title is part of it, not a folder to drop."""
+    title is part of it, not a folder to drop. The documents are ada's and so
+    is the request: one with no owner is nobody's to attach (`B1967`)."""
     from sqlalchemy import create_engine
     from sqlalchemy.orm import sessionmaker
     from sqlalchemy.pool import StaticPool
     import core.database as D
+    from routes.email_helpers import require_owner
 
     engine = create_engine("sqlite://", connect_args={"check_same_thread": False},
                            poolclass=StaticPool)
@@ -347,12 +349,13 @@ def test_a_document_is_attached_under_its_title(mailbox, monkeypatch):
     monkeypatch.setattr(D, "SessionLocal", maker)
     db = maker()
     db.add(D.Document(id="d1", title="Q3 Board Pack – final (v2)", language="markdown",
-                      current_content="# Q3", is_active=True))
+                      current_content="# Q3", owner="ada", is_active=True))
     db.add(D.Document(id="d2", title="Q3/Q4 plan", language="markdown",
-                      current_content="# plan", is_active=True))
+                      current_content="# plan", owner="ada", is_active=True))
     db.commit()
     db.close()
     client, _messages, sent, _dirs = mailbox
+    client.app.dependency_overrides[require_owner] = lambda: "ada"
     one = client.post("/api/email/compose-from-pantheon", json={"kind": "document", "id": "d1"}).json()
     two = client.post("/api/email/compose-from-pantheon", json={"kind": "document", "id": "d2"}).json()
     assert one["filename"] == "Q3 Board Pack – final (v2).md"
