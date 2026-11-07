@@ -1,8 +1,10 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Search result ranking based on relevance, source quality, and recency."""
 
+import math
 import re
 import logging
+from bisect import bisect_left
 from datetime import datetime, timezone
 from typing import List, Optional
 from urllib.parse import urlparse
@@ -236,10 +238,155 @@ def _result_text(result) -> str:
     return f"{result.get('title') or ''} {result.get('snippet') or ''}".lower()
 
 
+# ----------------------------------------------------------------------
+# The part of a page the block shows (`B1808`)
+# ----------------------------------------------------------------------
+# `core.comprehensive_web_search` gave each fetched page its first 3000
+# characters, whatever was asked, so an answer in a page's fourth screen never
+# reached the model — on every search path, local endpoints included. `B1403`
+# measured the same failure for `web_fetch`. `search_excerpt` spends the same
+# budget on the page's opening and the passages that carry the query's own
+# words, cut from the text as it stands and kept in order. After upstream
+# Odysseus 31e03c9e's `search_excerpt`, with this file's `subject_terms` in
+# place of its own word list (`Law 7`), and a marker only where text is left
+# out (`Law 10`).
+_EXCERPT_MARKER = "\n[...text omitted; web_fetch the source for the full page...]\n"
+# `site:` and `filetype:` are operators for the engine, not words on the page.
+_EXCERPT_OPERATORS = re.compile(r"(?<!\S)-?(?:site|filetype):\S+", re.I)
+_EXCERPT_LEAD = 240     # the opening every excerpt keeps: scope, date, byline
+_EXCERPT_FLOOR = 200    # a budget below this is only ever a prefix
+_EXCERPT_TRIES = 24     # terms used, and passages tried around each term
+
+
+def _excerpt_prefix(text: str, limit: int) -> str:
+    """``text`` cut to ``limit`` at the last space, when there is one near."""
+    cut = text.rfind(" ", 0, limit)
+    return text[:cut] if cut > limit // 2 else text[:limit]
+
+
+def search_excerpt(text: str, query: str, max_chars: int) -> str:
+    """At most ``max_chars`` of ``text``: its opening and the passages ``query`` asks about.
+
+    Text that fits is returned unchanged; text in which no term of the query
+    appears is its opening and one marker. Otherwise up to two passages are
+    chosen, each for the query words it holds (a rare word counts for more than
+    a common one), and a second only when it holds a word the first does not.
+    One passage alone is grown to the whole budget, backward when it reaches
+    the end of the page. Every passage is the page's own text, in page order,
+    so a qualifier or a negation inside one is kept, and the marker stands
+    wherever text is left out and nowhere else.
+    """
+    if len(text) <= max_chars:
+        return text
+    if max_chars < _EXCERPT_FLOOR:
+        return text[:max_chars]
+    marker = _EXCERPT_MARKER
+    words = _EXCERPT_OPERATORS.sub(" ", query) if isinstance(query, str) else ""
+    # A number or a single letter is a word of the query but a poor place to
+    # look: it matches every date, price and list item on the page, and a
+    # links block naming the year outscored the article that answers.
+    terms = [t for t in subject_terms(words)
+             if len(t) > 1 and not t.isdigit()][:_EXCERPT_TRIES]
+    # The page's words, read once and tokenised as `subject_terms` tokenises the
+    # query, so a match is a whole word and a 2 MB page costs one pass however
+    # many terms there are.
+    index = {t: i for i, t in enumerate(terms)}
+    found = [[] for _t in terms]
+    if index:
+        for m in re.finditer(r"\w+", text):
+            i = index.get(m.group(0).lower())
+            if i is not None:
+                found[i].append((m.start(), m.end()))
+    if not any(found):
+        return _excerpt_prefix(text, max_chars - len(marker)) + marker
+    starts = [[s for s, _e in hits] for hits in found]
+    weights = [1 / (1 + math.log1p(len(hits))) for hits in found]
+
+    def held(start, end):
+        """The terms with a match wholly inside ``text[start:end]``."""
+        out = set()
+        for i, hits in enumerate(found):
+            j = bisect_left(starts[i], start)
+            if j < len(hits) and hits[j][1] <= end:
+                out.add(i)
+        return out
+
+    def word_start(at, floor):
+        """``at``, or the next word's start when it falls inside one; never before ``floor``."""
+        if at <= floor:
+            return floor
+        if text[at - 1].isspace():
+            return at
+        space = text.find(" ", at, min(len(text), at + 60))
+        return space + 1 if space >= 0 else at
+
+    def word_end(start, end):
+        if end >= len(text):
+            return len(text)
+        space = text.rfind(" ", start, end)
+        return space if space > start else end
+
+    lead_end = min(_EXCERPT_LEAD, max_chars // 5)
+    space = text.rfind(" ", 0, lead_end)
+    if space > 0:
+        lead_end = space
+    width = max(1, (max_chars - lead_end - 3 * len(marker)) // 2)
+    candidates = {}
+    for hits in found:
+        for at, _e in hits[:_EXCERPT_TRIES]:
+            start = word_start(max(lead_end, min(len(text) - width, at - width // 3)), lead_end)
+            end = word_end(start, min(len(text), start + width))
+            if end > start:
+                hit = held(start, end)
+                candidates[(start, end)] = (sum(weights[i] for i in hit), hit)
+
+    chosen, covered = [], set()
+    for (start, end), (score, hit) in sorted(candidates.items(),
+                                             key=lambda kv: (-kv[1][0], kv[0][0])):
+        if score <= 0 or any(start < b and end > a for a, b in chosen):
+            continue
+        if chosen and not hit - covered:
+            continue
+        chosen.append((start, end))
+        covered |= hit
+        if len(chosen) == 2:
+            break
+    if not chosen:
+        # The query's words are in the opening alone: the opening is the passage.
+        return _excerpt_prefix(text, max_chars - len(marker)) + marker
+    if len(chosen) == 1:
+        # Spend the budget on one passage's context rather than a weaker second
+        # one, and when the passage meets the end of the page, grow it backward:
+        # it used to stop there with a third of the budget unspent.
+        room = max_chars - lead_end - 2 * len(marker)
+        start, _end = chosen[0]
+        end = word_end(start, min(len(text), start + room))
+        if end == len(text) and end - start < room:
+            start = word_start(max(lead_end, end - room), lead_end)
+        chosen = [(start, end)]
+
+    # What is skipped between two passages, or after the last, is kept when it
+    # is no longer than the marker that would stand for it: then nothing is
+    # left out there, and the marker would say something was.
+    spans = [(0, lead_end)]
+    for start, end in sorted(chosen):
+        if start - spans[-1][1] <= len(marker):
+            spans[-1] = (spans[-1][0], max(spans[-1][1], end))
+        else:
+            spans.append((start, end))
+    if len(text) - spans[-1][1] <= len(marker):
+        spans[-1] = (spans[-1][0], len(text))
+    out = marker.join(text[a:b] for a, b in spans)
+    if spans[-1][1] < len(text):
+        out += marker
+    return out[:max_chars]
+
+
 # How much of a fetched page the verdict reads. A long page mentions a lot of
 # words, and the question is whether it is *about* the query, so the window is
 # the head of the document — title, lede and first screens, where an article
-# says what it is. The same 3000 characters `core.py` puts in the block.
+# says what it is. The same 3000 characters `core.py` gives each page in the
+# block, where since `B1808` they go to the passages the query asks about.
 _CONTENT_WINDOW = 3000
 
 

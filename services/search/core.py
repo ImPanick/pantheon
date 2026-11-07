@@ -26,7 +26,7 @@ from .query import (
     _cache_duration_for_query,
     build_enhanced_query,
 )
-from .ranking import rank_search_results, relevance_report
+from .ranking import rank_search_results, relevance_report, search_excerpt
 from .providers import (
     searxng_search_api,
     brave_search,
@@ -705,10 +705,10 @@ def comprehensive_web_search(
             output_parts.append(f"Title: {content['title']}")
             output_parts.append("-" * 30)
 
-            text = content["content"][:3000]
-            if len(content["content"]) > 3000:
-                text += "... [truncated]"
-            output_parts.append(text)
+            # `B1808`: the opening and the passages the query asks about, not
+            # the first 3000 characters whatever was asked. Everything below
+            # still reads the whole page.
+            output_parts.append(search_excerpt(content["content"], query, 3000))
 
             key_points = extract_key_points(content["content"])
             if key_points:
