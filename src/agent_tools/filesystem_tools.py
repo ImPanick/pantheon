@@ -177,11 +177,27 @@ def write_file_content(args: Dict[str, Any]) -> str:
     it, or — an append — the JSON object `_write_file_call` reads `append`
     from. The one conversion both ways a native call arrives share
     (`tool_schemas.function_call_to_tool_block`, and a raw call leaked into
-    text, `tool_parsing`), so neither drops the append."""
+    text, `tool_parsing`), so neither drops the append.
+
+    `B1783`. A `content` that is given but is not text with something in it
+    (`""`, blank, `null`, an object) rides as the call's own JSON, because
+    `path\\n` cannot say which it was: an empty `content` declares the file
+    empty, while a `null` one is a body the call lost, which must not empty a
+    file that holds data (`_write_file_intent`), and an object is written as
+    JSON. A call with no `content` keeps the path-line shape, which the reader
+    takes as a lost body too. So does a `path` with a line break in it: that
+    is how `tool_parsing`'s wrapper readers carry a model's whole path-and-text
+    body (`<tool_call><write_file>path`, a line break, the text), and the
+    reader splits it at its first line, as it always has."""
     if str(args.get("append")).lower() == "true":
         return json.dumps({"path": args.get("path", ""), "content": args.get("content", ""),
                            "append": True})
-    return args.get("path", "") + "\n" + args.get("content", "")
+    path = args.get("path")
+    path = "" if path is None else str(path)
+    body = args.get("content")
+    if "content" not in args or "\n" in path or (isinstance(body, str) and body.strip()):
+        return path + "\n" + (body if isinstance(body, str) else "")
+    return json.dumps({"path": path, "content": body})
 
 
 def _write_file_call(content: str) -> Tuple[str, str, bool]:
@@ -190,10 +206,24 @@ def _write_file_call(content: str) -> Tuple[str, str, bool]:
     object's `"append": true`: the body goes on the end of the file, which is
     kept — `D-2026-10-29-03` §2, *"Append-only is not destructive"*, so a
     ledger that only grows is written without replacing it."""
+    return _write_file_intent(content)[:3]
+
+
+def _write_file_intent(content: str) -> Tuple[str, str, bool, bool]:
+    """`B1783`. `_write_file_call`'s reading, and one thing more:
+    `declared_clear`, whether the call says the file is to be empty, which is
+    a JSON `content` that is a string with nothing in it. A path line with
+    nothing after it (`path\\n`, or the path alone) and a JSON object whose
+    `content` is missing or `null` are what a call looks like when a parser
+    lost its body, so none of them declares anything. A `null` body is empty,
+    never the four bytes `None`; a `content` that is not a string (an object,
+    a list) is written as JSON, the characters it is (`B1727`), never as a
+    Python repr."""
     lines = content.split("\n", 1)
     raw_path = lines[0].strip()
     body = lines[1] if len(lines) > 1 else ""
     append = False
+    declared_clear = False
     # Decode JSON-object args (the fenced inline-args shape
     # ```write_file {"path": "...", "content": "..."}```), matching
     # ReadFileTool above. Without this the whole JSON string becomes the
@@ -206,11 +236,14 @@ def _write_file_call(content: str) -> Tuple[str, str, bool]:
             _a = json.loads(_stripped)
             if isinstance(_a, dict) and "path" in _a:
                 raw_path = str(_a.get("path", "")).strip()
-                body = str(_a.get("content", ""))
+                given = _a.get("content")
+                declared_clear = isinstance(given, str) and not given.strip()
+                body = ("" if given is None else given if isinstance(given, str)
+                        else json.dumps(given, ensure_ascii=False))
                 append = str(_a.get("append")).lower() == "true"
         except (json.JSONDecodeError, TypeError, ValueError):
             pass
-    return raw_path, body, append
+    return raw_path, body, append, declared_clear
 
 
 def _previous_text(open_text) -> str:
@@ -234,6 +267,67 @@ def _write_result(path: str, old: str, body: str, append: bool = False) -> Dict[
     if diff:
         result["diff"] = diff
     return result
+
+
+class _EmptyBodyWouldTruncate(Exception):
+    """`B1783`. Raised in the write's worker thread when a body the call did
+    not declare empty is about to replace a file that holds bytes."""
+
+    def __init__(self, path: str, existing_bytes: int):
+        super().__init__(path)
+        self.path = path
+        self.existing_bytes = existing_bytes
+
+
+def _empty_body_refusal(path: str, raw_path: str, existing_bytes: int) -> Dict[str, Any]:
+    """`B1783`. What `write_file` answers, here and in the workstation, when a
+    call that carried no file content would have emptied a file holding
+    `existing_bytes`. The likely case comes first: the body was lost on the way
+    (a parser cut it, or the key was misnamed), so the call should be sent
+    again with the text. The clear comes second, because a model that pasted
+    it back after losing its body would empty the file after all. It is JSON
+    whatever the path holds (a quote, a backslash), and it works as sent."""
+    clear = json.dumps({"path": raw_path, "content": ""})
+    return {"error": (f"write_file: the call carried no file content, so nothing was written "
+                      f"and the file is unchanged ({path} holds {existing_bytes} bytes). Send "
+                      f"it again with the file's text in \"content\". If you mean to empty "
+                      f"the file, send exactly: {clear}"),
+            "exit_code": 1}
+
+
+def _held_bytes(path: str) -> Optional[int]:
+    """The size on disk of the regular file at `path`, or `None` when there is
+    none. On disk, not `_previous_text`'s read, which is "" for a file that is
+    not UTF-8 text however many bytes it holds."""
+    return os.path.getsize(path) if os.path.isfile(path) else None
+
+
+def _write_empty_body(path: str, body: str) -> Optional[bool]:
+    """`B1783`. Write a body the call did not declare empty ("" or blank)
+    without cutting a file that holds data, and answer whether a file was
+    there: `False` when this made it, `True` when it was a 0-byte file (which
+    loses nothing), or `None` when what is there is not a file (a folder),
+    which the plain `open(path, "w")` then answers for as it always has.
+    Over a file that holds bytes it raises `_EmptyBodyWouldTruncate`.
+
+    Nothing here opens a file in a mode that cuts it: a missing file is made
+    with an exclusive create, and a 0-byte one is added to. So a writer that
+    puts bytes there between the look and the write keeps them."""
+    held = _held_bytes(path)
+    if held is None:
+        try:
+            with open(path, "x", encoding="utf-8") as f:
+                f.write(body)
+            return False
+        except FileExistsError:
+            held = _held_bytes(path)   # made meanwhile, or not a file at all
+            if held is None:
+                return None
+    if held:
+        raise _EmptyBodyWouldTruncate(path, held)
+    with open(path, "a", encoding="utf-8") as f:
+        f.write(body)
+    return True
 
 
 class EditFileTool:
@@ -300,11 +394,14 @@ class ReadFileTool:
 class WriteFileTool:
     async def execute(self, content: str, ctx: dict) -> dict:
         from src.tool_execution import _resolve_tool_path, _resolve_search_root, _truncate
-        raw_path, body, append = _write_file_call(content)
+        raw_path, body, append, declared_clear = _write_file_intent(content)
         try:
             path = _resolve_tool_path(raw_path)
         except ValueError as e:
             return {"error": f"write_file: {e}", "exit_code": 1}
+        # `B1783`: a body that is empty or blank, from a call that did not say
+        # the file is to be empty — a body lost on the way.
+        undeclared_empty = not append and not body.strip() and not declared_clear
         try:
             def _write():
                 old = _previous_text(lambda: open(path, "r", encoding="utf-8"))
@@ -313,11 +410,17 @@ class WriteFileTool:
                 d = os.path.dirname(path)
                 if d:
                     os.makedirs(d, exist_ok=True)
+                if undeclared_empty:
+                    was = _write_empty_body(path, body)
+                    if was is not None:
+                        return old, was
                 # `B1672`: an append keeps every byte the file had.
                 with open(path, "a" if append else "w", encoding="utf-8") as f:
                     f.write(body)
                 return old, there
             old_content, was_there = await asyncio.to_thread(_write)
+        except _EmptyBodyWouldTruncate as e:
+            return _empty_body_refusal(e.path, raw_path, e.existing_bytes)
         except PermissionError:
             return {"error": f"write_file: {path}: permission denied", "exit_code": 1}
         except OSError as e:

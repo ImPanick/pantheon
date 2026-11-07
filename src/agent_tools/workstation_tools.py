@@ -788,29 +788,42 @@ async def _read_file(content: str, st: _Station) -> Dict:
 
 
 async def _write_file(content: str, st: _Station) -> Dict:
-    raw_path, body, append = fs._write_file_call(content)
+    raw_path, body, append, declared_clear = fs._write_file_intent(content)
     refused = _path_refusal("write_file", raw_path)
     if refused:
         return refused
     old = ""
+    held = 0
     try:
-        existing = (await _stat_file(st, st.at(raw_path)))["path"]
+        stat = await _stat_file(st, st.at(raw_path))
+        existing, held = stat["path"], int(stat.get("size") or 0)
     except WorkstationError as e:
         if e.code in _STATION_FAILURES or e.code == "outside_home":
             return _file_answer("write_file", e)
         existing = None   # not there yet, or not a file: the diff shows it new
+    keep = append
     if existing is not None:
         if _sensitive(existing):
             return {"error": f"write_file: {_sensitive_message(raw_path)}", "exit_code": 1}
+        if not append and not body.strip() and not declared_clear:
+            # `B1783`: the host's rule (`fs._write_empty_body`), on the size
+            # the daemon's stat gave. A body the call did not declare empty
+            # is refused over a file that holds bytes, and added to a 0-byte
+            # one, so nothing is cut. A missing file is made by the plain
+            # write below (the daemon has no exclusive create).
+            if held:
+                return fs._empty_body_refusal(existing, raw_path, held)
+            keep = True
         # The host rule (`_previous_text`): unreadable as UTF-8 text is "".
         old = await asyncio.to_thread(fs._previous_text, st.text_opener(existing, None))
         if st.failure is not None:
             return st.failure.as_result()
     try:
         # `B1672`: an append the daemon makes itself (`"append"`, in its
-        # protocol from the start), keeping every byte the file had.
+        # protocol from the start), keeping every byte the file had; `B1783`'s
+        # add to a 0-byte file rides on it too, and is answered as a write.
         written = await st.client.write(st.account, existing or st.at(raw_path), body,
-                                        append=append)
+                                        append=keep)
     except WorkstationError as e:
         if e.code == "bad_request" and await _is_dir(st, st.at(raw_path)):
             # The answer `open(path, "w")` gives here, word for word.

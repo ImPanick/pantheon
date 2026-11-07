@@ -1663,7 +1663,7 @@ Read a file and return its contents.""",
 <file path>
 <file contents>
 ```
-Write content to a file. First line is the path, rest is the content. To add to the end of a file instead of replacing it, give `{"path": "<file path>", "content": "<text to add>", "append": true}`.""",
+Write content to a file. First line is the path, rest is the content. To add to the end of a file instead of replacing it, give `{"path": "<file path>", "content": "<text to add>", "append": true}`. An empty body over a file that holds data is refused; to empty a file on purpose, give `{"path": "<file path>", "content": ""}`.""",
 
     "edit_file": """\
 ```edit_file
