@@ -38,6 +38,7 @@ from services.memory.skill_lint import (
 from services.memory.skill_improve import pinned_of as _pinned_of
 from src.auth_helpers import ONLY_A_PERSON_ANSWERS, get_current_user, request_is_a_person
 from src.prompt_security import untrusted_context_message
+from src.text_helpers import strip_closed_think_blocks
 from core.middleware import require_admin, require_operator
 
 logger = logging.getLogger(__name__)
@@ -318,7 +319,7 @@ async def _eval_skill_run(skill_md: str, task: str, transcript: str,
         # Strip closed think blocks. If a <think> was opened but never closed
         # (the model ran out of budget mid-reasoning), drop everything from it
         # onward so its stray braces don't poison JSON extraction.
-        text = _re.sub(r'<think(?:ing)?>[\s\S]*?</think(?:ing)?>', '', text, flags=_re.I)
+        text = strip_closed_think_blocks(text)
         text = _re.sub(r'<think(?:ing)?>[\s\S]*$', '', text, flags=_re.I).strip()
 
         def _coerce(d):
@@ -448,7 +449,7 @@ async def _eval_skill_necessity(skill_md: str, others: list, url: str, model: st
     except Exception as e:
         logger.warning(f"Necessity check failed: {e}")
         return None
-    text = _re.sub(r'<think(?:ing)?>[\s\S]*?</think(?:ing)?>', '', (raw or ''), flags=_re.I)
+    text = strip_closed_think_blocks(raw or '')
     text = _re.sub(r'<think(?:ing)?>[\s\S]*$', '', text, flags=_re.I).strip()
     data = None
     a, b = text.find('{'), text.rfind('}')
@@ -512,7 +513,7 @@ async def _eval_skill_retrieval_precision(skill_md: str, others: list,
     except Exception as e:
         logger.warning(f"Retrieval precision check failed: {e}")
         return None
-    text = _re.sub(r'<think(?:ing)?>[\s\S]*?</think(?:ing)?>', '', (raw or ''), flags=_re.I)
+    text = strip_closed_think_blocks(raw or '')
     text = _re.sub(r'<think(?:ing)?>[\s\S]*$', '', text, flags=_re.I).strip()
     data = None
     a, b = text.find('{'), text.rfind('}')
@@ -1363,7 +1364,7 @@ async def _improve_skill_md(skill_md: str, verdict: dict, transcript: str, url, 
     except Exception as e:
         logger.warning(f"Audit: improve call failed: {e}")
         return None
-    text = _re.sub(r'<think(?:ing)?>[\s\S]*?</think(?:ing)?>', '', (raw or ''), flags=_re.I)
+    text = strip_closed_think_blocks(raw or '')
     text = _re.sub(r'<think(?:ing)?>[\s\S]*$', '', text, flags=_re.I)
     text = _re.sub(r'</think(?:ing)?>', '', text, flags=_re.I).strip()
     if text.startswith("```"):

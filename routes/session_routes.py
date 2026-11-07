@@ -26,6 +26,7 @@ from src.chat_helpers import CHAT_GONE   # `B1216`
 from src.upload_handler import reserve_message_upload_references
 from src.tool_approval_scopes import sanitize_client_message_metadata
 from src.env_flags import request_flag
+from src.text_helpers import strip_closed_think_blocks
 
 
 def _sanitize_export_filename(name: str) -> str:
@@ -1527,8 +1528,9 @@ def setup_session_routes(
             # reasoning-model <think> blocks, and trailing commas.
             text = raw.strip()
             # Reasoning models emit <think>…</think> (often containing { } that
-            # would derail the brace scan) before the answer — drop it first.
-            text = re.sub(r'<think(?:ing)?>[\s\S]*?</think(?:ing)?>', '', text, flags=re.I).strip()
+            # would derail the brace scan) before the answer — drop it first,
+            # in one forward pass (`B1916`).
+            text = strip_closed_think_blocks(text).strip()
 
             def _loads_lenient(s):
                 """Parse JSON, retrying once with trailing commas stripped."""

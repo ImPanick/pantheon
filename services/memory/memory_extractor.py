@@ -1352,8 +1352,9 @@ async def audit_memories(
         # Parse the JSON list, tolerating reasoning-model noise: <think> blocks,
         # markdown fences, leading prose, and trailing commas.
         import re as _re
+        from src.text_helpers import strip_closed_think_blocks
         text = (raw or "").strip()
-        text = _re.sub(r'<think(?:ing)?>[\s\S]*?</think(?:ing)?>', '', text, flags=_re.I).strip()
+        text = strip_closed_think_blocks(text).strip()
 
         def _loads_list(s):
             if not s:
