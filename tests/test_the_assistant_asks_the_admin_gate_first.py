@@ -146,6 +146,15 @@ async def test_every_door_the_route_gates_is_gated_here_and_changes_nothing(
 async def test_an_admin_is_answered_exactly_as_before(task_db, dispatched, monkeypatch, door):
     """`Law 1`."""
     _admin(monkeypatch, True)
+    if door == "run":
+        # `B1874`. `adm` is paused (the resume door needs it so), and a paused
+        # task's run was always recorded `skipped`; the assistant now says so
+        # instead of "triggered" and starts nothing. The gate's question — is
+        # an admin answered as before — is asked of the task switched on.
+        db = task_db()
+        db.query(ScheduledTask).filter(ScheduledTask.id == "adm").update({"status": "active"})
+        db.commit()
+        db.close()
 
     out = await _ask(DOORS[door])
 

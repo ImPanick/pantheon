@@ -1177,9 +1177,51 @@ async def do_manage_tasks(content: str, owner: Optional[str] = None) -> Dict:
             if refused:
                 return refused
 
+            # `B1874`. The questions the run would answer by not running, asked
+            # first, so the reply is never "triggered" for a run then recorded
+            # `skipped` — every drafted or imported workflow is made switched
+            # off with its steps marked, so that was the first run anyone asked
+            # the assistant for. In the Workbench's own order (`runNow`): marks
+            # stop it (`unchecked_refusal`, the switch's sentence); a
+            # switched-off workflow whose steps are checked is TRIED, once, as
+            # a test run (`B1852`) — the Workbench's Run now does exactly that;
+            # a paused plain task says why and points at dry_run.
+            from src import workflow_store as _wstore
+            from src.task_scheduler import not_active_words
+            from src.workflow_document import unchecked_refusal
+            wf = (_wstore.workflow_for_task(db, task.id)
+                  if (task.task_type or "") == "workflow" else None)
+            off = not_active_words(task)
+            if wf is not None:
+                marks = unchecked_refusal(_wstore.stored_graph(wf))
+                if marks is not None:
+                    return {"error": (f"“{wf.name}” was not started. {marks.sentence} A person "
+                                      f"checks each step in the Workbench (Automations → "
+                                      f"“{wf.name}”); dry_run says what it would do meanwhile."),
+                            "workflow_id": wf.id, "exit_code": 1}
+            elif off:
+                return {"error": (f"Task '{task.name}' was not started: {off}. Resume it to run "
+                                  f"it, or dry_run it to see what it would do."), "exit_code": 1}
+
             from src.event_bus import get_task_scheduler
             from src.interactive_gate import tool_call_started_by
             scheduler = get_task_scheduler()
+            if scheduler and wf is not None:
+                # `B1866`: the run's id is chosen here and its row written
+                # before it is spawned, so the reply names a run that can be
+                # read back (`manage_workflows runs`).
+                run_id = str(_uuid.uuid4())
+                started = await scheduler.run_task_now(
+                    task_id, started_by=tool_call_started_by(), run_id=run_id,
+                    test=off is not None)
+                if not started:
+                    return {"error": scheduler.in_flight_sentence(task_id)
+                            or "Task is already running", "workflow_id": wf.id, "exit_code": 1}
+                said = (f"“{wf.name}” is switched off, so this is a test run: it runs once now "
+                        f"and stays off. Switch it on in the Workbench to run it on its start."
+                        if off is not None else f"“{wf.name}” started.")
+                return {"response": said, "run_id": run_id, "workflow_id": wf.id,
+                        "exit_code": 0}
             if scheduler:
                 # `B1061`. Who is asking: a person, when this call was made in a
                 # person's turn (their chat, the teacher inside it, a skill test
