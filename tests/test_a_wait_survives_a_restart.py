@@ -191,11 +191,16 @@ async def test_switched_off_while_it_waited_it_ends_and_says_so(factory):
 
 async def test_the_restart_sweep_aborts_a_running_run_and_ends_its_waiting_steps(factory):
     """ACTIVE runs are aborted (a dead process held them); a step of such a run
-    that was waiting waits for nothing now. A PARKED run is left alone."""
+    that was waiting waits for nothing now. A PARKED run is left alone.
+
+    `B1896`: a workflow run younger than `RESTART_RESUME_MAX_AGE` that was on
+    a step is parked on it instead (`test_a_restart_keeps_what_it_can.py`);
+    this one has been going for two days, and is ended as ever."""
     db = factory()
     from core.database import ScheduledTask
     db.add(ScheduledTask(id="t", owner="alice", name="X", task_type="workflow", status="active"))
-    db.add(TaskRun(id="running", task_id="t", status="running"))
+    db.add(TaskRun(id="running", task_id="t", status="running",
+                   started_at=_utcnow() - timedelta(days=2)))
     db.add(TaskRun(id="parked", task_id="t", status="waiting"))
     db.commit()
     for rid, nid, status in (("running", "a", "waiting"), ("running", "b", "running"),

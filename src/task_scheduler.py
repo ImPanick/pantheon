@@ -21,6 +21,9 @@ from src.event_bus import (
     EVENT_SKILL_ADDED,
     ORIGIN_KIND_TASK,
     ORIGIN_KIND_WORKFLOW,
+    TRIGGER_SOURCE_EVENT,
+    TRIGGER_SOURCE_TEST,
+    TRIGGER_SOURCE_WEBHOOK,
     build_task_handoff as _build_task_handoff,
     run_origin as _run_origin,
     trigger_context_message as _trigger_context_message,
@@ -1785,6 +1788,43 @@ SWITCHED_OFF_WHILE_WAITING = "Switched off while it waited"
 # (`_model_step_problem`).
 MODEL_STEP_WOULD_NOT_RUN = "It would not run: {why}"
 
+# `B1896` (`restart-loses-queued-webhook-and-aborts-running`). What a restart
+# did to a run the last process left in flight. The sweep
+# (`_sweep_runs_left_by_a_restart`) aborted every one: a webhook's run still
+# queued — waiting for a free slot, or for Pantheon to be idle — lost its body
+# (it lived only in that process: the webhook had already answered 202, and
+# nothing sends it again), and a workflow run lost every step after the one it
+# was on, though its finished steps were on disk and a takeover already parks
+# such a run to go on from that step (`TAKEOVER_PARKED`).
+#
+# Now (1) a queued run handed a webhook's or an event's trigger keeps it on its
+# row (`TaskRun.trigger_envelope`, `B1861`'s column) while it waits, for any
+# kind of task, and the next process runs it with that trigger
+# (`_dispatch_runs_queued_before_a_restart`) instead of aborting it. Those are
+# the two triggers that exist nowhere else once taken: a schedule fires again
+# at its time, a person presses again, a chained run's cause is its own row.
+# A run a workflow's *Run task* step started (`inside`) is not one of them:
+# that step runs it again itself. (2) A workflow run that was running is
+# parked as a takeover parks it — the steps it was on `waiting {kind: idle,
+# restarted: true}`, finished steps kept — and the sweeper's existing resume
+# (`_resume_due_waits`) goes on from those steps once Pantheon is idle.
+#
+# Not a run older than `RESTART_RESUME_MAX_AGE`: a webhook from yesterday, or
+# a run that had been going since then, is ended as before rather than acted
+# on a day late; nor a run of a task switched off or deleted meanwhile; nor a
+# workflow run that was on no step (it has nothing to go on from).
+RESTART_REQUEUE_SOURCES = (TRIGGER_SOURCE_WEBHOOK, TRIGGER_SOURCE_EVENT)
+RESTART_RESUME_MAX_AGE = timedelta(hours=24)
+#: The `queued` row's result while it waits to run again, and its log's line.
+REQUEUED_AFTER_RESTART = ("Queued again: Pantheon restarted before this run started, "
+                          "and it runs with what started it.")
+REQUEUED_AFTER_RESTART_STEP = "Queued again after Pantheon restarted"
+#: The slot key that says a run is one of those (`_execute_task_locked`).
+REQUEUED_AFTER_RESTART_KEY = "requeued_after_restart"
+RESTART_PARKED = ("Waiting for Pantheon to be idle: Pantheon restarted while this ran, "
+                  "so the step it was on stopped. It goes on from that step once "
+                  "Pantheon is idle; the steps that finished are kept.")
+
 # `P22-11`. How many deterministic and logic steps of one run run side by side
 # — stated once, in `workflow_runs` beside the walker's other limits, where the
 # palette (`workflow_effects._limits`) reads it too (`integrate-d`: it was
@@ -2768,6 +2808,11 @@ class TaskScheduler:
                 stale = db.query(TaskRun).filter(
                     TaskRun.status.in_(TASK_RUN_ACTIVE_STATUSES)
                 ).all()
+                # `B1896`. A queued run with its webhook's or event's trigger
+                # kept stays queued, to run again (`start`); a workflow run
+                # that was on a step is parked on it. The rest end as before.
+                kept = self._runs_a_restart_keeps(db, stale)
+                stale = [r for r in stale if r.id not in kept]
                 if stale:
                     now = _utcnow()
                     for r in stale:
@@ -2818,6 +2863,187 @@ class TaskScheduler:
         except Exception as e:
             logger.warning(f"Could not clear stale workflow step records on startup: {e}")
 
+    def _runs_a_restart_keeps(self, db, rows) -> set:
+        """`B1896`. Of the runs the last process left queued or running, the
+        ones a restart does not end, each already put as it goes on; answers
+        their ids. A queued run whose webhook's or event's trigger is kept
+        stays `queued` (`REQUEUED_AFTER_RESTART`), for `start` to run again
+        (`_dispatch_runs_queued_before_a_restart`); a workflow run that was on
+        a step is parked on it (`_park_after_restart`). None older than
+        `RESTART_RESUME_MAX_AGE`, and none of a task switched off or deleted.
+        Read with `getattr` throughout: a stand-in row without these columns
+        is simply not kept."""
+        from core.database import ScheduledTask
+
+        kept = set()
+        oldest = _utcnow() - RESTART_RESUME_MAX_AGE
+        for run in rows:
+            try:
+                started = getattr(run, "started_at", None)
+                if started is None or started < oldest:
+                    continue
+                task = db.query(ScheduledTask).filter(ScheduledTask.id == run.task_id).first()
+                if task is None:
+                    continue
+                trigger = self._kept_trigger_of(run)
+                if run.status == "queued":
+                    if (task.status == "active" and trigger is not None
+                            and trigger.get("source") in RESTART_REQUEUE_SOURCES):
+                        run.result = REQUEUED_AFTER_RESTART
+                        db.commit()
+                        kept.add(run.id)
+                elif (task.task_type or "llm") == "workflow":
+                    test = is_test_run(run) or (trigger or {}).get("source") == TRIGGER_SOURCE_TEST
+                    if (task.status == "active" or test) and \
+                            self._park_after_restart(db, task, run, trigger, test=test):
+                        kept.add(run.id)
+            except Exception:
+                logger.warning("Could not keep run %s across the restart; it is ended",
+                               getattr(run, "id", "?"), exc_info=True)
+                try:
+                    db.rollback()
+                except Exception:
+                    logger.debug("Rollback after a failed keep also failed", exc_info=True)
+                kept.discard(getattr(run, "id", None))
+        if kept:
+            logger.info("Kept %d run(s) a restart interrupted, to go on", len(kept))
+        return kept
+
+    @staticmethod
+    def _kept_trigger_of(run) -> dict | None:
+        """`B1896`. The trigger kept on a run's row (`TaskRun.trigger_envelope`),
+        or `None`."""
+        raw = getattr(run, "trigger_envelope", None)
+        if not raw:
+            return None
+        try:
+            trigger = json.loads(raw)
+        except (TypeError, ValueError):
+            return None
+        return trigger if isinstance(trigger, dict) else None
+
+    def _park_after_restart(self, db, task, run, trigger, *, test: bool = False) -> bool:
+        """`B1896`. Park a workflow run a restart interrupted, as a takeover
+        parks one: every step record it had `running` (a For-each's items
+        too) is `waiting {kind: idle, restarted: true}`, its finished records
+        kept, the run `waiting` (`RESTART_PARKED`), and the task's next time
+        moved on as a park moves it (`B1859`: else a scheduled workflow is due
+        again at once, and its tick writes a `skipped` run for a time that
+        already ran). Its log is what the old process had kept on the row —
+        the segment it was in was held only in memory — so the cause is said
+        again from the kept trigger when the row has none, with the *Test
+        run* mark a test's trigger carries, and each stopped step says why.
+        Answers `False`, touching nothing, when no step was running: such a
+        run has nothing to go on from, and ends as before."""
+        from core.database import TaskRunNode
+        from src import workflow_runs as wr
+
+        recs = (db.query(TaskRunNode)
+                .filter(TaskRunNode.run_id == run.id, TaskRunNode.status == "running")
+                .order_by(TaskRunNode.seq).all())
+        if not recs:
+            return False
+        try:
+            steps = json.loads(run.steps) if getattr(run, "steps", None) else []
+        except (TypeError, ValueError):
+            steps = []
+        steps = steps if isinstance(steps, list) else []
+        if not steps and trigger is not None:
+            steps.append(shape_run_step(
+                {"kind": "trigger", "detail": _trigger_summary(trigger),
+                 **({TEST_RUN_KEY: True} if test else {})},
+                max_detail=self._MAX_STEP_DETAIL))
+        for rec in recs:
+            wr.record_node_waiting(db, rec, waiting={"kind": wr.WAITING_IDLE, "restarted": True})
+            if rec.item is None:
+                steps.append(shape_run_step(
+                    {"kind": "node", "node": rec.node_id, "label": rec.label or rec.node_id,
+                     "status": "waiting",
+                     "detail": "Stopped because Pantheon restarted; it runs again once "
+                               "Pantheon is idle"},
+                    max_detail=self._MAX_STEP_DETAIL))
+        run.status = "waiting"
+        run.result = RESTART_PARKED
+        run.error = None
+        run.finished_at = None
+        try:
+            run.steps = json.dumps(steps)
+        except (TypeError, ValueError):
+            logger.warning("Could not keep the step log of run %s across the restart", run.id)
+        self._set_next_run_after(db, task)
+        db.commit()
+        logger.info("Workflow '%s' parked after a restart, on %d step(s)", task.name, len(recs))
+        return True
+
+    async def _dispatch_runs_queued_before_a_restart(self) -> int:
+        """`B1896`. On start: every run the restart sweep left `queued`
+        (`_runs_a_restart_keeps` — the sweep ended every other) runs now, with
+        the trigger kept on its row, under its task's `_executing` claim so the
+        due loop cannot start the task beside it; several of one task run one
+        after another, oldest first. Answers how many it dispatched."""
+        from core.database import SessionLocal, TaskRun
+        from src import workflow_runs as wr
+
+        by_task: dict = {}
+        try:
+            db = SessionLocal()
+            try:
+                rows = (db.query(TaskRun.id, TaskRun.task_id)
+                        .filter(TaskRun.status == "queued")
+                        .order_by(TaskRun.started_at).all())
+                for run_id, task_id in rows:
+                    trigger = wr.stored_run_trigger(db, run_id)
+                    if trigger is not None:
+                        by_task.setdefault(task_id, []).append((run_id, trigger))
+            finally:
+                db.close()
+        except Exception:
+            logger.warning("Could not read the runs a restart left queued", exc_info=True)
+            return 0
+        dispatched = 0
+        for task_id, runs in by_task.items():
+            async with self._executing_lock:
+                if task_id in self._executing:
+                    continue
+                self._executing.add(task_id)
+            asyncio.create_task(self._run_queued_again(task_id, runs))
+            dispatched += len(runs)
+        if dispatched:
+            logger.info("Running %d queued run(s) a restart interrupted", dispatched)
+        return dispatched
+
+    async def _run_queued_again(self, task_id: str, runs) -> None:
+        """`B1896`. Run a task's queued runs a restart interrupted, in order,
+        each on its own row with its kept trigger; then let the claim go."""
+        try:
+            for run_id, trigger in runs:
+                self._state_for(run_id)[REQUEUED_AFTER_RESTART_KEY] = True
+                await self._execute_task(task_id, trigger=trigger, queued_run_id=run_id,
+                                         release_executing=False)
+        finally:
+            async with self._executing_lock:
+                self._executing.discard(task_id)
+
+    def _keep_queued_trigger(self, run_id: str, trigger) -> None:
+        """`B1896`. Keep a webhook's or an event's trigger on its run's row
+        while the run is queued, so a restart before it runs can run it with
+        it (`_runs_a_restart_keeps`). Any other trigger is left alone."""
+        if not isinstance(trigger, dict) or trigger.get("source") not in RESTART_REQUEUE_SOURCES:
+            return
+        from core.database import SessionLocal, TaskRun
+        from src import workflow_runs as wr
+        try:
+            db = SessionLocal()
+            try:
+                run = db.query(TaskRun).filter(TaskRun.id == run_id).first()
+                if run is not None:
+                    wr.keep_run_trigger(run, trigger)
+                    db.commit()
+            finally:
+                db.close()
+        except Exception:
+            logger.warning("Could not keep the trigger of queued run %s", run_id, exc_info=True)
+
     async def start(self):
         # Re-read the concurrency cap here, not just in __init__: the scheduler
         # is constructed at import/wiring time, so a settings change made after
@@ -2830,6 +3056,9 @@ class TaskScheduler:
         # `B1494`. An event or webhook task's retry that the last process was
         # holding when it stopped is armed again, from its run's row.
         self._rearm_pending_retries()
+        # `B1896`. A webhook's or an event's run the sweep left queued runs
+        # now, with the trigger kept on its row.
+        await self._dispatch_runs_queued_before_a_restart()
 
         # Advance next_run for active tasks whose next_run is already in the
         # past. Without this, a restart hits _check_due_tasks() with an empty
@@ -3324,6 +3553,11 @@ class TaskScheduler:
                 trigger = self._take_pending_trigger(task_id)
         run_id = resume_run_id or queued_run_id or self._new_queued_run(task_id)
         resume = resume_run_id is not None
+        # `B1896`. While it is queued, a webhook's or an event's run keeps
+        # that trigger on its row, so a restart before it runs runs it with
+        # it. Not a run a *Run task* step started: that step runs it again.
+        if not resume and not dry and inside is None:
+            self._keep_queued_trigger(run_id, trigger)
         # `B1060`. Background work waits for Pantheon to be idle BEFORE it takes
         # the model slot. A person's run keeps `B1047`'s chat wait, inside
         # `_execute_task_locked`; a dry run and a forced run wait for nothing.
@@ -3413,6 +3647,8 @@ class TaskScheduler:
                 _hold_handle()
                 run_id = self._new_queued_run(task_id)
                 resume, answer = False, None
+                if inside is None:
+                    self._keep_queued_trigger(run_id, trigger)      # `B1896`
         except asyncio.CancelledError:
             # If cancellation happens while queued behind the semaphore,
             # _execute_task_locked never runs and cannot update the Activity row.
@@ -3868,6 +4104,11 @@ class TaskScheduler:
                 run.status = "running"
                 run.started_at = _utcnow()
                 run.result = "Starting…"
+                if (task.task_type or "llm") != "workflow":
+                    # `B1896`. The trigger a queued run kept for a restart is
+                    # let go of once it runs: a restart now ends it, as ever.
+                    # A workflow's stays — `B1861` reads it when it goes on.
+                    run.trigger_envelope = None
                 db.commit()
             else:
                 # Defensive: row may have been wiped; recreate so the rest of
@@ -3919,6 +4160,10 @@ class TaskScheduler:
                            f"“{retry.get('label') or retry.get('node_id')}”",
                     **{RETRY_OF_KEY: retry.get("from_run"),
                        RETRY_FROM_KEY: retry.get("node_id")})
+            # `B1896`. A run a restart put back in the queue says so, after
+            # its cause.
+            if (self._runs().get(run_id) or {}).get(REQUEUED_AFTER_RESTART_KEY) and not resume:
+                self._record_run_step(run_id, kind="progress", detail=REQUEUED_AFTER_RESTART_STEP)
             # `B1060`. A run the queue held for Pantheon to be idle says so, after
             # its cause: "its row says it waited".
             if waited_for_idle > 0:
@@ -7410,10 +7655,12 @@ class TaskScheduler:
                 else:
                     reruns.append((node, rec, None))
             elif kind == wr.WAITING_IDLE:
+                # `B1896`. A step a restart stopped says that, not a takeover.
+                why = ("Pantheon restarted while it ran" if waiting.get("restarted")
+                       else "Pantheon became active while it ran, so it was stopped and waited")
                 self._record_run_step(
                     w.run_id, kind="progress",
-                    detail=(f"“{node.get('label')}” runs again: Pantheon became active "
-                            f"while it ran, so it was stopped and waited"))
+                    detail=f"“{node.get('label')}” runs again: {why}")
                 reruns.append((node, rec, None))
             elif kind == wr.WAITING_APPROVAL:
                 verdict = self._approval_verdict(w, rec, waiting, answer, now=now)
