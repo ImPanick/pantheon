@@ -421,7 +421,7 @@ export function initTurnSheet(doc) {
     if (node && node.tagName === 'BUTTON') node.addEventListener('click', () => paint(d));
   }
   // And for a change nobody clicked: a 409 writing `.active` straight onto the
-  // buttons, `applyModeToToggles` half a second after a mode change, the
+  // buttons, `applyModeToToggles` on a mode switch made in code, the
   // context wheel filling in when a turn ends.
   if (typeof MutationObserver !== 'undefined') {
     const obs = new MutationObserver(() => paint(d));
