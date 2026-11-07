@@ -1188,11 +1188,14 @@ class ManageDocumentTool:
                     # or the name of the file it was made from — the library's
                     # own rule, so "board pack acme" finds what the person sees
                     # under that name in that folder, words in any order.
+                    # `B1995`: and literally, as the library reads it: `%` and
+                    # `_` in a word are not wildcards.
+                    from src.session_search import escape_like_pattern
                     for tok in str(args["search"]).split():
-                        term = f"%{tok}%"
-                        q = q.filter(Document.title.ilike(term)
-                                     | Document.folder.ilike(term)
-                                     | Document.source_name.ilike(term))
+                        term = f"%{escape_like_pattern(tok)}%"
+                        q = q.filter(Document.title.ilike(term, escape="\\")
+                                     | Document.folder.ilike(term, escape="\\")
+                                     | Document.source_name.ilike(term, escape="\\"))
                 if args.get("language"):
                     q = q.filter(Document.language == args["language"])
                 # `P21-02`. One folder (`folder`), or the Unfiled ones (`unfiled`).

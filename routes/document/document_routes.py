@@ -14,6 +14,7 @@ from core.database import SessionLocal, Document, DocumentVersion
 from core.database import Session as DbSession
 from src.auth_helpers import get_current_user
 from src.chat_helpers import CHAT_GONE   # `B1216`
+from src.session_search import escape_like_pattern   # `B1995`, as the chat and Gallery searches (`B2004`)
 from src.upload_handler import reserve_upload_references
 # `P21-03`: one answer to "what is this file called" for every door.
 from src.file_names import (
@@ -667,14 +668,18 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
             # what is filed in Clients/Acme, and the name of the file the
             # document was made from (`P21-03`'s `source_name`), so "pdf" or a
             # word only in the file's own name finds it too.
+            #
+            # `B1995`: a term is matched literally. `%` and `_` in it were LIKE
+            # wildcards, so "100%" also found "1000" and "_" found everything;
+            # escaped as the chat search escapes them.
             if search:
                 for tok in search.split():
-                    term = f"%{tok}%"
+                    term = f"%{escape_like_pattern(tok)}%"
                     q = q.filter(
-                        Document.title.ilike(term)
-                        | Document.current_content.ilike(term)
-                        | Document.folder.ilike(term)
-                        | Document.source_name.ilike(term)
+                        Document.title.ilike(term, escape="\\")
+                        | Document.current_content.ilike(term, escape="\\")
+                        | Document.folder.ilike(term, escape="\\")
+                        | Document.source_name.ilike(term, escape="\\")
                     )
 
             if folder_cond is not None:   # `P21-01`, scoped above
