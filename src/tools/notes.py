@@ -317,7 +317,12 @@ async def do_manage_notes(content: str, owner: Optional[str] = None) -> Dict:
 
         elif action == "toggle_item":
             note_id = args.get("id", "")
-            index = args.get("index", 0)
+            # `B1816`: no index flipped the first item and said so, `true` the
+            # second, and `remove_item` naming an item by its text lands here.
+            index = args.get("index")
+            if isinstance(index, bool) or not isinstance(index, int):
+                return {"error": "toggle_item needs the item's index (0-based); view the note to "
+                                 "see each item's number. Nothing changed.", "exit_code": 1}
             note = _note_by_prefix(note_id)
             if not note:
                 return {"error": f"Note '{note_id}' not found", "exit_code": 1}

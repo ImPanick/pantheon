@@ -6,6 +6,8 @@ import types
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
+import pytest
+
 from src import tool_implementations
 
 
@@ -119,3 +121,28 @@ def test_update_allows_matching_owner(monkeypatch):
     assert result["exit_code"] == 0
     assert note.title == "Changed"
     assert db.commits == 1
+
+
+@pytest.mark.parametrize("args", [
+    pytest.param({"action": "toggle_item"}, id="no-index"),
+    pytest.param({"action": "toggle_item", "index": None}, id="null"),
+    pytest.param({"action": "toggle_item", "index": True}, id="true"),
+    pytest.param({"action": "toggle_item", "index": "1"}, id="digit-string"),
+    pytest.param({"action": "toggle_item", "index": 1.0}, id="float"),
+    pytest.param({"action": "remove_item", "item": "milk"}, id="remove-item-by-its-text"),
+])
+def test_a_toggle_without_an_item_index_changes_nothing_and_asks_for_one(monkeypatch, args):
+    """`B1816`. With no index the tool flipped the first item and said it was
+    done, and `true` flipped the second. `remove_item`, a model's likeliest
+    call to name an item by its text, lands in the same branch. Upstream
+    Odysseus refused these in e5e23e64."""
+    items = [{"text": "eggs", "done": False}, {"text": "milk", "done": False}]
+    note = _note(owner="alice", note_type="checklist", items=json.dumps(items))
+    db = _install_fakes(monkeypatch, note)
+
+    result = _run({"id": "abc12345", **args})
+
+    assert result["exit_code"] == 1
+    assert "index" in result["error"] and "Nothing changed" in result["error"]
+    assert json.loads(note.items) == items
+    assert db.commits == 0
