@@ -355,7 +355,11 @@ def test_at_the_larger_text_size_a_docked_pane_ends_at_the_bottom(run):
     for key in ("zoomNotes", "notesAtDefault"):
         got = run[key]
         assert got is not None, f"{key}: Notes did not dock"
-        assert got["top"] == 0 and got["bottom"] == got["screen"], (key, got)
+        # The cockpit docks Notes inside its frame's 18px gutter (alignment
+        # audit 2026-11-07, `rail-7`), scaled with the text size: the pane
+        # still runs the screen's height, with the same gap above and below.
+        gap_top, gap_bottom = got["top"], got["screen"] - got["bottom"]
+        assert 0 <= gap_top <= 24 and abs(gap_top - gap_bottom) <= 1, (key, got)
 
 
 # ── B952 ───────────────────────────────────────────────────────────────────
