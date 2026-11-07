@@ -89,6 +89,10 @@ STORES: dict[tuple[str, str], tuple[str, str]] = {
                  "switched off; `_load` answers a damaged file with an empty store "
                  "so injection keeps working, and that empty store must never be "
                  "saved over it"),
+    ("src/mail_tls.py", "pins_path"): (
+        GUARDED, "`B2096`. The mail server certificates each member's accounts trust, "
+                 "and the only record of what a private mail server looked like: an "
+                 "empty file saved over a damaged one would pin whatever answered next"),
 
     # ── strict-read: the read raises, so the write never happens ─────────────
     ("src/upload_handler.py", "uploads_db_path"): (
@@ -162,6 +166,7 @@ GUARDED_NAMES: dict[str, tuple[str, str]] = {
     "PREFS_FILE": ("routes/prefs_routes.py", "PREFS_FILE"),
     "INTEGRATIONS_FILE": ("src/integrations.py", "DATA_FILE"),
     "AUTH_FILE": ("core/auth.py", "self.auth_path"),
+    "MAIL_TLS_PINS_FILE": ("src/mail_tls.py", "pins_path"),
 }
 GUARDED_BASENAMES: dict[str, tuple[str, str]] = {
     "settings.json": ("src/settings.py", "SETTINGS_FILE"),
@@ -169,6 +174,7 @@ GUARDED_BASENAMES: dict[str, tuple[str, str]] = {
     "user_prefs.json": ("routes/prefs_routes.py", "PREFS_FILE"),
     "integrations.json": ("src/integrations.py", "DATA_FILE"),
     "auth.json": ("core/auth.py", "self.auth_path"),
+    "mail_tls_pins.json": ("src/mail_tls.py", "pins_path"),
 }
 
 # Plain writes onto a guarded store that are known and filed rather than fixed,

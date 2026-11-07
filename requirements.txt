@@ -58,14 +58,15 @@ httpx==0.28.1
 # transport layer httpx sits on; do not move this pin to 2.x without moving
 # httpx with it.
 httpcore==1.0.9
-# Not imported: httpx and httpcore above check HTTPS against its CA bundle,
-# a model provider's calls among them (`src/tls_overrides.llm_verify` falls
-# through to httpx's default), and nothing here imports it; httpx2 below uses
-# the system's store instead. `B1925`: every release from 2025.11.12 to
-# 2026.7.22 still trusts emSign ECC Root CA - G3, a root of the eMudhra
-# incident, and with no pin a venv kept the bundle it was made with, since the
-# launchers reinstall only when this file changes and never upgrade. Floor
-# before pinning: >=2026.10.19 (upstream #6785), raised to >=2026.10.23
+# Imported by `src/mail_tls.py` (`B2096`), which checks a public mail server's
+# certificate against its CA bundle as well as the system's. httpx and httpcore
+# above check HTTPS against it too, a model provider's calls among them
+# (`src/tls_overrides.llm_verify` falls through to httpx's default); httpx2
+# below uses the system's store instead. `B1925`: every release from
+# 2025.11.12 to 2026.7.22 still trusts emSign ECC Root CA - G3, a root of the
+# eMudhra incident, and with no pin a venv kept the bundle it was made with,
+# since the launchers reinstall only when this file changes and never upgrade.
+# Floor before pinning: >=2026.10.19 (upstream #6785), raised to >=2026.10.23
 # (#6791). Do not pin below 2026.10.19.
 certifi==2026.10.23
 # Floor before pinning: >=2.13.4 (pydantic) and >=2.14.1 (pydantic-settings).

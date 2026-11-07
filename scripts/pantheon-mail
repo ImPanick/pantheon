@@ -70,7 +70,7 @@ try:
     from routes.email_helpers import (
         _imap, _get_email_config, _decode_header,
         _extract_text, _extract_html,
-        _list_attachments_from_msg,
+        _list_attachments_from_msg, _send_smtp_message,
     )
     from routes.email_pollers import (
         _scheduled_poll_once, _run_auto_summarize_once,
@@ -293,7 +293,6 @@ def cmd_poll_summary(args) -> None:
 
 def cmd_send(args) -> None:
     """Send a message via SMTP. Body is read from stdin."""
-    import smtplib
     from email.mime.text import MIMEText
     from email.mime.multipart import MIMEMultipart
 
@@ -329,9 +328,10 @@ def cmd_send(args) -> None:
         }, args)
         return
 
-    with smtplib.SMTP_SSL(cfg["smtp_host"], int(cfg["smtp_port"] or 465)) as smtp:
-        smtp.login(cfg["smtp_user"], cfg["smtp_password"])
-        smtp.sendmail(cfg["from_address"], recipients, outer.as_string())
+    # `B2096`: the routes' own sender, which opens the account's security mode
+    # and checks the server's certificate before it signs in. This opened
+    # `SMTP_SSL` with no context, which trusts whoever answers.
+    _send_smtp_message(cfg, cfg["from_address"], recipients, outer.as_string())
     emit({"ok": True, "from": cfg["from_address"], "recipients": recipients}, args)
 
 

@@ -39,6 +39,7 @@ from src.file_names import display_name, mime_attachment_disposition, stored_nam
 from src.secret_storage import decrypt as _decrypt
 
 from src import mail_auth as _mail_auth
+from src import mail_tls as _mail_tls  # `B2096`: which certificate gets a password
 
 logger = logging.getLogger(__name__)
 
@@ -225,6 +226,11 @@ def _send_smtp_message(cfg: dict, from_addr: str, recipients: list[str], message
     send to a mail server that was not there waited the whole 30 s before the
     pollers or the send route could say so; `P23-07` made this split for the
     IMAP opener below and `B1230` for the agent's own SMTP opener.
+
+    `B2096`: the TLS is opened with `src/mail_tls.py`'s context for the host,
+    and the certificate is checked before the sign-in, so an impostor on the
+    path is refused before it reads the password. `cfg["owner"]` names whose
+    pins are read: the account's owner, as `_get_email_config` sets it.
     """
     host = cfg["smtp_host"]
     port = int(cfg.get("smtp_port") or 465)
@@ -250,9 +256,14 @@ def _send_smtp_message(cfg: dict, from_addr: str, recipients: list[str], message
                 pass
 
     security = _smtp_security_mode(cfg)
+    owner = str(cfg.get("owner") or "")
 
     if security == "ssl":
-        with smtplib.SMTP_SSL(host, port, timeout=opening) as smtp:
+        context = _mail_tls.context_for(owner, host, port)
+        with _mail_tls.handshake(host, port):
+            smtp_ssl = smtplib.SMTP_SSL(host, port, timeout=opening, context=context)
+        with smtp_ssl as smtp:
+            _mail_tls.check_connection(smtp, owner, host, port)
             _opened(smtp)
             _auth_smtp(smtp)
             smtp.sendmail(from_addr, recipients, message)
@@ -260,7 +271,9 @@ def _send_smtp_message(cfg: dict, from_addr: str, recipients: list[str], message
 
     with smtplib.SMTP(host, port, timeout=opening) as smtp:
         if security == "starttls":
-            smtp.starttls()
+            with _mail_tls.handshake(host, port):
+                smtp.starttls(context=_mail_tls.context_for(owner, host, port))
+            _mail_tls.check_connection(smtp, owner, host, port)
         _opened(smtp)
         _auth_smtp(smtp)
         smtp.sendmail(from_addr, recipients, message)
@@ -273,6 +286,8 @@ def _mail_door_failure(host: str, port, error: object) -> str | None:
     import socket
     import ssl
 
+    if isinstance(error, _mail_tls.MailCertificateError):   # `B2096`: its own sentence
+        return str(error)
     if isinstance(error, smtplib.SMTPConnectError):   # it did not greet as SMTP
         return _smtp_send_failure(host, port, error)   # `P23-08`'s sentence, said once
     cause = error.__context__ if isinstance(error, smtplib.SMTPServerDisconnected) else None
@@ -1334,6 +1349,9 @@ def _get_email_config(account_id: str | None = None, owner: str = "") -> dict:
                 cfg = {
                     "account_id": row.id,
                     "account_name": row.name,
+                    # `B2096`: whose certificate pins the connections read
+                    # (`src/mail_tls.py`), the account's owner whoever asks.
+                    "owner": row.owner or "",
                     "smtp_host": row.smtp_host or "",
                     "smtp_port": int(row.smtp_port or 465),
                     "smtp_security": _smtp_security_mode({"smtp_security": getattr(row, "smtp_security", ""), "smtp_port": row.smtp_port}),
@@ -1376,6 +1394,7 @@ def _get_email_config(account_id: str | None = None, owner: str = "") -> dict:
     cfg = {
         "account_id": resolved_id,
         "account_name": "legacy",
+        "owner": "",   # `B2096`: the install's one mailbox, nobody's own pins
         "smtp_host": _v("smtp_host", "SMTP_HOST"),
         "smtp_port": int(_v("smtp_port", "SMTP_PORT", "465") or 465),
         "smtp_security": _smtp_security_mode({
@@ -1492,8 +1511,15 @@ def _open_imap_connection(
     starttls: bool,
     timeout: int = _IMAP_TIMEOUT_SECONDS,
     ssl_context=None,
+    owner: str = "",
 ):
-    """Open an IMAP connection using the configured security mode."""
+    """Open an IMAP connection using the configured security mode.
+
+    `B2096`: the TLS is opened with `src/mail_tls.py`'s context for the host
+    unless the caller hands one in, and the certificate is checked before the
+    connection is returned, so no caller can sign in to a server it has not
+    checked. `owner` names whose pins are read.
+    """
     port = int(port or 993)
     # `B1963`: 993 is implicit TLS (RFC 8314), so the port wins over a STARTTLS
     # flag left on (the column default, and the form's for a custom host): a
@@ -1503,13 +1529,13 @@ def _open_imap_connection(
         starttls = False
     full = timeout
     timeout = min(full, _IMAP_CONNECT_SECONDS) if full else _IMAP_CONNECT_SECONDS
+    if starttls or port == 993:
+        ssl_context = ssl_context or _mail_tls.context_for(owner, host, port)
     if starttls:
         conn = _imap_greeted(imaplib.IMAP4, host, port, timeout=timeout)
         try:
-            if ssl_context:
+            with _mail_tls.handshake(host, port):
                 conn.starttls(ssl_context=ssl_context)
-            else:
-                conn.starttls()
         except Exception:
             # Don't leak the open plain socket if the STARTTLS upgrade is
             # rejected; close it before propagating. (#3174)
@@ -1518,9 +1544,12 @@ def _open_imap_connection(
             except Exception:
                 pass
             raise
+        _mail_tls.check_connection(conn, owner, host, port)
     elif port == 993:
-        kwargs = {"ssl_context": ssl_context} if ssl_context else {}
-        conn = _imap_greeted(imaplib.IMAP4_SSL, host, port, timeout=timeout, **kwargs)
+        with _mail_tls.handshake(host, port):
+            conn = _imap_greeted(imaplib.IMAP4_SSL, host, port, timeout=timeout,
+                                 ssl_context=ssl_context)
+        _mail_tls.check_connection(conn, owner, host, port)
     else:
         conn = _imap_greeted(imaplib.IMAP4, host, port, timeout=timeout)
     try:
@@ -1562,6 +1591,7 @@ def _imap_connect(account_id: str | None = None, owner: str = "",
         cfg["imap_port"],
         starttls=bool(cfg.get("imap_starttls")),
         timeout=timeout,
+        owner=str(cfg.get("owner") or ""),
     )
     try:
         _mail_auth.authenticate_imap(conn, cfg)

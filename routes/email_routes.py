@@ -41,6 +41,7 @@ from fastapi import APIRouter, Query, UploadFile, File, BackgroundTasks, HTTPExc
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from src.constants import DATA_DIR
 from src import mail_auth, providers
+from src import mail_tls as _mail_tls  # `B2096`: which certificate gets a password
 
 from src.llm_core import llm_call_async
 from src.upload_limits import read_upload_limited, resolve_byte_limit
@@ -5278,6 +5279,7 @@ def setup_email_routes():
         _smtp_security = cfg.get("smtp_security")
         _smtp_user = cfg["smtp_user"]
         _smtp_pw = cfg["smtp_password"]
+        _pins_owner = cfg.get("owner") or ""   # `B2096`: the account owner's certificate pins
         _recipients = list(recipients)
         _to_label = req.to
         _subject = req.subject
@@ -5303,6 +5305,7 @@ def setup_email_routes():
                         "smtp_user": _smtp_user,
                         "smtp_password": _smtp_pw,
                         "account_id": _account_id,
+                        "owner": _pins_owner,
                         "oauth_provider": _oauth_provider,
                         "oauth_access_token": _oauth_access_token,
                         "oauth_refresh_token": _oauth_refresh_token,
@@ -6534,7 +6537,7 @@ def setup_email_routes():
                 try:
                     row = db.get(EmailAccount, acc_id)
                     if not row:
-                        return None
+                        return None, ""
                     saved_body = {
                         "imap_host": row.imap_host or "",
                         "imap_port": row.imap_port or 993,
@@ -6557,11 +6560,13 @@ def setup_email_routes():
                             continue
                         if value not in (None, ""):
                             saved_body[key] = value
-                    return saved_body
+                    # `B2096`: the pins a saved account's connections read are
+                    # its owner's, so its Test reads and records those.
+                    return saved_body, (row.owner or "")
                 finally:
                     db.close()
             # `B1223`: the saved account is read off the event loop.
-            saved = await asyncio.to_thread(_saved_body)
+            saved, pin_owner = await asyncio.to_thread(_saved_body)
             if saved is None:
                 return {"ok": False, "imap": {"ok": False, "error": "Account not found"}}
             body = saved
@@ -6569,17 +6574,26 @@ def setup_email_routes():
             # OAuth state belongs to a saved, owner-checked account. Do not let
             # inline test payloads select the OAuth branch or supply token data.
             body = {key: value for key, value in body.items() if key not in _SERVER_OWNED_OAUTH_FIELDS}
+            # `B2096`: an account not saved yet is saved as the caller's.
+            pin_owner = owner or ""
 
         # `B1921`: the connections are made off the event loop, in the Test's
         # own pool, carrying this request's context as `asyncio.to_thread` does.
         return await asyncio.get_running_loop().run_in_executor(
-            _ACCOUNT_TEST_POOL, contextvars.copy_context().run, _probe_account_connections, body)
+            _ACCOUNT_TEST_POOL, contextvars.copy_context().run, _probe_account_connections,
+            body, pin_owner)
 
-    def _probe_account_connections(body: dict) -> dict:
+    def _probe_account_connections(body: dict, pin_owner: str = "") -> dict:
         """`B1921`. The blocking half of `POST /api/email/accounts/test`: connect
         to the IMAP and SMTP servers in `body`, sign in, and say how each went.
         Runs in `_ACCOUNT_TEST_POOL`; the sign-in check, the owner check and the
-        saved account's read stay in the route."""
+        saved account's read stay in the route.
+
+        `B2096`: each half opens its TLS the way the account's own connections
+        will (`src/mail_tls.py`, under `pin_owner`'s pins), so a certificate the
+        Test passes is one the inbox and the sender accept. A refused one comes
+        back as the half's `certificate` (`mail_tls.offer`), which the form
+        reads to offer *Trust this certificate*."""
         imap_result = {"ok": False}
         smtp_result = None
 
@@ -6599,11 +6613,10 @@ def setup_email_routes():
 
         oauth_token = None
         oauth_token_loaded = False
-        google_ssl_context = (
-            ssl.create_default_context()
-            if oauth_record is not None
-            else None
-        )
+        # `B2096`: no context of the Test's own. An OAuth provider's host is
+        # public, so `mail_tls.context_for` checks its authority as this
+        # route's `ssl.create_default_context()` did, and every other host now
+        # gets the check its own connections get.
 
         def _oauth_token():
             nonlocal oauth_token, oauth_token_loaded
@@ -6636,16 +6649,12 @@ def setup_email_routes():
             # port (Dovecot on 31143, etc.) would always fail the SSL
             # handshake because they're not actually wrapped in TLS.
             try:
-                imap_kwargs = {
-                    "starttls": imap_starttls,
-                    "timeout": _IMAP_TIMEOUT_SECONDS,
-                }
-                if google_ssl_context:
-                    imap_kwargs["ssl_context"] = google_ssl_context
                 conn = _open_imap_connection(
                     imap_host,
                     imap_port,
-                    **imap_kwargs,
+                    starttls=imap_starttls,
+                    timeout=_IMAP_TIMEOUT_SECONDS,
+                    owner=pin_owner,
                 )
                 try:
                     if oauth_record is not None:
@@ -6659,6 +6668,11 @@ def setup_email_routes():
                     except Exception: pass
             except Exception as e:
                 imap_result = {"ok": False, "error": _friendly_email_auth_error("IMAP", imap_host, e, port=imap_port)}
+                # `B1963`'s rule for which TLS the port takes, as the opener reads it.
+                imap_tls = "ssl" if imap_port == 993 else ("starttls" if imap_starttls else None)
+                certificate = _mail_tls.offer(e, "imap", imap_host, imap_port, tls=imap_tls)
+                if certificate:
+                    imap_result["certificate"] = certificate
 
         smtp_host = (body.get("smtp_host") or "").strip()
         smtp_port, smtp_port_err = _coerce_port(body.get("smtp_port"), 465)
@@ -6690,25 +6704,20 @@ def setup_email_routes():
             smtp_signin_seconds = 10
             try:
                 if smtp_security == "ssl":
-                    smtp_kwargs = (
-                        {"context": google_ssl_context}
-                        if google_ssl_context
-                        else {}
-                    )
-                    smtp = smtplib.SMTP_SSL(
-                        smtp_host,
-                        smtp_port,
-                        timeout=_MAIL_CONNECT_SECONDS,
-                        **smtp_kwargs,
-                    )
+                    with _mail_tls.handshake(smtp_host, smtp_port):
+                        smtp = smtplib.SMTP_SSL(
+                            smtp_host,
+                            smtp_port,
+                            timeout=_MAIL_CONNECT_SECONDS,
+                            context=_mail_tls.context_for(pin_owner, smtp_host, smtp_port),
+                        )
+                    _mail_tls.check_connection(smtp, pin_owner, smtp_host, smtp_port)
                 else:
                     smtp = smtplib.SMTP(smtp_host, smtp_port, timeout=_MAIL_CONNECT_SECONDS)
                     if smtp_security == "starttls":
                         try:
-                            if google_ssl_context:
-                                smtp.starttls(context=google_ssl_context)
-                            else:
-                                smtp.starttls()
+                            with _mail_tls.handshake(smtp_host, smtp_port):
+                                smtp.starttls(context=_mail_tls.context_for(pin_owner, smtp_host, smtp_port))
                         except Exception:
                             # STARTTLS failed before the auth cleanup block.
                             # Close the still-open plaintext socket explicitly.
@@ -6718,6 +6727,7 @@ def setup_email_routes():
                                 pass
                             smtp = None
                             raise
+                        _mail_tls.check_connection(smtp, pin_owner, smtp_host, smtp_port)
                 try:
                     smtp.sock.settimeout(smtp_signin_seconds)
                 except (AttributeError, OSError):
@@ -6733,6 +6743,10 @@ def setup_email_routes():
                 smtp_result = {"ok": True}
             except Exception as e:
                 smtp_result = {"ok": False, "error": _friendly_email_auth_error("SMTP", smtp_host, e, port=smtp_port)}
+                smtp_tls = smtp_security if smtp_security in ("ssl", "starttls") else None
+                certificate = _mail_tls.offer(e, "smtp", smtp_host, smtp_port, tls=smtp_tls)
+                if certificate:
+                    smtp_result["certificate"] = certificate
             finally:
                 if smtp is not None:
                     try:
@@ -6748,6 +6762,51 @@ def setup_email_routes():
             "imap": imap_result,
             "smtp": smtp_result,
         }
+
+    @router.post("/accounts/trust-certificate")
+    async def trust_account_certificate(req: Request, owner: str = Depends(require_user)):
+        """`B2096`. Trust the certificate a mail server showed the account
+        form's Test when the Test refused it: `{host, port, fingerprint}`, and
+        the saved account's `account_id` when the form is editing one.
+
+        The pin goes where the account's own connections will read it: the
+        saved account's owner's pins, after the owner check, or the caller's
+        for an account not saved yet. `src/mail_tls.trust` refuses a mail
+        provider's own host, a port out of range and a value that is not a
+        fingerprint. Nothing is connected to here; the form's next Test is
+        the check that the server shows what was trusted.
+        """
+        try:
+            body = await req.json()
+        except Exception:
+            body = None
+        if not isinstance(body, dict):
+            return JSONResponse({"ok": False, "error": "invalid request body"}, status_code=400)
+        pin_owner = owner or ""
+        acc_id = body.get("account_id")
+        if acc_id:
+            def _owner_of_saved():
+                _assert_owns_account(acc_id, owner)
+                from core.database import SessionLocal, EmailAccount
+                db = SessionLocal()
+                try:
+                    row = db.get(EmailAccount, acc_id)
+                    return None if row is None else (row.owner or "")
+                finally:
+                    db.close()
+            found = await asyncio.to_thread(_owner_of_saved)
+            if found is None:
+                return JSONResponse({"ok": False, "error": "Account not found"}, status_code=404)
+            pin_owner = found
+        try:
+            await asyncio.to_thread(
+                _mail_tls.trust, pin_owner, str(body.get("host") or ""),
+                body.get("port"), body.get("fingerprint"))
+        except _mail_tls.MailCertificateError as exc:   # the pin file cannot be read
+            return JSONResponse({"ok": False, "error": str(exc)}, status_code=503)
+        except ValueError as exc:
+            return JSONResponse({"ok": False, "error": str(exc)}, status_code=400)
+        return {"ok": True}
 
     @router.post("/accounts/{account_id}/set-default")
     def set_default_account(account_id: str, owner: str = Depends(require_user)):

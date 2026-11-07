@@ -6496,6 +6496,49 @@ async function initUnifiedIntegrations() {
     const _spinner = '<span style="display:inline-block;width:11px;height:11px;border-radius:50%;border:1.5px solid currentColor;border-top-color:transparent;animation:spin 0.7s linear infinite"></span>';
     const _checkIcon = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>';
 
+    // `B2096`. A certificate the Test refused (`d.imap.certificate`,
+    // `d.smtp.certificate`) can be trusted from the message, on a server no
+    // mail provider runs; the Test then runs again, and passes only if the
+    // server still shows what was trusted.
+    const _offerTrust = (msg, certs) => {
+      const trustBtn = document.createElement('button');
+      trustBtn.type = 'button';
+      trustBtn.className = 'admin-btn-add';
+      trustBtn.style.cssText = 'margin-left:8px;background:transparent;color:var(--accent, var(--red));border-color:color-mix(in srgb, var(--accent, var(--red)) 45%, var(--border));';
+      trustBtn.textContent = certs.length > 1 ? 'Trust these certificates' : 'Trust this certificate';
+      trustBtn.addEventListener('click', async () => {
+        const question = 'Trust only a certificate your own mail server shows. If you did not set up '
+          + 'this server or replace its certificate, something else may be answering for it.';
+        const details = { items: certs.map(c => ({ label: `${c.kind} ${c.host}:${c.port}`, note: c.fingerprint })) };
+        const ok = uiModule.styledConfirm
+          ? await uiModule.styledConfirm(question, { title: 'Trust this certificate?', confirmText: 'Trust', danger: true, details })
+          : window.confirm(question);
+        if (!ok) return;
+        trustBtn.disabled = true;
+        for (const c of certs) {
+          const payload = { host: c.host, port: c.port, fingerprint: c.fingerprint };
+          if (isEdit) payload.account_id = editId;
+          let t = {};
+          try {
+            const r = await fetch('/api/email/accounts/trust-certificate', {
+              method: 'POST', credentials: 'same-origin',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload),
+            });
+            t = await r.json();
+          } catch (e) { t = { error: e.message }; }
+          if (!t.ok) {
+            msg.textContent = t.error || 'The certificate was not trusted.';
+            msg.style.color = 'var(--red)';
+            return;
+          }
+        }
+        el('uf-email-test').click();
+      });
+      msg.appendChild(document.createTextNode(' '));
+      msg.appendChild(trustBtn);
+    };
+
     el('uf-email-test').addEventListener('click', async () => {
       const body = _collectBody();
       // Edit-mode + blank password = use the saved row's stored creds
@@ -6557,6 +6600,10 @@ async function initUnifiedIntegrations() {
           const smtp = d.smtp ? (d.smtp.ok ? ' · SMTP ok' : ` · SMTP: ${d.smtp.error || 'fail'}`) : '';
           msg.textContent = imap + smtp;
           msg.style.color = 'var(--red)';
+          const certs = [['IMAP', d.imap?.certificate], ['SMTP', d.smtp?.certificate]]
+            .filter(([, c]) => c && c.trustable)
+            .map(([kind, c]) => ({ ...c, kind }));
+          if (certs.length) _offerTrust(msg, certs);
         }
       } catch (e) {
         btn.style.background = 'var(--red)';

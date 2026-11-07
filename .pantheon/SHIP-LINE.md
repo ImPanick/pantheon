@@ -379,9 +379,9 @@ Re-measured 2026-10-31, after the forty-fifth wave: **25 filed, 23 closed**, ope
 
 **Direction as of 2026-10-31, after the forty-fifth wave: the open count is rising.**
 
-Re-measured 2026-11-07, after the eightieth wave, the audit of what Odysseus fixed after the fork: **252 filed, 0 closed**, open **60 → 312** — rising, by 235 in this wave, six in the alignment audit's before it and eleven in the seven before that. None closed: 182 rows were ported or found and fixed while porting, each claimed until the owner has tested it, and 53 were filed open, seven of them the owner's call. Four are gates (§ 3): `B1780`, `B1782` and `B1817` are met on the port branch, and `B2096`, no mail connection checking the server's certificate, stands. The window moved on, so its start reads 60. The ship-line composition is 1 of the last 40 `B` rows (`B2063`–`B2102`): `B2096`.
+Re-measured 2026-11-07, after the eightieth wave, the audit of what Odysseus fixed after the fork: **252 filed, 0 closed**, open **60 → 312** — rising, by 235 in this wave, six in the alignment audit's before it and eleven in the seven before that. None closed: 183 rows were ported or found and fixed while porting, each claimed until the owner has tested it, and 52 were filed open, six of them the owner's call. Four are gates (§ 3), and all four are met on the port branch: `B1780`, `B1782`, `B1817`, and `B2096`, no mail connection checking the server's certificate, built on the owner's ruling the same day. The window moved on, so its start reads 60. The ship-line composition is 0 of the last 40 `B` rows (`B2063`–`B2102`): `B2096` was the one, and it is met.
 
-**Direction as of 2026-11-07, after the eightieth wave: the open count is rising, mostly by rows built and claimed until the owner has tested them, and one gate stands.**
+**Direction as of 2026-11-07, after the eightieth wave: the open count is rising, mostly by rows built and claimed until the owner has tested them, and no gate stands.**
 
 ### A second number, which is the one that moves
 
@@ -423,7 +423,7 @@ rows are marked `second-line` in the register.
 
 ---
 
-## 3. The blocking set — twenty-six rows, one open
+## 3. The blocking set — twenty-six rows, all met
 
 Fifteen of 234 open rows when this was written; **seven have since been met and three
 have been added, and the met ones are marked `landed` in the register rather than deleted,
@@ -483,21 +483,23 @@ the shell's own admin gate asks the same of a named person; and measured on the 
 each Forge read where bob is, and starts no `ssh` to a host it names.
 So the set is twenty-two rows, all met, and 245 open rows are *clear by rule,
 not read*.
-**Four were added on 2026-11-07, by the audit of what Odysseus fixed after the fork, and three of them were met on
-the branch that found them.** Each is a fault upstream fixed and Pantheon still had: one request to the MLX image
+**Four were added on 2026-11-07, by the audit of what Odysseus fixed after the fork, and all four were met on the
+branch that found them.** Three are faults upstream fixed and Pantheon still had: one request to the MLX image
 server could run code on the machine serving it, which the Forge binds to every address for a remote or agent-planned
 launch (`B1780`); the agent's grep, glob and ls walked the install's own records, which `B1418` keeps `read_file` away
 from, and printed its TOTP secrets, login tokens and `.app_key` (`B1782`); and an API token of any scope could read and
 rewrite a chat whose id it knew, through the history router `B70` missed, while a teacher's takeover dropped the turn's
 limits (`B1817`). All three are `landed`: built and tested on the port branch and claimed until the owner has tested
-them, so `dev` and `main` keep the faults until it merges. **The fourth stands (`B2096`).** No mail connection checks
-the server's certificate — `imaplib` and `smtplib` take an unverified context when none is passed, and none is — so an
-impostor on the network path reads each account's password or OAuth token, measured on that branch. It is a gate by
-§ 2's first test; what is the owner's to decide is how existing accounts switch over, because checking every server
-cuts off a self-signed one. Two other rows the audit read were nearer the line and are not on it: a sender's image
+them, so `dev` and `main` keep the faults until it merges. **The fourth was met the same day (`B2096`).** No mail
+connection checked the server's certificate — `imaplib` and `smtplib` take an unverified context when none is passed,
+and none was — so an impostor on the network path read each account's password or OAuth token, measured on that
+branch. It is a gate by § 2's first test, and what was the owner's to decide was how existing accounts switch over,
+because checking every server cuts off a self-signed one. The owner ruled split by host: a public host has to show a
+certificate an authority signed for its name, a private host has its first certificate pinned and has to show it from
+then on, and a certificate trusted from the account form's Test is pinned whatever the host. It is `landed` as the
+other three are. Two other rows the audit read were nearer the line and are not on it: a sender's image
 fetched unasked when Reply opened (`B1903`, fixed) or a forward drew it (`B2084`, open) is an unasked fetch beside a
-reader that keeps `ask`, registered as `B1229`'s and `B1259`'s were. So the set is twenty-six rows, twenty-five met and
-one open, and 292 open rows are *clear by rule, not read*. One line of reasoning each below; the row carries the
+reader that keeps `ask`, registered as `B1229`'s and `B1259`'s were. So the set is twenty-six rows, all met, and 292 open rows are *clear by rule, not read*. One line of reasoning each below; the row carries the
 measurement.
 
 ### Security — the control does not hold (5)
@@ -907,7 +909,7 @@ weakest one in this document: it means nobody adjudicated them individually.
 | `B1780` | landed | security | one request to the MLX image server could run code on the machine serving it: a request could name a folder as its model and the server ran the script inside it, with no auth, bound to every address for a remote-host or agent-planned launch. Met 2026-11-07 on the Odysseus port branch, from upstream's advisory `d0d8edf5`: the server serves only the model it was launched with. Claimed until the owner has tested it |
 | `B1782` | landed | security | the agent's grep, glob and ls walked the install's own records, which `B1418` keeps `read_file` away from, and printed the TOTP secrets in `auth.json`, the login tokens in `sessions.json` and `.app_key`. Met 2026-11-07 on the port branch, from upstream's advisory `934d23c0`: the walks ask the rule `read_file` asks. Claimed until the owner has tested it |
 | `B1817` | landed | security | an API token of any scope that knew a chat's id could read and rewrite the chat, through the history router `B70` missed, and a teacher's takeover dropped the turn's `delegated_credential` and outside-content taint. Met 2026-11-07 on the port branch, from upstream's advisory `f88e2d1f`: the router asks the chat scope and the takeover passes both on. Claimed until the owner has tested it |
-| `B2096` | blocking | security | no mail connection checks the server's certificate — `imaplib` and `smtplib` take an unverified context when none is passed, and none is — so an impostor on the network path reads each account's password or OAuth token; measured 2026-11-07. § 2's first test: TLS that accepts any certificate is not doing the job it is named for. The owner's call is how existing accounts switch over, since checking cuts off a self-signed server |
+| `B2096` | landed | security | no mail connection checked the server's certificate — `imaplib` and `smtplib` take an unverified context when none is passed, and none was — so an impostor on the network path read each account's password or OAuth token; measured 2026-11-07. § 2's first test: TLS that accepts any certificate is not doing the job it is named for. Met 2026-11-07 on the port branch, on the owner's ruling (split by host): every mail connection takes `src/mail_tls.py`'s context and checks the certificate before the sign-in, a public host's against the authorities and a private host's against the pin of its first. Claimed until the owner has tested it |
 | `B1798` | tracked | defect | the rule read *plaintext* in its test file's name (`test_web_fetch_plaintext.py`): a feed or an XML API read as empty, fixed on the port branch with the SSRF checks and byte caps still run first |
 | `B1829` | tracked | security | the rule read *require_admin* in "keeping `require_admin` first": a declined or expired MCP sign-in now gets a page that says so, and the callback still asks for an admin before anything and keeps `B1956`'s signed state; fixed on the port branch |
 | `B1900` | tracked | security | a per-person privilege set through the API was stored as sent, so "false" read as on. Admin's own toggles send booleans and numbers, which were stored and read right, so it was a mistyped call's hole and not a control that does not hold; every value is now checked first and a mistype refused by name (port branch) |

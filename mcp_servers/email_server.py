@@ -49,6 +49,7 @@ from src.file_names import display_name as _display_name, stored_name as _stored
 # P18-02/P18-03. In `src/` rather than `routes/` precisely so this process
 # can import it without reaching into a request-handler module.
 from src import mail_auth as _mail_auth
+from src import mail_tls as _mail_tls  # `B2096`: which certificate gets a password
 # `B1232`. The header decode the routes use, so an 8-bit Subject reads the same
 # to the agent as it does in the browser — one definition, in `src/`.
 from src.mail_headers import decode_header as _shared_decode_header
@@ -372,6 +373,10 @@ def _load_config(account: str | None = None) -> dict:
         ),
         "account_id": None,
         "account_name": None,
+        # `B2096`: whose certificate pins this account's connections read
+        # (`src/mail_tls.py`). The row's owner, as the app's `_get_email_config`
+        # reads it, so a pin either process records is the other's too.
+        "owner": "",
     }
 
     raw_rows = _read_accounts_from_db()
@@ -390,6 +395,7 @@ def _load_config(account: str | None = None) -> dict:
     if row:
         cfg["account_id"] = row["id"]
         cfg["account_name"] = row["name"]
+        cfg["owner"] = row.get("owner") or ""
         cfg["imap_host"] = row["imap_host"] or cfg["imap_host"]
         cfg["imap_port"] = int(row["imap_port"] or cfg["imap_port"])
         cfg["imap_user"] = row["imap_user"] or cfg["imap_user"]
@@ -457,21 +463,31 @@ def _imap_connect(account: str | None = None):
     # `B1230`: opened under `EMAIL_CONNECT_TIMEOUT` (connect, TLS, greeting and
     # any STARTTLS upgrade); the session's reads get `EMAIL_SOCKET_TIMEOUT`,
     # set on the socket below once the server has answered.
+    #
+    # `B2096`: the TLS takes `src/mail_tls.py`'s context for the host, and the
+    # certificate is checked before the sign-in below, as the app's own
+    # `_open_imap_connection` does.
+    host, port = cfg["imap_host"], cfg["imap_port"]
+    owner = str(cfg.get("owner") or "")
     if cfg["imap_ssl"]:
-        conn = imaplib.IMAP4_SSL(
-            cfg["imap_host"],
-            cfg["imap_port"],
-            timeout=EMAIL_CONNECT_TIMEOUT,
-        )
+        with _mail_tls.handshake(host, port):
+            conn = imaplib.IMAP4_SSL(
+                host,
+                port,
+                timeout=EMAIL_CONNECT_TIMEOUT,
+                ssl_context=_mail_tls.context_for(owner, host, port),
+            )
+        _mail_tls.check_connection(conn, owner, host, port)
     else:
         conn = imaplib.IMAP4(
-            cfg["imap_host"],
-            cfg["imap_port"],
+            host,
+            port,
             timeout=EMAIL_CONNECT_TIMEOUT,
         )
         if cfg["imap_starttls"]:
             try:
-                conn.starttls()
+                with _mail_tls.handshake(host, port):
+                    conn.starttls(ssl_context=_mail_tls.context_for(owner, host, port))
             except Exception:
                 # Don't leak the open plain socket on a rejected STARTTLS. (#3174)
                 try:
@@ -479,6 +495,7 @@ def _imap_connect(account: str | None = None):
                 except Exception:
                     pass
                 raise
+            _mail_tls.check_connection(conn, owner, host, port)
     if getattr(conn, "sock", None):
         conn.sock.settimeout(EMAIL_SOCKET_TIMEOUT)
     try:
@@ -1420,14 +1437,20 @@ def _smtp_connect(account=None, cfg=None):
     # `B1230`: the same split as `_imap_connect` — opened under
     # `EMAIL_CONNECT_TIMEOUT`, then the socket gets `EMAIL_SOCKET_TIMEOUT` for
     # the login and the send.
+    #
+    # `B2096`: the TLS takes `src/mail_tls.py`'s context for the host, and the
+    # certificate is checked before the sign-in below.
+    host = cfg["smtp_host"]
+    owner = str(cfg.get("owner") or "")
     if security == "starttls":
         conn = smtplib.SMTP(
-            cfg["smtp_host"],
+            host,
             port,
             timeout=EMAIL_CONNECT_TIMEOUT,
         )
         try:
-            conn.starttls()
+            with _mail_tls.handshake(host, port):
+                conn.starttls(context=_mail_tls.context_for(owner, host, port))
         except Exception:
             # Don't leak the open plain socket on a rejected STARTTLS. SMTP has
             # no shutdown(); close() is the low-level socket close (no QUIT). (#3174)
@@ -1436,12 +1459,16 @@ def _smtp_connect(account=None, cfg=None):
             except Exception:
                 pass
             raise
+        _mail_tls.check_connection(conn, owner, host, port)
     elif security == "ssl":
-        conn = smtplib.SMTP_SSL(
-            cfg["smtp_host"],
-            port,
-            timeout=EMAIL_CONNECT_TIMEOUT,
-        )
+        with _mail_tls.handshake(host, port):
+            conn = smtplib.SMTP_SSL(
+                host,
+                port,
+                timeout=EMAIL_CONNECT_TIMEOUT,
+                context=_mail_tls.context_for(owner, host, port),
+            )
+        _mail_tls.check_connection(conn, owner, host, port)
     else:
         conn = smtplib.SMTP(
             cfg["smtp_host"],

@@ -13,10 +13,12 @@ from routes.email_helpers import _send_smtp_message
 class _FakeSMTP:
     calls = []
 
-    def __init__(self, host, port, timeout=None):
+    def __init__(self, host, port, timeout=None, context=None):
         self.host = host
         self.port = port
         self.timeout = timeout
+        # `B2096`: smtplib's own signature. Every TLS dial now hands one in.
+        self.context = context
         self.starttls_called = False
         _FakeSMTP.calls.append(("connect", self.__class__.__name__, host, port))
 
@@ -26,8 +28,9 @@ class _FakeSMTP:
     def __exit__(self, exc_type, exc, tb):
         return False
 
-    def starttls(self):
+    def starttls(self, context=None):
         self.starttls_called = True
+        self.context = context
         _FakeSMTP.calls.append(("starttls", self.host, self.port))
 
     def login(self, user, password):

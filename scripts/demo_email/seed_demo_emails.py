@@ -55,9 +55,19 @@ CACHE_DB = _REPO_ROOT / "data" / "scheduled_emails.db"
 
 
 def _connect() -> imaplib.IMAP4:
-    """Connect + STARTTLS like the app does."""
+    """Connect + STARTTLS like the app does, with its certificate check
+    (`B2096`, `src/mail_tls.py`): the demo Dovecot is a private host, so its
+    first certificate is pinned, under the demo account's owner as the app pins
+    it, and a different one after that is refused before the password goes."""
+    if str(_REPO_ROOT) not in sys.path:
+        sys.path.insert(0, str(_REPO_ROOT))
+    from src import mail_tls
+
+    owner = ""   # `demo_account.OWNER`
     conn = imaplib.IMAP4(HOST, PORT)
-    conn.starttls()
+    with mail_tls.handshake(HOST, PORT):
+        conn.starttls(ssl_context=mail_tls.context_for(owner, HOST, PORT))
+    mail_tls.check_connection(conn, owner, HOST, PORT)
     conn.login(USER, PASSWORD)
     return conn
 

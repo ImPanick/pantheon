@@ -13,12 +13,12 @@ root of the incident, and none came out between the fork (2026-08-20) and
 
 Now `certifi==2026.10.23` is pinned, which also makes an old venv take the new
 bundle on its next launch. It is a pin, not upstream Odysseus's `>=2026.10.19`
-range, because `check-pins.py` refuses a range (`B320`), and it says why it is
-there with nothing importing it (`B1548`). Ported from upstream a98013dd
-(#6785).
+range, because `check-pins.py` refuses a range (`B320`). Ported from upstream
+a98013dd (#6785). It first said why it was there with nothing importing it
+(`B1548`); since `B2096`, `src/mail_tls.py` imports it to check a public mail
+server's certificate, so the note names that importer, and keeps the reason.
 
-Read from the file, through `check-pins.py`'s own functions; nothing here
-imports `certifi`, which would make its `Not imported:` note untrue.
+Read from the file, through `check-pins.py`'s own functions.
 """
 import importlib.util
 import sys
@@ -50,4 +50,4 @@ def test_the_trust_bundle_is_pinned_past_the_emudhra_incident():
     version = tuple(int(part) for part in spec[2:].strip().split(".")[:3])
     assert version >= FLOOR, spec
     note = pins._comment_block_above(path.read_text(encoding="utf-8").splitlines(), number)
-    assert note.startswith("Not imported:") and "emSign" in note, note
+    assert "emSign" in note and "src/mail_tls.py" in note, note

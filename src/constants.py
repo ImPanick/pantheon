@@ -83,6 +83,9 @@ BG_JOBS_FILE = os.path.join(DATA_DIR, "bg_jobs.json")
 # Outbound cooldowns that must survive a restart (`P15-09`). Wall-clock
 # deadlines, not monotonic readings — see the note in src/rate_limiter.py.
 OUTBOUND_STATE_FILE = os.path.join(DATA_DIR, "outbound_state.json")
+# The mail server certificates each member's accounts trust, by SHA-256 (`B2096`,
+# `src/mail_tls.py`): the only record of what a private mail server looked like.
+MAIL_TLS_PINS_FILE = os.path.join(DATA_DIR, "mail_tls_pins.json")
 VAULT_FILE = os.path.join(DATA_DIR, "vault.json")
 TIDY_CALENDAR_STATE_FILE = os.path.join(DATA_DIR, "tidy_calendar_state.json")
 SKILLS_FILE = os.path.join(DATA_DIR, "skills.json")

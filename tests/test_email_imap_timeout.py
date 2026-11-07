@@ -28,16 +28,19 @@ class _FakeSock:
 class _FakeIMAP:
     calls = []
 
-    def __init__(self, host, port, timeout=None):
+    def __init__(self, host, port, timeout=None, ssl_context=None):
         self.host = host
         self.port = port
         self.timeout = timeout
+        # `B2096`: imaplib's own signature. Every TLS dial now hands one in.
+        self.ssl_context = ssl_context
         self.sock = _FakeSock()
         self.starttls_called = False
         _FakeIMAP.calls.append(("connect", self.__class__.__name__, host, port, timeout))
 
-    def starttls(self):
+    def starttls(self, ssl_context=None):
         self.starttls_called = True
+        self.ssl_context = ssl_context
         _FakeIMAP.calls.append(("starttls", self.host, self.port))
 
     def login(self, user, password):
@@ -103,7 +106,7 @@ async def test_account_config_uses_shared_imap_timeout(monkeypatch):
         def logout(self):
             captured["logout"] = True
 
-    def fake_open(host, port, *, starttls, timeout):
+    def fake_open(host, port, *, starttls, timeout, owner=""):
         captured["open"] = (host, port, starttls, timeout)
         return _Conn()
 

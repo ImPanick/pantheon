@@ -261,6 +261,28 @@ def _reset_outbound_limiter(tmp_path):
 
 
 @_pytest.fixture(autouse=True)
+def _mail_tls_pins_of_its_own(tmp_path):
+    """`B2096`. A mail connection over TLS to a private host pins the
+    certificate it saw (`src/mail_tls.py`), and a test's local mail server
+    makes a new certificate every run: a pin one run left in the developer's
+    data directory would refuse the next run's server as *changed*, and one
+    test's pin would decide another's. Each test gets a pin file of its own, in
+    a subdirectory for the reason the limiter's state file is in one."""
+    try:
+        from src import constants as _constants
+    except Exception:
+        yield
+        return
+    original = getattr(_constants, "MAIL_TLS_PINS_FILE", None)
+    _constants.MAIL_TLS_PINS_FILE = str(tmp_path / "_mail_tls" / "mail_tls_pins.json")
+    try:
+        yield
+    finally:
+        if original is not None:
+            _constants.MAIL_TLS_PINS_FILE = original
+
+
+@_pytest.fixture(autouse=True)
 def _reset_run_context():
     """Clear the per-turn ContextVars between tests (`P4-25`, `P14-02`).
 
