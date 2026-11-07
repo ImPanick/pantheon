@@ -493,7 +493,14 @@ def _resolve_run_endpoint(db, task: ScheduledTask, run: TaskRun) -> str:
 
     try:
         from core.database import ModelEndpoint
-        eps = db.query(ModelEndpoint).filter(ModelEndpoint.is_enabled == True).all()
+        from src.auth_helpers import owner_filter
+        # `B1791`: only the endpoints the run could have used, the task
+        # owner's own and the shared ones (the scheduler's scope), so this
+        # owner's Activity row never carries another member's address.
+        eps = owner_filter(
+            db.query(ModelEndpoint).filter(ModelEndpoint.is_enabled == True),
+            ModelEndpoint, getattr(task, "owner", None) or None,
+        ).all()
         for ep in eps:
             cached = []
             if ep.cached_models:
