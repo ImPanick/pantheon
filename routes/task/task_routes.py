@@ -38,6 +38,7 @@ from src.task_scheduler import (
     compute_next_run,
     task_edges,
     is_test_run_log,
+    retry_of_log,
 )
 from routes.prefs_routes import _load_for_user, _save_for_user
 
@@ -470,6 +471,9 @@ def _run_to_dict(r: TaskRun, *, is_workflow: bool = False) -> dict:
         # runs. Read off the run's own log (`TEST_RUN_KEY` on its `trigger`
         # line, whose `detail` is "Test run"), so the Runs list can mark it.
         "test": is_test_run_log(steps),
+        # `B1854`. The failed run this one retries from a step, or null —
+        # read off its log (`RETRY_OF_KEY`), as `test` is.
+        "retry_of": retry_of_log(steps),
     }
 
 

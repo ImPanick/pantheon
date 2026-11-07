@@ -1309,6 +1309,80 @@ def _json_list(raw) -> list:
     return value if isinstance(value, list) else []
 
 
+# `B1854`. Why a run is not retried from a step.
+RETRY_NOT_FAILED = "This run did not fail, so there is nothing to retry."
+RETRY_NO_STEP = ("This run stopped before any of its steps ran, so there is no step to "
+                 "retry it from. Run the workflow again instead.")
+RETRY_SWITCHED_OFF = ("The workflow is switched off, so this run is not retried. Switch it "
+                      "on, or use Test run.")
+
+
+def plan_retry(db, wf, trigger, run, *, node_id=None) -> dict:
+    """`B1854`. What retrying `run` from a step would do, or `WorkflowRefused`
+    (400) saying why it cannot: the run did not fail; no step of it ran; the
+    version it ran is no longer kept (a retry runs the SAME version, never an
+    edit made since); the step named is not in that version, or did not run.
+
+    `node_id` defaults to the step the run failed on (`RunState
+    .unhandled_error`, else its last step that failed or was stopped). The
+    plan: that step, its words, the records kept (`workflow_runs.retry_kept`),
+    what started the failed run (`RunState.trigger`, so a webhook's retry is
+    handed the same body), whether it was a *Test run* (a retry of one is
+    one, `B1852`), and the failed run's clock time for the kept lines. A
+    real run of a workflow switched off is not retried (409): the switch
+    holds a retry as it holds *Run now* (`Law 1`), without a row."""
+    from src import workflow_runs as wr
+    from src.task_scheduler import _resolve_task_timezone, is_test_run
+
+    if run.status != "error":
+        raise WorkflowRefused(400, RETRY_NOT_FAILED)
+    test = is_test_run(run)
+    if not test and (trigger.status or "") != "active":
+        raise WorkflowRefused(409, RETRY_SWITCHED_OFF)
+    records = [r for r in wr.run_node_records(db, run.id) if not r.dry]
+    version = next((r.workflow_version for r in records if r.workflow_version is not None),
+                   None)
+    if not records or version is None:
+        raise WorkflowRefused(400, RETRY_NO_STEP)
+    if version == wf.version:
+        graph = stored_graph(wf)
+    else:
+        graph, kept = graph_of_version(db, wf, version)
+        if not kept:
+            raise WorkflowRefused(
+                400, f"This run ran version {version} of the workflow, which is no longer "
+                     f"kept, so it cannot be retried from a step. Run the workflow again "
+                     f"instead.")
+    state = wr.RunState(graph, records)
+    if node_id:
+        node = state.by_id.get(node_id)
+        if node is None:
+            raise WorkflowRefused(400, f"“{node_id}” is not a step of the version this run ran.")
+        if state.record(node_id) is None:
+            raise WorkflowRefused(
+                400, f"“{node.get('label') or node_id}” did not run in this run, so there is "
+                     f"nothing to retry it from.")
+    else:
+        failed = state.unhandled_error() or next(
+            (state.record(n) for n in reversed(state.finish_order)
+             if (state.status(n) or "") in ("error", "aborted")), None)
+        if failed is None:
+            raise WorkflowRefused(400, "This run did not fail at a step, so there is no step "
+                                       "to retry it from.")
+        node_id = failed.node_id
+        node = state.by_id.get(node_id) or {"id": node_id}
+    return {
+        "from_run": run.id,
+        "node_id": node_id,
+        "label": node.get("label") or node_id,
+        "version": version,
+        "kept": [r.id for r in wr.retry_kept(records, graph, node_id)],
+        "trigger": state.trigger,
+        "test": test,
+        "at": wr._clock(run.started_at, _resolve_task_timezone(db, trigger)),
+    }
+
+
 def graph_of_version(db, wf, version) -> tuple:
     """`(graph, kept)`: the graph of the version a run used, or — when that
     version was pruned or is unknown — the current one, with `kept` False so

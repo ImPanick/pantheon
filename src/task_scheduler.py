@@ -1337,6 +1337,27 @@ def is_test_run(run) -> bool:
     return is_test_run_log(getattr(run, "steps", None))
 
 
+#: `B1854`. The key on a retry's run-log line naming the failed run it retries
+#: ("Retry of the run at 10:42, from “Send it”"); `RETRY_FROM_KEY` names the
+#: step it was retried from. Read back as the run's `retry_of`.
+RETRY_OF_KEY = "retry_of"
+RETRY_FROM_KEY = "retry_from"
+
+
+def retry_of_log(steps) -> str | None:
+    """`B1854`. The failed run this run retries, read off its step log (a
+    list, or the row's JSON text), or `None`."""
+    if isinstance(steps, str):
+        try:
+            steps = json.loads(steps)
+        except (TypeError, ValueError):
+            return None
+    for line in steps if isinstance(steps, list) else ():
+        if isinstance(line, dict) and line.get(RETRY_OF_KEY):
+            return str(line[RETRY_OF_KEY])
+    return None
+
+
 def real_run_clause(run_model):
     """`B1054`. `is_dry_run` negated, as a SQL condition on `TaskRun`."""
     from sqlalchemy import func, or_
@@ -3815,6 +3836,15 @@ class TaskScheduler:
                     detail=_trigger_summary(trigger),
                     **({TEST_RUN_KEY: True} if test else {}),
                 )
+            # `B1854`. A retry says what it retries, after its cause.
+            retry = (self._runs().get(run_id) or {}).get("retry")
+            if retry and not resume:
+                self._record_run_step(
+                    run_id, kind="progress",
+                    detail=f"Retry of the run at {retry.get('at') or '?'}, from "
+                           f"“{retry.get('label') or retry.get('node_id')}”",
+                    **{RETRY_OF_KEY: retry.get("from_run"),
+                       RETRY_FROM_KEY: retry.get("node_id")})
             # `B1060`. A run the queue held for Pantheon to be idle says so, after
             # its cause: "its row says it waited".
             if waited_for_idle > 0:
@@ -6603,9 +6633,11 @@ class TaskScheduler:
         answer = run_slot.pop("answer", None)
         resuming = bool(run_slot.get("resuming"))
         records = [r for r in wr.run_node_records(db, run_id) if not r.dry]
+        # `B1854`: a retry starts with the records it kept, and runs the
+        # version they ran — as a resumed run does.
         version = (next((r.workflow_version for r in records
                          if r.workflow_version is not None), None)
-                   if resuming else None)
+                   if resuming or records else None)
         wf, graph, refused = self._load_workflow(db, task, version=version)
         if not refused and not resuming:
             # `P22-19` (`SLICE-EF-DESIGN` § 1.1). A step the model drafted, or
@@ -8357,7 +8389,8 @@ class TaskScheduler:
     async def run_task_now(self, task_id: str, *, force: bool = False,
                            trigger: dict | None = None, dry: bool = False,
                            started_by: str = STARTED_BY_BACKGROUND,
-                           run_id: str | None = None, test: bool = False):
+                           run_id: str | None = None, test: bool = False,
+                           retry: dict | None = None):
         """Manually trigger a task execution.
 
         `P8-23`. `trigger` is what fired it — the event bus's envelope or the
@@ -8400,15 +8433,24 @@ class TaskScheduler:
         `B674` as Run now is, but a test that cannot start writes no `skipped`
         row and moves no next time — it answers `False`, and the route says
         why (`in_flight_sentence`).
+
+        `B1854`. `retry` is a failed workflow run retried from one of its steps
+        (`workflow_store.plan_retry`'s plan): the records it keeps are copied
+        into the new run (`run_id`, which a retry must name) before it is
+        spawned, so the walker starts at that step, on the version that run
+        ran; its log says what it retries. Held as a test run is: no row
+        when it cannot start.
         """
         if started_by not in STARTED_BY:
             raise ValueError(f"started_by must be one of {STARTED_BY}, not {started_by!r}")
         if test and (dry or force):
             raise ValueError("a test run is neither a dry run nor a forced one")
-        if test:
+        if retry is not None and (dry or force or run_id is None):
+            raise ValueError("a retry is a real run with an id of its own")
+        if test or retry is not None:
             if self.in_flight_sentence(task_id) is not None:
                 return False                       # `B674`, said by the route
-            if trigger is None:
+            if test and trigger is None:
                 from src.event_bus import build_test_trigger
                 trigger = build_test_trigger()
         elif not dry and self._record_parked_skip(task_id, trigger) is not None:
@@ -8435,12 +8477,33 @@ class TaskScheduler:
             self._executing.add(task_id)
         if run_id is not None and not dry:
             queued = self._new_queued_run(task_id, run_id=run_id)
+        if retry is not None:
+            self._seed_retry(queued, retry)
         coro = self._execute_task(task_id, trigger=trigger, dry=dry,
                                   started_by=started_by, queued_run_id=queued, test=test)
         if dry:
             return await coro
         asyncio.create_task(coro)
         return True
+
+    def _seed_retry(self, run_id: str, retry: dict) -> None:
+        """`B1854`. The kept records into the retry, and what it retries on its
+        slot (the run's log says so after its cause, `_execute_task_locked`)."""
+        from core.database import SessionLocal, TaskRunNode
+        from src import workflow_runs as wr
+
+        db = SessionLocal()
+        try:
+            kept = list(retry.get("kept") or ())
+            records = (db.query(TaskRunNode).filter(TaskRunNode.id.in_(kept))
+                       .order_by(TaskRunNode.seq).all() if kept else [])
+            wr.copy_kept_records(db, run_id=run_id, records=records,
+                                 from_run_id=retry["from_run"],
+                                 words=f"Kept from the run at {retry.get('at') or '?'}")
+        finally:
+            db.close()
+        self._state_for(run_id)["retry"] = {k: retry.get(k) for k in (
+            "from_run", "node_id", "label", "at")}
 
     async def stop_task(self, task_id: str) -> bool:
         """Request cancellation of a running/queued task and mark its run aborted."""

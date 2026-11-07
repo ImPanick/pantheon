@@ -224,6 +224,20 @@ export function createWorkflowApi({ fetch } = {}) {
     testRun(id) {
       return call('POST', `/api/workflows/${enc(id)}/test-run`);
     },
+    /** `B1854`. Retry a FAILED run from one of its steps — `nodeId`, or
+     *  (left out) the step it failed on: a new run of the version that run
+     *  ran, in which the steps it finished before and beside that step are
+     *  kept (their records carry `kept_from: <failed run id>` and a first
+     *  log line "Kept from the run at 10:42") and that step and those after
+     *  it run again. The new run's `retry_of` is the failed run's id. A 400
+     *  `WorkflowRefusal` says why it cannot (it did not fail; its version is
+     *  not kept; the step did not run); a 409 while a run is going or
+     *  waiting, or for a real run of a workflow switched off.
+     *  → `{ ok, run_id }` */
+    retryRun(id, runId, nodeId) {
+      return call('POST', `/api/workflows/${enc(id)}/runs/${enc(runId)}/retry`,
+        nodeId ? { node_id: nodeId } : undefined);
+    },
     /** Test one step as it stands on the canvas (`P22-08`). `source` is
      *  `last | pinned | custom | example | none`. → `{ outcome:
      *  "needs_confirmation", plan, effects }` or `{ outcome: "ran", status,

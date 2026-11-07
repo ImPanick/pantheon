@@ -33,7 +33,9 @@ C2_NODE_RECORD = {"id", "node_id", "kind", "label", "seq", "status", "attempt", 
                   "port", "workflow_version", "started_at", "finished_at", "input",
                   "input_summary", "output", "error", "steps", "model",
                   # `P22-11`/`P22-12` (`C-W`).
-                  "item", "waiting"}
+                  "item", "waiting",
+                  # `B1854`: the failed run a retry kept this record from.
+                  "kept_from"}
 
 
 @pytest.fixture()
