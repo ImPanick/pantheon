@@ -579,6 +579,42 @@ def waiting_of(rec) -> dict | None:
     return _waiting_of(rec)
 
 
+# ── `B1861` · what started a run, kept once, whole ──────────────────────────
+
+def keep_run_trigger(run, trigger) -> None:
+    """`B1861`. Write what started this run onto its row
+    (`TaskRun.trigger_envelope`), once, when it starts. The caller commits.
+
+    A parked run goes on in a new slot, so the walker read its trigger back
+    from the input of a step the start leads to (`RunState.
+    _trigger_from_records`) — a record held to `workflow_node_record_max_chars`
+    and marked cut past it, so a resumed run of a large webhook read no trigger
+    at all: `{{ steps.start.data… }}` after a Wait or a yes was null. The
+    envelope is already held to `trigger_payload_max_chars` by `build_trigger`,
+    so the row keeps it as it was handed."""
+    if run is None or not isinstance(trigger, dict):
+        return
+    try:
+        run.trigger_envelope = json.dumps(trigger, default=str)
+    except (TypeError, ValueError):
+        logger.warning("Could not keep the trigger of run %s", getattr(run, "id", "?"))
+
+
+def stored_run_trigger(db, run_id: str) -> dict | None:
+    """`B1861`. The trigger `keep_run_trigger` kept for this run, or `None` —
+    a run that had none, or one from before the column."""
+    from core.database import TaskRun
+
+    try:
+        row = (db.query(TaskRun.trigger_envelope)
+               .filter(TaskRun.id == run_id).first())
+    except Exception:
+        logger.warning("Could not read the kept trigger of run %s", run_id, exc_info=True)
+        return None
+    value = _loads(row[0]) if row is not None and row[0] else None
+    return value if isinstance(value, dict) else None
+
+
 # ── `B674` · one workflow runs once at a time, written once ──────────────────
 
 def run_in_flight(db, task_id: str, *, exclude: str | None = None):

@@ -161,6 +161,54 @@ WEBHOOK_PAYLOAD_FIELDS = ("body", "json", "query", "headers")
 TRIGGER_FIELD_MAX_CHARS = 2000
 TRIGGER_MAX_CHARS = 6000
 
+# `B1861`. The cap on the WHOLE envelope a run is handed and keeps, in
+# characters of JSON — a setting, read with `trigger_payload_max_chars()`.
+#
+# The two caps above were applied when the envelope was BUILT (`build_trigger`
+# clipped every field with `clip_field`), so they bounded what a run could
+# refer to and not only what a model was shown: a webhook whose JSON body was
+# over 2,000 characters reached the run as one truncated string, `{{
+# steps.start.data.json.issue.title }}` read null, and the run said success.
+# The same clip flattened a step's structured output in the hand-off to the
+# next step (`build_task_handoff`). Now the envelope keeps its structure whole
+# up to this generous cap, and the two caps above apply where they were for —
+# the text that goes into a model prompt (`trigger_as_text`, which
+# `trigger_context_message` wraps) — at the same numbers, so a prompt is the
+# same bytes it was. Past this cap the envelope keeps what fits: text fields
+# are cut to `TRIGGER_FIELD_MAX_CHARS` first (a webhook's `body` is its `json`
+# again, as text), then the largest structured ones, and the envelope names
+# what it cut under a `cut` key (added; nothing renamed), which the step log's
+# first line says in words.
+#
+# The bounds and the default are stated here and nowhere else (`Law 7`);
+# `src/settings.py` imports them, and the webhook route reads how much of a
+# request body it keeps off the same cap. The floor holds four fields at
+# today's per-field clip — a webhook's four (`WEBHOOK_PAYLOAD_FIELDS`); the top
+# is the sanity ceiling the step record's own cap uses — a megabyte of one
+# trigger in a row is a typo, not a decision.
+TRIGGER_PAYLOAD_MAX_CHARS_SETTING = "trigger_payload_max_chars"
+TRIGGER_PAYLOAD_MAX_CHARS_DEFAULT = 256 * 1024
+TRIGGER_PAYLOAD_MAX_CHARS_RANGE = (TRIGGER_FIELD_MAX_CHARS * 4, 1_000_000)
+#: `B1861`. The envelope key that names the fields cut to fit the cap.
+TRIGGER_CUT_KEY = "cut"
+
+
+def trigger_payload_max_chars() -> int:
+    """`B1861`. The cap on one trigger envelope, in characters of JSON: the
+    instance setting, held to its range, else the built-in default. Read on
+    every build, so a changed setting applies to the next trigger."""
+    lo, hi = TRIGGER_PAYLOAD_MAX_CHARS_RANGE
+    try:
+        from src.settings import resolve_limit
+        value, _source = resolve_limit(
+            TRIGGER_PAYLOAD_MAX_CHARS_SETTING, TRIGGER_PAYLOAD_MAX_CHARS_DEFAULT,
+            minimum=lo, maximum=hi)
+        return int(value)
+    except Exception:
+        logger.debug("Could not read %s; using the built-in default",
+                     TRIGGER_PAYLOAD_MAX_CHARS_SETTING, exc_info=True)
+        return TRIGGER_PAYLOAD_MAX_CHARS_DEFAULT
+
 # `P8-31`. How many events an event-triggered task waits for when nobody says.
 #
 # One, because that is what "trigger on document created" means to anyone
@@ -295,6 +343,12 @@ def build_trigger(source: str, name: str, data: Optional[dict] = None,
     `P22-05`. `origin` — the run whose step fired the event — is carried as a
     top-level `origin` key (added; nothing renamed), so a task it wakes can
     say what caused it. Absent when nothing caused it but a person.
+
+    `B1861`. Each field is kept WHOLE — a parsed webhook body stays a dict, a
+    step's structured output stays structured — and the whole envelope is held
+    to `trigger_payload_max_chars()` (`_fit_envelope`). The per-field clip that
+    was here is applied where it is for, to the text a model is shown
+    (`trigger_as_text`). Text is still stripped, as the clip stripped it.
     """
     allowed = EVENT_PAYLOAD_FIELDS.get(name, ()) if fields is None else tuple(fields)
     kept = {}
@@ -304,7 +358,7 @@ def build_trigger(source: str, name: str, data: Optional[dict] = None,
         value = data.get(key)
         if value is None or value == "":
             continue
-        kept[key] = _clip(value)
+        kept[key] = value.strip() if isinstance(value, str) else value
     if isinstance(data, dict):
         extra = sorted(set(data) - set(allowed))
         if extra:
@@ -321,7 +375,50 @@ def build_trigger(source: str, name: str, data: Optional[dict] = None,
         # workflow".
         envelope["origin"] = {"task_id": origin.task_id, "task": origin.task_name,
                               "run_id": origin.run_id, "kind": origin.kind}
+    cut = _fit_envelope(envelope, trigger_payload_max_chars())
+    if cut:
+        envelope[TRIGGER_CUT_KEY] = cut
+        logger.info("Trigger %r was over %s (%s characters); cut short: %s",
+                    name, TRIGGER_PAYLOAD_MAX_CHARS_SETTING,
+                    f"{trigger_payload_max_chars():,}", ", ".join(cut))
     return envelope
+
+
+def _json_size(value) -> int:
+    """How many characters of JSON a value is, as a row or a record keeps it."""
+    try:
+        return len(json.dumps(value, default=str))
+    except (TypeError, ValueError):
+        return len(str(value))
+
+
+def _fit_envelope(envelope: dict, limit: int) -> list:
+    """`B1861`. Hold one envelope to `limit` characters of JSON, in place, and
+    answer the fields it cut (none, nearly always).
+
+    Over the cap, fields are cut with `clip_field` — the per-field rule that
+    used to apply to every field — one at a time until the envelope fits: text
+    first, largest first (a webhook's `body` is its parsed `json` again, as
+    text, so the copy that can be referred to is the one kept), then the
+    largest structured field. A field already within `TRIGGER_FIELD_MAX_CHARS`
+    is never cut. An envelope that still does not fit after that is as small
+    as the rule could ever make it, which is what every envelope was before.
+    """
+    data = envelope.get("data")
+    if not isinstance(data, dict) or _json_size(envelope) <= limit:
+        return []
+    cut = []
+    order = sorted(data, key=lambda k: (not isinstance(data[k], str), -_json_size(data[k])))
+    for key in order:
+        before = data[key]
+        after = clip_field(before)
+        if _json_size(after) >= _json_size(before):
+            continue
+        data[key] = after
+        cut.append(key)
+        if _json_size(envelope) <= limit:
+            break
+    return cut
 
 
 def build_task_handoff(*, task_name: str, task_id: str, run_id: str,
@@ -403,6 +500,18 @@ def _handoff_summary(name: str, data: dict, origin: str) -> str:
     return _clip(f"{lead}: {said}", TRIGGER_FIELD_MAX_CHARS)
 
 
+def _cut_clause(trigger: dict) -> str:
+    """`B1861`. An envelope cut to fit `trigger_payload_max_chars` says so, in
+    the line a person reads first, naming the fields and the setting — a
+    reference into a cut field reads nothing, and nothing is cut silently."""
+    cut = trigger.get(TRIGGER_CUT_KEY)
+    if not isinstance(cut, list) or not cut:
+        return ""
+    names = ", ".join(str(c) for c in cut)
+    return (f" (too large to keep whole, so {names} was cut short; the limit is "
+            f"{TRIGGER_PAYLOAD_MAX_CHARS_SETTING})")
+
+
 def trigger_summary(trigger: Optional[dict]) -> str:
     """One line naming what fired a run, for the run's step log."""
     if not isinstance(trigger, dict):
@@ -420,6 +529,7 @@ def trigger_summary(trigger: Optional[dict]) -> str:
     else:
         lead = f"Triggered by {source}"
     lead += _origin_clause(trigger)
+    lead += _cut_clause(trigger)
     if not data:
         # Said out loud rather than left blank: "no payload" and "the payload
         # did not survive" look identical in an empty string, and the first is
@@ -490,16 +600,35 @@ def trigger_context_message(trigger: Optional[dict]) -> Optional[dict]:
 
 
 def trigger_as_text(trigger: Optional[dict]) -> str:
-    """The payload as the body of an untrusted-source block, capped."""
+    """The payload as the body of an untrusted-source block, capped.
+
+    `B1861`. Capped HERE, at today's limits, and only here: each field is cut
+    to `TRIGGER_FIELD_MAX_CHARS` by `clip_field` (`_prompt_view`) and the
+    whole block to `TRIGGER_MAX_CHARS`. Until `B1861` the field clip happened
+    when the envelope was built, which is why the run could not refer to a
+    field the model was never going to be shown whole; the model is shown
+    exactly what it was shown before."""
     if not isinstance(trigger, dict):
         return ""
     try:
-        text = json.dumps(trigger, indent=2, default=str, sort_keys=True)
+        text = json.dumps(_prompt_view(trigger), indent=2, default=str, sort_keys=True)
     except (TypeError, ValueError):
         return ""
     if len(text) > TRIGGER_MAX_CHARS:
         text = text[:TRIGGER_MAX_CHARS].rstrip() + "\n\u2026 (truncated)"
     return text
+
+
+def _prompt_view(trigger: dict) -> dict:
+    """`B1861`. A copy of the envelope with each `data` field clipped by the
+    per-field rule (`clip_field`), as `build_trigger` used to keep it. The
+    envelope itself is not touched — the run keeps it whole."""
+    data = trigger.get("data")
+    if not isinstance(data, dict):
+        return trigger
+    view = dict(trigger)
+    view["data"] = {key: clip_field(value) for key, value in data.items()}
+    return view
 
 
 def set_task_scheduler(scheduler):

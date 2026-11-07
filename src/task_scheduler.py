@@ -3737,6 +3737,14 @@ class TaskScheduler:
                     run_id, kind="trigger",
                     detail=_trigger_summary(trigger),
                 )
+                if task_type == "workflow" and run is not None:
+                    # `B1861`. Kept on the run's row, whole, so the run reads
+                    # it again when it goes on after a Wait or a yes (the
+                    # walker's `stored_run_trigger`); its first step's record
+                    # keeps it only up to the record's cap.
+                    from src import workflow_runs as _wr_trigger
+                    _wr_trigger.keep_run_trigger(run, trigger)
+                    db.commit()
             # `B1060`. A run the queue held for Pantheon to be idle says so, after
             # its cause: "its row says it waited".
             if waited_for_idle > 0:
@@ -6519,7 +6527,14 @@ class TaskScheduler:
             if resuming:
                 wr.end_waiting_records(db, run_id, status="error", error=refused)
             return NodeResult(NODE_STATUS_ERROR, payload=refused)
-        state = wr.RunState(graph, records, trigger=self.run_trigger(run_id))
+        trigger = self.run_trigger(run_id)
+        if trigger is None and resuming:
+            # `B1861`. A parked run going on has a new slot: what started it is
+            # read back off its row, whole. A run from before the column has
+            # none there, and `RunState` reads its first step's record, as it
+            # always did.
+            trigger = wr.stored_run_trigger(db, run_id)
+        state = wr.RunState(graph, records, trigger=trigger)
         if state.trigger is not None and run_slot.get("trigger") is None:
             run_slot["trigger"] = state.trigger
         w = _Walk(task=task, db=db, run_id=run_id, wf=wf, graph=graph, state=state,
