@@ -273,6 +273,44 @@ def _resolve_user_message_cut(session, spec: Dict[str, Any]):
     return position, None
 
 
+async def _json_object(request: Request) -> Dict[str, Any]:
+    """`B1827`. The request's JSON body, which must be an object.
+
+    A list, a string, a number or `null` went straight on and the first
+    `body.get(...)` raised `AttributeError`; a body that was not JSON raised in
+    `request.json()` itself. Both surfaced as a 500. They are the caller's
+    mistake, so they are a 400 that says what the body must be.
+    """
+    try:
+        body = await request.json()
+    except ValueError:  # `json.JSONDecodeError`, or bytes that are not UTF-8
+        raise HTTPException(400, "Request body must be valid JSON") from None
+    if not isinstance(body, dict):
+        raise HTTPException(400, "Request body must be a JSON object")
+    return body
+
+
+_DIGITS = re.compile(r"[0-9]+")
+
+
+def _row_count(value: Any) -> int:
+    """`B1827`. `keep_count` as what it has to be: a whole number of rows, 0 or more.
+
+    It went to `truncate_messages` as it came, which slices the stored rows at
+    it. JSON `false` passed its `keep_count < 0` check (`False < 0` is false)
+    and sliced from row 0, deleting every message in the chat; `true` kept one
+    row; a string, `null`, a list or an object raised inside it (a 500); and a
+    fraction or a negative number answered 200 having cut nothing. Anything
+    but a whole number of rows is now refused before anything is read or
+    removed; a count written as digits (`"2"`) is one, as upstream keeps it.
+    """
+    if isinstance(value, str) and _DIGITS.fullmatch(value.strip()):
+        value = int(value.strip())
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise HTTPException(400, "keep_count must be a whole number of messages, 0 or more")
+    return value
+
+
 def _last_request_breakdown(history) -> Optional[dict]:
     """The `context_breakdown` the most recent reply was sent with, or None.
     `B1731`: a compaction copies it onto its marker, so the wheel keeps
@@ -620,7 +658,7 @@ def setup_history_routes(session_manager, upload_handler=None) -> APIRouter:
         """
         await asyncio.to_thread(_verify_session_owner, request, session_id)
         try:
-            body = await request.json()
+            body = await _json_object(request)   # `B1827`
             spec = body.get("from_user_message")
             if isinstance(spec, dict):
                 try:
@@ -633,7 +671,7 @@ def setup_history_routes(session_manager, upload_handler=None) -> APIRouter:
                     # Nothing is removed, so the caller must not send either.
                     raise HTTPException(409, refusal)
             elif "keep_count" in body:
-                keep_count = body.get("keep_count", 0)
+                keep_count = _row_count(body["keep_count"])   # `B1827`
             else:
                 raise HTTPException(400, "keep_count or from_user_message is required")
             result = session_manager.truncate_messages(session_id, keep_count)
