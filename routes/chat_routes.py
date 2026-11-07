@@ -58,9 +58,11 @@ from src.session_search import search_session_messages, search_session_titles
 from src.prompt_security import untrusted_context_message
 from core.exceptions import SessionNotFoundError
 from src.auth_helpers import (
+    ONLY_A_PERSON_ANSWERS,
     effective_user,
     get_current_user,
     is_delegated_credential,
+    request_is_a_person,
     require_api_token_scope,
     require_chat_api_token_scope,
     require_user,
@@ -249,6 +251,11 @@ def _reject_delegated_tool_approval(request: Request) -> None:
     into an extra round trip. Owner and session already match here — the token
     is answering on behalf of the account that minted it — which is exactly why
     nothing else would have caught this.
+
+    `B1926`. The agent's own loopback (`app_api`, with the internal-tool token
+    and `X-Pantheon-Owner`) is named the owner too, so a run could answer
+    another chat's card, and an *Allow for this chat* minted a chat-wide grant
+    nobody gave. Only a person answers (`request_is_a_person`, `B1005`).
     """
     if is_delegated_credential(request):
         raise HTTPException(
@@ -256,6 +263,8 @@ def _reject_delegated_tool_approval(request: Request) -> None:
             "Tool approvals require an interactive session. "
             "API tokens cannot authorize a gated action.",
         )
+    if not request_is_a_person(request):
+        raise HTTPException(403, ONLY_A_PERSON_ANSWERS)
 
 
 def _thinking_record(thinking_response: str, round_thinking: Optional[list] = None) -> dict:

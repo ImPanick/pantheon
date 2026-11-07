@@ -36,7 +36,7 @@ from services.memory.skill_lint import (
     skill_similarity as _skill_similarity,
 )
 from services.memory.skill_improve import pinned_of as _pinned_of
-from src.auth_helpers import get_current_user
+from src.auth_helpers import ONLY_A_PERSON_ANSWERS, get_current_user, request_is_a_person
 from src.prompt_security import untrusted_context_message
 from core.middleware import require_admin, require_operator
 
@@ -2793,6 +2793,10 @@ def setup_skills_routes(skills_manager: SkillsManager) -> APIRouter:
         import asyncio as _asyncio
         from src.tool_approvals import tool_approval_store
 
+        # `B1926`. The card is a person's to answer, not a token's and not the
+        # assistant's loopback, which the middleware names the owner too.
+        if not request_is_a_person(request):
+            raise HTTPException(403, ONLY_A_PERSON_ANSWERS)
         user = _owner(request)
         match = _require_own_skill(skills_manager, skill_id, user)
         name = match.get("name")

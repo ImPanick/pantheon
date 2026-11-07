@@ -89,6 +89,12 @@ def request_is_a_person(request: Request) -> bool:
         return False
 
 
+# `B1926`. Said by every door where only a person answers an approval card (a
+# chat's, a skill test's, a task run's, a workflow step's), in `B1006`'s words.
+ONLY_A_PERSON_ANSWERS = ("Only you can answer this, from Pantheon itself — "
+                         "not an API token and not your assistant.")
+
+
 def require_api_token_scope(request: Request, scope: str) -> Optional[str]:
     """Require ``scope`` when the request is authenticated by an API token.
 

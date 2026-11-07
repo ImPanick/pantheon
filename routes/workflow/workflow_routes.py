@@ -61,7 +61,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
 from core.database import SessionLocal
-from src.auth_helpers import get_current_user, request_is_a_person
+from src.auth_helpers import ONLY_A_PERSON_ANSWERS, get_current_user, request_is_a_person
 from src import workflow_store as store
 from src.workflow_store import WorkflowRefused
 
@@ -745,6 +745,8 @@ def setup_workflow_routes(task_scheduler) -> APIRouter:
         """`P22-17` — a parked step's yes or no, from the person whose workflow
         it is. The skill test's `/test-approval` move, in this order:
 
+          0. a person's only (`request_is_a_person`, `B1926`): a token or the
+             assistant's loopback is a 403, and nothing is read or consumed;
           1. owner-scoped: anyone else's workflow is a 404, and nothing is
              consumed;
           2. the run must be `waiting` and the step's record must wait on
@@ -765,6 +767,8 @@ def setup_workflow_routes(task_scheduler) -> APIRouter:
         unchanged (`FORBIDDEN.md` Part 2).
         """
         from src.task_scheduler import QuestionRefused, _resolve_task_timezone
+        if not request_is_a_person(request):
+            raise WorkflowRefused(403, ONLY_A_PERSON_ANSWERS)
         body = await _body(request)
         decision = str(body.get("decision") or "").strip().lower()
         if decision == "approve":

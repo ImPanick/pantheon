@@ -14,7 +14,7 @@ from pydantic import BaseModel
 
 from core.database import SessionLocal, ScheduledTask, TaskRun, CrewMember
 from core.constants import internal_api_base
-from src.auth_helpers import get_current_user
+from src.auth_helpers import ONLY_A_PERSON_ANSWERS, get_current_user, request_is_a_person
 from src import paced_http  # `B1014`: NO_PROXY ranges, read for every client
 from src.constants import DATA_DIR, EMAIL_URGENCY_CACHE_DIR
 from src.event_bus import (
@@ -1067,6 +1067,8 @@ def setup_task_routes(task_scheduler) -> APIRouter:
         whose task it is. The workflow door's order and its one core
         (`TaskScheduler.answer_question`, `Law 14`):
 
+          0. a person's only (`request_is_a_person`, `B1926`): a token or the
+             assistant's loopback is a 403, and nothing is read or consumed;
           1. `approve` (a chat's scope) is a 400 — there is no chat to remember
              it in; anything but `approve_task` or `deny` is a 400;
           2. owner-scoped: anyone else's task, or a workflow's, is a 404 and
@@ -1083,6 +1085,8 @@ def setup_task_routes(task_scheduler) -> APIRouter:
         from src.workflow_store import ANSWER_DECISIONS, NO_CHAT_TO_REMEMBER
         from core.database import TaskRunNode
 
+        if not request_is_a_person(request):
+            raise HTTPException(403, ONLY_A_PERSON_ANSWERS)
         decision = (body.decision or "").strip().lower()
         if decision == "approve":
             raise HTTPException(400, NO_CHAT_TO_REMEMBER)
