@@ -8,11 +8,11 @@ import logging
 import re
 from typing import Dict, Any, Optional
 
-from fastapi import APIRouter, Request, HTTPException
+from fastapi import APIRouter, Depends, Request, HTTPException
 
 from core.models import ChatMessage, is_unanswered_reply
 from core.database import SessionLocal, ChatMessage as DbChatMessage, Session as DbSession
-from src.auth_helpers import effective_user
+from src.auth_helpers import effective_user, require_chat_api_token_scope
 from src.chat_helpers import CHAT_GONE   # `B1216`
 from src.tool_approval_scopes import sanitize_client_message_metadata
 from src.agent_stops import RUN_KEYS, is_continue_prompt, merge_runs   # `B941`
@@ -304,7 +304,14 @@ async def _wheel_window(request: Request, session, row) -> tuple:
 
 
 def setup_history_routes(session_manager, upload_handler=None) -> APIRouter:
-    router = APIRouter(tags=["history"])
+    # `B1817`. The chat scope, as on the chat and session routers (`B70`): this
+    # router reads and rewrites the same conversations, so a token minted for
+    # metrics or todos must not reach a chat through it either. A browser
+    # session and the agent's loopback are not tokens and are not asked.
+    router = APIRouter(
+        tags=["history"],
+        dependencies=[Depends(require_chat_api_token_scope)],
+    )
 
     def _reserve_message_uploads(
         request: Request,

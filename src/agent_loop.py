@@ -12788,6 +12788,11 @@ async def stream_agent_loop(
                 tool_policy=tool_policy,
                 active_document=active_document,
                 active_email=active_email,
+                # `B1817`. The teacher's run is a second loop, so it starts
+                # with what this one knows: a token's turn stays a token's,
+                # and outside content (or a retired card's taint) still counts.
+                external_untrusted_context_seen=run_security.external_untrusted_context_seen,
+                delegated_credential=bool(delegated_credential),
             ):
                 yield evt
         except Exception as _esc_err:
