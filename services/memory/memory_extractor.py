@@ -231,6 +231,29 @@ def _clean_memory_value(value: str, max_len: int = 80) -> str:
     return value
 
 
+# `B1933`. A fallback name ends where the name does: where the clause goes on
+# (*and*, *but*, *please*), at punctuation or a symbol, or at the end of the
+# line. A period after a title or an initial stays in it ("Dr. Smith", "J. R.
+# Smith", "A.J. Smith"). The greedy capture before ran on through the rest of
+# the sentence ("Felix and I work at Acme. Can you help me plan a"), and an
+# identity fact is pinned and core, so the run-on reached every later prompt.
+_NAME_END = (r"(?=\s+(?:and|but|please)\b"   # the clause goes on
+             r"|[ \t]*(?:\n|$)"               # the end of the line
+             r"|\s*[^\w\s'’‘\-]"              # punctuation or a symbol
+             r"|\s+-)")                       # a spaced dash
+_NAME_TOKEN = r"(?:(?:dr|mr|mrs|ms|mx|prof|st)\.|(?:[a-z]\.){1,4}|[a-z][a-z0-9'\-]*)"
+_NAME_CAPTURE = r"(" + _NAME_TOKEN + r"(?:[ \t]+" + _NAME_TOKEN + r"){0,4}?)" + _NAME_END
+# More words than this is a sentence with nothing to stop it, not a name.
+_MAX_NAME_WORDS = 4
+
+
+def _fallback_name(pattern: str, text: str) -> str:
+    """`B1933`. The name after ``pattern`` in ``text``, or "" for none."""
+    m = re.search(pattern + _NAME_CAPTURE, text, re.I)
+    name = _clean_memory_value(m.group(1), 50) if m else ""
+    return name if len(name.split()) <= _MAX_NAME_WORDS else ""
+
+
 def _fallback_memory_candidates(messages) -> list[dict]:
     """Extract obvious durable facts without relying on the LLM.
 
@@ -271,17 +294,13 @@ def _fallback_memory_candidates(messages) -> list[dict]:
             continue
         cursor["index"], cursor["text"] = _index, text
 
-        m = re.search(r"\bmy name is\s+([A-Za-z][A-Za-z0-9 .'\-]{1,50})\b", text, re.I)
-        if m:
-            name = _clean_memory_value(m.group(1), 50)
-            if name:
-                add(f"User's name is {name}.", "identity")
+        name = _fallback_name(r"\bmy name is\s+", text)
+        if name:
+            add(f"User's name is {name}.", "identity")
 
-        m = re.search(r"\bcall me\s+([A-Za-z][A-Za-z0-9 .'\-]{1,50})\b", text, re.I)
-        if m:
-            name = _clean_memory_value(m.group(1), 50)
-            if name:
-                add(f"User wants to be called {name}.", "identity")
+        name = _fallback_name(r"\bcall me\s+", text)
+        if name:
+            add(f"User wants to be called {name}.", "identity")
 
         m = re.search(r"\bi (?:live in|am from|'m from)\s+([^.!?\n]{2,80})", text, re.I)
         if m:
