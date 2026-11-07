@@ -306,6 +306,9 @@ def searxng_search_results(query: str, count: int = 10, time_filter: str = None)
                     answered_by = provider_name
                     logger.info(f"{provider_name} search succeeded with {len(results)} results")
                     break
+                # `B1810`. An empty answer is an answer: the next provider is
+                # asked, not this one again. See `comprehensive_web_search`.
+                break
             except RateLimitError as e:
                 # A 429 used to be retried here **immediately, with no sleep**,
                 # against the provider that had just said stop — and then the
@@ -605,6 +608,16 @@ def comprehensive_web_search(
                     logger.info(f"Comprehensive search: {provider_name} returned {len(search_results)} results")
                     break
                 empty = True
+                # `B1810`. An empty answer is an answer. This asked the same
+                # provider the same query again before the chain moved on: two
+                # requests to every provider for each search that found nothing
+                # (SearXNG retries inside itself, so four or six to its
+                # engines, or a second billed call to an API provider), and on
+                # a slow instance the repeat spent `web_search`'s 30 s before
+                # the next provider was reached. Only a failure is tried again,
+                # and a failure followed by an empty answer is tallied empty.
+                last_err = None
+                break
             except RateLimitError as e:
                 # Not retried: a rate limit is not transient (`B1533`), and the
                 # second attempt was only another refusal.
