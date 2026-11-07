@@ -1544,9 +1544,10 @@ def setup_session_routes(
                 return None
 
             result = _loads_lenient(text)
-            # Markdown code fence
+            # Markdown code fence. Possessive `\s*+` (`B1917`): an opening fence
+            # and a run of spaces with no closing fence was read once per space.
             if result is None:
-                fence_match = re.search(r'```(?:json)?\s*\n?([\s\S]*?)```', text)
+                fence_match = re.search(r'```(?:json)?\s*+\n?([\s\S]*?)```', text)
                 if fence_match:
                     result = _loads_lenient(fence_match.group(1).strip())
             # First { … last } block

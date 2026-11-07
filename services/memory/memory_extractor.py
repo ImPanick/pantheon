@@ -1370,7 +1370,10 @@ async def audit_memories(
 
         cleaned = _loads_list(text)
         if cleaned is None:
-            _m = _re.search(r'```(?:json)?\s*\n?([\s\S]*?)```', text)
+            # Possessive `\s*+` (`B1917`): handing the fence's whitespace back
+            # to the body when no closing fence follows only rescanned the
+            # same tail, once for every space it held.
+            _m = _re.search(r'```(?:json)?\s*+\n?([\s\S]*?)```', text)
             if _m:
                 cleaned = _loads_list(_m.group(1).strip())
         if cleaned is None:

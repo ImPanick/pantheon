@@ -206,7 +206,9 @@ async def run_auto_sort(owner: str, skip_llm: bool = False, delete_throwaway: bo
         except json.JSONDecodeError:
             pass
         if result is None:
-            fence_match = re.search(r'```(?:json)?\s*\n?([\s\S]*?)```', text)
+            # Possessive `\s*+` (`B1917`): an opening fence and a run of spaces
+            # with no closing fence was read once per space.
+            fence_match = re.search(r'```(?:json)?\s*+\n?([\s\S]*?)```', text)
             if fence_match:
                 try:
                     result = json.loads(fence_match.group(1).strip())
