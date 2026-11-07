@@ -3364,8 +3364,9 @@ def setup_email_routes():
                 # route never schedules a second connection that can race the
                 # response. Prefetch/read-only callers retain BODY.PEEK and a
                 # read-only mailbox selection.
+                select_status = "OK"
                 try:
-                    conn.select(_q(folder), readonly=not mark_seen)
+                    select_status, _ = conn.select(_q(folder), readonly=not mark_seen)
                 except Exception as select_exc:
                     if not mark_seen:
                         raise
@@ -3376,8 +3377,22 @@ def setup_email_routes():
                         f"read-write SELECT rejected for {folder!r}; "
                         f"serving read-only without \\Seen: {select_exc}"
                     )
-                    conn.select(_q(folder), readonly=True)
+                    select_status = "READ-ONLY"
+                # `B2011`. imaplib raises only on the [READ-ONLY] answer above.
+                # A NO comes back as a status and leaves the connection in no
+                # mailbox, so the FETCH below failed as "Mail operation failed".
+                # A refused read-write SELECT gets the read-only retry too, and
+                # a folder that opens neither way is named.
+                if select_status != "OK" and mark_seen:
+                    if select_status != "READ-ONLY":
+                        logger.warning(
+                            f"read-write SELECT refused for {folder!r} ({select_status}); "
+                            f"serving read-only without \\Seen"
+                        )
+                    select_status, _ = conn.select(_q(folder), readonly=True)
                     mark_seen_failed = True
+                if select_status != "OK":
+                    return {"error": f"Could not open email folder: {folder}"}
                 _t_select = _t.monotonic() - _t0
                 fetch_query = "(BODY.PEEK[])" if full else f"(BODY.PEEK[HEADER] BODY.PEEK[TEXT]<0.{preview_bytes}>)"
                 status, msg_data = _imap_uid_fetch(conn, uid, fetch_query)
@@ -4320,7 +4335,10 @@ def setup_email_routes():
         """Move email to Trash."""
         try:
             with _imap(account_id, owner=owner) as conn:
-                conn.select(_q(folder))
+                # `B2011`: a folder the server will not open is not "not found".
+                st, _ = conn.select(_q(folder))
+                if st != "OK":
+                    return {"success": False, "error": "Could not open email folder"}
                 if not _move_email_message(conn, uid, "Trash", role="trash"):
                     return {"success": False, "error": "Email not found"}
             _email_index_delete(owner, account_id, folder, uid)
@@ -4336,7 +4354,9 @@ def setup_email_routes():
         """Permanently delete an email (no Trash)."""
         try:
             with _imap(account_id, owner=owner) as conn:
-                conn.select(_q(folder))
+                st, _ = conn.select(_q(folder))  # `B2011`
+                if st != "OK":
+                    return {"success": False, "error": "Could not open email folder"}
                 if not _store_email_flag(conn, uid, "\\Deleted", add=True):
                     return {"success": False, "error": "Email not found"}
                 conn.expunge()
