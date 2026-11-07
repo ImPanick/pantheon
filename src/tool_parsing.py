@@ -1925,85 +1925,55 @@ def _iter_xml_direct(text):
     return _iter_backref_blocks(text, _XML_DIRECT_OPEN_RE, _XML_DIRECT_CLOSE_ANY_RE, ci=True)
 
 
-def parse_tool_blocks(text: str, skip_fenced: bool = False) -> List[ToolBlock]:
-    """Extract executable tool blocks from LLM response text.
+def _fenced_calls(text: str) -> List[ToolBlock]:
+    """Pattern 1: the calls the reply's fenced code blocks make.
 
-    Supports multiple formats:
-    1. ```bash ... ``` fenced code blocks (standard)
-    2. [TOOL_CALL] ... [/TOOL_CALL] blocks (some models)
-    3. XML-style <tool_call>/<invoke> blocks
-    4. <tool_code> blocks (MiniMax-M2.5 style)
-    5. StepFun Step-3 native <｜tool▁call▁begin｜> tokens
-    6. DeepSeek DSML markup (normalized to <invoke> first)
-    7. Non-native local model fallback: prose mentioning web_search followed by
-       bare JSON args, e.g. {"query":"...", "time_filter":"week"}
-
-    `skip_fenced`: when True, Pattern 1 (fenced ```bash/```python/```json code
-    blocks) is not matched at all. Native function-calling models (GPT/Claude/
-    Grok/Qwen3/DeepSeek-V, etc.) commonly write illustrative fenced examples in
-    prose; for those models we trust the structured tool_calls channel for real
-    invocations and treat a bare fence as display text rather than an action
-    (issue #3222). Patterns 2-5 — explicit [TOOL_CALL]/<invoke>/<tool_code>/DSML
-    markup that leaked into content as text — stay fully active regardless,
-    since that markup is never an illustrative example and dropping it would
-    silently lose real calls (e.g. DeepSeek-V falling back to DSML when it
-    can't emit structured tool_calls).
-    """
+    `parse_tool_blocks` runs them unless an explicit call outranks them, and
+    `strip_tool_blocks` asks whether one did (`B1914`)."""
     blocks = []
-
-    # Normalize DeepSeek DSML markup into standard <invoke> form so the
-    # XML patterns below catch it.
-    text = _normalize_foreign_tool_markup(text)
-
-    # Pattern 1b: a fenced MCP call, ```mcp__{server}__{tool} + JSON body.
-    # Not gated on `skip_fenced`'s illustrative-example reasoning the way
-    # Pattern 1 is: a native-tools model writes ```bash examples in prose all
-    # the time, and has never once written a fully-qualified `mcp__…__…` fence
-    # tag by accident. Dropping it would lose a real call (`B1306`), which is
-    # the same judgement Patterns 2-5 already make for explicit markup.
-    for m in _MCP_TOOL_BLOCK_RE.finditer(text):
-        call = _fenced_mcp_tool_call(m)
+    for m in _TOOL_BLOCK_RE.finditer(text):
+        call = _fenced_tool_call(m)
         if call is None:
             continue
-        blocks.append(ToolBlock(call[0], call[1]))
-
-    # Pattern 1: fenced code blocks (skipped when `skip_fenced` — see docstring).
-    if not skip_fenced:
-        for m in _TOOL_BLOCK_RE.finditer(text):
-            call = _fenced_tool_call(m)
-            if call is None:
-                continue
-            tag, content = call
-            if not content:
-                # An empty fence is still an unambiguous call for the email
-                # tools — ```list_email_accounts``` with no body is a shape
-                # local models really emit for no-arg tools. Dispatch with
-                # empty args and let the tool's own validation answer;
-                # silently dropping the call left models concluding email was
-                # broken. Other tags (bash, python, ...) keep skipping: empty
-                # content is nothing to run.
-                if tag in BUILTIN_EMAIL_TOOLS:
-                    blocks.append(ToolBlock(tag, ""))
-                continue
-            # If a code block's content is an <invoke> XML call (some models wrap
-            # tool calls in ```python or ```xml fences), parse the invoke instead.
-            if '<invoke' in content:
-                for inv_name, inv_body in _iter_xml_invoke(content):
-                    block = _parse_xml_invoke(inv_name, inv_body)
-                    if block:
-                        blocks.append(block)
-                # This fenced block is <invoke> markup, not literal code. Whether or
-                # not any call converted, never fall through to append the raw XML as
-                # a python/bash block — e.g. a hyphenated/namespaced tool name that
-                # _XML_INVOKE_RE's \w+ can't match would otherwise be executed as code.
-                continue
-            if tag in ("python", "bash"):
-                block = (_parse_misfenced_web_lookup(content)
-                         or _parse_misfenced_read_file_lookup(content, allow_shell_style=(tag == "bash")))
+        tag, content = call
+        if not content:
+            # An empty fence is still an unambiguous call for the email
+            # tools — ```list_email_accounts``` with no body is a shape
+            # local models really emit for no-arg tools. Dispatch with
+            # empty args and let the tool's own validation answer;
+            # silently dropping the call left models concluding email was
+            # broken. Other tags (bash, python, ...) keep skipping: empty
+            # content is nothing to run.
+            if tag in BUILTIN_EMAIL_TOOLS:
+                blocks.append(ToolBlock(tag, ""))
+            continue
+        # If a code block's content is an <invoke> XML call (some models wrap
+        # tool calls in ```python or ```xml fences), parse the invoke instead.
+        if '<invoke' in content:
+            for inv_name, inv_body in _iter_xml_invoke(content):
+                block = _parse_xml_invoke(inv_name, inv_body)
                 if block:
                     blocks.append(block)
-                    continue
-            blocks.append(ToolBlock(tag, content))
+            # This fenced block is <invoke> markup, not literal code. Whether or
+            # not any call converted, never fall through to append the raw XML as
+            # a python/bash block — e.g. a hyphenated/namespaced tool name that
+            # _XML_INVOKE_RE's \w+ can't match would otherwise be executed as code.
+            continue
+        if tag in ("python", "bash"):
+            block = (_parse_misfenced_web_lookup(content)
+                     or _parse_misfenced_read_file_lookup(content, allow_shell_style=(tag == "bash")))
+            if block:
+                blocks.append(block)
+                continue
+        blocks.append(ToolBlock(tag, content))
+    return blocks
+
+
+def _parse_explicit_markup(text: str) -> List[ToolBlock]:
+    """Patterns 2-4c: the explicit call markup a model writes as text,
+    [TOOL_CALL], <tool_call>/<invoke>, <tool_code>, Gemma and <function_model>.
+    The first pattern that makes a call is the reply's."""
+    blocks = []
 
     # Pattern 2: [TOOL_CALL] blocks (only if no fenced blocks found)
     # _iter_delimited scans the delimiter-bounded formats forward-only so
@@ -2108,6 +2078,107 @@ def parse_tool_blocks(text: str, skip_fenced: bool = False) -> List[ToolBlock]:
             block = _parse_function_model_call(text[inner_start:inner_end])
             if block:
                 blocks.append(block)
+    return blocks
+
+
+# `B1914`. A reply that showed a fenced example and made its call in explicit
+# markup ran the example and dropped the call: Pattern 1 came first, and
+# Patterns 2-4c ran only when it had found nothing. Measured on `62c93ba2`: the
+# owner's Qwen Coder shape, two `<function=write_file>` calls and then "to
+# preview it, run ```bash python3 -m http.server 8000```", started the server
+# and wrote neither file.
+#
+# The delimiters of that markup: what opens it (upstream Odysseus 84aa9a91's
+# `_contains_explicit_tool_markup`) and what closes it.
+_EXPLICIT_TOOL_MARKUP_RE = re.compile(
+    r"\[/?TOOL_CALL\]|</?\s*(?:[\w]+:)?(?:tool_call|function_call|invoke|tool_code)\b|"
+    r"<\|?tool_call\|?>|<｜tool▁call▁(?:begin|end)｜>|</?function_model>",
+    re.IGNORECASE,
+)
+# A Markdown fence (``` to ```, or to the end when it is never closed), or
+# inline code within one line.
+_FENCE_OR_CODE_SPAN_RE = re.compile(r"```[\s\S]*?(?:```|\Z)|`[^`\n]*`")
+
+
+def _explicit_calls_outside_fences(text: str) -> List[ToolBlock]:
+    """The calls the reply's explicit markup makes when all of that markup is
+    outside its fences and inline code, else none (`B1914`).
+
+    Upstream lets the markup outrank the fences when the reply holds it
+    anywhere, so a ```write_file whose content is a fixture with a <tool_call>
+    in it ran that call instead of writing the file, and a ```web_search that
+    names [TOOL_CALL] searched for nothing. Markup inside a fence is what the
+    fence holds, so when there is any, the fences run as they always did. The
+    calls are read from the whole reply, so a file's content keeps the fences
+    in it. Linear: one pass over the spans, each of them searched once."""
+    if not _EXPLICIT_TOOL_MARKUP_RE.search(text):
+        return []
+    for span in _FENCE_OR_CODE_SPAN_RE.finditer(text):
+        if _EXPLICIT_TOOL_MARKUP_RE.search(text, span.start(), span.end()):
+            return []
+    return _parse_explicit_markup(text)
+
+
+def parse_tool_blocks(text: str, skip_fenced: bool = False) -> List[ToolBlock]:
+    """Extract executable tool blocks from LLM response text.
+
+    Supports multiple formats:
+    1. ```bash ... ``` fenced code blocks (standard)
+    2. [TOOL_CALL] ... [/TOOL_CALL] blocks (some models)
+    3. XML-style <tool_call>/<invoke> blocks
+    4. <tool_code> blocks (MiniMax-M2.5 style)
+    5. StepFun Step-3 native <｜tool▁call▁begin｜> tokens
+    6. DeepSeek DSML markup (normalized to <invoke> first)
+    7. Non-native local model fallback: prose mentioning web_search followed by
+       bare JSON args, e.g. {"query":"...", "time_filter":"week"}
+
+    `skip_fenced`: when True, Pattern 1 (fenced ```bash/```python/```json code
+    blocks) is not matched at all. Native function-calling models (GPT/Claude/
+    Grok/Qwen3/DeepSeek-V, etc.) commonly write illustrative fenced examples in
+    prose; for those models we trust the structured tool_calls channel for real
+    invocations and treat a bare fence as display text rather than an action
+    (issue #3222). Patterns 2-5 — explicit [TOOL_CALL]/<invoke>/<tool_code>/DSML
+    markup that leaked into content as text — stay fully active regardless,
+    since that markup is never an illustrative example and dropping it would
+    silently lose real calls (e.g. DeepSeek-V falling back to DSML when it
+    can't emit structured tool_calls).
+
+    A reply with a fenced call and explicit markup that makes a call outside
+    every fence and inline code runs the markup's calls: the fences were
+    examples (`B1914`, `_explicit_calls_outside_fences`).
+    """
+    blocks = []
+
+    # Normalize DeepSeek DSML markup into standard <invoke> form so the
+    # XML patterns below catch it.
+    text = _normalize_foreign_tool_markup(text)
+
+    # Pattern 1b: a fenced MCP call, ```mcp__{server}__{tool} + JSON body.
+    # Not gated on `skip_fenced`'s illustrative-example reasoning the way
+    # Pattern 1 is: a native-tools model writes ```bash examples in prose all
+    # the time, and has never once written a fully-qualified `mcp__…__…` fence
+    # tag by accident. Dropping it would lose a real call (`B1306`), which is
+    # the same judgement Patterns 2-5 already make for explicit markup.
+    for m in _MCP_TOOL_BLOCK_RE.finditer(text):
+        call = _fenced_mcp_tool_call(m)
+        if call is None:
+            continue
+        blocks.append(ToolBlock(call[0], call[1]))
+
+    # Pattern 1: fenced code blocks (skipped when `skip_fenced` — see docstring).
+    fenced = [] if skip_fenced else _fenced_calls(text)
+    if fenced:
+        # `B1914`. An explicit call outside every fence outranks the fences:
+        # they were examples. Markup that makes no call leaves them to run, and
+        # Pattern 1b's MCP calls keep the precedence they had over the markup.
+        explicit = _explicit_calls_outside_fences(text)
+        if explicit:
+            return blocks or explicit
+        blocks.extend(fenced)
+
+    # Patterns 2-4c: explicit markup, when no fence made a call.
+    if not blocks:
+        blocks = _parse_explicit_markup(text)
 
     # Pattern 4d: raw OpenAI-style tool-call JSON leaked as assistant text.
     # Example: {"function":{"arguments":"{\"action\":\"add\"}","name":"manage_memory"},"type":"function"}
@@ -2159,7 +2230,8 @@ def strip_tool_blocks(text: str, skip_fenced: bool = False) -> str:
     same response: if a fence wasn't executed as a tool call (because it's an
     illustrative example from a native function-calling model), it shouldn't
     vanish from the persisted/displayed text either — otherwise the example
-    streams once and then disappears on reload (issue #3222 follow-up).
+    streams once and then disappears on reload (issue #3222 follow-up). A
+    fence an explicit call outranked (`B1914`) did not run either, and stays.
     Patterns 2-5 + DSML markup are always stripped, since that markup should
     never reach the user regardless of whether it converted to a tool call.
     """
@@ -2173,7 +2245,9 @@ def strip_tool_blocks(text: str, skip_fenced: bool = False) -> str:
     # gated on `skip_fenced` — Pattern 1b is not either, and a fence that ran
     # must not also be shown (the mirror `_fenced_tool_call` already keeps).
     cleaned = _MCP_TOOL_BLOCK_RE.sub(_strip_executed_mcp_fence, text)
-    cleaned = cleaned if skip_fenced else _TOOL_BLOCK_RE.sub(_strip_executed_fence, cleaned)
+    # `B1914`. A fence an explicit call outranked did not run, so it stays.
+    if not skip_fenced and not (_explicit_calls_outside_fences(text) and _fenced_calls(text)):
+        cleaned = _TOOL_BLOCK_RE.sub(_strip_executed_fence, cleaned)
     # Forward-only removal mirrors parse_tool_blocks: _strip_delimited pairs each
     # opener with a later closer and stops when none is reachable, so untrusted
     # output can't drive the O(n^2) lazy-rescan (ReDoS); see _iter_delimited.
