@@ -216,7 +216,7 @@ async def test_each_delivery_takes_a_stand_in(task_db, monkeypatch):
             calls.append((name, args["subject"]))
             return {"exit_code": 0, "stdout": "sent"}
     monkeypatch.setattr(tool_utils, "get_mcp_manager", lambda: Mcp())
-    monkeypatch.setattr(email_helpers, "_get_email_config", lambda: {})
+    monkeypatch.setattr(email_helpers, "_get_email_config", lambda **kw: {})
     await s._deliver_task_result(_stand_in(task_db, output_target="mcp__mail__send"), "Hi", task_db)
     assert calls == [("mcp__mail__send", "[Task] Morning · Step")]
 

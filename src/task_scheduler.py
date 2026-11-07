@@ -8020,12 +8020,21 @@ class TaskScheduler:
         names (to / recipient / email / address) are all populated so we don't
         have to special-case each tool's schema; the MCP tool ignores keys it
         doesn't recognise.
+
+        `B1934`. The From address is the task owner's own mailbox, and an email
+        server tool is told whose account it acts for (`_EMAIL_MCP_OWNER_ARG`),
+        the two together: the owner alone would mail one person's result to
+        another person's address. A delivery that did not happen raises (no
+        manager, an error reply, a non-zero exit, a `send_email` reply that
+        says neither that it sent nor that it staged), so the run is an error
+        that says why, not a success that sent nothing. A draft staged for
+        approval is delivered: outbound-email confirmation is on by default
+        (`FORBIDDEN.md` Part 2), and the staged draft is that control working.
         """
         from src.tool_utils import get_mcp_manager
         mcp = get_mcp_manager()
         if not mcp:
-            logger.warning(f"Task {task.id}: MCP manager not available for delivery")
-            return
+            raise RuntimeError(f"MCP manager not available for delivery via {tool_name}")
 
         # Resolve recipient — prefer the configured email From (the established
         # "email yourself" pattern from daily_brief), fall back to task.owner.
@@ -8034,7 +8043,9 @@ class TaskScheduler:
         recipient = None
         try:
             from routes.email_helpers import _get_email_config
-            cfg = _get_email_config() or {}
+            # `B1934`: the owner's own mailbox. With no owner this is any
+            # owner's default, as `_get_email_config`'s SECURITY note says.
+            cfg = _get_email_config(owner=task.owner or "") or {}
             recipient = cfg.get("from_address") or None
         except Exception as _e:
             logger.debug(f"_deliver_via_mcp: email config lookup failed: {_e}")
@@ -8050,6 +8061,11 @@ class TaskScheduler:
                 "X-Pantheon-Ref": str(task.id),
             },
         }
+        if tool_name.startswith("mcp__email__") and task.owner:
+            # `B1934`: the account the recipient came from, as a chat's call
+            # names it; without it an owner-scoped server refuses the send.
+            from src.tool_execution import _EMAIL_MCP_OWNER_ARG
+            args[_EMAIL_MCP_OWNER_ARG] = task.owner
         if recipient:
             # Cover the common field names so we work across MCP servers (Gmail,
             # generic SMTP, Slack DMs, etc.) without having to hard-code each.
@@ -8064,25 +8080,41 @@ class TaskScheduler:
             )
         try:
             mcp_result = await mcp.call_tool(tool_name, args)
-            stderr = mcp_result.get("stderr", "")
-            stdout = mcp_result.get("stdout", "")
+            if not isinstance(mcp_result, dict):
+                raise RuntimeError(f"{tool_name} gave no reply")
+            stderr = str(mcp_result.get("stderr") or "")
+            stdout = str(mcp_result.get("stdout") or "")
             body_len = len(result or "")
             exit_code = mcp_result.get("exit_code", 0)
-            if exit_code != 0:
-                logger.warning(
-                    f"Task {task.id} MCP delivery FAILED via {tool_name}: "
-                    f"exit={exit_code} stderr={stderr[:400]!r} stdout={stdout[:400]!r}"
-                )
-            else:
-                # Include the MCP tool's own stdout (e.g. email_server returns
-                # "Sent email to ... with subject ...") + the body size so a
-                # silent SMTP failure is easier to spot in the logs.
-                logger.info(
-                    f"Task {task.id} delivered via MCP tool {tool_name} "
-                    f"(recipient_set={bool(recipient)}, body={body_len}b, reply={stdout[:200]!r})"
-                )
+            # `B1934`. Each of these was logged and the run said success.
+            if mcp_result.get("error"):
+                raise RuntimeError(f"{tool_name} failed: {str(mcp_result['error'])[:400]}")
+            if exit_code not in (0, None):
+                raise RuntimeError(
+                    f"{tool_name} failed: exit={exit_code} "
+                    f"stderr={stderr[:400]!r} stdout={stdout[:400]!r}")
+            if re.match(r"\s*error:", stdout, re.I):
+                raise RuntimeError(f"{tool_name} failed: {stdout.strip()[:400]}")
+            if tool_name == "mcp__email__send_email":
+                reply = stdout.strip()
+                if reply.startswith("Draft staged for approval"):
+                    logger.info(
+                        f"Task {task.id}: result staged for approval via {tool_name}, "
+                        f"nothing sent yet (body={body_len}b, reply={reply[:200]!r})")
+                    return
+                if not reply.startswith("Sent email to "):
+                    raise RuntimeError(
+                        f"{tool_name} did not say it sent the mail: {reply[:400]!r}")
+            # Include the MCP tool's own stdout (e.g. email_server returns
+            # "Sent email to ... with subject ...") + the body size so a
+            # silent SMTP failure is easier to spot in the logs.
+            logger.info(
+                f"Task {task.id} delivered via MCP tool {tool_name} "
+                f"(recipient_set={bool(recipient)}, body={body_len}b, reply={stdout[:200]!r})"
+            )
         except Exception as e:
             logger.error(f"Task {task.id} MCP delivery failed: {e}")
+            raise
 
     async def run_task_now(self, task_id: str, *, force: bool = False,
                            trigger: dict | None = None, dry: bool = False,
