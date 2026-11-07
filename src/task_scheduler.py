@@ -1279,6 +1279,45 @@ def _normalize_chat_endpoint(url: str) -> str:
         return url
 
 
+def _registered_endpoint_headers(endpoint_url: str, owner: str | None, db=None) -> dict:
+    """The headers a scheduled run sends to `endpoint_url`: the credentials of
+    the endpoint that URL names, refreshed, or none at all.
+
+    `B1821`. A scheduled agent task (and a workflow's AI step) and a scheduled
+    research run took the first enabled row `owner` may use whose base was a
+    substring of the URL, or the URL of the base, and sent that row's stored
+    key. A ChatGPT Subscription endpoint stores no key: its credential is a
+    sign-in, refreshed by `resolve_endpoint_runtime`, which a chat calls and
+    the scheduler never did, so its runs went without a bearer and got a 401.
+    And of two endpoints whose addresses contain one another
+    (`http://192.168.1.5:1143` and `http://192.168.1.5:11434`), a run to one
+    could send the other's key. The endpoint is now the one
+    `registered_endpoint_for_url` finds, the matcher `_usable_route` authorised
+    the URL with, among the same rows. A URL no usable endpoint answers to, or
+    a refresh that fails, sends no credentials: never a sign-in's stale stored
+    key, never another endpoint's. `db` is the caller's session when it has one.
+    """
+    try:
+        from src.endpoint_resolver import (build_headers, registered_endpoint_for_url,
+                                           resolve_endpoint_runtime)
+        own = db is None
+        if own:
+            from core.database import SessionLocal
+            db = SessionLocal()
+        try:
+            ep = registered_endpoint_for_url(db, endpoint_url, owner)
+        finally:
+            if own:
+                db.close()
+        if ep is None:
+            return {}
+        base, api_key = resolve_endpoint_runtime(ep, owner=owner)
+        return build_headers(api_key, base)
+    except Exception:
+        logger.debug("no credentials for the scheduled run to %r", endpoint_url, exc_info=True)
+        return {}
+
+
 # `P8-33`'s first line of every plan, named once. `P22-04`: the agent's
 # `manage_tasks` `dry_run` reads a run back and has to tell a plan from a run
 # the engine declined to plan (a paused task, an admin refusal), and it does so
@@ -5890,25 +5929,9 @@ class TaskScheduler:
             # `B1434`. A hired agent works in the folder its hire names.
             _loop_extra["workspace"] = _slot["workspace"]
 
-        # Resolve headers from the endpoint's API key
-        headers = {}
-        try:
-            from core.database import SessionLocal, ModelEndpoint
-            from src.endpoint_resolver import normalize_base, build_headers
-            from src.auth_helpers import owner_filter
-            db2 = SessionLocal()
-            try:
-                ep_q = db2.query(ModelEndpoint).filter(ModelEndpoint.is_enabled == True)
-                ep_q = owner_filter(ep_q, ModelEndpoint, task.owner or None)
-                eps = ep_q.all()
-                for ep in eps:
-                    if normalize_base(ep.base_url) in endpoint_url or endpoint_url in normalize_base(ep.base_url):
-                        headers = build_headers(ep.api_key, normalize_base(ep.base_url))
-                        break
-            finally:
-                db2.close()
-        except Exception:
-            pass
+        # `B1821`. The credentials of the endpoint this URL names, refreshed
+        # when they are a sign-in, scoped to the task's owner.
+        headers = _registered_endpoint_headers(endpoint_url, task.owner or None)
         full_text = ""
         tool_results = []
         approval_pause = None
@@ -6177,22 +6200,10 @@ class TaskScheduler:
         # Record the resolved model for the run record (see _execute_task_locked).
         self.set_run_model(run_id, model)
 
-        # Resolve headers
-        try:
-            from core.database import ModelEndpoint
-            from src.endpoint_resolver import normalize_base, build_headers
-            from src.auth_helpers import owner_filter
-            db2 = db
-            if not headers_from_resolver:
-                ep_q = db2.query(ModelEndpoint).filter(ModelEndpoint.is_enabled == True)
-                ep_q = owner_filter(ep_q, ModelEndpoint, task.owner or None)
-                eps = ep_q.all()
-                for ep in eps:
-                    if normalize_base(ep.base_url) in endpoint_url or endpoint_url in normalize_base(ep.base_url):
-                        headers = build_headers(ep.api_key, normalize_base(ep.base_url))
-                        break
-        except Exception:
-            pass
+        # `B1821`. The resolver's headers when it gave some; otherwise the
+        # credentials of the endpoint this URL names, as for an agent task.
+        if not headers_from_resolver:
+            headers = _registered_endpoint_headers(endpoint_url, task.owner or None, db=db)
 
         max_tokens = int(get_setting("research_max_tokens", 8192))
         extraction_timeout = int(get_setting("research_extraction_timeout_seconds", 90) or 90)
