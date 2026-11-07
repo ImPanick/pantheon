@@ -764,26 +764,32 @@ def setup_note_routes(task_scheduler=None, upload_handler=None):
                 body.content,
                 json.dumps(body.items) if body.items is not None else None,
             )
+            # `B1802`. A field left out of the body keeps its value; an explicit
+            # null clears the six optional fields the editor's remove controls
+            # send as null (a reminder's x, the last tag, the image, the card's
+            # "no colour" dot). These used to treat null as "unchanged", so the
+            # removal came back on reload and a removed reminder still fired.
+            supplied = body.model_fields_set
             if body.title is not None:
                 note.title = body.title
-            if body.content is not None:
+            if "content" in supplied:
                 note.content = body.content
-            if body.items is not None:
-                note.items = json.dumps(body.items)
+            if "items" in supplied:
+                note.items = json.dumps(body.items) if body.items is not None else None
                 flag_modified(note, "items")
             if body.note_type is not None:
                 note.note_type = body.note_type
-            if body.color is not None:
+            if "color" in supplied:
                 note.color = body.color
-            if body.label is not None:
+            if "label" in supplied:
                 note.label = body.label
             if body.pinned is not None:
                 note.pinned = body.pinned
             if body.archived is not None:
                 note.archived = body.archived
-            if body.due_date is not None:
+            if "due_date" in supplied:
                 note.due_date = body.due_date
-            if body.image_url is not None:
+            if "image_url" in supplied:
                 note.image_url = body.image_url
             if body.repeat is not None:
                 note.repeat = body.repeat
