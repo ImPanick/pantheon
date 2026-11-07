@@ -5320,7 +5320,14 @@ def setup_email_routes():
             try:
                 with _imap(_draft_acct, owner=owner) as imap:
                     drafts_folder = _detect_drafts_folder(imap)
-                    imap.append(drafts_folder, "\\Draft", None, msg.as_bytes())
+                    # `B1824`. imaplib raises only on BAD: a NO (over quota, or
+                    # `[TRYCREATE]` for a Drafts folder the server lacks) is a
+                    # return value, and it was reported as "Draft saved".
+                    append_st, append_data = imap.append(drafts_folder, "\\Draft", None, msg.as_bytes())
+                    if append_st != "OK":
+                        detail = b" ".join(d for d in (append_data or []) if isinstance(d, bytes))
+                        detail = detail.decode("utf-8", "replace").strip()[:200]
+                        return f"The mail server did not save the draft to {drafts_folder}: {detail or append_st}"
                 return None
             except Exception as e:
                 return str(e)
