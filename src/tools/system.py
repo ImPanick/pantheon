@@ -1394,6 +1394,16 @@ _APP_API_BLOCKLIST_METHOD_PATH = (
     # than after somebody notices. `GET /api/workstation/status` stays open:
     # reading whether the workstation answers is not a door.
     ("POST",   "/api/workstation"),
+    # `B1954` (upstream PR #7056). A chat turn started here takes its switches
+    # (shell, web, research) from the request body, not from the ones the
+    # person set for that chat, so it widens the assistant's reach without the
+    # ask `D-2026-10-25-01` puts on every self-switch; a steer reaches a live
+    # run as the person's own words. Both are the person's, from the chat
+    # window; another chat is messaged with `send_to_session`. Two entries, not
+    # a bare `/api/chat`: that would also refuse `/api/chatgpt-subscription/...`
+    # and the `/api/chat/stop` stand-down, which stays open with the reads.
+    ("POST",   "/api/chat_stream"),
+    ("POST",   "/api/chat/steer"),
     ("POST",   "/api/cookbook/state"),   # whole-file overwrite — agent must use serve_preset/serve_model instead
     ("DELETE", "/api/cookbook/state"),
     # `B1258`. The Hugging Face token's own door: a credential the person sets
@@ -1551,6 +1561,12 @@ async def do_app_api(content: str, owner: Optional[str] = None) -> Dict:
             return {"error": "Resetting a workstation erases a person's home in it, checking it pushes an admin's settings to it, and taking over its screen or typing into it speaks for the person at the keyboard — all of these are the person's to do, from Settings → Workstation or the Workstation screen window. I can't do any of them from here, even if asked, because the request looks the same whether it came from you or from something I was reading. To use the screen myself, I use the `computer` tool.", "exit_code": 1}
         if _match_path.startswith("/api/mcp/servers"):
             return {"error": f"Registering, editing, toggling, deleting or calling an MCP server this way skips the command check that keeps a stdio server from running arbitrary code — it is the person's action, from {INTEGRATIONS_PLACE}. Use the `manage_mcp` tool for a server the agent may add (it enforces that check), or ask the person to add it in the UI.", "exit_code": 1}
+        if _match_path.startswith("/api/chat_stream"):
+            # `B1954`: its own sentence, not the cookbook fall-through below.
+            return {"error": "Starting a chat turn from here would run it with the switches in my request, not the ones you set for that chat — shell and web included — so it would widen my own reach. Only you can start one, from the chat window. To pass a message to another chat I use `send_to_session`.", "exit_code": 1}
+        if _match_path.startswith("/api/chat/steer"):
+            # `B1954`: a steer is delivered to the run as the person's words.
+            return {"error": "Steering a run from here would put my words into it as yours, as a course correction from you, so the run would take orders from me as if you had sent them. Only you can steer a run, from the chat window. To pass a message to another chat I use `send_to_session`.", "exit_code": 1}
         if "/api/email/accounts" in _match_path:
             return {"error": "Don't use /api/email/accounts via app_api — it is owner-filtered in tool context and may return empty. Use the `list_email_accounts` email tool, then pass `account` to list_emails/read_email.", "exit_code": 1}
         if _match_path.startswith("/api/cookbook/servers") or _match_path.startswith("/api/cookbook/hf-token"):
