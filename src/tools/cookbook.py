@@ -263,7 +263,13 @@ def _infer_serve_port(cmd: str) -> int:
             return int(m.group(1))
         except Exception:
             pass
-    m = re.search(r"OLLAMA_HOST=[^\\s]*?:(\\d+)", cmd)
+    # `B1930`: bounded like the Forge's registration (253 characters, the
+    # longest DNS name): unbounded, a command of many OLLAMA_HOST= assignments
+    # took quadratic time. Both patterns here are escaped twice (`\\s`, `\\d` in
+    # a raw string), so neither matches a real command and the answer is 11434
+    # or 8080; correcting that changes the port `_ensure_served_endpoint`
+    # registers, and is a change of its own.
+    m = re.search(r"OLLAMA_HOST=[^\\s]{0,253}?:(\\d+)", cmd)
     if m:
         try:
             return int(m.group(1))

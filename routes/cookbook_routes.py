@@ -1686,7 +1686,11 @@ def setup_cookbook_routes() -> APIRouter:
         # existing systemd Ollama, the registered endpoint pointed at
         # the OLD port and showed as offline.
         port_match = re.search(r'--port\s+(\d+)', req.cmd)
-        ollama_host_match = re.search(r'OLLAMA_HOST=[^\s]*?:(\d+)', req.cmd)
+        # `B1930`: the host is at most 253 characters, the longest DNS name.
+        # Unbounded, the scan ran from every OLLAMA_HOST= to the end of the
+        # word, so a command of many assignments took quadratic time, here on
+        # the event loop (8000 of them: seconds, with every request waiting).
+        ollama_host_match = re.search(r'OLLAMA_HOST=[^\s]{0,253}?:(\d+)', req.cmd)
         if port_match:
             port = int(port_match.group(1))
         elif ollama_host_match:
