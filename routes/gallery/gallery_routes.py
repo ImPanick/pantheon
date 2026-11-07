@@ -1746,7 +1746,7 @@ def setup_gallery_routes() -> APIRouter:
             from realesrgan import RealESRGANer
         except ImportError:
             return {"error": "realesrgan not installed. Install it from Forge → Dependencies (search 'realesrgan')."}
-        try:
+        def _denoise():
             # General-purpose lightweight model with denoise control.
             from realesrgan.archs.srvgg_arch import SRVGGNetCompact
             model = SRVGGNetCompact(num_in_ch=3, num_out_ch=3, num_feat=64,
@@ -1764,6 +1764,11 @@ def setup_gallery_routes() -> APIRouter:
             buf = io.BytesIO()
             out_img.save(buf, format="PNG")
             return {"image": base64.b64encode(buf.getvalue()).decode()}
+
+        try:
+            # `B1815`: in a worker thread, so every other request is not
+            # frozen while Real-ESRGAN loads its model and runs.
+            return await asyncio.to_thread(_denoise)
         except Exception:
             logger.warning("Denoise failed", exc_info=True)
             return {"error": "Denoise failed"}
@@ -1797,7 +1802,7 @@ def setup_gallery_routes() -> APIRouter:
             from realesrgan import RealESRGANer
         except ImportError:
             return {"error": "realesrgan not installed. Install it from Forge → Dependencies (search 'realesrgan')."}
-        try:
+        def _upscale():
             model = RRDBNet(num_in_ch=3, num_out_ch=3, num_feat=64,
                             num_block=23, num_grow_ch=32, scale=4)
             upsampler = RealESRGANer(
@@ -1812,11 +1817,20 @@ def setup_gallery_routes() -> APIRouter:
             buf = io.BytesIO()
             out_img.save(buf, format="PNG")
             return {"image": base64.b64encode(buf.getvalue()).decode()}
+
+        try:
+            return await asyncio.to_thread(_upscale)   # `B1815`, as denoise above
         except Exception:
             logger.warning("AI upscale failed", exc_info=True)
             return {"error": "AI upscale failed"}
 
     # ---- POST /api/image/remove-bg ----
+    # `B1815`. SAM and OWL-ViT are loaded once and shared, so masks are made one
+    # at a time, as on the event loop. Taken before the work moves to its thread,
+    # a waiting request parks on the loop, not in the thread pool (as
+    # `_index_job_lock` in routes/personal_routes.py); per router, per loop.
+    mask_models_lock = asyncio.Lock()
+
     @router.post("/api/image/mask")
     async def smart_mask(request: Request):
         """Create a neutral segmentation mask from user-provided points or a box.
@@ -1827,6 +1841,10 @@ def setup_gallery_routes() -> APIRouter:
         """
         require_privilege(request, "can_generate_images")
         body = await request.json()
+        async with mask_models_lock:
+            return await asyncio.to_thread(_mask_from_hints, body)
+
+    def _mask_from_hints(body):
         image = _b64_to_pil_image(body.get("image") or "", mode="RGB")
         points = body.get("points") or []
         box = body.get("box")
@@ -1999,7 +2017,9 @@ def setup_gallery_routes() -> APIRouter:
 
         try:
             from rembg import remove
-            cut = remove(crop)
+            # `B1815`: in a worker thread, so a cut-out does not freeze every
+            # other request while rembg loads its model and runs.
+            cut = await asyncio.to_thread(remove, crop)
         except ImportError:
             # There used to be a fallback here: `transformers.pipeline(...,
             # model="briaai/RMBG-1.4", trust_remote_code=True)`. Removed
@@ -2068,7 +2088,7 @@ def setup_gallery_routes() -> APIRouter:
         img = Image.open(io.BytesIO(img_bytes)).convert("RGB")
 
         # Try GFPGAN first (AI face restoration)
-        try:
+        def _restore():
             from gfpgan import GFPGANer
             import cv2
 
@@ -2100,6 +2120,10 @@ def setup_gallery_routes() -> APIRouter:
             result_img.save(buf, format="PNG")
             return {"image": base64.b64encode(buf.getvalue()).decode()}
 
+        try:
+            # `B1815`: in a worker thread, as denoise above. A missing gfpgan
+            # or cv2 still raises ImportError here, for the PIL fallback.
+            return await asyncio.to_thread(_restore)
         except ImportError:
             # GFPGAN not available — use PIL-based enhancement (no AI, but works everywhere)
             logger.info("GFPGAN not available — using PIL enhancement fallback")
