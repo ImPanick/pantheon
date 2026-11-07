@@ -565,7 +565,11 @@ class _HostFiles:
 
 def _run_patch(patch_text: str, files) -> Dict[str, Any]:
     """Parse, prepare every file, then write — `apply_patch`'s whole body, over
-    `files` (`_HostFiles` or the workstation's)."""
+    `files` (`_HostFiles` or the workstation's).
+
+    `B1990`. A write or delete that fails puts back every file the patch
+    reached, the failing one too (`_undo_patch`), so a patch answered as
+    failed has changed nothing and can be sent again as it was."""
     try:
         ops = _parse_agent_patch(patch_text)
         if not ops:
@@ -594,19 +598,33 @@ def _run_patch(patch_text: str, files) -> Dict[str, Any]:
             unwritable = _unwritable_text("apply_patch", new, of=op["path"])
             if unwritable:
                 return unwritable
-            prepared.append((kind, path, old, new))
+            prepared.append((kind, path, old, new, op["path"]))
+        # `B1990`: worked out before the first write, so nothing but a write
+        # or a delete can fail once one has landed.
+        diffs = [diff for diff in (_unified_diff(old, new, path)
+                                   for _kind, path, old, new, _named in prepared) if diff]
+    except (ValueError, UnicodeDecodeError, PermissionError, OSError) as e:
+        return {"error": f"apply_patch: {e}", "exit_code": 1}
 
-        diffs = []
-        for kind, path, old, new in prepared:
+    reached = []
+    try:
+        for entry in prepared:
+            kind, path, _old, new, _named = entry
+            # Counted before it runs: a write that fails may have cut the
+            # file short first, as a full disk does.
+            reached.append(entry)
             if kind == "delete":
                 files.remove(path)
             else:
                 files.write_text(path, new)
-            diff = _unified_diff(old, new, path)
-            if diff:
-                diffs.append(diff)
     except (ValueError, UnicodeDecodeError, PermissionError, OSError) as e:
-        return {"error": f"apply_patch: {e}", "exit_code": 1}
+        left = _undo_patch(reached, files)
+        if left:
+            return {"error": (f"apply_patch: {e}; the patch was not applied, but these files "
+                              f"could not be put back as they were and may be changed: "
+                              f"{', '.join(left)}"), "exit_code": 1}
+        return {"error": f"apply_patch: {e}; the patch was not applied and every file is as it was",
+                "exit_code": 1}
 
     added = sum(int(d.get("added") or 0) for d in diffs)
     removed = sum(int(d.get("removed") or 0) for d in diffs)
@@ -627,6 +645,38 @@ def _run_patch(patch_text: str, files) -> Dict[str, Any]:
             "file": "patch",
         }
     return result
+
+
+def _undo_patch(reached, files) -> List[str]:
+    """`B1990`. Put back the files a failed patch reached, the last first, with
+    the same six operations the patch was written with (`_HostFiles` or the
+    workstation's): a file it added is removed, one it updated or deleted is
+    written back with the text it had. Each is read back to check it; the
+    patch's names for those that are not as they were come back, in the
+    patch's order. It writes text as a patch does, so a file written back has
+    a patch's line endings, a deleted one comes back without its mode, and a
+    folder made for an added file stays, empty."""
+    left = []
+    for kind, path, old, _new, named in reversed(reached):
+        try:
+            if kind == "add":
+                if files.exists(path):
+                    files.remove(path)
+                back = not files.exists(path)
+            else:
+                try:
+                    back = files.isfile(path) and files.read_text(path) == old
+                except (ValueError, OSError):   # e.g. a write cut off inside a character
+                    back = False
+                if not back:
+                    files.write_text(path, old)
+                    back = files.isfile(path) and files.read_text(path) == old
+        except (ValueError, OSError):
+            back = False
+        if not back:
+            left.append(named)
+    return left[::-1]
+
 
 def _parse_agent_patch(patch_text: str) -> List[Dict[str, Any]]:
     lines = patch_text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
