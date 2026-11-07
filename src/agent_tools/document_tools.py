@@ -571,6 +571,20 @@ class CreateDocumentTool:
         finally:
             db.close()
 
+def _document_updated(doc, owner: Optional[str]) -> None:
+    """`B1862`. `document_updated` for a document the agent just edited, after
+    the commit (`event_bus.fire_document_updated`: once a minute per document).
+    Fired in the tool's own context, so a run's mark (`run_origin`) goes with
+    it and a workflow whose step edits the document does not wake itself. A
+    PDF edit makes a NEW document (`_create_pdf_text_derivative`), which is
+    not an edit of this one."""
+    try:
+        from src.event_bus import fire_document_updated
+        fire_document_updated(getattr(doc, "owner", None) or owner, doc.id, doc.title)
+    except Exception:
+        logger.debug("document_updated event dispatch failed", exc_info=True)
+
+
 class UpdateDocumentTool:    
     async def execute(self, content: str, ctx: dict) -> Dict:
         """Update an existing document. Content = full new document text."""
@@ -637,11 +651,14 @@ class UpdateDocumentTool:
                 summary=f"Updated by {_active_model or 'AI'}",
                 source="ai",
             )
+            moved = (doc.current_content or "") != new_content
             doc.current_content = new_content
             doc.version_count = new_ver
             after_agent_edit(doc)   # `B1325`: no longer only the person's text
             db.add(ver)
             db.commit()
+            if moved:
+                _document_updated(doc, owner)   # `B1862`
 
             return {
                 "action": "update",
@@ -725,11 +742,14 @@ class EditDocumentTool:
                         summary=f"Edited email body by {_active_model or 'AI'}",
                         source="ai",
                     )
+                    moved = (doc.current_content or "") != updated_content
                     doc.current_content = updated_content
                     doc.version_count = new_ver
                     after_agent_edit(doc)   # `B1325`: no longer only the person's text
                     db.add(ver)
                     db.commit()
+                    if moved:
+                        _document_updated(doc, owner)   # `B1862`
                     return {
                         "action": "edit",
                         "doc_id": target_id,
@@ -794,11 +814,14 @@ class EditDocumentTool:
                 summary=f"Edited by {_active_model or 'AI'} ({applied} edit(s))",
                 source="ai",
             )
+            moved = (doc.current_content or "") != updated_content
             doc.current_content = updated_content
             doc.version_count = new_ver
             after_agent_edit(doc)   # `B1325`: no longer only the person's text
             db.add(ver)
             db.commit()
+            if moved:
+                _document_updated(doc, owner)   # `B1862`
 
             return {
                 "action": "edit",
