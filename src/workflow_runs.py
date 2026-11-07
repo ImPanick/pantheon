@@ -439,6 +439,16 @@ def last_node_record(db, task_id: str, node_id: str):
     `P22-08`'s *from the last run*. A dry run's plan is never "the last run"
     (`B1054`'s defect, closed here by the `dry` flag rather than by a sentence).
     Node ids are per document, so the trigger task's id scopes the search.
+
+    `B1889` (`foreach-last-record-is-an-item`). A For-each's items are kept
+    under the For-each's own step id (`item` is their index), and each starts
+    after the For-each's own record — so the newest record of the step was its
+    LAST ITEM. The picker then offered `{{ steps.fe.data.<the inner step's
+    field> }}` with the last item's value, which is nothing in a real run, and
+    never `items`, `worked` and `failed`; *Test this step* read that field and
+    missed the real one, the reverse of a run; and *What it was handed in the
+    last run* on the For-each was one item's input. A step's own record has
+    `item` null, and only that is "the last run" of the step.
     """
     from core.database import TaskRun, TaskRunNode
 
@@ -446,6 +456,7 @@ def last_node_record(db, task_id: str, node_id: str):
             .join(TaskRun, TaskRun.id == TaskRunNode.run_id)
             .filter(TaskRun.task_id == task_id,
                     TaskRunNode.node_id == str(node_id),
+                    TaskRunNode.item.is_(None),
                     TaskRunNode.dry.is_(False))
             .order_by(TaskRunNode.started_at.desc(), TaskRunNode.seq.desc())
             .first())
