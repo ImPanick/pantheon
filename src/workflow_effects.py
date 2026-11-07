@@ -348,10 +348,22 @@ def skill_context(owner, name) -> Tuple[List[dict], str]:
         raise StepRefused("This step does not name a skill. Pick one from the list.")
     sm = SkillsManager(DATA_DIR)
     md = sm.read_skill_md(label, owner)
+    built_in = False
+    if md is None and any(s["name"] == label for s in _built_in_skills(owner)):
+        # `B1892`. A built-in skill, read as `use_skill` reads one in a chat
+        # (`read_skill_md(include_library=True)`) — and only one this person's
+        # chat would be offered (`_built_in_skills`, the catalogue's gates), so
+        # a vendored skill, or one whose tools they never have, is not read
+        # here by name either. Its text is wrapped exactly as a person's own
+        # is: untrusted, the gate armed — a step is a run nobody watches.
+        md = sm.read_skill_md(label, owner, include_library=True)
+        built_in = md is not None
     if md is None:
         raise StepRefused(f"There is no skill named “{label}” any more. Pick another, "
                           "or put it back in Skills.")
     messages = [untrusted_context_message(f"the skill “{label}”", md)]
+    if built_in:
+        return messages, f"Followed the built-in skill “{label}”."
     saved = _saved_at(sm, label, owner)
     line = f"Followed the skill “{label}”" + (f" (saved {saved})." if saved else ".")
     return messages, line
@@ -614,9 +626,10 @@ def _integrations(owner) -> list:
 
 
 def _own_skills(owner) -> list:
-    """The skills a step can follow: the person's own, switched on — exactly
-    the ones `skill_context` can read (`read_skill_md` reads the person's own
-    store, not the bundled library or the legacy list)."""
+    """The person's own skills a step can follow, switched on — their own
+    store, not the bundled library or the legacy list. `B1892`: one of the two
+    halves of what a step may follow (`_step_skills`); the built-in half is
+    `_built_in_skills`."""
     from services.memory.skills import SkillsManager
     from src.constants import DATA_DIR
     want = owner or ""
@@ -627,6 +640,51 @@ def _own_skills(owner) -> list:
         if isinstance(skill.get("name"), str) and skill["name"]:
             out.append({"name": skill["name"], "description": str(skill.get("description") or "")})
     return sorted(out, key=lambda s: s["name"])
+
+
+def _built_in_skills(owner) -> list:
+    """`B1892`. The skills Pantheon ships (`library/pantheon/skills`, the
+    Skills window's *Built-in*) that this person's chat would offer its model —
+    so a Skill step can follow one, as `use_skill` can in a chat.
+
+    Read through the chat catalogue itself (`SkillsManager.index_for`, the
+    list `use_skill` with no arguments answers), on the tools every turn of
+    this person has (`agent_loop.skill_toolsets_for_owner`, which `use_skill`'s
+    search reads too). So every rule the skill system already keeps holds here
+    unchanged (`Law 7`): a skill in a package or group switched off for this
+    person is left out (`P8-51`); one whose required tools this person never
+    has — a non-admin's `bash`, `computer` — is left out (`B580`), as is
+    everything but a published one; and the 286 vendored skills, which no
+    model is shown (`D-2026-10-26-01` §8), are never offered. A person's own
+    skill of the same name shadows a built-in one, as everywhere.
+
+    The audit (`skill-step-ignores-builtins`): the palette greyed Skill with
+    "No skills yet. Make one in Skills." beside a Skills tab listing 24
+    built-in skills, and none of them could be a step."""
+    from services.memory.skills import SkillsManager
+    from src.constants import DATA_DIR
+    try:
+        from src.agent_loop import skill_toolsets_for_owner
+        toolsets = skill_toolsets_for_owner(owner)
+    except Exception:  # noqa: BLE001 — `use_skill`'s own fallback: no tool gate known
+        logger.debug("skill toolsets unreadable for the palette", exc_info=True)
+        toolsets = None
+    out = []
+    for row in SkillsManager(DATA_DIR).index_for(owner=owner, active_toolsets=toolsets):
+        if row.get("shipped") and isinstance(row.get("name"), str) and row["name"]:
+            out.append({"name": row["name"], "description": str(row.get("description") or "")})
+    return sorted(out, key=lambda s: s["name"])
+
+
+def _step_skills(owner) -> list:
+    """`B1892`. Every skill a Skill step may follow, as the palette offers
+    them: the person's own first, then the built-in ones, each saying which
+    (`built_in`). The names are what `workflow_resources` checks a step
+    against at save and at run, and what `skill_context` reads."""
+    own = [dict(s, built_in=False) for s in _own_skills(owner)]
+    taken = {s["name"] for s in own}
+    return own + [dict(s, built_in=True) for s in _built_in_skills(owner)
+                  if s["name"] not in taken]
 
 
 def workstation_why(owner) -> Optional[str]:
@@ -737,7 +795,7 @@ def workflow_resources(owner):
                                          "server_name": t.get("server_name"),
                                          "name": t.get("name")}
                    for t in _usable_mcp_tools(owner, disabled)},
-        skills=frozenset(s["name"] for s in _own_skills(owner)),
+        skills=frozenset(s["name"] for s in _step_skills(owner)),       # `B1892`
         ai_tools=frozenset(c["name"] for c in ai_tool_choices(owner)),
         workstation_why=workstation_why(owner),
         foreach_max_items=limits["foreach_max_items"],
@@ -775,7 +833,7 @@ KIND_HINTS = {
     "foreach": "Run one step once for each item in a list.",
     "http": "Send a request to one of your Integrations.",
     "mcp": "Call a tool on one of your MCP servers.",
-    "skill": "Have a model follow one of your skills.",
+    "skill": "Have a model follow a skill: one of yours, or a built-in one.",
     "code": "Run your own Python or bash in your workstation.",
 }
 KIND_GROUPS = {
@@ -860,7 +918,7 @@ def build_palette(owner) -> dict:
     disabled = global_disabled_tools()
     integrations = [i for i in _integrations(owner) if i["enabled"]]
     mcp_tools = [_mcp_tool_entry(t) for t in _usable_mcp_tools(owner, disabled)]
-    skills = _own_skills(owner)
+    skills = _step_skills(owner)                  # `B1892`: the built-in ones too
     station_why = workstation_why(owner)
     # `B1891`. Asked once, before the kinds: a Prompt, Research or Skill step
     # with no model is greyed with the run's own sentence, worded as the other

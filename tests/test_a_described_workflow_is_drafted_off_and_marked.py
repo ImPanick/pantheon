@@ -136,7 +136,8 @@ async def test_descriptions_reach_the_model_only_inside_the_guard(world, monkeyp
     assert [t["tool"] for t in palette["mcp_tools"]] == [POST]
     assert palette["integrations"] == [{"id": "intg-miniflux", "name": "Miniflux",
                                         "preset": "miniflux"}]
-    assert palette["skills"] == ["triage"]
+    # The person's own skill, among the built-in ones (`B1892`), by name.
+    assert "triage" in palette["skills"] and palette["skills"] == sorted(palette["skills"])
     # § 6: no Code (the workstation is ON here) and no command action is offered.
     kinds = {k["kind"] for k in palette["kinds"]}
     assert "code" not in kinds and {"llm", "mcp", "http", "skill", "action"} <= kinds

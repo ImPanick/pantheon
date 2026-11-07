@@ -196,14 +196,24 @@ def test_code_is_greyed_with_the_workstations_own_sentence(world, monkeypatch):
 
 
 def test_the_skills_offered_are_the_persons_own(world):
+    """The person's own come first, and nobody else's is offered. `B1892`: the
+    built-in ones follow theirs, each marked `built_in`
+    (`test_a_skill_step_can_follow_a_built_in_skill.py`)."""
     palette = fx.build_palette(ADMIN)
-    assert palette["skills"] == [{"name": "print-queue", "description": "Clear the print queue"}]
+    assert palette["skills"][0] == {"name": "print-queue", "description": "Clear the print queue",
+                                    "built_in": False}
+    assert [s for s in palette["skills"] if not s["built_in"]] == palette["skills"][:1]
+    assert "bobs-skill" not in {s["name"] for s in palette["skills"]}
     assert _kinds(palette)["skill"]["available"] is True
 
 
-def test_with_no_skill_the_skill_step_is_greyed(world):
-    from services.memory.skills import SkillsManager
+def test_with_no_skill_the_skill_step_is_greyed(world, monkeypatch):
+    from services.memory.skills import SkillsManager, invalidate_skill_cache
     import src.constants as constants
+    # `B1892`: an install that ships no skills (`PANTHEON_FIRST_PARTY_SKILLS`
+    # set empty ships none), so the person's own is the only one there is.
+    monkeypatch.setenv("PANTHEON_FIRST_PARTY_SKILLS", "")
+    invalidate_skill_cache()
     SkillsManager(constants.DATA_DIR).delete_skill("print-queue", owner=ADMIN)
     skill = _kinds(fx.build_palette(ADMIN))["skill"]
     assert (skill["available"], skill["why"]) == (False, fx.NO_SKILLS_SENTENCE)
@@ -230,7 +240,9 @@ def test_the_resources_a_document_is_checked_against(world):
     assert KEY not in json.dumps(res.integrations)
     assert set(res.mcp_tools) == {"mcp__chat__send_message"}
     assert res.mcp_tools["mcp__chat__send_message"]["input_schema"]["properties"]["text"]
-    assert res.skills == frozenset({"print-queue"})
+    # `B1892`: the person's own and the built-in ones; never another person's.
+    assert "print-queue" in res.skills and "bobs-skill" not in res.skills
+    assert res.skills == frozenset(s["name"] for s in fx.build_palette(ADMIN)["skills"])
     assert {"web_search", "mcp__chat__send_message"} <= res.ai_tools
     assert res.workstation_why is None
 
