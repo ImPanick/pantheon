@@ -1742,6 +1742,46 @@ from src.mail_headers import (  # noqa: E402
 )
 
 
+_MD_LINK_URL_RE = re.compile(r"\((https?://)[^)\s]*")
+
+
+def _md_links_to_html(s: str) -> str:
+    """Linear ``re.sub(r"\\[([^\\]]+)\\]\\((https?://[^)\\s]+)\\)", '<a href="\\2">\\1</a>', s)``.
+
+    `B1918`, from upstream Odysseus 3d91ad82. That pattern reads to the end of
+    the line from every `[` with no `]` after it, so a compose body of `[`
+    took seconds to render, holding the GIL. Every `[` before the next `]`
+    shares that `]`, so only the first can match; and when a URL runs into
+    whitespace or the end without `)`, every later `[` whose `]` also lies
+    before that stop fails the same way. Skipping those spans keeps a `[[[`
+    or `[a](http://x[a](http://x` flood O(n), with the same output.
+    """
+    out: list[str] = []
+    emitted = scan = 0
+    while True:
+        open_at = s.find("[", scan)
+        if open_at < 0:
+            break
+        close_at = s.find("]", open_at + 1)
+        if close_at < 0:
+            break
+        scan = close_at + 1
+        if close_at == open_at + 1:
+            continue
+        url = _MD_LINK_URL_RE.match(s, close_at + 1)
+        if url is None:
+            continue
+        end = url.end()
+        if end < len(s) and s[end] == ")" and end > url.end(1):
+            out.append(s[emitted:open_at])
+            out.append(f'<a href="{s[url.start(1):end]}">{s[open_at + 1:close_at]}</a>')
+            emitted = scan = end + 1
+        elif end > url.end(1):
+            scan = max(scan, s.rfind("]", scan, end) + 1)
+    out.append(s[emitted:])
+    return "".join(out)
+
+
 def _md_to_email_html(text: str) -> str:
     """Render the compose markdown body to a SAFE HTML fragment for the email's
     text/html part. Everything is HTML-escaped FIRST (so a pasted <script> /
@@ -1757,7 +1797,7 @@ def _md_to_email_html(text: str) -> str:
         s = re.sub(r"~~([^~]+)~~", r"<del>\1</del>", s)
         s = re.sub(r"`([^`]+)`", r"<code>\1</code>", s)
         # links: text + http(s) url only (escape() already neutralised quotes)
-        s = re.sub(r"\[([^\]]+)\]\((https?://[^)\s]+)\)", r'<a href="\2">\1</a>', s)
+        s = _md_links_to_html(s)   # `B1918`: the same links, in one pass
         return s
 
     parts: list[str] = []
