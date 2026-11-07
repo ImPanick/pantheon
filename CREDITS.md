@@ -1057,6 +1057,7 @@ read the same way on 2026-10-31, with what its wheels carry inside them.
 | python-dotenv | core | BSD-3-Clause |
 | HTTPX | core | BSD-3-Clause |
 | **httpcore** | core | BSD-3-Clause |
+| **certifi** | core — the CA bundle httpx and httpcore check HTTPS against, pinned past the eMudhra incident (`B1925`) | MPL-2.0 |
 | **httpx2** | core — the MCP SDK's HTTP transports and `src/mcp_manager.py`'s MCP client (`B621`), and the test client | BSD-3-Clause |
 | Pydantic / pydantic-settings | core | MIT |
 | SQLAlchemy | core | MIT |
