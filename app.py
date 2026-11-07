@@ -281,7 +281,10 @@ def _exempt_from_request_ceiling(path: str) -> bool:
 
 class _RequestTimeoutMiddleware(_BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
-        path = request.url.path or ""
+        # `B1958`. The route path, as `AuthMiddleware` reads it: under
+        # `--root-path`, `request.url.path` carries the prefix and no exemption
+        # above ever matched.
+        path = get_application_route_path(request.scope) or ""
         if _exempt_from_request_ceiling(path):
             return await call_next(request)
         try:
@@ -297,7 +300,9 @@ class _InteractiveActivityMiddleware(_BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
         from src.interactive_gate import should_track_interactive_request, track_interactive_request
 
-        path = request.url.path or ""
+        # `B1958`: the route path, so the page's own polls stay passive under
+        # `--root-path` instead of each stopping background work.
+        path = get_application_route_path(request.scope) or ""
         if not should_track_interactive_request(path, request.method):
             return await call_next(request)
         async def _stop_background():
