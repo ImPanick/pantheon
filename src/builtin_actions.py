@@ -2246,12 +2246,14 @@ async def action_audit_skills(owner: str, **kwargs) -> Tuple[str, bool]:
 
 async def action_ping_notes(owner: str, **kwargs) -> Tuple[str, bool]:
     """Background note-due scanner. Fires a reminder for any note whose
-    `due_date` falls in the current ±5-minute window and hasn't been pinged
-    within the last 25 minutes. Calendar reminders are stored as notes, so this
-    scanner carries them too.
+    `due_date` falls in the current ±90-second window and hasn't been
+    delivered through the configured channel within the last 25 minutes.
+    Calendar reminders are stored as notes, so this scanner carries them too.
 
-    State (`data/note_pings.json`): {note_id: iso_ts_of_last_ping}. Pruned
-    on each run by dropping entries for notes that are gone/archived/replied.
+    State (per owner, `data/note_pings_<owner>.json`): {note_id: {at, channel}},
+    the receipts `dispatch_reminder` writes; a plain timestamp from older code
+    counts as a browser-only receipt. Pruned on each run by dropping entries
+    for notes that are gone/archived/replied.
     """
     try:
         import json as _json
@@ -2259,6 +2261,13 @@ async def action_ping_notes(owner: str, **kwargs) -> Tuple[str, bool]:
         from datetime import datetime as _dt, timezone as _tz, timedelta as _td
         from pathlib import Path as _P
         from core.database import SessionLocal as _SL, Note as _N
+        from src.settings import load_settings
+
+        # `B1803`. Read as `dispatch_reminder` reads it, so a receipt and a
+        # result are judged by the channel the send actually used.
+        channel = load_settings().get("reminder_channel", "browser")
+        external_channel = channel in ("email", "ntfy", "webhook")
+        delivery_key = f"{channel}_sent" if external_channel else "browser_sent"
 
         # Per-owner state file so cache-pruning doesn't cross-delete other
         # users' entries (review C4). Legacy path kept as fallback so a
@@ -2327,20 +2336,28 @@ async def action_ping_notes(owner: str, **kwargs) -> Tuple[str, bool]:
                 due = _parse_due(n.due_date)
                 if not due:
                     continue
-                # Inside the ±5min window?
+                # Inside the ±WINDOW_SEC window?
                 if abs((due - now).total_seconds()) > window.total_seconds():
                     continue
-                # Recently pinged? Skip.
+                # Recently delivered? Skip. `B1803`: for email, ntfy or webhook
+                # only a receipt from that channel counts. A browser receipt
+                # (the in-app notice went out, the external send did not) is
+                # retried on the next scan, without a second in-app notice.
                 last = cache.get(n.id)
+                browser_recent = False
                 if last:
                     try:
+                        last_channel = None
                         if isinstance(last, dict):
+                            last_channel = last.get("channel")
                             last = last.get("at")
                         last_dt = _dt.fromisoformat(str(last))
                         if last_dt.tzinfo is None:
                             last_dt = last_dt.replace(tzinfo=_tz.utc)
                         if last_dt >= reping_cutoff:
-                            continue
+                            if not external_channel or last_channel == channel:
+                                continue
+                            browser_recent = last_channel in (None, "browser")
                     except Exception:
                         pass
                 # `B1191` (`D-2026-10-26-01` §5): held, not dropped, while Notes
@@ -2370,15 +2387,30 @@ async def action_ping_notes(owner: str, **kwargs) -> Tuple[str, bool]:
                 body = "\n\n".join(p for p in body_parts if p) or title
                 try:
                     from routes.note_routes import dispatch_reminder
-                    await dispatch_reminder(
+                    result = await dispatch_reminder(
                         title=title, note_body=body, note_id=n.id,
                         owner=n.owner or owner or "",
+                        queue_browser=not browser_recent,
                     )
-                    cache[n.id] = now.isoformat()
-                    sent.append(title)
+                    # `B1803`. The dispatcher writes the receipt, and only for
+                    # what it delivered; this used to stamp every note as sent,
+                    # so one failed email/ntfy/webhook send was never retried.
+                    if result.get("skipped"):
+                        continue
+                    if result.get(delivery_key):
+                        sent.append(title)
+                    else:
+                        logger.warning("ping_notes: %s delivery failed for %s: %s", channel, n.id,
+                                       result.get(f"{channel}_error") or "not delivered")
                 except Exception as e:
                     logger.warning(f"ping_notes: dispatch failed for {n.id}: {e}")
 
+            # `B1803`. Re-read the receipts the dispatches above just wrote, so
+            # the copy read at the start is not written back over them.
+            try:
+                cache = _json.loads(STATE.read_text(encoding="utf-8")) if STATE.exists() else {}
+            except Exception:
+                pass  # unreadable now: prune the copy read at the start, as before
             # Prune cache entries for notes that no longer exist.
             for stale in [k for k in cache if k not in seen_ids]:
                 cache.pop(stale, None)
@@ -2389,7 +2421,7 @@ async def action_ping_notes(owner: str, **kwargs) -> Tuple[str, bool]:
                 logger.warning(f"ping_notes: cache write failed: {e}")
 
             if not sent:
-                raise TaskNoop(f"scanned {len(notes)} note(s), none due in ±{WINDOW_SEC}s")
+                raise TaskNoop(f"scanned {len(notes)} note(s), no reminders delivered")
             preview = "; ".join(sent[:3])
             extra = f" (+{len(sent) - 3} more)" if len(sent) > 3 else ""
             return f"Pinged {len(sent)} note(s): {preview}{extra}", True

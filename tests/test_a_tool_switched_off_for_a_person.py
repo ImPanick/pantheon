@@ -235,10 +235,50 @@ def test_the_inbox_check_holds_that_persons_mail(auth, monkeypatch):
     assert out["a1"] == TP.paused_sentence("can_use_email")
 
 
-def test_note_reminders_and_scheduled_mail_wait_rather_than_vanish():
-    actions = (ROOT / "src" / "builtin_actions.py").read_text(encoding="utf-8")
-    i = actions.index('_may_use_tool(n.owner or owner or "", "can_use_notes")')
-    assert "cache[n.id] = now.isoformat()" in actions[i:], "a held reminder is not marked as sent"
+def test_note_reminders_and_scheduled_mail_wait_rather_than_vanish(tmp_path, monkeypatch, auth):
+    """A reminder held while Notes is off for its owner is neither sent nor
+    receipted, so it still fires inside its window once Notes is back on.
+
+    This used to read `src/builtin_actions.py` for the scanner's own
+    `cache[n.id] = now.isoformat()` after the `can_use_notes` gate. `B1803`
+    removed that line, which marked a failed send as delivered: the receipt is
+    `dispatch_reminder`'s now, written only for what it delivered, so the
+    scanner is driven instead."""
+    import json
+    from datetime import datetime, timezone
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from sqlalchemy.pool import NullPool
+    import core.database as cdb
+    from routes.note import note_routes
+    from src import builtin_actions as BA
+    engine = create_engine(f"sqlite:///{tmp_path / 'n.db'}", poolclass=NullPool)
+    cdb.Base.metadata.create_all(engine, tables=[cdb.Note.__table__])
+    factory = sessionmaker(bind=engine)
+    with factory() as db:
+        db.add(cdb.Note(id="n1", owner="bob", title="Call the plumber",
+                        due_date=datetime.now(timezone.utc).isoformat()))
+        db.commit()
+    monkeypatch.setattr(cdb, "SessionLocal", factory)
+    for module in (BA, note_routes):
+        monkeypatch.setattr(module, "DATA_DIR", str(tmp_path))
+    monkeypatch.setattr("src.settings.load_settings", lambda: {"reminder_channel": "browser"})
+    notices = []
+    monkeypatch.setattr(note_routes, "_scheduler_ref",
+                        types.SimpleNamespace(add_notification=lambda **kw: notices.append(kw)))
+    receipts = tmp_path / "note_pings_bob.json"
+
+    auth("can_use_notes")
+    with pytest.raises(BA.TaskNoop):
+        asyncio.run(BA.action_ping_notes("bob"))
+    assert notices == []
+    assert "n1" not in json.loads(receipts.read_text(encoding="utf-8")), "a held reminder is not marked as sent"
+
+    auth()
+    _, ok = asyncio.run(BA.action_ping_notes("bob"))
+    assert ok and len(notices) == 1, "back on, the reminder still inside its window fires"
+    assert json.loads(receipts.read_text(encoding="utf-8"))["n1"]["channel"] == "browser"
+
     pollers = (ROOT / "routes" / "email_pollers.py").read_text(encoding="utf-8")
     assert 'if r[11] and not _may_use_tool(r[11], "can_use_email"):\n                continue' in pollers
 
