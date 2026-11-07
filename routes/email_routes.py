@@ -839,10 +839,14 @@ def _imap_search_quote(value: str) -> str:
 
 
 def _message_id_chain(*values: str) -> list[str]:
+    # `B1902`. What `re.findall(r"<[^>]+>", value)` found, in linear time.
+    from src.tool_parsing import iter_angle_tags
     seen = set()
     out = []
     for value in values:
-        for mid in re.findall(r"<[^>]+>", value or ""):
+        value = value or ""
+        for start, _inner_start, _inner_end, end in iter_angle_tags(value):
+            mid = value[start:end]
             if mid not in seen:
                 seen.add(mid)
                 out.append(mid)
@@ -865,7 +869,9 @@ def _parse_list_unsubscribe_header(value: str | None) -> list[dict]:
     raw = str(value or "").strip()
     if not raw:
         return []
-    pieces = re.findall(r"<([^>]+)>", raw)
+    # `B1902`. What `re.findall(r"<([^>]+)>", raw)` found, in linear time.
+    from src.tool_parsing import iter_angle_tags
+    pieces = [raw[inner_start:inner_end] for _s, inner_start, inner_end, _e in iter_angle_tags(raw)]
     if not pieces:
         pieces = [p.strip() for p in raw.split(",") if p.strip()]
     out: list[dict] = []

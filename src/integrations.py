@@ -595,7 +595,9 @@ def delete_integration(integration_id: str) -> bool:
 
 def _strip_html_tags(html: str) -> str:
     """Rough HTML tag stripping."""
-    text = re.sub(r"<[^>]+>", "", html)
+    # `B1902`. Linear: `re.sub(r"<[^>]+>", …)` rescanned from every unclosed `<`.
+    from src.tool_parsing import strip_angle_tags
+    text = strip_angle_tags(html)
     text = re.sub(r"\s+", " ", text).strip()
     return text
 

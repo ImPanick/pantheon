@@ -11204,7 +11204,12 @@ async def stream_agent_loop(
             # _MAX_INTENT_NUDGES so a model that genuinely cannot use the
             # tool doesn't pin us in a forever loop.
             _intent_text = _strip_think_blocks(cleaned_round).strip()
-            _intent_match = _INTENT_RE.search(_intent_text) if _intent_text else None
+            # `B1902`. Searched only in a reply the nudge can act on: below
+            # nothing reads the match unless the reply is under 400 characters.
+            # `(?:^|\n)\s*` rescans a run of blank lines from every line, so a
+            # 20 KB reply of them took 36 s, on the event loop.
+            _intent_match = (_INTENT_RE.search(_intent_text)
+                             if _intent_text and len(_intent_text) < 400 else None)
             # Only nudge when the round REALLY looks like an unfinished
             # promise: short response (<400 chars), no fenced code/answer,
             # and an action-intent phrase was matched. Long answers that

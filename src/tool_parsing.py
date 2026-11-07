@@ -219,8 +219,17 @@ _TOOL_CODE_OPEN_RE = re.compile(r"<tool_code>\s*\{", re.IGNORECASE)
 _TOOL_CODE_CLOSE_RE = re.compile(r"\}\s*</tool_code>", re.IGNORECASE)
 
 # Pattern 4b: Gemma-style <|tool_call|> call:tool_name{args} <tool_call|>
-_GEMMA_TOOL_CALL_RE = re.compile(
-    r"<\|?tool_call\|?>\s*call:([\w\d_-]+)\s*(\{[\s\S]*?\})\s*<\|?tool_call\|?>",
+# `B1902`. The two delimiters of the one lazy pattern this used to be,
+# `<\|?tool_call\|?>\s*call:([\w\d_-]+)\s*(\{[\s\S]*?\})\s*<\|?tool_call\|?>`,
+# scanned forward-only like the patterns above (`_iter_named_blocks`). That
+# pattern rescanned to the end of the reply from every opener, so 4,000
+# openers with no closer took 6 s to parse, on the server's event loop.
+_GEMMA_TOOL_CALL_OPEN_RE = re.compile(
+    r"<\|?tool_call\|?>\s*call:([\w\d_-]+)\s*\{",
+    re.IGNORECASE,
+)
+_GEMMA_TOOL_CALL_CLOSE_RE = re.compile(
+    r"\}\s*<\|?tool_call\|?>",
     re.IGNORECASE,
 )
 
@@ -874,12 +883,77 @@ _RAW_WEB_JSON_ALLOWED_KEYS = {"query", "queries", "time_filter", "freshness", "m
 # command as plain text. Keep this intentionally tiny: open-panel is a harmless
 # frontend event, while broad plain-text parsing of shell/doc/email tools would
 # be unsafe.
+#
+# `B1902`. It matches exactly what it always matched, and it is no longer run
+# from every line. It was `^\s*(?:`{1,3})?\s*ui_control … (panel)\s*(?:`{1,3})?\s*$`
+# under `(?im)`, searched over the whole reply: `^` tried every line start and
+# the two `\s*` around the optional backticks split a run of blank lines every
+# possible way, so a reply of 1,500 newlines took 13 s to parse and as long
+# again to strip, on the server's event loop. Now the prefix is possessive
+# (what follows each part can never be what it gave back), the tail tries the
+# same alternatives in the same order without nesting two `\s*`, and
+# `_iter_plain_ui_open_panel` tries it once per `ui_control` in the text.
 _PLAIN_UI_OPEN_PANEL_RE = re.compile(
-    r"(?im)^\s*(?:`{1,3})?\s*ui_control\s+open_panel\s+"
+    r"(?im)^\s*+(?:`{1,3})?+\s*+ui_control\s+open_panel\s+"
     r"(documents?|library|gallery|images?|email|inbox|mail|sessions?|chats?|history|"
     r"notes?|brain|memor(?:y|ies)|skills?|settings|preferences|cookbook|models?)"
-    r"\s*(?:`{1,3})?\s*$"
+    r"(?:\s*+(?:\Z|`{1,3}+(?!`)(?:\s*+\Z|\s*(?=\n)))|\s*(?=\n))"
 )
+_PLAIN_UI_CANDIDATE_RE = re.compile(r"ui_control", re.IGNORECASE)
+
+
+def _plain_ui_match_start(text: str, floor: int, cand: int) -> int:
+    """The leftmost line start in ``[floor, cand]`` from which the rescue's
+    prefix (whitespace, at most one run of 1-3 backticks, whitespace) reaches
+    the ``ui_control`` at ``cand``, or -1 when none does. Walks back from it,
+    never past ``floor`` (the end of the previous match), as ``re.finditer``
+    never looks behind where its last match ended."""
+    a = cand
+    while a > floor and text[a - 1].isspace():
+        a -= 1
+    b, n = a, 0
+    while b > floor and n < 3 and text[b - 1] == "`":
+        b -= 1
+        n += 1
+    if n and not (b > floor and text[b - 1] == "`"):
+        m = b
+        while m > floor and text[m - 1].isspace():
+            m -= 1
+    else:
+        m = a
+    if m == 0 or text[m - 1] == "\n":
+        return m
+    nl = text.find("\n", m, cand)
+    return nl + 1 if nl >= 0 else -1
+
+
+def _iter_plain_ui_open_panel(text: str):
+    """``_PLAIN_UI_OPEN_PANEL_RE.finditer(text)``, tried only where the literal
+    ``ui_control`` occurs (`B1902`). Every line start that reaches one
+    ``ui_control`` shares what follows it, so the leftmost is the only one
+    worth trying; when it fails, the scan moves past that line."""
+    pos = 0
+    while (cand := _PLAIN_UI_CANDIDATE_RE.search(text, pos)) is not None:
+        start = _plain_ui_match_start(text, pos, cand.start())
+        match = _PLAIN_UI_OPEN_PANEL_RE.match(text, start) if start >= 0 else None
+        if match is not None:
+            yield match
+            pos = match.end()
+            continue
+        nl = text.find("\n", cand.end())
+        pos = len(text) if nl < 0 else nl + 1
+
+
+def _strip_plain_ui_open_panel(text: str) -> str:
+    """``_PLAIN_UI_OPEN_PANEL_RE.sub("", text)`` over ``_iter_plain_ui_open_panel``."""
+    out, pos = [], 0
+    for match in _iter_plain_ui_open_panel(text):
+        out.append(text[pos:match.start()])
+        pos = match.end()
+    if not out:
+        return text
+    out.append(text[pos:])
+    return "".join(out)
 
 
 # ---------------------------------------------------------------------------
@@ -1743,10 +1817,11 @@ def _iter_delimited(text, open_re, close_re):
         pos = cm.end()
 
 
-def _strip_delimited(text: str, open_re, close_re) -> str:
-    """Remove every ``open_re ... close_re`` span (forward-only; see
-    _iter_delimited). Equivalent to ``open_re([\\s\\S]*?)close_re`` ``re.sub('')``
-    for these delimiters, without the O(n^2) rescan on unclosed openers."""
+def _strip_delimited(text: str, open_re, close_re, replacement: str = "") -> str:
+    """Replace every ``open_re ... close_re`` span with ``replacement``
+    (forward-only; see _iter_delimited). Equivalent to
+    ``open_re([\\s\\S]*?)close_re`` ``re.sub(replacement)`` for these
+    delimiters, without the O(n^2) rescan on unclosed openers."""
     spans = list(_iter_delimited(text, open_re, close_re))
     if not spans:
         return text
@@ -1754,9 +1829,37 @@ def _strip_delimited(text: str, open_re, close_re) -> str:
     last = 0
     for match_start, _inner_start, _inner_end, match_end in spans:
         out.append(text[last:match_start])
+        out.append(replacement)
         last = match_end
     out.append(text[last:])
     return "".join(out)
+
+
+# `B1902`. The flat `<[^>]+>` tag strip that mail and integration text goes
+# through, on `_iter_delimited`. `re.sub(r"<[^>]+>", …)` and its `findall`
+# rescan to the end of the text from every `<` that has no `>` after it: an
+# HTML part of 80,000 `<` took 8.5 s to strip, and mail is anyone's to send.
+_ANGLE_TAG_OPEN_RE = re.compile(r"<")
+_NONEMPTY_ANGLE_TAG_OPEN_RE = re.compile(r"<(?=[^>])")
+_ANGLE_TAG_CLOSE_RE = re.compile(r">")
+
+
+def strip_angle_tags(text: str, replacement: str = "", *, allow_empty: bool = False) -> str:
+    """Linear equivalent of ``re.sub(r"<[^>]+>", replacement, text)`` (or of
+    ``<[^>]*>`` with ``allow_empty``).
+
+    It keeps that cleanup exactly, a nested ``<`` and a malformed tail
+    included; it does not read HTML. It stops once no ``>`` is reachable
+    instead of rescanning from every ``<`` (upstream Odysseus da3800b6)."""
+    opener = _ANGLE_TAG_OPEN_RE if allow_empty else _NONEMPTY_ANGLE_TAG_OPEN_RE
+    return _strip_delimited(text, opener, _ANGLE_TAG_CLOSE_RE, replacement)
+
+
+def iter_angle_tags(text: str):
+    """Linear equivalent of ``re.finditer(r"<([^>]+)>", text)``: yield
+    ``(start, inner_start, inner_end, end)`` for each tag, ``text[start:end]``
+    the whole ``<…>`` and ``text[inner_start:inner_end]`` what is inside it."""
+    return _iter_delimited(text, _NONEMPTY_ANGLE_TAG_OPEN_RE, _ANGLE_TAG_CLOSE_RE)
 
 
 def _iter_named_blocks(text, open_re, close_re):
@@ -1990,10 +2093,10 @@ def parse_tool_blocks(text: str, skip_fenced: bool = False) -> List[ToolBlock]:
 
     # Pattern 4b: Gemma-style <|tool_call|> blocks
     if not blocks:
-        for m in _GEMMA_TOOL_CALL_RE.finditer(text):
-            tool_name = m.group(1)
-            body = m.group(2)
-            block = _parse_gemma_tool_call(tool_name, body)
+        for tool_name, body in _iter_named_blocks(
+            text, _GEMMA_TOOL_CALL_OPEN_RE, _GEMMA_TOOL_CALL_CLOSE_RE
+        ):
+            block = _parse_gemma_tool_call(tool_name, "{" + body + "}")
             if block:
                 blocks.append(block)
 
@@ -2040,7 +2143,7 @@ def parse_tool_blocks(text: str, skip_fenced: bool = False) -> List[ToolBlock]:
     # from weaker native-tool models after reading the tool docs but failing to
     # emit the actual structured call.
     if not blocks:
-        m = _PLAIN_UI_OPEN_PANEL_RE.search(text)
+        m = next(_iter_plain_ui_open_panel(text), None)
         if m:
             blocks.append(ToolBlock("ui_control", f"open_panel {m.group(1).lower()}"))
 
@@ -2079,7 +2182,7 @@ def strip_tool_blocks(text: str, skip_fenced: bool = False) -> str:
     cleaned = _strip_delimited(cleaned, _XML_TOOL_CALL_OPEN_RE, _XML_TOOL_CALL_CLOSE_RE)
     cleaned = _XML_OPEN_TOOL_CALL_RE.sub('', cleaned)
     cleaned = _strip_delimited(cleaned, _TOOL_CODE_OPEN_RE, _TOOL_CODE_CLOSE_RE)
-    cleaned = _GEMMA_TOOL_CALL_RE.sub('', cleaned)
+    cleaned = _strip_delimited(cleaned, _GEMMA_TOOL_CALL_OPEN_RE, _GEMMA_TOOL_CALL_CLOSE_RE)
     cleaned = _strip_delimited(cleaned, _FUNCTION_MODEL_OPEN_RE, _FUNCTION_MODEL_CLOSE_RE)
     cleaned = _strip_raw_openai_tool_call_json(cleaned)
     cleaned = _QWEN_ROLE_MARKER_RE.sub('', cleaned)
@@ -2089,7 +2192,7 @@ def strip_tool_blocks(text: str, skip_fenced: bool = False) -> str:
         if raw_web_json:
             _, (start, end) = raw_web_json
             cleaned = cleaned[:start] + cleaned[end:]
-    cleaned = _PLAIN_UI_OPEN_PANEL_RE.sub("", cleaned)
+    cleaned = _strip_plain_ui_open_panel(cleaned)
     # Strip bare <invoke> blocks not wrapped in <tool_call>
     cleaned = _strip_bare_invoke_markup(cleaned)
     cleaned = re.sub(r'\n{3,}', '\n\n', cleaned)
