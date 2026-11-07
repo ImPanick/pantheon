@@ -4,6 +4,7 @@
 # licensed Apache-2.0. It is NOT Tongyi's original: it has been changed.
 # Changed by Odysseus, and further by Pantheon: the bound on concurrent
 # searches (`P15-06`) and the SPDX line above (`P0-18`).
+# Pantheon also searches the question when the model plans none (`B2029`).
 #
 # Upstream licence text (Tongyi DeepResearch): licenses/DeepResearch-Apache-2.0.txt
 # Attribution: CREDITS.md
@@ -44,6 +45,28 @@ def current_date_context() -> str:
         f"'this year', use {now.strftime('%Y')} or relative wording — never a "
         f"year inferred from training data.\n\n"
     )
+
+
+_QUESTION_OPENER_RE = re.compile(
+    r"^(?:please\s+)?(?:(?:what is|what are|where is|where are|who is|when was|when is|"
+    r"how does|how do|can you explain)\s+)?",
+    re.IGNORECASE,
+)
+_CLOSING_PUNCTUATION_RE = re.compile(r"[?!.,;:]+$")
+
+
+def _question_as_query(question: str) -> str:
+    """The research question as one search query, for a planner that gave none.
+
+    `B2029`. Whitespace collapsed, a leading "please" and question opener
+    ("what is", "how do", ...) dropped, closing punctuation stripped, at most
+    200 characters cut at a word; "" when nothing is left.
+    """
+    topic = " ".join(str(question or "").split())
+    topic = _CLOSING_PUNCTUATION_RE.sub("", _QUESTION_OPENER_RE.sub("", topic)).strip()
+    if len(topic) > 200:
+        topic = _CLOSING_PUNCTUATION_RE.sub("", topic[:200].rsplit(" ", 1)[0]).strip()
+    return topic
 
 # ---------------------------------------------------------------------------
 # Prompts
@@ -529,6 +552,18 @@ class DeepResearcher:
             queries = self._parse_json_array(response)
             # Deduplicate
             new_queries = [q for q in queries if q not in self.queries_used]
+            if not new_queries and round_num == 1 and not report:
+                # `B2029`: a reply with no query list (empty, a numbered list,
+                # prose) ended the run before any search. The question is a
+                # fair first search. Only here: a later round, a follow-up
+                # run and a failed call give none, so a planner that keeps
+                # failing still stops as `no_queries` (P23-02).
+                topic = _question_as_query(question)
+                if topic and topic not in self.queries_used:
+                    new_queries = [topic]
+                    logger.warning("Round 1: the model gave no search queries; searching for the question")
+                    self._emit(phase="warning",
+                               message="The model gave no search queries; searching for the question itself.")
             self.queries_used.update(new_queries)
             logger.info(f"Round {round_num} queries: {new_queries}")
             return new_queries
