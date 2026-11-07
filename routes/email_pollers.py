@@ -232,12 +232,40 @@ def _ensure_away_reply_table():
         conn.close()
 
 
-def _sender_is_automated(msg, sender_addr: str) -> bool:
+# `B2013`. An automatic reply that says so only in its subject: Outlook's
+# "Automatic reply:" and its translations, and the older "Out of Office:".
+# Anchored, and ending in its colon, so that a person's "Are you out of office
+# on Friday?", "OOO next week" or "Re: Automatic reply: ..." is not one.
+_AUTO_REPLY_SUBJECT_RE = re.compile(
+    r"^\s*(?:automatic\s+reply|auto[-\s]?reply"
+    r"|out\s+of\s+(?:the\s+)?office(?:\s+auto[-\s]?reply)?"
+    r"|r[ée]ponse\s+automatique|automatische\s+antwort|abwesenheitsnotiz"
+    r"|respuesta\s+autom[áa]tica|risposta\s+automatica|resposta\s+autom[áa]tica"
+    r"|automatisch\s+antwoord|automatiskt?\s+svar|autosvar)\s*:",
+    re.IGNORECASE,
+)
+# `B2013`. The `X-Auto-Response-Suppress` values that ask for no out-of-office
+# or automatic reply; Exchange puts `All` on its own automatic replies.
+_AUTO_RESPONSE_SUPPRESSED = {"all", "oof", "autoreply"}
+
+
+def _sender_is_automated(msg, sender_addr: str, subject: str | None = None) -> bool:
+    # `B2013`. The poller hands over the subject decoded; otherwise it is read
+    # from the message, decoded the same way.
+    suppress = str(msg.get("X-Auto-Response-Suppress") or "").lower().split(",")
+    if _AUTO_RESPONSE_SUPPRESSED.intersection(part.strip() for part in suppress):
+        return True
+    if msg.get("X-Autoreply") is not None or msg.get("X-Autorespond") is not None:
+        return True
+    if subject is None:
+        subject = _decode_header(msg.get("Subject", "") or "")
+    if _AUTO_REPLY_SUBJECT_RE.match(subject or ""):
+        return True
     auto_submitted = (msg.get("Auto-Submitted") or "").strip().lower()
     if auto_submitted and auto_submitted != "no":
         return True
     precedence = (msg.get("Precedence") or "").strip().lower()
-    if precedence in {"bulk", "junk", "list"}:
+    if precedence in {"bulk", "junk", "list", "auto_reply"}:  # `B2013`: auto_reply
         return True
     if msg.get("List-Id") or msg.get("List-Unsubscribe"):
         return True
@@ -330,7 +358,7 @@ def _send_away_reply(settings: dict, account_owner: str, account_id: str | None,
         return False, "missing from address"
     if sender_addr.lower() == from_addr.lower():
         return False, "self mail"
-    if settings.get("email_auto_reply_exclude_automated", True) and _sender_is_automated(msg, sender_addr):
+    if settings.get("email_auto_reply_exclude_automated", True) and _sender_is_automated(msg, sender_addr, subject):
         return False, "automated sender"
     if _away_reply_already_sent(settings, account_owner, account_id, message_id, sender_addr):
         return False, "already sent"
