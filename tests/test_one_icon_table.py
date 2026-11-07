@@ -395,6 +395,8 @@ def test_no_module_hand_writes_a_play_stop_or_chevron_svg_any_more():
         "static/js/settings.js": ["chevronIcon"],
         "static/js/skills.js": ["PLAY_GLYPH", "chevronIcon"],
         "static/js/tasks.js": ["PLAY_GLYPH", "WORKFLOW_GLYPH", "playIcon", "stopIcon"],
+        # `B1853`: the trigger toggle's Manual start, a run-it-yourself control.
+        "static/js/tasks/taskFields.js": ["playIcon"],
         "static/js/tts-ai.js": ["playIcon", "stopIcon"],
     }, importers
     # `checklist.js` re-exports rather than imports, which the test below pins.

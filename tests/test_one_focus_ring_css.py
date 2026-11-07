@@ -283,8 +283,8 @@ def test_the_focus_visible_rules_are_forty_two_not_thirty_five():
     """The row's other stale number, measured in both of its readings."""
     occurrences = len(re.findall(r":focus-visible", CSS))
     rules = sum(1 for sel, _b in _rules() if ":focus-visible" in sel)
-    assert (occurrences, rules) == (53, 50), (
-        f"expected 53 occurrences across 50 rules, found {occurrences} / {rules}. "
+    assert (occurrences, rules) == (54, 51), (
+        f"expected 54 occurrences across 51 rules, found {occurrences} / {rules}. "
         "The row says 35 rules; it said so on 2026-08-27, and it was 45 "
         "occurrences across 42 rules the morning this one landed — `P10-01` "
         "adds the armoured guard and `P10-03` adds `:focus-visible` to three "
@@ -301,7 +301,10 @@ def test_the_focus_visible_rules_are_forty_two_not_thirty_five():
         "on top of the global ring. "
         "52/49 → 53/50 on 2026-11-02: `B1752`'s phone side keys "
         "(`.phw-side:focus-visible`), whose hover fill shows on keyboard "
-        "focus too, the same way."
+        "focus too, the same way. "
+        "53/50 → 54/51 on 2026-11-07: the Workbench canvas's right-click "
+        "menu (`B1841`, `.wb-menu-item:focus-visible`), whose hover fill "
+        "shows on keyboard focus too, the same way."
     )
 
 

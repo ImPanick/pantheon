@@ -47819,7 +47819,6 @@ button.task-card-toggle {
   background-size: 16px 16px;
 }
 .wb-panning .wb-viewport { cursor: grabbing; }
-.wb-viewport:focus { outline: none; }
 .wb-world {
   position: absolute;
   left: 0;
