@@ -240,9 +240,12 @@ def _entry_from_collection_item(collection, item, source):
     if repo_prefix and not repo_id.startswith(repo_prefix):
         return None
     raw_params = item.get("numParameters") or 0
-    active = None
+    # `B1970`. Read the name even when Hugging Face gives a total: it is the
+    # only source of a MoE's active size ("-35B-A3B"), which the speed
+    # estimate and the MoE serve profiles depend on.
+    name_params, active = _parse_params_from_name(repo_id)
     if not raw_params:
-        raw_params, active = _parse_params_from_name(repo_id)
+        raw_params = name_params
     param_label, raw_params = _format_params(raw_params)
     if not raw_params:
         return None
@@ -288,7 +291,9 @@ def _entry_from_collection_item(collection, item, source):
         entry["is_gguf"] = True
         entry["format"] = "gguf"
         entry["capabilities"] = ["llama.cpp"]
-    if active:
+    # `B1970`: an active size counts only below the total, so a draft model
+    # named after its "-30B-A3B" target, 0.5B in all, stays dense.
+    if active and active < raw_params:
         entry["is_moe"] = True
         entry["active_parameters"] = active
     return entry
