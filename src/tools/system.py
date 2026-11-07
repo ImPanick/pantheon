@@ -885,11 +885,16 @@ async def do_manage_tasks(content: str, owner: Optional[str] = None) -> Dict:
                 return {"response": "No scheduled tasks found.", "exit_code": 0}
 
             lines = [f"Found {len(tasks)} tasks:"]
+            from src.task_scheduler import MANUAL_TRIGGER_WORDS, is_manual_trigger
             for idx, t in enumerate(tasks, 1):
                 bits = [t.status or "unknown"]
-                if t.schedule:
+                if is_manual_trigger(t):
+                    # `B1853`. Its schedule's fields may still be on the row,
+                    # unread; the model is told what is true.
+                    bits.append(MANUAL_TRIGGER_WORDS.lower())
+                elif t.schedule:
                     bits.append(str(t.schedule))
-                if t.scheduled_time:
+                if t.scheduled_time and not is_manual_trigger(t):
                     bits.append(str(t.scheduled_time))
                 if t.next_run:
                     bits.append(f"next {t.next_run.isoformat()}Z")
@@ -1014,6 +1019,9 @@ async def do_manage_tasks(content: str, owner: Optional[str] = None) -> Dict:
             if args.get("trigger_type") is not None:
                 task.trigger_type = args["trigger_type"]
                 changed.append("trigger_type")
+                from src.task_scheduler import is_manual_trigger
+                if is_manual_trigger(task):
+                    task.next_run = None      # `B1853`: never due, as the route does
             if args.get("trigger_event") is not None:
                 task.trigger_event = args["trigger_event"]
                 changed.append("trigger_event")

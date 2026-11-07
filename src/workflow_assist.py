@@ -199,7 +199,7 @@ no markdown fences.
 
 The object:
 {"name": "a short name for the workflow",
- "trigger": {"type": "schedule" | "event" | "webhook",
+ "trigger": {"type": "schedule" | "event" | "webhook" | "manual",
              "schedule": "daily" | "weekly" | "monthly" | "once" | "cron",
              "time": "HH:MM, 24-hour, in the person's time zone",
              "day": 0-6 for weekly (0 is Monday) or 1-31 for monthly,

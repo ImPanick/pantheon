@@ -354,10 +354,13 @@ def input_summary(stored_input) -> str:
 def node_record_to_dict(rec) -> dict:
     """`NodeRecord`, contract C2 — and `P22-11`/`P22-12`'s two (C-W): `item`,
     the For-each index (null for a step's own record), and `waiting`
-    (`{kind, since, until, approval}` while the step waits, else null)."""
+    (`{kind, since, until, approval}` while the step waits, else null).
+    `B1854` adds `kept_from`: the id of the failed run a retry kept this
+    record from, or null for a step that ran in this run."""
     stored_input = _loads(rec.input)
     steps = _loads(rec.steps)
     return {
+        "kept_from": kept_from(rec),
         "item": getattr(rec, "item", None),
         "waiting": waiting_public(rec),
         "id": rec.id,
@@ -567,6 +570,124 @@ def record_node_resumed(db, rec) -> dict | None:
     rec.resume_at = None
     db.commit()
     return waiting
+
+
+def record_node_attempt(db, rec) -> int:
+    """`B1855`. A step (or an item) is tried again — its own retries: the
+    record is `running` once more, what its last attempt ended with is
+    cleared, and `attempt` counts one more (`record_node_resumed` counts a
+    resume the same way). Committed. Answers the attempt it is on."""
+    rec.status = "running"
+    rec.attempt = (rec.attempt or 1) + 1
+    rec.finished_at = None
+    rec.port = None
+    rec.error = None
+    rec.output = None
+    rec.waiting = None
+    rec.resume_at = None
+    db.commit()
+    return rec.attempt
+
+
+def end_running_items(db, run_id: str, node_id: str, *, error: str) -> int:
+    """`B1855`. Every For-each item of this step still `running` — the one
+    the step's time limit cut — ended `error`, with why. Committed. Answers
+    how many."""
+    from core.database import TaskRunNode
+
+    rows = (db.query(TaskRunNode)
+            .filter(TaskRunNode.run_id == run_id, TaskRunNode.node_id == node_id,
+                    TaskRunNode.item.isnot(None), TaskRunNode.status == "running")
+            .all())
+    for rec in rows:
+        rec.status = "error"
+        rec.port = "error"
+        rec.error = str(error)[:NODE_ERROR_MAX_CHARS]
+        rec.finished_at = _utcnow()
+    if rows:
+        db.commit()
+    return len(rows)
+
+
+# ── `B1854` · a failed run, retried from one of its steps ───────────────────
+
+#: The key on a copied record's first step-log line naming the run it was kept
+#: from ("Kept from the run at 10:42"), read back as the record's `kept_from`.
+KEPT_FROM_KEY = "kept_from"
+
+
+def downstream_of(graph: dict, node_id: str) -> frozenset:
+    """The ids of every step a path of arrows leads to from `node_id` — along
+    any port — not `node_id` itself. `upstream_of`'s other direction."""
+    leads = {}
+    for edge in graph.get("edges") or ():
+        leads.setdefault(edge.get("from"), set()).add(edge.get("to"))
+    found, frontier = set(), [node_id]
+    while frontier:
+        following = []
+        for current in frontier:
+            for target in leads.get(current, ()):
+                if target != node_id and target not in found:
+                    found.add(target)
+                    following.append(target)
+        frontier = following
+    return frozenset(found)
+
+
+def retry_kept(records, graph: dict, node_id: str) -> list:
+    """`B1854`. The failed run's records a retry from `node_id` keeps: every
+    finished record of a step that is neither `node_id` nor after it — the
+    steps before it and those beside it on other branches, whatever they
+    did, so a step that worked (and sent its mail) is not run again — and,
+    when `node_id` is a For-each, the items of it that worked. `node_id` and
+    every step after it run again."""
+    again = {node_id} | downstream_of(graph, node_id)
+    kept = []
+    for rec in records:
+        if getattr(rec, "dry", False) or rec.status not in STEP_FINISHED:
+            continue
+        if rec.node_id in again:
+            if rec.node_id == node_id and rec.item is not None and rec.status == "success":
+                kept.append(rec)
+            continue
+        kept.append(rec)
+    return kept
+
+
+def copy_kept_records(db, *, run_id: str, records, from_run_id: str, words: str) -> int:
+    """`B1854`. The kept records, copied into the retry as they ended — the
+    same step, item, order, input, output and ending — each with `words`
+    ("Kept from the run at 10:42") as the first line of its own log, under
+    `KEPT_FROM_KEY`. The records ARE the run's state (`RunState`), so the
+    walker treats them as finished and starts what is ready after them.
+    Committed. Answers how many."""
+    from core.database import TaskRunNode
+
+    at = _iso(_utcnow())
+    for rec in records:
+        steps = _loads(rec.steps)
+        line = {"kind": "progress", "detail": words, KEPT_FROM_KEY: from_run_id, "at": at}
+        db.add(TaskRunNode(
+            id=str(uuid.uuid4()), run_id=run_id, node_id=rec.node_id, kind=rec.kind,
+            label=rec.label, item=rec.item, seq=rec.seq, status=rec.status,
+            attempt=rec.attempt or 1, dry=False, port=rec.port, reached_by=rec.reached_by,
+            depth=rec.depth, workflow_version=rec.workflow_version,
+            started_at=rec.started_at, finished_at=rec.finished_at, input=rec.input,
+            output=rec.output, error=rec.error, model=rec.model,
+            steps=json.dumps([line, *(steps if isinstance(steps, list) else [])],
+                             default=str)))
+    db.commit()
+    return len(records)
+
+
+def kept_from(rec) -> str | None:
+    """`B1854`. The run this record was kept from, for a record a retry
+    copied; `None` for one that ran in its own run."""
+    steps = _loads(rec.steps)
+    for line in steps if isinstance(steps, list) else ():
+        if isinstance(line, dict) and line.get(KEPT_FROM_KEY):
+            return str(line[KEPT_FROM_KEY])
+    return None
 
 
 def end_waiting_records(db, run_id: str, *, status: str, error: str) -> int:

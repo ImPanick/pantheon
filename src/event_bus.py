@@ -138,6 +138,18 @@ TRIGGER_SOURCE_WEBHOOK = "webhook"
 # event arrive in, because a task does not care what started it; it cares what
 # it can refer to (`Law 14`).
 TRIGGER_SOURCE_TASK = "task"
+# `B1852`. A person's *Test run* of a workflow, from the Workbench — the
+# saved version, once, even while the workflow is switched off. Its own
+# source and not a webhook or an event, because nothing outside the machine
+# and nothing in the app fired it: the envelope is built by the server and
+# carries no data anybody else wrote (`TEST_RUN_EVENT`, an empty `data`), so
+# `trigger_context_message` hands a model step nothing to wrap, and the run's
+# step log and its first step's *What it was handed* both read "Test run"
+# (`trigger_summary`). Stored in rows (the step records' `input`): a rename
+# orphans every test run's record of its cause.
+TRIGGER_SOURCE_TEST = "test"
+TEST_RUN_EVENT = "test_run"
+TEST_RUN_WORDS = "Test run"
 
 # The keys a task handoff carries. Fixed here rather than in a catalogue for
 # the same reason the webhook's are: there is no catalogue entry for "the step
@@ -451,6 +463,19 @@ def build_task_handoff(*, task_name: str, task_id: str, run_id: str,
                          fields=TASK_HANDOFF_FIELDS)
 
 
+def build_test_trigger() -> dict:
+    """`B1852`. The envelope a workflow's *Test run* hands its first steps:
+    `{"source": "test", "event": "test_run", "at": …, "data": {}}` — the one
+    envelope builder's, with nothing in it, so a reference into
+    `steps.start.data` reads what a scheduled run's does: nothing."""
+    return build_trigger(TRIGGER_SOURCE_TEST, TEST_RUN_EVENT, {}, fields=())
+
+
+def is_test_trigger(trigger) -> bool:
+    """`B1852`. Is this envelope a *Test run*'s?"""
+    return isinstance(trigger, dict) and trigger.get("source") == TRIGGER_SOURCE_TEST
+
+
 def _origin_clause(trigger: dict) -> str:
     origin = trigger.get("origin") if isinstance(trigger.get("origin"), dict) else None
     if not (origin and origin.get("task")):
@@ -526,6 +551,10 @@ def trigger_summary(trigger: Optional[dict]) -> str:
         # line of its step log is the only place that says where. `B1096`:
         # said in words, without the envelope's ids.
         return _handoff_summary(name, data, _origin_clause(trigger))
+    if source == TRIGGER_SOURCE_TEST:
+        # `B1852`. A person pressed *Test run*: the cause is that, in words,
+        # with no "— no payload" after it (a test run never has one).
+        return TEST_RUN_WORDS
     if source == TRIGGER_SOURCE_EVENT:
         lead = f"Triggered by {name}"
     else:
@@ -567,6 +596,14 @@ def trigger_context_message(trigger: Optional[dict]) -> Optional[dict]:
     payload builds byte-identical messages to the ones it built before this row.
     """
     if not isinstance(trigger, dict):
+        return None
+    if is_test_trigger(trigger):
+        # `B1852`. A *Test run*'s envelope is the server's own, with no data:
+        # there is nothing in it anybody else could have chosen, so there is
+        # nothing to wrap — and a model step of a test run builds the messages
+        # a scheduled run's builds (no trigger, no block), which is what a test
+        # is for. Asked on the source the server stamps, not on a field a
+        # sender could fill: a webhook's envelope is always `webhook`.
         return None
     body = trigger_as_text(trigger)
     if not body:

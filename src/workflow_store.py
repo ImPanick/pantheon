@@ -798,9 +798,17 @@ def draft_graph(raw) -> dict:
 
 def _step_content(node: dict) -> str:
     """What a person changes when they change a step: its kind, its name and
-    its settings — `content_fingerprint`'s reading of one step, as text."""
-    return json.dumps([node.get("kind"), node.get("label"), node.get("config") or {}],
-                      sort_keys=True, default=str, ensure_ascii=False)
+    its settings — `content_fingerprint`'s reading of one step, as text.
+    `B1856`: and whether it is switched off, read only when it is, so a step
+    that is on reads as it always did. `B1855`: and its retries and time
+    limit, when it has some."""
+    from src.workflow_document import DISABLED_KEY, SETTINGS_KEY
+    content = [node.get("kind"), node.get("label"), node.get("config") or {}]
+    if node.get(DISABLED_KEY) is True:
+        content.append({DISABLED_KEY: True})
+    if node.get(SETTINGS_KEY):
+        content.append({SETTINGS_KEY: node[SETTINGS_KEY]})
+    return json.dumps(content, sort_keys=True, default=str, ensure_ascii=False)
 
 
 def _marks_kept(graph: dict, before: dict, *, by_person: bool) -> dict:
@@ -1139,8 +1147,9 @@ def create_workflow(db, *, owner, name=None, tz=None):
 
 
 # `P22-19` / `P22-24`. The words a start may store, closed (`TRIGGER_FIELDS`'
-# enums, as the task form offers them).
-START_TRIGGER_TYPES = ("schedule", "event", "webhook")
+# enums, as the task form offers them). `B1853` adds `manual`: a start that is
+# never due and runs only when somebody runs it (`TRIGGER_TYPE_MANUAL`).
+START_TRIGGER_TYPES = ("schedule", "event", "webhook", "manual")
 START_SCHEDULES = ("once", "daily", "weekly", "monthly", "cron")
 START_TRIGGER_COUNT_MAX = 1000
 
@@ -1219,6 +1228,9 @@ def clean_trigger_fields(fields) -> tuple:
                 count = DEFAULT_TRIGGER_COUNT
             out.update({"trigger_type": "event", "trigger_event": event, "trigger_count": count,
                         "schedule": None, "scheduled_time": None})
+    elif kind == "manual":
+        # `B1853`. Nothing to check: it has no time, no event and no address.
+        out.update({"trigger_type": "manual", "schedule": None, "scheduled_time": None})
     else:
         out.update({"trigger_type": "webhook", "schedule": None, "scheduled_time": None})
     if not usable:
@@ -1515,6 +1527,80 @@ def _json_list(raw) -> list:
     return value if isinstance(value, list) else []
 
 
+# `B1854`. Why a run is not retried from a step.
+RETRY_NOT_FAILED = "This run did not fail, so there is nothing to retry."
+RETRY_NO_STEP = ("This run stopped before any of its steps ran, so there is no step to "
+                 "retry it from. Run the workflow again instead.")
+RETRY_SWITCHED_OFF = ("The workflow is switched off, so this run is not retried. Switch it "
+                      "on, or use Test run.")
+
+
+def plan_retry(db, wf, trigger, run, *, node_id=None) -> dict:
+    """`B1854`. What retrying `run` from a step would do, or `WorkflowRefused`
+    (400) saying why it cannot: the run did not fail; no step of it ran; the
+    version it ran is no longer kept (a retry runs the SAME version, never an
+    edit made since); the step named is not in that version, or did not run.
+
+    `node_id` defaults to the step the run failed on (`RunState
+    .unhandled_error`, else its last step that failed or was stopped). The
+    plan: that step, its words, the records kept (`workflow_runs.retry_kept`),
+    what started the failed run (`RunState.trigger`, so a webhook's retry is
+    handed the same body), whether it was a *Test run* (a retry of one is
+    one, `B1852`), and the failed run's clock time for the kept lines. A
+    real run of a workflow switched off is not retried (409): the switch
+    holds a retry as it holds *Run now* (`Law 1`), without a row."""
+    from src import workflow_runs as wr
+    from src.task_scheduler import _resolve_task_timezone, is_test_run
+
+    if run.status != "error":
+        raise WorkflowRefused(400, RETRY_NOT_FAILED)
+    test = is_test_run(run)
+    if not test and (trigger.status or "") != "active":
+        raise WorkflowRefused(409, RETRY_SWITCHED_OFF)
+    records = [r for r in wr.run_node_records(db, run.id) if not r.dry]
+    version = next((r.workflow_version for r in records if r.workflow_version is not None),
+                   None)
+    if not records or version is None:
+        raise WorkflowRefused(400, RETRY_NO_STEP)
+    if version == wf.version:
+        graph = stored_graph(wf)
+    else:
+        graph, kept = graph_of_version(db, wf, version)
+        if not kept:
+            raise WorkflowRefused(
+                400, f"This run ran version {version} of the workflow, which is no longer "
+                     f"kept, so it cannot be retried from a step. Run the workflow again "
+                     f"instead.")
+    state = wr.RunState(graph, records)
+    if node_id:
+        node = state.by_id.get(node_id)
+        if node is None:
+            raise WorkflowRefused(400, f"“{node_id}” is not a step of the version this run ran.")
+        if state.record(node_id) is None:
+            raise WorkflowRefused(
+                400, f"“{node.get('label') or node_id}” did not run in this run, so there is "
+                     f"nothing to retry it from.")
+    else:
+        failed = state.unhandled_error() or next(
+            (state.record(n) for n in reversed(state.finish_order)
+             if (state.status(n) or "") in ("error", "aborted")), None)
+        if failed is None:
+            raise WorkflowRefused(400, "This run did not fail at a step, so there is no step "
+                                       "to retry it from.")
+        node_id = failed.node_id
+        node = state.by_id.get(node_id) or {"id": node_id}
+    return {
+        "from_run": run.id,
+        "node_id": node_id,
+        "label": node.get("label") or node_id,
+        "version": version,
+        "kept": [r.id for r in wr.retry_kept(records, graph, node_id)],
+        "trigger": state.trigger,
+        "test": test,
+        "at": wr._clock(run.started_at, _resolve_task_timezone(db, trigger)),
+    }
+
+
 def graph_of_version(db, wf, version) -> tuple:
     """`(graph, kept)`: the graph of the version a run used, or — when that
     version was pruned or is unknown — the current one, with `kept` False so
@@ -1644,6 +1730,11 @@ def switch_workflow(db, wf, trigger, *, on: bool, name_of=None) -> tuple:
         # because "Switched on" alone would be a promise it cannot keep.
         notes.append("Its schedule has no time left to run at, so it will not run until "
                      "you change when it starts.")
+    from src.task_scheduler import MANUAL_TRIGGER_WORDS, is_manual_trigger
+    if is_manual_trigger(trigger):
+        # `B1853`. On means it MAY be run; nothing will start it by itself.
+        notes.append(f"{MANUAL_TRIGGER_WORDS}: Run now, your assistant or the API start it, "
+                     f"and nothing starts it by itself.")
     chain_paused = None
     if head is not None and (head.status or "active") == "active":
         head.status = "paused"

@@ -38,6 +38,11 @@ and, for the builder's draft (the Workbench's elevation):
     POST   /api/workflows/{id}/fields  {node_id, graph}     a draft step's fields (B1850)
     POST   /api/workflows/{id}/problems  {graph, name?}     every problem a save would name (B1851)
 
+and the run engine's own (`B1852`, `B1854`):
+
+    POST   /api/workflows/{id}/test-run                     the saved version, once, even off
+    POST   /api/workflows/{id}/runs/{run_id}/retry          a failed run, from a step  {node_id?}
+
 The two literal ones are declared before `/{workflow_id}`, or FastAPI would
 read "palette" as a workflow's id.
 
@@ -692,6 +697,109 @@ def setup_workflow_routes(task_scheduler) -> APIRouter:
         if sentence is None:
             raise WorkflowRefused(409, "This run has already ended.")
         return {"ok": True, "sentence": sentence}
+
+    # ── `B1852`: try the whole workflow, switched off or on ──────────────────
+
+    @router.post("/{workflow_id}/test-run")
+    @_answers
+    async def test_run(request: Request, workflow_id: str):
+        """Run the SAVED current version once, as a person's run, even while
+        the workflow is switched off — so trying what you built does not mean
+        switching it on and arming its schedule, its event or its webhook.
+
+        It is a real run (`TaskScheduler.run_task_now(test=True)`): in the
+        Runs list, every gate but the switch asked as for *Run now* — the
+        owner (another owner's workflow is a 404), the admin rule
+        (`admin_only_action_of`, as `POST /api/tasks/{id}/run` asks it), one
+        run at a time (`B674`: a 409 with the sentence Run now's says) — and
+        its Waits and questions go on while it is off. It is marked a test
+        (`run.test`; its cause line says "Test run") and it never touches the
+        switch, the next run or the schedule. `{ok: true, run_id}` — the run
+        is written before the reply, so it can be opened at once."""
+        import uuid
+        from src.interactive_gate import STARTED_BY_PERSON
+        from src.task_action_policy import (
+            admin_only_action_of, admin_refusal_message, owner_has_admin_task_privileges,
+        )
+        user = _owner(request)
+
+        def _check():
+            db = SessionLocal()
+            try:
+                wf = store.owned_workflow(db, workflow_id, user)
+                trigger = store.require_trigger(db, wf)
+                found = admin_only_action_of(db, trigger)
+                if found and not owner_has_admin_task_privileges(user):
+                    raise WorkflowRefused(403, admin_refusal_message(found))
+                return trigger.id
+            finally:
+                db.close()
+        # `B1223`: the workflow is checked off the event loop; the run is the scheduler's.
+        task_id = await asyncio.to_thread(_check)
+        run_id = str(uuid.uuid4())
+        started = await task_scheduler.run_task_now(
+            task_id, started_by=STARTED_BY_PERSON, test=True, run_id=run_id)
+        if not started:
+            raise WorkflowRefused(409, task_scheduler.in_flight_sentence(task_id)
+                                  or "Task is already running")
+        return {"ok": True, "run_id": run_id}
+
+    # ── `B1854`: a failed run, retried from the step it failed on ────────────
+
+    @router.post("/{workflow_id}/runs/{run_id}/retry")
+    @_answers
+    async def retry_run(request: Request, workflow_id: str, run_id: str):
+        """A NEW run of the version the failed run ran, from one of its steps
+        — `{node_id}`, or by default the step it failed on — keeping what the
+        failed run finished before and beside that step (copied into the new
+        run, each "Kept from the run at 10:42", `kept_from` on its record), so
+        a step that worked, and sent its mail, is not run again. That step and
+        every step after it run. Built on the records the engine already keeps
+        as a run's state (`RunState`): the walker starts where they leave off.
+
+        400 with why when it cannot (`workflow_store.plan_retry`): the run did
+        not fail, the version it ran is not kept, the step is not one it ran.
+        The gates of *Run now*: the owner (a 404), the admin rule, the switch
+        (409 for a real run of a workflow switched off; a *Test run* is retried
+        as one, `B1852`), one run at a time (409, `B674`'s sentence, no row).
+        `{ok: true, run_id}` — written before the reply."""
+        import uuid
+        from core.database import TaskRun
+        from src.interactive_gate import STARTED_BY_PERSON
+        from src.task_action_policy import (
+            admin_only_action_of, admin_refusal_message, owner_has_admin_task_privileges,
+        )
+        body = await _body(request)
+        node_id = body.get("node_id")
+        if node_id is not None and not isinstance(node_id, str):
+            raise WorkflowRefused(400, "node_id is a step's id, or left out.")
+        user = _owner(request)
+
+        def _plan():
+            db = SessionLocal()
+            try:
+                wf = store.owned_workflow(db, workflow_id, user)
+                trigger = store.require_trigger(db, wf)
+                run = (db.query(TaskRun)
+                       .filter(TaskRun.id == run_id, TaskRun.task_id == trigger.id).first())
+                if run is None:
+                    raise WorkflowRefused(404, "No such run of this workflow.")
+                found = admin_only_action_of(db, trigger)
+                if found and not owner_has_admin_task_privileges(user):
+                    raise WorkflowRefused(403, admin_refusal_message(found))
+                return trigger.id, store.plan_retry(db, wf, trigger, run, node_id=node_id or None)
+            finally:
+                db.close()
+        # `B1223`: the run and its records are read off the event loop.
+        task_id, plan = await asyncio.to_thread(_plan)
+        new_id = str(uuid.uuid4())
+        started = await task_scheduler.run_task_now(
+            task_id, started_by=STARTED_BY_PERSON, trigger=plan["trigger"], test=plan["test"],
+            run_id=new_id, retry=plan)
+        if not started:
+            raise WorkflowRefused(409, task_scheduler.in_flight_sentence(task_id)
+                                  or "Task is already running")
+        return {"ok": True, "run_id": new_id}
 
     # ── 10: test one step (`P22-08`) ─────────────────────────────────────────
 

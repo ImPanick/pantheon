@@ -77,8 +77,11 @@ def test_each_workflow_route_is_reached_by_workflow_api_and_by_nothing_else():
     # shows, and `B1845` copies a workflow (`stopRun`, `duplicateWorkflow`).
     # `B1850` adds a draft step's fields (`POST /api/workflows/{id}/fields`,
     # `listDraftFields`), and `B1851` every problem a save of the draft would
-    # name (`POST /api/workflows/{id}/problems`, `listProblems`).
-    assert len(mounted) == 21 and all(p.startswith("/api/workflows") for p in mounted)
+    # name (`POST /api/workflows/{id}/problems`, `listProblems`). `B1852` adds
+    # a workflow's *Test run* (`POST /api/workflows/{id}/test-run`, `testRun`),
+    # and `B1854` a failed run's retry from a step (`.../runs/{run_id}/retry`,
+    # `retryRun`).
+    assert len(mounted) == 23 and all(p.startswith("/api/workflows") for p in mounted)
     assert not [p for p in as_is["findings"] if p.startswith("/api/workflows")]
     assert sorted(set(hidden["findings"]) - set(as_is["findings"])) == mounted
     assert as_is["exit"] == 0, f"over the ceiling with the caller: {len(as_is['findings'])}"

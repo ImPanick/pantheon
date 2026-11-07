@@ -105,7 +105,7 @@ class Scheduler:
         return False
 
     async def run_task_now(self, task_id, *, force=False, trigger=None, dry=False,
-                           started_by="background"):
+                           started_by="background", run_id=None):
         self.runs.append({"task_id": task_id, "dry": dry, "started_by": started_by,
                           "trigger": trigger})
         if not dry:

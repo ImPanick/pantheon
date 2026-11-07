@@ -652,18 +652,25 @@ def consecutive_failures(db, task_id: str, *, before_run_id: str = None,
     failures stopped the count at zero and handed out a fresh retry budget and
     the first rung of `P15-08`'s ladder — a side effect of the one button that
     promises none. `real_run_clause` is `is_dry_run`, negated, in SQL (`B1054`).
+
+    `B1852`. Nor is a workflow's *Test run*: a person trying a workflow they
+    are building — often switched off — is not the workflow failing on its
+    schedule, so five failed tries at the canvas neither hand the first real
+    failure the fifth rung of the ladder nor use up its retries, and one try
+    that worked does not end a real streak. Skipped like an in-flight row:
+    it is not part of the history this counts.
     """
     from core.database import TaskRun
 
-    q = (db.query(TaskRun.id, TaskRun.status)
+    q = (db.query(TaskRun.id, TaskRun.status, TaskRun.steps)
            .filter(TaskRun.task_id == task_id, real_run_clause(TaskRun))
            .order_by(TaskRun.started_at.desc(), TaskRun.id.desc())
            .limit(limit))
     n = 0
-    for run_id, status in q.all():
+    for run_id, status, steps in q.all():
         if before_run_id and run_id == before_run_id:
             continue
-        if status in ("queued", "running"):
+        if status in ("queued", "running") or is_test_run_log(steps):
             continue
         if status == "error":
             n += 1
@@ -1301,6 +1308,56 @@ def is_dry_run(run) -> bool:
             and (getattr(run, "result", None) or "").startswith(DRY_RUN_MARK))
 
 
+#: `B1852`. The key on a run's `kind: "trigger"` step-log line that says the
+#: run is a workflow's *Test run* — the saved version, once, started by a
+#: person from the Workbench, even while the workflow is switched off. On the
+#: run's own log because the run row has no column for it and the log is where
+#: a run keeps what it is (`RETRY_PLAN_KEY`'s move): it survives a park and a
+#: restart with the row, so a test run's Wait or question resumes as a test
+#: run's. The line's `detail` is `trigger_summary`'s "Test run".
+TEST_RUN_KEY = "test_run"
+
+
+def is_test_run_log(steps) -> bool:
+    """`B1852`. Does this step log (a list, or the row's JSON text) say the
+    run is a *Test run*? Read on the `trigger` line's key, never its words
+    (`Law 10`)."""
+    if isinstance(steps, str):
+        try:
+            steps = json.loads(steps)
+        except (TypeError, ValueError):
+            return False
+    return isinstance(steps, list) and any(
+        isinstance(s, dict) and s.get("kind") == "trigger" and s.get(TEST_RUN_KEY) is True
+        for s in steps)
+
+
+def is_test_run(run) -> bool:
+    """`B1852`. Is this run row a workflow's *Test run*?"""
+    return is_test_run_log(getattr(run, "steps", None))
+
+
+#: `B1854`. The key on a retry's run-log line naming the failed run it retries
+#: ("Retry of the run at 10:42, from “Send it”"); `RETRY_FROM_KEY` names the
+#: step it was retried from. Read back as the run's `retry_of`.
+RETRY_OF_KEY = "retry_of"
+RETRY_FROM_KEY = "retry_from"
+
+
+def retry_of_log(steps) -> str | None:
+    """`B1854`. The failed run this run retries, read off its step log (a
+    list, or the row's JSON text), or `None`."""
+    if isinstance(steps, str):
+        try:
+            steps = json.loads(steps)
+        except (TypeError, ValueError):
+            return None
+    for line in steps if isinstance(steps, list) else ():
+        if isinstance(line, dict) and line.get(RETRY_OF_KEY):
+            return str(line[RETRY_OF_KEY])
+    return None
+
+
 def real_run_clause(run_model):
     """`B1054`. `is_dry_run` negated, as a SQL condition on `TaskRun`."""
     from sqlalchemy import func, or_
@@ -1667,6 +1724,22 @@ NOTIFY_ON_SUCCESS_TASK_TYPES = ("llm", "research", "workflow")
 PERSON_TASK_TYPES = ("llm", "research", "action")
 
 
+#: `B1853`. A start that is never due: the task runs only when somebody runs it
+#: — *Run now*, a workflow's *Test run*, the assistant's `manage_tasks run`, or
+#: the API — and nothing on a clock, an event or an address starts it. Stored in
+#: `trigger_type` beside `schedule`, `event` and `webhook`; switched on, it MAY
+#: be run (a switched-off task's *Run now* is still `skipped`, `Law 1`), and it
+#: has no next time. Its retries, like an event's, are the same start again
+#: (`failure_next_run`). `MANUAL_TRIGGER_WORDS` is how it is described.
+TRIGGER_TYPE_MANUAL = "manual"
+MANUAL_TRIGGER_WORDS = "Only when you run it"
+
+
+def is_manual_trigger(task) -> bool:
+    """`B1853`. Does this task start only when somebody runs it?"""
+    return (getattr(task, "trigger_type", None) or "schedule") == TRIGGER_TYPE_MANUAL
+
+
 def task_type_problem(value) -> str | None:
     """`B1076`. The sentence that refuses a `task_type` no task can be, or
     `None`. These doors stored whatever they were sent, and an unknown word ran
@@ -1754,6 +1827,25 @@ class StepDone(NamedTuple):
     (`success` / `error`)."""
     result: Any
     port: Any = None
+
+
+class _StepTimedOut(Exception):
+    """`B1855`. One attempt at a step ran past the step's own time limit."""
+
+    def __init__(self, seconds: int):
+        super().__init__(seconds)
+        self.seconds = seconds
+
+
+#: `B1855`. The slot key that tells a For-each it is being tried again: the
+#: items that worked keep their records and the ones that failed run again.
+RETRY_FAILED_ITEMS_KEY = "retry_failed_items"
+
+
+def step_time_limit_words(seconds) -> str:
+    """`B1855`. Why an attempt stopped: "Stopped after 30 s: the step's time
+    limit." (`_waited_words` says the time, as a queued run's wait is said)."""
+    return f"Stopped after {_waited_words(seconds)}: the step's time limit."
 
 
 class StepAnswer(NamedTuple):
@@ -2988,6 +3080,10 @@ class TaskScheduler:
                 for task in due:
                     if task.id in self._executing:
                         continue
+                    if is_manual_trigger(task):
+                        # `B1853`. A manual start is never due, whatever
+                        # `next_run` an older row or a hand edit left on it.
+                        continue
                     self._executing.add(task.id)
                     to_dispatch.append((
                         task.id,
@@ -3080,15 +3176,19 @@ class TaskScheduler:
             db.close()
         return taken if isinstance(taken, dict) else None
 
-    def _new_queued_run(self, task_id: str) -> str:
+    def _new_queued_run(self, task_id: str, run_id: str | None = None) -> str:
         """Write a `queued` run row and answer its id.
 
         Created BEFORE any wait, so the UI can show that a run is in line behind
         another one or behind the person using Pantheon. `B1060` writes a second
         one when a run the foreground gate stopped goes back in the queue.
+
+        `B1852` / `B1866`. `run_id` is an id the caller chose: `run_task_now`
+        writes the row under it BEFORE it spawns the run, so a route can answer
+        "this is the run I started" and a page that opens it at once finds it.
         """
         from core.database import SessionLocal, TaskRun
-        run_id = str(uuid.uuid4())
+        run_id = run_id or str(uuid.uuid4())
         _q_db = SessionLocal()
         try:
             _q_db.add(TaskRun(
@@ -3164,7 +3264,12 @@ class TaskScheduler:
                             started_by: str = STARTED_BY_BACKGROUND,
                             register_handle: bool = True,
                             resume_run_id: str | None = None, answer=None,
-                            inside: dict | None = None):
+                            inside: dict | None = None,
+                            queued_run_id: str | None = None, test: bool = False):
+        # `B1852` / `B1866`. `queued_run_id` is the `queued` row `run_task_now`
+        # already wrote, under the id its caller answered with; `test` is a
+        # workflow's *Test run* (`TEST_RUN_KEY`), handed to the executor.
+        #
         # `B1079`. `inside` is the run this one runs inside — a workflow's
         # *Run task* step's: `{"run": its run id, "name": the workflow's name}`
         # — so a stop that reaches this run through the workflow's can say why.
@@ -3214,7 +3319,7 @@ class TaskScheduler:
                     trigger = older
             elif started_by != STARTED_BY_PERSON:
                 trigger = self._take_pending_trigger(task_id)
-        run_id = resume_run_id or self._new_queued_run(task_id)
+        run_id = resume_run_id or queued_run_id or self._new_queued_run(task_id)
         resume = resume_run_id is not None
         # `B1060`. Background work waits for Pantheon to be idle BEFORE it takes
         # the model slot. A person's run keeps `B1047`'s chat wait, inside
@@ -3251,7 +3356,7 @@ class TaskScheduler:
                         waited_for_idle=waited,
                         may_requeue=takeovers + 1 < FOREGROUND_STOPS_LIMIT,
                         resume=resume, answer=answer, awaited=not register_handle,
-                        inside=inside,
+                        inside=inside, test=test,
                     )
                 else:
                     sem, waited = await self._take_model_slot(
@@ -3267,7 +3372,7 @@ class TaskScheduler:
                             waited_for_idle=waited,
                             may_requeue=takeovers + 1 < FOREGROUND_STOPS_LIMIT,
                             resume=resume, answer=answer, awaited=not register_handle,
-                            inside=inside,
+                            inside=inside, test=test,
                         )
                     finally:
                         sem.release()
@@ -3423,7 +3528,8 @@ class TaskScheduler:
             logger.warning("Could not mark run %s's retry as taken", run_id, exc_info=True)
 
     def _rearm_pending_retries(self) -> int:
-        """`B1494`. On start: every event or webhook task's retry that a
+        """`B1494`. On start: every event or webhook task's retry (and a
+        manual one's, `B1853`: its retry is the same start again) that a
         restart left untaken — its plan on the failed run's row — is armed
         again, due when it was due (at once, if that has passed), with the
         envelope it was planned with. Answers how many."""
@@ -3435,7 +3541,8 @@ class TaskScheduler:
                 rows = (db.query(TaskRun.id, TaskRun.task_id, TaskRun.steps)
                         .join(ScheduledTask, TaskRun.task_id == ScheduledTask.id)
                         .filter(TaskRun.status == "error",
-                                ScheduledTask.trigger_type.in_(("event", "webhook")),
+                                ScheduledTask.trigger_type.in_(
+                                    ("event", "webhook", TRIGGER_TYPE_MANUAL)),
                                 TaskRun.steps.like(f'%"{RETRY_PLAN_KEY}": {{%'))
                         .all())
             finally:
@@ -3546,10 +3653,19 @@ class TaskScheduler:
         answer=None,
         awaited: bool = False,
         inside: dict | None = None,
+        test: bool = False,
     ):
         """Run one queued run to its end. Answers `REQUEUED` when the
         foreground gate stopped it while it ran and it goes back in the queue
         (`B1060`), and `None` otherwise.
+
+        `B1852`. `test` is a workflow's *Test run* (and a resumed run is one
+        when its log says so, `is_test_run`): it runs while the workflow is
+        switched off, its Waits and questions go on while it is off, and it
+        moves nothing about when the workflow runs — not its switch, not
+        `next_run`, not the failure ladder, no retry. Every other gate is
+        asked as for any run (the admin rule, a Tools switch, one run at a
+        time, the time limit).
 
         `waited_for_idle` is how long `_execute_task` held it in the queue for
         Pantheon to be idle (`B1060`), said in its step log after the cause.
@@ -3592,11 +3708,17 @@ class TaskScheduler:
                 parked = db.query(TaskRun).filter(TaskRun.id == run_id).first()
                 if parked is None or parked.status != "waiting":
                     return
-                if not task or task.status != "active":
+                # `B1852`. A *Test run* that waits is a test run when it goes
+                # on: its log says so, and the switch is not its business.
+                test = test or is_test_run(parked)
+                if not task or (task.status != "active" and not test):
                     self._end_parked_run(db, task, parked, status="aborted",
                                          sentence=SWITCHED_OFF_WHILE_WAITING)
                     return
-            if not task or task.status != "active":
+            if not task or (task.status != "active" and not test):
+                # `B1852`: a *Test run* is the one run a switched-off workflow
+                # takes — a person trying what they built. A deleted one runs
+                # nothing.
                 # Task was paused/deleted while queued — record that outcome
                 # so the run row doesn't sit as "queued" forever.
                 stale = db.query(TaskRun).filter(TaskRun.id == run_id).first()
@@ -3624,7 +3746,7 @@ class TaskScheduler:
                 from src import workflow_runs as _wr
                 _other = _wr.run_in_flight(db, task_id, exclude=run_id)
                 if _other is not None and _other.status != "queued":
-                    self._skip_for_in_flight(db, task, run_id, _other)
+                    self._skip_for_in_flight(db, task, run_id, _other, moves_schedule=not test)
                     return
             # `B1102`. A plain Prompt task's run parked on a yes holds its task
             # as a parked workflow run does: a trigger while it waits is a
@@ -3646,7 +3768,7 @@ class TaskScheduler:
             from src.tool_privileges import held_by_switch as _held_by_switch
             _held = _held_by_switch(db, task)
             if _held:
-                self._skip_switched_off(db, task, run_id, _held)
+                self._skip_switched_off(db, task, run_id, _held, moves_schedule=not test)
                 return
 
             # `P22-05`. One question for a task and for a workflow: the task's
@@ -3770,9 +3892,12 @@ class TaskScheduler:
             # effect. The run's slot carries the envelope for the executors.
             if trigger:
                 self._state_for(run_id)["trigger"] = trigger
+                # `B1852`. A *Test run*'s cause line carries `TEST_RUN_KEY`, so
+                # the run row says what it is for as long as it is kept.
                 self._record_run_step(
                     run_id, kind="trigger",
                     detail=_trigger_summary(trigger),
+                    **({TEST_RUN_KEY: True} if test else {}),
                 )
                 if task_type == "workflow" and run is not None:
                     # `B1861`. Kept on the run's row, whole, so the run reads
@@ -3782,6 +3907,15 @@ class TaskScheduler:
                     from src import workflow_runs as _wr_trigger
                     _wr_trigger.keep_run_trigger(run, trigger)
                     db.commit()
+            # `B1854`. A retry says what it retries, after its cause.
+            retry = (self._runs().get(run_id) or {}).get("retry")
+            if retry and not resume:
+                self._record_run_step(
+                    run_id, kind="progress",
+                    detail=f"Retry of the run at {retry.get('at') or '?'}, from "
+                           f"“{retry.get('label') or retry.get('node_id')}”",
+                    **{RETRY_OF_KEY: retry.get("from_run"),
+                       RETRY_FROM_KEY: retry.get("node_id")})
             # `B1060`. A run the queue held for Pantheon to be idle says so, after
             # its cause: "its row says it waited".
             if waited_for_idle > 0:
@@ -3977,7 +4111,8 @@ class TaskScheduler:
                     run.model = self.run_model(run_id)
                 self._attach_run_steps(run_id, run)
                 task.last_run = _utcnow()
-                self._set_next_run_after(db, task)
+                if not test:                             # `B1852`
+                    self._set_next_run_after(db, task)
                 db.commit()
                 return
             except TaskDeferred as defer:
@@ -4124,6 +4259,8 @@ class TaskScheduler:
                     db.commit()
                     self._notify_run_outcome(task, "aborted", body=said, task_id=task_id)
                     return REQUEUED
+                elif test:
+                    pass        # `B1852`: a *Test run* moves no next time
                 elif (task.trigger_type or "schedule") == "schedule":
                     task.next_run = compute_next_run(
                         task.schedule, task.scheduled_time,
@@ -4155,7 +4292,9 @@ class TaskScheduler:
                 run.finished_at = _utcnow()
                 self._attach_run_steps(run_id, run)
                 task.last_run = _utcnow()
-                if (task.trigger_type or "schedule") == "schedule":
+                if test:
+                    pass        # `B1852`: a *Test run* moves no next time
+                elif (task.trigger_type or "schedule") == "schedule":
                     task.next_run = compute_next_run(
                         task.schedule, task.scheduled_time,
                         task.scheduled_day, task.scheduled_date,
@@ -4197,7 +4336,13 @@ class TaskScheduler:
             self._task_defer_counts.pop(task_id, None)
 
             # Compute next run only for schedule-triggered tasks
-            if run.status == "error":
+            if test:
+                # `B1852`. A *Test run* is a person trying the saved workflow:
+                # it is in the Runs list like any run, and it changes nothing
+                # about when the workflow runs — no next time, no `completed`
+                # for a one-off, no rung of the failure ladder, no retry.
+                pass
+            elif run.status == "error":
                 # `P8-32`. **A run that RETURNED a failure got no backoff at
                 # all.** `P15-08` put the ladder in the `except Exception`
                 # handler below, so it covered a task that RAISED and not one
@@ -4327,7 +4472,9 @@ class TaskScheduler:
                 # Advance next_run even on failure so a broken task doesn't
                 # busy-loop the scheduler every tick with a stale past date.
                 task_obj = db.query(ScheduledTask).filter(ScheduledTask.id == task_id).first()
-                if task_obj and (task_obj.trigger_type or "schedule") == "schedule":
+                if test:
+                    pass        # `B1852`: a *Test run* moves no next time and plans no retry
+                elif task_obj and (task_obj.trigger_type or "schedule") == "schedule":
                     task_obj.last_run = _utcnow()
                     try:
                         # `P15-08`. Advancing to the next slot is what this line
@@ -4515,12 +4662,16 @@ class TaskScheduler:
             return None
         return row[1] or _utcnow()
 
-    def _skip_for_in_flight(self, db, task, run_id: str, other) -> str:
+    def _skip_for_in_flight(self, db, task, run_id: str, other, *,
+                            moves_schedule: bool = True) -> str:
         """`B674`. This run did not start because another of the same workflow
         is still going: its row is `skipped` with the sentence that says which
         run and what it waits for. Nobody is notified — the run that waits
         already asked its question — and the task's next time moves on as a
-        no-op's would. Answers the sentence."""
+        no-op's would. Answers the sentence.
+
+        `B1852`. `moves_schedule=False` for a *Test run*, which never moves the
+        workflow's next time."""
         from core.database import TaskRun
         from src import workflow_runs as wr
 
@@ -4534,16 +4685,21 @@ class TaskScheduler:
             run.result = sentence
             run.error = sentence
             run.finished_at = _utcnow()
-        self._set_next_run_after(db, task)
+        if moves_schedule:
+            self._set_next_run_after(db, task)
         db.commit()
         logger.info("Workflow '%s': %s", task.name, sentence)
         return sentence
 
-    def _skip_switched_off(self, db, task, run_id: str, key: str) -> str:
+    def _skip_switched_off(self, db, task, run_id: str, key: str, *,
+                           moves_schedule: bool = True) -> str:
         """`B1191`. This run did not start because its Tools entry is switched
         off for the task's owner: a `skipped` run with the sentence, the next
         time moved on as a no-op's would, and the owner told once — not on
-        every occurrence of a task that runs every five minutes."""
+        every occurrence of a task that runs every five minutes.
+
+        `B1852`. `moves_schedule=False` for a *Test run*: held the same way,
+        and the workflow's next time left where it was."""
         from core.database import TaskRun
         from src.tool_privileges import paused_sentence
 
@@ -4559,7 +4715,8 @@ class TaskScheduler:
             run.error = sentence
             run.finished_at = _utcnow()
         task.last_run = _utcnow()
-        self._set_next_run_after(db, task)
+        if moves_schedule:
+            self._set_next_run_after(db, task)
         db.commit()
         logger.info("Task '%s' held: %s", task.name, sentence)
         if previous is None or (previous.result or "") != sentence:
@@ -4773,7 +4930,14 @@ class TaskScheduler:
           * a step a takeover stopped, once Pantheon is idle (`idle`);
           * a run whose workflow was switched off (it ends, and says so).
         Resumed as background work, so `B1060`'s wait applies: "at 08:00, or
-        as soon after as Pantheon is idle". Answers how many it resumed."""
+        as soon after as Pantheon is idle". Answers how many it resumed.
+
+        `B1852`. A *Test run* (`is_test_run`) is not ended by the switch — a
+        switched-off workflow is the one it was made to try — so its waits
+        are read like any run's, and it goes on as the person's run it is
+        (`STARTED_BY_PERSON`): the person who pressed *Test run* is usually
+        still at the canvas, and background work would wait for them to
+        leave."""
         from core.database import SessionLocal, ScheduledTask, TaskRun
         from src import workflow_runs as wr
         from src.tool_approvals import tool_approval_store
@@ -4784,6 +4948,7 @@ class TaskScheduler:
         except Exception:
             busy = False
         due = []
+        by_person = set()
         db = SessionLocal()
         try:
             now = _utcnow()
@@ -4794,9 +4959,12 @@ class TaskScheduler:
                     # `B1173`: its holder's step asks, answers and ends it.
                     continue
                 task = db.query(ScheduledTask).filter(ScheduledTask.id == run.task_id).first()
-                if task is None or task.status != "active":
+                test = is_test_run(run)
+                if task is None or (task.status != "active" and not test):
                     due.append(run.id)
                     continue
+                if test:
+                    by_person.add(run.id)                   # `B1852`
                 for rec in wr.waiting_records(db, run.id):
                     waiting = wr.waiting_of(rec) or {}
                     kind = waiting.get("kind")
@@ -4817,7 +4985,8 @@ class TaskScheduler:
             db.close()
         resumed = 0
         for run_id in dict.fromkeys(due):
-            if await self.resume_workflow_run(run_id, started_by=STARTED_BY_BACKGROUND):
+            who = STARTED_BY_PERSON if run_id in by_person else STARTED_BY_BACKGROUND
+            if await self.resume_workflow_run(run_id, started_by=who):
                 resumed += 1
         return resumed
 
@@ -6519,6 +6688,9 @@ class TaskScheduler:
 
         config = node.get("config") or {}
         kind = node.get("kind")
+        if node.get(wd.DISABLED_KEY) is True:
+            # `B1856`. Planned as it would run: not at all.
+            return [shape_run_step({"kind": "dry-run", "detail": wd.STEP_SWITCHED_OFF_PLAN})], None
         if kind == wd.NODE_KIND_RUN_TASK:
             target = db.query(ScheduledTask).filter(
                 ScheduledTask.id == config.get("task_id")).first()
@@ -6584,9 +6756,11 @@ class TaskScheduler:
         answer = run_slot.pop("answer", None)
         resuming = bool(run_slot.get("resuming"))
         records = [r for r in wr.run_node_records(db, run_id) if not r.dry]
+        # `B1854`: a retry starts with the records it kept, and runs the
+        # version they ran — as a resumed run does.
         version = (next((r.workflow_version for r in records
                          if r.workflow_version is not None), None)
-                   if resuming else None)
+                   if resuming or records else None)
         wf, graph, refused = self._load_workflow(db, task, version=version)
         if not refused and not resuming:
             # `P22-19` (`SLICE-EF-DESIGN` § 1.1). A step the model drafted, or
@@ -6673,6 +6847,10 @@ class TaskScheduler:
                 if node["id"] in w.started:
                     continue
                 kind = node.get("kind")
+                if node.get(wd.DISABLED_KEY) is True:
+                    self._pass_switched_off(w, node)       # `B1856`
+                    progressed = True
+                    continue
                 if kind == wd.NODE_KIND_WAIT:
                     self._start_wait(w, node)
                     progressed = True
@@ -6751,19 +6929,113 @@ class TaskScheduler:
         model."""
         from core.database import SessionLocal
 
+        from src import workflow_document as wd
+
         step_db = SessionLocal()
         try:
             ctx = w.state.context()
-            if self._node_needs_model(node):
-                async with w.model_lock:
-                    return await self._run_workflow_step(
-                        w.task, w.name, node, step_db, slot, deliver=True, ctx=ctx,
-                        answer=answer, walk=w, rec=rec)
-            return await self._run_workflow_step(
-                w.task, w.name, node, step_db, slot, deliver=True, ctx=ctx,
-                answer=answer, walk=w, rec=rec)
+
+            async def attempt(answer, limit=0):
+                # `B1855`: the time limit bounds the step's own work, not its
+                # wait for the run's model lock.
+                if self._node_needs_model(node):
+                    async with w.model_lock:
+                        return await self._within(limit, self._run_workflow_step(
+                            w.task, w.name, node, step_db, slot, deliver=True, ctx=ctx,
+                            answer=answer, walk=w, rec=rec))
+                return await self._within(limit, self._run_workflow_step(
+                    w.task, w.name, node, step_db, slot, deliver=True, ctx=ctx,
+                    answer=answer, walk=w, rec=rec))
+
+            settings = wd.step_settings(node)
+            if settings is None:
+                return await attempt(answer)        # no settings: as it always ran
+            return await self._attempts(settings, node, slot, attempt, answer=answer,
+                                        rec=rec, db=w.db, run_id=w.run_id)
         finally:
             step_db.close()
+
+    async def _within(self, seconds, coro):
+        """`B1855`. Await `coro`, stopped after `seconds` (0: no limit) —
+        raising `_StepTimedOut` only for this limit, not for a timeout the
+        step met inside itself."""
+        if not seconds:
+            return await coro
+        try:
+            async with asyncio.timeout(seconds) as limit:
+                return await coro
+        except TimeoutError:
+            if limit.expired():
+                raise _StepTimedOut(seconds) from None
+            raise
+
+    async def _attempts(self, settings: dict, node: dict, slot: str, attempt, *, answer,
+                        rec, db, run_id=None):
+        """`B1855`. A step's own retries and time limit (`step_settings`).
+
+        `attempt(answer, limit)` runs the step once; this runs it up to
+        `1 + retries` times. An attempt that FAILED — an `error` result, an
+        exception, or the time limit ("Stopped after 30 s: the step's time
+        limit.") — is tried again after `retry_wait_seconds`, until the last,
+        whose ending is the step's (its failure port, as before). A step that
+        parks, waits or asks (`TaskWaiting`), says there was nothing to do
+        (`TaskNoop`) or asks to wait (`TaskDeferred`) is not failing and is not
+        tried again; Stop cancels the wait between attempts at once (it is a
+        plain `sleep`).
+
+        Each attempt after the first starts from the slot the step started
+        with (its trigger, who started it), so nothing one attempt added — an
+        untrusted block, a consumed approval — reaches the next: an Allow
+        answered ONE attempt, and another asks again. The step's own log keeps
+        every attempt's lines with "Attempt 2 of 3." between them; the record's
+        `attempt` counts them (`record_node_attempt`); the run's log says each
+        try again. Not asked by *Test this step*, which is one attempt."""
+        from src import workflow_document as wd
+        from src import workflow_runs as wr
+        from src.builtin_actions import NODE_STATUS_ERROR, NodeResult
+
+        tries = 1 + int(settings.get("retries") or 0)
+        wait = settings.get("retry_wait_seconds") or 0
+        limit = settings.get("timeout_seconds") or 0
+        label = node.get("label") or node.get("id")
+        start = {k: v for k, v in self._state_for(slot).items() if k != "steps"}
+        done = None
+        for n in range(1, tries + 1):
+            if n > 1:
+                state = self._state_for(slot)
+                kept = list(state.get("steps") or ())
+                state.clear()
+                state.update(start, steps=kept, **{RETRY_FAILED_ITEMS_KEY: True})
+                if rec is not None:
+                    wr.record_node_attempt(db, rec)
+                self._record_run_step(slot, kind="progress", detail=f"Attempt {n} of {tries}.")
+            try:
+                done = await attempt(answer if n == 1 else None, limit)
+            except _StepTimedOut as stopped:
+                words = step_time_limit_words(stopped.seconds)
+                if rec is not None and node.get("kind") == wd.NODE_KIND_FOREACH:
+                    # The item the limit cut is failed, so a next attempt runs it.
+                    wr.end_running_items(db, rec.run_id, rec.node_id, error=words)
+                done = StepDone(NodeResult(NODE_STATUS_ERROR, payload=words), None)
+            except Exception as exc:  # noqa: BLE001 - a failed attempt, said; the last is raised
+                if n == tries:
+                    raise
+                logger.warning("Step %r failed (attempt %d of %d)", label, n, tries,
+                               exc_info=True)
+                done = StepDone(NodeResult(NODE_STATUS_ERROR,
+                                           payload=f"{type(exc).__name__}: {exc}"), None)
+            if done.result.status != NODE_STATUS_ERROR or n == tries:
+                return done
+            why = ((done.result.text or "").splitlines() or [""])[0].rstrip(".")
+            again = f"Trying again in {_waited_words(wait)}."
+            self._record_run_step(slot, kind="progress",
+                                  detail=f"Attempt {n} of {tries} failed: {why}. {again}")
+            if run_id is not None:
+                self._record_run_step(run_id, kind="progress",
+                                      detail=f"“{label}” failed (attempt {n} of {tries}). {again}")
+                self._set_run_progress(run_id, f"{label}: trying again in {_waited_words(wait)}…")
+            await asyncio.sleep(wait)
+        return done
 
     def _finish_step(self, w, finished) -> None:
         """A step's coroutine ended: its record, its line, the arrows it fired
@@ -6913,6 +7185,29 @@ class TaskScheduler:
                               label=node.get("label") or node["id"], status="waiting",
                               detail=(f"Waiting until {self._clock_words(w, until)}, or as "
                                       f"soon after as Pantheon is idle"))
+
+    def _pass_switched_off(self, w, node: dict) -> None:
+        """`B1856`. A step switched off in this workflow does nothing, at
+        once and without a coroutine of its own: its record is `skipped` with
+        `STEP_SWITCHED_OFF`, its output is what it was handed (as a Wait's is,
+        `_wait_passes_on`, so a reference to it reads its input), and the run
+        goes on along its FIRST way out — "if it works", "then", a Switch's
+        first way (`ports_of`) — so switching a step off never ends its
+        branch. `skipped` fires an arrow (`RunState.fired`), as it always
+        could; a run whose every step is off ends `skipped` (`outcome`)."""
+        from src import workflow_document as wd
+        from src import workflow_runs as wr
+        from src.builtin_actions import NODE_STATUS_SKIPPED
+
+        rec = wr.record_node_start(
+            w.db, run_id=w.run_id, node=node, seq=w.state.next_seq(),
+            input_envelope=self._handed(w, node), workflow_version=w.version,
+            owner=w.task.owner)
+        w.state.note_record(rec)
+        w.started.add(node["id"])
+        ports = wd.ports_of(node)
+        self._end_record(w, node, rec, status=NODE_STATUS_SKIPPED, text=wd.STEP_SWITCHED_OFF,
+                         data=self._wait_passes_on(w, node), port=ports[0] if ports else None)
 
     def _wait_passes_on(self, w, node: dict):
         """A Wait makes nothing; it hands on what it was handed — the `data`
@@ -7409,13 +7704,19 @@ class TaskScheduler:
                 f"{cap}. Nothing was run.")), None)
         inner_label = inner.get("label") or label
         done_items = (walk.state.items.get(node["id"]) if walk is not None else None) or {}
+        # `B1855`. The For-each tried again (its own retries): an item that
+        # failed runs again, on its own record; one that worked is kept.
+        from src import workflow_document as wd
+        retrying = bool((self._runs().get(slot) or {}).get(RETRY_FAILED_ITEMS_KEY))
+        inner_settings = wd.step_settings(inner)
         results = []
         for index, item in enumerate(value):
             item_label = f"{inner_label} · item {index + 1} of {total}"
             item_node = {"id": node["id"], "kind": inner.get("kind"), "label": item_label,
                          "config": dict(inner.get("config") or {})}
             prev = done_items.get(index)
-            if prev is not None and prev.status in wr.STEP_FINISHED:
+            if (prev is not None and prev.status in wr.STEP_FINISHED
+                    and not (retrying and prev.status == NODE_STATUS_ERROR)):
                 out = wr._loads(prev.output) or {}
                 if wr.is_truncated(out):
                     out = {}
@@ -7453,6 +7754,9 @@ class TaskScheduler:
                         if on_error == "stop":
                             break
                         continue
+            elif walk is not None and prev is not None and prev.status == NODE_STATUS_ERROR:
+                wr.record_node_attempt(walk.db, prev)        # `B1855`: tried again
+                rec = prev
             elif walk is not None:
                 rec = wr.record_node_start(
                     walk.db, run_id=walk.run_id, node=item_node, seq=walk.state.next_seq(),
@@ -7469,10 +7773,21 @@ class TaskScheduler:
                 waits_for=parent.get("waits_for", "idle"))
             item_ctx = dict(ctx)
             item_ctx["item"] = json.loads(json.dumps(item, default=str))
-            try:
-                done = await self._run_workflow_step(
+
+            async def run_item(answer, limit=0, item_node=item_node, item_slot=item_slot,
+                               item_ctx=item_ctx):
+                return await self._within(limit, self._run_workflow_step(
                     task, workflow_name, item_node, db, item_slot, deliver=deliver,
-                    ctx=item_ctx, answer=item_answer, walk=None, may_wait=may_wait)
+                    ctx=item_ctx, answer=answer, walk=None, may_wait=may_wait))
+            try:
+                if inner_settings is None:
+                    done = await run_item(item_answer)
+                else:
+                    # `B1855`. The repeated step's own settings are each item's.
+                    done = await self._attempts(
+                        inner_settings, item_node, item_slot, run_item, answer=item_answer,
+                        rec=rec if walk is not None else None,
+                        db=walk.db if walk is not None else db)
                 res = done.result
             except TaskWaiting as parked:
                 parked = named_question(parked)
@@ -8224,7 +8539,9 @@ class TaskScheduler:
 
     async def run_task_now(self, task_id: str, *, force: bool = False,
                            trigger: dict | None = None, dry: bool = False,
-                           started_by: str = STARTED_BY_BACKGROUND):
+                           started_by: str = STARTED_BY_BACKGROUND,
+                           run_id: str | None = None, test: bool = False,
+                           retry: dict | None = None):
         """Manually trigger a task execution.
 
         `P8-23`. `trigger` is what fired it — the event bus's envelope or the
@@ -8251,20 +8568,56 @@ class TaskScheduler:
         `B1047`. `started_by` says who asked (`src.interactive_gate.STARTED_BY`).
         The default is background work — the event bus and the webhook call
         this — and the task route passes `STARTED_BY_PERSON` for its buttons.
+
+        `B1852` / `B1866`. `run_id` is an id the caller chose for the real run
+        it starts: the `queued` row is written under it here, BEFORE the run is
+        spawned, so the route answers `{run_id}` and a page that opens that run
+        at once finds it. The answer is still `True` (every caller reads it
+        unchanged). A run the foreground gate stops and puts back in the queue
+        (`B1060`) goes on as a new row; this id is then the attempt it stopped,
+        whose row says it will run again.
+
+        `B1852`. `test` is a workflow's *Test run* (`TEST_RUN_KEY`): a
+        person's run of the saved version that runs while the workflow is
+        switched off and moves nothing about when it runs. Its trigger is the
+        test envelope (`build_test_trigger`) unless one is handed in. Held by
+        `B674` as Run now is, but a test that cannot start writes no `skipped`
+        row and moves no next time — it answers `False`, and the route says
+        why (`in_flight_sentence`).
+
+        `B1854`. `retry` is a failed workflow run retried from one of its steps
+        (`workflow_store.plan_retry`'s plan): the records it keeps are copied
+        into the new run (`run_id`, which a retry must name) before it is
+        spawned, so the walker starts at that step, on the version that run
+        ran; its log says what it retries. Held as a test run is: no row
+        when it cannot start.
         """
         if started_by not in STARTED_BY:
             raise ValueError(f"started_by must be one of {STARTED_BY}, not {started_by!r}")
-        if not dry and self._record_parked_skip(task_id, trigger) is not None:
+        if test and (dry or force):
+            raise ValueError("a test run is neither a dry run nor a forced one")
+        if retry is not None and (dry or force or run_id is None):
+            raise ValueError("a retry is a real run with an id of its own")
+        if test or retry is not None:
+            if self.in_flight_sentence(task_id) is not None:
+                return False                       # `B674`, said by the route
+            if test and trigger is None:
+                from src.event_bus import build_test_trigger
+                trigger = build_test_trigger()
+        elif not dry and self._record_parked_skip(task_id, trigger) is not None:
             # `B674`. A workflow whose run is parked runs once at a time: this
             # trigger is a `skipped` run that says why, and the caller is told
             # it did not start (the webhook keeps its 409, with those words —
             # `in_flight_sentence`). A dry run plans and touches nothing, so it
             # is not held.
             return False
+        queued = None
         if force:
+            if run_id is not None and not dry:
+                queued = self._new_queued_run(task_id, run_id=run_id)
             coro = self._execute_task(
                 task_id, bypass_model_slot=True, release_executing=False,
-                trigger=trigger, dry=dry, started_by=started_by)
+                trigger=trigger, dry=dry, started_by=started_by, queued_run_id=queued)
             if dry:
                 return await coro
             asyncio.create_task(coro)
@@ -8273,12 +8626,35 @@ class TaskScheduler:
             if task_id in self._executing:
                 return False
             self._executing.add(task_id)
+        if run_id is not None and not dry:
+            queued = self._new_queued_run(task_id, run_id=run_id)
+        if retry is not None:
+            self._seed_retry(queued, retry)
         coro = self._execute_task(task_id, trigger=trigger, dry=dry,
-                                  started_by=started_by)
+                                  started_by=started_by, queued_run_id=queued, test=test)
         if dry:
             return await coro
         asyncio.create_task(coro)
         return True
+
+    def _seed_retry(self, run_id: str, retry: dict) -> None:
+        """`B1854`. The kept records into the retry, and what it retries on its
+        slot (the run's log says so after its cause, `_execute_task_locked`)."""
+        from core.database import SessionLocal, TaskRunNode
+        from src import workflow_runs as wr
+
+        db = SessionLocal()
+        try:
+            kept = list(retry.get("kept") or ())
+            records = (db.query(TaskRunNode).filter(TaskRunNode.id.in_(kept))
+                       .order_by(TaskRunNode.seq).all() if kept else [])
+            wr.copy_kept_records(db, run_id=run_id, records=records,
+                                 from_run_id=retry["from_run"],
+                                 words=f"Kept from the run at {retry.get('at') or '?'}")
+        finally:
+            db.close()
+        self._state_for(run_id)["retry"] = {k: retry.get(k) for k in (
+            "from_run", "node_id", "label", "at")}
 
     async def stop_task(self, task_id: str) -> bool:
         """Request cancellation of a running/queued task and mark its run aborted."""
