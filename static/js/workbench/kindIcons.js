@@ -57,6 +57,8 @@ export const GLYPHS = Object.freeze({
   'start:webhook': [P('M10 14a4.5 4.5 0 0 0 6.4.4l2.6-2.6a4.5 4.5 0 0 0-6.4-6.4l-1.4 1.4'),
     P('M14 10a4.5 4.5 0 0 0-6.4-.4L5 12.2a4.5 4.5 0 0 0 6.4 6.4l1.4-1.4')],
   'start:mail': [R(2.5, 5, 19, 14, 2.5), P('M3 6.5l9 6.5 9-6.5')],
+  // `B1853`. Started by hand: a pointer pressing.
+  'start:manual': [P('M5 3.5l13 6.5-5.6 1.9-1.9 5.6z'), P('M13.5 13.5l5 5')],
   start: [P('M7 4.5v15l12-7.5z')],
   // A step this person cannot see, or a kind this browser does not know.
   missing: [C(12, 12, 9), P('M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .8-1 1.5v.7'), P('M12 17h.01')],
@@ -93,6 +95,7 @@ export function startGlyph(trigger) {
   if (type === 'webhook') return 'start:webhook';
   if (type === 'event') return String(t.trigger_event || '') === 'email_received' ? 'start:mail' : 'start:event';
   if (type === 'schedule') return 'start:schedule';
+  if (type === 'manual') return 'start:manual';      // `B1853`: started by hand
   return 'start';
 }
 

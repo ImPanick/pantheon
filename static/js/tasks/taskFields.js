@@ -1033,6 +1033,7 @@ export function mountTaskFields(host, {
         <button class="task-toggle-btn ${curTriggerType === 'schedule' ? 'active' : ''}" data-val="schedule" style="position:relative;top:-4px;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:4px;"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>Schedule</button>
         <button class="task-toggle-btn ${curTriggerType === 'event' ? 'active' : ''}" data-val="event" style="position:relative;top:-4px;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:4px;"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>Event</button>
         <button class="task-toggle-btn ${curTriggerType === 'webhook' ? 'active' : ''}" data-val="webhook" style="position:relative;top:-4px;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:4px;"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>Webhook</button>
+        <button class="task-toggle-btn ${curTriggerType === 'manual' ? 'active' : ''}" data-val="manual" style="position:relative;top:-4px;" title="Runs only when you run it: Run now, your assistant or the API"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:4px;"><polygon points="6 4 20 12 6 20 6 4"/></svg>Manual</button>
       </div>
 
       <div id="task-form-trigger-opts"></div>
@@ -1567,6 +1568,13 @@ ${(isNode && taskType === 'research') ? '' : `
         triggerOpts.innerHTML = '<div style="font-size:11px;opacity:0.5;margin-top:4px;">Webhook URL will be generated when the task is saved.</div>'
           + _retryBoxHtml(existing);
       }
+    } else if (triggerType === 'manual') {
+      // `B1853`. A start that is never due: nothing starts it by itself.
+      // Switched on, it may be run — by Run now, the assistant or the API.
+      triggerOpts.innerHTML = _ids(triggerOpts, `
+        <div class="task-form-manual-words" style="font-size:11px;opacity:0.6;margin-top:4px;">Only when you run it: Run now, your assistant or the API start it. Nothing starts it by itself.</div>
+        ${_retryBoxHtml(existing)}
+      `);
     }
   }
 
@@ -1906,6 +1914,7 @@ ${(isNode && taskType === 'research') ? '' : `
         payload.trigger_count = parseInt(countInput?.value || String(_defaultTriggerCount()), 10);
       }
       // webhook: no extra fields needed, token is auto-generated server-side
+      // manual (`B1853`): none either — it has no time, no event, no address
 
       // `B805`. Retries, for every trigger: a scheduled task's on its clock,
       // an event's or a webhook's with what started it. It was read and sent

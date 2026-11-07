@@ -243,6 +243,36 @@ def test_a_starts_form_is_the_trigger_and_hands_over_only_the_trigger(sandbox):
     assert body["timeout_seconds"] == 300 and body["notifications_enabled"] is True
 
 
+def test_a_start_can_be_manual_and_hands_over_no_time(sandbox):
+    """`B1853`. A start that runs only when somebody runs it: the fourth way,
+    beside a schedule, an event and a webhook."""
+    trigger = {"id": "tw", "name": "Morning brief", "task_type": "workflow", "status": "paused",
+               "trigger_type": "schedule", "schedule": "daily", "scheduled_time": "08:00",
+               "max_retries": 0, "timeout_seconds": 0, "notifications_enabled": True,
+               "prompt": "", "output_target": "session"}
+    out = _run_case(sandbox, dict(_ROUTES), """
+        const got = [];
+        const host = hostIn();
+        mountTaskFields(host, { mode: 'trigger', task: %s, tasks: [], onSaved: (r) => got.push(r) });
+        await tick();
+        const toggle = q(host, 'task-form-trigger-toggle');
+        const ways = toggle.querySelectorAll('button').map((b) => [b.dataset.val, b.textContent.trim()]);
+        const manual = toggle.querySelectorAll('button').find((b) => b.dataset.val === 'manual');
+        toggle.dispatchEvent({ type: 'click', target: { closest: () => manual } });
+        await tick();
+        const words = host.querySelector('.task-form-manual-words').textContent;
+        click(q(host, 'task-form-save'));
+        await tick();
+        console.log(JSON.stringify({ ways, words, got, errors: ui.errors }));
+    """ % json.dumps(trigger))
+    assert out["ways"] == [["schedule", "Schedule"], ["event", "Event"], ["webhook", "Webhook"], ["manual", "Manual"]]
+    assert out["words"].startswith("Only when you run it")
+    assert out["errors"] == []
+    (body,) = out["got"]
+    assert body["trigger_type"] == "manual"
+    assert not body.get("scheduled_time") and not body.get("trigger_event"), body
+
+
 def test_a_start_on_an_event_says_which_step_is_handed_it(sandbox):
     from test_one_task_form_in_two_places_js import _served_events
     events = _served_events()
