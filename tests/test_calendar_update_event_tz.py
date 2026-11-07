@@ -128,6 +128,16 @@ async def test_update_event_new_start_preserves_duration_when_end_is_omitted(tok
     assert end - start == timedelta(minutes=90)
     assert end > start
 
+    # Upstream's tail: the moved event is on its new evening (`B1908`).
+    from src.tool_implementations import do_manage_calendar
+    listed = await do_manage_calendar(json.dumps({
+        "action": "list_events",
+        "start": "2026-10-12T18:00:00",
+        "end": "2026-10-13T00:00:00",
+    }), owner=owner)
+    assert listed.get("exit_code", 0) == 0, listed
+    assert [event["summary"] for event in listed["events"]] == ["Dinner"]
+
 
 async def test_update_event_earlier_start_keeps_the_length_and_a_given_end_is_kept(tokyo_offset):
     owner = "move-earlier-" + uuid.uuid4().hex[:6]
@@ -213,3 +223,71 @@ async def test_list_events_query_without_range_does_not_default_to_two_weeks():
     }), owner="list-" + uuid.uuid4().hex[:6])
     assert listed.get("exit_code") == 1, listed
     assert "explicit start/end" in listed["error"]
+
+
+# `B1908` (upstream Odysseus 218d7624, adapted). list_events read the bounds a
+# chat sends, naive local times as its prompt asks, as if they were UTC, and
+# compared them with timed rows stored in UTC: anyone away from UTC was shown
+# the wrong day, off by their offset. All-day and floating rows are stored as
+# wall time, so reading the bounds in UTC for every row (upstream's one-line
+# swap) would pull in the neighbouring day's all-day event instead. Each row is
+# now compared in the frame it is stored in.
+
+
+@pytest.fixture
+def anchorage_offset():
+    from routes.calendar_routes import set_user_tz_offset
+    set_user_tz_offset(-540)  # Anchorage in summer, UTC-9
+    try:
+        yield
+    finally:
+        set_user_tz_offset(None)
+
+
+def _all_day_rows(owner, *days):
+    """All-day rows as CalDAV, .ics import and the Calendar store them: naive dates."""
+    db = _TS()
+    try:
+        cal = CalendarCal(id="cal-" + owner, owner=owner, name="Main")
+        db.add(cal)
+        for day in days:
+            start = datetime.fromisoformat(day)
+            db.add(CalendarEvent(uid=f"{owner}-{day}", calendar_id=cal.id, summary=f"All day {day}",
+                                 dtstart=start, dtend=start + timedelta(days=1),
+                                 all_day=True, is_utc=False))
+        db.commit()
+    finally:
+        db.close()
+
+
+async def _listed(owner, start, end):
+    from src.tool_implementations import do_manage_calendar
+
+    listed = await do_manage_calendar(json.dumps({"action": "list_events", "start": start, "end": end}),
+                                      owner=owner)
+    assert listed.get("exit_code", 0) == 0, listed
+    return listed
+
+
+async def test_a_days_list_in_tokyo_holds_that_days_events(tokyo_offset):
+    owner = "list-tokyo-" + uuid.uuid4().hex[:6]
+    await _create(owner, "Breakfast meeting", "2026-06-10T08:00:00", "2026-06-10T09:00:00")
+    await _create(owner, "Next breakfast", "2026-06-11T08:00:00", "2026-06-11T09:00:00")
+    _all_day_rows(owner, "2026-06-09", "2026-06-10")
+
+    listed = await _listed(owner, "2026-06-10T00:00:00", "2026-06-11T00:00:00")
+
+    assert sorted(event["summary"] for event in listed["events"]) == ["All day 2026-06-10", "Breakfast meeting"]
+    assert "between 2026-06-10 and 2026-06-11" in listed["response"]
+
+
+async def test_a_days_list_west_of_utc_holds_that_days_events(anchorage_offset):
+    owner = "list-anchorage-" + uuid.uuid4().hex[:6]
+    await _create(owner, "Dinner", "2026-06-10T20:00:00", "2026-06-10T21:00:00")
+    await _create(owner, "Last night's dinner", "2026-06-09T20:00:00", "2026-06-09T21:00:00")
+    _all_day_rows(owner, "2026-06-10", "2026-06-11")
+
+    listed = await _listed(owner, "2026-06-10T00:00:00", "2026-06-11T00:00:00")
+
+    assert sorted(event["summary"] for event in listed["events"]) == ["All day 2026-06-10", "Dinner"]
+    assert "between 2026-06-10 and 2026-06-11" in listed["response"]

@@ -19,11 +19,10 @@ logger = logging.getLogger(__name__)
 
 async def do_manage_calendar(content: str, owner: Optional[str] = None) -> Dict:
     """Handle manage_calendar tool calls: list/create/update/delete calendar events (local SQLite)."""
-    from datetime import datetime, timedelta
+    from datetime import datetime, timedelta, timezone
     from core.database import SessionLocal, CalendarCal, CalendarEvent, Note
     from routes.calendar_routes import (
         _ensure_default_calendar,
-        _parse_dt,
         _parse_dt_pair,
         parse_due_for_user,
         _resolve_base_uid,
@@ -260,23 +259,64 @@ async def do_manage_calendar(content: str, owner: Optional[str] = None) -> Dict:
                         ),
                         "exit_code": 1,
                     }
+                # `B1908`: the bounds are the person's. A timed row with a zone
+                # is stored as a UTC instant, and an all-day or floating row as
+                # wall time, so each bound is read both ways: the UTC instant of
+                # the person's time for the first, their wall time for the
+                # second. With no zone known both are the reading this always
+                # made, so a background run is unchanged.
+                from src.user_time import (
+                    get_user_tz_name, get_user_tz_offset, now_user_local, user_timezone,
+                )
+                zone_known = get_user_tz_offset() is not None or bool(get_user_tz_name())
+
+                def _bound(raw):
+                    aware = parse_due_for_user(raw)
+                    utc_b, is_aware = _parse_dt_pair(aware)
+                    if zone_known and is_aware:
+                        local_b = datetime.fromisoformat(aware).astimezone(user_timezone())
+                        return utc_b, local_b.replace(tzinfo=None)
+                    return utc_b, utc_b
+
                 if start_raw:
-                    start_dt = _parse_dt(start_raw)
+                    start_utc, start_local = _bound(start_raw)
+                elif zone_known:
+                    midnight = now_user_local().replace(hour=0, minute=0, second=0, microsecond=0)
+                    start_local = midnight.replace(tzinfo=None)
+                    start_utc = midnight.astimezone(timezone.utc).replace(tzinfo=None)
                 else:
-                    start_dt = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+                    start_utc = start_local = datetime.utcnow().replace(
+                        hour=0, minute=0, second=0, microsecond=0)
                 if end_raw:
-                    end_dt = _parse_dt(end_raw)
+                    end_utc, end_local = _bound(end_raw)
                 else:
-                    end_dt = start_dt + timedelta(days=14)
+                    end_utc = start_utc + timedelta(days=14)
+                    end_local = start_local + timedelta(days=14)
             except ValueError as e:
                 return {"error": f"Invalid date format: {e}", "exit_code": 1}
 
-            if end_dt <= start_dt:
-                end_dt = start_dt + timedelta(days=1)
+            if end_utc <= start_utc:
+                end_utc = start_utc + timedelta(days=1)
+            if end_local <= start_local:
+                end_local = start_local + timedelta(days=1)
 
+            from sqlalchemy import and_, or_
             q = _event_query().filter(
-                CalendarEvent.dtstart < end_dt,
-                CalendarEvent.dtend > start_dt,
+                or_(
+                    and_(
+                        CalendarEvent.is_utc == True,  # noqa: E712
+                        or_(CalendarEvent.all_day == False,  # noqa: E712
+                            CalendarEvent.all_day.is_(None)),
+                        CalendarEvent.dtstart < end_utc,
+                        CalendarEvent.dtend > start_utc,
+                    ),
+                    and_(
+                        or_(CalendarEvent.is_utc == False,  # noqa: E712
+                            CalendarEvent.all_day == True),  # noqa: E712
+                        CalendarEvent.dtstart < end_local,
+                        CalendarEvent.dtend > start_local,
+                    ),
+                ),
                 CalendarEvent.status != "cancelled",
             )
             calendar_filter = args.get("calendar")
@@ -304,9 +344,9 @@ async def do_manage_calendar(content: str, owner: Optional[str] = None) -> Dict:
                     "rrule": ev.rrule or "",
                 })
             if not events:
-                response_text = f"No events between {start_dt.date().isoformat()} and {end_dt.date().isoformat()}."
+                response_text = f"No events between {start_local.date().isoformat()} and {end_local.date().isoformat()}."
             else:
-                lines = [f"Found {len(events)} event(s) between {start_dt.date().isoformat()} and {end_dt.date().isoformat()}:"]
+                lines = [f"Found {len(events)} event(s) between {start_local.date().isoformat()} and {end_local.date().isoformat()}:"]
                 for ev in events:
                     when = ev["dtstart"]
                     when_str = f"{when} (all day)" if ev.get("all_day") else f"{when} -> {ev.get('dtend', '')}"
