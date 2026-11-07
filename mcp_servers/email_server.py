@@ -2190,7 +2190,8 @@ def _download_attachment(uid, index, folder="INBOX", account=None, destination=N
     given, else under the sender's name; never outside that folder, and never
     over a file already there (`tool_execution.save_into_projects`, which says
     why in a sentence). Without one it goes where it always went, the mail
-    attachments area, `MAIL_ATTACHMENTS_DIR/<folder>_<uid>`."""
+    attachments area, `MAIL_ATTACHMENTS_DIR/<scope>/<folder>_<uid>`, `<scope>`
+    being the owner's and the account's own folder (`B2034`)."""
     conn = None
     try:
         conn = _imap_connect(account)
@@ -2223,7 +2224,12 @@ def _download_attachment(uid, index, folder="INBOX", account=None, destination=N
         return {"path": filepath, "filename": _display_name(shown or "") or os.path.basename(filepath),
                 "saved_as": os.path.basename(filepath), "size": os.path.getsize(filepath)}
 
-    target_dir = Path(MAIL_ATTACHMENTS_DIR) / f"{folder}_{uid}"
+    # `B2034`: it was `MAIL_ATTACHMENTS_DIR / f"{folder}_{uid}"`, `folder` as
+    # given (`../../x` and `/abs/p` left the area) and one folder for every
+    # owner's "INBOX 42" (`src/mail_attachment_paths`, the routes' rule too).
+    from src.mail_attachment_paths import attachment_scope_dir
+    target_dir = attachment_scope_dir(MAIL_ATTACHMENTS_DIR, folder, uid, owner=_current_owner(),
+                                      account_id=_load_config(account).get("account_id") or account)
     filepath = _extract_attachment_to_disk(msg, index, target_dir)
     if not filepath:
         return {"error": f"Attachment index {index} not found"}

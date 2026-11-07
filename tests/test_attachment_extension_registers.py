@@ -558,7 +558,7 @@ def _drive_attachment_as_doc(tmp_path, monkeypatch, name, body: bytes):
         email_routes, "_imap_uid_fetch", lambda *a, **k: ("OK", [(None, raw)])
     )
     monkeypatch.setattr(
-        email_routes, "attachment_extract_dir", lambda folder, uid: target
+        email_routes, "attachment_extract_dir", lambda folder, uid, **_: target
     )
     monkeypatch.setattr(
         email_routes,

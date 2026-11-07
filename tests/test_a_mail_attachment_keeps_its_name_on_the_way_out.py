@@ -116,7 +116,7 @@ def mailbox(tmp_path, monkeypatch):
     monkeypatch.setattr(E, "_start_poller", lambda: None)
     monkeypatch.setattr(E, "_imap", fake_imap)
     monkeypatch.setattr(E, "_imap_uid_fetch", fake_fetch)
-    monkeypatch.setattr(E, "attachment_extract_dir", lambda folder, uid: extract / str(uid))
+    monkeypatch.setattr(E, "attachment_extract_dir", lambda folder, uid, **_: extract / str(uid))
     monkeypatch.setattr(E, "_email_attachment_meta_cache_get", lambda *_a, **_k: None)
     monkeypatch.setattr(E, "_email_attachment_meta_cache_put", lambda *_a, **_k: None)
     monkeypatch.setattr(EH, "COMPOSE_UPLOADS_DIR", compose)

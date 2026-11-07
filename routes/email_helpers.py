@@ -940,18 +940,23 @@ def _ensure_sender_signatures_table(conn):
         _lg.getLogger(__name__).warning(f"sender_signatures owner-migration skipped: {_mig_e}")
 
 
-def attachment_extract_dir(folder: str, uid: str) -> Path:
+def attachment_extract_dir(folder: str, uid: str, *, owner: str, account_id: str | None = None) -> Path:
     """Containment-safe extraction directory for an attachment.
 
     `folder` and `uid` are user-controlled (query/path params). Flatten them to
     a single safe path segment so a value like folder='../../tmp' can't escape
-    ATTACHMENTS_DIR, then assert containment as belt-and-suspenders."""
-    key = re.sub(r"[^A-Za-z0-9._-]", "_", f"{folder}_{uid}") or "_"
-    target = (ATTACHMENTS_DIR / key).resolve()
-    base = ATTACHMENTS_DIR.resolve()
-    if target != base and base not in target.parents:
-        raise HTTPException(400, "Invalid attachment location")
-    return target
+    ATTACHMENTS_DIR, then assert containment as belt-and-suspenders.
+
+    `B2034`: under a folder of the owner's and the account's own
+    (`src/mail_attachment_paths`). Named by folder and UID alone, two people's
+    "INBOX 42" were one folder, and each extraction rewrote the file the other
+    had just been handed."""
+    from src.mail_attachment_paths import attachment_scope_dir
+
+    try:
+        return attachment_scope_dir(ATTACHMENTS_DIR, folder, uid, owner=owner, account_id=account_id)
+    except ValueError:
+        raise HTTPException(400, "Invalid attachment location") from None
 
 
 def _init_scheduled_db():

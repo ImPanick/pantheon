@@ -1151,17 +1151,27 @@ def test_attachment_extract_dir_stays_contained(folder, uid):
     """User-controlled folder/uid must never escape ATTACHMENTS_DIR — pins the
     fix for the attachment-extraction path traversal."""
     aed, base = _import_attachment_extract_dir()
-    target = aed(folder, uid)
+    # `B2034`: the owner and the account name a folder too, so they get the
+    # same hostile values (upstream Odysseus 3d91ad82's).
+    target = aed(folder, uid, owner="../../owner", account_id="../acct")
     base_r = base.resolve()
     assert target == base_r or base_r in target.parents
-    # exactly one extra path segment, and no `..` component survived
+    # exactly two path segments, the scope and the flattened name, and no
+    # `..` component survived
     rel = target.relative_to(base_r)
+    assert len(rel.parts) == 2
     assert ".." not in rel.parts
 
 
-def test_attachment_extract_dir_normal_inputs_unchanged():
+def test_attachment_extract_dir_normal_inputs_keep_their_name_in_their_owners_folder():
+    """`B2034`: the readable `INBOX_123` is still the name, one level down, in
+    a folder that is this owner's and this account's alone."""
     aed, base = _import_attachment_extract_dir()
-    assert aed("INBOX", "123") == base.resolve() / "INBOX_123"
+    target = aed("INBOX", "123", owner="alice", account_id="acct-1")
+    assert target.name == "INBOX_123"
+    assert target.parent.parent == base.resolve()
+    assert target == aed("INBOX", "123", owner="alice", account_id="acct-1")
+    assert target.parent != aed("INBOX", "123", owner="bob", account_id="acct-1").parent
 
 
 def test_diagnostics_routes_are_admin_gated():

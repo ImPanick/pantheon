@@ -3785,7 +3785,7 @@ def setup_email_routes():
             msg = email_mod.message_from_bytes(raw)
 
             # Extract to a per-email folder
-            target_dir = attachment_extract_dir(folder, uid)
+            target_dir = attachment_extract_dir(folder, uid, owner=owner, account_id=account_id)
             filepath = _extract_attachment_to_disk(msg, index, target_dir)
             if not filepath:
                 return {"error": f"Attachment index {index} not found"}
@@ -3826,7 +3826,7 @@ def setup_email_routes():
             if not attachments:
                 raise HTTPException(status_code=404, detail="No downloadable attachments")
 
-            target_dir = attachment_extract_dir(folder, uid)
+            target_dir = attachment_extract_dir(folder, uid, owner=owner, account_id=account_id)
             zip_buf = io.BytesIO()
             used_names: dict[str, int] = {}
             with zipfile.ZipFile(zip_buf, "w", compression=zipfile.ZIP_DEFLATED) as zf:
@@ -3897,7 +3897,7 @@ def setup_email_routes():
                     continue
                 if not ct.lower().startswith("image/"):
                     raise HTTPException(status_code=415, detail="Content-ID is not an image")
-                target_dir = attachment_extract_dir(folder, uid)
+                target_dir = attachment_extract_dir(folder, uid, owner=owner, account_id=account_id)
                 filepath = _extract_attachment_to_disk(msg, idx, target_dir)
                 if not filepath:
                     raise HTTPException(status_code=404, detail="Inline image not found")
@@ -3947,7 +3947,7 @@ def setup_email_routes():
             raw = msg_data[0][1]
             msg = email_mod.message_from_bytes(raw)
 
-            target_dir = attachment_extract_dir(folder, uid)
+            target_dir = attachment_extract_dir(folder, uid, owner=owner, account_id=account_id)
             filepath = _extract_attachment_to_disk(msg, index, target_dir)
             if not filepath:
                 return {"error": f"Attachment index {index} not found"}
@@ -4846,7 +4846,7 @@ def setup_email_routes():
                 return {"success": False, "error": "Email not found"}
             raw = msg_data[0][1]
             msg = email_mod.message_from_bytes(raw)
-            target_dir = attachment_extract_dir(folder, uid)
+            target_dir = attachment_extract_dir(folder, uid, owner=owner, account_id=account_id)
             filepath = _extract_attachment_to_disk(msg, index, target_dir)
             if not filepath:
                 return {"success": False, "error": f"Attachment index {index} not found"}

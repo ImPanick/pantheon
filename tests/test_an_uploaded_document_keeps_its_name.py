@@ -101,7 +101,7 @@ def env(tmp_path, monkeypatch):
     monkeypatch.setattr(personal_routes, "get_rag_manager", lambda: _Rag())
 
     extract = tmp_path / "mail-extract"
-    monkeypatch.setattr(email_routes, "attachment_extract_dir", lambda folder, uid: extract)
+    monkeypatch.setattr(email_routes, "attachment_extract_dir", lambda folder, uid, **_: extract)
 
     app = FastAPI()
     upload_router, _cleanup = upload_routes.setup_upload_routes(handler)

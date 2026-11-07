@@ -112,7 +112,11 @@ def test_with_no_destination_it_goes_where_it_always_went(mailbox):
     """`Law 1`."""
     srv, root, tmp = mailbox
     out = srv._download_attachment(uid="3", index=0)
-    assert Path(out["path"]) == tmp / "mail-attachments" / "INBOX_3" / Q3
+    # `B2034`: still the mail attachments area and still `INBOX_3`, inside the
+    # folder that is this owner's and this account's own.
+    path = Path(out["path"])
+    assert (path.name, path.parent.name) == (Q3, "INBOX_3")
+    assert path.parent.parent.parent == (tmp / "mail-attachments").resolve()
     assert not any(root.rglob("*"))
 
 
