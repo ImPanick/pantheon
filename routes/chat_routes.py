@@ -3040,6 +3040,14 @@ def setup_chat_routes(
                 _user_msg = message or ""
                 _image_upload = _first_image_attachment(chat_handler, att_ids, owner=_user)
                 _image_tool_name = "edit_image" if _image_upload else "generate_image"
+                if _image_upload and tool_policy.blocks("edit_image"):
+                    # `B1814`: an attached picture is edited as `edit_image`,
+                    # and a switch an admin turned off is off here too (`H05`).
+                    # Asked after `generate_image`, which still gates both.
+                    yield f'data: {json.dumps({"delta": tool_policy.reason_for("edit_image")})}\n\n'
+                    yield "data: [DONE]\n\n"
+                    _active_streams.pop(session, None)
+                    return
                 # `P4-11`. This path never enters the agent loop — the whole
                 # interaction is one call — so its round is 1 and stays 1. It is
                 # stated rather than omitted so the card carries the same badge
