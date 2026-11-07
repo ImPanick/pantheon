@@ -285,7 +285,14 @@ def setup_workflow_routes(task_scheduler) -> APIRouter:
         task is a step of, or (`describe`, `P22-19`) a draft from the person's
         words, or (`file`, `P22-24`) a workflow file. Every way it is created
         switched off; a draft and a file come back with every step marked
-        `unchecked`, what is `missing`, and every step's `destinations` (C-A)."""
+        `unchecked`, what is `missing`, and every step's `destinations` (C-A).
+
+        `B1867`. `tz` — the person's time zone, as the browser names it — is
+        the new start's `tz_name` for an empty workflow and a draft, and for a
+        file that names no zone of its own; one this machine does not know is
+        left out, never refused (`workflow_store.person_zone`). A chain made a
+        workflow keeps its first step's own zone: it is the clock the chain
+        already runs on, and the workflow starts where the chain does."""
         user = _owner(request)
         body = await _body(request)
         from_task_id = body.get("from_task_id")
@@ -313,7 +320,8 @@ def setup_workflow_routes(task_scheduler) -> APIRouter:
             try:
                 if "file" in ways:
                     from src import workflow_share
-                    made = workflow_share.import_file(db, user, body.get("file"))
+                    made = workflow_share.import_file(db, user, body.get("file"),
+                                                      tz=body.get("tz"))
                     return {"workflow": doc(db, made.wf, made.trigger), "notes": made.notes,
                             "missing": made.missing, "destinations": made.destinations}
                 if from_task_id:
@@ -321,7 +329,8 @@ def setup_workflow_routes(task_scheduler) -> APIRouter:
                         db, owner=user, from_task_id=str(from_task_id), name=body.get("name"),
                         positions=_task_canvas_positions(user), name_of=_name_of)
                 else:
-                    wf, trigger, notes = store.create_workflow(db, owner=user, name=body.get("name"))
+                    wf, trigger, notes = store.create_workflow(db, owner=user, name=body.get("name"),
+                                                               tz=body.get("tz"))
                 return {"workflow": doc(db, wf, trigger), "notes": notes}
             finally:
                 db.close()

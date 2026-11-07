@@ -93,11 +93,16 @@ export function createWorkflowApi({ fetch } = {}) {
     },
     /** A new, empty workflow; or (`fromTaskId`, `P22-06`) the chain that task
      *  is a step of; or (`describe`, `P22-19`) a draft the model makes from
-     *  the person's words — send `tz` (`Intl…resolvedOptions().timeZone`) so
-     *  "at 8" means their 8; or (`file`, `P22-24`) a workflow file's parsed
+     *  the person's words; or (`file`, `P22-24`) a workflow file's parsed
      *  JSON. Created switched off. → `{ workflow, notes }`, and for a draft
      *  or a file also `{ missing: [sentence], destinations: [line] }`, with
-     *  every step of `workflow.graph` marked `unchecked` (C-A). */
+     *  every step of `workflow.graph` marked `unchecked` (C-A).
+     *  `tz` (optional, `Intl…resolvedOptions().timeZone`) is the person's time
+     *  zone, so "at 8" and a Wait "until 08:00" mean their 8: the new start's
+     *  own zone for an empty workflow and a draft (`B1867`), and for a file
+     *  that names none. A chain keeps its first step's zone; a zone this
+     *  machine does not know is left out, never refused. Omitted, the start
+     *  is on the server's clock, as before. */
     createWorkflow({ name, fromTaskId, describe, tz, file } = {}) {
       return call('POST', `/api/workflows`,
         given({ name, from_task_id: fromTaskId, describe, tz, file }));

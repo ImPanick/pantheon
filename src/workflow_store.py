@@ -945,14 +945,35 @@ def _new_trigger(*, owner, name, fields: dict):
     return task
 
 
-def create_workflow(db, *, owner, name=None):
+def person_zone(tz) -> str | None:
+    """`B1867`. The time zone the browser said the person is in
+    (`Intl.DateTimeFormat().resolvedOptions().timeZone`), when this machine
+    knows it — `valid_timezone`, the one function that decides which zones
+    exist (`P8-32`) — else `None`. Never a refusal: a zone the browser named
+    that this machine does not know leaves the start on the server's clock, as
+    every start was before this row, and the start's form still sets it."""
+    if not isinstance(tz, str) or not tz.strip() or len(tz.strip()) > 64:
+        return None
+    from src.task_scheduler import valid_timezone
+    return valid_timezone(tz.strip())
+
+
+def create_workflow(db, *, owner, name=None, tz=None):
     """A new, empty workflow, switched off. Returns `(wf, trigger, notes)`.
     Created from the engine's `empty_graph` WITHOUT validating it (an empty
-    document is refused at save — `no_steps` — and this one is off)."""
+    document is refused at save — `no_steps` — and this one is off).
+
+    `B1867`. `tz` is the person's time zone (`person_zone`). Before this row a
+    new workflow's start had no `tz_name`, so it was read as UTC: a Wait
+    "until 08:00" and a start "daily at 09:00" ran at the server's 08:00 and
+    09:00, hours from the person's, with nothing saying so — the drafter
+    (`describe`) already took the browser's zone, and an empty workflow did
+    not."""
     from src.workflow_document import VERSION_SOURCE_USER, empty_graph
     _, _, Workflow, _ = _models()
     name = unused_name(db, owner, clean_name(name, required=False) or NEW_WORKFLOW_NAME)
-    trigger = _new_trigger(owner=owner, name=name, fields={})
+    zone = person_zone(tz)
+    trigger = _new_trigger(owner=owner, name=name, fields={"tz_name": zone} if zone else {})
     db.add(trigger)
     db.flush()
     wf = Workflow(id=str(uuid.uuid4()), owner=owner, name=name, task_id=trigger.id,

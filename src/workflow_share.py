@@ -211,10 +211,16 @@ def _text(value) -> str:
     return " ".join(str(value or "").split())[:120]
 
 
-def import_file(db, owner, data) -> Imported:
+def import_file(db, owner, data, *, tz=None) -> Imported:
     """`P22-24`. A workflow file, made a workflow of this person's — switched
     off, every step marked `imported` with what it still `needs`. Raises
-    `WorkflowRefused`, writing nothing, for anything but a missing resource."""
+    `WorkflowRefused`, writing nothing, for anything but a missing resource.
+
+    `B1867`. `tz` is the person's time zone (`workflow_store.person_zone`):
+    the start takes it when the file names none of its own. A file that names
+    a zone keeps it — it says when the workflow was meant to run — and a zone
+    it names that this machine does not know is said, as before
+    (`clean_trigger_fields`)."""
     from src import workflow_store as store
     from src.workflow_document import (
         DocumentError, ORIGIN_IMPORTED, UNCHECKED_KEY, WORKFLOW_TASK_TYPE, WorkflowResources,
@@ -352,6 +358,10 @@ def import_file(db, owner, data) -> Imported:
     store.check_document(db, graph, owner=owner, own_task_id=None, rows=check_rows,
                          resources=resources)
     trigger_fields = data.get("trigger") if isinstance(data.get("trigger"), dict) else {}
+    zone = store.person_zone(tz)
+    if zone and not (isinstance(trigger_fields.get("tz_name"), str)
+                     and trigger_fields["tz_name"].strip()):
+        trigger_fields = dict(trigger_fields, tz_name=zone)
     wf, trigger, said = store.create_from_document(
         db, owner=owner, name=_text(data.get("name")) or None, graph=graph,
         trigger_fields=trigger_fields, origin=ORIGIN_IMPORTED, needs=needs,
