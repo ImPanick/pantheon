@@ -5,6 +5,9 @@
 import * as jobs from './jobs.js?v=20260630researchthumb';
 import { getBackgroundWork, onBackgroundWork } from '../modalManager.js?v=20261009census';   // `B813`
 import themeModule from '../theme.js';
+// `B1994`: the panel's messages, imported rather than read as app.js's
+// `window.uiModule`, which a page without app.js does not have.
+import uiModule from '../ui.js';
 import createResearchSynapse from '../researchSynapse.js';
 import spinnerModule from '../spinner.js';
 import { sortModelIds } from '../modelSort.js';
@@ -466,6 +469,15 @@ function _animateOutThenRemove(el, removeFn) {
   el.style.opacity = '0';
   el.style.transform = 'translateX(-10px)';
   setTimeout(removeFn, 320);
+}
+
+/** `B1994`. Deletes one report on the server and throws unless the server
+ *  says it did. The card's Delete read a refused or unanswered request as a
+ *  success: the card left, `removeJob` hid the report from this panel for
+ *  good, and the report was still on disk and in the Library. */
+async function _deleteResearchFromDisk(id) {
+  const res = await fetch(`${_apiBase}/api/research/${id}`, { method: 'DELETE', credentials: 'same-origin' });
+  if (!res.ok) throw new Error(`${res.status}${res.statusText ? ' ' + res.statusText : ''}`.trim());
 }
 
 /** Dismiss the mobile keyboard by stealing focus into a throwaway readonly
@@ -1078,7 +1090,14 @@ function _buildJobCard(job) {
         const ok = await window.styledConfirm('Delete this research? This permanently removes it from disk.', { confirmText: 'Delete', danger: true });
         if (!ok) return;
       }
-      try { await fetch(`${_apiBase}/api/research/${job.id}`, { method: 'DELETE', credentials: 'same-origin' }); } catch {}
+      // `B1994`: the card leaves, and the report is hidden here, only once the
+      // server has deleted it.
+      try {
+        await _deleteResearchFromDisk(job.id);
+      } catch (err) {
+        uiModule.showError(`Could not delete this research report (${(err && err.message) || 'the request did not complete'}). It is still in the Library.`);
+        return;
+      }
       _animateOutThenRemove(card, () => jobs.removeJob(job.id));
     });
     card.querySelector('[data-action="dismiss"]').addEventListener('click', (e) => {
