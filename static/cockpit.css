@@ -2498,7 +2498,7 @@ html.cockpit .sidebar .section-header-btn { border-radius: 8px; }
    orphan spacer lifted the rail's first button level with the chat title,
    and the rail (z 3) sat under the top bar (z 6), so "Sidebar Ctrl+Alt+B"
    and "Pantheon Chat" were printed over each other. */
-html.cockpit #icon-rail:is(:hover, :focus-within) { z-index: 7; }
+html.cockpit #icon-rail:is(:hover, :focus-within) { z-index: calc(var(--ck-z-topbar) + 1); }
 
 /* ── `B1756` · `B1757` · the Devices room and the phone, in the cockpit ──
    The device list is the window's quiet cards (glass, a hairline, the lit
