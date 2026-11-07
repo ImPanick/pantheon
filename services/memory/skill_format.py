@@ -38,8 +38,10 @@ Body sections (any subset; rendered as headings):
     ## Verification
     - How to confirm success
 
-    Anything else (raw paragraphs after the last known section) is preserved
-    in `body_extra` and round-trips on save.
+    Anything else is kept in `body_extra` and round-trips on save: the text
+    before the first heading is written back first, and every other `##`
+    section, heading line included, after the four (`B1951`). A `##` line
+    inside a fenced code block is example text, not a heading.
 
 Usage counters (`uses`, `last_used`) live in a sidecar `_usage.json` keyed
 by skill name, so the SKILL.md file doesn't churn on every retrieval.
@@ -289,6 +291,59 @@ _KEY_TO_HEADING = {
 }
 
 
+_HEADING_RE = re.compile(r"^##\s+(.*?)\s*$")
+
+# `B1951`. A fenced code block is example text, so a `## Procedure` line in a
+# skill that shows how to write a SKILL.md is not this skill's procedure.
+_FENCE_RE = re.compile(r"^ {0,3}(`{3,}|~{3,})")
+
+
+def _next_fence(line: str, fence: Optional[str]) -> Optional[str]:
+    """Code-fence state after `line`: the opening marker while inside a
+    fenced block, None outside."""
+    m = _FENCE_RE.match(line)
+    if not m:
+        return fence
+    marker = m.group(1)
+    if fence is None:
+        # A backtick fence's info string cannot contain another backtick.
+        if marker[0] == "`" and "`" in line[m.end():]:
+            return None
+        return marker
+    if marker[0] == fence[0] and len(marker) >= len(fence) and not line.strip()[len(marker):]:
+        return None
+    return fence
+
+
+def _headings(lines: List[str]) -> List[Optional["re.Match[str]"]]:
+    """Each line's `## ` heading match, or None, outside code fences. `B1951`.
+
+    A fence still open at the end of the text is a typo rather than an
+    example, and taking it at its word would hide every heading after it (a
+    skill with one unclosed fence above its `## Procedure` would lose its
+    steps), so then fences are not counted at all, as before this row.
+    """
+    found: List[Optional["re.Match[str]"]] = []
+    fence: Optional[str] = None
+    for line in lines:
+        found.append(None if fence else _HEADING_RE.match(line))
+        fence = _next_fence(line, fence)
+    if fence is not None:
+        found = [_HEADING_RE.match(line) for line in lines]
+    return found
+
+
+def _first_heading_offset(text: str) -> Optional[int]:
+    """Where the first `## ` heading of `text` starts, by `_headings`."""
+    pieces = text.splitlines(keepends=True)
+    offset = 0
+    for piece, m in zip(pieces, _headings([p.splitlines()[0] for p in pieces])):
+        if m:
+            return offset
+        offset += len(piece)
+    return None
+
+
 def parse_body(body: str) -> Dict[str, Any]:
     """Split a SKILL.md body into known sections.
 
@@ -306,13 +361,17 @@ def parse_body(body: str) -> Dict[str, Any]:
     if not body or not body.strip():
         return out
 
+    lines = body.splitlines()
     sections: List[tuple[Optional[str], List[str]]] = [(None, [])]
-    for line in body.splitlines():
-        m = re.match(r"^##\s+(.*?)\s*$", line)
+    for line, m in zip(lines, _headings(lines)):
         if m:
             heading = m.group(1).strip().lower()
             key = _HEADING_TO_KEY.get(heading)
-            sections.append((key, []))
+            # `B1951`. A heading this parser does not model starts free text,
+            # and its line stays with that text. It was dropped, so `## Examples`
+            # vanished on the first save and its text ran into the paragraph
+            # above it.
+            sections.append((key, [] if key else [line]))
             continue
         sections[-1][1].append(line)
 
@@ -351,6 +410,15 @@ def _parse_list_lines(text: str) -> List[str]:
 
 def emit_body(sections: Dict[str, Any]) -> str:
     parts: List[str] = []
+    extra = (sections.get("body_extra") or "").strip()
+    # `B1951`. The free text before the first heading is written first and the
+    # other sections after the four. All of it went after the last known
+    # section, where the next read took it for part of that section and
+    # `_parse_list_lines` folded it into the last step or pitfall.
+    cut = _first_heading_offset(extra)
+    lead, custom = (extra[:cut].strip(), extra[cut:].strip()) if cut is not None else (extra, "")
+    if lead:
+        parts.append(lead)
     when = (sections.get("when_to_use") or "").strip()
     if when:
         parts.append(f"## {_KEY_TO_HEADING['when_to_use']}\n\n{when}")
@@ -364,9 +432,8 @@ def emit_body(sections: Dict[str, Any]) -> str:
         else:
             body = "\n".join(f"- {x}" for x in items)
         parts.append(f"## {heading}\n\n{body}")
-    extra = (sections.get("body_extra") or "").strip()
-    if extra:
-        parts.append(extra)
+    if custom:
+        parts.append(custom)
     return "\n\n".join(parts) + ("\n" if parts else "")
 
 

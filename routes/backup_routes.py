@@ -497,6 +497,12 @@ def setup_backup_routes(memory_manager, preset_manager, skills_manager) -> APIRo
                     fallback_for_toolsets=skill.get("fallback_for_toolsets"),
                     status=skill.get("status", "draft"),
                     version=skill.get("version", "1.0.0"),
+                    # `B1951`. An export carries a skill's notes here, and
+                    # `solution` repeats them only as an alias that add_skill
+                    # drops when the skill has steps. Not text (a hand-edited
+                    # file): None, so the alias is used as before.
+                    body_extra=(skill["body_extra"]
+                                if isinstance(skill.get("body_extra"), str) else None),
                 )
                 if result.get("_deduped"):
                     continue
