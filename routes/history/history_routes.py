@@ -111,6 +111,22 @@ def _merge_continue_rows_to_delete(db_messages, db1, db2):
     return to_delete
 
 
+def _continue_prompt_between(messages, idx1: int, idx2: int) -> bool:
+    """`B2016`. Whether ``messages[idx2]`` is a Continue's reply to
+    ``messages[idx1]``: the message just before it, after the first reply, is
+    a prompt a Continue sent (`is_continue_prompt`, which knows the step
+    limit's as well as the interrupted reply's). Read as the merge reads a
+    message: a ``ChatMessage``, a dict or a stored row."""
+    if not (0 <= idx1 < idx2 - 1 and idx2 < len(messages)):
+        return False
+    between = messages[idx2 - 1]
+    if isinstance(between, dict):
+        role, content = between.get("role", ""), between.get("content", "")
+    else:
+        role, content = getattr(between, "role", ""), getattr(between, "content", "")
+    return role == "user" and is_continue_prompt(content)
+
+
 def _keep_count_through_message(history, msg_id) -> Optional[int]:
     """`B1986`. How many of ``history``'s rows a fork through the message
     ``msg_id`` copies: every row up to and including the one whose ``_db_id``
@@ -958,6 +974,15 @@ def setup_history_routes(session_manager, upload_handler=None) -> APIRouter:
                     return {"status": "ok", "merged": False}
 
                 idx1, idx2 = ai_indices[-2], ai_indices[-1]
+                # `B2016`. Only a Continue's reply is joined to the reply before
+                # it. The browser asks for this merge whenever a Continue's
+                # stream ends cleanly, and a continuation can end with no reply
+                # stored: an answer that only reasoned, an Incognito turn, a row
+                # the database refused. The last two replies were then the
+                # stopped one and the answer before it, and the stopped reply
+                # was folded into that answer, leaving its question with none.
+                if not _continue_prompt_between(session.history, idx1, idx2):
+                    return {"status": "ok", "merged": False, "reason": "no_continue_marker"}
                 msg1, msg2 = session.history[idx1], session.history[idx2]
 
                 content1 = msg1.content if isinstance(msg1, ChatMessage) else msg1.get('content', '')
@@ -1006,19 +1031,30 @@ def setup_history_routes(session_manager, upload_handler=None) -> APIRouter:
                     # Find last two assistant messages in DB
                     ai_db = [(i, m) for i, m in enumerate(db_messages) if m.role == 'assistant']
                     if len(ai_db) >= 2:
-                        (_, db1), (_, db2) = ai_db[-2], ai_db[-1]
-                        db1.content = merged_content
-                        db1.meta_data = _json.dumps(merged_meta)
+                        (i1, db1), (i2, db2) = ai_db[-2], ai_db[-1]
+                        # `B2016`: the rows by the same rule. Memory can hold a
+                        # continuation the database never stored (a refused
+                        # insert is logged and rolled back), and then the last
+                        # two rows were the answer before and the stopped reply:
+                        # the answer's row took the continuation's words and the
+                        # stopped reply's row was deleted.
+                        if _continue_prompt_between(db_messages, i1, i2):
+                            db1.content = merged_content
+                            db1.meta_data = _json.dumps(merged_meta)
 
-                        # Mirror the in-memory deletion: remove the second assistant
-                        # message and ONLY the "continue" user message between them
-                        # (not arbitrary tool/system/user rows). The old
-                        # range-delete destroyed every row between the two assistant
-                        # messages, desyncing the DB from the in-memory history.
-                        for _row in _merge_continue_rows_to_delete(db_messages, db1, db2):
-                            db.delete(_row)
+                            # Mirror the in-memory deletion: remove the second assistant
+                            # message and ONLY the "continue" user message between them
+                            # (not arbitrary tool/system/user rows). The old
+                            # range-delete destroyed every row between the two assistant
+                            # messages, desyncing the DB from the in-memory history.
+                            for _row in _merge_continue_rows_to_delete(db_messages, db1, db2):
+                                db.delete(_row)
 
-                        db.commit()
+                            db.commit()
+                        else:
+                            logger.warning(
+                                "Merge %s: no Continue prompt stands between the last two stored "
+                                "replies; the stored rows are left as they are", session_id)
                 finally:
                     db.close()
                 session_manager.save_sessions()
