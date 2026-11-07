@@ -25,6 +25,11 @@ lists stay, as the record of what has to stay attributed.
 `docx.umd.min.js`, docx 9.7.1's Vite build, which names forty-five packages in
 its `//#region node_modules/<pkg>/` markers. They are read out of the bytes the
 same way, below.
+
+`B1959` (2026-11-07): `mammoth.browser.min.js` is a bundle too. Its browserify
+build keeps no module paths and no legal comments, so the checker sees one
+library, and nine of the eighteen packages its module maps name had no notice
+anywhere. The maps are read out of the bytes below.
 """
 import pathlib
 import re
@@ -147,6 +152,77 @@ def test_what_docx_carries_inside_files_it_took_whole_is_declared_too(pkg):
     marker = {"lie": 'e("lie")', "immediate": 'e("immediate")',
               "setimmediate": 'e("setimmediate")', "process": "cachedSetTimeout"}[pkg]
     assert marker in blob, (pkg, marker)
+
+
+# --- B1959: what mammoth carries -------------------------------------------
+#
+# `mammoth.browser.min.js` is mammoth 1.12.3's own browserify build: no
+# `node_modules/` paths for rule 7 and no legal comments, so rule 8 sees one
+# library. What browserify keeps is one map per module, from each `require`
+# string to the module that answers it (`},{"../utils":32,"readable-stream":16}]`,
+# keys quoted or bare), and a key that is not a relative path names a package.
+# `_process` is browserify's own name for `process`.
+MAMMOTH = ROOT / "static" / "lib" / "mammoth.browser.min.js"
+_BROWSERIFY_KEY = r'(?:"[^"\\]*"|[A-Za-z_$][\w$]*)'
+_BROWSERIFY_MAP = re.compile(r'\},\{((?:%s:\d+,?)*)\}\]' % _BROWSERIFY_KEY)
+_BROWSERIFY_PAIR = re.compile(r'(%s):\d+' % _BROWSERIFY_KEY)
+
+
+def _browserify_packages(path):
+    blob = path.read_bytes().decode("utf-8", "replace")
+    found = set()
+    for body in _BROWSERIFY_MAP.findall(blob):
+        for key in _BROWSERIFY_PAIR.findall(body):
+            key = key.strip('"')
+            if key.startswith((".", "/")):
+                continue
+            parts = key.split("/")
+            name = "/".join(parts[:2]) if key.startswith("@") else parts[0]
+            found.add("process" if name == "_process" else name)
+    return found
+
+
+# What mammoth 1.12.3's module maps name, read from the shipped bytes.
+MAMMOTH_EXPECTED = {
+    "@xmldom/xmldom", "base64-js", "bluebird", "buffer", "dingbat-to-unicode",
+    "ieee754", "immediate", "isarray", "jszip", "lie", "lop", "option", "pako",
+    "process", "readable-stream", "set-immediate-shim", "underscore",
+    "xmlbuilder",
+}
+# `readable-stream`'s key is JSZip's one-line shim, re-exporting a `stream` the
+# build mapped to nothing: none of its code ships in this file.
+_ONLY_A_SHIM = 'e.exports=t("stream")},{stream:void 0}'
+_GRANTS = {"MIT": "Permission is hereby granted, free of charge",
+           "BSD": "Redistribution and use in source and binary forms"}
+
+
+def test_what_mammoth_carries_is_read_from_its_module_maps_and_declared():
+    """Eighteen packages, read out of the bytes and written down, so a mammoth
+    bump that changes them says which. Before `B1959`, nine of them were
+    declared by no Entry and had no notice anywhere."""
+    found = _browserify_packages(MAMMOTH)
+    assert found == MAMMOTH_EXPECTED, {
+        "appeared": sorted(found - MAMMOTH_EXPECTED),
+        "vanished": sorted(MAMMOTH_EXPECTED - found),
+    }
+    declared = {pkg for e in _licences().INVENTORY for pkg in e.bundled}
+    assert sorted(found - declared) == [], "inside mammoth.browser.min.js, declared by no Entry"
+    assert _ONLY_A_SHIM in MAMMOTH.read_bytes().decode("utf-8", "replace")
+
+
+@pytest.mark.parametrize("pkg", sorted(MAMMOTH_EXPECTED - {"readable-stream"}))
+def test_every_package_inside_mammoth_has_an_entry_a_text_and_a_credits_row(pkg):
+    """The entry's text is on disk, names a holder and carries its grant, and
+    the `CREDITS.md` row that links it names the package and this file."""
+    owners = [e for e in _licences().INVENTORY if pkg in e.bundled]
+    assert owners, f"{pkg} ships inside mammoth.browser.min.js and no Entry declares it"
+    entry = owners[0]
+    body = (ROOT / "licenses" / entry.text).read_text(encoding="utf-8")
+    assert re.search(r"(?i)copyright", body) and len(body) > 400, entry.text
+    grant = _GRANTS["MIT" if entry.licence.startswith("MIT") else "BSD"]
+    assert grant in body, (entry.text, entry.licence)
+    rows = [ln for ln in _credit_lines(entry.text) if f"[{pkg}]" in ln]
+    assert any("mammoth.browser.min.js" in ln for ln in rows), (pkg, _credit_lines(entry.text))
 
 
 @pytest.mark.parametrize("pkg", sorted(EXPECTED_0_10_2 - EXPECTED))

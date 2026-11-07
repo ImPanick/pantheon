@@ -845,6 +845,43 @@ INVENTORY = [
           bundled=("setimmediate",)),
     Entry("process", [], "MIT", "process-MIT-LICENSE.txt", "process",
           bundled=("process",)),
+    # ── B1959, 2026-11-07 ─────────────────────────────────────────────────
+    # Inside `mammoth.browser.min.js`, mammoth 1.12.3's own browserify build.
+    # Browserify leaves no `node_modules/` paths for rule 7, and mammoth's
+    # build strips every legal comment, so rule 8 sees one library (`single`)
+    # and these are declared by hand, as B424's four are. What browserify does
+    # leave is one map per module, from each `require` string to the module
+    # that answers it; its package keys name eighteen packages, read out of
+    # the bytes by `tests/test_bundled_package_notices.py`. Nine were declared
+    # already (`base64-js`, `buffer`, `ieee754`, `immediate`, `jszip`, `lie`,
+    # `pako`, `process`, `readable-stream`) and these are the other nine. Each
+    # text is the package's own, at the release mammoth 1.12.3's lockfile
+    # resolves. Three archives ship no LICENSE file: `isarray` 1.0.0's text is
+    # its README's "License" section, verbatim; `set-immediate-shim` 1.0.1's is
+    # the `license` file at its repository's v1.0.1 tag; `dingbat-to-unicode`
+    # 1.0.1 declares BSD-2-Clause in its package.json, and its text is the
+    # `js/LICENSE` its repository added later, the same author's. `lop` and
+    # `option` are marked by repository: their bare names are inside "develop"
+    # and "at your option", and a marker that matched a GPL header in a
+    # `single` file would claim it for them.
+    Entry("@xmldom/xmldom", [], "MIT", "xmldom-xmldom-MIT-LICENSE.txt", "@xmldom/xmldom",
+          bundled=("@xmldom/xmldom",)),
+    Entry("bluebird", [], "MIT", "bluebird-MIT-LICENSE.txt", "bluebird",
+          bundled=("bluebird",)),
+    Entry("dingbat-to-unicode", [], "BSD-2-Clause", "dingbat-to-unicode-BSD-2-Clause.txt",
+          "dingbat-to-unicode", bundled=("dingbat-to-unicode",)),
+    Entry("isarray", [], "MIT", "isarray-MIT-LICENSE.txt", "isarray",
+          bundled=("isarray",)),
+    Entry("lop", [], "BSD-2-Clause", "lop-BSD-2-Clause.txt", "lop",
+          bundled=("lop",), notices=("mwilliamson/lop",)),
+    Entry("option", [], "BSD-2-Clause", "option-BSD-2-Clause.txt", "option",
+          bundled=("option",), notices=("mwilliamson/node-options",)),
+    Entry("set-immediate-shim", [], "MIT", "set-immediate-shim-MIT-LICENSE.txt",
+          "set-immediate-shim", bundled=("set-immediate-shim",)),
+    Entry("underscore", [], "MIT", "underscore-MIT-LICENSE.txt", "underscore",
+          bundled=("underscore",)),
+    Entry("xmlbuilder", [], "MIT", "xmlbuilder-MIT-LICENSE.txt", "xmlbuilder",
+          bundled=("xmlbuilder",)),
     Entry("KaTeX", ["static/lib/katex/katex.min.js", "static/lib/katex/katex.min.css"],
           "MIT", "KaTeX-MIT-LICENSE.txt", "KaTeX",
           contents=CONTENTS_SINGLE, notices=("KaTeX",)),
