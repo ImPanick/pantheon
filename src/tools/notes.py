@@ -184,9 +184,12 @@ async def do_manage_notes(content: str, owner: Optional[str] = None) -> Dict:
                     or re.search(r"\bremind(?:er)?\b", lower_combined)
                 )
                 if looks_like_reminder:
+                    # The meridiem takes its own whitespace (`B1919`): with
+                    # `\s*` and `\s+` side by side, a digit before a long
+                    # whitespace run was split every possible way.
                     temporal = re.search(
                         r"\b(?:today|tonight|tomorrow|tmrw|yesterday)\b(?:\s+(?:at\s+)?\d{1,2}(?::\d{2})?\s*(?:am|pm)?)?"
-                        r"|\b\d{1,2}(?::\d{2})?\s*(?:am|pm)?\s+(?:today|tonight|tomorrow|tmrw|yesterday)\b"
+                        r"|\b\d{1,2}(?::\d{2})?(?:\s*(?:am|pm))?\s+(?:today|tonight|tomorrow|tmrw|yesterday)\b"
                         r"|\bin\s+\d+\s*(?:hour|hr|minute|min|day)s?\b",
                         lower_combined,
                     )

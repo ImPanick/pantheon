@@ -155,10 +155,12 @@ async def do_manage_calendar(content: str, owner: Optional[str] = None) -> Dict:
         text = str(raw).strip().lower()
         if text in {"none", "no", "off", "false"}:
             return None
-        m = re.search(r"(\d+)\s*(?:minutes?|mins?|m)\b", text)
+        # `(?<!\d)`, `B1919`: a number is tried from its first digit only. From
+        # every digit, a long run of them was read once per digit.
+        m = re.search(r"(?<!\d)(\d+)\s*(?:minutes?|mins?|m)\b", text)
         if m:
             return max(0, int(m.group(1)))
-        m = re.search(r"(\d+)\s*(?:hours?|hrs?|h)\b", text)
+        m = re.search(r"(?<!\d)(\d+)\s*(?:hours?|hrs?|h)\b", text)
         if m:
             return max(0, int(m.group(1)) * 60)
         if text.isdigit():
@@ -169,8 +171,10 @@ async def do_manage_calendar(content: str, owner: Optional[str] = None) -> Dict:
         desc = str(raw_args.get("description", "") or "")
         if minutes_before is None:
             return desc
+        # `(?::\s*)?`, `B1919`: one whitespace run before the number, not two
+        # side by side that split a long run every possible way.
         reminder_only = re.compile(
-            r"^\s*(?:remind(?:er)?|alarm)\s*:?\s*\d+\s*"
+            r"^\s*(?:remind(?:er)?|alarm)\s*(?::\s*)?\d+\s*"
             r"(?:minutes?|mins?|m|hours?|hrs?|h)\b.*$",
             re.I,
         )
@@ -483,8 +487,9 @@ async def do_manage_calendar(content: str, owner: Optional[str] = None) -> Dict:
                 delta = None
                 if dur:
                     import re as _re_d
-                    h = _re_d.search(r'(\d+)\s*(?:h|hr|hours?)', dur)
-                    m = _re_d.search(r'(\d+)\s*(?:m|min|minutes?)', dur)
+                    # From a number's first digit only (`B1919`).
+                    h = _re_d.search(r'(?<!\d)(\d+)\s*(?:h|hr|hours?)', dur)
+                    m = _re_d.search(r'(?<!\d)(\d+)\s*(?:m|min|minutes?)', dur)
                     secs = (int(h.group(1)) * 3600 if h else 0) + (int(m.group(1)) * 60 if m else 0)
                     if secs > 0:
                         delta = timedelta(seconds=secs)
