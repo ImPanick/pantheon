@@ -92,6 +92,35 @@ def test_a_tool_that_raises_is_a_failure_in_its_own_words():
     assert answer.get("untrusted_content") is True
 
 
+def test_a_tool_that_answers_error_is_a_failure_unless_it_built_its_own_result():
+    """`B1992`. Pantheon's own servers say a failure in words and return it as
+    content: `send_email` without a subject answers *Error: to, subject, and
+    body are required*, a failing picture *Error: Image generation failed …*.
+    The manager read that as a success, so the tool card, the run's
+    `tool_events`, a workflow step and a task's delivery log said the mail
+    went. Now a returned text that starts `Error:` is an error result, read as
+    a raise is, and stays the server's untrusted words. A whole
+    `CallToolResult` the tool built is taken as it says, which is how the
+    workstation relay hands on a server's own answer. Upstream Odysseus reads
+    the same text as a failure in `84aa9a91`, in the manager, for every
+    server."""
+    import mcp.types as types
+
+    async def call(name, arguments):
+        said = [types.TextContent(type="text", text="Error: to, subject, and body are required")]
+        if name == "explode":
+            return said
+        return types.CallToolResult(content=said, isError=False)
+
+    _, [failed, relayed] = _through_the_manager(
+        tool_server("t", _list_tools, call), [("explode", {}), ("double", {"n": 1})])
+    assert failed["exit_code"] == 1, failed
+    assert failed["stderr"] == "Error: to, subject, and body are required", failed
+    assert failed["stdout"] == "" and failed.get("untrusted_content") is True, failed
+    assert relayed["exit_code"] == 0, relayed
+    assert relayed["stdout"] == "Error: to, subject, and body are required", relayed
+
+
 def test_arguments_the_schema_refuses_never_reach_the_tool():
     ran = []
 
