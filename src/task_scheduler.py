@@ -1806,6 +1806,32 @@ class _Walk:
         self.model_lock = asyncio.Lock()
         self.question_open = False
         self.last_model = None
+        # `B1860`. The order this segment's step coroutines ENDED in, stamped
+        # by a done callback (`stamp_finished`) — asyncio runs a task's done
+        # callbacks in the order the tasks finish, so a plain counter read
+        # inside one is the order of finishing. `asyncio.wait` answers a SET,
+        # and several branches that finish inside one tick of the loop came
+        # back in the set's hash order, so the Merge's `inputs[]`, the
+        # `finish_order` a run's result is read from ("what the step that
+        # finished last made") and the order of the run's log lines changed
+        # from one run to the next of the same document.
+        import itertools
+        self.finished_in = {}      # asyncio.Task → its place in the finishing order
+        self._finish_tick = itertools.count()
+
+    def stamp_finished(self, step) -> None:
+        """`B1860`. A step's coroutine ended: note its place in the order."""
+        self.finished_in.setdefault(step, next(self._finish_tick))
+
+    def in_finish_order(self, done) -> list:
+        """`B1860`. The steps `asyncio.wait` answered, in the order they
+        finished; one with no stamp (none is expected) goes after the stamped
+        ones, by its record's `seq` — the order the steps were started in."""
+        def place(step):
+            _node, rec, _slot = self.running.get(step) or (None, None, None)
+            return (self.finished_in.pop(step, float("inf")),
+                    getattr(rec, "seq", None) or 0)
+        return sorted(done, key=place)
 
 
 def _port_word(node: dict, port) -> str:
@@ -6516,7 +6542,8 @@ class TaskScheduler:
                     done, _pending = await asyncio.wait(
                         list(w.running), timeout=timeout,
                         return_when=asyncio.FIRST_COMPLETED)
-                    for finished in done:
+                    # `B1860`: in the order they finished, not the set's.
+                    for finished in w.in_finish_order(done):
                         self._finish_step(w, finished)
                     self._fire_due_timers(w)
             except asyncio.CancelledError:
@@ -6624,6 +6651,7 @@ class TaskScheduler:
             self._record_run_step(slot, kind="progress", detail=answer.sentence)
         self._set_run_progress(w.run_id, f"{node.get('label') or node_id}…")
         step = asyncio.create_task(self._run_step_guarded(w, node, slot, rec, answer))
+        step.add_done_callback(w.stamp_finished)     # `B1860`
         w.running[step] = (node, rec, slot)
 
     async def _run_step_guarded(self, w, node: dict, slot: str, rec, answer):
