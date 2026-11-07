@@ -12,7 +12,7 @@
 // `?v=` — the JS/CSS branch below asks the network first, and the server
 // answers `no-cache` with an ETag — so a `?v=` is a module's identity, never
 // moved on one site (`.pantheon/AGENTS.md` § Operational facts).
-const CACHE_NAME = 'pantheon-v520-agent-hand';
+const CACHE_NAME = 'pantheon-v521-push';
 
 // KaTeX resolves these from its own stylesheet, so caching the CSS without them
 // gives offline math fallback glyphs instead of proper typesetting.
@@ -892,4 +892,136 @@ self.addEventListener('fetch', (e) => {
     );
     return;
   }
+});
+
+// ── `B1830` / `B1831` · Web Push, and a tool approval on the lock screen ─────
+//
+// A push arrives with Pantheon closed: the server encrypted it to this
+// browser's keys (`src/web_push.py`), the browser woke this worker, and every
+// push must show a notification (browsers refuse silent ones). A tool
+// approval gets Approve and Deny. Each answers through the card's own route,
+// `POST /api/chat_stream` with the card's id — the same approval store, the
+// same owner and chat check, the same refusal of anything that is not a
+// signed-in person — from this browser, with its own sign-in. Approve is the
+// narrowest yes the card offers, *for this task* (`approve_task`): a wider
+// one waits for the card itself.
+// The icon rides in the message (`web_push.PUSH_ICON`): the server names its
+// own static file, and this list stays the walk's (`B86`).
+function pushOptions(msg) {
+  const opts = {
+    body: String(msg.body || ''),
+    tag: String(msg.tag || 'pantheon'),
+    icon: msg.icon ? String(msg.icon) : undefined,
+    data: msg,
+    timestamp: Date.now(),
+  };
+  if (msg.type === 'tool_approval') {
+    opts.requireInteraction = true;
+    opts.renotify = true;
+    if (msg.can_answer && msg.approval_id && msg.session_id) {
+      opts.actions = [
+        { action: 'approve', title: 'Approve' },
+        { action: 'deny', title: 'Deny' },
+      ];
+    }
+  }
+  return opts;
+}
+
+self.addEventListener('push', (e) => {
+  let msg = {};
+  try {
+    msg = e.data ? e.data.json() : {};
+  } catch (_) {
+    msg = { body: e.data ? e.data.text() : '' };
+  }
+  if (!msg || typeof msg !== 'object') msg = {};
+  e.waitUntil(self.registration.showNotification(String(msg.title || 'Pantheon'), pushOptions(msg)));
+});
+
+function chatUrl(msg) {
+  const sid = msg && msg.session_id ? String(msg.session_id) : '';
+  return sid ? '/#' + sid : '/';
+}
+
+async function openPantheon(url) {
+  const wins = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+  for (const w of wins) {
+    if (new URL(w.url).origin !== self.location.origin) continue;
+    try {
+      const focused = await w.focus();
+      if (focused && 'navigate' in focused && new URL(focused.url).hash !== new URL(url, self.location.origin).hash) {
+        await focused.navigate(url).catch(() => {});
+      }
+      return;
+    } catch (_) { /* fall through to a new window */ }
+  }
+  if (self.clients.openWindow) await self.clients.openWindow(url);
+}
+
+function tell(title, body, msg) {
+  return self.registration.showNotification(title, {
+    body,
+    tag: String(msg.tag || 'pantheon'),
+    icon: msg.icon ? String(msg.icon) : undefined,
+    silent: true,
+    data: { type: 'answered', session_id: msg.session_id || '' },
+    timestamp: Date.now(),
+  });
+}
+
+async function answerApproval(msg, action) {
+  const decision = action === 'approve' ? 'approve_task' : 'deny';
+  const fd = new FormData();
+  fd.append('message', '');
+  fd.append('session', String(msg.session_id));
+  fd.append('mode', 'agent');
+  fd.append('tool_approval_id', String(msg.approval_id));
+  fd.append('tool_approval_decision', decision);
+  let res;
+  try {
+    res = await fetch('/api/chat_stream', { method: 'POST', body: fd, credentials: 'same-origin' });
+  } catch (_) {
+    return tell('Pantheon could not be reached', 'Nothing was answered. Open Pantheon to answer the card.', msg);
+  }
+  if (!res.ok) {
+    let detail = '';
+    try { detail = String((await res.json()).detail || ''); } catch (_) { /* not JSON */ }
+    if (res.status === 401) detail = 'Sign in to Pantheon on this device to answer from here.';
+    return tell('That answer did not go through', detail || ('Pantheon answered ' + res.status + '.'), msg);
+  }
+  // The run carries on on the server whoever is listening (`src/agent_runs.py`),
+  // so this worker lets go of the stream once it has started.
+  try {
+    const reader = res.body && res.body.getReader();
+    if (reader) { await reader.read(); await reader.cancel(); }
+  } catch (_) { /* the answer is already in */ }
+  return decision === 'deny'
+    ? tell('Denied', 'Pantheon will not run it.', msg)
+    : tell('Approved', 'Pantheon is carrying on. Tap to watch.', msg);
+}
+
+self.addEventListener('notificationclick', (e) => {
+  const note = e.notification;
+  const msg = (note && note.data) || {};
+  note.close();
+  if (msg.type === 'tool_approval' && (e.action === 'approve' || e.action === 'deny')) {
+    e.waitUntil(answerApproval(msg, e.action));
+    return;
+  }
+  e.waitUntil(openPantheon(chatUrl(msg)));
+});
+
+// A browser that rotates its push keys hands the worker a new subscription;
+// the server is told so pushes keep arriving. Signed-in only, like every
+// other push route.
+self.addEventListener('pushsubscriptionchange', (e) => {
+  const fresh = e.newSubscription;
+  if (!fresh) return;
+  e.waitUntil(fetch('/api/push/subscriptions', {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ subscription: fresh.toJSON(), label: 'This device' }),
+  }).catch(() => {}));
 });

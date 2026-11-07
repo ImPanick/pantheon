@@ -1305,6 +1305,11 @@ app.include_router(setup_contacts_routes())
 from companion import setup_companion_routes
 app.include_router(setup_companion_routes())
 
+# Web Push to a person's own phone and desktop, and the tool approval on its
+# lock screen (`B1830`, `src/web_push.py`)
+from routes.push_routes import setup_push_routes
+app.include_router(setup_push_routes())
+
 # ========= ROUTES (kept in app.py) =========
 
 @app.get("/")

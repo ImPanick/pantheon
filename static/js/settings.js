@@ -28,6 +28,7 @@ import { createMcpPresetPicker } from './settings/mcpPresets.js';
 import { mountBuildsSent, mountMcpBuild, mountMcpBuildDoor, mountToolTry, sentNotice } from './settings/mcpBuild.js';
 import { bindSettingsSearch } from './settings/search.js';
 import { bindSettingsSidebar } from './settings/sidebar.js';
+import { initPushSettings, turnOffHere as turnPushOffHere } from './settings/push.js';
 import {
   activateSettingsPanel,
   getActiveSettingsTab,
@@ -3517,6 +3518,9 @@ function initAccount() {
     logoutBtn.addEventListener('mouseenter', () => { logoutBtn.style.opacity = '1'; logoutBtn.style.borderColor = 'var(--red)'; logoutBtn.style.color = 'var(--red)'; });
     logoutBtn.addEventListener('mouseleave', () => { logoutBtn.style.opacity = ''; logoutBtn.style.borderColor = ''; logoutBtn.style.color = ''; });
     logoutBtn.addEventListener('click', async () => {
+      // `B1832`: the next person to sign in on this browser must not get this
+      // account's approvals on its lock screen. Asked while still signed in.
+      try { await turnPushOffHere(); } catch (_) {}
       try { await fetch('/api/auth/logout', { method: 'POST' }); } catch (_) {}
       // SECURITY: wipe all client-side state on logout so the next user that
       // signs in on this browser doesn't inherit the previous account's
@@ -3713,6 +3717,7 @@ function notifyIntegrationsChanged() {
 async function initReminderSettings() {
   const root = el('settings-modal');
   if (!root || !root.querySelector('[data-settings-panel="reminders"]')) return;
+  initPushSettings();   // `B1832`
 
   // Public URL field. P18-04: no longer only deep-links — it is now the
   // operator-settable source for OAuth redirect URIs too, which is what a
