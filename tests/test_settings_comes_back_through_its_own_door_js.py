@@ -16,6 +16,14 @@ The command palette (`P9-01`) opened Settings through the same function in the
 same state, so a minimized Settings chosen there kept its chip as well; it now
 restores, the way the chip does.
 
+`B2000`. Every other opener (the model picker's *Settings*, the empty state's
+*Add Models*, `/settings`, the Email and call windows' links) still reached a
+minimized Settings through `settings.open()` and `showSettingsModal`, which took
+`hidden` away and left `modal-minimized`: the window stayed out of sight with
+its chip in the dock and both doors badged. `showSettingsModal` restores it
+through the manager now; the last case runs the real `settings/lifecycle.js`
+beside it.
+
 Driven under node against the real `modalManager.js` in `P9-11`'s dock sandbox
 (`Law 20`), with a click that runs the document's capture listeners before the
 button's own, as a browser does; the ids are checked against the shipped
@@ -36,6 +44,7 @@ from test_tool_effect_surfaces_js import _make_sandbox, _run  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 MODALS_JS = ROOT / "static" / "js" / "modalManager.js"
+LIFECYCLE_JS = ROOT / "static" / "js" / "settings" / "lifecycle.js"
 INDEX_HTML = ROOT / "static" / "index.html"
 
 pytestmark = pytest.mark.skipif(not shutil.which("node"), reason="node binary not on PATH")
@@ -95,6 +104,33 @@ _PREAMBLE = (
 @pytest.fixture(scope="module")
 def dock(tmp_path_factory):
     return _make_sandbox(tmp_path_factory.mktemp("settingsdoor"), MODALS_JS, _SHIM, _STUBS)
+
+
+def _lifecycle_preamble() -> str:
+    """`B2000`. The case imports the manager under the URL `lifecycle.js`
+    fetches it by, read out of the file (`B814`: no test writes a cache-buster
+    down). Node keys a module on its whole URL, so under any other URL it would
+    be a second manager with an empty dock."""
+    m = re.search(r"""['"]\.\./(modalManager\.js\?[^'"]*)['"]""",
+                  LIFECYCLE_JS.read_text(encoding="utf-8"))
+    url = "./" + (m.group(1) if m else "modalManager.js")
+    return (
+        "import { document, settingsWindow, readDock } from './shim.js';\n"
+        f"import * as Modals from {json.dumps(url)};\n"
+        "import { showSettingsModal } from './settings/lifecycle.js';\n"
+    )
+
+
+@pytest.fixture(scope="module")
+def dock_and_settings(tmp_path_factory):
+    """The dock sandbox with `settings/lifecycle.js` where the tree puts it."""
+    stubs = dict(_STUBS)
+    stubs["modalSnap.js"] = _STUBS["modalSnap.js"] + "export function clearDockSide(){}\n"
+    stubs["windowDrag.js"] = "export function makeWindowDraggable(){}\n"
+    box = _make_sandbox(tmp_path_factory.mktemp("settingsopen"), MODALS_JS, _SHIM, stubs)
+    (box / "settings").mkdir()
+    shutil.copy(LIFECYCLE_JS, box / "settings" / "lifecycle.js")
+    return box
 
 
 def test_every_door_the_map_names_is_rendered_by_the_markup(tmp_path):
@@ -162,3 +198,26 @@ def test_a_press_with_settings_closed_opens_it_through_settings_js(dock):
     """)
     assert out["opened"] == ["user-bar-settings"]
     assert out["hidden"] is False
+
+
+def test_a_minimized_settings_opened_through_settings_js_comes_back_and_its_chip_goes(dock_and_settings):
+    """`B2000`. What `settings.open()` does from every other opener, against
+    the real manager: Settings is open, its chip is gone and neither door is
+    badged, as when its chip is pressed."""
+    out = _run(dock_and_settings, _lifecycle_preamble(), """
+        const modal = settingsWindow();
+        Modals.minimize('settings-modal');
+        showSettingsModal(modal);
+        for (let i = 0; i < 200 && Modals.windowState('settings-modal') !== 'open'; i++) {
+          await new Promise((r) => setTimeout(r, 10));
+        }
+        console.log(JSON.stringify({
+          state: Modals.windowState('settings-modal'),
+          dock: (readDock() || []).map((c) => c.id),
+          badged: ['rail-settings', 'user-bar-settings']
+            .filter((id) => document.getElementById(id).classList.contains('rail-minimized')),
+        }));
+    """)
+    assert out["state"] == "open", f"Settings did not come back: {out['state']}"
+    assert "settings-modal" not in out["dock"], f"its chip stayed in the dock: {out['dock']}"
+    assert out["badged"] == [], f"its doors are still badged: {out['badged']}"
