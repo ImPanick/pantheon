@@ -239,6 +239,127 @@ def _loads(text):
         return text
 
 
+# ── `B1890` · what a step made, kept whole beside its record ────────────────
+#
+# `big-outputs-dropped`. A step's record is capped (`workflow_node_record_max_
+# chars`, 16,000 by default) and past it becomes a preview marker. That was
+# right for the Runs view and wrong for everything that READ the record: the
+# picker skipped a cut record (so a step that made 20 KB offered no fields),
+# *Test this step* skipped it, and — the one that lost data — after a run
+# paused (a Wait, a card, a takeover) the walker reads records instead of live
+# data, so every reference into a large output read nothing and a Set step
+# "worked" with null. An HTTP reply (up to 1 MB of parsed JSON), an MCP result
+# and a For-each's items are often over 16 KB.
+#
+# Now a cut record keeps its whole output apart (`TaskRunNodeOutput`, the
+# record's retention by ON DELETE CASCADE), with the picker's view of it taken
+# before the cut (`fields`). The preview stays capped. Readers ask
+# `whole_output` / `whole_output_fields`; the record is unchanged in shape.
+#
+# The whole copy has a ceiling of its own — mistake prevention, not a
+# control (`Law 17`): a step that makes more than this is told so on its own
+# log, in words, and a step after a pause that reads it reads nothing (and
+# says "Not found, so left empty"), rather than a row of tens of megabytes.
+WHOLE_OUTPUT_MAX_CHARS = 4_000_000
+
+
+def _whole_fields(out: dict) -> dict:
+    """`{text: {type, example}, data: [{path, type, example}]}` — the
+    picker's view of what a step made (`workflow_refs.flatten_fields`), taken
+    from the WHOLE value."""
+    from src.workflow_refs import flatten_fields
+
+    text = out.get("text")
+    data = out.get("data")
+    return {"text": flatten_fields(text)[0] if text is not None else None,
+            "data": flatten_fields(data) if data is not None else None}
+
+
+def keep_whole_output(db, rec, out: dict) -> str | None:
+    """Keep what `rec` made (`out`, `{text, data}`) whole when its record
+    was cut, or drop a stale copy when it was not. Not committed (the
+    caller commits). Answers the sentence for the step's log when even the
+    whole copy could not be kept, else `None`."""
+    from core.database import TaskRunNodeOutput
+
+    if not is_truncated(_loads(rec.output)):
+        db.query(TaskRunNodeOutput).filter(TaskRunNodeOutput.record_id == rec.id) \
+            .delete(synchronize_session=False)
+        return None
+    try:
+        text = json.dumps(out, default=str, ensure_ascii=False)
+    except (TypeError, ValueError):
+        return None
+    try:
+        fields = json.dumps(_whole_fields(out), default=str, ensure_ascii=False)
+    except Exception:          # the picker's view is a courtesy, never a failed step
+        logger.warning("Could not describe the whole output of step record %s", rec.id,
+                       exc_info=True)
+        fields = None
+    over = len(text) > WHOLE_OUTPUT_MAX_CHARS
+    db.merge(TaskRunNodeOutput(record_id=rec.id, run_id=rec.run_id,
+                               output=None if over else text, fields=fields, chars=len(text)))
+    if over:
+        return (f"What it made was {len(text):,} characters, more than the "
+                f"{WHOLE_OUTPUT_MAX_CHARS:,} kept whole, so only a preview was kept: a step "
+                f"after a pause reads nothing from it.")
+    return None
+
+
+def whole_output(db, rec) -> dict | None:
+    """`{text, data}` a record made, whole: its own `output` when that is
+    whole, else the copy `keep_whole_output` kept — or `None` when neither
+    is (cut past even the whole copy's ceiling, or an older record)."""
+    from core.database import TaskRunNodeOutput
+
+    if rec is None:
+        return None
+    out = _loads(rec.output)
+    if out is None:
+        return {"text": "", "data": None}
+    if isinstance(out, dict) and not is_truncated(out):
+        return {"text": out.get("text") or "", "data": out.get("data")}
+    if db is None:
+        return None
+    row = db.query(TaskRunNodeOutput.output).filter(
+        TaskRunNodeOutput.record_id == rec.id).first()
+    whole = _loads(row[0]) if row is not None and row[0] else None
+    if not isinstance(whole, dict):
+        return None
+    return {"text": whole.get("text") or "", "data": whole.get("data")}
+
+
+def whole_outputs(db, records) -> dict:
+    """`{record id: {text, data}}` for every CUT record among `records` whose
+    whole copy is kept — one query, for a run read back after a pause
+    (`RunState`)."""
+    from core.database import TaskRunNodeOutput
+
+    cut = [r.id for r in records if is_truncated(_loads(getattr(r, "output", None)))]
+    if not cut or db is None:
+        return {}
+    out = {}
+    for record_id, text in (db.query(TaskRunNodeOutput.record_id, TaskRunNodeOutput.output)
+                            .filter(TaskRunNodeOutput.record_id.in_(cut)).all()):
+        whole = _loads(text) if text else None
+        if isinstance(whole, dict):
+            out[record_id] = {"text": whole.get("text") or "", "data": whole.get("data")}
+    return out
+
+
+def whole_output_fields(db, rec) -> dict | None:
+    """The picker's view of what a CUT record made, taken before the cut
+    (`_whole_fields`'s shape), or `None`."""
+    from core.database import TaskRunNodeOutput
+
+    if rec is None or db is None:
+        return None
+    row = db.query(TaskRunNodeOutput.fields).filter(
+        TaskRunNodeOutput.record_id == rec.id).first()
+    value = _loads(row[0]) if row is not None and row[0] else None
+    return value if isinstance(value, dict) else None
+
+
 def record_node_start(db, *, run_id: str, node: dict, seq: int,
                       input_envelope, workflow_version: int | None,
                       owner: str | None = None, dry: bool = False,
@@ -297,6 +418,12 @@ def record_node_end(db, rec, *, status: str, text: str | None = None,
     if text is not None or data is not None:
         out = {"text": text or "", "data": data}
         rec.output = cap_json(out, limit=node_record_max_chars(owner))
+        # `B1890`: a record cut to its cap keeps what it made whole, apart.
+        cut = keep_whole_output(db, rec, out)
+        if cut:
+            kept = _loads(rec.steps)
+            base = list(steps) if steps else (kept if isinstance(kept, list) else [])
+            steps = [*base, {"kind": "progress", "detail": cut, "at": _iso(_utcnow())}]
     if error:
         rec.error = str(error)[:NODE_ERROR_MAX_CHARS]
     if steps:
@@ -482,6 +609,13 @@ def prune_node_records(db, *, days: int | None = None, now: datetime | None = No
                        TaskRunNode.finished_at < cutoff,
                        ~TaskRunNode.run_id.in_(in_flight))
                .delete(synchronize_session=False))
+    # `B1890`. A whole copy goes with its record — ON DELETE CASCADE does it
+    # wherever foreign keys are on (every SQLite connection here, Postgres);
+    # this is the same rule said once more for a database where they are not.
+    from core.database import TaskRunNodeOutput
+    db.query(TaskRunNodeOutput).filter(
+        ~TaskRunNodeOutput.record_id.in_(db.query(TaskRunNode.id))
+    ).delete(synchronize_session=False)
     db.commit()
     return int(removed or 0)
 
@@ -672,14 +806,24 @@ def copy_kept_records(db, *, run_id: str, records, from_run_id: str, words: str)
     `KEPT_FROM_KEY`. The records ARE the run's state (`RunState`), so the
     walker treats them as finished and starts what is ready after them.
     Committed. Answers how many."""
-    from core.database import TaskRunNode
+    from core.database import TaskRunNode, TaskRunNodeOutput
 
     at = _iso(_utcnow())
+    # `B1890`: a kept record that was cut keeps its whole copy too, so the
+    # retry's later steps read all of what it made.
+    copies = {row.record_id: row for row in db.query(TaskRunNodeOutput).filter(
+        TaskRunNodeOutput.record_id.in_([r.id for r in records])).all()} if records else {}
+    wholes = []
     for rec in records:
         steps = _loads(rec.steps)
         line = {"kind": "progress", "detail": words, KEPT_FROM_KEY: from_run_id, "at": at}
+        new_id = str(uuid.uuid4())
+        whole = copies.get(rec.id)
+        if whole is not None:
+            wholes.append(TaskRunNodeOutput(record_id=new_id, run_id=run_id, output=whole.output,
+                                            fields=whole.fields, chars=whole.chars))
         db.add(TaskRunNode(
-            id=str(uuid.uuid4()), run_id=run_id, node_id=rec.node_id, kind=rec.kind,
+            id=new_id, run_id=run_id, node_id=rec.node_id, kind=rec.kind,
             label=rec.label, item=rec.item, seq=rec.seq, status=rec.status,
             attempt=rec.attempt or 1, dry=False, port=rec.port, reached_by=rec.reached_by,
             depth=rec.depth, workflow_version=rec.workflow_version,
@@ -687,6 +831,9 @@ def copy_kept_records(db, *, run_id: str, records, from_run_id: str, words: str)
             output=rec.output, error=rec.error, model=rec.model,
             steps=json.dumps([line, *(steps if isinstance(steps, list) else [])],
                              default=str)))
+    if wholes:
+        db.flush()              # the records first: a copy names its record
+        db.add_all(wholes)
     db.commit()
     return len(records)
 
@@ -888,8 +1035,13 @@ class RunState:
         least one has.
     """
 
-    def __init__(self, graph: dict, records, *, trigger=None):
+    def __init__(self, graph: dict, records, *, trigger=None, whole=None):
         self.graph = graph
+        # `B1890`. `{record id: {text, data}}` — what each CUT record made,
+        # whole (`whole_outputs`), so a run read back after a pause reads a
+        # large output as the live run did. Left out, a cut record reads
+        # nothing, as it always did.
+        self.whole = dict(whole or {})
         self.nodes = list(graph.get("nodes") or ())
         self.by_id = {n["id"]: n for n in self.nodes}
         self.edges = [e for e in graph.get("edges") or ()]
@@ -1042,15 +1194,19 @@ class RunState:
         out = _loads(rec.output)
         if out is None:
             return {"text": "", "data": None}
+        if is_truncated(out) and rec.id in self.whole:
+            return self.whole[rec.id]          # `B1890`: the whole copy
         if is_truncated(out) or not isinstance(out, dict):
             return None
         return {"text": out.get("text") or "", "data": out.get("data")}
 
     def truncated(self, node_id: str) -> bool:
+        """Was what this step made cut, with no whole copy to read?"""
         if node_id in self.live:
             return False
         rec = self.own.get(node_id)
-        return rec is not None and is_truncated(_loads(rec.output))
+        return (rec is not None and is_truncated(_loads(rec.output))
+                and rec.id not in self.whole)
 
     def context(self, *, item=None, has_item: bool = False) -> dict:
         """The pure-JSON context a reference reads (`workflow_refs`): every

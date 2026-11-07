@@ -6784,7 +6784,9 @@ class TaskScheduler:
             # none there, and `RunState` reads its first step's record, as it
             # always did.
             trigger = wr.stored_run_trigger(db, run_id)
-        state = wr.RunState(graph, records, trigger=trigger)
+        # `B1890`: a cut record is read whole after a pause.
+        state = wr.RunState(graph, records, trigger=trigger,
+                            whole=wr.whole_outputs(db, records))
         if state.trigger is not None and run_slot.get("trigger") is None:
             run_slot["trigger"] = state.trigger
         w = _Walk(task=task, db=db, run_id=run_id, wf=wf, graph=graph, state=state,
@@ -7719,7 +7721,8 @@ class TaskScheduler:
                     and not (retrying and prev.status == NODE_STATUS_ERROR)):
                 out = wr._loads(prev.output) or {}
                 if wr.is_truncated(out):
-                    out = {}
+                    # `B1890`: an item cut to its cap is read whole.
+                    out = wr.whole_output(walk.db if walk is not None else db, prev) or {}
                 results.append({"index": index, "status": prev.status,
                                 "text": (out.get("text") if isinstance(out, dict) else "") or
                                         (prev.error or ""),

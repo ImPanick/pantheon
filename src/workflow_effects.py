@@ -882,6 +882,29 @@ def _fields_of(node_id: str, text, data) -> list:
     return out
 
 
+def _fields_of_whole(node_id: str, snapshot: dict) -> list:
+    """`B1890`. `_fields_of`'s answer for a step whose record was cut, from
+    the picker's view of what it made taken BEFORE the cut
+    (`workflow_runs.whole_output_fields`) — the same refs, types and
+    examples a record that fit would have given."""
+    from src.workflow_refs import format_ref
+    out = []
+    text = snapshot.get("text") if isinstance(snapshot, dict) else None
+    if isinstance(text, dict):
+        out.append({"ref": format_ref(node_id, "text"), "path": [], "type": text.get("type"),
+                    "example": text.get("example")})
+    for f in (snapshot.get("data") if isinstance(snapshot, dict) else None) or ():
+        if not isinstance(f, dict) or not isinstance(f.get("path"), list):
+            continue
+        try:
+            ref = format_ref(node_id, "data", f["path"])
+        except ValueError:
+            continue
+        out.append({"ref": ref, "path": f["path"], "type": f.get("type"),
+                    "example": f.get("example")})
+    return out
+
+
 def _declared_fields(node_id: str, names_types) -> list:
     from src.workflow_refs import format_ref
     out = []
@@ -983,6 +1006,11 @@ def available_fields(db, wf, trigger, graph, node_id, *, recorded=None) -> dict:
     for first in starters:
         rec = _last(first)
         envelope = _loads(rec.input) if rec is not None else None
+        if is_truncated(envelope):
+            # `B1890`: a large trigger cut on its step's record is kept whole
+            # on its run's row (`B1861`), so the picker reads that.
+            from src.workflow_runs import stored_run_trigger
+            envelope = stored_run_trigger(db, rec.run_id)
         if isinstance(envelope, dict) and not is_truncated(envelope) \
                 and isinstance(envelope.get("data"), dict):
             sources.append(_source(START_KEY, "What started it", "start", ORIGIN_LAST_RUN,
@@ -1015,6 +1043,15 @@ def available_fields(db, wf, trigger, graph, node_id, *, recorded=None) -> dict:
             sources.append(_source(up_id, label, kind, ORIGIN_LAST_RUN,
                                    _iso(rec.finished_at or rec.started_at),
                                    _fields_of(up_id, output.get("text"), output.get("data"))))
+        elif is_truncated(output):
+            # `B1890`: a record cut to its cap is offered from the view of
+            # what it made taken before the cut — it was offered as nothing.
+            from src.workflow_runs import whole_output_fields
+            snapshot = whole_output_fields(db, rec)
+            if snapshot:
+                sources.append(_source(up_id, label, kind, ORIGIN_LAST_RUN,
+                                       _iso(rec.finished_at or rec.started_at),
+                                       _fields_of_whole(up_id, snapshot)))
         for nxt in _successors(graph, up_id):
             pinned = (nodes.get(nxt) or {}).get("pinned")
             handed = pinned.get("data") if isinstance(pinned, dict) else None

@@ -191,18 +191,15 @@ def handoff_from(graph, parent_id: str, made: dict, *, task_id: str = "") -> dic
 
 
 def record_output(db, rec):
-    """`{text, data}` a finished record made, or `None` when there is
-    nothing whole to read (a record cut past its cap)."""
+    """`{text, data}` a finished record made, whole — a record cut to its
+    cap is read from the copy kept whole beside it (`B1890`,
+    `workflow_runs.whole_output`) — or `None` when there is nothing whole to
+    read."""
     from src import workflow_runs as wr
 
     if rec is None or rec.status not in wr.STEP_FINISHED:
         return None
-    out = wr._loads(rec.output)
-    if out is None:
-        return {"text": "", "data": None}
-    if not isinstance(out, dict) or wr.is_truncated(out):
-        return None
-    return {"text": out.get("text") or "", "data": out.get("data")}
+    return wr.whole_output(db, rec)
 
 
 def _pinned_outputs(graph) -> dict:

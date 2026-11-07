@@ -134,7 +134,9 @@ def setup_admin_wipe_routes(session_manager):
                 # node records, then runs, then versions and documents, then
                 # the tasks — so nothing depends on the database's cascade
                 # being switched on.
-                from core.database import TaskRunNode, Workflow, WorkflowVersion
+                from core.database import TaskRunNode, TaskRunNodeOutput, Workflow, WorkflowVersion
+                # `B1890`: a record's whole output, kept beside it, first.
+                db.query(TaskRunNodeOutput).delete(synchronize_session=False)
                 db.query(TaskRunNode).delete(synchronize_session=False)
                 # TaskRun rows reference tasks via FK — clear them first.
                 db.query(TaskRun).delete()
