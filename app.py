@@ -926,6 +926,9 @@ def serve_generated_image(filename: str, request: Request):
         raise
     except Exception as _e:
         logger.warning("Image ownership verification failed for %r", filename, exc_info=_e)
+        # `B1922`: a check that could not be made is a refusal. This fell
+        # through and served the file, so a database error opened every image.
+        raise HTTPException(status_code=503, detail="Image ownership could not be verified")
     ext = filename.rsplit('.', 1)[-1].lower()
     mime = {
         "png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg",
@@ -937,6 +940,8 @@ def serve_generated_image(filename: str, request: Request):
     # filename never change. Cache them hard so the gallery doesn't
     # re-download every full-size image each time it's opened. `immutable`
     # tells the browser it never needs to revalidate within the max-age.
+    # `B1922`: `private`, so only that browser does; a shared cache in front
+    # of the app never hands one person's image to another.
     return FileResponse(
         str(img_path),
         media_type=mime,

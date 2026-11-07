@@ -717,7 +717,39 @@ _MCP_TOOL_MAP = {
     # 2026-10-25, `B1449`, so nothing can be pointed back at it.)
     "manage_rag":     ("rag",        "manage_rag"),
 }
+#: The person a built-in server acts for, set by this dispatcher: the email
+#: server's since `P0-11`, and the image server's since `B1922`.
 _EMAIL_MCP_OWNER_ARG = "_pantheon_owner"
+
+#: `B1922`. Every argument a built-in MCP server reads as this dispatcher's
+#: own starts with this, `_pantheon_owner` above among them. Such a key in
+#: what the model sent is never believed: it is dropped before the dispatcher
+#: adds its own, so a model cannot name somebody else as the person it runs
+#: for. It was believed: the image server read it, unchecked, as the owner of
+#: the gallery row it made.
+_RESERVED_ARG_PREFIX = "_pantheon_"
+
+
+def _without_reserved_args(args: Any) -> Any:
+    """`B1922`. *args* without any key this dispatcher keeps for itself."""
+    if not isinstance(args, dict):
+        return args
+    return {key: value for key, value in args.items()
+            if not (isinstance(key, str) and key.startswith(_RESERVED_ARG_PREFIX))}
+
+
+#: `B1922`. The built-in servers this dispatcher tells whom a call is for, by
+#: `_EMAIL_MCP_OWNER_ARG`, under either name a call can use: the bare one
+#: `_MCP_TOOL_MAP` routes, or the qualified `mcp__<server>__<tool>`.
+_OWNER_ARG_SERVERS = frozenset({"email", "image_gen"})
+
+
+def _server_takes_the_owner(tool: str) -> bool:
+    """`B1922`. Is *tool*'s server one of `_OWNER_ARG_SERVERS`?"""
+    routed = _MCP_TOOL_MAP.get(tool)
+    if routed:
+        return routed[0] in _OWNER_ARG_SERVERS
+    return any(tool.startswith(f"mcp__{server}__") for server in _OWNER_ARG_SERVERS)
 
 
 def _parse_qualified_mcp_args(tool: str, content: str) -> tuple[Dict, Optional[str]]:
@@ -734,7 +766,7 @@ def _parse_qualified_mcp_args(tool: str, content: str) -> tuple[Dict, Optional[s
         if tool.startswith("mcp__email__"):
             return {}, "Email MCP tool arguments must be a JSON object."
         return {}, None
-    return parsed, None
+    return _without_reserved_args(parsed), None   # `B1922`
 
 
 def _parse_generate_image(content: str) -> Dict:
@@ -835,7 +867,9 @@ _MCP_JSON_PRIMARY_KEYS: Dict[str, tuple] = {
 
 
 def _build_mcp_args(tool: str, content: str) -> Dict:
-    """Convert fenced-block text content to structured MCP arguments."""
+    """Convert fenced-block text content to structured MCP arguments.
+
+    `B1922`: never with a key the dispatcher reserves (`_RESERVED_ARG_PREFIX`)."""
     primaries = _MCP_JSON_PRIMARY_KEYS.get(tool)
     if primaries and content.strip().startswith("{"):
         try:
@@ -843,9 +877,9 @@ def _build_mcp_args(tool: str, content: str) -> Dict:
         except (json.JSONDecodeError, TypeError):
             decoded = None
         if isinstance(decoded, dict) and any(k in decoded for k in primaries):
-            return decoded
+            return _without_reserved_args(decoded)
     parser = _MCP_ARG_PARSERS.get(tool)
-    return parser(content) if parser else {}
+    return _without_reserved_args(parser(content)) if parser else {}
 
 
 async def _call_mcp_tool(
@@ -870,6 +904,12 @@ async def _call_mcp_tool(
     server_id, tool_name = _MCP_TOOL_MAP[tool]
     qualified = f"mcp__{server_id}__{tool_name}"
     args = _build_mcp_args(tool, content)
+    # `B1922`. The person was handed to this function and never sent on, so
+    # every image the agent made had a gallery row with no owner: its maker
+    # never saw it in the Gallery, and the hourly owner sweep gave it, prompt
+    # and all, to the first admin.
+    if owner and _server_takes_the_owner(tool):
+        args[_EMAIL_MCP_OWNER_ARG] = owner
     result = await mcp.call_tool(qualified, args)
 
     # If MCP server not connected, try direct fallback
@@ -1829,7 +1869,7 @@ async def _execute_tool_block_impl(
                     )
                 else:
                     if isinstance(parsed, dict):
-                        args = parsed
+                        args = _without_reserved_args(parsed)   # `B1922`
                     else:
                         _args_error = (
                             f"'{tool}' arguments must be a JSON object, "
@@ -1853,10 +1893,13 @@ async def _execute_tool_block_impl(
             if parse_error:
                 result = {"error": parse_error, "exit_code": 1}
             else:
-                if tool.startswith("mcp__email__") and owner:
+                # `B1922`: the image server is told whom it draws for too.
+                if owner and _server_takes_the_owner(tool):
                     args = dict(args)
                     args[_EMAIL_MCP_OWNER_ARG] = owner
                 result = await mcp.call_tool(tool, args)
+                if tool == "mcp__image_gen__generate_image":
+                    _promote_image_fields(result)   # as the bare name's call does
         else:
             desc = f"mcp: {tool}"
             result = {"error": "MCP manager not available", "exit_code": 1}
