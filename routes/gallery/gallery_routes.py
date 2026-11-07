@@ -59,6 +59,27 @@ def _b64_to_pil_image(image_b64: str, *, mode: str = "RGBA"):
         raise HTTPException(400, "Invalid image") from exc
 
 
+async def _json_object(request: Request) -> dict:
+    """`B2005`. The request's body as a JSON object, or a 400 saying it is not
+    one (an array, ``null`` or text that is not JSON was a 500)."""
+    try:
+        data = await request.json()
+    except ValueError:
+        raise HTTPException(400, "The request body must be JSON.") from None
+    if not isinstance(data, dict):
+        raise HTTPException(400, "The request body must be a JSON object.")
+    return data
+
+
+async def _image_ids(request: Request) -> list:
+    """`B2005`. The body's ``image_ids`` for an album's add and remove: a list
+    of image ids, or a 400 (a string, a number or ``null`` failed in the query)."""
+    ids = (await _json_object(request)).get("image_ids", [])
+    if not isinstance(ids, list) or not all(isinstance(i, str) for i in ids):
+        raise HTTPException(400, "image_ids must be a list of image ids")
+    return ids
+
+
 def _pil_image_to_b64(img, *, fmt: str = "PNG") -> str:
     buf = io.BytesIO()
     img.save(buf, format=fmt)
@@ -899,17 +920,24 @@ def setup_gallery_routes() -> APIRouter:
     async def create_album(request: Request):
         import uuid
         user = get_current_user(request)
-        data = await request.json()
+        # `B2005`: the body is checked before the database is opened. One
+        # that was not a JSON object, or a name or description that was not
+        # text, was a 500.
+        data = await _json_object(request)
+        name = data.get("name")
+        name = name.strip() if isinstance(name, str) else ""
+        if not name:
+            raise HTTPException(400, "Album name required")
+        description = data.get("description", "")
+        if description is not None and not isinstance(description, str):
+            raise HTTPException(400, "Album description must be text")
         # `B1223`: the database work, off the event loop.
         def _off_the_loop():
-            name = (data.get("name") or "").strip()
-            if not name:
-                raise HTTPException(400, "Album name required")
             db = SessionLocal()
             try:
                 a = GalleryAlbum(
                     id=str(uuid.uuid4()), name=name,
-                    description=data.get("description", ""),
+                    description=description,
                     owner=user,
                 )
                 db.add(a)
@@ -2173,21 +2201,36 @@ def setup_gallery_routes() -> APIRouter:
     @router.put("/api/gallery/albums/{album_id}")
     async def update_album(request: Request, album_id: str):
         user = get_current_user(request)
-        data = await request.json()
+        # `B2005`: the body is checked before the database is opened. A name
+        # of spaces was stored as the album's name, and a name, description
+        # or cover that was not text, or a body that was not a JSON object,
+        # was a 500. The name is stored trimmed, as create_album stores it.
+        data = await _json_object(request)
+        name = data.get("name")
+        if name is not None:
+            if not isinstance(name, str) or not name.strip():
+                raise HTTPException(400, "Album name required")
+            name = name.strip()
+        description = data.get("description")
+        if description is not None and not isinstance(description, str):
+            raise HTTPException(400, "Album description must be text")
+        cover_id = data.get("cover_id")
+        if cover_id is not None and not isinstance(cover_id, str):
+            raise HTTPException(400, "cover_id must be an image id")
         # `B1223`: the database work, off the event loop.
         def _off_the_loop():
             db = SessionLocal()
             try:
                 album = _get_or_404_album(db, album_id, user)
-                if data.get("name") is not None:
-                    album.name = data["name"]
-                if data.get("description") is not None:
-                    album.description = data["description"]
-                if data.get("cover_id") is not None:
-                    cover_id = data["cover_id"] or None
-                    if cover_id:
-                        _get_or_404_image(db, cover_id, user)
-                    album.cover_id = cover_id
+                if name is not None:
+                    album.name = name
+                if description is not None:
+                    album.description = description
+                if cover_id is not None:
+                    new_cover = cover_id or None
+                    if new_cover:
+                        _get_or_404_image(db, new_cover, user)
+                    album.cover_id = new_cover
                 db.commit()
                 return {"ok": True}
             finally:
@@ -2213,10 +2256,9 @@ def setup_gallery_routes() -> APIRouter:
     @router.post("/api/gallery/albums/{album_id}/add")
     async def add_to_album(request: Request, album_id: str):
         user = get_current_user(request)
-        data = await request.json()
+        ids = await _image_ids(request)  # `B2005`: a list of ids, or a 400
         # `B1223`: the database work, off the event loop.
         def _off_the_loop():
-            ids = data.get("image_ids", [])
             db = SessionLocal()
             try:
                 _get_or_404_album(db, album_id, user)
@@ -2234,10 +2276,9 @@ def setup_gallery_routes() -> APIRouter:
     @router.post("/api/gallery/albums/{album_id}/remove")
     async def remove_from_album(request: Request, album_id: str):
         user = get_current_user(request)
-        data = await request.json()
+        ids = await _image_ids(request)  # `B2005`: a list of ids, or a 400
         # `B1223`: the database work, off the event loop.
         def _off_the_loop():
-            ids = data.get("image_ids", [])
             db = SessionLocal()
             try:
                 _get_or_404_album(db, album_id, user)
