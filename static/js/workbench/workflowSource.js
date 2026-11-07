@@ -1767,13 +1767,18 @@ export function createWorkflowSource({
 
   /** *Test this step* (`P22-08`), on the step as it stands in the draft —
    *  its unsaved settings are what is tested. */
-  async function test(id, { source = 'none', input, confirm = false } = {}) {
+  async function test(id, { source = 'none', input, confirm = false, outputs, contextOnly = false } = {}) {
     await ready;
     if (isRun || S.viewing) return { ok: false, sentence: READ_ONLY };
     const node = draftNode(id);
     if (!node) return { ok: false, sentence: 'That step is not in this workflow.' };
     try {
-      const out = await api.testNode(workflowId, String(id), { node: clone(node), source, input, confirm });
+      // `B1888`. `outputs`: what the person typed for the steps it reads;
+      // `contextOnly`: run nothing, answer what it would read (`reads`).
+      const more = {};
+      if (outputs !== undefined) more.outputs = outputs;
+      if (contextOnly) more.contextOnly = true;
+      const out = await api.testNode(workflowId, String(id), { node: clone(node), source, input, confirm, ...more });
       return { ok: true, ...out };
     } catch (err) {
       return answer(err);

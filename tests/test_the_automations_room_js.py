@@ -404,8 +404,13 @@ def test_a_failed_run_opens_on_its_failed_step_with_what_it_was_handed_open(box)
     assert o["markup"] == [], "every value of a run is text"
 
 
+# `B1888`: the panel also asks what the step reads (`contextOnly`, which runs
+# nothing and asks nothing); a test is a call without it.
+_TESTS = "const tests = () => called('testNode').filter((c) => !c[3].contextOnly);\n"
+
+
 def test_testing_a_step_that_does_something_real_asks_first_and_runs_nothing_else(box):
-    o = _case(box, """
+    o = _case(box, _TESTS + """
         const { root } = await room();
         await openW(root);
         fire(itemOf(root, 'n2'), 'click'); await settle(5);
@@ -419,11 +424,11 @@ def test_testing_a_step_that_does_something_real_asks_first_and_runs_nothing_els
         const asked = { shown: !confirm.hidden,
           plan: by(confirm, 'wf-test-plan').querySelectorAll('li').map((l) => l.textContent),
           effects: by(confirm, 'wf-test-effects').querySelectorAll('li').map((l) => l.textContent),
-          calls: called('testNode').map((c) => c[3].confirm), said: by(root, 'wf-test-say').textContent };
+          calls: tests().map((c) => c[3].confirm), said: by(root, 'wf-test-say').textContent };
         fire(named(root, 'Run it for real'), 'click'); await settle(10);
         const result = by(root, 'wf-test-result');
         out({ form: { mode: form.mode, task: form.task }, sources, asked,
-              ran: { calls: called('testNode').map((c) => [c[2], c[3].source, c[3].confirm, c[3].input]),
+              ran: { calls: tests().map((c) => [c[2], c[3].source, c[3].confirm, c[3].input]),
                      outcome: result.querySelector('.wf-test-outcome').textContent,
                      made: result.querySelector('pre').textContent,
                      alone: result.querySelector('.wf-test-alone') },
@@ -448,13 +453,13 @@ def test_testing_a_step_that_does_something_real_asks_first_and_runs_nothing_els
 
 
 def test_cancelling_the_confirmation_runs_nothing(box):
-    o = _case(box, """
+    o = _case(box, _TESTS + """
         const { root } = await room();
         await openW(root);
         fire(itemOf(root, 'n2'), 'click'); await settle(5);
         fire(by(root, 'wf-test-go'), 'click'); await settle(10);
         fire(by(root, 'wf-test-no'), 'click'); await settle(5);
-        out({ calls: called('testNode').length, said: by(root, 'wf-test-say').textContent,
+        out({ calls: tests().length, said: by(root, 'wf-test-say').textContent,
               result: by(root, 'wf-test-result').hidden, confirm: by(root, 'wf-test-confirm').hidden });
     """)
     assert o == {"calls": 1, "said": "Not tested. Nothing ran.", "result": True, "confirm": True}

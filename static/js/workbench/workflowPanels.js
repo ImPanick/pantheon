@@ -68,6 +68,15 @@ export const TEST_SOURCES = Object.freeze([
 
 /** Said wherever a pin is: the promise the design makes about it (§ 4.3). */
 export const PIN_SENTENCE = 'A pinned sample is only used when you press Test. Scheduled runs never use it.';
+/** `B1888`. Where a value *Test this step* reads came from — the route's
+ *  `reads[].origin` (`workflow_test_context.ORIGINS`), one reading each. */
+export const READ_ORIGIN_WORDS = Object.freeze({
+  typed: 'what you typed here',
+  handed: 'the input chosen above',
+  pin: 'a pinned sample',
+  last_run: 'from its last run',
+  none: 'nothing yet: it has not run',
+});
 /** Said under every test result: a test runs one step and nothing else. */
 // `P23-05` (WB-U-2): said once, before the test (the lede); not again under its result.
 export const NOTHING_ELSE = 'Nothing is delivered.';
@@ -1039,6 +1048,18 @@ export function createWorkflowPanels({
     box.appendChild(text);
     const pinNote = _el('p', 'wf-test-pin-note', PIN_SENTENCE);
     box.appendChild(pinNote);
+    // `B1888`. What it reads: one box per step its settings name, filled with
+    // what the test would read there and saying where that came from. A box
+    // the person changes is what that step made in this test (`outputs`).
+    const reads = _el('details', 'wf-test-reads');
+    reads.hidden = true;
+    const readsHead = _el('summary', 'wf-test-reads-head', 'What it reads');
+    reads.appendChild(readsHead);
+    reads.appendChild(_el('p', 'wf-test-reads-lede',
+      'What each step it names would hand it in this test. Change one to test on that instead; nothing is saved.'));
+    const readsList = _el('div', 'wf-test-reads-list');
+    reads.appendChild(readsList);
+    box.appendChild(reads);
 
     const row = _el('div', 'wf-test-buttons');
     const go = _button('wf-test-go', 'Test');
@@ -1107,8 +1128,73 @@ export function createWorkflowPanels({
       pinBtn.hidden = !(s === 'custom' ? text.value.trim() : lastUsed != null);
       pinNote.hidden = pinned == null && pinBtn.hidden;
     }
-    sel.addEventListener('change', () => { if (sel.value === 'custom' && text.readOnly) text.value = ''; syncInput(); });
-    text.addEventListener('input', syncInput);
+    sel.addEventListener('change', () => { if (sel.value === 'custom' && text.readOnly) text.value = ''; syncInput(); loadReads(); });
+    let typing = null;
+    text.addEventListener('input', () => {
+      syncInput();
+      clearTimeout(typing);
+      typing = setTimeout(() => { if (alive) loadReads(); }, 600);
+    });
+
+    // ── `B1888`: what it reads ──────────────────────────────────────────────
+    const readRows = new Map();   // step id → { area, edited }
+    let readsAsked = 0;
+    function shownOf(r) {
+      return r.data != null ? pretty(r.data) : String(r.text == null ? '' : r.text);
+    }
+    async function loadReads() {
+      if (!source || typeof source.test !== 'function') return;
+      const asked = ++readsAsked;
+      const args = { source: sel.value, contextOnly: true };
+      if (sel.value === 'custom') args.input = readCustom();
+      let reply = null;
+      try { reply = await source.test(step.id, args); } catch (_) { reply = null; }
+      if (!alive || asked !== readsAsked) return;
+      const list = reply && reply.ok !== false && reply.outcome === 'context' && Array.isArray(reply.reads)
+        ? reply.reads.filter((r) => r && r.node_id != null) : null;
+      if (!list) { reads.hidden = readRows.size === 0; return; }
+      const kept = new Map([...readRows].filter(([, row]) => row.edited));
+      readRows.clear();
+      readsList.replaceChildren();
+      for (const r of list) {
+        const id = String(r.node_id);
+        const row = _el('label', 'wf-test-read');
+        const head = _el('span', 'wf-test-read-head');
+        head.appendChild(_el('span', 'wf-test-read-name', String(r.label || id)));
+        const was = kept.get(id);
+        head.appendChild(_el('span', 'wf-test-read-from', was ? READ_ORIGIN_WORDS.typed
+          : (READ_ORIGIN_WORDS[r.origin] || READ_ORIGIN_WORDS.none)));
+        row.appendChild(head);
+        const area = _el('textarea', 'wf-test-read-input');
+        area.rows = 3;
+        area.setAttribute('aria-label', `What “${String(r.label || id)}” made, in this test`);
+        area.value = was ? was.area.value : shownOf(r);
+        const entry = { area, edited: !!was };
+        area.addEventListener('input', () => {
+          entry.edited = true;
+          head.querySelector('.wf-test-read-from').textContent = READ_ORIGIN_WORDS.typed;
+        });
+        row.appendChild(area);
+        readsList.appendChild(row);
+        readRows.set(id, entry);
+      }
+      readsHead.textContent = list.length === 1 ? 'What it reads: 1 step' : `What it reads: ${list.length} steps`;
+      reads.hidden = list.length === 0;
+    }
+    /** What the person typed for the steps it reads: `{ id: {data} | {text} }`. */
+    function typedOutputs() {
+      const out = {};
+      for (const [id, row] of readRows) {
+        if (!row.edited) continue;
+        const raw = String(row.area.value || '');
+        const t = raw.trim();
+        let parsed;
+        try { parsed = JSON.parse(t); } catch (_) { parsed = undefined; }
+        out[id] = parsed !== undefined && parsed !== null && typeof parsed === 'object'
+          ? { data: parsed } : { text: typeof parsed === 'string' ? parsed : raw };
+      }
+      return Object.keys(out).length ? out : undefined;
+    }
 
     function readCustom() {
       const raw = text.value;
@@ -1131,6 +1217,8 @@ export function createWorkflowPanels({
       const chosen = sel.value;
       const args = { source: chosen, confirm: !!confirmed };
       if (chosen === 'custom') args.input = readCustom();
+      const outputs = typedOutputs();
+      if (outputs) args.outputs = outputs;
       sayLine(confirmed ? 'Running it for real…' : 'Testing…');
       let reply = null;
       let refusal = '';
@@ -1253,11 +1341,12 @@ export function createWorkflowPanels({
     });
     unpinBtn.addEventListener('click', () => setPin(null));
     syncSources();
+    loadReads();
 
     return {
       formEdited(on) { edits.hidden = !on; },
       hide(on) { box.hidden = !!on; },
-      destroy() { alive = false; box.remove(); },
+      destroy() { alive = false; clearTimeout(typing); box.remove(); },
     };
   }
 
