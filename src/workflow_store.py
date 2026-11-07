@@ -644,6 +644,60 @@ def _pins_kept(graph: dict, before: dict) -> dict:
     return out
 
 
+# ── a draft, as the canvas holds it (`B1850`) ────────────────────────────────
+
+DRAFT_NOT_A_DOCUMENT = ("Send the draft as it stands on the canvas (graph): an object whose "
+                        "steps (nodes) and arrows (edges) are lists.")
+
+
+def draft_graph(raw) -> dict:
+    """`B1850`. A draft as the canvas holds it — a step not saved yet, a setting
+    not filled in yet — read only as far as asking what a step can pick from
+    needs: `{nodes: [{id, kind, label, config}], edges: [{from, port, to}]}`.
+
+    Deliberately NOT `parse_graph` or `check_document`. A draft that Save would
+    refuse is exactly the one being built: a new AI step with no prompt yet, an
+    arrow to a step not drawn yet. Before this row the picker read only the
+    stored document, so *Insert a field…* on a step that existed only in the
+    draft was refused, and a person had to save a throwaway version first —
+    which Save refused while that step was incomplete. What is refused here is
+    only what is not a draft at all (400): not an object, or steps or arrows
+    that are not lists. A step without a text id, and an arrow without text
+    ends, cannot be pointed at by a reference, so they are left out rather than
+    refused; whatever else a step says is the save's to judge.
+    """
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except (TypeError, ValueError):
+            raise WorkflowRefused(400, DRAFT_NOT_A_DOCUMENT) from None
+    if not isinstance(raw, dict):
+        raise WorkflowRefused(400, DRAFT_NOT_A_DOCUMENT)
+    nodes_in, edges_in = raw.get("nodes"), raw.get("edges", [])
+    if not isinstance(nodes_in, list) or not isinstance(edges_in, list):
+        raise WorkflowRefused(400, DRAFT_NOT_A_DOCUMENT)
+    from src.workflow_document import PORT_SUCCESS
+    nodes = []
+    for node in nodes_in:
+        if not isinstance(node, dict) or not isinstance(node.get("id"), str) or not node["id"]:
+            continue
+        config = node.get("config")
+        nodes.append({
+            "id": node["id"],
+            "kind": node.get("kind") if isinstance(node.get("kind"), str) else None,
+            "label": node.get("label") if isinstance(node.get("label"), str) else None,
+            "config": dict(config) if isinstance(config, dict) else {},
+            "pinned": None,
+        })
+    edges = []
+    for edge in edges_in:
+        if not isinstance(edge, dict) or not all(isinstance(edge.get(k), str) for k in ("from", "to")):
+            continue
+        port = edge.get("port") if isinstance(edge.get("port"), str) else PORT_SUCCESS
+        edges.append({"from": edge["from"], "port": port, "to": edge["to"]})
+    return {"v": raw.get("v"), "nodes": nodes, "edges": edges}
+
+
 def _step_content(node: dict) -> str:
     """What a person changes when they change a step: its kind, its name and
     its settings — `content_fingerprint`'s reading of one step, as text."""

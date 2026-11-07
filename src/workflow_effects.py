@@ -903,7 +903,7 @@ def _source(node_id, label, kind, origin, at, fields) -> dict:
             "at": at, "fields": fields}
 
 
-def available_fields(db, wf, trigger, graph, node_id) -> dict:
+def available_fields(db, wf, trigger, graph, node_id, *, recorded=None) -> dict:
     """`{sources: [...]}` — the fields `node_id` can pick from: the start's and
     every step upstream of it (`workflow_document.upstream_of`), each from up
     to three places, saying which:
@@ -919,6 +919,12 @@ def available_fields(db, wf, trigger, graph, node_id) -> dict:
     A record cut to fit its cap is not read for fields: its fields are not
     all there, and offering half of them would offer a path that resolves to
     nothing.
+
+    `recorded` (`B1850`): the step ids whose run records may be read, or
+    `None` for every one. A draft (`POST …/fields`) passes the saved
+    document's: a record is kept by step id, so a step drawn in the draft
+    under the id of one deleted long ago would otherwise be offered what that
+    other step made. Pins are the caller's to put on `graph`.
     """
     from src.event_bus import EVENT_PAYLOAD_FIELDS, WEBHOOK_PAYLOAD_FIELDS
     from src.workflow_document import START_KEY, upstream_of
@@ -929,10 +935,15 @@ def available_fields(db, wf, trigger, graph, node_id) -> dict:
     task_id = getattr(trigger, "id", None)
     sources = []
 
+    def _last(step_id):
+        if not task_id or (recorded is not None and step_id not in recorded):
+            return None
+        return last_node_record(db, task_id, step_id)
+
     # The start: what fired the run.
     starters = start_targets(graph)
     for first in starters:
-        rec = last_node_record(db, task_id, first) if task_id else None
+        rec = _last(first)
         envelope = _loads(rec.input) if rec is not None else None
         if isinstance(envelope, dict) and not is_truncated(envelope) \
                 and isinstance(envelope.get("data"), dict):
@@ -960,7 +971,7 @@ def available_fields(db, wf, trigger, graph, node_id) -> dict:
     for up_id in [n for n in nodes if n in upstream]:
         node = nodes[up_id]
         label, kind = node.get("label") or up_id, node.get("kind")
-        rec = last_node_record(db, task_id, up_id) if task_id else None
+        rec = _last(up_id)
         output = _loads(rec.output) if rec is not None else None
         if isinstance(output, dict) and not is_truncated(output):
             sources.append(_source(up_id, label, kind, ORIGIN_LAST_RUN,

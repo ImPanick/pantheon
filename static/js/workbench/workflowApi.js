@@ -18,7 +18,9 @@
 // each spelled out the same way, so the count still does not move. Wave E
 // (`C-A`, `P22-19`/`20`/`24`) adds three — a workflow's file, a step's "why did
 // this fail?" and its fix — and two bodies on routes already here (a draft or a
-// file on `POST /api/workflows`, the steps a person checked on `PUT`).
+// file on `POST /api/workflows`, the steps a person checked on `PUT`). The
+// builder's elevation adds a draft step's fields (`B1850`), spelled out the
+// same way.
 //
 // **A refusal is a `WorkflowRefusal`**, carrying the status and the server's
 // own sentence (`{detail}`, read by `refusal.js`), and — for a document the
@@ -259,6 +261,16 @@ export function createWorkflowApi({ fetch } = {}) {
      *  kind, origin, at, fields: [{ ref, path, type, example }] }] }` */
     listFields(id, nodeId) {
       return call('GET', `/api/workflows/${enc(id)}/nodes/${enc(nodeId)}/fields`);
+    },
+    /** `B1850`. `listFields`' answer for a step as it stands in the DRAFT —
+     *  one not saved yet, or in a draft Save would still refuse: `graph` is
+     *  the document on the canvas. The arrows and what each step promises are
+     *  the draft's; the last run's records and the pinned samples come only
+     *  from steps the saved document also has. Writes nothing. A 404
+     *  `WorkflowRefusal` when `nodeId` is not in `graph`, a 400 when `graph`
+     *  is not a draft at all. → `{ sources: [...] }`, as `listFields`. */
+    listDraftFields(id, nodeId, graph) {
+      return call('POST', `/api/workflows/${enc(id)}/fields`, { node_id: nodeId, graph });
     },
     /** `C-W`. Every step of this person's workflows that waits now — for a
      *  yes (`approval` is the card while it can still be answered), a time,

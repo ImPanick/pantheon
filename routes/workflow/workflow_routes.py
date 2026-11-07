@@ -33,6 +33,10 @@ and, from `/work/notes/SLICE-EF-DESIGN.md` § 3's contract **C-A** (wave E):
     POST   /api/workflows/{id}/runs/{run_id}/explain        "Why did this fail?" (P22-20)
     POST   /api/workflows/{id}/nodes/{node_id}/fix          apply a fix (P22-20)
 
+and, for the builder's draft (the Workbench's elevation):
+
+    POST   /api/workflows/{id}/fields  {node_id, graph}     a draft step's fields (B1850)
+
 The two literal ones are declared before `/{workflow_id}`, or FastAPI would
 read "palette" as a workflow's id.
 
@@ -730,6 +734,47 @@ def setup_workflow_routes(task_scheduler) -> APIRouter:
             return we.available_fields(db, wf, trigger, graph, str(node_id))
         finally:
             db.close()
+
+    @router.post("/{workflow_id}/fields")
+    @_answers
+    async def list_draft_fields(request: Request, workflow_id: str):
+        """`B1850`. `GET …/nodes/{node_id}/fields`' answer, for a step as it
+        stands in the DRAFT: body `{node_id, graph}`, where `graph` is the
+        document on the canvas — saved or not, finished or not.
+
+        The GET reads only the stored document, so *Insert a field…* on a step
+        that existed only in the draft was refused, and a person had to save a
+        throwaway version first — which Save refused while that step was still
+        incomplete. Here the arrows and what each step promises (an AI step's
+        answer fields, a Set step's names) are the draft's; the last run's
+        records and the pinned samples are read only for the steps the saved
+        document also has (`available_fields`' `recorded`; `_pins_kept`, a
+        save's own rule for pins). The draft is never checked as a save is
+        (`workflow_store.draft_graph`: only "is it a draft at all") and nothing
+        is written. Owner-scoped as the GET is: another owner's workflow is a
+        404."""
+        body = await _body(request)
+        node_id = body.get("node_id")
+        if not isinstance(node_id, str) or not node_id.strip():
+            raise WorkflowRefused(400, "Say which step's fields to list (node_id).")
+        draft = store.draft_graph(body.get("graph"))
+
+        # `B1223`: the database work, off the event loop.
+        def _off_the_loop():
+            from src import workflow_effects as we
+            db = SessionLocal()
+            try:
+                wf = store.owned_workflow(db, workflow_id, _owner(request))
+                if not any(n["id"] == node_id for n in draft["nodes"]):
+                    raise WorkflowRefused(404, "No such step in this draft.")
+                stored = store.stored_graph(wf)
+                saved_ids = {str(n.get("id")) for n in store.nodes_of(stored)}
+                graph = store._pins_kept(draft, stored)
+                return we.available_fields(db, wf, store.trigger_of(db, wf), graph, node_id,
+                                           recorded=saved_ids)
+            finally:
+                db.close()
+        return await asyncio.to_thread(_off_the_loop)
 
     @router.post("/slot")
     @_answers
