@@ -718,7 +718,8 @@ _MCP_TOOL_MAP = {
     "manage_rag":     ("rag",        "manage_rag"),
 }
 #: The person a built-in server acts for, set by this dispatcher: the email
-#: server's since `P0-11`, and the image server's since `B1922`.
+#: server's since `P0-11`, the image server's since `B1922` and the RAG
+#: server's since `B1923`.
 _EMAIL_MCP_OWNER_ARG = "_pantheon_owner"
 
 #: `B1922`. Every argument a built-in MCP server reads as this dispatcher's
@@ -740,8 +741,10 @@ def _without_reserved_args(args: Any) -> Any:
 
 #: `B1922`. The built-in servers this dispatcher tells whom a call is for, by
 #: `_EMAIL_MCP_OWNER_ARG`, under either name a call can use: the bare one
-#: `_MCP_TOOL_MAP` routes, or the qualified `mcp__<server>__<tool>`.
-_OWNER_ARG_SERVERS = frozenset({"email", "image_gen"})
+#: `_MCP_TOOL_MAP` routes, or the qualified `mcp__<server>__<tool>`. `B1923`:
+#: `rag`, whose own comment said the dispatcher sent it the person while
+#: nothing did, so every search the agent made read every account's documents.
+_OWNER_ARG_SERVERS = frozenset({"email", "image_gen", "rag"})
 
 
 def _server_takes_the_owner(tool: str) -> bool:
@@ -750,6 +753,44 @@ def _server_takes_the_owner(tool: str) -> bool:
     if routed:
         return routed[0] in _OWNER_ARG_SERVERS
     return any(tool.startswith(f"mcp__{server}__") for server in _OWNER_ARG_SERVERS)
+
+
+#: `B1923`. The RAG server's one tool, by both its names.
+_RAG_TOOL_NAMES = frozenset({"manage_rag", "mcp__rag__manage_rag"})
+
+#: `B1923`. What `manage_rag` does to the index's folders rather than to a
+#: person's own documents: print every folder and file indexed, index a folder
+#: of this machine, or drop a folder with every chunk under it, whoever's. The
+#: Knowledge index's routes hold all three to the operator's gate and a folder
+#: to `PERSONAL_DIR`; the agent's tool holds them to an admin, whose agent may
+#: read any file here already. A member's agent could index `/app/data`, where
+#: `auth.json` is, and search it, while `read_file` was refused to it.
+_RAG_FOLDER_ACTIONS = frozenset({"list", "add_directory", "remove_directory"})
+
+#: `B1923`. `B1601`'s rule, as `manage_research` words it.
+RAG_NOBODY_SENTENCE = (
+    "The document index is kept per person, and this call names no person to search or "
+    "store it for, so nothing was searched, stored or changed."
+)
+RAG_FOLDERS_SENTENCE = (
+    "Only an admin's agent lists, adds or removes the document index's folders; an admin "
+    "or operator does it in Settings → System → Knowledge index. Nothing was listed, "
+    "indexed or removed. add_text and search still work, on your own documents."
+)
+
+
+def _manage_rag_refusal(tool: str, args: Any, owner: Optional[str]) -> Optional[Dict]:
+    """`B1923`. Why the RAG server is not called for *args*, or `None`."""
+    if tool not in _RAG_TOOL_NAMES:
+        return None
+    if not normalize_owner(owner):
+        return {"error": RAG_NOBODY_SENTENCE, "exit_code": 1}
+    action = args.get("action") if isinstance(args, dict) else None
+    if (isinstance(action, str) and action.strip().lower() in _RAG_FOLDER_ACTIONS
+            and not _owner_is_admin(owner)):
+        logger.warning("manage_rag %s refused to non-admin owner=%r", action, owner)
+        return {"error": RAG_FOLDERS_SENTENCE, "exit_code": 1}
+    return None
 
 
 def _parse_qualified_mcp_args(tool: str, content: str) -> tuple[Dict, Optional[str]]:
@@ -904,6 +945,9 @@ async def _call_mcp_tool(
     server_id, tool_name = _MCP_TOOL_MAP[tool]
     qualified = f"mcp__{server_id}__{tool_name}"
     args = _build_mcp_args(tool, content)
+    refused = _manage_rag_refusal(tool, args, owner)   # `B1923`
+    if refused:
+        return refused
     # `B1922`. The person was handed to this function and never sent on, so
     # every image the agent made had a gallery row with no owner: its maker
     # never saw it in the Gallery, and the hourly owner sweep gave it, prompt
@@ -1890,10 +1934,14 @@ async def _execute_tool_block_impl(
         if mcp:
             desc = f"mcp: {tool}"
             args, parse_error = _parse_qualified_mcp_args(tool, content)
+            refused = None if parse_error else _manage_rag_refusal(tool, args, owner)   # `B1923`
             if parse_error:
                 result = {"error": parse_error, "exit_code": 1}
+            elif refused:
+                result = refused
             else:
-                # `B1922`: the image server is told whom it draws for too.
+                # `B1922`: the image server is told whom it draws for too,
+                # and `B1923` the RAG server whose index it reads.
                 if owner and _server_takes_the_owner(tool):
                     args = dict(args)
                     args[_EMAIL_MCP_OWNER_ARG] = owner
