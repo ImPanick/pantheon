@@ -1028,6 +1028,33 @@ _PHONE_PERSON_ACTIONS = ("start", "stop", "device", "button", "posture", "rotate
 _PHONE_FIELDS = ("device", "button", "posture", "url", "accept_license")
 
 
+_HEX = re.compile(r"^#[0-9a-fA-F]{6}$")
+
+
+def _phone_look(look: Any) -> Dict[str, Any]:
+    """`B1757`. How a device is drawn, each field shaped: a finish the page
+    can put in a style, two shares, a camera from the protocol's list, and side
+    keys that are the protocol's keys on its sides."""
+    look = look if isinstance(look, dict) else {}
+
+    def share(key, low, high, default):
+        v = look.get(key)
+        return min(high, max(low, float(v))) if isinstance(v, (int, float)) and not isinstance(v, bool) else default
+
+    keys = {}
+    raw = look.get("keys") if isinstance(look.get("keys"), dict) else {}
+    for side in P.PHONE_KEY_SIDES:
+        ids = [k for k in (raw.get(side) or []) if k in P.PHONE_BUTTONS][:4]
+        if ids:
+            keys[side] = ids
+    finish = look.get("finish")
+    return {"finish": finish if isinstance(finish, str) and _HEX.match(finish) else "",
+            "finish_name": str(look.get("finish_name") or "")[:40],
+            "corner": share("corner", 0.0, 0.2, 0.1), "bezel": share("bezel", 0.0, 0.1, 0.03),
+            "cutout": look.get("cutout") if look.get("cutout") in P.PHONE_CUTOUTS else "punch-center",
+            "keys": keys}
+
+
 def _phone_state(answer: Dict[str, Any]) -> Dict[str, Any]:
     """`B1751`. The phone's state as the window is given it: only what it
     draws, each field shaped."""
@@ -1040,10 +1067,12 @@ def _phone_state(answer: Dict[str, Any]) -> Dict[str, Any]:
                             "foldable": bool(d.get("foldable")),
                             # `B1756`: whether picking it boots it now or installs it first.
                             "installed": d.get("installed") is not False,
-                            "android": str(d.get("android") or "")[:40]})
+                            "android": str(d.get("android") or "")[:40],
+                            "look": _phone_look(d.get("look"))})
     if not devices:
         devices = [{"id": k, "name": v["name"], "maker": v["maker"], "kind": v["kind"],
-                    "foldable": v["kind"] == "foldable"} for k, v in P.PHONE_DEVICES.items()]
+                    "foldable": v["kind"] == "foldable", "look": _phone_look(P.PHONE_LOOKS.get(k))}
+                   for k, v in P.PHONE_DEVICES.items()]
     device = answer.get("device") if answer.get("device") in P.PHONE_DEVICES else P.PHONE_DEFAULT_DEVICE
     screen = answer.get("screen")
     if not (isinstance(screen, list) and len(screen) == 2

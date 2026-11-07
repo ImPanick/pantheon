@@ -76,6 +76,7 @@ export function catalogueOf(state) {
     g.devices.push({
       id: d.id, name: d.name || d.id, maker: d.maker || '', kind: d.kind || 'phone',
       foldable: !!d.foldable, android: d.android || '', installed, current, verb,
+      finish: lookOf(d).finish, finishName: lookOf(d).finishName,
       busy: s.state === 'installing' || s.state === 'starting',
     });
   }
@@ -141,9 +142,16 @@ function _button(cls, text, onClick, label) {
   return b;
 }
 
+let _noun = 'phone';   // `B1757`: "tablet" while the device is one
+
+/** One of `SAY`'s sentences for the device in hand: a tablet is a tablet. */
+function _words(text) {
+  return _noun === 'phone' ? text : String(text || '').replace(/\byour phone\b/gi, (m) => (m[0] === 'Y' ? 'Your ' : 'your ') + _noun);
+}
+
 function _say(text, { error = false } = {}) {
   if (!_win) return;
-  _win.statusText.textContent = String(text || '');
+  _win.statusText.textContent = _words(String(text || ''));
   _win.status.dataset.state = error ? 'down' : (_state && _state.state === 'on' ? 'up' : 'checking');
 }
 
@@ -169,6 +177,59 @@ export function sideKeys(maker) {
   return maker === 'Samsung'
     ? [{ id: 'volume_up', label: 'Volume up' }, { id: 'volume_down', label: 'Volume down' }, { id: 'power', label: 'Power' }]
     : [{ id: 'power', label: 'Power' }, { id: 'volume_up', label: 'Volume up' }, { id: 'volume_down', label: 'Volume down' }];
+}
+
+const KEY_LABELS = { power: 'Power', volume_up: 'Volume up', volume_down: 'Volume down' };
+const KEY_SIDES = ['left', 'right', 'top'];
+
+/** `B1757`. How the device looks from the front, as the server sent it, with
+ *  a stand-in for anything missing. */
+export function lookOf(device) {
+  const l = (device && device.look && typeof device.look === 'object') ? device.look : {};
+  const num = (v, d) => (typeof v === 'number' && Number.isFinite(v) ? v : d);
+  return {
+    finish: typeof l.finish === 'string' && /^#[0-9a-f]{6}$/i.test(l.finish) ? l.finish : '',
+    finishName: typeof l.finish_name === 'string' ? l.finish_name : '',
+    corner: Math.max(0, Math.min(0.2, num(l.corner, 0.1))),
+    bezel: Math.max(0, Math.min(0.1, num(l.bezel, 0.03))),
+    cutout: typeof l.cutout === 'string' ? l.cutout : 'punch-center',
+    keys: l.keys && typeof l.keys === 'object' ? l.keys : null,
+  };
+}
+
+/** `B1757`. The device's side keys, edge by edge: its own when the server
+ *  says where they are, else its maker's (`sideKeys`) on the right. */
+export function keysOf(device) {
+  const look = lookOf(device);
+  const out = { left: [], right: [], top: [] };
+  if (look.keys) {
+    for (const side of KEY_SIDES) {
+      for (const id of (Array.isArray(look.keys[side]) ? look.keys[side] : [])) {
+        if (KEY_LABELS[id]) out[side].push({ id, label: KEY_LABELS[id] });
+      }
+    }
+  }
+  if (!out.left.length && !out.right.length && !out.top.length) out.right = sideKeys(device && device.maker);
+  return out;
+}
+
+/** `B1757`. The body drawn to fit `W`×`H`: the screen at its own shape
+ *  (`shape`), the bezel around it at the device's share of its short side,
+ *  and its corners as round as the device's. `{ screenW, screenH, rim,
+ *  radius, inner }`, in CSS pixels. */
+export function bodyGeometry(look, shape, W, H) {
+  const l = look || lookOf(null);
+  const aspect = shape && shape.w > 0 && shape.h > 0 ? shape.w / shape.h : 492 / 1100;
+  const f = l.bezel;
+  const m = Math.min(aspect, 1);   // the short side, as a share of the screen's height
+  const sh = Math.max(0, Math.min(H / (1 + 2 * f * m), W / (aspect + 2 * f * m)));
+  const rim = Math.max(4, f * m * sh);
+  const screenH = Math.floor(sh);
+  const screenW = Math.floor(sh * aspect);
+  const short = Math.min(screenW, screenH) + 2 * rim;
+  const radius = Math.max(rim + 2, l.corner * short);
+  return { screenW, screenH, rim: Math.round(rim), radius: Math.round(radius),
+    inner: Math.max(2, Math.round(radius - rim * 0.85)) };
 }
 
 async function _get(url) {
@@ -286,6 +347,25 @@ function _dropFrame() {
   _frame = null;
 }
 
+/** `B1757`. Size the body to the stage at the device's own proportions. */
+function _shapeBody(shape, look) {
+  if (!_win) return;
+  const box = _win.stage.getBoundingClientRect();
+  if (!box.width || !box.height) return;   // not laid out yet: CSS's fallback holds
+  const cs = typeof getComputedStyle === 'function' ? getComputedStyle(_win.stage) : null;
+  const pad = (k) => (cs ? parseFloat(cs[k]) || 0 : 0);
+  const W = box.width - pad('paddingLeft') - pad('paddingRight') - 12;   // room for the keys
+  const H = box.height - pad('paddingTop') - pad('paddingBottom') - 12;
+  const g = bodyGeometry(look, shape, W, H);
+  const st = _win.bezel.style;
+  st.setProperty('--phw-rim', `${g.rim}px`);
+  st.setProperty('--phw-radius', `${g.radius}px`);
+  st.setProperty('--phw-inner', `${g.inner}px`);
+  st.width = `${g.screenW}px`;
+  st.height = `${g.screenH}px`;
+  st.maxWidth = 'none';
+}
+
 /** The stream laid in the bezel's screen at the phone screen's own shape,
  *  centred: a closed foldable's cover is the middle of that screen, and the
  *  bezel's narrower screen shows just it. */
@@ -307,7 +387,10 @@ function _render() {
   const on = s.state === 'on';
   const holding = _holder === 'person';
   const mobile = isMobileView(s);
-  _win.title.textContent = d.name ? `Phone · ${d.name}${mobile ? ' · mobile view' : ''}` : 'Phone';
+  // `B1757`: a tablet is called one.
+  const noun = d.kind === 'tablet' ? 'Tablet' : 'Phone';
+  _win.title.textContent = d.name ? `${noun} · ${d.name}${mobile ? ' · mobile view' : ''}` : 'Phone';
+  _noun = noun.toLowerCase();
   _win.title.title = mobile ? (s.why_not_android || '') : '';
 
   // The device list, grouped by maker; made once, kept selected.
@@ -339,25 +422,39 @@ function _render() {
   _win.openForm.hidden = !on;
 
   // `B1752`. The bezel: the device's shape, its keys on its maker's side.
+  // `B1757`: and the device as it looks — its finish, its corners, its bezel,
+  // its camera, its hinge and its keys on the edges they are on.
   const shape = bezelShape(s);
+  const look = lookOf(d);
   _win.bezel.style.setProperty('--phw-aspect', `${shape.w} / ${shape.h}`);
+  if (look.finish) _win.bezel.style.setProperty('--phw-finish', look.finish);
+  else _win.bezel.style.removeProperty('--phw-finish');
   _win.bezel.dataset.kind = d.kind || 'phone';
   _win.bezel.dataset.maker = (d.maker || '').toLowerCase();
-  const keys = sideKeys(d.maker);
-  if (_win.sideKeys.dataset.maker !== d.maker) {
-    _win.sideKeys.textContent = '';
-    for (const k of keys) {
-      const b = _el('button', `phw-side phw-side-${k.id}`);
-      b.type = 'button';
-      b.title = k.label;
-      b.setAttribute('aria-label', k.label);
-      b.dataset.key = k.id;
-      b.addEventListener('click', (e) => { e.preventDefault(); press(k.id); });
-      _win.sideKeys.appendChild(b);
+  _win.bezel.dataset.device = d.id || '';
+  _win.bezel.dataset.cutout = d.foldable && s.posture === 'closed' && !mobile ? 'punch-center' : look.cutout;
+  _win.bezel.dataset.posture = d.foldable ? (s.posture || 'open') : '';
+  _win.bezel.title = look.finishName ? `${d.name} · ${look.finishName}` : (d.name || '');
+  _shapeBody(shape, look);
+  if (_win.sideKeys.dataset.device !== d.id) {
+    const sides = keysOf(d);
+    for (const side of KEY_SIDES) {
+      const box = _win.keyBoxes[side];
+      box.textContent = '';
+      for (const k of sides[side]) {
+        const b = _el('button', `phw-side phw-side-${k.id}`);
+        b.type = 'button';
+        b.title = k.label;
+        b.setAttribute('aria-label', k.label);
+        b.dataset.key = k.id;
+        b.addEventListener('click', (e) => { e.preventDefault(); press(k.id); });
+        box.appendChild(b);
+      }
+      box.hidden = !sides[side].length;
     }
-    _win.sideKeys.dataset.maker = d.maker || '';
+    _win.sideKeys.dataset.device = d.id || '';
   }
-  for (const b of _win.sideKeys.querySelectorAll('button')) {
+  for (const b of _win.bezel.querySelectorAll('.phw-side')) {
     b.disabled = !on || !keyWorks(s, b.dataset.key);
   }
   for (const b of _win.nav.querySelectorAll('button')) {
@@ -376,7 +473,7 @@ function _render() {
   } else {
     _dropFrame();
     _win.empty.textContent = s.state === 'unavailable' ? (s.why || 'There is no phone here.')
-      : (mobile && s.state === 'starting' ? SAY.mobileStarting : (SAY[s.state] || SAY.checking));
+      : _words(mobile && s.state === 'starting' ? SAY.mobileStarting : (SAY[s.state] || SAY.checking));
   }
   if (s.state === 'unavailable') _say(s.why || 'There is no phone here.', { error: true });
   else if (on && mobile && !holding) _say(SAY.mobile);
@@ -453,10 +550,21 @@ function _renderCatalogue(s) {
       li.dataset.device = d.id;
       const text = _el('div', 'phw-cat-text');
       text.appendChild(_el('span', 'phw-cat-name', d.name));
-      const facts = [d.kind === 'tablet' ? 'Tablet' : (d.foldable ? 'Foldable' : 'Phone')];
-      if (d.android && !isMobileView(s)) facts.push(d.android);
-      facts.push(d.installed ? (isMobileView(s) ? 'Mobile view' : 'Installed') : 'Not installed');
-      text.appendChild(_el('span', 'phw-cat-facts', facts.join(' · ')));
+      // `B1757`: a swatch of the device's finish, named.
+      const swatch = _el('span', 'phw-cat-swatch');
+      swatch.setAttribute('aria-hidden', 'true');
+      swatch.dataset.kind = d.kind;
+      if (d.finish) swatch.style.setProperty('--phw-finish', d.finish);
+      li.insertBefore(swatch, li.firstChild);
+      const what = [d.kind === 'tablet' ? 'Tablet' : (d.foldable ? 'Foldable' : 'Phone')];
+      if (d.finishName) what.push(d.finishName);
+      text.appendChild(_el('span', 'phw-cat-facts', what.join(' · ')));
+      const where = [];
+      if (d.android && !isMobileView(s)) where.push(d.android);
+      where.push(d.installed ? (isMobileView(s) ? 'Mobile view' : 'Installed') : 'Not installed');
+      const status = _el('span', 'phw-cat-facts phw-cat-status', where.join(' · '));
+      status.dataset.installed = d.installed ? 'yes' : 'no';
+      text.appendChild(status);
       li.appendChild(text);
       const b = _button('phw-cat-use', d.verb, () => useDevice(d.id), `${d.verb}: ${d.name}`);
       b.disabled = d.busy || (d.current && d.verb === 'In use') || s.state === 'unavailable';
@@ -552,9 +660,22 @@ function _build({ embedded = false } = {}) {
   glass.addEventListener('click', (e) => { e.preventDefault(); takeOver(); });
   screen.appendChild(empty);
   screen.appendChild(glass);
+  // `B1757`: the keys on each edge they are on, the front camera (in the
+  // screen or in the rim, as the device has it) and a foldable's crease.
   const sideKeysBox = _el('div', 'phw-side-keys');
+  const keyBoxes = {};
+  for (const side of KEY_SIDES) {
+    keyBoxes[side] = _el('div', `phw-keys phw-keys-${side}`);
+    sideKeysBox.appendChild(keyBoxes[side]);
+  }
+  const camera = _el('span', 'phw-camera');
+  camera.setAttribute('aria-hidden', 'true');
+  const hinge = _el('span', 'phw-hinge');
+  hinge.setAttribute('aria-hidden', 'true');
+  screen.appendChild(hinge);
   bezel.appendChild(speaker);
   bezel.appendChild(screen);
+  bezel.appendChild(camera);
   bezel.appendChild(sideKeysBox);
   stage.appendChild(bezel);
 
@@ -598,6 +719,8 @@ function _build({ embedded = false } = {}) {
   license.appendChild(licenseRow);
 
   if (embedded) {
+    // The list beside it is the room's device picker; the select would say it twice.
+    device.hidden = true;
     header.classList.remove('modal-header');
     header.classList.add('phw-room-head');
     close.remove();   // the room is closed with the Workbench
@@ -625,7 +748,7 @@ function _build({ embedded = false } = {}) {
   modal.appendChild(content);
 
   return { modal, content, header, title, device, power, rotate, fold, take, give, openForm, address,
-    status, statusText, stage, bezel, screen, empty, glass, sideKeys: sideKeysBox, nav,
+    status, statusText, stage, bezel, screen, empty, glass, sideKeys: sideKeysBox, keyBoxes, camera, hinge, nav,
     progress, progressText, progressBar, license, licenseText, licenseLink, catalogue, embedded };
 }
 
@@ -734,7 +857,7 @@ if (typeof document !== 'undefined' && document && typeof document.addEventListe
 }
 const _global = typeof window !== 'undefined' ? window : globalThis;
 if (_global && typeof _global.addEventListener === 'function') {
-  _global.addEventListener('resize', () => _placeFrame());
+  _global.addEventListener('resize', () => { if (_win) _render(); });
 }
 
 export const _test = {

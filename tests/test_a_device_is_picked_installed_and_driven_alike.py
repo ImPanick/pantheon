@@ -354,3 +354,82 @@ def test_the_workbench_has_the_devices_room():
     from src import workbench_rooms
     assert workbench_rooms.DEVICES_ROOM == "Devices"
     assert "devices: 'Devices'" in (ROOT / "static" / "js" / "workbench" / "rooms.js").read_text()
+
+
+# ── `B1757`: more devices, each drawn as it looks ───────────────────────────────
+
+def test_the_catalogue_has_phones_foldables_and_tablets_from_several_makers():
+    kinds = {}
+    for d in P.PHONE_DEVICES.values():
+        kinds.setdefault(d["kind"], []).append(d["name"])
+    assert len(P.PHONE_DEVICES) >= 15
+    assert len(kinds["tablet"]) >= 4 and len(kinds["foldable"]) >= 3 and len(kinds["phone"]) >= 8
+    assert {d["maker"] for d in P.PHONE_DEVICES.values()} >= {"Google", "Samsung", "OnePlus", "Nothing"}
+    for id_, d in P.PHONE_DEVICES.items():
+        if d["kind"] == "foldable":
+            assert 0 < d["cover_width"] < d["width"], id_
+
+
+@pytest.mark.parametrize("device", sorted(P.PHONE_DEVICES))
+def test_every_device_says_how_it_looks(device):
+    look = P.PHONE_LOOKS[device]
+    assert re.fullmatch(r"#[0-9a-f]{6}", look["finish"]) and look["finish_name"]
+    assert 0 < look["corner"] <= 0.2 and 0 < look["bezel"] <= 0.1
+    assert look["cutout"] in P.PHONE_CUTOUTS
+    keys = [k for side, ids in look["keys"].items() for k in ids]
+    assert set(look["keys"]) <= set(P.PHONE_KEY_SIDES)
+    assert sorted(keys) == ["power", "volume_down", "volume_up"], "every device has power and a rocker"
+    if P.PHONE_DEVICES[device]["kind"] == "tablet":
+        assert "top" in look["keys"] and look["cutout"] == "bezel-top"
+
+
+def test_the_look_reaches_the_window_shaped():
+    from routes.workstation_routes import _phone_look, _phone_state
+    good = _phone_look(P.PHONE_LOOKS["oneplus_12"])
+    assert good["finish"] == "#2e5a4a" and good["keys"] == {"left": ["volume_up", "volume_down"], "right": ["power"]}
+    bad = _phone_look({"finish": "red;background:url(x)", "corner": 9, "bezel": True, "cutout": "notch",
+                       "keys": {"bottom": ["power"], "right": ["power", "reboot"]}})
+    assert bad == {"finish": "", "finish_name": "", "corner": 0.2, "bezel": 0.03, "cutout": "punch-center",
+                   "keys": {"right": ["power"]}}
+    out = _phone_state({"state": "off", "devices": []})
+    assert all(d["look"]["finish"] for d in out["devices"]), "the catalogue's own looks when the daemon sent none"
+
+
+@pytest.mark.skipif(not shutil.which("node"), reason="node binary not on PATH")
+def test_the_body_is_drawn_at_the_devices_shape_with_its_keys_on_their_edges(tmp_path):
+    src = (ROOT / "static" / "js" / "phoneWindow.js").read_text()
+    src = re.sub(r"^import \* as Modals from .*$", "const Modals = {};", src, flags=re.M)
+    src = re.sub(r"^import \{ makeWindowDraggable \} from .*$", "const makeWindowDraggable = () => {};",
+                 src, flags=re.M)
+    mod = tmp_path / "phoneWindow.mjs"
+    mod.write_text(src)
+    looks = json.dumps({k: P.PHONE_LOOKS[k] for k in ("oneplus_12", "galaxy_tab_s9", "pixel_9_pro")})
+    script = f"""
+import {{ keysOf, lookOf, bodyGeometry }} from {json.dumps(str(mod))};
+const looks = {looks};
+const dev = (id, maker) => ({{ id, maker, look: looks[id] }});
+const ids = (side) => side.map((k) => k.id);
+const one = keysOf(dev('oneplus_12', 'OnePlus')), tab = keysOf(dev('galaxy_tab_s9', 'Samsung'));
+const phone = bodyGeometry(lookOf(dev('pixel_9_pro')), {{ w: 492, h: 1100 }}, 600, 800);
+const slab = bodyGeometry(lookOf(dev('galaxy_tab_s9')), {{ w: 1280, h: 800 }}, 900, 800);
+console.log(JSON.stringify({{
+  one: [ids(one.left), ids(one.right), ids(one.top)], tab: [ids(tab.left), ids(tab.right), ids(tab.top)],
+  old: ids(keysOf({{ maker: 'Samsung' }}).right),
+  phone, slab, plain: lookOf({{}}),
+}}));
+"""
+    out = subprocess.run(["node", "--input-type=module", "-e", script], capture_output=True,
+                         text=True, timeout=30)
+    assert out.returncode == 0, out.stderr
+    got = json.loads(out.stdout)
+    assert got["one"] == [["volume_up", "volume_down"], ["power"], []]
+    assert got["tab"] == [[], [], ["power", "volume_up", "volume_down"]]
+    assert got["old"] == ["volume_up", "volume_down", "power"], "a device with no look keeps its maker's keys"
+    for g, (W, H) in ((got["phone"], (600, 800)), (got["slab"], (900, 800))):
+        assert g["screenW"] + 2 * g["rim"] <= W + 1 and g["screenH"] + 2 * g["rim"] <= H + 1
+        assert g["rim"] >= 4 and g["radius"] > g["rim"] and g["inner"] >= 2
+    p = got["phone"]
+    assert abs(p["screenW"] / p["screenH"] - 492 / 1100) < 0.01 and p["screenH"] > p["screenW"]
+    s = got["slab"]
+    assert s["screenW"] > s["screenH"] and s["radius"] < p["radius"] * 1.5
+    assert got["plain"]["cutout"] == "punch-center" and got["plain"]["finish"] == ""

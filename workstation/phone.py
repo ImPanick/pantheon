@@ -813,7 +813,8 @@ class AccountPhone:
                "state": "unavailable" if why else self.state, "device": self.device,
                "devices": [{"id": k, "name": v["name"], "maker": v["maker"], "kind": v["kind"],
                             "foldable": v["kind"] == "foldable", "width": v["width"],
-                            "height": v["height"], "density": v["density"]}
+                            "height": v["height"], "density": v["density"],
+                            "look": P.PHONE_LOOKS.get(k) or {}}   # `B1757`
                            for k, v in P.PHONE_DEVICES.items()],
                "posture": self.posture if d.get("kind") == "foldable" else None,
                "rotation": self.rotation,

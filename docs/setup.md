@@ -260,8 +260,12 @@ Size the VM for the people who work at once: each running machine takes up to
 
 **A phone in the workstation.** Each person can have a real Android device in
 their container workstation: Google's Android Emulator running Android 15
-(Google APIs), as a Pixel 9 Pro, Pixel 9 Pro Fold, Pixel 8, Galaxy S25 Ultra,
-Galaxy Z Fold6 or Pixel Tablet. The Workbench's **Devices** room lists them:
+(Google APIs), as one of seventeen devices: Google's Pixel 9, 9 Pro, 9 Pro XL,
+8 and 8a, Pixel Fold and 9 Pro Fold, and Pixel Tablet; Samsung's Galaxy S25,
+S25 Ultra and A55, Z Fold6, and Galaxy Tab S9 and Tab S10 Ultra; the OnePlus 12
+and OnePlus Pad 2; and the Nothing Phone (2). Each is drawn as it looks: its
+colour, its corners and bezel, its camera, a foldable's crease, and its keys on
+the edges they are on. The Workbench's **Devices** room lists them:
 pick one and Pantheon downloads, installs and sets up what that device needs
 (the first time, after you accept the
 [Android SDK License](https://developer.android.com/studio/terms) there, about
