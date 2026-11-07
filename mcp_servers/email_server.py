@@ -15,7 +15,6 @@ import email.header
 import email.utils
 from email.message import EmailMessage
 import re
-import html
 import json
 import sqlite3
 import sys
@@ -53,6 +52,10 @@ from src import mail_auth as _mail_auth
 # `B1232`. The header decode the routes use, so an 8-bit Subject reads the same
 # to the agent as it does in the browser — one definition, in `src/`.
 from src.mail_headers import decode_header as _shared_decode_header
+# `B1822`, `B1823`. And the body decode, so `read_email` opens what the reader
+# opens: a charset with no codec, an HTML-first alternative read once, and a
+# single-part HTML message as its text rather than its markup.
+from src.mail_headers import extract_text as _extract_text
 # `B131`, then `B1118`. `src.agent_tools` is imported before `src.tool_schemas`
 # here, and since `B1118` the order no longer matters: the facade re-exports
 # `tool_schemas` and `tool_parsing` lazily, so either can be imported first in a
@@ -812,36 +815,6 @@ def _unsubscribe_email(uid, folder="INBOX", account=None, method_index=0, allow_
         "send_result": result,
         "pending": bool(result.get("pending")),
     }
-
-
-def _extract_text(msg):
-    """Extract plain text body from email message."""
-    if msg.is_multipart():
-        text_parts = []
-        for part in msg.walk():
-            ct = part.get_content_type()
-            cd = str(part.get("Content-Disposition", ""))
-            if ct == "text/plain" and "attachment" not in cd:
-                payload = part.get_payload(decode=True)
-                if payload:
-                    charset = part.get_content_charset() or "utf-8"
-                    text_parts.append(payload.decode(charset, errors="replace"))
-            elif ct == "text/html" and not text_parts and "attachment" not in cd:
-                payload = part.get_payload(decode=True)
-                if payload:
-                    charset = part.get_content_charset() or "utf-8"
-                    raw_html = payload.decode(charset, errors="replace")
-                    text = re.sub(r"<br\s*/?>", "\n", raw_html, flags=re.I)
-                    text = re.sub(r"<[^>]+>", "", text)
-                    text = html.unescape(text)
-                    text_parts.append(text.strip())
-        return "\n".join(text_parts)
-    else:
-        payload = msg.get_payload(decode=True)
-        if payload:
-            charset = msg.get_content_charset() or "utf-8"
-            return payload.decode(charset, errors="replace")
-    return ""
 
 
 def _get_cached_summaries():

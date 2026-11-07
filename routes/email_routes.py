@@ -76,7 +76,10 @@ from src.env_flags import request_flag
 logger = logging.getLogger(__name__)
 
 PANTHEON_MAIL_ORIGIN = "pantheon-ui"
-EMAIL_READ_ATTACHMENT_VERSION = 2
+# The version of a read response; a cached one of another version is read
+# again. 3: `B1822`/`B1823` changed the body text, and `email_body_preview_cache`
+# never expires, so mail opened before would keep a doubled or raw-HTML body.
+EMAIL_READ_ATTACHMENT_VERSION = 3
 # `P18-05`. These three were literals and are now views onto the provider
 # registry. The names stay because call sites and tests use them
 # (`Law 1`); the values stop being a second place Google is written down.

@@ -23,7 +23,6 @@ import email.header
 import email.utils
 import json
 import re
-import html
 import logging
 from email.mime.multipart import MIMEMultipart
 from email.mime.base import MIMEBase
@@ -1923,52 +1922,12 @@ def _extract_attachment_to_disk(msg, index, target_dir):
     return None
 
 
-def _extract_html(msg):
-    """Extract raw HTML body from an email message, if present."""
-    if msg.is_multipart():
-        for part in msg.walk():
-            ct = part.get_content_type()
-            cd = str(part.get("Content-Disposition", ""))
-            if ct == "text/html" and "attachment" not in cd:
-                payload = part.get_payload(decode=True)
-                if payload:
-                    charset = part.get_content_charset() or "utf-8"
-                    return payload.decode(charset, errors="replace")
-    elif msg.get_content_type() == "text/html":
-        payload = msg.get_payload(decode=True)
-        if payload:
-            charset = msg.get_content_charset() or "utf-8"
-            return payload.decode(charset, errors="replace")
-    return None
-
-
-def _extract_text(msg):
-    if msg.is_multipart():
-        text_parts = []
-        for part in msg.walk():
-            ct = part.get_content_type()
-            cd = str(part.get("Content-Disposition", ""))
-            if ct == "text/plain" and "attachment" not in cd:
-                payload = part.get_payload(decode=True)
-                if payload:
-                    charset = part.get_content_charset() or "utf-8"
-                    text_parts.append(payload.decode(charset, errors="replace"))
-            elif ct == "text/html" and not text_parts and "attachment" not in cd:
-                payload = part.get_payload(decode=True)
-                if payload:
-                    charset = part.get_content_charset() or "utf-8"
-                    raw_html = payload.decode(charset, errors="replace")
-                    text = re.sub(r"<br\s*/?>", "\n", raw_html, flags=re.I)
-                    text = re.sub(r"<[^>]+>", "", text)
-                    text = html.unescape(text)
-                    text_parts.append(text.strip())
-        return "\n".join(text_parts)
-    else:
-        payload = msg.get_payload(decode=True)
-        if payload:
-            charset = msg.get_content_charset() or "utf-8"
-            return payload.decode(charset, errors="replace")
-    return ""
+# `B1822`, `B1823`. A message's body as text, and its raw HTML, are read in
+# `src/mail_headers.py` now, the one definition the agent's mail tools import
+# too. The names are kept (the same objects) for their importers in
+# `routes/email_routes.py`, `routes/email_pollers.py`, `src/builtin_actions.py`
+# and `scripts/pantheon-mail`.
+from src.mail_headers import extract_html as _extract_html, extract_text as _extract_text  # noqa: E402,F401
 
 
 def _fetch_sender_thread_context(sender_addr: str,
