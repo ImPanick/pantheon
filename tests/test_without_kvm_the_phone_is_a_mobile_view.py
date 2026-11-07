@@ -208,7 +208,8 @@ def test_without_kvm_the_phone_is_offered_as_a_mobile_view_and_says_why(no_kvm):
     info = no_kvm.info()
     assert info["available"] is True and info["state"] == "off"
     assert info["mode"] == "mobile_view" and "why" not in info
-    assert "WORKSTATION_PHONE=on" in info["why_not_android"]
+    # `B1756`: KVM is asked first — with it, a pick installs the rest.
+    assert "KVM" in info["why_not_android"]
     assert "Mozilla/5.0 (Android" in info["user_agent"]
     assert info["accel"] is None
 
@@ -220,7 +221,7 @@ def test_without_a_screen_there_is_neither_and_the_android_reason_is_given(tmp_p
     system.ensure(ACCOUNT)
     info = PH.AccountPhone(system, ACCOUNT, None).info()
     assert info["available"] is False and info["mode"] is None
-    assert "WORKSTATION_PHONE=on" in info["why"]
+    assert "KVM" in info["why"]   # `B1756`: asked before what is installed
 
 
 def test_the_mobile_view_starts_in_kiosk_at_the_devices_shape_on_its_home(no_kvm):

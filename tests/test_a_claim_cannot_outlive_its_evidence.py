@@ -278,12 +278,15 @@ def test_a_copied_trend_and_a_stale_checker_count_are_caught(checker, tmp_path, 
                           re.M))
     assert live >= 2, "ci.yml lists no checkers — nothing to go stale about"
 
-    mutations = (
+    mutations = [
         (f"**{t['done_from']}% → {t['done_to']}%**", "**49.7% → 63.0%**"),
-        (f"ratio of **{t['ratio']}**", "ratio of **1.185**"),
         (f"{checker._count_word(live, capital=True)} checkers run in CI",
          f"{checker._count_word(live - 1, capital=True)} checkers run in CI"),
-    )
+    ]
+    # `B1756`: a window with nothing closed has no ratio, and the README says so
+    # in words; the checker then holds no ratio to it.
+    if t["ratio"]:
+        mutations.append((f"ratio of **{t['ratio']}**", "ratio of **1.185**"))
     stale = readme
     for current, wrong in mutations:
         assert current in stale, (
@@ -297,7 +300,7 @@ def test_a_copied_trend_and_a_stale_checker_count_are_caught(checker, tmp_path, 
     monkeypatch.setattr(checker, "README", fake)
     problems = checker._readme_trend_problems()
     assert any("% →" in p for p in problems), problems
-    assert any("ratio of" in p for p in problems), problems
+    assert (not t["ratio"]) or any("ratio of" in p for p in problems), problems
     assert any("checkers run in CI" in p for p in problems), problems
     assert any(p in checker.verify() for p in problems)
 

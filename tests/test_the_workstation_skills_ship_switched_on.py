@@ -422,8 +422,12 @@ def test_the_screen_size_is_the_protocols():
 def test_every_action_the_computer_tool_has_is_taught():
     """"Literally everything possible": no action is left undescribed."""
     text = _text("workstation-desktop")
-    missing = [a for a in computer_tools.ACTIONS if f"`{a}`" not in text]
+    # `B1756`: the phone's own controls are the phone skill's to teach.
+    missing = [a for a in computer_tools.ACTIONS
+               if a not in computer_tools.PHONE_CONTROLS and f"`{a}`" not in text]
     assert not missing, missing
+    phone = _text("workstation-phone")
+    assert not [a for a in computer_tools.PHONE_CONTROLS if f"`{a}`" not in phone]
 
 
 def test_every_action_the_skill_names_is_one_the_tool_has():

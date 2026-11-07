@@ -747,6 +747,8 @@ def test_the_overlay_gives_the_workstation_its_volumes_and_nothing_of_the_hosts(
     assert ws["command"][:2] == ["--system", "ubuntu"]
     assert _mounts(ws) == [("volume", "workstation-homes", "/home", False),
                            ("volume", "workstation-pairing", P.DEFAULT_PAIRING_DIR, False),
+                           # `B1756`: the phone's SDK, kept across rebuilds.
+                           ("volume", "workstation-android-sdk", "/opt/android-sdk", False),
                            ("bind", str(ROOT / "data" / "projects"), P.PROJECTS_DIR, False)]
     assert not ws.get("privileged") and not ws.get("cap_add") and not ws.get("ports")
     # `P20-06`: the network namespace is the gate's, another service of the

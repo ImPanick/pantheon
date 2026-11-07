@@ -725,7 +725,10 @@ FUNCTION_TOOL_SCHEMAS = [
                 "does at a computer with a mouse and keyboard — web pages in its Firefox, "
                 "apps, forms, settings, dialogs. Running commands and reading or writing "
                 "files is quicker with bash, python and the file tools. If a person has "
-                "taken over the screen the action is refused; ask them or wait."
+                "taken over the screen the action is refused; ask them or wait. "
+                "The phone also has its controls, as on its window: `press` a key, "
+                "`rotate`, `fold` or `unfold` a foldable, `open_url`, and `use_device` "
+                "to switch to another phone from its list."
             ),
             "parameters": {
                 "type": "object",
@@ -765,6 +768,18 @@ FUNCTION_TOOL_SCHEMAS = [
                                               "a swipe and scroll a fling; right_click is Back "
                                               "and middle_click is Home; its screenshot says "
                                               "its own size. Its first use turns it on."},
+                    # `B1756`. The phone's own controls, the ones on its window
+                    # in the Phone room: the same request a person's press sends.
+                    "button": {"type": "string", "enum": ["power"],
+                               "description": "press: the phone's key to press — its side "
+                                              "keys or its Back, Home and Recents."},
+                    "device": {"type": "string", "enum": ["pixel_9_pro"],
+                               "description": "use_device: the phone to use, as a person "
+                                              "picks it from the Phone room's list. One not "
+                                              "yet on the workstation is installed first, "
+                                              "which takes a while; the result says so."},
+                    "url": {"type": "string",
+                            "description": "open_url: the web address to open on the phone."},
                 },
                 "required": ["action"]
             }
@@ -2260,6 +2275,8 @@ def _install_computer_bounds() -> None:
         function["description"] = function["description"].format(**bounds)
         properties = function["parameters"]["properties"]
         properties["action"]["enum"] = list(_COMPUTER_ACTIONS)
+        properties["button"]["enum"] = list(_WS.PHONE_BUTTONS)  # `B1756`
+        properties["device"]["enum"] = list(_WS.PHONE_DEVICES)
         for prop in properties.values():
             prop["description"] = prop["description"].format(**bounds)
         return

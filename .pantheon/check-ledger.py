@@ -616,10 +616,15 @@ def _readme_trend_problems() -> list:
     text = TRACKER.read_text(encoding="utf-8")
     t = sl.trend_summary(text)
     problems = []
-    for want in (f"**{t['done_from']}% → {t['done_to']}%**",
-                 f"**{t['open_from']} → {t['open_to']}**",
-                 f"{t['filed']} rows filed against {t['closed']} closed",
-                 f"ratio of **{t['ratio']}**"):
+    wants = [f"**{t['done_from']}% → {t['done_to']}%**",
+             f"**{t['open_from']} → {t['open_to']}**",
+             f"{t['filed']} rows filed against {t['closed']} closed"]
+    # `B1756`: nothing closed in the window has no ratio to restate, and
+    # `trend_summary` gives an empty one; asking for "ratio of ****" then
+    # held the README to a figure that does not exist.
+    if t["ratio"]:
+        wants.append(f"ratio of **{t['ratio']}**")
+    for want in wants:
         if want not in readme:
             problems.append(f"README's trend does not read {want!r} — "
                             f"`check-ship-line.py --trend` moved")

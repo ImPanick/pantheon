@@ -19,4 +19,6 @@ export const ROOM_NAMES = Object.freeze({
   automations: 'Automations',
   skills: 'Skills',
   integrations: 'MCP & Integrations',
+  // `B1756`. The phone and its device list (`phoneWindow.js`).
+  devices: 'Devices',
 });

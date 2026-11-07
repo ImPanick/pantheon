@@ -1023,8 +1023,36 @@ _BROWSER_FIELDS = ("url", "x", "y", "text", "submit", "keys", "dx", "dy", "tab",
 # `B1751`. What a person's phone window may ask, and the fields it may carry;
 # the daemon validates every one (`workstation/phone.py`). Touch is not here:
 # it is the stream's, while the person holds the screens.
-_PHONE_PERSON_ACTIONS = ("start", "stop", "device", "button", "posture", "rotate", "open_url")
-_PHONE_FIELDS = ("device", "button", "posture", "url")
+_PHONE_PERSON_ACTIONS = ("start", "stop", "device", "button", "posture", "rotate", "open_url",
+                         "install")
+_PHONE_FIELDS = ("device", "button", "posture", "url", "accept_license")
+
+
+_HEX = re.compile(r"^#[0-9a-fA-F]{6}$")
+
+
+def _phone_look(look: Any) -> Dict[str, Any]:
+    """`B1757`. How a device is drawn, each field shaped: a finish the page
+    can put in a style, two shares, a camera from the protocol's list, and side
+    keys that are the protocol's keys on its sides."""
+    look = look if isinstance(look, dict) else {}
+
+    def share(key, low, high, default):
+        v = look.get(key)
+        return min(high, max(low, float(v))) if isinstance(v, (int, float)) and not isinstance(v, bool) else default
+
+    keys = {}
+    raw = look.get("keys") if isinstance(look.get("keys"), dict) else {}
+    for side in P.PHONE_KEY_SIDES:
+        ids = [k for k in (raw.get(side) or []) if k in P.PHONE_BUTTONS][:4]
+        if ids:
+            keys[side] = ids
+    finish = look.get("finish")
+    return {"finish": finish if isinstance(finish, str) and _HEX.match(finish) else "",
+            "finish_name": str(look.get("finish_name") or "")[:40],
+            "corner": share("corner", 0.0, 0.2, 0.1), "bezel": share("bezel", 0.0, 0.1, 0.03),
+            "cutout": look.get("cutout") if look.get("cutout") in P.PHONE_CUTOUTS else "punch-center",
+            "keys": keys}
 
 
 def _phone_state(answer: Dict[str, Any]) -> Dict[str, Any]:
@@ -1036,10 +1064,15 @@ def _phone_state(answer: Dict[str, Any]) -> Dict[str, Any]:
             devices.append({"id": d["id"], "name": str(d.get("name") or "")[:80],
                             "maker": str(d.get("maker") or "")[:40],
                             "kind": d.get("kind") if d.get("kind") in ("phone", "foldable", "tablet") else "phone",
-                            "foldable": bool(d.get("foldable"))})
+                            "foldable": bool(d.get("foldable")),
+                            # `B1756`: whether picking it boots it now or installs it first.
+                            "installed": d.get("installed") is not False,
+                            "android": str(d.get("android") or "")[:40],
+                            "look": _phone_look(d.get("look"))})
     if not devices:
         devices = [{"id": k, "name": v["name"], "maker": v["maker"], "kind": v["kind"],
-                    "foldable": v["kind"] == "foldable"} for k, v in P.PHONE_DEVICES.items()]
+                    "foldable": v["kind"] == "foldable", "look": _phone_look(P.PHONE_LOOKS.get(k))}
+                   for k, v in P.PHONE_DEVICES.items()]
     device = answer.get("device") if answer.get("device") in P.PHONE_DEVICES else P.PHONE_DEFAULT_DEVICE
     screen = answer.get("screen")
     if not (isinstance(screen, list) and len(screen) == 2
@@ -1059,6 +1092,23 @@ def _phone_state(answer: Dict[str, Any]) -> Dict[str, Any]:
     if out["mode"] == "mobile_view":
         out["why_not_android"] = str(answer.get("why_not_android") or "")[:500]
         out["user_agent"] = str(answer.get("user_agent") or "")[:200]
+    # `B1756`: the install a pick starts, and the licence it needs once.
+    out["installed"] = answer.get("installed") is not False
+    lic = answer.get("license") if isinstance(answer.get("license"), dict) else {}
+    out["license"] = {"accepted": bool(lic.get("accepted")),
+                      "url": "https://developer.android.com/studio/terms"}
+    inst = answer.get("install") if isinstance(answer.get("install"), dict) else {}
+    shaped: Dict[str, Any] = {"state": inst.get("state") if inst.get("state") in
+                              ("idle", "running", "done", "failed") else "idle"}
+    for key, limit in (("step", 20), ("step_label", 80), ("said", 160), ("why", 400), ("android", 40)):
+        if inst.get(key):
+            shaped[key] = str(inst[key])[:limit]
+    pct = inst.get("percent")
+    if isinstance(pct, int) and not isinstance(pct, bool):
+        shaped["percent"] = max(0, min(100, pct))
+    out["install"] = shaped
+    if "can_install" in answer:
+        out["can_install"] = bool(answer.get("can_install"))
     if answer.get("why"):
         out["why"] = str(answer["why"])[:500]
     return out
