@@ -30,6 +30,14 @@ copied that many rows. A chat opens on its newest 24 rows (`sessions.js`,
 an agent reply, drawn as two bubbles, copied the next message too. Fork now
 names the reply by its row's id, read the way a reaction reads it
 (`reactions.js` `replyIdFor`), and posts no count at all.
+
+`B1987`. *Edit* → Send cut the chat back to the edited message (its row, and
+the files that row referred to, went with it) and sent the new words alone, so
+the model never saw the photo or document the message carried and the stored
+message no longer had it. Resend and Regenerate carry a message's files again
+through `_pendingRegenAttachments`; Edit now does too. The files' cards are
+inside the bubble's `.body`, and opening the editor empties `.body`, so they
+are read when the editor opens: read at Send, as upstream does, they are gone.
 """
 from __future__ import annotations
 
@@ -360,3 +368,82 @@ def test_a_reply_the_chat_no_longer_holds_is_said_in_the_servers_words(dom_dir):
     """, extra=_FORK)
     assert out["shown"] == ["That message is no longer in this chat — reload and try again."]
     assert out["opened"] == []
+
+
+# ── `B1987`: an edit sends the files its message carried ───────────────────
+
+_EDIT = ((CHAT, "async function editUserMessage("), (CHAT, "function editRemovesNote("),
+         (CHAT, "function _userMessageAttachmentIds("))
+
+# The composer and its Send button, which the edit fills and presses; what each
+# send would carry is recorded as it is pressed.
+_EDITING = r"""
+let _pendingRegenAttachments = null;
+const composer = document.createElement('textarea');
+uiModule.el = (id) => (id === 'message' ? composer : null);
+const sends = [];
+const sendBtn = document.createElement('button');
+sendBtn.className = 'send-btn';
+sendBtn.click = () => { sends.push({ text: composer.value, files: _pendingRegenAttachments }); };
+document.body.appendChild(sendBtn);
+/** A click, waited for: the editor's Send is an async listener. */
+const press = (btn) => Promise.all((btn.listeners.click || [])
+  .map((fn) => fn({ stopPropagation() {}, preventDefault() {} })));
+/** A user bubble with a file, as `addMessage` draws one: its cards are in `.body`. */
+function pictured(raw, fileId) {
+  const el = bubble('msg msg-user', raw);
+  const cards = document.createElement('div');
+  cards.className = 'attach-cards';
+  const card = document.createElement('div');
+  card.className = 'attach-image-preview';
+  card.dataset.fileId = fileId;
+  cards.appendChild(card);
+  el.querySelector('.body').appendChild(cards);
+  return el;
+}
+async function editAndSend(el, words) {
+  await editUserMessage(el);
+  el.querySelector('.edit-textarea').value = words;
+  await press(el.querySelector('.edit-save-btn'));
+}
+"""
+
+
+def test_an_edit_sends_the_files_its_message_carried(dom_dir):
+    out = _run(dom_dir, _EDITING + """
+        const u = pictured('What is in this photo?', 'f1');
+        bubble('msg msg-ai', 'A cat on a wall.');
+        await editUserMessage(u);
+        const cardsLeftInTheBubble = u.querySelectorAll('[data-file-id]').length;
+        u.querySelector('.edit-textarea').value = 'What breed is the cat in this photo?';
+        await press(u.querySelector('.edit-save-btn'));
+        console.log(JSON.stringify({ cardsLeftInTheBubble, posted, sends }));
+    """, extra=_EDIT)
+    assert out["cardsLeftInTheBubble"] == 0, "the editor replaced .body, cards and all"
+    assert [p["url"] for p in out["posted"]] == ["/api/session/s-1/truncate"]
+    assert out["sends"] == [{"text": "What breed is the cat in this photo?", "files": ["f1"]}]
+
+
+def test_an_edit_the_server_refuses_leaves_its_files_for_no_other_message(dom_dir):
+    """A refused cut removed nothing, so nothing is sent, and the files are not
+    left waiting for whatever is sent next. The person reloads, as the refusal
+    says, and the same edit then goes with its file."""
+    out = _run(dom_dir, _EDITING + """
+        reply = { ok: false, status: 409,
+                  sentence: 'This chat has changed since that message was drawn — reload and try again.' };
+        let u = pictured('What is in this photo?', 'f1');
+        bubble('msg msg-ai', 'A cat on a wall.');
+        await editAndSend(u, 'What breed is the cat in this photo?');
+        const refused = { sends: sends.slice(), files: _pendingRegenAttachments, shown: shown.slice() };
+
+        reply = { ok: true, status: 200 };
+        box.replaceChildren();
+        u = pictured('What is in this photo?', 'f1');
+        bubble('msg msg-ai', 'A cat on a wall.');
+        await editAndSend(u, 'What breed is the cat in this photo?');
+        console.log(JSON.stringify({ refused, sends }));
+    """, extra=_EDIT)
+    assert out["refused"] == {
+        "sends": [], "files": None,
+        "shown": ["This chat has changed since that message was drawn — reload and try again."]}
+    assert out["sends"] == [{"text": "What breed is the cat in this photo?", "files": ["f1"]}]
