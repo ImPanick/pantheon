@@ -211,7 +211,9 @@ def test_the_limits_and_the_operators_are_the_walkers_and_the_rules(world):
     palette = fx.build_palette(ADMIN)
     assert palette["limits"] == {"foreach_max_items": workflow_runs.foreach_max_items(None),
                                  "wait_max_hours": workflow_runs.wait_max_hours(),
-                                 "parallel_steps": workflow_runs.WORKFLOW_PARALLEL_STEPS}
+                                 "parallel_steps": workflow_runs.WORKFLOW_PARALLEL_STEPS,
+                                 # `B1857`: the step cap, as the setting holds it now.
+                                 "max_steps": workflow_runs.max_steps()}
     assert palette["operators"] == [{"op": op, "word": OPERATOR_WORDS[op]} for op in OPERATORS]
 
 
