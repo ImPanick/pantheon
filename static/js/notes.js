@@ -4143,7 +4143,13 @@ function _buildChecklistHtml(items) {
 }
 
 function _wireRow(row, container) {
-  row.querySelector('.note-cl-rm')?.addEventListener('click', () => row.remove());
+  // `B1939`: a tick, a removed row, an indent or a reorder changes the list
+  // without a keystroke, so the form heard no `input`. On a phone its save
+  // button stayed Archive and pressing it archived the note without the
+  // change, and the draft autosave never kept it. Sent from `container`,
+  // which is still in the form after `row` has gone.
+  const _edited = () => container.dispatchEvent(new Event('input', { bubbles: true }));
+  row.querySelector('.note-cl-rm')?.addEventListener('click', () => { row.remove(); _edited(); });
   // `B1551`: every row the form makes passes through here — built from a
   // note, added with "+ Add", added in fullscreen — so the done control is
   // made a keyboard checkbox here once rather than in three templates. Its
@@ -4162,6 +4168,7 @@ function _wireRow(row, container) {
   dotEl?.addEventListener('click', () => {
     const wasDone = row.classList.contains('done');
     row.classList.toggle('done');
+    _edited();
     const becameDone = !wasDone;  // we just flipped it
     const dot = row.querySelector('.note-cl-dot');
     _markDoneControl(dot, becameDone);
@@ -4190,22 +4197,28 @@ function _wireRow(row, container) {
       e.preventDefault();
       row.dataset.indent = String(next);
       row.style.paddingLeft = (next * 16) + 'px';
+      _edited();
     } else if (e.key === 'Backspace' && txt.value === '') {
       e.preventDefault();
       const prev = row.previousElementSibling;
       row.remove();
+      _edited();
       if (prev && prev.classList.contains('note-cl-row')) prev.querySelector('.note-cl-text')?.focus();
     }
   });
-  // Drag handlers
+  // Drag handlers. `B1939`: where the row started, so that a drop which moved
+  // it is an edit and one that put it back is not.
+  let prevAtDragStart = null;
   row.addEventListener('dragstart', (e) => {
     row.classList.add('dragging');
+    prevAtDragStart = row.previousElementSibling;
     e.dataTransfer.effectAllowed = 'move';
     try { e.dataTransfer.setData('text/plain', row.dataset.itemId); } catch {}
   });
   row.addEventListener('dragend', () => {
     row.classList.remove('dragging');
     container.querySelectorAll('.drop-before, .drop-after').forEach(el => el.classList.remove('drop-before', 'drop-after'));
+    if (row.previousElementSibling !== prevAtDragStart) _edited();
   });
 }
 
@@ -4345,6 +4358,11 @@ function _wireCanvas(container, initialImageUrl) {
   ctx.fillRect(0, 0, cssW, cssH);
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
+  // `B1939`: a stroke, an undo or a cleared photo fires no `input`, so the
+  // form never heard that the drawing changed: on a phone its save button
+  // stayed Archive and pressing it archived the note without the drawing.
+  // (Typing in the text tool's box already reaches the form.)
+  const _markCanvasDirty = () => container.dispatchEvent(new Event('input', { bubbles: true }));
 
   // Load prior drawing as starting point so consecutive edits compose.
   const safeInitialImageUrl = _safeImgSrc(initialImageUrl);
@@ -4368,6 +4386,7 @@ function _wireCanvas(container, initialImageUrl) {
         ctx.fillStyle = '#ffffff';
         ctx.fillRect(0, 0, cssW, cssH);
         rm.remove();
+        _markCanvasDirty();
       });
       wrap.appendChild(rm);
     }
@@ -4393,6 +4412,9 @@ function _wireCanvas(container, initialImageUrl) {
   let mode = 'pen';
   let drawing = false;
   let last = null;
+  // `B1939`: whether this press has put anything on the canvas, so the end of
+  // a stroke is an edit and a tap or a stray mouseup is not.
+  let painted = false;
   // The text tool has three preset sizes (CSS px font-size).
   const TEXT_SIZES = { 's': 16, 'm': 26, 'l': 40 };
   // Line / circle stroke widths in logical pixels — three crisp options.
@@ -4422,6 +4444,7 @@ function _wireCanvas(container, initialImageUrl) {
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.putImageData(prev, 0, 0);
     ctx.restore();
+    _markCanvasDirty();
   };
 
   const _pos = (e) => {
@@ -4540,6 +4563,7 @@ function _wireCanvas(container, initialImageUrl) {
   };
   const _move = (e) => {
     if (!drawing) return;
+    painted = true;
     e.preventDefault?.();
     const p = _pos(e);
     if (mode.startsWith('line-') || mode.startsWith('circle-')) {
@@ -4576,7 +4600,10 @@ function _wireCanvas(container, initialImageUrl) {
     ctx.stroke();
     last = p;
   };
-  const _end = () => { drawing = false; last = null; _shapeSnapshot = null; };
+  const _end = () => {
+    if (painted) _markCanvasDirty();
+    drawing = false; painted = false; last = null; _shapeSnapshot = null;
+  };
 
   canvas.addEventListener('mousedown', _begin);
   canvas.addEventListener('mousemove', _move);
@@ -5759,7 +5786,7 @@ function _addRowReadMode(row) {
 // checklist. Uses the same lift-and-placeholder pattern as the card
 // drag (no oscillation when hovering between siblings).
 
-let _clDrag = null;          // { row, placeholder, container, grabOffsetX, grabOffsetY }
+let _clDrag = null;          // { row, placeholder, container, prevAtStart, grabOffsetX, grabOffsetY }
 let _clDocBound = false;
 
 function _wireChecklistTouchReorder(form) {
@@ -5787,6 +5814,8 @@ function _wireChecklistTouchReorder(form) {
 function _beginChecklistGrab(row, container, touch) {
   if (_clDrag) return;
   const rect = row.getBoundingClientRect();
+  // `B1939`: where the row started, so the drop can tell a move from a tap.
+  const prevAtStart = row.previousElementSibling;
   const placeholder = document.createElement('div');
   placeholder.className = 'note-cl-row-placeholder';
   placeholder.style.height = rect.height + 'px';
@@ -5801,7 +5830,7 @@ function _beginChecklistGrab(row, container, touch) {
   row.style.pointerEvents = 'none';
 
   _clDrag = {
-    row, placeholder, container,
+    row, placeholder, container, prevAtStart,
     grabOffsetX: touch.clientX - rect.left,
     grabOffsetY: touch.clientY - rect.top,
   };
@@ -5839,7 +5868,7 @@ function _onClTouchMove(e) {
 
 function _onClTouchEnd() {
   if (!_clDrag) return;
-  const { row, placeholder } = _clDrag;
+  const { row, placeholder, prevAtStart } = _clDrag;
   _clDrag = null;
   const phRect = placeholder.getBoundingClientRect();
   row.style.transition = 'left 0.18s ease, top 0.18s ease';
@@ -5851,7 +5880,9 @@ function _onClTouchEnd() {
     row.classList.remove('note-cl-row-dragging');
     row.style.cssText = '';
     // Order is persisted as part of the form's normal save (rows are
-    // re-serialized in DOM order via _collectItems).
+    // re-serialized in DOM order via _collectItems), so a row that moved is
+    // an edit the form has to hear (`B1939`, as a tick is).
+    if (row.previousElementSibling !== prevAtStart) row.dispatchEvent(new Event('input', { bubbles: true }));
   }, 200);
 }
 
