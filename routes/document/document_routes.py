@@ -864,9 +864,16 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
         except Exception as e:
             logger.warning("Failed to parse export request body, defaulting to empty", exc_info=e)
             data = {}
-        ids = data.get("ids") or []
+        # `B1988`. Only `{"ids": [<document id>, ...]}` names documents. Any
+        # other JSON reached `data.get` (`[]`, `"x"`, `5`, `null`: a 500), and
+        # ids that were not a list of strings reached the query, which raised
+        # on some (`5`, `"abc"`) and read others as something nobody sent
+        # (`{"a": 1}` as the document `a`). The Library posts its own rows' ids.
+        ids = data.get("ids") if isinstance(data, dict) else None
         if not ids:
             raise HTTPException(400, "No documents specified")
+        if not isinstance(ids, list) or not all(isinstance(i, str) for i in ids):
+            raise HTTPException(400, "ids must be a list of document ids")
         _ext = {
             "javascript": ".js", "python": ".py", "html": ".html", "css": ".css",
             "markdown": ".md", "json": ".json", "yaml": ".yml", "bash": ".sh",
