@@ -17,7 +17,7 @@ from src.chat_helpers import CHAT_GONE   # `B1216`
 from src.upload_handler import reserve_upload_references
 # `P21-03`: one answer to "what is this file called" for every door.
 from src.file_names import (
-    attachment_disposition, display_name, document_title, upload_display_name,
+    attachment_disposition, display_name, document_title, split_extension, upload_display_name,
 )
 from src.document_provenance import resolve_created  # `B1325`
 
@@ -882,6 +882,7 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
                 import re
                 import zipfile
                 from fastapi import Response
+                from src.document_processor import attachment_language
                 docs = db.query(Document).filter(Document.id.in_(ids)).all()
                 buf = io.BytesIO()
                 used = set()
@@ -892,15 +893,25 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
                             _verify_doc_owner(db, doc, user)
                         except HTTPException:
                             continue   # skip docs the user doesn't own
-                        ext = _ext.get(doc.language or "text", ".txt")
+                        lang = doc.language or "text"
+                        ext = _ext.get(lang, ".txt")
                         base = (doc.title or "document").strip() or "document"
                         base = re.sub(r"[^\w\-. ]+", "", base)[:60].strip() or doc.id
-                        name = base if "." in base else base + ext
+                        # `B1795`: a dot is not an extension (`Notes 11.07`,
+                        # `config.local`). The title keeps its own suffix only
+                        # when that names the language (`.yaml`, `.tsx`); a
+                        # repeat is numbered before it, and names are unique
+                        # without regard to case, as macOS and Windows unpack.
+                        own_stem, own_ext = split_extension(base)
+                        keeps_own = bool(own_ext) and (
+                            own_ext.lower() == ext or attachment_language(base) == lang)
+                        stem, suffix = (own_stem, own_ext) if keeps_own else (base, ext)
+                        name = stem + suffix
                         i = 1
-                        while name in used:
-                            name = f"{base}-{i}" + ("" if "." in base else ext)
+                        while name.casefold() in used:
+                            name = f"{stem}-{i}{suffix}"
                             i += 1
-                        used.add(name)
+                        used.add(name.casefold())
                         zf.writestr(name, doc.current_content or "")
                         wrote += 1
                 if not wrote:
