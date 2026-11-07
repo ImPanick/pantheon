@@ -94,6 +94,18 @@ _SERVER_OWNED_OAUTH_FIELDS = {
     "oauth_token_expiry",
 }
 
+# `B1921`, from upstream Odysseus 3d91ad82. The account form's Test
+# (`POST /api/email/accounts/test`) connects to the IMAP and SMTP servers the
+# person typed. It did that on the event loop, so for every second a slow or
+# silent server took, no request was answered for anyone. It connects here
+# now: two threads of its own rather than the default pool, which `B1223`'s
+# chat-send and document writes share and a burst of Tests against a tarpit
+# would otherwise hold for its whole timeout.
+import contextvars  # noqa: E402
+from concurrent.futures import ThreadPoolExecutor  # noqa: E402
+
+_ACCOUNT_TEST_POOL = ThreadPoolExecutor(max_workers=2, thread_name_prefix="mail-test")
+
 
 def _google_oauth_smtp_transport_allowed(port: int, security: str) -> bool:
     return providers.smtp_transport_allowed(providers.get("google"), port, security)
@@ -6558,6 +6570,16 @@ def setup_email_routes():
             # inline test payloads select the OAuth branch or supply token data.
             body = {key: value for key, value in body.items() if key not in _SERVER_OWNED_OAUTH_FIELDS}
 
+        # `B1921`: the connections are made off the event loop, in the Test's
+        # own pool, carrying this request's context as `asyncio.to_thread` does.
+        return await asyncio.get_running_loop().run_in_executor(
+            _ACCOUNT_TEST_POOL, contextvars.copy_context().run, _probe_account_connections, body)
+
+    def _probe_account_connections(body: dict) -> dict:
+        """`B1921`. The blocking half of `POST /api/email/accounts/test`: connect
+        to the IMAP and SMTP servers in `body`, sign in, and say how each went.
+        Runs in `_ACCOUNT_TEST_POOL`; the sign-in check, the owner check and the
+        saved account's read stay in the route."""
         imap_result = {"ok": False}
         smtp_result = None
 
