@@ -395,6 +395,130 @@ def _relevance_lines(report: dict) -> str:
     return "\n".join(lines)
 
 
+def _summary_lines(search_results, snippet_chars: int) -> List[str]:
+    """The block's SEARCH RESULTS SUMMARY, each snippet cut to ``snippet_chars``
+    (``0``: no snippet line, `B1806`'s last resort)."""
+    lines = ["SEARCH RESULTS SUMMARY:", "-" * 50]
+    for i, result in enumerate(search_results, 1):
+        lines.append(f"\n[{i}] {result['title']}")
+        lines.append(f"    URL: {result['url']}")
+        if snippet_chars:
+            lines.append(f"    Snippet: {result['snippet'][:snippet_chars]}...")
+        if result.get("age"):
+            lines.append(f"    Age: {result['age']}")
+    return lines
+
+
+def _page_head(content: dict, title_chars: Optional[int] = None) -> List[str]:
+    """A fetched page's ``[CONTENT i]`` lines, numbered as the sources list is."""
+    idx = content.get("source_index")
+    label = f"[CONTENT {idx}]" if idx else "[CONTENT]"
+    title = content["title"]
+    if title_chars is not None and isinstance(title, str) and len(title) > title_chars:
+        title = title[:title_chars] + "..."
+    return [f"\n{label} From: {content['url']}", f"Title: {title}", "-" * 30]
+
+
+# ----------------------------------------------------------------------
+# A block held to the caller's budget (`B1806`)
+# ----------------------------------------------------------------------
+# `web_search` cut this block at its 10,000 characters with a prefix cut, and
+# the block is laid out sources, header, summary, every page (about 4,000
+# characters each), instructions. Measured with five pages of 6,000
+# characters: 23,004 characters, cut after page one and part of page two, so
+# pages three to five and the instructions (the weak-match one among them)
+# never reached the model, and nothing said so while the header said five
+# pages were fetched — the silent shape `B1403` measured for `web_fetch`.
+# Upstream Odysseus 144c8a3d shares the budget across the pages instead; its
+# version kept only the sources list and the `Query:` line around them, so
+# this keeps every line of the block but the pages' own TL;DR, quotes and
+# statistics, and gives the pages what is left.
+_SHARE_FLOOR = 300          # a page cut to less text than this is named, not shown
+_TITLE_CHARS = 300          # a fetched page's title is the page's own, and uncapped
+_NOT_SHOWN = "[text not shown: over this tool's budget. web_fetch the URL above to read this page.]"
+
+
+def _shortened_notice(fetched: int, shown: int, most: int, budget: int,
+                      whole: bool = False) -> str:
+    """The notice that leads a shortened page section, in `B1403`'s words.
+
+    ``whole``: every page's text fitted once its TL;DR, quotes and statistics
+    (all taken from that text) were left out, so nothing of a page is missing.
+    """
+    start = (f"[SHORTENED: this search fetched {fetched} pages and this tool's output is "
+             f"held to {budget:,} characters, so ")
+    if whole and shown == fetched:
+        return start + ("the pages below are given without their TL;DR, quotes and "
+                        "statistics. Each page's text is whole.]")
+    if shown == fetched:
+        what = (f"each page below is cut to at most {most:,} characters of its text: its "
+                "opening and the passages that match the query")
+    elif shown:
+        rest = "one" if fetched - shown == 1 else str(fetched - shown)
+        what = (f"the first {shown} pages below are cut to at most {most:,} characters of "
+                f"text each, and the text of the last {rest} is not shown at all")
+    else:
+        what = "no page's text is shown below, only which pages were fetched"
+    return start + (f"{what}. The rest is NOT below. If what you need is not here, web_fetch "
+                    "that page's URL to read the whole page. Do not fill in the missing part "
+                    "from memory, and do not describe anything you have not read here as "
+                    "sourced.]")
+
+
+def _block_within(budget: int, head: List[str], search_results, fetched_content,
+                  tail: List[str], query: str) -> str:
+    """The block again, its fetched pages sharing what the rest leaves of ``budget``.
+
+    ``head`` (the sources list and the header, every Not fetched and Relevance
+    line among them) and ``tail`` (the end rule and the instructions) are kept
+    verbatim, and so is the summary but for its snippets. Each page keeps its
+    ``[CONTENT i]`` lines and gets an equal share for its text, cut by
+    `search_excerpt`; what a short page does not need goes to the others. When
+    a share would fall under `_SHARE_FLOOR`, the summary's snippets are halved
+    first, then the last pages are named without their text, and last of all
+    the summary loses its snippets. The result is at most ``budget`` unless
+    the lines kept are longer than that on their own, which the caller's own
+    cut is left to handle.
+    """
+    n = len(fetched_content)
+    lengths = [len(c["content"]) for c in fetched_content]
+
+    def build(snippet_chars, shown, shares):
+        # With no shares yet the notice is given its longest form, so that
+        # each text added afterwards adds exactly its own length.
+        most = max(shares, default=0) if shares else budget
+        whole = bool(shares) and all(shares[i] >= lengths[i] for i in range(shown))
+        pages = ["\n" + "=" * 70, "FETCHED PAGE CONTENT:",
+                 _shortened_notice(n, shown, most, budget, whole), "-" * 50]
+        for i, content in enumerate(fetched_content):
+            pages.extend(_page_head(content, _TITLE_CHARS))
+            if i >= shown:
+                pages.append(_NOT_SHOWN)
+            else:
+                pages.append(search_excerpt(content["content"], query, shares[i]) if shares else "")
+            pages.append("")
+        return "\n".join(head + _summary_lines(search_results, snippet_chars) + pages + tail)
+
+    def split(room, shown):
+        shares = [0] * n
+        left = max(room, 0)
+        order = sorted(range(shown), key=lambda i: lengths[i])
+        for pos, i in enumerate(order):
+            shares[i] = min(lengths[i], left // (shown - pos))
+            left -= shares[i]
+        return shares
+
+    tries = ([(200, n), (100, n)] + [(100, shown) for shown in range(n - 1, -1, -1)]
+             + [(0, 0)])
+    for snippet_chars, shown in tries:
+        room = budget - len(build(snippet_chars, shown, None))
+        shares = split(room, shown)
+        cut = [shares[i] for i in range(shown) if shares[i] < lengths[i]]
+        if room >= 0 and (not cut or min(cut) >= _SHARE_FLOOR):
+            return build(snippet_chars, shown, shares)
+    return build(0, 0, [0] * n)
+
+
 # ----------------------------------------------------------------------
 # Comprehensive web search (with advanced filtering)
 # ----------------------------------------------------------------------
@@ -411,6 +535,7 @@ def comprehensive_web_search(
     return_sources: bool = False,
     fetch_content: bool = True,
     report: Optional[dict] = None,
+    budget: Optional[int] = None,
 ):
     """Perform comprehensive web search with content fetching and advanced filtering.
 
@@ -423,6 +548,12 @@ def comprehensive_web_search(
     of them, ``report["sync"]`` is ``throttle_sync``'s ``{"source":
     "throttled", "retry_in": …}`` — the soonest any of them clears — so the
     feature can say when search comes back instead of showing nothing.
+
+    ``budget``: the most characters the caller can pass on (`B1806`). A block
+    longer than that has its fetched pages shortened to share what the rest
+    leaves, rather than being cut by the caller after its first pages; see
+    `_block_within`. ``None``, the default, and a block that fits are the
+    block as built.
     """
     logger.info(f"Starting comprehensive search for: {query}")
     if time_filter:
@@ -679,14 +810,8 @@ def comprehensive_web_search(
     output_parts.append("=" * 70)
     output_parts.append("")
 
-    output_parts.append("SEARCH RESULTS SUMMARY:")
-    output_parts.append("-" * 50)
-    for i, result in enumerate(search_results, 1):
-        output_parts.append(f"\n[{i}] {result['title']}")
-        output_parts.append(f"    URL: {result['url']}")
-        output_parts.append(f"    Snippet: {result['snippet'][:200]}...")
-        if result.get("age"):
-            output_parts.append(f"    Age: {result['age']}")
+    summary_at = len(output_parts)
+    output_parts.extend(_summary_lines(search_results, 200))
 
     if fetched_content:
         output_parts.append("\n" + "=" * 70)
@@ -699,11 +824,7 @@ def comprehensive_web_search(
         # which matched neither the sources list nor each other run to run.
         fetched_content.sort(key=lambda c: c.get("source_index") or len(search_results) + 1)
         for content in fetched_content:
-            _idx = content.get("source_index")
-            _label = f"[CONTENT {_idx}]" if _idx else "[CONTENT]"
-            output_parts.append(f"\n{_label} From: {content['url']}")
-            output_parts.append(f"Title: {content['title']}")
-            output_parts.append("-" * 30)
+            output_parts.extend(_page_head(content))
 
             # `B1808`: the opening and the passages the query asks about, not
             # the first 3000 characters whatever was asked. Everything below
@@ -735,6 +856,7 @@ def comprehensive_web_search(
 
             output_parts.append("")
 
+    tail_at = len(output_parts)
     output_parts.append("=" * 70)
     output_parts.append("END OF WEB SEARCH RESULTS")
     output_parts.append("=" * 70)
@@ -762,4 +884,7 @@ def comprehensive_web_search(
     output_parts.append(instructions)
 
     result = "\n".join(output_parts)
+    if budget is not None and len(result) > budget and fetched_content:
+        result = _block_within(budget, output_parts[:summary_at], search_results,
+                               fetched_content, output_parts[tail_at:], query)
     return (result, _source_list) if return_sources else result

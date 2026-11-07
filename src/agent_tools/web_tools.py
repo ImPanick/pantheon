@@ -40,6 +40,28 @@ class WebSearchTool:
             time_filter = freshness_for(query)
         loop = asyncio.get_running_loop()
         started = time.monotonic()
+        # `B1806`. Whether this request is capped is asked here, before the
+        # search: the search runs in a worker thread, which does not carry the
+        # local-endpoint flag `unlimited()` reads, and would answer "capped"
+        # for every local model. A capped search is handed the budget so it
+        # shares it across every page it fetched; this tool's prefix cut below
+        # kept the first page or two and dropped the rest, and the closing
+        # instructions with them. Passed only to a search that takes it.
+        try:
+            from src.runtime_limits import unlimited as _unlimited
+            _no_cap = _unlimited()
+        except Exception:
+            _no_cap = False
+        search_kwargs = {"max_pages": max_pages, "time_filter": time_filter,
+                         "return_sources": True}
+        if not _no_cap:
+            try:
+                if "budget" in inspect.signature(comprehensive_web_search).parameters:
+                    search_kwargs["budget"] = MAX_OUTPUT_CHARS
+            except (TypeError, ValueError):
+                # A shim with no signature is sent no budget; the hard cut
+                # below still bounds what it returns.
+                pass
         if progress_cb:
             await progress_cb({
                 "elapsed_s": 0,
@@ -49,12 +71,7 @@ class WebSearchTool:
             text, sources = await asyncio.wait_for(
                 loop.run_in_executor(
                     None,
-                    lambda: comprehensive_web_search(
-                        query,
-                        max_pages=max_pages,
-                        time_filter=time_filter,
-                        return_sources=True,
-                    ),
+                    lambda: comprehensive_web_search(query, **search_kwargs),
                 ),
                 timeout=30,
             )
@@ -79,11 +96,7 @@ class WebSearchTool:
                 "elapsed_s": round(time.monotonic() - started, 1),
                 "tail": "Search completed; preparing sources.",
             })
-        try:
-            from src.runtime_limits import unlimited as _unlimited
-            _no_cap = _unlimited()
-        except Exception:
-            _no_cap = False
+        # The last guard, for a block whose kept lines alone are over budget.
         output = text if _no_cap else (text[:MAX_OUTPUT_CHARS] if len(text) > MAX_OUTPUT_CHARS else text)
         if sources:
             output += "\n\n<!-- SOURCES:" + json.dumps(sources) + " -->"

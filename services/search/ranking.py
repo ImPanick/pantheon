@@ -256,6 +256,10 @@ _EXCERPT_OPERATORS = re.compile(r"(?<!\S)-?(?:site|filetype):\S+", re.I)
 _EXCERPT_LEAD = 240     # the opening every excerpt keeps: scope, date, byline
 _EXCERPT_FLOOR = 200    # a budget below this is only ever a prefix
 _EXCERPT_TRIES = 24     # terms used, and passages tried around each term
+# `B1806`. A second passage narrower than this is mostly its own marker: a
+# page shared down to ~300 characters got two 37-character passages and three
+# markers, so a small budget is spent on one passage.
+_EXCERPT_PASSAGE = 200
 
 
 def _excerpt_prefix(text: str, limit: int) -> str:
@@ -330,7 +334,11 @@ def search_excerpt(text: str, query: str, max_chars: int) -> str:
     space = text.rfind(" ", 0, lead_end)
     if space > 0:
         lead_end = space
-    width = max(1, (max_chars - lead_end - 3 * len(marker)) // 2)
+    room = max_chars - lead_end - 2 * len(marker)       # for one passage
+    width = (max_chars - lead_end - 3 * len(marker)) // 2  # for each of two
+    passages = 2 if width >= _EXCERPT_PASSAGE else 1
+    if passages == 1:
+        width = max(1, room)
     candidates = {}
     for hits in found:
         for at, _e in hits[:_EXCERPT_TRIES]:
@@ -349,7 +357,7 @@ def search_excerpt(text: str, query: str, max_chars: int) -> str:
             continue
         chosen.append((start, end))
         covered |= hit
-        if len(chosen) == 2:
+        if len(chosen) == passages:
             break
     if not chosen:
         # The query's words are in the opening alone: the opening is the passage.
@@ -358,7 +366,6 @@ def search_excerpt(text: str, query: str, max_chars: int) -> str:
         # Spend the budget on one passage's context rather than a weaker second
         # one, and when the passage meets the end of the page, grow it backward:
         # it used to stop there with a third of the budget unspent.
-        room = max_chars - lead_end - 2 * len(marker)
         start, _end = chosen[0]
         end = word_end(start, min(len(text), start + room))
         if end == len(text) and end - start < room:
