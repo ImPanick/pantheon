@@ -305,3 +305,135 @@ def test_launchers_export_the_port_they_serve_on():
         text = (_repo_root() / name).read_text(encoding="utf-8")
         assert uvicorn_flag in text, f"{name}: launcher no longer passes {uvicorn_flag}"
         assert export in text, f"{name}: serves on a port the app cannot read back"
+
+
+# ── `B1956`: the Google sign-in takes back only a state Pantheon signed ──────
+class _GoogleServer:
+    """`B1956`. One MCP server with a Google keys file, in a real SQLite table,
+    behind the real routes. Google's token endpoint answers here and records
+    what it was sent; nothing leaves the machine."""
+
+    def __init__(self, tmp_path, monkeypatch):
+        from types import SimpleNamespace
+
+        from sqlalchemy import create_engine
+        from sqlalchemy.orm import sessionmaker
+        from sqlalchemy.pool import StaticPool
+
+        import routes.mcp.mcp_routes as routes
+        from core.database import Base, McpServer
+
+        monkeypatch.setattr(routes, "MCP_OAUTH_DIR", str(tmp_path))
+        keys = tmp_path / "keys.json"
+        keys.write_text(json.dumps({"installed": {"client_id": "cid", "client_secret": "csecret"}}))
+        self.token_file = tmp_path / "token.json"
+        engine = create_engine("sqlite://", connect_args={"check_same_thread": False},
+                               poolclass=StaticPool)
+        Base.metadata.create_all(engine, tables=[McpServer.__table__])
+        factory = sessionmaker(bind=engine)
+        monkeypatch.setattr(routes, "SessionLocal", factory)
+        db = factory()
+        db.add(McpServer(id="srv1", name="gmail", transport="stdio", command="npx",
+                         args="[]", env="{}",
+                         oauth_config=json.dumps({"keys_file": str(keys),
+                                                  "token_file": str(self.token_file),
+                                                  "scopes": ["https://mail.google.com/"]})))
+        db.commit()
+        db.close()
+
+        self.sent = []
+
+        async def token_endpoint(method, url, *, data=None, **_k):
+            self.sent.append(data)
+            return SimpleNamespace(status_code=200, text="", json=lambda: {"access_token": "t"})
+
+        monkeypatch.setattr(routes.paced_http, "request", token_endpoint)
+        monkeypatch.setattr(routes, "require_admin", lambda request: None)
+
+        class _Manager:
+            async def connect_server(self, **_k):
+                return True
+
+            def get_server_status(self, _server_id):
+                return {"tool_count": 2}
+
+        router = routes.setup_mcp_routes(_Manager())
+        self._authorize = next(r.endpoint for r in router.routes
+                               if r.path == "/api/mcp/oauth/authorize/{server_id}")
+        self._callback = next(r.endpoint for r in router.routes
+                              if r.path == "/api/mcp/oauth/callback")
+
+    @staticmethod
+    def browser(user="admin"):
+        from types import SimpleNamespace
+        return SimpleNamespace(state=SimpleNamespace(current_user=user),
+                               headers={"host": "localhost:7000"})
+
+    def reconnect(self, user="admin"):
+        """The state Google is sent when `user` presses Reconnect."""
+        import urllib.parse
+
+        resp = self._authorize(server_id="srv1", request=self.browser(user))
+        query = urllib.parse.urlparse(resp.headers["location"]).query
+        return urllib.parse.parse_qs(query)["state"][0]
+
+    def come_back(self, state, user="admin", code="the-code"):
+        return asyncio.run(self._callback(code=code, state=state, request=self.browser(user)))
+
+
+def test_a_callback_carrying_only_the_server_id_is_refused(tmp_path, monkeypatch):
+    """`B1956`. The state was the server id itself, so a link to the callback
+    with an attacker's own code, opened by a signed-in admin, swapped the
+    server's Google account for the attacker's (a lax cookie rides a top-level
+    GET)."""
+    google = _GoogleServer(tmp_path, monkeypatch)
+
+    resp = google.come_back("srv1", code="attackers-code")
+
+    assert resp.status_code == 400 and b"expired" in resp.body.lower()
+    assert google.sent == [] and not google.token_file.exists()
+
+
+def test_reconnect_signs_its_state_and_its_own_callback_connects(tmp_path, monkeypatch):
+    """`B1956`. The state Reconnect sends Google names the server and who
+    pressed it, signed; coming back with it connects the server as before."""
+    from routes.email_helpers import verify_oauth_state
+
+    google = _GoogleServer(tmp_path, monkeypatch)
+    state = google.reconnect()
+    signed = verify_oauth_state(state)
+    assert signed and signed["a"] == "mcp:srv1" and signed["o"] == "admin"
+
+    resp = google.come_back(state)
+
+    assert resp.status_code == 200 and b"Authorization Successful" in resp.body
+    [sent] = google.sent
+    assert sent["code"] == "the-code" and sent["client_id"] == "cid"
+    assert json.loads(google.token_file.read_text()) == {"access_token": "t"}
+
+
+def test_a_tampered_or_someone_elses_state_is_refused(tmp_path, monkeypatch):
+    """`B1956`. A state whose server or person was rewritten, one started by
+    another person, and a mail sign-in's state are all refused."""
+    import base64
+
+    from routes.email_helpers import make_oauth_state
+
+    google = _GoogleServer(tmp_path, monkeypatch)
+    payload, sig = base64.urlsafe_b64decode(
+        make_oauth_state("mcp:srv1", "admin")).decode().rsplit("|", 1)
+
+    def rewritten(old, new):
+        assert old in payload
+        return base64.urlsafe_b64encode(f"{payload.replace(old, new)}|{sig}".encode()).decode()
+
+    for refused, user in (
+        (rewritten('"mcp:srv1"', '"mcp:srv2"'), "admin"),
+        (rewritten('"o":"admin"', '"o":"mallory"'), "mallory"),
+        (google.reconnect(), "another-admin"),           # started in admin's browser
+        (make_oauth_state("mcp:srv1", "mallory"), "admin"),
+        (make_oauth_state("srv1", "admin"), "admin"),    # a mail sign-in's state
+    ):
+        resp = google.come_back(refused, user=user)
+        assert resp.status_code == 400 and b"expired" in resp.body.lower(), (refused, user)
+    assert google.sent == [] and not google.token_file.exists()

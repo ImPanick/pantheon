@@ -95,6 +95,58 @@ def load_markitdown():
     return MarkItDown
 
 
+def _zip_inflates_too_far(path: str) -> bool:
+    """`B1956`. Would reading this package's parts whole go past the bound?
+
+    markitdown's readers (mammoth, openpyxl, python-pptx) and ``python-docx``
+    read every part of a package whole, while the bundled readers stop at
+    ``ooxml_native.PART_LIMIT`` (`B1156`). A package with a part over that
+    limit, more than four times it in all, or a part that inflates past the
+    size its header states is left to the bundled readers. This changes which
+    reader answers; it never refuses a file.
+
+    The sizes are **measured, not read from the header**. CPython's whole-part
+    read inflates as much as a gigabyte or two in one step and only then cuts
+    the result to the declared size, so a part declaring 1,000 bytes that
+    inflates to 48 MiB held all of it (measured). Each part is inflated here to
+    its declared size plus one byte at most, a megabyte at a time.
+
+    Not a zip at all (`.xls`, a broken file) is ``False``: the chain goes on as
+    it did, and no zip reader can be handed it.
+    """
+    import copy
+    import zipfile
+
+    from src import ooxml_native
+
+    limit = ooxml_native.PART_LIMIT
+    try:
+        z = zipfile.ZipFile(path)
+    except (zipfile.BadZipFile, OSError, ValueError):
+        return False
+    with z:
+        parts = [info for info in z.infolist() if not info.is_dir()]
+        if sum(info.file_size for info in parts) > 4 * limit:
+            return True
+        if any(info.file_size > limit
+               or info.compress_type not in (zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED)
+               for info in parts):
+            return True
+        for info in parts:
+            probe = copy.copy(info)
+            probe.file_size = info.file_size + 1   # read one byte past the header's word
+            seen = 0
+            try:
+                with z.open(probe) as fh:
+                    while chunk := fh.read(1 << 20):
+                        seen += len(chunk)
+                        if seen > info.file_size:
+                            return True
+            except Exception:  # noqa: BLE001 - a part that cannot be measured is not read whole
+                return True
+    return False
+
+
 def _extract_docx_python_docx(path: str) -> str | None:
     """The `.docx` reader that used to live inside ``attachment_as_doc``.
 
@@ -119,6 +171,10 @@ def _extract_docx_python_docx(path: str) -> str | None:
     try:
         from docx import Document as _Docx  # optional dependency
     except ImportError:
+        return None
+    if _zip_inflates_too_far(path):
+        # `B1956`: python-docx reads every part whole; the next rung reads
+        # this package within the bound.
         return None
     d = _Docx(path)
     # Convert paragraphs to markdown — preserve heading styles as #/##/###,
@@ -161,13 +217,17 @@ def _extract_docx_native(path: str) -> str | None:
     """
     import zipfile
 
+    from src.ooxml_native import _part
+
     ns = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
     try:
         with zipfile.ZipFile(path) as z:
-            xml_bytes = z.read("word/document.xml")
+            # `B1956`: to `PART_LIMIT` and no further, through the structured
+            # reader's own `_part`. A whole-part read here undid that bound
+            # each time the structured reader refused a part for its size.
+            root = _part(z, "word/document.xml")
     except (zipfile.BadZipFile, KeyError, OSError):
         return None
-    root = _parse_office_xml(xml_bytes)
     if root is None:
         return None
     paragraphs: list[str] = []
@@ -222,12 +282,15 @@ def _extract_odf_native(path: str) -> str | None:
     """
     import zipfile
 
+    from src.ooxml_native import _part
+
     try:
         with zipfile.ZipFile(path) as z:
-            xml_bytes = z.read("content.xml")
+            # `B1956`: bounded by `PART_LIMIT`, as the other readers are; this
+            # one read the part whole.
+            root = _part(z, "content.xml")
     except (zipfile.BadZipFile, KeyError, OSError):
         return None
-    root = _parse_office_xml(xml_bytes)
     if root is None:
         return None
 
@@ -697,6 +760,11 @@ def convert_to_markdown(path: str) -> str | None:
                 return text
         logger.warning("markitdown not installed; cannot extract %s", path)
         return None
+    if native is not None and _zip_inflates_too_far(path):
+        # `B1956`. markitdown reads every part whole, and before any bounded
+        # reader; a package that inflates past their bound is theirs.
+        logger.warning("%s inflates past the part limit; read with the bundled readers", path)
+        return _run_natives(native, path) or None
     try:
         result = markitdown_cls().convert(path)
         text = getattr(result, "text_content", None)

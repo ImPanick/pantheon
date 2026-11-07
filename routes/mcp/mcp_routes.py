@@ -1409,6 +1409,13 @@ def setup_mcp_routes(mcp_manager: McpManager):
             # paste the resulting URL back if they're on a different device.
             redirect_uri = _mcp_oauth_redirect_uri()
 
+            # `B1956`. The state was the server id itself, so the callback took
+            # back any code for that id. It is signed now, with who pressed
+            # Reconnect, by the helper mail sign-in uses; `mcp:` keeps a mail
+            # sign-in's state from passing for this one.
+            from routes.email_helpers import make_oauth_state
+            state = make_oauth_state("mcp:" + server_id,
+                                     getattr(request.state, "current_user", None) or "")
             params = {
                 "client_id": client_id,
                 "redirect_uri": redirect_uri,
@@ -1416,7 +1423,7 @@ def setup_mcp_routes(mcp_manager: McpManager):
                 "scope": " ".join(scopes),
                 "access_type": "offline",
                 "prompt": "consent",
-                "state": server_id,
+                "state": state,
             }
             auth_url = "https://accounts.google.com/o/oauth2/v2/auth?" + urllib.parse.urlencode(params)
 
@@ -1446,8 +1453,21 @@ def setup_mcp_routes(mcp_manager: McpManager):
                 "The MCP server is connecting. You can close this window and return to Pantheon.",
                 success=True,
             ))
-        # Legacy Google path: state is the server_id
-        return await _exchange_and_connect(state, code, request)
+        # Legacy Google path. `B1956`: only a state signed at Reconnect, for
+        # the person signed in now, names the server. A bare server id was a
+        # link anyone could build, and a lax session cookie rides a top-level
+        # GET, so one click by an admin swapped the server's Google account.
+        from routes.email_helpers import verify_oauth_state
+        signed = verify_oauth_state(state) or {}
+        account = str(signed.get("a") or "")
+        person = getattr(request.state, "current_user", None) or ""
+        if not account.startswith("mcp:") or (signed.get("o") or "") != person:
+            return HTMLResponse(_oauth_result_page(
+                "Authorization expired",
+                "This sign-in was not started from your Pantheon session. "
+                "Press Reconnect in Settings and sign in again.",
+            ), status_code=400)
+        return await _exchange_and_connect(account[len("mcp:"):], code, request)
 
     @router.post("/oauth/exchange/{server_id}")
     async def oauth_exchange(server_id: str, request: Request, callback_url: str = Form(...)):
