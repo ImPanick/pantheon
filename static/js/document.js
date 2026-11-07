@@ -2496,9 +2496,11 @@ import { PDF_FONT_COVERAGE } from './pdfFontCoverage.js';   // `B1687`
     }).join('');
 
     if (!changed && /<[^>]+>/.test(text) && typeof document !== 'undefined') {
-      const probe = document.createElement('div');
+      // `B1903`. Parsed in a document with no browsing context, which fetches
+      // nothing: a live `<div>` loaded each `<img>` the quote named.
+      const probe = document.implementation.createHTMLDocument('').createElement('div');
       probe.innerHTML = text;
-      const plain = (probe.innerText || probe.textContent || '').trim();
+      const plain = (probe.textContent || '').trim();
       const plainClean = plain ? _sanitizeOutgoingEmailBody(plain) : plain;
       if (plainClean !== plain) return plainClean;
     }
@@ -2610,9 +2612,12 @@ import { PDF_FONT_COVERAGE } from './pdfFontCoverage.js';   // `B1687`
 
   function _emailHtmlToPlainText(html) {
     if (typeof document === 'undefined') return String(html || '');
-    const d = document.createElement('div');
+    // `B1903`. The sender's markup, parsed where nothing is fetched or run; an
+    // element of that document keeps the `<div>` parsing context, so the text
+    // is what the live `<div>` gave.
+    const d = document.implementation.createHTMLDocument('').createElement('div');
     d.innerHTML = String(html || '');
-    return d.innerText || d.textContent || '';
+    return d.textContent || '';
   }
 
   function _emailQuoteMarkerMatch(text) {
