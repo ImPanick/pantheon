@@ -4714,6 +4714,8 @@ export function addMessage(role, content, modelName, metadata) {
                 round: shownStep({ round: stepOf(ev.round), step_offset: ev.step_offset }),   // `B1199`
                 // `P20-03`: persisted with the event, so a reload says where it ran.
                 ranIn: ev.ran_in, ranAs: ev.ran_as,
+                // `B1878`: persisted with the event, so its workflow's door survives.
+                workflowId: ev.workflow_id,
                 command: ev.command, fullCommand: ev.full_command,
                 // A call that never ran has no output to show; the gate's own
                 // "Waiting for an exact user approval." is not one.

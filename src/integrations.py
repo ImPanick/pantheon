@@ -517,9 +517,14 @@ def add_integration(data: Dict[str, Any], owner: Optional[str] = None) -> Dict[s
     """Add a new integration. If 'preset' is given, merge preset defaults first.
 
     `P27-02`: it is `owner`'s, and shared only when `data["shared"]` is a
-    literal `true` — never whatever owner the body names."""
+    literal `true` — never whatever owner the body names.
+
+    `B1871`: and its id is always minted here, never the body's. A chosen id
+    let two Integrations share one, and let a workflow file be aimed at an id
+    the importer was known to have (`workflow_share.MISSING_INTEGRATION_ID`
+    closes the import's half)."""
     integration: Dict[str, Any] = {}
-    data = {k: v for k, v in dict(data).items() if k not in ("owner", "shared")} | {
+    data = {k: v for k, v in dict(data).items() if k not in ("owner", "shared", "id")} | {
         "owner": owner, "shared": data.get("shared") is True}
 
     preset_key = data.get("preset")

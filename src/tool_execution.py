@@ -1684,6 +1684,12 @@ async def _execute_tool_block_impl(
     elif tool == "manage_tasks":
         desc = "manage_tasks"
         result = await do_manage_tasks(content, owner=owner)
+    elif tool == "manage_workflows":
+        # `B1878`. Read, test and explain workflows; never a person's check,
+        # fix or answer (`src/tools/workflows.py`).
+        from src.tool_implementations import do_manage_workflows
+        desc = "manage_workflows"
+        result = await do_manage_workflows(content, owner=owner)
     elif tool == "manage_skills":
         desc = "manage_skills"
         result = await do_manage_skills(content, owner=owner)

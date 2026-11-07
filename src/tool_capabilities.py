@@ -373,6 +373,17 @@ _register(
     result_integrity=ResultIntegrity.EXTERNAL_UNTRUSTED,
 )
 _register(
+    # `B1878`. The tool as a whole, failing high: a test run may send what the
+    # workflow sends. Each action's own effects are `_ACTION_CAPABILITIES`'.
+    # Its results carry what runs recorded — a stranger's error, a step's
+    # output — so they are data.
+    {"manage_workflows"},
+    ToolEffect.READ_PRIVATE,
+    ToolEffect.WRITE_PRIVATE,
+    ToolEffect.EXTERNAL_SIDE_EFFECT,
+    result_integrity=ResultIntegrity.EXTERNAL_UNTRUSTED,
+)
+_register(
     {
         "api_call",
         "app_api",
@@ -914,6 +925,7 @@ _ACTION_DEFAULTS: Mapping[str, str] = MappingProxyType(
         "ledger_table": "list",      # `P24-30`
         "manage_research": "list",
         "manage_tasks": "list",
+        "manage_workflows": "list",      # `B1878`
     }
 )
 
@@ -1100,7 +1112,20 @@ _LOOK = _capabilities(ToolEffect.READ_PUBLIC, result_integrity=ResultIntegrity.E
 _REACH = _capabilities(ToolEffect.NETWORK_EGRESS, result_integrity=ResultIntegrity.EXTERNAL_UNTRUSTED)
 _SEND = _capabilities(ToolEffect.NETWORK_EGRESS, ToolEffect.EXTERNAL_SIDE_EFFECT,
                       result_integrity=ResultIntegrity.EXTERNAL_UNTRUSTED)
+_WORKFLOW_READ = _capabilities(ToolEffect.READ_PRIVATE,
+                               result_integrity=ResultIntegrity.EXTERNAL_UNTRUSTED)
 _ACTION_CAPABILITIES: Mapping[str, Mapping[str, ToolCapabilities]] = MappingProxyType({
+    # `B1878`. Reading a workflow, its runs and the model's reading of a
+    # failed step reads the person's own; a dry run writes its plan as a run
+    # of the workflow; a test run runs the workflow, whose steps may send.
+    "manage_workflows": MappingProxyType({
+        "list": _WORKFLOW_READ, "show": _WORKFLOW_READ, "runs": _WORKFLOW_READ,
+        "explain": _WORKFLOW_READ, "export": _WORKFLOW_READ,
+        "dry_run": _capabilities(ToolEffect.READ_PRIVATE, ToolEffect.WRITE_PRIVATE,
+                                 result_integrity=ResultIntegrity.EXTERNAL_UNTRUSTED),
+        "test_run": _capabilities(ToolEffect.WRITE_PRIVATE, ToolEffect.EXTERNAL_SIDE_EFFECT,
+                                  result_integrity=ResultIntegrity.EXTERNAL_UNTRUSTED),
+    }),
     # `P25-05`. Looking at what is open never asks; going somewhere reaches the
     # web; a click, typing and a key press can send a form, a message or an
     # order, so they are what a push is — outward, under the person's name.

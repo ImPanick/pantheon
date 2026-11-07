@@ -116,6 +116,8 @@ TOOL_TAGS = {"bash", "python", "web_search", "web_fetch", "read_file", "write_fi
              "manage_session", "manage_memory", "list_models",
              "ui_control", "generate_image", "ask_user", "update_plan",
              "manage_tasks", "api_call", "ask_teacher", "manage_skills",
+             # `B1878`. Read, test and explain workflows; offered on request only.
+             "manage_workflows",
              # `B1737`. The model opens or searches skills itself, read-only.
              "use_skill",
              # `B1755`. Loads tools a partial turn did not carry.

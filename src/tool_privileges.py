@@ -65,7 +65,8 @@ TOOL_PRIVILEGES: Dict[str, tuple] = {
     "can_use_notes": ("Notes", frozenset({"manage_notes"})),
     "can_use_tasks": ("Tasks", frozenset({"manage_tasks"})),
     "can_use_theme": ("Theme", frozenset()),
-    "can_use_workbench": ("Workbench", frozenset()),
+    # `B1878`: the assistant's door to the Workbench's workflows.
+    "can_use_workbench": ("Workbench", frozenset({"manage_workflows"})),
 }
 
 

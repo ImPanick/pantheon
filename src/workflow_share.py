@@ -14,10 +14,13 @@ run) and an `unchecked` mark (`version_graph`); an endpoint URL (this
 install's address — a LAN leak, and a destination); an Integration's key or
 base URL (an Integration is only ever referred to by id, with its name and
 preset); MCP env; an HTTP header's value (names kept, values blanked, and the
-import lists them). Last, a scan for the low-false-positive shapes
-`diagnostic_bundle` redacts (`_KNOWN_PREFIX`) and `Bearer …` refuses the
-export, naming the step and the field — mistake prevention, not a control: the
-person typed it (`Law 17`).
+import lists them); and (`B1872`) any value NAMED like a password or a key — a
+query or body entry, a Set field, a Code input, an MCP argument, a path's
+`name=value` — blanked and listed the same way. Last, a scan for the
+low-false-positive shapes `diagnostic_bundle` redacts (`_KNOWN_PREFIX`),
+`Bearer …`, and a long run of mixed letters and digits typed as a value
+refuses the export, naming the step and the field — mistake prevention, not a
+control: the person typed it (`Law 17`).
 
 **Import** (`import_file`) is the file's adversary's door — whoever wrote the
 file (§ 5.3). Refused whole: over 1 MiB, an unknown `pantheon_workflow`, a
@@ -63,12 +66,129 @@ FILE_TOO_BIG = "The file is larger than 1 MiB, so it was not read. Nothing was s
 # and the step says which task to pick (`needs`). The file's id is never kept:
 # an id that happened to be one of the importer's own tasks would run it.
 MISSING_TASK_ID = "not-on-this-install"
+# `B1871`. The same door for an Integration and an MCP tool. The file's id was
+# kept and a stand-in put at it for the import-time check only, so an id that
+# happened to be one of the importer's own (`victim01`, their "Home") hid the
+# real one from the check and then bound the stored step to it — its real key
+# and base URL — while the reply named the file's Integration and said "Add
+# it". A missing one is now checked and stored under one of these instead, one
+# per resource the file names (a second gets "-2", and so on, never an id this
+# install has), and the step says which to pick (`needs`).
+MISSING_INTEGRATION_ID = "integration-not-on-this-install"
+MISSING_MCP_TOOL_ID = "mcp__not-on-this-install__tool"
 _BEARER_VALUE = re.compile(r"(?i)\bbearer\s+[A-Za-z0-9._~+/=-]{8,}")
 
 
 def _secret_shape(text) -> bool:
     from src.diagnostic_bundle import _KNOWN_PREFIX
     return isinstance(text, str) and bool(_KNOWN_PREFIX.search(text) or _BEARER_VALUE.search(text))
+
+
+# `B1872`. The export blanked a header's value and nothing else, and its scan
+# knew only the prefixed shapes above, so a key in a query string (`appid`,
+# `api_key`, `key`), a form field, a Set step's `db_password` or a Code step's
+# `token` input left in the file verbatim. A value is now blanked by the NAME a
+# person gave it, wherever names and values are typed on a step — the entry
+# lists below, an MCP step's arguments, and a `name=value` typed into an HTTP
+# path's query — unless it is a reference, which carries no secret. Names are
+# read lower-cased with camelCase and punctuation as `_`; `max_tokens`,
+# `author`, `sort_key` are not credentials, `token`, `auth`, `api_key` are.
+_ENTRY_KEYS = ("query", "body", "fields", "input")
+_CREDENTIAL_NAME = re.compile(
+    r"pass(?:word|wd|phrase|code)|^pass$|^pwd$|secret|credential|cookie"
+    r"|(?:^|_)(?:api|app|access|private|licen[cs]e|subscription|auth|master|signing"
+    r"|encryption)_?key|^key$|(?:^|_)app_?id$|(?:^|_)session_?(?:id|key|token)$"
+    r"|token(?!s)|(?:^|_)o?auth(?:_|$)|authori[sz]ation")
+# A long run of mixed letters and digits typed as a value under any other name:
+# the export is refused, naming the step and the field, as for the prefixed
+# shapes. A run is cut at `_ - .` and spaces, so words, a date and a UUID-shaped
+# id are not one; base64's `+ / =` are not cuts.
+_OPAQUE_RUN = re.compile(r"[A-Za-z0-9+/=]{24,}")
+
+
+def credential_name(name) -> bool:
+    """Whether a step's entry, argument or path parameter is named like a
+    password or a key (`B1872`)."""
+    if not isinstance(name, str) or not name.strip():
+        return False
+    words = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", name.strip())
+    words = re.sub(r"[^a-z0-9]+", "_", words.lower()).strip("_")
+    return bool(_CREDENTIAL_NAME.search(words))
+
+
+def _typed_value(value) -> bool:
+    """A value a person typed, not a reference to another step's output."""
+    if isinstance(value, bool) or not isinstance(value, (str, int, float)) or value == "":
+        return False
+    return not (isinstance(value, str) and "{{" in value)
+
+
+def _opaque(text) -> bool:
+    return isinstance(text, str) and any(
+        re.search(r"[A-Za-z]", run) and re.search(r"[0-9]", run)
+        for run in _OPAQUE_RUN.findall(text) if "{{" not in text)
+
+
+def _blank_path_query(path):
+    """`/x?key=abc&units=metric` → `/x?key=&units=metric` for a parameter named
+    like a key; the path and every other parameter as typed."""
+    if not isinstance(path, str) or "?" not in path:
+        return path
+    base, _, query = path.partition("?")
+    parts = []
+    for part in query.split("&"):
+        name, eq, value = part.partition("=")
+        parts.append(f"{name}=" if eq and credential_name(name) and _typed_value(value) else part)
+    return f"{base}?{'&'.join(parts)}"
+
+
+def _path_query_names(path) -> list:
+    if not isinstance(path, str) or "?" not in path:
+        return []
+    return [name for name, eq, _v in (p.partition("=") for p in path.partition("?")[2].split("&"))
+            if eq and credential_name(name)]
+
+
+def blank_secrets(config: dict) -> dict:
+    """`B1872`. A step's own settings with every value named like a password
+    or a key blanked (not its For-each's step: `_clean_config` recurses)."""
+    for key in _ENTRY_KEYS:
+        entries = config.get(key)
+        if isinstance(entries, list):
+            config[key] = [dict(e, value="") if isinstance(e, dict) and credential_name(e.get("name"))
+                           and _typed_value(e.get("value")) else e for e in entries]
+    if isinstance(config.get("args"), dict):
+        config["args"] = {k: ("" if credential_name(k) and _typed_value(v) else v)
+                          for k, v in config["args"].items()}
+    if "path" in config:
+        config["path"] = _blank_path_query(config["path"])
+    return config
+
+
+def secret_slots(config: dict) -> list:
+    """`(field, name)` for each place on a step (not its For-each's step) a
+    value named like a password or a key is EMPTY — what an import says is
+    still needed, as it says a header's value is."""
+    out = [("path", name) for name in _path_query_names(config.get("path"))]
+    for key in _ENTRY_KEYS:
+        for index, entry in enumerate(config.get(key) or ()):
+            if isinstance(entry, dict) and credential_name(entry.get("name")) \
+                    and entry.get("value") in ("", None):
+                out.append((f"{key}[{index}].value", entry["name"]))
+    if isinstance(config.get("args"), dict):
+        out += [(f"args.{k}", k) for k, v in config["args"].items()
+                if credential_name(k) and v in ("", None)]
+    return out
+
+
+def _value_slot(path) -> bool:
+    """Whether a settings leaf is a value typed under a name: an entry's
+    `value`, or an MCP argument."""
+    path = tuple(path)
+    while path[:2] == ("step", "config"):
+        path = path[2:]
+    return ((len(path) == 3 and path[0] in _ENTRY_KEYS + ("headers",) and path[2] == "value")
+            or (len(path) >= 2 and path[0] == "args"))
 
 
 def _inner(node: dict):
@@ -100,6 +220,7 @@ def _clean_config(config: dict, label: str, notes: list) -> dict:
     headers = out.get("headers")
     if isinstance(headers, list):
         out["headers"] = [dict(h, value="") if isinstance(h, dict) else h for h in headers]
+    blank_secrets(out)
     step = out.get("step")
     if isinstance(step, dict) and isinstance(step.get("config"), dict):
         step["config"] = _clean_config(step["config"], label, notes)
@@ -156,7 +277,7 @@ def export_file(db, wf, trigger) -> dict:
                 workstation = True
     for node in store.nodes_of(graph):
         for path, text in config_leaves(node.get("config") or {}):
-            if _secret_shape(text):
+            if _secret_shape(text) or (_value_slot(path) and _opaque(text)):
                 raise WorkflowRefused(
                     400, f"“{node.get('label')}”, {field_words(node, path)}, holds something "
                          f"that looks like a key or a token, so the workflow was not exported. "
@@ -269,6 +390,23 @@ def import_file(db, owner, data, *, tz=None) -> Imported:
         if sentence not in missing:
             missing.append(sentence)
 
+    # `B1871`. What the file names is matched against THIS install's own
+    # resources only — never a stand-in an earlier step left, which made a
+    # second step using the same missing Integration "found" and silent — and
+    # what is not matched gets an id no real resource has, one per file ref.
+    real_integrations = dict(real.integrations or {})
+    real_mcp_tools = dict(real.mcp_tools or {})
+    stand_ins = {}
+
+    def stand_in_id(kind, ref, base, taken):
+        if (kind, ref) not in stand_ins:
+            made, n = base, 1
+            while made in taken or made in stand_ins.values():
+                n += 1
+                made = f"{base}-{n}"
+            stand_ins[(kind, ref)] = made
+        return stand_ins[(kind, ref)]
+
     for node in graph["nodes"]:
         node["config"] = _clean_config(node.get("config") or {}, node["label"], notes)
         called = f"“{node['label']}”"
@@ -281,16 +419,21 @@ def import_file(db, owner, data, *, tz=None) -> Imported:
                 ref = config["integration"]
                 said = requires["integrations"].get(ref) or {"name": ref, "preset": ""}
                 name, preset = _text(said.get("name") or ref), _text(said.get("preset"))
-                found = [i for i, info in integrations.items() if info.get("enabled", True)
+                found = [i for i, info in real_integrations.items() if info.get("enabled", True)
                          and preset and str(info.get("preset") or "") == preset]
-                found = [i for i in found if str(integrations[i].get("name") or "").lower()
+                found = [i for i in found if str(real_integrations[i].get("name") or "").lower()
                          == name.lower()] or found
-                found = found or [i for i, info in integrations.items() if info.get("enabled", True)
+                found = found or [i for i, info in real_integrations.items()
+                                  if info.get("enabled", True)
                                   and str(info.get("name") or "").lower() == name.lower()]
                 if found:
                     config["integration"] = found[0]
                 else:
-                    integrations[ref] = {"id": ref, "name": name, "preset": preset, "enabled": True}
+                    stand_in = stand_in_id("integration", ref, MISSING_INTEGRATION_ID,
+                                           real_integrations)
+                    config["integration"] = stand_in
+                    integrations[stand_in] = {"id": stand_in, "name": name, "preset": preset,
+                                              "enabled": True}
                     need(node, {"field": f"{inner}integration", "name": name, "preset": preset},
                          f"{called} uses an Integration called “{name}”"
                          + (f" ({preset})" if preset else "")
@@ -305,7 +448,7 @@ def import_file(db, owner, data, *, tz=None) -> Imported:
                 ref = config["tool"]
                 said = requires["mcp_tools"].get(ref) or {}
                 server, tool = _text(said.get("server")), _text(said.get("tool") or ref)
-                found = [q for q, info in mcp_tools.items()
+                found = [q for q, info in real_mcp_tools.items()
                          if str(info.get("server_name") or "").lower() == server.lower()
                          and str(info.get("name") or "") == tool]
                 if found:
@@ -313,8 +456,10 @@ def import_file(db, owner, data, *, tz=None) -> Imported:
                 else:
                     schema = said.get("input_schema") if isinstance(said.get("input_schema"), dict) \
                         else {}
-                    mcp_tools[ref] = {"input_schema": schema, "disabled": False,
-                                      "is_readonly": None, "server_name": server, "name": tool}
+                    stand_in = stand_in_id("mcp", ref, MISSING_MCP_TOOL_ID, real_mcp_tools)
+                    config["tool"] = stand_in
+                    mcp_tools[stand_in] = {"input_schema": schema, "disabled": False,
+                                           "is_readonly": None, "server_name": server, "name": tool}
                     need(node, {"field": f"{inner}tool", "name": f"{server} · {tool}",
                                 "server": server, "tool": tool},
                          f"{called} calls the tool “{tool}” on an MCP server called "
@@ -343,6 +488,12 @@ def import_file(db, owner, data, *, tz=None) -> Imported:
                 need(node, {"field": f"{inner}language", "name": "workstation"},
                      f"{called} runs code in your workstation, which cannot run it now: "
                      f"{workstation_why}")
+            # `B1872`: each value named like a password or a key, which the
+            # file never carries (`_clean_config` blanked it above).
+            for field, name in secret_slots(config):
+                need(node, {"field": f"{inner}{field}", "name": str(name)},
+                     f"{called}: “{_text(name)}” looks like a password or a key, and a file "
+                     f"never carries its value. Type it on the step.")
             if kind == "llm" and isinstance(config.get("tools"), list):
                 for tool in config["tools"]:
                     if isinstance(tool, str) and tool not in ai_tools:

@@ -839,6 +839,34 @@ def _workflow_refusal(db, task, args) -> Optional[Dict]:
     return None
 
 
+def _utc_time_in_zone(utc_hhmm, day, schedule, zone):
+    """`B1873`. The model's `scheduled_time` — UTC, as `manage_tasks`' schema
+    tells it to send — as the wall-clock time of a task that runs in `zone`
+    (`_resolve_task_timezone`), whose scheduler re-reads its time in that zone.
+    Read on today's date, so the offset is today's. A weekly day moves with
+    the time when the change crosses midnight (23:30 UTC on a Monday is 08:30
+    on the Tuesday in Tokyo); a monthly day moves too, kept within 1–31.
+    Anything that is not `HH:MM` is handed back as it came, for the scheduler's
+    own reading to refuse as before. Returns `(time, day)`."""
+    import re as _re
+    from datetime import datetime as _dt, timezone as _tz
+    from zoneinfo import ZoneInfo
+    if not isinstance(utc_hhmm, str) or not _re.fullmatch(r"\d{1,2}:\d{2}", utc_hhmm.strip()):
+        return utc_hhmm, day
+    h, m = (int(x) for x in utc_hhmm.strip().split(":"))
+    if h > 23 or m > 59:
+        return utc_hhmm, day
+    at = _dt.now(_tz.utc).replace(hour=h, minute=m, second=0, microsecond=0)
+    local = at.astimezone(ZoneInfo(zone))
+    shift = (local.date() - at.date()).days
+    if shift and isinstance(day, int) and not isinstance(day, bool):
+        if schedule == "weekly":
+            day = (day + shift) % 7
+        elif schedule == "monthly":
+            day = min(31, max(1, day + shift))
+    return local.strftime("%H:%M"), day
+
+
 async def do_manage_tasks(content: str, owner: Optional[str] = None) -> Dict:
     """Handle manage_tasks tool calls: CRUD on scheduled tasks."""
     import uuid as _uuid
@@ -895,7 +923,10 @@ async def do_manage_tasks(content: str, owner: Optional[str] = None) -> Dict:
                 elif t.schedule:
                     bits.append(str(t.schedule))
                 if t.scheduled_time and not is_manual_trigger(t):
-                    bits.append(str(t.scheduled_time))
+                    # `B1873`: a zoned time is that zone's wall clock, not the
+                    # UTC the schema asks for — said, so it is not misread.
+                    bits.append(f"{t.scheduled_time} {t.tz_name}" if t.tz_name
+                                else str(t.scheduled_time))
                 if t.next_run:
                     bits.append(f"next {t.next_run.isoformat()}Z")
                 detail = ", ".join(bits)
@@ -968,6 +999,16 @@ async def do_manage_tasks(content: str, owner: Optional[str] = None) -> Dict:
                 output_target=args.get("output_target", "session"),
                 crew_member_id=crew_id,
             )
+            # `B1873`. A crew member with a zone runs the task on that clock
+            # (`_resolve_task_timezone`), so the first fire is computed on it
+            # too, from the UTC time the model sent.
+            from src.task_scheduler import _resolve_task_timezone
+            zone = _resolve_task_timezone(db, task) if trigger_type == "schedule" else None
+            if zone:
+                task.scheduled_time, task.scheduled_day = _utc_time_in_zone(
+                    task.scheduled_time, task.scheduled_day, task.schedule, zone)
+                task.next_run = compute_next_run(task.schedule, task.scheduled_time,
+                                                 task.scheduled_day, tz_name=zone)
             db.add(task)
             db.commit()
             return {"response": f"Created task '{name}' (id: {task_id})", "task_id": task_id, "exit_code": 0}
@@ -1045,9 +1086,19 @@ async def do_manage_tasks(content: str, owner: Optional[str] = None) -> Dict:
                     changed.append(field)
                     schedule_changed = True
 
+            # `B1873`. A task that runs in a zone — a workflow's start made in
+            # the Workbench or drafted in chat, a crew member's — is re-read in
+            # that zone by the scheduler; the model's UTC time is stored as
+            # that zone's wall clock, and its first fire computed on it, so the
+            # first and every later fire agree.
+            from src.task_scheduler import _resolve_task_timezone
+            zone = _resolve_task_timezone(db, task)
+            if zone and args.get("scheduled_time") is not None:
+                task.scheduled_time, task.scheduled_day = _utc_time_in_zone(
+                    args["scheduled_time"], task.scheduled_day, task.schedule, zone)
             if schedule_changed and (task.trigger_type or "schedule") == "schedule":
                 task.next_run = compute_next_run(
-                    task.schedule, task.scheduled_time, task.scheduled_day,
+                    task.schedule, task.scheduled_time, task.scheduled_day, tz_name=zone,
                 )
 
             db.commit()
@@ -1104,8 +1155,10 @@ async def do_manage_tasks(content: str, owner: Optional[str] = None) -> Dict:
             else:
                 task.status = "active"
                 if (task.trigger_type or "schedule") == "schedule":
+                    from src.task_scheduler import _resolve_task_timezone
                     task.next_run = compute_next_run(
                         task.schedule, task.scheduled_time, task.scheduled_day,
+                        tz_name=_resolve_task_timezone(db, task),   # `B1873`
                     )
             db.commit()
             return {"response": f"Task '{task.name}' {action}d", "exit_code": 0}
@@ -1124,9 +1177,51 @@ async def do_manage_tasks(content: str, owner: Optional[str] = None) -> Dict:
             if refused:
                 return refused
 
+            # `B1874`. The questions the run would answer by not running, asked
+            # first, so the reply is never "triggered" for a run then recorded
+            # `skipped` — every drafted or imported workflow is made switched
+            # off with its steps marked, so that was the first run anyone asked
+            # the assistant for. In the Workbench's own order (`runNow`): marks
+            # stop it (`unchecked_refusal`, the switch's sentence); a
+            # switched-off workflow whose steps are checked is TRIED, once, as
+            # a test run (`B1852`) — the Workbench's Run now does exactly that;
+            # a paused plain task says why and points at dry_run.
+            from src import workflow_store as _wstore
+            from src.task_scheduler import not_active_words
+            from src.workflow_document import unchecked_refusal
+            wf = (_wstore.workflow_for_task(db, task.id)
+                  if (task.task_type or "") == "workflow" else None)
+            off = not_active_words(task)
+            if wf is not None:
+                marks = unchecked_refusal(_wstore.stored_graph(wf))
+                if marks is not None:
+                    return {"error": (f"“{wf.name}” was not started. {marks.sentence} A person "
+                                      f"checks each step in the Workbench (Automations → "
+                                      f"“{wf.name}”); dry_run says what it would do meanwhile."),
+                            "workflow_id": wf.id, "exit_code": 1}
+            elif off:
+                return {"error": (f"Task '{task.name}' was not started: {off}. Resume it to run "
+                                  f"it, or dry_run it to see what it would do."), "exit_code": 1}
+
             from src.event_bus import get_task_scheduler
             from src.interactive_gate import tool_call_started_by
             scheduler = get_task_scheduler()
+            if scheduler and wf is not None:
+                # `B1866`: the run's id is chosen here and its row written
+                # before it is spawned, so the reply names a run that can be
+                # read back (`manage_workflows runs`).
+                run_id = str(_uuid.uuid4())
+                started = await scheduler.run_task_now(
+                    task_id, started_by=tool_call_started_by(), run_id=run_id,
+                    test=off is not None)
+                if not started:
+                    return {"error": scheduler.in_flight_sentence(task_id)
+                            or "Task is already running", "workflow_id": wf.id, "exit_code": 1}
+                said = (f"“{wf.name}” is switched off, so this is a test run: it runs once now "
+                        f"and stays off. Switch it on in the Workbench to run it on its start."
+                        if off is not None else f"“{wf.name}” started.")
+                return {"response": said, "run_id": run_id, "workflow_id": wf.id,
+                        "exit_code": 0}
             if scheduler:
                 # `B1061`. Who is asking: a person, when this call was made in a
                 # person's turn (their chat, the teacher inside it, a skill test
@@ -1154,19 +1249,25 @@ async def do_manage_tasks(content: str, owner: Optional[str] = None) -> Dict:
             # checks each step before it can run (`PUT {checked}` is a person's
             # only), and the switch says so until they have.
             from src import workflow_assist, workflow_store
+            from src.user_time import get_user_tz_name
             described = args.get("description") or args.get("prompt")
+            # `B1873`. The person's zone, as the Workbench's *Describe it*
+            # sends the browser's (`B1867`): the chat route sets it for the
+            # turn. `manage_tasks` has no `tz_name` parameter, so reading only
+            # that drafted every chat workflow on UTC. One this machine does
+            # not know leaves the start on the server's clock (`person_zone`).
+            zone = (workflow_store.person_zone(args.get("tz_name"))
+                    or workflow_store.person_zone(get_user_tz_name()))
             try:
-                drafted = await workflow_assist.draft_workflow(
-                    db, owner, described, tz=args.get("tz_name"))
+                drafted = await workflow_assist.draft_workflow(db, owner, described, tz=zone)
             except workflow_store.WorkflowRefused as refused:
                 return {"error": refused.sentence, "exit_code": 1}
-            count = len(workflow_store.nodes_of(workflow_store.stored_graph(drafted.wf)))
-            said = (f"Drafted “{drafted.wf.name}” as a workflow of {count} "
-                    f"step{'s' if count != 1 else ''}, switched off. A person checks each "
-                    f"step in the Workbench before it can run (Automations → "
-                    f"“{drafted.wf.name}”), and switches it on there.")
-            if drafted.missing:
-                said += " Not drafted: " + " ".join(drafted.missing)
+            # `B1875`. What the Workbench shows beside a draft — when it
+            # starts, the drafter's notes, where it sends things — said to the
+            # model too, so it does not tell the person "when mail arrives"
+            # about a start that fell back to daily 09:00.
+            from src.tools.workflows import drafted_reply
+            said = drafted_reply(drafted)
             return {"response": said, "workflow_id": drafted.wf.id,
                     "task_id": drafted.trigger.id, "exit_code": 0}
 

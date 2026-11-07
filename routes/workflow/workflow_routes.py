@@ -1015,8 +1015,15 @@ def setup_workflow_routes(task_scheduler) -> APIRouter:
 
         The seal, the TTL, single use and owner binding are the store's,
         unchanged (`FORBIDDEN.md` Part 2).
+
+        `B1870`. And a person's only, asked first: the assistant's loopback
+        and a bearer token arrive in the owner's name, and either could
+        otherwise read the card at `GET /waiting` and allow its own sealed
+        action — the gate would be asking the agent, not the person.
         """
         from src.task_scheduler import QuestionRefused, _resolve_task_timezone
+        if not request_is_a_person(request):
+            raise WorkflowRefused(403, store.ONLY_A_PERSON_ANSWERS)
         body = await _body(request)
         decision = str(body.get("decision") or "").strip().lower()
         if decision == "approve":
@@ -1073,13 +1080,12 @@ def setup_workflow_routes(task_scheduler) -> APIRouter:
         (another owner's run is a 404). The step is the CURRENT document's;
         `changed_since_run` says whether it differs from the one that ran.
         Nothing is written. `{why, model, changed_since_run, proposal,
-        left_out}` (C-A)."""
-        from core.database import TaskRun, TaskRunNode
+        left_out}` (C-A).
+
+        `B1878`: the read and the ask are `workflow_assist.step_to_explain`
+        and `explain_answer`, which the assistant's `manage_workflows explain`
+        calls too — one reading of a failed step, not two (`Law 14`)."""
         from src import workflow_assist
-        from src.task_action_policy import owner_has_admin_task_privileges
-        from src.workflow_document import DocumentError, parse_graph
-        from src.workflow_effects import workflow_resources
-        from src.workflow_runs import node_record_to_dict
         body = await _body(request)
         node_id = str(body.get("node_id") or "")
         item = body.get("item")
@@ -1091,56 +1097,12 @@ def setup_workflow_routes(task_scheduler) -> APIRouter:
             db = SessionLocal()
             try:
                 wf = store.owned_workflow(db, workflow_id, user)
-                run = (db.query(TaskRun).filter(TaskRun.id == run_id, TaskRun.task_id == wf.task_id)
-                       .first() if wf.task_id else None)
-                if run is None:
-                    raise WorkflowRefused(404, "No such run of this workflow.")
-                q = db.query(TaskRunNode).filter(TaskRunNode.run_id == run.id,
-                                                 TaskRunNode.node_id == node_id,
-                                                 TaskRunNode.dry.is_(False))
-                q = q.filter(TaskRunNode.item.is_(None)) if item is None else \
-                    q.filter(TaskRunNode.item == item)
-                rec = q.order_by(TaskRunNode.attempt.desc(), TaskRunNode.seq.desc()).first()
-                if rec is None:
-                    raise WorkflowRefused(404, "That step has no record in this run.")
-                record = node_record_to_dict(rec)
-                try:
-                    current = parse_graph(store.stored_graph(wf))
-                except DocumentError as err:
-                    raise store._document_error_refusal(err) from None
-                node = next((n for n in store.nodes_of(current) if str(n.get("id")) == node_id), None)
-                if node is None:
-                    raise WorkflowRefused(404, "That step is not in the workflow any more.")
-                ran_graph, kept = store.graph_of_version(db, wf, rec.workflow_version)
-                ran = next((n for n in store.nodes_of(ran_graph) if str(n.get("id")) == node_id), None)
-                changed = (ran is None or store._step_content(ran) != store._step_content(node)
-                           or (not kept and rec.workflow_version != wf.version))
-                rows = store.owner_rows(db, wf.owner)
-                trigger = store.trigger_of(db, wf)
-                owner = wf.owner
-                base_version = wf.version
+                return workflow_assist.step_to_explain(db, wf, run_id, node_id, item)
             finally:
                 db.close()
-            return base_version, changed, current, node, owner, record, rows, trigger
         # `B1223`: the step's record is read off the event loop.
-        base_version, changed, current, node, owner, record, rows, trigger = await asyncio.to_thread(_read)
-        # `B1609`: the resources read which MCP tools are switched off — a session.
-        resources = await asyncio.to_thread(workflow_resources, owner)
-        try:
-            explained = await workflow_assist.explain_step(
-                owner, node=node, record=record, graph=current, base_version=base_version,
-                item=item, resources=resources, tasks_by_id=rows[0], crew_ids=rows[1],
-                owner_is_admin=owner_has_admin_task_privileges(owner),
-                own_task_id=trigger.id if trigger is not None else None)
-        except workflow_assist.NoModelSetUp:
-            raise WorkflowRefused(503, workflow_assist.NO_MODEL_TO_EXPLAIN) from None
-        except ValueError:
-            raise WorkflowRefused(422, workflow_assist.EXPLAIN_UNREADABLE) from None
-        # `B1598`: the model's name is an endpoint-row read, made off the loop.
-        model = await asyncio.to_thread(workflow_assist.model_name, owner)
-        return {"why": explained.why, "model": model,
-                "changed_since_run": changed, "proposal": explained.proposal,
-                "left_out": explained.left_out}
+        step = await asyncio.to_thread(_read)
+        return await workflow_assist.explain_answer(step)
 
     @router.post("/{workflow_id}/nodes/{node_id}/fix")
     @_answers

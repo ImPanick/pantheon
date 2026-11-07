@@ -290,8 +290,12 @@ def test_the_whole_suite_is_offered_when_it_fits():
                            window=W128K, pinned=ti.ALWAYS_AVAILABLE)
     assert plan.partial is False
     assert plan.reason == SUITE_REASON_WHOLE
-    assert plan.offered == frozenset(ALL_NAMES)
+    # `B1878`: the whole suite is every tool but those a turn carries only
+    # when it asks (`ON_REQUEST_ONLY`) — not withheld, not counted, and named
+    # in `on_request` so `find_tools` can still load them.
+    assert plan.offered == frozenset(ALL_NAMES) - ti.ON_REQUEST_ONLY
     assert plan.withheld == ()
+    assert plan.on_request == tuple(sorted(ti.ON_REQUEST_ONLY))
 
 
 def test_the_same_input_gives_the_same_tools_every_time():
@@ -379,7 +383,7 @@ def test_the_withheld_list_is_sorted_and_the_record_is_stable():
     assert plan.partial
     assert list(plan.withheld) == sorted(plan.withheld)
     record = plan.as_record()
-    assert record["candidates"] == len(ALL_NAMES)
+    assert record["candidates"] == len(ALL_NAMES) - len(ti.ON_REQUEST_ONLY)   # `B1878`
     assert record["offered"] == len(plan.offered)
     assert record["reason"] == SUITE_REASON_WINDOW
     assert record["window"] == W8K and record["window_known"] is True

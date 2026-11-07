@@ -76,7 +76,9 @@ async def test_asked_to_run_one_task_after_another_the_agent_drafts_a_workflow(w
     assert said["response"] == (
         "Drafted “Backup, then report” as a workflow of 2 steps, switched off. A person checks "
         "each step in the Workbench before it can run (Automations → “Backup, then report”), "
-        "and switches it on there.")
+        "and switches it on there."
+        # `B1875`: and when it starts, as the Workbench shows beside the draft.
+        " It starts daily at 02:00 (UTC).")
     wf, graph, trigger = stored(w.factory, said["workflow_id"])
     assert trigger.id == said["task_id"] and trigger.status == "paused"
     assert [(n["kind"], n["config"]["task_id"]) for n in graph["nodes"]] == [

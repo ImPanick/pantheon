@@ -90,6 +90,14 @@ ONLY_A_PERSON_CHECKS = ("Only you can say a step looks right, from the Workbench
                         "token and not your assistant.")
 ONLY_A_PERSON_FIXES = ("Only you can apply a fix, from the Workbench — not an API token and not "
                        "your assistant.")
+# `B1870`. A parked step's yes or no (`P22-17`), and a plain task's (`B1102`):
+# the answer doors refused nobody acting in the owner's name, so the
+# assistant's `app_api` loopback could list the card at `GET …/waiting` and
+# allow its own sealed action. Both doors now ask `request_is_a_person` first,
+# before anything is read or consumed, and say this.
+ONLY_A_PERSON_ANSWERS = ("Only you can answer a step that is waiting for your yes, from the "
+                         "notification or the Workbench — not an API token and not your "
+                         "assistant.")
 
 # `P22-19` (§ 1.2). What a drafted or imported start falls back to, said: the
 # trigger is off, so a wrong guess runs nothing.

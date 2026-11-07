@@ -92,6 +92,7 @@ TOOL_TOGGLE_ALIASES: Mapping[str, tuple[str, ...]] = MappingProxyType({
     "images": ("generate_image",),
     "image": ("generate_image",),
     "tasks": ("manage_tasks",),
+    "workflows": ("manage_workflows",),  # `B1878`
     "notes": ("manage_notes",),
     "ledger": ("ledger_table",),  # `P24-30`
     "finance": ("ledger_table",),

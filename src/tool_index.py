@@ -110,6 +110,8 @@ BUILTIN_TOOL_DESCRIPTIONS: Dict[str, str] = {
     # `B1737`. The model's own way to a procedure: read-only, two arguments.
     "use_skill": "Open a skill (a proven step-by-step procedure) by name to follow it, or search the skills — Pantheon's, the person's own and the bundled library — by the kind of work about to start: QA and testing, frontend and web design, accessibility, debugging, research, writing.",
     "manage_tasks": "Scheduled task management: list, create, edit, delete, pause, resume, or run cron tasks — or dry_run one to say what a run would do without running it, or draft_workflow to draft a workflow of several steps that run one after another.",
+    # `B1878`.
+    "manage_workflows": "Workflows that exist (Automations in the Workbench): list them, show one's steps, start, unchecked steps and destinations, read its last runs step by step, explain why a run's step failed, dry_run, test_run once even while switched off, or export it as a file.",
     "manage_endpoints": "Endpoint management: list, add, delete, enable, or disable model API endpoints.",
     "manage_mcp": "MCP server management: list, add, delete, reconnect servers, or list available tools.",
     "manage_webhooks": "Webhook management: list, add, delete, enable, or disable webhooks.",
@@ -273,6 +275,37 @@ def builtin_index_fingerprint(schema_desc: Optional[Dict[str, str]] = None) -> s
         for name in sorted(BUILTIN_TOOL_DESCRIPTIONS)
     )
     return hashlib.sha256(payload.encode()).hexdigest()
+
+
+# `B1876`. A turn that asks for a workflow — by the word, by the room's own
+# name ("Automations", "the Workbench"), or by describing one by its event
+# ("when a document is created, …") — is offered the tool that drafts and runs
+# workflows. `manage_tasks` reached a turn only through schedule words, so
+# "draft a workflow that summarises new mail" and the drafter's own example
+# "When a document is created, write a three-line summary of it." were turns
+# without it. One pair of patterns, asked by both the keyword selector below
+# and the domain classifier (`agent_loop._classify_agent_request`), so the two
+# cannot disagree about what a workflow request is (`Law 7`).
+#
+# The event pattern wants "when"/"whenever" AND, in the same sentence, a thing
+# that happens to something — "arrives", "comes in", "is created", "is added",
+# a webhook. "When I was young we lived by the sea" says neither, and is
+# offered what it always was.
+WORKFLOW_WORDS_RE = re.compile(
+    r"\b(?:workflows?|automations?|automat(?:e|ed|es|ing)|workbench)\b", re.I)
+WORKFLOW_EVENT_RE = re.compile(
+    r"\bwhen(?:ever)?\b[^.?!;\n]{0,80}?\b(?:arrives?|comes? in|lands?|fires?|webhooks?"
+    r"|(?:is|are) (?:created|added|updated|uploaded|saved|received|posted|opened)"
+    r"|gets? (?:created|added|uploaded))\b",
+    re.I,
+)
+
+
+def asks_for_a_workflow(text: str) -> bool:
+    """`B1876`. True when the request names a workflow or describes one by
+    its event. The one test both selectors ask."""
+    body = str(text or "")
+    return bool(WORKFLOW_WORDS_RE.search(body) or WORKFLOW_EVENT_RE.search(body))
 
 
 class ToolIndex:
@@ -877,6 +910,13 @@ class ToolIndex:
         # `B502`: "every file" / "every time" are not cadences.
         if ToolIndex._SCHEDULE_RE.search(ql) or ToolIndex.every_is_a_cadence(ql):
             base.add("manage_tasks")
+        # `B1876`: "workflow", "automation", "the Workbench", or an event
+        # phrased as a sentence ("when a document is created, …").
+        if asks_for_a_workflow(ql):
+            base.add("manage_tasks")
+            # `B1878`: and the one that reads, tests and explains the
+            # workflows that exist — offered on such a turn only.
+            base.add("manage_workflows")
         # `B503`: a session verb and a session noun with words between them.
         if ToolIndex._SESSION_NOUN_RE.search(ql):
             base.update(ToolIndex._SESSION_TOOLS)
@@ -999,6 +1039,17 @@ SUITE_REASON_LOCAL = "local_budget"
 #: the part of the suite this turn did not carry.
 FIND_TOOLS = "find_tools"
 
+#: `B1878`. Tools a turn carries only when it asks for them — its words pin
+#: one (a keyword hint, a domain the classifier matched, a name), or the
+#: conversation was offered it last turn (`keep`). Otherwise the plan leaves it
+#: out of the turn altogether: not offered to fill a window's spare room, not
+#: in the whole suite, not counted in the notice or the receipt — so a turn
+#: that does not ask is offered exactly what it was before the tool existed.
+#: It stays loadable: `ToolSuite.on_request` names it, and `find_tools` loads
+#: it when the model looks for it. The owner's rule (2026-11-07): the slim set
+#: a first message carries does not grow by a tool its words did not ask for.
+ON_REQUEST_ONLY: FrozenSet[str] = frozenset({"manage_workflows"})
+
 
 @dataclass(frozen=True)
 class ToolSuite:
@@ -1031,6 +1082,9 @@ class ToolSuite:
     window_basis: str = ""
     pinned: Tuple[str, ...] = ()
     over_room: bool = False
+    #: `B1878`. The `ON_REQUEST_ONLY` names this turn did not ask for and so
+    #: left out of `candidates`; `find_tools` may still load them.
+    on_request: Tuple[str, ...] = ()
 
     def as_record(self) -> Dict[str, object]:
         """The shape the run receipt stores (`src/events.record_run_config`)."""
@@ -1193,6 +1247,15 @@ def plan_tool_suite(
     dropped (`Law 10`).
     """
     pool = {str(n) for n in (candidates or ()) if n}
+    # `B1878`. A tool offered only on request is out of this turn unless the
+    # turn asked for it: its words pinned it, a domain it matched seeds it, or
+    # the conversation carried it last turn.
+    asked = ({str(n) for n in (pinned or ())} | {str(n) for n in (keyword_picks or ())}
+             | {str(n) for n in (keep or ())})
+    for domain in domains or ():
+        asked |= {str(n) for n in ((domain_map or {}).get(str(domain)) or ())}
+    held = (pool & ON_REQUEST_ONLY) - asked
+    pool -= held
     pinned_in = {str(n) for n in (pinned or ()) if str(n) in pool}
     whole_cost = sum(int(cost(name) or 0) for name in pool)
     room = max(0, int(room or 0))
@@ -1203,6 +1266,7 @@ def plan_tool_suite(
             window=int(window or 0), window_known=bool(window_known),
             window_basis=str(window_basis or ""),
             pinned=tuple(sorted(pinned_in)),
+            on_request=tuple(sorted(held)),
         )
 
     if FIND_TOOLS in pool:
@@ -1249,6 +1313,7 @@ def plan_tool_suite(
         window_known=bool(window_known), window_basis=str(window_basis or ""),
         pinned=tuple(sorted(pinned_in)),
         over_room=spent > room,
+        on_request=tuple(sorted(held)),
     )
 
 
