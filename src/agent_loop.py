@@ -29,6 +29,8 @@ from src.llm_core import (
     stream_llm,
     stream_llm_with_fallback,
     typed_local_max_tokens_ceiling as _typed_local_max_tokens_ceiling,
+    _detect_provider,
+    _host_match,
     _is_ollama_native_url,
     _normalize_http_status,
     _normalize_usage_counts,
@@ -5969,6 +5971,22 @@ def _unknown_tool_refusal(name: str) -> str:
 _MAX_UNKNOWN_TOOL_NUDGES = 2
 
 
+def _keeps_every_reasoning(endpoint_url: str) -> bool:
+    """`B1797`. Whether this route's API wants every tool round's reasoning back.
+
+    DeepSeek's thinking mode (its API's default) and Moonshot's Kimi thinking
+    models require each earlier assistant tool-call message of a turn to be
+    sent again with the `reasoning_content` it came with, and refuse the
+    request with HTTP 400 when one is missing. Only those two APIs, named by
+    host: a local server never matches, and the chat templates the strip in
+    `_append_tool_results` guards against are served locally.
+    """
+    return (
+        _host_match(endpoint_url or "", "deepseek.com")
+        or _detect_provider(endpoint_url or "") == "moonshot"
+    )
+
+
 def _append_tool_results(
     messages: List[Dict],
     round_response: str,
@@ -5979,6 +5997,7 @@ def _append_tool_results(
     round_num: int,
     round_reasoning: str = "",
     tool_result_records: Optional[list] = None,
+    keep_all_reasoning: bool = False,
 ):
     """Append tool execution results back into the message history for the next LLM round.
 
@@ -5994,13 +6013,21 @@ def _append_tool_results(
     reasoning, which reinforces repetition/looping. So keep reasoning_content
     on the MOST RECENT assistant turn only: enough for DeepSeek continuity,
     without the per-round accumulation.
+
+    `keep_all_reasoning` (`B1797`, `_keeps_every_reasoning`): the route is
+    DeepSeek's or Moonshot's API, which refuse a request whose EARLIER
+    tool-call turns lack their reasoning, so nothing is stripped there, and a
+    native tool-call turn that brought no reasoning carries an empty
+    `reasoning_content` rather than none. Every other route passes False and
+    keeps the strip exactly as before.
     """
     tool_result_records = tool_result_records or []
     appended_from = len(messages)   # `B1069`: what this call adds is the run's
     # Strip reasoning_content from earlier assistant turns; only the newest keeps it.
-    for _m in messages:
-        if _m.get("role") == "assistant":
-            _m.pop("reasoning_content", None)
+    if not keep_all_reasoning:
+        for _m in messages:
+            if _m.get("role") == "assistant":
+                _m.pop("reasoning_content", None)
     if used_native and native_tool_calls:
         assistant_msg = {"role": "assistant"}
         # When the model emitted ONLY tool calls (no prose), content must be
@@ -6011,7 +6038,10 @@ def _append_tool_results(
         # at the follow-up round. null (i.e. omitted text) is the spec-correct
         # form the OpenAI SDK itself emits, and OpenAI/Anthropic accept it too.
         assistant_msg["content"] = round_response if round_response.strip() else None
-        if round_reasoning:
+        if keep_all_reasoning:
+            # `B1797`: "", not no field, which those APIs refuse as missing.
+            assistant_msg["reasoning_content"] = round_reasoning or ""
+        elif round_reasoning:
             assistant_msg["reasoning_content"] = round_reasoning
         assistant_msg["tool_calls"] = [
             {
@@ -6312,11 +6342,13 @@ def _resume_paused_turn(
     approved,
     approved_text: str,
     approved_record: Dict[str, Any],
+    keep_all_reasoning: bool = False,
 ) -> bool:
     """Put a paused turn back into `messages` and answer its gated call with
     the approved result. False when the card kept no turn, and nothing moves.
 
-    `approved` is the consumed `PendingToolApproval`."""
+    `approved` is the consumed `PendingToolApproval`. `keep_all_reasoning` is
+    `_append_tool_results`' own (`B1797`), for the route that resumes."""
     turn = getattr(approved, "continuation_turn", None)
     if not isinstance(turn, PausedTurn):
         return False
@@ -6339,6 +6371,7 @@ def _resume_paused_turn(
         paused["round_num"],
         round_reasoning=paused["round_reasoning"],
         tool_result_records=paused["tool_result_records"] + [approved_record] + unrun,
+        keep_all_reasoning=keep_all_reasoning,
     )
     return True
 
@@ -9877,8 +9910,10 @@ async def stream_agent_loop(
         }
         # `B1069`. The turn the card stopped, put back with the approved result
         # answering its own call; a card that kept no turn resumes as before.
+        _replay_keeps_reasoning = _keeps_every_reasoning(endpoint_url)   # `B1797`
         if not _resume_paused_turn(
             messages, approved, formatted_approved_result, approved_record,
+            keep_all_reasoning=_replay_keeps_reasoning,
         ):
             _append_tool_results(
                 messages,
@@ -9889,6 +9924,7 @@ async def stream_agent_loop(
                 False,
                 0,
                 tool_result_records=[approved_record],
+                keep_all_reasoning=_replay_keeps_reasoning,
             )
         _approved_result_injected = True
 
@@ -12523,10 +12559,13 @@ async def stream_agent_loop(
         # tool_blocks but stayed in native_tool_calls, so indexing results by
         # native position mis-attached each result to the wrong tool_call_id
         # (and left the real call answered empty).
+        # `B1797`: `endpoint_url` is the route that answered — a fallback that
+        # answered is pinned into it above.
         _append_tool_results(messages, round_response, converted_calls,
                              tool_results, tool_result_texts, used_native, round_num,
                              round_reasoning=round_reasoning,
-                             tool_result_records=tool_result_records)
+                             tool_result_records=tool_result_records,
+                             keep_all_reasoning=_keeps_every_reasoning(endpoint_url))
         if _unknown_tool_names:
             # `B1383`. The calls that did run are answered above; the ones
             # that named nothing get a line too, or the model is left waiting
