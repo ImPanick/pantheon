@@ -1590,15 +1590,10 @@ def _send_email(to, subject, body, in_reply_to=None, references=None, cc=None, b
         msg["Message-ID"] = email.utils.make_msgid()
     msg.set_content(body)
 
-    recipients = []
-    if isinstance(to, str):
-        recipients.extend([a.strip() for a in to.split(",") if a.strip()])
-    else:
-        recipients.extend(to)
-    if cc:
-        recipients.extend([a.strip() for a in cc.split(",")] if isinstance(cc, str) else cc)
-    if bcc:
-        recipients.extend([a.strip() for a in bcc.split(",")] if isinstance(bcc, str) else bcc)
+    # `B1964`: parsed, so `"Smith, John" <john@corp.com>` is one recipient and
+    # not the two fragments a comma split made; a str or a list per field.
+    from src.mail_headers import envelope_recipients
+    recipients = envelope_recipients(to, cc, bcc)
 
     conn = _smtp_connect(send_account, cfg=cfg)
     try:

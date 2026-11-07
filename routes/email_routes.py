@@ -1733,32 +1733,13 @@ def _apply_pantheon_headers(msg, kind: str | None = None, ref_id: str | None = N
         msg["X-Pantheon-Ref"] = re.sub(r"[^A-Za-z0-9_.:-]", "-", ref_id)[:128]
 
 
-def _normalize_addr_field(field: str) -> str:
-    """Strip the malformed-but-common trailing/leading commas and stray
-    whitespace from a To/Cc/Bcc string before it lands in the MIME header
-    or the SMTP envelope. Users often paste a single address with a
-    trailing comma, which most MTAs reject as a syntax error. Collapse
-    any run of separator junk between addresses too."""
-    if not field:
-        return field
-    # Split on commas, drop empty tokens, rejoin with a single ', '.
-    parts = [p.strip() for p in field.split(",")]
-    parts = [p for p in parts if p]
-    return ", ".join(parts)
-
-
-def _envelope_recipients(*fields: str) -> list:
-    """Extract bare SMTP envelope addresses from one or more To/Cc/Bcc header
-    strings. A naive `field.split(",")` corrupts display names that contain a
-    comma (e.g. `"Smith, John" <john@corp.com>`, the canonical Outlook form):
-    it splits into `"Smith` and `John" <john@corp.com>`, breaking delivery.
-    email.utils.getaddresses parses the address grammar correctly."""
-    out = []
-    for _name, addr in email.utils.getaddresses([f for f in fields if f]):
-        addr = (addr or "").strip()
-        if addr:
-            out.append(addr)
-    return out
+# `B1964`. The trailing-comma clean-up and the envelope parse of a To/Cc/Bcc
+# field live in `src/mail_headers.py` now, the one definition the scheduled-send
+# poller and the agent's own send use too; these names are `/send`'s.
+from src.mail_headers import (  # noqa: E402
+    envelope_recipients as _envelope_recipients,
+    normalize_address_field as _normalize_addr_field,
+)
 
 
 def _md_to_email_html(text: str) -> str:

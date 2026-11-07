@@ -35,6 +35,7 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
 from src.task_endpoint import resolve_task_candidates, task_llm_call_async
+from src.mail_headers import envelope_recipients  # `B1964`
 
 from routes.email_helpers import (
     _strip_think, _extract_reply, _apply_email_style_mechanics, _load_settings, _save_settings, _get_email_config,
@@ -1506,11 +1507,9 @@ def _scheduled_poll_once() -> dict:
                 if has_atts:
                     outer.attach(body_container)
                     _attach_compose_uploads(outer, attachments)
-                recipients = [a.strip() for a in (r[1] or "").split(",") if a.strip()]
-                if r[2]:
-                    recipients.extend([a.strip() for a in r[2].split(",") if a.strip()])
-                if r[3]:
-                    recipients.extend([a.strip() for a in r[3].split(",") if a.strip()])
+                # `B1964`: parsed, so `"Smith, John" <john@corp.com>` is one
+                # recipient and not the two fragments a comma split made.
+                recipients = envelope_recipients(r[1], r[2], r[3])
 
                 _send_smtp_message(cfg, cfg["from_address"], recipients, outer.as_string())
 

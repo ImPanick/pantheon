@@ -9,7 +9,7 @@ import sessionModule from './sessions.js';
 import { initEmailLibrary, openEmailLibrary, closeEmailLibrary, isOpen as isLibOpen, prewarmEmailLibrary, prewarmUnreadEmails, noteMailboxSync } from './emailLibrary.js?v=20261009approvalcensus';
 import * as Modals from './modalManager.js?v=20261009census';
 import { applyEdgeDock } from './modalSnap.js';
-import { buildReplyAllCc, extractEmail } from './emailLibrary/replyRecipients.js';
+import { buildReplyAllCc, extractEmail, splitRecipientList } from './emailLibrary/replyRecipients.js';
 import { emailApiUrl, emailAccountQuery, paintUnreadDot } from './emailShared.js';
 import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
 import { chevronIcon } from './icons.js';
@@ -34,10 +34,8 @@ const _replySeparator = '---------- Previous message ----------';
 const _DONE_RESPONSE_TAGS = new Set(['urgent', 'reply-soon', 'action-needed']);
 
 function _splitEmailAddresses(raw) {
-  return (typeof raw === 'string' ? raw : '')
-    .split(',')
-    .map((x) => x.trim())
-    .filter(Boolean);
+  // `B1964`: at the commas between recipients, not inside a quoted name.
+  return splitRecipientList(raw);
 }
 
 function _isMyEmailAddress(addr, myAddresses) {

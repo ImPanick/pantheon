@@ -19,6 +19,10 @@ faults. `extract_text` and `extract_html` are the one definition now.
 
 `B1980`. And what a UID is (`one_uid`), so a set such as `1:*` reaches no
 command from either process.
+
+`B1964`. And a To/Cc/Bcc field as the SMTP envelope reads it
+(`envelope_recipients`, with `normalize_address_field`), so a quoted
+`"Smith, John"` is one recipient on every send.
 """
 from __future__ import annotations
 
@@ -315,3 +319,39 @@ def one_uid(uid) -> str:
     """
     text = uid.decode("ascii", "replace") if isinstance(uid, bytes) else str(uid if uid is not None else "")
     return text if text.isascii() and text.isdigit() else ""
+
+
+# ── A To/Cc/Bcc field as the SMTP envelope reads it (`B1964`) ───────────────
+#
+# `/send` parsed the address grammar, but the scheduled-send poller (which
+# also sends every agent draft a person approves) and the agent's own send
+# split each field on its commas, so Exchange's `"Smith, John" <john@corp.com>`
+# went out as RCPT TO `"Smith` and `John" <john@corp.com>`. These are the one
+# definition all three use. From upstream Odysseus #6910.
+
+def normalize_address_field(field):
+    """A To/Cc/Bcc field with the empty pieces a paste leaves (`a@x.com,`)
+    taken out, its addresses joined by `, `. Splitting on every comma and
+    rejoining puts a quoted `"Smith, John"` back together. A list or tuple is
+    one field."""
+    if isinstance(field, (list, tuple)):
+        field = ", ".join(str(p) for p in field if p)
+    if not field:
+        return field
+    parts = [p.strip() for p in str(field).split(",")]
+    return ", ".join(p for p in parts if p)
+
+
+def envelope_recipients(*fields) -> list:
+    """The bare addresses of To/Cc/Bcc fields (strings or lists, None skipped),
+    in order, for the SMTP envelope. Each field is normalised first: the strict
+    `getaddresses` reads `a@x.com,` as no address at all."""
+    import email.utils
+
+    headers = [normalize_address_field(f) for f in fields if f]
+    out = []
+    for _name, addr in email.utils.getaddresses([h for h in headers if h]):
+        addr = (addr or "").strip()
+        if addr:
+            out.append(addr)
+    return out
