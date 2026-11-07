@@ -689,11 +689,23 @@ def setup_history_routes(session_manager, upload_handler=None) -> APIRouter:
         """Add a message to a session (for slash command persistence)."""
         await asyncio.to_thread(_verify_session_owner, request, session_id)
         try:
-            body = await request.json()
+            body = await _json_object(request)   # `B1828`, as the truncate route
             role = body.get("role", "assistant")
             content = body.get("content", "")
+            # `B1828`. A row stored here goes into every later prompt with its
+            # role as written (`Session.get_context_messages`), and
+            # `_sanitize_llm_messages` passes any role and any content on. An
+            # unknown role or content that is not text is refused by an
+            # OpenAI-compatible provider, so one such row failed the chat on
+            # every turn after it; a `system` row is an instruction nobody in
+            # the chat wrote. The one caller, slash-command persistence, sends
+            # a `user` or `assistant` string.
+            if role not in ("user", "assistant"):
+                raise HTTPException(400, "role must be 'user' or 'assistant'")
             if not content:
                 raise HTTPException(400, "content is required")
+            if not isinstance(content, str):
+                raise HTTPException(400, "content must be a string")
             # `B1005`. The caller's blob, as `inject_messages` treats it (`B70`):
             # the keys only the server writes — an approval card, a grant, the
             # seal that a person said this — are dropped before it is stored.
