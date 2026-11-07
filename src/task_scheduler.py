@@ -2679,6 +2679,15 @@ class TaskScheduler:
                         old_status = r.status or "running"
                         r.status = "aborted"
                         r.error = "Server restarted while task was " + old_status
+                        # `B1868`. And the result says it too. The result was
+                        # left as the old process last wrote it, so the Runs
+                        # list (which shows a run's result) showed an aborted
+                        # run as "Queued — waiting for Pantheon to be idle…"
+                        # or "Starting…" — still waiting, to anyone reading
+                        # it — under a status that said it had ended. The run
+                        # is not resumed: what it was handed went with the
+                        # process that held it.
+                        r.result = r.error
                         r.finished_at = now
                     db.commit()
                     # The steps of a run it aborts that were waiting — parked
