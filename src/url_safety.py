@@ -10,10 +10,12 @@ address (a local vLLM / llama.cpp / Ollama server) is a normal, intended setup.
 So this guard does **not** blanket-block private addresses by default — that would
 break the primary use case. What it *always* rejects:
 
-  - a non-HTTP(S) scheme (``file://``, ``gopher://``, ``ftp://`` …), and
+  - a non-HTTP(S) scheme (``file://``, ``gopher://``, ``ftp://`` …),
   - the link-local range (``169.254.0.0/16`` / ``fe80::/10``), i.e. the cloud
     instance-metadata SSRF credential-exfil vector — nobody serves embeddings
-    there — plus multicast / reserved / unspecified addresses.
+    there — plus multicast / reserved / unspecified addresses, and
+  - `B2033`, the two cloud metadata hosts that are not link-local
+    (``100.100.100.200``, ``fd00:ec2::254``), from `B1924`'s one list.
 
 For exposed multi-tenant deployments, set ``EMBEDDING_BLOCK_PRIVATE_IPS=true`` to
 additionally reject all private and loopback targets (full SSRF lockdown).
@@ -23,6 +25,8 @@ import ipaddress
 import socket
 from typing import Callable, List, Optional, Tuple
 from urllib.parse import urlparse
+
+from src.outbound_fetch import CLOUD_METADATA_NETWORKS
 
 ALLOWED_SCHEMES = ("http", "https")
 
@@ -45,6 +49,12 @@ def _classify(ip: ipaddress._BaseAddress, *, block_private: bool) -> Optional[st
     # IPv4-mapped IPv6 (e.g. ::ffff:169.254.169.254) — judge the embedded v4.
     if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped is not None:
         ip = ip.ipv4_mapped
+    # `B2033`. Alibaba Cloud ECS answers at 100.100.100.200 (in 100.64/10) and
+    # AWS's IPv6 instance metadata at fd00:ec2::254 (in fc00::/7): not link-local,
+    # so with private addresses allowed, the default, both passed. Refused in
+    # every mode, from `B1924`'s one list; networks, so a scoped form is inside.
+    if any(ip in net for net in CLOUD_METADATA_NETWORKS):
+        return f"cloud metadata address blocked (SSRF metadata risk): {ip}"
     if ip.is_link_local:
         return f"link-local address blocked (SSRF metadata risk): {ip}"
     if ip.is_multicast or ip.is_reserved or ip.is_unspecified:
