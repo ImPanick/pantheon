@@ -397,6 +397,50 @@ def _extract_reply(text: str) -> str:
     return _strip_think(t).strip()
 
 
+_TRANSLATION_OPEN_RE = _re_reply.compile(r"<<<\s*TRANSLATION\s*>>+", _re_reply.I)
+_TRANSLATION_MARKER_RE = _re_reply.compile(r"<<<\s*(?:TRANSLATION|END)\s*>>+", _re_reply.I)
+_SAME_LANGUAGE_MARKER = "<<<SAME_LANGUAGE>>>"
+
+
+def _extract_translation(text: str) -> tuple[str, bool]:
+    """Pull an email translation out of a model response: `(text, same_language)`.
+
+    `B2025`. Both translate paths (the reader's Translate, `POST
+    /api/email/translate`, and the `email_auto_translate` action) ran
+    `_extract_reply` and then looked for `<<<TRANSLATION>>> ... <<<END>>>`.
+    `_extract_reply` fences only REPLY/SUMMARY/OUTPUT and deletes every
+    `<<<END>>>`, so that search never matched: a preamble ("Here is the
+    translation:"), a repeated opener or a note after `<<<END>>>` was cached
+    and shown as the translation.
+
+    Now the translation is the text after the first `<<<TRANSLATION>>>` up to
+    the next `<<<END>>>` (or the end), found once think blocks are gone, so a
+    marker the model only named while reasoning is not the one read. Nothing
+    else is stripped from it: a translation may open "We need to ...". A reply
+    with no opener is read by `_extract_reply`, as before. `<<<SAME_LANGUAGE>>>`
+    is read where it always was (after the email reasoning strip), and also
+    inside the translation's own markers.
+    """
+    if not text:
+        return "", False
+    plain = _extract_reply(text)
+    if _SAME_LANGUAGE_MARKER in plain:
+        return "", True
+    from src.text_helpers import strip_think
+    t = strip_think(text, prose=False, prompt_echo=False)
+    opener = _TRANSLATION_OPEN_RE.search(t)
+    if opener:
+        rest = t[opener.end():]
+        close = _REPLY_CLOSE_RE.search(rest)
+        body = rest[:close.start()] if close else rest
+        if _SAME_LANGUAGE_MARKER in body:
+            return "", True
+    else:
+        body = plain
+    body = _TRANSLATION_MARKER_RE.sub("", body)
+    return _REPLY_ROLE_MARKER_RE.sub("", body).strip(), False
+
+
 def _build_email_summary_messages(sender: str, subject: str, body_for_llm: str) -> list[dict[str, str]]:
     return [
         {

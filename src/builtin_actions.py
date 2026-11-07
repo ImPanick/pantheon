@@ -1229,7 +1229,6 @@ async def action_email_auto_translate(owner: str, **kwargs) -> Tuple[str, bool]:
     try:
         import email as _email_mod
         import json as _json
-        import re as _re
         import sqlite3 as _sql3
         from datetime import datetime as _dt, timedelta as _td
 
@@ -1238,8 +1237,8 @@ async def action_email_auto_translate(owner: str, **kwargs) -> Tuple[str, bool]:
             SCHEDULED_DB,
             _decode_header,
             _email_cache_owner_clause,
-            _extract_reply,
             _extract_text,
+            _extract_translation,
             _imap_connect,
             email_translation_body_hash,
         )
@@ -1345,17 +1344,9 @@ async def action_email_auto_translate(owner: str, **kwargs) -> Tuple[str, bool]:
                 max_tokens=8192,
                 timeout=180,
             )
-            content = (content or "").strip()
-            content = _extract_reply(content)
-            if "<<<SAME_LANGUAGE>>>" in content:
-                return "", True
-            marker = _re.search(r"<<<TRANSLATION>>>\s*(.*?)\s*<<<END>>>", content, _re.S | _re.I)
-            if marker:
-                content = marker.group(1).strip()
-            else:
-                content = _re.sub(r"^\s*<<<TRANSLATION>>>\s*", "", content, flags=_re.I).strip()
-                content = _re.sub(r"\s*<<<END>>>\s*$", "", content, flags=_re.I).strip()
-            return content, False
+            # `B2025`: only what the model wrote between its markers; the
+            # reader's Translate reads the same way and the same cache.
+            return _extract_translation(content)
 
         since = (_dt.utcnow() - _td(days=days_back)).strftime("%d-%b-%Y")
         examined = 0
@@ -1530,6 +1521,37 @@ def _memory_context_lines(mems, limit: int = 40) -> list:
     return lines
 
 
+def _classification_array(raw: str, tries: int = 20):
+    """The event classifier's JSON list out of a model reply, or `None`.
+
+    `B2025`. A greedy regex took everything from the first `[` to the last
+    `]`, so a valid array followed by a note that names an item ("[1] could
+    be social"), or by a second copy of itself, did not parse, and the whole
+    batch counted as failed. Now each `[` (the first `tries` of them) is
+    decoded on its own, and the first list whose objects carry a `type` or an
+    `importance` is the answer, which passes over prose such as "Results
+    [JSON]:" and an echo of the EVENTS list. With no such list, the first
+    list holding an object is taken, as the old parse took any array.
+    """
+    decoder = json.JSONDecoder()
+    first = None
+    pos = raw.find("[")
+    while pos >= 0 and tries > 0:
+        tries -= 1
+        try:
+            value, _end = decoder.raw_decode(raw, pos)
+        except ValueError:
+            value = None
+        if isinstance(value, list):
+            items = [x for x in value if isinstance(x, dict)]
+            if any("type" in x or "importance" in x for x in items):
+                return value
+            if items and first is None:
+                first = value
+        pos = raw.find("[", pos + 1)
+    return first
+
+
 async def action_classify_events(owner: str, **kwargs) -> Tuple[str, bool]:
     """Hybrid classification of upcoming calendar events: fast heuristic for
     obvious cases, LLM fallback for ambiguous ones. Assigns event_type +
@@ -1645,12 +1667,11 @@ async def action_classify_events(owner: str, **kwargs) -> Tuple[str, bool]:
                     from src.text_helpers import strip_think as _st
                     raw = _st(raw or "", prose=False, prompt_echo=False)
                     raw = _re.sub(r"^```(?:json)?\s*|\s*```$", "", raw, flags=_re.MULTILINE).strip()
-                    m = _re.search(r"\[.*\]", raw, _re.DOTALL)
-                    if not m:
+                    arr = _classification_array(raw)   # `B2025`
+                    if arr is None:
                         logger.warning(f"[classify-llm] no JSON array in response: {raw[:300]!r}")
                         failed += len(batch)
                         continue
-                    arr = _json.loads(m.group())
                     by_idx = {x.get("i"): x for x in arr if isinstance(x, dict)}
                     for idx, ev in enumerate(batch):
                         x = by_idx.get(idx)

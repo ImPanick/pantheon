@@ -47,7 +47,8 @@ from src.upload_limits import read_upload_limited, resolve_byte_limit
 from src.file_names import display_name as _file_display_name  # `B1000`
 
 from routes.email_helpers import (
-    _strip_think, _extract_reply, _apply_email_style_mechanics, require_owner, require_user, _assert_owns_account,
+    _strip_think, _extract_reply, _extract_translation, _apply_email_style_mechanics,
+    require_owner, require_user, _assert_owns_account,
     _account_visible_to_owner,
     _q, _attach_compose_uploads, _cleanup_compose_uploads,
     _new_compose_token, _remember_compose_name, _compose_name_path, _attachment_name,
@@ -5673,9 +5674,9 @@ def setup_email_routes():
                 timeout=180,
             )
             model = candidates[0][1] if candidates else ""
-            content = (content or "").strip()
-            content = _extract_reply(content)
-            if "<<<SAME_LANGUAGE>>>" in content:
+            # `B2025`: only what the model wrote between its markers.
+            content, same_language = _extract_translation(content)
+            if same_language:
                 try:
                     _c = _sql3.connect(SCHEDULED_DB)
                     _c.execute("""
@@ -5692,12 +5693,6 @@ def setup_email_routes():
                 except Exception as e:
                     logger.warning(f"Failed to cache same-language email translation: {e}")
                 return {"success": True, "same_language": True, "language": target_language, "model_used": model}
-            marker = re.search(r"<<<TRANSLATION>>>\s*(.*?)\s*<<<END>>>", content, re.S | re.I)
-            if marker:
-                content = marker.group(1).strip()
-            else:
-                content = re.sub(r"^\s*<<<TRANSLATION>>>\s*", "", content, flags=re.I).strip()
-                content = re.sub(r"\s*<<<END>>>\s*$", "", content, flags=re.I).strip()
             if not content:
                 return {"success": False, "error": "Empty response from model"}
             try:
