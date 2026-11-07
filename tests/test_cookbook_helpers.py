@@ -1,6 +1,9 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
+import ast
 import json
 import os
+import re
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -1027,3 +1030,94 @@ def test_validate_serve_cmd_rejects_unrelated_subshell_pipelines():
     ]:
         with pytest.raises(HTTPException):
             _validate_serve_cmd(cmd)
+
+
+# `B1968`. The Dependencies recipe panel's Run posts a recipe to
+# /api/model/serve, and every Run answered 400: the vLLM, SGLang and llama.cpp
+# recipes start with `uv pip install`, which the serve-command gate refused as
+# a binary, and the repo_id it sent, `<backend> setup`, failed the route's pip
+# package-spec check on its space. Ported from upstream Odysseus 631c0560.
+_ROOT = Path(__file__).resolve().parents[1]
+_needs_node = pytest.mark.skipif(not shutil.which("node"), reason="node binary not on PATH")
+
+
+def _dependency_recipes() -> dict:
+    """Every recipe the panel offers, per backend, out of the shipped module
+    rather than its text (`Law 20`)."""
+    module = (_ROOT / "static" / "js" / "cookbook-deps-recipes.js").as_uri()
+    script = (
+        "import { RECIPE_BACKENDS, recipesForBackend, recipeCommands } from "
+        f"{json.dumps(module)};\n"
+        "const out = {};\n"
+        "for (const b of RECIPE_BACKENDS) out[b] = recipesForBackend(b)"
+        ".map(r => ({ label: r.label, pip: recipeCommands(r, 'pip') }));\n"
+        "console.log(JSON.stringify(out));\n"
+    )
+    proc = subprocess.run(["node", "--input-type=module", "--eval", script],
+                          capture_output=True, text=True, timeout=60)
+    assert proc.returncode == 0, proc.stderr
+    return json.loads(proc.stdout)
+
+
+@_needs_node
+def test_every_single_line_dependency_recipe_passes_the_serve_command_gate():
+    """A one-line pip recipe is what Run sends unchanged. The multi-line ones
+    (the two Swift bridges) join with `&&`, which the gate's metacharacter
+    check refuses, as it did before; that check is not loosened here."""
+    single = [r["pip"][0] for rows in _dependency_recipes().values()
+              for r in rows if len(r["pip"]) == 1]
+    assert "uv pip install -U vllm --torch-backend auto" in single
+    assert 'uv pip install -U "sglang[all]" --torch-backend auto' in single
+    assert 'CMAKE_ARGS="-DGGML_CUDA=on" uv pip install -U "llama-cpp-python[server]"' in single
+    assert "python -m pip install -U mlx-lm" in single
+    for cmd in single:
+        assert _validate_serve_cmd(cmd) == cmd, cmd
+
+
+def test_uv_passes_the_serve_command_gate_as_uv_pip_install_and_in_no_other_form():
+    assert _validate_serve_cmd("uv pip install -U vllm") == "uv pip install -U vllm"
+    assert _validate_serve_cmd("CUDA_VISIBLE_DEVICES=0 uv pip install x") == (
+        "CUDA_VISIBLE_DEVICES=0 uv pip install x")
+    for cmd in [
+        "uv run python -c 'print(1)'",
+        "uv tool install ruff",
+        "uv pip uninstall vllm",
+        "uv",
+        "uv --directory /tmp pip install x",
+        "uvx ruff",
+        "FOO=1 uv",
+        # The metacharacter gate holds for the new binary as for every other.
+        "uv pip install x && id",
+        "uv pip install x; id",
+        "uv pip install $(id)",
+        "uv pip install `id`",
+    ]:
+        with pytest.raises(HTTPException):
+            _validate_serve_cmd(cmd)
+
+
+def _model_serve_pip_spec() -> str:
+    """The package-spec pattern model_serve holds a pip install's repo_id to,
+    read from inside that handler and nowhere else (`Law 20`)."""
+    path = _ROOT / "routes" / "cookbook_routes.py"
+    src = path.read_text(encoding="utf-8")
+    handler = next(n for n in ast.walk(ast.parse(src))
+                   if isinstance(n, ast.AsyncFunctionDef) and n.name == "model_serve")
+    body = ast.get_source_segment(src, handler)
+    m = re.search(r're\.fullmatch\(\s*r"([^"]+)",\s*req\.repo_id\s*\)', body)
+    assert m, "model_serve no longer checks a pip install's repo_id"
+    return m.group(1)
+
+
+@_needs_node
+def test_the_recipe_run_sends_a_repo_id_the_pip_install_check_accepts():
+    src = (_ROOT / "static" / "js" / "cookbook.js").read_text(encoding="utf-8")
+    start = src.index("list.querySelectorAll('[data-dep-recipe-run]')")
+    run = src[start:src.index("async function _rebuildLlamaCpp", start)]
+    sent = re.findall(r"\brepo_id:\s*([^,\n]+),", run)
+    # The request, then the task record, which repeats what was sent.
+    assert sent == ["`${backend}-setup`", "reqBody.repo_id"], sent
+    assert "repo_id: `${backend} setup`" not in src
+    spec = _model_serve_pip_spec()
+    for backend in _dependency_recipes():
+        assert re.fullmatch(spec, f"{backend}-setup"), backend

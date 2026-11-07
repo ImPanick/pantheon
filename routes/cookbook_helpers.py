@@ -738,8 +738,16 @@ def _check_serve_binary(seg: str) -> None:
     if not tokens:
         return
     env_re = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
-    first = next((t for t in tokens if not env_re.match(t)), "")
+    idx = next((i for i, t in enumerate(tokens) if not env_re.match(t)), len(tokens))
+    first = tokens[idx] if idx < len(tokens) else ""
     base = os.path.basename(first)
+    # `B1968`. The vLLM, SGLang and llama.cpp Dependencies recipes install
+    # with `uv pip install …`. Allow uv for that subcommand only, so `uv run`
+    # and `uv tool` stay refused and uv stays out of _SERVE_CMD_ALLOWLIST. The
+    # metacharacter check in _validate_serve_cmd has run on the whole command
+    # before this, and still does.
+    if base == "uv" and tokens[idx + 1:idx + 3] == ["pip", "install"]:
+        return
     if base not in _SERVE_CMD_ALLOWLIST:
         raise HTTPException(
             400,
