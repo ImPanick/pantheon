@@ -14,10 +14,13 @@ run) and an `unchecked` mark (`version_graph`); an endpoint URL (this
 install's address — a LAN leak, and a destination); an Integration's key or
 base URL (an Integration is only ever referred to by id, with its name and
 preset); MCP env; an HTTP header's value (names kept, values blanked, and the
-import lists them). Last, a scan for the low-false-positive shapes
-`diagnostic_bundle` redacts (`_KNOWN_PREFIX`) and `Bearer …` refuses the
-export, naming the step and the field — mistake prevention, not a control: the
-person typed it (`Law 17`).
+import lists them); and (`B1872`) any value NAMED like a password or a key — a
+query or body entry, a Set field, a Code input, an MCP argument, a path's
+`name=value` — blanked and listed the same way. Last, a scan for the
+low-false-positive shapes `diagnostic_bundle` redacts (`_KNOWN_PREFIX`),
+`Bearer …`, and a long run of mixed letters and digits typed as a value
+refuses the export, naming the step and the field — mistake prevention, not a
+control: the person typed it (`Law 17`).
 
 **Import** (`import_file`) is the file's adversary's door — whoever wrote the
 file (§ 5.3). Refused whole: over 1 MiB, an unknown `pantheon_workflow`, a
@@ -81,6 +84,113 @@ def _secret_shape(text) -> bool:
     return isinstance(text, str) and bool(_KNOWN_PREFIX.search(text) or _BEARER_VALUE.search(text))
 
 
+# `B1872`. The export blanked a header's value and nothing else, and its scan
+# knew only the prefixed shapes above, so a key in a query string (`appid`,
+# `api_key`, `key`), a form field, a Set step's `db_password` or a Code step's
+# `token` input left in the file verbatim. A value is now blanked by the NAME a
+# person gave it, wherever names and values are typed on a step — the entry
+# lists below, an MCP step's arguments, and a `name=value` typed into an HTTP
+# path's query — unless it is a reference, which carries no secret. Names are
+# read lower-cased with camelCase and punctuation as `_`; `max_tokens`,
+# `author`, `sort_key` are not credentials, `token`, `auth`, `api_key` are.
+_ENTRY_KEYS = ("query", "body", "fields", "input")
+_CREDENTIAL_NAME = re.compile(
+    r"pass(?:word|wd|phrase|code)|^pass$|^pwd$|secret|credential|cookie"
+    r"|(?:^|_)(?:api|app|access|private|licen[cs]e|subscription|auth|master|signing"
+    r"|encryption)_?key|^key$|(?:^|_)app_?id$|(?:^|_)session_?(?:id|key|token)$"
+    r"|token(?!s)|(?:^|_)o?auth(?:_|$)|authori[sz]ation")
+# A long run of mixed letters and digits typed as a value under any other name:
+# the export is refused, naming the step and the field, as for the prefixed
+# shapes. A run is cut at `_ - .` and spaces, so words, a date and a UUID-shaped
+# id are not one; base64's `+ / =` are not cuts.
+_OPAQUE_RUN = re.compile(r"[A-Za-z0-9+/=]{24,}")
+
+
+def credential_name(name) -> bool:
+    """Whether a step's entry, argument or path parameter is named like a
+    password or a key (`B1872`)."""
+    if not isinstance(name, str) or not name.strip():
+        return False
+    words = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", name.strip())
+    words = re.sub(r"[^a-z0-9]+", "_", words.lower()).strip("_")
+    return bool(_CREDENTIAL_NAME.search(words))
+
+
+def _typed_value(value) -> bool:
+    """A value a person typed, not a reference to another step's output."""
+    if isinstance(value, bool) or not isinstance(value, (str, int, float)) or value == "":
+        return False
+    return not (isinstance(value, str) and "{{" in value)
+
+
+def _opaque(text) -> bool:
+    return isinstance(text, str) and any(
+        re.search(r"[A-Za-z]", run) and re.search(r"[0-9]", run)
+        for run in _OPAQUE_RUN.findall(text) if "{{" not in text)
+
+
+def _blank_path_query(path):
+    """`/x?key=abc&units=metric` → `/x?key=&units=metric` for a parameter named
+    like a key; the path and every other parameter as typed."""
+    if not isinstance(path, str) or "?" not in path:
+        return path
+    base, _, query = path.partition("?")
+    parts = []
+    for part in query.split("&"):
+        name, eq, value = part.partition("=")
+        parts.append(f"{name}=" if eq and credential_name(name) and _typed_value(value) else part)
+    return f"{base}?{'&'.join(parts)}"
+
+
+def _path_query_names(path) -> list:
+    if not isinstance(path, str) or "?" not in path:
+        return []
+    return [name for name, eq, _v in (p.partition("=") for p in path.partition("?")[2].split("&"))
+            if eq and credential_name(name)]
+
+
+def blank_secrets(config: dict) -> dict:
+    """`B1872`. A step's own settings with every value named like a password
+    or a key blanked (not its For-each's step: `_clean_config` recurses)."""
+    for key in _ENTRY_KEYS:
+        entries = config.get(key)
+        if isinstance(entries, list):
+            config[key] = [dict(e, value="") if isinstance(e, dict) and credential_name(e.get("name"))
+                           and _typed_value(e.get("value")) else e for e in entries]
+    if isinstance(config.get("args"), dict):
+        config["args"] = {k: ("" if credential_name(k) and _typed_value(v) else v)
+                          for k, v in config["args"].items()}
+    if "path" in config:
+        config["path"] = _blank_path_query(config["path"])
+    return config
+
+
+def secret_slots(config: dict) -> list:
+    """`(field, name)` for each place on a step (not its For-each's step) a
+    value named like a password or a key is EMPTY — what an import says is
+    still needed, as it says a header's value is."""
+    out = [("path", name) for name in _path_query_names(config.get("path"))]
+    for key in _ENTRY_KEYS:
+        for index, entry in enumerate(config.get(key) or ()):
+            if isinstance(entry, dict) and credential_name(entry.get("name")) \
+                    and entry.get("value") in ("", None):
+                out.append((f"{key}[{index}].value", entry["name"]))
+    if isinstance(config.get("args"), dict):
+        out += [(f"args.{k}", k) for k, v in config["args"].items()
+                if credential_name(k) and v in ("", None)]
+    return out
+
+
+def _value_slot(path) -> bool:
+    """Whether a settings leaf is a value typed under a name: an entry's
+    `value`, or an MCP argument."""
+    path = tuple(path)
+    while path[:2] == ("step", "config"):
+        path = path[2:]
+    return ((len(path) == 3 and path[0] in _ENTRY_KEYS + ("headers",) and path[2] == "value")
+            or (len(path) >= 2 and path[0] == "args"))
+
+
 def _inner(node: dict):
     config = node.get("config") if isinstance(node.get("config"), dict) else {}
     step = config.get("step") if isinstance(config.get("step"), dict) else None
@@ -110,6 +220,7 @@ def _clean_config(config: dict, label: str, notes: list) -> dict:
     headers = out.get("headers")
     if isinstance(headers, list):
         out["headers"] = [dict(h, value="") if isinstance(h, dict) else h for h in headers]
+    blank_secrets(out)
     step = out.get("step")
     if isinstance(step, dict) and isinstance(step.get("config"), dict):
         step["config"] = _clean_config(step["config"], label, notes)
@@ -166,7 +277,7 @@ def export_file(db, wf, trigger) -> dict:
                 workstation = True
     for node in store.nodes_of(graph):
         for path, text in config_leaves(node.get("config") or {}):
-            if _secret_shape(text):
+            if _secret_shape(text) or (_value_slot(path) and _opaque(text)):
                 raise WorkflowRefused(
                     400, f"“{node.get('label')}”, {field_words(node, path)}, holds something "
                          f"that looks like a key or a token, so the workflow was not exported. "
@@ -377,6 +488,12 @@ def import_file(db, owner, data, *, tz=None) -> Imported:
                 need(node, {"field": f"{inner}language", "name": "workstation"},
                      f"{called} runs code in your workstation, which cannot run it now: "
                      f"{workstation_why}")
+            # `B1872`: each value named like a password or a key, which the
+            # file never carries (`_clean_config` blanked it above).
+            for field, name in secret_slots(config):
+                need(node, {"field": f"{inner}{field}", "name": str(name)},
+                     f"{called}: “{_text(name)}” looks like a password or a key, and a file "
+                     f"never carries its value. Type it on the step.")
             if kind == "llm" and isinstance(config.get("tools"), list):
                 for tool in config["tools"]:
                     if isinstance(tool, str) and tool not in ai_tools:
