@@ -128,5 +128,9 @@ async def test_a_step_that_makes_more_than_the_whole_copy_holds_says_so(factory,
     by = {r["node_id"]: r for r in records_of(factory, run["id"])}
     said = [line.get("detail") for line in by["a"]["steps"]]
     assert any("more than the 10,000 kept whole" in (d or "") for d in said), said
-    assert "Not found, so left empty: {{ steps.a.data.f0[0].title }}" in by["c"]["output"]["text"], \
+    # `B1881`: a Set field that reads nothing stops the step, naming the
+    # reference and that the step it reads was kept only in part.
+    said_c = by["c"]["output"]["text"]
+    assert "read nothing from {{ steps.a.data.f0[0].title }}" in said_c, \
         "a reference that reads nothing after a pause still says so"
+    assert "kept only in part" in said_c, said_c

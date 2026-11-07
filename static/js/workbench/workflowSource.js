@@ -1777,7 +1777,14 @@ export function createWorkflowSource({
       // `contextOnly`: run nothing, answer what it would read (`reads`).
       const more = {};
       if (outputs !== undefined) more.outputs = outputs;
-      if (contextOnly) more.contextOnly = true;
+      if (contextOnly) {
+        // A step whose settings hold no `{{` names no other step, so it reads
+        // nothing: no request, and no refusal for a step not finished yet.
+        if (!JSON.stringify(node.config || {}).includes('{{')) {
+          return { ok: true, outcome: 'context', reads: [], source };
+        }
+        more.contextOnly = true;
+      }
       const out = await api.testNode(workflowId, String(id), { node: clone(node), source, input, confirm, ...more });
       return { ok: true, ...out };
     } catch (err) {
