@@ -116,6 +116,35 @@ def test_body_under_cap_is_untouched(monkeypatch, no_cache):
     assert r["fetched_bytes"] == len(b"hello world")
 
 
+# `B1798`, upstream Odysseus fd41ff8c's case as it wrote it: an Atom answer is
+# read verbatim through the real pinned fetch, not parsed as an empty page.
+def test_atom_xml_api_response_is_preserved_as_readable_evidence(monkeypatch, no_cache):
+    body = b"<?xml version='1.0'?><feed><entry><title>Daily paper</title></entry></feed>"
+    _patch_stream(monkeypatch, _FakeStream(body, content_type="application/atom+xml"))
+
+    result = content_mod.fetch_webpage_content("https://example.com/api/feed")
+
+    assert result["success"] is True
+    assert "<title>Daily paper</title>" in result["content"]
+
+
+def test_the_models_web_fetch_of_a_feed_hands_it_the_feed(monkeypatch, no_cache):
+    """`B1798`. The model's own `web_fetch` call on an Atom API, down to the
+    socket: it reads the entries, where it was told the feed had no readable
+    text content."""
+    import asyncio
+    from src.agent_tools.web_tools import WebFetchTool
+
+    body = b"<?xml version='1.0'?><feed><entry><title>Daily paper</title></entry></feed>"
+    _patch_stream(monkeypatch, _FakeStream(body, content_type="application/atom+xml; charset=utf-8"))
+
+    out = asyncio.run(WebFetchTool().execute(json.dumps(
+        {"url": "https://export.arxiv.org/api/query?search_query=cat:cs.CV"}), ctx={}))
+
+    assert out["exit_code"] == 0, out
+    assert "<title>Daily paper</title>" in out["output"]
+
+
 def test_body_over_soft_cap_truncates_with_flags(monkeypatch, no_cache):
     body = b"x" * (WEB_FETCH_SOFT_MAX_BYTES + 50_000)
     _patch_stream(monkeypatch, _FakeStream(body, content_length=len(body)))

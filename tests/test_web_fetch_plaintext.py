@@ -6,6 +6,9 @@ and tool documentation lives in `.md` / `.txt`. Those have no HTML structure,
 so the HTML branch extracted nothing and web_fetch reported "no readable text
 content". The plain-text branch returns the body as-is. HTML stays on the
 parsing path.
+
+`B1798`: feeds and XML APIs (Atom, RSS, `application/xml`) are read the same
+way; see the cases at the end.
 """
 import types
 
@@ -109,3 +112,49 @@ def test_html_still_uses_parser(monkeypatch, no_cache):
     r = content_mod.fetch_webpage_content("https://example.com/page")
     assert r["title"] == "Hi"
     assert "Hello world body text" in r["content"]
+
+
+# `B1798`. A feed or an XML API answer went to the HTML parser, which finds no
+# `<main>`, content-classed container or `<body>` in one, so the fetch came back
+# a success with no content and web_fetch called a complete feed "no readable
+# text content": arXiv's export API, a GitHub releases.atom, a WordPress feed, a
+# sitemap. `text/xml` was already read verbatim as `text/*`. Ported from
+# upstream Odysseus fd41ff8c, matched on the media type rather than on a bare
+# "xml", which the Office types carry too.
+FEED = (
+    "<?xml version='1.0' encoding='UTF-8'?>"
+    "<feed xmlns='http://www.w3.org/2005/Atom'><title>cs.CV updates</title>"
+    "<entry><title>Daily paper</title><summary>What it found.</summary></entry>"
+    "</feed>"
+)
+
+
+@pytest.mark.parametrize("content_type", [
+    "application/atom+xml; charset=utf-8",
+    "application/rss+xml",
+    "application/xml",
+])
+def test_a_feed_or_an_xml_api_answer_returns_its_body(monkeypatch, no_cache, content_type):
+    _patch_fetch(monkeypatch, FEED, content_type)
+    r = content_mod.fetch_webpage_content(
+        "https://export.arxiv.org/api/query?search_query=cat:cs.CV")
+    assert r["success"] is True
+    assert r["error"] == ""
+    assert "<title>Daily paper</title>" in r["content"]
+
+
+def test_an_office_document_is_never_read_as_text(monkeypatch, no_cache):
+    # A .docx is a zip; its media type ends in `.document`, not `+xml`.
+    zipped = "PK\x03\x04\x14\x00\x06\x00[Content_Types].xml word/document.xml"
+    _patch_fetch(monkeypatch, zipped,
+                 "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+    r = content_mod.fetch_webpage_content("https://example.com/report")
+    assert "PK\x03\x04" not in r["content"]
+
+
+def test_xhtml_is_still_parsed_as_a_page(monkeypatch, no_cache):
+    page = ('<html xmlns="http://www.w3.org/1999/xhtml"><head><title>X</title></head>'
+            '<body><div class="content">Hello</div></body></html>')
+    _patch_fetch(monkeypatch, page, "application/xhtml+xml")
+    r = content_mod.fetch_webpage_content("https://example.com/page")
+    assert r["content"] == "Hello"

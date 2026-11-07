@@ -324,7 +324,7 @@ def fetch_webpage_content(url: str, timeout: int = 5, retry_attempt: int = 0,
         _cache_result(cache_file, cache_key, result, url)
         return result
 
-    # Plain-text / Markdown / JSON handling. Sources like
+    # Plain-text / Markdown / JSON / XML-feed handling. Sources like
     # raw.githubusercontent.com serve Markdown as `text/plain`, JSON APIs and
     # raw config files serve `application/json`, and a lot of code and tool
     # docs live in `.md` / `.txt`. These have no HTML structure, so the HTML
@@ -335,11 +335,23 @@ def fetch_webpage_content(url: str, timeout: int = 5, retry_attempt: int = 0,
     # catches servers that mislabel text files as `application/octet-stream`.
     is_html = "html" in content_type
     is_json = "json" in content_type
+    # `B1798`. Feeds and XML APIs too: an Atom, RSS or `application/xml` body
+    # (arXiv's export API, a releases.atom, a sitemap) has no container and no
+    # `<body>` for the parser below, so a complete feed came back a success with
+    # no content. The media type decides, never a bare "xml": the Office types
+    # carry it too and are zips. `text/xml` is `text/*` already, and
+    # `application/xhtml+xml` stays on the parser through `is_html`.
+    media_type = content_type.split(";", 1)[0].strip()
+    is_xml = media_type == "application/xml" or (
+        media_type.startswith("application/") and media_type.endswith("+xml")
+    )
     url_path = url.lower().split("?", 1)[0].split("#", 1)[0]
     looks_like_text_file = url_path.endswith(
         (".md", ".markdown", ".txt", ".text", ".json", ".jsonl")
     )
-    if not is_html and (content_type.startswith("text/") or is_json or looks_like_text_file):
+    if not is_html and (
+        content_type.startswith("text/") or is_json or is_xml or looks_like_text_file
+    ):
         text_body = (response.text or "").strip()
         result = {
             "url": url,
