@@ -2271,3 +2271,80 @@ html.cockpit .doclib-lang-chips > button { margin-top: 0; }
 @media (max-width: 480px) { html.cockpit #doclib-modal .lib-tab { padding: 0 9px !important; gap: 5px; } }
 /* phone-8: the Library card's ⋮ glyph centres in its 32px phone circle */
 html.cockpit .doclib-card-menu-wrap > .memory-item-btn { justify-content: center; }
+
+/* ── alignment audit 2026-11-07: settings ── */
+/* The "…" More buttons (endpoint cards, user rows) hold their dots in the middle; the svg sat on the text baseline, 1.8px low. */
+html.cockpit #settings-modal :is(#adm-epLocalMoreBtn, #adm-epApiMoreBtn, [data-adm-user-more]) {
+  display: inline-flex; align-items: center; justify-content: center; width: 32px; padding: 0 !important;
+}
+/* Search > Provider: the picker and Test sat 2.5px under their label (inline top offsets and a stray bottom margin). */
+html.cockpit #search-provider-picker { top: 0 !important; margin-bottom: 0; }
+html.cockpit #set-searchTestBtn { top: 0 !important; }
+/* "Fallbacks" label sits level with "+ Add fallback": an empty list no longer adds a gap above the button. */
+html.cockpit #settings-modal .settings-fallbacks:empty { display: none; }
+html.cockpit #settings-modal .settings-row:has(> div > .settings-fallbacks) > .settings-label { margin-top: 11px !important; }
+/* AI Defaults: every model select starts on one edge; rows without a logo chip reserve the chip's room, and Vision / Image rows use the 8px row gap. */
+html.cockpit [data-settings-panel="ai"] .admin-card > div > div[style*="gap:0.75rem"] { gap: 8px !important; }
+html.cockpit [data-settings-panel="ai"] .settings-label + select.settings-select { margin-left: 22px; }
+/* Search tab's labels share one width, so "Results per query" no longer pushes its control right. */
+@media (min-width: 769px) { html.cockpit [data-settings-panel="search"] .settings-label { min-width: 104px; } }
+/* System: the env-flag selects and the two retention inputs line up on the right like the other controls. */
+html.cockpit #settings-envflags-rows .settings-row > .settings-select { flex: 0 1 382.5px; margin-left: auto; }
+html.cockpit :is(#set-eventsRetention, #set-authEventsRetention) { flex: 0 0 96px; margin-left: auto; }
+/* On a phone the env-flag select stacks under its label at full width, like the other wide settings controls. */
+@media (max-width: 768px) {
+  html.cockpit #settings-envflags-rows .settings-row { flex-wrap: wrap; }
+  html.cockpit #settings-envflags-rows .settings-row > .settings-select { flex: 1 1 100%; margin-left: 0; }
+}
+/* Wide controls keep one width per card: the label takes the slack, so a narrow window no longer gives each row its own edge.
+   Deep Research's "Search" select joins that column; its logo, when there is one, sits just left of it. */
+@media (min-width: 769px) {
+  html.cockpit #settings-modal .settings-row:has(> .settings-control-wide, > #set-researchSearch, > #set-eventsRetention, > #set-authEventsRetention) > .settings-label,
+  html.cockpit #settings-envflags-rows .settings-row > .settings-label { flex: 1 1 0; min-width: 0; }
+  html.cockpit #settings-envflags-rows .settings-row > .settings-select { max-width: 60%; }
+  html.cockpit #settings-modal .settings-row > .settings-control-wide { flex: 0 1 382.5px; width: auto; max-width: 60%; }
+  html.cockpit #set-researchSearch { flex: 0 1 382.5px !important; width: auto !important; max-width: 60% !important; margin-left: auto; }
+  html.cockpit #set-researchSearch-logo:empty { display: none !important; }
+  html.cockpit #set-researchSearch-logo:not(:empty) + #set-researchSearch { margin-left: 0; }
+}
+/* A switch that follows its label in a settings row sits at the right edge like every other switch. */
+html.cockpit #settings-modal .settings-row > .admin-switch:last-child { margin-left: auto; }
+/* Toggle rows keep a gap, so long sub-text no longer runs into its switch. */
+html.cockpit #settings-modal .admin-toggle-row { gap: 16px; }
+/* Card headings start their text 5px after the icon whatever gap the heading's inline style gives (was 32, 34 or 40px in). */
+html.cockpit #settings-modal .admin-card h2 > svg:first-child { margin-right: 5px !important; }
+html.cockpit #settings-modal .admin-card h2[style*="gap:8px"] > svg:first-child { margin-right: -3px !important; }
+html.cockpit #settings-modal .admin-card h2[style*="gap:6px"] > svg:first-child { margin-right: -1px !important; }
+/* Shortcuts: the top card uses the cards' 12px padding and its heading rule spans the card. */
+html.cockpit [data-settings-panel="shortcuts"] > .admin-card:first-child { padding: 12px !important; gap: 12px; }
+html.cockpit [data-settings-panel="shortcuts"] > .admin-card:first-child > div { flex: 1; min-width: 0; }
+/* A shortcut with no icon keeps the icon's 14px, so its label starts with the others. */
+html.cockpit #settings-modal .shortcut-icon:empty { width: 14px; }
+/* A key cap being rebound shows "Press keys..." in a 24px pill level with the check button, instead of an 8px sliver. */
+html.cockpit #settings-modal .shortcut-key { height: auto; min-height: 24px; }
+html.cockpit #settings-modal .shortcut-key.listening { font-size: 10px; height: 24px; padding: 0 8px; transition: background-color .15s; }
+/* Git and Vault: the Save / Add / Generate / Bring in / Export buttons and the file input match their 32px inputs. */
+html.cockpit #settings-modal .git-settings-row > button { height: 32px; }
+html.cockpit #settings-modal .git-settings-field input[type="file"] { height: 32px; padding-block: 0; }
+/* Forge: the two "+ Add" buttons drop their nudges and sit level with the tag and heading beside them. */
+html.cockpit #set-forgeServers .cookbook-modeldir-add { top: 0; }
+html.cockpit #set-forge-server-add { top: 0; }
+html.cockpit #set-forgeServers > div:has(> #set-forge-server-add) { align-items: center !important; }
+/* Forge server colour pill is wide enough for "Auto · Purple". */
+html.cockpit #set-forgeServers .cookbook-server-row .cookbook-srv-color-wrap { width: 114px; }
+/* System > Terminal Logs: Refresh is as tall as the selects beside it. */
+html.cockpit #log-refresh-btn { height: 32px; }
+/* Trust rungs: thicker left borders no longer push the radio, mark and text right; each mark gets the triangle's 12px width. */
+html.cockpit #settings-modal .trust-rung[data-rung-cost="some"] { padding-left: 10px; }
+html.cockpit #settings-modal .trust-rung[data-rung-cost="high"] { padding-left: 8px; }
+html.cockpit #settings-modal .trust-rung:not([data-rung-cost="high"]) .trust-rung-mark { margin: 0 2.5px; }
+@media (max-width: 768px) {
+  html.cockpit #settings-modal .trust-rung[data-rung-cost="some"] { padding-left: 8px; }
+  html.cockpit #settings-modal .trust-rung[data-rung-cost="high"] { padding-left: 6px; }
+}
+@media (max-width: 640px) {
+  html.cockpit #settings-modal .trust-rung[data-rung-cost="some"] { padding-left: 7px; }
+  html.cockpit #settings-modal .trust-rung[data-rung-cost="high"] { padding-left: 5px; }
+}
+/* Added Models' empty state centres its message like its title and button. */
+html.cockpit :is(#adm-epList-local, #adm-epList-api) .empty-state { text-align: center; }
