@@ -687,6 +687,23 @@ To expose Pantheon on a local network or Tailscale with HTTPS:
    ```
 4. Install the `mkcert` CA on any other device you want to access Pantheon from (e.g., for iOS, email the `rootCA.pem` to yourself, install the profile, and trust it in Certificate Trust Settings).
 
+### Reach Pantheon from your phone (push and lock-screen approvals)
+Settings → Reminders → **Push to your devices** turns on notifications that arrive with Pantheon closed. When the agent asks before it acts, the question lands on the phone with **Approve** and **Deny** on it; the answer goes through the same approval check as the card in the chat, signed in as you on that phone.
+
+Browsers only allow push on a secure page: `https://`, or `localhost` on the machine itself. A phone opening `http://192.168.x.x:7000` cannot turn it on, and the card says so. The least work is [Tailscale](https://tailscale.com/) on the Pantheon machine and the phone:
+
+1. In the Tailscale admin console, turn on MagicDNS and HTTPS certificates.
+2. On the Pantheon machine: `tailscale serve --bg 7000` (Pantheon keeps listening on `127.0.0.1`; Tailscale carries it). It prints an address like `https://pantheon.your-tailnet.ts.net`.
+3. On the phone, with Tailscale connected, open that address, sign in, then Settings → Reminders → *Turn on for this device*, and *Send a test*.
+
+Your own reverse proxy with a real certificate (Caddy, nginx) works the same way, and so does the `mkcert` route above once the phone trusts its CA. A companion pairing token is not enough for approvals: only a signed-in person may answer one, so sign in in the phone's browser.
+
+- **Android:** Chrome, Edge, Firefox and Samsung Internet show Approve and Deny on the notification. On the lock screen the phone may ask you to unlock first; that is the phone's setting.
+- **iPhone / iPad (iOS 16.4 or later):** add Pantheon to the Home Screen (Share → Add to Home Screen) and turn push on from that icon. iOS shows the notification without the two buttons; tapping it opens the chat at the card.
+- **Desktop:** works in any current browser; Windows and macOS show the buttons in their notification centre.
+
+What leaves the machine: each push goes to the push service of the browser you turned it on in (Google for Chrome/Android, Mozilla, Apple, Microsoft), encrypted so that service cannot read it. Nothing is sent before you turn push on. Pantheon keeps its signing key and your devices in the data folder (`push_vapid.json`, `push_subscriptions.json`); deleting the key turns push off on every device until each is turned on again. `PANTHEON_PUSH_HOSTS` adds a push service you run yourself; `PANTHEON_PUSH_CONTACT` sets the `mailto:` or `https:` contact push services see.
+
 ### Common self-host traps (30-second fixes)
 A grab-bag of small gotchas that otherwise turn into long debugging sessions.
 

@@ -146,6 +146,32 @@ def approval_expiry_listeners() -> tuple:
         return tuple(_expiry_listeners)
 
 
+# ── who is told when a card is minted ────────────────────────────────────────
+#
+# `B1830`. The expiry listener's twin, for the other end of a card's life: Web
+# Push (`src/web_push.py`) registers one so a card that waits on a person
+# reaches their phone with the app closed. Same rules — idempotent, called
+# outside the store lock, and a listener that raises changes nothing about the
+# card. It is told the card exists; it decides nothing about it.
+_created_listeners: list[Any] = []
+
+
+def register_approval_created_listener(listener) -> None:
+    with _expiry_listeners_lock:
+        if listener not in _created_listeners:
+            _created_listeners.append(listener)
+
+
+def clear_approval_created_listeners() -> None:
+    with _expiry_listeners_lock:
+        _created_listeners.clear()
+
+
+def approval_created_listeners() -> tuple:
+    with _expiry_listeners_lock:
+        return tuple(_created_listeners)
+
+
 def _normalized_owner(owner: Any) -> str:
     return str(owner or "").strip().casefold()
 
@@ -912,6 +938,12 @@ class ToolApprovalStore:
                 self._pending.pop(oldest_id, None)
             self._pending[pending.approval_id] = pending
         self._announce_expired(expired)
+        for listener in approval_created_listeners():
+            try:
+                listener(pending)
+            except Exception:  # pragma: no cover - defensive
+                logger.warning("approval created listener failed for %s",
+                               pending.approval_id, exc_info=True)
         return pending
 
     def consume(

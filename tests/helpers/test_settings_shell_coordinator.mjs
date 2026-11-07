@@ -42,6 +42,9 @@ const REAL_MODULES = new Set([
   path.join(JS, 'settings/registry.js'),
   path.join(JS, 'settings/search.js'),
   path.join(JS, 'settings/sidebar.js'),
+  // `B1832`. Push to your devices, on Reminders: real for the reason above —
+  // `settings.js` imports it at load and its only import is `settings/dom.js`.
+  path.join(JS, 'settings/push.js'),
   path.join(JS, 'settings/navigation.js'),
   path.join(JS, 'settings/lifecycle.js'),
   // `P23-01`. The back stack: `settings.js` and `lifecycle.js` note an opener

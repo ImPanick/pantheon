@@ -57,6 +57,12 @@ STORES: dict[tuple[str, str], tuple[str, str]] = {
         GUARDED, "credentials and every operator choice, written by ~20 read-modify-write callers"),
     ("src/settings.py", "FEATURES_FILE"): (
         GUARDED, "admin feature flags; H05 is the record of one coming back on by itself"),
+    # `B1830`: Web Push. A new key unsubscribes every device; the device list
+    # is the only record of which browsers a person turned push on in.
+    ("src/web_push.py", "VAPID_FILE"): (
+        GUARDED, "the server's push signing key; replacing it silently cuts off every device"),
+    ("src/web_push.py", "SUBSCRIPTIONS_FILE"): (
+        GUARDED, "each person's push devices, one file for everybody"),
     # `B988`: `contacts_routes.py` and `email_helpers.py` wrote settings.json
     # through doors of their own (two entries here until 2026-10-01). Both now
     # call `src.settings.save_settings`, so the file has one write site.
