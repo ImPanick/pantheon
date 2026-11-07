@@ -789,7 +789,9 @@ async def _read_file(content: str, st: _Station) -> Dict:
 
 async def _write_file(content: str, st: _Station) -> Dict:
     raw_path, body, append, declared_clear = fs._write_file_intent(content)
-    refused = _path_refusal("write_file", raw_path)
+    # `B1785`: a text that cannot be saved as UTF-8 is the host's refusal,
+    # before the workstation is asked (the client would fail to encode it).
+    refused = _path_refusal("write_file", raw_path) or fs._unwritable_text("write_file", body)
     if refused:
         return refused
     old = ""

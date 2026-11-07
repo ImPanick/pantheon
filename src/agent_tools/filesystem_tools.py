@@ -80,6 +80,34 @@ def _edit_args_error(old: Any, new: Any) -> Optional[Dict[str, Any]]:
         return {"error": "edit_file: old_string required (use write_file to create a file)", "exit_code": 1}
     if old == new:
         return {"error": "edit_file: old_string and new_string are identical", "exit_code": 1}
+    # `B1785`. The file is read as strict UTF-8, which holds no surrogate, so
+    # the edited text can be saved exactly when `new_string` can.
+    return _unwritable_text("edit_file", new)
+
+
+def _unwritable_text(tool: str, text: Any, of: str = "") -> Optional[Dict[str, Any]]:
+    """`B1785`. The refusal for a new text that cannot be saved as UTF-8, or
+    `None` when it can. Asked before a file is opened: `open(path, "w")`
+    empties the file on the way in and the text is encoded only as it is
+    written, so a lone surrogate (`\\ud800`, which a model's JSON can carry
+    when it under-escapes a backslash in code that spells one) left the
+    person's file at 0 bytes behind an error that never said so.
+
+    `of` names the file, for `apply_patch`, whose patch may change several;
+    every one is then unchanged."""
+    if not isinstance(text, str):
+        return None
+    try:
+        text.encode("utf-8")
+    except UnicodeEncodeError as e:
+        code = "\\u%04x" % ord(text[e.start])
+        what = f"the new text of {of}" if of else "the new text"
+        kept = "every file is unchanged" if of else "the file is unchanged"
+        return {"error": (f"{tool}: {what} holds a character that cannot be saved as UTF-8 "
+                          f"(a lone surrogate, {code} at position {e.start}), so nothing was "
+                          f"written and {kept}. If you meant the characters {code} themselves, "
+                          f"escape the backslash: \\{code}"),
+                "exit_code": 1}
     return None
 
 
@@ -438,6 +466,11 @@ class WriteFileTool:
             path = _resolve_tool_path(raw_path)
         except ValueError as e:
             return {"error": f"write_file: {e}", "exit_code": 1}
+        # `B1785`: before the file is opened, appends included, so this and
+        # the workstation give one answer.
+        unwritable = _unwritable_text("write_file", body)
+        if unwritable:
+            return unwritable
         # `B1783`: a body that is empty or blank, from a call that did not say
         # the file is to be empty — a body lost on the way.
         undeclared_empty = not append and not body.strip() and not declared_clear
@@ -556,6 +589,11 @@ def _run_patch(patch_text: str, files) -> Dict[str, Any]:
                     return {"error": f"apply_patch: {op['path']}: not found", "exit_code": 1}
                 old = files.read_text(path)
                 new = _apply_patch_hunks(old, op["hunks"], op["path"])
+            # `B1785`: every new text can be saved, asked before the first
+            # write or delete, so the patch stays all or nothing.
+            unwritable = _unwritable_text("apply_patch", new, of=op["path"])
+            if unwritable:
+                return unwritable
             prepared.append((kind, path, old, new))
 
         diffs = []
