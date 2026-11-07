@@ -1327,13 +1327,18 @@ def _normalize_thinking(text: str) -> str:
 
     # Handle garbled <think> tags: reasoning text followed by <think> as separator
     # e.g. "The user said...I should respond.\n<think>Hey! What's up?"
+    # `B1920`: this read `^([\s\S]+?)\n*<think>\s*([\s\S]*?)(?:</think>)?\s*$`,
+    # which went back over a run of newlines that no tag follows, or a run of
+    # spaces in the reply, from every place in it. The lookbehind starts the
+    # newlines only at their first one, and the closing tag comes off the
+    # reply after the match; the same reasoning and reply come out.
     garbled = re.match(
-        r'^([\s\S]+?)\n*<think(?:ing)?>\s*([\s\S]*?)(?:</think(?:ing)?>)?\s*$',
+        r'^([\s\S]+?)(?<![\s\S]\n)\n*<think(?:ing)?>\s*([\s\S]*)$',
         text, re.IGNORECASE
     )
     if garbled:
         before = garbled.group(1).strip()
-        after = garbled.group(2).strip()
+        after = re.sub(r'</think(?:ing)?>$', '', garbled.group(2).rstrip(), flags=re.IGNORECASE).strip()
         # Only treat as garbled if the part before <think> looks like reasoning
         reasoning_starts = (
             'The user ', 'I need ', 'I should ', 'I will ',
