@@ -28,6 +28,7 @@ from src.llm_core import (
     dedupe_model_candidates,
     stream_llm,
     stream_llm_with_fallback,
+    tools_transport_refused,   # `B1989`
     typed_local_max_tokens_ceiling as _typed_local_max_tokens_ceiling,
     _detect_provider,
     _host_match,
@@ -2122,6 +2123,12 @@ def tool_schema_offer(
     that is `native` and nothing about the route changes; where nobody declared
     anything it is `both`, which costs the full prompt instead of the compact
     one and leaves the model two ways to call a tool instead of none.
+
+    `B1989`. *Let the server answer* includes its no: a `both` route whose
+    server refuses the `tools` array itself (`tools_transport_refused`) is
+    asked the same step again as `fenced`, for the rest of that turn, and the
+    chat says so once (`TOOLS_REFUSED_NOTE`). Nothing is written to the
+    endpoint row; settling it is the admin's Tool calling control (`P3-22`).
     """
     if endpoint_supports is False:
         return "fenced"
@@ -2130,6 +2137,15 @@ def tool_schema_offer(
     if endpoint_supports is True:
         return "native"
     return "both"
+
+
+#: `B1989`. Said once in the chat when a server refused a turn's native tool
+#: calls and the turn carried on with written ones.
+TOOLS_REFUSED_NOTE = (
+    "_This model's server refused native tool calls, so for the rest of this turn its "
+    "tool calls are written out instead. An admin can set this endpoint's Tool calling "
+    "to Fenced in Settings → Added Models._"
+)
 
 
 def _schema_backed_tool_names() -> frozenset:
@@ -9025,6 +9041,10 @@ async def stream_agent_loop(
             _turn_trim["context_length"], _turn_trim["figures"], left_out,
             memories_left_out=unsent)) + "\n\n"
 
+    # `B1989`. The `(url, model)` routes whose server refused a `tools` array
+    # this turn: each is built `fenced` from then on (the builder below).
+    _tools_refused_routes: Set[tuple] = set()
+
     async def _build_route_request_state(candidate_url, candidate_model, candidate_headers, source_messages):
         compaction_state: Dict = {}
         compacted_source = list(source_messages)
@@ -9064,6 +9084,12 @@ async def stream_agent_loop(
             owner,
             headers=candidate_headers,
         )
+        # `B1989`. This server refused the `tools` array earlier in the turn:
+        # the fenced route — the full prompt and the fenced parser — and no
+        # `tools` key at all (`_tool_schemas_for_route`).
+        _route_tools_refused = (candidate_url, candidate_model) in _tools_refused_routes
+        if _route_tools_refused:
+            is_api, _schema_offer = False, "fenced"
         _prompt_report: Dict[str, Any] = {}
         # `B1368` (fx9-suite). The plan goes to the prompt as well as to the
         # schema list, so a turn that carries part of the suite says so.
@@ -9173,6 +9199,7 @@ async def stream_agent_loop(
             "relevant_tools": route_tools,
             "is_api_model": is_api,
             "schema_offer": _schema_offer,
+            "tools_refused": _route_tools_refused,   # `B1989`
             "is_ollama_native": is_native_ollama,
             "ollama_openai_compat": is_ollama_compat,
             "pan_qwen_finetune_model": is_ody,
@@ -9326,6 +9353,9 @@ async def stream_agent_loop(
     _pinned_fallback_route = None
     _last_route_request_messages = _initial_route_request_messages
     _last_route_context_length = _initial_route_context_length
+    # `B1989`. The route state of the last request a round sent — the one a
+    # stream error answers — with its `route_key` and the `tools` it carried.
+    _last_route_state: Dict[str, Any] = {}
     # `B892`. The tool schemas the last round actually sent, so the context
     # breakdown below can say what they cost. `None` until a round is built.
     _last_sent_tool_schemas = None
@@ -9524,6 +9554,10 @@ async def stream_agent_loop(
         route_mcp_schemas = route_state["mcp_schemas"]
         route_relevant_tools = route_state["relevant_tools"]
         if _force_answer:
+            return []
+        if route_state.get("tools_refused"):
+            # `B1989`: not even the MCP schemas a fenced route may carry below;
+            # this server refuses any `tools` array.
             return []
         if route_state["is_api_model"] or route_state.get("schema_offer") in ("native", "both"):
             if route_relevant_tools:
@@ -10138,6 +10172,7 @@ async def stream_agent_loop(
             "relevant_tools": _relevant_tools,
             "is_api_model": _is_api_model,
             "schema_offer": _schema_offer,
+            "tools_refused": (endpoint_url, model) in _tools_refused_routes,   # `B1989`
             "is_ollama_native": _is_ollama_native,
             "ollama_openai_compat": _ollama_openai_compat,
             "pan_qwen_finetune_model": _pan_qwen_finetune_model,
@@ -10152,8 +10187,10 @@ async def stream_agent_loop(
         # loop, so pinning it would silently discard a round-1 steer (and an
         # injected approval result, which is why the first half of this guard
         # already exists). Fall through to the normal per-round build whenever
-        # `messages` has grown since that list was made.
-        if round_num == 1 and not _approved_result_injected and not _steers_applied:
+        # `messages` has grown since that list was made — or, `B1989`, was
+        # rebuilt fenced after this route refused its `tools` array.
+        if (round_num == 1 and not _approved_result_injected and not _steers_applied
+                and not _active_route_state["tools_refused"]):
             _active_route_state["request_messages"] = _initial_route_request_messages
         all_tool_schemas = _tool_schemas_for_route(_active_route_state)
         _last_sent_tool_schemas = all_tool_schemas
@@ -10194,7 +10231,7 @@ async def stream_agent_loop(
         _candidate_request_states = {0: _active_route_state}
 
         async def _candidate_request(index, candidate_url, candidate_model, candidate_headers):
-            nonlocal _last_route_request_messages, _last_route_context_length
+            nonlocal _last_route_request_messages, _last_route_context_length, _last_route_state
             if index == 0:
                 state = _active_route_state
             else:
@@ -10240,6 +10277,8 @@ async def stream_agent_loop(
             run_security.observe_messages(request_messages)
             candidate_tools = _tool_schemas_for_route(state)
             state["tools"] = candidate_tools
+            state["route_key"] = (candidate_url, candidate_model)   # `B1989`
+            _last_route_state = state
             _candidate_request_states[index] = state
             return {
                 "messages": request_messages,
@@ -10360,6 +10399,7 @@ async def stream_agent_loop(
             agent_stream_timeout,
         )
         _retry_round_in_words = False   # `B1281`
+        _retry_round_without_tools = False   # `B1989`
         async for chunk in stream_llm_with_fallback(
             _candidates,
             messages,
@@ -10416,6 +10456,24 @@ async def stream_agent_loop(
                         + tool_result_images.PICTURES_REFUSED_NOTE + "\n\n"
                     full_response += _refused_note
                     yield f'data: {json.dumps({"delta": _refused_note})}\n\n'
+                    break
+                # `B1989`. The server refused the `tools` array itself (vLLM
+                # without `--enable-auto-tool-choice`), before a word of this
+                # round, on a route nobody declared native (`both`): the step
+                # is asked again fenced, the route stays fenced for the rest
+                # of the turn, and the chat says so once. A route declared
+                # native keeps the error, as does any other refusal.
+                if (not round_response.strip() and not native_tool_calls
+                        and _last_route_state.get("tools")
+                        and _last_route_state.get("schema_offer") == "both"
+                        and tools_transport_refused(chunk)):
+                    if not _tools_refused_routes:
+                        _refused_note = ("\n\n" if full_response.strip() else "") \
+                            + TOOLS_REFUSED_NOTE + "\n\n"
+                        full_response += _refused_note
+                        yield f'data: {json.dumps({"delta": _refused_note})}\n\n'
+                    _tools_refused_routes.add(_last_route_state["route_key"])
+                    _retry_round_without_tools = True
                     break
                 terminal_status = None
                 try:
@@ -10732,6 +10790,28 @@ async def stream_agent_loop(
         if _retry_round_in_words:
             # `B1281`: the same step, asked again with the pictures in words —
             # not a step of its own (`_round_numbers` does not count it).
+            _redo_round.append(round_num)
+            continue
+        if _retry_round_without_tools:
+            # `B1989`: the same step again, fenced. The route that refused is
+            # rebuilt the way a fallback is built (`_candidate_request`), so it
+            # gets the full prompt — the compact one says not to write tool
+            # syntax — and the fenced parser; a fallback that refused is built
+            # fenced on its own next time it is asked.
+            if (endpoint_url, model) in _tools_refused_routes:
+                _route_state = await _build_route_request_state(
+                    endpoint_url,
+                    model,
+                    headers,
+                    _round_one_source_messages() if round_num == 1 else messages,
+                )
+                messages = _route_state["messages"]
+                mcp_schemas = _route_state["mcp_schemas"]
+                _relevant_tools = _route_state["relevant_tools"]
+                _is_api_model = _route_state["is_api_model"]
+                _schema_offer = _route_state["schema_offer"]
+                _is_ollama_native = _route_state["is_ollama_native"]
+                _ollama_openai_compat = _route_state["ollama_openai_compat"]
             _redo_round.append(round_num)
             continue
         logger.info(
