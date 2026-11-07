@@ -133,7 +133,15 @@ def limit_keys() -> frozenset[str]:
     return frozenset(role_limit_ranges())
 
 
-def _check_privilege_value(key: str, value: Any) -> Any:
+def check_privilege_value(key: str, value: Any) -> Any:
+    """*value* as the type `DEFAULT_PRIVILEGES` declares for *key*, or raise
+    :class:`RoleError` with a sentence that names the key. A list comes back
+    as a fresh list of strings.
+
+    `B1900`. The one rule for both layers that store a privilege: a role's
+    override, here, and a person's own, in `AuthManager.set_privileges`,
+    which outranks the role and until then stored whatever it was sent.
+    """
     from core.auth import DEFAULT_PRIVILEGES
     declared = DEFAULT_PRIVILEGES[key]
     if isinstance(declared, bool):
@@ -189,7 +197,7 @@ def validate_overrides(overrides: Any) -> Dict[str, Any]:
     for raw_key, value in overrides.items():
         key = str(raw_key)
         if key in allowed_privs:
-            clean[key] = _check_privilege_value(key, value)
+            clean[key] = check_privilege_value(key, value)
         elif key in allowed_limits:
             clean[key] = _check_limit_value(key, value)
         else:

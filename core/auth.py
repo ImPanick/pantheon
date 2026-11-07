@@ -703,7 +703,23 @@ class AuthManager:
         return copy.deepcopy(merged)
 
     def set_privileges(self, username: str, privileges: Dict[str, Any]) -> bool:
-        """Update privileges for a user. Can't modify admin privileges."""
+        """Update privileges for a user. Can't modify admin privileges.
+
+        Raises `src.roles.RoleError`, naming the first value that is not the
+        type its key declares, and then stores nothing (`B1900`).
+        """
+        from src.roles import RoleError, check_privilege_value
+
+        # `B1900`. Every value is checked before anything moves, by the rule a
+        # role's override is held to (`Law 14`). A person's own override
+        # outranks the role and was the one layer stored as sent: a string
+        # "false" read as on wherever a privilege is tested for truth, and a
+        # string daily limit raised in `int()` on each of that person's chat
+        # sends. `None` is not a value; it clears, below.
+        if not isinstance(privileges, dict):
+            raise RoleError("Privileges are an object of privilege names and values.")
+        changes = {k: None if v is None else check_privilege_value(k, v)
+                   for k, v in privileges.items() if k in DEFAULT_PRIVILEGES}
         username = username.strip().lower()
         with self._config_lock:
             if username not in self.users:
@@ -727,9 +743,7 @@ class AuthManager:
             # "whatever the role says".
             stored = self.users[username].get("privileges")
             current = dict(stored) if isinstance(stored, dict) else {}
-            for k, v in privileges.items():
-                if k not in DEFAULT_PRIVILEGES:
-                    continue
+            for k, v in changes.items():
                 if v is None:
                     current.pop(k, None)
                 else:

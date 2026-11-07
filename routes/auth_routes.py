@@ -669,8 +669,24 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
     async def update_user_privileges(username: str, request: Request):
         require_admin(request)
         user = get_current_user(request)
-        body = await request.json()
-        ok = auth_manager.set_privileges(username, body)
+        # `B1900`. A body that is not a JSON object, and a value that is not the
+        # type its privilege declares, answered a 500 or were stored as sent.
+        # Each is now a 400 that says which, written down as a refusal, as
+        # `upsert_role` answers a role's.
+        try:
+            body = await request.json()
+        except ValueError:  # not JSON, or not UTF-8
+            body = None
+        if not isinstance(body, dict):
+            await _audit("privilege_change", actor=user, subject=username,
+                         outcome="error", detail={"reason": "not_a_json_object"})
+            raise HTTPException(400, "Request body must be a JSON object")
+        try:
+            ok = auth_manager.set_privileges(username, body)
+        except RoleError as exc:
+            await _audit("privilege_change", actor=user, subject=username,
+                         outcome="error", detail={"reason": str(exc)})
+            raise HTTPException(400, str(exc))
         if not ok:
             await _audit("privilege_change", actor=user, subject=username,
                          outcome="error",
