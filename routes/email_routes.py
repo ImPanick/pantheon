@@ -3399,6 +3399,12 @@ def setup_email_routes():
                 _t_fetch = _t.monotonic() - _t0
                 if status != "OK":
                     return {"error": f"Email UID {uid} not found"}
+                # `B1966`: a UID the server no longer has answers OK with no
+                # message part, `[None]`. Said here, before anything is parsed,
+                # marked seen or cached as a blank message. Upstream Odysseus #6425.
+                if not any(isinstance(item, tuple) for item in (msg_data or [])):
+                    return {"error": "This message was moved or deleted on the server. Refresh the folder.",
+                            "not_found": True}
                 if full:
                     raw = msg_data[0][1]
                 else:
@@ -3702,6 +3708,8 @@ def setup_email_routes():
                 status, msg_data = _imap_uid_fetch(conn, uid, "(RFC822)")
             if status != "OK":
                 return {"attachments": [], "error": "Email not found"}
+            if not any(isinstance(item, tuple) for item in (msg_data or [])):
+                return {"attachments": [], "error": "Email not found"}   # `B1966`: gone from the server
             raw = msg_data[0][1]
             msg = email_mod.message_from_bytes(raw)
             attachments = _list_attachments_from_msg(msg)
