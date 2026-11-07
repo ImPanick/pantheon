@@ -535,3 +535,51 @@ def test_no_module_imports_a_file_that_is_not_there():
             if not target.is_file():
                 dangling.append(f"{js.relative_to(_REPO)} -> {spec}")
     assert dangling == [], f"imports with no file behind them: {dangling}"
+
+
+# ── half three: the loop keeps running when Notes closes ──────────────────────
+#
+# `B2003`. The loop starts three seconds after load (`_initReminders`) and is
+# the only thing that moves a recurring reminder on to its next time (calendar
+# reminders are notes on it too). Closing Notes stopped it — `closePanel` (close,
+# and minimise to the dock) and `_forceCloseNotesPanel` (Escape, the dock, a
+# document opening) both cleared its interval — so a repeating reminder fired
+# once at its old time and then not again until Notes was opened. It cannot
+# stack: `_startReminderLoop` starts no second interval. The real
+# `_startReminderLoop`, `closePanel` and `_forceCloseNotesPanel` run on the
+# Notes page `tests/test_back_on_a_note_you_only_read_keeps_it_js.py` builds,
+# with the interval timer recorded.
+
+_LOOP_TIMER = """
+const intervals = [];
+const cleared = [];
+const setInterval = (fn, ms) => { intervals.push(ms); return 'loop-' + intervals.length; };
+const clearInterval = (id) => { cleared.push(id); };
+let checks = 0;
+function _checkReminders() { checks += 1; }
+"""
+
+
+@pytest.mark.skipif(not _HAS_NODE, reason="node not installed")
+@pytest.mark.parametrize("how", ["closed", "minimised", "closed for a document"])
+def test_closing_notes_leaves_the_reminder_loop_running(how):
+    """The loop that started at load is the one still running after Notes is
+    closed, and opening Notes again checks at once without a second interval."""
+    from tests.test_a_ticked_item_is_an_edit_on_a_phone_js import top
+    from tests.test_back_on_a_note_you_only_read_keeps_it_js import _exported
+    from tests.test_back_on_a_note_you_only_read_keeps_it_js import _run as _on_the_notes_page
+
+    out = _on_the_notes_page(_LOOP_TIMER + """
+        const leave = { closed: () => closePanel(), minimised: () => closePanel('down'),
+                        'closed for a document': () => _forceCloseNotesPanel() }[%s];
+        _startReminderLoop();
+        const started = _reminderTimer;
+        _open = true;
+        leave();
+        const afterClose = _reminderTimer;
+        _startReminderLoop();
+        console.log(JSON.stringify({ started, afterClose, now: _reminderTimer, intervals, cleared, checks }));
+    """ % json.dumps(how), _exported("closePanel"), top("_forceCloseNotesPanel"), top("_startReminderLoop"))
+    assert out["cleared"] == [], f"Notes {how} stopped the reminder loop"
+    assert out == {"started": "loop-1", "afterClose": "loop-1", "now": "loop-1",
+                   "intervals": [30000], "cleared": [], "checks": 2}

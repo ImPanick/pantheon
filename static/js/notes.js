@@ -73,10 +73,7 @@ function _forceCloseNotesPanel() {
     document.removeEventListener('keydown', _notesSelectEscHandler, true);
     _notesSelectEscHandler = null;
   }
-  if (_reminderTimer) {
-    clearInterval(_reminderTimer);
-    _reminderTimer = null;
-  }
+  // `B2003`: the reminder loop is left running, as in `closePanel`.
   document.body.classList.remove('notes-view', 'notes-mobile-mode', 'notes-drag-mode');
   document.getElementById('tool-notes-btn')?.classList.remove('active');
   try { Modals.unregister('notes-panel'); } catch {}
@@ -1200,9 +1197,10 @@ function _fireReminder(note, lateness) {
   }
 }
 
+// `B2003`: one interval for the page's life, whether Notes is open or not;
+// a second start (opening Notes) only checks at once.
 function _startReminderLoop() {
-  if (_reminderTimer) return;
-  _reminderTimer = setInterval(_checkReminders, 30000);
+  if (!_reminderTimer) _reminderTimer = setInterval(_checkReminders, 30000);
   _checkReminders(); // run once immediately
 }
 
@@ -1819,8 +1817,11 @@ export function closePanel(direction) {
     Modals.unregister('notes-panel');
   }
 
-  // Drop the document keydown listener and the 30s reminder interval —
-  // both leaked across open/close cycles in the v2 review.
+  // Drop the document keydown listener — it leaked across open/close cycles
+  // in the v2 review. `B2003`: the 30s reminder interval stays. It is the only
+  // thing that moves a repeating reminder on, and clearing it here stopped
+  // reminders whenever Notes was closed; `_startReminderLoop` never starts a
+  // second one, so open/close cycles cannot stack it.
   if (_notesKeydownHandler) {
     document.removeEventListener('keydown', _notesKeydownHandler);
     _notesKeydownHandler = null;
@@ -1828,10 +1829,6 @@ export function closePanel(direction) {
   if (_notesSelectEscHandler) {
     document.removeEventListener('keydown', _notesSelectEscHandler, true);
     _notesSelectEscHandler = null;
-  }
-  if (_reminderTimer) {
-    clearInterval(_reminderTimer);
-    _reminderTimer = null;
   }
 
   document.body.classList.remove('notes-view');
@@ -3228,14 +3225,17 @@ function _buildForm(note = null) {
   if (color && !_isBgImage(color)) form.classList.add('note-color-' + color);
   if (_isBgImage(color)) form.setAttribute('style', _customColorStyle(color));
   let currentImageUrl = _safeImgSrc(note?.image_url || '');
+  // `B2003`: the reminder's two hidden inputs go through `_attrEscRaw`. A
+  // `due_date` the server could not read as a date is stored as sent, and
+  // written raw it could close its attribute and put markup in the page.
   form.innerHTML = `
     <div class="note-form-header">
       <input type="text" class="note-form-title" placeholder="Title" value="${_esc(note?.title || '')}" />
       <button type="button" class="note-form-icon-btn note-form-remind-btn${note?.due_date ? ' has-date' : ''}" title="Remind me">
         <svg width="31" height="31" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
       </button>
-      <input type="hidden" class="note-form-due" value="${note?.due_date || ''}" />
-      <input type="hidden" class="note-form-repeat" value="${note?.repeat || 'none'}" />
+      <input type="hidden" class="note-form-due" value="${_attrEscRaw(note?.due_date || '')}" />
+      <input type="hidden" class="note-form-repeat" value="${_attrEscRaw(note?.repeat || 'none')}" />
     </div>
     ${currentImageUrl && type !== 'draw' ? `<div class="note-form-image-wrap"><img class="note-form-image" src="${_esc(currentImageUrl)}" draggable="false" /><button class="note-form-image-rm" title="Remove">&times;</button></div>` : ''}
     <div class="note-form-body">
@@ -3766,7 +3766,7 @@ function _buildForm(note = null) {
     menu.innerHTML = `
       <div class="note-reminder-menu-title">Pick date and time</div>
       <div class="note-reminder-menu-picker">
-        <input type="datetime-local" class="note-reminder-date-input" value="${initial}" />
+        <input type="datetime-local" class="note-reminder-date-input" />
       </div>
       <div class="note-reminder-menu-divider"></div>
       <button class="note-reminder-menu-item note-reminder-menu-confirm">
@@ -3789,6 +3789,10 @@ function _buildForm(note = null) {
     menu.style.top = top + 'px';
     menu.style.left = left + 'px';
     const dInput = menu.querySelector('.note-reminder-date-input');
+    // `B2003`: set as a property, not written into the markup above.
+    // `initial` is the hidden input's value, which the browser has already
+    // decoded, so in an attribute it could close the quote again.
+    dInput.value = initial;
     dInput.focus();
     if (typeof dInput.showPicker === 'function') {
       try { dInput.showPicker(); } catch {}
