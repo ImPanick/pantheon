@@ -243,7 +243,46 @@ def _write_file_intent(content: str) -> Tuple[str, str, bool, bool]:
                 append = str(_a.get("append")).lower() == "true"
         except (json.JSONDecodeError, TypeError, ValueError):
             pass
+    # `B1784`: after `declared_clear` is read from what the call sent, so a
+    # fence with nothing in it is a lost body, not a clear.
+    body = _unwrap_fenced_source_body(body, raw_path)
     return raw_path, body, append, declared_clear
+
+
+# `B1784`. Models often put a file's body in a Markdown code fence even when
+# the tool asks for the raw text, and a native call carries that fence into
+# the file, so `index.html` began with ```html and a JSON file did not parse.
+# These are the kinds of file where an outer fence can never be content, so
+# only they lose it; a Markdown file, a text file, or a file with no suffix
+# keeps a literal fence. This is not `document_processor.LANGUAGE_ALIASES`
+# (`B100`, the register of file languages), and must not be derived from it:
+# that answers what language a file is, and would add `.rmd` and `.qmd`,
+# where a leading ```{r} chunk is content. As upstream Odysseus wrote it
+# (cdd28ed9).
+_FENCED_SOURCE_SUFFIXES = frozenset({
+    ".css", ".csv", ".html", ".htm", ".js", ".json", ".jsx", ".mjs",
+    ".py", ".sh", ".sql", ".svg", ".ts", ".tsx", ".xml", ".yaml", ".yml",
+})
+
+
+def _unwrap_fenced_source_body(body: str, path: str) -> str:
+    """`B1784`. `body` without an outer Markdown fence, for a file whose kind
+    is in `_FENCED_SOURCE_SUFFIXES`; anything else is returned as it is.
+
+    An opening fence is enough: a generation can end inside the call and leave
+    the rest of the body usable. The line break before the closing fence
+    stays, so a fenced row appended to a ledger still ends its line (`B1672`),
+    and a fence with nothing in it is an empty body, which the empty-body
+    rule then decides (`B1783`), never the three bytes ```."""
+    if os.path.splitext(str(path))[1].casefold() not in _FENCED_SOURCE_SUFFIXES:
+        return body
+    opened = re.match(r"\s*```[^\r\n]*\r?\n", body)
+    if not opened:
+        return body
+    inner = body[opened.end():]
+    if re.fullmatch(r"```[ \t]*\s*", inner):
+        return ""
+    return re.sub(r"(\r?\n)```[ \t]*\s*\Z", r"\1", inner)
 
 
 def _previous_text(open_text) -> str:
