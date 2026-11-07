@@ -201,3 +201,121 @@ def test_a_challenge_page_served_with_200_is_a_fetch_failure(tmp_path, monkeypat
     assert out['exit_code'] == 1
     assert 'Page access challenge' in out['error']
     assert 'couldn’t load' not in out.get('output', '')
+
+
+# `B1807`. The text heuristic took every `main`, `article`, `section` and `div`
+# whose class says content, and their wrappers with them, in document order,
+# and joined the first three. A WordPress post sits in `div.site-content >
+# div.content-area > main.site-main > article`, so it came back three times
+# with the sidebar inside the first copy, and a Wikipedia article three times
+# over. That spent `web_fetch`'s budget and deep research's on repeats, and
+# the "this page is N characters" notice counted them. Now `<main>` (or
+# `role="main"`) is the page's text, then its `<article>`s, then the class
+# heuristic; an area inside another is read once, with its parent; navigation,
+# footers and sidebars are dropped first, but an aside inside an article (a
+# docs callout) is kept, and a thin result still falls back to the whole body.
+# After upstream Odysseus cfb9315e, whose nested-wrapper case is kept.
+def _fetch_html(monkeypatch, tmp_path, html, url):
+    monkeypatch.setattr(service_content, "CONTENT_CACHE_DIR", tmp_path)
+    service_content.content_cache_index.clear()
+    monkeypatch.setattr(service_content, "_get_public_url", lambda *a, **k: _FakeResponse(html))
+    return service_content.fetch_webpage_content(url)
+
+
+def _sentences(tag, n=20):
+    return " ".join(f"{tag} sentence {i:02d} says something of substance." for i in range(n))
+
+
+@pytest.mark.parametrize("wrapper", ["main", "article", 'div class="content"'])
+def test_a_page_nested_in_content_wrappers_is_read_once_without_its_navigation(
+        wrapper, tmp_path, monkeypatch):
+    closing = wrapper.split()[0]
+    html = (f'<html><body><nav>{"Navigation item " * 100}</nav><{wrapper}>'
+            '<header>Article title and publication date</header>'
+            '<div class="article-body"><div class="entry-content">'
+            '<p>Unique substantive evidence.</p></div></div>'
+            f'</{closing}><footer>Unrelated links</footer></body></html>')
+    result = _fetch_html(monkeypatch, tmp_path, html, "https://example.com/nested")
+    assert result["content"].count("Unique substantive evidence.") == 1
+    assert "Navigation item" not in result["content"]
+    assert "Unrelated links" not in result["content"]
+    assert "Article title" in result["content"]
+
+
+WORDPRESS_POST = f"""<html><head><title>A post</title></head><body>
+<div id="page" class="site">
+ <header class="site-header"><nav><ul><li>Home</li><li>About</li><li>Contact</li></ul></nav></header>
+ <div id="content" class="site-content">
+  <div id="primary" class="content-area">
+   <main id="main" class="site-main">
+    <article class="post type-post">
+     <header class="entry-header"><h1>Title of the post</h1></header>
+     <div class="entry-content"><p>{_sentences("Post")}</p></div>
+    </article>
+   </main>
+  </div>
+  <aside id="secondary" class="widget-area">Recent posts, archives and categories</aside>
+ </div>
+ <footer id="colophon">Proudly powered by a theme</footer>
+</div></body></html>"""
+
+
+def test_a_wordpress_post_is_read_once_without_its_sidebar(tmp_path, monkeypatch):
+    result = _fetch_html(monkeypatch, tmp_path, WORDPRESS_POST, "https://example.com/a-post")
+    assert result["content"].count("Post sentence 00") == 1, result["content"][:300]
+    assert result["content"].startswith("Title of the post")
+    assert "Recent posts" not in result["content"]
+    assert "Proudly powered" not in result["content"]
+    # The page's lists are still read from the whole page, navigation and all.
+    assert ["Home", "About", "Contact"] in result["lists"]
+
+
+WIKIPEDIA_ARTICLE = f"""<html><head><title>Topic - Wikipedia</title></head><body>
+<header class="vector-header"><nav>Main page Contents Current events</nav></header>
+<div class="mw-page-container">
+ <div class="vector-sidebar" role="navigation">Tools What links here</div>
+ <main id="content" class="mw-body">
+  <header class="mw-body-header"><h1>Topic</h1></header>
+  <div id="bodyContent" class="vector-body">
+   <div id="mw-content-text" class="mw-body-content">
+    <div class="mw-parser-output"><p>{_sentences("Wiki")}</p></div>
+   </div>
+  </div>
+ </main>
+</div></body></html>"""
+
+
+def test_a_wikipedia_article_is_read_once_without_its_tools(tmp_path, monkeypatch):
+    result = _fetch_html(monkeypatch, tmp_path, WIKIPEDIA_ARTICLE, "https://example.org/wiki/Topic")
+    assert result["content"].count("Wiki sentence 00") == 1, result["content"][:300]
+    assert "Tools What links here" not in result["content"]
+    assert "Main page Contents" not in result["content"]
+
+
+def test_a_thin_main_beside_the_article_still_yields_the_article(tmp_path, monkeypatch):
+    """A `<main>` holding only a headline and a standfirst, with the story in
+    a sibling `div.content`: the thin result falls back to the body, so both
+    are read. Upstream's version skipped the fallback wherever a `<main>` was
+    found, and gave the headline alone."""
+    html = (f'<html><head><title>T</title></head><body>'
+            f'<main><h1>Headline</h1><p>The standfirst says what the story is.</p></main>'
+            f'<div class="content"><p>{_sentences("Story")}</p></div></body></html>')
+    result = _fetch_html(monkeypatch, tmp_path, html, "https://example.com/thin-main")
+    assert result["content"].count("Story sentence 00") == 1
+    assert "The standfirst says what the story is." in result["content"]
+
+
+def test_a_callout_inside_an_article_is_kept_once(tmp_path, monkeypatch):
+    """A docs page's `<aside class="caution">` is part of the article; the
+    sidebar `<aside>` beside the article is not."""
+    html = (f'<html><head><title>API guide</title></head><body>'
+            f'<main role="main" class="devsite-main-content">'
+            f'<article class="devsite-article"><h1>API guide</h1><p>{_sentences("Doc", 10)}</p>'
+            f'<aside class="caution">Caution: this method is deprecated; do not use it in new code.</aside>'
+            f'<p>{_sentences("Tail", 5)}</p></article></main>'
+            f'<aside class="devsite-sidebar">Related guides</aside></body></html>')
+    result = _fetch_html(monkeypatch, tmp_path, html, "https://example.com/api-guide")
+    assert result["content"].count("this method is deprecated") == 1, result["content"][:300]
+    assert result["content"].count("Doc sentence 00") == 1
+    assert "Tail sentence 04" in result["content"]
+    assert "Related guides" not in result["content"]

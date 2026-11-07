@@ -209,6 +209,14 @@ _CHALLENGE_TEXT = re.compile(
 )
 _CHALLENGE_CHARS = 2000
 
+# `B1807`. What is not the page's text: taken out of the tree before the text
+# is read. `header` is not here (an article's own header holds its title);
+# the thin-content fallback below still drops it from the body it reads.
+_TEXT_NOISE = (
+    'script, style, noscript, template, nav, footer, aside, '
+    '[role="navigation"], [role="banner"], [role="contentinfo"]'
+)
+
 
 def fetch_webpage_content(url: str, timeout: int = 5, retry_attempt: int = 0,
                           max_bytes: int = None) -> dict:
@@ -229,8 +237,10 @@ def fetch_webpage_content(url: str, timeout: int = 5, retry_attempt: int = 0,
     # And so is a LAN grant (`B1459`): a page fetched under one (a router page
     # an allowed person's agent read) must never be served from the cache to a
     # fetch without one — the cache is read before any address is checked.
+    # And the extraction's version (`B1807`), so a page read by an older
+    # extractor is read again; it goes before `#lan`, which ends the key.
     cache_key = generate_cache_key(
-        f"{url}#cap={effective_cap}#lan={int(_outbound_fetch.lan_allowed())}")
+        f"{url}#cap={effective_cap}#extract=2#lan={int(_outbound_fetch.lan_allowed())}")
     cache_file = CONTENT_CACHE_DIR / f"{cache_key}.cache"
 
     # Check cache
@@ -402,16 +412,35 @@ def fetch_webpage_content(url: str, timeout: int = 5, retry_attempt: int = 0,
     js_rendered = _detect_js_frameworks(soup)
     js_message = "Page appears to be rendered by a JavaScript framework; content may be incomplete." if js_rendered else ""
 
-    # Main textual content (heuristic): prefer semantic / "content"-classed
-    # containers to skip nav/footer/boilerplate; tuned for article pages.
-    main_content = ""
-    content_areas = soup.find_all(
-        ["main", "article", "section", "div"],
-        class_=re.compile("content|main|body|article|post|entry|text", re.I),
-    )
-    if content_areas:
-        for area in content_areas[:3]:
-            main_content += area.get_text(separator=" ", strip=True) + " "
+    # Read before the noise below is taken out of the tree (`B1807`), so these
+    # still describe the whole page.
+    lists = _extract_lists(soup)
+    tables = _extract_tables(soup)
+    code_blocks = _extract_code_blocks(soup)
+
+    # Main textual content (heuristic), `B1807`. This took every "content"-
+    # classed `main`/`article`/`section`/`div` and joined the first three, and
+    # a wrapper and the area inside it are both matches: a WordPress post
+    # (`div.site-content > div.content-area > main > article`) came back three
+    # times with the sidebar, and a Wikipedia article three times over. Noise
+    # goes first, in place (an aside inside an article is a callout and
+    # stays); then `<main>`, else the `<article>`s, else the class heuristic;
+    # and an area inside another one is read once, with it.
+    for noise in soup.select(_TEXT_NOISE):
+        if noise.name == "aside" and noise.find_parent("article") is not None:
+            continue
+        noise.extract()
+    semantic_main = soup.find("main") or soup.find(attrs={"role": "main"})
+    content_areas = [semantic_main] if semantic_main else soup.find_all("article")
+    if not content_areas:
+        content_areas = soup.find_all(
+            ["section", "div"],
+            class_=re.compile("content|main|body|article|post|entry|text", re.I),
+        )
+    _area_ids = {id(area) for area in content_areas}
+    content_areas = [area for area in content_areas
+                     if not any(id(parent) in _area_ids for parent in area.parents)]
+    main_content = " ".join(area.get_text(separator=" ", strip=True) for area in content_areas)
     main_content = re.sub(r"\s+", " ", main_content).strip()
 
     # If the heuristic finds only a tiny wrapper, fall back to body text with
@@ -453,9 +482,9 @@ def fetch_webpage_content(url: str, timeout: int = 5, retry_attempt: int = 0,
         "url": url,
         "title": title_text,
         "content": main_content,
-        "lists": _extract_lists(soup),
-        "tables": _extract_tables(soup),
-        "code_blocks": _extract_code_blocks(soup),
+        "lists": lists,
+        "tables": tables,
+        "code_blocks": code_blocks,
         "meta_description": meta_info.get("description", ""),
         "meta_keywords": meta_info.get("keywords", ""),
         "og_image": og_image,
