@@ -746,32 +746,61 @@ def ports_of(node) -> tuple:
     return ()
 
 
-_PORT_PHRASES = {
+# `B1893` (`port-words`). The words a way out of a step is called by — the
+# server's half of the canvas's own table, kept in one place so a run's
+# sentence, a step test's, a save refusal's and a loop refusal's say what the
+# arrow on the canvas says. The browser's half is `PORT_WORDS` and
+# `ONLY_WAY_WORD` in `static/js/tasks/workflowDiagram.js`, and the rule for a
+# Switch case and a step with one way out is `portWordsOf` in
+# `static/js/workbench/workflowSource.js`. The audit found three wordings for
+# one arrow: the canvas said "if so", a run said "Went the “then” way."; the
+# canvas said "if Urgent", a run said "Went the “Urgent” way." and a loop
+# refusal "goes the “Urgent” way"; the canvas said "then" out of a Set step,
+# a loop refusal said "works". `tests/test_a_way_out_has_one_name.py` runs the
+# browser's table and rule under node and holds the two halves equal, so a
+# word changed on one side and not the other fails there.
+PORT_PHRASES = {
     PORT_SUCCESS: "if it works",
     PORT_ERROR: "if it fails",
-    PORT_THEN: "then",
+    PORT_THEN: "if so",
     PORT_OTHERWISE: "otherwise",
 }
+# A step with one way out (Set fields, Merge, Wait) leaves by `success`, and
+# "if it works" would say it might not: it says "then" (`ONLY_WAY_WORD`).
+ONLY_WAY_PHRASE = "then"
+# A Switch case reads "if <its label>", or "if this case" when it has none.
+CASE_PHRASE = "if {label}"
+CASE_NO_LABEL_PHRASE = "if this case"
+# The name this table had before `B1893`, kept (Law 1).
+_PORT_PHRASES = PORT_PHRASES
 
 
 def port_words(node, port: str) -> str:
-    """The words a person reads for `port` out of `node`: "if it works", "if
-    it fails", "then", "otherwise", or a Switch case's own label."""
-    if isinstance(port, str) and port.startswith(CASE_PORT_PREFIX) and isinstance(node, dict):
+    """The words a person reads for `port` out of `node`, as the canvas draws
+    them on that arrow (`portWordsOf`): "if it works", "if it fails", "if so",
+    "otherwise", "if <a case's label>" (or "if this case"), and "then" out of
+    a step whose only way out is `success`."""
+    if isinstance(port, str) and port.startswith(CASE_PORT_PREFIX):
         case_id = port[len(CASE_PORT_PREFIX):]
-        for case in (node.get("config") or {}).get("cases") or ():
-            if isinstance(case, dict) and case.get("id") == case_id:
-                return str(case.get("label") or case_id)
-        return case_id
-    return _PORT_PHRASES.get(port, str(port))
+        cases = (node.get("config") or {}).get("cases") if isinstance(node, dict) else None
+        for case in cases if isinstance(cases, list) else ():
+            if isinstance(case, dict) and str(case.get("id")) == case_id:
+                label = str(case.get("label") or "").strip()
+                return CASE_PHRASE.format(label=label) if label else CASE_NO_LABEL_PHRASE
+        return CASE_NO_LABEL_PHRASE
+    if port == PORT_SUCCESS and isinstance(node, dict) and ports_of(node) == (PORT_SUCCESS,):
+        return ONLY_WAY_PHRASE
+    return PORT_PHRASES.get(port, str(port))
 
 
 def _when_words(node, port: str) -> str:
     """An arrow's `when` for `describe_graph_refusal`, which reads the two
     task words itself ("works" / "fails") and any other `when` as written —
-    so a loop through a logic step's port is told "goes the “Urgent” way" at
-    save and at run without editing that function (§ 1.3)."""
-    if port in PORTS:
+    so a loop through a logic step's port is told "goes the “if Urgent” way"
+    at save and at run without editing that function (§ 1.3). `B1893`: out of
+    a step with one way out the canvas says "then", not "if it works", so the
+    loop is told "goes the “then” way" too."""
+    if port in PORTS and port_words(node, port) != ONLY_WAY_PHRASE:
         return port
     return f"goes the “{port_words(node, port)}” way"
 
@@ -2221,8 +2250,10 @@ def plan_lines(node: dict, resources: WorkflowResources | None = None) -> list:
         join = JOIN_WORDS.get(config.get("join") or "all", "all of these")
         tests = "; ".join(describe_condition(c) for c in config.get("conditions") or ())
         # `P23-05` (WB-U-7): the port's own words, as the canvas draws them
-        # (`workflowDiagram.js:PORT_WORDS`: then → "if so").
-        lines.append(f"Would go “if so” if {join} hold: {tests}; otherwise “otherwise”.")
+        # (`workflowDiagram.js:PORT_WORDS`: then → "if so"). `B1893`: read
+        # from the one server table (`PORT_PHRASES`), the same words.
+        lines.append(f"Would go “{PORT_PHRASES[PORT_THEN]}” if {join} hold: {tests}; "
+                     f"otherwise “{PORT_PHRASES[PORT_OTHERWISE]}”.")
     elif kind == NODE_KIND_SWITCH:
         lines.append("Would go the first way that matches:")
         for case in config.get("cases") or ():

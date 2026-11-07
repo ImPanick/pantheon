@@ -55,7 +55,8 @@ async def test_the_step_after_an_if_is_handed_the_data_the_if_was_handed(factory
     by = {r["node_id"]: r for r in records_of(factory, run["id"])}
     assert by["urgent"]["port"] == "then", "the way it went is still the record's port"
     assert by["urgent"]["output"]["data"] == {**MAIL, "port": "then"}
-    assert by["urgent"]["output"]["text"] == "Went the “then” way."
+    # `B1893`: the If's arrow is labelled "if so" on the canvas, and so here.
+    assert by["urgent"]["output"]["text"] == "Went the “if so” way."
     [page] = [c for c in s.calls if c["name"] == "Morning digest · Page me"]
     assert page["trigger"]["data"]["data"] == {**MAIL, "port": "then"}, page["trigger"]["data"]
 

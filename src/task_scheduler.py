@@ -1931,15 +1931,14 @@ class _Walk:
 
 
 def _port_word(node: dict, port) -> str:
-    """The word a person reads for a port: a Switch case's own label, else the
-    port itself."""
-    if isinstance(port, str) and port.startswith("case:"):
-        case_id = port.split(":", 1)[1]
-        for case in (node.get("config") or {}).get("cases") or ():
-            if isinstance(case, dict) and str(case.get("id")) == case_id:
-                return str(case.get("label") or case_id)
-        return case_id
-    return str(port)
+    """The words a person reads for a port, as the canvas draws them on that
+    arrow. `B1893` (`port-words`): this said the stored word ("then") or a
+    case's bare label ("Urgent") while the canvas said "if so" and "if
+    Urgent"; it now reads the one server table the canvas's is held equal to
+    (`workflow_document.port_words`), so "Went the “if so” way." names the
+    arrow a person sees."""
+    from src.workflow_document import port_words
+    return port_words(node, port)
 
 
 def node_slot(run_id: str, node_id: str) -> str:
