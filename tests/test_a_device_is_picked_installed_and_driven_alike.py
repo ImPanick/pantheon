@@ -199,7 +199,7 @@ def test_a_failed_install_leaves_the_phone_off_with_the_reason(bare, tmp_path):
     phone.install("pixel_8", accept=True)
     phone.installer._thread.join(5)
     assert phone.state == "off", "off, so the person can pick it again"
-    assert "exit 7" in phone.why and "dl.google.com" in phone.why
+    assert "exit 7" in phone.why and "could not be reached" in phone.why
 
 
 def test_a_pick_of_an_installed_device_just_starts_it(bare, tmp_path):
