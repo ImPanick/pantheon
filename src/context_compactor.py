@@ -139,6 +139,20 @@ PASTED_MESSAGE_CUT_NOTICE = (
     "window, so Pantheon kept the beginning and end.]"
 )
 
+#: `B1943`. What a tool result the trim cut says where it was cut: it is not a
+#: pasted message (`B1107`: a cut says what it cut, in its own words).
+TOOL_RESULT_CUT_NOTICE = (
+    "\n\n[Notice: this tool result was too large for the model's context "
+    "window, so Pantheon kept its beginning and end.]"
+)
+
+#: `B1943`. What another message of a turn's newest round says where the trim
+#: cut it: the model's own call, when it carried more than fits (a file body).
+ROUND_MESSAGE_CUT_NOTICE = (
+    "\n\n[Notice: this message was too large for the model's context window, "
+    "so Pantheon kept its beginning and end.]"
+)
+
 
 def _truncate_text_to_token_budget(text: str, token_budget: int, *,
                                    notice: str = PASTED_MESSAGE_CUT_NOTICE) -> str:
@@ -206,12 +220,16 @@ def _truncate_tool_call_args(msg: Dict[str, Any], token_budget: int) -> Dict[str
     return out
 
 
-def _truncate_message_to_token_budget(msg: Dict[str, Any], token_budget: int) -> Dict[str, Any]:
-    """Return a copy of msg whose text content (and tool-call args) fit token_budget."""
+def _truncate_message_to_token_budget(msg: Dict[str, Any], token_budget: int, *,
+                                      notice: str = PASTED_MESSAGE_CUT_NOTICE) -> Dict[str, Any]:
+    """Return a copy of msg whose text content (and tool-call args) fit token_budget.
+
+    `notice` is what the cut says where it cut (`B1107`); a tool result passes
+    its own (`B1943`, `TOOL_RESULT_CUT_NOTICE`)."""
     out = dict(msg)
     content = out.get("content", "")
     if isinstance(content, str):
-        out["content"] = _truncate_text_to_token_budget(content, token_budget)
+        out["content"] = _truncate_text_to_token_budget(content, token_budget, notice=notice)
     elif isinstance(content, list):
         remaining = token_budget
         new_content = []
@@ -220,7 +238,7 @@ def _truncate_message_to_token_budget(msg: Dict[str, Any], token_budget: int) ->
                 new_content.append(item)
                 continue
             text = item.get("text", "")
-            truncated = _truncate_text_to_token_budget(text, remaining)
+            truncated = _truncate_text_to_token_budget(text, remaining, notice=notice)
             cloned = dict(item)
             cloned["text"] = truncated
             new_content.append(cloned)
@@ -250,7 +268,9 @@ def trim_for_context(messages: List[Dict], context_length: int, reserve_tokens: 
     2. Older conversation turns
     Reserves space for the response. The skills block (`B1425`) and then the
     middle of the person's message (`B1651`) give way before the leading
-    system prompt is cut.
+    system prompt is cut. A compaction summary is kept with the leading
+    prompt, and the turns are trimmed around the person's latest message,
+    which is cut last and never dropped (`B1943`).
     """
     budget = context_length - reserve_tokens
     used = estimate_tokens(messages)
@@ -284,8 +304,14 @@ def trim_for_context(messages: List[Dict], context_length: int, reserve_tokens: 
     def _is_research_primer(m):
         return bool((m.get("metadata") or {}).get("research_spinoff_from"))
     _primers = [m for m in system_msgs if _is_research_primer(m)]
-    _non_primer = [m for m in system_msgs if not _is_research_primer(m)]
-    essential_system = (_non_primer[:1] if _non_primer else []) + _primers
+    # `B1943`. So is a compaction summary: it stands for every message it
+    # replaced, and as an extra system message it was the first thing dropped,
+    # so the turn right after a compaction lost what the compaction kept.
+    _summaries = [m for m in system_msgs
+                  if not _is_research_primer(m) and _is_summary_message(m)]
+    _non_primer = [m for m in system_msgs
+                   if not _is_research_primer(m) and not _is_summary_message(m)]
+    essential_system = (_non_primer[:1] if _non_primer else []) + _primers + _summaries
     extra_system = _non_primer[1:]
 
     # Try dropping extra system messages one by one (from the end)
@@ -349,6 +375,22 @@ def trim_for_context(messages: List[Dict], context_length: int, reserve_tokens: 
             if estimate_tokens(trimmed) <= budget:
                 return _sanitize_tool_messages(essential_system + protected_msgs + convo_msgs)
 
+    # `B1943`. Still too big: keep the person's latest request. In an agent
+    # round the newest message is a tool result, not the person's message, and
+    # the rule below anchored on the newest, so the question was the first
+    # thing dropped: measured on the default 6,000-token budget, one 30,000-
+    # character `web_fetch` left the model the system prompt alone (native
+    # tools) or the page without the question (fenced tools). Now the turns
+    # before the person's message go first, then this turn's oldest tool rounds,
+    # each whole, then the newest round is cut with the room going to its
+    # results, and the person's message is cut last and never dropped.
+    theirs = _the_persons_message(convo_msgs)
+    if theirs is not None:
+        kept = _the_request_and_its_rounds(essential_system, convo_msgs, theirs, budget)
+        result = _sanitize_tool_messages(essential_system + protected_msgs + kept)
+        logger.info(f"Trimmed to {estimate_tokens(result)} tokens ({len(result)} messages)")
+        return result
+
     # Still too big — drop older conversation turns BUT always keep the current
     # user turn. If a pasted message alone exceeds the model context, truncate
     # that message with a visible notice instead of dropping it; otherwise the
@@ -406,6 +448,103 @@ def _the_persons_message_shortened(essential_system: List[Dict], convo_msgs: Lis
     if estimate_tokens(essential_system + kept) > budget:
         return None
     return kept
+
+
+def _is_summary_message(message: Dict) -> bool:
+    """`B1943`. A compaction summary as the model is sent it: a `system`
+    message flagged `compacted`, or one that starts with the summary row's
+    words (`maybe_compact`'s own summary carries no metadata)."""
+    if message.get("role") != "system":
+        return False
+    return is_compaction_summary(message) or _content_as_text(
+        message.get("content")).startswith(SUMMARY_ROW_PREFIX)
+
+
+def _is_tool_result(message: Dict) -> bool:
+    """`B1943`. A tool's output as the agent loop sends it: a native `tool`
+    message, or the fenced path's `user` envelope, which carries a
+    `metadata.source`."""
+    if message.get("role") == "tool":
+        return True
+    return message.get("role") == "user" and bool((message.get("metadata") or {}).get("source"))
+
+
+def _the_request_and_its_rounds(essential_system: List[Dict], convo_msgs: List[Dict],
+                                theirs: Dict, budget: int) -> List[Dict]:
+    """`B1943`. `convo_msgs` brought under `budget` around `theirs`, the
+    person's latest message. What gives way, in order: the messages before
+    it, oldest first; this turn's oldest tool rounds (an assistant message
+    and the results that follow it), each whole, never the newest; what is
+    left of the rounds, cut so that a small call keeps its size and the room
+    goes to the results (`_the_round_cut`); and last the person's message,
+    cut but never dropped."""
+    def over(kept):
+        return estimate_tokens(essential_system + kept) > budget
+
+    at = next(i for i, m in enumerate(convo_msgs) if m is theirs)
+    prior, after = list(convo_msgs[:at]), convo_msgs[at + 1:]
+    while prior and over(prior + [theirs] + list(after)):
+        prior.pop(0)
+
+    rounds: List[List[Dict]] = []
+    for message in after:
+        if not rounds or message.get("role") == "assistant":
+            rounds.append([message])
+        else:
+            rounds[-1].append(message)
+    while len(rounds) > 1 and over(prior + [theirs] + [m for r in rounds for m in r]):
+        rounds.pop(0)
+    after = _sanitize_tool_messages([m for r in rounds for m in r])
+
+    if after and over(prior + [theirs] + after):
+        after = _the_round_cut(after, budget - estimate_tokens(essential_system + prior + [theirs]))
+    if over(prior + [theirs] + after):
+        room = budget - estimate_tokens(essential_system + prior + after)
+        theirs = _truncate_message_to_token_budget(theirs, max(64, room))
+    return prior + [theirs] + after
+
+
+def _the_round_cut(messages: List[Dict], room: int) -> List[Dict]:
+    """`B1943`. `messages` (what is left of this turn's rounds) cut to fit
+    `room`, each message keeping at most a fair share (`_fair_share`), so a
+    small call keeps all of itself and the room goes to the results. A call
+    larger than its share gives way first: its arguments become the
+    placeholder `_truncate_tool_call_args` leaves, its text keeps its
+    beginning and end (`ROUND_MESSAGE_CUT_NOTICE`). The tool results then
+    share what is left, each cut saying it is a tool result
+    (`TOOL_RESULT_CUT_NOTICE`)."""
+    sizes = [estimate_tokens([m]) for m in messages]
+    results = {i for i, m in enumerate(messages)
+               if _is_tool_result(m) and isinstance(m.get("content"), str)}
+    out = list(messages)
+    level = _fair_share(sizes, room)
+    if level is None:
+        return out
+    for i, message in enumerate(messages):
+        if i not in results and sizes[i] > level:
+            out[i] = _truncate_message_to_token_budget(message, level,
+                                                       notice=ROUND_MESSAGE_CUT_NOTICE)
+    left = room - estimate_tokens([m for i, m in enumerate(out) if i not in results])
+    level = _fair_share([sizes[i] for i in results], left)
+    for i in results if level is not None else ():
+        if sizes[i] > level:
+            out[i] = _truncate_message_to_token_budget(messages[i], level,
+                                                       notice=TOOL_RESULT_CUT_NOTICE)
+    return out
+
+
+def _fair_share(sizes: List[int], room: int) -> Optional[int]:
+    """`B1943`. The most any one of `sizes` may keep so that together they fit
+    `room`, each smaller one keeping all of itself and leaving the rest of its
+    share to the others; `None` when they all fit. Never under 64, so a cut
+    still keeps a beginning and an end."""
+    left, waiting = room, sorted(sizes)
+    while waiting:
+        share = left // len(waiting)
+        if waiting[0] > share:
+            return max(64, share)
+        left -= waiting.pop(0)
+    return None
 
 
 async def maybe_compact(
@@ -655,6 +794,11 @@ MESSAGE_CUT_WORDS = "the middle of your message"
 #: `PROMPT_CUT_CHARS` to fit. It was cut and nothing said so.
 PROMPT_CUT_WORDS = "the end of its instructions"
 
+#: `B1943`. Said when a tool result was cut to fit (`TOOL_RESULT_CUT_NOTICE`),
+#: so the line names what was cut instead of saying nothing, and the person's
+#: message, which is cut last, is not blamed for it.
+TOOL_RESULT_CUT_WORDS = "the middle of a tool result"
+
 
 def _the_instructions(messages: List[Dict]) -> Optional[Dict]:
     """The leading system message, as `trim_for_context` picks it: the first
@@ -692,7 +836,7 @@ def trim_left_out(before: List[Dict], after: List[Dict]) -> List[str]:
     The trim keeps the messages it keeps as the same objects, so a block is
     left out when it is in `before` and not in `after`. The person's message is
     the one the trim copies to shorten: said when the copy is shorter — and,
-    `B1651`, so are the instructions."""
+    `B1651`, so are the instructions, and, `B1943`, a tool result it cut."""
     kept = {id(message) for message in after or []}
     said: List[str] = []
     lead = _the_instructions(before)
@@ -708,6 +852,14 @@ def trim_left_out(before: List[Dict], after: List[Dict]) -> List[str]:
         for prefix, words in TRIM_LEFT_OUT:
             if source.startswith(prefix) and words not in said:
                 said.append(words)
+    # `B1943`. A tool result the trim cut: a copy that carries the cut's notice.
+    sent = {id(message) for message in before or []}
+    results_cut = sum(1 for message in after or []
+                      if id(message) not in sent and _is_tool_result(message)
+                      and TOOL_RESULT_CUT_NOTICE in _content_as_text(message.get("content")))
+    if results_cut:
+        said.append(TOOL_RESULT_CUT_WORDS if results_cut == 1
+                    else f"the middle of {results_cut} tool results")
     theirs = _the_persons_message(before)
     if theirs is not None and id(theirs) not in kept:
         now = _the_persons_message(after)
