@@ -4333,17 +4333,24 @@ def setup_email_routes():
     # `B1609`: a plain `def` — it awaits nothing, so its session (and any IMAP) work runs in the thread pool.
     def delete_email(uid: str, folder: str = Query("INBOX"), account_id: str | None = Query(None), owner: str = Depends(require_owner)):
         """Move email to Trash."""
+        # `B1979`: one message, never a set such as `1:*` (the whole folder).
+        if not _one_uid(uid):
+            return {"success": False, "error": "Invalid email UID"}
         try:
             with _imap(account_id, owner=owner) as conn:
                 # `B2011`: a folder the server will not open is not "not found".
                 st, _ = conn.select(_q(folder))
                 if st != "OK":
                     return {"success": False, "error": "Could not open email folder"}
-                if not _move_email_message(conn, uid, "Trash", role="trash"):
-                    return {"success": False, "error": "Email not found"}
+                # `B1979`: a lookup that worked and found nothing is a message
+                # already gone (deleted in another mail app), so the delete is
+                # done and its index row goes; a lookup that failed raises.
+                gone = not _uid_exists(conn, uid, strict=True)
+                if not gone and not _move_email_message(conn, uid, "Trash", role="trash"):
+                    return {"success": False, "error": "Could not move email to Trash"}
             _email_index_delete(owner, account_id, folder, uid)
             _invalidate_list_cache(account_id)
-            return {"success": True}
+            return {"success": True, "already_deleted": True} if gone else {"success": True}
         except Exception as e:
             logger.error(f"Failed to delete email {uid}: {e}")
             return {"success": False, "error": "Mail operation failed"}
@@ -4352,17 +4359,21 @@ def setup_email_routes():
     # `B1609`: a plain `def` — it awaits nothing, so its session (and any IMAP) work runs in the thread pool.
     def delete_email_permanent(uid: str, folder: str = Query("INBOX"), account_id: str | None = Query(None), owner: str = Depends(require_owner)):
         """Permanently delete an email (no Trash)."""
+        if not _one_uid(uid):  # `B1979`
+            return {"success": False, "error": "Invalid email UID"}
         try:
             with _imap(account_id, owner=owner) as conn:
                 st, _ = conn.select(_q(folder))  # `B2011`
                 if st != "OK":
                     return {"success": False, "error": "Could not open email folder"}
-                if not _store_email_flag(conn, uid, "\\Deleted", add=True):
-                    return {"success": False, "error": "Email not found"}
-                conn.expunge()
+                gone = not _uid_exists(conn, uid, strict=True)  # `B1979`, as in delete_email
+                if not gone:
+                    if not _store_email_flag(conn, uid, "\\Deleted", add=True):
+                        return {"success": False, "error": "Could not delete email"}
+                    conn.expunge()
             _email_index_delete(owner, account_id, folder, uid)
             _invalidate_list_cache(account_id, folder)
-            return {"success": True}
+            return {"success": True, "already_deleted": True} if gone else {"success": True}
         except Exception as e:
             logger.error(f"Failed to permanently delete email {uid}: {e}")
             return {"success": False, "error": "Mail operation failed"}
