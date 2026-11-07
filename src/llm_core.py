@@ -1490,8 +1490,10 @@ def _build_chatgpt_responses_payload(
         "stream": stream,
         "store": False,
     }
-    if not _restricts_temperature(model):
-        payload["temperature"] = temperature
+    # `B1787`: ChatGPT plan Responses requests reject temperature for every
+    # model. The common caller still passes its preset value, but this
+    # provider must omit the field even for model names outside the known
+    # reasoning families.
     # ChatGPT Subscription Codex API does not support max_output_tokens —
     # passing it returns HTTP 400 "Unsupported parameter: max_output_tokens".
     # Do not include it in the payload.
