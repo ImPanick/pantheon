@@ -29,6 +29,8 @@ from pathlib import Path
 
 import pytest
 
+from tests.helpers.esc_stub import esc_source
+
 ROOT = Path(__file__).resolve().parent.parent
 JS = ROOT / "static" / "js"
 COOKBOOK_JS = JS / "cookbook.js"
@@ -53,8 +55,9 @@ def _carets(rows: list) -> dict:
     statement = _between(_row_renderer(), "const recipeCaret =", "const recipePanel =")
     script = (
         f"import {{ chevronIcon }} from {json.dumps((JS / 'icons.js').as_uri())};\n"
-        "const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;')"
-        ".replace(/>/g, '&gt;').replace(/\"/g, '&quot;');\n"
+        # The shipped escaper, as text (`B874`): the row escapes the package
+        # name with it, and a hand-written copy here could drift from it.
+        f"{esc_source()}"
         "const out = {};\n"
         f"for (const [name, hasRecipe] of {json.dumps(rows)}) {{\n"
         "  const pkg = { name };\n"
