@@ -169,7 +169,7 @@ class TaskCreate(BaseModel):
     scheduled_day: Optional[int] = None           # day-of-week (0=Mon) or day-of-month
     scheduled_date: Optional[str] = None          # ISO datetime for "once"
     cron_expression: Optional[str] = None         # cron string e.g. "*/5 * * * *"
-    trigger_type: str = "schedule"                # "schedule" | "event" | "webhook"
+    trigger_type: str = "schedule"                # "schedule" | "event" | "webhook" | "manual" (`B1853`)
     trigger_event: Optional[str] = None           # e.g. "session_created"
     trigger_count: Optional[int] = None           # fire every N events
     output_target: str = "session"
@@ -1015,7 +1015,10 @@ def setup_task_routes(task_scheduler) -> APIRouter:
                     trigger_count=trigger_count,
                     trigger_counter=0,
                     next_run=next_run,
-                    status="active" if (req.trigger_type in ("event", "webhook") or next_run) else "completed",
+                    # `B1853`: a manual start is on with no next time, as an
+                    # event's or a webhook's is.
+                    status="active" if (req.trigger_type in ("event", "webhook", "manual")
+                                        or next_run) else "completed",
                     output_target=req.output_target,
                     model=req.model or None,
                     endpoint_url=req.endpoint_url or None,
@@ -1299,6 +1302,12 @@ def setup_task_routes(task_scheduler) -> APIRouter:
                 if req.trigger_type == "webhook" and not task.webhook_token:
                     task.webhook_token = secrets.token_urlsafe(32)
                 task.trigger_type = req.trigger_type
+                from src.task_scheduler import is_manual_trigger
+                if is_manual_trigger(task):
+                    # `B1853`. Never due: the next time a schedule left on the
+                    # row goes with it. Its schedule's fields stay, so switching
+                    # back to a schedule finds them.
+                    task.next_run = None
             if req.trigger_event is not None:
                 task.trigger_event = req.trigger_event
             if req.trigger_count is not None:
@@ -1472,6 +1481,8 @@ def setup_task_routes(task_scheduler) -> APIRouter:
                     cron_expression=task.cron_expression,
                     tz_name=_task_tz(db, task=task),
                 )
+            elif (task.trigger_type or "schedule") == "manual":
+                task.next_run = None             # `B1853`: on, and never due
             db.commit()
             return {"ok": True, "status": "active", "next_run": task.next_run.isoformat() + "Z" if task.next_run else None}
         finally:

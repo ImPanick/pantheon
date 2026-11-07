@@ -929,8 +929,9 @@ def create_workflow(db, *, owner, name=None):
 
 
 # `P22-19` / `P22-24`. The words a start may store, closed (`TRIGGER_FIELDS`'
-# enums, as the task form offers them).
-START_TRIGGER_TYPES = ("schedule", "event", "webhook")
+# enums, as the task form offers them). `B1853` adds `manual`: a start that is
+# never due and runs only when somebody runs it (`TRIGGER_TYPE_MANUAL`).
+START_TRIGGER_TYPES = ("schedule", "event", "webhook", "manual")
 START_SCHEDULES = ("once", "daily", "weekly", "monthly", "cron")
 START_TRIGGER_COUNT_MAX = 1000
 
@@ -1009,6 +1010,9 @@ def clean_trigger_fields(fields) -> tuple:
                 count = DEFAULT_TRIGGER_COUNT
             out.update({"trigger_type": "event", "trigger_event": event, "trigger_count": count,
                         "schedule": None, "scheduled_time": None})
+    elif kind == "manual":
+        # `B1853`. Nothing to check: it has no time, no event and no address.
+        out.update({"trigger_type": "manual", "schedule": None, "scheduled_time": None})
     else:
         out.update({"trigger_type": "webhook", "schedule": None, "scheduled_time": None})
     if not usable:
@@ -1426,6 +1430,11 @@ def switch_workflow(db, wf, trigger, *, on: bool, name_of=None) -> tuple:
         # because "Switched on" alone would be a promise it cannot keep.
         notes.append("Its schedule has no time left to run at, so it will not run until "
                      "you change when it starts.")
+    from src.task_scheduler import MANUAL_TRIGGER_WORDS, is_manual_trigger
+    if is_manual_trigger(trigger):
+        # `B1853`. On means it MAY be run; nothing will start it by itself.
+        notes.append(f"{MANUAL_TRIGGER_WORDS}: Run now, your assistant or the API start it, "
+                     f"and nothing starts it by itself.")
     chain_paused = None
     if head is not None and (head.status or "active") == "active":
         head.status = "paused"

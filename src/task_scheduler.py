@@ -1703,6 +1703,22 @@ NOTIFY_ON_SUCCESS_TASK_TYPES = ("llm", "research", "workflow")
 PERSON_TASK_TYPES = ("llm", "research", "action")
 
 
+#: `B1853`. A start that is never due: the task runs only when somebody runs it
+#: — *Run now*, a workflow's *Test run*, the assistant's `manage_tasks run`, or
+#: the API — and nothing on a clock, an event or an address starts it. Stored in
+#: `trigger_type` beside `schedule`, `event` and `webhook`; switched on, it MAY
+#: be run (a switched-off task's *Run now* is still `skipped`, `Law 1`), and it
+#: has no next time. Its retries, like an event's, are the same start again
+#: (`failure_next_run`). `MANUAL_TRIGGER_WORDS` is how it is described.
+TRIGGER_TYPE_MANUAL = "manual"
+MANUAL_TRIGGER_WORDS = "Only when you run it"
+
+
+def is_manual_trigger(task) -> bool:
+    """`B1853`. Does this task start only when somebody runs it?"""
+    return (getattr(task, "trigger_type", None) or "schedule") == TRIGGER_TYPE_MANUAL
+
+
 def task_type_problem(value) -> str | None:
     """`B1076`. The sentence that refuses a `task_type` no task can be, or
     `None`. These doors stored whatever they were sent, and an unknown word ran
@@ -2989,6 +3005,10 @@ class TaskScheduler:
                 for task in due:
                     if task.id in self._executing:
                         continue
+                    if is_manual_trigger(task):
+                        # `B1853`. A manual start is never due, whatever
+                        # `next_run` an older row or a hand edit left on it.
+                        continue
                     self._executing.add(task.id)
                     to_dispatch.append((
                         task.id,
@@ -3405,7 +3425,8 @@ class TaskScheduler:
             logger.warning("Could not mark run %s's retry as taken", run_id, exc_info=True)
 
     def _rearm_pending_retries(self) -> int:
-        """`B1494`. On start: every event or webhook task's retry that a
+        """`B1494`. On start: every event or webhook task's retry (and a
+        manual one's, `B1853`: its retry is the same start again) that a
         restart left untaken — its plan on the failed run's row — is armed
         again, due when it was due (at once, if that has passed), with the
         envelope it was planned with. Answers how many."""
@@ -3417,7 +3438,8 @@ class TaskScheduler:
                 rows = (db.query(TaskRun.id, TaskRun.task_id, TaskRun.steps)
                         .join(ScheduledTask, TaskRun.task_id == ScheduledTask.id)
                         .filter(TaskRun.status == "error",
-                                ScheduledTask.trigger_type.in_(("event", "webhook")),
+                                ScheduledTask.trigger_type.in_(
+                                    ("event", "webhook", TRIGGER_TYPE_MANUAL)),
                                 TaskRun.steps.like(f'%"{RETRY_PLAN_KEY}": {{%'))
                         .all())
             finally:

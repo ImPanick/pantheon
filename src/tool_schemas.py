@@ -962,8 +962,8 @@ FUNCTION_TOOL_SCHEMAS = [
                     # `email_auto_translate` could not be named by the model.
                     "action_name": {"type": "string", "enum": [],
                                     "description": "Built-in action (for task_type=action)"},
-                    "trigger_type": {"type": "string", "enum": ["schedule", "event"],
-                                     "description": "schedule = time-based, event = count-based"},
+                    "trigger_type": {"type": "string", "enum": ["schedule", "event", "manual"],
+                                     "description": "schedule = time-based, event = count-based, manual = only when run"},
                     "schedule": {"type": "string", "enum": ["once", "daily", "weekly", "monthly"],
                                  "description": "Schedule frequency (for trigger_type=schedule)"},
                     "scheduled_time": {"type": "string", "description": "HH:MM in UTC (for schedule triggers). Convert the user's stated local time using the UTC offset given in the 'Current date and time' context."},
