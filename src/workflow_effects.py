@@ -745,6 +745,12 @@ NO_SKILLS_SENTENCE = "No skills yet. Make one in Skills."
 
 
 def _slot_json(slot) -> dict:
+    # `B1882`: the one `never` slot where `\{{` is the text `{{` (a Code
+    # step's source) says so, so the field's "Not here" warning, typed live,
+    # passes over an escaped reference as the save does.
+    from src.workflow_slots import NEVER_CODE
+    if slot == NEVER_CODE:
+        return {"mapping": slot.mapping, "why": slot.why, "escape": True}
     return {"mapping": slot.mapping, "why": slot.why}
 
 

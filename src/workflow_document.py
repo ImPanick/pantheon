@@ -109,6 +109,7 @@ from src.workflow_refs import (
 )
 from src.workflow_slots import (
     MAPPING_NEVER,
+    NEVER_CODE,
     config_leaves,
     path_text,
     slot_for,
@@ -1416,7 +1417,8 @@ def _reference_problem(node: dict, resources: WorkflowResources) -> DocumentRefu
         slot = slot_for(node, path, mcp_schema=schema)
         field = path_text(path)
         if slot.mapping == MAPPING_NEVER:
-            if references_in_text(text):
+            # `B1882`: a Code step's source takes `\{{` as the text `{{`.
+            if references_in_text(text, escapes=(slot == NEVER_CODE)):
                 return _refusal(REFUSE_MAPPED_NEVER, (node_id,),
                                 f"{_called(node)}, {field_words(node, path)}. {slot.why}", field)
             continue

@@ -264,9 +264,35 @@ export function refsIn(text) {
   return out;
 }
 
-/** Whether `text` holds anything that looks like a reference — what a
- *  `never` field says no to as it is typed. */
-export const looksLikeRef = (text) => /\{\{/.test(String(text == null ? '' : text).replace(/\\\{\{/g, ''));
+/**
+ * `B1882`. Every reference anywhere in `text`, escaped or not, nested or not
+ * — the server's `workflow_refs.references_in_text`, which refuses a `never`
+ * field at save, read the same way here so the field's warning as it is
+ * typed says what the save will say. A `{{` that is not a reference (a Go
+ * template's `{{.Names}}`, `{{ x }}`) is the person's own text. `escapes`
+ * (the palette's `escape` on a slot: a Code step's source only): a
+ * reference right after `\` is the code's own text, as the server's is.
+ */
+export function referencesInText(text, { escapes = false } = {}) {
+  const t = String(text == null ? '' : text);
+  const out = [];
+  let i = t.indexOf('{{');
+  while (i >= 0) {
+    if (!(escapes && i > 0 && t[i - 1] === '\\')) {
+      const r = parseRefAt(t, i);
+      if (r) out.push(r);
+    }
+    i = t.indexOf('{{', i + 1);
+  }
+  return out;
+}
+
+/** Whether `text` holds a reference — what a `never` field says no to as it
+ *  is typed. `B1882`: it said no to any `{{` (`docker ps --format
+ *  '{{.Names}}'` was marked "Not here" and then saved), and yes to a
+ *  reference after `\` (which the server refuses): now it is the server's
+ *  own reading (`referencesInText`). */
+export const looksLikeRef = (text, opts) => referencesInText(text, opts).length > 0;
 
 /** `B1879`. A change in a person's words: "in capitals", "or “none” when it
  *  is not there". */
@@ -356,12 +382,59 @@ export function insertAtCaret(input, text) {
 // ── the list ───────────────────────────────────────────────────────────────
 
 /**
+ * `B1882`. Where the list may go, as `{ top, left, bottom, right }`: 8 px
+ * inside the window's frame around `anchor` (`.modal-content`; the screen
+ * when there is none), and on the screen, and inside every element around
+ * `box` that cuts off what overflows it (its `overflow` is not `visible`) —
+ * the inside of each, within its border and scroll bars. The 8 px are the
+ * frame's alone, as they always were: a list under a button flush with a
+ * scrolling panel's edge starts where the button does.
+ */
+export function visibleBounds(box, anchor) {
+  const view = { top: 0, left: 0, bottom: window.innerHeight, right: window.innerWidth };
+  const win = anchor && typeof anchor.closest === 'function' ? anchor.closest('.modal-content') : null;
+  const f = win && typeof win.getBoundingClientRect === 'function' ? win.getBoundingClientRect() : view;
+  const frame = { top: f.top + 8, left: f.left + 8, bottom: f.bottom - 8, right: f.right - 8 };
+  let r = { ...frame };
+  const cut = (b) => {
+    r = { top: Math.max(r.top, b.top), left: Math.max(r.left, b.left),
+      bottom: Math.min(r.bottom, b.bottom), right: Math.min(r.right, b.right) };
+  };
+  if (win) cut(view);
+  const style = typeof window.getComputedStyle === 'function' ? (el) => window.getComputedStyle(el) : null;
+  const page = document.documentElement;
+  for (let el = box && (box.parentElement || box.parentNode); style && el && el !== page && el !== document.body
+    && typeof el.getBoundingClientRect === 'function'; el = el.parentElement || el.parentNode) {
+    const s = style(el);
+    if (!s || ![s.overflow, s.overflowX, s.overflowY].some((v) => v && v !== 'visible')) continue;
+    const b = el.getBoundingClientRect();
+    // What it shows is inside its border and its scroll bars.
+    const t = b.top + (el.clientTop || 0);
+    const l = b.left + (el.clientLeft || 0);
+    cut({ top: t, left: l,
+      bottom: el.clientHeight > 0 ? t + el.clientHeight : b.bottom,
+      right: el.clientWidth > 0 ? l + el.clientWidth : b.right });
+  }
+  // Nothing left to show it in (a box measured before it is laid out): the
+  // window's frame, as before.
+  return r.bottom - r.top < 40 || r.right - r.left < 40 ? frame : r;
+}
+
+/**
  * `P23-06` (WB-U-9). Put the list under the *Insert a field…* that opened it
  * (the text box's own, when the box is the anchor), inside the window — above
  * the button when the window has more room there. It opened at the panel's
  * top-right corner whatever was pressed: measured, a button at y 747 and the
  * list at y 185, over the toolbar. The list keeps `position: absolute` in the
  * layer it is drawn in; this only writes its `left`/`top` and how tall it may be.
+ *
+ * `B1882`. "Inside the window" was the window's frame (`.modal-content`),
+ * but what cuts the list off is the scrolling body inside it
+ * (`.modal-body.workbench-body`, below the window's title bar): opened above
+ * an If step's condition, the list's top was at y 108 and the body showed
+ * from y 155, so its title and first line were hidden. The list is now kept
+ * inside `visibleBounds` — the window's frame and every element around the
+ * list that cuts off what overflows it.
  */
 export function placeNear(box, anchor) {
   if (!box || !anchor || typeof anchor.getBoundingClientRect !== 'function') return;
@@ -372,17 +445,15 @@ export function placeNear(box, anchor) {
   const host = box.offsetParent;
   if (!host || typeof host.getBoundingClientRect !== 'function') return;
   const h = host.getBoundingClientRect();
-  const win = typeof anchor.closest === 'function' ? anchor.closest('.modal-content') : null;
-  const w = win ? win.getBoundingClientRect()
-    : { top: 0, left: 0, bottom: window.innerHeight, right: window.innerWidth };
+  const w = visibleBounds(box, anchor);
   const gap = 4;
-  const below = w.bottom - at.bottom - gap - 8;
-  const above = at.top - w.top - gap - 8;
+  const below = w.bottom - at.bottom - gap;
+  const above = at.top - w.top - gap;
   const down = below >= 200 || below >= above;
   const room = Math.max(120, Math.min(520, down ? below : above));
   box.style.maxHeight = `${Math.round(room)}px`;
   const width = box.offsetWidth || 330;
-  const left = Math.max(w.left + 8, Math.min(at.left, w.right - width - 8));
+  const left = Math.max(w.left, Math.min(at.left, w.right - width));
   const height = Math.min(box.offsetHeight || 0, room);
   const top = down ? at.bottom + gap : at.top - gap - height;
   box.style.right = 'auto';
@@ -571,7 +642,7 @@ export function decorateField(input, { slot = null, pick = null, labelOf = null,
     const v = input.value;
     if (uses) { uses.textContent = usesLine(v, labelOf); uses.hidden = !uses.textContent; }
     if (never) {
-      const refused = looksLikeRef(v);
+      const refused = looksLikeRef(v, { escapes: slot.escape === true });
       box.classList.toggle('wf-slot-refused', refused);
       never.textContent = (refused ? 'Not here: ' : '') + (String(slot.why || '') || NEVER_FALLBACK);
     }
@@ -605,4 +676,5 @@ export default {
   pathWords,
   openFieldPicker, decorateField, refsIn, usesLine, insertAtCaret, originWords, exampleText, looksLikeRef,
   NEVER_FALLBACK, placeNear, parseRefAt, FILTERS, FILTER_ARG_DEFAULTS, RUN_FIELDS,
+  referencesInText, visibleBounds,
 };

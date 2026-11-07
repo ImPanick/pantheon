@@ -7900,7 +7900,13 @@ class TaskScheduler:
                     return StepDone(NodeResult(NODE_STATUS_ERROR, payload=self._missing_words(
                         node, rendered.missing)), None)
                 input_obj = json.loads(rendered.content)
-                call = rendered._replace(content=str(config.get("source") or ""), missing=())
+                # `B1882`: `\{{` written where the code itself holds `{{`
+                # (an f-string's `f"\{{item}}"`) runs as `{{`; the gate, the
+                # seal and the workstation all see the code as it runs.
+                from src.workflow_refs import unescape_references
+                source = unescape_references(str(config.get("source") or ""))
+                node = {**node, "config": {**config, "source": source}}
+                call = rendered._replace(content=source, missing=())
             else:
                 mcp_schema = None
                 if kind == wd.NODE_KIND_MCP:

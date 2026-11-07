@@ -562,7 +562,7 @@ def refs_in(value) -> list:
     return [ref for refs in found for ref in refs]
 
 
-def references_in_text(text: str) -> tuple:
+def references_in_text(text: str, *, escapes: bool = False) -> tuple:
     """Every reference anywhere in `text`, escaped or not, nested or not.
 
     For a `never` setting, which is copied verbatim and never rendered: it is
@@ -570,12 +570,22 @@ def references_in_text(text: str) -> tuple:
     `{{ {{ … }} }}` there is caught too (fail closed). A `{{` that is not a
     reference — a Go template's `{{.Names}}`, say — is the person's own text
     and stays exactly as typed.
+
+    `B1882`: `escapes` — for the one `never` setting that takes `\\{{` as
+    the text `{{` (a Code step's source, `workflow_slots.NEVER_CODE`), a
+    reference written right after a backslash is passed over; the backslash
+    is taken out before the code runs (`unescape_references`). A Python
+    f-string's `f"{{item}}"` reads as a reference, and was refused with no
+    way to write it; `f"\\{{item}}"` now saves and runs as `f"{{item}}"`.
     """
     if not isinstance(text, str) or "{{" not in text:
         return ()
     found = []
     i = text.find("{{")
     while i >= 0:
+        if escapes and i > 0 and text[i - 1] == "\\":
+            i = text.find("{{", i + 1)
+            continue
         try:
             ref, _end = _parse_ref_at(text, i)
             found.append(ref)
@@ -585,6 +595,31 @@ def references_in_text(text: str) -> tuple:
             pass
         i = text.find("{{", i + 1)
     return tuple(found)
+
+
+def unescape_references(text):
+    """`B1882`. `text` with the backslash taken out of each `\\{{` that a
+    reference follows — what a Code step's source (`escapes`, above) runs
+    as. A backslash before any other `{{` (`\\{{.Names}}`, `"\\{{2}"`) stays:
+    only an escape that had to be written is undone, so source saved before
+    this row (which could hold no escaped reference: it was refused) runs
+    exactly as it did."""
+    if not isinstance(text, str) or "\\{{" not in text:
+        return text
+    out = []
+    i = 0
+    while True:
+        j = text.find("\\{{", i)
+        if j < 0:
+            out.append(text[i:])
+            break
+        try:
+            _parse_ref_at(text, j + 1)
+            out.append(text[i:j])          # the backslash goes
+        except RefError:
+            out.append(text[i:j + 1])      # not before a reference: it stays
+        i = j + 1
+    return "".join(out)
 
 
 # ── Resolving ────────────────────────────────────────────────────────────────
