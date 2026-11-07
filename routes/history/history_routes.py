@@ -111,6 +111,23 @@ def _merge_continue_rows_to_delete(db_messages, db1, db2):
     return to_delete
 
 
+def _keep_count_through_message(history, msg_id) -> Optional[int]:
+    """`B1986`. How many of ``history``'s rows a fork through the message
+    ``msg_id`` copies: every row up to and including the one whose ``_db_id``
+    it is. ``None`` when this chat holds no such row, and then nothing is
+    forked."""
+    wanted = str(msg_id or "").strip()
+    if not wanted:
+        return None
+    for position, message in enumerate(history or []):
+        metadata = getattr(message, "metadata", None)
+        if metadata is None and isinstance(message, dict):
+            metadata = message.get("metadata")
+        if isinstance(metadata, dict) and str(metadata.get("_db_id") or "") == wanted:
+            return position + 1
+    return None
+
+
 def _paused_at_approval(meta) -> bool:
     """A reply that stopped at an approval card and wrote nothing of its own:
     the card's question stood in for it (`P23-04`, CHAT-M-3). The same test
@@ -1015,7 +1032,8 @@ def setup_history_routes(session_manager, upload_handler=None) -> APIRouter:
 
     @router.post("/api/session/{session_id}/fork")
     async def fork_session(request: Request, session_id: str):
-        """Create a new session with messages copied up to keep_count."""
+        """Create a new session with messages copied up to keep_count, or
+        through the message `through_msg_id` names (`B1986`)."""
         await asyncio.to_thread(_verify_session_owner, request, session_id)
         try:
             body = await request.json()
@@ -1031,6 +1049,17 @@ def setup_history_routes(session_manager, upload_handler=None) -> APIRouter:
                 raise HTTPException(404, CHAT_GONE)
             if not source:
                 raise HTTPException(404, CHAT_GONE)
+
+            # `B1986`. A message's Fork names its reply by the row's id. The
+            # `keep_count` it sent was the bubble's place among the bubbles on
+            # the page, which counts rows only while the whole chat is drawn
+            # and no reply is drawn as two bubbles. `/fork N` sends a count,
+            # and a count is answered as it always was (`Law 1`).
+            through_msg_id = body.get("through_msg_id")
+            if through_msg_id not in (None, ""):
+                keep_count = _keep_count_through_message(source.history, through_msg_id)
+                if keep_count is None:
+                    raise HTTPException(404, "That message is no longer in this chat — reload and try again.")
 
             # Create new session
             new_id = str(uuid.uuid4())

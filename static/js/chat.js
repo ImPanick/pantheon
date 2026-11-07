@@ -8374,21 +8374,37 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
   export async function forkFrom(aiMsgElement) {
     const box = document.getElementById('chat-history');
     const allMsgs = Array.from(box.querySelectorAll('.msg'));
-    const aiIndex = allMsgs.indexOf(aiMsgElement);
-    if (aiIndex < 0) return;
+    if (allMsgs.indexOf(aiMsgElement) < 0) return;
 
     const sessionId = sessionModule.getCurrentSessionId();
     if (!sessionId) return;
 
-    const keepCount = aiIndex + 1;
+    // `B1986`. The reply by its row's id, as Delete and Edit name theirs. This
+    // posted `keep_count` = the bubble's place among the `.msg` on the page,
+    // and that is a count of rows only while the whole chat is drawn and no
+    // reply is drawn as two bubbles: a chat opens on its newest 24 rows (8 on
+    // a phone), so a Fork in a longer one left out its newest messages, and an
+    // agent reply (its holder and the step its footer sits under) forked with
+    // the message after it. The footer may sit under a step that carries no id
+    // of its own, so the id is read as a reaction reads it (`replyIdFor`).
+    const throughId = reactionsModule.replyIdFor(aiMsgElement);
+    if (!throughId) {
+      if (uiModule) uiModule.showError('That message has no saved copy on this page yet. Reload the chat, then fork it.');
+      return;
+    }
 
     try {
       const res = await fetch(`${API_BASE}/api/session/${sessionId}/fork`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ keep_count: keepCount }),
+        body: JSON.stringify({ through_msg_id: throughId }),
       });
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) {
+        // The server's sentence (a reply this chat no longer holds), never a raw body.
+        const refusal = await readRefusal(res, 'Could not fork this chat. Try again.');
+        if (uiModule) uiModule.showError(refusal.sentence);
+        return;
+      }
       const data = await res.json();
 
       await sessionModule.loadSessions();
