@@ -32,13 +32,28 @@ because each one is behaviour a caller could see:
 3. **A list of content is a result.** v1 wrapped a returned list in a
    `CallToolResult`; a v2 handler must return one.
 
+And one neither did (`B1992`):
+
+4. **A returned text that starts ``Error:`` is an error result.** The
+   built-in servers say a failure in words and return it as content
+   (``Error: to, subject, and body are required``), which `McpManager` read as
+   a success: stdout, exit code 0, so the tool card and a task's delivery log
+   said the mail went. Only a returned list is read this way; a whole
+   `CallToolResult` a tool builds, as the relay does with a workstation
+   server's answer, is taken as it says, and a third-party server never meets
+   this module.
+
 The tool definitions are cached from the last `tools/list`, and a call for a
 name not in the cache lists once more first — v1's `_get_cached_tool_definition`.
 """
 
 from __future__ import annotations
 
+import re
 from typing import Any, Awaitable, Callable, Dict, Iterable, List
+
+#: (4) above: how a built-in server words a failure it returns as content.
+_SAYS_ERROR = re.compile(r"\s*Error:")
 
 
 def _error_result(text: str):
@@ -91,7 +106,8 @@ def tool_server(
             results = await call_tool(tool_name, arguments)
             if isinstance(results, types.CallToolResult):
                 return results
-            return types.CallToolResult(content=_content(results), is_error=False)
+            content = _content(results)
+            return types.CallToolResult(content=content, is_error=_says_error(content))
         except Exception as exc:   # (2) above: the tool's failure, in its own words
             return _error_result(str(exc))
 
@@ -105,6 +121,13 @@ def _content(results: Any) -> List[Any]:
     if isinstance(results, (str, bytes, dict)) or not isinstance(results, Iterable):
         raise TypeError(f"Unexpected return type from tool: {type(results).__name__}")
     return list(results)
+
+
+def _says_error(content: List[Any]) -> bool:
+    """(4) above, `B1992`: the first block is text that starts ``Error:``."""
+    import mcp.types as types
+    first = content[0] if content else None
+    return isinstance(first, types.TextContent) and bool(_SAYS_ERROR.match(first.text or ""))
 
 
 async def serve_stdio(server) -> None:

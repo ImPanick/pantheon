@@ -404,11 +404,15 @@ def parse_due_for_user(s: str) -> str:
     # we re-implement the small natural-language phrases here against user_now
     # so the result is naturally in the user's tz.
     import re as _re
+    # Stripped: the time-first form below reads the same as its old lazy
+    # `^(.+?)` only because nothing here starts with whitespace (`B1919`).
     lower = s.lower().strip()
 
     def _parse_time(t):
-        t = _re.sub(r'\b([ap])\s*\.?\s*m\.?\b', r'\1m', t.strip(), flags=_re.IGNORECASE)
-        m = _re.match(r'^\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\s*$', t, _re.IGNORECASE)
+        # `B1919`: no two whitespace runs side by side, so a long run of
+        # spaces is read once, not once for every way to split it.
+        t = _re.sub(r'\b([ap])(?:\s*\.)?\s*m\.?\b', r'\1m', t.strip(), flags=_re.IGNORECASE)
+        m = _re.match(r'^\s*(\d{1,2})(?::(\d{2}))?(?:\s*(am|pm))?\s*$', t, _re.IGNORECASE)
         if not m: return None
         h = int(m.group(1)); mn = int(m.group(2) or 0); ampm = (m.group(3) or "").lower()
         if ampm == "pm" and h < 12: h += 12
@@ -431,7 +435,7 @@ def parse_due_for_user(s: str) -> str:
             return base.replace(hour=t[0], minute=t[1]).isoformat()
 
     # Time-first: "3pm today", "11pm today", "9am tomorrow"
-    m = _re.match(r'^(.+?)\s+(today|tonight|tomorrow|tmrw|yesterday)$', lower)
+    m = _re.match(r'^(.*\S)\s+(today|tonight|tomorrow|tmrw|yesterday)$', lower)
     if m:
         time_part, word = m.group(1).strip(), m.group(2)
         base = today
@@ -524,12 +528,16 @@ def _parse_dt(s: str) -> datetime:
 
     now = datetime.now()
     today = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    # Stripped: the time-first form below reads the same as its old lazy
+    # `^(.+?)` only because nothing here starts with whitespace (`B1919`).
     lower = s.lower().strip()
 
     def _parse_time(t: str):
         """Return (hour, minute) from '1pm', '1:30 PM', '13:00', etc., or None."""
-        t = _re.sub(r'\b([ap])\s*\.?\s*m\.?\b', r'\1m', t.strip(), flags=_re.IGNORECASE)
-        m = _re.match(r'^\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\s*$', t, _re.IGNORECASE)
+        # `B1919`: no two whitespace runs side by side, so a long run of
+        # spaces is read once, not once for every way to split it.
+        t = _re.sub(r'\b([ap])(?:\s*\.)?\s*m\.?\b', r'\1m', t.strip(), flags=_re.IGNORECASE)
+        m = _re.match(r'^\s*(\d{1,2})(?::(\d{2}))?(?:\s*(am|pm))?\s*$', t, _re.IGNORECASE)
         if not m:
             return None
         h = int(m.group(1))
@@ -560,7 +568,7 @@ def _parse_dt(s: str) -> datetime:
 
     # time-first: "3pm today", "9am tomorrow", "11pm tonight"
     # (parity with parse_due_for_user, which handles these via the same form)
-    m = _re.match(r'^(.+?)\s+(today|tonight|tomorrow|tmrw|yesterday)$', lower)
+    m = _re.match(r'^(.*\S)\s+(today|tonight|tomorrow|tmrw|yesterday)$', lower)
     if m:
         time_part, word = m.group(1).strip(), m.group(2)
         base = today
@@ -1343,6 +1351,11 @@ def setup_calendar_routes(upload_handler=None) -> APIRouter:
             try:
                 ev = _get_or_404_event(db, base_uid, owner)
                 is_occurrence_delete = scope in {"occurrence", "instance"} and "::" in uid and bool(ev.rrule)
+                # `B1906`: a request for one occurrence never falls through to
+                # deleting the whole series (a series uid, or a series that no
+                # longer repeats). Nothing is committed yet.
+                if scope in {"occurrence", "instance"} and not is_occurrence_delete:
+                    raise HTTPException(400, "Occurrence delete requires a recurring occurrence uid")
                 is_caldav = ev.calendar and ev.calendar.source == "caldav"
                 if is_occurrence_delete:
                     key = _occurrence_exdate_key(uid, ev)

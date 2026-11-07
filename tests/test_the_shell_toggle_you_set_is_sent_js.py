@@ -52,8 +52,20 @@ def _timeout_kind() -> str:
     return CHAT[start:end]
 
 
+#: The document editor as the send block reads it (`documentModule`), by what
+#: is on screen: no editor module, the editor shut, open with nothing in it
+#: yet, or open on a document.
+_EDITORS = {
+    None: "const documentModule = null; const activeDocIdForSend = null;\n",
+    "shut": "const documentModule = { isPanelOpen: () => false }; const activeDocIdForSend = null;\n",
+    "empty": "const documentModule = { isPanelOpen: () => true }; const activeDocIdForSend = null;\n",
+    "document": "const documentModule = { isPanelOpen: () => true };"
+                " const activeDocIdForSend = 'doc-1';\n",
+}
+
+
 def _send(tmp_path: Path, *, message: str, mode: str = "chat", bash: bool = False,
-          web: bool = False, incognito: bool = False) -> dict:
+          web: bool = False, incognito: bool = False, editor: str | None = None) -> dict:
     case = tmp_path / "case.mjs"
     case.write_text(
         "const toggles = " + json.dumps({"mode": mode, "plan_mode": False}) + ";\n"
@@ -64,7 +76,7 @@ def _send(tmp_path: Path, *, message: str, mode: str = "chat", bash: bool = Fals
         "const el = (id) => (id in boxes ? { checked: boxes[id] } : null);\n"
         "const planWindow = { isExecuting: () => false };\n"
         "const _getStoredPlan = () => '';\n"
-        "const documentModule = null; const activeDocIdForSend = null;\n"
+        + _EDITORS[editor] +
         "const approvalForSend = null;\n"
         "const isIncognitoForSend = " + json.dumps(incognito) + ";\n"
         "const summonModule = { getSummoned: () => null };\n"
@@ -137,3 +149,17 @@ def test_the_keyword_bag_is_gone_from_the_send():
     block = _form_block()
     assert "fd.set('allow_bash'" not in block
     assert "workspaceAgentIntent" not in block
+
+
+def test_a_chat_turn_sent_from_an_open_editor_goes_as_agent_for_that_turn(tmp_path):
+    """`B1793`. Opening a document no longer presses Agent for the person
+    (`document.js`), so the turn is what goes as Agent, as it already did beside
+    a document: an editor open with nothing in it yet asks for the same tools.
+    Not in Incognito, and not once the editor is shut."""
+    def mode(editor, **kw):
+        return _send(tmp_path, message="write a packing list here", editor=editor, **kw)["sent"]["mode"]
+
+    assert mode("empty") == "agent"
+    assert mode("document") == "agent"
+    assert mode("shut") == "chat"
+    assert mode("empty", incognito=True) == "chat"

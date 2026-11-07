@@ -1946,8 +1946,9 @@ function initializeEventListeners() {
       try { workspaceModule.applyMode(mode); } catch (_) {}
       try { summonModule.applyMode(mode); } catch (_) {}
       try { composerMenuModule.applyMode(mode); } catch (_) {}
-      // Delay tool glow-up for a staggered effect
-      setTimeout(() => applyModeToToggles(mode), 500);
+      // `B1936`. The send reads Web and Shell from these switches, so they
+      // change with the mode, not half a second after it.
+      applyModeToToggles(mode);
     }
     window.__pantheonSetChatMode = setMode;
     // Paired getter. `chat.js` applies a queued item's per-item mode for its

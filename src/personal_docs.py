@@ -5,7 +5,7 @@ import re
 import json
 import logging
 import threading
-from typing import List, Dict, Set, Any, Optional, Tuple
+from typing import BinaryIO, List, Dict, Set, Any, Optional, Tuple, Union
 from dataclasses import dataclass
 
 from src.index_walk import (IndexBudget, IndexPacer, file_is_too_large,
@@ -31,8 +31,14 @@ from src.document_processor import (
 logger = logging.getLogger(__name__)
 
 
-def extract_pdf_text(file_path: str) -> str:
-    """Extract text from a PDF file using pypdf (permissive, BSD)."""
+def extract_pdf_text(file_path: Union[str, BinaryIO], *, name: Optional[str] = None) -> str:
+    """Extract text from a PDF file using pypdf (permissive, BSD).
+
+    ``file_path`` is a path or an open binary stream. `B1946`: a PDF fetched
+    from the web is read from its bytes by this function, so a web page, an
+    email attachment and an indexed file are read by the same pypdf call.
+    ``name`` is what a failure is logged under, for a stream.
+    """
     try:
         from pypdf import PdfReader
         reader = PdfReader(file_path)
@@ -42,7 +48,7 @@ def extract_pdf_text(file_path: str) -> str:
         logger.warning("pypdf not installed, cannot extract PDF text")
         return ""
     except Exception as e:
-        logger.error(f"Failed to extract PDF text from {file_path}: {e}")
+        logger.error(f"Failed to extract PDF text from {name or file_path}: {e}")
         return ""
 
 

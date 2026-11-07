@@ -23,7 +23,6 @@ import email.header
 import email.utils
 import json
 import re
-import html
 import logging
 from email.mime.multipart import MIMEMultipart
 from email.mime.base import MIMEBase
@@ -40,6 +39,7 @@ from src.file_names import display_name, mime_attachment_disposition, stored_nam
 from src.secret_storage import decrypt as _decrypt
 
 from src import mail_auth as _mail_auth
+from src import mail_tls as _mail_tls  # `B2096`: which certificate gets a password
 
 logger = logging.getLogger(__name__)
 
@@ -226,6 +226,11 @@ def _send_smtp_message(cfg: dict, from_addr: str, recipients: list[str], message
     send to a mail server that was not there waited the whole 30 s before the
     pollers or the send route could say so; `P23-07` made this split for the
     IMAP opener below and `B1230` for the agent's own SMTP opener.
+
+    `B2096`: the TLS is opened with `src/mail_tls.py`'s context for the host,
+    and the certificate is checked before the sign-in, so an impostor on the
+    path is refused before it reads the password. `cfg["owner"]` names whose
+    pins are read: the account's owner, as `_get_email_config` sets it.
     """
     host = cfg["smtp_host"]
     port = int(cfg.get("smtp_port") or 465)
@@ -251,9 +256,14 @@ def _send_smtp_message(cfg: dict, from_addr: str, recipients: list[str], message
                 pass
 
     security = _smtp_security_mode(cfg)
+    owner = str(cfg.get("owner") or "")
 
     if security == "ssl":
-        with smtplib.SMTP_SSL(host, port, timeout=opening) as smtp:
+        context = _mail_tls.context_for(owner, host, port)
+        with _mail_tls.handshake(host, port):
+            smtp_ssl = smtplib.SMTP_SSL(host, port, timeout=opening, context=context)
+        with smtp_ssl as smtp:
+            _mail_tls.check_connection(smtp, owner, host, port)
             _opened(smtp)
             _auth_smtp(smtp)
             smtp.sendmail(from_addr, recipients, message)
@@ -261,14 +271,57 @@ def _send_smtp_message(cfg: dict, from_addr: str, recipients: list[str], message
 
     with smtplib.SMTP(host, port, timeout=opening) as smtp:
         if security == "starttls":
-            smtp.starttls()
+            with _mail_tls.handshake(host, port):
+                smtp.starttls(context=_mail_tls.context_for(owner, host, port))
+            _mail_tls.check_connection(smtp, owner, host, port)
         _opened(smtp)
         _auth_smtp(smtp)
         smtp.sendmail(from_addr, recipients, message)
 
 
-def _friendly_email_auth_error(protocol: str, host: str, error: object) -> str:
-    """Return a clearer setup error for known provider auth policies."""
+def _mail_door_failure(host: str, port, error: object) -> str | None:
+    """`B2032`. The sentence for a mail connection that failed at the door,
+    naming the host and port that were typed and nothing the server sent, or
+    `None` past the door (a sign-in the server refused says what it said)."""
+    import socket
+    import ssl
+
+    if isinstance(error, _mail_tls.MailCertificateError):   # `B2096`: its own sentence
+        return str(error)
+    if isinstance(error, smtplib.SMTPConnectError):   # it did not greet as SMTP
+        return _smtp_send_failure(host, port, error)   # `P23-08`'s sentence, said once
+    cause = error.__context__ if isinstance(error, smtplib.SMTPServerDisconnected) else None
+    if isinstance(cause, OSError) and not isinstance(cause, smtplib.SMTPException):
+        error = cause   # smtplib's hang-up over a socket's error: say which
+    where = f"{host}:{port}" if host and port else (host or "the mail server")
+    if isinstance(error, smtplib.SMTPServerDisconnected):
+        return f"The server at {where} closed the connection. Check the host, the port and the security setting."
+    if not isinstance(error, OSError) or isinstance(error, smtplib.SMTPException):
+        return None
+    if isinstance(error, ssl.SSLCertVerificationError):
+        return f"The server at {where} sent a TLS certificate that could not be verified. Check the host name."
+    if isinstance(error, ssl.SSLError):
+        return f"The TLS handshake with {where} failed. Check the port and the security setting."
+    if isinstance(error, TimeoutError):   # keeps "timed out": the list's 504 reads it
+        return f"The server at {where} did not answer in time (timed out). Check the host and the port."
+    if isinstance(error, ConnectionRefusedError):
+        return f"The server at {where} refused the connection. Check the host and the port."
+    if isinstance(error, socket.gaierror):
+        return f"No address was found for {host}. Check the host."
+    return f"The connection to {where} failed. Check the host and the port."
+
+
+def _friendly_email_auth_error(protocol: str, host: str, error: object, port=None) -> str:
+    """Return a clearer setup error for known provider auth policies.
+
+    `B2032`: a connection that failed at the door is said in our words first
+    (`_mail_door_failure`). `str(e)` of one carried the first line whatever
+    listened on that host and port sent (an SSH banner, say), and the account
+    form's Test takes any host and port. An IMAP greeting is worded where the
+    connection is opened (`_open_imap_connection`), once for every route."""
+    door = _mail_door_failure(host, port, error)
+    if door:
+        return door
     raw = str(error or "")
     lower = raw.lower()
     host_lower = (host or "").lower()
@@ -396,6 +449,50 @@ def _extract_reply(text: str) -> str:
     t = _REPLY_CLOSE_RE.sub("", t)
     t = _REPLY_ROLE_MARKER_RE.sub("", t)
     return _strip_think(t).strip()
+
+
+_TRANSLATION_OPEN_RE = _re_reply.compile(r"<<<\s*TRANSLATION\s*>>+", _re_reply.I)
+_TRANSLATION_MARKER_RE = _re_reply.compile(r"<<<\s*(?:TRANSLATION|END)\s*>>+", _re_reply.I)
+_SAME_LANGUAGE_MARKER = "<<<SAME_LANGUAGE>>>"
+
+
+def _extract_translation(text: str) -> tuple[str, bool]:
+    """Pull an email translation out of a model response: `(text, same_language)`.
+
+    `B2025`. Both translate paths (the reader's Translate, `POST
+    /api/email/translate`, and the `email_auto_translate` action) ran
+    `_extract_reply` and then looked for `<<<TRANSLATION>>> ... <<<END>>>`.
+    `_extract_reply` fences only REPLY/SUMMARY/OUTPUT and deletes every
+    `<<<END>>>`, so that search never matched: a preamble ("Here is the
+    translation:"), a repeated opener or a note after `<<<END>>>` was cached
+    and shown as the translation.
+
+    Now the translation is the text after the first `<<<TRANSLATION>>>` up to
+    the next `<<<END>>>` (or the end), found once think blocks are gone, so a
+    marker the model only named while reasoning is not the one read. Nothing
+    else is stripped from it: a translation may open "We need to ...". A reply
+    with no opener is read by `_extract_reply`, as before. `<<<SAME_LANGUAGE>>>`
+    is read where it always was (after the email reasoning strip), and also
+    inside the translation's own markers.
+    """
+    if not text:
+        return "", False
+    plain = _extract_reply(text)
+    if _SAME_LANGUAGE_MARKER in plain:
+        return "", True
+    from src.text_helpers import strip_think
+    t = strip_think(text, prose=False, prompt_echo=False)
+    opener = _TRANSLATION_OPEN_RE.search(t)
+    if opener:
+        rest = t[opener.end():]
+        close = _REPLY_CLOSE_RE.search(rest)
+        body = rest[:close.start()] if close else rest
+        if _SAME_LANGUAGE_MARKER in body:
+            return "", True
+    else:
+        body = plain
+    body = _TRANSLATION_MARKER_RE.sub("", body)
+    return _REPLY_ROLE_MARKER_RE.sub("", body).strip(), False
 
 
 def _build_email_summary_messages(sender: str, subject: str, body_for_llm: str) -> list[dict[str, str]]:
@@ -858,18 +955,23 @@ def _ensure_sender_signatures_table(conn):
         _lg.getLogger(__name__).warning(f"sender_signatures owner-migration skipped: {_mig_e}")
 
 
-def attachment_extract_dir(folder: str, uid: str) -> Path:
+def attachment_extract_dir(folder: str, uid: str, *, owner: str, account_id: str | None = None) -> Path:
     """Containment-safe extraction directory for an attachment.
 
     `folder` and `uid` are user-controlled (query/path params). Flatten them to
     a single safe path segment so a value like folder='../../tmp' can't escape
-    ATTACHMENTS_DIR, then assert containment as belt-and-suspenders."""
-    key = re.sub(r"[^A-Za-z0-9._-]", "_", f"{folder}_{uid}") or "_"
-    target = (ATTACHMENTS_DIR / key).resolve()
-    base = ATTACHMENTS_DIR.resolve()
-    if target != base and base not in target.parents:
-        raise HTTPException(400, "Invalid attachment location")
-    return target
+    ATTACHMENTS_DIR, then assert containment as belt-and-suspenders.
+
+    `B2034`: under a folder of the owner's and the account's own
+    (`src/mail_attachment_paths`). Named by folder and UID alone, two people's
+    "INBOX 42" were one folder, and each extraction rewrote the file the other
+    had just been handed."""
+    from src.mail_attachment_paths import attachment_scope_dir
+
+    try:
+        return attachment_scope_dir(ATTACHMENTS_DIR, folder, uid, owner=owner, account_id=account_id)
+    except ValueError:
+        raise HTTPException(400, "Invalid attachment location") from None
 
 
 def _init_scheduled_db():
@@ -1247,6 +1349,9 @@ def _get_email_config(account_id: str | None = None, owner: str = "") -> dict:
                 cfg = {
                     "account_id": row.id,
                     "account_name": row.name,
+                    # `B2096`: whose certificate pins the connections read
+                    # (`src/mail_tls.py`), the account's owner whoever asks.
+                    "owner": row.owner or "",
                     "smtp_host": row.smtp_host or "",
                     "smtp_port": int(row.smtp_port or 465),
                     "smtp_security": _smtp_security_mode({"smtp_security": getattr(row, "smtp_security", ""), "smtp_port": row.smtp_port}),
@@ -1289,6 +1394,7 @@ def _get_email_config(account_id: str | None = None, owner: str = "") -> dict:
     cfg = {
         "account_id": resolved_id,
         "account_name": "legacy",
+        "owner": "",   # `B2096`: the install's one mailbox, nobody's own pins
         "smtp_host": _v("smtp_host", "SMTP_HOST"),
         "smtp_port": int(_v("smtp_port", "SMTP_PORT", "465") or 465),
         "smtp_security": _smtp_security_mode({
@@ -1380,6 +1486,23 @@ _IMAP_TIMEOUT_SECONDS = _coerce_imap_timeout_seconds(os.environ.get("PANTHEON_IM
 _MAIL_CONNECT_SECONDS = 5
 _IMAP_CONNECT_SECONDS = _MAIL_CONNECT_SECONDS
 
+#: `B2032`. Bound at import: tests put fakes with no `error` in for `imaplib.IMAP4`.
+_IMAP_ERROR = imaplib.IMAP4.error
+
+
+def _imap_greeted(open_imap, host, port, **kwargs):
+    """`B2032`. ``open_imap(host, port, **kwargs)``, imaplib's IMAP4 or
+    IMAP4_SSL, with a greeting that is not an IMAP server's said in our words.
+    imaplib's error quotes the first line the server sent, an SSH banner say,
+    and every route that shows `str(e)` for a mail connection repeated it. The
+    same class is raised, so every handler catches what it caught; a timeout or
+    a refused connection is not this error and is left as it is."""
+    try:
+        return open_imap(host, port, **kwargs)
+    except _IMAP_ERROR as exc:
+        logger.warning("IMAP server %s:%s did not greet as one: %r", host, port, str(exc)[:200])
+        raise type(exc)(f"The server at {host}:{port} did not answer like an IMAP server.") from None
+
 
 def _open_imap_connection(
     host: str,
@@ -1388,18 +1511,31 @@ def _open_imap_connection(
     starttls: bool,
     timeout: int = _IMAP_TIMEOUT_SECONDS,
     ssl_context=None,
+    owner: str = "",
 ):
-    """Open an IMAP connection using the configured security mode."""
+    """Open an IMAP connection using the configured security mode.
+
+    `B2096`: the TLS is opened with `src/mail_tls.py`'s context for the host
+    unless the caller hands one in, and the certificate is checked before the
+    connection is returned, so no caller can sign in to a server it has not
+    checked. `owner` names whose pins are read.
+    """
     port = int(port or 993)
+    # `B1963`: 993 is implicit TLS (RFC 8314), so the port wins over a STARTTLS
+    # flag left on (the column default, and the form's for a custom host): a
+    # plain socket there waits for a greeting the server never sends. Upstream
+    # Odysseus #6990.
+    if starttls and port == 993:
+        starttls = False
     full = timeout
     timeout = min(full, _IMAP_CONNECT_SECONDS) if full else _IMAP_CONNECT_SECONDS
+    if starttls or port == 993:
+        ssl_context = ssl_context or _mail_tls.context_for(owner, host, port)
     if starttls:
-        conn = imaplib.IMAP4(host, port, timeout=timeout)
+        conn = _imap_greeted(imaplib.IMAP4, host, port, timeout=timeout)
         try:
-            if ssl_context:
+            with _mail_tls.handshake(host, port):
                 conn.starttls(ssl_context=ssl_context)
-            else:
-                conn.starttls()
         except Exception:
             # Don't leak the open plain socket if the STARTTLS upgrade is
             # rejected; close it before propagating. (#3174)
@@ -1408,11 +1544,14 @@ def _open_imap_connection(
             except Exception:
                 pass
             raise
+        _mail_tls.check_connection(conn, owner, host, port)
     elif port == 993:
-        kwargs = {"ssl_context": ssl_context} if ssl_context else {}
-        conn = imaplib.IMAP4_SSL(host, port, timeout=timeout, **kwargs)
+        with _mail_tls.handshake(host, port):
+            conn = _imap_greeted(imaplib.IMAP4_SSL, host, port, timeout=timeout,
+                                 ssl_context=ssl_context)
+        _mail_tls.check_connection(conn, owner, host, port)
     else:
-        conn = imaplib.IMAP4(host, port, timeout=timeout)
+        conn = _imap_greeted(imaplib.IMAP4, host, port, timeout=timeout)
     try:
         conn.sock.settimeout(full)   # the session's reads: the full timeout
     except Exception:
@@ -1441,8 +1580,8 @@ def _imap_connect(account_id: str | None = None, owner: str = "",
             f"IMAP is not configured for account {cfg.get('account_name') or 'default'!r}"
         )
     # Connection mode:
-    #   STARTTLS on → plain + upgrade
-    #   STARTTLS off + port 993 → implicit SSL (IMAPS)
+    #   port 993 → implicit SSL (IMAPS), whatever the STARTTLS flag (`B1963`)
+    #   STARTTLS on + any other port → plain + upgrade
     #   STARTTLS off + any other port → plain (local Dovecot, custom ports)
     # The last branch is critical: previously this fell into IMAP4_SSL
     # for any non-STARTTLS port, which would fail the TLS handshake on
@@ -1452,6 +1591,7 @@ def _imap_connect(account_id: str | None = None, owner: str = "",
         cfg["imap_port"],
         starttls=bool(cfg.get("imap_starttls")),
         timeout=timeout,
+        owner=str(cfg.get("owner") or ""),
     )
     try:
         _mail_auth.authenticate_imap(conn, cfg)
@@ -1923,52 +2063,12 @@ def _extract_attachment_to_disk(msg, index, target_dir):
     return None
 
 
-def _extract_html(msg):
-    """Extract raw HTML body from an email message, if present."""
-    if msg.is_multipart():
-        for part in msg.walk():
-            ct = part.get_content_type()
-            cd = str(part.get("Content-Disposition", ""))
-            if ct == "text/html" and "attachment" not in cd:
-                payload = part.get_payload(decode=True)
-                if payload:
-                    charset = part.get_content_charset() or "utf-8"
-                    return payload.decode(charset, errors="replace")
-    elif msg.get_content_type() == "text/html":
-        payload = msg.get_payload(decode=True)
-        if payload:
-            charset = msg.get_content_charset() or "utf-8"
-            return payload.decode(charset, errors="replace")
-    return None
-
-
-def _extract_text(msg):
-    if msg.is_multipart():
-        text_parts = []
-        for part in msg.walk():
-            ct = part.get_content_type()
-            cd = str(part.get("Content-Disposition", ""))
-            if ct == "text/plain" and "attachment" not in cd:
-                payload = part.get_payload(decode=True)
-                if payload:
-                    charset = part.get_content_charset() or "utf-8"
-                    text_parts.append(payload.decode(charset, errors="replace"))
-            elif ct == "text/html" and not text_parts and "attachment" not in cd:
-                payload = part.get_payload(decode=True)
-                if payload:
-                    charset = part.get_content_charset() or "utf-8"
-                    raw_html = payload.decode(charset, errors="replace")
-                    text = re.sub(r"<br\s*/?>", "\n", raw_html, flags=re.I)
-                    text = re.sub(r"<[^>]+>", "", text)
-                    text = html.unescape(text)
-                    text_parts.append(text.strip())
-        return "\n".join(text_parts)
-    else:
-        payload = msg.get_payload(decode=True)
-        if payload:
-            charset = msg.get_content_charset() or "utf-8"
-            return payload.decode(charset, errors="replace")
-    return ""
+# `B1822`, `B1823`. A message's body as text, and its raw HTML, are read in
+# `src/mail_headers.py` now, the one definition the agent's mail tools import
+# too. The names are kept (the same objects) for their importers in
+# `routes/email_routes.py`, `routes/email_pollers.py`, `src/builtin_actions.py`
+# and `scripts/pantheon-mail`.
+from src.mail_headers import extract_html as _extract_html, extract_text as _extract_text  # noqa: E402,F401
 
 
 def _fetch_sender_thread_context(sender_addr: str,

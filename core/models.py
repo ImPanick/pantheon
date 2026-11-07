@@ -111,6 +111,47 @@ def is_unanswered_reply(message: Any) -> bool:
     return not content
 
 
+#: `B1955`. Where a research Discuss chat's stored primer turns from the
+#: framing and the person's query to the report (`routes/research/research_routes.py`).
+RESEARCH_REPORT_MARKER = "\n\n=== REPORT ===\n"
+
+
+def research_report_as_context(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """`B1955`. A Discuss chat's report, read as untrusted context.
+
+    The spin-off stores one ``system`` row: a framing, the person's query, then
+    the report, which a model wrote over crawled pages. Sent as it is stored,
+    that put page text in the system role on every turn and never armed the
+    gate. So the row is read in two parts: the framing keeps the row's role and
+    metadata, and everything from the first marker on is a guarded
+    ``untrusted_context_message`` (it arms the gate), ``_protected`` so a trim
+    keeps it, and kept whole by ``maybe_compact``. New dicts only: the stored
+    row is not touched, so the transcript, Tidy and chats made before this read
+    as they did.
+    """
+    out: List[Dict[str, Any]] = []
+    for message in messages:
+        metadata = message.get("metadata")
+        spun_from = metadata.get("research_spinoff_from") if isinstance(metadata, dict) else None
+        content = message.get("content")
+        if message.get("role") != "system" or not spun_from or not isinstance(content, str):
+            out.append(message)
+            continue
+        framing, marker, report = content.partition(RESEARCH_REPORT_MARKER)
+        if not report.strip():
+            out.append(message)
+            continue
+        from src.prompt_security import untrusted_context_message
+
+        out.append({**message, "content": framing})
+        context = untrusted_context_message("research context", marker.strip() + "\n" + report,
+                                            provenance_origin="external")
+        context["metadata"]["research_spinoff_from"] = spun_from
+        context["_protected"] = True
+        out.append(context)
+    return out
+
+
 @dataclass
 class ChatMessage:
     """A single chat message."""
@@ -195,13 +236,17 @@ class Session:
         ``metadata.source == "slash"``; exclude them here so they never reach
         the model. Display/history-load paths use the raw ``history`` and are
         unaffected.
+
+        A research Discuss chat's report is read out of its stored primer as
+        untrusted context, not sent in the system role (`B1955`,
+        `research_report_as_context`).
         """
-        messages = [
+        messages = research_report_as_context([   # `B1955`
             msg.to_dict()
             for msg in self.history
             if (msg.metadata or {}).get("source") != "slash"
             and not is_unanswered_reply(msg)   # `B1200`
-        ]
+        ])
         if not _history_grants_chat_session_approval(self.history, self.id):
             return messages
 

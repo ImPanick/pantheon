@@ -80,6 +80,34 @@ def _edit_args_error(old: Any, new: Any) -> Optional[Dict[str, Any]]:
         return {"error": "edit_file: old_string required (use write_file to create a file)", "exit_code": 1}
     if old == new:
         return {"error": "edit_file: old_string and new_string are identical", "exit_code": 1}
+    # `B1785`. The file is read as strict UTF-8, which holds no surrogate, so
+    # the edited text can be saved exactly when `new_string` can.
+    return _unwritable_text("edit_file", new)
+
+
+def _unwritable_text(tool: str, text: Any, of: str = "") -> Optional[Dict[str, Any]]:
+    """`B1785`. The refusal for a new text that cannot be saved as UTF-8, or
+    `None` when it can. Asked before a file is opened: `open(path, "w")`
+    empties the file on the way in and the text is encoded only as it is
+    written, so a lone surrogate (`\\ud800`, which a model's JSON can carry
+    when it under-escapes a backslash in code that spells one) left the
+    person's file at 0 bytes behind an error that never said so.
+
+    `of` names the file, for `apply_patch`, whose patch may change several;
+    every one is then unchanged."""
+    if not isinstance(text, str):
+        return None
+    try:
+        text.encode("utf-8")
+    except UnicodeEncodeError as e:
+        code = "\\u%04x" % ord(text[e.start])
+        what = f"the new text of {of}" if of else "the new text"
+        kept = "every file is unchanged" if of else "the file is unchanged"
+        return {"error": (f"{tool}: {what} holds a character that cannot be saved as UTF-8 "
+                          f"(a lone surrogate, {code} at position {e.start}), so nothing was "
+                          f"written and {kept}. If you meant the characters {code} themselves, "
+                          f"escape the backslash: \\{code}"),
+                "exit_code": 1}
     return None
 
 
@@ -177,11 +205,27 @@ def write_file_content(args: Dict[str, Any]) -> str:
     it, or — an append — the JSON object `_write_file_call` reads `append`
     from. The one conversion both ways a native call arrives share
     (`tool_schemas.function_call_to_tool_block`, and a raw call leaked into
-    text, `tool_parsing`), so neither drops the append."""
+    text, `tool_parsing`), so neither drops the append.
+
+    `B1783`. A `content` that is given but is not text with something in it
+    (`""`, blank, `null`, an object) rides as the call's own JSON, because
+    `path\\n` cannot say which it was: an empty `content` declares the file
+    empty, while a `null` one is a body the call lost, which must not empty a
+    file that holds data (`_write_file_intent`), and an object is written as
+    JSON. A call with no `content` keeps the path-line shape, which the reader
+    takes as a lost body too. So does a `path` with a line break in it: that
+    is how `tool_parsing`'s wrapper readers carry a model's whole path-and-text
+    body (`<tool_call><write_file>path`, a line break, the text), and the
+    reader splits it at its first line, as it always has."""
     if str(args.get("append")).lower() == "true":
         return json.dumps({"path": args.get("path", ""), "content": args.get("content", ""),
                            "append": True})
-    return args.get("path", "") + "\n" + args.get("content", "")
+    path = args.get("path")
+    path = "" if path is None else str(path)
+    body = args.get("content")
+    if "content" not in args or "\n" in path or (isinstance(body, str) and body.strip()):
+        return path + "\n" + (body if isinstance(body, str) else "")
+    return json.dumps({"path": path, "content": body})
 
 
 def _write_file_call(content: str) -> Tuple[str, str, bool]:
@@ -190,10 +234,24 @@ def _write_file_call(content: str) -> Tuple[str, str, bool]:
     object's `"append": true`: the body goes on the end of the file, which is
     kept — `D-2026-10-29-03` §2, *"Append-only is not destructive"*, so a
     ledger that only grows is written without replacing it."""
+    return _write_file_intent(content)[:3]
+
+
+def _write_file_intent(content: str) -> Tuple[str, str, bool, bool]:
+    """`B1783`. `_write_file_call`'s reading, and one thing more:
+    `declared_clear`, whether the call says the file is to be empty, which is
+    a JSON `content` that is a string with nothing in it. A path line with
+    nothing after it (`path\\n`, or the path alone) and a JSON object whose
+    `content` is missing or `null` are what a call looks like when a parser
+    lost its body, so none of them declares anything. A `null` body is empty,
+    never the four bytes `None`; a `content` that is not a string (an object,
+    a list) is written as JSON, the characters it is (`B1727`), never as a
+    Python repr."""
     lines = content.split("\n", 1)
     raw_path = lines[0].strip()
     body = lines[1] if len(lines) > 1 else ""
     append = False
+    declared_clear = False
     # Decode JSON-object args (the fenced inline-args shape
     # ```write_file {"path": "...", "content": "..."}```), matching
     # ReadFileTool above. Without this the whole JSON string becomes the
@@ -206,11 +264,53 @@ def _write_file_call(content: str) -> Tuple[str, str, bool]:
             _a = json.loads(_stripped)
             if isinstance(_a, dict) and "path" in _a:
                 raw_path = str(_a.get("path", "")).strip()
-                body = str(_a.get("content", ""))
+                given = _a.get("content")
+                declared_clear = isinstance(given, str) and not given.strip()
+                body = ("" if given is None else given if isinstance(given, str)
+                        else json.dumps(given, ensure_ascii=False))
                 append = str(_a.get("append")).lower() == "true"
         except (json.JSONDecodeError, TypeError, ValueError):
             pass
-    return raw_path, body, append
+    # `B1784`: after `declared_clear` is read from what the call sent, so a
+    # fence with nothing in it is a lost body, not a clear.
+    body = _unwrap_fenced_source_body(body, raw_path)
+    return raw_path, body, append, declared_clear
+
+
+# `B1784`. Models often put a file's body in a Markdown code fence even when
+# the tool asks for the raw text, and a native call carries that fence into
+# the file, so `index.html` began with ```html and a JSON file did not parse.
+# These are the kinds of file where an outer fence can never be content, so
+# only they lose it; a Markdown file, a text file, or a file with no suffix
+# keeps a literal fence. This is not `document_processor.LANGUAGE_ALIASES`
+# (`B100`, the register of file languages), and must not be derived from it:
+# that answers what language a file is, and would add `.rmd` and `.qmd`,
+# where a leading ```{r} chunk is content. As upstream Odysseus wrote it
+# (cdd28ed9).
+_FENCED_SOURCE_SUFFIXES = frozenset({
+    ".css", ".csv", ".html", ".htm", ".js", ".json", ".jsx", ".mjs",
+    ".py", ".sh", ".sql", ".svg", ".ts", ".tsx", ".xml", ".yaml", ".yml",
+})
+
+
+def _unwrap_fenced_source_body(body: str, path: str) -> str:
+    """`B1784`. `body` without an outer Markdown fence, for a file whose kind
+    is in `_FENCED_SOURCE_SUFFIXES`; anything else is returned as it is.
+
+    An opening fence is enough: a generation can end inside the call and leave
+    the rest of the body usable. The line break before the closing fence
+    stays, so a fenced row appended to a ledger still ends its line (`B1672`),
+    and a fence with nothing in it is an empty body, which the empty-body
+    rule then decides (`B1783`), never the three bytes ```."""
+    if os.path.splitext(str(path))[1].casefold() not in _FENCED_SOURCE_SUFFIXES:
+        return body
+    opened = re.match(r"\s*```[^\r\n]*\r?\n", body)
+    if not opened:
+        return body
+    inner = body[opened.end():]
+    if re.fullmatch(r"```[ \t]*\s*", inner):
+        return ""
+    return re.sub(r"(\r?\n)```[ \t]*\s*\Z", r"\1", inner)
 
 
 def _previous_text(open_text) -> str:
@@ -234,6 +334,67 @@ def _write_result(path: str, old: str, body: str, append: bool = False) -> Dict[
     if diff:
         result["diff"] = diff
     return result
+
+
+class _EmptyBodyWouldTruncate(Exception):
+    """`B1783`. Raised in the write's worker thread when a body the call did
+    not declare empty is about to replace a file that holds bytes."""
+
+    def __init__(self, path: str, existing_bytes: int):
+        super().__init__(path)
+        self.path = path
+        self.existing_bytes = existing_bytes
+
+
+def _empty_body_refusal(path: str, raw_path: str, existing_bytes: int) -> Dict[str, Any]:
+    """`B1783`. What `write_file` answers, here and in the workstation, when a
+    call that carried no file content would have emptied a file holding
+    `existing_bytes`. The likely case comes first: the body was lost on the way
+    (a parser cut it, or the key was misnamed), so the call should be sent
+    again with the text. The clear comes second, because a model that pasted
+    it back after losing its body would empty the file after all. It is JSON
+    whatever the path holds (a quote, a backslash), and it works as sent."""
+    clear = json.dumps({"path": raw_path, "content": ""})
+    return {"error": (f"write_file: the call carried no file content, so nothing was written "
+                      f"and the file is unchanged ({path} holds {existing_bytes} bytes). Send "
+                      f"it again with the file's text in \"content\". If you mean to empty "
+                      f"the file, send exactly: {clear}"),
+            "exit_code": 1}
+
+
+def _held_bytes(path: str) -> Optional[int]:
+    """The size on disk of the regular file at `path`, or `None` when there is
+    none. On disk, not `_previous_text`'s read, which is "" for a file that is
+    not UTF-8 text however many bytes it holds."""
+    return os.path.getsize(path) if os.path.isfile(path) else None
+
+
+def _write_empty_body(path: str, body: str) -> Optional[bool]:
+    """`B1783`. Write a body the call did not declare empty ("" or blank)
+    without cutting a file that holds data, and answer whether a file was
+    there: `False` when this made it, `True` when it was a 0-byte file (which
+    loses nothing), or `None` when what is there is not a file (a folder),
+    which the plain `open(path, "w")` then answers for as it always has.
+    Over a file that holds bytes it raises `_EmptyBodyWouldTruncate`.
+
+    Nothing here opens a file in a mode that cuts it: a missing file is made
+    with an exclusive create, and a 0-byte one is added to. So a writer that
+    puts bytes there between the look and the write keeps them."""
+    held = _held_bytes(path)
+    if held is None:
+        try:
+            with open(path, "x", encoding="utf-8") as f:
+                f.write(body)
+            return False
+        except FileExistsError:
+            held = _held_bytes(path)   # made meanwhile, or not a file at all
+            if held is None:
+                return None
+    if held:
+        raise _EmptyBodyWouldTruncate(path, held)
+    with open(path, "a", encoding="utf-8") as f:
+        f.write(body)
+    return True
 
 
 class EditFileTool:
@@ -300,11 +461,19 @@ class ReadFileTool:
 class WriteFileTool:
     async def execute(self, content: str, ctx: dict) -> dict:
         from src.tool_execution import _resolve_tool_path, _resolve_search_root, _truncate
-        raw_path, body, append = _write_file_call(content)
+        raw_path, body, append, declared_clear = _write_file_intent(content)
         try:
             path = _resolve_tool_path(raw_path)
         except ValueError as e:
             return {"error": f"write_file: {e}", "exit_code": 1}
+        # `B1785`: before the file is opened, appends included, so this and
+        # the workstation give one answer.
+        unwritable = _unwritable_text("write_file", body)
+        if unwritable:
+            return unwritable
+        # `B1783`: a body that is empty or blank, from a call that did not say
+        # the file is to be empty — a body lost on the way.
+        undeclared_empty = not append and not body.strip() and not declared_clear
         try:
             def _write():
                 old = _previous_text(lambda: open(path, "r", encoding="utf-8"))
@@ -313,11 +482,17 @@ class WriteFileTool:
                 d = os.path.dirname(path)
                 if d:
                     os.makedirs(d, exist_ok=True)
+                if undeclared_empty:
+                    was = _write_empty_body(path, body)
+                    if was is not None:
+                        return old, was
                 # `B1672`: an append keeps every byte the file had.
                 with open(path, "a" if append else "w", encoding="utf-8") as f:
                     f.write(body)
                 return old, there
             old_content, was_there = await asyncio.to_thread(_write)
+        except _EmptyBodyWouldTruncate as e:
+            return _empty_body_refusal(e.path, raw_path, e.existing_bytes)
         except PermissionError:
             return {"error": f"write_file: {path}: permission denied", "exit_code": 1}
         except OSError as e:
@@ -390,7 +565,11 @@ class _HostFiles:
 
 def _run_patch(patch_text: str, files) -> Dict[str, Any]:
     """Parse, prepare every file, then write — `apply_patch`'s whole body, over
-    `files` (`_HostFiles` or the workstation's)."""
+    `files` (`_HostFiles` or the workstation's).
+
+    `B1990`. A write or delete that fails puts back every file the patch
+    reached, the failing one too (`_undo_patch`), so a patch answered as
+    failed has changed nothing and can be sent again as it was."""
     try:
         ops = _parse_agent_patch(patch_text)
         if not ops:
@@ -414,19 +593,38 @@ def _run_patch(patch_text: str, files) -> Dict[str, Any]:
                     return {"error": f"apply_patch: {op['path']}: not found", "exit_code": 1}
                 old = files.read_text(path)
                 new = _apply_patch_hunks(old, op["hunks"], op["path"])
-            prepared.append((kind, path, old, new))
+            # `B1785`: every new text can be saved, asked before the first
+            # write or delete, so the patch stays all or nothing.
+            unwritable = _unwritable_text("apply_patch", new, of=op["path"])
+            if unwritable:
+                return unwritable
+            prepared.append((kind, path, old, new, op["path"]))
+        # `B1990`: worked out before the first write, so nothing but a write
+        # or a delete can fail once one has landed.
+        diffs = [diff for diff in (_unified_diff(old, new, path)
+                                   for _kind, path, old, new, _named in prepared) if diff]
+    except (ValueError, UnicodeDecodeError, PermissionError, OSError) as e:
+        return {"error": f"apply_patch: {e}", "exit_code": 1}
 
-        diffs = []
-        for kind, path, old, new in prepared:
+    reached = []
+    try:
+        for entry in prepared:
+            kind, path, _old, new, _named = entry
+            # Counted before it runs: a write that fails may have cut the
+            # file short first, as a full disk does.
+            reached.append(entry)
             if kind == "delete":
                 files.remove(path)
             else:
                 files.write_text(path, new)
-            diff = _unified_diff(old, new, path)
-            if diff:
-                diffs.append(diff)
     except (ValueError, UnicodeDecodeError, PermissionError, OSError) as e:
-        return {"error": f"apply_patch: {e}", "exit_code": 1}
+        left = _undo_patch(reached, files)
+        if left:
+            return {"error": (f"apply_patch: {e}; the patch was not applied, but these files "
+                              f"could not be put back as they were and may be changed: "
+                              f"{', '.join(left)}"), "exit_code": 1}
+        return {"error": f"apply_patch: {e}; the patch was not applied and every file is as it was",
+                "exit_code": 1}
 
     added = sum(int(d.get("added") or 0) for d in diffs)
     removed = sum(int(d.get("removed") or 0) for d in diffs)
@@ -447,6 +645,38 @@ def _run_patch(patch_text: str, files) -> Dict[str, Any]:
             "file": "patch",
         }
     return result
+
+
+def _undo_patch(reached, files) -> List[str]:
+    """`B1990`. Put back the files a failed patch reached, the last first, with
+    the same six operations the patch was written with (`_HostFiles` or the
+    workstation's): a file it added is removed, one it updated or deleted is
+    written back with the text it had. Each is read back to check it; the
+    patch's names for those that are not as they were come back, in the
+    patch's order. It writes text as a patch does, so a file written back has
+    a patch's line endings, a deleted one comes back without its mode, and a
+    folder made for an added file stays, empty."""
+    left = []
+    for kind, path, old, _new, named in reversed(reached):
+        try:
+            if kind == "add":
+                if files.exists(path):
+                    files.remove(path)
+                back = not files.exists(path)
+            else:
+                try:
+                    back = files.isfile(path) and files.read_text(path) == old
+                except (ValueError, OSError):   # e.g. a write cut off inside a character
+                    back = False
+                if not back:
+                    files.write_text(path, old)
+                    back = files.isfile(path) and files.read_text(path) == old
+        except (ValueError, OSError):
+            back = False
+        if not back:
+            left.append(named)
+    return left[::-1]
+
 
 def _parse_agent_patch(patch_text: str) -> List[Dict[str, Any]]:
     lines = patch_text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
@@ -567,7 +797,12 @@ def _ls_text(root: str, rows: List[Tuple[bool, str, int]]) -> str:
 
 class LsTool:
     async def execute(self, content: str, ctx: dict) -> dict:
-        from src.tool_execution import _resolve_tool_path, _resolve_search_root, _truncate
+        from src.tool_execution import (
+            _is_install_record,
+            _resolve_tool_path,
+            _resolve_search_root,
+            _truncate,
+        )
         raw_path = _ls_args(content)
         try:
             root = _resolve_search_root(raw_path)
@@ -582,6 +817,11 @@ class LsTool:
                 with os.scandir(root) as it:
                     for entry in it:
                         if entry.name.startswith("."):
+                            continue
+                        # The install's own records and its `ssh/` are not
+                        # listed: `read_file` refuses them (`B1418`), and a
+                        # listing of the data directory named them all.
+                        if _is_install_record(os.path.realpath(entry.path)):
                             continue
                         try:
                             is_dir = entry.is_dir(follow_symlinks=False)
@@ -655,7 +895,7 @@ class GlobTool:
     async def execute(self, content: str, ctx: dict) -> dict:
         from src.tool_execution import (
             _SENSITIVE_BASENAMES,
-            _is_sensitive_path,
+            _hidden_from_search,
             _resolve_tool_path,
             _resolve_search_root,
             _truncate,
@@ -670,18 +910,19 @@ class GlobTool:
             return {"error": f"glob: {e}", "exit_code": 1}
 
         # `P20-03`: the walk is `codenav_walk.glob_walk`, the text the
-        # workstation runs too. The sensitive-path rule it applies here is
-        # `_is_sensitive_path` itself.
+        # workstation runs too. The rule it applies here is
+        # `_hidden_from_search`: `_is_sensitive_path` and the install's own
+        # records (`B1418`), the two things `read_file` refuses.
         paths, err = await asyncio.to_thread(
             _codenav.glob_walk, root, pattern, _CODENAV_SKIP_DIRS, _SENSITIVE_BASENAMES,
-            _is_sensitive_path, _CODENAV_MAX_HITS)
+            _hidden_from_search, _CODENAV_MAX_HITS)
         return _glob_result(paths, err, pattern, root)
 
 class GrepTool:
     async def execute(self, content: str, ctx: dict) -> dict:
         from src.tool_execution import (
             _SENSITIVE_FILE_PATTERNS,
-            _is_sensitive_path,
+            _hidden_from_search,
             _resolve_tool_path,
             _resolve_search_root,
             _truncate,
@@ -698,10 +939,11 @@ class GrepTool:
 
         # `P20-03`: `codenav_walk.grep_walk` — ripgrep when it is on PATH,
         # Python's `re` over a pruned walk when not — shared with the
-        # workstation, which runs the same text.
+        # workstation, which runs the same text. Every hit's file is asked
+        # `_hidden_from_search`, the rule `read_file` applies (`B1418`).
         lines, err = await asyncio.to_thread(
             _codenav.grep_walk, root, pattern, ignore_case, glob_pat, max_hits,
-            _CODENAV_SKIP_DIRS, _SENSITIVE_FILE_PATTERNS, _is_sensitive_path, _CODENAV_MAX_LINE)
+            _CODENAV_SKIP_DIRS, _SENSITIVE_FILE_PATTERNS, _hidden_from_search, _CODENAV_MAX_LINE)
         return _grep_result(lines, err, pattern, root, max_hits)
 
 class GetWorkspaceTool:

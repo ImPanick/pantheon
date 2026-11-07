@@ -73,8 +73,9 @@ def sandbox(tmp_path_factory):
         (d / name).write_text(src, encoding="utf-8")
     (d / "compare").mkdir(exist_ok=True)
     shutil.copy(COMPARE_STREAM, d / "compare" / "stream.js")
+    # `B2021`: `chatStreamErrors.js`, the error a failed stream is read as.
     for name in ("agentThread.js", "agentStops.js", "spinner.js", "langIcons.js",
-                 "agentTurn.js", "agentMeter.js"):
+                 "agentTurn.js", "agentMeter.js", "chatStreamErrors.js"):
         if (JS / name).exists():
             shutil.copy(JS / name, d / name)
     return d

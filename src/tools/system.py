@@ -866,12 +866,33 @@ def _utc_time_in_zone(utc_hhmm, day, schedule, zone):
             day = min(31, max(1, day + shift))
     return local.strftime("%H:%M"), day
 
+def _no_next_run(task) -> str:
+    """`B1813`. Why a schedule task has no next run, in a sentence for the model."""
+    name = task.name or "This task"
+    if task.schedule == "once":
+        if not task.scheduled_date:
+            return (f"Task '{name}' has no next run: a one-off task runs on a date, and this "
+                    "tool cannot set one (the Tasks window can)")
+        return f"Task '{name}' has no next run: its one-off date has passed"
+    if task.schedule == "cron":
+        return (f"Task '{name}' has no next run: its cron expression "
+                f"({task.cron_expression or 'none'}) gives none")
+    if task.schedule not in ("daily", "weekly", "monthly"):
+        return (f"Task '{name}' has no next run: '{task.schedule}' is not daily, weekly, "
+                "monthly or once")
+    return f"Task '{name}' has no next run: its time '{task.scheduled_time}' is not HH:MM"
+
 
 async def do_manage_tasks(content: str, owner: Optional[str] = None) -> Dict:
     """Handle manage_tasks tool calls: CRUD on scheduled tasks."""
     import uuid as _uuid
     from core.database import SessionLocal, ScheduledTask, CrewMember
-    from src.task_scheduler import compute_next_run
+    # `B1813`. The scheduler's one formula for a task's next run: its cron
+    # expression, its date and its zone (`P8-32`) with the rest, as the Tasks
+    # window's routes and the engine read them. Worked out here from the
+    # frequency, time and day alone, a cron task resumed from chat had no next
+    # run and never ran, and a zoned task first ran at the UTC hour.
+    from src.workflow_store import _next_run_of
 
     try:
         args = _parse_tool_args(content)
@@ -953,15 +974,6 @@ async def do_manage_tasks(content: str, owner: Optional[str] = None) -> Dict:
             if refused:
                 return refused
 
-            # Compute next_run for schedule triggers
-            next_run = None
-            if trigger_type == "schedule":
-                schedule = args.get("schedule", "daily")
-                next_run = compute_next_run(
-                    schedule, args.get("scheduled_time", "09:00"),
-                    args.get("scheduled_day"),
-                )
-
             # `P8-31`. An event trigger with no count fires on every event.
             # The bus has always read a missing count that way; this stops the
             # tool writing a NULL where the REST route now writes a 1.
@@ -987,14 +999,16 @@ async def do_manage_tasks(content: str, owner: Optional[str] = None) -> Dict:
                 prompt=args.get("prompt"),
                 task_type=task_type,
                 action=args.get("action_name"),
-                schedule=args.get("schedule") if trigger_type == "schedule" else None,
+                # `B1813`: the frequency its next run is worked out from. The
+                # next run assumed daily when none was named and the row kept
+                # none, so the task ran once and never again.
+                schedule=(args.get("schedule") or "daily") if trigger_type == "schedule" else None,
                 scheduled_time=args.get("scheduled_time", "09:00") if trigger_type == "schedule" else None,
                 scheduled_day=args.get("scheduled_day"),
                 trigger_type=trigger_type,
                 trigger_event=args.get("trigger_event"),
                 trigger_count=trigger_count,
                 trigger_counter=0,
-                next_run=next_run,
                 status="active",
                 output_target=args.get("output_target", "session"),
                 crew_member_id=crew_id,
@@ -1007,8 +1021,11 @@ async def do_manage_tasks(content: str, owner: Optional[str] = None) -> Dict:
             if zone:
                 task.scheduled_time, task.scheduled_day = _utc_time_in_zone(
                     task.scheduled_time, task.scheduled_day, task.schedule, zone)
-                task.next_run = compute_next_run(task.schedule, task.scheduled_time,
-                                                 task.scheduled_day, tz_name=zone)
+            # `B1813`. From the row, so a crew member's zone counts as it does
+            # at the Tasks window's create; one that cannot run is not stored.
+            task.next_run = _next_run_of(db, task)
+            if task.next_run is None and (task.trigger_type or "schedule") == "schedule":
+                return {"error": f"{_no_next_run(task)}, so it was not created.", "exit_code": 1}
             db.add(task)
             db.commit()
             return {"response": f"Created task '{name}' (id: {task_id})", "task_id": task_id, "exit_code": 0}
@@ -1045,6 +1062,15 @@ async def do_manage_tasks(content: str, owner: Optional[str] = None) -> Dict:
                 db=db, task=task)
             if refused:
                 return refused
+            # `B1813`. A cron task's time is in its expression, which this tool
+            # cannot write. A time or day set beside it was stored and the
+            # next run cleared, so a task that was running stopped.
+            if (task.schedule == "cron" and args.get("schedule") in (None, "cron")
+                    and (args.get("scheduled_time") is not None
+                         or args.get("scheduled_day") is not None)):
+                return {"error": f"'{task.name}' runs on a cron schedule ({task.cron_expression}); "
+                                 "its time is changed in the Tasks window. Nothing was changed.",
+                        "exit_code": 1}
 
             changed = []
             for field in ("name", "prompt", "output_target"):
@@ -1097,9 +1123,11 @@ async def do_manage_tasks(content: str, owner: Optional[str] = None) -> Dict:
                 task.scheduled_time, task.scheduled_day = _utc_time_in_zone(
                     args["scheduled_time"], task.scheduled_day, task.schedule, zone)
             if schedule_changed and (task.trigger_type or "schedule") == "schedule":
-                task.next_run = compute_next_run(
-                    task.schedule, task.scheduled_time, task.scheduled_day, tz_name=zone,
-                )
+                task.next_run = _next_run_of(db, task)   # `B1813`
+                if task.next_run is None:
+                    said = _no_next_run(task)
+                    db.rollback()
+                    return {"error": f"{said}, so nothing was changed.", "exit_code": 1}
 
             db.commit()
             return {"response": f"Updated task '{task.name}': {', '.join(changed)}", "exit_code": 0}
@@ -1155,11 +1183,11 @@ async def do_manage_tasks(content: str, owner: Optional[str] = None) -> Dict:
             else:
                 task.status = "active"
                 if (task.trigger_type or "schedule") == "schedule":
-                    from src.task_scheduler import _resolve_task_timezone
-                    task.next_run = compute_next_run(
-                        task.schedule, task.scheduled_time, task.scheduled_day,
-                        tz_name=_resolve_task_timezone(db, task),   # `B1873`
-                    )
+                    task.next_run = _next_run_of(db, task)   # `B1813`
+                    if task.next_run is None:
+                        said = _no_next_run(task)
+                        db.rollback()
+                        return {"error": f"{said}, so it was not resumed.", "exit_code": 1}
             db.commit()
             return {"response": f"Task '{task.name}' {action}d", "exit_code": 0}
 
@@ -1499,6 +1527,16 @@ _APP_API_BLOCKLIST_METHOD_PATH = (
     # than after somebody notices. `GET /api/workstation/status` stays open:
     # reading whether the workstation answers is not a door.
     ("POST",   "/api/workstation"),
+    # `B1954` (upstream PR #7056). A chat turn started here takes its switches
+    # (shell, web, research) from the request body, not from the ones the
+    # person set for that chat, so it widens the assistant's reach without the
+    # ask `D-2026-10-25-01` puts on every self-switch; a steer reaches a live
+    # run as the person's own words. Both are the person's, from the chat
+    # window; another chat is messaged with `send_to_session`. Two entries, not
+    # a bare `/api/chat`: that would also refuse `/api/chatgpt-subscription/...`
+    # and the `/api/chat/stop` stand-down, which stays open with the reads.
+    ("POST",   "/api/chat_stream"),
+    ("POST",   "/api/chat/steer"),
     ("POST",   "/api/cookbook/state"),   # whole-file overwrite — agent must use serve_preset/serve_model instead
     ("DELETE", "/api/cookbook/state"),
     # `B1258`. The Hugging Face token's own door: a credential the person sets
@@ -1656,6 +1694,12 @@ async def do_app_api(content: str, owner: Optional[str] = None) -> Dict:
             return {"error": "Resetting a workstation erases a person's home in it, checking it pushes an admin's settings to it, and taking over its screen or typing into it speaks for the person at the keyboard — all of these are the person's to do, from Settings → Workstation or the Workstation screen window. I can't do any of them from here, even if asked, because the request looks the same whether it came from you or from something I was reading. To use the screen myself, I use the `computer` tool.", "exit_code": 1}
         if _match_path.startswith("/api/mcp/servers"):
             return {"error": f"Registering, editing, toggling, deleting or calling an MCP server this way skips the command check that keeps a stdio server from running arbitrary code — it is the person's action, from {INTEGRATIONS_PLACE}. Use the `manage_mcp` tool for a server the agent may add (it enforces that check), or ask the person to add it in the UI.", "exit_code": 1}
+        if _match_path.startswith("/api/chat_stream"):
+            # `B1954`: its own sentence, not the cookbook fall-through below.
+            return {"error": "Starting a chat turn from here would run it with the switches in my request, not the ones you set for that chat — shell and web included — so it would widen my own reach. Only you can start one, from the chat window. To pass a message to another chat I use `send_to_session`.", "exit_code": 1}
+        if _match_path.startswith("/api/chat/steer"):
+            # `B1954`: a steer is delivered to the run as the person's words.
+            return {"error": "Steering a run from here would put my words into it as yours, as a course correction from you, so the run would take orders from me as if you had sent them. Only you can steer a run, from the chat window. To pass a message to another chat I use `send_to_session`.", "exit_code": 1}
         if "/api/email/accounts" in _match_path:
             return {"error": "Don't use /api/email/accounts via app_api — it is owner-filtered in tool context and may return empty. Use the `list_email_accounts` email tool, then pass `account` to list_emails/read_email.", "exit_code": 1}
         if _match_path.startswith("/api/cookbook/servers") or _match_path.startswith("/api/cookbook/hf-token"):

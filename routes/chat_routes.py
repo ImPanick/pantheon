@@ -58,9 +58,11 @@ from src.session_search import search_session_messages, search_session_titles
 from src.prompt_security import untrusted_context_message
 from core.exceptions import SessionNotFoundError
 from src.auth_helpers import (
+    ONLY_A_PERSON_ANSWERS,
     effective_user,
     get_current_user,
     is_delegated_credential,
+    request_is_a_person,
     require_api_token_scope,
     require_chat_api_token_scope,
     require_user,
@@ -252,6 +254,11 @@ def _reject_delegated_tool_approval(request: Request) -> None:
     into an extra round trip. Owner and session already match here — the token
     is answering on behalf of the account that minted it — which is exactly why
     nothing else would have caught this.
+
+    `B1926`. The agent's own loopback (`app_api`, with the internal-tool token
+    and `X-Pantheon-Owner`) is named the owner too, so a run could answer
+    another chat's card, and an *Allow for this chat* minted a chat-wide grant
+    nobody gave. Only a person answers (`request_is_a_person`, `B1005`).
     """
     if is_delegated_credential(request):
         raise HTTPException(
@@ -259,6 +266,8 @@ def _reject_delegated_tool_approval(request: Request) -> None:
             "Tool approvals require an interactive session. "
             "API tokens cannot authorize a gated action.",
         )
+    if not request_is_a_person(request):
+        raise HTTPException(403, ONLY_A_PERSON_ANSWERS)
 
 
 def _thinking_record(thinking_response: str, round_thinking: Optional[list] = None) -> dict:
@@ -3044,6 +3053,14 @@ def setup_chat_routes(
                 _user_msg = message or ""
                 _image_upload = _first_image_attachment(chat_handler, att_ids, owner=_user)
                 _image_tool_name = "edit_image" if _image_upload else "generate_image"
+                if _image_upload and tool_policy.blocks("edit_image"):
+                    # `B1814`: an attached picture is edited as `edit_image`,
+                    # and a switch an admin turned off is off here too (`H05`).
+                    # Asked after `generate_image`, which still gates both.
+                    yield f'data: {json.dumps({"delta": tool_policy.reason_for("edit_image")})}\n\n'
+                    yield "data: [DONE]\n\n"
+                    _active_streams.pop(session, None)
+                    return
                 # `P4-11`. This path never enters the agent loop — the whole
                 # interaction is one call — so its round is 1 and stays 1. It is
                 # stated rather than omitted so the card carries the same badge

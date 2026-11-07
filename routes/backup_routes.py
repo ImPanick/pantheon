@@ -109,6 +109,35 @@ async def _load_import_body(request: Request, limit: int):
     return json.loads(bytes(raw))
 
 
+def _merge_by_id(current, incoming: list) -> list:
+    """`B1950`. A backed-up list (user templates, group presets) merged into
+    the saved one, where the restore used to write it over everything saved
+    since the backup.
+
+    An entry with the id of a saved one takes its place; any other is added
+    unless an equal entry is already there, so restoring one file twice adds
+    nothing; everything else saved stays. An id is text: one that is not (a
+    hand-edited `["x"]`) cannot key a lookup, so its entry counts as one
+    without an id instead of stopping the restore halfway. From upstream
+    Odysseus #6940 (2f7302a3).
+    """
+    def _id(item):
+        item_id = item.get("id") if isinstance(item, dict) else None
+        return item_id if isinstance(item_id, str) and item_id else None
+
+    merged = list(current) if isinstance(current, list) else []
+    by_id = {_id(item): i for i, item in enumerate(merged) if _id(item)}
+    for item in incoming:
+        item_id = _id(item)
+        if item_id and item_id in by_id:
+            merged[by_id[item_id]] = item
+        elif item not in merged:
+            if item_id:
+                by_id[item_id] = len(merged)
+            merged.append(item)
+    return merged
+
+
 # `P22-24` (`SLICE-EF-DESIGN` § 2). What a backup does not carry, said in the
 # file itself (`Law 10`): a restore brings back each workflow's current
 # document and every task, not their history.
@@ -468,6 +497,12 @@ def setup_backup_routes(memory_manager, preset_manager, skills_manager) -> APIRo
                     fallback_for_toolsets=skill.get("fallback_for_toolsets"),
                     status=skill.get("status", "draft"),
                     version=skill.get("version", "1.0.0"),
+                    # `B1951`. An export carries a skill's notes here, and
+                    # `solution` repeats them only as an alias that add_skill
+                    # drops when the skill has steps. Not text (a hand-edited
+                    # file): None, so the alias is used as before.
+                    body_extra=(skill["body_extra"]
+                                if isinstance(skill.get("body_extra"), str) else None),
                 )
                 if result.get("_deduped"):
                     continue
@@ -486,7 +521,9 @@ def setup_backup_routes(memory_manager, preset_manager, skills_manager) -> APIRo
                 if isinstance(value, dict):
                     current[key] = value
                 elif isinstance(value, list):
-                    current[key] = value
+                    # `B1950`: a list (user templates, group presets) is merged
+                    # by id; replacing it deleted all saved since the backup.
+                    current[key] = _merge_by_id(current.get(key), value)
             preset_manager.save(current)
             imported.append("presets")
 

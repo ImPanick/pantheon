@@ -21,6 +21,23 @@ among the bubbles that stand for a stored row, and what it says. These cases
 drive the five functions that do it, cut out of `static/js/chat.js` and run on
 the suite's DOM shim with the drift the browser really produced: six `.msg` for
 four rows.
+
+`B1986`. A message's *Fork* kept the same number after `B1323`: it posted
+`keep_count` = the clicked bubble's place among the `.msg` + 1, and the route
+copied that many rows. A chat opens on its newest 24 rows (`sessions.js`,
+`HISTORY_PAGE_LIMIT_DESKTOP`; 8 on a phone), so Fork on the newest reply of a
+42-message chat copied the first 24 rows and none of the newest 18; and Fork on
+an agent reply, drawn as two bubbles, copied the next message too. Fork now
+names the reply by its row's id, read the way a reaction reads it
+(`reactions.js` `replyIdFor`), and posts no count at all.
+
+`B1987`. *Edit* → Send cut the chat back to the edited message (its row, and
+the files that row referred to, went with it) and sent the new words alone, so
+the model never saw the photo or document the message carried and the stored
+message no longer had it. Resend and Regenerate carry a message's files again
+through `_pendingRegenAttachments`; Edit now does too. The files' cards are
+inside the bubble's `.body`, and opening the editor empties `.body`, so they
+are read when the editor opens: read at Send, as upstream does, they are gone.
 """
 from __future__ import annotations
 
@@ -35,6 +52,7 @@ from tests.helpers.js_source import js_definition
 
 ROOT = Path(__file__).resolve().parents[1]
 CHAT = ROOT / "static" / "js" / "chat.js"
+REACTIONS = ROOT / "static" / "js" / "reactions.js"
 
 pytestmark = pytest.mark.skipif(not shutil.which("node"), reason="node binary not on PATH")
 
@@ -47,11 +65,12 @@ _SIGNATURES = (
 )
 
 
-def _cut() -> str:
-    src = CHAT.read_text(encoding="utf-8")
+def _cut(extra=()) -> str:
+    """The five, and any `(file, signature)` a case adds in `extra`."""
     out = []
-    for sig in _SIGNATURES:
-        assert src.count(sig) == 1, f"{sig!r} appears {src.count(sig)} times in chat.js"
+    for path, sig in [(CHAT, sig) for sig in _SIGNATURES] + list(extra):
+        src = path.read_text(encoding="utf-8")
+        assert src.count(sig) == 1, f"{sig!r} appears {src.count(sig)} times in {path.name}"
         out.append(js_definition(src, src.index(sig)))
     return "\n\n".join(out)
 
@@ -63,8 +82,16 @@ def dom_dir(tmp_path_factory):
 
     directory = tmp_path_factory.mktemp("trimidentity")
     (directory / "dom.js").write_text(harness._DOM)
-    (directory / "shim.js").write_text("import { installDom } from './dom.js';\n"
-                                       "export const document = installDom();\n")
+    # `B1986`: `replyIdFor` walks back from a footer's bubble to the turn's
+    # earlier bubbles, as a browser's `previousElementSibling` does.
+    (directory / "shim.js").write_text(
+        "import { installDom, Node } from './dom.js';\n"
+        "export const document = installDom();\n"
+        "Object.defineProperty(Node.prototype, 'previousElementSibling', { get() {\n"
+        "  const kids = this.parentNode ? this.parentNode.children : [];\n"
+        "  const at = kids.indexOf(this);\n"
+        "  return at > 0 ? kids[at - 1] : null;\n"
+        "} });\n")
     return directory
 
 
@@ -84,7 +111,17 @@ globalThis.fetch = async (url, init) => {
 };
 globalThis.readRefusal = async (res, fallback) => ({ sentence: reply.sentence || fallback });
 const shown = [];
-const uiModule = { showError: (s) => shown.push(s), showToast: () => {} };
+const toasts = [];
+const uiModule = { showError: (s) => shown.push(s), showToast: (s) => toasts.push(s) };
+const opened = [];
+const sessionModule = {
+  getCurrentSessionId: () => 's-1',
+  loadSessions: async () => {},
+  selectSession: async (id) => { opened.push(id); },
+  forkTitle: (name) => ({ title: String(name || '').replace(/^Fork: /, '') }),
+};
+// Read when called: `replyIdFor` is in the source only when a case cuts it.
+const reactionsModule = { replyIdFor: (el) => replyIdFor(el) };
 const resent = [];
 globalThis.resendUserMessage = (el, opts) => { resent.push({ text: el && el.dataset.raw, opts }); };
 
@@ -120,8 +157,8 @@ __SOURCE__
 """
 
 
-def _run(dom_dir: Path, script: str) -> dict:
-    body = _PRE.replace("__SOURCE__", _cut()) + script
+def _run(dom_dir: Path, script: str, extra=()) -> dict:
+    body = _PRE.replace("__SOURCE__", _cut(extra)) + script
     out = subprocess.run(["node", "--input-type=module"], input=body, capture_output=True,
                          text=True, cwd=dom_dir, timeout=30)
     assert out.returncode == 0, out.stderr
@@ -264,3 +301,149 @@ def test_no_session_is_not_a_cut_at_the_start_of_one(dom_dir):
     """)
     assert out["ok"] is False
     assert out["posted"] == []
+
+
+# ── `B1986`: Fork names the reply, not its place on screen ─────────────────
+
+_FORK = ((CHAT, "async function forkFrom("), (REACTIONS, "function replyIdFor("))
+_FORKED = "reply = { ok: true, status: 200, json: async () => ({ id: 'fork-1', name: 'Fork: Long chat' }) };"
+
+
+def test_fork_on_the_newest_reply_of_a_long_chat_names_that_reply(dom_dir):
+    """The page holds the newest 24 rows of a 42-message chat. The old count
+    was 24 (the bubble's place + 1), and the fork had none of the newest 18."""
+    out = _run(dom_dir, _FORKED + """
+        let last = null;
+        for (let row = 18; row < 42; row += 1) {
+          last = bubble(row % 2 ? 'msg msg-ai' : 'msg msg-user', 'row ' + row);
+          last.dataset.dbId = 'row-' + row;
+        }
+        await forkFrom(last);
+        console.log(JSON.stringify({ drawn: box.querySelectorAll('.msg').length, posted, opened, toasts }));
+    """, extra=_FORK)
+    assert out["drawn"] == 24
+    assert [p["url"] for p in out["posted"]] == ["/api/session/s-1/fork"]
+    assert out["posted"][0]["body"] == {"through_msg_id": "row-41"}, "the reply's id, and no count of bubbles"
+    assert out["opened"] == ["fork-1"]
+    assert out["toasts"] == ["Forked → Long chat"], "B1530's toast: the name without its prefix"
+
+
+def test_fork_on_the_step_an_agent_reply_ends_with_names_that_reply(dom_dir):
+    """Live, an agent reply is its holder (which `message_saved` gave the id)
+    and the step its footer sits under: two `.msg` for one row. The old count
+    was 3, and the fork took the next question with it."""
+    out = _run(dom_dir, _FORKED + """
+        bubble('msg msg-user', 'first question').dataset.dbId = 'row-0';
+        bubble('msg msg-ai').dataset.dbId = 'row-1';
+        const step = bubble('msg msg-ai msg-continuation', 'first answer');
+        bubble('msg msg-user', 'second question').dataset.dbId = 'row-2';
+        bubble('msg msg-ai').dataset.dbId = 'row-3';
+        bubble('msg msg-ai msg-continuation', 'second answer');
+        await forkFrom(step);
+        console.log(JSON.stringify({ posted }));
+    """, extra=_FORK)
+    assert [p["body"] for p in out["posted"]] == [{"through_msg_id": "row-1"}]
+
+
+def test_a_reply_with_no_saved_copy_on_the_page_is_not_forked_by_a_guess(dom_dir):
+    out = _run(dom_dir, _FORKED + """
+        bubble('msg msg-user', 'a question');
+        const answer = bubble('msg msg-ai', 'an answer drawn before its row was saved');
+        await forkFrom(answer);
+        console.log(JSON.stringify({ posted, shown, opened }));
+    """, extra=_FORK)
+    assert out["posted"] == [], "no count of bubbles is posted in its place"
+    assert out["shown"] == ["That message has no saved copy on this page yet. Reload the chat, then fork it."]
+    assert out["opened"] == []
+
+
+def test_a_reply_the_chat_no_longer_holds_is_said_in_the_servers_words(dom_dir):
+    out = _run(dom_dir, """
+        reply = { ok: false, status: 404, sentence: 'That message is no longer in this chat — reload and try again.' };
+        bubble('msg msg-user', 'a question').dataset.dbId = 'row-0';
+        const answer = bubble('msg msg-ai', 'an answer');
+        answer.dataset.dbId = 'row-1';
+        await forkFrom(answer);
+        console.log(JSON.stringify({ shown, opened }));
+    """, extra=_FORK)
+    assert out["shown"] == ["That message is no longer in this chat — reload and try again."]
+    assert out["opened"] == []
+
+
+# ── `B1987`: an edit sends the files its message carried ───────────────────
+
+_EDIT = ((CHAT, "async function editUserMessage("), (CHAT, "function editRemovesNote("),
+         (CHAT, "function _userMessageAttachmentIds("))
+
+# The composer and its Send button, which the edit fills and presses; what each
+# send would carry is recorded as it is pressed.
+_EDITING = r"""
+let _pendingRegenAttachments = null;
+const composer = document.createElement('textarea');
+uiModule.el = (id) => (id === 'message' ? composer : null);
+const sends = [];
+const sendBtn = document.createElement('button');
+sendBtn.className = 'send-btn';
+sendBtn.click = () => { sends.push({ text: composer.value, files: _pendingRegenAttachments }); };
+document.body.appendChild(sendBtn);
+/** A click, waited for: the editor's Send is an async listener. */
+const press = (btn) => Promise.all((btn.listeners.click || [])
+  .map((fn) => fn({ stopPropagation() {}, preventDefault() {} })));
+/** A user bubble with a file, as `addMessage` draws one: its cards are in `.body`. */
+function pictured(raw, fileId) {
+  const el = bubble('msg msg-user', raw);
+  const cards = document.createElement('div');
+  cards.className = 'attach-cards';
+  const card = document.createElement('div');
+  card.className = 'attach-image-preview';
+  card.dataset.fileId = fileId;
+  cards.appendChild(card);
+  el.querySelector('.body').appendChild(cards);
+  return el;
+}
+async function editAndSend(el, words) {
+  await editUserMessage(el);
+  el.querySelector('.edit-textarea').value = words;
+  await press(el.querySelector('.edit-save-btn'));
+}
+"""
+
+
+def test_an_edit_sends_the_files_its_message_carried(dom_dir):
+    out = _run(dom_dir, _EDITING + """
+        const u = pictured('What is in this photo?', 'f1');
+        bubble('msg msg-ai', 'A cat on a wall.');
+        await editUserMessage(u);
+        const cardsLeftInTheBubble = u.querySelectorAll('[data-file-id]').length;
+        u.querySelector('.edit-textarea').value = 'What breed is the cat in this photo?';
+        await press(u.querySelector('.edit-save-btn'));
+        console.log(JSON.stringify({ cardsLeftInTheBubble, posted, sends }));
+    """, extra=_EDIT)
+    assert out["cardsLeftInTheBubble"] == 0, "the editor replaced .body, cards and all"
+    assert [p["url"] for p in out["posted"]] == ["/api/session/s-1/truncate"]
+    assert out["sends"] == [{"text": "What breed is the cat in this photo?", "files": ["f1"]}]
+
+
+def test_an_edit_the_server_refuses_leaves_its_files_for_no_other_message(dom_dir):
+    """A refused cut removed nothing, so nothing is sent, and the files are not
+    left waiting for whatever is sent next. The person reloads, as the refusal
+    says, and the same edit then goes with its file."""
+    out = _run(dom_dir, _EDITING + """
+        reply = { ok: false, status: 409,
+                  sentence: 'This chat has changed since that message was drawn — reload and try again.' };
+        let u = pictured('What is in this photo?', 'f1');
+        bubble('msg msg-ai', 'A cat on a wall.');
+        await editAndSend(u, 'What breed is the cat in this photo?');
+        const refused = { sends: sends.slice(), files: _pendingRegenAttachments, shown: shown.slice() };
+
+        reply = { ok: true, status: 200 };
+        box.replaceChildren();
+        u = pictured('What is in this photo?', 'f1');
+        bubble('msg msg-ai', 'A cat on a wall.');
+        await editAndSend(u, 'What breed is the cat in this photo?');
+        console.log(JSON.stringify({ refused, sends }));
+    """, extra=_EDIT)
+    assert out["refused"] == {
+        "sends": [], "files": None,
+        "shown": ["This chat has changed since that message was drawn — reload and try again."]}
+    assert out["sends"] == [{"text": "What breed is the cat in this photo?", "files": ["f1"]}]

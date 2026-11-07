@@ -153,6 +153,34 @@ def test_the_image_installs_firefox_for_it():
     assert 'shm_size: "1gb"' in stack
 
 
+def test_the_images_browsers_have_a_face_for_chinese_japanese_and_korean():
+    """`B1982`. A page in Chinese, Japanese or Korean drew boxes in both
+    browsers the image carries (this Firefox and the Browser MCP's Chromium):
+    the image had no face with those glyphs. The CJK face the fallback PDF
+    already ships (`B1674`) is now linked where fontconfig looks and
+    registered, in the app's stage, after the app's files are copied in. A
+    link: the image gains no font bytes (`D-2026-10-29-03` priced a CJK font
+    for the PDF alone)."""
+    dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
+    final = dockerfile[dockerfile.rindex("\nFROM "):]
+    packages = final[final.index("apt-get install"):]
+    assert "    fontconfig \\\n" in packages[:packages.index("&&")], "fc-cache comes with fontconfig"
+    face = "static/lib/pdf-fonts/NotoSansCJKsc-Regular.subset.ttf"
+    assert (ROOT / face).is_file()
+    copied = final.index("\nCOPY . .\n")
+    assert "\nWORKDIR /app\n" in final[:copied], "the link points where `COPY . .` puts the face"
+    at = final.index(f"ln -s /app/{face} /usr/local/share/fonts/")
+    start = final.rindex("\nRUN ", 0, at) + 1
+    end = final.index("\n", start)
+    while final[end - 1] == "\\":
+        end = final.index("\n", end + 1)
+    step = final[start:end]
+    assert "fc-cache" in step, step
+    assert copied < start, "the face is linked once the app's files are in place"
+    copies = [line for line in final.splitlines() if line.startswith("COPY ")]
+    assert not [line for line in copies if "NotoSansCJK" in line], "a copy adds 6.4 MB; link it"
+
+
 # ── whose browser ─────────────────────────────────────────────────────────────
 
 @pytest.fixture

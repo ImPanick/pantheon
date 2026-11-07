@@ -117,8 +117,29 @@ export function bindSettingsClose(modalEl, options = {}) {
   // closed Settings at once — the key that left SET-M-7's stale listener behind.
 }
 
+// `B2000`. The window manager is fetched when it is needed, not imported: the
+// Settings harnesses load this module without it, and it wires the whole page
+// when it loads (`keyboard-shortcuts.js` fetches it the same way).
+async function _restoreMinimized(modalEl) {
+  try {
+    const Modals = await import('../modalManager.js?v=20261009census');
+    if (Modals.restore(modalEl.id)) return;
+  } catch (_) { /* shown below */ }
+  modalEl.classList.remove('hidden', 'modal-minimized');
+}
+
 export function showSettingsModal(modalEl) {
   if (!modalEl) return;
+  // `B2000`. A minimized Settings is `modal-minimized` as well as `hidden`, and
+  // that class alone keeps it out of sight. Every opener but its two doors, the
+  // palette and its key (`ctrl+,`) comes here through `settings.open()`, and
+  // this took `hidden` away only: the window stayed invisible, its chip in the
+  // dock and its doors badged. It comes back the way its chip brings it,
+  // docked where it was, so the placement is not reset.
+  if (modalEl.classList.contains('modal-minimized')) {
+    _restoreMinimized(modalEl);
+    return;
+  }
   if (modalEl.classList.contains('hidden')) {
     resetSettingsWindowPlacement(modalEl);
   }

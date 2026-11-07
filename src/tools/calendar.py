@@ -19,11 +19,11 @@ logger = logging.getLogger(__name__)
 
 async def do_manage_calendar(content: str, owner: Optional[str] = None) -> Dict:
     """Handle manage_calendar tool calls: list/create/update/delete calendar events (local SQLite)."""
-    from datetime import datetime, timedelta
+    from datetime import datetime, timedelta, timezone
     from core.database import SessionLocal, CalendarCal, CalendarEvent, Note
     from routes.calendar_routes import (
         _ensure_default_calendar,
-        _parse_dt,
+        _ensure_positive_duration,
         _parse_dt_pair,
         parse_due_for_user,
         _resolve_base_uid,
@@ -100,19 +100,53 @@ async def do_manage_calendar(content: str, owner: Optional[str] = None) -> Dict:
             q = q.filter(CalendarCal.owner == owner)
         return q
 
+    def _event_uid_candidates(raw_uid) -> list:
+        """`B1907`. The uid as given, then the uid inside an event anchor.
+
+        Replies write an event as `[Summary](#event-<uid>)`, and list_events and
+        create_event print the same anchors, so a model copies `#event-<uid>`
+        (or `event-<uid>`) into `uid`. The exact text is tried first, so a real
+        uid that begins with `event-` still finds itself.
+        """
+        text = str(raw_uid or "").strip()
+        candidates = [text]
+        if text.startswith("#event-"):
+            candidates.append(text[len("#event-"):])
+        elif text.startswith("event-"):
+            candidates.append(text[len("event-"):])
+        return [c for i, c in enumerate(candidates) if c and c not in candidates[:i]]
+
+    def _find_event(raw_uid):
+        """`(event, series uid, None)` for the event `raw_uid` names, or
+        `(None, "", error)` with the error the tool has always answered."""
+        malformed = None
+        for index, candidate in enumerate(_event_uid_candidates(raw_uid)):
+            try:
+                candidate_base = _resolve_base_uid(candidate)
+            except ValueError as e:
+                if index == 0:
+                    malformed = str(e)
+                continue
+            found = _event_query().filter(CalendarEvent.uid == candidate_base).first()
+            if found is not None:
+                return found, candidate_base, None
+        return None, "", malformed or f"Event {raw_uid} not found"
+
+    def _no_reminder_value(value) -> bool:
+        return value is None or value is False or (isinstance(value, str) and not value.strip())
+
     def _reminder_minutes(raw_args) -> Optional[int]:
-        raw = (
-            raw_args.get("reminder_minutes")
-            or raw_args.get("remind_before_minutes")
-            or raw_args.get("alarm_minutes")
-            or raw_args.get("reminder")
-            or raw_args.get("alarm")
-        )
+        # `B1909`: 0 ("at the event's start", which the Calendar offers) is a
+        # value. An `or` chain skipped it as falsy, and `0 in (None, "", False)`
+        # is True in Python, so it came back as no reminder.
+        raw = next((raw_args.get(name) for name in (
+            "reminder_minutes", "remind_before_minutes", "alarm_minutes", "reminder", "alarm",
+        ) if not _no_reminder_value(raw_args.get(name))), None)
         if raw in (None, ""):
             desc = str(raw_args.get("description") or "")
             if re.search(r"\b(remind|reminder|alarm)\b", desc, re.I):
                 raw = desc
-        if raw in (None, "", False):
+        if _no_reminder_value(raw):
             return None
         if raw is True:
             return 10
@@ -121,10 +155,12 @@ async def do_manage_calendar(content: str, owner: Optional[str] = None) -> Dict:
         text = str(raw).strip().lower()
         if text in {"none", "no", "off", "false"}:
             return None
-        m = re.search(r"(\d+)\s*(?:minutes?|mins?|m)\b", text)
+        # `(?<!\d)`, `B1919`: a number is tried from its first digit only. From
+        # every digit, a long run of them was read once per digit.
+        m = re.search(r"(?<!\d)(\d+)\s*(?:minutes?|mins?|m)\b", text)
         if m:
             return max(0, int(m.group(1)))
-        m = re.search(r"(\d+)\s*(?:hours?|hrs?|h)\b", text)
+        m = re.search(r"(?<!\d)(\d+)\s*(?:hours?|hrs?|h)\b", text)
         if m:
             return max(0, int(m.group(1)) * 60)
         if text.isdigit():
@@ -135,8 +171,10 @@ async def do_manage_calendar(content: str, owner: Optional[str] = None) -> Dict:
         desc = str(raw_args.get("description", "") or "")
         if minutes_before is None:
             return desc
+        # `(?::\s*)?`, `B1919`: one whitespace run before the number, not two
+        # side by side that split a long run every possible way.
         reminder_only = re.compile(
-            r"^\s*(?:remind(?:er)?|alarm)\s*:?\s*\d+\s*"
+            r"^\s*(?:remind(?:er)?|alarm)\s*(?::\s*)?\d+\s*"
             r"(?:minutes?|mins?|m|hours?|hrs?|h)\b.*$",
             re.I,
         )
@@ -145,6 +183,24 @@ async def do_manage_calendar(content: str, owner: Optional[str] = None) -> Dict:
     def _parse_event_dt(raw: str) -> tuple[datetime, bool]:
         """Parse agent event datetimes in the user's timezone when available."""
         return _parse_dt_pair(parse_due_for_user(raw))
+
+    def _parse_all_day_event_dt(raw: str, *, end: bool = False) -> tuple[datetime, bool]:
+        """`B1909`. An all-day date is the person's calendar day, not an instant.
+
+        `_parse_event_dt` read `2026-10-24` as the person's midnight and stored
+        its UTC instant, which east of UTC is the day before, so a birthday the
+        agent added was shown, listed and synced a day early. The day is kept
+        as written, stored as wall time like every other all-day row. An end
+        later in its day keeps that day (all-day ends are exclusive).
+        """
+        text = str(raw or "").strip()
+        if re.fullmatch(r"\d{4}-\d{2}-\d{2}", text):
+            return datetime.fromisoformat(text), False
+        wall = datetime.fromisoformat(parse_due_for_user(text)).replace(tzinfo=None)
+        day = wall.replace(hour=0, minute=0, second=0, microsecond=0)
+        if end and wall > day:
+            day += timedelta(days=1)
+        return day, False
 
     def _first_nonempty_arg(*names: str):
         for name in names:
@@ -157,7 +213,11 @@ async def do_manage_calendar(content: str, owner: Optional[str] = None) -> Dict:
                                   all_day: bool, minutes_before: int,
                                   is_utc: bool = False) -> tuple[Optional[str], Optional[str]]:
         remind_at = dtstart - timedelta(minutes=minutes_before)
-        now = datetime.utcnow() if is_utc else datetime.now()
+        # `B1909`: a row that is not UTC (an all-day day) is the person's wall
+        # time, so it is compared with their clock; with no zone known that is
+        # the server's, as before.
+        from src.user_time import now_user_local
+        now = datetime.utcnow() if is_utc else now_user_local().replace(tzinfo=None)
         if dtstart <= now:
             return None, "event already passed"
         if remind_at <= now:
@@ -194,6 +254,38 @@ async def do_manage_calendar(content: str, owner: Optional[str] = None) -> Dict:
         db.add(note)
         return note.id, None
 
+    def _delete_calendar_reminders(ev) -> int:
+        """`B1909`. Delete the reminder notes `_create_calendar_reminder` made for `ev`.
+
+        A reminder is a Note, so deleting its event left it to fire for an
+        event that no longer exists. A note is this event's when the calendar
+        made it, it carries this event's reminder title, and it falls due in
+        the week before the event starts, in the frame the event is stored in.
+        The title alone would take a same-named reminder of another event.
+        """
+        if not ev.dtstart or not (ev.summary or "").strip():
+            return 0
+        q = db.query(Note).filter(
+            Note.source == "calendar",
+            Note.archived == False,  # noqa: E712
+            Note.title == f"Reminder: {ev.summary}",
+            Note.due_date.isnot(None),
+        )
+        q = q.filter(Note.owner == owner) if owner is not None else q.filter(Note.owner.is_(None))
+        removed = 0
+        for note in q.all():
+            text = str(note.due_date).strip()
+            try:
+                due = datetime.fromisoformat(text[:-1] + "+00:00" if text.endswith("Z") else text)
+            except ValueError:
+                continue
+            if due.tzinfo is not None:
+                due = due.astimezone(timezone.utc).replace(tzinfo=None)
+            if ev.dtstart - timedelta(days=7) <= due <= ev.dtstart:
+                db.delete(note)
+                removed += 1
+        return removed
+
     try:
         if action == "list_calendars":
             _ensure_default_calendar(db, owner)
@@ -228,23 +320,64 @@ async def do_manage_calendar(content: str, owner: Optional[str] = None) -> Dict:
                         ),
                         "exit_code": 1,
                     }
+                # `B1908`: the bounds are the person's. A timed row with a zone
+                # is stored as a UTC instant, and an all-day or floating row as
+                # wall time, so each bound is read both ways: the UTC instant of
+                # the person's time for the first, their wall time for the
+                # second. With no zone known both are the reading this always
+                # made, so a background run is unchanged.
+                from src.user_time import (
+                    get_user_tz_name, get_user_tz_offset, now_user_local, user_timezone,
+                )
+                zone_known = get_user_tz_offset() is not None or bool(get_user_tz_name())
+
+                def _bound(raw):
+                    aware = parse_due_for_user(raw)
+                    utc_b, is_aware = _parse_dt_pair(aware)
+                    if zone_known and is_aware:
+                        local_b = datetime.fromisoformat(aware).astimezone(user_timezone())
+                        return utc_b, local_b.replace(tzinfo=None)
+                    return utc_b, utc_b
+
                 if start_raw:
-                    start_dt = _parse_dt(start_raw)
+                    start_utc, start_local = _bound(start_raw)
+                elif zone_known:
+                    midnight = now_user_local().replace(hour=0, minute=0, second=0, microsecond=0)
+                    start_local = midnight.replace(tzinfo=None)
+                    start_utc = midnight.astimezone(timezone.utc).replace(tzinfo=None)
                 else:
-                    start_dt = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+                    start_utc = start_local = datetime.utcnow().replace(
+                        hour=0, minute=0, second=0, microsecond=0)
                 if end_raw:
-                    end_dt = _parse_dt(end_raw)
+                    end_utc, end_local = _bound(end_raw)
                 else:
-                    end_dt = start_dt + timedelta(days=14)
+                    end_utc = start_utc + timedelta(days=14)
+                    end_local = start_local + timedelta(days=14)
             except ValueError as e:
                 return {"error": f"Invalid date format: {e}", "exit_code": 1}
 
-            if end_dt <= start_dt:
-                end_dt = start_dt + timedelta(days=1)
+            if end_utc <= start_utc:
+                end_utc = start_utc + timedelta(days=1)
+            if end_local <= start_local:
+                end_local = start_local + timedelta(days=1)
 
+            from sqlalchemy import and_, or_
             q = _event_query().filter(
-                CalendarEvent.dtstart < end_dt,
-                CalendarEvent.dtend > start_dt,
+                or_(
+                    and_(
+                        CalendarEvent.is_utc == True,  # noqa: E712
+                        or_(CalendarEvent.all_day == False,  # noqa: E712
+                            CalendarEvent.all_day.is_(None)),
+                        CalendarEvent.dtstart < end_utc,
+                        CalendarEvent.dtend > start_utc,
+                    ),
+                    and_(
+                        or_(CalendarEvent.is_utc == False,  # noqa: E712
+                            CalendarEvent.all_day == True),  # noqa: E712
+                        CalendarEvent.dtstart < end_local,
+                        CalendarEvent.dtend > start_local,
+                    ),
+                ),
                 CalendarEvent.status != "cancelled",
             )
             calendar_filter = args.get("calendar")
@@ -272,9 +405,9 @@ async def do_manage_calendar(content: str, owner: Optional[str] = None) -> Dict:
                     "rrule": ev.rrule or "",
                 })
             if not events:
-                response_text = f"No events between {start_dt.date().isoformat()} and {end_dt.date().isoformat()}."
+                response_text = f"No events between {start_local.date().isoformat()} and {end_local.date().isoformat()}."
             else:
-                lines = [f"Found {len(events)} event(s) between {start_dt.date().isoformat()} and {end_dt.date().isoformat()}:"]
+                lines = [f"Found {len(events)} event(s) between {start_local.date().isoformat()} and {end_local.date().isoformat()}:"]
                 for ev in events:
                     when = ev["dtstart"]
                     when_str = f"{when} (all day)" if ev.get("all_day") else f"{when} -> {ev.get('dtend', '')}"
@@ -331,13 +464,20 @@ async def do_manage_calendar(content: str, owner: Optional[str] = None) -> Dict:
 
             all_day = bool(args.get("all_day", False))
             try:
-                dtstart, dtstart_is_utc = _parse_event_dt(dtstart_str)
+                dtstart, dtstart_is_utc = (
+                    _parse_all_day_event_dt(dtstart_str) if all_day else _parse_event_dt(dtstart_str)
+                )
             except ValueError as e:
                 return {"error": f"Could not parse dtstart {dtstart_str!r}: {e}", "exit_code": 1}
             dtend_raw = args.get("dtend") or args.get("end") or args.get("end_time")
             if dtend_raw:
                 try:
-                    dtend, dtend_is_utc = _parse_event_dt(dtend_raw)
+                    if all_day:
+                        # `B1909`: an end on the start's own day is that one day.
+                        dtend, dtend_is_utc = _parse_all_day_event_dt(dtend_raw, end=True)
+                        dtend = _ensure_positive_duration(dtstart, dtend, True)
+                    else:
+                        dtend, dtend_is_utc = _parse_event_dt(dtend_raw)
                     dtstart_is_utc = dtstart_is_utc or dtend_is_utc
                 except ValueError as e:
                     return {"error": f"Could not parse dtend {dtend_raw!r}: {e}", "exit_code": 1}
@@ -347,8 +487,9 @@ async def do_manage_calendar(content: str, owner: Optional[str] = None) -> Dict:
                 delta = None
                 if dur:
                     import re as _re_d
-                    h = _re_d.search(r'(\d+)\s*(?:h|hr|hours?)', dur)
-                    m = _re_d.search(r'(\d+)\s*(?:m|min|minutes?)', dur)
+                    # From a number's first digit only (`B1919`).
+                    h = _re_d.search(r'(?<!\d)(\d+)\s*(?:h|hr|hours?)', dur)
+                    m = _re_d.search(r'(?<!\d)(\d+)\s*(?:m|min|minutes?)', dur)
                     secs = (int(h.group(1)) * 3600 if h else 0) + (int(m.group(1)) * 60 if m else 0)
                     if secs > 0:
                         delta = timedelta(seconds=secs)
@@ -478,13 +619,9 @@ async def do_manage_calendar(content: str, owner: Optional[str] = None) -> Dict:
             uid = args.get("uid")
             if not uid:
                 return {"error": "uid is required", "exit_code": 1}
-            try:
-                base_uid = _resolve_base_uid(uid)
-            except ValueError as e:
-                return {"error": str(e), "exit_code": 1}
-            ev = _event_query().filter(CalendarEvent.uid == base_uid).first()
+            ev, base_uid, lookup_error = _find_event(uid)
             if not ev:
-                return {"error": f"Event {uid} not found", "exit_code": 1}
+                return {"error": lookup_error, "exit_code": 1}
             missing_id = reserve_upload_references(
                 get_upload_handler(),
                 owner,
@@ -502,18 +639,37 @@ async def do_manage_calendar(content: str, owner: Optional[str] = None) -> Dict:
                 ev.description = args["description"]
             if args.get("location") is not None:
                 ev.location = args["location"]
+            prev_span = (ev.dtend - ev.dtstart) if (ev.dtstart and ev.dtend) else None
+            prev_all_day = bool(ev.all_day)
+            _eff_all_day = (
+                args["all_day"] if args.get("all_day") is not None else ev.all_day
+            )
             if args.get("dtstart") is not None:
                 # Anchor naive/natural-language input to the USER's timezone and
                 # refresh is_utc, exactly like create_event. Parsing with the
                 # raw server-local _parse_dt here (and never touching is_utc)
                 # silently shifted an updated event by the user's UTC offset.
-                _eff_all_day = (
-                    args["all_day"] if args.get("all_day") is not None else ev.all_day
+                # `B1909`: an all-day date is kept as its calendar day.
+                ev.dtstart, _su = (
+                    _parse_all_day_event_dt(args["dtstart"]) if _eff_all_day
+                    else _parse_event_dt(args["dtstart"])
                 )
-                ev.dtstart, _su = _parse_event_dt(args["dtstart"])
                 ev.is_utc = bool(_su and not _eff_all_day)
+                if args.get("dtend") is None:
+                    # `B1907`: a new start with no end moves the event and keeps
+                    # its length; the old end stayed, so a later start ended
+                    # before it began. A changed all-day flag takes create_event's
+                    # default span.
+                    if bool(_eff_all_day) == prev_all_day and prev_span and prev_span > timedelta(0):
+                        ev.dtend = ev.dtstart + prev_span
+                    else:
+                        ev.dtend = ev.dtstart + (timedelta(days=1) if _eff_all_day else timedelta(hours=1))
             if args.get("dtend") is not None:
-                ev.dtend, _eu = _parse_event_dt(args["dtend"])
+                if _eff_all_day:
+                    ev.dtend, _eu = _parse_all_day_event_dt(args["dtend"], end=True)
+                    ev.dtend = _ensure_positive_duration(ev.dtstart, ev.dtend, True)
+                else:
+                    ev.dtend, _eu = _parse_event_dt(args["dtend"])
             if args.get("all_day") is not None:
                 ev.all_day = args["all_day"]
             # Tag/category + importance updates (any of these aliases).
@@ -539,16 +695,13 @@ async def do_manage_calendar(content: str, owner: Optional[str] = None) -> Dict:
             uid = args.get("uid")
             if not uid:
                 return {"error": "uid is required", "exit_code": 1}
-            try:
-                base_uid = _resolve_base_uid(uid)
-            except ValueError as e:
-                return {"error": str(e), "exit_code": 1}
-            ev = _event_query().filter(CalendarEvent.uid == base_uid).first()
+            ev, base_uid, lookup_error = _find_event(uid)
             if not ev:
-                return {"error": f"Event {uid} not found", "exit_code": 1}
+                return {"error": lookup_error, "exit_code": 1}
             is_caldav = ev.calendar and ev.calendar.source == "caldav" and ev.remote_href
             if is_caldav:
                 _record_caldav_delete_tombstone(db, ev, owner)
+            _delete_calendar_reminders(ev)  # `B1909`
             db.delete(ev)
             db.commit()
             if is_caldav:

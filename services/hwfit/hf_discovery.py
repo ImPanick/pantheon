@@ -232,17 +232,43 @@ def _infer_use_case(repo_id, pipeline_tag):
     return "general"
 
 
+# `B1971`. Hugging Face collections mix in models that no LLM engine the Forge
+# runs can serve: vision encoders, time-series forecasters, image and video
+# generators. Image models have their own registry (image_models.py), so these
+# stay out of the LLM catalog. get_models asks the same of the rows it reads.
+_NON_LLM_PIPELINE_TAGS = frozenset({
+    "time-series-forecasting",
+    "zero-shot-image-classification",
+    "image-classification",
+    "image-feature-extraction",
+    "text-to-image",
+    "image-to-video",
+    "text-to-video",
+})
+
+
+def is_non_llm_pipeline_tag(tag) -> bool:
+    """True for a pipeline tag that marks a model as no LLM. A tag that is
+    not a string is treated as no tag."""
+    return isinstance(tag, str) and tag.strip().lower() in _NON_LLM_PIPELINE_TAGS
+
+
 def _entry_from_collection_item(collection, item, source):
     repo_id = item.get("id") or ""
     if item.get("type") != "model" or not repo_id:
+        return None
+    if is_non_llm_pipeline_tag(item.get("pipeline_tag")):
         return None
     repo_prefix = source.get("repo_prefix")
     if repo_prefix and not repo_id.startswith(repo_prefix):
         return None
     raw_params = item.get("numParameters") or 0
-    active = None
+    # `B1970`. Read the name even when Hugging Face gives a total: it is the
+    # only source of a MoE's active size ("-35B-A3B"), which the speed
+    # estimate and the MoE serve profiles depend on.
+    name_params, active = _parse_params_from_name(repo_id)
     if not raw_params:
-        raw_params, active = _parse_params_from_name(repo_id)
+        raw_params = name_params
     param_label, raw_params = _format_params(raw_params)
     if not raw_params:
         return None
@@ -288,7 +314,9 @@ def _entry_from_collection_item(collection, item, source):
         entry["is_gguf"] = True
         entry["format"] = "gguf"
         entry["capabilities"] = ["llama.cpp"]
-    if active:
+    # `B1970`: an active size counts only below the total, so a draft model
+    # named after its "-30B-A3B" target, 0.5B in all, stays dense.
+    if active and active < raw_params:
         entry["is_moe"] = True
         entry["active_parameters"] = active
     return entry

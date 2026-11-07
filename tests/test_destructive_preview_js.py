@@ -413,6 +413,8 @@ def test_the_chat_tidy_asks_first_and_says_the_deletion_is_permanent(ui_sandbox)
     )
     assert "no undo" in ai["foot"]
     assert "Important" in ai["foot"], "what is protected is half the answer"
+    assert "answered" in ai["foot"], (
+        "B1781: a chat the model answered is never deleted, and the dialog says so")
     assert "Sends the titles" in ai["flat"], "the AI path spends a model call and must say so"
     assert "one call" in ai["flat"]
     assert "Sends the titles" not in out["noAi"]["flat"], (
@@ -646,6 +648,11 @@ def test_the_document_tidy_reports_a_pass_that_did_not_run():
         "both passes must carry the server's own words, per `P9-08`"
     )
     assert "failures" in body
+    # The dialog's own words, comments blanked: what it asks the person.
+    asked = body[body.index("styledConfirm("):body.index("confirmText", body.index("styledConfirm("))]
+    assert "never deleted for its title" in asked, (
+        "B1948: a document with text is never deleted for its title, and the dialog says so")
+    assert "15 minutes" in asked, "both passes leave the last 15 minutes alone, as it says"
 
 
 def test_the_research_tidy_shows_the_rows_before_it_deletes_them():

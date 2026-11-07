@@ -3,6 +3,7 @@
 Uses mock imports to avoid loading the full app stack."""
 
 import asyncio
+import json
 import sys
 from unittest.mock import MagicMock
 
@@ -27,6 +28,8 @@ from src.context_compactor import (
     maybe_compact,
     trim_for_context,
 )
+from src.model_context import estimate_tokens
+from src.prompt_security import untrusted_context_message
 
 
 class TestCompactThreshold:
@@ -108,6 +111,189 @@ class TestTrimForContext:
         assert trimmed[-1]["role"] == "user"
         assert "pasted message was too large" in trimmed[-1]["content"]
         assert "old-0" not in "\n".join(str(m.get("content", "")) for m in trimmed)
+
+    def test_dense_unicode_current_message_is_trimmed_to_budget(self):
+        """`B1944`. A Japanese message cut to fit was sized at 3.3 characters a
+        budget token, and each character costs about a token, so the cut kept
+        about three times what fits."""
+        japanese = "世田谷区の燃えるごみ" * 2000   # 20,000 characters
+        trimmed = trim_for_context([{"role": "system", "content": "You are helpful."},
+                                    {"role": "user", "content": japanese}],
+                                   context_length=2048, reserve_tokens=512)
+
+        kept = trimmed[-1]["content"]
+        assert "pasted message was too large" in kept
+        assert kept.startswith("世田谷区") and kept.endswith("燃えるごみ")
+        assert sum(1 for ch in kept if 0x3040 <= ord(ch) <= 0x9FFF) <= 2048 - 512, "a token each"
+        assert estimate_tokens(trimmed) <= 2048 - 512
+
+    def test_dense_unicode_tool_arguments_use_shared_estimator(self):
+        """`B1944`. A tool call's arguments were measured at 0.3 a character
+        against their share, so Japanese arguments three times their share
+        were kept whole."""
+        args = json.dumps({"path": "notes.md", "content": "世田谷区の燃えるごみ" * 200},
+                          ensure_ascii=False)
+        call = {"role": "assistant", "content": None, "tool_calls": [{
+            "id": "call-1", "type": "function",
+            "function": {"name": "write_file", "arguments": args}}]}
+
+        cut = cc._truncate_tool_call_args(call, 1000)
+
+        assert "_truncated_for_context" in cut["tool_calls"][0]["function"]["arguments"]
+        assert cut["tool_calls"][0]["id"] == "call-1"
+
+
+class TestTheTrimKeepsThePersonsRequest:
+    """`B1943`. The trim kept the newest message and dropped the rest from the
+    front. In an agent round the newest message is a tool result, so the
+    person's question was the first thing to go: on the default 6,000-token
+    budget one 30,000-character `web_fetch` left the model its instructions and
+    no question, and a cut result said it was "the pasted message". A
+    compaction summary was an extra system message and was dropped as one.
+
+    Now the trim anchors on the person's latest message. The turns before it
+    go first, then this turn's oldest tool rounds, each whole, then the newest
+    round's results are cut and say they are a tool result, and the person's
+    message is cut last and never dropped. A summary stays with the leading
+    prompt. Adapted from upstream Odysseus 84aa9a91's latest-request and
+    summary tests; its even split of the whole tail is not taken."""
+
+    RULES = {"role": "system", "content": "You are Pantheon's agent. " + "Tool rules. " * 600}
+    QUESTION = "Find the burnable garbage days for Setagaya and tell me."
+
+    @staticmethod
+    def _native_round(i, chars):
+        call = {"role": "assistant", "content": None, "tool_calls": [{
+            "id": f"c{i}", "type": "function",
+            "function": {"name": "web_fetch",
+                         "arguments": json.dumps({"url": f"https://example.test/{i}"})}}]}
+        result = {"role": "tool", "tool_call_id": f"c{i}", "content": f"RESULT-{i} " + "x" * chars,
+                  "metadata": {"trusted": False, "source": "tool result: web_fetch"}}
+        return [call, result]
+
+    def test_a_large_tool_result_no_longer_pushes_out_the_question(self):
+        question = {"role": "user", "content": self.QUESTION}
+        before = [self.RULES, question, *self._native_round(0, 30_000)]
+
+        after = trim_for_context(before, 6000, reserve_tokens=1024)
+
+        assert any(m is question for m in after), "the person's question is sent, whole"
+        assert [m.get("role") for m in after] == ["system", "user", "assistant", "tool"]
+        result = after[-1]
+        assert result["content"].startswith("RESULT-0 ")
+        assert "this tool result was too large" in result["content"]
+        assert "pasted message was too large" not in result["content"]
+        assert estimate_tokens(after) <= 6000 - 1024
+        left_out = cc.trim_left_out(before, after)
+        assert "the middle of a tool result" in left_out
+        assert "the middle of your message" not in left_out
+
+    def test_the_fenced_tool_path_keeps_the_question_too(self):
+        question = {"role": "user", "content": self.QUESTION}
+        call = {"role": "assistant",
+                "content": '```tool_call\n{"name": "web_fetch", "arguments": '
+                           '{"url": "https://example.test/0"}}\n```'}
+        result = untrusted_context_message("tool execution results", "RESULT-0 " + "x" * 30_000)
+        before = [self.RULES, question, call, result]
+
+        after = trim_for_context(before, 6000, reserve_tokens=1024)
+
+        assert any(m is question for m in after), "the person's question is sent, whole"
+        assert any(m is call for m in after)
+        cut = after[-1]
+        assert cut["metadata"]["source"] == "tool execution results"
+        assert "this tool result was too large" in cut["content"]
+        assert estimate_tokens(after) <= 6000 - 1024
+
+    def test_older_rounds_of_the_turn_go_whole_before_the_newest_is_cut(self):
+        question = {"role": "user", "content": self.QUESTION}
+        rounds = [m for i in range(5) for m in self._native_round(i, 3_000)]
+        before = [self.RULES, question, *rounds]
+
+        after = trim_for_context(before, 6000, reserve_tokens=1024)
+
+        assert any(m is question for m in after), "the person's question is sent, whole"
+        results = [m for m in after if m.get("role") == "tool"]
+        assert [m["content"].split()[0] for m in results] == [
+            "RESULT-1", "RESULT-2", "RESULT-3", "RESULT-4"]
+        assert all(any(m is r for r in rounds) for m in results), "each newer round is sent whole"
+        assert [m.get("tool_call_id") for m in after if m.get("role") == "tool"] == [
+            m["tool_calls"][0]["id"] for m in after if m.get("tool_calls")], "no orphaned result"
+        assert estimate_tokens(after) <= 6000 - 1024
+
+    def test_in_the_newest_round_a_short_result_keeps_all_of_itself(self):
+        question = {"role": "user", "content": self.QUESTION}
+        call = {"role": "assistant", "content": None, "tool_calls": [
+            {"id": "a", "type": "function", "function": {"name": "web_fetch", "arguments": "{}"}},
+            {"id": "b", "type": "function", "function": {"name": "read_file", "arguments": "{}"}}]}
+        page = {"role": "tool", "tool_call_id": "a", "content": "PAGE " + "x" * 30_000}
+        note = {"role": "tool", "tool_call_id": "b", "content": "FILE " + "y" * 2_000}
+        before = [self.RULES, question, call, page, note]
+
+        after = trim_for_context(before, 6000, reserve_tokens=1024)
+
+        assert any(m is question for m in after), "the person's question is sent, whole"
+        assert any(m is call for m in after) and any(m is note for m in after)
+        cut = next(m for m in after if m.get("tool_call_id") == "a")
+        assert "this tool result was too large" in cut["content"]
+        assert estimate_tokens(after) <= 6000 - 1024
+        assert cc.trim_left_out(before, after).count("the middle of a tool result") == 1
+
+    @pytest.mark.parametrize("fenced", [False, True], ids=["native", "fenced"])
+    def test_a_call_too_large_to_send_whole_is_cut_so_the_request_fits(self, fenced):
+        """The newest round's call gives way too when it alone does not fit: a
+        `write_file` that carried a 30,000-character body. Natively its
+        arguments become `_truncate_tool_call_args`' placeholder; on the fenced
+        path its text keeps its beginning and end. The short result is sent
+        whole."""
+        question = {"role": "user", "content": self.QUESTION}
+        body = "line of the report\n" * 1600
+        if fenced:
+            call = {"role": "assistant", "content": "```tool_call\n" + json.dumps(
+                {"name": "write_file", "arguments": {"path": "report.md", "content": body}}) + "\n```"}
+            result = untrusted_context_message("tool execution results", "Wrote report.md (30,400 bytes).")
+        else:
+            call = {"role": "assistant", "content": None, "tool_calls": [{
+                "id": "w1", "type": "function", "function": {
+                    "name": "write_file",
+                    "arguments": json.dumps({"path": "report.md", "content": body})}}]}
+            result = {"role": "tool", "tool_call_id": "w1", "content": "Wrote report.md (30,400 bytes)."}
+        before = [self.RULES, question, call, result]
+
+        after = trim_for_context(before, 6000, reserve_tokens=1024)
+
+        assert any(m is question for m in after), "the person's question is sent, whole"
+        assert any(m is result for m in after), "the short result is sent whole"
+        assert estimate_tokens(after) <= 6000 - 1024
+        sent = next(m for m in after if m.get("role") == "assistant")
+        if fenced:
+            assert sent["content"].startswith("```tool_call")
+            assert "this message was too large" in sent["content"]
+        else:
+            assert "_truncated_for_context" in sent["tool_calls"][0]["function"]["arguments"]
+
+    @pytest.mark.parametrize("summary", [
+        # `maybe_compact`'s own summary message, and the saved summary row.
+        {"role": "system", "content": "[Conversation summary — earlier messages were compacted]\n"
+                                      "The release script is scripts/release.sh; verify next."},
+        {"role": "system", "content": "[Conversation summary]\nThe release script is "
+                                      "scripts/release.sh; verify next.",
+         "metadata": {"compacted": True}},
+    ])
+    def test_a_compaction_summary_survives_the_trim(self, summary):
+        ask = {"role": "user", "content": "continue the release"}
+
+        # Upstream's case: a route prompt so large that it is cut.
+        after = trim_for_context([{"role": "system", "content": "route prompt " * 8000}, summary, ask],
+                                 context_length=2048, reserve_tokens=512)
+        assert any(m is summary for m in after)
+
+        # An extra system block that has to go: the summary went with it.
+        docs = {"role": "system", "content": "RETRIEVED-DOCS " + "r" * 6000}
+        after = trim_for_context([{"role": "system", "content": "You are helpful."}, docs, summary, ask],
+                                 context_length=2048, reserve_tokens=512)
+        assert any(m is summary for m in after)
+        assert not any(m is docs for m in after)
 
 
 class TestContentAsText:

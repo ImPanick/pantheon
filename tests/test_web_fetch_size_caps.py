@@ -116,6 +116,35 @@ def test_body_under_cap_is_untouched(monkeypatch, no_cache):
     assert r["fetched_bytes"] == len(b"hello world")
 
 
+# `B1798`, upstream Odysseus fd41ff8c's case as it wrote it: an Atom answer is
+# read verbatim through the real pinned fetch, not parsed as an empty page.
+def test_atom_xml_api_response_is_preserved_as_readable_evidence(monkeypatch, no_cache):
+    body = b"<?xml version='1.0'?><feed><entry><title>Daily paper</title></entry></feed>"
+    _patch_stream(monkeypatch, _FakeStream(body, content_type="application/atom+xml"))
+
+    result = content_mod.fetch_webpage_content("https://example.com/api/feed")
+
+    assert result["success"] is True
+    assert "<title>Daily paper</title>" in result["content"]
+
+
+def test_the_models_web_fetch_of_a_feed_hands_it_the_feed(monkeypatch, no_cache):
+    """`B1798`. The model's own `web_fetch` call on an Atom API, down to the
+    socket: it reads the entries, where it was told the feed had no readable
+    text content."""
+    import asyncio
+    from src.agent_tools.web_tools import WebFetchTool
+
+    body = b"<?xml version='1.0'?><feed><entry><title>Daily paper</title></entry></feed>"
+    _patch_stream(monkeypatch, _FakeStream(body, content_type="application/atom+xml; charset=utf-8"))
+
+    out = asyncio.run(WebFetchTool().execute(json.dumps(
+        {"url": "https://export.arxiv.org/api/query?search_query=cat:cs.CV"}), ctx={}))
+
+    assert out["exit_code"] == 0, out
+    assert "<title>Daily paper</title>" in out["output"]
+
+
 def test_body_over_soft_cap_truncates_with_flags(monkeypatch, no_cache):
     body = b"x" * (WEB_FETCH_SOFT_MAX_BYTES + 50_000)
     _patch_stream(monkeypatch, _FakeStream(body, content_length=len(body)))
@@ -261,3 +290,38 @@ def test_tool_layer_emits_partial_notice_and_parses_full(monkeypatch):
         json.dumps({"url": "https://example.com/big.txt", "full": True}), ctx={}
     ))
     assert calls["max_bytes"] == WEB_FETCH_HARD_MAX_BYTES
+
+
+# `B1946`. A PDF was read with pdfminer.six alone, which no requirements file
+# installs, so on every stock install a web PDF came back empty with "Failed
+# to extract PDF text". It is read now by `personal_docs.extract_pdf_text`,
+# pypdf, the core pin that already reads email attachments and indexed PDFs.
+# After upstream Odysseus 84aa9a91, whose case this is, with a real PDF.
+def test_a_pdf_is_read_when_pdfminer_is_not_installed(monkeypatch, no_cache):
+    from tests.test_attachment_extension_registers import _minimal_pdf
+
+    monkeypatch.setattr(content_mod, "pdf_extract_text", None)
+    _patch_stream(monkeypatch, _FakeStream(_minimal_pdf("Setagaya burnable garbage rules"),
+                                           content_type="application/pdf"))
+
+    r = content_mod.fetch_webpage_content("https://example.com/rules.pdf")
+
+    assert r["success"] is True, r["error"]
+    assert "Setagaya burnable garbage rules" in r["content"]
+    assert r["error"] == ""
+
+
+def test_the_models_web_fetch_of_a_pdf_hands_it_the_text(monkeypatch, no_cache):
+    import asyncio
+    from src.agent_tools.web_tools import WebFetchTool
+    from tests.test_attachment_extension_registers import _minimal_pdf
+
+    monkeypatch.setattr(content_mod, "pdf_extract_text", None)
+    _patch_stream(monkeypatch, _FakeStream(_minimal_pdf("Setagaya burnable garbage rules"),
+                                           content_type="application/pdf"))
+
+    out = asyncio.run(WebFetchTool().execute(json.dumps(
+        {"url": "https://example.com/rules.pdf"}), ctx={}))
+
+    assert out["exit_code"] == 0, out
+    assert "Setagaya burnable garbage rules" in out["output"]

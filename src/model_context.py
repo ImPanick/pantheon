@@ -9,6 +9,7 @@ Provides token estimation for context usage tracking.
 import contextvars
 import ipaddress
 import logging
+import re
 import sys
 import time
 from typing import Dict, List, Optional, Tuple
@@ -580,7 +581,8 @@ def _query_context_length(endpoint_url: str, model: str) -> Tuple[int, bool, str
     if is_local_endpoint(endpoint_url):
         try:
             base = endpoint_url.split("/v1")[0] if "/v1" in endpoint_url else endpoint_url.rsplit("/", 1)[0]
-            r = paced_http.get_sync(f"{base}/slots", timeout=REQUEST_TIMEOUT, headers=_endpoint_auth_headers(endpoint_url) or None, follow_redirects=False, reuse=True)
+            hdrs = _endpoint_auth_headers(endpoint_url) or None
+            r = paced_http.get_sync(f"{base}/slots", timeout=REQUEST_TIMEOUT, headers=hdrs, follow_redirects=False, reuse=True)
             if r.is_success:
                 slots = r.json()
                 if isinstance(slots, list) and slots:
@@ -588,6 +590,19 @@ def _query_context_length(endpoint_url: str, model: str) -> Tuple[int, bool, str
                     if n_ctx and isinstance(n_ctx, int) and n_ctx > 0:
                         logger.info(f"llama.cpp /slots reports n_ctx={n_ctx} for {model}")
                         return n_ctx, True, BASIS_REPORTED
+            elif r.status_code == 501:
+                # `B1985`: llama-server's answer when it runs without slots
+                # (its default from about b4000 to b6300, or `--no-slots`); its
+                # `/props` still says the window it serves. Asked only on that
+                # answer, so LM Studio's, Ollama's or vLLM's 404 asks nothing
+                # new, and read by the llama.cpp reader's own `/props` parser.
+                from src.model_capability_readers.llamacpp import _limits_from_props
+                p = paced_http.get_sync(f"{base}/props", timeout=REQUEST_TIMEOUT, headers=hdrs, follow_redirects=False, reuse=True)
+                props = p.json() if p.is_success else None
+                n_ctx = _limits_from_props(props).get("context_tokens") if isinstance(props, dict) else None
+                if n_ctx:
+                    logger.info(f"llama.cpp /props reports n_ctx={n_ctx} for {model}")
+                    return n_ctx, True, BASIS_REPORTED
         except Exception:
             pass
 
@@ -795,11 +810,45 @@ def _local_server_window(endpoint_url: str, model: str, *,
     return answer
 
 
+#: `B1944`. The characters real tokenizers spend about a token on, where the
+#: 0.3 a character below fits Latin text: CJK radicals, kana, CJK symbols and
+#: ideographs, Hangul syllables, CJK compatibility ideographs, full- and
+#: half-width forms, and the supplementary ideographs. Every other character
+#: keeps 0.3, so English, accented Latin, Cyrillic and Greek are estimated
+#: exactly as before.
+_DENSE_TEXT_RANGES = (
+    (0x2E80, 0x9FFF),
+    (0xAC00, 0xD7AF),
+    (0xF900, 0xFAFF),
+    (0xFF00, 0xFFEF),
+    (0x20000, 0x2FA1F),
+)
+_DENSE_TEXT = re.compile(
+    "[" + "".join(f"{chr(low)}-{chr(high)}" for low, high in _DENSE_TEXT_RANGES) + "]+")
+
+
+def estimate_text_tokens(text: object) -> int:
+    """`B1944`. Rough token estimate for one text: about a token for each
+    dense character (`_DENSE_TEXT_RANGES`: Chinese, Japanese, Korean) and
+    chars * 0.3 for the rest. Real tokenizers spend 0.6 to 1.3 tokens on a
+    CJK character, so at 0.3 a prompt the estimate said would fit could go
+    out two to four times over the budget. The one rule `estimate_tokens`
+    and the trim's cuts (`src/context_compactor.py`) measure text by."""
+    if not isinstance(text, str):
+        text = "" if text is None else str(text)
+    if text.isascii():
+        return int(len(text) * 0.3)
+    dense = len(text) - len(_DENSE_TEXT.sub("", text))
+    return dense + int((len(text) - dense) * 0.3)
+
+
 def estimate_tokens(messages: List[Dict]) -> int:
     """Rough token estimate for a list of messages.
 
     Uses chars * 0.3 which is closer to real BPE tokenizer output
-    than the commonly-cited chars/4 (which underestimates by ~20-30%).
+    than the commonly-cited chars/4 (which underestimates by ~20-30%), and
+    about a token a character for Chinese, Japanese and Korean (`B1944`,
+    `estimate_text_tokens`).
     Also adds ~4 tokens per message for role/formatting overhead, and counts
     assistant tool_calls (name + arguments) — a tool-only turn carries
     content=None with the real payload in tool_calls, so ignoring them made the
@@ -811,11 +860,11 @@ def estimate_tokens(messages: List[Dict]) -> int:
         total += 4  # per-message overhead (role, separators)
         content = msg.get("content", "")
         if isinstance(content, str):
-            total += int(len(content) * 0.3)
+            total += estimate_text_tokens(content)
         elif isinstance(content, list):
             for item in content:
                 if isinstance(item, dict) and item.get("type") == "text":
-                    total += int(len(item.get("text", "")) * 0.3)
+                    total += estimate_text_tokens(item.get("text", ""))
         # Tool calls carry real payload too: a tool-only assistant turn is stored
         # with content=None and the actual args (e.g. a create_document body) in
         # tool_calls[].function.arguments. Ignoring them made large tool arguments
@@ -831,5 +880,5 @@ def estimate_tokens(messages: List[Dict]) -> int:
                 if not isinstance(args, str):
                     args = str(args)  # some shapes store arguments as a dict
                 total += 4  # per tool-call overhead (id, type, wrapper)
-                total += int((len(str(name)) + len(args)) * 0.3)
+                total += estimate_text_tokens(str(name) + args)
     return total

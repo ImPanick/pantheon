@@ -332,22 +332,22 @@ proved it dead.
 
 ## Status
 
-**1844 tracked tasks, 1767 done.** The tracker is [`.pantheon/ROADMAP.md`](.pantheon/ROADMAP.md) and
+**2146 tracked tasks, 1767 done.** The tracker is [`.pantheon/ROADMAP.md`](.pantheon/ROADMAP.md) and
 it is the only place work is tracked — one list, one progress area, validated by a script that
 recounts every phase row against its own ticks. It exists because the summary line was once wrong
 by nineteen and carried forward unread from entry to entry, because each author copied the line
 above.
 
 **Read that number with the trend beside it.** Over the last ten waves, *done* went
-**96.8% → 95.8%** and *open* went **59 → 77**: 18 rows filed against 0 closed, a
+**96.4% → 82.3%** and *open* went **66 → 379**: 313 rows filed against 0 closed, a
 file-to-close ratio of **∞**. That is not a backlog of defects piling up: those waves were the owner's
-own asks — the Devices room, the alignment audit's ninety fixes, the slim tool set for local models,
-the agent's own pointer on the desktop, phones in the workstation, the four OS images, fifty-eight
-more agents, the composer deck, voice and reasoning effort — each built and then held open, by rule,
-until the owner has tested it on his own machine. A row is closed by the person who asked for it, not
-by the agent that wrote it. Wave by wave, with every row named, is in the tracker's progress area.
+own asks — the Odysseus port and the faults it turned up, the Workbench automations, push to a phone,
+the Devices room, the alignment audit's ninety fixes, the slim tool set for local models and the
+agent's own pointer on the desktop — each built and then held open, by rule, until the owner has tested
+it on his own machine. A row is closed by the person who asked for it, not by the agent that wrote it.
+Wave by wave, with every row named, is in the tracker's progress area.
 
-What matters more is a different number: of the last 40 backlog rows filed (`B1723`–`B1764`), **none** is
+What matters more is a different number: of the last 40 backlog rows filed (`B2063`–`B2102`), **none** is
 on the ship line's open list — the short list of rows that stop a stranger relying on this
 repository now that it is public. The series, the classification and what counts as blocking are in
 [`.pantheon/SHIP-LINE.md`](.pantheon/SHIP-LINE.md). Every figure in this section is

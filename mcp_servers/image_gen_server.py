@@ -27,6 +27,13 @@ from src.paced_http import guard_environment_reader
 # Pantheon started it with — an IPv6 range in NO_PROXY would stop it being built.
 guard_environment_reader()
 
+# `B1922`. The person an image is for, set by the tool dispatcher
+# (`tool_execution._EMAIL_MCP_OWNER_ARG`) after it drops any the model sent,
+# as for the email server. Their image's gallery row is theirs, and the model
+# is found among their endpoints and the shared ones, as `do_generate_image`
+# finds it. With nobody named, both are as they were.
+_MCP_OWNER_ARG = "_pantheon_owner"
+
 
 async def list_tools() -> list[Tool]:
     return [
@@ -38,10 +45,17 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
     if name != "generate_image":
         return [TextContent(type="text", text=f"Unknown tool: {name}")]
 
+    arguments = dict(arguments or {})
+    _owner = arguments.pop(_MCP_OWNER_ARG, None)
+    owner = _owner.strip() if isinstance(_owner, str) and _owner.strip() else None
+
     prompt = arguments.get("prompt", "")
     model_spec = arguments.get("model", "")
     size = arguments.get("size", "1024x1024")
-    quality = arguments.get("quality", "medium")
+    # `B2006`: the quality the call names, or "" for none. This defaulted to
+    # "medium", so a call that asked for medium read as one that asked for
+    # nothing and was given the quality in Settings.
+    quality = str(arguments.get("quality") or "").strip()
 
     if not prompt:
         return [TextContent(type="text", text="Error: Image prompt is required")]
@@ -58,14 +72,14 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
 
         if not model_spec:
             model_spec = _settings.get("image_model", "")
-        if quality == "medium" and _settings.get("image_quality"):
-            quality = _settings["image_quality"]
+        if not quality:
+            quality = _settings.get("image_quality") or "medium"
 
         # Auto-detect best available image model
         if not model_spec:
             for candidate in ("gpt-image-1.5", "gpt-image-1", "dall-e-3"):
                 try:
-                    await asyncio.to_thread(_resolve_model, candidate)
+                    await asyncio.to_thread(_resolve_model, candidate, owner=owner)
                     model_spec = candidate
                     break
                 except ValueError:
@@ -74,12 +88,13 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                 return [TextContent(type="text", text="Error: No image model found. Configure one in Admin.")]
 
         try:
-            url, model_id, headers = await asyncio.to_thread(_resolve_model, model_spec, model_type="image")
+            url, model_id, headers = await asyncio.to_thread(_resolve_model, model_spec,
+                                                             owner=owner, model_type="image")
         except ValueError:
             _lower_model_spec = model_spec.lower()
             if not any(_name in _lower_model_spec for _name in ("gpt-image", "dall-e")):
                 raise
-            url, model_id, headers = await asyncio.to_thread(_resolve_model, model_spec)
+            url, model_id, headers = await asyncio.to_thread(_resolve_model, model_spec, owner=owner)
 
         is_gpt_image = "gpt-image" in model_id.lower()
         base_url = url.replace("/chat/completions", "").replace("/v1/messages", "").rstrip("/")
@@ -141,6 +156,7 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                         model=model_id,
                         size=size,
                         quality=payload.get("quality", "medium"),
+                        owner=owner,   # `B1922`
                     ))
                     db.commit()
                     db.close()

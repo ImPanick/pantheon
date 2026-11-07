@@ -175,6 +175,34 @@ def endpoint_matches_url(ep, endpoint_url: str) -> bool:
     return url in variants or url.startswith(base + "/")
 
 
+def registered_endpoint_for_url(db, endpoint_url: str, owner: Optional[str] = None):
+    """The enabled endpoint `owner` may use that `endpoint_url` belongs to, or
+    ``None``.
+
+    `B1818`. A URL that a request or a stored task names only says *which
+    endpoint*. It is answered by that endpoint's row, found with the one matcher
+    (`endpoint_matches_url`) among the rows `owner_filter` lets this person
+    use, so a caller dials the row's own URL with the row's own credentials and
+    a URL no such row answers to reaches nothing. When two rows match, the one
+    with the longer base is the endpoint the URL names (`http://host/v1`, not
+    `http://host`).
+    """
+    from src.auth_helpers import owner_filter
+
+    url = endpoint_url.strip() if isinstance(endpoint_url, str) else ""
+    if not url:
+        return None
+    query = db.query(ModelEndpoint).filter(ModelEndpoint.is_enabled == True)  # noqa: E712
+    best, best_length = None, -1
+    for ep in owner_filter(query, ModelEndpoint, owner).all():
+        if not endpoint_matches_url(ep, url):
+            continue
+        length = len(normalize_base(getattr(ep, "base_url", "") or "").rstrip("/"))
+        if length > best_length:
+            best, best_length = ep, length
+    return best
+
+
 NO_MODEL_FOR_RUN = "No model yet. An admin adds one in Settings → Added Models."
 
 

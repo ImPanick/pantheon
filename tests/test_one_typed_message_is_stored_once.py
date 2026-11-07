@@ -24,6 +24,13 @@ bubbles, and the next provider request carried it twice.
 against its own rows. This file drives that: the resolver on the shapes a real
 history has, and the route over a real database — including the premise's own
 guard, that the number the browser used to send would still keep the message.
+
+`B1827`, the route's other door: `keep_count` went to `truncate_messages` as
+it came. JSON `false` passed its `< 0` check and sliced from row 0, deleting
+the whole chat; any other value that is not a whole number of rows, and any
+body that is not a JSON object, answered a 500 or a 200 that cut nothing. Each
+is a 400 now, and nothing is removed. Upstream Odysseus fixed the same route
+in c23b1be3 (#6565); its `before_msg_id` half has no counterpart here.
 """
 from __future__ import annotations
 
@@ -319,6 +326,62 @@ def test_a_cut_with_nothing_to_cut_at_is_a_bad_request(chat):
     res = client.post(f"/api/session/{SID}/truncate", json={})
     assert res.status_code == 400
     assert _rows(db_factory) == before
+
+
+# ── a keep_count that is not a row count (`B1827`) ──────────────────────────
+
+NOT_A_ROW_COUNT = {
+    "false": False,   # sliced from row 0: the whole chat went
+    "true": True,     # kept one row
+    "null": None,
+    "a fraction": 2.5,
+    "a negative number": -1,
+    "words": "abc",
+    "negative digits": "-1",
+    "an empty string": "",
+    "a list": [],
+    "an object": {},
+}
+
+
+@pytest.mark.parametrize("keep_count", list(NOT_A_ROW_COUNT.values()), ids=list(NOT_A_ROW_COUNT))
+def test_a_keep_count_that_is_not_a_row_count_is_refused_and_nothing_is_cut(chat, keep_count):
+    """`false` erased the chat and `true` cut it to one row; the rest answered
+    a 500 from inside `truncate_messages`, or a 200 that cut nothing. Now a
+    400, and every row stays, in the database and in memory."""
+    client, db_factory, manager = chat
+    before = _rows(db_factory)
+    manager.get_session(SID)   # loaded first, so the in-memory half is checked too
+    res = client.post(f"/api/session/{SID}/truncate", json={"keep_count": keep_count})
+    assert res.status_code == 400, res.text
+    assert "keep_count" in res.json()["detail"]
+    assert _rows(db_factory) == before
+    assert len(manager.get_session(SID).history) == len(before)
+
+
+@pytest.mark.parametrize("raw", ["[]", "null", '"two"', "2", "false", "{"],
+                         ids=["a list", "null", "a string", "a number", "false", "not JSON"])
+def test_a_body_that_is_not_a_json_object_is_refused_and_nothing_is_cut(chat, raw):
+    """Each answered a 500: `body.get` raised on a list, a string, a number or
+    `null`, and `request.json()` raised on a body that is not JSON at all."""
+    client, db_factory, _ = chat
+    before = _rows(db_factory)
+    res = client.post(f"/api/session/{SID}/truncate", content=raw,
+                      headers={"Content-Type": "application/json"})
+    assert res.status_code == 400, res.text
+    assert _rows(db_factory) == before
+
+
+@pytest.mark.parametrize("keep_count,kept", [("2", 2), ("0", 0)])
+def test_a_row_count_written_as_digits_still_cuts_there(chat, keep_count, kept):
+    """The one lenient spelling upstream keeps: `"2"` is two rows. It answered
+    a 500 before (`"2" < 0` raises)."""
+    client, db_factory, _ = chat
+    before = _rows(db_factory)
+    res = client.post(f"/api/session/{SID}/truncate", json={"keep_count": keep_count})
+    assert res.status_code == 200, res.text
+    assert res.json()["kept"] == kept
+    assert _rows(db_factory) == before[:kept]
 
 
 def test_a_cut_is_not_a_way_into_someone_elses_chat(monkeypatch):

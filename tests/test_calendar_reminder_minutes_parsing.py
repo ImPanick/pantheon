@@ -11,7 +11,9 @@ even though the sibling duration parser (no `\b`) already accepted them.
 
 import json
 import sys
+import time
 import uuid
+from datetime import timedelta
 
 import pytest
 
@@ -87,3 +89,113 @@ async def test_no_reminder_when_offset_absent():
     res = await do_manage_calendar(json.dumps(payload), owner=owner)
     assert res.get("exit_code") == 0, res
     assert "reminder set" not in res.get("response", ""), res
+
+
+# `B1909` (upstream Odysseus 84aa9a91, corrected). A reminder of 0 minutes ("at
+# the event's start", which the Calendar offers beside "No reminder") was
+# dropped: the alias chain `a or b or ...` skipped 0 as falsy, and the guard
+# `raw in (None, "", False)` is True for 0 in Python, so upstream's alias fix
+# alone still dropped it. And deleting an event left its reminder note behind,
+# to fire for an event that no longer exists.
+
+
+def _reminders(owner):
+    db = _TS()
+    try:
+        return sorted((n.title, n.due_date) for n in db.query(Note).filter(Note.owner == owner).all())
+    finally:
+        db.close()
+
+
+async def test_a_reminder_at_the_event_start_is_set():
+    for zero in (0, 0.0):
+        owner = "tester-" + uuid.uuid4().hex[:6]
+        res = await _create_with_reminder(zero, owner)
+        assert res.get("exit_code") == 0, res
+        assert "with reminder 0 min before" in res["response"], res
+        assert _reminders(owner) == [("Reminder: Dentist", "2030-01-01T10:00:00")]
+
+    # "No reminder" still means none.
+    for none in (False, "", "none"):
+        owner = "tester-" + uuid.uuid4().hex[:6]
+        res = await _create_with_reminder(none, owner)
+        assert res.get("exit_code") == 0, res
+        assert "reminder" not in res["response"], res
+        assert _reminders(owner) == []
+
+
+async def test_deleting_an_event_deletes_its_reminder_and_no_other():
+    from src.tool_implementations import do_manage_calendar
+
+    owner = "tester-" + uuid.uuid4().hex[:6]
+    first = await _create_with_reminder(15, owner)
+    # A second event of the same name a week later, with its own reminder.
+    second = await do_manage_calendar(json.dumps({
+        "action": "create_event", "summary": "Dentist",
+        "dtstart": "2030-01-08T10:00:00", "reminder_minutes": 15,
+    }), owner=owner)
+    assert first.get("exit_code") == 0 and second.get("exit_code") == 0, (first, second)
+    assert _reminders(owner) == [("Reminder: Dentist", "2030-01-01T09:45:00"),
+                                 ("Reminder: Dentist", "2030-01-08T09:45:00")]
+
+    deleted = await do_manage_calendar(json.dumps({"action": "delete_event", "uid": first["uid"]}),
+                                       owner=owner)
+    assert deleted.get("exit_code") == 0, deleted
+    assert _reminders(owner) == [("Reminder: Dentist", "2030-01-08T09:45:00")]
+
+
+# `B1919` (upstream Odysseus 3d91ad82). The model writes these arguments, and
+# three of their readers took the square of a long run: `(\d+)\s*unit`, for the
+# reminder and the duration, tried a number from every one of its digits, and
+# the reminder-only description check, `alarm\s*:?\s*\d+`, split one whitespace
+# run every possible way. On the loaded test machine 30,000 tabs in a
+# description took 9 seconds, and a reminder and a duration of 30,000 digits
+# 40. A number is now tried from its first digit only, and the colon takes its
+# own whitespace; both read what they read before.
+
+
+async def test_a_reminder_or_a_duration_of_a_long_run_of_digits_is_read_in_one_pass():
+    from src.tool_implementations import do_manage_calendar
+
+    owner = "tester-" + uuid.uuid4().hex[:6]
+    started = time.perf_counter()
+    res = await do_manage_calendar(json.dumps({
+        "action": "create_event", "summary": "Flood", "dtstart": "2030-04-01T10:00:00",
+        "reminder_minutes": "0" * 30_000 + "x", "duration": "0" * 30_000 + "x",
+    }), owner=owner)
+    assert time.perf_counter() - started < 2.0
+    assert res.get("exit_code") == 0, res
+    assert "reminder" not in res.get("response", ""), res
+
+
+async def test_a_description_of_alarm_and_a_long_whitespace_run_is_read_in_one_pass():
+    from src.tool_implementations import do_manage_calendar
+
+    owner = "tester-" + uuid.uuid4().hex[:6]
+    started = time.perf_counter()
+    res = await do_manage_calendar(json.dumps({
+        "action": "create_event", "summary": "Flood 2", "dtstart": "2030-04-02T10:00:00",
+        "description": "alarm" + "\t" * 30_000, "reminder_minutes": 5,
+    }), owner=owner)
+    assert time.perf_counter() - started < 2.0
+    assert res.get("exit_code") == 0, res
+    assert "reminder 5 min before" in res.get("response", ""), res
+
+
+@pytest.mark.parametrize("description", ["Reminder: 10 minutes", "alarm 10m", "reminder:10 mins"])
+async def test_a_duration_and_a_reminder_only_description_still_read(description):
+    from src.tool_implementations import do_manage_calendar
+
+    owner = "tester-" + uuid.uuid4().hex[:6]
+    res = await do_manage_calendar(json.dumps({
+        "action": "create_event", "summary": "Run", "dtstart": "2030-04-03T10:00:00",
+        "duration": "1hr 30m", "description": description, "reminder_minutes": 10,
+    }), owner=owner)
+    assert res.get("exit_code") == 0, res
+    db = _TS()
+    try:
+        event = db.query(cdb.CalendarEvent).filter(cdb.CalendarEvent.uid == res["uid"]).one()
+        assert event.dtend - event.dtstart == timedelta(minutes=90)
+        assert (event.description or "") == "", "a description that is only the reminder is dropped"
+    finally:
+        db.close()

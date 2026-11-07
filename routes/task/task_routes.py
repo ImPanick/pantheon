@@ -14,7 +14,7 @@ from pydantic import BaseModel
 
 from core.database import SessionLocal, ScheduledTask, TaskRun, CrewMember
 from core.constants import internal_api_base
-from src.auth_helpers import get_current_user, request_is_a_person
+from src.auth_helpers import ONLY_A_PERSON_ANSWERS, get_current_user, request_is_a_person
 from src import paced_http  # `B1014`: NO_PROXY ranges, read for every client
 from src.constants import DATA_DIR, EMAIL_URGENCY_CACHE_DIR
 from src.event_bus import (
@@ -504,7 +504,14 @@ def _resolve_run_endpoint(db, task: ScheduledTask, run: TaskRun) -> str:
 
     try:
         from core.database import ModelEndpoint
-        eps = db.query(ModelEndpoint).filter(ModelEndpoint.is_enabled == True).all()
+        from src.auth_helpers import owner_filter
+        # `B1791`: only the endpoints the run could have used, the task
+        # owner's own and the shared ones (the scheduler's scope), so this
+        # owner's Activity row never carries another member's address.
+        eps = owner_filter(
+            db.query(ModelEndpoint).filter(ModelEndpoint.is_enabled == True),
+            ModelEndpoint, getattr(task, "owner", None) or None,
+        ).all()
         for ep in eps:
             cached = []
             if ep.cached_models:
@@ -1075,6 +1082,8 @@ def setup_task_routes(task_scheduler) -> APIRouter:
         whose task it is. The workflow door's order and its one core
         (`TaskScheduler.answer_question`, `Law 14`):
 
+          0. a person's only (`request_is_a_person`, `B1926`): a token or the
+             assistant's loopback is a 403, and nothing is read or consumed;
           1. `approve` (a chat's scope) is a 400 — there is no chat to remember
              it in; anything but `approve_task` or `deny` is a 400;
           2. owner-scoped: anyone else's task, or a workflow's, is a 404 and

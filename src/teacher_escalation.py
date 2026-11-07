@@ -570,6 +570,8 @@ async def run_teacher_inline(
     tool_policy: Any = None,
     active_document: Any = None,
     active_email: Optional[Dict[str, str]] = None,
+    external_untrusted_context_seen: bool = False,
+    delegated_credential: bool = False,
 ):
     """Async generator. Yields SSE event strings.
 
@@ -579,6 +581,11 @@ async def run_teacher_inline(
 
     Gates (all must hold): agent mode (caller guarantees), teacher
     toggle on, teacher_model configured, Tier 1 regex flags failure.
+
+    ``external_untrusted_context_seen`` and ``delegated_credential``
+    (`B1817`) are the student's: the teacher's run is the same turn, so it
+    starts tainted when the student's was, and a bearer token's turn stays
+    one (no Auto, no Computer Use lift, no chat-session grant).
     """
     import json
     from src.settings import get_setting
@@ -711,6 +718,8 @@ async def run_teacher_inline(
         active_document=active_document,
         active_email=active_email,
         route_descriptors=[teacher_route] if teacher_route else None,   # `B940`
+        external_untrusted_context_seen=bool(external_untrusted_context_seen),   # `B1817`
+        delegated_credential=bool(delegated_credential),
         _is_teacher_run=True,
     ):
         # Swallow teacher's own [DONE] — outer loop emits the real one

@@ -289,9 +289,95 @@ def test_a_token_cannot_answer_its_own_approval_prompt():
 
 
 def test_the_chat_and_session_surfaces_require_the_chat_scope():
-    for name in ("chat_routes.py", "session_routes.py"):
+    # `B1817`: and the history router, which serves the same chats.
+    for name in ("chat_routes.py", "session_routes.py", "history/history_routes.py"):
         source = (ROOT / "routes" / name).read_text(encoding="utf-8")
         assert "Depends(require_chat_api_token_scope)" in source, name
+
+
+# `B1817`. The history router serves the same chats as the session router: a
+# chat's messages, and adding, editing, deleting, truncating, forking and
+# compacting them. B70 put the chat scope on the session router and not on
+# this one, so a token minted for metrics or todos that knew one of its owner's
+# chat ids could read and rewrite that chat. Driven: the real router over a
+# real SQLite file, behind the stamp `app.py`'s auth middleware puts on a
+# matched token.
+
+@pytest.fixture
+def history_behind_a_token(tmp_path, monkeypatch):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from sqlalchemy.pool import NullPool
+
+    import core.database as cdb
+    import routes.history.history_routes as history_routes
+    import routes.session_routes as session_routes
+
+    engine = create_engine(f"sqlite:///{tmp_path / 'app.db'}",
+                           connect_args={"check_same_thread": False}, poolclass=NullPool)
+    cdb.Base.metadata.create_all(engine)
+    factory = sessionmaker(bind=engine, autoflush=False)
+    for module in (session_routes, history_routes):
+        monkeypatch.setattr(module, "SessionLocal", factory)
+    with factory() as db:
+        db.add(cdb.Session(id="chat-boss", owner="boss", name="Plans", model="m",
+                           endpoint_url="http://x"))
+        db.add(cdb.ChatMessage(id="m-1", session_id="chat-boss", role="user",
+                               content="the private plan"))
+        db.commit()
+
+    class _Manager:
+        def __init__(self):
+            self.added = []
+
+        def add_message(self, session_id, message):
+            self.added.append((session_id, message.content))
+
+    manager = _Manager()
+    scopes: list = []
+    app = FastAPI()
+
+    @app.middleware("http")
+    async def _a_matched_token(request, call_next):
+        request.state.current_user = "api"
+        request.state.api_token = True
+        request.state.api_token_owner = "boss"
+        request.state.api_token_scopes = list(scopes)
+        return await call_next(request)
+
+    app.include_router(history_routes.setup_history_routes(manager))
+    with TestClient(app) as client:
+        yield client, manager, scopes
+    engine.dispose()
+
+
+@pytest.mark.parametrize("scope", ["metrics:read", "todos:write", "documents:read"])
+def test_only_a_chat_token_reaches_its_owners_chat_through_the_history_routes(
+        history_behind_a_token, scope):
+    client, manager, scopes = history_behind_a_token
+
+    # A chat token, which a paired phone carries, reads and writes the chat...
+    scopes[:] = ["chat"]
+    read = client.get("/api/history/chat-boss", params={"limit": 10})
+    assert read.status_code == 200, read.text
+    assert [m["content"] for m in read.json()["history"]] == ["the private plan"]
+    write = client.post("/api/session/chat-boss/message",
+                        json={"role": "user", "content": "from the paired phone"})
+    assert write.status_code == 200, write.text
+    assert manager.added == [("chat-boss", "from the paired phone")]
+
+    # ...and a token minted for anything else does neither.
+    scopes[:] = [scope]
+    read = client.get("/api/history/chat-boss", params={"limit": 10})
+    assert read.status_code == 403, read.text
+    assert "chat" in read.json()["detail"]
+    assert "the private plan" not in read.text
+    write = client.post("/api/session/chat-boss/message",
+                        json={"role": "user", "content": "written by a scrape token"})
+    assert write.status_code == 403, write.text
+    assert manager.added == [("chat-boss", "from the paired phone")]
 
 
 def test_the_agent_loop_takes_and_applies_the_flag():

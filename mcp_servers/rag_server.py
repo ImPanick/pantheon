@@ -46,7 +46,17 @@ _initialized = False
 # plus env fallbacks, so add_text/search can scope like chat_processor's
 # rag_manager.search(..., owner=owner). Ownerless callers get owner=None,
 # which matches the existing directory-indexing behavior.
+#
+# `B1923`. Nothing injected it until then, so every search the agent made read
+# every account's documents and every add_text stored nobody's. The dispatcher
+# sends it now (`tool_execution._OWNER_ARG_SERVERS`), after dropping any the
+# model wrote, and refuses a call that names nobody; an admin's add_directory
+# is indexed under it too.
 _MCP_OWNER_ARG = "_pantheon_owner"
+
+#: `B1923`. The most matches one search prints. `k` was taken as asked, so one
+#: call could print the whole index, a snippet of every chunk in it.
+_SEARCH_MAX_K = 20
 
 
 def _owner_from_args(arguments: dict) -> str | None:
@@ -145,8 +155,14 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             return [TextContent(type="text", text=f"Error: Directory not found: {directory}")]
         if not _rag_manager:
             return [TextContent(type="text", text="Error: RAG manager not available")]
+        # `B1923`: under the person's name, as the Knowledge index's route
+        # indexes and records a folder (`B1639`), so its chunks are found by
+        # their search. Only when one is named: a caller that names nobody is
+        # answered as before.
+        owner = _owner_from_args(arguments)
+        by_owner = {"owner": owner} if owner else {}
         try:
-            result = _rag_manager.index_personal_documents(directory)
+            result = _rag_manager.index_personal_documents(directory, **by_owner)
             indexed = result.get("indexed_count", 0) if isinstance(result, dict) else 0
             # Record the directory so `list` and `remove_directory` can see it.
             # Indexing was just done above, so pass index=False to avoid a second
@@ -154,7 +170,7 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             # tracked in indexed_directories, so it was invisible/unremovable.
             if _personal_docs_manager and hasattr(_personal_docs_manager, "add_directory"):
                 try:
-                    _personal_docs_manager.add_directory(directory, index=False)
+                    _personal_docs_manager.add_directory(directory, index=False, **by_owner)
                 except Exception:
                     pass
             return [TextContent(type="text", text=f"Directory '{directory}' added to RAG index ({indexed} chunks indexed)")]
@@ -219,6 +235,7 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             k = 5
         if k <= 0:
             k = 5
+        k = min(k, _SEARCH_MAX_K)   # `B1923`
         owner = _owner_from_args(arguments)
         try:
             results = _rag_manager.search(query, k=k, owner=owner)

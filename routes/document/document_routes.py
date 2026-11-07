@@ -14,10 +14,11 @@ from core.database import SessionLocal, Document, DocumentVersion
 from core.database import Session as DbSession
 from src.auth_helpers import get_current_user
 from src.chat_helpers import CHAT_GONE   # `B1216`
+from src.session_search import escape_like_pattern   # `B1995`, as the chat and Gallery searches (`B2004`)
 from src.upload_handler import reserve_upload_references
 # `P21-03`: one answer to "what is this file called" for every door.
 from src.file_names import (
-    attachment_disposition, display_name, document_title, upload_display_name,
+    attachment_disposition, display_name, document_title, split_extension, upload_display_name,
 )
 from src.document_provenance import resolve_created  # `B1325`
 
@@ -678,14 +679,18 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
             # what is filed in Clients/Acme, and the name of the file the
             # document was made from (`P21-03`'s `source_name`), so "pdf" or a
             # word only in the file's own name finds it too.
+            #
+            # `B1995`: a term is matched literally. `%` and `_` in it were LIKE
+            # wildcards, so "100%" also found "1000" and "_" found everything;
+            # escaped as the chat search escapes them.
             if search:
                 for tok in search.split():
-                    term = f"%{tok}%"
+                    term = f"%{escape_like_pattern(tok)}%"
                     q = q.filter(
-                        Document.title.ilike(term)
-                        | Document.current_content.ilike(term)
-                        | Document.folder.ilike(term)
-                        | Document.source_name.ilike(term)
+                        Document.title.ilike(term, escape="\\")
+                        | Document.current_content.ilike(term, escape="\\")
+                        | Document.folder.ilike(term, escape="\\")
+                        | Document.source_name.ilike(term, escape="\\")
                     )
 
             if folder_cond is not None:   # `P21-01`, scoped above
@@ -875,9 +880,16 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
         except Exception as e:
             logger.warning("Failed to parse export request body, defaulting to empty", exc_info=e)
             data = {}
-        ids = data.get("ids") or []
+        # `B1988`. Only `{"ids": [<document id>, ...]}` names documents. Any
+        # other JSON reached `data.get` (`[]`, `"x"`, `5`, `null`: a 500), and
+        # ids that were not a list of strings reached the query, which raised
+        # on some (`5`, `"abc"`) and read others as something nobody sent
+        # (`{"a": 1}` as the document `a`). The Library posts its own rows' ids.
+        ids = data.get("ids") if isinstance(data, dict) else None
         if not ids:
             raise HTTPException(400, "No documents specified")
+        if not isinstance(ids, list) or not all(isinstance(i, str) for i in ids):
+            raise HTTPException(400, "ids must be a list of document ids")
         _ext = {
             "javascript": ".js", "python": ".py", "html": ".html", "css": ".css",
             "markdown": ".md", "json": ".json", "yaml": ".yml", "bash": ".sh",
@@ -893,6 +905,7 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
                 import re
                 import zipfile
                 from fastapi import Response
+                from src.document_processor import attachment_language
                 docs = db.query(Document).filter(Document.id.in_(ids)).all()
                 buf = io.BytesIO()
                 used = set()
@@ -903,15 +916,25 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
                             _verify_doc_owner(db, doc, user)
                         except HTTPException:
                             continue   # skip docs the user doesn't own
-                        ext = _ext.get(doc.language or "text", ".txt")
+                        lang = doc.language or "text"
+                        ext = _ext.get(lang, ".txt")
                         base = (doc.title or "document").strip() or "document"
                         base = re.sub(r"[^\w\-. ]+", "", base)[:60].strip() or doc.id
-                        name = base if "." in base else base + ext
+                        # `B1795`: a dot is not an extension (`Notes 11.07`,
+                        # `config.local`). The title keeps its own suffix only
+                        # when that names the language (`.yaml`, `.tsx`); a
+                        # repeat is numbered before it, and names are unique
+                        # without regard to case, as macOS and Windows unpack.
+                        own_stem, own_ext = split_extension(base)
+                        keeps_own = bool(own_ext) and (
+                            own_ext.lower() == ext or attachment_language(base) == lang)
+                        stem, suffix = (own_stem, own_ext) if keeps_own else (base, ext)
+                        name = stem + suffix
                         i = 1
-                        while name in used:
-                            name = f"{base}-{i}" + ("" if "." in base else ext)
+                        while name.casefold() in used:
+                            name = f"{stem}-{i}{suffix}"
                             i += 1
-                        used.add(name)
+                        used.add(name.casefold())
                         zf.writestr(name, doc.current_content or "")
                         wrote += 1
                 if not wrote:
@@ -931,6 +954,10 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
     # seconds, update it in-place (user is still actively editing).
     # Once the gap exceeds this, the next save creates a new version.
     VERSION_COALESCE_SECONDS = 60
+    # `B1949`: the label only an autosave's version carries, and the only one
+    # the window above extends. An import's version, the "Saved version" a
+    # person pressed Save for and a "Restored from vN" are checkpoints.
+    AUTOSAVE_SUMMARY = "Manual edit"
 
     @router.put("/api/document/{doc_id}")
     def update_document(request: Request, doc_id: str, req: DocumentUpdate) -> Dict[str, Any]:
@@ -968,7 +995,8 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
 
             now = datetime.now(timezone.utc)
             coalesced = False
-            if latest_ver and latest_ver.source == "user" and not req.force_version:
+            if (latest_ver and latest_ver.source == "user"
+                    and latest_ver.summary == AUTOSAVE_SUMMARY and not req.force_version):
                 ver_time = latest_ver.created_at
                 if ver_time.tzinfo is None:
                     ver_time = ver_time.replace(tzinfo=timezone.utc)
@@ -988,7 +1016,9 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
                     document_id=doc_id,
                     version_number=new_ver,
                     content=incoming_content,
-                    summary=req.summary or "Manual edit",
+                    # `B1949`: a forced save is a checkpoint, so one that names
+                    # nothing is not given the autosave's label.
+                    summary=req.summary or ("Saved version" if req.force_version else AUTOSAVE_SUMMARY),
                     source="user",
                 )
                 doc.version_count = new_ver
@@ -1193,10 +1223,13 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
             fixed_titles = 0
             deleted = 0
 
-            # Same junk-detection logic as the scheduled tidy_documents
-            # action (src/document_actions.py). Keep these two in sync.
+            # The junk words are the scheduled tidy's (src/document_actions.py),
+            # but this deletes for good on one click, so a title is never enough
+            # here (`B1948`): what holds text, now or in a saved version, stays.
+            # The scheduled proposal keeps its title rule because it lists each
+            # reason and asks first (`B1006`).
             import re as _re
-            from src.document_actions import _JUNK_TITLES, is_mail_draft
+            from src.document_actions import _JUNK_TITLES, has_saved_text, is_mail_draft
 
             to_delete = []
             now = datetime.now(timezone.utc)
@@ -1246,15 +1279,18 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
                     if body_lines and not has_real_body:
                         _is_email_stub = True
 
-                # Hard-delete obviously empty / junk documents
-                if not content or content in ("", "# Untitled"):
+                # Hard-delete obviously empty / junk documents. `B1948`: an
+                # empty page whose saved versions hold text is not empty — the
+                # delete would take those versions with it.
+                if (not content or content in ("", "# Untitled")) and not has_saved_text(doc):
                     to_delete.append(doc); deleted += 1; continue
                 if _is_email_stub:
                     to_delete.append(doc); deleted += 1; continue
                 # `P23-08` (DOCS-M-3): a draft's title is "New Email" or the
                 # mail's subject by construction — never a reason to delete
                 # one somebody typed into (`document_actions.is_mail_draft`).
-                if title in _JUNK_TITLES and not is_mail_draft(doc):
+                # `B1948`: nor is any title a reason to delete what holds text.
+                if title in _JUNK_TITLES and not is_mail_draft(doc) and not has_saved_text(doc):
                     to_delete.append(doc); deleted += 1; continue
 
                 # Fix empty or placeholder titles on survivors
@@ -1330,7 +1366,18 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
                 # Only review docs that haven't been reviewed yet. `P23-08`
                 # (DOCS-M-3): never a mail draft — a model reading a short reply
                 # would call it junk, and this pass deletes what it calls junk.
-                to_review = [d for d in docs if not d.tidy_verdict and not is_mail_draft(d)]
+                # `B1948`: nor one made in the last 15 minutes, which the
+                # dialog promises and the rules pass already leaves alone.
+                now = datetime.now(timezone.utc)
+
+                def _fresh(d):
+                    created = d.created_at
+                    if created and created.tzinfo is None:
+                        created = created.replace(tzinfo=timezone.utc)
+                    return bool(created) and (now - created).total_seconds() < 900
+
+                to_review = [d for d in docs
+                             if not d.tidy_verdict and not is_mail_draft(d) and not _fresh(d)]
                 # Build a batch prompt — review up to 30 at a time
                 batch = [(d.id, d.title, d.language, (d.current_content or "")[:300].strip())
                          for d in to_review[:30]]
@@ -1404,6 +1451,12 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
 
             import json as _json
             verdicts = _json.loads(match.group())
+            # `B1948`: verdicts are applied by position, so an answer that
+            # skipped one gave each later document its neighbour's verdict and
+            # deleted the wrong one. A count that is off changes nothing.
+            if len(verdicts) != len(batch):
+                raise HTTPException(500, f"AI returned {len(verdicts)} verdicts for "
+                                         f"{len(batch)} documents, so nothing was changed")
 
             deleted, reviewed = await asyncio.to_thread(_write_verdicts, batch, verdicts)
             return {
@@ -2121,10 +2174,11 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
             # 3) Fetch the source email's headers so we can build a clean reply
             #    context (To/Subject/In-Reply-To/References).
             try:
-                from routes.email_routes import _imap, _decode_header
+                from routes.email_routes import _imap, _decode_header, _imap_uid_fetch
                 from routes.email_helpers import _q
             except Exception:
                 _imap = None
+                _imap_uid_fetch = None
                 _decode_header = lambda x: x or ""
                 _q = lambda x: x or ""
 
@@ -2135,12 +2189,21 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
             references = in_reply_to
             if _imap:
                 try:
-                    with _imap(doc.source_email_account_id or None) as conn:
+                    # `B1965`: the stored id is the message's IMAP UID, so it is
+                    # fetched by UID (a plain FETCH reads it as a sequence
+                    # number, another message once an older one was expunged),
+                    # from the signed-in person's mailbox. Upstream Odysseus #7069.
+                    with _imap(doc.source_email_account_id or None, owner=user or "") as conn:
                         conn.select(_q(doc.source_email_folder), readonly=True)
-                        status, data = conn.fetch(doc.source_email_uid.encode(), "(RFC822.HEADER)")
-                    if status == "OK" and data and data[0]:
-                        raw_hdr = data[0][1]
-                        m = _email_mod.message_from_bytes(raw_hdr)
+                        status, data = _imap_uid_fetch(conn, doc.source_email_uid, "(RFC822.HEADER)")
+                    part = next((d for d in (data or []) if isinstance(d, tuple) and len(d) > 1), None)
+                    m = _email_mod.message_from_bytes(part[1]) if status == "OK" and part else None
+                    if m is not None and doc.source_email_message_id and (
+                            (m.get("Message-ID") or "").strip() != doc.source_email_message_id.strip()):
+                        # The UID names another message now (the folder's
+                        # UIDVALIDITY changed): not the mail this answers.
+                        m = None
+                    if m is not None:
                         sender = _decode_header(m.get("From", ""))
                         from_name, to_addr = _email_mod.utils.parseaddr(sender)
                         if not to_addr:

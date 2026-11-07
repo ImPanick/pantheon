@@ -14,6 +14,7 @@ from src.youtube_handler import is_youtube_url
 from src.search import comprehensive_web_search, fetch_webpage_content
 from src.prompt_security import (
     UNTRUSTED_CONTEXT_POLICY,
+    is_framed_context_content,
     own_context_message,
     turn_note_message,
     untrusted_context_message,
@@ -719,8 +720,11 @@ class ChatProcessor:
             window = [message]
             try:
                 history = session.get_context_messages() or []
+                # `B1955`: a context block (a Discuss chat's report) is not
+                # how the person writes.
                 window = [self._message_text(m) for m in history
-                          if (m or {}).get("role") == "user"] + [message]
+                          if (m or {}).get("role") == "user"
+                          and not is_framed_context_content(m.get("content"))] + [message]
             except Exception:
                 # A session that cannot produce a window still gets a reading
                 # from the current message. Degrading to "no reading at all"

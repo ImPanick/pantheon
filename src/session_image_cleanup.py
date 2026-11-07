@@ -44,6 +44,28 @@ def _image_filename_from_url(url: str) -> str:
     return match.group(1) if match else ""
 
 
+def _add_tool_event_refs(raw, image_ids: set[str], filenames: set[str]) -> None:
+    """Add the gallery ids and generated-image filenames one message's tool events name."""
+    if not raw:
+        return
+    try:
+        meta = json.loads(raw)
+    except Exception:
+        return
+    events = meta.get("tool_events") if isinstance(meta, dict) else None
+    if not isinstance(events, list):
+        return
+    for ev in events:
+        if not isinstance(ev, dict):
+            continue
+        image_id = ev.get("image_id")
+        if image_id:
+            image_ids.add(str(image_id))
+        filename = _image_filename_from_url(ev.get("image_url") or ev.get("url") or "")
+        if filename:
+            filenames.add(filename)
+
+
 def session_image_refs(db, session_id: str) -> tuple[set[str], set[str]]:
     """Return gallery image ids and generated-image filenames referenced by a chat."""
     ChatMessage, GalleryImage, _ = _database_models()
@@ -59,48 +81,100 @@ def session_image_refs(db, session_id: str) -> tuple[set[str], set[str]]:
 
     messages = db.query(ChatMessage.meta_data).filter(ChatMessage.session_id == session_id).all()
     for row in messages:
-        raw = getattr(row, "meta_data", None)
-        if not raw:
-            continue
-        try:
-            meta = json.loads(raw)
-        except Exception:
-            continue
-        events = meta.get("tool_events") if isinstance(meta, dict) else None
-        if not isinstance(events, list):
-            continue
-        for ev in events:
-            if not isinstance(ev, dict):
-                continue
-            image_id = ev.get("image_id")
-            if image_id:
-                image_ids.add(str(image_id))
-            filename = _image_filename_from_url(ev.get("image_url") or ev.get("url") or "")
-            if filename:
-                filenames.add(filename)
+        _add_tool_event_refs(getattr(row, "meta_data", None), image_ids, filenames)
 
     return image_ids, filenames
 
 
+# SQLite reads an OR chain one level per term and refuses one past 1,000 levels,
+# so the LIKE pre-filter in `_shown_by_another_chat` goes in slices this long.
+_REFERENCE_LIKE_SLICE = 200
+
+
+def _shown_by_another_chat(db, session_id: str, images) -> set[str]:
+    """Ids of ``images`` that another chat still shows.
+
+    `B1811`. A chat shows an image its tool events name when its owner is served
+    that image: the image's own owner, or anyone for an image with no owner
+    (`serve_generated_image`). A LIKE on the stored metadata finds the messages
+    that might name one, and their parsed tool events decide, as the gallery's
+    own delete does.
+    """
+    ChatMessage, _, _ = _database_models()
+    from core.database import Session as DbSession
+    from sqlalchemy import or_
+
+    by_id = {str(img.id): img for img in images if img.id}
+    by_file = {str(img.filename): img for img in images if img.filename}
+    needles = sorted(set(by_id) | set(by_file))
+    kept: set[str] = set()
+    for start in range(0, len(needles), _REFERENCE_LIKE_SLICE):
+        rows = (
+            db.query(ChatMessage.meta_data, DbSession.owner)
+            .join(DbSession, DbSession.id == ChatMessage.session_id)
+            .filter(
+                ChatMessage.session_id != session_id,
+                ChatMessage.meta_data.isnot(None),
+                or_(*[ChatMessage.meta_data.like(f"%{needle}%")
+                      for needle in needles[start:start + _REFERENCE_LIKE_SLICE]]),
+            )
+            .all()
+        )
+        for raw, chat_owner in rows:
+            ids: set[str] = set()
+            files: set[str] = set()
+            _add_tool_event_refs(raw, ids, files)
+            named = [by_id.get(i) for i in ids] + [by_file.get(f) for f in files]
+            for img in named:
+                if img is not None and (img.owner is None or img.owner == chat_owner):
+                    kept.add(img.id)
+    return kept
+
+
+def session_gallery_images(db, session_id: str) -> list:
+    """The gallery images that go when this chat is deleted.
+
+    `B1811`. A fork copies its source's tool events, and this selection once
+    took every image a chat's events named, whoever owned it and whichever
+    chat it belonged to, so deleting a fork deleted the original's pictures.
+    Now it is the chat's own images and the ones its events name, but only the
+    chat owner's or no one's (the built-in image_gen MCP server stamps no
+    owner), only those that belong to no other chat, and none that another chat
+    still shows. An image kept that way loses its chat link when the chat row
+    goes (ondelete SET NULL), so the last chat that shows it takes it along.
+    """
+    _, GalleryImage, _ = _database_models()
+    from core.database import Session as DbSession
+    from sqlalchemy import or_
+
+    image_ids, filenames = session_image_refs(db, session_id)
+    clauses = [GalleryImage.session_id == session_id]
+    if image_ids:
+        clauses.append(GalleryImage.id.in_(list(image_ids)))
+    if filenames:
+        clauses.append(GalleryImage.filename.in_(list(filenames)))
+    query = db.query(GalleryImage).filter(
+        or_(*clauses),
+        # A reference to an image belonging to another chat is not ownership.
+        or_(GalleryImage.session_id == session_id, GalleryImage.session_id.is_(None)),
+    )
+    owner_row = db.query(DbSession.owner).filter(DbSession.id == session_id).first()
+    if owner_row is not None:
+        query = query.filter(or_(GalleryImage.owner == owner_row[0], GalleryImage.owner.is_(None)))
+    images = query.all()
+    if not images:
+        return []
+    kept = _shown_by_another_chat(db, session_id, images)
+    return [img for img in images if img.id not in kept]
+
+
 def cleanup_session_images(session_id: str, db=None) -> int:
     """Soft-delete Gallery rows and unlink generated files owned by a chat."""
-    _, GalleryImage, SessionLocal = _database_models()
+    _, _, SessionLocal = _database_models()
     owns_db = db is None
     db = db or SessionLocal()
     try:
-        image_ids, filenames = session_image_refs(db, session_id)
-        query = db.query(GalleryImage).filter(GalleryImage.session_id == session_id)
-        if image_ids or filenames:
-            from sqlalchemy import or_
-
-            clauses = [GalleryImage.session_id == session_id]
-            if image_ids:
-                clauses.append(GalleryImage.id.in_(list(image_ids)))
-            if filenames:
-                clauses.append(GalleryImage.filename.in_(list(filenames)))
-            query = db.query(GalleryImage).filter(or_(*clauses))
-
-        images = query.all()
+        images = session_gallery_images(db, session_id)
         removed = 0
         for img in images:
             img.is_active = False

@@ -34,6 +34,13 @@ from src.youtube_handler import (
 
 logger = logging.getLogger(__name__)
 
+# `B1790`. For a model that cannot see, a picture's description from the
+# vision model is appended to the person's own message, saved with it and
+# sent again every turn; unlabelled, the chat model read it as their writing.
+# It goes under the `[Image: name]` marker, which chatRenderer.js and
+# sessions.js strip the block by.
+VISION_DESCRIPTION_LABEL = "[Image description — context only, not part of the user's message]:"
+
 
 def _sync_upload_vision_to_gallery(file_info: Dict[str, Any], owner: Optional[str], text: str) -> None:
     file_hash = (file_info or {}).get("hash")
@@ -286,7 +293,15 @@ class ChatHandler:
                                     _sync_upload_vision_to_gallery(file_info, owner, vl_desc)
                                 except Exception:
                                     pass
-                        enhanced_message = f"{enhanced_message}\n\n[Image: {file_info['name']}]\n{vl_desc}"
+                        # `B1790`: the description is labelled as not the
+                        # person's words; Pantheon's own bracketed notes
+                        # ("[No vision model configured …]") are not one.
+                        # The marker stays first: the page strips by it.
+                        enhanced_message = f"{enhanced_message}\n\n[Image: {file_info['name']}]\n"
+                        if vl_desc and not vl_desc.startswith("["):
+                            enhanced_message += f"{VISION_DESCRIPTION_LABEL}\n{vl_desc}"
+                        elif vl_desc:
+                            enhanced_message += vl_desc
                         # Surface the description to the client live so it renders as a
                         # collapsible "image description" on the user bubble (not just
                         # after a refresh that re-parses the stored message).

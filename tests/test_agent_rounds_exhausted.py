@@ -100,3 +100,30 @@ def test_emits_loop_breaker_triggered_when_loop_breaker_trips(monkeypatch):
     guard = next((e for e in events if e.get("type") == "loop_breaker_triggered"), None)
     assert guard is not None, events
     assert guard["reason"] == "loop_breaker_stall"
+
+
+def test_a_reply_of_blank_lines_is_through_the_promise_check_in_seconds():
+    """`B1902`. The intent supervisor searched `_INTENT_RE` over the whole round
+    text, and its `(?:^|\\n)\\s*` rescans a run of blank lines from every line:
+    measured on `62c93ba2`, 20 KB of `' \\n'` took 36 s in that one search, on
+    the event loop. Nothing reads the match unless the reply is under 400
+    characters, so it is searched only then; a short promise is still nudged
+    and then stopped (`test_emits_intent_nudge_exhausted_when_cap_is_exhausted`
+    above). Timed in a fresh interpreter, so the old code is killed, not waited
+    for (`tests/helpers/timed_process.py`)."""
+    from tests.helpers.timed_process import seconds_in_a_fresh_process
+
+    seconds = seconds_in_a_fresh_process(
+        "import pytest\n"
+        "import src.agent_tools\n"
+        "import tests.test_agent_rounds_exhausted as here\n"
+        "patch = pytest.MonkeyPatch()\n"
+        "here._patch_common(patch)\n"
+        # A first turn outside the clock: what the loop sets up once is not
+        # what this measures.
+        "here._run_loop(patch, 'All done, here is your answer.', max_rounds=2)\n"
+        "reply = 'a' + ' \\n' * 20_000 + 'b'",
+        "events = here._run_loop(patch, reply, max_rounds=2)\n"
+        "assert not any(e.get('type') == 'intent_nudge_exhausted' for e in events), events",
+    )
+    assert seconds < 4.0, f"{seconds:.1f} s"

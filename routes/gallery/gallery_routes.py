@@ -26,6 +26,7 @@ from src.upload_limits import (
 from src.constants import GENERATED_IMAGES_DIR
 from src.image_model_ids import SD_FORGE_LABEL   # `B471`
 from src.optional_deps import patch_realesrgan_torchvision_compat
+from src.session_search import escape_like_pattern
 
 from routes.gallery.gallery_helpers import (
     GalleryPatch, _extract_exif, _image_to_dict, _owner_filter,
@@ -36,10 +37,18 @@ logger = logging.getLogger(__name__)
 _SAM_STATE: Dict[str, Any] = {}
 _GROUNDING_STATE: Dict[str, Any] = {}
 
+#: `B2004`. The library search requires each word typed, one LIKE clause per
+#: word, so it reads only the first sixteen: SQLite refuses an expression
+#: nested about a thousand deep, and a pasted paragraph would be a 500.
+_SEARCH_MAX_WORDS = 16
+
 
 def _b64_to_pil_image(image_b64: str, *, mode: str = "RGBA"):
     if not image_b64:
         raise HTTPException(400, "Missing image")
+    if not isinstance(image_b64, str):
+        # `B2008`: a number failed in the data: check below, as a 500.
+        raise HTTPException(400, "Invalid image")
     if "," in image_b64 and image_b64.split(",", 1)[0].startswith("data:"):
         image_b64 = image_b64.split(",", 1)[1]
     try:
@@ -51,6 +60,27 @@ def _b64_to_pil_image(image_b64: str, *, mode: str = "RGBA"):
         raise
     except Exception as exc:
         raise HTTPException(400, "Invalid image") from exc
+
+
+async def _json_object(request: Request) -> dict:
+    """`B2005`. The request's body as a JSON object, or a 400 saying it is not
+    one (an array, ``null`` or text that is not JSON was a 500)."""
+    try:
+        data = await request.json()
+    except ValueError:
+        raise HTTPException(400, "The request body must be JSON.") from None
+    if not isinstance(data, dict):
+        raise HTTPException(400, "The request body must be a JSON object.")
+    return data
+
+
+async def _image_ids(request: Request) -> list:
+    """`B2005`. The body's ``image_ids`` for an album's add and remove: a list
+    of image ids, or a 400 (a string, a number or ``null`` failed in the query)."""
+    ids = (await _json_object(request)).get("image_ids", [])
+    if not isinstance(ids, list) or not all(isinstance(i, str) for i in ids):
+        raise HTTPException(400, "image_ids must be a list of image ids")
+    return ids
 
 
 def _pil_image_to_b64(img, *, fmt: str = "PNG") -> str:
@@ -752,15 +782,19 @@ def setup_gallery_routes() -> APIRouter:
             )
             q = _owner_filter(q, user)
 
-            # Search filter (prompt + tags + ai_tags)
+            # Search filter (prompt + tags + ai_tags). `B2004`: each word must
+            # match, in any order (one `%{search}%` was the exact phrase, so
+            # "red car" missed "a car that is red"), and `%`, `_` and `\` are
+            # matched as themselves.
             if search:
-                term = f"%{search}%"
                 from sqlalchemy import or_
-                q = q.filter(or_(
-                    GalleryImage.prompt.ilike(term),
-                    GalleryImage.tags.ilike(term),
-                    GalleryImage.ai_tags.ilike(term),
-                ))
+                for word in search.split()[:_SEARCH_MAX_WORDS]:
+                    term = f"%{escape_like_pattern(word)}%"
+                    q = q.filter(or_(
+                        GalleryImage.prompt.ilike(term, escape="\\"),
+                        GalleryImage.tags.ilike(term, escape="\\"),
+                        GalleryImage.ai_tags.ilike(term, escape="\\"),
+                    ))
 
             # Tag filter. The UI stacks multiple tag pills by passing them
             # comma-separated — each tag adds a separate AND-filter so the
@@ -771,9 +805,10 @@ def setup_gallery_routes() -> APIRouter:
                 for one in (t.strip() for t in tag.split(",")):
                     if not one:
                         continue
+                    safe_tag = f"%{escape_like_pattern(one)}%"  # `B2004`
                     q = q.filter(_or(
-                        GalleryImage.tags.ilike(f"%{one}%"),
-                        GalleryImage.ai_tags.ilike(f"%{one}%"),
+                        GalleryImage.tags.ilike(safe_tag, escape="\\"),
+                        GalleryImage.ai_tags.ilike(safe_tag, escape="\\"),
                     ))
 
             # Model filter
@@ -888,17 +923,24 @@ def setup_gallery_routes() -> APIRouter:
     async def create_album(request: Request):
         import uuid
         user = get_current_user(request)
-        data = await request.json()
+        # `B2005`: the body is checked before the database is opened. One
+        # that was not a JSON object, or a name or description that was not
+        # text, was a 500.
+        data = await _json_object(request)
+        name = data.get("name")
+        name = name.strip() if isinstance(name, str) else ""
+        if not name:
+            raise HTTPException(400, "Album name required")
+        description = data.get("description", "")
+        if description is not None and not isinstance(description, str):
+            raise HTTPException(400, "Album description must be text")
         # `B1223`: the database work, off the event loop.
         def _off_the_loop():
-            name = (data.get("name") or "").strip()
-            if not name:
-                raise HTTPException(400, "Album name required")
             db = SessionLocal()
             try:
                 a = GalleryAlbum(
                     id=str(uuid.uuid4()), name=name,
-                    description=data.get("description", ""),
+                    description=description,
                     owner=user,
                 )
                 db.add(a)
@@ -1701,16 +1743,21 @@ def setup_gallery_routes() -> APIRouter:
         require_privilege(request, "can_generate_images")
         body = await request.json()
         image_b64 = body.get("image")
-        amount = body.get("amount", 50) / 100.0
+        # `B2008`: read as denoise reads its strength, so an amount that is
+        # not a number takes the default (50) rather than failing as a 500.
+        try:
+            percent = int(float(body.get("amount", 50)) / 100.0 * 200)
+        except (TypeError, ValueError, OverflowError):
+            percent = 100
 
-        from PIL import Image, ImageFilter
+        from PIL import ImageFilter
         import base64, io
 
-        img_bytes = base64.b64decode(image_b64)
-        img = Image.open(io.BytesIO(img_bytes)).convert("RGB")
+        # `B2008`: no picture, or one that cannot be read, is a 400.
+        img = _b64_to_pil_image(image_b64, mode="RGB")
 
         # Unsharp mask: radius=2, percent=amount*200, threshold=3
-        sharpened = img.filter(ImageFilter.UnsharpMask(radius=2, percent=int(amount * 200), threshold=3))
+        sharpened = img.filter(ImageFilter.UnsharpMask(radius=2, percent=percent, threshold=3))
 
         buf = io.BytesIO()
         sharpened.save(buf, format="PNG")
@@ -1739,14 +1786,14 @@ def setup_gallery_routes() -> APIRouter:
         except ImportError:
             raise HTTPException(500, "Server missing a required dependency")
         # Decode source image (RGB; Real-ESRGAN doesn't preserve alpha).
-        img_bytes = base64.b64decode(image_b64)
-        src = Image.open(io.BytesIO(img_bytes)).convert("RGB")
+        # `B2008`: one that cannot be read is a 400, not a 500.
+        src = _b64_to_pil_image(image_b64, mode="RGB")
         try:
             patch_realesrgan_torchvision_compat()
             from realesrgan import RealESRGANer
         except ImportError:
             return {"error": "realesrgan not installed. Install it from Forge → Dependencies (search 'realesrgan')."}
-        try:
+        def _denoise():
             # General-purpose lightweight model with denoise control.
             from realesrgan.archs.srvgg_arch import SRVGGNetCompact
             model = SRVGGNetCompact(num_in_ch=3, num_out_ch=3, num_feat=64,
@@ -1764,6 +1811,11 @@ def setup_gallery_routes() -> APIRouter:
             buf = io.BytesIO()
             out_img.save(buf, format="PNG")
             return {"image": base64.b64encode(buf.getvalue()).decode()}
+
+        try:
+            # `B1815`: in a worker thread, so every other request is not
+            # frozen while Real-ESRGAN loads its model and runs.
+            return await asyncio.to_thread(_denoise)
         except Exception:
             logger.warning("Denoise failed", exc_info=True)
             return {"error": "Denoise failed"}
@@ -1789,15 +1841,14 @@ def setup_gallery_routes() -> APIRouter:
             import numpy as np
         except ImportError:
             raise HTTPException(500, "Server missing a required dependency")
-        img_bytes = base64.b64decode(image_b64)
-        src = Image.open(io.BytesIO(img_bytes)).convert("RGB")
+        src = _b64_to_pil_image(image_b64, mode="RGB")   # `B2008`: a 400, not a 500
         try:
             patch_realesrgan_torchvision_compat()
             from basicsr.archs.rrdbnet_arch import RRDBNet
             from realesrgan import RealESRGANer
         except ImportError:
             return {"error": "realesrgan not installed. Install it from Forge → Dependencies (search 'realesrgan')."}
-        try:
+        def _upscale():
             model = RRDBNet(num_in_ch=3, num_out_ch=3, num_feat=64,
                             num_block=23, num_grow_ch=32, scale=4)
             upsampler = RealESRGANer(
@@ -1812,11 +1863,20 @@ def setup_gallery_routes() -> APIRouter:
             buf = io.BytesIO()
             out_img.save(buf, format="PNG")
             return {"image": base64.b64encode(buf.getvalue()).decode()}
+
+        try:
+            return await asyncio.to_thread(_upscale)   # `B1815`, as denoise above
         except Exception:
             logger.warning("AI upscale failed", exc_info=True)
             return {"error": "AI upscale failed"}
 
     # ---- POST /api/image/remove-bg ----
+    # `B1815`. SAM and OWL-ViT are loaded once and shared, so masks are made one
+    # at a time, as on the event loop. Taken before the work moves to its thread,
+    # a waiting request parks on the loop, not in the thread pool (as
+    # `_index_job_lock` in routes/personal_routes.py); per router, per loop.
+    mask_models_lock = asyncio.Lock()
+
     @router.post("/api/image/mask")
     async def smart_mask(request: Request):
         """Create a neutral segmentation mask from user-provided points or a box.
@@ -1827,6 +1887,10 @@ def setup_gallery_routes() -> APIRouter:
         """
         require_privilege(request, "can_generate_images")
         body = await request.json()
+        async with mask_models_lock:
+            return await asyncio.to_thread(_mask_from_hints, body)
+
+    def _mask_from_hints(body):
         image = _b64_to_pil_image(body.get("image") or "", mode="RGB")
         points = body.get("points") or []
         box = body.get("box")
@@ -1965,8 +2029,8 @@ def setup_gallery_routes() -> APIRouter:
         from PIL import Image
         import base64, io
 
-        img_bytes = base64.b64decode(image_b64)
-        img = Image.open(io.BytesIO(img_bytes)).convert("RGBA")
+        # `B2008`: no picture, or one that cannot be read, is a 400.
+        img = _b64_to_pil_image(image_b64)
         W, H = img.size
 
         hint = None
@@ -1999,7 +2063,9 @@ def setup_gallery_routes() -> APIRouter:
 
         try:
             from rembg import remove
-            cut = remove(crop)
+            # `B1815`: in a worker thread, so a cut-out does not freeze every
+            # other request while rembg loads its model and runs.
+            cut = await asyncio.to_thread(remove, crop)
         except ImportError:
             # There used to be a fallback here: `transformers.pipeline(...,
             # model="briaai/RMBG-1.4", trust_remote_code=True)`. Removed
@@ -2064,11 +2130,10 @@ def setup_gallery_routes() -> APIRouter:
         from PIL import Image, ImageFilter, ImageEnhance
         import numpy as np
 
-        img_bytes = base64.b64decode(image_b64)
-        img = Image.open(io.BytesIO(img_bytes)).convert("RGB")
+        img = _b64_to_pil_image(image_b64, mode="RGB")   # `B2008`: a 400, not a 500
 
         # Try GFPGAN first (AI face restoration)
-        try:
+        def _restore():
             from gfpgan import GFPGANer
             import cv2
 
@@ -2100,6 +2165,10 @@ def setup_gallery_routes() -> APIRouter:
             result_img.save(buf, format="PNG")
             return {"image": base64.b64encode(buf.getvalue()).decode()}
 
+        try:
+            # `B1815`: in a worker thread, as denoise above. A missing gfpgan
+            # or cv2 still raises ImportError here, for the PIL fallback.
+            return await asyncio.to_thread(_restore)
         except ImportError:
             # GFPGAN not available — use PIL-based enhancement (no AI, but works everywhere)
             logger.info("GFPGAN not available — using PIL enhancement fallback")
@@ -2138,21 +2207,36 @@ def setup_gallery_routes() -> APIRouter:
     @router.put("/api/gallery/albums/{album_id}")
     async def update_album(request: Request, album_id: str):
         user = get_current_user(request)
-        data = await request.json()
+        # `B2005`: the body is checked before the database is opened. A name
+        # of spaces was stored as the album's name, and a name, description
+        # or cover that was not text, or a body that was not a JSON object,
+        # was a 500. The name is stored trimmed, as create_album stores it.
+        data = await _json_object(request)
+        name = data.get("name")
+        if name is not None:
+            if not isinstance(name, str) or not name.strip():
+                raise HTTPException(400, "Album name required")
+            name = name.strip()
+        description = data.get("description")
+        if description is not None and not isinstance(description, str):
+            raise HTTPException(400, "Album description must be text")
+        cover_id = data.get("cover_id")
+        if cover_id is not None and not isinstance(cover_id, str):
+            raise HTTPException(400, "cover_id must be an image id")
         # `B1223`: the database work, off the event loop.
         def _off_the_loop():
             db = SessionLocal()
             try:
                 album = _get_or_404_album(db, album_id, user)
-                if data.get("name") is not None:
-                    album.name = data["name"]
-                if data.get("description") is not None:
-                    album.description = data["description"]
-                if data.get("cover_id") is not None:
-                    cover_id = data["cover_id"] or None
-                    if cover_id:
-                        _get_or_404_image(db, cover_id, user)
-                    album.cover_id = cover_id
+                if name is not None:
+                    album.name = name
+                if description is not None:
+                    album.description = description
+                if cover_id is not None:
+                    new_cover = cover_id or None
+                    if new_cover:
+                        _get_or_404_image(db, new_cover, user)
+                    album.cover_id = new_cover
                 db.commit()
                 return {"ok": True}
             finally:
@@ -2178,10 +2262,9 @@ def setup_gallery_routes() -> APIRouter:
     @router.post("/api/gallery/albums/{album_id}/add")
     async def add_to_album(request: Request, album_id: str):
         user = get_current_user(request)
-        data = await request.json()
+        ids = await _image_ids(request)  # `B2005`: a list of ids, or a 400
         # `B1223`: the database work, off the event loop.
         def _off_the_loop():
-            ids = data.get("image_ids", [])
             db = SessionLocal()
             try:
                 _get_or_404_album(db, album_id, user)
@@ -2199,10 +2282,9 @@ def setup_gallery_routes() -> APIRouter:
     @router.post("/api/gallery/albums/{album_id}/remove")
     async def remove_from_album(request: Request, album_id: str):
         user = get_current_user(request)
-        data = await request.json()
+        ids = await _image_ids(request)  # `B2005`: a list of ids, or a 400
         # `B1223`: the database work, off the event loop.
         def _off_the_loop():
-            ids = data.get("image_ids", [])
             db = SessionLocal()
             try:
                 _get_or_404_album(db, album_id, user)

@@ -65,3 +65,60 @@ def test_reply_all_excludes_all_of_my_addresses():
     """
     cc = json.loads(_run(js))
     assert cc == "Alice <alice@x.com>, bob@x.com"
+
+
+# ── `B1964`: a display name with a comma in it is one recipient ──────────────
+# Exchange writes `"Smith, John" <john@corp.com>`. Split on every comma, a
+# reply-all whose To held my own `"Doe, Jane" <me@x.com>` came out as the Cc
+# `"Doe, "Smith, John" <john@corp.com>`, which /send then read as three broken
+# addresses. Upstream Odysseus #6910.
+
+_INBOX = _REPO / "static" / "js" / "emailInbox.js"
+
+
+@pytest.mark.skipif(not _HAS_NODE, reason="node binary not on PATH")
+def test_reply_all_leaves_no_fragment_of_my_own_name_with_a_comma():
+    data = {"to": '"Doe, Jane" <me@x.com>, "Smith, John" <john@corp.com>', "cc": ""}
+    js = f"""
+    import {{ buildReplyAllCc }} from '{_HELPER.as_posix()}';
+    console.log(JSON.stringify(buildReplyAllCc({json.dumps(data)}, 'me@x.com')));
+    """
+    assert json.loads(_run(js)) == '"Smith, John" <john@corp.com>'
+
+
+@pytest.mark.skipif(not _HAS_NODE, reason="node binary not on PATH")
+@pytest.mark.parametrize("raw,expected", [
+    (' , "Doe, Jane" <jane@x.com>, , bob@x.com, ', ['"Doe, Jane" <jane@x.com>', "bob@x.com"]),
+    ('"last,first"@x.com, bob@x.com', ['"last,first"@x.com', "bob@x.com"]),
+    (r'"Name\\" <one@x.com>, two@x.com', [r'"Name\\" <one@x.com>', "two@x.com"]),
+    (r'"Doe, \"Jane\"" <jane@x.com>, bob@x.com', [r'"Doe, \"Jane\"" <jane@x.com>', "bob@x.com"]),
+    (123, []),
+])
+def test_the_recipient_splitter_keeps_quoted_names_and_angle_addresses_whole(raw, expected):
+    js = f"""
+    import {{ splitRecipientList }} from '{_HELPER.as_posix()}';
+    console.log(JSON.stringify(splitRecipientList({json.dumps(raw)})));
+    """
+    assert json.loads(_run(js)) == expected
+
+
+@pytest.mark.skipif(not _HAS_NODE, reason="node binary not on PATH")
+def test_a_reply_from_sent_leaves_no_fragment_of_my_own_name_with_a_comma():
+    # The inbox's own split, which a reply from Sent builds its To and Cc from,
+    # cut out of emailInbox.js as it ships.
+    from tests.helpers.js_source import js_definition
+
+    source = _INBOX.read_text(encoding="utf-8")
+    cut = "\n".join(
+        js_definition(source, source.index(sig))
+        for sig in ("function _splitEmailAddresses(", "function _isMyEmailAddress(",
+                    "function _withoutMyAddresses(")
+    )
+    js = f"""
+    import * as recipients from '{_HELPER.as_posix()}';
+    const {{ splitRecipientList, extractEmail }} = recipients;
+    {cut}
+    console.log(JSON.stringify(_withoutMyAddresses(
+      '"Doe, Jane" <me@x.com>, "Smith, John" <john@corp.com>', ['me@x.com'])));
+    """
+    assert json.loads(_run(js)) == ['"Smith, John" <john@corp.com>']

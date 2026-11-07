@@ -175,6 +175,10 @@ NOT_OURS = {
     "HUGGING_FACE_HUB_TOKEN": "Hugging Face Hub's own credential",
     "HF_HUB_DISABLE_PROGRESS_BARS": "Hugging Face Hub's own switch",
     "HF_HUB_DOWNLOAD_MAX_WORKERS": "Hugging Face Hub's own switch",
+    # `B2019`: read to find a MiniMax-M3 snapshot where huggingface_hub keeps it.
+    "HF_HUB_CACHE": "Hugging Face Hub's own cache location",
+    "HUGGINGFACE_HUB_CACHE": "Hugging Face Hub's own cache location (its older name)",
+    "HF_HOME": "Hugging Face Hub's own home directory",
     "npm_config_cache": "npm's own cache location",
 }
 

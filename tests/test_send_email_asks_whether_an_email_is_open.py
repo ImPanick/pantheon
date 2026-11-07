@@ -17,14 +17,22 @@ documents and ``fetch`` as the page has them (`Law 20`): what is asserted is
 what was sent and what the person was told. Stand-ins at boundaries this row
 did not change: the outgoing-body sanitiser and the reply-quote stripper return
 their input; the account resolver answers ``null``.
+
+`B1941`: one press on Send reaches ``_sendEmail`` once for each of
+pointerdown, pointerup and click (the capture handlers mark each event, not the
+press), and ``_emailSendInFlight`` is set only after "No attachments found" is
+answered. So a body that said "see attached" with nothing attached put the
+question up three times, and "Send anyway" on each sent the email three times.
+The last two tests run the real question and the real capture handler.
 """
 import json
+import re
 import shutil
 
 import pytest
 
 from tests.helpers.js_source import js_binding, js_definition
-from tests.test_a_file_imported_from_device_opens_readable import DOCJS, _run_js
+from tests.test_a_file_imported_from_device_opens_readable import DOCJS, JS, _run_js
 
 pytestmark = pytest.mark.skipif(not shutil.which("node"), reason="node binary not on PATH")
 
@@ -75,15 +83,19 @@ const _emailReplyOwnText = (s) => s;
 const _emailBodyToHtml = (s) => s;
 const _syncEmailRichbody = () => {};
 async function _resolveComposeSendAccountId() { return null; }
-async function _confirmMissingAttachment() { return true; }
 const docs = new Map();
 let activeDocId = null;
 let _emailSendInFlight = false;
+let _emailSendConfirming = false;
 """
+
+# "No attachments found", answered "Send anyway" at once: these tests are not
+# about the question.
+_SEND_ANYWAY = "async function _confirmMissingAttachment() { return true; }\n"
 
 
 def _run(tmp_path, body: str) -> dict:
-    return _run_js(tmp_path / "send", _PAGE + _lifted() + "\n" + body)
+    return _run_js(tmp_path / "send", _PAGE + _SEND_ANYWAY + _lifted() + "\n" + body)
 
 
 # The panel after an email draft was open: its To/Subject are still in the
@@ -167,3 +179,126 @@ def test_the_documents_own_language_is_enough(tmp_path):
         console.log(JSON.stringify({ posted }));
     """)
     assert [p["url"] for p in out["posted"]] == ["/api/email/send"]
+
+
+# What Escape does to the top window (`ui.js`, the Escape arbiter): it presses
+# the window's own close control, and hides a window that has none.
+_ESCAPE_PRESSES = re.search(r"const closeBtn = topModal\.querySelector\('([^']+)'\)",
+                            (JS / "ui.js").read_text(encoding="utf-8")).group(1)
+
+# The real question and the real capture handler, in a page that has them:
+# the question's markup read into elements that answer `querySelector` and
+# `click()`, `document.body` holding what is open, and Send 80x30 in the footer.
+_QUESTION = r"""
+const Node = { TEXT_NODE: 3 };
+const open = [];
+const capture = [handleSendIntent, handleSendIntent];   // on window and on document
+function dispatch(target, type, x, y) {
+  const e = { type, target, clientX: x, clientY: y, defaultPrevented: false, stopped: false,
+              preventDefault() { this.defaultPrevented = true; }, stopPropagation() { this.stopped = true; } };
+  for (const listener of capture) if (!e.stopped) listener(e);
+  if (e.stopped) return e;
+  for (let n = target; n; n = n.parentNode) for (const fn of (n.listeners[type] || [])) fn(e);
+  return e;
+}
+function one(n, s) {
+  if (s[0] === '#') return n.id === s.slice(1);
+  if (s[0] === '.') return n.classList.contains(s.slice(1));
+  const a = /^\[([\w-]+)="([^"]*)"\]$/.exec(s);
+  if (a) return n.attrs[a[1]] === a[2];
+  return n.tagName === s.toUpperCase();
+}
+class Box {
+  constructor(tag, attrs = {}) {
+    this.tagName = tag.toUpperCase(); this.nodeType = 1; this.attrs = attrs; this.id = attrs.id || '';
+    this.cls = new Set((attrs.class || '').split(/\s+/).filter(Boolean));
+    this.classList = { add: (c) => this.cls.add(c), remove: (c) => this.cls.delete(c), contains: (c) => this.cls.has(c) };
+    this.style = {}; this.listeners = {}; this.kids = []; this.parentNode = null;
+  }
+  set className(v) { this.cls = new Set(String(v).split(/\s+/).filter(Boolean)); }
+  set innerHTML(html) {
+    for (const m of String(html).matchAll(/<([a-z0-9]+)([^>]*)>/gi)) {
+      const attrs = Object.fromEntries([...m[2].matchAll(/([\w-]+)="([^"]*)"/g)].map((a) => [a[1], a[2]]));
+      const kid = new Box(m[1], attrs);
+      kid.parentNode = this;
+      this.kids.push(kid);
+    }
+  }
+  matches(sel) { return sel.split(',').some((s) => one(this, s.trim())); }
+  querySelector(sel) { return this.kids.find((k) => k.matches(sel)) || null; }
+  closest(sel) { for (let n = this; n; n = n.parentNode) if (n.matches(sel)) return n; return null; }
+  addEventListener(type, fn) { (this.listeners[type] = this.listeners[type] || []).push(fn); }
+  remove() { const i = open.indexOf(this); if (i >= 0) open.splice(i, 1); }
+  click() { dispatch(this, 'click', 500, 400); }
+}
+document.createElement = (tag) => new Box(tag);
+document.body = { appendChild: (n) => { open.push(n); return n; } };
+const send = Object.assign(inputs['doc-email-send-btn'], {
+  nodeType: 1, listeners: {}, parentNode: null,
+  closest: (sel) => (sel === '#doc-email-send-btn' ? send : null),
+  getBoundingClientRect: () => ({ left: 900, top: 820, right: 980, bottom: 850, width: 80, height: 30 }),
+});
+// A press on Send: a cancelled pointerdown suppresses mousedown, not click.
+const press = () => { for (const type of ['pointerdown', 'pointerup', 'click']) dispatch(send, type, 930, 835); };
+const asking = () => open.filter((w) => !w.classList.contains('hidden'));
+const answer = (w, id) => w.querySelector(id).click();
+const escape = (escapePresses) => {
+  const top = asking().pop();
+  const own = top.querySelector(escapePresses);
+  if (own) own.click(); else top.classList.add('hidden');
+};
+const sends = () => posted.filter((p) => p.url === '/api/email/send').length;
+const settle = () => new Promise((r) => setTimeout(r, 0));
+docs.set('mail-1', { id: 'mail-1', language: 'email' });
+activeDocId = 'mail-1';
+inputs['doc-language-select'].value = 'email';
+inputs['doc-email-to'].value = 'board@northwind.example.com';
+inputs['doc-editor-textarea'].value = 'The figures for the board, see attached.';
+"""
+
+
+def _ask(tmp_path, body: str) -> dict:
+    page = "\n".join((_PAGE, _cut("function _confirmMissingAttachment("), _lifted(),
+                      js_binding(DOCJS, "_eventInsideElement"), js_binding(DOCJS, "handleSendIntent"),
+                      _QUESTION, body))
+    return _run_js(tmp_path / "ask", page)
+
+
+def test_one_press_on_send_asks_once_and_sends_once(tmp_path):
+    """A body that says "see attached" with nothing attached, and one press on
+    Send. Before, the press put "No attachments found" up three times, and
+    "Send anyway" on each question sent the email three times."""
+    out = _ask(tmp_path, r"""
+        press();
+        const asked = asking().length;
+        for (const w of asking()) answer(w, '#att-warn-send');
+        await settle();
+        console.log(JSON.stringify({ asked, sent: sends(), left: asking().length }));
+    """)
+    assert out == {"asked": 1, "sent": 1, "left": 0}, (
+        "one press on Send must ask once, and Send anyway must send the email once")
+
+
+def test_after_go_back_or_escape_the_next_press_asks_again(tmp_path):
+    """While the question is open a press on Send is the same send, so the
+    question has to close with an answer: Go back, and Escape, which presses
+    Go back, leave nothing sent and let the next press ask again."""
+    out = _ask(tmp_path, r"""
+        press();
+        const first = asking().length;
+        answer(asking()[0], '#att-warn-cancel');
+        await settle();
+        const goneBack = { asking: asking().length, sent: sends() };
+        press();
+        const second = asking().length;
+        escape(%s);
+        await settle();
+        const escaped = { asking: asking().length, sent: sends() };
+        press();
+        const third = asking().length;
+        if (third) answer(asking()[0], '#att-warn-send');
+        await settle();
+        console.log(JSON.stringify({ first, goneBack, second, escaped, third, sent: sends() }));
+    """ % json.dumps(_ESCAPE_PRESSES))
+    assert out == {"first": 1, "goneBack": {"asking": 0, "sent": 0}, "second": 1,
+                   "escaped": {"asking": 0, "sent": 0}, "third": 1, "sent": 1}

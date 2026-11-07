@@ -15,8 +15,8 @@ from pathlib import Path
 
 from core.atomic_io import atomic_write_json, atomic_write_text
 from core.auth import (
-    AuthManager, DEFAULT_PRIVILEGES, RESERVED_USERNAMES, SetAdminResult, TOKEN_TTL,
-    clean_profile,
+    AuthManager, DEFAULT_PRIVILEGES, PASSWORD_TOO_LONG, RESERVED_USERNAMES, SetAdminResult,
+    TOKEN_TTL, clean_profile, password_too_long, username_error,
 )
 from core.middleware import require_admin, require_operator
 from src.events import record_auth_event
@@ -261,8 +261,11 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
             raise HTTPException(400, "Already configured")
         if len(body.password) < PASSWORD_MIN_LENGTH:
             raise HTTPException(400, f"Password must be at least {PASSWORD_MIN_LENGTH} characters")
-        if len(body.username.strip()) < 1:
-            raise HTTPException(400, "Username is required")
+        if password_too_long(body.password):
+            raise HTTPException(400, PASSWORD_TOO_LONG)   # `B1812`: not bcrypt's 500
+        name_error = username_error(body.username)   # `B1901`
+        if name_error:
+            raise HTTPException(400, name_error)
         if body.username.lower() in RESERVED_USERNAMES:
             raise HTTPException(403, "Username is reserved")
         try:
@@ -319,8 +322,11 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
             raise HTTPException(403, "Registration is disabled. Ask an admin for an account.")
         if len(body.password) < PASSWORD_MIN_LENGTH:
             raise HTTPException(400, f"Password must be at least {PASSWORD_MIN_LENGTH} characters")
-        if len(body.username.strip()) < 1:
-            raise HTTPException(400, "Username is required")
+        if password_too_long(body.password):
+            raise HTTPException(400, PASSWORD_TOO_LONG)   # `B1812`: not bcrypt's 500
+        name_error = username_error(body.username)   # `B1901`
+        if name_error:
+            raise HTTPException(400, name_error)
         if body.username.lower() in RESERVED_USERNAMES:
             raise HTTPException(403, "Username is reserved")
         try:
@@ -519,6 +525,8 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
             raise HTTPException(401, "Not authenticated")
         if len(body.new_password) < PASSWORD_MIN_LENGTH:
             raise HTTPException(400, f"Password must be at least {PASSWORD_MIN_LENGTH} characters")
+        if password_too_long(body.new_password):
+            raise HTTPException(400, PASSWORD_TOO_LONG)   # `B1812`: not bcrypt's 500
         current_token = request.cookies.get(SESSION_COOKIE)
         ok = await asyncio.to_thread(auth_manager.change_password, user, body.current_password, body.new_password)
         if not ok:
@@ -640,8 +648,11 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
         user = get_current_user(request)
         if len(body.password) < PASSWORD_MIN_LENGTH:
             raise HTTPException(400, f"Password must be at least {PASSWORD_MIN_LENGTH} characters")
-        if len(body.username.strip()) < 1:
-            raise HTTPException(400, "Username is required")
+        if password_too_long(body.password):
+            raise HTTPException(400, PASSWORD_TOO_LONG)   # `B1812`: not bcrypt's 500
+        name_error = username_error(body.username)   # `B1901`
+        if name_error:
+            raise HTTPException(400, name_error)
         if body.username.lower() in RESERVED_USERNAMES:
             raise HTTPException(403, "Username is reserved")
         # `B1580`: in a worker thread, as `signup` does — it hashes a password
@@ -661,8 +672,24 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
     async def update_user_privileges(username: str, request: Request):
         require_admin(request)
         user = get_current_user(request)
-        body = await request.json()
-        ok = auth_manager.set_privileges(username, body)
+        # `B1900`. A body that is not a JSON object, and a value that is not the
+        # type its privilege declares, answered a 500 or were stored as sent.
+        # Each is now a 400 that says which, written down as a refusal, as
+        # `upsert_role` answers a role's.
+        try:
+            body = await request.json()
+        except ValueError:  # not JSON, or not UTF-8
+            body = None
+        if not isinstance(body, dict):
+            await _audit("privilege_change", actor=user, subject=username,
+                         outcome="error", detail={"reason": "not_a_json_object"})
+            raise HTTPException(400, "Request body must be a JSON object")
+        try:
+            ok = auth_manager.set_privileges(username, body)
+        except RoleError as exc:
+            await _audit("privilege_change", actor=user, subject=username,
+                         outcome="error", detail={"reason": str(exc)})
+            raise HTTPException(400, str(exc))
         if not ok:
             await _audit("privilege_change", actor=user, subject=username,
                          outcome="error",
@@ -769,6 +796,11 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
             raise HTTPException(400, "Username required")
         if old_username == new_username:
             return {"ok": True, "username": new_username, "renamed_self": old_username == user}
+        # `B1901`. The new name, and only it: the one the account has is not
+        # asked about, so a name given before the rule can be renamed out of.
+        name_error = username_error(new_username)
+        if name_error:
+            raise HTTPException(400, name_error)
         if old_username not in auth_manager.users:
             raise HTTPException(404, "User not found")
         if new_username in auth_manager.users:
@@ -1045,7 +1077,9 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
         """
         require_admin(request)
         user = get_current_user(request)
-        result = auth_manager.set_admin(username, body.is_admin, user)
+        # `B1819`: a demotion deletes the person's API tokens, which is database
+        # work, so it runs off the event loop (`B1223`).
+        result = await asyncio.to_thread(auth_manager.set_admin, username, body.is_admin, user)
         if result is not SetAdminResult.OK:
             await _audit("admin_change", actor=user, subject=username,
                          outcome="error",

@@ -9,7 +9,8 @@ scheduler without needing an LLM call.
 import logging
 import os
 import json
-from datetime import datetime
+import re
+from datetime import datetime, timezone
 from typing import Any, Tuple
 
 from src.auth_helpers import owner_filter
@@ -677,13 +678,17 @@ async def action_consolidate_memory(owner: str, **kwargs) -> Tuple[str, bool]:
     try:
         import json
         import re
-        from difflib import SequenceMatcher
+        import unicodedata
+        from src import memory_style
         from src.constants import DATA_DIR
         from src.llm_core import llm_call_async_with_fallback
         from src.memory import MemoryManager
 
         manager = MemoryManager(DATA_DIR)
         all_memories = manager.load_all()
+        # `B1953`. What each row said when this run read it, so the save below
+        # can tell this run's changes from what was written while it waited.
+        read_as = {m.get("id"): (m.get("text"), m.get("category")) for m in all_memories}
 
         _owner_clean = (owner or "").strip()
         text_limit = 2000
@@ -691,15 +696,24 @@ async def action_consolidate_memory(owner: str, **kwargs) -> Tuple[str, bool]:
         def _memory_owner(mem: dict) -> str:
             return (mem.get("owner") or "").strip()
 
+        # `B1952`. Memories only. The style profile (`P13-17`) shares the store
+        # and is not one: it has no text until twenty messages give it some, so
+        # the empty-row rule below deleted its counters, and once formed the
+        # model was handed it to tidy, text the person corrected included.
+        # `memory_edges.live` keeps it out of every prompt by the same kind.
+        # It stays in `all_memories` and is saved back as it was read.
+        tidy_rows = [m for m in all_memories
+                     if memory_style.kind_of(m) == memory_style.KIND_MEMORY]
+
         # Built-in housekeeping can run without an owner. In that case scan all
         # memories, but keep every AI prompt/apply step owner-local.
         if _owner_clean:
             memory_groups = {
-                _owner_clean: [m for m in all_memories if _memory_owner(m) == _owner_clean]
+                _owner_clean: [m for m in tidy_rows if _memory_owner(m) == _owner_clean]
             }
         else:
             memory_groups = {}
-            for mem in all_memories:
+            for mem in tidy_rows:
                 memory_groups.setdefault(_memory_owner(mem), []).append(mem)
 
         memory_groups = {group_owner: group for group_owner, group in memory_groups.items() if group}
@@ -714,9 +728,11 @@ async def action_consolidate_memory(owner: str, **kwargs) -> Tuple[str, bool]:
         ai_used = False
 
         def _normalized_memory_text(mem: dict) -> str:
-            text = (mem.get("text") or "").lower()
-            text = re.sub(r"[^a-z0-9@._+-]+", " ", text)
-            return " ".join(text.split())
+            # `B1947`. Case, spacing and Unicode form only. Turning everything
+            # but a-z, 0-9 and @._+- into spaces erased Cyrillic, Greek, CJK
+            # and accented letters, so two different facts compared equal.
+            text = unicodedata.normalize("NFC", mem.get("text") or "")
+            return " ".join(unicodedata.normalize("NFC", text.casefold()).split())
 
         def _memory_rank(mem: dict) -> tuple:
             text = (mem.get("text") or "").strip()
@@ -737,12 +753,12 @@ async def action_consolidate_memory(owner: str, **kwargs) -> Tuple[str, bool]:
             b_text = _normalized_memory_text(b)
             if not a_text or not b_text:
                 return False
-            if a_text == b_text:
-                return True
-            shorter, longer = sorted((a_text, b_text), key=len)
-            if len(shorter) >= 24 and shorter in longer:
-                return True
-            return SequenceMatcher(None, a_text, b_text).ratio() >= 0.88
+            # `B1947`. Similarity and containment do not make two memories one
+            # fact: a different name, number or a "not" changes it, and this
+            # pass deletes without asking anyone. Only the same text counts
+            # here; a near-duplicate is left for the AI step, which deletes
+            # only what the model explicitly drops.
+            return a_text == b_text
 
         def _dedupe_group(group_memories: list) -> tuple[list, int]:
             kept = []
@@ -891,7 +907,7 @@ async def action_consolidate_memory(owner: str, **kwargs) -> Tuple[str, bool]:
                                 ])
                             return True
             except Exception as ai_err:
-                logger.warning("AI memory tidy failed; falling back to duplicate cleanup: %s", ai_err)
+                logger.warning("AI memory tidy failed; only exact duplicates were removed: %s", ai_err)
             return False
 
         for group_owner, group_memories in memory_groups.items():
@@ -907,38 +923,34 @@ async def action_consolidate_memory(owner: str, **kwargs) -> Tuple[str, bool]:
                 total_removed += group_removed
                 group_memories = deduped_group
 
-            if await _try_ai_tidy_group(group_owner, group_memories):
-                continue
-
-            seen = {}
-            keep_refs = set()
-            for mem in group_memories:
-                text = (mem.get("text") or "").strip()
-                key = " ".join(text.lower().split())
-                if not key:
-                    if len(removed_examples) < 3:
-                        removed_examples.append("(empty)")
-                    continue
-                if key in seen:
-                    if len(removed_examples) < 3:
-                        removed_examples.append(text[:60] + ("..." if len(text) > 60 else ""))
-                    continue
-                seen[key] = mem
-                keep_refs.add(id(mem))
-
-            group_removed = len(group_memories) - len(keep_refs)
-            if group_removed == 0:
-                continue
-
-            group_ref_ids = {id(m) for m in group_memories}
-            all_memories = [
-                m for m in all_memories
-                if id(m) not in group_ref_ids or id(m) in keep_refs
-            ]
-            total_removed += group_removed
+            # `B1947`. Exact duplicates and empty rows were removed above, per
+            # category and by rank. The text-only pass that ran here whenever
+            # the AI step did not ignored both: it deleted the same words filed
+            # as a fact and as an instruction, and kept whichever copy came
+            # first, pinned or not.
+            await _try_ai_tidy_group(group_owner, group_memories)
 
         if total_removed or total_cleaned:
-            manager.save(all_memories)
+            # `B1953`. Onto the store as it is now, not the copy read before the
+            # wait for a quiet chat and the model call (up to two minutes a
+            # group). This task starts on `memory_added`, so memories were
+            # being written meanwhile, and saving that copy overwrote them. A
+            # row this run removed or rewrote is changed only if it still says
+            # what this run read; one added, edited or deleted meanwhile stays
+            # as it is. The strict read: an unreadable store is not written.
+            tidied = {m.get("id"): m for m in all_memories}
+            current = []
+            for row in manager.load_all_for_update():
+                rid = row.get("id")
+                if read_as.get(rid) != (row.get("text"), row.get("category")):
+                    current.append(row)
+                    continue
+                mine = tidied.get(rid)
+                if mine is None:
+                    continue
+                row["text"], row["category"] = mine.get("text"), mine.get("category")
+                current.append(row)
+            manager.save(current)
             if ai_used:
                 reasons = ai_reasons[:3]
                 reason_text = f": {'; '.join(reasons)}" if reasons else ""
@@ -1089,16 +1101,45 @@ async def action_tidy_research(owner: str, **kwargs) -> Tuple[str, bool]:
 # and nothing ran it.)
 
 
+# `B1983`: a count of work done, as an email pass's summary line states it
+# ("processed 3 new", "summarized 3", "drafted 2 replies", ...).
+_EMAIL_WORK_COUNT = re.compile(
+    r"\b(?:processed|summarized|drafted|sent|created|tagged|moved|translated)\s+[1-9]\d*\b")
+
+
+def _email_run_summary_lines(low: str) -> str:
+    """An email pass's result without the "Processed:" list under each
+    mailbox's summary line (`B1983`). The list quotes received mail's subjects
+    and senders, and a folded subject runs on over lines of its own, so the
+    list ends only at the next mailbox's "[name] …" line."""
+    kept, listing = [], False
+    for line in low.splitlines():
+        if line.strip() == "processed:":
+            listing = True
+        elif listing and line.startswith("["):
+            listing = False
+        if not listing:
+            kept.append(line)
+    return "\n".join(kept)
+
+
 def _result_has_work(result: str | None) -> bool:
     """Heuristic: did the email pass actually process anything?
 
     `_run_auto_summarize_once` returns strings like 'Processed 0 emails',
     'No new emails to summarize', 'Tagged 0 / Moved 0', etc. when nothing
     was done. Used to decide whether to record the run or noop it.
+
+    `B1983`: a pass over several mailboxes joins one "[name] …" result per
+    mailbox, so one mailbox's "nothing to do" marked the whole run skipped
+    when another had done work; a count of work now wins. Only the pass's own
+    summary lines are read, never the received subjects and senders it lists.
     """
     if not isinstance(result, str) or not result:
         return False
-    low = result.lower()
+    low = _email_run_summary_lines(result.lower())
+    if _EMAIL_WORK_COUNT.search(low):
+        return True
     if "processed 0" in low or "no new" in low or "nothing to" in low:
         return False
     # "Tagged 0 / Moved 0" or similar zero-count summaries
@@ -1188,7 +1229,6 @@ async def action_email_auto_translate(owner: str, **kwargs) -> Tuple[str, bool]:
     try:
         import email as _email_mod
         import json as _json
-        import re as _re
         import sqlite3 as _sql3
         from datetime import datetime as _dt, timedelta as _td
 
@@ -1197,8 +1237,8 @@ async def action_email_auto_translate(owner: str, **kwargs) -> Tuple[str, bool]:
             SCHEDULED_DB,
             _decode_header,
             _email_cache_owner_clause,
-            _extract_reply,
             _extract_text,
+            _extract_translation,
             _imap_connect,
             email_translation_body_hash,
         )
@@ -1304,17 +1344,9 @@ async def action_email_auto_translate(owner: str, **kwargs) -> Tuple[str, bool]:
                 max_tokens=8192,
                 timeout=180,
             )
-            content = (content or "").strip()
-            content = _extract_reply(content)
-            if "<<<SAME_LANGUAGE>>>" in content:
-                return "", True
-            marker = _re.search(r"<<<TRANSLATION>>>\s*(.*?)\s*<<<END>>>", content, _re.S | _re.I)
-            if marker:
-                content = marker.group(1).strip()
-            else:
-                content = _re.sub(r"^\s*<<<TRANSLATION>>>\s*", "", content, flags=_re.I).strip()
-                content = _re.sub(r"\s*<<<END>>>\s*$", "", content, flags=_re.I).strip()
-            return content, False
+            # `B2025`: only what the model wrote between its markers; the
+            # reader's Translate reads the same way and the same cache.
+            return _extract_translation(content)
 
         since = (_dt.utcnow() - _td(days=days_back)).strftime("%d-%b-%Y")
         examined = 0
@@ -1489,13 +1521,60 @@ def _memory_context_lines(mems, limit: int = 40) -> list:
     return lines
 
 
+def _classification_array(raw: str, tries: int = 20):
+    """The event classifier's JSON list out of a model reply, or `None`.
+
+    `B2025`. A greedy regex took everything from the first `[` to the last
+    `]`, so a valid array followed by a note that names an item ("[1] could
+    be social"), or by a second copy of itself, did not parse, and the whole
+    batch counted as failed. Now each `[` (the first `tries` of them) is
+    decoded on its own, and the first list whose objects carry a `type` or an
+    `importance` is the answer, which passes over prose such as "Results
+    [JSON]:" and an echo of the EVENTS list. With no such list, the first
+    list holding an object is taken, as the old parse took any array.
+    """
+    decoder = json.JSONDecoder()
+    first = None
+    pos = raw.find("[")
+    while pos >= 0 and tries > 0:
+        tries -= 1
+        try:
+            value, _end = decoder.raw_decode(raw, pos)
+        except ValueError:
+            value = None
+        if isinstance(value, list):
+            items = [x for x in value if isinstance(x, dict)]
+            if any("type" in x or "importance" in x for x in items):
+                return value
+            if items and first is None:
+                first = value
+        pos = raw.find("[", pos + 1)
+    return first
+
+
+def _unowned_rows_are_shared() -> bool:
+    """Whether a calendar or note stored with no owner is everyone's.
+
+    v2 review HIGH-12, the daily brief's rule: only on a single-user
+    (unconfigured) install. Once there are accounts, one person's run must
+    not read another's rows that happen to carry owner=None. False when the
+    accounts cannot be read. One helper since `B2030`, so `classify_events`
+    asks the brief's question rather than a copy of it.
+    """
+    try:
+        from src.auth_manager_access import shared_auth_manager  # `P23-07` (`PERF-M-15`)
+        return not shared_auth_manager().is_configured
+    except Exception:
+        return False
+
+
 async def action_classify_events(owner: str, **kwargs) -> Tuple[str, bool]:
     """Hybrid classification of upcoming calendar events: fast heuristic for
     obvious cases, LLM fallback for ambiguous ones. Assigns event_type +
     importance + color. Re-classifies anything not already set."""
     try:
         from datetime import timedelta
-        from core.database import SessionLocal, CalendarEvent
+        from core.database import SessionLocal, CalendarEvent, CalendarCal
         from src.llm_core import llm_call_async_with_fallback
         import re as _re, json as _json
 
@@ -1503,11 +1582,21 @@ async def action_classify_events(owner: str, **kwargs) -> Tuple[str, bool]:
         try:
             now = datetime.utcnow()
             horizon = now + timedelta(days=30)
-            events = db.query(CalendarEvent).filter(
+            # `B2030`. Only the owner's calendars. This read every person's
+            # next 30 days, sent their titles and places to this owner's
+            # model and wrote type, colour and importance onto their events.
+            # A calendar holds the owner (the check-in digest's join); an
+            # unowned one counts where the daily brief counts it, and a run
+            # for nobody reads nothing once there are accounts (`B1271`).
+            events_q = db.query(CalendarEvent).join(
+                CalendarCal, CalendarEvent.calendar_id == CalendarCal.id,
+            ).filter(
                 CalendarEvent.dtstart >= now,
                 CalendarEvent.dtstart <= horizon,
                 CalendarEvent.status != "cancelled",
-            ).all()
+            )
+            events = owner_filter(events_q, CalendarCal, owner,
+                                  include_shared=_unowned_rows_are_shared()).all()
             if not events:
                 return "No upcoming events to classify", True
 
@@ -1604,12 +1693,11 @@ async def action_classify_events(owner: str, **kwargs) -> Tuple[str, bool]:
                     from src.text_helpers import strip_think as _st
                     raw = _st(raw or "", prose=False, prompt_echo=False)
                     raw = _re.sub(r"^```(?:json)?\s*|\s*```$", "", raw, flags=_re.MULTILINE).strip()
-                    m = _re.search(r"\[.*\]", raw, _re.DOTALL)
-                    if not m:
+                    arr = _classification_array(raw)   # `B2025`
+                    if arr is None:
                         logger.warning(f"[classify-llm] no JSON array in response: {raw[:300]!r}")
                         failed += len(batch)
                         continue
-                    arr = _json.loads(m.group())
                     by_idx = {x.get("i"): x for x in arr if isinstance(x, dict)}
                     for idx, ev in enumerate(batch):
                         x = by_idx.get(idx)
@@ -1915,38 +2003,96 @@ async def action_learn_sender_signatures(owner: str, **kwargs) -> Tuple[str, boo
         return str(e), False
 
 
+def _daily_brief_utc_boundary(local_dt, tz=None):
+    """Convert a local wall-clock boundary using the offset at that boundary.
+
+    `B1804`. Each end of the day is converted on its own, so a 23- or 25-hour
+    daylight-saving day keeps its length. `tz` None is the server's zone.
+    """
+    if local_dt.tzinfo is None and tz is not None:
+        local_dt = local_dt.replace(tzinfo=tz)
+    return local_dt.astimezone(timezone.utc).replace(tzinfo=None)
+
+
+def _daily_brief_local_start(event, tz=None):
+    """Keep date-only/floating rows local; convert only stored UTC instants.
+
+    `B1804`. A row with `is_utc` holds a naive UTC instant, which is read in
+    `tz` (the server's zone when None); any other row is already local.
+    """
+    start = event.dtstart
+    if event.is_utc and not event.all_day:
+        if start.tzinfo is None:
+            start = start.replace(tzinfo=timezone.utc)
+        return start.astimezone(tz).replace(tzinfo=None)
+    return start
+
+
 async def action_daily_brief(owner: str, **kwargs) -> Tuple[str, bool]:
     """Build a short morning digest: today's calendar events, unread email count
-    + top-N senders/subjects, active todos."""
+    + top-N senders/subjects, active todos.
+
+    `tz_name` (from the scheduler, `B1804`) is the zone the task fires in: the
+    day and the hours are that zone's. Without one they are the server's, and
+    the calendar heading says so.
+    """
     try:
         from datetime import datetime as _dt, timedelta as _td
         import json as _json
 
         from core.database import SessionLocal, CalendarEvent, CalendarCal, Note
         from routes.email_helpers import _imap_connect, _decode_header
+        from sqlalchemy import and_, or_
 
         # ----- Calendar: today's events -----
-        today = _dt.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        # `B1804`. A row with `is_utc` (one made in the calendar, by the
+        # calendar tool or by CalDAV) is a UTC instant, so it is compared with
+        # the day's two ends converted to UTC and printed in local time; a
+        # floating or all-day row is compared and printed as stored. Every row
+        # used to be compared with the server's midnight and printed at its
+        # stored hour, so a UTC row showed its UTC hour and an evening event
+        # that falls on the next UTC day was left out.
+        tz = None
+        tz_name = str(kwargs.get("tz_name") or "").strip()
+        if tz_name:
+            try:
+                from zoneinfo import ZoneInfo
+                tz = ZoneInfo(tz_name)
+            except Exception:
+                logger.warning("daily_brief: unknown time zone %r; using the server's clock", tz_name)
+        now = _dt.now(tz).replace(tzinfo=None) if tz else _dt.now()
+        today = now.replace(hour=0, minute=0, second=0, microsecond=0)
         tomorrow = today + _td(days=1)
+        utc_today = _daily_brief_utc_boundary(today, tz)
+        utc_tomorrow = _daily_brief_utc_boundary(tomorrow, tz)
         # v2 review HIGH-12: gate the OR-null branch on single-user
         # (unconfigured) deploys only. In a multi-user deploy, one
         # user's daily brief must not include another user's notes or
         # events that happen to be stored with owner=None.
-        try:
-            from src.auth_manager_access import shared_auth_manager  # `P23-07` (`PERF-M-15`)
-            _allow_null = not shared_auth_manager().is_configured
-        except Exception:
-            _allow_null = False
+        _allow_null = _unowned_rows_are_shared()
         db = SessionLocal()
         try:
             ev_q = db.query(CalendarEvent).join(CalendarCal).filter(
-                CalendarEvent.dtstart < tomorrow,
-                CalendarEvent.dtend > today,
+                or_(
+                    and_(
+                        CalendarEvent.is_utc.is_(True),
+                        CalendarEvent.all_day.is_not(True),
+                        CalendarEvent.dtstart < utc_tomorrow,
+                        CalendarEvent.dtend > utc_today,
+                    ),
+                    and_(
+                        or_(CalendarEvent.is_utc.is_not(True), CalendarEvent.all_day.is_(True)),
+                        CalendarEvent.dtstart < tomorrow,
+                        CalendarEvent.dtend > today,
+                    ),
+                ),
                 CalendarEvent.status != "cancelled",
             )
             if owner:
                 ev_q = owner_filter(ev_q, CalendarCal, owner, include_shared=_allow_null)
-            events = ev_q.order_by(CalendarEvent.dtstart).all()
+            # Ordered by local start: stored UTC and local times do not sort together.
+            events = ev_q.all()
+            events.sort(key=lambda e: _daily_brief_local_start(e, tz))
             # ----- Notes: pinned + non-archived todos with at least one undone item -----
             n_q = db.query(Note).filter(Note.archived == False)  # noqa: E712
             if owner:
@@ -2014,9 +2160,12 @@ async def action_daily_brief(owner: str, **kwargs) -> Tuple[str, bool]:
 
         plain = [f"Daily brief — {date_label}", ""]
         if events:
-            plain.append("Calendar:")
+            # `B1804` (`Law 10`). With no zone handed over, the hours are the
+            # server's clock, which is UTC in the default container: said once.
+            plain.append("Calendar:" if tz else
+                         f"Calendar (server time, {_dt.now().astimezone().tzname()}):")
             for e in events:
-                t = e.dtstart.strftime("%H:%M") if not e.all_day else "all day"
+                t = _daily_brief_local_start(e, tz).strftime("%H:%M") if not e.all_day else "all day"
                 loc = f" @ {e.location}" if e.location else ""
                 plain.append(f"  {t}  {e.summary}{loc}")
             plain.append("")
@@ -2206,7 +2355,8 @@ async def action_audit_skills(owner: str, **kwargs) -> Tuple[str, bool]:
         if not names:
             raise TaskNoop("no unaudited skills")
 
-        url, model, headers, teacher = _resolve_audit_models()
+        # `B1942`: the owner's own model and key, never an unfiltered endpoint.
+        url, model, headers, teacher = _resolve_audit_models(owner=owner)
         try:
             from src.llm_core import seconds_since_model_activity
             recent = seconds_since_model_activity(url, model)
@@ -2246,12 +2396,14 @@ async def action_audit_skills(owner: str, **kwargs) -> Tuple[str, bool]:
 
 async def action_ping_notes(owner: str, **kwargs) -> Tuple[str, bool]:
     """Background note-due scanner. Fires a reminder for any note whose
-    `due_date` falls in the current ±5-minute window and hasn't been pinged
-    within the last 25 minutes. Calendar reminders are stored as notes, so this
-    scanner carries them too.
+    `due_date` falls in the current ±90-second window and hasn't been
+    delivered through the configured channel within the last 25 minutes.
+    Calendar reminders are stored as notes, so this scanner carries them too.
 
-    State (`data/note_pings.json`): {note_id: iso_ts_of_last_ping}. Pruned
-    on each run by dropping entries for notes that are gone/archived/replied.
+    State (per owner, `data/note_pings_<owner>.json`): {note_id: {at, channel}},
+    the receipts `dispatch_reminder` writes; a plain timestamp from older code
+    counts as a browser-only receipt. Pruned on each run by dropping entries
+    for notes that are gone/archived/replied.
     """
     try:
         import json as _json
@@ -2259,6 +2411,13 @@ async def action_ping_notes(owner: str, **kwargs) -> Tuple[str, bool]:
         from datetime import datetime as _dt, timezone as _tz, timedelta as _td
         from pathlib import Path as _P
         from core.database import SessionLocal as _SL, Note as _N
+        from src.settings import load_settings
+
+        # `B1803`. Read as `dispatch_reminder` reads it, so a receipt and a
+        # result are judged by the channel the send actually used.
+        channel = load_settings().get("reminder_channel", "browser")
+        external_channel = channel in ("email", "ntfy", "webhook")
+        delivery_key = f"{channel}_sent" if external_channel else "browser_sent"
 
         # Per-owner state file so cache-pruning doesn't cross-delete other
         # users' entries (review C4). Legacy path kept as fallback so a
@@ -2327,20 +2486,28 @@ async def action_ping_notes(owner: str, **kwargs) -> Tuple[str, bool]:
                 due = _parse_due(n.due_date)
                 if not due:
                     continue
-                # Inside the ±5min window?
+                # Inside the ±WINDOW_SEC window?
                 if abs((due - now).total_seconds()) > window.total_seconds():
                     continue
-                # Recently pinged? Skip.
+                # Recently delivered? Skip. `B1803`: for email, ntfy or webhook
+                # only a receipt from that channel counts. A browser receipt
+                # (the in-app notice went out, the external send did not) is
+                # retried on the next scan, without a second in-app notice.
                 last = cache.get(n.id)
+                browser_recent = False
                 if last:
                     try:
+                        last_channel = None
                         if isinstance(last, dict):
+                            last_channel = last.get("channel")
                             last = last.get("at")
                         last_dt = _dt.fromisoformat(str(last))
                         if last_dt.tzinfo is None:
                             last_dt = last_dt.replace(tzinfo=_tz.utc)
                         if last_dt >= reping_cutoff:
-                            continue
+                            if not external_channel or last_channel == channel:
+                                continue
+                            browser_recent = last_channel in (None, "browser")
                     except Exception:
                         pass
                 # `B1191` (`D-2026-10-26-01` §5): held, not dropped, while Notes
@@ -2370,15 +2537,30 @@ async def action_ping_notes(owner: str, **kwargs) -> Tuple[str, bool]:
                 body = "\n\n".join(p for p in body_parts if p) or title
                 try:
                     from routes.note_routes import dispatch_reminder
-                    await dispatch_reminder(
+                    result = await dispatch_reminder(
                         title=title, note_body=body, note_id=n.id,
                         owner=n.owner or owner or "",
+                        queue_browser=not browser_recent,
                     )
-                    cache[n.id] = now.isoformat()
-                    sent.append(title)
+                    # `B1803`. The dispatcher writes the receipt, and only for
+                    # what it delivered; this used to stamp every note as sent,
+                    # so one failed email/ntfy/webhook send was never retried.
+                    if result.get("skipped"):
+                        continue
+                    if result.get(delivery_key):
+                        sent.append(title)
+                    else:
+                        logger.warning("ping_notes: %s delivery failed for %s: %s", channel, n.id,
+                                       result.get(f"{channel}_error") or "not delivered")
                 except Exception as e:
                     logger.warning(f"ping_notes: dispatch failed for {n.id}: {e}")
 
+            # `B1803`. Re-read the receipts the dispatches above just wrote, so
+            # the copy read at the start is not written back over them.
+            try:
+                cache = _json.loads(STATE.read_text(encoding="utf-8")) if STATE.exists() else {}
+            except Exception:
+                pass  # unreadable now: prune the copy read at the start, as before
             # Prune cache entries for notes that no longer exist.
             for stale in [k for k in cache if k not in seen_ids]:
                 cache.pop(stale, None)
@@ -2389,7 +2571,7 @@ async def action_ping_notes(owner: str, **kwargs) -> Tuple[str, bool]:
                 logger.warning(f"ping_notes: cache write failed: {e}")
 
             if not sent:
-                raise TaskNoop(f"scanned {len(notes)} note(s), none due in ±{WINDOW_SEC}s")
+                raise TaskNoop(f"scanned {len(notes)} note(s), no reminders delivered")
             preview = "; ".join(sent[:3])
             extra = f" (+{len(sent) - 3} more)" if len(sent) > 3 else ""
             return f"Pinged {len(sent)} note(s): {preview}{extra}", True
@@ -2400,6 +2582,109 @@ async def action_ping_notes(owner: str, **kwargs) -> Tuple[str, bool]:
     except Exception as e:
         logger.exception("ping_notes action failed")
         return str(e), False
+
+
+def _heuristic_email_verdict(item: dict, *, triage_version: int, category_tags) -> dict:
+    """The Email Tags verdict for one email, by keyword and with no model
+    call: `action_check_email_urgency` caches it as the whole classification.
+    `B1945`: at module level, so it can be tested.
+    """
+    import re as _re
+    import time as _time
+
+    blob = (
+        f"{item.get('headers','')}\n{item.get('from','')}\n"
+        f"{item.get('subject','')}\n{item.get('body','')}"
+    ).lower()
+    response_tags = []
+    type_candidates = []
+
+    def add_response(tag: str):
+        if tag in category_tags and tag not in response_tags:
+            response_tags.append(tag)
+
+    def add_type(tag: str):
+        if tag in category_tags and tag not in type_candidates:
+            type_candidates.append(tag)
+
+    bulkish = bool(_re.search(
+        r"\b(list-unsubscribe|list-id|mailchimp|mailchimpapp|view this email in your browser|unsubscribe|newsletter|digest|precedence:\s*bulk)\b",
+        blob,
+    ))
+    marketingish = bool(_re.search(
+        r"\b(advertisement|sponsored|promo|promotion|sale|discount|offer|limited time|deal|coupon|shop now|buy now|membership|rewards?)\b",
+        blob,
+    ))
+    if bulkish or marketingish:
+        add_type("newsletter")
+    if _re.search(r"\b(receipt|order|注文|payment confirmation|delivery|shipment|tracking|お届け|購入)\b", blob):
+        add_type("receipt")
+    if _re.search(r"\b(bill|billing|amount due|overdue|pay by|payment due|subscription could not be renewed)\b", blob):
+        add_type("bills")
+    if _re.search(r"\b(court|charge|legal|lawyer|solicitor|claim|judgment|registration fee|debt)\b", blob):
+        add_type("legal")
+    if _re.search(r"\b(flight|hotel|booking|reservation|itinerary|train|ticket|trip|旅|予約)\b", blob):
+        add_type("travel")
+    if _re.search(r"\b(ticket|case|support|helpdesk|request)\b", blob):
+        add_type("support")
+    if _re.search(r"\b(meeting|appointment|calendar|invite|event|schedule|予定|保育園|連絡帳)\b", blob):
+        add_response("calendar")
+    # `B1945`: an explicit ask or a consequence makes mail action-needed, and
+    # a bare billing word (invoice, payment, balance, subscription, renewal)
+    # no longer does, so a receipt or a statement is not. A declined card, a
+    # failed payment and an unpaid invoice are consequences.
+    explicit_ask = _re.search(
+        r"\b(action required|required action|please reply|please respond|deadline|by \d{1,2} |"
+        r"submit|sign|confirm|approval|waiting outside|locked out|can't get in|cannot get in)\b",
+        blob,
+    )
+    consequence = _re.search(
+        r"\b(pay within|pay by|payment due|amount due|overdue|final notice|past due|"
+        r"subscription could not be renewed|debt|court|legal|lawyer|solicitor|claim|judgment|"
+        r"payment (?:has )?failed|payment (?:was )?declined|card (?:was )?declined|unpaid|"
+        r"balance due|update your payment method)\b",
+        blob,
+    )
+    if explicit_ask or consequence:
+        add_response("action-needed")
+
+    type_priority = ("bills", "receipt", "travel")
+    tags = [*response_tags]
+    for type_tag in type_priority:
+        if type_tag in type_candidates and type_tag not in tags:
+            tags.append(type_tag)
+        if len(tags) >= len(response_tags) + 2:
+            break
+
+    score = 0
+    reason = "categorized by email metadata"
+    if "action-needed" in response_tags:
+        score = 2
+        reason = "action likely needed"
+    if _re.search(r"\b(urgent|immediately|final notice|locked out|waiting outside|can't get in|cannot get in)\b", blob):
+        score = 3
+        reason = "urgent wording"
+    if (bulkish or marketingish) and score < 2:
+        score = 0
+        reason = "bulk marketing/newsletter"
+
+    _from_raw = item.get("from", "") or ""
+    if "<" in _from_raw:
+        _from_short = _from_raw.split("<", 1)[0].strip().strip('"') or _from_raw
+    else:
+        _from_short = _from_raw
+    return {
+        "score": max(0, min(3, score)),
+        "tags": tags[:4],
+        "spam": False,
+        "reason": reason,
+        "subject": (item.get("subject") or "")[:200],
+        "from": _from_short[:120],
+        "triage_version": triage_version,
+        "message_id": (item.get("message_id") or "").strip(),
+        "unread": bool(item.get("unread")),
+        "ts": _time.time(),
+    }
 
 
 async def action_check_email_urgency(owner: str, **kwargs) -> Tuple[str, bool]:
@@ -2441,7 +2726,9 @@ async def action_check_email_urgency(owner: str, **kwargs) -> Tuple[str, bool]:
         CACHE_DIR.mkdir(parents=True, exist_ok=True)
         STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
         AGE_CUTOFF = _dt.utcnow() - _td(days=7)
-        TRIAGE_VERSION = 10
+        # `B1945`: 11 scores the cached verdicts of the old action rule again,
+        # once, with no model call; mail already notified is not notified again.
+        TRIAGE_VERSION = 11
         CATEGORY_TAGS = {
             "bills", "receipt", "travel", "calendar", "action-needed",
         }
@@ -2598,88 +2885,6 @@ async def action_check_email_urgency(owner: str, **kwargs) -> Tuple[str, bool]:
         tag_write_details = []
         scanned = 0
         fully_scanned_account_ids = set()
-
-        def _heuristic_email_verdict(item: dict) -> dict:
-            blob = (
-                f"{item.get('headers','')}\n{item.get('from','')}\n"
-                f"{item.get('subject','')}\n{item.get('body','')}"
-            ).lower()
-            response_tags = []
-            type_candidates = []
-
-            def add_response(tag: str):
-                if tag in CATEGORY_TAGS and tag not in response_tags:
-                    response_tags.append(tag)
-
-            def add_type(tag: str):
-                if tag in CATEGORY_TAGS and tag not in type_candidates:
-                    type_candidates.append(tag)
-
-            bulkish = bool(_re.search(
-                r"\b(list-unsubscribe|list-id|mailchimp|mailchimpapp|view this email in your browser|unsubscribe|newsletter|digest|precedence:\s*bulk)\b",
-                blob,
-            ))
-            marketingish = bool(_re.search(
-                r"\b(advertisement|sponsored|promo|promotion|sale|discount|offer|limited time|deal|coupon|shop now|buy now|membership|rewards?)\b",
-                blob,
-            ))
-            if bulkish or marketingish:
-                add_type("newsletter")
-            if _re.search(r"\b(receipt|order|注文|payment confirmation|delivery|shipment|tracking|お届け|購入)\b", blob):
-                add_type("receipt")
-            if _re.search(r"\b(bill|billing|amount due|overdue|pay by|payment due|subscription could not be renewed)\b", blob):
-                add_type("bills")
-            if _re.search(r"\b(court|charge|legal|lawyer|solicitor|claim|judgment|registration fee|debt)\b", blob):
-                add_type("legal")
-            if _re.search(r"\b(flight|hotel|booking|reservation|itinerary|train|ticket|trip|旅|予約)\b", blob):
-                add_type("travel")
-            if _re.search(r"\b(ticket|case|support|helpdesk|request)\b", blob):
-                add_type("support")
-            if _re.search(r"\b(meeting|appointment|calendar|invite|event|schedule|予定|保育園|連絡帳)\b", blob):
-                add_response("calendar")
-            if _re.search(
-                r"\b(action required|required action|please reply|please respond|deadline|by \d{1,2} |pay within|submit|sign|confirm|approval|waiting outside|locked out|can't get in|cannot get in|invoice|bill|billing|payment|balance|debt|subscription|renewal|overdue|amount due|court|charge|legal|lawyer|solicitor|claim|judgment)\b",
-                blob,
-            ):
-                add_response("action-needed")
-
-            type_priority = ("bills", "receipt", "travel")
-            tags = [*response_tags]
-            for type_tag in type_priority:
-                if type_tag in type_candidates and type_tag not in tags:
-                    tags.append(type_tag)
-                if len(tags) >= len(response_tags) + 2:
-                    break
-
-            score = 0
-            reason = "categorized by email metadata"
-            if "action-needed" in response_tags:
-                score = 2
-                reason = "action likely needed"
-            if _re.search(r"\b(urgent|immediately|final notice|locked out|waiting outside|can't get in|cannot get in)\b", blob):
-                score = 3
-                reason = "urgent wording"
-            if (bulkish or marketingish) and score < 2:
-                score = 0
-                reason = "bulk marketing/newsletter"
-
-            _from_raw = item.get("from", "") or ""
-            if "<" in _from_raw:
-                _from_short = _from_raw.split("<", 1)[0].strip().strip('"') or _from_raw
-            else:
-                _from_short = _from_raw
-            return {
-                "score": max(0, min(3, score)),
-                "tags": tags[:4],
-                "spam": False,
-                "reason": reason,
-                "subject": (item.get("subject") or "")[:200],
-                "from": _from_short[:120],
-                "triage_version": TRIAGE_VERSION,
-                "message_id": (item.get("message_id") or "").strip(),
-                "unread": bool(item.get("unread")),
-                "ts": _time.time(),
-            }
 
         # ── 3. Per-account scan: pull headers + lightweight body for new UIDs
         # since 7 days ago, score via LLM, cache the verdict.
@@ -2858,7 +3063,8 @@ async def action_check_email_urgency(owner: str, **kwargs) -> Tuple[str, bool]:
                 # Skip uids we couldn't fetch (no subject/from/body).
                 if not item.get("subject") and not item.get("from"):
                     continue
-                verdict = _heuristic_email_verdict(item)
+                verdict = _heuristic_email_verdict(
+                    item, triage_version=TRIAGE_VERSION, category_tags=CATEGORY_TAGS)
                 cache.setdefault("uids", {})[item["uid"]] = verdict
                 per_uid_scores[key] = verdict
                 saved_classifications += 1

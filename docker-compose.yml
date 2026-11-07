@@ -222,14 +222,18 @@ services:
         # and we carry on, letting searxng report anything genuinely wrong.
         /usr/local/searxng/.venv/bin/python /tmp/migrate-searxng-settings.py /etc/searxng/settings.yml || true
         exec /usr/local/searxng/entrypoint.sh
+    # `B2015`: the host side moves with SEARXNG_HOST_PORT, for a host whose 8080
+    # is taken (llama-server's default), and SEARXNG_BASE_URL, the address
+    # SearXNG's own pages link to, follows it. The app dials searxng:8080 on the
+    # compose network and the healthcheck dials 8080 inside, so neither moves.
     ports:
-      - "127.0.0.1:8080:8080"
+      - "127.0.0.1:${SEARXNG_HOST_PORT:-8080}:8080"
     volumes:
       - searxng-data:/etc/searxng
       - ./config/searxng/settings.yml:/tmp/searxng-settings.yml.template:ro,z
       - ./scripts/migrate_searxng_settings.py:/tmp/migrate-searxng-settings.py:ro,z
     environment:
-      - SEARXNG_BASE_URL=http://localhost:8080/
+      - SEARXNG_BASE_URL=http://localhost:${SEARXNG_HOST_PORT:-8080}/
       - SEARXNG_SECRET=${SEARXNG_SECRET:-}
     # The official searxng image runs as the non-root `searxng` user, but its
     # entrypoint still needs to chown /etc/searxng on first boot, drop privs via

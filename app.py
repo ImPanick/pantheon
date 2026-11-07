@@ -270,6 +270,14 @@ _TIMEOUT_EXEMPT_PREFIXES = (
 import re as _re_ceiling
 _TIMEOUT_EXEMPT_PATTERNS = (
     _re_ceiling.compile(r"^/api/workflows/[^/]+/nodes/[^/]+/test/?$"),
+    # `B1961`. *Compact* (`POST /api/session/{id}/compact`) asks the utility
+    # model and then the chat's own for the summary, each with the time a
+    # local reasoning model needs (`B1731`: 180 s local, 90 s remote), and
+    # condenses the chat itself when neither answers, so it is bounded
+    # already. Under the ceiling a slow summary was answered "Request exceeded
+    # 45s timeout" while the compaction finished behind that answer and
+    # rewrote the chat (`B1093`). Matched on the route path (`B1958`).
+    _re_ceiling.compile(r"^/api/session/[^/]+/compact/?$"),
 )
 
 
@@ -281,7 +289,10 @@ def _exempt_from_request_ceiling(path: str) -> bool:
 
 class _RequestTimeoutMiddleware(_BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
-        path = request.url.path or ""
+        # `B1958`. The route path, as `AuthMiddleware` reads it: under
+        # `--root-path`, `request.url.path` carries the prefix and no exemption
+        # above ever matched.
+        path = get_application_route_path(request.scope) or ""
         if _exempt_from_request_ceiling(path):
             return await call_next(request)
         try:
@@ -297,7 +308,9 @@ class _InteractiveActivityMiddleware(_BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
         from src.interactive_gate import should_track_interactive_request, track_interactive_request
 
-        path = request.url.path or ""
+        # `B1958`: the route path, so the page's own polls stay passive under
+        # `--root-path` instead of each stopping background work.
+        path = get_application_route_path(request.scope) or ""
         if not should_track_interactive_request(path, request.method):
             return await call_next(request)
         async def _stop_background():
@@ -926,6 +939,9 @@ def serve_generated_image(filename: str, request: Request):
         raise
     except Exception as _e:
         logger.warning("Image ownership verification failed for %r", filename, exc_info=_e)
+        # `B1922`: a check that could not be made is a refusal. This fell
+        # through and served the file, so a database error opened every image.
+        raise HTTPException(status_code=503, detail="Image ownership could not be verified")
     ext = filename.rsplit('.', 1)[-1].lower()
     mime = {
         "png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg",
@@ -937,6 +953,8 @@ def serve_generated_image(filename: str, request: Request):
     # filename never change. Cache them hard so the gallery doesn't
     # re-download every full-size image each time it's opened. `immutable`
     # tells the browser it never needs to revalidate within the max-age.
+    # `B1922`: `private`, so only that browser does; a shared cache in front
+    # of the app never hands one person's image to another.
     return FileResponse(
         str(img_path),
         media_type=mime,

@@ -6,6 +6,7 @@ Config stored in data/auth.json. Uses bcrypt directly.
 
 import copy
 import enum
+import functools
 import json
 import os
 import secrets
@@ -130,7 +131,7 @@ def _admin_privileges(registry: Dict[str, Any], grants: Dict[str, Any]) -> Dict[
 # Admins get everything — every key at its declared granted value (`B532`).
 ADMIN_PRIVILEGES = _admin_privileges(DEFAULT_PRIVILEGES, ADMIN_GRANTS)
 
-from src.constants import AUTH_FILE, PASSWORD_MIN_LENGTH
+from src.constants import AUTH_FILE, PASSWORD_MAX_BYTES, PASSWORD_MIN_LENGTH, USERNAME_MAX_LENGTH
 from src.owner_identity import RESERVED_AUTH_USERNAMES
 # One spelling for the two `auth.json` keys `P11-02` adds. They are defined in
 # `src/roles.py` beside the rules that govern them and imported here rather
@@ -149,6 +150,31 @@ TOKEN_TTL = 60 * 60 * 24 * 7  # 7 days
 RESERVED_USERNAMES = frozenset(RESERVED_AUTH_USERNAMES)
 
 
+def username_error(username: str | None) -> Optional[str]:
+    """`B1901`. Why a NEW username cannot be used, or `None` when it can.
+
+    The routes that name an account in the URL path (avatar, privileges,
+    role, rename, admin) cannot reach one whose name holds a `/` (the server
+    decodes `%2F` before it routes) or is `.` or `..` (the browser drops those
+    path segments), and a CR, LF or NUL breaks the person's loopback header
+    (`X-Pantheon-Owner`). `str.isprintable()` refuses those and every other
+    control or invisible character, a no-break space and a zero-width joiner
+    among them. Asked of a name being given (setup, sign-up, *Add user*, a
+    rename's new name), never of one an account already has, so an account
+    named before this rule still signs in and can be renamed out of it.
+    """
+    name = (username or "").strip()
+    if not name:
+        return "Username is required"
+    if len(name) > USERNAME_MAX_LENGTH:
+        return f"Username must be at most {USERNAME_MAX_LENGTH} characters"
+    if "/" in name or "\\" in name or not name.isprintable():
+        return "Username must not contain a slash, a backslash, or a control or invisible character"
+    if name in (".", ".."):
+        return 'Username cannot be "." or ".."'
+    return None
+
+
 def normalize_known_username(users: Dict[str, Any], username: str | None) -> Optional[str]:
     """Return a normalized username only when it exists in the auth user map."""
     key = str(username or "").strip().lower()
@@ -157,12 +183,41 @@ def normalize_known_username(users: Dict[str, Any], username: str | None) -> Opt
     return key
 
 
+# `B1812`. What every door that sets a password answers for one bcrypt cannot
+# take, in place of bcrypt's ValueError (a bare 500, or a traceback).
+PASSWORD_TOO_LONG = (f"Password must be at most {PASSWORD_MAX_BYTES} bytes: plain letters, "
+                     "digits and punctuation take one each, any other character two to four.")
+
+
+def password_too_long(password: str) -> bool:
+    """Whether ``password`` is longer than bcrypt takes (`B1812`)."""
+    return len(password.encode("utf-8")) > PASSWORD_MAX_BYTES
+
+
 def _hash_password(password: str) -> str:
+    if password_too_long(password):
+        raise ValueError(PASSWORD_TOO_LONG)
     return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
 
 
 def _verify_password(password: str, hashed: str) -> bool:
+    if password_too_long(password):
+        # `B1812`: bcrypt 5 raises here, and only for an account that exists, so
+        # a sign-in answered 500 for a real name and 401 for any other. bcrypt
+        # never kept more than 72 bytes of one, so this is a wrong password,
+        # checked at a wrong one's cost.
+        bcrypt.checkpw(b"", hashed.encode("utf-8"))
+        return False
     return bcrypt.checkpw(password.encode("utf-8"), hashed.encode("utf-8"))
+
+
+@functools.lru_cache(maxsize=1)
+def _dummy_password_hash() -> str:
+    """`B1812`. A bcrypt hash of a secret nobody holds, made once, at the cost a
+    stored one has, to check a password against when the account does not exist.
+    Made with bcrypt itself, not `_hash_password`, so a test's stand-in for that
+    can never leave a hash here that bcrypt cannot read."""
+    return bcrypt.hashpw(secrets.token_hex(16).encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
 
 
 class SetAdminResult(enum.Enum):
@@ -403,6 +458,7 @@ class AuthManager:
         """Return public auth policy constants for the frontend."""
         return {
             "password_min_length": PASSWORD_MIN_LENGTH,
+            "password_max_bytes": PASSWORD_MAX_BYTES,
             "reserved_usernames": sorted(RESERVED_USERNAMES),
             "signup_enabled": self.signup_enabled,
             "session_days": TOKEN_TTL // 86400,
@@ -672,7 +728,23 @@ class AuthManager:
         return copy.deepcopy(merged)
 
     def set_privileges(self, username: str, privileges: Dict[str, Any]) -> bool:
-        """Update privileges for a user. Can't modify admin privileges."""
+        """Update privileges for a user. Can't modify admin privileges.
+
+        Raises `src.roles.RoleError`, naming the first value that is not the
+        type its key declares, and then stores nothing (`B1900`).
+        """
+        from src.roles import RoleError, check_privilege_value
+
+        # `B1900`. Every value is checked before anything moves, by the rule a
+        # role's override is held to (`Law 14`). A person's own override
+        # outranks the role and was the one layer stored as sent: a string
+        # "false" read as on wherever a privilege is tested for truth, and a
+        # string daily limit raised in `int()` on each of that person's chat
+        # sends. `None` is not a value; it clears, below.
+        if not isinstance(privileges, dict):
+            raise RoleError("Privileges are an object of privilege names and values.")
+        changes = {k: None if v is None else check_privilege_value(k, v)
+                   for k, v in privileges.items() if k in DEFAULT_PRIVILEGES}
         username = username.strip().lower()
         with self._config_lock:
             if username not in self.users:
@@ -696,9 +768,7 @@ class AuthManager:
             # "whatever the role says".
             stored = self.users[username].get("privileges")
             current = dict(stored) if isinstance(stored, dict) else {}
-            for k, v in privileges.items():
-                if k not in DEFAULT_PRIVILEGES:
-                    continue
+            for k, v in changes.items():
                 if v is None:
                     current.pop(k, None)
                 else:
@@ -858,8 +928,18 @@ class AuthManager:
         Refuses to remove the last remaining admin so the instance can never
         be locked out of admin access; self-demotion is allowed as long as
         another admin remains. Admin status is re-checked live on every
-        request, so unlike delete/rename no session or token revocation is
-        needed — a demoted admin simply fails the next is_admin() gate.
+        request, so a demoted admin's browser sessions are kept and simply
+        fail the next is_admin() gate.
+
+        Their API tokens are not kept (`B1819`). Only an admin mints one and
+        only its owner, while an admin, revokes or narrows it, and a token keeps
+        whatever its scopes reach (cookbook and metrics answer a token by scope
+        and a browser by `require_operator`), so after a demotion they kept
+        working and nobody could revoke them. Demotion deletes them, a phone
+        pairing's included; that cannot be undone, and a later promotion does
+        not bring them back. The delete runs before the flag flips: if the
+        token store fails, the exception propagates and the person is still
+        an admin, as `delete_user` fails closed.
 
         Promotion stashes the user's current privilege map and demotion
         restores it, so a temporary admin stint can't silently broaden a
@@ -887,6 +967,17 @@ class AuthManager:
                 admin_count = sum(1 for d in self.users.values() if d.get("is_admin"))
                 if admin_count <= 1:
                     return SetAdminResult.LAST_ADMIN
+                # `B1819`. Their API tokens go with the role (see above), and
+                # the bearer map is told to rebuild, as for any token deleted.
+                from core.database import get_db_session, ApiToken
+                with get_db_session() as db:
+                    removed_tokens = db.query(ApiToken).filter(ApiToken.owner == username).delete()
+                from core.api_tokens import invalidate_token_cache
+                invalidate_token_cache()
+                if removed_tokens:
+                    logger.info(
+                        f"Revoked {removed_tokens} API token(s) owned by demoted admin '{username}'"
+                    )
             # Write order matters for lock-free readers: get_privileges()
             # reads without _config_lock and trusts is_admin, so the admin
             # flag must be flipped while the stored map is safe to expose —
@@ -1062,6 +1153,9 @@ class AuthManager:
     def verify_password(self, username: str, password: str) -> bool:
         username = username.strip().lower()
         if username not in self.users:
+            # `B1812`: the bcrypt work a wrong password costs, so the time the
+            # answer takes does not say whether the account exists.
+            _verify_password(password, _dummy_password_hash())
             return False
         return _verify_password(password, self.users[username]["password_hash"])
 

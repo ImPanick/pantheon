@@ -48,6 +48,21 @@ _LAN_NETWORKS = (
     ipaddress.ip_network("fc00::/7"),
 )
 
+#: `B1924`. Cloud metadata services that are not link-local, so the ranges
+#: above let them in: Alibaba Cloud ECS answers at 100.100.100.200 (in
+#: `100.64/10`) and AWS's IPv6 instance metadata at fd00:ec2::254 (in
+#: `fc00::/7`). `D-2026-10-25-02` keeps cloud metadata refused and `FORBIDDEN.md`
+#: Part 2 says the LAN opening is never metadata, yet with a grant the agent's
+#: `web_fetch` reached both. Refused whatever the setting (`_always_blocked`),
+#: as single-host networks rather than addresses, because a scoped literal
+#: (`fd00:ec2::254%eth0`) is not equal to the bare address but is inside its
+#: network. One list, public so the other validators (`url_safety`) can read
+#: the same one; nothing beside the two hosts is taken out of the LAN.
+CLOUD_METADATA_NETWORKS = (
+    ipaddress.ip_network("100.100.100.200/32"),
+    ipaddress.ip_network("fd00:ec2::254/128"),
+)
+
 
 # `B1459` — who the LAN loosening is FOR. `D-2026-10-25-02` §4: "Workstation
 # users get it… a non-workstation account keeps today's limits." And it is the
@@ -116,7 +131,8 @@ def _in_lan(addr: ipaddress._BaseAddress) -> bool:
 
 def _always_blocked(addr: ipaddress._BaseAddress) -> bool:
     """What no setting lets a fetch reach: loopback, link-local (cloud
-    metadata), multicast, reserved and the unspecified address."""
+    metadata), multicast, reserved and the unspecified address — and, `B1924`,
+    the cloud metadata hosts inside the LAN ranges (`CLOUD_METADATA_NETWORKS`)."""
     if isinstance(addr, ipaddress.IPv6Address) and addr.ipv4_mapped is not None:
         addr = addr.ipv4_mapped
     return (
@@ -126,6 +142,7 @@ def _always_blocked(addr: ipaddress._BaseAddress) -> bool:
         or addr.is_multicast
         or addr.is_unspecified
         or addr in ipaddress.ip_network("0.0.0.0/8")
+        or any(addr in net for net in CLOUD_METADATA_NETWORKS)
     )
 
 

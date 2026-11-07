@@ -720,6 +720,7 @@ A grab-bag of small gotchas that otherwise turn into long debugging sessions.
 - **Copy buttons do nothing over a plain-HTTP Tailscale/LAN URL.** Browsers only expose the clipboard API (`navigator.clipboard`) on **secure origins** — HTTPS, or `localhost`. Over `http://100.x.y.z:7860` it is blocked. Serve over HTTPS (see *HTTPS + LAN/Tailscale exposure* above); `localhost` is exempt, so copy still works on the host itself.
 - **Self-hosted ntfy reminders don't reach your phone.** Two things: (1) the bundled ntfy binds to loopback by default — to reach it from your phone set `NTFY_BIND` to your host/Tailscale IP and `NTFY_BASE_URL` to the same server URL in `.env`, then recreate the ntfy container (see the `NTFY_*` block in `.env.example`); (2) in the ntfy **Android** app, subscribe to the topic with **Instant delivery** enabled — non-`ntfy.sh` servers don't get instant push otherwise.
 - **Local mail (Dovecot) login fails: "Plaintext authentication disallowed on non-encrypted connections."** Your IMAP/SMTP server is refusing cleartext auth over an unencrypted link. Prefer enabling TLS on the mail server; on a trusted LAN only, you can allow cleartext (Dovecot: `disable_plaintext_auth = no`).
+- **A mail account stops with "showed a different certificate from the one this account trusts" or "showed a certificate no trusted authority signed".** Pantheon checks the mail server's certificate before it sends a password or a sign-in token. A public host such as `imap.example.com` has to show a certificate an authority signed for its name, as every mail provider's does. A host on your own network has its first certificate remembered, and a different one later is refused. That covers a private or Tailscale address, a name with no dot such as `dovecot`, and a name ending `.lan`, `.local`, `.internal` or `.home.arpa`. If you replaced the server's certificate, or your own server answers on a public name with a self-signed one, open the account in Settings → Email and press **Test**. Check the fingerprint it shows against your server's, then press **Trust this certificate**. A mail provider's own hosts (Gmail's, Outlook's) are never trusted by hand. The remembered certificates are kept per member in `data/mail_tls_pins.json`.
 - **Calendar/contacts (Radicale) won't sync.** Point Pantheon at the **full collection URL** with its trailing slash — e.g. `http://host:5232/<user>/<collection-id>/` — not just the server root. Radicale shows this address for each calendar/address book in its web UI.
 
 ### Speech on a native install
@@ -989,7 +990,7 @@ Common internal-only ports from the default docs/compose setup:
 | Port | Service |
 |---|---|
 | `7000` | Pantheon raw app port |
-| `8080` | SearXNG |
+| `8080` | SearXNG (moved with `SEARXNG_HOST_PORT`) |
 | `8091` | ntfy |
 | `8100` | ChromaDB host port for manual/compose access |
 | `11434` | Ollama |
@@ -1023,6 +1024,7 @@ Key settings:
 | `LLM_HOSTS` | -- | Comma-separated list for model discovery |
 | `OPENAI_API_KEY` | -- | Optional OpenAI key. Prefer adding providers in the app unless pre-seeding. |
 | `SEARXNG_INSTANCE` | `http://localhost:8080` | SearXNG URL. Docker overrides this to `http://searxng:8080`. |
+| `SEARXNG_HOST_PORT` | `8080` | Docker Compose host port for the bundled SearXNG, on loopback. Change it when 8080 is taken, for example by llama-server's default, and recreate the stack. The app keeps reaching SearXNG at `http://searxng:8080` inside the compose network; a native install using this SearXNG sets `SEARXNG_INSTANCE` to the new port. |
 | `SEARXNG_SECRET` | generated on first Docker boot | Optional SearXNG cookie/CSRF secret. Leave blank unless you need to pin it. |
 | `SEARXNG_GENERAL_ENGINES` | `bing,mojeek,presearch` | Which engines general queries are sent to. See **What self-hosted search does and does not mean** below. |
 | `SEARXNG_WIDEN_ENGINES` | `0` | Allow a failed search to retry with the instance's *default* engines. Off — see below. |

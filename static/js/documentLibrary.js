@@ -3808,7 +3808,14 @@ let _libraryFolderCounts = { unfiled: 0, all: 0 };
                   card.style.transform = 'scale(0.95)';
                 }
                 await new Promise(r => setTimeout(r, 250));
-                await fetch('/api/research/' + rid, { method: 'DELETE', credentials: 'same-origin' });
+                // `B1994`: the card leaves only if the server deleted the
+                // report; a refusal or a dropped request brings it back.
+                const [outcome] = await _researchTidyOutcomes([{ item: { id: rid } }]);
+                if (!outcome.ok) {
+                  if (card) { card.style.opacity = ''; card.style.transform = ''; }
+                  if (uiModule) uiModule.showError(`Could not delete this research report — ${outcome.why}`);
+                  return;
+                }
                 _researchItems = _researchItems.filter(r => r.id !== rid);
                 _renderResearchGrid();
               } },
@@ -3978,12 +3985,20 @@ let _libraryFolderCounts = { unfiled: 0, all: 0 };
         });
       }
       await new Promise(r => setTimeout(r, 250));
-      await Promise.all([..._researchSelected].map(rid => fetch('/api/research/' + rid, { method: 'DELETE', credentials: 'same-origin' })));
-      _researchItems = _researchItems.filter(r => !_researchSelected.has(r.id));
-      _researchSelected.clear();
-      _researchSelectMode = false;
-      document.getElementById('doclib-research-bulk').classList.add('hidden');
+      // `B1994`: only the reports the server deleted leave the grid and the
+      // selection. The rest are drawn again, still selected, so the person
+      // reads why and can press Delete again.
+      const outcomes = await _researchTidyOutcomes([..._researchSelected].map(id => ({ item: { id } })));
+      const gone = new Set(outcomes.filter(o => o.ok).map(o => o.id));
+      _researchItems = _researchItems.filter(r => !gone.has(r.id));
+      gone.forEach(id => _researchSelected.delete(id));
+      if (!_researchSelected.size) {
+        _researchSelectMode = false;
+        document.getElementById('doclib-research-bulk').classList.add('hidden');
+      }
       _renderResearchGrid();
+      _updateResearchCount();
+      if (gone.size < outcomes.length && uiModule) uiModule.showError(_researchTidyReport(outcomes).text);
     });
 
     // Research bulk archive / restore
@@ -4116,8 +4131,14 @@ let _libraryFolderCounts = { unfiled: 0, all: 0 };
       // `P23-05` (DOCS-U-5, Doc 2 § 5): three sentences, no rows — the 360 px
       // dialog cut the rows' second halves, which were the half that said what
       // leaves the machine. What it does, what it sends, what it leaves alone.
+      // `B1948`: a title alone no longer deletes what holds text, and the
+      // model reads each document's first lines, not only its title. What the
+      // model calls junk is still deleted for good; archiving it instead is
+      // the owner's call.
       const okTidy = await uiModule.styledConfirm(
-        'Deletes empty and junk documents for good. Your model picks the junk from up to 30 titles. '
+        'Deletes empty and junk documents for good. '
+          + 'Your model picks the junk from up to 30 titles and their first lines. '
+          + 'A document with text, now or in a saved version, is never deleted for its title alone. '
           + 'The last 15 minutes and the archive are left alone.',
         {
           title: 'Tidy documents',

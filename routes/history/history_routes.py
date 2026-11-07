@@ -8,11 +8,11 @@ import logging
 import re
 from typing import Dict, Any, Optional
 
-from fastapi import APIRouter, Request, HTTPException
+from fastapi import APIRouter, Depends, Request, HTTPException
 
 from core.models import ChatMessage, is_unanswered_reply
 from core.database import SessionLocal, ChatMessage as DbChatMessage, Session as DbSession
-from src.auth_helpers import effective_user
+from src.auth_helpers import effective_user, require_chat_api_token_scope
 from src.chat_helpers import CHAT_GONE   # `B1216`
 from src.tool_approval_scopes import sanitize_client_message_metadata
 from src.agent_stops import RUN_KEYS, is_continue_prompt, merge_runs   # `B941`
@@ -109,6 +109,39 @@ def _merge_continue_rows_to_delete(db_messages, db1, db2):
         if getattr(between, "role", "") == "user" and is_continue_prompt(getattr(between, "content", "") or ""):
             to_delete.append(between)
     return to_delete
+
+
+def _continue_prompt_between(messages, idx1: int, idx2: int) -> bool:
+    """`B2016`. Whether ``messages[idx2]`` is a Continue's reply to
+    ``messages[idx1]``: the message just before it, after the first reply, is
+    a prompt a Continue sent (`is_continue_prompt`, which knows the step
+    limit's as well as the interrupted reply's). Read as the merge reads a
+    message: a ``ChatMessage``, a dict or a stored row."""
+    if not (0 <= idx1 < idx2 - 1 and idx2 < len(messages)):
+        return False
+    between = messages[idx2 - 1]
+    if isinstance(between, dict):
+        role, content = between.get("role", ""), between.get("content", "")
+    else:
+        role, content = getattr(between, "role", ""), getattr(between, "content", "")
+    return role == "user" and is_continue_prompt(content)
+
+
+def _keep_count_through_message(history, msg_id) -> Optional[int]:
+    """`B1986`. How many of ``history``'s rows a fork through the message
+    ``msg_id`` copies: every row up to and including the one whose ``_db_id``
+    it is. ``None`` when this chat holds no such row, and then nothing is
+    forked."""
+    wanted = str(msg_id or "").strip()
+    if not wanted:
+        return None
+    for position, message in enumerate(history or []):
+        metadata = getattr(message, "metadata", None)
+        if metadata is None and isinstance(message, dict):
+            metadata = message.get("metadata")
+        if isinstance(metadata, dict) and str(metadata.get("_db_id") or "") == wanted:
+            return position + 1
+    return None
 
 
 def _paused_at_approval(meta) -> bool:
@@ -240,6 +273,44 @@ def _resolve_user_message_cut(session, spec: Dict[str, Any]):
     return position, None
 
 
+async def _json_object(request: Request) -> Dict[str, Any]:
+    """`B1827`. The request's JSON body, which must be an object.
+
+    A list, a string, a number or `null` went straight on and the first
+    `body.get(...)` raised `AttributeError`; a body that was not JSON raised in
+    `request.json()` itself. Both surfaced as a 500. They are the caller's
+    mistake, so they are a 400 that says what the body must be.
+    """
+    try:
+        body = await request.json()
+    except ValueError:  # `json.JSONDecodeError`, or bytes that are not UTF-8
+        raise HTTPException(400, "Request body must be valid JSON") from None
+    if not isinstance(body, dict):
+        raise HTTPException(400, "Request body must be a JSON object")
+    return body
+
+
+_DIGITS = re.compile(r"[0-9]+")
+
+
+def _row_count(value: Any) -> int:
+    """`B1827`. `keep_count` as what it has to be: a whole number of rows, 0 or more.
+
+    It went to `truncate_messages` as it came, which slices the stored rows at
+    it. JSON `false` passed its `keep_count < 0` check (`False < 0` is false)
+    and sliced from row 0, deleting every message in the chat; `true` kept one
+    row; a string, `null`, a list or an object raised inside it (a 500); and a
+    fraction or a negative number answered 200 having cut nothing. Anything
+    but a whole number of rows is now refused before anything is read or
+    removed; a count written as digits (`"2"`) is one, as upstream keeps it.
+    """
+    if isinstance(value, str) and _DIGITS.fullmatch(value.strip()):
+        value = int(value.strip())
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise HTTPException(400, "keep_count must be a whole number of messages, 0 or more")
+    return value
+
+
 def _last_request_breakdown(history) -> Optional[dict]:
     """The `context_breakdown` the most recent reply was sent with, or None.
     `B1731`: a compaction copies it onto its marker, so the wheel keeps
@@ -265,6 +336,25 @@ def _window_used_tokens(session) -> int:
         return max(used, int(breakdown.get("total_tokens") or 0))
     except Exception:
         return used
+
+
+def _stored_since(snapshot: list, current: list) -> list:
+    """`B1961`. The messages stored after ``snapshot`` was read, when the chat
+    (``current``) still begins with it. None when it was rewritten meanwhile:
+    a compaction then writes what it wrote, as it always did."""
+    current = list(current or [])
+    if len(current) <= len(snapshot):
+        return []
+
+    def same(read, now) -> bool:
+        if read is now:
+            return True
+        read_id = (getattr(read, "metadata", None) or {}).get("_db_id")
+        return read_id is not None and read_id == (getattr(now, "metadata", None) or {}).get("_db_id")
+
+    if not all(same(read, now) for read, now in zip(snapshot, current)):
+        return []
+    return current[len(snapshot):]
 
 
 async def _wheel_window(request: Request, session, row) -> tuple:
@@ -304,7 +394,14 @@ async def _wheel_window(request: Request, session, row) -> tuple:
 
 
 def setup_history_routes(session_manager, upload_handler=None) -> APIRouter:
-    router = APIRouter(tags=["history"])
+    # `B1817`. The chat scope, as on the chat and session routers (`B70`): this
+    # router reads and rewrites the same conversations, so a token minted for
+    # metrics or todos must not reach a chat through it either. A browser
+    # session and the agent's loopback are not tokens and are not asked.
+    router = APIRouter(
+        tags=["history"],
+        dependencies=[Depends(require_chat_api_token_scope)],
+    )
 
     def _reserve_message_uploads(
         request: Request,
@@ -561,7 +658,7 @@ def setup_history_routes(session_manager, upload_handler=None) -> APIRouter:
         """
         await asyncio.to_thread(_verify_session_owner, request, session_id)
         try:
-            body = await request.json()
+            body = await _json_object(request)   # `B1827`
             spec = body.get("from_user_message")
             if isinstance(spec, dict):
                 try:
@@ -574,7 +671,7 @@ def setup_history_routes(session_manager, upload_handler=None) -> APIRouter:
                     # Nothing is removed, so the caller must not send either.
                     raise HTTPException(409, refusal)
             elif "keep_count" in body:
-                keep_count = body.get("keep_count", 0)
+                keep_count = _row_count(body["keep_count"])   # `B1827`
             else:
                 raise HTTPException(400, "keep_count or from_user_message is required")
             result = session_manager.truncate_messages(session_id, keep_count)
@@ -592,11 +689,23 @@ def setup_history_routes(session_manager, upload_handler=None) -> APIRouter:
         """Add a message to a session (for slash command persistence)."""
         await asyncio.to_thread(_verify_session_owner, request, session_id)
         try:
-            body = await request.json()
+            body = await _json_object(request)   # `B1828`, as the truncate route
             role = body.get("role", "assistant")
             content = body.get("content", "")
+            # `B1828`. A row stored here goes into every later prompt with its
+            # role as written (`Session.get_context_messages`), and
+            # `_sanitize_llm_messages` passes any role and any content on. An
+            # unknown role or content that is not text is refused by an
+            # OpenAI-compatible provider, so one such row failed the chat on
+            # every turn after it; a `system` row is an instruction nobody in
+            # the chat wrote. The one caller, slash-command persistence, sends
+            # a `user` or `assistant` string.
+            if role not in ("user", "assistant"):
+                raise HTTPException(400, "role must be 'user' or 'assistant'")
             if not content:
                 raise HTTPException(400, "content is required")
+            if not isinstance(content, str):
+                raise HTTPException(400, "content must be a string")
             # `B1005`. The caller's blob, as `inject_messages` treats it (`B70`):
             # the keys only the server writes — an approval card, a grant, the
             # seal that a person said this — are dropped before it is stored.
@@ -915,6 +1024,15 @@ def setup_history_routes(session_manager, upload_handler=None) -> APIRouter:
                     return {"status": "ok", "merged": False}
 
                 idx1, idx2 = ai_indices[-2], ai_indices[-1]
+                # `B2016`. Only a Continue's reply is joined to the reply before
+                # it. The browser asks for this merge whenever a Continue's
+                # stream ends cleanly, and a continuation can end with no reply
+                # stored: an answer that only reasoned, an Incognito turn, a row
+                # the database refused. The last two replies were then the
+                # stopped one and the answer before it, and the stopped reply
+                # was folded into that answer, leaving its question with none.
+                if not _continue_prompt_between(session.history, idx1, idx2):
+                    return {"status": "ok", "merged": False, "reason": "no_continue_marker"}
                 msg1, msg2 = session.history[idx1], session.history[idx2]
 
                 content1 = msg1.content if isinstance(msg1, ChatMessage) else msg1.get('content', '')
@@ -963,19 +1081,30 @@ def setup_history_routes(session_manager, upload_handler=None) -> APIRouter:
                     # Find last two assistant messages in DB
                     ai_db = [(i, m) for i, m in enumerate(db_messages) if m.role == 'assistant']
                     if len(ai_db) >= 2:
-                        (_, db1), (_, db2) = ai_db[-2], ai_db[-1]
-                        db1.content = merged_content
-                        db1.meta_data = _json.dumps(merged_meta)
+                        (i1, db1), (i2, db2) = ai_db[-2], ai_db[-1]
+                        # `B2016`: the rows by the same rule. Memory can hold a
+                        # continuation the database never stored (a refused
+                        # insert is logged and rolled back), and then the last
+                        # two rows were the answer before and the stopped reply:
+                        # the answer's row took the continuation's words and the
+                        # stopped reply's row was deleted.
+                        if _continue_prompt_between(db_messages, i1, i2):
+                            db1.content = merged_content
+                            db1.meta_data = _json.dumps(merged_meta)
 
-                        # Mirror the in-memory deletion: remove the second assistant
-                        # message and ONLY the "continue" user message between them
-                        # (not arbitrary tool/system/user rows). The old
-                        # range-delete destroyed every row between the two assistant
-                        # messages, desyncing the DB from the in-memory history.
-                        for _row in _merge_continue_rows_to_delete(db_messages, db1, db2):
-                            db.delete(_row)
+                            # Mirror the in-memory deletion: remove the second assistant
+                            # message and ONLY the "continue" user message between them
+                            # (not arbitrary tool/system/user rows). The old
+                            # range-delete destroyed every row between the two assistant
+                            # messages, desyncing the DB from the in-memory history.
+                            for _row in _merge_continue_rows_to_delete(db_messages, db1, db2):
+                                db.delete(_row)
 
-                        db.commit()
+                            db.commit()
+                        else:
+                            logger.warning(
+                                "Merge %s: no Continue prompt stands between the last two stored "
+                                "replies; the stored rows are left as they are", session_id)
                 finally:
                     db.close()
                 session_manager.save_sessions()
@@ -989,7 +1118,8 @@ def setup_history_routes(session_manager, upload_handler=None) -> APIRouter:
 
     @router.post("/api/session/{session_id}/fork")
     async def fork_session(request: Request, session_id: str):
-        """Create a new session with messages copied up to keep_count."""
+        """Create a new session with messages copied up to keep_count, or
+        through the message `through_msg_id` names (`B1986`)."""
         await asyncio.to_thread(_verify_session_owner, request, session_id)
         try:
             body = await request.json()
@@ -1005,6 +1135,17 @@ def setup_history_routes(session_manager, upload_handler=None) -> APIRouter:
                 raise HTTPException(404, CHAT_GONE)
             if not source:
                 raise HTTPException(404, CHAT_GONE)
+
+            # `B1986`. A message's Fork names its reply by the row's id. The
+            # `keep_count` it sent was the bubble's place among the bubbles on
+            # the page, which counts rows only while the whole chat is drawn
+            # and no reply is drawn as two bubbles. `/fork N` sends a count,
+            # and a count is answered as it always was (`Law 1`).
+            through_msg_id = body.get("through_msg_id")
+            if through_msg_id not in (None, ""):
+                keep_count = _keep_count_through_message(source.history, through_msg_id)
+                if keep_count is None:
+                    raise HTTPException(404, "That message is no longer in this chat — reload and try again.")
 
             # Create new session
             new_id = str(uuid.uuid4())
@@ -1219,6 +1360,14 @@ def setup_history_routes(session_manager, upload_handler=None) -> APIRouter:
                           **({"context_breakdown": last_request} if last_request else {})},
             )
             new_history = [system_summary, summary_msg] + list(recent)
+            # `B1961`. A turn the person sent while the summary was being
+            # written is newer than everything read above. It is kept, after
+            # the kept messages, instead of going with the rows this rewrite
+            # deletes.
+            try:
+                new_history += _stored_since(history, session_manager.get_session(session_id).history)
+            except KeyError:
+                pass
 
             # `B1506`. The stored order is the order in memory: the whole
             # history in one transaction, in order, through the seam

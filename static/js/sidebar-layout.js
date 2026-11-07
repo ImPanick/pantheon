@@ -326,7 +326,18 @@ export function initSidebarLayout(Storage, opts) {
     }
   }
 
+  // `B1960`. A resize that leaves the width as it was is the on-screen
+  // keyboard: `index.html` asks for `interactive-widget=resizes-content`, so
+  // on Chromium the keyboard resizes the page. Taken for a window resize, it
+  // cleared `_userToggledSidebar` and the check shut the phone's drawer behind
+  // a prompt typed into from it. `_guardSidebarDuringRename` is the older,
+  // narrower defence, for a rename's input alone. A width change (a phone
+  // turned, a window narrowed or widened) collapses and restores as before.
+  let _lastResizeWidth = window.innerWidth;
   window.addEventListener('resize', () => {
+    const w = window.innerWidth;
+    if (w === _lastResizeWidth) return;
+    _lastResizeWidth = w;
     _userToggledSidebar = false; // allow auto-collapse on actual resize
     requestAnimationFrame(checkSidebarAutoCollapse);
   });

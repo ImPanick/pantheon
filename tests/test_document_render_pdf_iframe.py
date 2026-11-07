@@ -32,6 +32,8 @@ class _FakeURL:
 class _FakeRequest:
     def __init__(self, path: str):
         self.url = _FakeURL(path)
+        # `B1957`: the middleware classifies by the route path in the scope.
+        self.scope = {"type": "http", "path": path, "root_path": ""}
         self.headers = {}
         self.state = SimpleNamespace()
 

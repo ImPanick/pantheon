@@ -36,6 +36,7 @@ def _load_mail_cli(monkeypatch):
     helpers._extract_text = lambda msg: ""
     helpers._extract_html = lambda msg: ""
     helpers._list_attachments_from_msg = lambda msg: []
+    helpers._send_smtp_message = lambda cfg, sender, recipients, raw: None
     pollers = ModuleType("routes.email_pollers")
     pollers._scheduled_poll_once = lambda: {}
     pollers._run_auto_summarize_once = lambda **kwargs: ""

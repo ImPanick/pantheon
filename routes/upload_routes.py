@@ -25,7 +25,8 @@ from core.database import (
     Note,
     Session as DbSession,
 )
-from src.auth_helpers import effective_user
+from src.auth_helpers import effective_user, is_delegated_credential
+from src.owner_identity import is_request_sentinel_owner
 from src.attachment_refs import attachment_refs_from_metadata
 # `P21-03`: the person's name for a file, and the download header that keeps it.
 from src.file_names import attachment_disposition, upload_display_name
@@ -71,6 +72,43 @@ UPLOAD_RESPONSE_HEADERS = {"X-Content-Type-Options": "nosniff"}
 # the precedent: a decision the server has already made, published rather than
 # re-derived in the browser.
 UPLOAD_KIND_HEADER = "X-Upload-Kind"
+
+
+# `B1820`. What a bearer token may do with uploads. A token is not its owner's
+# browser (`B70`): only an admin mints one, so its owner is always an admin, and
+# the owner gates below, which let an admin's browser reach any upload, would
+# let any token do the same. A token needs an upload scope instead, named as
+# `routes/api_token_routes.ALLOWED_SCOPES` names them: `chat` (a paired phone
+# attaches a picture to a chat), or `documents:read` to read and
+# `documents:write` to write. Running vision on a file reads it, as upstream
+# has it.
+UPLOAD_READ_SCOPES = frozenset({"chat", "documents:read", "documents:write"})
+UPLOAD_WRITE_SCOPES = frozenset({"chat", "documents:write"})
+
+
+def _token_upload_gate(request, file_owner: Optional[str] = None, *,
+                       write: bool, check_owner: bool = True) -> None:
+    """Refuse a bearer token what it may not do with an upload; anything that
+    is not a token passes untouched.
+
+    `B1820`. Asked before the browser's owner gate, which is unchanged. A token
+    needs one of the scopes above (403, in `require_api_token_scope`'s words)
+    and an owner (403), and reaches only its owner's own files: another
+    person's file, or a row with no owner, answers 404, as it does for anyone
+    else who may not see it.
+    """
+    if not is_delegated_credential(request):
+        return
+    wanted = UPLOAD_WRITE_SCOPES if write else UPLOAD_READ_SCOPES
+    scopes = set(getattr(request.state, "api_token_scopes", None) or [])
+    if not scopes & wanted:
+        raise HTTPException(
+            403, "API token missing required scope: " + " or ".join(sorted(wanted)))
+    owner = getattr(request.state, "api_token_owner", None)
+    if not owner or is_request_sentinel_owner(owner):
+        raise HTTPException(403, "API token has no owner")
+    if check_owner and (file_owner is None or file_owner != owner):
+        raise HTTPException(404, "File not found")
 
 
 # `B403`. The SVG preview gate's verdict, remembered per file version.
@@ -405,6 +443,8 @@ def setup_upload_routes(upload_handler):
         session_id: Optional[str] = Form(None),
     ):
         """Upload files with enhanced security and organization."""
+        # `B1820`. A token needs a write scope and an owner before anything is saved.
+        _token_upload_gate(request, write=True, check_owner=False)
         if not isinstance(session_id, str):
             session_id = None
         if not files:
@@ -823,6 +863,7 @@ def setup_upload_routes(upload_handler):
         auth_configured = bool(auth_mgr and auth_mgr.is_configured)
         current_user = effective_user(request)
         file_owner = info.get("owner") if info else None
+        _token_upload_gate(request, file_owner, write=False)   # `B1820`; HEAD comes here too
         if auth_configured:
             if not current_user:
                 raise HTTPException(403, "Access denied")
@@ -1022,6 +1063,7 @@ def setup_upload_routes(upload_handler):
         auth_configured = bool(auth_mgr and auth_mgr.is_configured)
         current_user = effective_user(request)
         file_owner = info.get("owner") if info else None
+        _token_upload_gate(request, file_owner, write=False)   # `B1820`
         if auth_configured:
             if not current_user:
                 raise HTTPException(403, "Access denied")
@@ -1077,6 +1119,7 @@ def setup_upload_routes(upload_handler):
         auth_configured = bool(auth_mgr and auth_mgr.is_configured)
         current_user = effective_user(request)
         file_owner = info.get("owner")
+        _token_upload_gate(request, file_owner, write=True)   # `B1820`
         if auth_configured:
             if not current_user:
                 raise HTTPException(403, "Access denied")

@@ -59,9 +59,10 @@ def test_generated_image_headers_include_nosniff():
     generated_images = _generated_images_module()
 
     assert generated_images.GENERATED_IMAGE_HEADERS["X-Content-Type-Options"] == "nosniff"
+    # `B1922`: `private` — a shared cache must not keep one person's image for another.
     assert (
         generated_images.GENERATED_IMAGE_HEADERS["Cache-Control"]
-        == "public, max-age=31536000, immutable"
+        == "private, max-age=31536000, immutable"
     )
 
 

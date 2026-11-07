@@ -172,7 +172,11 @@ async def _local_model_slot(target_url: str, model: str, workload: Optional[str]
         })
         yield
     finally:
-        if kind == "foreground":
+        # `B2024`. A call that got the lock came off the count then; only one
+        # that never got it (cancelled or failed while waiting) comes off
+        # here. Taking it off twice made the count miss a request still
+        # waiting, and let background work queue ahead of it.
+        if kind == "foreground" and not acquired:
             _LOCAL_MODEL_WAITING_FOREGROUND = max(0, _LOCAL_MODEL_WAITING_FOREGROUND - 1)
         if acquired and _LOCAL_MODEL_LOCK.locked():
             owner = _LOCAL_MODEL_CURRENT.get("task")
@@ -1523,8 +1527,10 @@ def _build_chatgpt_responses_payload(
         "stream": stream,
         "store": False,
     }
-    if not _restricts_temperature(model):
-        payload["temperature"] = temperature
+    # `B1787`: ChatGPT plan Responses requests reject temperature for every
+    # model. The common caller still passes its preset value, but this
+    # provider must omit the field even for model names outside the known
+    # reasoning families.
     # ChatGPT Subscription Codex API does not support max_output_tokens —
     # passing it returns HTTP 400 "Unsupported parameter: max_output_tokens".
     # Do not include it in the payload.
@@ -1590,6 +1596,32 @@ def _format_upstream_error(status: int, body: bytes | str, url: str, *, model: s
     if status >= 500:
         return f"{provider} is having an outage (HTTP {status})." + (f" {detail}" if detail else "")
     return f"{provider} returned HTTP {status}" + (f": {detail}" if detail else "")
+
+
+# `B1989`. What a server answers when it will not take a request's `tools`
+# array at all, whatever the request asks: vLLM started without
+# `--enable-auto-tool-choice` and `--tool-call-parser` says *'"auto" tool
+# choice requires --enable-auto-tool-choice and --tool-call-parser to be set'*,
+# and the other wordings are the same refusal from other servers. The markers
+# are upstream Odysseus's (`84aa9a91`).
+_TOOLS_TRANSPORT_REFUSALS = (
+    "enable-auto-tool-choice",
+    "tool-call-parser",
+    "tool_call_parser",
+    "tool choice is not supported",
+    "tool_choice is not supported",
+    "tools are not supported",
+    "function calling is not supported",
+    "function_calling is not supported",
+)
+
+
+def tools_transport_refused(error_text: Optional[str]) -> bool:
+    """`B1989`. Does this provider error (an `event: error` chunk or its text)
+    say the server refuses native tool calls as such? Pure: the agent loop
+    decides what a refusal changes, and only for a route nobody declared."""
+    text = str(error_text or "").lower()
+    return any(marker in text for marker in _TOOLS_TRANSPORT_REFUSALS)
 
 # Models that require max_completion_tokens instead of max_tokens
 _MAX_COMPLETION_TOKENS_MODELS = {"o1", "o3", "o4", "gpt-4.5", "gpt-5"}

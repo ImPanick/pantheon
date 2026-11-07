@@ -480,6 +480,9 @@ class BashTool:
             try:
                 proc = await _create_bash_subprocess(
                     report.wrap(content) if report else content,
+                    # `B1993`: not the server's own stdin, which on a native
+                    # install started in a terminal is the person's.
+                    stdin=asyncio.subprocess.DEVNULL,
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE,
                     env=_subproc_env,
@@ -515,6 +518,7 @@ class PythonTool:
         cwd, notes = host_start_folder(key, agent_cwd())
         proc = await asyncio.create_subprocess_exec(
             (sys.executable or "python"), "-I", "-c", content,
+            stdin=asyncio.subprocess.DEVNULL,   # `B1993`, as bash above
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             env=_subproc_env,

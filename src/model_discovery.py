@@ -232,7 +232,11 @@ class ModelDiscovery:
             data = r.json()
             # Some OpenAI-compatible servers return a bare list, not {"data": [...]}.
             items = data if isinstance(data, list) else ((data or {}).get("data") or [])
-            ids = [m.get("id") for m in items if isinstance(m, dict) and m.get("id")]
+            # `B2023`: only a non-empty string names a model, the rule of
+            # `routes/model_routes._openai_model_ids`. A row whose id is a
+            # number or a list hid the server's every model (`lstrip` below).
+            ids = [m["id"] for m in items
+                   if isinstance(m, dict) and isinstance(m.get("id"), str) and m["id"]]
             if ids:
                 return {
                     "host": host,

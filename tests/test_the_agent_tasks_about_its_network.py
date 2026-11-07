@@ -187,11 +187,27 @@ def test_the_lan_is_reachable_when_reach_is_on(addr):
     assert of._is_private_address(ipaddress.ip_address(addr), allow_lan=False) is True
 
 
-@pytest.mark.parametrize("addr", ["127.0.0.1", "::1", "169.254.169.254", "fe80::1", "224.0.0.1", "0.0.0.0"])
+@pytest.mark.parametrize("addr", ["127.0.0.1", "::1", "169.254.169.254", "fe80::1", "224.0.0.1", "0.0.0.0",
+                                  # `B1924`: the two metadata services inside the LAN
+                                  # ranges — Alibaba Cloud ECS in 100.64/10, AWS's IPv6
+                                  # one in fc00::/7 — mapped and scoped forms included.
+                                  "100.100.100.200", "fd00:ec2::254",
+                                  "::ffff:100.100.100.200", "fd00:ec2::254%eth0"])
 def test_loopback_and_metadata_are_refused_whatever_the_setting(addr):
     import src.outbound_fetch as of
     assert of._is_private_address(ipaddress.ip_address(addr), allow_lan=True) is True
     assert of._is_private_address(ipaddress.ip_address(addr), allow_lan=False) is True
+
+
+def test_only_the_two_metadata_hosts_are_taken_out_of_the_lan():
+    """`B1924`. The LAN opening (`D-2026-10-25-02`) is unchanged but for two
+    single hosts, from the one list other validators can import: Tailscale's
+    DNS at 100.100.100.100 and the addresses either side of each stay
+    reachable under a grant."""
+    import src.outbound_fetch as of
+    assert [str(net) for net in of.CLOUD_METADATA_NETWORKS] == ["100.100.100.200/32", "fd00:ec2::254/128"]
+    for addr in ("100.100.100.100", "100.100.100.199", "100.100.100.201", "fd00:ec2::253", "fd00:ec2::255"):
+        assert of._is_private_address(ipaddress.ip_address(addr), allow_lan=True) is False, addr
 
 
 def test_a_fetch_into_an_untrusted_network_is_refused(monkeypatch):

@@ -12,6 +12,8 @@ import { renderAgentStop, agentNoteNode } from '../agentStops.js';
 import { startToolCard, drawToolProgress, finishToolCard, stopCardTickers, openRoundSpinner } from '../agentTurn.js';
 // `B916`. The prep line and the step and tool-call meter (`P4-08`, `P4-23`).
 import { createAgentMeter, presentMeterEvent, METER_EVENT_TYPES } from '../agentMeter.js';
+// `B2021`. The error a model's failed stream is read as, the main chat's own.
+import { createTerminalStreamError } from '../chatStreamErrors.js';
 import markdownModule from '../markdown.js';
 import spinnerModule from '../spinner.js';
 import uiModule from '../ui.js';
@@ -297,6 +299,94 @@ async function _runSynthForPane(modelToUse, synthPrompt, synthBody, spinner, his
   }
 }
 
+/**
+ * `B2021`. A pane's stream, read the way the server writes it: an event ends at
+ * a blank line, a line at `\n`, `\r\n` or `\r`, `data:` may span lines, and a
+ * `:` line is a comment (research's heartbeat). Each event's data goes to
+ * `onEvent`; `onChunk` hears every read, as the idle clock does.
+ *
+ * Only `[DONE]` is success. The pane read past `event: error` — what a provider
+ * failure, an endpoint that does not answer and a model the server could not
+ * load all arrive as — and took a stream that just ended for a finished
+ * answer, so a failed model left an empty or cut-short reply and took the
+ * Fastest badge from the pane that earned it. Both throw now, as in the chat.
+ */
+async function _readCompareEvents(response, onEvent, onChunk) {
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let line = '';
+  let name = '';
+  let data = [];
+  let afterCR = false;   // a read ended on `\r`: a `\n` opening the next is its pair
+  let open = true;       // the server may still be sending
+  try {
+    for (;;) {
+      let read;
+      try { read = await reader.read(); } catch (e) { open = false; throw e; }
+      if (read.done) open = false;
+      else if (onChunk) onChunk();
+      let text = decoder.decode(read.value, { stream: !read.done });
+      if (afterCR && text) {
+        if (text[0] === '\n') text = text.slice(1);
+        afterCR = false;
+      }
+      const ends = /\r\n|\r|\n/g;
+      let from = 0;
+      let end;
+      while ((end = ends.exec(text))) {
+        line += text.slice(from, end.index);
+        from = end.index + end[0].length;
+        afterCR = end[0] === '\r' && from === text.length;
+        if (line) {
+          if (line[0] !== ':') {
+            const colon = line.indexOf(':');
+            const field = colon < 0 ? line : line.slice(0, colon);
+            let value = colon < 0 ? '' : line.slice(colon + 1);
+            if (value[0] === ' ') value = value.slice(1);
+            if (field === 'data') data.push(value);
+            else if (field === 'event') name = value;
+          }
+          line = '';
+          continue;
+        }
+        // A blank line: the event is whole.
+        const failed = name === 'error';
+        const hasData = data.length > 0;
+        const raw = data.join('\n');
+        name = '';
+        data = [];
+        if (!hasData && !failed) continue;
+        if (!failed && raw === '[DONE]') return;
+        let payload = null;
+        try { payload = JSON.parse(raw); } catch (_) { /* not JSON: told apart below */ }
+        const isObject = Boolean(payload) && typeof payload === 'object' && !Array.isArray(payload);
+        if (failed || (isObject && payload.type === 'error')) {
+          throw createTerminalStreamError(isObject ? payload : { text: raw.trim() || 'Model request failed' });
+        }
+        if (!isObject) throw new Error('Invalid model stream data.');
+        onEvent(payload);
+      }
+      line += text.slice(from);
+      if (read.done) throw new Error('Stream ended before completion.');
+    }
+  } finally {
+    if (open) _readToTheEnd(reader);
+  }
+}
+
+/** `B2021`. The rest of a stream whose outcome is known, read and dropped,
+ *  never cancelled. `chat_stream` hands a pane its run's own generator, not a
+ *  detached run, so a connection closed while the server is still finishing
+ *  the turn reads to it as Stop — and its Stop arm can save the reply again,
+ *  as stopped, into the history the pane's next turn sends. */
+function _readToTheEnd(reader) {
+  (async () => {
+    try {
+      while (!(await reader.read()).done) { /* nothing after the end is drawn */ }
+    } catch (_) { /* the stream is already gone */ }
+  })();
+}
+
 /** Stream an SSE response into a compare pane. Handles text, tool blocks, images, metrics. */
 async function streamToPane(paneIdx, sessionId, message, aiMsgEl, opts) {
   opts = opts || {};
@@ -341,6 +431,14 @@ async function streamToPane(paneIdx, sessionId, message, aiMsgEl, opts) {
     if (stepSpinner && stepSpinner.element) return stepSpinner;
     const first = aiMsgEl._spinner;
     return first && first.element ? first : null;
+  };
+  // `B2021`. The pane's first spinner and an image's go however the stream
+  // ends; only a finished one put them away, so a failed pane kept spinning.
+  const dropPaneSpinners = () => {
+    for (const key of ['_spinner', '_imgSpinner']) {
+      if (aiMsgEl[key] && aiMsgEl[key].element) aiMsgEl[key].destroy();
+      aiMsgEl[key] = null;
+    }
   };
   // Idle timeout — abort only if no data is received for this many seconds.
   // Long generations (SVG, big code) are fine as long as the stream stays
@@ -455,25 +553,11 @@ async function streamToPane(paneIdx, sessionId, message, aiMsgEl, opts) {
     });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = '';
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      _resetIdleTimeout();  // any chunk = stream is alive
-
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n');
-      buffer = lines.pop() || '';
-
-      for (const line of lines) {
-        if (!line.startsWith('data: ')) continue;
-        const data = line.slice(6);
-        if (data === '[DONE]') break;
+    // `B2021`. Every event through one reader that knows how the stream ends;
+    // any read is the stream being alive, for the idle clock.
+    await _readCompareEvents(response,
+      (json) => {
         try {
-          const json = JSON.parse(data);
           if (json.type === 'metrics') {
             metrics = json.data;
 
@@ -763,7 +847,7 @@ async function streamToPane(paneIdx, sessionId, message, aiMsgEl, opts) {
             // `B916`: text ends a step's wait — even text the image path skips.
             dropStepSpinner();
             // Skip text deltas if we already rendered an image
-            if (aiMsgEl._imageData) continue;
+            if (aiMsgEl._imageData) return;
             // Capture TTFT on very first text delta
             if (!accumulated && !_ttft) _ttft = performance.now() - _timerStart;
             // On first delta, destroy spinner and prepare text area
@@ -792,8 +876,7 @@ async function streamToPane(paneIdx, sessionId, message, aiMsgEl, opts) {
             _scheduleLiveRender(target);
           }
         } catch (e) { console.warn('Compare stream render error:', e); }
-      }
-    }
+      }, _resetIdleTimeout);
 
     streamOk = true;
     // Destroy any remaining spinner (a step's own goes in `finally`, `B916`)
@@ -965,7 +1048,19 @@ async function streamToPane(paneIdx, sessionId, message, aiMsgEl, opts) {
       }
     } else {
       console.error('Compare stream error:', error);
-      aiBody.innerHTML = '<span style="color:var(--color-error);">Error: ' + escapeHtml(error.message) + '</span>';
+      // `B2021`. A pane that failed waits on no question, and it says why
+      // under what it drew — the text so far, a card, a picture — not over
+      // it. Blind mode names no model, and a provider's words can (the
+      // model's name, `Cannot reach 10.0.0.5:1234`), so there it says only
+      // that the request failed.
+      awaitingChoice = false;
+      dropStepSpinner();
+      dropPaneSpinners();
+      _drawTextFinal();
+      const failure = document.createElement('div');
+      failure.style.color = 'var(--color-error)';
+      failure.textContent = 'Error: ' + (state._blindMode ? 'Model request failed. Try again.' : error.message);
+      aiBody.appendChild(failure);
     }
   } finally {
     clearTimeout(timeoutId);
@@ -981,6 +1076,7 @@ async function streamToPane(paneIdx, sessionId, message, aiMsgEl, opts) {
     // `B916`. A step still waiting when the stream is cancelled, times out or
     // fails is not waiting on anything; the prep line's counter stops too.
     dropStepSpinner();
+    dropPaneSpinners();   // `B2021`
     meter.dispose();
     // Show final time with TTFT
     const _totalMs = performance.now() - _timerStart;

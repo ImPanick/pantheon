@@ -25,6 +25,7 @@ from services.memory.skill_format import (
     Skill,
     _emit_scalar,
     _parse_scalar,
+    emit_frontmatter,
     parse_frontmatter,
 )
 from services.memory.skills import SkillsManager
@@ -213,3 +214,136 @@ def test_description_survives_real_save_load_cycles_on_disk(tmp_path):
         encoding="utf-8"
     )
     assert GERMAN in on_disk
+
+
+# ---------------------------------------------------------------------------
+# `B1976`. A quote inside a list item
+# ---------------------------------------------------------------------------
+#
+# Every list is written inline, `tags: [a, "b, c"]`, and an item that needs
+# quotes is written with json.dumps, so a `"` inside it goes to disk as `\"`.
+# `_split_top_level`, which cuts a list into items, ended a quoted item at the
+# next `"` whether or not a backslash came before it. An item holding an odd
+# number of quotes, anywhere but last, ran on into the items after it:
+# `['12" pipe', 'plumbing']` read back as one item, and the next save wrote
+# that. The tags of the Add form, the raw editor and the model's own edits all
+# take this path. Ported from upstream Odysseus 2019a973 (#6265), with its
+# cases and a few more.
+
+
+@pytest.mark.parametrize(
+    "tags",
+    [
+        ['review "release, notes', 'use "search", then summarize', "publish"],
+        ['12" pipe', "plumbing"],
+        ['a"b', "c"],
+        ['a"b"c"d', "e"],
+    ],
+    ids=["quote-and-comma", "inch-mark", "one-quote", "three-quotes"],
+)
+def test_a_list_item_holding_a_quote_survives_repeated_saves(tags):
+    skill = Skill(name="release-review", tags=tags)
+    for _ in range(5):
+        skill = _cycle(skill)
+        assert skill.tags == tags
+
+
+@pytest.mark.parametrize("field", ["tags", "platforms", "requires_toolsets", "fallback_for_toolsets"])
+def test_every_list_field_keeps_a_quoted_item_whole(field):
+    values = ['review "release, notes', "publish"]
+    restored = _cycle(Skill(name="release-review", **{field: values}))
+    assert getattr(restored, field) == values
+
+
+def test_a_backslash_escapes_inside_double_quotes_and_is_literal_inside_single_ones():
+    for count in range(1, 5):
+        values = ["review " + "\\" * count + '"release, notes', "path, " + "\\" * count, "publish"]
+        parsed, _ = parse_frontmatter(f"---\n{emit_frontmatter({'tags': values})}\n---\n")
+        assert parsed["tags"] == values, f"{count} backslash(es)"
+    # Only a double-quoted item is JSON; a single-quoted one reads as written.
+    parsed, _ = parse_frontmatter("---\ntags: ['C:\\', next]\n---\n")
+    assert parsed["tags"] == ["C:\\", "next"]
+
+
+def test_a_nested_list_keeps_a_quoted_bracket_and_comma():
+    values = [['review "], notes', "publish"], "archive"]
+    parsed, _ = parse_frontmatter(f"---\n{emit_frontmatter({'tags': values})}\n---\n")
+    assert parsed["tags"] == values
+
+
+# ---------------------------------------------------------------------------
+# `B1977`. The version's spelling
+# ---------------------------------------------------------------------------
+#
+# Every frontmatter value was read as a number when it looked like one, the
+# version too, so `version: 1.10` read back as 1.1, `01` as 1, `0` as the
+# default 1.0.0 and `true` as "True". The writer puts a version on disk bare,
+# so even a quoted "1.10" lost its zero at the second save. `P8-10` bumps the
+# last part of the version on every real edit, which made it worse: a skill at
+# 1.9 became 1.10, read back as 1.1, and went on 1.2, 1.3 — its version ran
+# backwards, and so did the labels on its History. Now the version is read as
+# it is written, and only the version: every other key reads as before. A
+# version written `null` still reads as 1.0.0, as it always has, rather than as
+# the word, which the bump would turn into `null.1`. Ported from upstream
+# Odysseus 02d28c06 (#6888); its on-disk case expects no bump, and Pantheon
+# bumps, so that case is Pantheon's.
+
+
+@pytest.mark.parametrize(
+    "raw, expected",
+    [
+        ("1.10", "1.10"),
+        ("2.20", "2.20"),
+        ("01", "01"),
+        ("0", "0"),
+        ("true", "true"),
+        ('"1.10"', "1.10"),
+        ("'2.20'", "2.20"),
+    ],
+)
+def test_a_version_keeps_its_spelling_across_saves(raw, expected):
+    markdown = f"---\nname: demo\nversion: {raw}\nconfidence: 0.80\n---\n"
+    for _ in range(3):
+        skill = Skill.from_markdown(markdown)
+        assert skill.version == expected
+        assert skill.confidence == 0.8
+        markdown = skill.to_markdown()
+
+
+def test_only_the_version_is_read_as_written_and_a_missing_one_is_still_the_default():
+    fm, _ = parse_frontmatter(
+        "---\nversion: 1.10\nconfidence: 0.80\nuses: 3\nenabled: true\ntags: [one, two]\n---\n"
+    )
+    assert fm == {"version": "1.10", "confidence": 0.8, "uses": 3, "enabled": True,
+                  "tags": ["one", "two"]}
+    # What read the same before still does: a quoted version is decoded, and
+    # an absent, empty or null one is the default.
+    for raw, expected in (("1.0.0", "1.0.0"), ('"release\\u002d01"', "release-01"),
+                          ("null", "1.0.0"), ("~", "1.0.0"), ('""', "1.0.0")):
+        assert Skill.from_markdown(f"---\nname: demo\nversion: {raw}\n---\n").version == expected, raw
+    for line in ("", "version:\n"):
+        assert Skill.from_markdown(f"---\nname: demo\n{line}---\n").version == "1.0.0"
+
+
+def test_an_edited_skill_counts_its_version_up_from_how_it_is_written(tmp_path):
+    manager = SkillsManager(str(tmp_path), library_root="")
+    manager.add_skill(name="demo", description="Before", version="1.10", owner="alice", source="user")
+    seen = []
+    for i in range(3):
+        assert manager.update_skill("demo", {"description": f"Edit {i}"}, owner="alice")
+        stored = manager.load(owner="alice")
+        assert stored[0]["description"] == f"Edit {i}"
+        seen.append(stored[0]["version"])
+    assert seen == ["1.11", "1.12", "1.13"]   # `P8-10`: one patch bump per edit
+    markdown = next((tmp_path / "skills").rglob("SKILL.md")).read_text(encoding="utf-8")
+    assert "version: 1.13\n" in markdown
+
+
+def test_a_version_bumped_into_two_digits_does_not_run_backwards(tmp_path):
+    manager = SkillsManager(str(tmp_path), library_root="")
+    manager.add_skill(name="nine", description="Before", version="1.9", owner="alice", source="user")
+    seen = []
+    for i in range(2):
+        assert manager.update_skill("nine", {"description": f"Edit {i}"}, owner="alice")
+        seen.append(manager.load(owner="alice")[0]["version"])
+    assert seen == ["1.10", "1.11"]

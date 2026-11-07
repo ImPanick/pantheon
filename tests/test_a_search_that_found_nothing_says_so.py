@@ -300,3 +300,40 @@ def test_the_cache_duration_reads_the_persons_query(offline):  # noqa: F811
     # `searxng_search_results` with the person's own query.
     assert _cache_duration_for_query("latest OSRS news").total_seconds() == 30 * 60
     assert _cache_duration_for_query(OWNER_QUERY).total_seconds() == 24 * 3600
+
+
+# ----------------------------------------------------------------------
+# An empty answer moves the chain on
+# ----------------------------------------------------------------------
+# `B1810`. A provider that answered with no results was asked the same query a
+# second time before the chain moved on: two requests per provider for every
+# search that found nothing (on SearXNG, whose own ladder already retries, four
+# or six), and on a slow instance the repeat spent `web_search`'s 30 s deadline
+# before the next provider was reached. Only a failure is tried again, and a
+# failure followed by an empty answer is tallied as empty. After upstream
+# Odysseus e2e43ec4, whose case this is.
+@pytest.mark.parametrize("transient_error", [False, True], ids=["empty", "error-then-empty"])
+@pytest.mark.parametrize("comprehensive", [False, True], ids=["results", "comprehensive"])
+def test_a_provider_that_answers_empty_is_asked_once_before_the_next(
+        offline, comprehensive, transient_error):  # noqa: F811
+    calls = []
+
+    def provider(name, query, count, time_filter=None):
+        calls.append(name)
+        if transient_error and name == "primary" and calls.count(name) == 1:
+            raise ConnectionError("temporary failure")
+        return []
+
+    offline.setattr(core, "_get_search_settings", lambda: {"search_provider": "primary"})
+    offline.setattr(core, "_build_provider_chain", lambda primary: ["primary", "fallback"])
+    offline.setattr(core, "_call_provider", provider)
+    query = "reference site:example.org"
+
+    if comprehensive:
+        output, sources = core.comprehensive_web_search(query, return_sources=True)
+        assert sources == []
+        assert "No search results found. Tried: primary:empty, fallback:empty." in output, output
+    else:
+        assert core.searxng_search_results(query) == []
+    assert calls == (["primary", "primary", "fallback"] if transient_error
+                     else ["primary", "fallback"])

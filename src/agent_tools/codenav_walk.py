@@ -140,9 +140,15 @@ def grep_walk(root, pattern, ignore_case, glob_pat, max_hits, skip_dirs,
               sensitive_file_patterns, is_sensitive, max_line):
     """`grep`'s search: `(lines, None)` or `(None, error)`. ripgrep when it is
     on PATH, Python's `re` over a pruned walk when it is not."""
+    # `B1912`: a path that is not there is an answer of its own, not "No
+    # matches", which both engines said and the model took for absence.
+    if not os.path.exists(root):
+        return None, f"grep: search target not found: {root}"
     rg = shutil.which("rg")
     if rg:
-        cmd = [rg, "--line-number", "--no-heading", "--color=never",
+        # `--null` ends each hit's path with a NUL, so the path can be split
+        # off whatever the line holds and asked `is_sensitive` below.
+        cmd = [rg, "--line-number", "--no-heading", "--color=never", "--null",
                "--max-count", str(max_hits)]
         if ignore_case:
             cmd.append("--ignore-case")
@@ -164,7 +170,35 @@ def grep_walk(root, pattern, ignore_case, glob_pat, max_hits, skip_dirs,
             # here its line is kept, with the undecodable bytes marked.
             p = subprocess.run(cmd, capture_output=True, text=True, errors="replace",
                                timeout=20)
-            lines = [ln for ln in (p.stdout or "").splitlines() if ln][:max_hits]
+            # The globs above are names; the rule is `is_sensitive`, the one
+            # the walk below asks. A `--glob` the call passes re-includes what
+            # a negated one left out (a project's `.env`), and the data
+            # directory's own records have no name to exclude by — so every
+            # hit's file is asked here too. Split on newlines only: a line's
+            # own text may hold a character `splitlines` would cut at.
+            lines, verdicts = [], {}
+            for ln in (p.stdout or "").split("\n"):
+                ln = ln[:-1] if ln.endswith("\r") else ln
+                if not ln:
+                    continue
+                path, nul, rest = ln.partition("\0")
+                if nul:
+                    if path not in verdicts:
+                        verdicts[path] = is_sensitive(os.path.realpath(path))
+                    if verdicts[path]:
+                        continue
+                    ln = f"{path}:{rest}"
+                lines.append(ln)
+                if len(lines) >= max_hits:
+                    break
+            # `B1912`: ripgrep exits 0 on a hit, 1 on none and 2 when it could
+            # not search (a pattern or glob it cannot parse, a path it cannot
+            # read). With nothing found that is a failure, not "No matches";
+            # hits found beside an unreadable file are kept, a partial answer
+            # as `B963` keeps one.
+            if p.returncode not in (0, 1) and not lines:
+                why = (p.stderr or "").strip()[:1200] or "ripgrep said nothing more"
+                return None, f"grep: search failed (exit {p.returncode}): {why}"
             return lines, None
         except subprocess.TimeoutExpired:
             return None, "grep: timed out"

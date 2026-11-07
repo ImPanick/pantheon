@@ -639,6 +639,9 @@ _NON_CHAT_CONTAINS = (
     "topic-control", "calibration",
     "ai-synthetic-video", "cosmos-reason2",
     "bge", "llama-guard",
+    # `B1789`: embedding and reranker names as Ollama lists them
+    # (nomic-embed-text, mxbai-embed-large, qwen3-embedding, jina-reranker-v2).
+    "-embed", "rerank",
 )
 _NON_CHAT_EXACT_PREFIXES = (
     "gpt-audio",  # gpt-audio, gpt-audio-mini etc. (not gpt-4o-audio-preview which is chat)
@@ -3131,20 +3134,40 @@ def setup_model_routes(model_discovery):
         return {"dependents": _settings_using_endpoint(ep_id)}
 
     @router.delete("/model-endpoints/{ep_id}")
-    def delete_model_endpoint(ep_id: str, request: Request):
+    def delete_model_endpoint(ep_id: str, request: Request,
+                              expected_cookbook_serve_session_id: Optional[str] = None):
+        """Delete an endpoint and clear everything that names it.
+
+        `B1928`: the Forge's scheduled stop names the serve it stopped in
+        `expected_cookbook_serve_session_id`. Then only a Forge-registered row
+        (`local-…`, `img-…`) that serve still owns is deleted, and the ownership
+        is asked in the DELETE itself; anything else answers 409 and changes
+        nothing, a setting that names the row included. Without it, as before."""
         require_operator(request)
+        expected_owner = expected_cookbook_serve_session_id
         db = SessionLocal()
         try:
             ep = db.query(ModelEndpoint).filter(ModelEndpoint.id == ep_id).first()
             if not ep:
                 raise HTTPException(404, "Endpoint not found")
+            if expected_owner is not None:
+                if not expected_owner or not ep_id.startswith(("local-", "img-")):
+                    raise HTTPException(409, "Not an endpoint a Forge serve registered")
+                removed = (db.query(ModelEndpoint)
+                           .filter(ModelEndpoint.id == ep_id,
+                                   ModelEndpoint.cookbook_serve_session_id == expected_owner)
+                           .delete(synchronize_session=False))
+                if not removed:
+                    db.rollback()
+                    raise HTTPException(409, "The endpoint belongs to another Forge serve now")
             # Clean up any settings that reference this endpoint
             cleared = _clear_settings_for_endpoint(ep_id)
             cleared_user_preferences = _clear_user_prefs_for_endpoint(ep_id)
             cleared_sessions = _clear_sessions_for_endpoint(db, ep.base_url)
             cleared_loaded_sessions = _clear_loaded_sessions_for_endpoint(ep.base_url)
             auth_id = getattr(ep, "provider_auth_id", None)
-            db.delete(ep)
+            if expected_owner is None:
+                db.delete(ep)   # the owner-checked DELETE above removed it otherwise
             cleared_provider_auth = _delete_orphaned_provider_auth(db, auth_id, exclude_ep_id=ep_id)
             db.commit()
             _invalidate_models_cache()

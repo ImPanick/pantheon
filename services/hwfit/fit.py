@@ -838,9 +838,13 @@ def rank_models(system, use_case=None, limit=50, search=None, sort="score", quan
         # format, but the result is confusing: highlighting Quant/Q4 hides the
         # exact AWQ rows the machine is built to run. Treat Q4 as AWQ-4bit for
         # native AWQ rows only on accelerator servers that can serve them.
+        # `B1984`: one NVIDIA GPU is such a server too (vLLM and SGLang serve
+        # AWQ on it), and was shown none under "Q4 / AWQ". A host with no GPU,
+        # or an AMD GPU on Vulkan, has no engine here that serves AWQ.
         if (
             quant == "Q4_K_M"
-            and system.get("gpu_count", 1) >= 2
+            and (system.get("gpu_count", 1) >= 2
+                 or (system.get("has_gpu") and system_backend == "cuda"))
             and not (apple_silicon or consumer_amd or is_windows)
             and native_q == "AWQ-4bit"
         ):

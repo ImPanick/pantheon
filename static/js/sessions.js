@@ -3384,7 +3384,7 @@ export function setSessionHasDocs(sessionId, hasDocs) {
 export function confirmChatTidy({ skipLlm = false } = {}) {
   const items = [
     { label: 'Deletes chats with no messages in them', note: 'permanent' },
-    { label: 'Deletes throwaways — a test name, or one message the model never answered',
+    { label: 'Deletes throwaways the model never answered — a test name, or one message',
       note: 'permanent' },
   ];
   if (!skipLlm) {
@@ -3402,9 +3402,9 @@ export function confirmChatTidy({ skipLlm = false } = {}) {
       details: {
         heading: 'What Tidy does',
         items,
-        footnote: 'Chats you marked Important, chats you have opened recently, '
-                + 'and archived chats are never deleted. There is no undo for the '
-                + 'ones that are.',
+        footnote: 'Chats you marked Important, chats the model has answered, chats '
+                + 'you have opened recently, and archived chats are never deleted. '
+                + 'There is no undo for the ones that are.',
       },
     },
   );

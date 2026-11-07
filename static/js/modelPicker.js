@@ -114,7 +114,9 @@ async function _ensureDefaultPendingChat() {
   if (!_deps || _defaultChatPickInFlight) return;
   if (_deps.getCurrentSessionId && _deps.getCurrentSessionId()) return;
   const pending = _deps.getPendingChat && _deps.getPendingChat();
-  if (pending && pending.modelId) return;
+  // `B2022`: a fallback is the page's stand-in for the configured default, so
+  // it does not stop the default being looked up; a pick or a default does.
+  if (pending && pending.modelId && pending.source !== 'fallback') return;
   _defaultChatPickInFlight = true;
   const seq = ++_defaultPendingSeq;
   try {
@@ -1093,16 +1095,6 @@ export function updateModelPicker() {
   const latestPending = _deps.getPendingChat && _deps.getPendingChat();
   let _defaultReason = '';
   try { _defaultReason = String(window.__pantheonDefaultChatReason || ''); } catch (_) {}
-  if (
-    !currentSessionId &&
-    !_autoSelectingDefault &&
-    !(_defaultReason && !modelId) &&
-    window.modelsModule &&
-    window.modelsModule.getCachedItems &&
-    (!modelId || (latestPending && latestPending.source === 'fallback'))
-  ) {
-    _ensureDefaultPendingChat();
-  }
 
   const displayName = modelId ? modelId.split('/').pop() : 'Select model';
   // The header indicator clips long names with ellipsis; show the full model
@@ -1114,5 +1106,18 @@ export function updateModelPicker() {
     label.innerHTML = '<span class="model-picker-logo">' + logo + '</span> ' + displayName;
   } else {
     label.textContent = displayName;
+  }
+  // `B2022`: after the paint. A default the page already holds is put in at
+  // once and repaints the picker; asked before the paint, this repaint then
+  // drew its own older model over it.
+  if (
+    !currentSessionId &&
+    !_autoSelectingDefault &&
+    !(_defaultReason && !modelId) &&
+    window.modelsModule &&
+    window.modelsModule.getCachedItems &&
+    (!modelId || (latestPending && latestPending.source === 'fallback'))
+  ) {
+    _ensureDefaultPendingChat();
   }
 }

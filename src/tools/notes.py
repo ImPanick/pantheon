@@ -38,9 +38,16 @@ async def do_manage_notes(content: str, owner: Optional[str] = None) -> Dict:
         "save": "add",
         "remind": "add",
         "remove": "delete",
-        "remove_item": "toggle_item",
     }
     action = _NOTE_ACTION_ALIASES.get(action, action)
+    if action == "remove_item":
+        # `B1991`: this was an alias of `toggle_item`, so an item a model was
+        # asked to remove, named by its index, was ticked and said "marked
+        # done". Refused before the store is opened, saying how it is done.
+        return {"error": ("manage_notes has no remove_item: toggle_item with an item's index "
+                          "(0-based) only ticks it. To remove a checklist item, use update with "
+                          "the note's id and the complete remaining checklist_items, keeping each "
+                          "item's done state. Nothing changed."), "exit_code": 1}
     db = SessionLocal()
 
     def _norm_note_title(value: str) -> str:
@@ -177,9 +184,12 @@ async def do_manage_notes(content: str, owner: Optional[str] = None) -> Dict:
                     or re.search(r"\bremind(?:er)?\b", lower_combined)
                 )
                 if looks_like_reminder:
+                    # The meridiem takes its own whitespace (`B1919`): with
+                    # `\s*` and `\s+` side by side, a digit before a long
+                    # whitespace run was split every possible way.
                     temporal = re.search(
                         r"\b(?:today|tonight|tomorrow|tmrw|yesterday)\b(?:\s+(?:at\s+)?\d{1,2}(?::\d{2})?\s*(?:am|pm)?)?"
-                        r"|\b\d{1,2}(?::\d{2})?\s*(?:am|pm)?\s+(?:today|tonight|tomorrow|tmrw|yesterday)\b"
+                        r"|\b\d{1,2}(?::\d{2})?(?:\s*(?:am|pm))?\s+(?:today|tonight|tomorrow|tmrw|yesterday)\b"
                         r"|\bin\s+\d+\s*(?:hour|hr|minute|min|day)s?\b",
                         lower_combined,
                     )
@@ -317,7 +327,13 @@ async def do_manage_notes(content: str, owner: Optional[str] = None) -> Dict:
 
         elif action == "toggle_item":
             note_id = args.get("id", "")
-            index = args.get("index", 0)
+            # `B1816`: no index flipped the first item and said so, and `true`
+            # the second. (`remove_item`, which landed here, is refused above:
+            # `B1991`.)
+            index = args.get("index")
+            if isinstance(index, bool) or not isinstance(index, int):
+                return {"error": "toggle_item needs the item's index (0-based); view the note to "
+                                 "see each item's number. Nothing changed.", "exit_code": 1}
             note = _note_by_prefix(note_id)
             if not note:
                 return {"error": f"Note '{note_id}' not found", "exit_code": 1}

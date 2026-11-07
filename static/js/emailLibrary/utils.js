@@ -52,9 +52,10 @@ export function _renderEmailSummaryError(container, result) {
 }
 
 // `B866`'s sweep looked at this and left it alone. It escapes `" ' < > \`` and
-// **not** `&`, and that is right here: `_escLinkify` (below) escapes the whole
-// string with `_esc` first and then calls this on a href cut out of the result,
-// so escaping `&` again would turn `?a=1&amp;b=2` into `?a=1&amp;amp;b=2` —
+// **not** `&`, and that is right here: `_escLinkify` (below) escapes each href
+// with `_esc` first and then calls this on the result (`B1825`; it used to cut
+// the href out of the whole escaped string), so escaping `&` again would turn
+// `?a=1&amp;b=2` into `?a=1&amp;amp;b=2` —
 // which `tests/test_email_linkify_security_js.py` asserts against by name.
 // Two stages; the second must not repeat the first. It is not an attribute
 // break-out either: an attribute value is decoded after it is delimited, so a
@@ -82,17 +83,29 @@ function _isDangerousSrcset(value) {
 }
 
 // Escape + linkify URLs and email addresses. Returns innerHTML-safe markup.
+//
+// `B1825`. One pass over the raw text, each piece escaped on its own. The
+// address pass used to run over the URL pass's output and wrote a `mailto:`
+// anchor inside the href of `https://x.test/?email=jane@x.test`, and the URL
+// pass read escaped text, so `<https://x.test/a>` linked to `…/a&gt`.
+// Upstream Odysseus 71f6dc4e (#6912).
 export function _escLinkify(text) {
-  const escaped = _esc(text);
-  // URLs: http(s)://... or www....
-  const urlRe = /\b((?:https?:\/\/|www\.)[^\s<>"']+[^\s<>"'.,;:!?)\]])/g;
-  const mailRe = /\b([A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,})\b/g;
-  return escaped
-    .replace(urlRe, (m) => {
-      const href = m.startsWith('www.') ? `https://${m}` : m;
-      return `<a href="${_attrEsc(href)}" target="_blank" rel="noopener noreferrer">${m}</a>`;
-    })
-    .replace(mailRe, (m) => `<a href="${_attrEsc(`mailto:${m}`)}">${m}</a>`);
+  const raw = String(text == null ? '' : text);
+  // A URL (http(s)://... or www....) or an address; the URL is tried first.
+  const tokenRe = /\b((?:https?:\/\/|www\.)[^\s<>"']+[^\s<>"'.,;:!?)\]])|\b([A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,})\b/g;
+  const parts = [];
+  let offset = 0;
+  for (const match of raw.matchAll(tokenRe)) {
+    parts.push(_esc(raw.slice(offset, match.index)));
+    const token = match[0];
+    const isUrl = match[1] !== undefined;
+    const href = isUrl ? (token.startsWith('www.') ? `https://${token}` : token) : `mailto:${token}`;
+    const attrs = isUrl ? ' target="_blank" rel="noopener noreferrer"' : '';
+    parts.push(`<a href="${_attrEsc(_esc(href))}"${attrs}>${_esc(token)}</a>`);
+    offset = match.index + token.length;
+  }
+  parts.push(_esc(raw.slice(offset)));
+  return parts.join('');
 }
 
 // Pull display name out of "Name <email@x>"; fallback to local-part of

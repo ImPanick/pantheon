@@ -15,6 +15,7 @@ from fastapi import HTTPException
 from pydantic import BaseModel
 
 from routes._validators import validate_remote_host, validate_ssh_port
+from routes.cookbook_output import HF_PARTIAL_BLOB_HELPER  # `B1932`
 from core.platform_compat import _ssh_exec_argv
 
 logger = logging.getLogger(__name__)
@@ -379,6 +380,7 @@ def _cached_model_scan_script(model_dirs: list[str] | None = None, add_hf_cache:
     """
     lines = [
         "import json, os, re, shutil, subprocess, urllib.request",
+        *HF_PARTIAL_BLOB_HELPER.splitlines(),  # `B1932`
         "models = []",
         "seen = set()",
         "BLOCKED_ROOTS = ('/sys', '/proc', '/dev', '/run', '/var/run')",
@@ -436,9 +438,13 @@ def _cached_model_scan_script(model_dirs: list[str] | None = None, add_hf_cache:
         "        blobs = os.path.join(cache, d, 'blobs')",
         "        sz, nf, ic = 0, 0, False",
         "        if os.path.isdir(blobs):",
+        # `B1932`: an empty marker beside its finished blob is neither a
+        # download to finish nor a file of the model.
         "            for f in os.scandir(blobs):",
+        "                if f.name.endswith('.incomplete'):",
+        "                    if not is_partial_blob(f.path): continue",
+        "                    ic = True",
         "                if f.is_file(): nf += 1; sz += f.stat().st_size",
-        "                if f.name.endswith('.incomplete'): ic = True",
         "        snap = os.path.join(cache, d, 'snapshots')",
         "        def snapshot_size():",
         "            total, count, incomplete = 0, 0, False",
@@ -722,6 +728,125 @@ def _normalize_llama_cpp_python_cache_types(cmd: str | None) -> str | None:
     return _LLAMA_CPP_PYTHON_TYPE_FLAG_RE.sub(repl, cmd)
 
 
+# `B2019`. MiniMax-M3's nightly vLLM runtime wants the repo's files on disk, so
+# a local serve is given the snapshot in this machine's Hugging Face cache. It
+# used to be given a fixed snapshot under upstream's own home directory, local
+# or remote, which exists on no other machine. Saved launch configs, stored
+# serve tasks and old tabs still carry that path, so it maps back to the repo.
+_MINIMAX_M3_REPO = "cyankiwi/MiniMax-M3-AWQ-INT4"
+_MINIMAX_M3_STALE_PATHS = {
+    "/home/pewds/.cache/huggingface/hub/models--cyankiwi--MiniMax-M3-AWQ-INT4/": _MINIMAX_M3_REPO,
+}
+# The snapshot path is put into the command after _validate_serve_cmd's
+# metacharacter gate (FORBIDDEN.md Part 2), so only a path of these is used.
+_SAFE_SNAPSHOT_PATH_RE = re.compile(r"[A-Za-z0-9._/@+-]+")
+
+
+def _hf_hub_cache_dir(hf_cache: str | os.PathLike | None = None) -> Path:
+    """This machine's Hugging Face hub cache, found the way huggingface_hub
+    finds it."""
+    if hf_cache:
+        return Path(hf_cache).expanduser()
+    hub_cache = os.environ.get("HF_HUB_CACHE") or os.environ.get("HUGGINGFACE_HUB_CACHE")
+    if hub_cache:
+        return Path(hub_cache).expanduser()
+    hf_home = os.environ.get("HF_HOME")
+    if hf_home:
+        return Path(hf_home).expanduser() / "hub"
+    return Path.home() / ".cache" / "huggingface" / "hub"
+
+
+def _newest_local_snapshot(repo_id: str, hf_cache: str | os.PathLike | None = None) -> str | None:
+    """The newest snapshot of `repo_id` in the local cache, or None when there
+    is none or its path holds anything but plain characters."""
+    root = _hf_hub_cache_dir(hf_cache) / ("models--" + repo_id.replace("/", "--")) / "snapshots"
+    try:
+        snapshots = [(p.stat().st_mtime, p.name, p) for p in root.iterdir() if p.is_dir()]
+    except OSError:
+        return None
+    if not snapshots:
+        return None
+    path = str(max(snapshots)[2])
+    return path if _SAFE_SNAPSHOT_PATH_RE.fullmatch(path) else None
+
+
+def _normalize_minimax_m3_vllm_cmd(cmd: str, *, local: bool,
+                                   hf_cache: str | os.PathLike | None = None) -> str:
+    """Patch MiniMax M3 vLLM launches into the known-good form.
+
+    The browser form can be stale or omit advanced-only fields. MiniMax M3
+    is sensitive to several flags: block-size 128 with the HF repo id fails
+    KV-cache setup, and FlashInfer sampler JIT fails on a system nvcc. Normalize
+    server-side before writing the tmux runner. A local serve of the repo id is
+    given the newest cached snapshot when there is one (`B2019`); a remote one
+    keeps the repo id, which the remote host resolves in its own cache.
+    """
+    cmd_lower = (cmd or "").lower()
+    if not cmd or "vllm serve" not in cmd_lower or "minimax" not in cmd_lower or "m3" not in cmd_lower:
+        return cmd
+    try:
+        parts = shlex.split(cmd)
+    except ValueError:
+        return cmd
+    if "serve" not in parts:
+        return cmd
+
+    env_re = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
+    env_parts = [p for p in parts if env_re.match(p)]
+    body = [p for p in parts if not env_re.match(p)]
+    try:
+        serve_i = body.index("serve")
+    except ValueError:
+        return cmd
+    if serve_i + 1 >= len(body):
+        return cmd
+
+    repo_id = _MINIMAX_M3_REPO
+    model = body[serve_i + 1]
+    for stale, repo in _MINIMAX_M3_STALE_PATHS.items():
+        if model == stale.rstrip("/") or model.startswith(stale):
+            model = repo
+    if model == repo_id and local:
+        model = _newest_local_snapshot(repo_id, hf_cache) or model
+    body[serve_i + 1] = model
+
+    def add_env(key: str, value: str) -> None:
+        if not any(p.startswith(f"{key}=") for p in env_parts):
+            env_parts.append(f"{key}={value}")
+
+    def has_flag(flag: str) -> bool:
+        return any(p == flag or p.startswith(flag + "=") for p in body)
+
+    def set_flag(flag: str, value: str) -> None:
+        for i, part in enumerate(body):
+            if part == flag:
+                if i + 1 < len(body):
+                    body[i + 1] = value
+                else:
+                    body.append(value)
+                return
+            if part.startswith(flag + "="):
+                body[i] = f"{flag}={value}"
+                return
+        body.extend([flag, value])
+
+    def add_bool(flag: str) -> None:
+        if not has_flag(flag):
+            body.append(flag)
+
+    add_env("VLLM_TARGET_DEVICE", "cuda")
+    add_env("VLLM_USE_FLASHINFER_SAMPLER", "0")
+    set_flag("--served-model-name", repo_id)
+    set_flag("--tool-call-parser", "minimax_m3")
+    set_flag("--reasoning-parser", "minimax_m3")
+    set_flag("--attention-backend", "TRITON_ATTN")
+    set_flag("--block-size", "128")
+    add_bool("--language-model-only")
+    add_bool("--disable-custom-all-reduce")
+    add_bool("--enable-expert-parallel")
+    return shlex.join(env_parts + body)
+
+
 def _check_serve_binary(seg: str) -> None:
     """Validate that a single command segment starts with an allowlisted binary
     (after skipping leading env-var assignments like `CUDA_VISIBLE_DEVICES=0`)."""
@@ -732,8 +857,16 @@ def _check_serve_binary(seg: str) -> None:
     if not tokens:
         return
     env_re = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
-    first = next((t for t in tokens if not env_re.match(t)), "")
+    idx = next((i for i, t in enumerate(tokens) if not env_re.match(t)), len(tokens))
+    first = tokens[idx] if idx < len(tokens) else ""
     base = os.path.basename(first)
+    # `B1968`. The vLLM, SGLang and llama.cpp Dependencies recipes install
+    # with `uv pip install …`. Allow uv for that subcommand only, so `uv run`
+    # and `uv tool` stay refused and uv stays out of _SERVE_CMD_ALLOWLIST. The
+    # metacharacter check in _validate_serve_cmd has run on the whole command
+    # before this, and still does.
+    if base == "uv" and tokens[idx + 1:idx + 3] == ["pip", "install"]:
+        return
     if base not in _SERVE_CMD_ALLOWLIST:
         raise HTTPException(
             400,
@@ -1038,6 +1171,199 @@ def _append_llama_cpp_linux_accel_build_lines(runner_lines: list[str]) -> None:
     runner_lines.append('  fi  # end _pantheon_have_prebuilt guard')
 
 
+# The `~/bin/llama-server` shim: when the native binary is missing but the pip
+# llama-cpp-python package is installed, a wrapper there translates
+# llama-server's CLI to llama_cpp.server's underscore-style flags, so a serve
+# command that says `llama-server ...` just works, with no build, no cmake and
+# no second install. That is what unblocks a remote where the pip bindings
+# already work but the Forge used to insist on a native binary.
+#
+# `B1931`: how a runner tells that shim from anyone else's llama-server, so it
+# can give way once something better answers (the runner used to write it
+# inline and never look at it again). Every shim written so far opens with the
+# same three lines. The product's name on the second changed with the product
+# (three names so far), so that line is matched by its shape, and the third,
+# never changed, exactly: shims from before a rename are still the Forge's, and
+# no older name has to be spelled out here to recognise them.
+_LLAMA_SHIM_LINE_2_CASE = "'# Auto-generated by '*': a `llama-server` lookalike'"
+_LLAMA_SHIM_LINE_3 = "# that translates the native CLI to `python -m llama_cpp.server`."
+_LLAMA_SHIM_LINES = (
+    '#!/usr/bin/env bash',
+    '# Auto-generated by Pantheon Forge: a `llama-server` lookalike',
+    _LLAMA_SHIM_LINE_3,
+    '# Lets cookbook-generated launch commands run unchanged on hosts',
+    '# where only the pip llama-cpp-python package is installed.',
+    'ARGS=()',
+    'while [ $# -gt 0 ]; do',
+    '  case "$1" in',
+    '    -ngl|--gpu-layers|--n-gpu-layers) ARGS+=(--n_gpu_layers "$2"); shift 2 ;;',
+    '    -c|--ctx-size) ARGS+=(--n_ctx "$2"); shift 2 ;;',
+    '    -b|--batch-size) ARGS+=(--n_batch "$2"); shift 2 ;;',
+    '    -ub|--ubatch-size) shift 2 ;;  # llama-cpp-python has no separate ubatch',
+    '    --flash-attn) ARGS+=(--flash_attn true); shift 2 ;;',
+    '    --cache-type-k) ARGS+=(--type_k "$2"); shift 2 ;;',
+    '    --cache-type-v) ARGS+=(--type_v "$2"); shift 2 ;;',
+    '    --n-cpu-moe) ARGS+=(--n_cpu_moe "$2"); shift 2 ;;',
+    '    --mmproj) ARGS+=(--clip_model_path "$2"); shift 2 ;;',
+    '    --image-max-tokens) shift 2 ;;  # native-only',
+    '    --no-mmap) ARGS+=(--no_mmap true); shift ;;',
+    '    --no-warmup) shift ;;  # native-only',
+    '    --chat-template) ARGS+=(--chat_format "$2"); shift 2 ;;',
+    '    --fit|--split-mode|--tensor-split|--main-gpu|--parallel) shift 2 ;;  # native-only',
+    '    --mlock) ARGS+=(--use_mlock true); shift ;;',
+    '    *) ARGS+=("$1"); shift ;;',
+    '  esac',
+    'done',
+    'exec python3 -m llama_cpp.server "${ARGS[@]}"',
+)
+
+
+def _append_llama_server_resolution_definition_lines(runner_lines: list[str]) -> None:
+    """Define `_pantheon_resolve_llama_server`, which sets `$_pantheon_llama_bin`
+    to the llama-server a launch should run (`B1931`).
+
+    That is the first llama-server on PATH that answers `--version` (under
+    `timeout 10` where there is one) and is not the Forge's shim. Then the shim
+    at `~/bin/llama-server`, if there is one: retired when a working one was
+    found, kept as the answer while `python3 -m llama_cpp.server` imports, and
+    removed when it no longer does, so the build and pip fallbacks run instead
+    of a launch that dies. A regular file there that the Forge did not write is
+    never touched: with nothing else answering, it is launched as it is, as it
+    was before. PATH changes only for a launch of the binary
+    (`$_pantheon_llama_launch` is `binary`), and only when `command -v` would
+    not find the answer already, so a `python3 -m llama_cpp.server` launch keeps
+    its python3. Defined once per runner: a second call adds nothing."""
+    if '_pantheon_resolve_llama_server() {' in runner_lines:
+        return
+    runner_lines.append('_pantheon_llama_shim_is_ours() {')
+    runner_lines.append('  [ -f "$1" ] && [ ! -L "$1" ] || return 1')
+    runner_lines.append('  local _l1="" _l2="" _l3=""')
+    runner_lines.append('  { IFS= read -r _l1 && IFS= read -r _l2 && IFS= read -r _l3; } 2>/dev/null < "$1" || return 1')
+    runner_lines.append('  case "$_l2" in')
+    runner_lines.append(f'    {_LLAMA_SHIM_LINE_2_CASE}) ;;')
+    runner_lines.append('    *) return 1 ;;')
+    runner_lines.append('  esac')
+    runner_lines.append(f"  [ \"$_l3\" = '{_bash_squote(_LLAMA_SHIM_LINE_3)}' ]")
+    runner_lines.append('}')
+    runner_lines.append('_pantheon_llama_answers_version() {')
+    runner_lines.append('  if command -v timeout >/dev/null 2>&1; then')
+    runner_lines.append('    timeout 10 "$1" --version >/dev/null 2>&1 </dev/null')
+    runner_lines.append('  else')
+    runner_lines.append('    "$1" --version >/dev/null 2>&1 </dev/null')
+    runner_lines.append('  fi')
+    runner_lines.append('}')
+    runner_lines.append('_pantheon_resolve_llama_server() {')
+    runner_lines.append('  _pantheon_llama_bin=""')
+    runner_lines.append('  local _saved_ifs="$IFS"')
+    runner_lines.append("  IFS=':'")
+    runner_lines.append('  local -a _parts')
+    runner_lines.append('  read -r -a _parts <<< "$PATH"')
+    runner_lines.append('  IFS="$_saved_ifs"')
+    runner_lines.append('  local _dir _cand')
+    runner_lines.append('  for _dir in "${_parts[@]}"; do')
+    runner_lines.append('    [ -n "$_dir" ] || continue')
+    runner_lines.append('    _cand="$_dir/llama-server"')
+    runner_lines.append('    [ -x "$_cand" ] || continue')
+    runner_lines.append('    _pantheon_llama_shim_is_ours "$_cand" && continue')
+    runner_lines.append('    if _pantheon_llama_answers_version "$_cand"; then')
+    runner_lines.append('      _pantheon_llama_bin="$_cand"')
+    runner_lines.append('      break')
+    runner_lines.append('    fi')
+    runner_lines.append('  done')
+    runner_lines.append('  if _pantheon_llama_shim_is_ours "$HOME/bin/llama-server"; then')
+    runner_lines.append('    if [ -n "$_pantheon_llama_bin" ]; then')
+    runner_lines.append('      echo "[pantheon] Native llama-server at $_pantheon_llama_bin — retiring the Forge\'s llama-server shim in ~/bin"')
+    runner_lines.append('      rm -f "$HOME/bin/llama-server"')
+    runner_lines.append('    elif python3 -c "import llama_cpp.server" 2>/dev/null; then')
+    runner_lines.append('      _pantheon_llama_bin="$HOME/bin/llama-server"')
+    runner_lines.append('    else')
+    runner_lines.append('      echo "[pantheon] Removing the Forge\'s stale llama-server shim in ~/bin: python3 -m llama_cpp.server does not import"')
+    runner_lines.append('      rm -f "$HOME/bin/llama-server"')
+    runner_lines.append('    fi')
+    runner_lines.append('  elif [ -z "$_pantheon_llama_bin" ] && [ -f "$HOME/bin/llama-server" ] && [ ! -L "$HOME/bin/llama-server" ] && [ -x "$HOME/bin/llama-server" ]; then')
+    runner_lines.append('    echo "[pantheon] ~/bin/llama-server is not one the Forge wrote and did not answer --version; launching it as it is"')
+    runner_lines.append('    _pantheon_llama_bin="$HOME/bin/llama-server"')
+    runner_lines.append('  fi')
+    runner_lines.append('  hash -r')
+    runner_lines.append('  [ -n "$_pantheon_llama_bin" ] || return 1')
+    runner_lines.append('  if [ "${_pantheon_llama_launch:-binary}" = binary ] && [ "$(command -v llama-server 2>/dev/null)" != "$_pantheon_llama_bin" ]; then')
+    runner_lines.append('    export PATH="${_pantheon_llama_bin%/*}:$PATH"')
+    runner_lines.append('    hash -r')
+    runner_lines.append('  fi')
+    runner_lines.append('  return 0')
+    runner_lines.append('}')
+
+
+def _append_llama_server_shim_definition_lines(runner_lines: list[str]) -> None:
+    """Define the resolver and `_pantheon_create_llama_shim`, which writes the
+    shim to `~/bin/llama-server` through a private temporary file, and only
+    where nothing is, or where the Forge's own shim is (`B1931`). Anything
+    else there, a file or a symlink, is left as it is. Defined once per runner,
+    like the resolver."""
+    _append_llama_server_resolution_definition_lines(runner_lines)
+    if '_pantheon_create_llama_shim() {' in runner_lines:
+        return
+    runner_lines.append('_pantheon_create_llama_shim() {')
+    runner_lines.append('  local _target="$HOME/bin/llama-server"')
+    runner_lines.append('  if { [ -e "$_target" ] || [ -L "$_target" ]; } && ! _pantheon_llama_shim_is_ours "$_target"; then')
+    runner_lines.append('    echo "[pantheon] WARNING: $_target exists and is not a llama-server shim the Forge wrote; leaving it untouched." >&2')
+    runner_lines.append('    return 1')
+    runner_lines.append('  fi')
+    runner_lines.append('  mkdir -p "$HOME/bin" || return 1')
+    runner_lines.append('  local _tmp')
+    runner_lines.append('  _tmp="$(mktemp "$HOME/bin/.llama-server.pantheon.tmp.XXXXXX")" || {')
+    runner_lines.append('    echo "[pantheon] ERROR: could not create a temporary llama-server shim in $HOME/bin" >&2')
+    runner_lines.append('    return 1')
+    runner_lines.append('  }')
+    runner_lines.append("  if ! cat > \"$_tmp\" <<'_PAN_LLAMA_SHIM_EOF'")
+    runner_lines.extend(_LLAMA_SHIM_LINES)
+    runner_lines.append('_PAN_LLAMA_SHIM_EOF')
+    runner_lines.append('  then')
+    runner_lines.append('    rm -f -- "$_tmp"')
+    runner_lines.append('    return 1')
+    runner_lines.append('  fi')
+    runner_lines.append('  chmod +x "$_tmp" || { rm -f -- "$_tmp"; return 1; }')
+    runner_lines.append('  mv -f -- "$_tmp" "$_target" || { rm -f -- "$_tmp"; return 1; }')
+    runner_lines.append('  hash -r')
+    runner_lines.append('  echo "[pantheon] Created llama-server shim → python -m llama_cpp.server (no native binary needed)"')
+    runner_lines.append('}')
+
+
+def _append_llama_server_shim_reconciliation_lines(runner_lines: list[str], *, launches_binary: bool = True) -> None:
+    """Settle `~/bin/llama-server` before the runner decides whether to build
+    (`B1931`): read the prebuilt binary's library path first, so a working
+    prebuilt answers `--version`, then resolve. `launches_binary` says whether
+    the serve command runs the llama-server binary rather than
+    `python3 -m llama_cpp.server`; only then may resolving change PATH. This
+    runs at the top level of the runner, ahead of any branch, so the functions
+    it defines (if nothing defined them yet) are there for every later step."""
+    _append_llama_server_shim_definition_lines(runner_lines)
+    runner_lines.append(f'_pantheon_llama_launch={"binary" if launches_binary else "python"}')
+    runner_lines.append('[ -r ~/.config/pantheon-llama-cpp-env ] && . ~/.config/pantheon-llama-cpp-env')
+    runner_lines.append('_pantheon_resolve_llama_server || true')
+
+
+def _append_llama_server_finalization_lines(runner_lines: list[str], platform_hint: str = "") -> None:
+    """After the build and install attempts (`B1931`): write the shim when only
+    the Python bindings are there, so the launch that installed them can use
+    them, and stop the launch with PANTHEON_PREFLIGHT_EXIT=127 when nothing can
+    serve it. A `python3 -m llama_cpp.server` launch stops only when the
+    bindings do not import, as before."""
+    err_msg = (
+        f"ERROR: llama.cpp serving is not available on {platform_hint} after install attempts."
+        if platform_hint
+        else "ERROR: llama.cpp serving is not available after install/build attempts."
+    )
+    _append_llama_server_shim_definition_lines(runner_lines)
+    runner_lines.append('if [ -z "$_pantheon_llama_bin" ] && python3 -c "import llama_cpp.server" 2>/dev/null; then')
+    runner_lines.append('  _pantheon_create_llama_shim && _pantheon_resolve_llama_server || true')
+    runner_lines.append('fi')
+    runner_lines.append('if [ -z "$_pantheon_llama_bin" ] && { [ "${_pantheon_llama_launch:-binary}" = binary ] || ! python3 -c "import llama_cpp.server" 2>/dev/null; }; then')
+    runner_lines.append(f'  echo "{err_msg}"')
+    runner_lines.append('  PANTHEON_PREFLIGHT_EXIT=127')
+    runner_lines.append('fi')
+
+
 def _llama_cpp_rebuild_cmd(update_source: bool = False) -> str:
     """Shell command that clears the Forge-managed llama.cpp build.
 
@@ -1324,6 +1650,23 @@ def _diagnose_serve_output(text: str) -> dict | None:
             r"Address already in use|bind.*address.*in use",
             "Port is already in use.",
             [{"label": "retry on port 8001", "op": "replace", "flag": "--port", "value": "8001"}],
+        ),
+        (
+            # `B1929`: PyPI's torch/vLLM wheels now target CUDA 13, which needs
+            # NVIDIA driver 580 or newer. torch: "The NVIDIA driver on your system
+            # is too old (found version 12080)"; vLLM's kernels: "CUDA driver
+            # version is insufficient for CUDA runtime version". Ahead of the
+            # traceback fallback below, which would say only that it crashed.
+            # static/js/cookbook-diagnosis.js has the same entry for the card.
+            r"NVIDIA driver on your system is too old|CUDA driver version is insufficient",
+            "The installed PyTorch/vLLM build needs a newer NVIDIA driver than this server has.",
+            [
+                {
+                    "label": "install builds for the driver's CUDA version, e.g. vLLM's +cu129 wheel from its GitHub release with uv pip install … --torch-backend cu129",
+                    "op": "manual",
+                },
+                {"label": "or update the NVIDIA driver (CUDA 13 builds need driver 580 or newer)", "op": "manual"},
+            ],
         ),
         (
             r"No CUDA GPUs are available|no GPU.*found|CUDA_VISIBLE_DEVICES.*invalid",

@@ -18,7 +18,7 @@ import {
   _trashIcon, _moreIcon, _bellIcon,
   _isCalBgImage, _calBgImageUrl, _calBgCss, _cssUrlEscape,
   _calReadableTextColor,
-  _ds, _addDays, _shiftDT, _tzOffset, _localDateOf,
+  _ds, _addDays, _shiftDT, _tzOffset, _localDateOf, _firstOccurrenceKey,
 } from './calendar/utils.js';
 
 const API_BASE = window.location.origin;
@@ -319,11 +319,24 @@ async function _deleteEvent(uid, { scope = 'series' } = {}) {
   //      other days kept rendering until the next full refresh.
   //   3. If the user clicked the master, strip every "master::*"
   //      expansion (same prefix scan).
-  const deleteOccurrenceOnly = scope === 'occurrence' && uid.includes('::');
+  // `B1906`: "This event only" always deletes one occurrence. A series held
+  // under its own uid (the row a create, or an edit that adds a repeat, leaves
+  // in the pool) went out as a series delete. It is now sent as its first
+  // occurrence, keyed the way the server keys it, and only those rows go.
+  const deleteOccurrenceOnly = scope === 'occurrence';
+  let target = uid;
+  if (deleteOccurrenceOnly && !uid.includes('::')) {
+    const key = _firstOccurrenceKey(_findEventByUid(uid));
+    if (!key) {
+      if (window.uiModule) window.uiModule.showError('Failed to delete event: could not tell which occurrence this is. Reload the calendar and try again.');
+      return { ok: false };
+    }
+    target = `${uid}::${key}`;
+  }
   const masterUid = uid.includes('::') ? uid.split('::')[0] : uid;
   const backups = {};
   const _matches = deleteOccurrenceOnly
-    ? (k) => k === uid
+    ? (k) => k === uid || k === target
     : (k) => k === uid || k === masterUid || k.startsWith(masterUid + '::');
 
   for (const k of Object.keys(_allEvents)) {
@@ -337,9 +350,9 @@ async function _deleteEvent(uid, { scope = 'series' } = {}) {
   }
   if (_open) _render();
   _updateBadge && _updateBadge();
-  const isRecurring = uid.includes('::');
+  const isRecurring = target.includes('::');
   const scopeParam = deleteOccurrenceOnly ? '?scope=occurrence' : '';
-  fetch(`${API_BASE}/api/calendar/events/${encodeURIComponent(uid)}${scopeParam}`, {
+  fetch(`${API_BASE}/api/calendar/events/${encodeURIComponent(target)}${scopeParam}`, {
     method: 'DELETE', credentials: 'same-origin',
   }).then(r => {
     // 404 = the event was already deleted by another session/device. That's
@@ -3520,12 +3533,23 @@ function _e(s) { return uiModule.esc ? uiModule.esc(s || '') : (s || '').replace
 // Linkify a location string: URLs become clickable, plain addresses get a Maps link.
 function _locHTML(loc) {
   if (!loc) return '';
-  const urlRe = /(https?:\/\/[^\s]+)/gi;
-  if (urlRe.test(loc)) {
-    return loc.replace(urlRe, (url) => {
-      const safe = _e(url);
-      return `<a href="${safe}" target="_blank" rel="noopener" onclick="event.stopPropagation();">${safe}</a>`;
-    }).replace(/\n/g, '<br>');
+  const text = String(loc);
+  const urlRe = /(https?:\/\/[^\s<>"']+)/gi;
+  if (urlRe.test(text)) {
+    // `B1905`: a location comes from synced calendars, .ics files and mail, so
+    // the text around each link is escaped too, not only the link. `test()`
+    // on a /g regex leaves `lastIndex` past the first match and `matchAll`
+    // copies it, so it is reset or the first link is lost.
+    urlRe.lastIndex = 0;
+    let html = '';
+    let at = 0;
+    for (const m of text.matchAll(urlRe)) {
+      html += _e(text.slice(at, m.index));
+      const safe = _e(m[0]);
+      html += `<a href="${safe}" target="_blank" rel="noopener" onclick="event.stopPropagation();">${safe}</a>`;
+      at = m.index + m[0].length;
+    }
+    return (html + _e(text.slice(at))).replace(/\n/g, '<br>');
   }
   // No URL — link the whole thing to OpenStreetMap.
   const mapUrl = 'https://www.openstreetmap.org/search?query=' + encodeURIComponent(loc);
@@ -3645,7 +3669,7 @@ async function openCalendarTo(target) {
       const now = new Date();
       await _fetchEvents(`${now.getFullYear()}-01-01`, `${now.getFullYear() + 2}-01-01`);
       _currentDate = now;
-      _selectedDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      _selectedDay = _ds(now);   // `B1937`: a 'YYYY-MM-DD' string, as every reader compares it
       _view = 'month';
       _render();
       return;
@@ -3653,17 +3677,22 @@ async function openCalendarTo(target) {
     // If target looks like an ISO date (YYYY-MM-DD...), go straight there.
     let dt = null;
     const isoMatch = /^\d{4}-\d{2}-\d{2}/.test(targetStr);
+    // `B1937`. The day as `_localDateOf` reads it (a date as it is, a Z or
+    // offset timestamp as the local day), at local midnight as the year view's
+    // day click does: `new Date('2026-12-01')` is midnight UTC, the evening
+    // before west of UTC.
     if (isoMatch) {
-      dt = new Date(targetStr);
+      dt = new Date(_localDateOf(targetStr) + 'T00:00:00');
     } else {
       // Treat as an event uid — find it among loaded events.
       const ev = Object.values(_allEvents || {}).find(e => e.uid === targetStr || (e.uid || '').startsWith(targetStr));
-      if (ev && ev.dtstart) dt = new Date(ev.dtstart);
+      if (ev && ev.dtstart) dt = new Date(_localDateOf(ev.dtstart) + 'T00:00:00');
       if (ev) _highlightEventUid = ev.uid;
     }
     if (dt && !isNaN(dt.getTime())) {
       _currentDate = new Date(dt);
-      _selectedDay = new Date(dt.getFullYear(), dt.getMonth(), dt.getDate());
+      // `B1937`: stored as the string every other writer stores, not a Date.
+      _selectedDay = _ds(dt);
       _view = 'month';
       _render();
     }

@@ -134,3 +134,26 @@ def test_chatgpt_subscription_payload_omits_max_output_tokens_when_zero():
     )
 
     assert "max_output_tokens" not in payload
+
+
+# `B1787`: the ChatGPT plan's Codex backend answers HTTP 400 "Unsupported
+# parameter: temperature" for every model, and its model list is the backend's
+# own live slugs. Temperature was withheld only for names in the o1/o3/o4/gpt-5
+# families, so a GPT-6 or codex-mini slug failed on every call, side calls too.
+# Upstream Odysseus 5bf45246 (#6498).
+@pytest.mark.parametrize(
+    "model",
+    ["gpt-5.6-luna", "gpt-6-luna", "gpt-6-sol", "gpt-6.1-sol", "gpt-4.1", "codex-mini-latest"],
+)
+def test_chatgpt_subscription_payload_omits_temperature_for_every_model(model):
+    payload = llm_core._build_chatgpt_responses_payload(
+        model,
+        [{"role": "user", "content": "Say OK"}],
+        temperature=0.2,
+        max_tokens=37,
+        stream=True,
+    )
+
+    assert "temperature" not in payload
+    assert payload["stream"] is True
+    assert payload["store"] is False

@@ -266,9 +266,10 @@ def test_a_quote_cannot_open_a_second_attribute(tmp_path, esc):
     assert [n for n, _ in got] == ["alt"], (repr(esc), got)
 
 
-# `_attrEsc` is a **second-stage** escaper in both files that have one:
-# `notes.js:537` and `emailLibrary/utils.js:76` escape the whole string with
-# `_esc` and then call `_attrEsc` on a href cut out of the result. It therefore
+# `_attrEsc` is a **second-stage** escaper in both files that have one: what it
+# is handed has been through `_esc` already. `notes.js:537` escapes the whole
+# string with `_esc` and calls `_attrEsc` on a href cut out of the result;
+# `emailLibrary/utils.js` calls it on `_esc(href)` (`B1825`). It therefore
 # must not escape `&` — doing so turns `?a=1&amp;b=2` into `?a=1&amp;amp;b=2`,
 # which `tests/test_email_linkify_security_js.py` asserts against by name. The
 # sweep measured whether the omission is an attribute break-out and it is not:

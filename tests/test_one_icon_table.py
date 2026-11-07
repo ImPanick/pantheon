@@ -659,6 +659,15 @@ _B397_REMOVED = "static/js/research/panel.js#3"
 # the unreachable form it was drawn in. 56 before `B902`, 55 after.
 _B902_REMOVED = "static/js/admin.js#4"
 _REMOVED = (_B397_REMOVED, _B902_REMOVED)
+# And the other direction, a site added, named by the key it has now and the
+# options it passes. `B1969`: the Dependencies recipe caret, which the baseline
+# never held because it was taken out before the fork, so nothing could open
+# the recipe panel. It is the first chevron in `cookbook.js`, so the module's
+# three baseline sites move down one place. A site added here draws from the
+# table and stays on the sizes and stroke widths `B394` ratchets.
+_ADDED = {
+    "static/js/cookbook.js#1": {"size": 11, "style": "transition:transform 0.15s"},
+}
 
 
 def _now_key(key: str):
@@ -669,7 +678,12 @@ def _now_key(key: str):
     mod, n = key.split("#")
     shift = sum(1 for gone in _REMOVED
                 if gone.split("#")[0] == mod and int(n) > int(gone.split("#")[1]))
-    return f"{mod}#{int(n) - shift}" if shift else key
+    n = int(n) - shift
+    # Each added site, in order, pushes the sites at or after it down one.
+    for added in sorted(int(k.split("#")[1]) for k in _ADDED if k.split("#")[0] == mod):
+        if n >= added:
+            n += 1
+    return f"{mod}#{n}"
 
 
 def test_every_chevron_site_emits_what_its_literal_emitted_plus_B291s_two_changes():
@@ -702,8 +716,11 @@ def test_every_chevron_site_emits_what_its_literal_emitted_plus_B291s_two_change
     # form's chevron, renumbered (above).
     kept = [k for k in keys if _now_key(k)]
     assert len(kept) == 55
-    assert sorted(now) == sorted(_now_key(k) for k in kept), \
-        sorted(set(now) ^ {_now_key(k) for k in kept})
+    # And the sites added since, named in `_ADDED` (`B1969`).
+    assert sorted(now) == sorted([_now_key(k) for k in kept] + list(_ADDED)), \
+        sorted(set(now) ^ ({_now_key(k) for k in kept} | set(_ADDED)))
+    for key, opts in _ADDED.items():
+        assert now[key] == opts, (key, now[key])
     rendered = _h("chevrons", json.dumps([now[_now_key(k)] for k in kept]))["rendered"]
 
     def segments(points):
@@ -758,6 +775,14 @@ def test_every_chevron_site_emits_what_its_literal_emitted_plus_B291s_two_change
     assert sum(1 for k in keys
                if before[k]["attrs"].get("aria-hidden")) == 11
     assert all(_svg_attrs(m).get("aria-hidden") == "true" for m in rendered)
+    #   the sites added since — on the same ladders, so they widen nothing, and
+    #     with the vertex and aria-hidden every other site has.
+    added = _h("chevrons", json.dumps(list(_ADDED.values())))["rendered"]
+    for markup in added:
+        got = _svg_attrs(markup)
+        assert got["width"] in {_svg_attrs(m)["width"] for m in rendered}, got
+        assert got["stroke-width"] in {_svg_attrs(m)["stroke-width"] for m in rendered}, got
+        assert got.get("stroke-linejoin") == "round" and got.get("aria-hidden") == "true", got
 
 
 def test_the_table_adds_no_rotation_of_its_own():

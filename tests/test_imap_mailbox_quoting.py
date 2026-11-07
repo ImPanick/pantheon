@@ -33,8 +33,14 @@ class FakeListConn:
 
 
 class FakeMoveConn:
+    """A folder holding UID 123 whose MOVE is refused, so the COPY fallback
+    runs. `B2012`: it keeps what STORE \\Deleted and EXPUNGE did, because the
+    bulk move now asks the folder afterwards which messages left."""
+
     def __init__(self):
         self.calls = []
+        self.present = {"123"}
+        self.flagged = set()
 
     def list(self):
         self.calls.append(("list",))
@@ -47,13 +53,16 @@ class FakeMoveConn:
     def uid(self, command, *args):
         self.calls.append(("uid", command, *args))
         if command == "FETCH":
-            return "OK", [b"1 (UID 123)"]
+            return "OK", [b"1 (UID 123)"] if "123" in self.present else [None]
         if command == "MOVE":
             return "NO", []
+        if command == "STORE" and args[1:] == ("+FLAGS", "\\Deleted"):
+            self.flagged.add("123")
         return "OK", []
 
     def expunge(self):
         self.calls.append(("expunge",))
+        self.present -= self.flagged
 
     def logout(self):
         self.calls.append(("logout",))

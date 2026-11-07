@@ -194,6 +194,29 @@ def _empty_result(url: str, error: str = "") -> dict:
 _FETCH_RETRIES = 1
 _TRANSIENT_STATUSES = frozenset({500, 502, 503, 504})
 
+# `B1799`. A bot-protection interstitial served with a 2xx status: the titles
+# such pages carry, and the words that say the page itself did not load. Both
+# are asked for, on a short page only, so an article about challenges stays
+# readable. Cloudflare's own challenge is a 403 and fails before extraction;
+# Fastly's "Client Challenge" (PyPI's front) is a 200, and is what this is for.
+_CHALLENGE_TITLES = frozenset({
+    "client challenge", "just a moment", "security verification", "verify you are human",
+})
+_CHALLENGE_TEXT = re.compile(
+    r"required part of this site|verify (?:that )?you are human|verifying you are human"
+    r"|checking your browser|enable javascript|security verification|performing security",
+    re.IGNORECASE,
+)
+_CHALLENGE_CHARS = 2000
+
+# `B1807`. What is not the page's text: taken out of the tree before the text
+# is read. `header` is not here (an article's own header holds its title);
+# the thin-content fallback below still drops it from the body it reads.
+_TEXT_NOISE = (
+    'script, style, noscript, template, nav, footer, aside, '
+    '[role="navigation"], [role="banner"], [role="contentinfo"]'
+)
+
 
 def fetch_webpage_content(url: str, timeout: int = 5, retry_attempt: int = 0,
                           max_bytes: int = None) -> dict:
@@ -214,8 +237,12 @@ def fetch_webpage_content(url: str, timeout: int = 5, retry_attempt: int = 0,
     # And so is a LAN grant (`B1459`): a page fetched under one (a router page
     # an allowed person's agent read) must never be served from the cache to a
     # fetch without one — the cache is read before any address is checked.
+    # And the extraction's version (`B1807`), so a page read by an older
+    # extractor is read again; it goes before `#lan`, which ends the key.
+    # `B1946` raised it to 3: a PDF cached as "Failed to extract PDF text" is
+    # read again by pypdf.
     cache_key = generate_cache_key(
-        f"{url}#cap={effective_cap}#lan={int(_outbound_fetch.lan_allowed())}")
+        f"{url}#cap={effective_cap}#extract=3#lan={int(_outbound_fetch.lan_allowed())}")
     cache_file = CONTENT_CACHE_DIR / f"{cache_key}.cache"
 
     # Check cache
@@ -296,16 +323,25 @@ def fetch_webpage_content(url: str, timeout: int = 5, retry_attempt: int = 0,
                 + (f" (size {_declared:,} bytes)" if _declared else "")
                 + "; retry with a larger budget if it fits under the hard cap",
             )
-        if pdf_extract_text is None:
-            logger.error("pdfminer.six is not installed; cannot extract PDF text.")
-            pdf_text = ""
-        else:
+        # `B1946`. Read by pypdf, the core pin (`B1743`) that reads email
+        # attachments and indexed PDFs, through the same function. This read
+        # pdfminer.six alone, which no requirements file installs, so on a
+        # stock install every PDF came back "Failed to extract PDF text".
+        # pdfminer, where it is installed, is still asked when pypdf finds no
+        # text. Imported in the branch that uses it, so that loading this
+        # module loads nothing it did not load before.
+        from src.personal_docs import extract_pdf_text
+        pdf_text = extract_pdf_text(io.BytesIO(response.content), name=url)
+        if not pdf_text.strip() and pdf_extract_text is not None:
             try:
                 pdf_bytes = io.BytesIO(response.content)
-                pdf_text = pdf_extract_text(pdf_bytes)
+                pdf_text = pdf_extract_text(pdf_bytes) or ""
             except Exception as e:
                 logger.warning(f"PDF extraction failed for {url}: {e}")
                 pdf_text = ""
+        if not pdf_text.strip():
+            # A page break or a space is not a text layer.
+            pdf_text = ""
         result = {
             "url": url,
             "title": os.path.basename(url),
@@ -324,7 +360,7 @@ def fetch_webpage_content(url: str, timeout: int = 5, retry_attempt: int = 0,
         _cache_result(cache_file, cache_key, result, url)
         return result
 
-    # Plain-text / Markdown / JSON handling. Sources like
+    # Plain-text / Markdown / JSON / XML-feed handling. Sources like
     # raw.githubusercontent.com serve Markdown as `text/plain`, JSON APIs and
     # raw config files serve `application/json`, and a lot of code and tool
     # docs live in `.md` / `.txt`. These have no HTML structure, so the HTML
@@ -335,11 +371,23 @@ def fetch_webpage_content(url: str, timeout: int = 5, retry_attempt: int = 0,
     # catches servers that mislabel text files as `application/octet-stream`.
     is_html = "html" in content_type
     is_json = "json" in content_type
+    # `B1798`. Feeds and XML APIs too: an Atom, RSS or `application/xml` body
+    # (arXiv's export API, a releases.atom, a sitemap) has no container and no
+    # `<body>` for the parser below, so a complete feed came back a success with
+    # no content. The media type decides, never a bare "xml": the Office types
+    # carry it too and are zips. `text/xml` is `text/*` already, and
+    # `application/xhtml+xml` stays on the parser through `is_html`.
+    media_type = content_type.split(";", 1)[0].strip()
+    is_xml = media_type == "application/xml" or (
+        media_type.startswith("application/") and media_type.endswith("+xml")
+    )
     url_path = url.lower().split("?", 1)[0].split("#", 1)[0]
     looks_like_text_file = url_path.endswith(
         (".md", ".markdown", ".txt", ".text", ".json", ".jsonl")
     )
-    if not is_html and (content_type.startswith("text/") or is_json or looks_like_text_file):
+    if not is_html and (
+        content_type.startswith("text/") or is_json or is_xml or looks_like_text_file
+    ):
         text_body = (response.text or "").strip()
         result = {
             "url": url,
@@ -375,16 +423,35 @@ def fetch_webpage_content(url: str, timeout: int = 5, retry_attempt: int = 0,
     js_rendered = _detect_js_frameworks(soup)
     js_message = "Page appears to be rendered by a JavaScript framework; content may be incomplete." if js_rendered else ""
 
-    # Main textual content (heuristic): prefer semantic / "content"-classed
-    # containers to skip nav/footer/boilerplate; tuned for article pages.
-    main_content = ""
-    content_areas = soup.find_all(
-        ["main", "article", "section", "div"],
-        class_=re.compile("content|main|body|article|post|entry|text", re.I),
-    )
-    if content_areas:
-        for area in content_areas[:3]:
-            main_content += area.get_text(separator=" ", strip=True) + " "
+    # Read before the noise below is taken out of the tree (`B1807`), so these
+    # still describe the whole page.
+    lists = _extract_lists(soup)
+    tables = _extract_tables(soup)
+    code_blocks = _extract_code_blocks(soup)
+
+    # Main textual content (heuristic), `B1807`. This took every "content"-
+    # classed `main`/`article`/`section`/`div` and joined the first three, and
+    # a wrapper and the area inside it are both matches: a WordPress post
+    # (`div.site-content > div.content-area > main > article`) came back three
+    # times with the sidebar, and a Wikipedia article three times over. Noise
+    # goes first, in place (an aside inside an article is a callout and
+    # stays); then `<main>`, else the `<article>`s, else the class heuristic;
+    # and an area inside another one is read once, with it.
+    for noise in soup.select(_TEXT_NOISE):
+        if noise.name == "aside" and noise.find_parent("article") is not None:
+            continue
+        noise.extract()
+    semantic_main = soup.find("main") or soup.find(attrs={"role": "main"})
+    content_areas = [semantic_main] if semantic_main else soup.find_all("article")
+    if not content_areas:
+        content_areas = soup.find_all(
+            ["section", "div"],
+            class_=re.compile("content|main|body|article|post|entry|text", re.I),
+        )
+    _area_ids = {id(area) for area in content_areas}
+    content_areas = [area for area in content_areas
+                     if not any(id(parent) in _area_ids for parent in area.parents)]
+    main_content = " ".join(area.get_text(separator=" ", strip=True) for area in content_areas)
     main_content = re.sub(r"\s+", " ", main_content).strip()
 
     # If the heuristic finds only a tiny wrapper, fall back to body text with
@@ -403,13 +470,32 @@ def fetch_webpage_content(url: str, timeout: int = 5, retry_attempt: int = 0,
             if len(body_text) > len(main_content):
                 main_content = body_text
 
+    # `B1799`. An HTTP 200 is not the page. An interstitial came back as the
+    # page, `success` True, so a search counted the source as fetched and the
+    # model was handed the challenge text as evidence. It is a failed fetch now,
+    # said in words, and not cached: a challenge is transient.
+    if (title_text.strip().lower().rstrip(".!") in _CHALLENGE_TITLES
+            and len(main_content) < _CHALLENGE_CHARS
+            and _CHALLENGE_TEXT.search(main_content)):
+        return {
+            **_empty_result(
+                url,
+                "Page access challenge: the page itself was not retrieved. Try "
+                "agent_browser if it is available, or another source; do not treat "
+                "the challenge page as evidence.",
+            ),
+            "title": title_text,
+            "error_kind": "access_challenge",
+            **_size_fields,
+        }
+
     result = {
         "url": url,
         "title": title_text,
         "content": main_content,
-        "lists": _extract_lists(soup),
-        "tables": _extract_tables(soup),
-        "code_blocks": _extract_code_blocks(soup),
+        "lists": lists,
+        "tables": tables,
+        "code_blocks": code_blocks,
         "meta_description": meta_info.get("description", ""),
         "meta_keywords": meta_info.get("keywords", ""),
         "og_image": og_image,

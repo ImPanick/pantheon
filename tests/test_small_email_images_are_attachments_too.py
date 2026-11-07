@@ -205,7 +205,7 @@ def _install_imap(monkeypatch, tmp_path, messages: dict):
     monkeypatch.setattr(email_routes, "_imap_uid_fetch", fake_fetch)
     monkeypatch.setattr(email_routes, "_imap_uid_search", fake_search)
     monkeypatch.setattr(email_routes, "attachment_extract_dir",
-                        lambda folder, uid: tmp_path / "extract" / str(uid))
+                        lambda folder, uid, **_: tmp_path / "extract" / str(uid))
     for name in ("_email_preview_cache_get", "_email_attachment_meta_cache_get"):
         monkeypatch.setattr(email_routes, name, lambda *_a, **_k: None)
     for name in ("_email_preview_cache_put", "_email_attachment_meta_cache_put",

@@ -70,7 +70,7 @@ def _drive(tmp_path, monkeypatch, name, body: bytes, *, extracted=None,
     monkeypatch.setattr(email_routes, "_imap_uid_fetch",
                         lambda *a, **k: (fetch_status, [(None, RAW_EMAIL)]))
     monkeypatch.setattr(email_routes, "attachment_extract_dir",
-                        extract_dir or (lambda folder, uid: target))
+                        extract_dir or (lambda folder, uid, **_: target))
     resolved = extracted if extracted is not None else (target / name if name else None)
     monkeypatch.setattr(email_routes, "_extract_attachment_to_disk",
                         lambda msg, index, d: resolved)
@@ -166,7 +166,7 @@ def test_an_unexpected_failure_does_not_put_its_text_on_the_wire(tmp_path, monke
     """The outer handler logs the real error and answers with a fixed string.
     A mailbox error carrying a server path or a credential fragment must not
     be echoed to the browser."""
-    def boom(folder, uid):
+    def boom(folder, uid, **_):
         raise RuntimeError("imap://user:hunter2@mail.internal refused")
 
     result, _ = _drive(tmp_path, monkeypatch, "notes.txt", b"hello", extract_dir=boom)

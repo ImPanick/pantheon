@@ -10,6 +10,44 @@ export function extractEmail(addr) {
   return (m ? m[1] : (addr || '')).trim().toLowerCase();
 }
 
+// Split a To/Cc header into its recipients at the commas between them, not
+// at one inside a quoted name or an <address> (`B1964`): Exchange's
+// '"Smith, John" <john@corp.com>' is one recipient. A non-string (a JSON
+// message blob's To is not always one) is no recipients. From upstream
+// Odysseus #6910.
+export function splitRecipientList(raw) {
+  const s = typeof raw === 'string' ? raw : '';
+  const out = [];
+  let cur = '';
+  let quote = false;
+  let angle = false;
+  let escaped = false;
+  for (const ch of s) {
+    if (escaped) {
+      escaped = false;
+    } else if (ch === '\\' && quote) {
+      escaped = true;
+    } else if (ch === '"') {
+      quote = !quote;
+    } else if (ch === '<' && !quote) {
+      angle = true;
+    } else if (ch === '>' && !quote) {
+      angle = false;
+    }
+
+    if (ch === ',' && !quote && !angle) {
+      const part = cur.trim();
+      if (part) out.push(part);
+      cur = '';
+    } else {
+      cur += ch;
+    }
+  }
+  const tail = cur.trim();
+  if (tail) out.push(tail);
+  return out;
+}
+
 // Reply-all CC = everyone on the original To + Cc, minus ourselves, with the
 // original "Name <email>" form preserved.
 //
@@ -21,8 +59,7 @@ export function extractEmail(addr) {
 export function buildReplyAllCc(data, mine) {
   const list = Array.isArray(mine) ? mine : [mine];
   const me = new Set(list.map((a) => (a || '').toLowerCase()).filter(Boolean));
-  const split = (s) => (typeof s === 'string' ? s : '').split(',').map((x) => x.trim()).filter(Boolean);
-  return [...split(data && data.to), ...split(data && data.cc)]
+  return [...splitRecipientList(data && data.to), ...splitRecipientList(data && data.cc)]
     .filter((addr) => !me.has(extractEmail(addr)))
     .join(', ');
 }

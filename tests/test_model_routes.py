@@ -412,6 +412,12 @@ class TestIsChatModel:
     @pytest.mark.parametrize("model_id", [
         "dall-e-3", "tts-1", "whisper-1", "text-embedding-3-small",
         "gpt-image-1", "sora-1",
+        # `B1789`: embedding and reranker models as Ollama and the Forge
+        # name them (the first two are the Forge's own embedding pulls).
+        "nomic-embed-text:latest", "mxbai-embed-large:latest",
+        "snowflake-arctic-embed:latest", "granite-embedding:278m",
+        "qwen3-embedding:8b", "jina-reranker-v2-base-multilingual",
+        "dengcao/qwen3-reranker-8b", "mxbai-rerank-large-v2",
     ])
     def test_non_chat_models(self, model_id):
         assert _is_chat_model(model_id) is False
@@ -751,6 +757,30 @@ class TestSetupProbeSafety:
 
         assert _probe_endpoint("https://ollama.com/api", "ollama-key") == ["gpt-oss:120b", "qwen3:235b"]
         assert seen == [("https://ollama.com/api/tags", {"Authorization": "Bearer ollama-key"})]
+
+    def test_a_local_ollama_listing_leaves_out_its_embedding_and_reranker_models(self, monkeypatch):
+        """`B1789`. This filter is what fills an endpoint's model list, so an
+        embedding model pulled into Ollama was offered in every chat menu, and
+        when the server listed it first it became a new endpoint's default and
+        a new user's automatic chat model. Chats sent to it fail. The chat
+        models beside it must all stay."""
+        monkeypatch.setattr(endpoint_resolver, "resolve_url", lambda url: url, raising=False)
+        monkeypatch.setattr(model_routes, "_normalize_base", lambda url: url.rstrip("/"))
+        chat = ["qwen3:8b", "gpt-oss:20b", "deepseek-r1:14b", "gemma3:12b", "llama3.1:8b",
+                "command-r:35b"]
+        listed = ["nomic-embed-text:latest", chat[0], "mxbai-embed-large:latest", *chat[1:],
+                  "snowflake-arctic-embed:latest", "granite-embedding:278m", "qwen3-embedding:8b",
+                  "jina-reranker-v2-base-multilingual", "dengcao/qwen3-reranker-8b",
+                  "mxbai-rerank-large-v2"]
+
+        def fake_get(url, headers=None, timeout=None, verify=None, **kwargs):
+            request = httpx.Request("GET", url)
+            return httpx.Response(200, request=request,
+                                  json={"models": [{"name": name} for name in listed]})
+
+        monkeypatch.setattr(model_routes.paced_http, "get_sync", fake_get)
+
+        assert _probe_endpoint("http://127.0.0.1:11434/v1") == chat
 
     def test_unkeyed_anthropic_probe_that_fails_lists_nothing(self, monkeypatch):
         """`D-2026-10-07-02` §1 (fx4-models): this was

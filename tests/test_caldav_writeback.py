@@ -84,6 +84,44 @@ def test_build_ical_includes_rrule():
     assert "RRULE:FREQ=WEEKLY" in ical
 
 
+# `B1962` (upstream Odysseus PR #6404, de7ba8f6): the module imported only
+# `timezone`, so each `datetime.strptime` for an exdate raised NameError, the
+# per-exdate `except Exception` swallowed it, and every EXDATE was dropped: an
+# occurrence deleted in Pantheon stayed on the CalDAV server.
+
+
+def test_build_ical_includes_exdate_for_deleted_occurrence():
+    ical = build_event_ical(
+        _ev(rrule="FREQ=WEEKLY;BYDAY=WE", recurrence_exdates=["2026-06-17T14:00"])
+    )
+    assert "EXDATE" in ical
+    assert "EXDATE:20260617T140000Z" in ical
+
+
+def test_build_ical_includes_exdate_for_all_day_deleted_occurrence():
+    ical = build_event_ical(
+        _ev(
+            all_day=True,
+            is_utc=False,
+            rrule="FREQ=WEEKLY;BYDAY=WE",
+            recurrence_exdates=["2026-06-17"],
+        )
+    )
+    assert "EXDATE;VALUE=DATE:20260617" in ical
+
+
+def test_build_ical_keeps_floating_exdate_without_utc_suffix():
+    ical = build_event_ical(
+        _ev(
+            is_utc=False,
+            rrule="FREQ=WEEKLY;BYDAY=WE",
+            recurrence_exdates=["2026-06-17T14:00"],
+        )
+    )
+    assert "EXDATE:20260617T140000" in ical
+    assert "EXDATE:20260617T140000Z" not in ical
+
+
 def test_find_remote_calendar_matches_by_hash():
     cals = [FakeCalendar("https://other/x/"), FakeCalendar(REMOTE_URL)]
     found = find_remote_calendar(cals, CAL_ID)

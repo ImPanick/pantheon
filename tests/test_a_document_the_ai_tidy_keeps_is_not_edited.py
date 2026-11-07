@@ -115,7 +115,10 @@ def test_the_library_reads_the_same_after_a_tidy_that_kept_everything(world, lib
         created=datetime.utcnow() - timedelta(minutes=1))
     before = library.shelf()
     assert [title for title, _t in before] == ["Today's notes", "Trip plan", "Budget 2026"]
-    assert library.tidy()["reviewed"] == 3
+    # `B1948`: "Today's notes", made a minute ago, is left alone, as the
+    # dialog says of the last 15 minutes.
+    assert library.tidy()["reviewed"] == 2
+    assert 'title="Today\'s notes"' not in library.asked[0]
     assert library.shelf() == before
 
 

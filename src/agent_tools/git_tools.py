@@ -381,6 +381,7 @@ class _Place:
         # model's, and may `cd "$PANTHEON_PROJECTS"/…` as a runbook does.
         proc = await _create_bash_subprocess(
             command, cwd=cwd, env={**os.environ, **projects_env(self.owner), **base_env, **env},
+            stdin=asyncio.subprocess.DEVNULL,   # `B1993`: not the server's terminal
             stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE, **own_process_group())
         try:
             out, err = await asyncio.wait_for(proc.communicate(), timeout=timeout)

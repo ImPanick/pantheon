@@ -7,6 +7,8 @@ behavior at the single implementation point.
 
 import sys
 
+import pytest
+
 from services.search import providers
 
 
@@ -107,3 +109,78 @@ def test_service_ddg_html_fallback_sends_safesearch(monkeypatch):
 
     assert seen["params"]["kp"] == "-2"
     assert results[0]["url"].startswith("https://notduckduckgo.com/")
+
+
+# `B1809`. When SearXNG's JSON request failed (a stock SearXNG serves html only
+# and refuses `format=json` with a 403; a bad answer or a 5xx on the bundled
+# one), `searxng_search_api` fell back to `searxng_search`, which sent the
+# query alone: a news search lost `categories=news` and its `time_range`,
+# every search lost the English pin, and a general one lost the engines that
+# answer. The HTML request now carries the constraints the JSON one was sent
+# with, minus `format`, still through `paced_http` (`B1533`). After upstream
+# Odysseus 90dcdc62, whose case this is, stubbed where Pantheon sends.
+_ONE_HTML_RESULT = ('<article class="result"><h3><a href="https://example.org/report">Report</a>'
+                    '</h3><p class="content">Evidence</p></article>')
+
+
+def _json_fails_then_html_answers(monkeypatch, failure):
+    import httpx
+    from src import paced_http
+
+    seen = []
+
+    class _Refused:
+        status_code = 403
+
+        def raise_for_status(self):
+            raise httpx.HTTPStatusError(
+                "403 Forbidden", request=httpx.Request("GET", "http://searx.test/search"),
+                response=httpx.Response(403))
+
+    class _BadJson:
+        status_code = 200
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            raise ValueError("Expecting value: line 1 column 1 (char 0)")
+
+    class _Html:
+        is_success = True
+        text = _ONE_HTML_RESULT
+
+    def fake_get(url, params=None, headers=None, timeout=None, **kw):
+        seen.append(dict(params or {}))
+        if len(seen) == 1:
+            return {"403": _Refused, "bad-json": _BadJson}[failure]()
+        return _Html()
+
+    monkeypatch.setattr(providers, "_get_search_instance", lambda: "http://searx.test")
+    monkeypatch.setattr(providers, "_get_search_settings", lambda: {"search_safesearch": "strict"})
+    monkeypatch.setattr(paced_http, "get_sync", fake_get)
+    return seen
+
+
+@pytest.mark.parametrize("failure", ["403", "bad-json"])
+def test_the_html_fallback_keeps_a_news_searchs_category_and_date(monkeypatch, failure):
+    seen = _json_fails_then_html_answers(monkeypatch, failure)
+
+    results = providers.searxng_search_api("AI news", time_filter="week")
+
+    assert [r["url"] for r in results] == ["https://example.org/report"]
+    assert len(seen) == 2
+    assert seen[1] == {k: v for k, v in seen[0].items() if k != "format"}
+    assert (seen[1]["categories"], seen[1]["time_range"], seen[1]["language"]) == ("news", "week", "en")
+    assert seen[1]["safesearch"] == "2"
+
+
+def test_the_html_fallback_keeps_a_general_searchs_engines(monkeypatch):
+    seen = _json_fails_then_html_answers(monkeypatch, "403")
+
+    results = providers.searxng_search_api("python packaging guide")
+
+    assert len(results) == 1 and len(seen) == 2
+    assert seen[1]["categories"] == "general"
+    assert seen[1]["engines"] == providers._GENERAL_ENGINES
+    assert "format" not in seen[1]

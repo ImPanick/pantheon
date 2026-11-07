@@ -312,6 +312,68 @@ def test_generic_auth_error_still_passes_through_truncated():
     assert len(msg) == 200
 
 
+# `B2032`. A mail connection that failed at the door (refused, timed out, a TLS
+# handshake that failed, an SMTP server that did not greet) is said in our
+# words, naming the host and port that were typed and nothing the server sent.
+# The form's Test takes any host and port, and `str(e)` carried the first line
+# whatever listened there sent. Upstream Odysseus 3d91ad82's cases, each error
+# carrying a word ("redis") that the answer must not repeat.
+
+import imaplib as _imaplib
+import smtplib as _smtplib
+import socket as _socket
+import ssl as _ssl
+
+
+def _disconnected_after(cause):
+    """smtplib's shape: `getreply` raises this while handling the socket's error."""
+    error = _smtplib.SMTPServerDisconnected("Connection unexpectedly closed: " + str(cause))
+    error.__context__ = cause
+    return error
+
+
+@pytest.mark.parametrize("error,says", [
+    (_smtplib.SMTPConnectError(554, b"-ERR redis 7.2 internal-cache"),
+     "Couldn't reach the mail server (10.0.0.5:2525). Check the account's SMTP settings."),
+    (_smtplib.SMTPServerDisconnected("Connection unexpectedly closed: HTTP/1.1 400 redis"),
+     "The server at 10.0.0.5:2525 closed the connection. Check the host, the port and the security setting."),
+    (_disconnected_after(_socket.timeout("timed out redis")),
+     "The server at 10.0.0.5:2525 did not answer in time (timed out). Check the host and the port."),
+    (ConnectionRefusedError(111, "Connection refused redis:6379"),
+     "The server at 10.0.0.5:2525 refused the connection. Check the host and the port."),
+    (_socket.timeout("timed out redis"),
+     "The server at 10.0.0.5:2525 did not answer in time (timed out). Check the host and the port."),
+    (_ssl.SSLCertVerificationError(1, "certificate verify failed: redis"),
+     "The server at 10.0.0.5:2525 sent a TLS certificate that could not be verified. Check the host name."),
+    (_ssl.SSLError(1, "[SSL: WRONG_VERSION_NUMBER] banner: redis"),
+     "The TLS handshake with 10.0.0.5:2525 failed. Check the port and the security setting."),
+    (_socket.gaierror(-2, "Name or service not known redis"),
+     "No address was found for 10.0.0.5. Check the host."),
+    (OSError(113, "No route to host redis"),
+     "The connection to 10.0.0.5:2525 failed. Check the host and the port."),
+], ids=["smtp-greeting", "hung-up", "hung-up-timed-out", "refused", "timed-out", "certificate", "tls",
+        "no-such-host", "other-socket-error"])
+def test_a_failure_at_the_door_names_the_host_and_port_and_repeats_nothing_it_was_sent(error, says):
+    normalize = _import_friendly_email_auth_error()
+    for protocol in ("IMAP", "SMTP"):
+        message = normalize(protocol, "10.0.0.5", error, port=2525)
+        assert message == says, (protocol, message)
+        assert "redis" not in message
+
+
+def test_a_sign_in_the_server_refused_still_says_what_the_server_said():
+    """Past the door the server's own answer is the one the person needs, so a
+    refused sign-in is passed on as before; smtplib's is an `OSError` like the
+    door's failures and is not taken for one."""
+    normalize = _import_friendly_email_auth_error()
+    refused = _imaplib.IMAP4.error("[AUTHENTICATIONFAILED] Invalid credentials")
+    assert normalize("IMAP", "imap.example.com", refused, port=993) == "[AUTHENTICATIONFAILED] Invalid credentials"
+    refused = _smtplib.SMTPAuthenticationError(535, b"5.7.8 Bad credentials")
+    assert normalize("SMTP", "smtp.example.com", refused, port=465) == "(535, b'5.7.8 Bad credentials')"
+    refused = _smtplib.SMTPAuthenticationError(535, b"5.7.139 Authentication unsuccessful")
+    assert "Microsoft no longer accepts" in normalize("SMTP", "smtp.office365.com", refused, port=587)
+
+
 # ── compose-upload path traversal block ─────────────────────────
 
 @pytest.mark.parametrize(
@@ -1089,17 +1151,27 @@ def test_attachment_extract_dir_stays_contained(folder, uid):
     """User-controlled folder/uid must never escape ATTACHMENTS_DIR — pins the
     fix for the attachment-extraction path traversal."""
     aed, base = _import_attachment_extract_dir()
-    target = aed(folder, uid)
+    # `B2034`: the owner and the account name a folder too, so they get the
+    # same hostile values (upstream Odysseus 3d91ad82's).
+    target = aed(folder, uid, owner="../../owner", account_id="../acct")
     base_r = base.resolve()
     assert target == base_r or base_r in target.parents
-    # exactly one extra path segment, and no `..` component survived
+    # exactly two path segments, the scope and the flattened name, and no
+    # `..` component survived
     rel = target.relative_to(base_r)
+    assert len(rel.parts) == 2
     assert ".." not in rel.parts
 
 
-def test_attachment_extract_dir_normal_inputs_unchanged():
+def test_attachment_extract_dir_normal_inputs_keep_their_name_in_their_owners_folder():
+    """`B2034`: the readable `INBOX_123` is still the name, one level down, in
+    a folder that is this owner's and this account's alone."""
     aed, base = _import_attachment_extract_dir()
-    assert aed("INBOX", "123") == base.resolve() / "INBOX_123"
+    target = aed("INBOX", "123", owner="alice", account_id="acct-1")
+    assert target.name == "INBOX_123"
+    assert target.parent.parent == base.resolve()
+    assert target == aed("INBOX", "123", owner="alice", account_id="acct-1")
+    assert target.parent != aed("INBOX", "123", owner="bob", account_id="acct-1").parent
 
 
 def test_diagnostics_routes_are_admin_gated():

@@ -4,6 +4,10 @@
 A stub resolver is injected so the tests never touch real DNS.
 """
 
+import ipaddress
+
+import pytest
+
 from src.url_safety import check_outbound_url
 
 
@@ -50,6 +54,41 @@ def test_ipv4_mapped_metadata_blocked():
     ok, reason = check_outbound_url("http://evil6.example/", resolver=MAPPED_METADATA)
     assert ok is False
     assert "link-local" in reason
+
+
+# `B2033`. Two cloud metadata services are not link-local: Alibaba Cloud ECS
+# answers at 100.100.100.200 (in the shared space 100.64/10) and AWS's IPv6
+# instance metadata at fd00:ec2::254 (in fc00::/7). With private addresses
+# allowed, the default, both passed, though the embedding route says the
+# metadata range is always refused. `B1924` made the one list of them for
+# `web_fetch`; this validator reads the same one.
+
+@pytest.mark.parametrize("ip", ["100.100.100.200", "fd00:ec2::254", "::ffff:100.100.100.200", "fd00:ec2::254%eth0"])
+@pytest.mark.parametrize("block_private", [False, True], ids=["default", "strict"])
+def test_the_metadata_hosts_inside_private_ranges_are_refused_in_either_mode(ip, block_private):
+    ok, reason = check_outbound_url("http://meta.example/latest/meta-data/", block_private=block_private,
+                                    resolver=_resolver({"meta.example": [ip]}))
+    assert ok is False, ip
+    assert "cloud metadata" in reason, reason
+
+
+def test_a_scoped_metadata_address_is_inside_its_network():
+    from src.url_safety import _classify
+
+    reason = _classify(ipaddress.ip_address("fd00:ec2::254%eth0"), block_private=False)
+    assert reason and "cloud metadata" in reason, reason
+
+
+def test_only_the_two_metadata_hosts_are_taken_out_and_from_the_one_list():
+    """`Law 14`: `outbound_fetch`'s list itself, not a copy; and the addresses
+    either side of each, and Tailscale's DNS at 100.100.100.100, stay allowed."""
+    import src.outbound_fetch as outbound_fetch
+    import src.url_safety as url_safety
+
+    assert url_safety.CLOUD_METADATA_NETWORKS is outbound_fetch.CLOUD_METADATA_NETWORKS
+    for ip in ("100.100.100.100", "100.100.100.199", "100.100.100.201", "fd00:ec2::253", "fd00:ec2::255"):
+        ok, reason = check_outbound_url("http://lan.example/", resolver=_resolver({"lan.example": [ip]}))
+        assert ok is True, (ip, reason)
 
 
 def test_loopback_and_lan_allowed_by_default_local_first():

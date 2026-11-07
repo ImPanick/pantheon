@@ -418,7 +418,7 @@ embedded licence banner.
 | [@babel/runtime](https://github.com/babel/babel) | bundled inside `jspdf.umd.min.js` (and inside `html2pdf.bundle.min.js` from 0.14.0 through 2026-10-29) | Babel's runtime helpers | MIT ([`licenses/babel-runtime-MIT-LICENSE.txt`](licenses/babel-runtime-MIT-LICENSE.txt)) |
 | [fast-png](https://github.com/image-js/fast-png) | bundled inside `jspdf.umd.min.js` (and inside `html2pdf.bundle.min.js` from 0.14.0 through 2026-10-29) | PNG encode/decode, behind jsPDF 4's image path | MIT ([`licenses/fast-png-MIT-LICENSE.txt`](licenses/fast-png-MIT-LICENSE.txt)) |
 | [iobuffer](https://github.com/image-js/iobuffer) | bundled inside `jspdf.umd.min.js` (and inside `html2pdf.bundle.min.js` from 0.14.0 through 2026-10-29) | Byte-level reader/writer used by fast-png | MIT ([`licenses/iobuffer-MIT-LICENSE.txt`](licenses/iobuffer-MIT-LICENSE.txt)) |
-| [pako](https://github.com/nodeca/pako) | bundled inside `jspdf.umd.min.js` and, inside JSZip, `docx.umd.min.js` (and inside `html2pdf.bundle.min.js` from 0.14.0 through 2026-10-29) | zlib in JavaScript, for PNG streams and the `.docx` zip | MIT ([`licenses/pako-MIT-LICENSE.txt`](licenses/pako-MIT-LICENSE.txt)) |
+| [pako](https://github.com/nodeca/pako) | bundled inside `jspdf.umd.min.js` and, inside JSZip, `docx.umd.min.js` and `mammoth.browser.min.js` (and inside `html2pdf.bundle.min.js` from 0.14.0 through 2026-10-29) | zlib in JavaScript, for PNG streams and the `.docx` zip | MIT ([`licenses/pako-MIT-LICENSE.txt`](licenses/pako-MIT-LICENSE.txt)) |
 | [fflate](https://github.com/101arrowz/fflate) | bundled inside `jspdf.umd.min.js` (and inside `html2pdf.bundle.min.js` through 2026-10-29) | DEFLATE, for PDF stream compression | MIT ([`licenses/fflate-MIT-LICENSE.txt`](licenses/fflate-MIT-LICENSE.txt)) |
 | [performance-now](https://github.com/braveg1rl/performance-now) | bundled inside `html2pdf.bundle.min.js` **through 2026-10-29**; not shipped since `B421` | High-resolution timer shim | MIT ([`licenses/performance-now-MIT-LICENSE.txt`](licenses/performance-now-MIT-LICENSE.txt)) |
 | [raf](https://github.com/chrisdickinson/raf) | bundled inside `html2pdf.bundle.min.js` **through 2026-10-29**; not shipped since `B421` | `requestAnimationFrame` shim | MIT ([`licenses/raf-MIT-LICENSE.txt`](licenses/raf-MIT-LICENSE.txt)) |
@@ -428,11 +428,11 @@ embedded licence banner.
 | [svg-pathdata](https://github.com/nfroidure/svg-pathdata) | bundled inside `html2pdf.bundle.min.js` **through 2026-10-29**; not shipped since `B421` | SVG path parsing inside canvg | MIT ([`licenses/svg-pathdata-MIT-LICENSE.txt`](licenses/svg-pathdata-MIT-LICENSE.txt)) |
 | [node-qrcode](https://github.com/soldair/node-qrcode) v1.5.4 | `qrcode.min.js` **through 2026-09-17**; no longer shipped | Nothing. It was loaded by nothing, ever — see below | MIT ([`licenses/node-qrcode-MIT-LICENSE.txt`](licenses/node-qrcode-MIT-LICENSE.txt)) |
 | [dijkstrajs](https://github.com/tcort/dijkstrajs) | bundled inside `qrcode.min.js` **through 2026-09-17**; no longer shipped | Shortest-path search, behind node-qrcode's segment optimiser | MIT ([`licenses/dijkstrajs-MIT-LICENSE.txt`](licenses/dijkstrajs-MIT-LICENSE.txt)) |
-| [ieee754](https://github.com/feross/ieee754) | bundled inside `docx.umd.min.js` and `swagger-ui-bundle.js` | IEEE-754 float read/write behind `Buffer` | BSD-3-Clause ([`licenses/ieee754-BSD-3-Clause.txt`](licenses/ieee754-BSD-3-Clause.txt)) |
-| [buffer](https://github.com/feross/buffer) | bundled inside `docx.umd.min.js` and `swagger-ui-bundle.js` | Node's `Buffer` for the browser | MIT ([`licenses/buffer-MIT-LICENSE.txt`](licenses/buffer-MIT-LICENSE.txt)) |
+| [ieee754](https://github.com/feross/ieee754) | bundled inside `docx.umd.min.js`, `swagger-ui-bundle.js` and `mammoth.browser.min.js` (behind browserify's `buffer` shim) | IEEE-754 float read/write behind `Buffer` | BSD-3-Clause ([`licenses/ieee754-BSD-3-Clause.txt`](licenses/ieee754-BSD-3-Clause.txt)) |
+| [buffer](https://github.com/feross/buffer) | bundled inside `docx.umd.min.js`, `swagger-ui-bundle.js` and `mammoth.browser.min.js` (browserify's own shim) | Node's `Buffer` for the browser | MIT ([`licenses/buffer-MIT-LICENSE.txt`](licenses/buffer-MIT-LICENSE.txt)) |
 | [string.fromcodepoint](https://github.com/mathiasbynens/String.fromCodePoint) | bundled inside `docx.umd.min.js` | `String.fromCodePoint` polyfill inside `sax`, behind the XML reader | MIT ([`licenses/string.fromcodepoint-MIT-LICENSE.txt`](licenses/string.fromcodepoint-MIT-LICENSE.txt)) |
 | [available-typed-arrays](https://github.com/inspect-js/available-typed-arrays) | bundled inside `docx.umd.min.js` | Type check behind the `util` polyfill's `util.types` | MIT ([`licenses/available-typed-arrays-MIT-LICENSE.txt`](licenses/available-typed-arrays-MIT-LICENSE.txt)) |
-| [base64-js](https://github.com/beatgammit/base64-js) | bundled inside `docx.umd.min.js` | Base64 behind `Buffer` | MIT ([`licenses/base64-js-MIT-LICENSE.txt`](licenses/base64-js-MIT-LICENSE.txt)) |
+| [base64-js](https://github.com/beatgammit/base64-js) | bundled inside `docx.umd.min.js` and `mammoth.browser.min.js` | Base64 behind `Buffer` | MIT ([`licenses/base64-js-MIT-LICENSE.txt`](licenses/base64-js-MIT-LICENSE.txt)) |
 | [call-bind](https://github.com/ljharb/call-bind) | bundled inside `docx.umd.min.js` | Part of the `es-*`/`is-*` shim family behind the `util` polyfill's type checks | MIT ([`licenses/call-bind-MIT-LICENSE.txt`](licenses/call-bind-MIT-LICENSE.txt)) |
 | [call-bind-apply-helpers](https://github.com/ljharb/call-bind-apply-helpers) | bundled inside `docx.umd.min.js` | Part of the `es-*`/`is-*` shim family behind the `util` polyfill's type checks | MIT ([`licenses/call-bind-apply-helpers-MIT-LICENSE.txt`](licenses/call-bind-apply-helpers-MIT-LICENSE.txt)) |
 | [call-bound](https://github.com/ljharb/call-bound) | bundled inside `docx.umd.min.js` | Part of the `es-*`/`is-*` shim family behind the `util` polyfill's type checks | MIT ([`licenses/call-bound-MIT-LICENSE.txt`](licenses/call-bound-MIT-LICENSE.txt)) |
@@ -452,19 +452,19 @@ embedded licence banner.
 | [has-tostringtag](https://github.com/inspect-js/has-tostringtag) | bundled inside `docx.umd.min.js` | Part of the `es-*`/`is-*` shim family behind the `util` polyfill's type checks | MIT ([`licenses/has-tostringtag-MIT-LICENSE.txt`](licenses/has-tostringtag-MIT-LICENSE.txt)) |
 | [hash.js](git@github.com:indutny/hash.js) | bundled inside `docx.umd.min.js` | SHA-1 ids for the images docx embeds | MIT ([`licenses/hash.js-MIT-LICENSE.txt`](licenses/hash.js-MIT-LICENSE.txt)) |
 | [hasown](https://github.com/inspect-js/hasOwn) | bundled inside `docx.umd.min.js` | Part of the `es-*`/`is-*` shim family behind the `util` polyfill's type checks | MIT ([`licenses/hasown-MIT-LICENSE.txt`](licenses/hasown-MIT-LICENSE.txt)) |
-| [immediate](https://github.com/calvinmetcalf/immediate) | bundled inside `docx.umd.min.js` (in JSZip's `dist/jszip.min.js`) | Microtask scheduling behind `lie` | MIT ([`licenses/immediate-MIT-LICENSE.txt`](licenses/immediate-MIT-LICENSE.txt)) |
+| [immediate](https://github.com/calvinmetcalf/immediate) | bundled inside `docx.umd.min.js` and `mammoth.browser.min.js` (in JSZip's `dist/jszip.min.js`, in both) | Microtask scheduling behind `lie` | MIT ([`licenses/immediate-MIT-LICENSE.txt`](licenses/immediate-MIT-LICENSE.txt)) |
 | [inherits](https://github.com/isaacs/inherits) | bundled inside `docx.umd.min.js` | `util.inherits` for the browser | ISC ([`licenses/inherits-ISC-LICENSE.txt`](licenses/inherits-ISC-LICENSE.txt)) |
 | [is-arguments](https://github.com/inspect-js/is-arguments) | bundled inside `docx.umd.min.js` | Type check behind the `util` polyfill's `util.types` | MIT ([`licenses/is-arguments-MIT-LICENSE.txt`](licenses/is-arguments-MIT-LICENSE.txt)) |
 | [is-callable](https://github.com/inspect-js/is-callable) | bundled inside `docx.umd.min.js` | Type check behind the `util` polyfill's `util.types` | MIT ([`licenses/is-callable-MIT-LICENSE.txt`](licenses/is-callable-MIT-LICENSE.txt)) |
 | [is-generator-function](https://github.com/inspect-js/is-generator-function) | bundled inside `docx.umd.min.js` | Type check behind the `util` polyfill's `util.types` | MIT ([`licenses/is-generator-function-MIT-LICENSE.txt`](licenses/is-generator-function-MIT-LICENSE.txt)) |
 | [is-typed-array](https://github.com/inspect-js/is-typed-array) | bundled inside `docx.umd.min.js` | Type check behind the `util` polyfill's `util.types` | MIT ([`licenses/is-typed-array-MIT-LICENSE.txt`](licenses/is-typed-array-MIT-LICENSE.txt)) |
-| [jszip](https://github.com/Stuk/jszip) | bundled inside `docx.umd.min.js` | Writes the `.docx` zip container | MIT, chosen from a dual offer (or GPL-3.0-or-later) ([`licenses/jszip-MIT-or-GPL-3.0-LICENSE.txt`](licenses/jszip-MIT-or-GPL-3.0-LICENSE.txt)) |
-| [lie](https://github.com/calvinmetcalf/lie) | bundled inside `docx.umd.min.js` (in JSZip's `dist/jszip.min.js`) | Promise polyfill inside JSZip's own build | MIT ([`licenses/lie-MIT-LICENSE.txt`](licenses/lie-MIT-LICENSE.txt)) |
+| [jszip](https://github.com/Stuk/jszip) | bundled inside `docx.umd.min.js`, and inside `mammoth.browser.min.js` as 3.7.1's own `dist/jszip.min.js` | Writes the `.docx` zip container, and opens the one mammoth reads | MIT, chosen from a dual offer (or GPL-3.0-or-later) ([`licenses/jszip-MIT-or-GPL-3.0-LICENSE.txt`](licenses/jszip-MIT-or-GPL-3.0-LICENSE.txt)) |
+| [lie](https://github.com/calvinmetcalf/lie) | bundled inside `docx.umd.min.js` and `mammoth.browser.min.js` (in JSZip's `dist/jszip.min.js`, in both) | Promise polyfill inside JSZip's own build | MIT ([`licenses/lie-MIT-LICENSE.txt`](licenses/lie-MIT-LICENSE.txt)) |
 | [math-intrinsics](https://github.com/es-shims/math-intrinsics) | bundled inside `docx.umd.min.js` | Part of the `es-*`/`is-*` shim family behind the `util` polyfill's type checks | MIT ([`licenses/math-intrinsics-MIT-LICENSE.txt`](licenses/math-intrinsics-MIT-LICENSE.txt)) |
 | [minimalistic-assert](https://github.com/calvinmetcalf/minimalistic-assert) | bundled inside `docx.umd.min.js` | Assertions inside `hash.js` | ISC ([`licenses/minimalistic-assert-ISC-LICENSE.txt`](licenses/minimalistic-assert-ISC-LICENSE.txt)) |
 | [nanoid](ai/nanoid) | bundled inside `docx.umd.min.js` | Unique ids for the parts docx writes | MIT ([`licenses/nanoid-MIT-LICENSE.txt`](licenses/nanoid-MIT-LICENSE.txt)) |
 | [possible-typed-array-names](https://github.com/ljharb/possible-typed-array-names) | bundled inside `docx.umd.min.js` | Type check behind the `util` polyfill's `util.types` | MIT ([`licenses/possible-typed-array-names-MIT-LICENSE.txt`](licenses/possible-typed-array-names-MIT-LICENSE.txt)) |
-| [process](https://github.com/shtylman/node-process) | bundled inside `docx.umd.min.js` (in vite-plugin-node-polyfills' `process` shim) | Node's `process`, as vite-plugin-node-polyfills' prebuilt shim | MIT ([`licenses/process-MIT-LICENSE.txt`](licenses/process-MIT-LICENSE.txt)) |
+| [process](https://github.com/shtylman/node-process) | bundled inside `docx.umd.min.js` (in vite-plugin-node-polyfills' `process` shim) and `mammoth.browser.min.js` (browserify's own shim) | Node's `process`, as vite-plugin-node-polyfills' prebuilt shim | MIT ([`licenses/process-MIT-LICENSE.txt`](licenses/process-MIT-LICENSE.txt)) |
 | [readable-stream](https://github.com/nodejs/readable-stream) | bundled inside `docx.umd.min.js` | Node streams for the browser, behind `stream-browserify` | MIT ([`licenses/readable-stream-MIT-LICENSE.txt`](licenses/readable-stream-MIT-LICENSE.txt)) |
 | [sax](https://github.com/isaacs/sax-js) | bundled inside `docx.umd.min.js` | XML parser behind `xml-js` | ISC ([`licenses/sax-ISC-LICENSE.txt`](licenses/sax-ISC-LICENSE.txt)) |
 | [set-function-length](https://github.com/ljharb/set-function-length) | bundled inside `docx.umd.min.js` | Part of the `es-*`/`is-*` shim family behind the `util` polyfill's type checks | MIT ([`licenses/set-function-length-MIT-LICENSE.txt`](licenses/set-function-length-MIT-LICENSE.txt)) |
@@ -477,6 +477,15 @@ embedded licence banner.
 | [which-typed-array](https://github.com/inspect-js/which-typed-array) | bundled inside `docx.umd.min.js` | Type check behind the `util` polyfill's `util.types` | MIT ([`licenses/which-typed-array-MIT-LICENSE.txt`](licenses/which-typed-array-MIT-LICENSE.txt)) |
 | [xml](https://github.com/dylang/node-xml) | bundled inside `docx.umd.min.js` | XML writer behind the `word/*.xml` parts | MIT ([`licenses/xml-MIT-LICENSE.txt`](licenses/xml-MIT-LICENSE.txt)) |
 | [xml-js](https://github.com/nashwaan/xml-js) | bundled inside `docx.umd.min.js` | XML ↔ objects, behind docx's templates and patches | MIT ([`licenses/xml-js-MIT-LICENSE.txt`](licenses/xml-js-MIT-LICENSE.txt)) |
+| [@xmldom/xmldom](https://github.com/xmldom/xmldom) v0.8.6 | bundled inside `mammoth.browser.min.js` | Reads the XML parts of a `.docx` | MIT ([`licenses/xmldom-xmldom-MIT-LICENSE.txt`](licenses/xmldom-xmldom-MIT-LICENSE.txt)) |
+| [bluebird](https://github.com/petkaantonov/bluebird) v3.4.7 | bundled inside `mammoth.browser.min.js` | Promises, throughout mammoth | MIT ([`licenses/bluebird-MIT-LICENSE.txt`](licenses/bluebird-MIT-LICENSE.txt)) |
+| [dingbat-to-unicode](https://github.com/mwilliamson/dingbat-to-unicode) v1.0.1 | bundled inside `mammoth.browser.min.js` | Symbol and Wingdings characters, mapped to Unicode | BSD-2-Clause ([`licenses/dingbat-to-unicode-BSD-2-Clause.txt`](licenses/dingbat-to-unicode-BSD-2-Clause.txt)) |
+| [isarray](https://github.com/juliangruber/isarray) v1.0.0 | bundled inside `mammoth.browser.min.js` | `Array.isArray`, behind browserify's `buffer` | MIT ([`licenses/isarray-MIT-LICENSE.txt`](licenses/isarray-MIT-LICENSE.txt)) |
+| [lop](https://github.com/mwilliamson/lop) v0.4.2 | bundled inside `mammoth.browser.min.js` | The parser behind mammoth's style maps | BSD-2-Clause ([`licenses/lop-BSD-2-Clause.txt`](licenses/lop-BSD-2-Clause.txt)) |
+| [option](https://github.com/mwilliamson/node-options) v0.2.4 | bundled inside `mammoth.browser.min.js` | Optional values, inside `lop` | BSD-2-Clause ([`licenses/option-BSD-2-Clause.txt`](licenses/option-BSD-2-Clause.txt)) |
+| [set-immediate-shim](https://github.com/sindresorhus/set-immediate-shim) v1.0.1 | bundled inside `mammoth.browser.min.js` (in JSZip 3.7.1's `dist/jszip.min.js`) | `setImmediate` shim inside JSZip's own build | MIT ([`licenses/set-immediate-shim-MIT-LICENSE.txt`](licenses/set-immediate-shim-MIT-LICENSE.txt)) |
+| [underscore](https://github.com/jashkenas/underscore) v1.13.1 | bundled inside `mammoth.browser.min.js` | Collection helpers, in mammoth and `lop` | MIT ([`licenses/underscore-MIT-LICENSE.txt`](licenses/underscore-MIT-LICENSE.txt)) |
+| [xmlbuilder](https://github.com/oozcitak/xmlbuilder-js) v10.0.0 | bundled inside `mammoth.browser.min.js` | Writes XML, behind mammoth's style-map embedding | MIT ([`licenses/xmlbuilder-MIT-LICENSE.txt`](licenses/xmlbuilder-MIT-LICENSE.txt)) |
 | [KaTeX](https://github.com/KaTeX/KaTeX) v0.18.7 | `katex/katex.min.{js,css}` + `katex/fonts/*.woff2` | Math typesetting | MIT ([`licenses/KaTeX-MIT-LICENSE.txt`](licenses/KaTeX-MIT-LICENSE.txt)) |
 | [Mermaid](https://github.com/mermaid-js/mermaid) v11.17.2 | `mermaid.min.js` | Diagrams from text | MIT ([`licenses/Mermaid-MIT-LICENSE.txt`](licenses/Mermaid-MIT-LICENSE.txt)) |
 | [vscode-languageserver](https://github.com/microsoft/vscode-languageserver-node) — `vscode-jsonrpc` v8.2.0, `vscode-languageserver-protocol` v3.17.5, `vscode-languageserver-types` v3.17.5 | bundled inside `mermaid.min.js` | Language-server plumbing behind Mermaid's parsers | MIT ([`licenses/vscode-languageserver-MIT-LICENSE.txt`](licenses/vscode-languageserver-MIT-LICENSE.txt)) |
@@ -865,6 +874,30 @@ RGBColor — and each now has an entry. `html2canvas.min.js` carries Microsoft's
 notice at all; all five have rows now. Inside the html2pdf bundle these were
 either in a sidecar rule 8 did not read for a `derived` answer, or nowhere.
 
+**`B1959`, 2026-11-07: what mammoth carries, read from its module maps.**
+`mammoth.browser.min.js` is mammoth 1.12.3's own browserify build. Browserify
+leaves no `node_modules/` paths for rule 7, and mammoth's build strips every
+legal comment, so rule 8 sees one library and `single` passes. What browserify
+does leave is one map per module, from each `require` string to the module that
+answers it (`{"../utils":32,"readable-stream":16}`), and the keys that are not
+relative paths name the packages inside: **eighteen**. Nine already had a text
+here as contents of docx, jsPDF or Swagger UI, and their rows above now name
+this file too: `base64-js`, `buffer`, `ieee754`, `immediate`, `jszip`, `lie`,
+`pako` and `process` — but not `readable-stream`, whose key here is JSZip's
+one-line shim re-exporting a `stream` the build mapped to nothing, so none of
+its code ships in this file. The other nine had no notice anywhere:
+`@xmldom/xmldom`, `bluebird`, `dingbat-to-unicode`, `isarray`, `lop`, `option`,
+`set-immediate-shim`, `underscore` and `xmlbuilder`. Each now has a row, a text
+and an `INVENTORY` entry. Each text is the package's own, at the release mammoth
+1.12.3's lockfile resolves; where the published archive has no LICENSE file,
+`isarray`'s text is its README's *License* section, verbatim,
+`set-immediate-shim`'s is the `license` file at its repository's `v1.0.1` tag,
+and `dingbat-to-unicode` (BSD-2-Clause by its `package.json`) carries the
+`js/LICENSE` its repository added later. The checker does not read browserify
+maps — teaching rule 7 to would make this a third derived bundle, a change of
+its own — so `tests/test_bundled_package_notices.py` reads them out of the
+shipped bytes and fails when a mammoth bump changes what is inside.
+
 ### How these stay current
 
 The versions in the table above used to live in this file's prose and nowhere a
@@ -1057,6 +1090,7 @@ read the same way on 2026-10-31, with what its wheels carry inside them.
 | python-dotenv | core | BSD-3-Clause |
 | HTTPX | core | BSD-3-Clause |
 | **httpcore** | core | BSD-3-Clause |
+| **certifi** | core — the CA bundle httpx and httpcore check HTTPS against, pinned past the eMudhra incident (`B1925`) | MPL-2.0 |
 | **httpx2** | core — the MCP SDK's HTTP transports and `src/mcp_manager.py`'s MCP client (`B621`), and the test client | BSD-3-Clause |
 | Pydantic / pydantic-settings | core | MIT |
 | SQLAlchemy | core | MIT |

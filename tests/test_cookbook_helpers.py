@@ -1,6 +1,11 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
+import ast
+import asyncio
 import json
 import os
+import re
+import shlex
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -1027,3 +1032,453 @@ def test_validate_serve_cmd_rejects_unrelated_subshell_pipelines():
     ]:
         with pytest.raises(HTTPException):
             _validate_serve_cmd(cmd)
+
+
+# `B1968`. The Dependencies recipe panel's Run posts a recipe to
+# /api/model/serve, and every Run answered 400: the vLLM, SGLang and llama.cpp
+# recipes start with `uv pip install`, which the serve-command gate refused as
+# a binary, and the repo_id it sent, `<backend> setup`, failed the route's pip
+# package-spec check on its space. Ported from upstream Odysseus 631c0560.
+_ROOT = Path(__file__).resolve().parents[1]
+_needs_node = pytest.mark.skipif(not shutil.which("node"), reason="node binary not on PATH")
+
+
+def _dependency_recipes() -> dict:
+    """Every recipe the panel offers, per backend, out of the shipped module
+    rather than its text (`Law 20`)."""
+    module = (_ROOT / "static" / "js" / "cookbook-deps-recipes.js").as_uri()
+    script = (
+        "import { RECIPE_BACKENDS, recipesForBackend, recipeCommands } from "
+        f"{json.dumps(module)};\n"
+        "const out = {};\n"
+        "for (const b of RECIPE_BACKENDS) out[b] = recipesForBackend(b)"
+        ".map(r => ({ label: r.label, pip: recipeCommands(r, 'pip') }));\n"
+        "console.log(JSON.stringify(out));\n"
+    )
+    proc = subprocess.run(["node", "--input-type=module", "--eval", script],
+                          capture_output=True, text=True, timeout=60)
+    assert proc.returncode == 0, proc.stderr
+    return json.loads(proc.stdout)
+
+
+@_needs_node
+def test_every_single_line_dependency_recipe_passes_the_serve_command_gate():
+    """A one-line pip recipe is what Run sends unchanged. The multi-line ones
+    (the two Swift bridges) join with `&&`, which the gate's metacharacter
+    check refuses, as it did before; that check is not loosened here."""
+    single = [r["pip"][0] for rows in _dependency_recipes().values()
+              for r in rows if len(r["pip"]) == 1]
+    assert "uv pip install -U vllm --torch-backend auto" in single
+    assert 'uv pip install -U "sglang[all]" --torch-backend auto' in single
+    assert 'CMAKE_ARGS="-DGGML_CUDA=on" uv pip install -U "llama-cpp-python[server]"' in single
+    assert "python -m pip install -U mlx-lm" in single
+    for cmd in single:
+        assert _validate_serve_cmd(cmd) == cmd, cmd
+
+
+def test_uv_passes_the_serve_command_gate_as_uv_pip_install_and_in_no_other_form():
+    assert _validate_serve_cmd("uv pip install -U vllm") == "uv pip install -U vllm"
+    assert _validate_serve_cmd("CUDA_VISIBLE_DEVICES=0 uv pip install x") == (
+        "CUDA_VISIBLE_DEVICES=0 uv pip install x")
+    for cmd in [
+        "uv run python -c 'print(1)'",
+        "uv tool install ruff",
+        "uv pip uninstall vllm",
+        "uv",
+        "uv --directory /tmp pip install x",
+        "uvx ruff",
+        "FOO=1 uv",
+        # The metacharacter gate holds for the new binary as for every other.
+        "uv pip install x && id",
+        "uv pip install x; id",
+        "uv pip install $(id)",
+        "uv pip install `id`",
+    ]:
+        with pytest.raises(HTTPException):
+            _validate_serve_cmd(cmd)
+
+
+def _model_serve_pip_spec() -> str:
+    """The package-spec pattern model_serve holds a pip install's repo_id to,
+    read from inside that handler and nowhere else (`Law 20`)."""
+    path = _ROOT / "routes" / "cookbook_routes.py"
+    src = path.read_text(encoding="utf-8")
+    handler = next(n for n in ast.walk(ast.parse(src))
+                   if isinstance(n, ast.AsyncFunctionDef) and n.name == "model_serve")
+    body = ast.get_source_segment(src, handler)
+    m = re.search(r're\.fullmatch\(\s*r"([^"]+)",\s*req\.repo_id\s*\)', body)
+    assert m, "model_serve no longer checks a pip install's repo_id"
+    return m.group(1)
+
+
+@_needs_node
+def test_the_recipe_run_sends_a_repo_id_the_pip_install_check_accepts():
+    src = (_ROOT / "static" / "js" / "cookbook.js").read_text(encoding="utf-8")
+    start = src.index("list.querySelectorAll('[data-dep-recipe-run]')")
+    run = src[start:src.index("async function _rebuildLlamaCpp", start)]
+    sent = re.findall(r"\brepo_id:\s*([^,\n]+),", run)
+    # The request, then the task record, which repeats what was sent.
+    assert sent == ["`${backend}-setup`", "reqBody.repo_id"], sent
+    assert "repo_id: `${backend} setup`" not in src
+    spec = _model_serve_pip_spec()
+    for backend in _dependency_recipes():
+        assert re.fullmatch(spec, f"{backend}-setup"), backend
+
+
+# `B2019`. MiniMax-M3 vLLM serves named a path on upstream's machine. The
+# serve route rewrote `vllm serve cyankiwi/MiniMax-M3-AWQ-INT4` to a snapshot
+# under /home/pewds, local or remote, and the Forge's serve panel filled that
+# path into every MiniMax-M3 Model Path, so the launch failed everywhere else.
+# Now only a local serve is given a snapshot, the newest in this machine's
+# Hugging Face cache, and only one whose path has no shell characters, since it
+# is put into the command after the metacharacter gate; the old path, which
+# saved configs and stored serve tasks carry, is mapped back to the repo id.
+_MINIMAX_M3 = "cyankiwi/MiniMax-M3-AWQ-INT4"
+
+
+def _minimax_cache(root: Path) -> Path:
+    """A Hugging Face hub cache holding two snapshots, `bbb` the newer."""
+    snaps = root / "models--cyankiwi--MiniMax-M3-AWQ-INT4" / "snapshots"
+    for name, stamp in (("aaa", 1_700_000_000), ("bbb", 1_800_000_000)):
+        (snaps / name).mkdir(parents=True)
+        os.utime(snaps / name, (stamp, stamp))
+    return snaps
+
+
+async def _served_model(monkeypatch, tmp_path, cmd, *, remote_host=None):
+    """What the runner model_serve writes for `cmd` hands to `vllm serve`,
+    with only the launch replaced."""
+    import routes.cookbook_routes as cookbook_routes
+    from routes.cookbook_helpers import ServeRequest
+    from starlette.requests import Request
+
+    class _Stderr:
+        async def read(self):
+            return b"launch stopped by the test"
+
+    class _Proc:
+        returncode = 1
+        stderr = _Stderr()
+
+        async def wait(self):
+            return 1
+
+    async def _have(*args, **kwargs):
+        return True
+
+    async def _launch(*args, **kwargs):
+        return _Proc()
+
+    log_dir = tmp_path / f"tmux-{len(list(tmp_path.glob('tmux-*')))}"   # one per serve
+    monkeypatch.setattr(cookbook_routes, "require_operator", lambda request: None)
+    monkeypatch.setattr(cookbook_routes, "_binary_available", _have)
+    monkeypatch.setattr(cookbook_routes, "TMUX_LOG_DIR", log_dir)
+    monkeypatch.setattr(cookbook_routes, "load_stored_hf_token", lambda **kwargs: "")
+    monkeypatch.setattr(cookbook_routes.asyncio, "create_subprocess_shell", _launch)
+    router = cookbook_routes.setup_cookbook_routes()
+    serve = next(r.endpoint for r in router.routes
+                 if r.path == "/api/model/serve" and "POST" in r.methods)
+    request = Request({"type": "http", "method": "POST", "path": "/api/model/serve",
+                       "headers": [], "state": {}})
+    request.state.current_user = "admin"
+    out = await serve(request, ServeRequest(repo_id=_MINIMAX_M3, cmd=cmd, remote_host=remote_host))
+    assert out.get("error") == "launch stopped by the test", out
+    runner = next(log_dir.glob("serve-*_run.sh")).read_text(encoding="utf-8")
+    assert "/home/pewds" not in runner
+    line = next(ln for ln in runner.splitlines() if ln.startswith("PANTHEON_SERVE_CMD="))
+    parts = shlex.split(shlex.split(line.split("=", 1)[1])[0])
+    return parts[parts.index("serve") + 1]
+
+
+_STALE = ("/home/pewds/.cache/huggingface/hub/models--cyankiwi--MiniMax-M3-AWQ-INT4/"
+          "snapshots/4082acbbec1236d21828d55b6bb0fe02ade4ab5b")
+
+
+@pytest.mark.asyncio
+async def test_a_local_minimax_m3_serve_names_the_newest_snapshot_in_this_machines_cache(
+        monkeypatch, tmp_path):
+    snaps = _minimax_cache(tmp_path / "hub")
+    monkeypatch.setenv("HF_HUB_CACHE", str(tmp_path / "hub"))
+    for cmd in (f"vllm serve {_MINIMAX_M3} --port 8000", f"vllm serve {_STALE} --port 8000"):
+        assert await _served_model(monkeypatch, tmp_path, cmd) == str(snaps / "bbb"), cmd
+    # With nothing in the cache the repo id stays, for vLLM to resolve.
+    monkeypatch.setenv("HF_HUB_CACHE", str(tmp_path / "empty"))
+    for cmd in (f"vllm serve {_MINIMAX_M3} --port 8000", f"vllm serve {_STALE} --port 8000"):
+        assert await _served_model(monkeypatch, tmp_path, cmd) == _MINIMAX_M3, cmd
+
+
+@pytest.mark.asyncio
+async def test_a_remote_minimax_m3_serve_names_the_repo_and_no_path_from_this_machine(
+        monkeypatch, tmp_path):
+    _minimax_cache(tmp_path / "hub")
+    monkeypatch.setenv("HF_HUB_CACHE", str(tmp_path / "hub"))
+    for cmd in (f"vllm serve {_MINIMAX_M3} --port 8000", f"vllm serve {_STALE} --port 8000"):
+        assert await _served_model(monkeypatch, tmp_path, cmd, remote_host="gpu-box") == _MINIMAX_M3
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("cache_dir", ["hub $(id)", "hub cache", "hub;id", "hub'x"])
+async def test_a_snapshot_path_with_shell_characters_never_reaches_the_command(
+        monkeypatch, tmp_path, cache_dir):
+    """The path is put into the command after the metacharacter gate
+    (FORBIDDEN.md Part 2), so a path with anything but plain characters is
+    not used and the repo id stays."""
+    _minimax_cache(tmp_path / cache_dir)
+    monkeypatch.setenv("HF_HUB_CACHE", str(tmp_path / cache_dir))
+    assert await _served_model(monkeypatch, tmp_path, f"vllm serve {_MINIMAX_M3} --port 8000") == _MINIMAX_M3
+
+
+def test_no_serve_names_a_path_on_upstreams_machine():
+    """The client never offers it; the server holds it once, as the stale
+    path it maps back to the repo id."""
+    root = Path(__file__).resolve().parents[1]
+    client = [p.relative_to(root).as_posix() for p in (root / "static" / "js").rglob("*.js")
+              if "/home/pewds" in p.read_text(encoding="utf-8")]
+    assert client == []
+    from routes import cookbook_helpers
+    assert cookbook_helpers._MINIMAX_M3_STALE_PATHS == {
+        "/home/pewds/.cache/huggingface/hub/models--cyankiwi--MiniMax-M3-AWQ-INT4/": _MINIMAX_M3}
+    server = {p.relative_to(root).as_posix(): p.read_text(encoding="utf-8").count("/home/pewds")
+              for p in (root / "routes").rglob("*.py")}
+    assert {k: v for k, v in server.items() if v} == {"routes/cookbook_helpers.py": 1}
+
+
+# `B2020`. Scans of the Forge's cached models run at the same time ran each
+# other's scripts. Every /api/model/cached request wrote its script to the one
+# TMUX_LOG_DIR/scan_cache.py and started a process that read the file only once
+# it was running, so a request that came in while another's process was still
+# starting overwrote that request's script, and the scan missed its own model
+# dirs. The assistant's list_cached_models scans this machine and every Forge
+# server at once. Now each scan's process is handed its own script on stdin, a
+# remote scan is an ssh argv with no shell, and a scan that times out or is
+# cancelled ends its process: terminated, then killed if it is still there.
+def _cached_endpoint(monkeypatch, tmp_path):
+    """/api/model/cached, with the operator check passed and its log dir in
+    tmp_path."""
+    import routes.cookbook_routes as cookbook_routes
+    from starlette.requests import Request
+
+    monkeypatch.setattr(cookbook_routes, "require_operator", lambda request: None)
+    monkeypatch.setattr(cookbook_routes, "TMUX_LOG_DIR", tmp_path / "tmux")
+    router = cookbook_routes.setup_cookbook_routes()
+    cached = next(r.endpoint for r in router.routes
+                  if r.path == "/api/model/cached" and "GET" in r.methods)
+    request = Request({"type": "http", "method": "GET", "path": "/api/model/cached",
+                       "headers": [], "state": {}})
+    return cached, request
+
+
+class _LateChild:
+    """The process the route asked for, run for real but one turn of the event
+    loop late, as a real one is still starting while the server takes the next
+    request."""
+
+    def __init__(self, argv, cwd):
+        self.argv, self.cwd, self.returncode, self.handed = [str(a) for a in argv], cwd, None, None
+
+    async def communicate(self, input=None):
+        await asyncio.sleep(0)
+        self.handed = input
+        done = subprocess.run(self.argv, input=input, capture_output=True, cwd=self.cwd,
+                              stdin=subprocess.DEVNULL if input is None else None, timeout=60)
+        self.returncode = done.returncode
+        return done.stdout, done.stderr
+
+    async def wait(self):
+        return self.returncode
+
+
+class _Scan:
+    """A scan that has finished: its exit code and output, and what it was
+    handed on stdin."""
+
+    def __init__(self, returncode=0, stdout=b"[]", stderr=b""):
+        self.returncode, self.handed, self._end = None, None, (returncode, stdout, stderr)
+
+    async def communicate(self, input=None):
+        self.handed = input
+        self.returncode, stdout, stderr = self._end
+        return stdout, stderr
+
+    async def wait(self):
+        return self.returncode
+
+
+class _HungScan:
+    """A scan that does not finish on its own, as ssh to a host that stopped
+    answering, or a scan of a huge directory."""
+
+    def __init__(self, *, ignores_terminate):
+        self.returncode, self.signals, self._ignores_terminate = None, [], ignores_terminate
+        self._ended = asyncio.Event()
+
+    async def communicate(self, input=None):
+        await self._ended.wait()
+        return b"", b""
+
+    async def wait(self):
+        await self._ended.wait()
+        return self.returncode
+
+    def terminate(self):
+        self.signals.append("terminate")
+        if not self._ignores_terminate:
+            self.returncode = -15
+            self._ended.set()
+
+    def kill(self):
+        self.signals.append("kill")
+        self.returncode = -9
+        self._ended.set()
+
+
+@pytest.mark.asyncio
+async def test_scans_started_together_each_run_their_own_script(monkeypatch, tmp_path):
+    import routes.cookbook_routes as cookbook_routes
+
+    model_dirs = {}
+    for name in ("Alpha-7B", "Beta-7B"):
+        model = tmp_path / name.lower() / name
+        model.mkdir(parents=True)
+        (model / f"{name}-Q4_K_M.gguf").write_bytes(b"gguf")
+        model_dirs[name] = str(model.parent)
+    # No Hugging Face cache of this machine's, so a scan lists its dir alone.
+    (tmp_path / "home").mkdir()
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("HUGGINGFACE_HUB_CACHE", str(tmp_path / "no-hub"))
+    monkeypatch.delenv("HF_HOME", raising=False)
+    children = []
+
+    async def _exec(*argv, cwd=None, **kwargs):
+        children.append(_LateChild(argv, cwd))
+        return children[-1]
+
+    async def _shell(cmd, **kwargs):
+        raise AssertionError(f"a local scan started a shell: {cmd}")
+
+    monkeypatch.setattr(cookbook_routes.asyncio, "create_subprocess_exec", _exec)
+    monkeypatch.setattr(cookbook_routes.asyncio, "create_subprocess_shell", _shell)
+    cached, request = _cached_endpoint(monkeypatch, tmp_path)
+    found = await asyncio.gather(*(cached(request, model_dir=d) for d in model_dirs.values()))
+
+    listed = [sorted(m["repo_id"] for m in out["models"] if m.get("is_local_dir")) for out in found]
+    assert listed == [["Alpha-7B"], ["Beta-7B"]], found
+    for child, model_dir in zip(children, model_dirs.values()):
+        assert child.argv == [sys.executable, "-"], child.argv
+        assert child.handed == _cached_model_scan_script([model_dir]).encode("utf-8")
+    assert not (tmp_path / "tmux" / "scan_cache.py").exists()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("platform, ssh_port, tail", [
+    (None, None, ["gpu-box", "python3 -"]),
+    (None, "22", ["gpu-box", "python3 -"]),
+    ("windows", "2222", ["-p", "2222", "gpu-box", "python -"]),
+])
+async def test_a_remote_scan_is_an_ssh_argv_handed_its_script_with_no_shell(
+        monkeypatch, tmp_path, platform, ssh_port, tail):
+    import routes.cookbook_routes as cookbook_routes
+    started, shells = [], []
+
+    async def _exec(*argv, **kwargs):
+        started.append(([str(a) for a in argv], _Scan()))
+        return started[-1][1]
+
+    async def _shell(cmd, **kwargs):
+        shells.append(cmd)
+        return _Scan()
+
+    monkeypatch.setattr(cookbook_routes.asyncio, "create_subprocess_exec", _exec)
+    monkeypatch.setattr(cookbook_routes.asyncio, "create_subprocess_shell", _shell)
+    cached, request = _cached_endpoint(monkeypatch, tmp_path)
+    out = await cached(request, host="gpu-box", model_dir="/srv/models",
+                       ssh_port=ssh_port, platform=platform)
+
+    assert out == {"models": [], "host": "gpu-box"}, out
+    assert shells == []
+    assert [argv for argv, _ in started] == [[
+        "ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=8",
+        "-o", "ServerAliveInterval=4", "-o", "ServerAliveCountMax=1", *tail]]
+    assert started[0][1].handed == _cached_model_scan_script(["/srv/models"]).encode("utf-8")
+
+
+@pytest.mark.asyncio
+async def test_the_scan_retried_after_a_host_key_repair_is_handed_its_script_again(
+        monkeypatch, tmp_path):
+    import routes.cookbook_routes as cookbook_routes
+
+    # The repair rewrites the Forge's known_hosts, which must be the one under
+    # this test's home and never the Docker image's /app/.ssh.
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("USERPROFILE", str(home))
+    changed = b"@@@ WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED! @@@\n"
+    scans, shells = [], []
+
+    async def _exec(*argv, **kwargs):
+        tool = os.path.basename(str(argv[0]))
+        if tool.startswith("ssh-keyscan"):
+            return _Scan(stdout=b"gpu-box ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGtlc3Q\n")
+        if tool.startswith("ssh-keygen"):
+            return _Scan(stdout=b"")
+        scans.append(_Scan(255, b"", changed) if not scans else _Scan())
+        return scans[-1]
+
+    async def _shell(cmd, **kwargs):
+        shells.append(cmd)
+        return _Scan()
+
+    monkeypatch.setattr(cookbook_routes.asyncio, "create_subprocess_exec", _exec)
+    monkeypatch.setattr(cookbook_routes.asyncio, "create_subprocess_shell", _shell)
+    cached, request = _cached_endpoint(monkeypatch, tmp_path)
+    # _cookbook_ssh_dir picks /app/.ssh off Windows wherever /app exists; on
+    # Windows it is always the home's .ssh.
+    monkeypatch.setattr(cookbook_routes, "IS_WINDOWS", True)
+    out = await cached(request, host="gpu-box", model_dir="/srv/models")
+
+    assert out == {"models": [], "host": "gpu-box"}, out
+    assert shells == []
+    script = _cached_model_scan_script(["/srv/models"]).encode("utf-8")
+    assert [scan.handed for scan in scans] == [script, script]
+    assert "ssh-ed25519" in (home / ".ssh" / "known_hosts").read_text(encoding="utf-8")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("host, ends, ignores_terminate, signals", [
+    (None, "times out", False, ["terminate"]),
+    ("gpu-box", "times out", False, ["terminate"]),
+    ("gpu-box", "is cancelled", True, ["terminate", "kill"]),
+])
+async def test_a_scan_that_times_out_or_is_cancelled_ends_its_process(
+        monkeypatch, tmp_path, host, ends, ignores_terminate, signals):
+    import routes.cookbook_routes as cookbook_routes
+    started = []
+
+    async def _spawn(*args, **kwargs):
+        started.append(_HungScan(ignores_terminate=ignores_terminate))
+        return started[-1]
+
+    real_wait_for = asyncio.wait_for
+
+    async def _sooner(awaitable, timeout):
+        # The scan's own 60 s, cut short; every other wait as it is.
+        return await real_wait_for(awaitable, 0.05 if timeout == 60 else timeout)
+
+    monkeypatch.setattr(cookbook_routes.asyncio, "create_subprocess_exec", _spawn)
+    monkeypatch.setattr(cookbook_routes.asyncio, "create_subprocess_shell", _spawn)
+    cached, request = _cached_endpoint(monkeypatch, tmp_path)
+    if ends == "times out":
+        monkeypatch.setattr(cookbook_routes.asyncio, "wait_for", _sooner)
+        with pytest.raises(asyncio.TimeoutError):
+            await cached(request, host=host)
+    else:
+        scan = asyncio.ensure_future(cached(request, host=host))
+        while not started:
+            await asyncio.sleep(0)
+        scan.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await scan
+
+    assert [proc.signals for proc in started] == [signals]
+    assert started[0].returncode is not None

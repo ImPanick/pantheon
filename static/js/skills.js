@@ -881,6 +881,11 @@ async function _expandBuiltinCard(card, name) {
   const pre = card.querySelector('.skill-md-pre');
   if (pre && !card._loaded) {
     pre.textContent = 'Loading…';
+    // `B1974`, as in _expandSkillCard: Edit waits for the text, inline here
+    // because a test drives this function on its own.
+    const editBtn = [...(card.querySelector('.skill-card-preview')?.querySelectorAll('button') || [])]
+      .find((b) => b.textContent.trim() === 'Edit');
+    if (editBtn) editBtn.disabled = true;
     try {
       const res = await fetch(`${API}/api/skills/builtin/${encodeURIComponent(name)}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -891,11 +896,14 @@ async function _expandBuiltinCard(card, name) {
       card._default = data.default || '';
     } catch (e) {
       pre.textContent = 'Failed to load.';
+    } finally {
+      if (editBtn) editBtn.disabled = !card._loaded;
     }
   }
 }
 
 function _toggleBuiltinEdit(card, name) {
+  if (!card._loaded) return;   // `B1974`: "Loading…" is not the capability's text
   const preview = card.querySelector('.skill-card-preview');
   if (!preview) return;
   if (preview.querySelector('.skill-md-editor')) { _saveBuiltinEdit(card, name); return; }
@@ -904,6 +912,7 @@ function _toggleBuiltinEdit(card, name) {
   ta.className = 'skill-md-editor';
   ta.spellcheck = false;
   ta.value = (card._text != null ? card._text : (pre ? pre.textContent : '')) || '';
+  ta.rows = Math.max(ta.rows, ta.value.split(/\r\n|\r|\n/).length);   // `B1973`, as in _toggleSkillEdit
   ta.addEventListener('click', (e) => e.stopPropagation());
   if (pre) pre.style.display = 'none';
   preview.insertBefore(ta, preview.querySelector('.doclib-card-expanded-actions'));
@@ -1131,6 +1140,7 @@ function renderSkillsList(m) {
     // the footer too so it's not buried under the "⋯" menu.
     const testBtn = document.createElement('button');
     testBtn.className = 'doclib-card-text-btn doclib-card-action-btn';
+    testBtn.dataset.act = 'test';   // `B1975`: hidden while the editor is open
     testBtn.innerHTML = _svg(_ICON.test, { size: 11 }) + 'Test';
     testBtn.title = 'Test this skill — run it + AI judge';
     testBtn.addEventListener('click', (e) => {
@@ -1145,14 +1155,12 @@ function renderSkillsList(m) {
       const _origHTML = testBtn.innerHTML;
       testBtn.innerHTML = _svg(_ICON.test, { size: 11 }) + 'Starting…';
       Promise.resolve(_testSkill(card, name)).finally(() => {
-        // The preview gets overwritten by _testSkill, which removes the
-        // testBtn from the DOM. The cleanup below only matters if the
-        // button still exists (e.g. _testSkill bailed early).
-        if (document.body.contains(testBtn)) {
-          testBtn.disabled = false;
-          testBtn.dataset.busy = '';
-          testBtn.innerHTML = _origHTML;
-        }
+        // `B1975`. _testSkill takes the footer off the page but keeps it, this
+        // button with it, for Edit to put back: reset it whether or not it is
+        // on the page now, or it comes back stuck on "Starting…".
+        testBtn.disabled = false;
+        testBtn.dataset.busy = '';
+        testBtn.innerHTML = _origHTML;
       });
     });
 
@@ -1572,6 +1580,13 @@ async function _expandSkillCard(card, name) {
       card._md = md || '';
     } else {
       pre.textContent = 'Loading…';
+      // `B1974`. The footer Edit waits for the source: the editor takes what
+      // the card shows as its text, and "Loading…" or "Failed to load
+      // SKILL.md" saved over a skill empties it. Found in two steps, which the
+      // node tests' DOM shim can follow (it has no descendant selectors).
+      const editBtn = [...(card.querySelector('.skill-card-preview')?.querySelectorAll('button') || [])]
+        .find((b) => b.textContent.trim() === 'Edit');
+      if (editBtn) editBtn.disabled = true;
       try {
         const md = await _fetchSkillMarkdown(name);
         pre.textContent = md || '(empty)';
@@ -1579,6 +1594,8 @@ async function _expandSkillCard(card, name) {
         card._md = md;
       } catch (e) {
         pre.textContent = 'Failed to load SKILL.md';
+      } finally {
+        if (editBtn) editBtn.disabled = !card._mdLoaded;
       }
     }
   }
@@ -1589,6 +1606,18 @@ async function _expandSkillCard(card, name) {
 function _toggleSkillEdit(card, name) {
   const preview = card.querySelector('.skill-card-preview');
   if (!preview) return;
+  // `B1975`. A test, comparison or History drawn over the source view kept its
+  // nodes (`_keepSourceView`). Put them back first: the editor opens before
+  // the footer, and Edit turns into Save, only beside them; and a SKILL.md
+  // that did not load says so there, and loads again when the card reopens.
+  if (card._skillSourceNodes) {
+    preview.replaceChildren(...card._skillSourceNodes);
+    card._skillSourceNodes = null;
+  }
+  // `B1974`. Not before the SKILL.md has loaded. The footer Edit is disabled
+  // meanwhile; this holds the ⋯ menu's Edit, which opens the card first and
+  // then edits even when the fetch failed, and a test verdict's Edit.
+  if (!card._mdLoaded) return;
   const existing = preview.querySelector('.skill-md-editor');
   if (existing) {
     // Already editing — treat Edit as Save.
@@ -1600,6 +1629,9 @@ function _toggleSkillEdit(card, name) {
   ta.className = 'skill-md-editor';
   ta.spellcheck = false;
   ta.value = (card._md != null ? card._md : (pre ? pre.textContent : '')) || '';
+  // `B1973`. Let the source set the intrinsic height; the card's existing
+  // flex/max height keeps long files bounded and the Save footer reachable.
+  ta.rows = Math.max(ta.rows, ta.value.split(/\r\n|\r|\n/).length);
   ta.addEventListener('click', (e) => e.stopPropagation());
   if (pre) pre.style.display = 'none';
   preview.insertBefore(ta, preview.querySelector('.doclib-card-expanded-actions'));
@@ -1618,7 +1650,31 @@ function _toggleSkillEdit(card, name) {
   ta.focus();
   // Flip the Edit button label to "Save".
   const editBtn = [...preview.querySelectorAll('.doclib-card-action-btn')].find(b => /Edit|Save/.test(b.textContent));
+  const editLabel = editBtn?.innerHTML;
   if (editBtn) editBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px;"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>Save';
+  // `B1975`. Cancel leaves without saving and puts the card back as it was.
+  // Test waits meanwhile: its result would be drawn over the editor.
+  const testBtn = preview.querySelector('[data-act="test"]');
+  const testDisplay = testBtn?.style.display;
+  if (testBtn) testBtn.style.display = 'none';
+  const cancel = document.createElement('button');
+  cancel.type = 'button';
+  cancel.className = 'doclib-card-text-btn doclib-card-action-btn';
+  cancel.textContent = 'Cancel';
+  card._cancelSkillEdit = () => {
+    clearTimeout(lintTimer);
+    ta.remove();
+    lintPanel.remove();
+    if (pre) pre.style.removeProperty('display');
+    if (editBtn) editBtn.innerHTML = editLabel;
+    cancel.remove();
+    if (testBtn) testBtn.style.display = testDisplay || '';
+    card._cancelSkillEdit = null;
+    card._fillH?.();
+  };
+  cancel.addEventListener('click', (e) => { e.stopPropagation(); card._cancelSkillEdit?.(); });
+  // Beside Save. Not `editBtn.after()`: the node tests' DOM shim has no `after`.
+  if (editBtn) editBtn.parentNode.insertBefore(cancel, editBtn.nextSibling);
 }
 
 /** `B613`. Lint the card editor's SKILL.md into its panel. Advice: never
@@ -1777,6 +1833,16 @@ function _renderTestLog(logEl, verdictEl, job, card, name) {
   else if (verdictEl) verdictEl.innerHTML = '';
 }
 
+/** `B1975`. Test, *Compare with previous* and History draw into the preview by
+ *  replacing what is there. The first of them to do so keeps the source view's
+ *  nodes, handlers and all, for `_toggleSkillEdit` to put back. An open editor
+ *  is closed first, unsaved, as replacing it always did. */
+function _keepSourceView(card, preview) {
+  if (preview.querySelector('.skill-test')) return;   // a view already: the source is kept
+  card._cancelSkillEdit?.();
+  card._skillSourceNodes = Array.from(preview.childNodes);
+}
+
 // `P8-08`. `POST /api/skills/{name}/test` has read `body.task` since it was
 // written (routes/skills_routes.py, `test_skill`) and the UI had never sent one, so
 // every test in the product's history ran the server's invented fallback and
@@ -1788,6 +1854,7 @@ async function _testSkill(card, name, force = false) {
   if (!card.classList.contains('doclib-card-expanded')) await _expandSkillCard(card, name);
   const preview = card.querySelector('.skill-card-preview');
   if (!preview) return;
+  _keepSourceView(card, preview);   // `B1975`
   preview.innerHTML =
     '<div class="skill-test">' +
       '<div class="skill-test-ask hidden">' +
@@ -2074,6 +2141,7 @@ async function _compareSkill(card, name, presetTask = '') {
   const preview = card.querySelector('.skill-card-preview');
   if (!preview) return;
   if (card._testPoll) { clearInterval(card._testPoll); card._testPoll = null; }
+  _keepSourceView(card, preview);   // `B1975`
   preview.innerHTML = '';
 
   const wrap = document.createElement('div');
@@ -4167,6 +4235,7 @@ async function _showSkillHistory(card, name) {
   const preview = card.querySelector('.skill-card-preview');
   if (!preview) return;
   if (card._testPoll) { clearInterval(card._testPoll); card._testPoll = null; }
+  _keepSourceView(card, preview);   // `B1975`
   const wrap = _el('div', 'skill-test skill-history');
   preview.replaceChildren(wrap);
   wrap.appendChild(_el('div', 'skill-test-task', `History — ${name}`));

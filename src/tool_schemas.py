@@ -2089,6 +2089,9 @@ FUNCTION_TOOL_SCHEMAS = [
             # inventing a contract. No `enum` is added to `quality`: the
             # handler accepts any string and defaults, and § `B1303` is
             # explicit that a schema here is normalised, never narrowed.
+            # `B2006`: `quality` said "(default medium)", so a model wrote
+            # medium where nobody had asked for a quality, and a named one now
+            # overrules the quality in Settings.
             "description": "Generate an AI image from a text prompt. Specify model, size, and quality. Art, illustrations, photos.",
             "parameters": {
                 "type": "object",
@@ -2096,7 +2099,7 @@ FUNCTION_TOOL_SCHEMAS = [
                     "prompt": {"type": "string", "description": "Image description prompt"},
                     "model": {"type": "string", "description": "Model name (auto-detects if omitted)"},
                     "size": {"type": "string", "description": "Image size (default 1024x1024)"},
-                    "quality": {"type": "string", "description": "Quality: low, medium, high, auto (default medium)"},
+                    "quality": {"type": "string", "description": "Quality: low, medium, high or auto. Leave it out unless the person asked for one; the quality set in Settings is used."},
                 },
                 "required": ["prompt"]
             }
@@ -2512,11 +2515,9 @@ def function_call_to_tool_block(name: str, arguments: str) -> Optional[ToolBlock
     elif tool_type == "todowrite":
         content = json.dumps(args)
     elif tool_type == "create_document":
-        parts = [args.get("title", "Untitled")]
-        if args.get("language"):
-            parts.append(args["language"])
-        parts.append(args.get("content", ""))
-        content = "\n".join(parts)
+        # `B2026`: the language only when it names one the editor has.
+        from src.agent_tools.document_tools import create_document_text
+        content = create_document_text(args)
     elif tool_type == "edit_document":
         blocks = []
         edits = args.get("edits", [])

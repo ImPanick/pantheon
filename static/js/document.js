@@ -151,6 +151,13 @@ import { PDF_FONT_COVERAGE } from './pdfFontCoverage.js';   // `B1687`
   let _lastSessionId = '';          // session context for "+" button
   const docs = new Map();           // docId -> { id, title, language, content, version, sessionId }
   let _emailSendInFlight = false;
+  // `B1941`: while "No attachments found" waits for its answer. One press on
+  // Send reaches `_sendEmail` once per pointerdown, pointerup and click, and
+  // `_emailSendInFlight` is set only after the answer, so one press asked
+  // three times and "Send anyway" on each sent the email three times.
+  let _emailSendConfirming = false;
+  // `B1938`: counts AI Reply requests, so an answer knows a later one began.
+  let _emailAiReplyGeneration = 0;
   // `P23-08` (DOCS-M-2): Create opens a blank editor and nothing is stored
   // until the first keystroke. While it is open this holds the chat the new
   // document will join ('' = none yet: one is made on the first keystroke).
@@ -243,15 +250,6 @@ import { PDF_FONT_COVERAGE } from './pdfFontCoverage.js';   // `B1687`
     } else {
       localStorage.removeItem(_docOpenKey(sessionId));
       localStorage.removeItem(_docMinimizedKey(sessionId));
-    }
-  }
-
-  /** Switch chat to agent mode if not already */
-  function _ensureAgentMode() {
-    const ab = document.getElementById('mode-agent-btn');
-    const cb = document.getElementById('mode-chat-btn');
-    if (ab && !ab.classList.contains('active')) {
-      ab.click();
     }
   }
 
@@ -2505,9 +2503,11 @@ import { PDF_FONT_COVERAGE } from './pdfFontCoverage.js';   // `B1687`
     }).join('');
 
     if (!changed && /<[^>]+>/.test(text) && typeof document !== 'undefined') {
-      const probe = document.createElement('div');
+      // `B1903`. Parsed in a document with no browsing context, which fetches
+      // nothing: a live `<div>` loaded each `<img>` the quote named.
+      const probe = document.implementation.createHTMLDocument('').createElement('div');
       probe.innerHTML = text;
-      const plain = (probe.innerText || probe.textContent || '').trim();
+      const plain = (probe.textContent || '').trim();
       const plainClean = plain ? _sanitizeOutgoingEmailBody(plain) : plain;
       if (plainClean !== plain) return plainClean;
     }
@@ -2619,9 +2619,12 @@ import { PDF_FONT_COVERAGE } from './pdfFontCoverage.js';   // `B1687`
 
   function _emailHtmlToPlainText(html) {
     if (typeof document === 'undefined') return String(html || '');
-    const d = document.createElement('div');
+    // `B1903`. The sender's markup, parsed where nothing is fetched or run; an
+    // element of that document keeps the `<div>` parsing context, so the text
+    // is what the live `<div>` gave.
+    const d = document.implementation.createHTMLDocument('').createElement('div');
     d.innerHTML = String(html || '');
-    return d.innerText || d.textContent || '';
+    return d.textContent || '';
   }
 
   function _emailQuoteMarkerMatch(text) {
@@ -3388,7 +3391,9 @@ import { PDF_FONT_COVERAGE } from './pdfFontCoverage.js';   // `B1687`
   }
 
   async function _handleAttachUpload(e) {
-    const files = e.target.files;
+    // `B1826`. A copy: the FileList is live in Chromium, and the reset below
+    // empties it, so the uploader was handed nothing.
+    const files = Array.from(e.target.files || []);
     e.target.value = ''; // reset for next upload
     await _uploadComposeFiles(files);
   }
@@ -3554,8 +3559,13 @@ import { PDF_FONT_COVERAGE } from './pdfFontCoverage.js';   // `B1687`
     if (!list) return;
     menu.dataset.odyAttachKind = kind;
     list.replaceChildren(spinnerModule.createLoadingRow('Loading…', 14));
+    // `B2031`: a tab's kind is its own `data-pan-attach-kind`. `P0-31` renamed
+    // that attribute and left this read and the tab press on the old name,
+    // which no button has, so no tab lit on opening, a press lit both, and
+    // Gallery listed documents. `menu.dataset.odyAttachKind` above is the
+    // menu's own note of what it shows, for the search box.
     menu.querySelectorAll('[data-pan-attach-kind]').forEach(btn => {
-      btn.classList.toggle('active', btn.dataset.odyAttachKind === kind);
+      btn.classList.toggle('active', btn.dataset.panAttachKind === kind);
     });
     const q = (menu.querySelector('.email-pantheon-attach-search')?.value || '').trim();
     try {
@@ -3681,8 +3691,9 @@ import { PDF_FONT_COVERAGE } from './pdfFontCoverage.js';   // `B1687`
       _closePantheonAttachMenu();
       document.getElementById('doc-email-file-input')?.click();
     });
+    // `B2031`: the tab's own attribute, as in `_loadPantheonAttachItems`.
     menu.querySelectorAll('[data-pan-attach-kind]').forEach(btn => {
-      btn.addEventListener('click', () => _loadPantheonAttachItems(menu, btn.dataset.odyAttachKind));
+      btn.addEventListener('click', () => _loadPantheonAttachItems(menu, btn.dataset.panAttachKind));
     });
     let attachSearchTimer = null;
     menu.querySelector('.email-pantheon-attach-search')?.addEventListener('input', () => {
@@ -3804,7 +3815,7 @@ import { PDF_FONT_COVERAGE } from './pdfFontCoverage.js';   // `B1687`
   }
 
   async function _handleMarkdownImageUpload(e) {
-    const files = e.target.files;
+    const files = Array.from(e.target.files || []); // `B1826`: copied before the reset
     e.target.value = '';
     await _uploadMarkdownImages(files);
   }
@@ -4054,6 +4065,9 @@ import { PDF_FONT_COVERAGE } from './pdfFontCoverage.js';   // `B1687`
       const overlay = document.createElement('div');
       overlay.className = 'modal';
       overlay.style.display = 'flex';
+      // `B1941`: Go back is this window's close control (`data-action`), so
+      // Escape presses it. Escape only hides a window that has none (`ui.js`),
+      // which left this question unanswered and Send waiting on it.
       overlay.innerHTML = `
         <div class="modal-content" style="width:360px;max-width:90vw;">
           <div class="modal-header"><h4>No attachments found</h4></div>
@@ -4061,7 +4075,7 @@ import { PDF_FONT_COVERAGE } from './pdfFontCoverage.js';   // `B1687`
             Your message mentions an attachment, but nothing is attached. Send anyway?
           </div>
           <div class="modal-footer" style="display:flex;gap:8px;justify-content:flex-end;">
-            <button class="memory-toolbar-btn" id="att-warn-cancel">Go back</button>
+            <button class="memory-toolbar-btn" id="att-warn-cancel" data-action="close">Go back</button>
             <button class="memory-toolbar-btn" id="att-warn-send" style="background:var(--accent-primary,var(--red));color:#fff;border-color:var(--accent-primary,var(--red));">Send anyway</button>
           </div>
         </div>
@@ -4107,6 +4121,8 @@ import { PDF_FONT_COVERAGE } from './pdfFontCoverage.js';   // `B1687`
   async function _sendEmail() {
     // Says nothing: nothing was asked of an email.
     if (!_activeDocIsEmail()) return;
+    // `B1941`: "No attachments found" is open, and its answer decides this send.
+    if (_emailSendConfirming) return;
     if (_emailSendInFlight) {
       if (uiModule) uiModule.showToast('Already sending');
       return;
@@ -4142,7 +4158,9 @@ import { PDF_FONT_COVERAGE } from './pdfFontCoverage.js';   // `B1687`
     }
     // Warn if body mentions attachments but none are actually attached
     if (attachments.length === 0 && _bodyMentionsAttachment(body)) {
-      const proceed = await _confirmMissingAttachment();
+      _emailSendConfirming = true;
+      let proceed = false;
+      try { proceed = await _confirmMissingAttachment(); } finally { _emailSendConfirming = false; }
       if (!proceed) return;
     }
     const btn = Array.from(document.querySelectorAll('#doc-email-send-btn')).find((candidate) => candidate.offsetParent !== null) || document.getElementById('doc-email-send-btn');
@@ -4520,6 +4538,18 @@ import { PDF_FONT_COVERAGE } from './pdfFontCoverage.js';   // `B1687`
       if (uiModule) uiModule.showToast('Reply already has text');
       return;
     }
+    // `B1938`. The draft as it was asked for: this request, this document,
+    // this editor (a panel opened again builds a new one) and this text. The
+    // answer goes in only if all of it still holds when the answer comes.
+    const generationId = ++_emailAiReplyGeneration;
+    const generationDocId = activeDocId;
+    const generationRich = _emailRichbodyActive();
+    const generationRichHtml = generationRich ? generationRich.innerHTML : '';
+    const draftStillUnchanged = () => generationId === _emailAiReplyGeneration
+      && activeDocId === generationDocId
+      && document.getElementById('doc-editor-textarea') === textarea
+      && textarea.value === currentBody
+      && (!generationRich || generationRich.innerHTML === generationRichHtml);
 
     // Use the current chat model
     let currentModel = '';
@@ -4565,7 +4595,14 @@ import { PDF_FONT_COVERAGE } from './pdfFontCoverage.js';   // `B1687`
         cleanReply = cleanReply.replace(/\n*On\b[\s\S]*?\bwrote:[\s\S]*$/m, '').trim();
         const quote = splitCurrent.quote || '';
         const newBody = cleanReply + (quote ? `\n\n${quote}` : '');
-        await _streamEmailBodyText(textarea, newBody);
+        // `B1938`. Checked and written in one step: what was typed while it
+        // generated, or the other draft now on screen, is left as it is. So
+        // the answer goes in at once, not a few letters a frame.
+        if (!draftStillUnchanged()) {
+          if (uiModule) uiModule.showToast('AI reply ready, but draft was edited');
+          return;
+        }
+        _setEmailBodyText(textarea, newBody);
         _clearDocAiReplyContext(contextKey || _docAiReplyContextKey());
         if (uiModule) uiModule.showToast(`AI draft inserted (${data.model_used || 'AI'})`);
       } else {
@@ -5113,7 +5150,9 @@ import { PDF_FONT_COVERAGE } from './pdfFontCoverage.js';   // `B1687`
     // Doc was opened last → it goes in front of the email windows (clears the
     // email-front flag; the doc/email z-index alternation lives in CSS).
     document.body.classList.remove('email-front');
-    _ensureAgentMode();
+    // `B1793`: opening a document leaves the person's mode and Research as
+    // they set them; a turn sent with the editor open goes as Agent for that
+    // turn only (`chat.js`).
     _markDocVisibleState(_lastSessionId, 'open');
 
     document.body.classList.add('doc-view');
@@ -6494,10 +6533,13 @@ import { PDF_FONT_COVERAGE } from './pdfFontCoverage.js';   // `B1687`
 
     renderTabs();
 
-    // If no docs loaded, show empty state with helpful placeholder
-    if (docs.size === 0 || !activeDocId) {
-      showEmptyState();
-    }
+    // `B1935`. The editor built above is empty, so it shows the empty state and
+    // is bound to no document, whatever activeDocId named (a chip's document,
+    // a close this open interrupted, a pane torn down under a stale isOpen).
+    // Left bound, the next switchToDoc saved the empty editor into that
+    // document: untitled, empty, python, then saved or deleted as such. Every
+    // caller draws the document it opens.
+    showEmptyState();
   }
 
   /** Apply markdown formatting to the textarea selection */
@@ -7626,14 +7668,18 @@ import { PDF_FONT_COVERAGE } from './pdfFontCoverage.js';   // `B1687`
         // Coming back to a chat with documents should advertise the doc without
         // stealing half the screen. Default to a docked chip; only reopen the
         // full editor when this session explicitly persisted an open state.
-        activeDocId = target.id;
         _minimizedDocId = target.id;
         _markDocVisibleState(sessionId, 'minimized');
         _ensureDocChipRegistered();
         if (isOpen) {
+          // `B1935`: switchToDoc binds it. Bound first, the switch saved the
+          // editor still showing the chat being left into this document.
           try { switchToDoc(target.id); } catch (e) { console.error('Minimize restored doc failed:', e); }
           closePanel('down');
         } else {
+          // No editor on screen: the chip names its document (a chat message
+          // still carries it as active_doc_id).
+          activeDocId = target.id;
           Modals.minimize('doc-panel');
         }
         return;
@@ -11664,7 +11710,8 @@ import { PDF_FONT_COVERAGE } from './pdfFontCoverage.js';   // `B1687`
     activeDocId = docId;
     _syncDocIndicator();
 
-    if (!isOpen) openPanel();
+    // `B1935`: a panel opened here starts unbound, so bind the stream again.
+    if (!isOpen) { openPanel(); activeDocId = docId; }
 
     // Force doc button visible
     const toggleBtn = document.getElementById('overflow-doc-btn');

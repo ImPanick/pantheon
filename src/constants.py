@@ -83,6 +83,9 @@ BG_JOBS_FILE = os.path.join(DATA_DIR, "bg_jobs.json")
 # Outbound cooldowns that must survive a restart (`P15-09`). Wall-clock
 # deadlines, not monotonic readings — see the note in src/rate_limiter.py.
 OUTBOUND_STATE_FILE = os.path.join(DATA_DIR, "outbound_state.json")
+# The mail server certificates each member's accounts trust, by SHA-256 (`B2096`,
+# `src/mail_tls.py`): the only record of what a private mail server looked like.
+MAIL_TLS_PINS_FILE = os.path.join(DATA_DIR, "mail_tls_pins.json")
 VAULT_FILE = os.path.join(DATA_DIR, "vault.json")
 TIDY_CALENDAR_STATE_FILE = os.path.join(DATA_DIR, "tidy_calendar_state.json")
 SKILLS_FILE = os.path.join(DATA_DIR, "skills.json")
@@ -187,6 +190,12 @@ CLEANUP_INTERVAL_HOURS = int(os.getenv("CLEANUP_INTERVAL_HOURS", "24"))
 
 # Auth policy
 PASSWORD_MIN_LENGTH = 8
+# `B1812`. bcrypt reads at most 72 bytes of a password, and bcrypt 5 refuses
+# a longer one with a ValueError. Counted in UTF-8 bytes, not characters.
+PASSWORD_MAX_BYTES = 72
+# `B1901`. The longest name a NEW account may be given, in characters
+# (`core.auth.username_error`); an account that already has a longer one keeps it.
+USERNAME_MAX_LENGTH = 64
 
 # Default parameters
 DEFAULT_TEMPERATURE = 1.0

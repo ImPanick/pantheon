@@ -6176,6 +6176,9 @@ body.bg-pattern-ascii {
       padding:8px; font-family:inherit; font-size:0.95rem;
       resize:vertical;
       min-height:80px;
+      /* `B2001`: as tall as its wrapped text, not its count of newlines
+         (`rows`), up to the 30lh every textarea stops at. */
+      field-sizing:content;
     }
     .edit-textarea:focus { border-color:var(--red); }
     .edit-save-btn, .edit-cancel-btn {

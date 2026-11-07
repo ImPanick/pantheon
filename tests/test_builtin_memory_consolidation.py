@@ -118,7 +118,13 @@ async def test_consolidate_memory_specific_owner_does_not_absorb_ownerless_rows(
 
 
 @pytest.mark.asyncio
-async def test_consolidate_memory_removes_near_duplicates_before_ai(monkeypatch, tmp_path):
+async def test_consolidate_memory_leaves_near_duplicates_for_ai(monkeypatch, tmp_path):
+    """`B1947`. A near-duplicate is the model's call, not the text match's.
+
+    "bullet points" and "bulletpoints" used to be merged before the model
+    was asked, by the same fuzzy rule that merged "allergic" with "not
+    allergic". Now all three memories reach the model, and the one it
+    drops is the one that goes. Upstream Odysseus 2b2c3ae2 (#6955)."""
     from src import constants
     from src import llm_core
     from src import task_endpoint
@@ -139,14 +145,18 @@ async def test_consolidate_memory_removes_near_duplicates_before_ai(monkeypatch,
         lambda *args, **kwargs: [("http://llm", "model", {})],
     )
 
+    received_ids = []
+
     async def fake_llm_call_async(_candidates, **kwargs):
         items = json.loads(kwargs["messages"][0]["content"].split("MEMORIES:\n", 1)[1])
+        received_ids.append({item["id"] for item in items})
         return json.dumps({
             "keep": [
                 {"id": item["id"], "text": item["text"], "category": item["category"]}
                 for item in items
+                if item["id"] != "a"
             ],
-            "drop": [],
+            "drop": [{"id": "a", "reason": "Same preference as pinned b"}],
         })
 
     monkeypatch.setattr(llm_core, "llm_call_async_with_fallback", fake_llm_call_async)
@@ -158,3 +168,156 @@ async def test_consolidate_memory_removes_near_duplicates_before_ai(monkeypatch,
     saved = {m["id"]: m for m in _read_memories(data_dir)}
     assert set(saved) == {"b", "c"}
     assert saved["b"]["pinned"] is True
+    assert received_ids == [{"a", "b", "c"}]
+
+
+@pytest.mark.asyncio
+async def test_a_style_profile_still_forming_survives_the_tidy(monkeypatch, tmp_path):
+    """`B1952`. The style profile (`P13-17`) is not a memory. It has no text
+    until twenty messages give it some, only the counters folded in so far,
+    and the duplicate pass deleted every row with empty text, so each tidy
+    before then threw the counts away and the profile started over."""
+    from src import constants
+    from src import memory_style
+    from src import task_endpoint
+    action_consolidate_memory = _import_consolidate_action()
+
+    style = {"id": "style", "owner": "alice", "text": "", "category": "style",
+             "kind": memory_style.KIND_STYLE, "source": "auto",
+             "style": {"messages": 12, "words": 180}}
+    data_dir = _write_memories(
+        tmp_path,
+        [
+            style,
+            {"id": "a", "owner": "alice", "text": "Alice likes local models.", "category": "preference"},
+            {"id": "b", "owner": "alice", "text": "Alice likes local models.", "category": "preference"},
+        ],
+    )
+    monkeypatch.setattr(constants, "DATA_DIR", str(data_dir))
+    monkeypatch.setattr(task_endpoint, "resolve_task_candidates", lambda *args, **kwargs: [])
+
+    message, ok = await action_consolidate_memory("alice")
+
+    assert ok is True
+    assert "Removed 1 duplicate" in message
+    saved = {m["id"]: m for m in _read_memories(data_dir)}
+    assert set(saved) == {"style", "a"}
+    assert saved["style"]["style"] == {"messages": 12, "words": 180}
+
+
+@pytest.mark.asyncio
+async def test_a_formed_style_profile_is_never_handed_to_the_model(monkeypatch, tmp_path):
+    """`B1952`. Once formed, the profile went to the model as a memory to
+    tidy, which may drop it or "clean" its text. A text the person corrected
+    (`style_edited`) is never re-rendered, so the model's version replaced
+    their correction for good."""
+    from src import constants
+    from src import llm_core
+    from src import memory_style
+    from src import task_endpoint
+    action_consolidate_memory = _import_consolidate_action()
+
+    data_dir = _write_memories(
+        tmp_path,
+        [
+            {"id": "style", "owner": "alice", "text": "Writes in short lines, no greeting.",
+             "category": "style", "kind": memory_style.KIND_STYLE, "source": "auto",
+             "style": {"messages": 40}, "style_edited": 1},
+            {"id": "a", "owner": "alice", "text": "Alice likes local models.", "category": "preference"},
+            {"id": "b", "owner": "alice", "text": "Alice prefers local models.", "category": "preference"},
+        ],
+    )
+    monkeypatch.setattr(constants, "DATA_DIR", str(data_dir))
+    monkeypatch.setattr(
+        task_endpoint,
+        "resolve_task_candidates",
+        lambda *args, **kwargs: [("http://llm", "model", {})],
+    )
+    received_ids = []
+
+    async def fake_llm_call_async(_candidates, **kwargs):
+        items = json.loads(kwargs["messages"][0]["content"].split("MEMORIES:\n", 1)[1])
+        received_ids.append({item["id"] for item in items})
+        keep = [{"id": "a", "text": "Alice likes local models.", "category": "preference"}]
+        if "style" in received_ids[-1]:
+            keep.append({"id": "style", "text": "The user writes tersely.", "category": "preference"})
+        return json.dumps({"keep": keep, "drop": [{"id": "b", "reason": "Same as a"}]})
+
+    monkeypatch.setattr(llm_core, "llm_call_async_with_fallback", fake_llm_call_async)
+
+    message, ok = await action_consolidate_memory("alice")
+
+    assert ok is True
+    assert received_ids == [{"a", "b"}]
+    saved = {m["id"]: m for m in _read_memories(data_dir)}
+    assert set(saved) == {"style", "a"}
+    assert saved["style"]["text"] == "Writes in short lines, no greeting."
+    assert saved["style"]["category"] == "style"
+
+
+@pytest.mark.asyncio
+async def test_what_is_written_while_the_model_thinks_is_kept(monkeypatch, tmp_path):
+    """`B1953`. The tidy read the store, waited for the chat to go quiet,
+    asked the model (up to two minutes a group) and saved the copy it had
+    read. It runs on `memory_added`, so memories were being written in that
+    window and the save overwrote them. Now it applies its own changes to the
+    store as it is when it saves, and only to rows that still say what it read."""
+    from src import constants
+    from src import llm_core
+    from src import task_endpoint
+    from src.memory import MemoryManager
+    action_consolidate_memory = _import_consolidate_action()
+
+    data_dir = _write_memories(
+        tmp_path,
+        [
+            {"id": "a", "owner": "alice", "text": "Alice likes local models.", "category": "preference"},
+            {"id": "b", "owner": "alice", "text": "Alice prefers local models.", "category": "preference"},
+            {"id": "c", "owner": "alice", "text": "Alice lives in Oslo.", "category": "fact"},
+            {"id": "d", "owner": "alice", "text": "Alice has a cat.", "category": "fact"},
+            {"id": "e", "owner": "alice", "text": "Alice drinks tea.", "category": "preference"},
+        ],
+    )
+    monkeypatch.setattr(constants, "DATA_DIR", str(data_dir))
+    monkeypatch.setattr(
+        task_endpoint,
+        "resolve_task_candidates",
+        lambda *args, **kwargs: [("http://llm", "model", {})],
+    )
+
+    async def fake_llm_call_async(_candidates, **kwargs):
+        # While the model thinks: extraction adds a memory, the person deletes
+        # one and corrects another, and a chat recalls a third.
+        store = MemoryManager(str(data_dir))
+        rows = [r for r in store.load_all_for_update() if r["id"] != "d"]
+        for row in rows:
+            if row["id"] == "e":
+                row["text"] = "Alice drinks green tea."
+        new = store.add_entry("Alice is learning Norwegian.", owner="alice")
+        store.save(rows + [new])
+        store.increment_uses(["c"])
+        return json.dumps({
+            "keep": [
+                {"id": "a", "text": "Alice likes local models.", "category": "preference"},
+                {"id": "c", "text": "Alice lives in Oslo, Norway.", "category": "fact"},
+            ],
+            "drop": [{"id": "b", "reason": "Same as a"}, {"id": "e", "reason": "Trivial"}],
+        })
+
+    monkeypatch.setattr(llm_core, "llm_call_async_with_fallback", fake_llm_call_async)
+
+    message, ok = await action_consolidate_memory("alice")
+
+    assert ok is True, message
+    saved = {m["text"]: m for m in _read_memories(data_dir)}
+    # The model's own verdicts still land: b goes, c is rewritten.
+    assert "Alice prefers local models." not in saved
+    assert saved["Alice lives in Oslo, Norway."]["id"] == "c"
+    # What was written meanwhile stays: the new memory, the recall, the
+    # deletion, and the correction the model never saw.
+    assert "Alice is learning Norwegian." in saved
+    assert saved["Alice lives in Oslo, Norway."]["uses"] == 1
+    assert "Alice has a cat." not in saved
+    assert saved["Alice drinks green tea."]["id"] == "e"
+    assert set(saved) == {"Alice likes local models.", "Alice lives in Oslo, Norway.",
+                          "Alice is learning Norwegian.", "Alice drinks green tea."}

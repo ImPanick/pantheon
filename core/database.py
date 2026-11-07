@@ -984,6 +984,11 @@ class ModelEndpoint(TimestampMixin, Base):
     # Optional OAuth/session-backed credential row. Used by subscription-backed
     # providers that need refresh tokens instead of a static API key.
     provider_auth_id = Column(String, nullable=True, index=True)
+    # `B1928`: the Forge serve (its tmux session id) that registered or last
+    # reused this row. A serve's crash watchdog and scheduled stop delete only
+    # a row their own serve still owns. NULL = registered before this column,
+    # or added by hand: never deleted automatically.
+    cookbook_serve_session_id = Column(String, nullable=True)
 
 
 class ProviderAuthSession(TimestampMixin, Base):
@@ -2776,6 +2781,35 @@ def _migrate_add_pinned_models_column():
         except Exception:
             pass
 
+
+def _migrate_add_cookbook_serve_session_id_column():
+    """Add cookbook_serve_session_id to model_endpoints if it doesn't exist. `B1928`.
+
+    Rows that predate it stay NULL, and a NULL row is never deleted by a
+    Forge serve's crash watchdog or scheduled stop."""
+    import sqlite3
+    db_path = DATABASE_URL.replace("sqlite:///", "")
+    if not os.path.exists(db_path):
+        return
+    conn = None
+    try:
+        conn = sqlite3.connect(db_path)
+        cursor = conn.execute("PRAGMA table_info(model_endpoints)")
+        columns = [row[1] for row in cursor.fetchall()]
+        if columns and "cookbook_serve_session_id" not in columns:
+            conn.execute("ALTER TABLE model_endpoints ADD COLUMN cookbook_serve_session_id VARCHAR")
+            conn.commit()
+            logging.getLogger(__name__).info(
+                "Migrated: added 'cookbook_serve_session_id' column to model_endpoints")
+    except Exception as e:
+        logging.getLogger(__name__).warning(f"cookbook_serve_session_id migration failed: {e}")
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass   # `conn` is None when connect() failed: there is nothing to close
+
+
 def _migrate_add_notes_sort_order():
     """Add sort_order, image_url, repeat columns to notes if they don't exist."""
     import sqlite3
@@ -3854,6 +3888,7 @@ def init_db():
     _migrate_add_model_endpoint_owner_column()
     _migrate_add_provider_auth_id_column()
     _migrate_add_supports_tools_column()
+    _migrate_add_cookbook_serve_session_id_column()   # `B1928`
     _migrate_add_comparison_vote_meta_column()
     _migrate_add_task_run_model_column()
     _migrate_add_vault_item_agents()
@@ -4050,15 +4085,32 @@ def _migrate_chat_messages_fts():
             END;
             """
         )
+        # `B2018`. `message_id` is UNINDEXED, so a `NOT EXISTS` lookup per
+        # message read the whole index for every message, on every start. Its
+        # ids go once into a keyed temp table and one join finds the messages
+        # it lacks: the same rows as before. The write lock comes first, as the
+        # one statement took it: asked for after the read, SQLite refuses it at
+        # once while another process writes, and the backfill would be skipped.
+        # No row-count gate (upstream's): an index row left by a delete the
+        # triggers missed would hide a message they missed.
+        conn.execute(
+            "CREATE TEMP TABLE IF NOT EXISTS _pantheon_fts_message_ids "
+            "(message_id TEXT PRIMARY KEY) WITHOUT ROWID"
+        )
+        if not conn.in_transaction:
+            conn.execute("BEGIN IMMEDIATE")
+        conn.execute("DELETE FROM temp._pantheon_fts_message_ids")
+        conn.execute(
+            "INSERT OR IGNORE INTO temp._pantheon_fts_message_ids(message_id) "
+            "SELECT message_id FROM chat_messages_fts"
+        )
         conn.execute(
             f"""
             INSERT INTO chat_messages_fts(content, message_id, session_id, role)
             SELECT {fts_content_expr_cm}, cm.id, cm.session_id, cm.role
             FROM chat_messages cm
-            WHERE NOT EXISTS (
-                SELECT 1 FROM chat_messages_fts fts
-                WHERE fts.message_id = cm.id
-            )
+            LEFT JOIN temp._pantheon_fts_message_ids known ON known.message_id = cm.id
+            WHERE known.message_id IS NULL
             """
         )
         _scrub_legacy_chat_message_fts_media(conn)

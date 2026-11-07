@@ -48,7 +48,7 @@ def main(argv=None, *, stdin=None, prompt=getpass.getpass, auth_path=None) -> in
     ap.add_argument("--password-stdin", action="store_true", help="read the password from one line of stdin")
     args = ap.parse_args(argv)
 
-    from core.auth import DEFAULT_AUTH_PATH, AuthManager
+    from core.auth import DEFAULT_AUTH_PATH, PASSWORD_TOO_LONG, AuthManager, password_too_long
     from src.constants import PASSWORD_MIN_LENGTH
 
     path = auth_path or DEFAULT_AUTH_PATH
@@ -71,6 +71,9 @@ def main(argv=None, *, stdin=None, prompt=getpass.getpass, auth_path=None) -> in
     if len(password) < PASSWORD_MIN_LENGTH:
         print(f"A password is at least {PASSWORD_MIN_LENGTH} characters. Nothing was changed.",
               file=sys.stderr)
+        return 1
+    if password_too_long(password):   # `B1812`: words, not bcrypt's traceback
+        print(f"{PASSWORD_TOO_LONG} Nothing was changed.", file=sys.stderr)
         return 1
     ended = mgr.reset_password(name, password, disable_2fa=args.disable_2fa)
     extra = " Two-factor sign-in is off; they can turn it on again in Settings → Account." \

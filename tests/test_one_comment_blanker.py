@@ -258,8 +258,16 @@ STILL_COPIED: dict = {}
 # @license Foo */` inside a bundle would be read as a notice for a package that
 # is not there. That is a false *credit*, not erased code, and `B426` is the
 # row for it.
+#
+# `B1915`. `tests/test_upload_references_are_read_in_one_pass.py` keeps the
+# pattern that read `<!-- pdf_source ... upload_id="<id>" -->` before the
+# one-pass scanner replaced it, verbatim, as the reference the scanner's ids
+# are compared with. It reads the id inside that comment as the answer, the
+# way the owner check does, and never blanks a comment to reach code around
+# it, so `B290`'s erased code cannot happen there either.
 READS_COMMENTS_AS_DATA = {
     ".pantheon/check-licences.py": "B415",
+    "tests/test_upload_references_are_read_in_one_pass.py": "B1915",
 }
 
 _COMMENT_PATTERN = re.compile(

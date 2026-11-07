@@ -118,7 +118,7 @@ def _drive_mailbox(tmp_path, monkeypatch, name, body: bytes):
     monkeypatch.setattr(email_routes, "_imap_uid_fetch",
                         lambda *a, **k: ("OK", [(None, RAW_EMAIL)]))
     monkeypatch.setattr(email_routes, "attachment_extract_dir",
-                        lambda folder, uid: target)
+                        lambda folder, uid, **_: target)
     monkeypatch.setattr(email_routes, "_extract_attachment_to_disk",
                         lambda msg, index, d: target / name)
     monkeypatch.setattr("src.auth_helpers.get_current_user", lambda request: "tester")

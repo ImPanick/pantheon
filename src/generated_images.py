@@ -13,7 +13,9 @@ GENERATED_IMAGE_RE = re.compile(
     r"^[a-f0-9]{8,64}\.(png|jpg|jpeg|webp|gif|mp4|mov|webm|mkv|m4v)$"
 )
 GENERATED_IMAGE_HEADERS = {
-    "Cache-Control": "public, max-age=31536000, immutable",
+    # `B1922`: `private` — the response is one signed-in person's image, and
+    # `public` let a shared cache keep it and hand it to anyone who asked.
+    "Cache-Control": "private, max-age=31536000, immutable",
     "X-Content-Type-Options": "nosniff",
 }
 

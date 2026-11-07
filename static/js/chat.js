@@ -3415,8 +3415,12 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
 	        isAgentMode = true;
 	      }
 	      // Auto-escalate to agent mode when a document is open — the user expects
-	      // the AI to see the document and have tools to edit it
-	      if (!isIncognito && !isAgentMode && documentModule && activeDocIdForSend) {
+	      // the AI to see the document and have tools to edit it. `B1793`: an
+	      // editor open with nothing in it yet counts too, for this turn only;
+	      // opening one no longer switches the person's own mode.
+	      const _editorOpen = !!(documentModule && typeof documentModule.isPanelOpen === 'function'
+	        && documentModule.isPanelOpen());
+	      if (!isIncognito && !isAgentMode && documentModule && (activeDocIdForSend || _editorOpen)) {
 	        isAgentMode = true;
 	      }
 	      fd.append('mode', isAgentMode ? 'agent' : 'chat');
@@ -7855,6 +7859,25 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
     return text.replace(/\s*\[\d+ attachment\(s\)\]$/, '');
   }
 
+  /** `B1987`. The uploaded files a user bubble carries, by id: what Resend,
+   *  Regenerate and Edit send again with its words. A card carries its file's
+   *  id (`data-file-id`); a picture drawn before that stamp existed is found
+   *  by its `/api/upload/<id>` address, or the resend would lose the photo
+   *  even though the file is still on disk. */
+  function _userMessageAttachmentIds(msgElement) {
+    if (!msgElement) return [];
+    const ids = Array.from(msgElement.querySelectorAll('[data-file-id]'))
+      .map((el) => el.dataset.fileId).filter(Boolean);
+    if (!ids.length) {
+      const pictures = msgElement.querySelectorAll('.attach-image-preview img, .attach-card img');
+      for (const picture of pictures) {
+        const m = (picture.getAttribute('src') || '').match(/\/api\/upload\/([A-Za-z0-9_\-]+)/);
+        if (m && m[1] && !ids.includes(m[1])) ids.push(m[1]);
+      }
+    }
+    return ids;
+  }
+
   /** `B1323` (fx7-dup). The cut an edit / resend / regenerate asks for, said
    *  the way the server can check it.
    *
@@ -7930,6 +7953,10 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
     const bodyEl = userMsgElement.querySelector('.body');
     let currentText = (userMsgElement.dataset.raw || (bodyEl ? bodyEl.textContent : '') || '').trim();
     currentText = currentText.replace(/\s*\[\d+ attachment\(s\)\]$/, '');
+    // `B1987`. The files this message carried go with its edit. Their cards
+    // are inside `.body`, which the editor replaces below, so they are read
+    // now: at Send there is nothing left to read them from.
+    const editAttachmentIds = _userMessageAttachmentIds(userMsgElement);
 
     // Replace body with an editable textarea
     const editor = document.createElement('textarea');
@@ -7997,6 +8024,11 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
           allMsgs[i].remove();
         }
 
+        // `B1987`: the cut removed the old row and what it referred to, so
+        // the edit sends the files again — only now, past the refusal above,
+        // or a refused edit's files would ride whatever is sent next.
+        _pendingRegenAttachments = editAttachmentIds;
+
         // Submit the edited text
         const messageInput = uiModule.el('message');
         messageInput.value = newText;
@@ -8004,6 +8036,7 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
         if (submitBtn) submitBtn.click();
       } catch (err) {
         console.error('Edit failed:', err);
+        if (_pendingRegenAttachments === editAttachmentIds) _pendingRegenAttachments = null;
         if (uiModule) uiModule.showError('Could not reach Pantheon to edit that message. Try again.');
         bodyEl.innerHTML = originalHTML;
       }
@@ -8042,15 +8075,7 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
     // Collect file_ids attached to this user message so the resend re-carries
     // the photos / docs (and the chat handler picks up the user-edited OCR
     // text cached server-side under those file ids).
-    const _attachEls = userMsgElement.querySelectorAll('[data-file-id]');
-    let _ids = Array.from(_attachEls).map(el => el.dataset.fileId).filter(Boolean);
-    if (!_ids.length) {
-      const _imgs = userMsgElement.querySelectorAll('.attach-image-preview img, .attach-card img');
-      for (const _im of _imgs) {
-        const _m = (_im.getAttribute('src') || '').match(/\/api\/upload\/([A-Za-z0-9_\-]+)/);
-        if (_m && _m[1] && !_ids.includes(_m[1])) _ids.push(_m[1]);
-      }
-    }
+    const _ids = _userMessageAttachmentIds(userMsgElement);
 
     // Rescue: legacy bubbles may have stored the filename as the message
     // content (artifact of earlier broken resends). Don't re-send that as
@@ -8145,21 +8170,7 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
     // regenerated send re-uses them. Without this the AI is regenerated on
     // text alone — photos (and the user-edited OCR text cached server-side
     // under that file_id) would be silently dropped.
-    const _attachEls = userMsgEl ? userMsgEl.querySelectorAll('[data-file-id]') : [];
-    let _regenIds = Array.from(_attachEls).map(el => el.dataset.fileId).filter(Boolean);
-    // Fallback for bubbles rendered before the data-file-id stamp landed:
-    // sniff the file id straight out of any `.attach-image-preview img`
-    // src URLs (matches /api/upload/<id>). Otherwise an older bubble would
-    // regen with zero attachments and the photo would be lost from the
-    // resulting message even though the file still exists on disk.
-    if (!_regenIds.length && userMsgEl) {
-      const _imgs = userMsgEl.querySelectorAll('.attach-image-preview img, .attach-card img');
-      for (const _im of _imgs) {
-        const _m = (_im.getAttribute('src') || '').match(/\/api\/upload\/([A-Za-z0-9_\-]+)/);
-        if (_m && _m[1] && !_regenIds.includes(_m[1])) _regenIds.push(_m[1]);
-      }
-    }
-    _pendingRegenAttachments = _regenIds;
+    _pendingRegenAttachments = _userMessageAttachmentIds(userMsgEl);
 
     // Rescue: earlier-version regens (before the dataset.raw fix) stored the
     // photo's filename as the user-message content. On a follow-up regen,
@@ -8370,21 +8381,37 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
   export async function forkFrom(aiMsgElement) {
     const box = document.getElementById('chat-history');
     const allMsgs = Array.from(box.querySelectorAll('.msg'));
-    const aiIndex = allMsgs.indexOf(aiMsgElement);
-    if (aiIndex < 0) return;
+    if (allMsgs.indexOf(aiMsgElement) < 0) return;
 
     const sessionId = sessionModule.getCurrentSessionId();
     if (!sessionId) return;
 
-    const keepCount = aiIndex + 1;
+    // `B1986`. The reply by its row's id, as Delete and Edit name theirs. This
+    // posted `keep_count` = the bubble's place among the `.msg` on the page,
+    // and that is a count of rows only while the whole chat is drawn and no
+    // reply is drawn as two bubbles: a chat opens on its newest 24 rows (8 on
+    // a phone), so a Fork in a longer one left out its newest messages, and an
+    // agent reply (its holder and the step its footer sits under) forked with
+    // the message after it. The footer may sit under a step that carries no id
+    // of its own, so the id is read as a reaction reads it (`replyIdFor`).
+    const throughId = reactionsModule.replyIdFor(aiMsgElement);
+    if (!throughId) {
+      if (uiModule) uiModule.showError('That message has no saved copy on this page yet. Reload the chat, then fork it.');
+      return;
+    }
 
     try {
       const res = await fetch(`${API_BASE}/api/session/${sessionId}/fork`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ keep_count: keepCount }),
+        body: JSON.stringify({ through_msg_id: throughId }),
       });
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) {
+        // The server's sentence (a reply this chat no longer holds), never a raw body.
+        const refusal = await readRefusal(res, 'Could not fork this chat. Try again.');
+        if (uiModule) uiModule.showError(refusal.sentence);
+        return;
+      }
       const data = await res.json();
 
       await sessionModule.loadSessions();

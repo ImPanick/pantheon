@@ -1225,12 +1225,15 @@ async function _deleteEmailAndAdvance(em, card, opts = {}) {
     ? (_findSiblingEmailCard(card, +1) || _findSiblingEmailCard(card, -1))
     : null;
   const nextUid = sibling ? sibling.dataset.uid : null;
+  // `B1979`: the card goes only when the server says the message went.
+  let result;
   try {
-    await fetch(`${API_BASE}/api/email/delete/${em.uid}?folder=${encodeURIComponent(state._libFolder)}${_acct()}`, { method: 'DELETE' });
+    const response = await fetch(`${API_BASE}/api/email/delete/${encodeURIComponent(em.uid)}?${_emailMutationQuery(em)}`, { method: 'DELETE' });
+    result = await _requireSuccessfulEmailMutation(response, 'Failed to delete email');
   } catch (err) {
     console.error('Failed to delete email:', err);
     busy?.remove?.();
-    showToast('Failed to delete email');
+    showToast(err?.serverError || 'Failed to delete email');
     return;
   }
   busy?.remove?.();
@@ -1240,7 +1243,8 @@ async function _deleteEmailAndAdvance(em, card, opts = {}) {
   _updateBulkBar();
   _renderGrid();
   _libCacheWriteBack();
-  showToast('Moved to Trash');
+  if (result.already_deleted) _toastEmailAlreadyGone(em);
+  else showToast('Moved to Trash');
   if (!wasExpanded || !nextUid) return;
   const grid = document.getElementById('email-lib-grid');
   const nextCard = grid?.querySelector(`.doclib-card[data-uid="${CSS.escape(String(nextUid))}"]`);
@@ -1342,6 +1346,37 @@ function _wireEmailSetupHint(root) {
 
 function _acct() {
   return state._libAccountId ? `&account_id=${encodeURIComponent(state._libAccountId)}` : '';
+}
+
+// `B1979`. A change to one message names that message's own folder and
+// account. A search from INBOX lists messages from other folders (Gmail's All
+// Mail, any indexed folder), and a UID sent with the picker's folder named
+// whichever message held that number there. From upstream Odysseus 218d7624.
+function _emailMutationQuery(em) {
+  const params = new URLSearchParams({ folder: String(em?.folder || state._libFolder || 'INBOX') });
+  const accountId = em?.account_id || state._libAccountId || '';
+  if (accountId) params.set('account_id', String(accountId));
+  return params.toString();
+}
+
+// `B1979`. Only a success the server states is one. Its own words ride on the
+// error as `serverError`, for the toast; anything else is `fallback` with the
+// HTTP status, for the console.
+async function _requireSuccessfulEmailMutation(response, fallback = 'Email operation failed') {
+  const data = await response.json().catch(() => null);
+  if (!response.ok || data?.success !== true) {
+    const said = [data?.error, data?.detail].find(v => typeof v === 'string' && v) || '';
+    const err = new Error(said || `${fallback} (HTTP ${response.status})`);
+    if (said) err.serverError = said;
+    throw err;
+  }
+  return data;
+}
+
+// `B1979`. Gone already (deleted or moved in another mail app): the card goes,
+// and the toast says so rather than "Moved to Trash".
+function _toastEmailAlreadyGone(em) {
+  showToast(`Already gone from ${folderDisplayName(em?.folder || state._libFolder)}`);
 }
 
 function _unsubscribeMethodLabel(method) {
@@ -7956,7 +7991,8 @@ function _showReaderMoreMenu(em, card, reader, anchor) {
       icon: _archIcon,
       action: async () => {
         try {
-          await fetch(`${API_BASE}/api/email/archive/${em.uid}?folder=${encodeURIComponent(state._libFolder)}${_acct()}`, { method: 'POST' });
+          // `B1979`: the message's own folder (a search result's may not be the picker's).
+          await fetch(`${API_BASE}/api/email/archive/${encodeURIComponent(em.uid)}?${_emailMutationQuery(em)}`, { method: 'POST' });
         } catch (e) { console.error(e); }
         await closeAndRemove();
       },
@@ -7997,7 +8033,7 @@ function _showReaderMoreMenu(em, card, reader, anchor) {
       icon: _spamIcon,
       action: async () => {
         try {
-          await fetch(`${API_BASE}/api/email/move/${em.uid}?folder=${encodeURIComponent(state._libFolder)}${_acct()}&dest=Junk`, { method: 'POST' });
+          await fetch(`${API_BASE}/api/email/move/${encodeURIComponent(em.uid)}?${_emailMutationQuery(em)}&dest=Junk`, { method: 'POST' });  // `B1979`
         } catch (e) { console.error(e); }
         await closeAndRemove();
       },
@@ -8008,15 +8044,18 @@ function _showReaderMoreMenu(em, card, reader, anchor) {
       action: async () => {
         const busy = _showEmailDeleteOverlay(card);
         await busy?.ready;
+        let result;  // `B1979`: the card goes only when the server says the message went.
         try {
-          await fetch(`${API_BASE}/api/email/delete/${em.uid}?folder=${encodeURIComponent(state._libFolder)}${_acct()}`, { method: 'DELETE' });
+          const response = await fetch(`${API_BASE}/api/email/delete/${encodeURIComponent(em.uid)}?${_emailMutationQuery(em)}`, { method: 'DELETE' });
+          result = await _requireSuccessfulEmailMutation(response, 'Failed to delete email');
         } catch (e) {
           console.error(e);
           busy?.remove?.();
-          showToast('Failed to delete email');
+          showToast(e?.serverError || 'Failed to delete email');
           return;
         }
         busy?.remove?.();
+        if (result.already_deleted) _toastEmailAlreadyGone(em);
         await closeAndRemove();
       },
     },
@@ -8033,15 +8072,18 @@ function _showReaderMoreMenu(em, card, reader, anchor) {
         if (!ok) return;
         const busy = _showEmailDeleteOverlay(card);
         await busy?.ready;
+        let result;  // `B1979`, as Move to Trash: this one cannot be undone, so it names its own folder.
         try {
-          await fetch(`${API_BASE}/api/email/delete-permanent/${em.uid}?folder=${encodeURIComponent(state._libFolder)}${_acct()}`, { method: 'DELETE' });
+          const response = await fetch(`${API_BASE}/api/email/delete-permanent/${encodeURIComponent(em.uid)}?${_emailMutationQuery(em)}`, { method: 'DELETE' });
+          result = await _requireSuccessfulEmailMutation(response, 'Failed to delete email');
         } catch (e) {
           console.error(e);
           busy?.remove?.();
-          showToast('Failed to delete email');
+          showToast(e?.serverError || 'Failed to delete email');
           return;
         }
         busy?.remove?.();
+        if (result.already_deleted) _toastEmailAlreadyGone(em);
         await closeAndRemove();
       },
     },
@@ -8192,7 +8234,7 @@ function _showCardMenu(em, anchor) {
       label: 'Archive',
       icon: _archIcon,
       action: async () => {
-        await fetch(`${API_BASE}/api/email/archive/${em.uid}?folder=${encodeURIComponent(state._libFolder)}${_acct()}`, { method: 'POST' });
+        await fetch(`${API_BASE}/api/email/archive/${encodeURIComponent(em.uid)}?${_emailMutationQuery(em)}`, { method: 'POST' });  // `B1979`
         await _animateEmailCardRemoval([em.uid]);
         state._libEmails = state._libEmails.filter(e => String(e.uid) !== String(em.uid));
         _renderGrid();
@@ -8220,7 +8262,7 @@ function _showCardMenu(em, anchor) {
       label: 'Archive',
       icon: _archIcon,
       action: async () => {
-        await fetch(`${API_BASE}/api/email/archive/${em.uid}?folder=${encodeURIComponent(state._libFolder)}${_acct()}`, { method: 'POST' });
+        await fetch(`${API_BASE}/api/email/archive/${encodeURIComponent(em.uid)}?${_emailMutationQuery(em)}`, { method: 'POST' });  // `B1979`
         await _animateEmailCardRemoval([em.uid]);
         state._libEmails = state._libEmails.filter(e => String(e.uid) !== String(em.uid));
         _renderGrid();
@@ -8254,14 +8296,18 @@ function _showCardMenu(em, anchor) {
       const card = document.querySelector(`#email-lib-grid .doclib-card[data-uid="${CSS.escape(String(em.uid))}"]`);
       const busy = _showEmailDeleteOverlay(card);
       await busy?.ready;
+      let result;  // `B1979`: the card goes only when the server says the message went.
       try {
-        await fetch(`${API_BASE}/api/email/delete/${em.uid}?folder=${encodeURIComponent(state._libFolder)}${_acct()}`, { method: 'DELETE' });
+        const response = await fetch(`${API_BASE}/api/email/delete/${encodeURIComponent(em.uid)}?${_emailMutationQuery(em)}`, { method: 'DELETE' });
+        result = await _requireSuccessfulEmailMutation(response, 'Failed to delete email');
       } catch (e) {
+        console.error('Failed to delete email:', e);
         busy?.remove?.();
-        showToast('Failed to delete email');
-        throw e;
+        showToast(e?.serverError || 'Failed to delete email');
+        return;
       }
       busy?.remove?.();
+      if (result.already_deleted) _toastEmailAlreadyGone(em);
       await _animateEmailCardRemoval([em.uid]);
       state._libEmails = state._libEmails.filter(e => String(e.uid) !== String(em.uid));
       _renderGrid();
@@ -8378,6 +8424,10 @@ async function _bulkAction(action) {
   const uids = Array.from(state._selectedUids);
   if (uids.length === 0) return;
   let failedReadSync = 0;
+  // `B1979`. Only the messages the server deleted leave the grid, and the
+  // toast counts the ones it did not, as failedReadSync does.
+  let failedDelete = 0;
+  const deleted = new Set();
   if (action === 'delete') {
     const ok = await styledConfirm(
       `Delete ${uids.length} selected email${uids.length === 1 ? '' : 's'}?`,
@@ -8434,13 +8484,19 @@ async function _bulkAction(action) {
     await Promise.all(deleteOverlays.map(busy => busy.ready).filter(Boolean));
   }
 
+  // `B1979`: each selected message is changed in its own folder; a search
+  // lists messages from several.
+  const emailFor = (uid) => state._libEmails.find(e => String(e.uid) === String(uid)) || { uid };
+
   // Single-uid worker.
   const handleOne = async (uid) => {
     try {
       if (action === 'archive') {
-        await fetch(`${API_BASE}/api/email/archive/${uid}?folder=${encodeURIComponent(state._libFolder)}${_acct()}`, { method: 'POST' });
+        await fetch(`${API_BASE}/api/email/archive/${encodeURIComponent(uid)}?${_emailMutationQuery(emailFor(uid))}`, { method: 'POST' });
       } else if (action === 'delete') {
-        await fetch(`${API_BASE}/api/email/delete/${uid}?folder=${encodeURIComponent(state._libFolder)}${_acct()}`, { method: 'DELETE' });
+        const response = await fetch(`${API_BASE}/api/email/delete/${encodeURIComponent(uid)}?${_emailMutationQuery(emailFor(uid))}`, { method: 'DELETE' });
+        await _requireSuccessfulEmailMutation(response, 'Failed to delete email');
+        deleted.add(String(uid));
       } else if (action === 'done') {
         // uid may come back from the Set as a string while em.uid is
         // numeric (or vice versa) — coerce both sides so the in-memory
@@ -8467,6 +8523,7 @@ async function _bulkAction(action) {
       }
     } catch (e) {
       if (action === 'read' || action === 'unread') failedReadSync += 1;
+      if (action === 'delete') failedDelete += 1;
       console.error(`Failed to ${action} ${uid}:`, e);
     }
   };
@@ -8502,8 +8559,10 @@ async function _bulkAction(action) {
       if (action === 'delete') {
         deleteOverlays.forEach(busy => busy.remove?.());
       }
-      await _animateEmailCardRemoval(uids);
-      const removed = new Set(uids.map(uid => String(uid)));
+      // `B1979`: a delete the server refused, or never answered, keeps its card.
+      const gone = action === 'delete' ? uids.filter(uid => deleted.has(String(uid))) : uids;
+      await _animateEmailCardRemoval(gone);
+      const removed = new Set(gone.map(uid => String(uid)));
       state._libEmails = state._libEmails.filter(e => !removed.has(String(e.uid)));
     } else if (action === 'done' && state._libFilter === 'undone') {
       // The undone filter is a "show only not-done" view — after marking
@@ -8538,6 +8597,9 @@ async function _bulkAction(action) {
   _renderGrid();
   if (failedReadSync > 0) {
     showToast(`Failed to update ${failedReadSync} email${failedReadSync === 1 ? '' : 's'}`);
+  }
+  if (failedDelete > 0) {
+    showToast(`Failed to delete ${failedDelete} email${failedDelete === 1 ? '' : 's'}`);
   }
   // Sync successful local mutations into the SWR cache so reopen doesn't
   // briefly show the pre-bulk state.

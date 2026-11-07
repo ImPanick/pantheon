@@ -13,6 +13,10 @@ or an error. The same held for eight more families. A local server is meant to
 turn each into structured `tool_calls`; when its template parser misses, the
 text reaches Pantheon, and `tool_parsing._normalize_foreign_tool_markup` reads
 it into the one Hermes shape the parser executes and the stripper hides.
+
+`B1914`. Such a reply often shows a command in a fence as well ("to preview
+it, run ```bash …```"), and the fence ran while the call was dropped. The
+tests at the end pin that a call made outside every fence outranks the fences.
 """
 
 import json
@@ -21,6 +25,7 @@ import time
 import pytest
 
 import src.agent_tools  # noqa: F401  (break agent_tools<->tool_parsing import cycle)
+import src.tool_parsing as tool_parsing
 from src.tool_parsing import parse_tool_blocks, strip_tool_blocks
 
 ARGS = {"path": "site/a.css", "content": "body{}"}
@@ -146,6 +151,132 @@ _BUDGET_S = 4.0
         "marker-json", "marker-string", "gpt-oss", "kimi", "python-tag"])
 def test_a_flood_of_openers_is_read_in_linear_time(flood):
     start = time.perf_counter()
+    parse_tool_blocks(flood)
+    strip_tool_blocks(flood)
+    assert time.perf_counter() - start < _BUDGET_S
+
+
+# `B1914`. A reply that shows a fenced example and makes its call in explicit
+# markup ran the example and dropped the call: the fences were read first and
+# the markup only when no fence made a call. A call made outside every fence
+# and inline code now outranks the fences, and the fences that did not run stay
+# in the reply. The first two tests are upstream Odysseus 84aa9a91's.
+
+def test_explicit_call_wins_over_an_illustrative_fence():
+    text = (
+        "Example:\n"
+        "```bash\n"
+        "echo example\n"
+        "```\n"
+        "Now execute:\n"
+        '[TOOL_CALL]{tool => "shell", args => {--command "printf real"}}[/TOOL_CALL]'
+    )
+    assert [(b.tool_type, b.content) for b in parse_tool_blocks(text)] == [("bash", "printf real")]
+
+
+def test_mixed_parse_and_strip_leave_the_nonexecuted_fence_visible():
+    text = (
+        "Example:\n"
+        "```bash\n"
+        "echo example\n"
+        "```\n"
+        '[TOOL_CALL]{tool => "shell", args => {--command "printf real"}}[/TOOL_CALL]'
+    )
+    cleaned = strip_tool_blocks(text)
+    assert "echo example" in cleaned
+    assert "[TOOL_CALL]" not in cleaned
+    assert "printf real" not in cleaned
+
+
+def test_the_owners_site_is_written_when_the_reply_also_says_how_to_preview_it():
+    """Qwen Coder writing the files, then showing the command that serves them.
+    Before `B1914` the preview server started and neither file was written."""
+    reply = (
+        "I'll write the page and its stylesheet.\n"
+        "<tool_call>\n<function=write_file>\n<parameter=path>\nsite/index.html\n</parameter>\n"
+        "<parameter=content>\n<!DOCTYPE html>\n<link rel=\"stylesheet\" href=\"style.css\">\n"
+        "</parameter>\n</function>\n</tool_call>\n"
+        "<tool_call>\n<function=write_file>\n<parameter=path>\nsite/README.md\n</parameter>\n"
+        "<parameter=content>\n# Site\n\nServe it with:\n\n```bash\npython3 -m http.server 8000\n```\n"
+        "</parameter>\n</function>\n</tool_call>\n"
+        "To preview it, run:\n```bash\ncd site && python3 -m http.server 8000\n```\n"
+    )
+    assert [(b.tool_type, b.content) for b in parse_tool_blocks(reply)] == [
+        ("write_file", 'site/index.html\n<!DOCTYPE html>\n<link rel="stylesheet" href="style.css">'),
+        # The fence in the README is the README's.
+        ("write_file", "site/README.md\n# Site\n\nServe it with:\n\n```bash\npython3 -m http.server 8000\n```"),
+    ]
+    assert strip_tool_blocks(reply) == (
+        "I'll write the page and its stylesheet.\n\nTo preview it, run:\n"
+        "```bash\ncd site && python3 -m http.server 8000\n```"
+    )
+
+
+def test_a_fence_in_a_files_content_is_written_and_not_run():
+    """The fence inside an `<invoke>` call's content was read as a call of its
+    own, so `npm start` ran and the README was never written."""
+    text = (
+        '<invoke name="write_file"><parameter name="path">README.md</parameter>'
+        '<parameter name="content"># Site\n\nStart it with:\n\n```bash\nnpm start\n```\n</parameter></invoke>'
+    )
+    assert [(b.tool_type, b.content) for b in parse_tool_blocks(text)] == [
+        ("write_file", "README.md\n# Site\n\nStart it with:\n\n```bash\nnpm start\n```")]
+    assert strip_tool_blocks(text) == ""
+
+
+def test_only_a_call_outside_every_fence_outranks_the_fences():
+    """Upstream reads the markup anywhere in the reply, so a ```write_file whose
+    content is a fixture holding a call would run that call instead of writing
+    the file. Markup inside a fence or inline code is what that fence holds:
+    while there is any, the fences run as they always did, and so they do when
+    the markup makes no call."""
+    fixture = (
+        "```write_file\ntests/fixture.txt\n"
+        '<tool_call>{"name": "bash", "arguments": {"command": "rm -rf build"}}</tool_call>\n```'
+    )
+    written = [("write_file", 'tests/fixture.txt\n<tool_call>{"name": "bash", '
+                              '"arguments": {"command": "rm -rf build"}}</tool_call>')]
+    as_before = {
+        fixture: written,
+        # The fixture's call never runs, even beside one made outside it.
+        fixture + '\nNow list it.\n<tool_call>{"name": "bash", "arguments": {"command": "ls build"}}</tool_call>':
+            written,
+        "```web_search\nwhat does [TOOL_CALL] mean in Mistral output\n```": [
+            ("web_search", "what does [TOOL_CALL] mean in Mistral output")],
+        'The format is `<tool_call>{"name": "bash", "arguments": {"command": "rm -rf ~"}}</tool_call>`.\n'
+        "```bash\nls\n```": [("bash", "ls")],
+        "I'll answer with a <tool_call> once I have looked.\n```bash\nls -la\n```": [("bash", "ls -la")],
+    }
+    for text, calls in as_before.items():
+        assert [(b.tool_type, b.content) for b in parse_tool_blocks(text)] == calls, text
+    # And a fence beside a call made outside it is an example.
+    text = (
+        "For example, to start clean you could run:\n```bash\nrm -rf build\n```\n"
+        'Let me look first.\n<tool_call>{"name": "bash", "arguments": {"command": "ls build"}}</tool_call>'
+    )
+    assert [(b.tool_type, b.content) for b in parse_tool_blocks(text)] == [("bash", "ls build")]
+    assert "rm -rf build" in strip_tool_blocks(text)
+
+
+_A_FENCED_CALL = "```bash\nls\n```\n"
+
+
+@pytest.mark.parametrize("flood", [
+    _A_FENCED_CALL + "<tool_call>" + "`x`" * 50_000,
+    _A_FENCED_CALL + "<tool_call>`" + " " * 200_000,
+    _A_FENCED_CALL + "<invoke```" + "<" * 100_000,
+    _A_FENCED_CALL + "<tool_call>" + "</" * 100_000,
+    _A_FENCED_CALL + "<tool_call>" * 20_000,
+    _A_FENCED_CALL + '<invoke name="x">' * 20_000,
+    _A_FENCED_CALL + "<" + " " * 200_000,
+    (_A_FENCED_CALL + '<tool_call>{"name": "bash", "arguments": {"command": "pwd"}}</tool_call>\n') * 2_000,
+], ids=["inline-code", "unclosed-inline-code", "unclosed-fence", "closer-starts", "openers",
+        "invoke-openers", "a-bracket-then-spaces", "fences-and-calls"])
+def test_a_fenced_call_beside_a_flood_of_markup_is_read_in_linear_time(flood):
+    """Since `B1914` the markup of every reply with a fenced call is read too."""
+    start = time.perf_counter()
+    # The helper by its module: the tree before `B1914` has none, and fails here.
+    tool_parsing._explicit_calls_outside_fences(flood)
     parse_tool_blocks(flood)
     strip_tool_blocks(flood)
     assert time.perf_counter() - start < _BUDGET_S

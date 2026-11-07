@@ -219,8 +219,17 @@ _TOOL_CODE_OPEN_RE = re.compile(r"<tool_code>\s*\{", re.IGNORECASE)
 _TOOL_CODE_CLOSE_RE = re.compile(r"\}\s*</tool_code>", re.IGNORECASE)
 
 # Pattern 4b: Gemma-style <|tool_call|> call:tool_name{args} <tool_call|>
-_GEMMA_TOOL_CALL_RE = re.compile(
-    r"<\|?tool_call\|?>\s*call:([\w\d_-]+)\s*(\{[\s\S]*?\})\s*<\|?tool_call\|?>",
+# `B1902`. The two delimiters of the one lazy pattern this used to be,
+# `<\|?tool_call\|?>\s*call:([\w\d_-]+)\s*(\{[\s\S]*?\})\s*<\|?tool_call\|?>`,
+# scanned forward-only like the patterns above (`_iter_named_blocks`). That
+# pattern rescanned to the end of the reply from every opener, so 4,000
+# openers with no closer took 6 s to parse, on the server's event loop.
+_GEMMA_TOOL_CALL_OPEN_RE = re.compile(
+    r"<\|?tool_call\|?>\s*call:([\w\d_-]+)\s*\{",
+    re.IGNORECASE,
+)
+_GEMMA_TOOL_CALL_CLOSE_RE = re.compile(
+    r"\}\s*<\|?tool_call\|?>",
     re.IGNORECASE,
 )
 
@@ -263,6 +272,9 @@ _QWEN_BARE_MARKER_RE = re.compile(
 # existing XML parser + stripper handle it (parse → execute; strip →
 # never show the garbage to the user). The pipe run is tolerant of
 # fullwidth (U+FF5C) and ascii '|' in any count.
+# `B1800`. The outer wrapper is `tool_calls` (V4), `function_calls`
+# (V3.2) or the short `calls` hosted variants write; any other word left
+# the two wrapper tags in the saved reply after the call inside had run.
 _DSML_PIPES = r"[｜|]+"
 def _normalize_dsml(text: str) -> str:
     if not isinstance(text, str):
@@ -270,8 +282,8 @@ def _normalize_dsml(text: str) -> str:
     if "DSML" not in text:
         return text
     t = text
-    t = re.sub(rf"<\s*{_DSML_PIPES}\s*DSML\s*{_DSML_PIPES}\s*tool_calls\s*>", "<tool_call>", t, flags=re.IGNORECASE)
-    t = re.sub(rf"<\s*/\s*{_DSML_PIPES}\s*DSML\s*{_DSML_PIPES}\s*tool_calls\s*>", "</tool_call>", t, flags=re.IGNORECASE)
+    t = re.sub(rf"<\s*{_DSML_PIPES}\s*DSML\s*{_DSML_PIPES}\s*(?:tool_calls|function_calls|calls)\s*>", "<tool_call>", t, flags=re.IGNORECASE)
+    t = re.sub(rf"<\s*/\s*{_DSML_PIPES}\s*DSML\s*{_DSML_PIPES}\s*(?:tool_calls|function_calls|calls)\s*>", "</tool_call>", t, flags=re.IGNORECASE)
     t = re.sub(rf"<\s*{_DSML_PIPES}\s*DSML\s*{_DSML_PIPES}\s*invoke\s+name=", "<invoke name=", t, flags=re.IGNORECASE)
     t = re.sub(rf"<\s*/\s*{_DSML_PIPES}\s*DSML\s*{_DSML_PIPES}\s*invoke\s*>", "</invoke>", t, flags=re.IGNORECASE)
     # parameter open tag — drop any extra attrs (e.g. string="true").
@@ -871,12 +883,77 @@ _RAW_WEB_JSON_ALLOWED_KEYS = {"query", "queries", "time_filter", "freshness", "m
 # command as plain text. Keep this intentionally tiny: open-panel is a harmless
 # frontend event, while broad plain-text parsing of shell/doc/email tools would
 # be unsafe.
+#
+# `B1902`. It matches exactly what it always matched, and it is no longer run
+# from every line. It was `^\s*(?:`{1,3})?\s*ui_control … (panel)\s*(?:`{1,3})?\s*$`
+# under `(?im)`, searched over the whole reply: `^` tried every line start and
+# the two `\s*` around the optional backticks split a run of blank lines every
+# possible way, so a reply of 1,500 newlines took 13 s to parse and as long
+# again to strip, on the server's event loop. Now the prefix is possessive
+# (what follows each part can never be what it gave back), the tail tries the
+# same alternatives in the same order without nesting two `\s*`, and
+# `_iter_plain_ui_open_panel` tries it once per `ui_control` in the text.
 _PLAIN_UI_OPEN_PANEL_RE = re.compile(
-    r"(?im)^\s*(?:`{1,3})?\s*ui_control\s+open_panel\s+"
+    r"(?im)^\s*+(?:`{1,3})?+\s*+ui_control\s+open_panel\s+"
     r"(documents?|library|gallery|images?|email|inbox|mail|sessions?|chats?|history|"
     r"notes?|brain|memor(?:y|ies)|skills?|settings|preferences|cookbook|models?)"
-    r"\s*(?:`{1,3})?\s*$"
+    r"(?:\s*+(?:\Z|`{1,3}+(?!`)(?:\s*+\Z|\s*(?=\n)))|\s*(?=\n))"
 )
+_PLAIN_UI_CANDIDATE_RE = re.compile(r"ui_control", re.IGNORECASE)
+
+
+def _plain_ui_match_start(text: str, floor: int, cand: int) -> int:
+    """The leftmost line start in ``[floor, cand]`` from which the rescue's
+    prefix (whitespace, at most one run of 1-3 backticks, whitespace) reaches
+    the ``ui_control`` at ``cand``, or -1 when none does. Walks back from it,
+    never past ``floor`` (the end of the previous match), as ``re.finditer``
+    never looks behind where its last match ended."""
+    a = cand
+    while a > floor and text[a - 1].isspace():
+        a -= 1
+    b, n = a, 0
+    while b > floor and n < 3 and text[b - 1] == "`":
+        b -= 1
+        n += 1
+    if n and not (b > floor and text[b - 1] == "`"):
+        m = b
+        while m > floor and text[m - 1].isspace():
+            m -= 1
+    else:
+        m = a
+    if m == 0 or text[m - 1] == "\n":
+        return m
+    nl = text.find("\n", m, cand)
+    return nl + 1 if nl >= 0 else -1
+
+
+def _iter_plain_ui_open_panel(text: str):
+    """``_PLAIN_UI_OPEN_PANEL_RE.finditer(text)``, tried only where the literal
+    ``ui_control`` occurs (`B1902`). Every line start that reaches one
+    ``ui_control`` shares what follows it, so the leftmost is the only one
+    worth trying; when it fails, the scan moves past that line."""
+    pos = 0
+    while (cand := _PLAIN_UI_CANDIDATE_RE.search(text, pos)) is not None:
+        start = _plain_ui_match_start(text, pos, cand.start())
+        match = _PLAIN_UI_OPEN_PANEL_RE.match(text, start) if start >= 0 else None
+        if match is not None:
+            yield match
+            pos = match.end()
+            continue
+        nl = text.find("\n", cand.end())
+        pos = len(text) if nl < 0 else nl + 1
+
+
+def _strip_plain_ui_open_panel(text: str) -> str:
+    """``_PLAIN_UI_OPEN_PANEL_RE.sub("", text)`` over ``_iter_plain_ui_open_panel``."""
+    out, pos = [], 0
+    for match in _iter_plain_ui_open_panel(text):
+        out.append(text[pos:match.start()])
+        pos = match.end()
+    if not out:
+        return text
+    out.append(text[pos:])
+    return "".join(out)
 
 
 # ---------------------------------------------------------------------------
@@ -1190,11 +1267,10 @@ def _raw_openai_tool_call_to_block(value) -> Optional[ToolBlock]:
         from src.agent_tools.filesystem_tools import write_file_content
         content = write_file_content(args)
     elif tool_type == "create_document":
-        parts = [args.get("title", "Untitled")]
-        if args.get("language"):
-            parts.append(args["language"])
-        parts.append(args.get("content", ""))
-        content = "\n".join(parts)
+        # `B2026`: the native call's own conversion, so the language is one
+        # the editor has or none.
+        from src.agent_tools.document_tools import create_document_text
+        content = create_document_text(args)
     elif tool_type == "update_document":
         content = args.get("content", "")
     elif tool_type in ("edit_document", "suggest_document"):
@@ -1661,6 +1737,52 @@ def _parse_tool_code_block(raw: str) -> Optional[ToolBlock]:
         return ToolBlock(tool_name, content.strip())
     return None
 
+
+# `B1904`. The k:v fallback a Gemma call's body falls back to when neither JSON
+# reading works was `(\w+)\s*:\s*["']?(.*?)["']?(?=\s*,\s*\w+\s*:|\s*\})`, and
+# `re.finditer` retried it from every word character. Measured on `62c93ba2`:
+# 20 KB of hex took 9.8 s and a value holding 40 KB of spaces 4.1 s, both
+# quadratic, on the server's event loop. Upstream Odysseus ee48c9c5's one
+# pass, verbatim: the same (key, value) pairs, in the same order.
+_GEMMA_FALLBACK_KEY_RE = re.compile(r"\w++")
+_GEMMA_FALLBACK_COLON_RE = re.compile(r"\s*+:")
+_GEMMA_FALLBACK_BOUNDARY_RE = re.compile(r"(?<!\s)(\s*+)(?:,\s*+\w++\s*+:|})")
+
+
+def _iter_gemma_fallback_items(body):
+    """Preserve permissive k:v recovery with one pass over keys/boundaries."""
+    boundaries = list(_GEMMA_FALLBACK_BOUNDARY_RE.finditer(body))
+    boundary_index = 0
+    pos = 0
+    newline = body.find("\n")
+    while key := _GEMMA_FALLBACK_KEY_RE.search(body, pos):
+        colon = _GEMMA_FALLBACK_COLON_RE.match(body, key.end())
+        if colon is None:
+            pos = key.end()
+            continue
+        start = colon.end()
+        while start < len(body) and body[start].isspace():
+            start += 1
+        if start < len(body) and body[start] in "\"'":
+            start += 1
+        while boundary_index < len(boundaries) and boundaries[boundary_index].end(1) < start:
+            boundary_index += 1
+        if boundary_index == len(boundaries):
+            return
+        boundary = boundaries[boundary_index]
+        end = max(start, boundary.start())
+        if 0 <= newline < start:
+            newline = body.find("\n", start)
+        if newline >= 0 and newline < end:
+            pos = key.end()
+            continue
+        capture_end = end
+        if capture_end > start and body[capture_end - 1] in "\"'":
+            capture_end -= 1
+        yield key.group(0), body[start:capture_end].strip()
+        pos = end
+
+
 def _parse_gemma_tool_call(tool_name: str, body: str) -> Optional[ToolBlock]:
     """Parse a Gemma-style call:tool_name{...} block into a ToolBlock."""
     tool_name = tool_name.strip().lower().replace("-", "_")
@@ -1685,12 +1807,9 @@ def _parse_gemma_tool_call(tool_name: str, body: str) -> Optional[ToolBlock]:
             if not isinstance(params, dict):
                 params = {}
         except Exception:
-            # Simple regex key-value extraction fallback
-            params = {}
-            for m in re.finditer(r'(\w+)\s*:\s*["\']?(.*?)["\']?(?=\s*,\s*\w+\s*:|\s*\})', body):
-                k = m.group(1)
-                v = m.group(2).strip()
-                params[k] = v
+            # Simple key-value extraction fallback (`B1904`: one pass, see
+            # `_iter_gemma_fallback_items`; the last of a repeated key wins).
+            params = dict(_iter_gemma_fallback_items(body))
 
     from src.tool_schemas import function_call_to_tool_block
     return function_call_to_tool_block(tool_name, json.dumps(params))
@@ -1744,10 +1863,11 @@ def _iter_delimited(text, open_re, close_re):
         pos = cm.end()
 
 
-def _strip_delimited(text: str, open_re, close_re) -> str:
-    """Remove every ``open_re ... close_re`` span (forward-only; see
-    _iter_delimited). Equivalent to ``open_re([\\s\\S]*?)close_re`` ``re.sub('')``
-    for these delimiters, without the O(n^2) rescan on unclosed openers."""
+def _strip_delimited(text: str, open_re, close_re, replacement: str = "") -> str:
+    """Replace every ``open_re ... close_re`` span with ``replacement``
+    (forward-only; see _iter_delimited). Equivalent to
+    ``open_re([\\s\\S]*?)close_re`` ``re.sub(replacement)`` for these
+    delimiters, without the O(n^2) rescan on unclosed openers."""
     spans = list(_iter_delimited(text, open_re, close_re))
     if not spans:
         return text
@@ -1755,9 +1875,37 @@ def _strip_delimited(text: str, open_re, close_re) -> str:
     last = 0
     for match_start, _inner_start, _inner_end, match_end in spans:
         out.append(text[last:match_start])
+        out.append(replacement)
         last = match_end
     out.append(text[last:])
     return "".join(out)
+
+
+# `B1902`. The flat `<[^>]+>` tag strip that mail and integration text goes
+# through, on `_iter_delimited`. `re.sub(r"<[^>]+>", …)` and its `findall`
+# rescan to the end of the text from every `<` that has no `>` after it: an
+# HTML part of 80,000 `<` took 8.5 s to strip, and mail is anyone's to send.
+_ANGLE_TAG_OPEN_RE = re.compile(r"<")
+_NONEMPTY_ANGLE_TAG_OPEN_RE = re.compile(r"<(?=[^>])")
+_ANGLE_TAG_CLOSE_RE = re.compile(r">")
+
+
+def strip_angle_tags(text: str, replacement: str = "", *, allow_empty: bool = False) -> str:
+    """Linear equivalent of ``re.sub(r"<[^>]+>", replacement, text)`` (or of
+    ``<[^>]*>`` with ``allow_empty``).
+
+    It keeps that cleanup exactly, a nested ``<`` and a malformed tail
+    included; it does not read HTML. It stops once no ``>`` is reachable
+    instead of rescanning from every ``<`` (upstream Odysseus da3800b6)."""
+    opener = _ANGLE_TAG_OPEN_RE if allow_empty else _NONEMPTY_ANGLE_TAG_OPEN_RE
+    return _strip_delimited(text, opener, _ANGLE_TAG_CLOSE_RE, replacement)
+
+
+def iter_angle_tags(text: str):
+    """Linear equivalent of ``re.finditer(r"<([^>]+)>", text)``: yield
+    ``(start, inner_start, inner_end, end)`` for each tag, ``text[start:end]``
+    the whole ``<…>`` and ``text[inner_start:inner_end]`` what is inside it."""
+    return _iter_delimited(text, _NONEMPTY_ANGLE_TAG_OPEN_RE, _ANGLE_TAG_CLOSE_RE)
 
 
 def _iter_named_blocks(text, open_re, close_re):
@@ -1823,85 +1971,55 @@ def _iter_xml_direct(text):
     return _iter_backref_blocks(text, _XML_DIRECT_OPEN_RE, _XML_DIRECT_CLOSE_ANY_RE, ci=True)
 
 
-def parse_tool_blocks(text: str, skip_fenced: bool = False) -> List[ToolBlock]:
-    """Extract executable tool blocks from LLM response text.
+def _fenced_calls(text: str) -> List[ToolBlock]:
+    """Pattern 1: the calls the reply's fenced code blocks make.
 
-    Supports multiple formats:
-    1. ```bash ... ``` fenced code blocks (standard)
-    2. [TOOL_CALL] ... [/TOOL_CALL] blocks (some models)
-    3. XML-style <tool_call>/<invoke> blocks
-    4. <tool_code> blocks (MiniMax-M2.5 style)
-    5. StepFun Step-3 native <｜tool▁call▁begin｜> tokens
-    6. DeepSeek DSML markup (normalized to <invoke> first)
-    7. Non-native local model fallback: prose mentioning web_search followed by
-       bare JSON args, e.g. {"query":"...", "time_filter":"week"}
-
-    `skip_fenced`: when True, Pattern 1 (fenced ```bash/```python/```json code
-    blocks) is not matched at all. Native function-calling models (GPT/Claude/
-    Grok/Qwen3/DeepSeek-V, etc.) commonly write illustrative fenced examples in
-    prose; for those models we trust the structured tool_calls channel for real
-    invocations and treat a bare fence as display text rather than an action
-    (issue #3222). Patterns 2-5 — explicit [TOOL_CALL]/<invoke>/<tool_code>/DSML
-    markup that leaked into content as text — stay fully active regardless,
-    since that markup is never an illustrative example and dropping it would
-    silently lose real calls (e.g. DeepSeek-V falling back to DSML when it
-    can't emit structured tool_calls).
-    """
+    `parse_tool_blocks` runs them unless an explicit call outranks them, and
+    `strip_tool_blocks` asks whether one did (`B1914`)."""
     blocks = []
-
-    # Normalize DeepSeek DSML markup into standard <invoke> form so the
-    # XML patterns below catch it.
-    text = _normalize_foreign_tool_markup(text)
-
-    # Pattern 1b: a fenced MCP call, ```mcp__{server}__{tool} + JSON body.
-    # Not gated on `skip_fenced`'s illustrative-example reasoning the way
-    # Pattern 1 is: a native-tools model writes ```bash examples in prose all
-    # the time, and has never once written a fully-qualified `mcp__…__…` fence
-    # tag by accident. Dropping it would lose a real call (`B1306`), which is
-    # the same judgement Patterns 2-5 already make for explicit markup.
-    for m in _MCP_TOOL_BLOCK_RE.finditer(text):
-        call = _fenced_mcp_tool_call(m)
+    for m in _TOOL_BLOCK_RE.finditer(text):
+        call = _fenced_tool_call(m)
         if call is None:
             continue
-        blocks.append(ToolBlock(call[0], call[1]))
-
-    # Pattern 1: fenced code blocks (skipped when `skip_fenced` — see docstring).
-    if not skip_fenced:
-        for m in _TOOL_BLOCK_RE.finditer(text):
-            call = _fenced_tool_call(m)
-            if call is None:
-                continue
-            tag, content = call
-            if not content:
-                # An empty fence is still an unambiguous call for the email
-                # tools — ```list_email_accounts``` with no body is a shape
-                # local models really emit for no-arg tools. Dispatch with
-                # empty args and let the tool's own validation answer;
-                # silently dropping the call left models concluding email was
-                # broken. Other tags (bash, python, ...) keep skipping: empty
-                # content is nothing to run.
-                if tag in BUILTIN_EMAIL_TOOLS:
-                    blocks.append(ToolBlock(tag, ""))
-                continue
-            # If a code block's content is an <invoke> XML call (some models wrap
-            # tool calls in ```python or ```xml fences), parse the invoke instead.
-            if '<invoke' in content:
-                for inv_name, inv_body in _iter_xml_invoke(content):
-                    block = _parse_xml_invoke(inv_name, inv_body)
-                    if block:
-                        blocks.append(block)
-                # This fenced block is <invoke> markup, not literal code. Whether or
-                # not any call converted, never fall through to append the raw XML as
-                # a python/bash block — e.g. a hyphenated/namespaced tool name that
-                # _XML_INVOKE_RE's \w+ can't match would otherwise be executed as code.
-                continue
-            if tag in ("python", "bash"):
-                block = (_parse_misfenced_web_lookup(content)
-                         or _parse_misfenced_read_file_lookup(content, allow_shell_style=(tag == "bash")))
+        tag, content = call
+        if not content:
+            # An empty fence is still an unambiguous call for the email
+            # tools — ```list_email_accounts``` with no body is a shape
+            # local models really emit for no-arg tools. Dispatch with
+            # empty args and let the tool's own validation answer;
+            # silently dropping the call left models concluding email was
+            # broken. Other tags (bash, python, ...) keep skipping: empty
+            # content is nothing to run.
+            if tag in BUILTIN_EMAIL_TOOLS:
+                blocks.append(ToolBlock(tag, ""))
+            continue
+        # If a code block's content is an <invoke> XML call (some models wrap
+        # tool calls in ```python or ```xml fences), parse the invoke instead.
+        if '<invoke' in content:
+            for inv_name, inv_body in _iter_xml_invoke(content):
+                block = _parse_xml_invoke(inv_name, inv_body)
                 if block:
                     blocks.append(block)
-                    continue
-            blocks.append(ToolBlock(tag, content))
+            # This fenced block is <invoke> markup, not literal code. Whether or
+            # not any call converted, never fall through to append the raw XML as
+            # a python/bash block — e.g. a hyphenated/namespaced tool name that
+            # _XML_INVOKE_RE's \w+ can't match would otherwise be executed as code.
+            continue
+        if tag in ("python", "bash"):
+            block = (_parse_misfenced_web_lookup(content)
+                     or _parse_misfenced_read_file_lookup(content, allow_shell_style=(tag == "bash")))
+            if block:
+                blocks.append(block)
+                continue
+        blocks.append(ToolBlock(tag, content))
+    return blocks
+
+
+def _parse_explicit_markup(text: str) -> List[ToolBlock]:
+    """Patterns 2-4c: the explicit call markup a model writes as text,
+    [TOOL_CALL], <tool_call>/<invoke>, <tool_code>, Gemma and <function_model>.
+    The first pattern that makes a call is the reply's."""
+    blocks = []
 
     # Pattern 2: [TOOL_CALL] blocks (only if no fenced blocks found)
     # _iter_delimited scans the delimiter-bounded formats forward-only so
@@ -1991,10 +2109,10 @@ def parse_tool_blocks(text: str, skip_fenced: bool = False) -> List[ToolBlock]:
 
     # Pattern 4b: Gemma-style <|tool_call|> blocks
     if not blocks:
-        for m in _GEMMA_TOOL_CALL_RE.finditer(text):
-            tool_name = m.group(1)
-            body = m.group(2)
-            block = _parse_gemma_tool_call(tool_name, body)
+        for tool_name, body in _iter_named_blocks(
+            text, _GEMMA_TOOL_CALL_OPEN_RE, _GEMMA_TOOL_CALL_CLOSE_RE
+        ):
+            block = _parse_gemma_tool_call(tool_name, "{" + body + "}")
             if block:
                 blocks.append(block)
 
@@ -2006,6 +2124,107 @@ def parse_tool_blocks(text: str, skip_fenced: bool = False) -> List[ToolBlock]:
             block = _parse_function_model_call(text[inner_start:inner_end])
             if block:
                 blocks.append(block)
+    return blocks
+
+
+# `B1914`. A reply that showed a fenced example and made its call in explicit
+# markup ran the example and dropped the call: Pattern 1 came first, and
+# Patterns 2-4c ran only when it had found nothing. Measured on `62c93ba2`: the
+# owner's Qwen Coder shape, two `<function=write_file>` calls and then "to
+# preview it, run ```bash python3 -m http.server 8000```", started the server
+# and wrote neither file.
+#
+# The delimiters of that markup: what opens it (upstream Odysseus 84aa9a91's
+# `_contains_explicit_tool_markup`) and what closes it.
+_EXPLICIT_TOOL_MARKUP_RE = re.compile(
+    r"\[/?TOOL_CALL\]|</?\s*(?:[\w]+:)?(?:tool_call|function_call|invoke|tool_code)\b|"
+    r"<\|?tool_call\|?>|<｜tool▁call▁(?:begin|end)｜>|</?function_model>",
+    re.IGNORECASE,
+)
+# A Markdown fence (``` to ```, or to the end when it is never closed), or
+# inline code within one line.
+_FENCE_OR_CODE_SPAN_RE = re.compile(r"```[\s\S]*?(?:```|\Z)|`[^`\n]*`")
+
+
+def _explicit_calls_outside_fences(text: str) -> List[ToolBlock]:
+    """The calls the reply's explicit markup makes when all of that markup is
+    outside its fences and inline code, else none (`B1914`).
+
+    Upstream lets the markup outrank the fences when the reply holds it
+    anywhere, so a ```write_file whose content is a fixture with a <tool_call>
+    in it ran that call instead of writing the file, and a ```web_search that
+    names [TOOL_CALL] searched for nothing. Markup inside a fence is what the
+    fence holds, so when there is any, the fences run as they always did. The
+    calls are read from the whole reply, so a file's content keeps the fences
+    in it. Linear: one pass over the spans, each of them searched once."""
+    if not _EXPLICIT_TOOL_MARKUP_RE.search(text):
+        return []
+    for span in _FENCE_OR_CODE_SPAN_RE.finditer(text):
+        if _EXPLICIT_TOOL_MARKUP_RE.search(text, span.start(), span.end()):
+            return []
+    return _parse_explicit_markup(text)
+
+
+def parse_tool_blocks(text: str, skip_fenced: bool = False) -> List[ToolBlock]:
+    """Extract executable tool blocks from LLM response text.
+
+    Supports multiple formats:
+    1. ```bash ... ``` fenced code blocks (standard)
+    2. [TOOL_CALL] ... [/TOOL_CALL] blocks (some models)
+    3. XML-style <tool_call>/<invoke> blocks
+    4. <tool_code> blocks (MiniMax-M2.5 style)
+    5. StepFun Step-3 native <｜tool▁call▁begin｜> tokens
+    6. DeepSeek DSML markup (normalized to <invoke> first)
+    7. Non-native local model fallback: prose mentioning web_search followed by
+       bare JSON args, e.g. {"query":"...", "time_filter":"week"}
+
+    `skip_fenced`: when True, Pattern 1 (fenced ```bash/```python/```json code
+    blocks) is not matched at all. Native function-calling models (GPT/Claude/
+    Grok/Qwen3/DeepSeek-V, etc.) commonly write illustrative fenced examples in
+    prose; for those models we trust the structured tool_calls channel for real
+    invocations and treat a bare fence as display text rather than an action
+    (issue #3222). Patterns 2-5 — explicit [TOOL_CALL]/<invoke>/<tool_code>/DSML
+    markup that leaked into content as text — stay fully active regardless,
+    since that markup is never an illustrative example and dropping it would
+    silently lose real calls (e.g. DeepSeek-V falling back to DSML when it
+    can't emit structured tool_calls).
+
+    A reply with a fenced call and explicit markup that makes a call outside
+    every fence and inline code runs the markup's calls: the fences were
+    examples (`B1914`, `_explicit_calls_outside_fences`).
+    """
+    blocks = []
+
+    # Normalize DeepSeek DSML markup into standard <invoke> form so the
+    # XML patterns below catch it.
+    text = _normalize_foreign_tool_markup(text)
+
+    # Pattern 1b: a fenced MCP call, ```mcp__{server}__{tool} + JSON body.
+    # Not gated on `skip_fenced`'s illustrative-example reasoning the way
+    # Pattern 1 is: a native-tools model writes ```bash examples in prose all
+    # the time, and has never once written a fully-qualified `mcp__…__…` fence
+    # tag by accident. Dropping it would lose a real call (`B1306`), which is
+    # the same judgement Patterns 2-5 already make for explicit markup.
+    for m in _MCP_TOOL_BLOCK_RE.finditer(text):
+        call = _fenced_mcp_tool_call(m)
+        if call is None:
+            continue
+        blocks.append(ToolBlock(call[0], call[1]))
+
+    # Pattern 1: fenced code blocks (skipped when `skip_fenced` — see docstring).
+    fenced = [] if skip_fenced else _fenced_calls(text)
+    if fenced:
+        # `B1914`. An explicit call outside every fence outranks the fences:
+        # they were examples. Markup that makes no call leaves them to run, and
+        # Pattern 1b's MCP calls keep the precedence they had over the markup.
+        explicit = _explicit_calls_outside_fences(text)
+        if explicit:
+            return blocks or explicit
+        blocks.extend(fenced)
+
+    # Patterns 2-4c: explicit markup, when no fence made a call.
+    if not blocks:
+        blocks = _parse_explicit_markup(text)
 
     # Pattern 4d: raw OpenAI-style tool-call JSON leaked as assistant text.
     # Example: {"function":{"arguments":"{\"action\":\"add\"}","name":"manage_memory"},"type":"function"}
@@ -2041,7 +2260,7 @@ def parse_tool_blocks(text: str, skip_fenced: bool = False) -> List[ToolBlock]:
     # from weaker native-tool models after reading the tool docs but failing to
     # emit the actual structured call.
     if not blocks:
-        m = _PLAIN_UI_OPEN_PANEL_RE.search(text)
+        m = next(_iter_plain_ui_open_panel(text), None)
         if m:
             blocks.append(ToolBlock("ui_control", f"open_panel {m.group(1).lower()}"))
 
@@ -2057,7 +2276,8 @@ def strip_tool_blocks(text: str, skip_fenced: bool = False) -> str:
     same response: if a fence wasn't executed as a tool call (because it's an
     illustrative example from a native function-calling model), it shouldn't
     vanish from the persisted/displayed text either — otherwise the example
-    streams once and then disappears on reload (issue #3222 follow-up).
+    streams once and then disappears on reload (issue #3222 follow-up). A
+    fence an explicit call outranked (`B1914`) did not run either, and stays.
     Patterns 2-5 + DSML markup are always stripped, since that markup should
     never reach the user regardless of whether it converted to a tool call.
     """
@@ -2071,7 +2291,9 @@ def strip_tool_blocks(text: str, skip_fenced: bool = False) -> str:
     # gated on `skip_fenced` — Pattern 1b is not either, and a fence that ran
     # must not also be shown (the mirror `_fenced_tool_call` already keeps).
     cleaned = _MCP_TOOL_BLOCK_RE.sub(_strip_executed_mcp_fence, text)
-    cleaned = cleaned if skip_fenced else _TOOL_BLOCK_RE.sub(_strip_executed_fence, cleaned)
+    # `B1914`. A fence an explicit call outranked did not run, so it stays.
+    if not skip_fenced and not (_explicit_calls_outside_fences(text) and _fenced_calls(text)):
+        cleaned = _TOOL_BLOCK_RE.sub(_strip_executed_fence, cleaned)
     # Forward-only removal mirrors parse_tool_blocks: _strip_delimited pairs each
     # opener with a later closer and stops when none is reachable, so untrusted
     # output can't drive the O(n^2) lazy-rescan (ReDoS); see _iter_delimited.
@@ -2080,7 +2302,7 @@ def strip_tool_blocks(text: str, skip_fenced: bool = False) -> str:
     cleaned = _strip_delimited(cleaned, _XML_TOOL_CALL_OPEN_RE, _XML_TOOL_CALL_CLOSE_RE)
     cleaned = _XML_OPEN_TOOL_CALL_RE.sub('', cleaned)
     cleaned = _strip_delimited(cleaned, _TOOL_CODE_OPEN_RE, _TOOL_CODE_CLOSE_RE)
-    cleaned = _GEMMA_TOOL_CALL_RE.sub('', cleaned)
+    cleaned = _strip_delimited(cleaned, _GEMMA_TOOL_CALL_OPEN_RE, _GEMMA_TOOL_CALL_CLOSE_RE)
     cleaned = _strip_delimited(cleaned, _FUNCTION_MODEL_OPEN_RE, _FUNCTION_MODEL_CLOSE_RE)
     cleaned = _strip_raw_openai_tool_call_json(cleaned)
     cleaned = _QWEN_ROLE_MARKER_RE.sub('', cleaned)
@@ -2090,7 +2312,7 @@ def strip_tool_blocks(text: str, skip_fenced: bool = False) -> str:
         if raw_web_json:
             _, (start, end) = raw_web_json
             cleaned = cleaned[:start] + cleaned[end:]
-    cleaned = _PLAIN_UI_OPEN_PANEL_RE.sub("", cleaned)
+    cleaned = _strip_plain_ui_open_panel(cleaned)
     # Strip bare <invoke> blocks not wrapped in <tool_call>
     cleaned = _strip_bare_invoke_markup(cleaned)
     cleaned = re.sub(r'\n{3,}', '\n\n', cleaned)

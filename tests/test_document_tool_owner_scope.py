@@ -3,9 +3,12 @@ import asyncio
 import sys
 import types
 
+import pytest
+
 from src.agent_tools import TOOL_HANDLERS
 from src.agent_tools.document_tools import (
     _owned_document_query,
+    parse_suggest_blocks,
     set_active_document,
 )
 
@@ -164,3 +167,46 @@ def test_document_tool_dispatch_forwards_owner():
                 "suggest_document", "manage_documents"):
         assert key in TOOL_HANDLERS, f"TOOL_HANDLERS missing key: {key}"
         assert callable(TOOL_HANDLERS[key]), f"TOOL_HANDLERS[{key!r}] is not callable"
+
+
+# ── B1913: a suggestion that makes the writing clearer is kept ──────────────
+#
+# Upstream Odysseus 84aa9a91. parse_suggest_blocks drops a suggestion whose
+# reason says it changes nothing ("no change", "looks good", "keep as"), and
+# "clear" was on that list as a bare substring, so every reason that said
+# "clearer", "unclear" or "clearly", the commonest reason a writing
+# suggestion gives, was dropped. When every block went, suggest_document
+# answered that it had found no blocks at all.
+
+@pytest.mark.parametrize("reason", [
+    "The wording is more specific and clearer.",
+    "The original is unclear about who acts.",
+    "Clearly states the deadline.",
+])
+def test_a_suggestion_whose_reason_says_clearer_is_kept(reason):
+    parsed = parse_suggest_blocks(
+        "<<<FIND>>>\nvery good\n<<<SUGGEST>>>\nclear and actionable\n"
+        f"<<<REASON>>>\n{reason}\n<<<END>>>"
+    )
+
+    assert len(parsed) == 1
+    assert parsed[0]["replace"] == "clear and actionable"
+    assert parsed[0]["reason"] == reason
+
+
+def test_suggest_document_reads_a_suggestion_whose_reason_says_clearer(monkeypatch):
+    query = _Query()
+    _install_database_stub(monkeypatch, "src.database", query)
+    set_active_document("doc-bob")
+    try:
+        result = asyncio.run(
+            TOOL_HANDLERS["suggest_document"](
+                "<<<FIND>>>\nold\n<<<SUGGEST>>>\nnew\n<<<REASON>>>\nMakes it clearer.\n<<<END>>>",
+                {"owner": "alice"},
+            )
+        )
+    finally:
+        set_active_document(None)
+
+    # Past the parse, to the document lookup: the suggestion was read.
+    assert result["error"] == "Document doc-bob not found"

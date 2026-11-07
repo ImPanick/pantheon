@@ -15,7 +15,6 @@ import email.header
 import email.utils
 from email.message import EmailMessage
 import re
-import html
 import json
 import sqlite3
 import sys
@@ -50,9 +49,16 @@ from src.file_names import display_name as _display_name, stored_name as _stored
 # P18-02/P18-03. In `src/` rather than `routes/` precisely so this process
 # can import it without reaching into a request-handler module.
 from src import mail_auth as _mail_auth
+from src import mail_tls as _mail_tls  # `B2096`: which certificate gets a password
 # `B1232`. The header decode the routes use, so an 8-bit Subject reads the same
 # to the agent as it does in the browser — one definition, in `src/`.
 from src.mail_headers import decode_header as _shared_decode_header
+# `B1822`, `B1823`. And the body decode, so `read_email` opens what the reader
+# opens: a charset with no codec, an HTML-first alternative read once, and a
+# single-part HTML message as its text rather than its markup.
+from src.mail_headers import extract_text as _extract_text
+# `B1980`. And what a UID is, the rule the routes ask: one message, never a set.
+from src.mail_headers import one_uid as _one_uid
 # `B131`, then `B1118`. `src.agent_tools` is imported before `src.tool_schemas`
 # here, and since `B1118` the order no longer matters: the facade re-exports
 # `tool_schemas` and `tool_parsing` lazily, so either can be imported first in a
@@ -83,6 +89,16 @@ def _q(name: str) -> str:
 
 def _uid_fetch_rows(data) -> list:
     return [d for d in (data or []) if isinstance(d, bytes) and b"UID " in d]
+
+
+def _uids_from_fetch_rows(data, wanted) -> set:
+    """`B2012`. The UIDs a `(UID)` FETCH answered with, of those in `wanted`."""
+    found = set()
+    for row in _uid_fetch_rows(data):
+        m = re.search(rb"\bUID\s+(\d+)\b", row)
+        if m and m.group(1).decode() in wanted:
+            found.add(m.group(1).decode())
+    return found
 
 # ── Config ──
 # Multi-account aware. Accounts live in data/app.db :: email_accounts.
@@ -357,6 +373,10 @@ def _load_config(account: str | None = None) -> dict:
         ),
         "account_id": None,
         "account_name": None,
+        # `B2096`: whose certificate pins this account's connections read
+        # (`src/mail_tls.py`). The row's owner, as the app's `_get_email_config`
+        # reads it, so a pin either process records is the other's too.
+        "owner": "",
     }
 
     raw_rows = _read_accounts_from_db()
@@ -375,6 +395,7 @@ def _load_config(account: str | None = None) -> dict:
     if row:
         cfg["account_id"] = row["id"]
         cfg["account_name"] = row["name"]
+        cfg["owner"] = row.get("owner") or ""
         cfg["imap_host"] = row["imap_host"] or cfg["imap_host"]
         cfg["imap_port"] = int(row["imap_port"] or cfg["imap_port"])
         cfg["imap_user"] = row["imap_user"] or cfg["imap_user"]
@@ -418,6 +439,13 @@ def _load_config(account: str | None = None) -> dict:
         except Exception:
             pass
 
+    # `B1963`: 993 is implicit TLS (RFC 8314) whatever the STARTTLS flag says,
+    # as `routes/email_helpers._open_imap_connection` dials it; for a row and
+    # for the env/settings fallback alike. Upstream Odysseus #6990.
+    if int(cfg.get("imap_port") or 0) == 993:
+        cfg["imap_ssl"] = True
+        cfg["imap_starttls"] = False
+
     if not cfg["from_address"]:
         cfg["from_address"] = cfg["imap_user"]
 
@@ -435,21 +463,31 @@ def _imap_connect(account: str | None = None):
     # `B1230`: opened under `EMAIL_CONNECT_TIMEOUT` (connect, TLS, greeting and
     # any STARTTLS upgrade); the session's reads get `EMAIL_SOCKET_TIMEOUT`,
     # set on the socket below once the server has answered.
+    #
+    # `B2096`: the TLS takes `src/mail_tls.py`'s context for the host, and the
+    # certificate is checked before the sign-in below, as the app's own
+    # `_open_imap_connection` does.
+    host, port = cfg["imap_host"], cfg["imap_port"]
+    owner = str(cfg.get("owner") or "")
     if cfg["imap_ssl"]:
-        conn = imaplib.IMAP4_SSL(
-            cfg["imap_host"],
-            cfg["imap_port"],
-            timeout=EMAIL_CONNECT_TIMEOUT,
-        )
+        with _mail_tls.handshake(host, port):
+            conn = imaplib.IMAP4_SSL(
+                host,
+                port,
+                timeout=EMAIL_CONNECT_TIMEOUT,
+                ssl_context=_mail_tls.context_for(owner, host, port),
+            )
+        _mail_tls.check_connection(conn, owner, host, port)
     else:
         conn = imaplib.IMAP4(
-            cfg["imap_host"],
-            cfg["imap_port"],
+            host,
+            port,
             timeout=EMAIL_CONNECT_TIMEOUT,
         )
         if cfg["imap_starttls"]:
             try:
-                conn.starttls()
+                with _mail_tls.handshake(host, port):
+                    conn.starttls(ssl_context=_mail_tls.context_for(owner, host, port))
             except Exception:
                 # Don't leak the open plain socket on a rejected STARTTLS. (#3174)
                 try:
@@ -457,6 +495,7 @@ def _imap_connect(account: str | None = None):
                 except Exception:
                     pass
                 raise
+            _mail_tls.check_connection(conn, owner, host, port)
     if getattr(conn, "sock", None):
         conn.sock.settimeout(EMAIL_SOCKET_TIMEOUT)
     try:
@@ -578,7 +617,9 @@ def _parse_list_unsubscribe_header(value: str | None) -> list[dict]:
     raw = str(value or "").strip()
     if not raw:
         return []
-    pieces = re.findall(r"<([^>]+)>", raw)
+    # `B1902`. What `re.findall(r"<([^>]+)>", raw)` found, in linear time.
+    from src.tool_parsing import iter_angle_tags
+    pieces = [raw[inner_start:inner_end] for _s, inner_start, inner_end, _e in iter_angle_tags(raw)]
     if not pieces:
         pieces = [p.strip() for p in raw.split(",") if p.strip()]
     out: list[dict] = []
@@ -814,36 +855,6 @@ def _unsubscribe_email(uid, folder="INBOX", account=None, method_index=0, allow_
     }
 
 
-def _extract_text(msg):
-    """Extract plain text body from email message."""
-    if msg.is_multipart():
-        text_parts = []
-        for part in msg.walk():
-            ct = part.get_content_type()
-            cd = str(part.get("Content-Disposition", ""))
-            if ct == "text/plain" and "attachment" not in cd:
-                payload = part.get_payload(decode=True)
-                if payload:
-                    charset = part.get_content_charset() or "utf-8"
-                    text_parts.append(payload.decode(charset, errors="replace"))
-            elif ct == "text/html" and not text_parts and "attachment" not in cd:
-                payload = part.get_payload(decode=True)
-                if payload:
-                    charset = part.get_content_charset() or "utf-8"
-                    raw_html = payload.decode(charset, errors="replace")
-                    text = re.sub(r"<br\s*/?>", "\n", raw_html, flags=re.I)
-                    text = re.sub(r"<[^>]+>", "", text)
-                    text = html.unescape(text)
-                    text_parts.append(text.strip())
-        return "\n".join(text_parts)
-    else:
-        payload = msg.get_payload(decode=True)
-        if payload:
-            charset = msg.get_content_charset() or "utf-8"
-            return payload.decode(charset, errors="replace")
-    return ""
-
-
 def _get_cached_summaries():
     """Read pre-computed summaries from SQLite cache."""
     cfg = _load_config()
@@ -1009,6 +1020,20 @@ def _fixture_read_email(uid=None, message_id=None, folder="INBOX", account=None)
 # ── Tool implementations ──
 
 
+def _result_count(value, default: int = 20, ceiling: int | None = None) -> int:
+    """`B1981`. The model's `max_results` as a whole number a slice can take.
+    The schema check lets `20.0` through as an integer, and the slice raised;
+    `0` found nothing and `-1` took every match but one. Not a number, or below
+    one, is the default; a ceiling, where one is given, bounds the rest."""
+    try:
+        count = int(value)
+    except (TypeError, ValueError, OverflowError):
+        return default
+    if count < 1:
+        return default
+    return min(count, ceiling) if ceiling else count
+
+
 def _list_emails(folder="INBOX", max_results=20, unresponded_only=False,
                  unread_only=False, account=None):
     """List emails newest-first. By default returns the latest messages,
@@ -1016,6 +1041,8 @@ def _list_emails(folder="INBOX", max_results=20, unresponded_only=False,
     Pass unread_only=True and/or unresponded_only=True for attention scans.
     account selects mailbox (None = default).
     """
+    # `B1981`. No ceiling on a listing: whether to cap one is the owner's call.
+    max_results = _result_count(max_results)
     fixture = _fixture_list_emails(folder, max_results, unresponded_only, unread_only, account)
     if fixture is not None:
         return fixture
@@ -1100,6 +1127,7 @@ def _result_sort_time(result: dict) -> datetime:
 
 def _list_emails_across_accounts(folder="INBOX", max_results=20,
                                  unresponded_only=False, unread_only=False):
+    max_results = _result_count(max_results)  # `B1981`
     fixture = _fixture_list_emails(folder, max_results, unresponded_only, unread_only, None)
     if fixture is not None:
         return fixture, []
@@ -1134,6 +1162,9 @@ def _search_emails(query, folders=None, max_results=20, account=None):
     body TEXT. Walks multiple folders so older threads outside INBOX
     (Sent/Archive) are still findable. Returns the same shape as
     _list_emails plus an `_folder` tag."""
+    # `B1981`. At most 100 a folder, as the unsubscribe scan bounds its own:
+    # each match is one header round trip inside the MCP call's time limit.
+    max_results = _result_count(max_results, 20, 100)
     if not query or not str(query).strip():
         return []
     fixture = _fixture_search_emails(query, folders=folders, max_results=max_results, account=account)
@@ -1406,14 +1437,20 @@ def _smtp_connect(account=None, cfg=None):
     # `B1230`: the same split as `_imap_connect` — opened under
     # `EMAIL_CONNECT_TIMEOUT`, then the socket gets `EMAIL_SOCKET_TIMEOUT` for
     # the login and the send.
+    #
+    # `B2096`: the TLS takes `src/mail_tls.py`'s context for the host, and the
+    # certificate is checked before the sign-in below.
+    host = cfg["smtp_host"]
+    owner = str(cfg.get("owner") or "")
     if security == "starttls":
         conn = smtplib.SMTP(
-            cfg["smtp_host"],
+            host,
             port,
             timeout=EMAIL_CONNECT_TIMEOUT,
         )
         try:
-            conn.starttls()
+            with _mail_tls.handshake(host, port):
+                conn.starttls(context=_mail_tls.context_for(owner, host, port))
         except Exception:
             # Don't leak the open plain socket on a rejected STARTTLS. SMTP has
             # no shutdown(); close() is the low-level socket close (no QUIT). (#3174)
@@ -1422,12 +1459,16 @@ def _smtp_connect(account=None, cfg=None):
             except Exception:
                 pass
             raise
+        _mail_tls.check_connection(conn, owner, host, port)
     elif security == "ssl":
-        conn = smtplib.SMTP_SSL(
-            cfg["smtp_host"],
-            port,
-            timeout=EMAIL_CONNECT_TIMEOUT,
-        )
+        with _mail_tls.handshake(host, port):
+            conn = smtplib.SMTP_SSL(
+                host,
+                port,
+                timeout=EMAIL_CONNECT_TIMEOUT,
+                context=_mail_tls.context_for(owner, host, port),
+            )
+        _mail_tls.check_connection(conn, owner, host, port)
     else:
         conn = smtplib.SMTP(
             cfg["smtp_host"],
@@ -1576,15 +1617,10 @@ def _send_email(to, subject, body, in_reply_to=None, references=None, cc=None, b
         msg["Message-ID"] = email.utils.make_msgid()
     msg.set_content(body)
 
-    recipients = []
-    if isinstance(to, str):
-        recipients.extend([a.strip() for a in to.split(",") if a.strip()])
-    else:
-        recipients.extend(to)
-    if cc:
-        recipients.extend([a.strip() for a in cc.split(",")] if isinstance(cc, str) else cc)
-    if bcc:
-        recipients.extend([a.strip() for a in bcc.split(",")] if isinstance(bcc, str) else bcc)
+    # `B1964`: parsed, so `"Smith, John" <john@corp.com>` is one recipient and
+    # not the two fragments a comma split made; a str or a list per field.
+    from src.mail_headers import envelope_recipients
+    recipients = envelope_recipients(to, cc, bcc)
 
     conn = _smtp_connect(send_account, cfg=cfg)
     try:
@@ -2011,6 +2047,9 @@ def _reply_to_email(uid, body, folder="INBOX", reply_all=False, account=None):
 
 def _set_flag(uid, folder, flag, add=True, account=None):
     """Add or remove an IMAP flag (e.g. \\Seen, \\Answered, \\Deleted)."""
+    uid = _one_uid(uid)
+    if not uid:  # `B1980`: one message; `1:*` with \Deleted expunged the folder
+        return False
     conn = _imap_connect(account)
     conn.select(_q(folder))
     op = "+FLAGS" if add else "-FLAGS"
@@ -2031,12 +2070,17 @@ def _bulk_set_flag(uids, folder, flag, add=True, account=None):
     (IMAP supports message-set syntax). Returns count attempted."""
     if not uids:
         return 0
+    # `B1980`: each one message, as text. A set among them (`1:*`) would be
+    # the whole folder, and SEARCH answers bytes, which joined as `b'5'`.
+    uids = [_one_uid(u) for u in uids]
+    if not all(uids):
+        return 0
     conn = _imap_connect(account)
     touched = []
     try:
         conn.select(_q(folder))
         op = "+FLAGS" if add else "-FLAGS"
-        msg_set = ",".join(str(u) for u in uids)
+        msg_set = ",".join(uids)
         try:
             status, data = conn.uid("FETCH", _b(msg_set), "(UID)")
         except Exception:
@@ -2055,37 +2099,52 @@ def _bulk_set_flag(uids, folder, flag, add=True, account=None):
 
 
 def _bulk_move(uids, source_folder, dest_folder, account=None, role: str = ""):
-    """Move MANY messages between folders in one connection."""
+    """Move MANY messages between folders in one connection.
+
+    `B2012`. Returns how many of `uids` left the folder. The count was fixed
+    before the MOVE (how many the folder held), so a server that answers OK
+    without moving, or a fallback whose EXPUNGE removes nothing, read as done;
+    and a MOVE answered NO after moving part of the set (RFC 6851) read as
+    none. The folder is asked again afterwards instead, on this same selected
+    connection; only when that read fails is the server's answer taken.
+    """
     if not uids:
         return 0
+    uids = [_one_uid(u) for u in uids]  # `B1980`, as in _bulk_set_flag
+    if not all(uids):
+        return 0
+    wanted = set(uids)
     conn = _imap_connect(account)
-    moved = 0
     try:
         conn.select(_q(source_folder))
         dest_folder = _resolve_folder(conn, dest_folder, role or _folder_role_from_name(dest_folder))
-        msg_set = ",".join(str(u) for u in uids)
+        msg_set = ",".join(uids)
         try:
             status, data = conn.uid("FETCH", _b(msg_set), "(UID)")
         except Exception:
             return 0
-        existing = _uid_fetch_rows(data)
+        existing = _uids_from_fetch_rows(data, wanted) if status == "OK" else set()
         if not existing:
             return 0
-        moved = len(existing)
         dest_arg = _q(dest_folder)
         status, _ = conn.uid("MOVE", _b(msg_set), dest_arg)
         if status != "OK":
-            # Fallback: UID copy + flag-delete + expunge
+            # Fallback: UID copy + flag-delete + expunge, each step only once
+            # the one before it answered OK.
             status, _ = conn.uid("COPY", _b(msg_set), dest_arg)
-            if status != "OK":
-                return 0
-            status, _ = conn.uid("STORE", _b(msg_set), "+FLAGS", "\\Deleted")
-            if status != "OK":
-                return 0
-            conn.expunge()
+            if status == "OK":
+                status, _ = conn.uid("STORE", _b(msg_set), "+FLAGS", "\\Deleted")
+            if status == "OK":
+                conn.expunge()
+        try:
+            read_back, after = conn.uid("FETCH", _b(msg_set), "(UID)")
+        except Exception:
+            read_back, after = None, None
+        if read_back == "OK":
+            return len(existing - _uids_from_fetch_rows(after, wanted))
+        return len(existing) if status == "OK" else 0
     finally:
         conn.logout()
-    return moved
 
 
 def _search_uids(folder="INBOX", criteria="UNSEEN", account=None):
@@ -2104,6 +2163,9 @@ def _search_uids(folder="INBOX", criteria="UNSEEN", account=None):
 
 def _move_message(uid, source_folder, dest_folder, account=None, role: str = ""):
     """Move a message between folders. Tries IMAP MOVE, falls back to copy+delete."""
+    uid = _one_uid(uid)
+    if not uid:  # `B1980`: one message; `1:*` moved the whole folder
+        return False
     conn = _imap_connect(account)
     conn.select(_q(source_folder))
     try:
@@ -2155,7 +2217,8 @@ def _download_attachment(uid, index, folder="INBOX", account=None, destination=N
     given, else under the sender's name; never outside that folder, and never
     over a file already there (`tool_execution.save_into_projects`, which says
     why in a sentence). Without one it goes where it always went, the mail
-    attachments area, `MAIL_ATTACHMENTS_DIR/<folder>_<uid>`."""
+    attachments area, `MAIL_ATTACHMENTS_DIR/<scope>/<folder>_<uid>`, `<scope>`
+    being the owner's and the account's own folder (`B2034`)."""
     conn = None
     try:
         conn = _imap_connect(account)
@@ -2188,7 +2251,12 @@ def _download_attachment(uid, index, folder="INBOX", account=None, destination=N
         return {"path": filepath, "filename": _display_name(shown or "") or os.path.basename(filepath),
                 "saved_as": os.path.basename(filepath), "size": os.path.getsize(filepath)}
 
-    target_dir = Path(MAIL_ATTACHMENTS_DIR) / f"{folder}_{uid}"
+    # `B2034`: it was `MAIL_ATTACHMENTS_DIR / f"{folder}_{uid}"`, `folder` as
+    # given (`../../x` and `/abs/p` left the area) and one folder for every
+    # owner's "INBOX 42" (`src/mail_attachment_paths`, the routes' rule too).
+    from src.mail_attachment_paths import attachment_scope_dir
+    target_dir = attachment_scope_dir(MAIL_ATTACHMENTS_DIR, folder, uid, owner=_current_owner(),
+                                      account_id=_load_config(account).get("account_id") or account)
     filepath = _extract_attachment_to_disk(msg, index, target_dir)
     if not filepath:
         return {"error": f"Attachment index {index} not found"}
@@ -2247,6 +2315,36 @@ async def list_tools() -> list[Tool]:
     ]
 
 
+def _uid_set_refusal(arguments: dict) -> str | None:
+    """`B1980`. Why a UID the model handed in is not one message, or None.
+
+    Every IMAP command that takes a UID also takes a set (`1:*` is the whole
+    folder, `5,7` two messages, `*` the last), and the tools passed theirs
+    through: `delete_email` with `permanent` and uid `1:*` flagged and
+    expunged the folder. Every `uid` these tools take is an email UID and
+    `uids` is `bulk_email`'s list (a string is one entry, not characters), so
+    this is asked once, before any tool connects. What passes is put back as
+    text, so a number sent as `5` reaches the tools as "5".
+    """
+    def refuse(value) -> str:
+        return (f"Error: {value!r} is not an email UID. A UID is one number, such as 5031, "
+                "from list_emails or search_emails.")
+
+    uid = arguments.get("uid")
+    if uid is not None and uid != "":
+        if not _one_uid(uid):
+            return refuse(uid)
+        arguments["uid"] = _one_uid(uid)
+    uids = arguments.get("uids")
+    if uids:
+        listed = list(uids) if isinstance(uids, (list, tuple)) else [uids]
+        for each in listed:
+            if not _one_uid(each):
+                return refuse(each)
+        arguments["uids"] = [_one_uid(each) for each in listed]
+    return None
+
+
 async def call_tool(name: str, arguments: dict) -> list[TextContent]:
     arguments = dict(arguments) if isinstance(arguments, dict) else {}
     owner = str(arguments.pop(_MCP_OWNER_ARG, "") or "").strip()
@@ -2255,6 +2353,9 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
         all_db_accounts = _read_accounts_from_db()
         if _mcp_owner_required(all_db_accounts):
             return [TextContent(type="text", text=_OWNER_SCOPE_ERROR)]
+        refusal = _uid_set_refusal(arguments)  # `B1980`
+        if refusal:
+            return [TextContent(type="text", text=refusal)]
 
         if name == "list_email_accounts":
             rows = _filter_accounts_for_owner(all_db_accounts)
@@ -2683,9 +2784,13 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                     return [TextContent(type="text", text=f"Unknown bulk action: {action!r}. Use mark_read/mark_unread/archive/delete/junk.")]
             except Exception as e:
                 return [TextContent(type="text", text=f"Bulk {action} failed after partial work: {e}")]
+            # `B2012`: a move's count is what left the folder, so nothing moved
+            # may be a server that did not apply it, not only UIDs not there.
             if changed_n <= 0:
-                return [TextContent(type="text", text=f"No matching UIDs found in {folder}; 0 of {requested_n} email(s) {verb}.")]
-            suffix = "" if changed_n == requested_n else f" ({changed_n} of {requested_n} requested UIDs matched)"
+                return [TextContent(type="text", text=(
+                    f"0 of {requested_n} email(s) {verb} in {folder}: none of those UIDs is there, "
+                    "or the server did not apply the change."))]
+            suffix = "" if changed_n == requested_n else f" ({changed_n} of {requested_n} requested)"
             return [TextContent(type="text", text=f"Done — {changed_n} email(s) {verb}{suffix}.")]
 
         else:

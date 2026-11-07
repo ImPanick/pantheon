@@ -1289,6 +1289,45 @@ def _normalize_chat_endpoint(url: str) -> str:
         return url
 
 
+def _registered_endpoint_headers(endpoint_url: str, owner: str | None, db=None) -> dict:
+    """The headers a scheduled run sends to `endpoint_url`: the credentials of
+    the endpoint that URL names, refreshed, or none at all.
+
+    `B1821`. A scheduled agent task (and a workflow's AI step) and a scheduled
+    research run took the first enabled row `owner` may use whose base was a
+    substring of the URL, or the URL of the base, and sent that row's stored
+    key. A ChatGPT Subscription endpoint stores no key: its credential is a
+    sign-in, refreshed by `resolve_endpoint_runtime`, which a chat calls and
+    the scheduler never did, so its runs went without a bearer and got a 401.
+    And of two endpoints whose addresses contain one another
+    (`http://192.168.1.5:1143` and `http://192.168.1.5:11434`), a run to one
+    could send the other's key. The endpoint is now the one
+    `registered_endpoint_for_url` finds, the matcher `_usable_route` authorised
+    the URL with, among the same rows. A URL no usable endpoint answers to, or
+    a refresh that fails, sends no credentials: never a sign-in's stale stored
+    key, never another endpoint's. `db` is the caller's session when it has one.
+    """
+    try:
+        from src.endpoint_resolver import (build_headers, registered_endpoint_for_url,
+                                           resolve_endpoint_runtime)
+        own = db is None
+        if own:
+            from core.database import SessionLocal
+            db = SessionLocal()
+        try:
+            ep = registered_endpoint_for_url(db, endpoint_url, owner)
+        finally:
+            if own:
+                db.close()
+        if ep is None:
+            return {}
+        base, api_key = resolve_endpoint_runtime(ep, owner=owner)
+        return build_headers(api_key, base)
+    except Exception:
+        logger.debug("no credentials for the scheduled run to %r", endpoint_url, exc_info=True)
+        return {}
+
+
 # `P8-33`'s first line of every plan, named once. `P22-04`: the agent's
 # `manage_tasks` `dry_run` reads a run back and has to tell a plan from a run
 # the engine declined to plan (a paused task, an admin refusal), and it does so
@@ -5455,6 +5494,19 @@ class TaskScheduler:
             # through as `command` so action_cookbook_serve can json.loads it.
             elif task.action == "cookbook_serve" and task.prompt:
                 kwargs["command"] = task.prompt
+            if task.action == "daily_brief":
+                # `B1804`. The brief's day and hours are the zone this task
+                # fires in, asked of the one resolver (`P8-32`): its own zone,
+                # then its crew member's. With neither it keeps the server's
+                # clock, and says so.
+                from core.database import SessionLocal
+                db = SessionLocal()
+                try:
+                    zone = _resolve_task_timezone(db, task)
+                finally:
+                    db.close()
+                if zone:
+                    kwargs["tz_name"] = zone
             return coerce_node_result(await action_fn(**kwargs))
         except (TaskNoop, TaskDeferred) as signal:
             # `P8-24`. The two signals the engine has always had, spoken in the
@@ -6433,25 +6485,9 @@ class TaskScheduler:
             # `B1434`. A hired agent works in the folder its hire names.
             _loop_extra["workspace"] = _slot["workspace"]
 
-        # Resolve headers from the endpoint's API key
-        headers = {}
-        try:
-            from core.database import SessionLocal, ModelEndpoint
-            from src.endpoint_resolver import normalize_base, build_headers
-            from src.auth_helpers import owner_filter
-            db2 = SessionLocal()
-            try:
-                ep_q = db2.query(ModelEndpoint).filter(ModelEndpoint.is_enabled == True)
-                ep_q = owner_filter(ep_q, ModelEndpoint, task.owner or None)
-                eps = ep_q.all()
-                for ep in eps:
-                    if normalize_base(ep.base_url) in endpoint_url or endpoint_url in normalize_base(ep.base_url):
-                        headers = build_headers(ep.api_key, normalize_base(ep.base_url))
-                        break
-            finally:
-                db2.close()
-        except Exception:
-            pass
+        # `B1821`. The credentials of the endpoint this URL names, refreshed
+        # when they are a sign-in, scoped to the task's owner.
+        headers = _registered_endpoint_headers(endpoint_url, task.owner or None)
         full_text = ""
         tool_results = []
         approval_pause = None
@@ -6687,7 +6723,7 @@ class TaskScheduler:
         """Execute a deep research task using DeepResearcher."""
         from core.database import Session as DbSession, ChatMessage
         from src.deep_research import DeepResearcher
-        from src.research_handler import RESEARCH_DATA_DIR, ResearchHandler
+        from src.research_handler import RESEARCH_DATA_DIR, ResearchHandler, research_run_settings
         from src.research_utils import strip_thinking
         from src.settings import get_setting
 
@@ -6720,26 +6756,14 @@ class TaskScheduler:
         # Record the resolved model for the run record (see _execute_task_locked).
         self.set_run_model(run_id, model)
 
-        # Resolve headers
-        try:
-            from core.database import ModelEndpoint
-            from src.endpoint_resolver import normalize_base, build_headers
-            from src.auth_helpers import owner_filter
-            db2 = db
-            if not headers_from_resolver:
-                ep_q = db2.query(ModelEndpoint).filter(ModelEndpoint.is_enabled == True)
-                ep_q = owner_filter(ep_q, ModelEndpoint, task.owner or None)
-                eps = ep_q.all()
-                for ep in eps:
-                    if normalize_base(ep.base_url) in endpoint_url or endpoint_url in normalize_base(ep.base_url):
-                        headers = build_headers(ep.api_key, normalize_base(ep.base_url))
-                        break
-        except Exception:
-            pass
+        # `B1821`. The resolver's headers when it gave some; otherwise the
+        # credentials of the endpoint this URL names, as for an agent task.
+        if not headers_from_resolver:
+            headers = _registered_endpoint_headers(endpoint_url, task.owner or None, db=db)
 
-        max_tokens = int(get_setting("research_max_tokens", 8192))
-        extraction_timeout = int(get_setting("research_extraction_timeout_seconds", 90) or 90)
-        extraction_concurrency = int(get_setting("research_extraction_concurrency", 3) or 3)
+        # `B1796`: read as the research panel reads them, so one stored value
+        # that is not a number is its default here too, not a dead run.
+        max_tokens, extraction_timeout, extraction_concurrency = research_run_settings(get_setting)
 
         researcher = DeepResearcher(
             llm_endpoint=endpoint_url,
@@ -8888,12 +8912,21 @@ class TaskScheduler:
         names (to / recipient / email / address) are all populated so we don't
         have to special-case each tool's schema; the MCP tool ignores keys it
         doesn't recognise.
+
+        `B1934`. The From address is the task owner's own mailbox, and an email
+        server tool is told whose account it acts for (`_EMAIL_MCP_OWNER_ARG`),
+        the two together: the owner alone would mail one person's result to
+        another person's address. A delivery that did not happen raises (no
+        manager, an error reply, a non-zero exit, a `send_email` reply that
+        says neither that it sent nor that it staged), so the run is an error
+        that says why, not a success that sent nothing. A draft staged for
+        approval is delivered: outbound-email confirmation is on by default
+        (`FORBIDDEN.md` Part 2), and the staged draft is that control working.
         """
         from src.tool_utils import get_mcp_manager
         mcp = get_mcp_manager()
         if not mcp:
-            logger.warning(f"Task {task.id}: MCP manager not available for delivery")
-            return
+            raise RuntimeError(f"MCP manager not available for delivery via {tool_name}")
 
         # Resolve recipient — prefer the configured email From (the established
         # "email yourself" pattern from daily_brief), fall back to task.owner.
@@ -8902,7 +8935,9 @@ class TaskScheduler:
         recipient = None
         try:
             from routes.email_helpers import _get_email_config
-            cfg = _get_email_config() or {}
+            # `B1934`: the owner's own mailbox. With no owner this is any
+            # owner's default, as `_get_email_config`'s SECURITY note says.
+            cfg = _get_email_config(owner=task.owner or "") or {}
             recipient = cfg.get("from_address") or None
         except Exception as _e:
             logger.debug(f"_deliver_via_mcp: email config lookup failed: {_e}")
@@ -8918,6 +8953,11 @@ class TaskScheduler:
                 "X-Pantheon-Ref": str(task.id),
             },
         }
+        if tool_name.startswith("mcp__email__") and task.owner:
+            # `B1934`: the account the recipient came from, as a chat's call
+            # names it; without it an owner-scoped server refuses the send.
+            from src.tool_execution import _EMAIL_MCP_OWNER_ARG
+            args[_EMAIL_MCP_OWNER_ARG] = task.owner
         if recipient:
             # Cover the common field names so we work across MCP servers (Gmail,
             # generic SMTP, Slack DMs, etc.) without having to hard-code each.
@@ -8932,25 +8972,41 @@ class TaskScheduler:
             )
         try:
             mcp_result = await mcp.call_tool(tool_name, args)
-            stderr = mcp_result.get("stderr", "")
-            stdout = mcp_result.get("stdout", "")
+            if not isinstance(mcp_result, dict):
+                raise RuntimeError(f"{tool_name} gave no reply")
+            stderr = str(mcp_result.get("stderr") or "")
+            stdout = str(mcp_result.get("stdout") or "")
             body_len = len(result or "")
             exit_code = mcp_result.get("exit_code", 0)
-            if exit_code != 0:
-                logger.warning(
-                    f"Task {task.id} MCP delivery FAILED via {tool_name}: "
-                    f"exit={exit_code} stderr={stderr[:400]!r} stdout={stdout[:400]!r}"
-                )
-            else:
-                # Include the MCP tool's own stdout (e.g. email_server returns
-                # "Sent email to ... with subject ...") + the body size so a
-                # silent SMTP failure is easier to spot in the logs.
-                logger.info(
-                    f"Task {task.id} delivered via MCP tool {tool_name} "
-                    f"(recipient_set={bool(recipient)}, body={body_len}b, reply={stdout[:200]!r})"
-                )
+            # `B1934`. Each of these was logged and the run said success.
+            if mcp_result.get("error"):
+                raise RuntimeError(f"{tool_name} failed: {str(mcp_result['error'])[:400]}")
+            if exit_code not in (0, None):
+                raise RuntimeError(
+                    f"{tool_name} failed: exit={exit_code} "
+                    f"stderr={stderr[:400]!r} stdout={stdout[:400]!r}")
+            if re.match(r"\s*error:", stdout, re.I):
+                raise RuntimeError(f"{tool_name} failed: {stdout.strip()[:400]}")
+            if tool_name == "mcp__email__send_email":
+                reply = stdout.strip()
+                if reply.startswith("Draft staged for approval"):
+                    logger.info(
+                        f"Task {task.id}: result staged for approval via {tool_name}, "
+                        f"nothing sent yet (body={body_len}b, reply={reply[:200]!r})")
+                    return
+                if not reply.startswith("Sent email to "):
+                    raise RuntimeError(
+                        f"{tool_name} did not say it sent the mail: {reply[:400]!r}")
+            # Include the MCP tool's own stdout (e.g. email_server returns
+            # "Sent email to ... with subject ...") + the body size so a
+            # silent SMTP failure is easier to spot in the logs.
+            logger.info(
+                f"Task {task.id} delivered via MCP tool {tool_name} "
+                f"(recipient_set={bool(recipient)}, body={body_len}b, reply={stdout[:200]!r})"
+            )
         except Exception as e:
             logger.error(f"Task {task.id} MCP delivery failed: {e}")
+            raise
 
     async def run_task_now(self, task_id: str, *, force: bool = False,
                            trigger: dict | None = None, dry: bool = False,

@@ -109,10 +109,12 @@ class _Rows:
         pass
 
 
-def _merge(monkeypatch, history):
-    """`POST /api/session/{id}/merge-last-assistant`, the real handler."""
+def _merge(monkeypatch, history, stored=None):
+    """`POST /api/session/{id}/merge-last-assistant`, the real handler. The
+    database holds `stored` when a case gives it (`B2016`), else what memory
+    holds."""
     monkeypatch.setattr(history_routes, "_verify_session_owner", lambda *a, **k: None)
-    rows = _Rows(history)
+    rows = _Rows(history if stored is None else stored)
     monkeypatch.setattr(history_routes, "SessionLocal", rows)
     session = _Session(history)
     router = history_routes.setup_history_routes(_Manager(session))
@@ -202,6 +204,55 @@ def test_only_a_continue_prompt_between_the_two_is_removed(prompt, removed):
                        SimpleNamespace(role="assistant", content="a2"))
     rows = history_routes._merge_continue_rows_to_delete([a1, between, a2], a1, a2)
     assert (between in rows) is removed and a2 in rows
+
+
+# ── `B2016`: a Continue that stored no reply joins nothing ──────────────────
+
+_INTERRUPTED = ("Your previous response was interrupted. It ended with:\n\nThe second half of the\n\n"
+                "Do NOT repeat what you already said. Continue exactly from where you were cut off.")
+
+
+def _stopped_after_a_question():
+    """A chat whose second reply was stopped, and the Continue prompt sent for it."""
+    return [ChatMessage("user", "What did the first half say?"),
+            ChatMessage("assistant", "The first half said this.", metadata={"model": "m"}),
+            ChatMessage("user", "And the second half?"),
+            ChatMessage("assistant", "The second half of the", metadata={"model": "m", "stopped": True}),
+            ChatMessage("user", _INTERRUPTED)]
+
+
+def _as_stored(rows):
+    return [(r.role, r.content) for r in rows.rows if r not in rows.deleted]
+
+
+def test_a_continue_that_stored_no_reply_joins_nothing(monkeypatch):
+    """The continuation ended cleanly with no reply stored (it only reasoned,
+    or the chat is Incognito), and the browser asked for the merge all the
+    same. The last two replies were then the stopped one and the answer before
+    it, and the merge folded the stopped reply into that answer, here and in
+    the database, and deleted the stopped reply's row: the person's second
+    question was left with no answer."""
+    history = _stopped_after_a_question()
+    before = [(m.role, m.content) for m in history]
+    result, after, rows = _merge(monkeypatch, history)
+    assert result == {"status": "ok", "merged": False, "reason": "no_continue_marker"}
+    assert [(m.role, m.content) for m in after] == before
+    assert rows.deleted == [] and _as_stored(rows) == before
+
+
+def test_a_continuation_the_database_never_stored_leaves_the_stored_rows_alone(monkeypatch):
+    """Memory holds the continuation, the database does not (its insert was
+    refused, logged and rolled back). Memory's last two replies are the
+    stopped one and the continuation, and they are joined; the database's last
+    two were the answer before and the stopped reply, and the answer's row took
+    the continuation's words and the stopped reply's row was deleted."""
+    stored = _stopped_after_a_question()
+    history = stored + [ChatMessage("assistant", "second half, continued.", metadata={"model": "m"})]
+    before = [(m.role, m.content) for m in stored]
+    result, after, rows = _merge(monkeypatch, history, stored=stored)
+    assert result == {"status": "ok", "merged": True}
+    assert [(m.role, m.content) for m in after][-1] == ("assistant", "The second half of the\n\nsecond half, continued.")
+    assert rows.deleted == [] and _as_stored(rows) == before
 
 
 def test_the_server_and_the_browser_send_the_same_prompt(tmp_path):

@@ -293,6 +293,40 @@ def test_skip_fenced_still_recovers_dsml_markup():
     assert "latest python release" in blocks[0].content
 
 
+# `B1800`. DSML's outer wrapper is not always `tool_calls`: DeepSeek-V3.2 writes
+# `function_calls`, and hosted variants the short `calls` (upstream Odysseus
+# fb955843). Only `tool_calls` was rewritten, so the call inside still parsed
+# and ran but the two wrapper tags stayed in the saved reply, which the model
+# reads back as its own words on the next turn. Both pipe forms: two pipes and
+# a space, as upstream saw `calls`; one pipe, as DeepSeek's encodings write.
+import pytest  # noqa: E402
+
+
+@pytest.mark.parametrize("pipes", ["｜｜", "｜"], ids=["two-pipes", "one-pipe"])
+@pytest.mark.parametrize("wrapper", ["calls", "function_calls"])
+def test_every_dsml_wrapper_is_parsed_and_stripped_whole(wrapper, pipes):
+    gap = " " if len(pipes) == 2 else ""
+    tag = f"{pipes}DSML{pipes}{gap}"
+    dsml = (
+        "Evidence gathered.\n"
+        f"<{tag}{wrapper}>"
+        f'<{tag}invoke name="web_search">'
+        f'<{tag}parameter name="query" string="true">latest python release</{tag}parameter>'
+        f"</{tag}invoke>"
+        f"</{tag}{wrapper}>"
+    )
+    blocks = parse_tool_blocks(dsml, skip_fenced=True)
+    assert [b.tool_type for b in blocks] == ["web_search"]
+    assert "latest python release" in blocks[0].content
+    assert strip_tool_blocks(dsml, skip_fenced=True) == "Evidence gathered."
+
+
+def test_prose_that_says_calls_is_left_alone():
+    text = "The API calls <calls> a wrapper, and function_calls too."
+    assert strip_tool_blocks(text, skip_fenced=True) == text
+    assert parse_tool_blocks(text, skip_fenced=True) == []
+
+
 def test_skip_fenced_ignores_only_the_fenced_pattern():
     text = "```bash\nnpm run plan:articles\n```"
     assert parse_tool_blocks(text, skip_fenced=True) == []

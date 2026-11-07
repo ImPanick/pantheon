@@ -4,8 +4,9 @@
 # licensed Apache-2.0. It is NOT Tongyi's original: it has been changed.
 # Changed by Odysseus, and further by Pantheon: the warning when a result
 # cannot be marked consumed (`P3-17`), the `research_completed` event (`P8-23`),
-# the removal of an unused `generate_plan` (`B1470`) and the SPDX line above
-# (`P0-18`).
+# the removal of an unused `generate_plan` (`B1470`), one reading of a research
+# run's numbers for the panel and the scheduler (`B1796`) and the SPDX line
+# above (`P0-18`).
 #
 # Upstream licence text (Tongyi DeepResearch): licenses/DeepResearch-Apache-2.0.txt
 # Attribution: CREDITS.md
@@ -40,9 +41,29 @@ _RESEARCH_SESSION_ID_RE = re.compile(r"^[A-Za-z0-9-]{1,128}$")
 def _bounded_int(value, *, default: int, minimum: int, maximum: int) -> int:
     try:
         n = int(value)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):   # `B1796`: `1e309` is infinity
         return default
     return max(minimum, min(maximum, n))
+
+
+def research_run_settings(get_setting, *, extraction_timeout=None, extraction_concurrency=None):
+    """``(max_report_tokens, extraction_timeout, extraction_concurrency)`` for
+    a research run, read one way by the research panel and by a scheduled or
+    workflow research (`B1796`, where a bare ``int()`` stopped every run on
+    one stored value that was not a number). A value that is not a usable
+    number is its default, as ``DEFAULT_SETTINGS`` has it, and a number
+    outside the Settings page's own range is held to it. A timeout or
+    concurrency the caller passes is used in place of the stored one."""
+    return (
+        _bounded_int(get_setting("research_max_tokens", 16384),
+                     default=16384, minimum=1024, maximum=10_000_000),
+        _bounded_int(extraction_timeout if extraction_timeout is not None
+                     else get_setting("research_extraction_timeout_seconds", 90),
+                     default=90, minimum=15, maximum=3600),
+        _bounded_int(extraction_concurrency if extraction_concurrency is not None
+                     else get_setting("research_extraction_concurrency", 3),
+                     default=3, minimum=1, maximum=12),
+    )
 
 
 def _format_probe_failure(model: str, exc: Exception) -> str:
@@ -781,19 +802,9 @@ class ResearchHandler:
             from src.deep_research import DeepResearcher
 
             from src.settings import get_setting
-            _max_report_tokens = int(get_setting("research_max_tokens", 16384))
-            _extraction_timeout = _bounded_int(
-                extraction_timeout if extraction_timeout is not None else get_setting("research_extraction_timeout_seconds", 90),
-                default=90,
-                minimum=15,
-                maximum=3600,
-            )
-            _extraction_concurrency = _bounded_int(
-                extraction_concurrency if extraction_concurrency is not None else get_setting("research_extraction_concurrency", 3),
-                default=3,
-                minimum=1,
-                maximum=12,
-            )
+            _max_report_tokens, _extraction_timeout, _extraction_concurrency = research_run_settings(
+                get_setting, extraction_timeout=extraction_timeout,
+                extraction_concurrency=extraction_concurrency)
             _planning_timeout = _bounded_int(
                 get_setting("research_planning_timeout_seconds", _extraction_timeout),
                 default=_extraction_timeout,

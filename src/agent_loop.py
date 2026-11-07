@@ -28,7 +28,10 @@ from src.llm_core import (
     dedupe_model_candidates,
     stream_llm,
     stream_llm_with_fallback,
+    tools_transport_refused,   # `B1989`
     typed_local_max_tokens_ceiling as _typed_local_max_tokens_ceiling,
+    _detect_provider,
+    _host_match,
     _is_ollama_native_url,
     _normalize_http_status,
     _normalize_usage_counts,
@@ -144,6 +147,7 @@ from src.agent_tools import (
 )
 from src.active_plan import ActivePlan, bind_active_plan   # `B1415`
 from src.agent_tools.document_tools import bind_turn_document, new_turn_document  # `B1599`
+from src.agent_tools.document_tools import normalize_document_language  # `B2026`
 from src.run_files import RunFiles, bind_run_files   # `B1660`
 from src.agent_tools.computer_tools import (
     ACTIONS as _COMPUTER_ACTIONS,
@@ -1676,7 +1680,7 @@ Read a file and return its contents.""",
 <file path>
 <file contents>
 ```
-Write content to a file. First line is the path, rest is the content. To add to the end of a file instead of replacing it, give `{"path": "<file path>", "content": "<text to add>", "append": true}`.""",
+Write content to a file. First line is the path, rest is the content. To add to the end of a file instead of replacing it, give `{"path": "<file path>", "content": "<text to add>", "append": true}`. An empty body over a file that holds data is refused; to empty a file on purpose, give `{"path": "<file path>", "content": ""}`.""",
 
     "edit_file": """\
 ```edit_file
@@ -1754,7 +1758,7 @@ Suggest changes with explanations (for review/feedback requests).""",
 <size>
 <quality>
 ```
-Generate an image. Line 1 = description, line 2 = model name, line 3 = WxH (e.g. 1024x1024), line 4 = quality.""",
+Generate an image. Line 1 = description, line 2 = model name, line 3 = WxH (e.g. 1024x1024), line 4 = quality (optional; only if the person asked for one).""",
 
     "chat_with_model": "- ```chat_with_model``` — Ask a DIFFERENT AI model and relay its answer. Line 1 = model name (or 'model@endpoint'), rest = your message. Use when the user says 'ask <model>', 'what does <model> think', or wants to compare/their answer from another model.",
     "ask_teacher": "- ```ask_teacher``` — Escalate a hard question to a more capable model. Line 1 = model name or 'auto', rest = the question. Use when stuck or need expert knowledge.",
@@ -2137,6 +2141,12 @@ def tool_schema_offer(
     that is `native` and nothing about the route changes; where nobody declared
     anything it is `both`, which costs the full prompt instead of the compact
     one and leaves the model two ways to call a tool instead of none.
+
+    `B1989`. *Let the server answer* includes its no: a `both` route whose
+    server refuses the `tools` array itself (`tools_transport_refused`) is
+    asked the same step again as `fenced`, for the rest of that turn, and the
+    chat says so once (`TOOLS_REFUSED_NOTE`). Nothing is written to the
+    endpoint row; settling it is the admin's Tool calling control (`P3-22`).
     """
     if endpoint_supports is False:
         return "fenced"
@@ -2145,6 +2155,15 @@ def tool_schema_offer(
     if endpoint_supports is True:
         return "native"
     return "both"
+
+
+#: `B1989`. Said once in the chat when a server refused a turn's native tool
+#: calls and the turn carried on with written ones.
+TOOLS_REFUSED_NOTE = (
+    "_This model's server refused native tool calls, so for the rest of this turn its "
+    "tool calls are written out instead. An admin can set this endpoint's Tool calling "
+    "to Fenced in Settings → Added Models._"
+)
 
 
 def _schema_backed_tool_names() -> frozenset:
@@ -6071,6 +6090,22 @@ def _unknown_tool_refusal(name: str) -> str:
 _MAX_UNKNOWN_TOOL_NUDGES = 2
 
 
+def _keeps_every_reasoning(endpoint_url: str) -> bool:
+    """`B1797`. Whether this route's API wants every tool round's reasoning back.
+
+    DeepSeek's thinking mode (its API's default) and Moonshot's Kimi thinking
+    models require each earlier assistant tool-call message of a turn to be
+    sent again with the `reasoning_content` it came with, and refuse the
+    request with HTTP 400 when one is missing. Only those two APIs, named by
+    host: a local server never matches, and the chat templates the strip in
+    `_append_tool_results` guards against are served locally.
+    """
+    return (
+        _host_match(endpoint_url or "", "deepseek.com")
+        or _detect_provider(endpoint_url or "") == "moonshot"
+    )
+
+
 def _append_tool_results(
     messages: List[Dict],
     round_response: str,
@@ -6081,6 +6116,7 @@ def _append_tool_results(
     round_num: int,
     round_reasoning: str = "",
     tool_result_records: Optional[list] = None,
+    keep_all_reasoning: bool = False,
 ):
     """Append tool execution results back into the message history for the next LLM round.
 
@@ -6096,13 +6132,21 @@ def _append_tool_results(
     reasoning, which reinforces repetition/looping. So keep reasoning_content
     on the MOST RECENT assistant turn only: enough for DeepSeek continuity,
     without the per-round accumulation.
+
+    `keep_all_reasoning` (`B1797`, `_keeps_every_reasoning`): the route is
+    DeepSeek's or Moonshot's API, which refuse a request whose EARLIER
+    tool-call turns lack their reasoning, so nothing is stripped there, and a
+    native tool-call turn that brought no reasoning carries an empty
+    `reasoning_content` rather than none. Every other route passes False and
+    keeps the strip exactly as before.
     """
     tool_result_records = tool_result_records or []
     appended_from = len(messages)   # `B1069`: what this call adds is the run's
     # Strip reasoning_content from earlier assistant turns; only the newest keeps it.
-    for _m in messages:
-        if _m.get("role") == "assistant":
-            _m.pop("reasoning_content", None)
+    if not keep_all_reasoning:
+        for _m in messages:
+            if _m.get("role") == "assistant":
+                _m.pop("reasoning_content", None)
     if used_native and native_tool_calls:
         assistant_msg = {"role": "assistant"}
         # When the model emitted ONLY tool calls (no prose), content must be
@@ -6113,7 +6157,10 @@ def _append_tool_results(
         # at the follow-up round. null (i.e. omitted text) is the spec-correct
         # form the OpenAI SDK itself emits, and OpenAI/Anthropic accept it too.
         assistant_msg["content"] = round_response if round_response.strip() else None
-        if round_reasoning:
+        if keep_all_reasoning:
+            # `B1797`: "", not no field, which those APIs refuse as missing.
+            assistant_msg["reasoning_content"] = round_reasoning or ""
+        elif round_reasoning:
             assistant_msg["reasoning_content"] = round_reasoning
         assistant_msg["tool_calls"] = [
             {
@@ -6421,11 +6468,13 @@ def _resume_paused_turn(
     approved,
     approved_text: str,
     approved_record: Dict[str, Any],
+    keep_all_reasoning: bool = False,
 ) -> bool:
     """Put a paused turn back into `messages` and answer its gated call with
     the approved result. False when the card kept no turn, and nothing moves.
 
-    `approved` is the consumed `PendingToolApproval`."""
+    `approved` is the consumed `PendingToolApproval`. `keep_all_reasoning` is
+    `_append_tool_results`' own (`B1797`), for the route that resumes."""
     turn = getattr(approved, "continuation_turn", None)
     if not isinstance(turn, PausedTurn):
         return False
@@ -6448,6 +6497,7 @@ def _resume_paused_turn(
         paused["round_num"],
         round_reasoning=paused["round_reasoning"],
         tool_result_records=paused["tool_result_records"] + [approved_record] + unrun,
+        keep_all_reasoning=keep_all_reasoning,
     )
     return True
 
@@ -9014,6 +9064,10 @@ async def stream_agent_loop(
             _turn_trim["context_length"], _turn_trim["figures"], left_out,
             memories_left_out=unsent)) + "\n\n"
 
+    # `B1989`. The `(url, model)` routes whose server refused a `tools` array
+    # this turn: each is built `fenced` from then on (the builder below).
+    _tools_refused_routes: Set[tuple] = set()
+
     async def _build_route_request_state(candidate_url, candidate_model, candidate_headers, source_messages):
         compaction_state: Dict = {}
         compacted_source = list(source_messages)
@@ -9053,6 +9107,12 @@ async def stream_agent_loop(
             owner,
             headers=candidate_headers,
         )
+        # `B1989`. This server refused the `tools` array earlier in the turn:
+        # the fenced route — the full prompt and the fenced parser — and no
+        # `tools` key at all (`_tool_schemas_for_route`).
+        _route_tools_refused = (candidate_url, candidate_model) in _tools_refused_routes
+        if _route_tools_refused:
+            is_api, _schema_offer = False, "fenced"
         _prompt_report: Dict[str, Any] = {}
         # `B1368` (fx9-suite). The plan goes to the prompt as well as to the
         # schema list, so a turn that carries part of the suite says so.
@@ -9162,6 +9222,7 @@ async def stream_agent_loop(
             "relevant_tools": route_tools,
             "is_api_model": is_api,
             "schema_offer": _schema_offer,
+            "tools_refused": _route_tools_refused,   # `B1989`
             "is_ollama_native": is_native_ollama,
             "ollama_openai_compat": is_ollama_compat,
             "pan_qwen_finetune_model": is_ody,
@@ -9315,6 +9376,9 @@ async def stream_agent_loop(
     _pinned_fallback_route = None
     _last_route_request_messages = _initial_route_request_messages
     _last_route_context_length = _initial_route_context_length
+    # `B1989`. The route state of the last request a round sent — the one a
+    # stream error answers — with its `route_key` and the `tools` it carried.
+    _last_route_state: Dict[str, Any] = {}
     # `B892`. The tool schemas the last round actually sent, so the context
     # breakdown below can say what they cost. `None` until a round is built.
     _last_sent_tool_schemas = None
@@ -9513,6 +9577,10 @@ async def stream_agent_loop(
         route_mcp_schemas = route_state["mcp_schemas"]
         route_relevant_tools = route_state["relevant_tools"]
         if _force_answer:
+            return []
+        if route_state.get("tools_refused"):
+            # `B1989`: not even the MCP schemas a fenced route may carry below;
+            # this server refuses any `tools` array.
             return []
         if route_state["is_api_model"] or route_state.get("schema_offer") in ("native", "both"):
             if route_relevant_tools:
@@ -9989,8 +10057,10 @@ async def stream_agent_loop(
         }
         # `B1069`. The turn the card stopped, put back with the approved result
         # answering its own call; a card that kept no turn resumes as before.
+        _replay_keeps_reasoning = _keeps_every_reasoning(endpoint_url)   # `B1797`
         if not _resume_paused_turn(
             messages, approved, formatted_approved_result, approved_record,
+            keep_all_reasoning=_replay_keeps_reasoning,
         ):
             _append_tool_results(
                 messages,
@@ -10001,6 +10071,7 @@ async def stream_agent_loop(
                 False,
                 0,
                 tool_result_records=[approved_record],
+                keep_all_reasoning=_replay_keeps_reasoning,
             )
         _approved_result_injected = True
 
@@ -10127,6 +10198,7 @@ async def stream_agent_loop(
             "relevant_tools": _relevant_tools,
             "is_api_model": _is_api_model,
             "schema_offer": _schema_offer,
+            "tools_refused": (endpoint_url, model) in _tools_refused_routes,   # `B1989`
             "is_ollama_native": _is_ollama_native,
             "ollama_openai_compat": _ollama_openai_compat,
             "pan_qwen_finetune_model": _pan_qwen_finetune_model,
@@ -10141,8 +10213,10 @@ async def stream_agent_loop(
         # loop, so pinning it would silently discard a round-1 steer (and an
         # injected approval result, which is why the first half of this guard
         # already exists). Fall through to the normal per-round build whenever
-        # `messages` has grown since that list was made.
-        if round_num == 1 and not _approved_result_injected and not _steers_applied:
+        # `messages` has grown since that list was made — or, `B1989`, was
+        # rebuilt fenced after this route refused its `tools` array.
+        if (round_num == 1 and not _approved_result_injected and not _steers_applied
+                and not _active_route_state["tools_refused"]):
             _active_route_state["request_messages"] = _initial_route_request_messages
         all_tool_schemas = _tool_schemas_for_route(_active_route_state)
         _last_sent_tool_schemas = all_tool_schemas
@@ -10183,7 +10257,7 @@ async def stream_agent_loop(
         _candidate_request_states = {0: _active_route_state}
 
         async def _candidate_request(index, candidate_url, candidate_model, candidate_headers):
-            nonlocal _last_route_request_messages, _last_route_context_length
+            nonlocal _last_route_request_messages, _last_route_context_length, _last_route_state
             if index == 0:
                 state = _active_route_state
             else:
@@ -10229,6 +10303,8 @@ async def stream_agent_loop(
             run_security.observe_messages(request_messages)
             candidate_tools = _tool_schemas_for_route(state)
             state["tools"] = candidate_tools
+            state["route_key"] = (candidate_url, candidate_model)   # `B1989`
+            _last_route_state = state
             _candidate_request_states[index] = state
             return {
                 "messages": request_messages,
@@ -10349,6 +10425,7 @@ async def stream_agent_loop(
             agent_stream_timeout,
         )
         _retry_round_in_words = False   # `B1281`
+        _retry_round_without_tools = False   # `B1989`
         async for chunk in stream_llm_with_fallback(
             _candidates,
             messages,
@@ -10405,6 +10482,24 @@ async def stream_agent_loop(
                         + tool_result_images.PICTURES_REFUSED_NOTE + "\n\n"
                     full_response += _refused_note
                     yield f'data: {json.dumps({"delta": _refused_note})}\n\n'
+                    break
+                # `B1989`. The server refused the `tools` array itself (vLLM
+                # without `--enable-auto-tool-choice`), before a word of this
+                # round, on a route nobody declared native (`both`): the step
+                # is asked again fenced, the route stays fenced for the rest
+                # of the turn, and the chat says so once. A route declared
+                # native keeps the error, as does any other refusal.
+                if (not round_response.strip() and not native_tool_calls
+                        and _last_route_state.get("tools")
+                        and _last_route_state.get("schema_offer") == "both"
+                        and tools_transport_refused(chunk)):
+                    if not _tools_refused_routes:
+                        _refused_note = ("\n\n" if full_response.strip() else "") \
+                            + TOOLS_REFUSED_NOTE + "\n\n"
+                        full_response += _refused_note
+                        yield f'data: {json.dumps({"delta": _refused_note})}\n\n'
+                    _tools_refused_routes.add(_last_route_state["route_key"])
+                    _retry_round_without_tools = True
                     break
                 terminal_status = None
                 try:
@@ -10723,6 +10818,28 @@ async def stream_agent_loop(
             # not a step of its own (`_round_numbers` does not count it).
             _redo_round.append(round_num)
             continue
+        if _retry_round_without_tools:
+            # `B1989`: the same step again, fenced. The route that refused is
+            # rebuilt the way a fallback is built (`_candidate_request`), so it
+            # gets the full prompt — the compact one says not to write tool
+            # syntax — and the fenced parser; a fallback that refused is built
+            # fenced on its own next time it is asked.
+            if (endpoint_url, model) in _tools_refused_routes:
+                _route_state = await _build_route_request_state(
+                    endpoint_url,
+                    model,
+                    headers,
+                    _round_one_source_messages() if round_num == 1 else messages,
+                )
+                messages = _route_state["messages"]
+                mcp_schemas = _route_state["mcp_schemas"]
+                _relevant_tools = _route_state["relevant_tools"]
+                _is_api_model = _route_state["is_api_model"]
+                _schema_offer = _route_state["schema_offer"]
+                _is_ollama_native = _route_state["is_ollama_native"]
+                _ollama_openai_compat = _route_state["ollama_openai_compat"]
+            _redo_round.append(round_num)
+            continue
         logger.info(
             "[agent-timing] round_stream_done round=%s elapsed=%.3fs text_chars=%s tool_calls=%s first_event=%s first_token=%s",
             round_num,
@@ -10989,10 +11106,14 @@ async def stream_agent_loop(
                     continue
                 if lang_tag in TOOL_TAGS:
                     continue  # already handled as a tool execution
-                # Auto-create a document from this code block
-                lang_map = {"py": "python", "js": "javascript", "ts": "typescript", "": "text"}
-                doc_lang = lang_map.get(lang_tag, lang_tag or "text")
-                doc_title = f"Code ({doc_lang})"
+                # Auto-create a document from this code block. `B2026`: the
+                # second line is the editor language the tag names (`sh` is
+                # bash, `jsx` javascript) or text, never a tag the editor has
+                # no language for (`kotlin`), which the tool kept as the
+                # document's first line. Such a tag stays in the title.
+                known_lang = normalize_document_language(lang_tag)
+                doc_lang = known_lang or "text"
+                doc_title = f"Code ({known_lang or lang_tag or doc_lang})"
                 tb = ToolBlock("create_document", f"{doc_title}\n{doc_lang}\n{code_body}")
                 tool_blocks.append(tb)
                 logger.info(f"Auto-created document from {lang_tag} code block ({code_body.count(chr(10))+1} lines)")
@@ -11113,7 +11234,12 @@ async def stream_agent_loop(
             # _MAX_INTENT_NUDGES so a model that genuinely cannot use the
             # tool doesn't pin us in a forever loop.
             _intent_text = _strip_think_blocks(cleaned_round).strip()
-            _intent_match = _INTENT_RE.search(_intent_text) if _intent_text else None
+            # `B1902`. Searched only in a reply the nudge can act on: below
+            # nothing reads the match unless the reply is under 400 characters.
+            # `(?:^|\n)\s*` rescans a run of blank lines from every line, so a
+            # 20 KB reply of them took 36 s, on the event loop.
+            _intent_match = (_INTENT_RE.search(_intent_text)
+                             if _intent_text and len(_intent_text) < 400 else None)
             # Only nudge when the round REALLY looks like an unfinished
             # promise: short response (<400 chars), no fenced code/answer,
             # and an action-intent phrase was matched. Long answers that
@@ -12665,10 +12791,13 @@ async def stream_agent_loop(
         # tool_blocks but stayed in native_tool_calls, so indexing results by
         # native position mis-attached each result to the wrong tool_call_id
         # (and left the real call answered empty).
+        # `B1797`: `endpoint_url` is the route that answered — a fallback that
+        # answered is pinned into it above.
         _append_tool_results(messages, round_response, converted_calls,
                              tool_results, tool_result_texts, used_native, round_num,
                              round_reasoning=round_reasoning,
-                             tool_result_records=tool_result_records)
+                             tool_result_records=tool_result_records,
+                             keep_all_reasoning=_keeps_every_reasoning(endpoint_url))
         if _unknown_tool_names:
             # `B1383`. The calls that did run are answered above; the ones
             # that named nothing get a line too, or the model is left waiting
@@ -12891,6 +13020,11 @@ async def stream_agent_loop(
                 tool_policy=tool_policy,
                 active_document=active_document,
                 active_email=active_email,
+                # `B1817`. The teacher's run is a second loop, so it starts
+                # with what this one knows: a token's turn stays a token's,
+                # and outside content (or a retired card's taint) still counts.
+                external_untrusted_context_seen=run_security.external_untrusted_context_seen,
+                delegated_credential=bool(delegated_credential),
             ):
                 yield evt
         except Exception as _esc_err:

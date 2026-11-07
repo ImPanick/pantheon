@@ -29,6 +29,9 @@ class _Query:
     def filter(self, *_args, **_kwargs):
         return self
 
+    def join(self, *_args, **_kwargs):
+        return self
+
     def limit(self, _limit):
         return self
 
@@ -73,6 +76,7 @@ async def test_classify_events_resolves_llm_for_task_owner(monkeypatch):
     from src.builtin_actions import action_classify_events
 
     class FakeCalendarEvent:
+        calendar_id = _Column()   # `B2030`: the query joins the event's calendar
         dtstart = _Column()
         status = _Column()
 

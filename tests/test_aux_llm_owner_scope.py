@@ -55,8 +55,19 @@ def test_scheduler_fallbacks_and_research_headers_are_owner_scoped():
     assert "owner=task.owner or None" in src
     assert "headers_from_resolver = False" in src
     assert "headers_from_resolver = True" in src
-    assert "from src.auth_helpers import owner_filter" in src
-    assert "owner_filter(ep_q, ModelEndpoint, task.owner or None)" in src
+    # `B1821`. These two lines pinned the header lookups' owner scope where it
+    # was: `"from src.auth_helpers import owner_filter" in src` and
+    # `"owner_filter(ep_q, ModelEndpoint, task.owner or None)" in src`, the
+    # substring loops both paths ran. Both paths now hand the task's owner to
+    # one helper, which asks `registered_endpoint_for_url` with it, and that
+    # applies `owner_filter`; the substring match is gone.
+    assert "headers = _registered_endpoint_headers(endpoint_url, task.owner or None)" in src
+    assert "headers = _registered_endpoint_headers(endpoint_url, task.owner or None, db=db)" in src
+    assert "ep = registered_endpoint_for_url(db, endpoint_url, owner)" in src
+    assert "resolve_endpoint_runtime(ep, owner=owner)" in src
+    assert "normalize_base(ep.base_url) in endpoint_url" not in src
+    resolver_src = _src("src/endpoint_resolver.py")
+    assert "for ep in owner_filter(query, ModelEndpoint, owner).all():" in resolver_src
 
 
 def test_research_routes_fallbacks_are_owner_scoped():

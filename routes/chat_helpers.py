@@ -20,6 +20,7 @@ from src.model_context import estimate_tokens, get_context_length
 from src.auth_helpers import effective_user, request_is_a_person
 from src.prompt_security import untrusted_context_message
 from src.attachment_refs import attachment_ref
+from src.tool_policy import tool_toggle_enabled
 from routes.prefs_routes import _load_for_user as load_prefs_for_user
 
 from fastapi import HTTPException
@@ -1073,7 +1074,10 @@ async def build_chat_context(
     _preface_kwargs = dict(
         message=_ctx_msg,
         session=sess,
-        use_web=use_web and not skip_web,
+        # `B2017`: `use_web` is the raw form string on `/api/chat_stream`, and
+        # `"false"` is truthy. Read it as the route's own web gate does
+        # (`web_search_enabled_for_turn`); `B97` keeps network toggles strict.
+        use_web=tool_toggle_enabled(use_web) and not skip_web,
         use_memory=mem_enabled,
         time_filter=time_filter,
         preset_system_prompt=preset.system_prompt,
@@ -1082,7 +1086,11 @@ async def build_chat_context(
         agent_mode=agent_mode,
         incognito=incognito,
     )
-    if use_rag is not None or is_research_spinoff or casual_low_signal:
+    # `B152`: a `use_rag` nobody sent stays off the preface, whose own default
+    # answers yes. `B1788`: a no is always said, so an incognito turn or one
+    # whose policy blocks tools no longer searches the person's documents
+    # because the composer left the field out.
+    if use_rag is not None or not use_rag_val:
         _preface_kwargs["use_rag"] = use_rag_val
     preface, rag_sources, web_sources = chat_processor.build_context_preface(**_preface_kwargs)
 
@@ -1319,13 +1327,18 @@ def _normalize_thinking(text: str) -> str:
 
     # Handle garbled <think> tags: reasoning text followed by <think> as separator
     # e.g. "The user said...I should respond.\n<think>Hey! What's up?"
+    # `B1920`: this read `^([\s\S]+?)\n*<think>\s*([\s\S]*?)(?:</think>)?\s*$`,
+    # which went back over a run of newlines that no tag follows, or a run of
+    # spaces in the reply, from every place in it. The lookbehind starts the
+    # newlines only at their first one, and the closing tag comes off the
+    # reply after the match; the same reasoning and reply come out.
     garbled = re.match(
-        r'^([\s\S]+?)\n*<think(?:ing)?>\s*([\s\S]*?)(?:</think(?:ing)?>)?\s*$',
+        r'^([\s\S]+?)(?<![\s\S]\n)\n*<think(?:ing)?>\s*([\s\S]*)$',
         text, re.IGNORECASE
     )
     if garbled:
         before = garbled.group(1).strip()
-        after = garbled.group(2).strip()
+        after = re.sub(r'</think(?:ing)?>$', '', garbled.group(2).rstrip(), flags=re.IGNORECASE).strip()
         # Only treat as garbled if the part before <think> looks like reasoning
         reasoning_starts = (
             'The user ', 'I need ', 'I should ', 'I will ',

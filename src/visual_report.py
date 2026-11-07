@@ -22,6 +22,7 @@ from typing import Dict, List, Optional, Tuple
 
 from bs4 import BeautifulSoup
 
+from src.report_math import MATH_DISPLAY_CLASS, MATH_PENDING_CLASS, ReportMathExtension   # `B1996`
 from src.research_utils import strip_thinking
 from urllib.parse import urlparse
 
@@ -74,11 +75,14 @@ def _md_to_html(md_text: str) -> str:
     `script-src 'unsafe-inline'` CSP. python-markdown passes raw HTML through
     verbatim, so the rendered output is allowlist-sanitized to strip any
     <script>/inline-event-handler/javascript: markup before it reaches the page.
+
+    `B1996`: TeX is kept, as the text of a placeholder the page's renderer
+    typesets (`src.report_math`), before Markdown can rewrite it.
     """
     md_text = _autolink_urls(md_text)
     result = markdown.markdown(
         md_text,
-        extensions=["extra", "codehilite", "toc", "tables", "sane_lists"],
+        extensions=["extra", "codehilite", "toc", "tables", "sane_lists", ReportMathExtension()],
         extension_configs={
             "codehilite": {"css_class": "code", "guess_lang": False},
             "toc": {"marker": "", "toc_depth": "2-3"},
@@ -181,6 +185,33 @@ def _apply_heading_ids(report_html: str, headings: List[Dict[str, str]]) -> str:
             len(headings),
         )
     return str(soup)
+
+
+def _toc_math_labels(report_html: str) -> Dict[str, str]:
+    """`B1996`. The sidebar label of each h2/h3 that holds a formula, by id.
+
+    The sidebar's labels are plain text out of the Markdown, so a heading's
+    `$x_i$` read `$xi$` there (`_extract_headings` strips `_`). A heading with
+    a formula is labelled with its rendered contents instead: the formula
+    placeholders, set inline (a link is one line), and none of its other
+    markup, which stays text. The HTML is the sanitised report's own.
+    """
+    if MATH_PENDING_CLASS not in report_html:
+        return {}
+    labels: Dict[str, str] = {}
+    soup = BeautifulSoup(report_html, "html.parser")
+    for heading in soup.select("h2[id], h3[id]"):
+        if heading.select_one("." + MATH_PENDING_CLASS) is None:
+            continue
+        for child in list(heading.find_all(True)):
+            classes = child.get("class") or []
+            if MATH_PENDING_CLASS in classes:
+                child["class"] = [c for c in classes if c != MATH_DISPLAY_CLASS]
+            else:
+                child.unwrap()
+        # The first heading with an id is the one its link lands on.
+        labels.setdefault(heading["id"], heading.decode_contents())
+    return labels
 
 
 # Overlay buttons shown on each image: reroll (swap for the next unused
@@ -750,6 +781,11 @@ body::after {{
 .content code {{ font-family: var(--font-mono); font-size: 0.86em; background: var(--bg-surface-alt); padding: 0.15em 0.4em; border-radius: 4px; }}
 .content pre {{ background: var(--bg-surface-alt); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.25rem 1.5rem; overflow-x: auto; margin: 1.25rem 0; font-size: 0.86rem; line-height: 1.6; }}
 .content pre code {{ background: none; padding: 0; }}
+/* `B1996`: a formula wider than the column scrolls inside itself, and the
+   column, a grid item, no longer grows to fit it: on a phone that scrolled
+   the whole page sideways. */
+.content {{ min-width: 0; }}
+.content .katex-display {{ overflow-x: auto; overflow-y: hidden; }}
 .content table {{ width: 100%; border-collapse: collapse; margin: 1.25rem 0; font-size: 0.9rem; border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow-sm); }}
 .content th {{ text-align: left; padding: 0.7rem 1rem; background: var(--accent-bg); font-weight: 600; border-bottom: 2px solid var(--border-strong); }}
 .content td {{ padding: 0.6rem 1rem; border-bottom: 1px solid var(--border); vertical-align: top; }}
@@ -887,6 +923,21 @@ body::after {{
 
 <script>
 (function() {{
+  // `B1996`. A formula arrives as a placeholder holding its TeX
+  // (`src/report_math.py`), and the chat's own renderer typesets it from the
+  // vendored KaTeX; only a report with a formula loads either. A display
+  // formula is marked by a class, which the report sanitiser lets through,
+  // and is given here the `data-display` the renderer reads.
+  var __math = null;
+  if (document.querySelector('.{math_pending_class}')) {{
+    document.querySelectorAll('.{math_pending_class}.{math_display_class}').forEach(function(el) {{
+      el.setAttribute('data-display', 'true');
+    }});
+    import('/static/js/markdown/math.js')
+      .then(function(m) {{ __math = m; return m.renderMath(document); }})
+      .catch(function(err) {{ console.warn('Report math could not be typeset:', err); }});
+  }}
+
   // ESC closes the report tab. window.close() works when the tab was
   // opened via window.open() (which is how the panel launches it). If the
   // browser blocks self-close (rare — e.g. report opened by direct URL),
@@ -922,7 +973,16 @@ body::after {{
   // Download HTML
   document.getElementById('btn-html').addEventListener('click', function() {{
     exportMenu.classList.remove('open');
-    var blob = new Blob([document.documentElement.outerHTML], {{ type: 'text/html' }});
+    // `B1996`: a saved file cannot reach /static, so it keeps each formula's
+    // MathML, which a browser draws by itself, and leaves out KaTeX's sheet,
+    // its script and its HTML rendering, which without the sheet would draw
+    // every formula a second time.
+    var page = document.documentElement.cloneNode(true);
+    if (__math) {{
+      page.querySelectorAll('.katex-html, link[href="' + __math.KATEX_CSS + '"], script[src="' + __math.KATEX_SRC + '"]')
+        .forEach(function(n) {{ n.remove(); }});
+    }}
+    var blob = new Blob([page.outerHTML], {{ type: 'text/html' }});
     var a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
     a.download = document.title.replace(/[^a-z0-9]+/gi, '-').substring(0, 60) + '.html';
@@ -1813,11 +1873,13 @@ def generate_visual_report(
     spare_images = section_pool[_consumed:]
 
     # Build TOC
+    math_labels = _toc_math_labels(report_html)   # `B1996`
     toc_lines = []
     for h in headings:
         depth_class = f"depth-{h['level']}"
+        label = math_labels.get(h["slug"]) or html.escape(h["text"])
         toc_lines.append(
-            f'<a href="#{h["slug"]}" class="{depth_class}">{html.escape(h["text"])}</a>'
+            f'<a href="#{h["slug"]}" class="{depth_class}">{label}</a>'
         )
     toc_html = "\n      ".join(toc_lines) if toc_lines else ""
 
@@ -1922,6 +1984,8 @@ def generate_visual_report(
         body_class=f"category-{html.escape(str(category))}" if category else "",
         session_id_js=json_dumps_str(session_id or ""),
         spare_images_js=_json_for_script(spare_images),
+        math_pending_class=MATH_PENDING_CLASS,
+        math_display_class=MATH_DISPLAY_CLASS,
     )
 
 

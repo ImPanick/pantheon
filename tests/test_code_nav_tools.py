@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for the code-navigation tools (grep, glob, ls) + read_file line range."""
+import json
 import os
 import shutil
 import asyncio
@@ -114,6 +115,46 @@ def test_grep_skips_case_variant_sensitive_files_rg(repo):
     assert "notes.txt" in r["output"]        # ordinary matches still returned
     assert "ID_RSA" not in r["output"]        # case-variant key excluded
     assert "Known_Hosts" not in r["output"]
+
+
+# ── B1912: a search that failed is not "No matches" ─────────────────────────
+#
+# Upstream Odysseus 84aa9a91. The walk never read ripgrep's exit status, so a
+# pattern ripgrep could not run (an unclosed group, or the look-behind and
+# backreference Python's re accepts and ripgrep refuses), a glob it could not
+# parse and a path that is not there all came back as "No matches", and the
+# model concluded the code was not there. The walk without ripgrep said the
+# same of a missing path.
+
+@pytest.mark.skipif(shutil.which("rg") is None, reason="targets the ripgrep fast-path")
+@pytest.mark.parametrize("args,why", [
+    ({"pattern": "needle("}, "regex parse error"),
+    ({"pattern": "(?<=# )needle"}, "look-around"),
+    ({"pattern": r"(n)\1"}, "backreferences are not supported"),
+    ({"pattern": "needle", "glob": "["}, "error parsing glob"),
+], ids=["unclosed-group", "look-behind", "backreference", "bad-glob"])
+def test_grep_says_when_ripgrep_could_not_run_the_search(repo, args, why):
+    r = _run("grep", json.dumps({**args, "path": repo}))
+    assert r["exit_code"] == 1, r
+    assert r["error"].startswith("grep: search failed (exit 2): ")
+    assert why in r["error"]
+
+
+@pytest.fixture(params=["ripgrep", "walk"])
+def grep_engine(request, monkeypatch):
+    if request.param == "ripgrep":
+        if shutil.which("rg") is None:
+            pytest.skip("ripgrep not on PATH")
+    else:
+        monkeypatch.setattr(shutil, "which", lambda name: None)
+    return request.param
+
+
+@pytest.mark.parametrize("missing", ["no/such/dir", "missing.py"])
+def test_grep_of_a_path_that_is_not_there_says_so(repo, grep_engine, missing):
+    target = os.path.realpath(os.path.join(repo, missing))
+    r = _run("grep", json.dumps({"pattern": "needle", "path": target}))
+    assert r == {"error": f"grep: search target not found: {target}", "exit_code": 1}
 
 
 # ── glob ──────────────────────────────────────────────────────────────────

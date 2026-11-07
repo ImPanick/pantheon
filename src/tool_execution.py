@@ -179,6 +179,22 @@ def _is_install_record(resolved: str) -> bool:
         return False
 
 
+def _hidden_from_search(resolved: str) -> bool:
+    """What `grep`, `glob` and `ls` leave out of a walk: what `read_file` refuses. `B1782`.
+
+    `_resolve_tool_path` refuses a sensitive path and an install record
+    (`B1418`), but the three search tools walk a root and never pass each file
+    through it. With no workspace bound the root is the data directory, so
+    `grep` printed the lines of `auth.json` (TOTP secrets), `sessions.json`
+    (live login tokens) and `.app_key` (the key every stored secret is
+    encrypted with), and `glob`/`ls` listed them, with no card at any rung.
+    Upstream Odysseus closed the same hole in its advisory 934d23c0; this is
+    Pantheon's rule applied to the walks, not upstream's allowlist, so a
+    project's own `auth.json` and every content folder stay searchable.
+    """
+    return _is_sensitive_path(resolved) or _is_install_record(resolved)
+
+
 def _tool_path_roots() -> list[str]:
     """Return the list of directory roots that read_file / write_file
     may touch. Default: project data/ + system temp dirs. Extra roots
@@ -701,7 +717,80 @@ _MCP_TOOL_MAP = {
     # 2026-10-25, `B1449`, so nothing can be pointed back at it.)
     "manage_rag":     ("rag",        "manage_rag"),
 }
+#: The person a built-in server acts for, set by this dispatcher: the email
+#: server's since `P0-11`, the image server's since `B1922` and the RAG
+#: server's since `B1923`.
 _EMAIL_MCP_OWNER_ARG = "_pantheon_owner"
+
+#: `B1922`. Every argument a built-in MCP server reads as this dispatcher's
+#: own starts with this, `_pantheon_owner` above among them. Such a key in
+#: what the model sent is never believed: it is dropped before the dispatcher
+#: adds its own, so a model cannot name somebody else as the person it runs
+#: for. It was believed: the image server read it, unchecked, as the owner of
+#: the gallery row it made.
+_RESERVED_ARG_PREFIX = "_pantheon_"
+
+
+def _without_reserved_args(args: Any) -> Any:
+    """`B1922`. *args* without any key this dispatcher keeps for itself."""
+    if not isinstance(args, dict):
+        return args
+    return {key: value for key, value in args.items()
+            if not (isinstance(key, str) and key.startswith(_RESERVED_ARG_PREFIX))}
+
+
+#: `B1922`. The built-in servers this dispatcher tells whom a call is for, by
+#: `_EMAIL_MCP_OWNER_ARG`, under either name a call can use: the bare one
+#: `_MCP_TOOL_MAP` routes, or the qualified `mcp__<server>__<tool>`. `B1923`:
+#: `rag`, whose own comment said the dispatcher sent it the person while
+#: nothing did, so every search the agent made read every account's documents.
+_OWNER_ARG_SERVERS = frozenset({"email", "image_gen", "rag"})
+
+
+def _server_takes_the_owner(tool: str) -> bool:
+    """`B1922`. Is *tool*'s server one of `_OWNER_ARG_SERVERS`?"""
+    routed = _MCP_TOOL_MAP.get(tool)
+    if routed:
+        return routed[0] in _OWNER_ARG_SERVERS
+    return any(tool.startswith(f"mcp__{server}__") for server in _OWNER_ARG_SERVERS)
+
+
+#: `B1923`. The RAG server's one tool, by both its names.
+_RAG_TOOL_NAMES = frozenset({"manage_rag", "mcp__rag__manage_rag"})
+
+#: `B1923`. What `manage_rag` does to the index's folders rather than to a
+#: person's own documents: print every folder and file indexed, index a folder
+#: of this machine, or drop a folder with every chunk under it, whoever's. The
+#: Knowledge index's routes hold all three to the operator's gate and a folder
+#: to `PERSONAL_DIR`; the agent's tool holds them to an admin, whose agent may
+#: read any file here already. A member's agent could index `/app/data`, where
+#: `auth.json` is, and search it, while `read_file` was refused to it.
+_RAG_FOLDER_ACTIONS = frozenset({"list", "add_directory", "remove_directory"})
+
+#: `B1923`. `B1601`'s rule, as `manage_research` words it.
+RAG_NOBODY_SENTENCE = (
+    "The document index is kept per person, and this call names no person to search or "
+    "store it for, so nothing was searched, stored or changed."
+)
+RAG_FOLDERS_SENTENCE = (
+    "Only an admin's agent lists, adds or removes the document index's folders; an admin "
+    "or operator does it in Settings → System → Knowledge index. Nothing was listed, "
+    "indexed or removed. add_text and search still work, on your own documents."
+)
+
+
+def _manage_rag_refusal(tool: str, args: Any, owner: Optional[str]) -> Optional[Dict]:
+    """`B1923`. Why the RAG server is not called for *args*, or `None`."""
+    if tool not in _RAG_TOOL_NAMES:
+        return None
+    if not normalize_owner(owner):
+        return {"error": RAG_NOBODY_SENTENCE, "exit_code": 1}
+    action = args.get("action") if isinstance(args, dict) else None
+    if (isinstance(action, str) and action.strip().lower() in _RAG_FOLDER_ACTIONS
+            and not _owner_is_admin(owner)):
+        logger.warning("manage_rag %s refused to non-admin owner=%r", action, owner)
+        return {"error": RAG_FOLDERS_SENTENCE, "exit_code": 1}
+    return None
 
 
 def _parse_qualified_mcp_args(tool: str, content: str) -> tuple[Dict, Optional[str]]:
@@ -718,11 +807,14 @@ def _parse_qualified_mcp_args(tool: str, content: str) -> tuple[Dict, Optional[s
         if tool.startswith("mcp__email__"):
             return {}, "Email MCP tool arguments must be a JSON object."
         return {}, None
-    return parsed, None
+    return _without_reserved_args(parsed), None   # `B1922`
 
 
 def _parse_generate_image(content: str) -> Dict:
-    lines = content.strip().split("\n")
+    # `B2007`: split first. A native call with no prompt arrives with line 1
+    # empty; stripping the whole content dropped it, and the size, quality or
+    # model was drawn as the prompt. Each value is stripped where it is read.
+    lines = content.split("\n")
     args = {"prompt": lines[0].strip() if lines else ""}
     for i, key in enumerate(["model", "size", "quality"], 1):
         if len(lines) > i and lines[i].strip():
@@ -819,7 +911,9 @@ _MCP_JSON_PRIMARY_KEYS: Dict[str, tuple] = {
 
 
 def _build_mcp_args(tool: str, content: str) -> Dict:
-    """Convert fenced-block text content to structured MCP arguments."""
+    """Convert fenced-block text content to structured MCP arguments.
+
+    `B1922`: never with a key the dispatcher reserves (`_RESERVED_ARG_PREFIX`)."""
     primaries = _MCP_JSON_PRIMARY_KEYS.get(tool)
     if primaries and content.strip().startswith("{"):
         try:
@@ -827,9 +921,9 @@ def _build_mcp_args(tool: str, content: str) -> Dict:
         except (json.JSONDecodeError, TypeError):
             decoded = None
         if isinstance(decoded, dict) and any(k in decoded for k in primaries):
-            return decoded
+            return _without_reserved_args(decoded)
     parser = _MCP_ARG_PARSERS.get(tool)
-    return parser(content) if parser else {}
+    return _without_reserved_args(parser(content)) if parser else {}
 
 
 async def _call_mcp_tool(
@@ -854,6 +948,15 @@ async def _call_mcp_tool(
     server_id, tool_name = _MCP_TOOL_MAP[tool]
     qualified = f"mcp__{server_id}__{tool_name}"
     args = _build_mcp_args(tool, content)
+    refused = _manage_rag_refusal(tool, args, owner)   # `B1923`
+    if refused:
+        return refused
+    # `B1922`. The person was handed to this function and never sent on, so
+    # every image the agent made had a gallery row with no owner: its maker
+    # never saw it in the Gallery, and the hourly owner sweep gave it, prompt
+    # and all, to the first admin.
+    if owner and _server_takes_the_owner(tool):
+        args[_EMAIL_MCP_OWNER_ARG] = owner
     result = await mcp.call_tool(qualified, args)
 
     # If MCP server not connected, try direct fallback
@@ -1819,7 +1922,7 @@ async def _execute_tool_block_impl(
                     )
                 else:
                     if isinstance(parsed, dict):
-                        args = parsed
+                        args = _without_reserved_args(parsed)   # `B1922`
                     else:
                         _args_error = (
                             f"'{tool}' arguments must be a JSON object, "
@@ -1840,13 +1943,20 @@ async def _execute_tool_block_impl(
         if mcp:
             desc = f"mcp: {tool}"
             args, parse_error = _parse_qualified_mcp_args(tool, content)
+            refused = None if parse_error else _manage_rag_refusal(tool, args, owner)   # `B1923`
             if parse_error:
                 result = {"error": parse_error, "exit_code": 1}
+            elif refused:
+                result = refused
             else:
-                if tool.startswith("mcp__email__") and owner:
+                # `B1922`: the image server is told whom it draws for too,
+                # and `B1923` the RAG server whose index it reads.
+                if owner and _server_takes_the_owner(tool):
                     args = dict(args)
                     args[_EMAIL_MCP_OWNER_ARG] = owner
                 result = await mcp.call_tool(tool, args)
+                if tool == "mcp__image_gen__generate_image":
+                    _promote_image_fields(result)   # as the bare name's call does
         else:
             desc = f"mcp: {tool}"
             result = {"error": "MCP manager not available", "exit_code": 1}
