@@ -787,18 +787,62 @@ def parked_run(db, task_id: str, *, exclude: str | None = None):
     return q.order_by(TaskRun.started_at.desc()).first()
 
 
+# `B1895` (`clock-words-no-zone`). A time in a run's sentence ("Waiting until
+# 08:00", "Did not start: the 07:00 run is still …", "Nobody answered by
+# 09:30 — …", "Denied by alice at 07:42: …", "Kept from the run at 10:42")
+# said no clock. With no zone on the start it was UTC, and a person in Sydney
+# read 22:00 as their evening; with a zone it was that zone's, and a person
+# elsewhere read it as theirs.
+#
+# The rule: such a time always says its clock. "UTC" when the start has no
+# zone (or one this machine no longer knows, which the time falls back to);
+# otherwise the zone's place, as the trigger form says it ("The time above is
+# Sydney time.", `taskFields.js:_zonePlace`) — "08:00 Sydney time". Always,
+# not only when the zone is not the reader's, because the sentence is written
+# once — into a step's record, a run's result, a skipped row — mostly by a run
+# nobody is watching, and read later by whoever opens it, in whatever zone
+# their browser is in: the server cannot know, when it writes, whose zone the
+# reader's will be.
+CLOCK_UTC_WORDS = "UTC"
+
+
+def zone_place(tz_name: str | None) -> str:
+    """The place in a zone name, as a person says it — the server's half of
+    `taskFields.js:_zonePlace` (`tests/test_a_time_says_its_clock.py` runs
+    that one and holds them equal): `Australia/Sydney` → `Sydney`,
+    `America/Argentina/Buenos_Aires` → `Buenos Aires`; a zone with no place in
+    it (`UTC`) is itself."""
+    name = str(tz_name or "").strip()
+    if "/" not in name:
+        return name
+    return name[name.rindex("/") + 1:].replace("_", " ")
+
+
+def clock_words(tz_name: str | None) -> str:
+    """Which clock a time is on, in words: "UTC", or "<place> time"."""
+    place = zone_place(tz_name)
+    if not place or place.upper() in ("UTC", "GMT"):
+        return CLOCK_UTC_WORDS
+    return f"{place} time"
+
+
 def _clock(value: datetime | None, tz_name: str | None) -> str:
-    """`07:00` on the task's clock (UTC when it has none)."""
+    """`07:00 UTC`, or `18:00 Sydney time` on the task's clock — the time and,
+    since `B1895`, which clock it is on (UTC when the task has no zone, or
+    one `zoneinfo` does not know)."""
     if value is None:
         return "?"
     try:
         from zoneinfo import ZoneInfo
         aware = value.replace(tzinfo=timezone.utc)
         if tz_name:
-            aware = aware.astimezone(ZoneInfo(tz_name))
-        return aware.strftime("%H:%M")
-    except Exception:
-        return value.strftime("%H:%M")
+            try:
+                return f"{aware.astimezone(ZoneInfo(tz_name)):%H:%M} {clock_words(tz_name)}"
+            except Exception:  # noqa: BLE001 — an unknown zone: the time is UTC's, and says so
+                pass
+        return f"{aware:%H:%M} {CLOCK_UTC_WORDS}"
+    except Exception:  # noqa: BLE001 — not a time this can convert: as stored, which is UTC
+        return f"{value.strftime('%H:%M')} {CLOCK_UTC_WORDS}"
 
 
 def _parse_iso(value) -> datetime | None:

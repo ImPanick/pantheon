@@ -291,7 +291,16 @@ export function createWorkflowApi({ fetch } = {}) {
      *  reason), integrations, MCP tools, skills, the AI step's tools, the
      *  workstation, the limits and the operators. The browser derives none of
      *  it. → `{ kinds, integrations, mcp_tools, skills, ai_tools, workstation,
-     *  limits, operators }` */
+     *  limits, operators, examples, has_model, model_why, drafter_model,
+     *  drafter_why }`
+     *
+     *  `B1891`. `has_model` is false when this person has no model at all;
+     *  `model_why` is then the sentence Prompt, Research and Skill are greyed
+     *  with in `kinds` ("No model yet. An admin adds one in Settings → Added
+     *  Models."), else "". `drafter_model` is the model *Draft it* would use,
+     *  or null; `drafter_why` is then the sentence the draft would be refused
+     *  with ("No model is set up to draft a workflow. Make it by hand."), else
+     *  "" — read it to hold *Draft it* and the examples back. */
     getPalette() {
       return call('GET', `/api/workflows/palette`);
     },

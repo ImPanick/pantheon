@@ -559,8 +559,11 @@ async def test_a_stop_while_a_run_task_step_runs_stops_the_workflow_there(task_d
 
 
 def test_a_restart_leaves_no_step_running(task_db):
-    """The run a restart interrupted is aborted (as ever); so is the step it
-    was on, which would otherwise read "running" in the Runs view for ever."""
+    """No step of a run a restart interrupted reads "running" for ever.
+    `B1896`: the run is parked on the step it was on — `waiting {kind:
+    idle}`, the finished step kept — to go on from it once Pantheon is idle
+    (`test_a_restart_keeps_what_it_can.py`); it was aborted, and the step
+    with it."""
     seed_workflow(task_db, [node("n1", "Done"), node("n2", "Slow")], [arrow("n1", "n2")])
     db = task_db()
     try:
@@ -574,9 +577,9 @@ def test_a_restart_leaves_no_step_running(task_db):
     finally:
         db.close()
     TaskScheduler(None)._sweep_runs_left_by_a_restart()
-    assert runs_of(task_db, "wf")[0]["status"] == "aborted"
-    assert [(r["status"], r["error"]) for r in records_of(task_db, "r9")] == [
-        ("success", None), ("aborted", "Server restarted while this step was running")]
+    assert runs_of(task_db, "wf")[0]["status"] == "waiting"
+    assert [(r["status"], (r["waiting"] or {}).get("kind")) for r in records_of(task_db, "r9")] == [
+        ("success", None), ("waiting", "idle")]
 
 
 @pytest.mark.asyncio

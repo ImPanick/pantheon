@@ -106,14 +106,15 @@ def test_the_new_words_are_added_and_none_renamed():
                                       "http", "mcp", "skill", "code"}
     assert wd.PORT_WORDS == ("success", "error", "then", "otherwise")
     assert wd.CASE_PORT_PREFIX == "case:" and wd.START_KEY == "start"
-    assert wd.port_words(step("a", "switch", cases=CASES), "case:boss") == "From the boss"
+    # `B1893`: a case reads as the canvas draws it, "if <its label>".
+    assert wd.port_words(step("a", "switch", cases=CASES), "case:boss") == "if From the boss"
     assert wd.port_words(step("a"), "error") == "if it fails"
 
 
 @pytest.mark.parametrize("node,port,words", [
     (step("a"), "then", "neither “if it works” nor “if it fails”"),
-    (step("a", "if", **IF), "success", "leaves by 'success', and it leaves by “then”, “otherwise”"),
-    (step("a", "switch", cases=CASES), "case:other", "“Urgent”, “From the boss”, “otherwise”"),
+    (step("a", "if", **IF), "success", "leaves by 'success', and it leaves by “if so”, “otherwise”"),
+    (step("a", "switch", cases=CASES), "case:other", "“if Urgent”, “if From the boss”, “otherwise”"),
     (step("a", "set", fields=[{"name": "x", "value": "1"}]), "error", "leaves by 'error'"),
 ])
 def test_an_arrow_on_a_port_its_step_does_not_have_is_refused(node, port, words):
@@ -282,7 +283,7 @@ def test_a_loop_through_a_case_port_is_told_in_its_words_at_save_and_at_run():
                 [arrow("t", "e", "case:urgent"), arrow("e", "t", "error")])
     refusal = check(graph)
     assert refusal.reason == wd.REFUSE_CYCLE
-    assert refusal.sentence == ("The workflow loops back on itself: if “Triage” goes the “Urgent” "
+    assert refusal.sentence == ("The workflow loops back on itself: if “Triage” goes the “if Urgent” "
                                 "way it runs “Escalate”, and if “Escalate” fails it runs “Triage” "
                                 "again. Remove one of those links to save it.")
     loop = wd.find_loop(graph)

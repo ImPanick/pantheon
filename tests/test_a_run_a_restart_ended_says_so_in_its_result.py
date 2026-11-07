@@ -81,6 +81,12 @@ async def test_a_run_waiting_for_idle_when_the_server_stopped_says_it_was_ended(
 
 
 async def test_a_run_mid_step_when_the_server_stopped_says_it_was_ended(factory, monkeypatch):
+    """`B1896`: a workflow run mid-step is parked on its step when it is
+    younger than `RESTART_RESUME_MAX_AGE` (`test_a_restart_keeps_what_it_can.
+    py`); with that age at nothing, it is one that is ended, and says so."""
+    import src.task_scheduler as ts
+    from datetime import timedelta
+    monkeypatch.setattr(ts, "RESTART_RESUME_MAX_AGE", timedelta(0))
     inside = asyncio.Event()
 
     async def slow(task, run_id):
