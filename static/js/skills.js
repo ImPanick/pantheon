@@ -881,6 +881,11 @@ async function _expandBuiltinCard(card, name) {
   const pre = card.querySelector('.skill-md-pre');
   if (pre && !card._loaded) {
     pre.textContent = 'Loading…';
+    // `B1974`, as in _expandSkillCard: Edit waits for the text, inline here
+    // because a test drives this function on its own.
+    const editBtn = [...(card.querySelector('.skill-card-preview')?.querySelectorAll('button') || [])]
+      .find((b) => b.textContent.trim() === 'Edit');
+    if (editBtn) editBtn.disabled = true;
     try {
       const res = await fetch(`${API}/api/skills/builtin/${encodeURIComponent(name)}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -891,11 +896,14 @@ async function _expandBuiltinCard(card, name) {
       card._default = data.default || '';
     } catch (e) {
       pre.textContent = 'Failed to load.';
+    } finally {
+      if (editBtn) editBtn.disabled = !card._loaded;
     }
   }
 }
 
 function _toggleBuiltinEdit(card, name) {
+  if (!card._loaded) return;   // `B1974`: "Loading…" is not the capability's text
   const preview = card.querySelector('.skill-card-preview');
   if (!preview) return;
   if (preview.querySelector('.skill-md-editor')) { _saveBuiltinEdit(card, name); return; }
@@ -1573,6 +1581,13 @@ async function _expandSkillCard(card, name) {
       card._md = md || '';
     } else {
       pre.textContent = 'Loading…';
+      // `B1974`. The footer Edit waits for the source: the editor takes what
+      // the card shows as its text, and "Loading…" or "Failed to load
+      // SKILL.md" saved over a skill empties it. Found in two steps, which the
+      // node tests' DOM shim can follow (it has no descendant selectors).
+      const editBtn = [...(card.querySelector('.skill-card-preview')?.querySelectorAll('button') || [])]
+        .find((b) => b.textContent.trim() === 'Edit');
+      if (editBtn) editBtn.disabled = true;
       try {
         const md = await _fetchSkillMarkdown(name);
         pre.textContent = md || '(empty)';
@@ -1580,6 +1595,8 @@ async function _expandSkillCard(card, name) {
         card._md = md;
       } catch (e) {
         pre.textContent = 'Failed to load SKILL.md';
+      } finally {
+        if (editBtn) editBtn.disabled = !card._mdLoaded;
       }
     }
   }
@@ -1588,6 +1605,10 @@ async function _expandSkillCard(card, name) {
 // Swap the read-only <pre> for an editable <textarea> (and back). The
 // Edit button toggles; a Save button commits via the markdown endpoint.
 function _toggleSkillEdit(card, name) {
+  // `B1974`. Not before the SKILL.md has loaded. The footer Edit is disabled
+  // meanwhile; this holds the ⋯ menu's Edit, which opens the card first and
+  // then edits even when the fetch failed, and a test verdict's Edit.
+  if (!card._mdLoaded) return;
   const preview = card.querySelector('.skill-card-preview');
   if (!preview) return;
   const existing = preview.querySelector('.skill-md-editor');
