@@ -208,7 +208,7 @@ export function mountAutomations(host, opts = {}) {
     asking: null, versions: null, newForm: null,
     // `P22-19`, `P22-24`. The open check layer, the arrival box, and the
     // example sentences (read once, from the palette).
-    checking: null, arrived: null, examples: null, making: false,
+    checking: null, arrived: null, examples: null, drafterWhy: '', making: false,
     shelfTimer: null,    // `B1108`: the next read of the shelf while a run is in flight
   };
 
@@ -258,6 +258,11 @@ export function mountAutomations(host, opts = {}) {
   const draftRow = _el('div', 'wf-new-buttons');
   draftRow.appendChild(draftGo);
   describeGroup.appendChild(draftRow);
+  // `B1891`. With no model to draft with, the palette says so before a press
+  // that could only be refused: the sentence stands here, Draft it is held.
+  const noDraft = _el('p', 'wf-new-nodraft');
+  noDraft.hidden = true;
+  describeGroup.appendChild(noDraft);
   const examples = _el('div', 'wf-new-examples');
   examples.setAttribute('role', 'group');
   examples.setAttribute('aria-label', 'Start from an example');
@@ -1866,19 +1871,20 @@ export function mountAutomations(host, opts = {}) {
    *  it*: the palette's `examples` (served by the drafter's package), at most
    *  six; picking one fills the box — nothing is sent, installed or fetched. */
   async function loadExamples() {
-    if (R.examples == null) {
-      R.examples = [];
-      if (R.api && typeof R.api.getPalette === 'function') {
-        try {
-          const p = await R.api.getPalette();
-          const list = p && Array.isArray(p.examples) ? p.examples : [];
-          R.examples = list.map((x) => String(x == null ? '' : x).trim()).filter(Boolean).slice(0, EXAMPLES_MAX);
-        } catch (_) { R.examples = []; }
-      }
-      if (R.destroyed) return;
-    }
+    // `B1891`. Asked each time the form opens, not once: a model an admin
+    // added since is a Draft it that works now.
+    if (R.api && typeof R.api.getPalette === 'function') {
+      try {
+        const p = await R.api.getPalette();
+        const list = p && Array.isArray(p.examples) ? p.examples : [];
+        R.examples = list.map((x) => String(x == null ? '' : x).trim()).filter(Boolean).slice(0, EXAMPLES_MAX);
+        R.drafterWhy = p && p.drafter_model === null && p.drafter_why ? String(p.drafter_why) : '';
+      } catch (_) { R.examples = R.examples || []; }
+    } else R.examples = [];
+    if (R.destroyed) return;
+    holdDraft();
     examples.replaceChildren();
-    if (!R.examples.length) { examples.hidden = true; return; }
+    if (!R.examples.length || R.drafterWhy) { examples.hidden = true; return; }
     examples.appendChild(_el('p', 'wf-new-label', 'Start from an example'));
     const ul = _el('ul', 'wf-new-example-list');
     for (const text of R.examples) {
@@ -1905,6 +1911,17 @@ export function mountAutomations(host, opts = {}) {
     R.making = !!on;
     for (const b of [newGo, draftGo, fileBtn]) b.disabled = !!on;
     describeBox.readOnly = !!on;
+    holdDraft();
+  }
+
+  /** `B1891`. *Draft it* and its box, held while there is no model to draft
+   *  with, and the palette's sentence saying so. */
+  function holdDraft() {
+    const why = String(R.drafterWhy || '');
+    draftGo.disabled = !!R.making || !!why;
+    describeBox.disabled = !!why;
+    noDraft.textContent = why;
+    noDraft.hidden = !why;
   }
 
   /** `P22-19`. *Draft it*: C-A's create door with `{ describe, tz }`. The

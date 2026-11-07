@@ -49078,6 +49078,8 @@ button.task-card-toggle {
   cursor: pointer;
 }
 .wf-new-example:hover { background: color-mix(in srgb, var(--fg) 7%, transparent); }
+.wf-new-nodraft { margin: 0; font-size: 11.5px; opacity: .8; overflow-wrap: anywhere; }
+.wf-new-nodraft[hidden] { display: none; }
 .wf-new-say { margin: 0; font-size: 11.5px; overflow-wrap: anywhere; }
 .wf-new-say:empty { display: none; }
 .wf-new-refusal { padding-left: 6px; font-weight: 600; border-left: 3px solid var(--red); }

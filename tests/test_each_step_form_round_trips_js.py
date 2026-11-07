@@ -159,6 +159,33 @@ def test_a_wait_says_when_it_goes_on_and_every_wait_field_says_why_it_is_typed(b
     assert o["seen"] == [["minutes", "never"], ["time", "never"], ["tz", "never"]], "every Wait field is never (§ 2)"
 
 
+def test_a_skill_step_offers_the_built_in_skills_after_the_persons_own_and_says_which(box):
+    """`B1892`. The palette lists a person's own skills, then the built-in ones
+    the chat would offer their model (`built_in`); the picker says which is
+    which, and a built-in pick is saved by its name alone."""
+    o = _case(box, """
+        const pal = { ...PAL, skills: [...(PAL.skills || []),
+          { name: 'chart-the-numbers', description: 'Turn a table into a chart.', built_in: true }] };
+        const h = host();
+        const got = [];
+        SF.mountStepFields(h, { node: { kind: 'skill', label: 'Chart', config: {} }, palette: pal,
+          onApply: (x) => got.push(x), onCancel: () => {} });
+        const sel = byField(h, 'skill');
+        const offered = sel.querySelectorAll('option').map((x) => [x.value, x.textContent]);
+        changed(sel, 'chart-the-numbers');
+        const desc = h.querySelectorAll('.wf-sf-hint').map((x) => x.textContent);
+        fire(h.querySelector('.wf-step-done'), 'click');
+        out({ offered, desc, lede: h.querySelector('.wf-sf-lede').textContent, got });
+    """)
+    own = [s["name"] for s in json.loads(palette_json())["skills"]]
+    assert [v for v, _ in o["offered"]] == ["", *own, "chart-the-numbers"], "their own first"
+    assert o["offered"][-1] == ["chart-the-numbers", "chart-the-numbers (built in)"]
+    assert all(w == v for v, w in o["offered"][1:-1]), "their own are named as they are"
+    assert o["lede"].startswith("Runs a model that follows a skill: one of yours, or a built-in one.")
+    assert "Turn a table into a chart." in o["desc"], "its description, as one of yours says it"
+    assert o["got"][0]["config"]["skill"] == "chart-the-numbers"
+
+
 def test_a_skill_step_says_p8_18s_sentence_and_code_starts_from_a_three_line_template(box):
     o = _case(box, """
         const s = mount({ kind: 'skill', label: 'Print', config: {} });

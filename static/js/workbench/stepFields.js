@@ -754,9 +754,12 @@ function buildMcp(ctx) {
 function buildSkill(ctx) {
   const { body, cfg, palette } = ctx;
   let skills = palette && Array.isArray(palette.skills) ? palette.skills : [];
-  body.appendChild(_el('p', 'wf-sf-lede', 'Runs a model that follows one of your skills. The skill is read when the step runs, '
-    + 'so an edit to it reaches the next run.'));
-  const choices = () => [['', 'Choose one…'], ...skills.map((s) => [s.name, s.name])];
+  body.appendChild(_el('p', 'wf-sf-lede', 'Runs a model that follows a skill: one of yours, or a built-in one. '
+    + 'The skill is read when the step runs, so an edit to it reaches the next run.'));
+  // `B1892`. The palette lists the person's own skills first, then the
+  // built-in ones the chat would offer their model (`built_in`), said so.
+  const choices = () => [['', 'Choose one…'],
+    ...skills.map((s) => [s.name, s.built_in ? `${s.name} (built in)` : s.name])];
   const choice = _selectField(body, 'Skill', choices(), { value: cfg.skill || '', field: 'skill' });
   const desc = _el('p', 'wf-sf-hint');
   body.appendChild(desc);

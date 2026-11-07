@@ -79,7 +79,16 @@ def live(monkeypatch, tmp_path):
     from tests.helpers.assist_harness import build_world, miniflux, script_model
 
     w = build_world(monkeypatch, tmp_path, integrations=[miniflux()])
-    w.script = lambda *answers: script_model(monkeypatch, *answers)
+
+    def script(*answers):
+        # `B1891`: a model that answers is a model the palette can name, so
+        # *Draft it* is offered (with none, it is held — the last case here).
+        from src import workflow_assist
+        monkeypatch.setattr(workflow_assist, "_endpoint",
+                            lambda owner: ("http://127.0.0.1:9/v1/chat/completions", "scripted", {}))
+        return script_model(monkeypatch, *answers)
+
+    w.script = script
     w.server = LiveServer(w.app)
     try:
         yield w
@@ -384,3 +393,24 @@ def test_a_step_the_assistant_changed_reads_as_its_and_waits_for_a_person(box, l
     assert o["refused"].startswith("Not switched on: Your assistant (or an API token) changed 1 step nobody has "
                                    "checked yet: “Post to #dev”.")
     assert o["rows"] == [["post", "Changed by your assistant"]]
+
+
+def test_with_no_model_to_draft_with_draft_it_is_held_and_says_why(box, live):
+    """`B1891`. The palette names no drafter: the room says the draft route's
+    own sentence where *Draft it* is, holds the button and its box, and offers
+    no examples — before a press that could only be refused. Making it by
+    hand and opening a file are still there."""
+    from src import workflow_assist as wa
+
+    o = _case(box, live, """
+        const { r } = await room();
+        fire(by(r, 'wf-shelf-new'), 'click'); await quiet();
+        out({ why: by(r, 'wf-new-nodraft').textContent, shown: !by(r, 'wf-new-nodraft').hidden,
+              held: by(r, 'wf-new-draft').disabled, box: by(r, 'wf-new-text').disabled,
+              examples: by(r, 'wf-new-examples').hidden, make: by(r, 'wf-new-go').disabled,
+              file: by(r, 'wf-new-file').disabled, posts: calls('POST').length });
+    """)
+    assert o["why"] == wa.NO_MODEL_TO_DRAFT and o["shown"] is True
+    assert o["held"] is True and o["box"] is True and o["examples"] is True
+    assert o["make"] is False and o["file"] is False, "by hand and from a file still work"
+    assert o["posts"] == 0
