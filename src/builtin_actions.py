@@ -9,6 +9,7 @@ scheduler without needing an LLM call.
 import logging
 import os
 import json
+import re
 from datetime import datetime, timezone
 from typing import Any, Tuple
 
@@ -1100,16 +1101,45 @@ async def action_tidy_research(owner: str, **kwargs) -> Tuple[str, bool]:
 # and nothing ran it.)
 
 
+# `B1983`: a count of work done, as an email pass's summary line states it
+# ("processed 3 new", "summarized 3", "drafted 2 replies", ...).
+_EMAIL_WORK_COUNT = re.compile(
+    r"\b(?:processed|summarized|drafted|sent|created|tagged|moved|translated)\s+[1-9]\d*\b")
+
+
+def _email_run_summary_lines(low: str) -> str:
+    """An email pass's result without the "Processed:" list under each
+    mailbox's summary line (`B1983`). The list quotes received mail's subjects
+    and senders, and a folded subject runs on over lines of its own, so the
+    list ends only at the next mailbox's "[name] …" line."""
+    kept, listing = [], False
+    for line in low.splitlines():
+        if line.strip() == "processed:":
+            listing = True
+        elif listing and line.startswith("["):
+            listing = False
+        if not listing:
+            kept.append(line)
+    return "\n".join(kept)
+
+
 def _result_has_work(result: str | None) -> bool:
     """Heuristic: did the email pass actually process anything?
 
     `_run_auto_summarize_once` returns strings like 'Processed 0 emails',
     'No new emails to summarize', 'Tagged 0 / Moved 0', etc. when nothing
     was done. Used to decide whether to record the run or noop it.
+
+    `B1983`: a pass over several mailboxes joins one "[name] …" result per
+    mailbox, so one mailbox's "nothing to do" marked the whole run skipped
+    when another had done work; a count of work now wins. Only the pass's own
+    summary lines are read, never the received subjects and senders it lists.
     """
     if not isinstance(result, str) or not result:
         return False
-    low = result.lower()
+    low = _email_run_summary_lines(result.lower())
+    if _EMAIL_WORK_COUNT.search(low):
+        return True
     if "processed 0" in low or "no new" in low or "nothing to" in low:
         return False
     # "Tagged 0 / Moved 0" or similar zero-count summaries
