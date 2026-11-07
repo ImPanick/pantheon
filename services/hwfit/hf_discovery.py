@@ -232,9 +232,32 @@ def _infer_use_case(repo_id, pipeline_tag):
     return "general"
 
 
+# `B1971`. Hugging Face collections mix in models that no LLM engine the Forge
+# runs can serve: vision encoders, time-series forecasters, image and video
+# generators. Image models have their own registry (image_models.py), so these
+# stay out of the LLM catalog. get_models asks the same of the rows it reads.
+_NON_LLM_PIPELINE_TAGS = frozenset({
+    "time-series-forecasting",
+    "zero-shot-image-classification",
+    "image-classification",
+    "image-feature-extraction",
+    "text-to-image",
+    "image-to-video",
+    "text-to-video",
+})
+
+
+def is_non_llm_pipeline_tag(tag) -> bool:
+    """True for a pipeline tag that marks a model as no LLM. A tag that is
+    not a string is treated as no tag."""
+    return isinstance(tag, str) and tag.strip().lower() in _NON_LLM_PIPELINE_TAGS
+
+
 def _entry_from_collection_item(collection, item, source):
     repo_id = item.get("id") or ""
     if item.get("type") != "model" or not repo_id:
+        return None
+    if is_non_llm_pipeline_tag(item.get("pipeline_tag")):
         return None
     repo_prefix = source.get("repo_prefix")
     if repo_prefix and not repo_id.startswith(repo_prefix):

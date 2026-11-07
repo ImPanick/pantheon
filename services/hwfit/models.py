@@ -343,11 +343,21 @@ def get_models():
         except Exception:
             dynamic_mlx_models = []
             dynamic_hf_models = []
+        try:
+            from services.hwfit.hf_discovery import is_non_llm_pipeline_tag
+        except Exception:
+            def is_non_llm_pipeline_tag(_tag):
+                return False
         seen = set()
         rows = []
         def _append_models(models):
             for model in models:
                 if not isinstance(model, dict):
+                    continue
+                # `B1971`: an image, video or vision model in a cache written
+                # before the parser skipped them, or in the bundled MLX file
+                # (which keeps them as the offline source), is no LLM row.
+                if is_non_llm_pipeline_tag(model.get("pipeline_tag")):
                     continue
                 name = model.get("name")
                 if not name or name in seen:
