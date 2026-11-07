@@ -2185,3 +2185,89 @@ html.cockpit #agent-browser-modal .abw-notes-kind { min-height: 0; height: 24px;
 
 /* The Workstation's Screen picker is a 24px pill like the bar's buttons beside it (was a 32px box with 10px corners). */
 html.cockpit #workstation-screen-modal .wsv-who-select { min-height: 0; height: 24px; padding: 0 6px 0 10px; border-radius: 999px !important; }
+
+/* ── alignment audit 2026-11-07: rail ── */
+/* rail-1: buttons in centred header and form rows drop the 6px top margin every window-body button gets, so they sit on the row's centre line */
+html.cockpit :is(.agents-tools, .agents-section-head, .agents-strip-head, .task-log-row-head, .wb-toolbar, .wb-toolbar-zoom, .settings-row,
+  .skills-side-head, .brain-explore-card, .brain-explore-head, .email-settings-section-head, .cal-detail-header) > button,
+html.cockpit #memory-panel-add .admin-card > div > button { margin-top: 0; }
+/* rail-1: the Agents search row centres "New agent" on the field rather than pinning it to the top (a phone's field is taller than the button) */
+html.cockpit .agents-tools { align-items: center; }
+/* rail-1: the day view's "+ Add" drops its 2px nudge and centres on the date label */
+html.cockpit #cal-add-day { top: 0; }
+
+/* rail-2: on desktop the Library, Tasks and Email toolbars hold the select and the pills at one 24px height on one centre line */
+@media (min-width: 769px) {
+  html.cockpit :is(#doclib-modal, #tasks-modal, #email-lib-modal) .memory-category-filters { align-items: center; }
+  html.cockpit :is(#doclib-modal, #tasks-modal, #email-lib-modal) .memory-category-filters > :is(.memory-sort-select, .memory-toolbar-btn, .email-filter-picker),
+  html.cockpit #email-lib-modal .email-filter-btn { height: 24px; min-height: 0; margin-top: 0; top: 0 !important; }
+}
+/* phone-6: on a phone the Library and Tasks toolbars share a 28px touch height instead (Email keeps its own 30px phone row) */
+@media (max-width: 768px) {
+  html.cockpit :is(#doclib-modal, #tasks-modal) .memory-category-filters { align-items: center; }
+  html.cockpit :is(#doclib-modal, #tasks-modal) .memory-category-filters > :is(.memory-sort-select, .memory-toolbar-btn) { height: 28px !important; min-height: 0; margin-top: 0; top: 0 !important; }
+}
+/* rail-2: those toolbar selects get back the caret `.admin-card select` wiped, and the pill shape of the buttons beside them */
+html.cockpit :is(#doclib-modal, #tasks-modal, #email-lib-modal) .memory-category-filters > select {
+  background-image: linear-gradient(45deg, transparent 38%, var(--ck-text-3) 38% 62%, transparent 62%), linear-gradient(135deg, transparent 38%, var(--ck-text-3) 38% 62%, transparent 62%);
+  background-position: right 13px center, right 8px center; background-size: 5px 5px; background-repeat: no-repeat; border-radius: 999px !important;
+}
+
+/* rail-3: the Tasks title and the Email count drop their inline 2px lift and centre on the header's controls */
+html.cockpit #tasks-modal .modal-header > h4, html.cockpit #email-lib-stats { top: 0 !important; }
+
+/* rail-4: the task card's status badge is a 22px pill on the kebab's centre line, not a 32px box */
+html.cockpit .task-card .task-status-badge { height: 22px; margin-top: 0; border-radius: 999px !important; }
+
+/* rail-5: the Activity log's "2 steps" pill sizes to its words and sits on the row's text line */
+html.cockpit .task-log-row-head > .task-log-steps { height: auto; margin-top: 0; border-radius: 999px !important; }
+/* rail-5: a Forge hardware chip's label and × are plain text inside the chip, not 32px bordered buttons shifted up */
+html.cockpit .hwfit-hw-chip :is(.hwfit-hw-chip-toggle, .hwfit-hw-chip-x) { height: auto; margin: 0; transform: none; border: 0 !important; background: none !important; }
+/* rail-5: the Brain upload zone grows to fit its padding and label */
+html.cockpit #rag-upload-zone { height: auto; }
+
+/* rail-6: the agent form's Send and "Build it now" share the textarea's bottom edge */
+html.cockpit .agents-talk-form > button { align-self: flex-end; margin-top: 0; }
+
+/* rail-7: the Notes title bar sits inside its pane (the window header's -10px margin assumes a padded window) */
+html.cockpit .notes-pane > .notes-pane-header { margin: 0 !important; }
+/* rail-7: docked Notes keeps the frame's 18px gutter and large radius, like the panels beside it (its docked size is inline) */
+@media (min-width: 769px) {
+  html.cockpit .notes-pane.modal-right-docked { inset: 18px 18px 18px auto !important; height: auto !important; max-height: none !important; border-radius: var(--ck-r-l) !important; }
+}
+/* rail-7: the Notes backdrop's fade-in no longer holds its last frame, which stopped the pane's glass blurring what lies behind it */
+html.cockpit .notes-pane-backdrop { animation-fill-mode: backwards; }
+
+/* rail-8: fields drawn borderless before the cockpit gave them a well get inline padding: note title, checklist rows, the event title and its hint */
+html.cockpit .note-form-title { padding-left: 10px; padding-right: 10px; }
+html.cockpit .note-cl-row input { padding-left: 10px; }
+html.cockpit .cal-input.cal-hero-title { padding-left: 10px; }
+html.cockpit .cal-title-hint { left: 11px; }
+
+/* rail-9: Forge Advanced's Engine button leaves room for its "?" and sits on the help's centre */
+html.cockpit .hwfit-advanced-panel .hwfit-engine-btn { padding-right: 40px; margin-top: 0; }
+
+/* rail-10: the inline "Library → Research" link reads as running text, on the sentence's baseline */
+html.cockpit .research-library-link { height: auto; margin-top: 0; line-height: inherit; }
+
+/* rail-12: on desktop the Gallery search and Select drop their 2px nudges and line up with the two selects (the phone row nudges the selects to match instead) */
+@media (min-width: 769px) {
+  html.cockpit .gallery-toolbar > .gallery-search-wrap { top: 0; }
+  html.cockpit .gallery-toolbar > #gallery-select-btn { top: 0; margin-top: 0 !important; }
+}
+
+/* rail-14: a card heading and its header buttons share one centre line (Tasks, Library Documents) */
+html.cockpit .admin-card > div:first-child:has(> h2 ~ .memory-toolbar-btn) { align-items: center !important; }
+html.cockpit .admin-card > div:first-child:has(> h2 ~ .memory-toolbar-btn) > :is(h2, .memory-toolbar-btn) { top: 0 !important; margin-top: 0; }
+/* rail-14: Compare's Scoreboard button drops its inline 5px lift beside the timeout field */
+html.cockpit #compare-model-overlay .modal-body > div:has(> input[type="number"]) > button { top: 0 !important; margin-top: 0; }
+/* rail-14: the model-folder "+ Add" (Forge and Settings) and the note's bell sit on their row's centre */
+html.cockpit .cookbook-modeldir-add { top: 0; margin-top: 0; }
+html.cockpit .note-form-header > .note-form-icon-btn { top: 0; }
+
+/* phone-5: the Library type chips start at the top of their row, so a phone's clipped row no longer cuts their outline */
+html.cockpit .doclib-lang-chips > button { margin-top: 0; }
+/* phone-7: on a narrow phone the Library's four tabs fit inside the pill */
+@media (max-width: 480px) { html.cockpit #doclib-modal .lib-tab { padding: 0 9px !important; gap: 5px; } }
+/* phone-8: the Library card's ⋮ glyph centres in its 32px phone circle */
+html.cockpit .doclib-card-menu-wrap > .memory-item-btn { justify-content: center; }
