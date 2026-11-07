@@ -2566,3 +2566,25 @@ html.cockpit .phw-bezel {
 }
 html.cockpit .phw-nav { gap: 10px; }
 html.cockpit .phw-nav-btn { min-width: 52px; }
+
+/* ── Settings → Reminders → Push to your devices (`B1832`) ─────────────────
+   One state line and the two controls on a row, then each device as a quiet
+   glass strip: its name, a mono line of when, and Remove. */
+html.cockpit .push-controls { align-items: center; gap: 8px; flex-wrap: wrap; }
+html.cockpit .push-state { margin: 0; flex: 1 1 220px; min-width: 0; color: var(--ck-text-2); }
+html.cockpit .push-msg { font: 400 11px/1.4 var(--ck-font-ui); color: var(--ck-text-2); }
+html.cockpit .push-msg[data-tone="ok"] { color: var(--green, var(--ck-text-2)); }
+html.cockpit .push-msg[data-tone="error"] { color: var(--red); }
+html.cockpit .push-devices { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+html.cockpit .push-devices:empty { display: none; }
+html.cockpit .push-device {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 8px 10px;
+  border-radius: var(--ck-r-m); background: var(--ck-glass-soft); border: 1px solid var(--ck-edge-lo);
+  box-shadow: inset 0 1px 0 color-mix(in oklab, var(--ck-edge-hi) 50%, transparent);
+}
+html.cockpit .push-device-name { font: 500 12.5px/1.4 var(--ck-font-ui); color: var(--ck-text); flex: 1 1 auto; min-width: 0; }
+html.cockpit .push-device-here {
+  font: 500 10px/1 var(--ck-font-ui); letter-spacing: .02em; padding: 2px 6px; border-radius: 999px;
+  color: var(--ck-accent-2); background: var(--ck-accent-wash); border: 1px solid var(--ck-accent-line);
+}
+html.cockpit .push-device-meta { font: 400 11px/1.4 var(--ck-font-mono, monospace); color: var(--ck-text-3, var(--ck-text-2)); }
