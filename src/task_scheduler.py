@@ -1808,6 +1808,25 @@ class StepDone(NamedTuple):
     port: Any = None
 
 
+class _StepTimedOut(Exception):
+    """`B1855`. One attempt at a step ran past the step's own time limit."""
+
+    def __init__(self, seconds: int):
+        super().__init__(seconds)
+        self.seconds = seconds
+
+
+#: `B1855`. The slot key that tells a For-each it is being tried again: the
+#: items that worked keep their records and the ones that failed run again.
+RETRY_FAILED_ITEMS_KEY = "retry_failed_items"
+
+
+def step_time_limit_words(seconds) -> str:
+    """`B1855`. Why an attempt stopped: "Stopped after 30 s: the step's time
+    limit." (`_waited_words` says the time, as a queued run's wait is said)."""
+    return f"Stopped after {_waited_words(seconds)}: the step's time limit."
+
+
 class StepAnswer(NamedTuple):
     """`P22-17`. The answer a parked step resumes with. `exact_approval` is the
     consumed `ExactToolApproval` (Allow, SINGLE_ACTION scope) and travels in
@@ -6746,19 +6765,113 @@ class TaskScheduler:
         model."""
         from core.database import SessionLocal
 
+        from src import workflow_document as wd
+
         step_db = SessionLocal()
         try:
             ctx = w.state.context()
-            if self._node_needs_model(node):
-                async with w.model_lock:
-                    return await self._run_workflow_step(
-                        w.task, w.name, node, step_db, slot, deliver=True, ctx=ctx,
-                        answer=answer, walk=w, rec=rec)
-            return await self._run_workflow_step(
-                w.task, w.name, node, step_db, slot, deliver=True, ctx=ctx,
-                answer=answer, walk=w, rec=rec)
+
+            async def attempt(answer, limit=0):
+                # `B1855`: the time limit bounds the step's own work, not its
+                # wait for the run's model lock.
+                if self._node_needs_model(node):
+                    async with w.model_lock:
+                        return await self._within(limit, self._run_workflow_step(
+                            w.task, w.name, node, step_db, slot, deliver=True, ctx=ctx,
+                            answer=answer, walk=w, rec=rec))
+                return await self._within(limit, self._run_workflow_step(
+                    w.task, w.name, node, step_db, slot, deliver=True, ctx=ctx,
+                    answer=answer, walk=w, rec=rec))
+
+            settings = wd.step_settings(node)
+            if settings is None:
+                return await attempt(answer)        # no settings: as it always ran
+            return await self._attempts(settings, node, slot, attempt, answer=answer,
+                                        rec=rec, db=w.db, run_id=w.run_id)
         finally:
             step_db.close()
+
+    async def _within(self, seconds, coro):
+        """`B1855`. Await `coro`, stopped after `seconds` (0: no limit) —
+        raising `_StepTimedOut` only for this limit, not for a timeout the
+        step met inside itself."""
+        if not seconds:
+            return await coro
+        try:
+            async with asyncio.timeout(seconds) as limit:
+                return await coro
+        except TimeoutError:
+            if limit.expired():
+                raise _StepTimedOut(seconds) from None
+            raise
+
+    async def _attempts(self, settings: dict, node: dict, slot: str, attempt, *, answer,
+                        rec, db, run_id=None):
+        """`B1855`. A step's own retries and time limit (`step_settings`).
+
+        `attempt(answer, limit)` runs the step once; this runs it up to
+        `1 + retries` times. An attempt that FAILED — an `error` result, an
+        exception, or the time limit ("Stopped after 30 s: the step's time
+        limit.") — is tried again after `retry_wait_seconds`, until the last,
+        whose ending is the step's (its failure port, as before). A step that
+        parks, waits or asks (`TaskWaiting`), says there was nothing to do
+        (`TaskNoop`) or asks to wait (`TaskDeferred`) is not failing and is not
+        tried again; Stop cancels the wait between attempts at once (it is a
+        plain `sleep`).
+
+        Each attempt after the first starts from the slot the step started
+        with (its trigger, who started it), so nothing one attempt added — an
+        untrusted block, a consumed approval — reaches the next: an Allow
+        answered ONE attempt, and another asks again. The step's own log keeps
+        every attempt's lines with "Attempt 2 of 3." between them; the record's
+        `attempt` counts them (`record_node_attempt`); the run's log says each
+        try again. Not asked by *Test this step*, which is one attempt."""
+        from src import workflow_document as wd
+        from src import workflow_runs as wr
+        from src.builtin_actions import NODE_STATUS_ERROR, NodeResult
+
+        tries = 1 + int(settings.get("retries") or 0)
+        wait = settings.get("retry_wait_seconds") or 0
+        limit = settings.get("timeout_seconds") or 0
+        label = node.get("label") or node.get("id")
+        start = {k: v for k, v in self._state_for(slot).items() if k != "steps"}
+        done = None
+        for n in range(1, tries + 1):
+            if n > 1:
+                state = self._state_for(slot)
+                kept = list(state.get("steps") or ())
+                state.clear()
+                state.update(start, steps=kept, **{RETRY_FAILED_ITEMS_KEY: True})
+                if rec is not None:
+                    wr.record_node_attempt(db, rec)
+                self._record_run_step(slot, kind="progress", detail=f"Attempt {n} of {tries}.")
+            try:
+                done = await attempt(answer if n == 1 else None, limit)
+            except _StepTimedOut as stopped:
+                words = step_time_limit_words(stopped.seconds)
+                if rec is not None and node.get("kind") == wd.NODE_KIND_FOREACH:
+                    # The item the limit cut is failed, so a next attempt runs it.
+                    wr.end_running_items(db, rec.run_id, rec.node_id, error=words)
+                done = StepDone(NodeResult(NODE_STATUS_ERROR, payload=words), None)
+            except Exception as exc:  # noqa: BLE001 - a failed attempt, said; the last is raised
+                if n == tries:
+                    raise
+                logger.warning("Step %r failed (attempt %d of %d)", label, n, tries,
+                               exc_info=True)
+                done = StepDone(NodeResult(NODE_STATUS_ERROR,
+                                           payload=f"{type(exc).__name__}: {exc}"), None)
+            if done.result.status != NODE_STATUS_ERROR or n == tries:
+                return done
+            why = ((done.result.text or "").splitlines() or [""])[0].rstrip(".")
+            again = f"Trying again in {_waited_words(wait)}."
+            self._record_run_step(slot, kind="progress",
+                                  detail=f"Attempt {n} of {tries} failed: {why}. {again}")
+            if run_id is not None:
+                self._record_run_step(run_id, kind="progress",
+                                      detail=f"“{label}” failed (attempt {n} of {tries}). {again}")
+                self._set_run_progress(run_id, f"{label}: trying again in {_waited_words(wait)}…")
+            await asyncio.sleep(wait)
+        return done
 
     def _finish_step(self, w, finished) -> None:
         """A step's coroutine ended: its record, its line, the arrows it fired
@@ -7408,13 +7521,19 @@ class TaskScheduler:
                 f"{cap}. Nothing was run.")), None)
         inner_label = inner.get("label") or label
         done_items = (walk.state.items.get(node["id"]) if walk is not None else None) or {}
+        # `B1855`. The For-each tried again (its own retries): an item that
+        # failed runs again, on its own record; one that worked is kept.
+        from src import workflow_document as wd
+        retrying = bool((self._runs().get(slot) or {}).get(RETRY_FAILED_ITEMS_KEY))
+        inner_settings = wd.step_settings(inner)
         results = []
         for index, item in enumerate(value):
             item_label = f"{inner_label} · item {index + 1} of {total}"
             item_node = {"id": node["id"], "kind": inner.get("kind"), "label": item_label,
                          "config": dict(inner.get("config") or {})}
             prev = done_items.get(index)
-            if prev is not None and prev.status in wr.STEP_FINISHED:
+            if (prev is not None and prev.status in wr.STEP_FINISHED
+                    and not (retrying and prev.status == NODE_STATUS_ERROR)):
                 out = wr._loads(prev.output) or {}
                 if wr.is_truncated(out):
                     out = {}
@@ -7452,6 +7571,9 @@ class TaskScheduler:
                         if on_error == "stop":
                             break
                         continue
+            elif walk is not None and prev is not None and prev.status == NODE_STATUS_ERROR:
+                wr.record_node_attempt(walk.db, prev)        # `B1855`: tried again
+                rec = prev
             elif walk is not None:
                 rec = wr.record_node_start(
                     walk.db, run_id=walk.run_id, node=item_node, seq=walk.state.next_seq(),
@@ -7468,10 +7590,21 @@ class TaskScheduler:
                 waits_for=parent.get("waits_for", "idle"))
             item_ctx = dict(ctx)
             item_ctx["item"] = json.loads(json.dumps(item, default=str))
-            try:
-                done = await self._run_workflow_step(
+
+            async def run_item(answer, limit=0, item_node=item_node, item_slot=item_slot,
+                               item_ctx=item_ctx):
+                return await self._within(limit, self._run_workflow_step(
                     task, workflow_name, item_node, db, item_slot, deliver=deliver,
-                    ctx=item_ctx, answer=item_answer, walk=None, may_wait=may_wait)
+                    ctx=item_ctx, answer=answer, walk=None, may_wait=may_wait))
+            try:
+                if inner_settings is None:
+                    done = await run_item(item_answer)
+                else:
+                    # `B1855`. The repeated step's own settings are each item's.
+                    done = await self._attempts(
+                        inner_settings, item_node, item_slot, run_item, answer=item_answer,
+                        rec=rec if walk is not None else None,
+                        db=walk.db if walk is not None else db)
                 res = done.result
             except TaskWaiting as parked:
                 parked = named_question(parked)

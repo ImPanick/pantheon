@@ -611,11 +611,14 @@ def _step_content(node: dict) -> str:
     """What a person changes when they change a step: its kind, its name and
     its settings — `content_fingerprint`'s reading of one step, as text.
     `B1856`: and whether it is switched off, read only when it is, so a step
-    that is on reads as it always did."""
-    from src.workflow_document import DISABLED_KEY
+    that is on reads as it always did. `B1855`: and its retries and time
+    limit, when it has some."""
+    from src.workflow_document import DISABLED_KEY, SETTINGS_KEY
     content = [node.get("kind"), node.get("label"), node.get("config") or {}]
     if node.get(DISABLED_KEY) is True:
         content.append({DISABLED_KEY: True})
+    if node.get(SETTINGS_KEY):
+        content.append({SETTINGS_KEY: node[SETTINGS_KEY]})
     return json.dumps(content, sort_keys=True, default=str, ensure_ascii=False)
 
 

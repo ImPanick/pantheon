@@ -199,6 +199,23 @@ STEP_SWITCHED_OFF = "Switched off in this workflow — passed its input on"
 STEP_SWITCHED_OFF_PLAN = ("Switched off in this workflow — it would pass its input on "
                           "and do nothing else.")
 
+# `B1855`. A step's own retries and time limit: `"settings"` on the step, beside
+# `disabled` and outside `config` — they are the engine's, asked of every kind
+# alike, not a setting of the kind (`NODE_CONFIG_FIELDS`). `retries` is how many
+# times a FAILED attempt is tried again (a step that parks, waits or asks is not
+# failing), `retry_wait_seconds` how long it waits first, and `timeout_seconds`
+# what one attempt may take (0 is none). A step with no `settings` has no key
+# and runs exactly as it always did: one attempt, no limit of its own. A Wait
+# and a Merge take none (they make nothing that can fail or take long). On a
+# For-each the settings are the whole step's — an attempt that left an item
+# failed is tried again for the items that did not work — and its repeated
+# step may carry its own (`config.step.settings`), which are each item's.
+SETTINGS_KEY = "settings"
+STEP_SETTINGS_DEFAULTS = {"retries": 0, "retry_wait_seconds": 30, "timeout_seconds": 0}
+STEP_RETRIES_RANGE = (0, 5)
+STEP_RETRY_WAIT_RANGE = (1, 3600)
+STEP_TIMEOUT_RANGE = (5, 86400)
+
 ORIGIN_DRAFTED = "drafted"
 ORIGIN_IMPORTED = "imported"
 ORIGIN_ASSISTANT = "assistant"
@@ -554,6 +571,8 @@ def parse_graph(raw) -> dict:
     null), so an ordinary save does not change a stored document's bytes.
     `B1856`: a step switched off keeps `disabled: true`; `false` is dropped
     (it is the default) and anything that is not true or false is refused.
+    `B1855`: a step's `settings` (its retries and time limit) are kept when
+    it has any, as given — `validate_document` reads them; `{}` is dropped.
     Every other key is still dropped.
     """
     if isinstance(raw, (bytes, bytearray)):
@@ -625,6 +644,12 @@ def parse_graph(raw) -> dict:
                   f"true nor false")
         if disabled:
             shaped[DISABLED_KEY] = True                 # `B1856`
+        settings = node.get(SETTINGS_KEY)
+        if settings is not None and not isinstance(settings, dict):
+            _fail(REFUSE_UNREADABLE, (node_id,),
+                  f"{_called(label)} has retries and a time limit that are not an object")
+        if settings:
+            shaped[SETTINGS_KEY] = dict(settings)       # `B1855`
         nodes.append(shaped)
     edges = []
     for index, edge in enumerate(edges_in, start=1):
@@ -1121,11 +1146,77 @@ def _check_args(key, value):
     return None
 
 
+def _settings_problem(settings) -> tuple | None:
+    """`B1855`. `(field, words)` — what is wrong with a step's retries and
+    time limit, said of the step ("tries again 9 times; …"), or `None`."""
+    if settings is None:
+        return None
+    if not isinstance(settings, dict):
+        return SETTINGS_KEY, "has retries and a time limit that are not an object"
+    for key in settings:
+        if key not in STEP_SETTINGS_DEFAULTS:
+            return f"{SETTINGS_KEY}.{key}", (f"has “{key}”, which is not one of its retries "
+                                             f"or its time limit")
+
+    def whole(value):
+        return isinstance(value, int) and not isinstance(value, bool)
+
+    retries = settings.get("retries")
+    lo, hi = STEP_RETRIES_RANGE
+    if retries is not None and not (whole(retries) and lo <= retries <= hi):
+        return f"{SETTINGS_KEY}.retries", (f"tries again {retries!r} times; a step tries again "
+                                           f"from {lo} to {hi} times")
+    wait = settings.get("retry_wait_seconds")
+    lo, hi = STEP_RETRY_WAIT_RANGE
+    if wait is not None and not (whole(wait) and lo <= wait <= hi):
+        return f"{SETTINGS_KEY}.retry_wait_seconds", (
+            f"waits {wait!r} seconds before it tries again; that is from {lo} to {hi} seconds")
+    limit = settings.get("timeout_seconds")
+    lo, hi = STEP_TIMEOUT_RANGE
+    if limit is not None and not (whole(limit) and (limit == 0 or lo <= limit <= hi)):
+        return f"{SETTINGS_KEY}.timeout_seconds", (
+            f"has a time limit of {limit!r} seconds; that is 0 (none) or from {lo} to {hi} "
+            f"seconds")
+    return None
+
+
+def step_settings(node) -> dict | None:
+    """`B1855`. A step's retries and time limit, the defaults filled in —
+    or `None` for a step that has none, which runs as every step always did.
+    Read after `validate_document` has passed the document."""
+    raw = node.get(SETTINGS_KEY) if isinstance(node, dict) else None
+    if not isinstance(raw, dict) or not raw:
+        return None
+    out = dict(STEP_SETTINGS_DEFAULTS)
+    out.update({k: v for k, v in raw.items() if k in STEP_SETTINGS_DEFAULTS})
+    return out
+
+
+def _step_settings_refusal(node: dict) -> DocumentRefusal | None:
+    """`B1855`. Why this step's retries and time limit cannot be used."""
+    settings = node.get(SETTINGS_KEY)
+    if settings is None:
+        return None
+    if node.get("kind") in (NODE_KIND_WAIT, NODE_KIND_MERGE):
+        what = "Wait" if node.get("kind") == NODE_KIND_WAIT else "Merge"
+        return _refusal(REFUSE_BAD_SETTING, (node["id"],),
+                        f"{_called(node)} is a {what}, which is not tried again and has no "
+                        f"time limit of its own", SETTINGS_KEY)
+    found = _settings_problem(settings)
+    if found is None:
+        return None
+    field, words = found
+    return _refusal(REFUSE_BAD_SETTING, (node["id"],), f"{_called(node)} {words}", field)
+
+
 def _check_step(key, value):
     if value is None:
         return None
-    if not isinstance(value, dict) or set(value) - {"kind", "label", "config"}:
+    if not isinstance(value, dict) or set(value) - {"kind", "label", "config", SETTINGS_KEY}:
         return f"“{key}” must be one step: a kind, a name and its settings"
+    found = _settings_problem(value.get(SETTINGS_KEY))
+    if found is not None:
+        return f"the step it repeats {found[1]}"
     if not isinstance(value.get("kind"), str):
         return f"“{key}” needs a kind"
     if value.get("label") is not None and not isinstance(value.get("label"), str):
@@ -1597,6 +1688,9 @@ def validate_document(graph: dict, *, owner: str | None, tasks_by_id: dict,
         problem = _setting_problem(kind, config)
         if problem:
             return _refusal(REFUSE_BAD_SETTING, (node_id,), f"{_called(node)}: {problem}")
+        found = _step_settings_refusal(node)            # `B1855`
+        if found:
+            return found
         if node.get(DISABLED_KEY) is True:
             # `B1856`. A step switched off does not run, so it need not be
             # complete: what it reads, what it needs and what it reaches are
@@ -1759,12 +1853,14 @@ def content_fingerprint(name: str, graph: dict) -> str:
 
     `B1856`: a step switched off is an edit (a run does something else), and
     is in the fingerprint only when it is off, so every fingerprint taken
-    before it existed is unchanged.
+    before it existed is unchanged. `B1855`: a step's retries and time limit
+    likewise, only when it has some.
     """
     nodes = sorted(
         ({"id": n.get("id"), "kind": n.get("kind"), "label": n.get("label"),
           "config": n.get("config") or {},
-          **({DISABLED_KEY: True} if n.get(DISABLED_KEY) is True else {})}
+          **({DISABLED_KEY: True} if n.get(DISABLED_KEY) is True else {}),
+          **({SETTINGS_KEY: n[SETTINGS_KEY]} if n.get(SETTINGS_KEY) else {})}
          for n in graph.get("nodes") or ()),
         key=lambda n: str(n["id"]))
     edges = sorted(

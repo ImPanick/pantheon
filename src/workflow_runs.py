@@ -546,6 +546,43 @@ def record_node_resumed(db, rec) -> dict | None:
     return waiting
 
 
+def record_node_attempt(db, rec) -> int:
+    """`B1855`. A step (or an item) is tried again — its own retries: the
+    record is `running` once more, what its last attempt ended with is
+    cleared, and `attempt` counts one more (`record_node_resumed` counts a
+    resume the same way). Committed. Answers the attempt it is on."""
+    rec.status = "running"
+    rec.attempt = (rec.attempt or 1) + 1
+    rec.finished_at = None
+    rec.port = None
+    rec.error = None
+    rec.output = None
+    rec.waiting = None
+    rec.resume_at = None
+    db.commit()
+    return rec.attempt
+
+
+def end_running_items(db, run_id: str, node_id: str, *, error: str) -> int:
+    """`B1855`. Every For-each item of this step still `running` — the one
+    the step's time limit cut — ended `error`, with why. Committed. Answers
+    how many."""
+    from core.database import TaskRunNode
+
+    rows = (db.query(TaskRunNode)
+            .filter(TaskRunNode.run_id == run_id, TaskRunNode.node_id == node_id,
+                    TaskRunNode.item.isnot(None), TaskRunNode.status == "running")
+            .all())
+    for rec in rows:
+        rec.status = "error"
+        rec.port = "error"
+        rec.error = str(error)[:NODE_ERROR_MAX_CHARS]
+        rec.finished_at = _utcnow()
+    if rows:
+        db.commit()
+    return len(rows)
+
+
 def end_waiting_records(db, run_id: str, *, status: str, error: str) -> int:
     """Every `waiting` record of this run ended `status` with `error` — the run
     was stopped, switched off, or aborted by a restart, so what its steps
