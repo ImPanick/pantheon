@@ -3520,12 +3520,23 @@ function _e(s) { return uiModule.esc ? uiModule.esc(s || '') : (s || '').replace
 // Linkify a location string: URLs become clickable, plain addresses get a Maps link.
 function _locHTML(loc) {
   if (!loc) return '';
-  const urlRe = /(https?:\/\/[^\s]+)/gi;
-  if (urlRe.test(loc)) {
-    return loc.replace(urlRe, (url) => {
-      const safe = _e(url);
-      return `<a href="${safe}" target="_blank" rel="noopener" onclick="event.stopPropagation();">${safe}</a>`;
-    }).replace(/\n/g, '<br>');
+  const text = String(loc);
+  const urlRe = /(https?:\/\/[^\s<>"']+)/gi;
+  if (urlRe.test(text)) {
+    // `B1905`: a location comes from synced calendars, .ics files and mail, so
+    // the text around each link is escaped too, not only the link. `test()`
+    // on a /g regex leaves `lastIndex` past the first match and `matchAll`
+    // copies it, so it is reset or the first link is lost.
+    urlRe.lastIndex = 0;
+    let html = '';
+    let at = 0;
+    for (const m of text.matchAll(urlRe)) {
+      html += _e(text.slice(at, m.index));
+      const safe = _e(m[0]);
+      html += `<a href="${safe}" target="_blank" rel="noopener" onclick="event.stopPropagation();">${safe}</a>`;
+      at = m.index + m[0].length;
+    }
+    return (html + _e(text.slice(at))).replace(/\n/g, '<br>');
   }
   // No URL — link the whole thing to OpenStreetMap.
   const mapUrl = 'https://www.openstreetmap.org/search?query=' + encodeURIComponent(loc);
