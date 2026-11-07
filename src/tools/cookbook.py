@@ -1016,6 +1016,12 @@ async def _cookbook_kill_session(session_id: str, *, remote_host: str = "",
     that's the bug where "stop the download" appeared to work but the
     download kept running on the remote host.
     """
+    # `B1910`: the id lands inside the single-quoted command ssh runs, where
+    # shlex.quote's own quotes end that string, so "x;touch /tmp/pwn" ran on
+    # this host. The rule do_tail_serve_output already holds it to.
+    session_id = session_id.strip() if isinstance(session_id, str) else ""
+    if not re.fullmatch(r"[a-zA-Z0-9_-]+", session_id):
+        return {"error": "Invalid session_id format", "exit_code": 1}
     from src.tool_implementations import _internal_headers, _INTERNAL_BASE  # shared, lives in facade
     import httpx
     import shlex
@@ -1378,6 +1384,9 @@ async def do_adopt_served_model(content: str, owner: Optional[str] = None) -> Di
 
     if not sess or not model:
         return {"error": "tmux_session and model are required", "exit_code": 1}
+    # `B1910`: sess lands inside the command ssh runs, as in _cookbook_kill_session.
+    if not re.fullmatch(r"[a-zA-Z0-9_-]+", sess):
+        return {"error": "Invalid tmux_session format", "exit_code": 1}
 
     # Verify tmux session exists on the target host
     if host:
