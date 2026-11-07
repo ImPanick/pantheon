@@ -256,6 +256,9 @@ def searxng_search_api(query: str, count: Optional[int] = None, categories: str 
         headers["Authorization"] = f"Bearer {api_key}"
     params = _searxng_params(query, time_filter=time_filter, categories=categories)
     is_news = params.get("categories") == "news" and categories == "general"
+    # `B1809`. Bound before the `try`: the parameters of the request that
+    # failed are what the HTML fallback below is sent with.
+    active_params = params
     try:
         def _parse_results(results):
             return [
@@ -279,7 +282,6 @@ def searxng_search_api(query: str, count: Optional[int] = None, categories: str 
             data = response.json()
             return _parse_results(data.get("results", [])), data
 
-        active_params = params
         parsed, data = _run(active_params)
         if not parsed and is_news and categories == "general":
             # Some self-hosted SearXNG configs have no working news engines.
@@ -353,23 +355,36 @@ def searxng_search_api(query: str, count: Optional[int] = None, categories: str 
         return parsed
     except Exception as e:
         logger.warning(f"SearXNG JSON API search failed: {e}")
-        html_results = searxng_search(query, max_results=count)
+        html_results = searxng_search(query, max_results=count, search_params=active_params)
         if html_results:
             logger.info(f"SearXNG HTML fallback returned {len(html_results)} results for: {query}")
         return html_results
 
 
-def searxng_search(query, max_results=10):
-    """Search using SearXNG instance - parsing HTML."""
+def searxng_search(query, max_results=10, *, search_params=None):
+    """Search using SearXNG instance - parsing HTML.
+
+    ``search_params`` are the parameters of the JSON request this one stands
+    in for, when it is `searxng_search_api`'s fallback.
+    """
     instance = _get_search_instance()
     api_key = ""
     req_headers = {"User-Agent": WEB_FETCH_USER_AGENT}
     if api_key:
         req_headers["Authorization"] = f"Bearer {api_key}"
     try:
+        # `B1809`. The fallback changes how the answer comes back, not what is
+        # searched: it keeps the JSON request's category, date range, language
+        # and engines and leaves out `format` alone. It sent the query by
+        # itself, so a news search came back undated from the general index,
+        # in any language, from engines other than the ones pinned because
+        # they answer.
+        params = {key: value for key, value in (search_params or {}).items()
+                  if key in ("categories", "engines", "language", "time_range")}
+        params.update(q=query, safesearch=_safesearch_for("searxng"))
         response = paced_http.get_sync(   # `B1533`
             f"{instance}/search",
-            params={"q": query, "safesearch": _safesearch_for("searxng")},
+            params=params,
             headers=req_headers,
             timeout=10,
         )
