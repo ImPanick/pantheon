@@ -392,4 +392,28 @@ export function snapModalToZone(modal, zone) {
   _applySnap(content, zone.rect, zone.name);
 }
 
+/**
+ * `B1833`. The top strip's maximize, as a button can ask for it: `on` true
+ * fills the safe area exactly as a drag to the top edge does (`_applySnap`,
+ * the same stash, so dragging the header down puts it back too); false puts a
+ * maximized window back where it was. Answers whether it is maximized now.
+ */
+export function setModalMaximized(modal, on) {
+  const content = modal && modal.querySelector ? (modal.querySelector('.modal-content, .research-pane') || null) : null;
+  if (!content) return false;
+  if (on) {
+    const safe = _viewportSafeRect();
+    _applySnap(content, { left: safe.left, top: safe.top, width: safe.right - safe.left, height: safe.bottom - safe.top }, 'maximize');
+    return true;
+  }
+  if (content.dataset._tileZone) _unsnap(content);
+  return false;
+}
+
+/** Whether `modal` is snapped to fill the safe area. */
+export function isModalMaximized(modal) {
+  const content = modal && modal.querySelector ? modal.querySelector('.modal-content, .research-pane') : null;
+  return !!(content && (content.dataset._tileZone === 'maximize' || content.dataset._tileZone === 'fullscreen'));
+}
+
 export {};

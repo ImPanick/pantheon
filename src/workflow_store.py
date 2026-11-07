@@ -1536,3 +1536,38 @@ def find_waiting_step(db, wf, run_id: str, node_id: str, item, approval_id: str)
             or waiting.get("approval_id") != approval_id or asked_item != item):
         raise WorkflowRefused(409, "That step is not waiting on this question any more.")
     return run, rec, waiting
+
+
+def duplicate_workflow(db, wf, trigger):
+    """`B1845`. A copy of `wf` as it is saved now, for its own owner. Returns
+    `(wf, trigger, notes)`. The copy is switched off (design § 8) and named
+    "<name> (copy)" (or the next free name); its start takes the original's
+    settings (`TRIGGER_FIELDS`) and its steps are the stored graph as it is —
+    the same person made them, so nothing is marked to be checked. A
+    webhook start gets an address of its own (`_new_trigger`)."""
+    from src.workflow_document import TRIGGER_FIELDS, VERSION_SOURCE_USER
+    _, _, Workflow, _ = _models()
+    owner = wf.owner
+    base = clean_name(f"{wf.name or NEW_WORKFLOW_NAME} (copy)", required=False) or NEW_WORKFLOW_NAME
+    name = unused_name(db, owner, base)
+    fields = {}
+    if trigger is not None:
+        for key in TRIGGER_FIELDS:
+            value = getattr(trigger, key, None)
+            if value is not None:
+                fields[key] = value
+    made_trigger = _new_trigger(owner=owner, name=name, fields=fields)
+    db.add(made_trigger)
+    db.flush()
+    graph = stored_graph(wf)
+    made = Workflow(id=str(uuid.uuid4()), owner=owner, name=name, task_id=made_trigger.id,
+                    graph=json.dumps(graph), version=1)
+    db.add(made)
+    db.flush()
+    _write_version(db, made, graph, source=VERSION_SOURCE_USER)
+    db.commit()
+    notes = [f"Made {quoted(name)}, a copy of {quoted(wf.name)}. "
+             "It is switched off: it will not run until you switch it on."]
+    if fields.get("trigger_type") == "webhook":
+        notes.append("Its webhook has an address of its own.")
+    return made, made_trigger, notes

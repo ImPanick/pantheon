@@ -8144,6 +8144,27 @@ class TaskScheduler:
         stopped = self._mark_run_aborted(task_id, message=STOPPED_BY_USER) or stopped
         return stopped
 
+    async def stop_workflow_run(self, task_id: str, run_id: str) -> str | None:
+        """`B1869`. Stop one workflow run, as a person asked: a queued or
+        running run is cancelled, and one parked at a Wait, a yes or an
+        answer is ended where it waits with its cards retired — both are
+        `stop_task`'s (one run at a time holds a workflow, `B674`). Returns
+        the sentence said, or None when this run has already ended."""
+        from core.database import SessionLocal, TaskRun
+
+        db = SessionLocal()
+        try:
+            run = db.query(TaskRun).filter(TaskRun.id == run_id, TaskRun.task_id == task_id).first()
+            status = run.status if run is not None else None
+        finally:
+            db.close()
+        if status not in ("queued", "running", "waiting"):
+            return None
+        if not await self.stop_task(task_id):
+            return None
+        return ("Stopped where it waited. The steps that had finished keep what they made."
+                if status == "waiting" else "Stopped. The steps that had finished keep what they made.")
+
     async def stop_background_tasks_for_foreground(self, *, reason: str = "Pantheon became active") -> int:
         """Cancel all in-process scheduler tasks because the user is active.
 

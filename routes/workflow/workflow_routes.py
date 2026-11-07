@@ -479,6 +479,21 @@ def setup_workflow_routes(task_scheduler) -> APIRouter:
         finally:
             db.close()
 
+    @router.post("/{workflow_id}/duplicate")
+    @_answers
+    def duplicate_workflow(request: Request, workflow_id: str):
+        """`B1845`. A copy of the workflow as it is saved now, for the same
+        person: "<name> (copy)", switched off, its start's settings and its
+        steps as they are (a webhook start gets a new address)."""
+        db = SessionLocal()
+        try:
+            wf = store.owned_workflow(db, workflow_id, _owner(request))
+            trigger = store.trigger_of(db, wf)
+            made, made_trigger, notes = store.duplicate_workflow(db, wf, trigger)
+            return {"workflow": doc(db, made, made_trigger), "notes": notes}
+        finally:
+            db.close()
+
     # ── 4, 5, 6: versions ────────────────────────────────────────────────────
 
     @router.get("/{workflow_id}/versions")
@@ -602,6 +617,34 @@ def setup_workflow_routes(task_scheduler) -> APIRouter:
             }
         finally:
             db.close()
+
+    @router.post("/{workflow_id}/runs/{run_id}/stop")
+    @_answers
+    async def stop_run(request: Request, workflow_id: str, run_id: str):
+        """`B1869`. Stop one run of this workflow: one that is queued or
+        running is cancelled (`stop_task`), one that waits — a Wait, a yes,
+        an answer — is ended where it waits, its cards retired. The steps it
+        finished keep their records. 409 once the run has ended."""
+        from core.database import TaskRun
+        user = _owner(request)
+
+        def _read():
+            db = SessionLocal()
+            try:
+                wf = store.owned_workflow(db, workflow_id, user)
+                run = (db.query(TaskRun)
+                       .filter(TaskRun.id == run_id, TaskRun.task_id == wf.task_id).first()
+                       if wf.task_id else None)
+                if run is None:
+                    raise WorkflowRefused(404, "No such run of this workflow.")
+                return wf.task_id
+            finally:
+                db.close()
+        task_id = await asyncio.to_thread(_read)
+        sentence = await task_scheduler.stop_workflow_run(task_id, run_id)
+        if sentence is None:
+            raise WorkflowRefused(409, "This run has already ended.")
+        return {"ok": True, "sentence": sentence}
 
     # ── 10: test one step (`P22-08`) ─────────────────────────────────────────
 
