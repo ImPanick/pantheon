@@ -581,7 +581,8 @@ def _query_context_length(endpoint_url: str, model: str) -> Tuple[int, bool, str
     if is_local_endpoint(endpoint_url):
         try:
             base = endpoint_url.split("/v1")[0] if "/v1" in endpoint_url else endpoint_url.rsplit("/", 1)[0]
-            r = paced_http.get_sync(f"{base}/slots", timeout=REQUEST_TIMEOUT, headers=_endpoint_auth_headers(endpoint_url) or None, follow_redirects=False, reuse=True)
+            hdrs = _endpoint_auth_headers(endpoint_url) or None
+            r = paced_http.get_sync(f"{base}/slots", timeout=REQUEST_TIMEOUT, headers=hdrs, follow_redirects=False, reuse=True)
             if r.is_success:
                 slots = r.json()
                 if isinstance(slots, list) and slots:
@@ -589,6 +590,19 @@ def _query_context_length(endpoint_url: str, model: str) -> Tuple[int, bool, str
                     if n_ctx and isinstance(n_ctx, int) and n_ctx > 0:
                         logger.info(f"llama.cpp /slots reports n_ctx={n_ctx} for {model}")
                         return n_ctx, True, BASIS_REPORTED
+            elif r.status_code == 501:
+                # `B1985`: llama-server's answer when it runs without slots
+                # (its default from about b4000 to b6300, or `--no-slots`); its
+                # `/props` still says the window it serves. Asked only on that
+                # answer, so LM Studio's, Ollama's or vLLM's 404 asks nothing
+                # new, and read by the llama.cpp reader's own `/props` parser.
+                from src.model_capability_readers.llamacpp import _limits_from_props
+                p = paced_http.get_sync(f"{base}/props", timeout=REQUEST_TIMEOUT, headers=hdrs, follow_redirects=False, reuse=True)
+                props = p.json() if p.is_success else None
+                n_ctx = _limits_from_props(props).get("context_tokens") if isinstance(props, dict) else None
+                if n_ctx:
+                    logger.info(f"llama.cpp /props reports n_ctx={n_ctx} for {model}")
+                    return n_ctx, True, BASIS_REPORTED
         except Exception:
             pass
 
