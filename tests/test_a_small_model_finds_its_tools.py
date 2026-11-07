@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""`B1757` · a small local model finds its tools, and a desktop run stays light.
+"""`B1758` · a small local model finds its tools, and a desktop run stays light.
 
 The owner, 2026-11-07, with a Gemma 4 12B (LM Studio) chat and its server log:
 three `find_tools` calls guessed at words ("Virtual Machine", "remote
