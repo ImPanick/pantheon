@@ -1262,13 +1262,12 @@ async def do_manage_tasks(content: str, owner: Optional[str] = None) -> Dict:
                 drafted = await workflow_assist.draft_workflow(db, owner, described, tz=zone)
             except workflow_store.WorkflowRefused as refused:
                 return {"error": refused.sentence, "exit_code": 1}
-            count = len(workflow_store.nodes_of(workflow_store.stored_graph(drafted.wf)))
-            said = (f"Drafted “{drafted.wf.name}” as a workflow of {count} "
-                    f"step{'s' if count != 1 else ''}, switched off. A person checks each "
-                    f"step in the Workbench before it can run (Automations → "
-                    f"“{drafted.wf.name}”), and switches it on there.")
-            if drafted.missing:
-                said += " Not drafted: " + " ".join(drafted.missing)
+            # `B1875`. What the Workbench shows beside a draft — when it
+            # starts, the drafter's notes, where it sends things — said to the
+            # model too, so it does not tell the person "when mail arrives"
+            # about a start that fell back to daily 09:00.
+            from src.tools.workflows import drafted_reply
+            said = drafted_reply(drafted)
             return {"response": said, "workflow_id": drafted.wf.id,
                     "task_id": drafted.trigger.id, "exit_code": 0}
 
