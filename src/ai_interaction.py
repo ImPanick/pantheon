@@ -572,10 +572,16 @@ async def do_ui_control(content: str, session_id: Optional[str] = None, owner: O
         ]
         custom_themes = {}
         try:
-            from routes.prefs_routes import _load as _load_prefs
-            custom_themes = _load_prefs().get("custom-themes", {}) or {}
+            # `B2028`: the asker's own record, where the theme editor syncs
+            # their custom themes. This read the file's root, which holds
+            # none for a signed-in person, so their theme was "Unknown".
+            # No owner reads none, not the first person's record.
+            from routes.prefs_routes import _load_for_user
+            custom_themes = (_load_for_user(owner).get("custom-themes") or {}) if owner else {}
         except Exception:
             pass
+        if not isinstance(custom_themes, dict):
+            custom_themes = {}
         all_known = set(known_presets) | set(custom_themes.keys())
         if theme_name not in all_known:
             custom_label = f" | Custom: {', '.join(sorted(custom_themes.keys()))}" if custom_themes else ""
