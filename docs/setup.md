@@ -972,7 +972,7 @@ Common internal-only ports from the default docs/compose setup:
 | Port | Service |
 |---|---|
 | `7000` | Pantheon raw app port |
-| `8080` | SearXNG |
+| `8080` | SearXNG (moved with `SEARXNG_HOST_PORT`) |
 | `8091` | ntfy |
 | `8100` | ChromaDB host port for manual/compose access |
 | `11434` | Ollama |
@@ -1006,6 +1006,7 @@ Key settings:
 | `LLM_HOSTS` | -- | Comma-separated list for model discovery |
 | `OPENAI_API_KEY` | -- | Optional OpenAI key. Prefer adding providers in the app unless pre-seeding. |
 | `SEARXNG_INSTANCE` | `http://localhost:8080` | SearXNG URL. Docker overrides this to `http://searxng:8080`. |
+| `SEARXNG_HOST_PORT` | `8080` | Docker Compose host port for the bundled SearXNG, on loopback. Change it when 8080 is taken, for example by llama-server's default, and recreate the stack. The app keeps reaching SearXNG at `http://searxng:8080` inside the compose network; a native install using this SearXNG sets `SEARXNG_INSTANCE` to the new port. |
 | `SEARXNG_SECRET` | generated on first Docker boot | Optional SearXNG cookie/CSRF secret. Leave blank unless you need to pin it. |
 | `SEARXNG_GENERAL_ENGINES` | `bing,mojeek,presearch` | Which engines general queries are sent to. See **What self-hosted search does and does not mean** below. |
 | `SEARXNG_WIDEN_ENGINES` | `0` | Allow a failed search to retry with the instance's *default* engines. Off — see below. |
