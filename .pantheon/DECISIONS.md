@@ -3891,3 +3891,9 @@ hardware rather than reproduce OEM mechanics, firmware, cameras or certification
 Actual Android/KVM acceptance remains necessary before calling runtime fidelity
 verified. Future OEM work requires both a compatible executable image and a
 review of the actual acquisition, use and redistribution rights.
+
+**Delivery clarification, 2026-11-08.** The owner explicitly instructed this
+uplift to be pushed to `dev`, confirming that `dev` is the dedicated test-only
+branch and is not intended for production. Direct delivery to `dev` is authorized
+so the owner can pull it and create a local Docker instance for acceptance testing.
+This authorizes no update to `main` or deployment to the live Arcane instance.
