@@ -51015,7 +51015,7 @@ body.plan-mode-active .chat-input-top > .model-picker-wrap:has(> .model-picker-m
   width: min(560px, 95vw);
   height: min(900px, 92vh);
   max-height: 92vh;
-  overflow: hidden;
+  overflow-y: auto;
 }
 .phw-content { display: flex; flex-direction: column; gap: 8px; min-width: 320px; }
 .phw-heading { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
@@ -51086,7 +51086,7 @@ body.plan-mode-active .chat-input-top > .model-picker-wrap:has(> .model-picker-m
   text-align: center;
   font-size: 13px;
   line-height: 1.45;
-  color: color-mix(in srgb, var(--bg) 82%, var(--fg));
+  color: #fff; /* The device's unlit screen is always black, in every theme. */
 }
 .phw-empty[hidden] { display: none; }
 .phw-glass { position: absolute; inset: 0; cursor: pointer; }
@@ -51141,6 +51141,19 @@ body.plan-mode-active .chat-input-top > .model-picker-wrap:has(> .model-picker-m
 .phw-bezel[data-maker="samsung"] .phw-side-volume_down { margin-bottom: 10px; }
 .phw-nav { display: flex; justify-content: center; gap: 18px; }
 .phw-nav-btn { min-width: 44px; font-size: 15px; }
+.phw-runtime { display: flex; flex-direction: column; gap: 4px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 12px; }
+.phw-runtime-label { color: var(--fg); }
+.phw-runtime-text, .phw-profile { color: var(--fg-muted); font-size: 12px; line-height: 1.45; }
+.phw-runtime[data-mode="mobile_view"] { border-color: var(--border-control, var(--border)); background: color-mix(in srgb, var(--fg) 6%, var(--bg)); }
+.phw-profile { text-align: center; }
+.phw-tools { font-size: 12px; }
+.phw-tools[hidden] { display: none; }
+.phw-tools summary { cursor: pointer; padding: 4px 0; }
+.phw-tools .phw-open { margin-top: 6px; }
+.phw-stage { perspective: 1100px; }
+.phw-screen { perspective: 1100px; }
+.phw-fold-leaf { position: absolute; inset: 0 0 0 50%; background: var(--phw-finish, var(--border)); border-radius: 0 var(--phw-inner) var(--phw-inner) 0; transform-origin: left center; opacity: 0; pointer-events: none; box-shadow: inset 1px 0 10px var(--shadow-ink-4); }
+.phw-moving .phw-screen { pointer-events: none; }
 @media (prefers-reduced-motion: reduce) {
   .phw-bezel { transition-duration: 0.01ms; }
 }

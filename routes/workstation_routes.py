@@ -1068,6 +1068,10 @@ def _phone_state(answer: Dict[str, Any]) -> Dict[str, Any]:
                             # `B1756`: whether picking it boots it now or installs it first.
                             "installed": d.get("installed") is not False,
                             "android": str(d.get("android") or "")[:40],
+                            "width": P.PHONE_DEVICES[d["id"]]["width"],
+                            "height": P.PHONE_DEVICES[d["id"]]["height"],
+                            "density": P.PHONE_DEVICES[d["id"]]["density"],
+                            "cover_width": P.PHONE_DEVICES[d["id"]].get("cover_width"),
                             "look": _phone_look(d.get("look"))})
     if not devices:
         devices = [{"id": k, "name": v["name"], "maker": v["maker"], "kind": v["kind"],
@@ -1086,6 +1090,10 @@ def _phone_state(answer: Dict[str, Any]) -> Dict[str, Any]:
         "rotation": answer.get("rotation") if answer.get("rotation") in (0, 1, 2, 3) else 0,
         "android": str(answer.get("android") or "")[:120],
         "buttons": list(P.PHONE_BUTTONS),
+        "stream_ready": answer.get("stream_ready") is True,
+        "screen_is_active": answer.get("screen_is_active") is True,
+        "boot_phase": answer.get("boot_phase") if answer.get("boot_phase") in
+                      ("off", "emulator", "android", "browser", "ready") else "off",
     }
     # `B1753`: Android, or the mobile view where there is no KVM, and why.
     out["mode"] = answer.get("mode") if answer.get("mode") in P.PHONE_MODES else None

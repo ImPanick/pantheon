@@ -427,9 +427,10 @@ PHONE_POSTURES = ("open", "closed")
 #: (pixels and the density Android draws at), and for a foldable the cover
 #: screen it shows when closed — emulated as a region of the inner screen, the
 #: way the SDK's own foldable devices are, so its width is the cover's and its
-#: height the inner's. Samsung's devices run stock Android: One UI is
-#: Samsung's and is not redistributable, so their size, density and fold are
-#: real and their skin is not.
+#: height the inner's. Every profile runs generic Android. These profiles
+#: approximate hardware dimensions and appearance, not retail device identity
+#: or OEM firmware. OEM images are a future option only after technical
+#: validation and an explicit review of acquisition and redistribution rights.
 PHONE_DEVICES: Dict[str, Dict] = {
     # ── Google ──
     "pixel_9": {"name": "Google Pixel 9", "maker": "Google", "kind": "phone",

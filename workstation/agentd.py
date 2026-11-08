@@ -1006,7 +1006,7 @@ class Workstation:
                 return phone.open_url(body.get("url"))
             if action == "marks":
                 got = phone.marks()
-                w, h = P.phone_screen_size(phone.device)
+                w, h = phone.screen_size()
                 marks = [m for m in (_clean_mark(raw, (w, h))
                                      for raw in (got.get("marks") or [])[:P.MAX_MARKS])
                          if m is not None]
@@ -1015,11 +1015,15 @@ class Workstation:
                 if got.get("why"):
                     out["why"] = str(got["why"])[:300]
                 return out
+            if action == "screenshot":
+                phone.ensure_shown()
+                if not phone.stream_ready():
+                    phone._on()  # says why there is no capture, including early boot
+                    raise WorkstationError("unavailable", "The phone's display is not ready yet. Try again shortly.")
+                return dict(self._phone_shot(phone.screen, str(body.get("format") or "png")),
+                            mode=phone.mode(), state=phone.state)
             phone._on()
             screen = phone.screen
-            if action == "screenshot":
-                return dict(self._phone_shot(screen, str(body.get("format") or "png")),
-                            mode=phone.mode())  # `B1753`: Android, or the mobile view
             # input: the input action is "input" here, "action" being the phone's
             act = _validated_action({**body, "action": body.get("input")},
                                     size=(screen.width, screen.height))
@@ -1051,7 +1055,7 @@ class Workstation:
         phone = self.phones.get(account)
         phone.ensure_shown()
         screen = phone.screen
-        kind = screen.desktop_kind if screen is not None and phone.state == "on" else None
+        kind = screen.desktop_kind if screen is not None and phone.stream_ready() else None
         out: Dict = {"kind": kind if kind in P.DESKTOP_KINDS else None,
                      "holder": self.holder(account)["holder"]}
         if out["kind"] is None:
@@ -1070,10 +1074,10 @@ class Workstation:
                                    f"“viewer” is one of {', '.join(P.DESKTOP_VIEWERS)}.")
         self.system.ensure(account)
         phone = self.phones.get(account)
-        if phone.screen is None or phone.state != "on":
+        phone.ensure_shown()
+        if phone.screen is None or not phone.stream_ready():
             raise WorkstationError("unavailable", "The phone is not on, so its screen has "
                                                   "nothing to show.")
-        phone.ensure_shown()
         port, authorization = phone.screen.desktop(viewer)
         try:
             sock = socket.create_connection(("127.0.0.1", port), timeout=10.0)

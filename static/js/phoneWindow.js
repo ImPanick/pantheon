@@ -31,10 +31,11 @@
 
 import * as Modals from './modalManager.js?v=20261009census';
 import { makeWindowDraggable } from './windowDrag.js';
+import { prefersReducedMotion } from './motion.js';
 
 export const MODAL_ID = 'phone-modal';
 
-const TIMING = { STATE_MS: 2500, BOOTING_MS: 1500, HOLDER_MS: 4000 };
+const TIMING = { STATE_MS: 2500, BOOTING_MS: 1500, HOLDER_MS: 4000, MOTION_MS: 650 };
 const LIVE_CLIENT = '/api/workstation/desktop/client/';
 
 const PHONE_ICON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" '
@@ -44,13 +45,13 @@ const PHONE_ICON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" 
 const SAY = {
   checking: 'Looking for your phone…',
   off: 'Your phone is off. Press Power to turn it on.',
-  starting: 'Your phone is booting. The first boot of a device takes a minute or two.',
+  starting: 'Android is booting. Its live display appears as soon as it is available.',
   on: 'Ready.',
   holding: 'You have the phone: click to tap, drag to swipe, scroll to fling, right click for Back.',
   agent: 'The agent has the screens. Click the phone or Take over to use it yourself.',
   // `B1753`: where there is no KVM, the phone is a phone-shaped browser.
   mobileStarting: 'Opening the mobile view…',
-  mobile: 'Mobile view: web pages only, laid out as this device shows them. The real Android needs KVM.',
+  mobile: 'Browser preview: web pages only. Android apps are unavailable in this mode.',
   // `B1756`: a device picked that the workstation does not have yet.
   installing: 'Installing the device. Pantheon downloads its Android image, then turns it on.',
   moved: 'Your phone is open in its own window. Close it there to use it here.',
@@ -126,6 +127,36 @@ let _timer = null;
 let _busy = false;       // a press on its way
 let _room = null;        // `B1756`: the Phone room's host, while it is mounted
 let _pending = '';       // `B1756`: a device waiting on the license's Accept
+let _pose = null;
+let _animations = [];
+let _screenKey = '';
+let _error = '';
+let _revision = 0;
+let _pollSequence = 0;
+let _actionSequence = 0;
+let _controlSequence = 0;
+let _controlTail = Promise.resolve();
+const _pendingTakeovers = new Map();
+
+/** Keep runtime identity in view even while a person holds the screen. */
+export function runtimeOf(state) {
+  const s = state || {};
+  if (isMobileView(s)) return {
+    label: 'Browser preview · Web only',
+    detail: `Android is unavailable. ${s.why_not_android || 'This is Firefox; Android apps and the Android home screen are unavailable.'}`,
+  };
+  if (s.mode === 'android') return {
+    label: 'Generic Android',
+    detail: 'A real Android OS with home screen and apps. Device profiles model size and appearance; OEM software is not included.',
+  };
+  return { label: 'Android unavailable', detail: s.why || 'Checking the workstation’s Android runtime.' };
+}
+
+/** A physical quarter-turn can wrap 270 -> 0 without spinning backwards. */
+export function rotationStep(from, to) {
+  const delta = ((to - from) % 4 + 4) % 4;
+  return delta === 3 ? -90 : delta * 90;
+}
 
 function _el(tag, cls, text) {
   const n = document.createElement(tag);
@@ -168,7 +199,7 @@ export function bezelShape(state) {
   const [w, h] = screen;
   const d = deviceOf(state);
   // The mobile view's screen is already the cover's shape (`B1753`).
-  if (d.foldable && state.posture === 'closed' && !isMobileView(state)) return { w: Math.round(w / 2), h };
+  if (d.foldable && state.posture === 'closed' && !isMobileView(state) && !state.screen_is_active) return { w: Math.round(w / 2), h };
   return { w, h };
 }
 
@@ -240,9 +271,10 @@ async function _get(url) {
   return body;
 }
 
-async function _post(url, payload) {
+async function _post(url, payload, { keepalive = false } = {}) {
   const res = await fetch(url, {
     method: 'POST', credentials: 'same-origin', cache: 'no-store',
+    keepalive,
     headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
   });
   let body = null;
@@ -254,72 +286,126 @@ async function _post(url, payload) {
 /** One of the person's own presses on the phone. */
 export async function act(payload) {
   if (_busy) return null;
+  const win = _win, action = ++_actionSequence;
+  ++_revision;  // a pending status read predates this explicit act
   _busy = true;
+  _error = '';
   try {
     const answer = await _post('/api/workstation/phone', payload);
+    if (_win !== win || action !== _actionSequence) return null;
+    ++_revision;
     _state = answer;
+    if (['rotate', 'posture', 'device', 'install', 'stop'].includes(payload.action)) {
+      _dropFrame();
+      _client = '';
+    }
     _render();
     return answer;
   } catch (e) {
+    if (_win !== win || action !== _actionSequence) return null;
+    _error = e.message;
     _say(e.message, { error: true });
     return null;
   } finally {
-    _busy = false;
-    _kick(TIMING.BOOTING_MS);
+    if (_win === win && action === _actionSequence) {
+      _busy = false;
+      _kick(0);
+    }
   }
 }
 
-export function press(button) { return act({ action: 'button', button }); }
-
-export async function takeOver() {
-  try {
-    const a = await _post('/api/workstation/control', { holder: 'person' });
-    _holder = a && a.holder;
-  } catch (e) { _say(e.message, { error: true }); }
-  _render();
+function _turnOn() {
+  const s = _state || {};
+  if (needsLicense(s, s.device)) return useDevice(s.device);
+  return act({ action: 'start' });
 }
 
-export async function handBack() {
-  try {
-    const a = await _post('/api/workstation/control', { holder: 'agent' });
-    _holder = a && a.holder;
-  } catch (e) { _say(e.message, { error: true }); }
-  _render();
+export function press(button) {
+  if (button === 'power' && _state && !['on', 'starting'].includes(_state.state)) return _turnOn();
+  return act({ action: 'button', button });
 }
+
+function _queueControl(holder, keepalive = false) {
+  // Server mutations must keep their order too: ignoring a stale response
+  // cannot undo a takeover that already happened. Cleanup precedes any newer
+  // window's takeover, including when the earlier response is still pending.
+  const request = _controlTail.then(() => _post('/api/workstation/control', { holder }, { keepalive }));
+  _controlTail = request.catch(() => null);
+  return request;
+}
+
+async function _changeControl(holder) {
+  const win = _win, request = ++_controlSequence;
+  if (holder === 'person') _pendingTakeovers.set(win, (_pendingTakeovers.get(win) || 0) + 1);
+  ++_revision;
+  let changed = false;
+  try {
+    const a = await _queueControl(holder);
+    if (_win !== win || request !== _controlSequence) return;
+    _holder = a && a.holder;
+    _error = '';
+    changed = true;
+  } catch (e) { if (_win !== win || request !== _controlSequence) return; _error = e.message; }
+  finally {
+    if (holder === 'person') {
+      const left = (_pendingTakeovers.get(win) || 1) - 1;
+      if (left) _pendingTakeovers.set(win, left);
+      else _pendingTakeovers.delete(win);
+    }
+  }
+  ++_revision;
+  _render();
+  _kick(changed ? 0 : TIMING.HOLDER_MS);
+}
+
+export function takeOver() { return _changeControl('person'); }
+export function handBack() { return _changeControl('agent'); }
 
 /** `B1756`. Whether the room's copy is out of sight — its room switched away
  *  from or the Workbench closed. It stops asking then, and gives the screens
  *  back; showing the room again resumes. */
 function _roomHidden() {
-  if (!_win || !_win.embedded) return false;
+  if (!_win) return false;
   const el = _win.modal;
   return !el.isConnected || (typeof el.getClientRects === 'function' && el.getClientRects().length === 0);
 }
 
 async function _tick() {
+  if (_timer) clearTimeout(_timer);
   _timer = null;
   if (!_win) return;
+  if (_busy) { _kick(TIMING.BOOTING_MS); return; }
   if (_roomHidden()) {
-    if (_holder === 'person') handBack();
+    if (_holder === 'person' || _pendingTakeovers.has(_win)) handBack();
+    _dropFrame();
+    _client = '';
     return;
   }
+  const win = _win, revision = _revision, sequence = ++_pollSequence;
+  const current = () => _win === win && revision === _revision && sequence === _pollSequence;
+  let state;
   try {
-    _state = await _get('/api/workstation/phone');
+    state = await _get('/api/workstation/phone');
   } catch (e) {
-    _state = { available: false, state: 'unavailable', why: e.message, devices: [] };
+    state = { available: false, state: 'unavailable', why: e.message, devices: [] };
   }
-  if (_state.state === 'on') {
+  if (!current()) return;
+  if (state.state === 'on' || state.state === 'starting') {
     try {
       const s = await _get('/api/workstation/phone/screen');
+      if (!current()) return;
       if (s && (s.holder === 'agent' || s.holder === 'person')) _holder = s.holder;
       const client = s && s.kind === 'kasmvnc' && typeof s.client === 'string'
         && s.client.startsWith(LIVE_CLIENT) ? s.client : '';
-      if (client !== _client) { _dropFrame(); _client = client; }
+      const key = JSON.stringify([state.device, state.screen, state.rotation, state.posture]);
+      if (client !== _client || key !== _screenKey) { _dropFrame(); _client = client; _screenKey = key; }
     } catch (_) { /* the state says enough; the screen is asked again */ }
   } else if (_client) {
     _dropFrame();
     _client = '';
   }
+  if (!current()) return;
+  _state = state;
   _render();
   _kick(_state.state === 'starting' ? TIMING.BOOTING_MS : TIMING.STATE_MS);
 }
@@ -348,7 +434,7 @@ function _dropFrame() {
 }
 
 /** `B1757`. Size the body to the stage at the device's own proportions. */
-function _shapeBody(shape, look) {
+function _shapeBody(shape, look, rotation = 0) {
   if (!_win) return;
   const box = _win.stage.getBoundingClientRect();
   if (!box.width || !box.height) return;   // not laid out yet: CSS's fallback holds
@@ -356,7 +442,9 @@ function _shapeBody(shape, look) {
   const pad = (k) => (cs ? parseFloat(cs[k]) || 0 : 0);
   const W = box.width - pad('paddingLeft') - pad('paddingRight') - 12;   // room for the keys
   const H = box.height - pad('paddingTop') - pad('paddingBottom') - 12;
-  const g = bodyGeometry(look, shape, W, H);
+  const sideways = rotation % 2 === 1;
+  const natural = sideways ? { w: shape.h, h: shape.w } : shape;
+  const g = bodyGeometry(look, natural, sideways ? H : W, sideways ? W : H);
   const st = _win.bezel.style;
   st.setProperty('--phw-rim', `${g.rim}px`);
   st.setProperty('--phw-radius', `${g.radius}px`);
@@ -364,6 +452,7 @@ function _shapeBody(shape, look) {
   st.width = `${g.screenW}px`;
   st.height = `${g.screenH}px`;
   st.maxWidth = 'none';
+  st.transform = `rotate(${rotation * 90}deg)`;
 }
 
 /** The stream laid in the bezel's screen at the phone screen's own shape,
@@ -371,13 +460,61 @@ function _shapeBody(shape, look) {
  *  bezel's narrower screen shows just it. */
 function _placeFrame() {
   if (!_win || !_frame || !_state) return;
-  const box = _win.screen.getBoundingClientRect();
-  const [w, h] = _state.screen || [492, 1100];
-  if (!box.height || !h) return;
-  const width = box.height * (w / h);
+  if (!_state.screen_is_active && !isMobileView(_state)) {
+    // Existing workstation images stream the whole inner screen. Keep their
+    // original centred crop until the daemon is upgraded with active geometry.
+    const [sw, sh] = _state.screen || [492, 1100];
+    const h = _win.screen.clientHeight, w = h * sw / sh;
+    Object.assign(_frame.style, { width: `${w}px`, height: `${h}px`,
+      left: `${(_win.screen.clientWidth - w) / 2}px`, top: '0px', transform: 'none' });
+    return;
+  }
+  const rotation = _state.rotation || 0;
+  const w = _win.screen.clientWidth, h = _win.screen.clientHeight;
+  const turned = rotation % 2 === 1;
+  const width = turned ? h : w, height = turned ? w : h;
   _frame.style.width = `${width}px`;
-  _frame.style.height = `${box.height}px`;
-  _frame.style.left = `${(box.width - width) / 2}px`;
+  _frame.style.height = `${height}px`;
+  _frame.style.left = `${(w - width) / 2}px`;
+  _frame.style.top = `${(h - height) / 2}px`;
+  _frame.style.transform = `rotate(${-rotation * 90}deg)`;
+}
+
+function _cancelMotion() {
+  for (const a of _animations) a.cancel();
+  _animations = [];
+  if (_win) _win.bezel.classList.remove('phw-moving');
+}
+
+/** Animate acknowledged state, including movement performed by an agent.
+ * The stream is the real device; no simulated OS is painted here. */
+function _moveBody(s, previous) {
+  const next = { device: s.device, rotation: s.rotation || 0, posture: s.posture,
+    width: _win.bezel.style.width, height: _win.bezel.style.height };
+  const old = _pose;
+  _pose = next;
+  if (!old || old.device !== next.device || prefersReducedMotion() || !_win.bezel.animate) return;
+  const turn = rotationStep(old.rotation, next.rotation);
+  const fold = old.posture && next.posture && old.posture !== next.posture;
+  if (!turn && !fold) return;
+  _cancelMotion();
+  _win.bezel.classList.add('phw-moving');
+  const opts = { duration: TIMING.MOTION_MS, easing: 'cubic-bezier(.22,.9,.24,1)' };
+  const end = next.rotation * 90;
+  const body = _win.bezel.animate([
+    { width: previous.width, height: previous.height, transform: `rotate(${end - turn}deg)` },
+    { width: next.width, height: next.height, transform: `rotate(${end}deg)` },
+  ], opts);
+  _animations.push(body);
+  if (fold) {
+    const closing = next.posture === 'closed';
+    _animations.push(_win.leaf.animate([
+      { opacity: 0, transform: `rotateY(${closing ? 0 : -150}deg)` },
+      { opacity: .9, transform: 'rotateY(-80deg)', offset: .5 },
+      { opacity: 0, transform: `rotateY(${closing ? -150 : 0}deg)` },
+    ], opts));
+  }
+  body.onfinish = () => { if (_animations.includes(body)) _cancelMotion(); };
 }
 
 function _render() {
@@ -387,9 +524,10 @@ function _render() {
   const on = s.state === 'on';
   const holding = _holder === 'person';
   const mobile = isMobileView(s);
+  const stream = (on || s.state === 'starting') && !!_client;
   // `B1757`: a tablet is called one.
   const noun = d.kind === 'tablet' ? 'Tablet' : 'Phone';
-  _win.title.textContent = d.name ? `${noun} · ${d.name}${mobile ? ' · mobile view' : ''}` : 'Phone';
+  _win.title.textContent = d.name ? `${noun} · ${d.name}${mobile ? ' · mobile view' : ''}` : 'Mobile Emulator';
   _noun = noun.toLowerCase();
   _win.title.title = mobile ? (s.why_not_android || '') : '';
 
@@ -410,16 +548,24 @@ function _render() {
     }
   }
   if (d.id) _win.device.value = d.id;
-  _win.device.disabled = s.state === 'unavailable' || s.state === 'starting' || s.state === 'installing';
+  _win.device.disabled = !s.mode || s.state === 'starting' || s.state === 'installing';
 
-  _win.power.textContent = on || s.state === 'starting' ? 'Turn off' : 'Turn on';
-  _win.power.disabled = s.state === 'unavailable' || s.state === 'installing';
+  _win.power.textContent = mobile ? (on || s.state === 'starting' ? 'Close preview' : 'Open browser preview')
+    : (on || s.state === 'starting' ? 'Turn off' : 'Turn on');
+  _win.power.disabled = !s.mode || s.state === 'installing';
   _win.rotate.hidden = !on;
   _win.fold.hidden = !(on && d.foldable);
   _win.fold.textContent = s.posture === 'closed' ? 'Unfold' : 'Fold';
   _win.take.hidden = !on || holding;
   _win.give.hidden = !on || !holding;
-  _win.openForm.hidden = !on;
+  _win.tools.hidden = !on;
+  const runtime = runtimeOf(s);
+  _win.runtimeLabel.textContent = runtime.label;
+  _win.runtimeText.textContent = runtime.detail;
+  _win.runtime.dataset.mode = s.mode || 'unavailable';
+  _win.profile.textContent = [d.name, d.width && d.height ? `${d.width} × ${d.height}` : '',
+    s.mode === 'android' ? d.android : '', s.posture ? `${s.posture === 'closed' ? 'Folded' : 'Unfolded'}` : '',
+    `Rotation ${(s.rotation || 0) * 90}°`].filter(Boolean).join(' · ');
 
   // `B1752`. The bezel: the device's shape, its keys on its maker's side.
   // `B1757`: and the device as it looks — its finish, its corners, its bezel,
@@ -435,7 +581,10 @@ function _render() {
   _win.bezel.dataset.cutout = d.foldable && s.posture === 'closed' && !mobile ? 'punch-center' : look.cutout;
   _win.bezel.dataset.posture = d.foldable ? (s.posture || 'open') : '';
   _win.bezel.title = look.finishName ? `${d.name} · ${look.finishName}` : (d.name || '');
-  _shapeBody(shape, look);
+  const previous = { width: _win.bezel.style.width, height: _win.bezel.style.height };
+  const rotation = s.screen_is_active || mobile ? (s.rotation || 0) : 0;
+  _shapeBody(shape, look, rotation);
+  _moveBody({ ...s, rotation }, previous);
   if (_win.sideKeys.dataset.device !== d.id) {
     const sides = keysOf(d);
     for (const side of KEY_SIDES) {
@@ -455,7 +604,8 @@ function _render() {
     _win.sideKeys.dataset.device = d.id || '';
   }
   for (const b of _win.bezel.querySelectorAll('.phw-side')) {
-    b.disabled = !on || !keyWorks(s, b.dataset.key);
+    b.disabled = b.dataset.key === 'power' ? (!s.mode || s.state === 'starting' || s.state === 'installing')
+      : (!on || !keyWorks(s, b.dataset.key));
   }
   for (const b of _win.nav.querySelectorAll('button')) {
     b.disabled = !on || !keyWorks(s, b.dataset.key);
@@ -465,21 +615,25 @@ function _render() {
   if (_win.catalogue) _renderCatalogue(s);
 
   _win.screen.classList.toggle('phw-holding', holding);
-  _win.empty.hidden = on && !!_client;
+  _win.empty.hidden = stream;
   _win.bezel.dataset.state = s.state || 'checking';
-  if (on && _client) {
+  if (stream) {
     _mountFrame();
     _placeFrame();
   } else {
     _dropFrame();
-    _win.empty.textContent = s.state === 'unavailable' ? (s.why || 'There is no phone here.')
+    _win.empty.textContent = s.state === 'off' && mobile ? 'Browser preview is closed. Open preview to browse web pages.'
+      : s.state === 'starting' && !mobile ? (s.boot_phase === 'android' ? 'Android is booting. Connecting to its live display.' : 'Starting virtual hardware. Waiting for the Android display.')
+      : s.state === 'unavailable' ? (s.why || 'There is no phone here.')
       : _words(mobile && s.state === 'starting' ? SAY.mobileStarting : (SAY[s.state] || SAY.checking));
   }
-  if (s.state === 'unavailable') _say(s.why || 'There is no phone here.', { error: true });
+  if (_error) _say(_error, { error: true });
+  else if (s.state === 'unavailable') _say(s.why || 'There is no phone here.', { error: true });
   else if (on && mobile && !holding) _say(SAY.mobile);
   else if (on) _say(holding ? (mobile ? 'You have the phone: click to tap, scroll to move the page.' : SAY.holding) : SAY.agent);
   else if (s.state === 'installing') _say(_installSay(s));
   else if (s.state === 'off' && installLine(s) && installLine(s).failed) _say(installLine(s).text, { error: true });
+  else if (s.state === 'off' && mobile) _say('Browser preview is closed. Android is unavailable on this workstation.');
   else _say(mobile && s.state === 'starting' ? SAY.mobileStarting : (SAY[s.state] || SAY.checking));
 }
 
@@ -567,7 +721,7 @@ function _renderCatalogue(s) {
       text.appendChild(status);
       li.appendChild(text);
       const b = _button('phw-cat-use', d.verb, () => useDevice(d.id), `${d.verb}: ${d.name}`);
-      b.disabled = d.busy || (d.current && d.verb === 'In use') || s.state === 'unavailable';
+      b.disabled = d.busy || (d.current && d.verb === 'In use') || !s.mode;
       li.appendChild(b);
       ul.appendChild(li);
     }
@@ -584,7 +738,7 @@ function _build({ embedded = false } = {}) {
   const h = _el('h4', 'phw-heading');
   const icon = _el('span', 'phw-icon');
   icon.innerHTML = PHONE_ICON;   // a constant above, never server text
-  const title = _el('span', 'phw-title', 'Phone');
+  const title = _el('span', 'phw-title', 'Mobile Emulator');
   h.appendChild(icon);
   h.appendChild(title);
   const close = _el('button', 'close-btn');
@@ -603,7 +757,8 @@ function _build({ embedded = false } = {}) {
   device.addEventListener('change', () => act({ action: 'device', device: device.value }));
   const power = _button('phw-power', 'Turn on', () => {
     const s = _state && _state.state;
-    act({ action: s === 'on' || s === 'starting' ? 'stop' : 'start' });
+    if (s === 'on' || s === 'starting') act({ action: 'stop' });
+    else _turnOn();
   }, 'Turn the phone on or off');
   const rotate = _button('phw-rotate', 'Rotate', () => act({ action: 'rotate' }), 'Turn the phone a quarter');
   const fold = _button('phw-fold', 'Fold', () => act({
@@ -637,6 +792,16 @@ function _build({ embedded = false } = {}) {
     if (!/^https?:\/\//i.test(url)) url = `https://${url}`;
     act({ action: 'open_url', url });
   });
+  const tools = _el('details', 'phw-tools');
+  tools.appendChild(_el('summary', '', 'Open a web address'));
+  tools.appendChild(openForm);
+
+  const runtime = _el('div', 'phw-runtime');
+  const runtimeLabel = _el('strong', 'phw-runtime-label', 'Checking Android');
+  const runtimeText = _el('span', 'phw-runtime-text');
+  runtime.appendChild(runtimeLabel);
+  runtime.appendChild(runtimeText);
+  const profile = _el('div', 'phw-profile');
 
   const status = _el('div', 'ws-status phw-status');
   status.dataset.state = 'checking';
@@ -673,6 +838,9 @@ function _build({ embedded = false } = {}) {
   const hinge = _el('span', 'phw-hinge');
   hinge.setAttribute('aria-hidden', 'true');
   screen.appendChild(hinge);
+  const leaf = _el('span', 'phw-fold-leaf');
+  leaf.setAttribute('aria-hidden', 'true');
+  screen.appendChild(leaf);
   bezel.appendChild(speaker);
   bezel.appendChild(screen);
   bezel.appendChild(camera);
@@ -682,7 +850,7 @@ function _build({ embedded = false } = {}) {
   const nav = _el('div', 'phw-nav');
   nav.setAttribute('role', 'toolbar');
   nav.setAttribute('aria-label', 'Android navigation');
-  for (const [glyph, key, label] of [['◁', 'back', 'Back'], ['○', 'home', 'Home'], ['▢', 'recents', 'Recent apps']]) {
+  for (const [glyph, key, label] of [['Back', 'back', 'Back'], ['Home', 'home', 'Home'], ['Apps', 'recents', 'Recent apps']]) {
     const b = _button('phw-nav-btn', glyph, () => press(key), label);
     b.dataset.key = key;
     nav.appendChild(b);
@@ -727,12 +895,14 @@ function _build({ embedded = false } = {}) {
   }
   content.appendChild(header);
   content.appendChild(bar);
-  content.appendChild(openForm);
+  content.appendChild(runtime);
   content.appendChild(status);
   content.appendChild(progress);
   content.appendChild(license);
   content.appendChild(stage);
+  content.appendChild(profile);
   content.appendChild(nav);
+  content.appendChild(tools);
 
   let catalogue = null;
   if (embedded) {
@@ -748,18 +918,24 @@ function _build({ embedded = false } = {}) {
   modal.appendChild(content);
 
   return { modal, content, header, title, device, power, rotate, fold, take, give, openForm, address,
+    tools, runtime, runtimeLabel, runtimeText, profile, leaf,
     status, statusText, stage, bezel, screen, empty, glass, sideKeys: sideKeysBox, keyBoxes, camera, hinge, nav,
     progress, progressText, progressBar, license, licenseText, licenseLink, catalogue, embedded };
 }
 
 function _teardown() {
   if (!_win) return;
+  ++_revision;
+  ++_actionSequence;
+  ++_controlSequence;
+  _busy = false;
+  _cancelMotion();
+  if (_win.observer) _win.observer.disconnect();
   if (_timer) { clearTimeout(_timer); _timer = null; }
-  if (_holder === 'person') {
-    fetch('/api/workstation/control', {
-      method: 'POST', credentials: 'same-origin', keepalive: true,
-      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ holder: 'agent' }),
-    }).catch(() => {});
+  if (_holder === 'person' || _pendingTakeovers.has(_win)) {
+    _queueControl('agent', true).catch((e) => {
+      console.warn('The phone could not hand control back:', e.message);
+    });
   }
   _dropFrame();
   const modal = _win.modal;
@@ -769,6 +945,9 @@ function _teardown() {
   _client = '';
   _holder = null;
   _pending = '';
+  _pose = null;
+  _screenKey = '';
+  _error = '';
   if (modal.parentNode) modal.parentNode.removeChild(modal);
   // The room keeps its place: a note says where the phone went (`B1756`).
   if (embedded && _room) {
@@ -778,6 +957,16 @@ function _teardown() {
 }
 
 function _resume() { _kick(0); }
+
+function _observeSize() {
+  if (!_win || typeof ResizeObserver !== 'function') return;
+  _win.observer = new ResizeObserver(() => {
+    if (!_win) return;
+    _render();
+    if (!_roomHidden()) _kick(0);
+  });
+  _win.observer.observe(_win.stage);
+}
 
 /** Open the window, or bring it forward. */
 export function openPhone() {
@@ -790,6 +979,7 @@ export function openPhone() {
   if (_win) _teardown();   // the room's copy gives way to the window (`B1756`)
   _win = _build();
   document.body.appendChild(_win.modal);
+  _observeSize();
   Modals.register(MODAL_ID, { restoreFn: _resume, closeFn: _teardown });
   Modals.injectMinimizeButton(_win.modal, MODAL_ID);
   makeWindowDraggable(_win.modal, {
@@ -824,6 +1014,7 @@ export function mountPhoneRoom(host) {
     host.textContent = '';
     _win = _build({ embedded: true });
     host.appendChild(_win.modal);
+    _observeSize();
     _render();
     _kick(0);
   };

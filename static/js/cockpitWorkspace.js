@@ -3,8 +3,8 @@
 // cockpitWorkspace.js — the workspace dock: the right-hand column of the
 // cockpit shell (`static/cockpit.css`, note 8 of the V4 study).
 //
-// The column holds three surfaces, one or several at once: the Document
-// editor, the Workstation screen and the agent's Browser. **It builds none of
+// The column holds four surfaces, one or several at once: Documents,
+// Workstation, Browser and Mobile Emulator. **It builds none of
 // them.** Each is the window its own module already draws —
 //
 //   Document     `#doc-editor-pane`        document.js (opened by `#overflow-doc-btn`)
@@ -35,11 +35,12 @@ const reduced = prefersReducedMotion;
 const EASE = 'cubic-bezier(.22,.9,.24,1)';
 
 const SURFACES = {
-  doc: { label: 'Document', icon: 'doc', node: () => byId('doc-editor-pane') },
+  doc: { label: 'Documents', icon: 'doc', node: () => byId('doc-editor-pane') },
   vm: { label: 'Workstation', icon: 'monitor', node: () => document.querySelector('.modal.wsv-modal') },
   browser: { label: 'Browser', icon: 'browser', node: () => document.querySelector('.modal.abw-modal') },
+  phone: { label: 'Mobile Emulator', icon: 'phone', node: () => document.querySelector('.modal.phw-modal') },
 };
-const ORDER = ['doc', 'vm', 'browser'];
+const ORDER = ['doc', 'vm', 'browser', 'phone'];
 
 const W = {
   layout: 'rows', focus: 'doc', max: null,
@@ -85,6 +86,8 @@ function openSurface(key) {
     import('./workstationScreen.js').then((m) => m.openWorkstationScreen({ focus: false })).catch(() => {});
   } else if (key === 'browser') {
     import('./browserWindow.js').then((m) => m.openAgentBrowser({})).catch(() => {});
+  } else if (key === 'phone') {
+    import('./phoneWindow.js').then((m) => m.openPhone()).catch(() => {});
   }
 }
 
@@ -152,6 +155,11 @@ function syncHeader(key) {
     if (t) title = t;
     if (node.classList.contains('abw-agent-busy')) { hold = 'Agent browsing'; cls = 'agent'; }
     else hold = 'Watching';
+  } else if (key === 'phone') {
+    title = $('.phw-title', node)?.textContent?.trim() || title;
+    const give = $('.phw-give', node);
+    if (give && !give.hidden) { hold = 'You have control'; cls = 'you'; }
+    else hold = $('.phw-runtime-label', node)?.textContent?.trim() || 'Checking';
   }
   ttl.textContent = title;
   holder.textContent = hold;
@@ -195,7 +203,7 @@ let settledW = 0;    // the grid's inner width the last time the column stood st
 let fitted = '', fittedN = 0;
 
 function fitLayout(lay, n) {
-  const across = lay === 'cols' ? n : (lay === 'main' && n === 3 ? 2 : 1);
+  const across = lay === 'cols' ? n : (lay === 'main' && n > 2 ? n - 1 : 1);
   if (across < 2) return lay;
   const cs = getComputedStyle(grid);
   // While the column is tucked or sliding in or out its width is not the one
@@ -234,9 +242,9 @@ function render() {
     if (lay === 'cols') cols = `repeat(${n}, minmax(0,1fr))`;
     else if (lay === 'rows') rows = `repeat(${n}, minmax(0,1fr))`;
     else if (lay === 'main') {
-      cols = n === 2 ? '1fr' : '1fr 1fr';
+      cols = n === 2 ? '1fr' : `repeat(${n - 1}, minmax(0,1fr))`;
       rows = n === 2 ? '1.4fr 1fr' : '1.5fr 1fr';
-      if (n === 3) panes[shown[0]].style.gridArea = '1 / 1 / 2 / 3';
+      if (n > 2) panes[shown[0]].style.gridArea = `1 / 1 / 2 / ${n}`;
     }
   }
   grid.style.gridTemplateColumns = cols;
@@ -460,9 +468,9 @@ function build() {
   ws.setAttribute('aria-label', 'Workspace');
   ws.innerHTML = '<div class="ck-ws-head"><span class="lbl">Workspace</span>'
     + '<div class="ck-surf-list" role="group" aria-label="Surfaces">'
-    + ORDER.map((k) => `<button type="button" class="ck-surf" data-surf="${k}" aria-pressed="false">${icon(SURFACES[k].icon)}<span class="tx">${SURFACES[k].label}</span></button>`).join('')
+    + ORDER.map((k) => `<button type="button" class="ck-surf" data-surf="${k}" aria-label="${SURFACES[k].label}" title="${SURFACES[k].label}" aria-pressed="false">${icon(SURFACES[k].icon)}<span class="tx">${SURFACES[k].label}</span></button>`).join('')
     + '</div><span class="grow"></span><div class="ck-layouts" role="group" aria-label="Layout">'
-    + [['one', 'l1', 'One at a time'], ['cols', 'lcols', 'Side by side'], ['rows', 'lrows', 'Stacked'], ['main', 'lmain', 'One large, two small']]
+    + [['one', 'l1', 'One at a time'], ['cols', 'lcols', 'Side by side'], ['rows', 'lrows', 'Stacked'], ['main', 'lmain', 'One large, the rest below']]
       .map(([v, ic, t]) => `<button type="button" data-layout="${v}" aria-pressed="false" title="${t}" aria-label="${t}">${icon(ic)}</button>`).join('')
     + `</div><button type="button" class="ck-ibtn" id="ck-ws-tuck" title="Tuck workspace" aria-label="Tuck workspace">${icon('chev')}</button></div>`
     + '<div id="ck-ws-grid"></div>';
@@ -472,7 +480,7 @@ function build() {
   // the panes beside it stay where they are.
   empty = renderEmptyState(null, {
     kind: 'empty', className: 'ck-ws-empty', title: 'Nothing open',
-    message: 'Turn on Document, Workstation or Browser above.',
+    message: 'Open Documents, Workstation, Browser or Mobile Emulator above.',
   });
   grid.appendChild(empty);
   cc.insertAdjacentElement('afterend', resizer);

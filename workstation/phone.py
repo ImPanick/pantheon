@@ -81,6 +81,7 @@ import subprocess
 import threading
 import time
 import xml.etree.ElementTree as ET
+from functools import lru_cache
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Tuple
 
@@ -102,6 +103,7 @@ MEMORY_ENV = "PANTHEON_PHONE_MEMORY_MIB"
 DEFAULT_IDLE_MIN = 30
 DEFAULT_MAX_RUNNING = 2
 DEFAULT_MEMORY_MIB = 2048
+MIN_SCRCPY_VERSION = (2, 4)  # Android 15 display API support, upstream scrcpy v2.4
 #: Where a person's choice of device is kept, in their home.
 PREFS_FILE = ".pantheon/phone.json"
 #: What the emulator last said, in the person's home (`.android` is the
@@ -197,7 +199,8 @@ def image_installed(package: str) -> bool:
 
 def tools_installed() -> bool:
     found = tools()
-    return bool(found["emulator"] and found["adb"] and found["scrcpy"])
+    return bool(found["emulator"] and found["adb"] and found["scrcpy"]
+                and scrcpy_version(found["scrcpy"]) >= MIN_SCRCPY_VERSION)
 
 
 def license_accepted() -> bool:
@@ -378,9 +381,10 @@ def tools(root: Optional[Path] = None) -> Dict[str, Optional[str]]:
     def there(path: Path) -> Optional[str]:
         return str(path) if path.is_file() and os.access(path, os.X_OK) else None
 
+    bundled = there(root / "scrcpy" / "scrcpy") if (root / "scrcpy" / "scrcpy-server").is_file() else None
     return {"emulator": there(root / "emulator" / "emulator"),
             "adb": there(root / "platform-tools" / "adb"),
-            "scrcpy": shutil.which("scrcpy")}
+            "scrcpy": bundled or shutil.which("scrcpy")}
 
 
 def avd_name(device: str) -> str:
@@ -427,7 +431,7 @@ def avd_config(device: str, package: str, *, memory_mib: int = DEFAULT_MEMORY_MI
         "skin.name": f"{w}x{h}",
         "skin.path": "_no_skin",
         "PlayStore.enabled": "true" if "playstore" in img["tag"] else "false",
-        "fastboot.forceColdBoot": "no",
+        "fastboot.forceColdBoot": "yes",
     }
     if d["kind"] == "foldable":
         cover = d["cover_width"]
@@ -459,15 +463,27 @@ def avd_ini(device: str, avd_home: Path, package: str) -> str:
 
 def emulator_argv(emulator: str, device: str, *, port: int, memory_mib: int) -> List[str]:
     """The emulator, headless — scrcpy is the window — on KVM, with software
-    GL, no audio, no boot animation, and nothing sent anywhere about it."""
+    GL, a visible Android boot animation, and no metrics. Cold boot preserves
+    userdata, but deliberately does not resume a snapshot past the boot screen."""
     return [emulator, "-avd", avd_name(device), "-port", str(port), "-no-window", "-no-audio",
-            "-no-boot-anim", "-gpu", "swiftshader_indirect", "-accel", "on",
+            "-no-snapshot-load", "-gpu", "swiftshader_indirect", "-accel", "on",
             "-memory", str(memory_mib), "-no-metrics"]
 
 
 def scrcpy_version(scrcpy: str) -> Tuple[int, int]:
     """scrcpy's `(major, minor)`, or `(1, 0)` when it does not say: its options
     differ between the release Ubuntu ships and later ones."""
+    try:
+        stamp = os.stat(scrcpy).st_mtime_ns
+    except OSError:
+        stamp = None
+    return _scrcpy_version(scrcpy, stamp)
+
+
+@lru_cache(maxsize=16)
+def _scrcpy_version(scrcpy: str, stamp: Optional[int]) -> Tuple[int, int]:
+    """Cache probes by binary modification time; status polling must not
+    spawn subprocesses repeatedly, and provisioning must invalidate a probe."""
     try:
         out = subprocess.run([scrcpy, "--version"], stdout=subprocess.PIPE,
                              stderr=subprocess.STDOUT, timeout=10).stdout.decode("utf-8", "replace")
@@ -484,7 +500,7 @@ def scrcpy_argv(scrcpy: str, serial: str, size: Tuple[int, int], *,
     kept awake while it shows. Audio is a later scrcpy's and is not wanted."""
     w, h = size
     argv = [scrcpy, "--serial", serial, "--window-title", "Pantheon phone",
-            "--window-borderless", "--window-x", "0", "--window-y", "0",
+            "--window-borderless", "--fullscreen", "--window-x", "0", "--window-y", "0",
             "--window-width", str(w), "--window-height", str(h),
             "--render-driver", "software", "--max-size", str(max(w, h) * 2),
             "--stay-awake", "--disable-screensaver"]
@@ -703,6 +719,7 @@ class AccountPhone:
         self.port: Optional[int] = None
         self.emulator: Optional[subprocess.Popen] = None
         self.scrcpy: Optional[subprocess.Popen] = None
+        self.boot_phase = "off"
         self.used_at = time.monotonic()
         self.watchers = 0
         self._booting: Optional[threading.Thread] = None
@@ -751,6 +768,10 @@ class AccountPhone:
     def mode(self) -> Optional[str]:
         """`B1753`. "android" where the real phone runs, "mobile_view" where
         only the mobile view does, None where neither."""
+        if self.mobile is not None:
+            return "mobile_view"
+        if self.emulator is not None and self.running():
+            return "android"
         if self.android_why() is None:
             return "android"
         return "mobile_view" if self.mobile_why() is None else None
@@ -797,11 +818,9 @@ class AccountPhone:
         return out
 
     def screen_size(self) -> Tuple[int, int]:
-        """The phone's screen now: the device's, or (`B1753`) the mobile
-        view's, which turns and folds with it."""
-        if self.mode() == "mobile_view":
-            return mobile_view_size(self.device, self.posture, self.rotation)
-        return P.phone_screen_size(self.device)
+        """The active display at its current posture and orientation, for
+        streaming, screenshots, touch and the agent's marks alike."""
+        return mobile_view_size(self.device, self.posture, self.rotation)
 
     def info(self, action: str = "status") -> Dict:
         mode = self.mode()
@@ -819,9 +838,12 @@ class AccountPhone:
                "posture": self.posture if d.get("kind") == "foldable" else None,
                "rotation": self.rotation,
                "screen": list(self.screen_size()),
+               "screen_is_active": True,
                "accel": "kvm" if self.state in ("starting", "on") and mode == "android" else None,
                "android": image_package(),
-               "mode": mode}
+               "mode": mode,
+               "boot_phase": self.boot_phase,
+               "stream_ready": self.stream_ready()}
         # `B1756`: what each device needs, and the install under way.
         ready_tools = tools_installed()
         for entry in out["devices"]:
@@ -880,7 +902,7 @@ class AccountPhone:
         """The device's folder and its `.ini` in the account's home, rewritten
         every start so a change to the catalogue reaches a device made before
         it; the device's data (its disk, its snapshot) is never touched."""
-        package = image_package()
+        package = device_image(self.device)
         avd_home = self.home() / ".android" / "avd"
         folder = avd_home / (avd_name(self.device) + ".avd")
         self._write_as_account(folder / "config.ini", avd_config(self.device, package,
@@ -1010,6 +1032,7 @@ class AccountPhone:
                 self.state, self.why = "unavailable", f"The emulator did not start: {e}."
                 return self.info("start")
             self.state, self.why = "starting", ""
+            self.boot_phase = "emulator"
             self.posture = "open" if P.PHONE_DEVICES[self.device]["kind"] == "foldable" else None
             self.rotation = 0
             self._booting = threading.Thread(target=self._boot, args=(self.emulator,), daemon=True)
@@ -1019,39 +1042,60 @@ class AccountPhone:
             return self.info("start")
 
     def _boot(self, proc: subprocess.Popen) -> None:
-        """Wait for Android to say it has booted, then put scrcpy on the
-        phone's screen. A phone that stops or never boots says why."""
+        """Show the actual display as soon as Android's display service is
+        running, including boot animation where scrcpy can attach that early.
+        Early scrcpy failures are retried while Android continues booting."""
         deadline = time.monotonic() + BOOT_TIMEOUT_S
         while time.monotonic() < deadline:
             if proc.poll() is not None:
                 with self.lock:
                     if self.emulator is proc:
-                        self.state = "unavailable"
-                        self.why = (f"The emulator stopped while the phone was booting (exit "
+                        why = (f"The emulator stopped while the phone was booting (exit "
                                     f"{proc.returncode}). ~/{LOG_FILE} in the workstation says "
                                     f"why{self._last_words()}.")
-                        self._release()
+                        self._stop_locked()
+                        self.state, self.why = "unavailable", why
                 return
-            if self.adb(["shell", "getprop", "sys.boot_completed"], timeout=10.0,
-                        quiet=True).strip() == "1":
+            if self.emulator is not proc:
+                return
+            # ADB may wait for the guest. Keep that wait outside the lifecycle
+            # lock so Stop can cancel a device whose guest never answers.
+            display = self.adb(["shell", "getprop", "init.svc.surfaceflinger"],
+                               timeout=5.0, quiet=True).strip() == "running"
+            completed = self.adb(["shell", "getprop", "sys.boot_completed"],
+                                 timeout=5.0, quiet=True).strip() == "1"
+            with self.lock:
+                if self.emulator is not proc:
+                    return  # stopped or replaced while this worker was waiting
+                if not self.stream_ready() and display:
+                    try:
+                        self._show()
+                        self.boot_phase = "android"
+                    except PhoneError:
+                        pass  # the framework may not accept scrcpy yet
+            if completed:
                 break
             time.sleep(2.0)
         else:
             with self.lock:
                 if self.emulator is proc:
-                    self.state = "unavailable"
-                    self.why = (f"The phone did not finish booting in {int(BOOT_TIMEOUT_S)} s. "
-                                "Stop it and start it again.")
+                    self._stop_locked()
+                    self.state, self.why = "unavailable", (
+                        f"The phone did not finish booting in {int(BOOT_TIMEOUT_S)} s. "
+                        "Start it again to retry.")
             return
         with self.lock:
             if self.emulator is not proc:
                 return
             try:
-                self._show()
+                if not self.stream_ready():
+                    self._show()
             except PhoneError as e:
+                self._stop_locked()
                 self.state, self.why = "unavailable", e.message
                 return
             self.state = "on"
+            self.boot_phase = "ready"
             logger.info("phone for %s: %s is on", self.account, self.device)
 
     # -- `B1753`: the mobile view -------------------------------------------
@@ -1061,6 +1105,7 @@ class AccountPhone:
         self.posture = "open" if P.PHONE_DEVICES[self.device]["kind"] == "foldable" else None
         self.rotation = 0
         self.state, self.why = "starting", ""
+        self.boot_phase = "browser"
         self._booting = threading.Thread(target=self._boot_mobile, daemon=True)
         self._booting.start()
         logger.info("phone for %s: %s starting as a mobile view", self.account, self.device)
@@ -1081,6 +1126,7 @@ class AccountPhone:
                 logger.info("phone for %s: %s", self.account, self.why)
                 return
             self.state = "on"
+            self.boot_phase = "ready"
 
     def _open_mobile(self, url: Optional[str]) -> None:
         """Firefox on the phone's screen as this device, at `url` or Home."""
@@ -1147,7 +1193,7 @@ class AccountPhone:
 
     def _show(self) -> None:
         """scrcpy on the phone's screen, the screen sized to this device."""
-        size = P.phone_screen_size(self.device)
+        size = self.screen_size()
         set_size = getattr(self.screen, "set_size", None)
         if callable(set_size):
             set_size(size)
@@ -1159,6 +1205,8 @@ class AccountPhone:
         env = {**env, **self.env(), "DISPLAY": display,
                "XAUTHORITY": str(self.screen.auth_path())}
         scrcpy = tools()["scrcpy"]
+        if scrcpy == str(sdk_root() / "scrcpy" / "scrcpy"):
+            env["SCRCPY_SERVER_PATH"] = str(sdk_root() / "scrcpy" / "scrcpy-server")
         if self.scrcpy is not None and self.scrcpy.poll() is None:
             _kill(self.scrcpy)
         try:
@@ -1178,6 +1226,12 @@ class AccountPhone:
                 if self.state == "on" and not self.running():
                     self.mobile = None
                     self.state = "off"
+                    self.boot_phase = "off"
+                return
+            if self.state == "on" and not self.running():
+                why = "The Android emulator stopped. Turn it on again to retry."
+                self._stop_locked()
+                self.state, self.why = "unavailable", why
                 return
             if self.state == "on" and (self.scrcpy is None or self.scrcpy.poll() is not None):
                 try:
@@ -1185,9 +1239,19 @@ class AccountPhone:
                 except PhoneError as e:
                     logger.info("phone for %s: %s", self.account, e.message)
 
+    def stream_ready(self) -> bool:
+        """Whether there is a live display producer, including during boot.
+        Readiness here is transport readiness, never a claim that Android booted."""
+        if self.state not in ("starting", "on"):
+            return False
+        if self.mobile is not None:
+            return self.state == "on" and self.running()
+        return self.scrcpy is not None and self.scrcpy.poll() is None and self.running()
+
     def stop(self) -> Dict:
         with self.lock:
             self._stop_locked()
+            self.state, self.why = "off", ""
             return self.info("stop")
 
     def _stop_locked(self) -> None:
@@ -1199,7 +1263,7 @@ class AccountPhone:
             self.scrcpy = None
         if self.emulator is not None:
             if self.emulator.poll() is None:
-                # Asked to stop, so it saves where it was and boots back there.
+                # Android's persistent disk survives; the next power-on cold boots.
                 self.adb(["emu", "kill"], timeout=10.0, quiet=True)
                 try:
                     self.emulator.wait(timeout=STOP_TIMEOUT_S)
@@ -1207,6 +1271,7 @@ class AccountPhone:
                     _kill(self.emulator)
             self.emulator = None
         self._release()
+        self.boot_phase = "off"
         if self.state != "unavailable":
             self.state = "off"
         stop_screen = getattr(self.screen, "stop", None)
@@ -1275,6 +1340,8 @@ class AccountPhone:
         if name not in P.PHONE_BUTTONS:
             raise PhoneError("bad_request", f"“button” is one of {', '.join(P.PHONE_BUTTONS)}.")
         with self.lock:
+            if name == "power" and not self.running():
+                return self.start()
             if name == "power" and self.mobile is not None:
                 self._stop_locked()       # `B1753`: the mobile view's Power is off
                 return self.info("button")
@@ -1300,6 +1367,7 @@ class AccountPhone:
                 return self.info("posture")
             self.adb(["emu", "fold" if posture == "closed" else "unfold"])
             self.posture = posture
+            self._show()
             return self.info("posture")
 
     def rotate(self) -> Dict:
@@ -1311,6 +1379,7 @@ class AccountPhone:
                 return self.info("rotate")
             self.adb(["emu", "rotate"])
             self.rotation = (self.rotation + 1) % 4
+            self._show()
             return self.info("rotate")
 
     def open_url(self, raw) -> Dict:
@@ -1332,7 +1401,7 @@ class AccountPhone:
             if self.mobile is not None:
                 raise PhoneError("unavailable", MOBILE_NO_MARKS)
         xml = self.adb(["exec-out", "uiautomator", "dump", "/dev/tty"], timeout=30.0)
-        return marks_from_dump(xml, P.phone_screen_size(self.device))
+        return marks_from_dump(xml, self.screen_size())
 
 
 def _kill(proc: subprocess.Popen) -> None:

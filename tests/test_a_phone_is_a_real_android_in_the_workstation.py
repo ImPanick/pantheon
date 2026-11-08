@@ -177,6 +177,7 @@ def _sdk(tmp_path, monkeypatch, *, image=True):
     if image:
         (sdk / "system-images/android-35/google_apis/x86_64").mkdir(parents=True)
     monkeypatch.setenv(PH.SDK_ENV, str(sdk))
+    monkeypatch.setattr(PH, "scrcpy_version", lambda path: (3, 3))
     monkeypatch.setattr(PH.shutil, "which", lambda name: "/usr/bin/scrcpy" if name == "scrcpy" else None)
     monkeypatch.setattr("platform.machine", lambda: "x86_64")
     return sdk
@@ -321,6 +322,12 @@ class _FakePhone:
     def mode(self):
         return "android"
 
+    def ensure_shown(self):
+        pass
+
+    def stream_ready(self):
+        return self.state == "on"
+
     def _on(self):
         pass
 
@@ -450,6 +457,8 @@ def _window_module(tmp_path):
     import re
     src = (Path(__file__).resolve().parents[1] / "static" / "js" / "phoneWindow.js").read_text()
     src = re.sub(r"^import \* as Modals from .*$", "const Modals = {};", src, flags=re.M)
+    src = re.sub(r"^import \{ prefersReducedMotion \} from .*$",
+                 "const prefersReducedMotion = () => false;", src, flags=re.M)
     src = re.sub(r"^import \{ makeWindowDraggable \} from .*$", "const makeWindowDraggable = () => {};",
                  src, flags=re.M)
     path = tmp_path / "phoneWindow.mjs"
@@ -463,7 +472,7 @@ def test_the_bezel_is_the_devices_shape_and_its_keys_are_where_its_maker_puts_th
     import subprocess
     mod = _window_module(tmp_path)
     script = f"""
-import {{ sideKeys, bezelShape, deviceOf }} from {json.dumps(str(mod))};
+import {{ sideKeys, bezelShape, deviceOf }} from {json.dumps(mod.as_uri())};
 const fold = {{ device: 'galaxy_z_fold6', screen: [944, 1100], posture: 'closed',
   devices: [{{ id: 'galaxy_z_fold6', name: 'Samsung Galaxy Z Fold6', maker: 'Samsung', kind: 'foldable', foldable: true }}] }};
 console.log(JSON.stringify({{

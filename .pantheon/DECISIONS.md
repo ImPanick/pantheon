@@ -3868,3 +3868,26 @@ Parrot, with their toolsets, are kept on the branch `security/kali-parrot-workst
 built. Windows stays scoped, not built (it needs the KVM VM backend and a licence).
 
 What reopens it: a system the owner wants that KasmVNC builds for, or the owner shipping the security systems.
+
+## D-2026-11-08-01 — generic Android for every Mobile Emulator profile
+
+The owner chose generic Android for every device profile now. OEM-specific
+software is a future possibility only if technically feasible, legally obtainable,
+and legally distributable in an open-source project. It does not block the current
+uplift. Device names identify approximate hardware profiles and drawings, not
+retail device identity or OEM firmware. Google's SDK components remain separately
+licensed downloads; Pantheon's source licence does not relicense them.
+
+The Mobile Emulator is a Workspace surface alongside Documents, Workstation and
+Browser, using the same persistent device and person/agent control boundary as
+the Workbench's Devices room. Android should cold boot visibly and retain apps
+and settings. A browser fallback stays available but must persistently say that
+it is a web-only browser preview and why Android is unavailable. Rotation and
+fold/unfold animate acknowledged device actions, with reduced motion respected.
+
+Cost accepted: cold boot is slower than restoring a snapshot; scrcpy may attach
+after the first Android boot frames; profiles and fold regions approximate
+hardware rather than reproduce OEM mechanics, firmware, cameras or certification.
+Actual Android/KVM acceptance remains necessary before calling runtime fidelity
+verified. Future OEM work requires both a compatible executable image and a
+review of the actual acquisition, use and redistribution rights.

@@ -269,7 +269,7 @@ the edges they are on. The Workbench's **Devices** room lists them:
 pick one and Pantheon downloads, installs and sets up what that device needs
 (the first time, after you accept the
 [Android SDK License](https://developer.android.com/studio/terms) there, about
-4 GB), then turns it on beside the list. The + menu's *Phone* opens the same
+4 GB), then turns it on beside the list. The + menu's *Mobile Emulator* opens the same
 phone in a window of its own. Either way it is drawn as the device, with its
 side keys working; the mouse is a finger (click to tap, drag to swipe, scroll
 to fling, right click for Back). The agent uses it exactly as you do: the same
@@ -290,14 +290,63 @@ window says when it is missing. Without KVM,
 the phone opens as a **mobile view** instead: the workstation's Firefox alone on
 the phone's screen, at the chosen device's shape and CSS width, with a mobile
 user agent and touch on, so a website lays itself out as it does on that phone.
-The window's title says *mobile view*; it runs web pages only, and its volume
-and recents keys are greyed. The Samsung devices have the real screens,
-densities and fold, but run stock Android, not One UI, which Samsung does not
-let anyone redistribute. iPhones cannot be emulated outside a Mac. Each running
+The window persistently says **Browser preview · Web only**, with the reason
+Android is unavailable; opening it is labelled *Open browser preview*. It runs
+web pages only, and its volume and recents keys are greyed. Every device profile
+runs **generic Android** when Android is available. Profiles approximate the
+selected device's size, density, body and fold; they do not provide retail
+device identity, OEM firmware or certified hardware behavior. The folded display
+uses a region of the inner display, rather than a second OEM cover panel.
+iPhones cannot be emulated by this Android backend. Each running
 phone takes about `PANTHEON_PHONE_MEMORY_MIB` (2 GB); at most
 `PANTHEON_PHONE_MAX_RUNNING` (2) run at once, and one nobody has used or
 watched for `PANTHEON_PHONE_IDLE_MIN` (30) minutes is saved and stopped. The
 phone runs in the container workstation only, not in a per-person VM.
+
+The cockpit's **Workspace** offers **Documents**, **Workstation**, **Browser**
+and **Mobile Emulator**. The emulator docks, floats and fills the workspace like
+the other surfaces, and the Workbench's Devices room still opens the same device.
+Turn on starts a cold Android boot with its own boot animation enabled; installed
+apps and settings remain on the device's persistent disk. The side Power key
+starts an off device and sleeps or wakes a running Android device. *Turn off*
+stops the emulator. Back, Home, Recent apps and the side volume keys operate
+Android. Fold/Unfold and Rotate animate the body only after the device command
+succeeds, with reduced motion respected. They resize the shared screen used by
+people and agents; the animation is presentation, not a model of physical hinge
+mechanics. Live capture is attempted once Android's display service is running;
+the earliest boot frames depend on when that image accepts scrcpy. Before that,
+the screen shows that it is waiting for Android. Cold boots can take minutes on
+first use.
+Agents can take screenshots of that same live boot display; touch and numbered
+UI marks wait for Android to finish booting.
+
+Update the workstation image along with the Pantheon UI to receive the new boot
+and active-display behavior. The UI preserves the older daemon's folded-screen
+crop during an upgrade, but animated physical rotation and the early boot stream
+need the updated daemon. Provisioning installs a checksum-pinned scrcpy client
+and server together in the SDK volume; Ubuntu 24.04's older scrcpy cannot capture
+the default Android 15 image. Existing SDK installations are reused while the
+display bridge is upgraded. The pin and checksum come from
+[scrcpy's tagged Linux release instructions](https://github.com/Genymobile/scrcpy/blob/v3.3.4/doc/linux.md).
+
+To install an APK, put it in the workstation and use its per-account
+`adb install -r /path/to/app.apk`, or ask the agent to do so. Use Home to launch
+apps and *Open a web address* for the optional URL tool. No APK or app store is
+downloaded merely by opening this workspace surface.
+
+The default SDK image is Android 15 **Google APIs**, which includes Google Play
+services; it does not include the Play Store. Google Play system images are
+separate, release-signed images with different capabilities, not a switch that
+makes a custom profile a certified retail device. See Google's
+[AVD documentation](https://developer.android.com/studio/run/managing-avds).
+SDK tools and images are separately licensed downloads, not relicensed as open
+source by this repository. The operator must accept and comply with the
+[Android SDK License](https://developer.android.com/studio/terms), including its
+use and redistribution restrictions. Do not redistribute built SDK images on
+the assumption that Pantheon's source license covers them. OEM-specific systems
+are a future possibility only if a compatible image can be legally obtained,
+used for the intended purpose, and legally redistributed under its actual terms;
+no OEM software is included or promised by this uplift.
 
 Agents have full access by default: *sudo* is on in every backend until an
 admin turns it off (the owner, 2026-10-31: *"Agents get FULL access"*). In the

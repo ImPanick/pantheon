@@ -71,6 +71,7 @@ def bare(tmp_path, monkeypatch):
     script = tmp_path / "provision.sh"
     script.write_text("#!/bin/sh\n")
     monkeypatch.setenv(PH.SDK_ENV, str(sdk))
+    monkeypatch.setattr(PH, "scrcpy_version", lambda path: (3, 3))
     monkeypatch.setenv(PH.PROVISION_ENV, str(script))
     monkeypatch.setattr(PH.os, "geteuid", lambda: 0, raising=False)
     monkeypatch.setattr(PH.shutil, "which", lambda name: "/usr/bin/scrcpy" if name == "scrcpy" else None)
@@ -304,12 +305,14 @@ def test_the_agents_pick_waits_on_the_install_like_the_person_does():
 def test_the_room_lists_the_devices_and_asks_for_the_license_once(tmp_path):
     src = (ROOT / "static" / "js" / "phoneWindow.js").read_text()
     src = re.sub(r"^import \* as Modals from .*$", "const Modals = {};", src, flags=re.M)
+    src = re.sub(r"^import \{ prefersReducedMotion \} from .*$",
+                 "const prefersReducedMotion = () => false;", src, flags=re.M)
     src = re.sub(r"^import \{ makeWindowDraggable \} from .*$", "const makeWindowDraggable = () => {};",
                  src, flags=re.M)
     mod = tmp_path / "phoneWindow.mjs"
     mod.write_text(src)
     script = f"""
-import {{ catalogueOf, installLine, needsLicense }} from {json.dumps(str(mod))};
+import {{ catalogueOf, installLine, needsLicense }} from {json.dumps(mod.as_uri())};
 const devices = [
   {{ id: 'pixel_9_pro', name: 'Google Pixel 9 Pro', maker: 'Google', kind: 'phone', installed: true, android: 'Android 15' }},
   {{ id: 'galaxy_z_fold6', name: 'Samsung Galaxy Z Fold6', maker: 'Samsung', kind: 'foldable', foldable: true, installed: false }},
@@ -399,13 +402,15 @@ def test_the_look_reaches_the_window_shaped():
 def test_the_body_is_drawn_at_the_devices_shape_with_its_keys_on_their_edges(tmp_path):
     src = (ROOT / "static" / "js" / "phoneWindow.js").read_text()
     src = re.sub(r"^import \* as Modals from .*$", "const Modals = {};", src, flags=re.M)
+    src = re.sub(r"^import \{ prefersReducedMotion \} from .*$",
+                 "const prefersReducedMotion = () => false;", src, flags=re.M)
     src = re.sub(r"^import \{ makeWindowDraggable \} from .*$", "const makeWindowDraggable = () => {};",
                  src, flags=re.M)
     mod = tmp_path / "phoneWindow.mjs"
     mod.write_text(src)
     looks = json.dumps({k: P.PHONE_LOOKS[k] for k in ("oneplus_12", "galaxy_tab_s9", "pixel_9_pro")})
     script = f"""
-import {{ keysOf, lookOf, bodyGeometry }} from {json.dumps(str(mod))};
+import {{ keysOf, lookOf, bodyGeometry }} from {json.dumps(mod.as_uri())};
 const looks = {looks};
 const dev = (id, maker) => ({{ id, maker, look: looks[id] }});
 const ids = (side) => side.map((k) => k.id);

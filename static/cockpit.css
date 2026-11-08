@@ -1225,7 +1225,7 @@ html.cockpit .chat-context-compact-btn:hover { background: var(--ck-tint-2) !imp
 html.cockpit .ck-ws-head { height: 52px; flex: none; display: flex; align-items: center; gap: 8px; padding: 0 10px 0 16px; min-width: 0; }
 html.cockpit .ck-ws-head .lbl { font-family: var(--ck-font-display); font-size: 19px; color: var(--ck-text); margin-right: 6px; line-height: 1; white-space: nowrap; }
 html.cockpit .ck-ws-head .grow { flex: 1; }
-html.cockpit .ck-surf-list { display: flex; gap: 3px; min-width: 0; overflow: hidden; padding: 3px; border-radius: 999px; background: var(--ck-tint); }
+html.cockpit .ck-surf-list { display: flex; gap: 3px; min-width: 0; overflow-x: auto; padding: 3px; border-radius: 999px; background: var(--ck-tint); scrollbar-width: thin; }
 html.cockpit .ck-surf {
   display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 11px; border-radius: 999px; font: 400 12.5px/1 var(--ck-font-ui);
   color: var(--ck-text-3); background: transparent; border: 0; cursor: pointer; white-space: nowrap; transition: all var(--ck-t) var(--ck-ease);
@@ -1314,6 +1314,8 @@ html.cockpit .ck-pane > .modal.ck-docked > .modal-content {
   -webkit-backdrop-filter: none !important; backdrop-filter: none !important; display: flex; flex-direction: column; animation: none !important;
 }
 html.cockpit .ck-pane > .modal.ck-docked > .modal-content > .modal-header { display: none !important; }
+html.cockpit .ck-pane .phw-stage { min-height: 180px; }
+html.cockpit .ck-pane .phw-content { overflow-y: auto; }
 html.cockpit .ck-pane > .modal.ck-docked .window-resize-handle,
 html.cockpit .ck-pane > .modal.ck-docked [class*="resize-handle"] { display: none !important; }
 

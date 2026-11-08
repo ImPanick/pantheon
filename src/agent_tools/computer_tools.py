@@ -381,7 +381,7 @@ async def _marked(client, account: str, shot: Dict[str, Any], owner: Optional[st
     return dict(shot, data_b64=base64.b64encode(data).decode(), mime=mime), screen_marks.listing(marks)
 
 
-async def _phone_on(client, account: str) -> Optional[Dict[str, Any]]:
+async def _phone_on(client, account: str, *, observe_boot: bool = False) -> Optional[Dict[str, Any]]:
     """`B1751`. None when the phone is on and the action can go ahead; else
     what the model is told — the phone turned on and booting (so it waits and
     looks again), or why there is no phone here."""
@@ -392,7 +392,8 @@ async def _phone_on(client, account: str) -> Optional[Dict[str, Any]]:
             state = await client.phone(account, "start")
     except WorkstationError as e:
         return e.as_result()
-    if state.get("state") == "on":
+    if state.get("state") == "on" or (observe_boot and state.get("state") == "starting"
+                                     and state.get("stream_ready") is True):
         return None
     if state.get("state") == "installing":  # `B1756`
         name = next((d.get("name") for d in state.get("devices") or []
@@ -497,7 +498,7 @@ class ComputerTool:
                 ms = ms if isinstance(ms, int) and not isinstance(ms, bool) else 1000
                 await asyncio.sleep(max(0, min(ms, P.MAX_WAIT_MS)) / 1000)
                 action = args["action"] = SCREENSHOT
-            started = await _phone_on(client, account)
+            started = await _phone_on(client, account, observe_boot=action == SCREENSHOT)
             if started:
                 return started
         # `B1754`: the agent's hand, for the screen window to draw.
@@ -548,9 +549,11 @@ class ComputerTool:
                               "next action.", "exit_code": 0}
         caption = (("Phone" if on_phone else "Screen") if action == SCREENSHOT
                    else f"{'Phone' if on_phone else 'Screen'} after {what}")
+        if on_phone and shot.get("state") == "starting":
+            caption = "Phone booting"
         from src import screen_marks
         listed = ""
-        if screen_marks.ENABLED and args.get("marks") is not False:
+        if screen_marks.ENABLED and args.get("marks") is not False and shot.get("state") != "starting":
             shot, listed = await _marked(client, account, shot, owner, args["screen"])
         else:
             screen_marks.forget(owner, PHONE_SURFACE if on_phone else SURFACE)

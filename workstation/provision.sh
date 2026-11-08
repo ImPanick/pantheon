@@ -424,7 +424,7 @@ server() {
 
 # `B1751`. The phone: Google's Android SDK command-line tools, and with them the
 # emulator, adb and one Android system image (PHONE_IMAGE, sdkmanager's name for
-# it), under DIR (default /opt/android-sdk), plus scrcpy from Ubuntu — what shows
+# it), under DIR (default /opt/android-sdk), plus a compatible pinned scrcpy — what shows
 # the emulator's screen and turns the mouse into touch — and the libraries the
 # emulator links. Run at build time for an image built with WORKSTATION_PHONE=on,
 # and at run time by the daemon when a person picks a device the workstation
@@ -443,9 +443,42 @@ server() {
 # pin it here. Everything sdkmanager installs after that it checks itself.
 ANDROID_CMDLINE_TOOLS_BUILD=13114758
 ANDROID_REPO=https://dl.google.com/android/repository
-PHONE_LIBS="openjdk-17-jre-headless scrcpy libpulse0 libnss3 libxcomposite1 libxcursor1 \
+PHONE_LIBS="openjdk-17-jre-headless libusb-1.0-0 libpulse0 libnss3 libxcomposite1 libxcursor1 \
 libxi6 libxtst6 libasound2t64 libgl1 libegl1 libgbm1 libdrm2 libxkbcommon0 libxkbfile1 \
 libxdamage1 libxrandr2 libxshmfence1 libdbus-glib-1-2 libbsd0"
+# Ubuntu 24.04's scrcpy 1.25 cannot capture Android 15. Client and server are
+# one upstream release, kept together in the persistent SDK volume. The digest
+# is published at Genymobile/scrcpy v3.3.4's doc/linux.md; no mutable latest URL.
+SCRCPY_VERSION=3.3.4
+SCRCPY_SHA256=0305d98c06178c67e12427bbf340c436d0d58c9e2a39bf9ffbbf8f54d7ef95a5
+
+phone_scrcpy() (
+    sdk=$1
+    if [ -x "$sdk/scrcpy/scrcpy" ] && [ -f "$sdk/scrcpy/scrcpy-server" ] \
+            && "$sdk/scrcpy/scrcpy" --version 2>/dev/null | grep -q "^scrcpy $SCRCPY_VERSION "; then
+        return 0
+    fi
+    say "step: tools"
+    say "installing scrcpy $SCRCPY_VERSION for Android 15"
+    scrcpy_work=$(mktemp -d)
+    trap 'rm -rf "$scrcpy_work"' 0
+    trap 'exit 1' HUP INT TERM
+    archive="scrcpy-linux-x86_64-v$SCRCPY_VERSION.tar.gz"
+    curl --fail --silent --show-error --location --retry 3 ${cacert:+--cacert "$cacert"} \
+        --output "$scrcpy_work/$archive" \
+        "https://github.com/Genymobile/scrcpy/releases/download/v$SCRCPY_VERSION/$archive"
+    if ! printf '%s  %s\n' "$SCRCPY_SHA256" "$scrcpy_work/$archive" | sha256sum -c -; then
+        say "scrcpy did not match the pinned upstream SHA-256; refusing it"
+        exit 1
+    fi
+    mkdir "$scrcpy_work/release"
+    tar -xzf "$scrcpy_work/$archive" --strip-components=1 -C "$scrcpy_work/release"
+    test -f "$scrcpy_work/release/scrcpy-server"
+    test -x "$scrcpy_work/release/scrcpy"
+    install -d -m 0755 "$sdk/scrcpy"
+    cp -a "$scrcpy_work/release/." "$sdk/scrcpy/"
+    chmod -R a+rX "$sdk/scrcpy"
+)
 
 phone() {
     sdk=${1:-/opt/android-sdk}
@@ -474,7 +507,7 @@ phone() {
         cat /etc/ssl/certs/ca-certificates.crt "$ca" > /tmp/provision-ca.pem
         cacert=/tmp/provision-ca.pem
     fi
-    if ! command -v scrcpy >/dev/null 2>&1 || ! command -v java >/dev/null 2>&1; then
+    if [ ! -f "$sdk/.pantheon-phone-libraries" ] || ! command -v java >/dev/null 2>&1; then
         if ! command -v apt-get >/dev/null 2>&1; then
             say "the phone's libraries come from apt, and this workstation has none; no phone"
             exit 4
@@ -484,7 +517,10 @@ phone() {
         # shellcheck disable=SC2086 # the list is words on purpose
         apt-get install -y --no-install-recommends $PHONE_LIBS
         rm -rf /var/lib/apt/lists/*
+        install -d -m 0755 "$sdk"
+        touch "$sdk/.pantheon-phone-libraries"
     fi
+    phone_scrcpy "$sdk"
     sdkm="$sdk/cmdline-tools/latest/bin/sdkmanager"
     if [ ! -x "$sdkm" ]; then
         zip=commandlinetools-linux-${ANDROID_CMDLINE_TOOLS_BUILD}_latest.zip

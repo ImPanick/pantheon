@@ -310,12 +310,14 @@ def test_the_window_greys_the_keys_a_mobile_view_has_not(tmp_path):
     import re
     src = (Path(__file__).resolve().parents[1] / "static" / "js" / "phoneWindow.js").read_text()
     src = re.sub(r"^import \* as Modals from .*$", "const Modals = {};", src, flags=re.M)
+    src = re.sub(r"^import \{ prefersReducedMotion \} from .*$",
+                 "const prefersReducedMotion = () => false;", src, flags=re.M)
     src = re.sub(r"^import \{ makeWindowDraggable \} from .*$", "const makeWindowDraggable = () => {};",
                  src, flags=re.M)
     mod = tmp_path / "phoneWindow.mjs"
     mod.write_text(src)
     script = f"""
-import {{ keyWorks, isMobileView, bezelShape }} from {json.dumps(str(mod))};
+import {{ keyWorks, isMobileView, bezelShape }} from {json.dumps(mod.as_uri())};
 const mv = {{ mode: 'mobile_view', device: 'galaxy_z_fold6', screen: [500, 1100], posture: 'closed',
   devices: [{{ id: 'galaxy_z_fold6', maker: 'Samsung', kind: 'foldable', foldable: true }}] }};
 const ids = ['power', 'volume_up', 'volume_down', 'back', 'home', 'recents'];
