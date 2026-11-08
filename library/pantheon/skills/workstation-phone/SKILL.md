@@ -1,7 +1,7 @@
 ---
 name: workstation-phone
-description: Use the person's phone — a real Android device such as a Pixel or a Galaxy — with the computer tool (screen phone) and adb, to test an app or how a website works on a phone.
-version: 1.1.0
+description: Use the person's generic Android device, with a selected hardware profile, through the computer tool (screen phone) and adb to test an app or mobile website.
+version: 1.2.0
 category: workstation
 tags: [workstation, phone, android, mobile, emulator, pixel, galaxy, samsung, fold, tablet, app, apk, adb, touch, responsive]
 requires_toolsets: [computer, bash]
@@ -12,7 +12,7 @@ source: pantheon
 
 ## When to Use
 
-Anything on a phone: how a site looks and works on a phone, an Android app (install, run, read its log), a foldable's two screens. The phone is Google's Android Emulator in the workstation, as the device the person chose (Pixel, Galaxy, Fold, tablet); its first use turns it on.
+Anything on a phone: how a site looks and works on a phone, an Android app (install, run, read its log), a foldable's display regions. Android runs in the person's own VM with a generic OS and the selected hardware profile; it does not provide OEM firmware or retail identity. Its first use turns it on only when its actual prerequisites are met.
 
 ## Procedure
 
@@ -29,4 +29,7 @@ Anything on a phone: how a site looks and works on a phone, an Android app (inst
 - Typing before a field is tapped sends nothing useful; tap it first.
 - "Busy" means a person holds the screens: ask them, or wait. Do not retry in a loop.
 - Unavailable says why (no KVM, cannot install): tell the person that sentence.
+- Android requires host KVM and usable KVM inside that user's VM. A shared workstation, separate ADB ports, or a guest KVM node under software emulation is insufficient. Do not change backend/security settings, accept SDK terms, migrate device data, or substitute a browser to work around a refusal.
+- Google Play is an optional separately licensed developer image, selected and accepted by a person. Sign-in happens on Android itself; the user's agents share that device and can see its sessions. Never claim sign-in, Play Integrity or a retail device is verified from a browser preview.
+- The person's USB tether control sends selected uploads or owned document text into Android Downloads. It is file transfer, not a host mount or network tether; do not promise binary originals from the document-text export.
 - A mobile view (the screenshot says so) is a phone-shaped Firefox, not Android: web pages only, no adb, no apps, no marks. Back and Home are the phone action's buttons; scroll moves the page. Say it is a mobile view when you report what a site looks like.

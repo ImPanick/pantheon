@@ -22,8 +22,8 @@ is everything around them, held to what each one is documented to take:
     only what can be tapped or typed into, named by its words;
   * **the daemon** — one holder on every screen (the agent's moves are `busy`
     while a person holds them, a look never is), each field checked, touch
-    checked against the phone screen's own size, and the VM backend saying
-    where the phone is instead;
+    checked against the phone screen's own size, and the VM backend relaying
+    its own guest's Android blocker;
   * **the agent's tool** — `computer` takes `screen: "phone"`, keeps the
     phone's marks apart from the desktop's, and turns a phone that is off on.
 """
@@ -146,6 +146,7 @@ def test_only_web_addresses_are_opened(url, ok):
 # ── what the phone says ───────────────────────────────────────────────────────
 
 class _System:
+    backend = "vm"  # isolated guest fixture; this test does not boot a VM
     def __init__(self, root):
         self.root = root
 
@@ -191,17 +192,18 @@ def _phone(tmp_path, kvm=(True, "KVM: /dev/kvm opened.")):
 
 def test_a_workstation_built_without_the_phone_says_how_to_build_it_in(tmp_path, monkeypatch):
     monkeypatch.setenv(PH.SDK_ENV, str(tmp_path / "nothing"))
+    monkeypatch.setattr(PH, "provision_script", lambda: None)
     monkeypatch.setattr("platform.machine", lambda: "x86_64")
     info = _phone(tmp_path).info()
     assert info["available"] is False and info["state"] == "unavailable"
-    assert "WORKSTATION_PHONE=on" in info["why"] and "Android SDK License" in info["why"]
+    assert "workstation-vm" in info["why"] and "Android SDK License" in info["why"]
 
 
 def test_a_host_without_kvm_is_told_how_to_get_it(tmp_path, monkeypatch):
     _sdk(tmp_path, monkeypatch)
     info = _phone(tmp_path, kvm=(False, "the host has no KVM")).info()
     assert info["available"] is False
-    assert "KVM" in info["why"] and ".wslconfig" in info["why"] and "the host has no KVM" in info["why"]
+    assert "KVM" in info["why"] and "inside your own VM" in info["why"] and "the host has no KVM" in info["why"]
 
 
 def test_an_arm_machine_is_told_the_phone_is_x86(tmp_path, monkeypatch):
@@ -234,8 +236,8 @@ def test_the_device_and_its_avd_are_written_into_the_home(tmp_path, monkeypatch)
     p.device = "pixel_9_pro_fold"
     p._write_avd()
     avd = tmp_path / ACCOUNT / ".android" / "avd"
-    assert (avd / "pantheon_pixel_9_pro_fold.ini").is_file()
-    assert "hw.sensor.hinge=yes" in (avd / "pantheon_pixel_9_pro_fold.avd" / "config.ini").read_text()
+    assert (avd / (p.avd + ".ini")).is_file()
+    assert "hw.sensor.hinge=yes" in (avd / (p.avd + ".avd") / "config.ini").read_text()
 
 
 def test_the_accounts_adb_is_its_own(tmp_path, monkeypatch):
@@ -388,9 +390,19 @@ def test_the_phone_routes_are_the_protocols():
     assert P.PHONE_BUTTONS["power"] == 26 and P.PHONE_BUTTONS["volume_up"] == 24
 
 
-def test_the_vm_backend_says_where_the_phone_is():
+def test_the_vm_backend_reports_the_guests_own_android_blocker(tmp_path):
     from workstation.vm import VmStation
-    assert "container" in VmStation.PHONE_ELSEWHERE.lower()
+    system = SingleUserSystem(tmp_path / "guest", backend="vm")
+    system.accel = "kvm"
+
+    def guest(account, route, body, **kwargs):
+        assert (account, route, body) == (ACCOUNT, "phone", {"action": "start"})
+        raise DaemonError("unavailable", "Nested KVM is unavailable inside this machine.")
+
+    system.forward = guest
+    with pytest.raises(DaemonError) as error:
+        VmStation(system, "pws_host").phone(ACCOUNT, {"action": "start"})
+    assert error.value.message == "Nested KVM is unavailable inside this machine."
 
 
 def test_a_phone_screen_is_its_devices_shape_on_kasmvnc():

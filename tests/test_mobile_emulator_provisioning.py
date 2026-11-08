@@ -83,3 +83,23 @@ def test_a_corrupt_bundle_is_refused_before_extraction(tmp_path):
     assert run.returncode != 0
     assert "did not match" in run.stdout
     assert not (tmp_path / "sdk").exists()
+
+
+def test_an_existing_vm_uses_the_current_installer_with_an_explicit_override(tmp_path, monkeypatch):
+    from workstation import phone
+    current = tmp_path / "code" / "provision.sh"
+    current.parent.mkdir()
+    current.write_text("current installer")
+    baked = tmp_path / "baked-provision.sh"
+    baked.write_text("older VM's installer")
+    monkeypatch.setattr(phone, "__file__", str(current.with_name("phone.py")))
+    monkeypatch.setattr(phone, "PROVISION", str(baked))
+    monkeypatch.delenv(phone.PROVISION_ENV, raising=False)
+    assert phone.provision_script() == str(current)
+    monkeypatch.setenv(phone.PROVISION_ENV, str(baked))
+    assert phone.provision_script() == str(baked)
+    monkeypatch.setenv(phone.PROVISION_ENV, str(tmp_path / "missing"))
+    assert phone.provision_script() is None
+    monkeypatch.delenv(phone.PROVISION_ENV)
+    current.unlink()
+    assert phone.provision_script() == str(baked)

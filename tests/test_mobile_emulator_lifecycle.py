@@ -25,7 +25,7 @@ class Process:
 
 
 def phone(tmp_path):
-    system = SimpleNamespace(home=lambda account: tmp_path, uid=lambda account: 1234)
+    system = SimpleNamespace(home=lambda account: tmp_path, uid=lambda account: 1234, backend="vm")
     p = PH.AccountPhone(system, "test", None)
     p.emulator = Process()
     p.state = "starting"

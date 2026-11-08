@@ -406,9 +406,9 @@ async def _phone_on(client, account: str, *, observe_boot: bool = False) -> Opti
         name = next((d.get("name") for d in state.get("devices") or []
                      if d.get("id") == state.get("device")), state.get("device"))
         if state.get("mode") == "mobile_view":  # `B1753`
-            return {"output": (f"The phone ({name}) is opening as a mobile view: this "
-                               "workstation has no KVM for Android, so it is a browser shaped "
-                               "and identified as that device. Wait a few seconds (`wait` with "
+                return {"output": (f"An explicitly selected browser preview ({name}) is opening: "
+                                   "it runs web pages only, not Android apps. It is a browser shaped "
+                                   "and identified as that device. Wait a few seconds (`wait` with "
                                "ms) and take a screenshot of the phone."), "exit_code": 0}
         return {"output": (f"The phone ({name}) is booting; Android takes a minute or two the "
                            "first time. Wait (`wait` with ms) and take a screenshot of the "

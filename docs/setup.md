@@ -258,9 +258,23 @@ Size the VM for the people who work at once: each running machine takes up to
 `PANTHEON_WORKSTATION_VM_MEMORY_MIB` (2 GB) and `PANTHEON_WORKSTATION_VM_CPUS`
 (2), on top of Pantheon itself.
 
-**A phone in the workstation.** Each person can have a real Android device in
-their container workstation: Google's Android Emulator running Android 15
-(Google APIs), as one of seventeen devices: Google's Pixel 9, 9 Pro, 9 Pro XL,
+### Mobile Emulator
+
+Android runs **inside each user's own VM**, through the existing VM workstation
+backend. The shared container backend is refused for Android: Unix accounts,
+different ADB ports and turning sudo off do not isolate device ports; sudo would
+also expose other users' files. Select **VM** in Settings → Workstation. Nothing
+copies or wipes an existing container AVD when you switch backend. Preserve its
+home volume; moving old device data requires a separate, deliberate migration.
+Android eligibility is bound to the operator's configured VM endpoint, as well
+as the daemon's isolation metadata. A custom workstation URL needs an explicit
+**VM** backend choice; choosing VM without a configured VM host does not turn a
+container endpoint into one. The host operator and Pantheon configuration are
+trusted; root in a user's guest cannot change that configuration or read the VM
+host's token.
+
+The emulator runs generic Android 15 (Google APIs by default), as one of the
+device profiles: Google's Pixel 9, 9 Pro, 9 Pro XL,
 8 and 8a, Pixel Fold and 9 Pro Fold, and Pixel Tablet; Samsung's Galaxy S25,
 S25 Ultra and A55, Z Fold6, and Galaxy Tab S9 and Tab S10 Ultra; the OnePlus 12
 and OnePlus Pad 2; and the Nothing Phone (2). Each is drawn as it looks: its
@@ -275,24 +289,34 @@ side keys working; the mouse is a finger (click to tap, drag to swipe, scroll
 to fling, right click for Back). The agent uses it exactly as you do: the same
 screen, taps, keys, rotate and fold, and the same device list (`computer` with
 `screen: phone`, `press`, `rotate`, `fold`, `open_url`, `use_device`), plus
-`adb` from its shell. What is installed is kept in the `workstation-android-sdk`
-volume, so a rebuild does not download it again. To have it in the image from
-the start instead (for a machine that will be offline later):
+`adb` from its shell. The SDK, apps and account state are on that user's VM disk.
+They survive a VM power cycle. **Reset to clean** still replaces the whole VM,
+including its phone; do not use reset to troubleshoot a missing KVM device.
 
-```sh
-echo WORKSTATION_PHONE=on >> .env
-docker compose up -d --build workstation
-```
+Android needs hardware acceleration **inside that VM**, not merely on the host.
+The VM host must actually use KVM and the guest must open `/dev/kvm`; without
+both Android is refused. A guest device node under software emulation is not
+evidence of real acceleration. Allocate at least the
+Android memory budget plus 1536 MiB to each VM; 8192 MiB, 4 vCPUs and adequate
+disk space are recommended for a desktop plus Android (`PANTHEON_WORKSTATION_VM_MEMORY_MIB`,
+`PANTHEON_WORKSTATION_VM_CPUS`, `PANTHEON_WORKSTATION_VM_DISK_GIB`). Stop/start an
+existing VM to apply its host resource settings; its disk is kept.
 
-It needs KVM. On Linux that is `/dev/kvm` on the host; on Docker Desktop for
-Windows it is the nested virtualization above (`.wslconfig`, Windows 11). The
-window says when it is missing. Without KVM,
-the phone opens as a **mobile view** instead: the workstation's Firefox alone on
-the phone's screen, at the chosen device's shape and CSS width, with a mobile
-user agent and touch on, so a website lays itself out as it does on that phone.
-The window persistently says **Browser preview · Web only**, with the reason
-Android is unavailable; opening it is labelled *Open browser preview*. It runs
-web pages only, and its volume and recents keys are greyed. Every device profile
+**Nested virtualization is experimental here.** Google's
+[acceleration documentation](https://developer.android.com/studio/run/emulator-acceleration)
+does not support a VM-accelerated emulator inside another VM. Do not infer support
+from a BIOS/Windows toggle or from host KVM. Before installing an SDK image, verify
+`/dev/kvm` actually opens in the user's VM; after an authorized SDK install, run
+`/opt/android-sdk/emulator/emulator -accel-check` there and perform a real cold-boot,
+stream, touch and file-transfer acceptance run. This host path has not passed that
+Android acceptance. The controlled development probe on 2026-11-08 found running
+Docker Desktop/WSL and a Windows hypervisor, but no usable Linux KVM device.
+
+The Android start action **never substitutes Firefox**. A separate *Open browser
+preview (web only)* action runs Firefox with the selected profile, mobile user
+agent and touch events. It persistently says **Browser preview · Web only**.
+Apps, Play Store, sign-in to Android and Android file transfer are unavailable in
+that preview. Every device profile
 runs **generic Android** when Android is available. Profiles approximate the
 selected device's size, density, body and fold; they do not provide retail
 device identity, OEM firmware or certified hardware behavior. The folded display
@@ -300,8 +324,9 @@ uses a region of the inner display, rather than a second OEM cover panel.
 iPhones cannot be emulated by this Android backend. Each running
 phone takes about `PANTHEON_PHONE_MEMORY_MIB` (2 GB); at most
 `PANTHEON_PHONE_MAX_RUNNING` (2) run at once, and one nobody has used or
-watched for `PANTHEON_PHONE_IDLE_MIN` (30) minutes is saved and stopped. The
-phone runs in the container workstation only, not in a per-person VM.
+watched for `PANTHEON_PHONE_IDLE_MIN` (30) minutes is saved and stopped. Each user's
+ADB server, emulator console and ADB device port remain inside their VM; only that
+VM's authenticated workstation daemon is forwarded, never those Android ports.
 
 The cockpit's **Workspace** offers **Documents**, **Workstation**, **Browser**
 and **Mobile Emulator**. The emulator docks, floats and fills the workspace like
@@ -321,8 +346,11 @@ Agents can take screenshots of that same live boot display; touch and numbered
 UI marks wait for Android to finish booting.
 
 Update the workstation image along with the Pantheon UI to receive the new boot
-and active-display behavior. The UI preserves the older daemon's folded-screen
-crop during an upgrade, but animated physical rotation and the early boot stream
+and active-display behavior. Rebuild the VM host too; guest daemon code and the
+current Android installer are loaded read-only on its next VM start, including
+for an existing VM disk. Older daemon Android answers without per-user isolation
+metadata are refused by both the UI and agent client, including their stream;
+Stop remains available. Animated physical rotation and the early boot stream
 need the updated daemon. Provisioning installs a checksum-pinned scrcpy client
 and server together in the SDK volume; Ubuntu 24.04's older scrcpy cannot capture
 the default Android 15 image. Existing SDK installations are reused while the
@@ -334,10 +362,22 @@ To install an APK, put it in the workstation and use its per-account
 apps and *Open a web address* for the optional URL tool. No APK or app store is
 downloaded merely by opening this workspace surface.
 
-The default SDK image is Android 15 **Google APIs**, which includes Google Play
-services; it does not include the Play Store. Google Play system images are
-separate, release-signed images with different capabilities, not a switch that
-makes a custom profile a certified retail device. See Google's
+The **Android image** selector offers the existing Android 15 **Google APIs**
+image (Play services, no Play Store) and **Google Play (developer image)**
+(`system-images;android-35;google_apis_playstore;x86_64`, present in Google's
+[image manifest](https://dl.google.com/android/repository/sys-img/google_apis_playstore/sys-img2-3.xml)).
+Choosing Play is explicit and asks for agreement even if the SDK was installed
+for another image. Different image packages have **separate AVD storage**;
+switching back restores that image's own apps and data. A matching legacy AVD is
+reused; an incompatible or ambiguous saved image is never rewritten into another
+OS. No image is silently upgraded or wiped. The SDK's package terms are accepted
+only for the packages being installed, not every agreement in its catalogue.
+
+Play images are release-signed and do not offer `adb root`. Sign in directly on
+Android, using its own screens; Pantheon has no Google password form. Your own
+agents can operate this same device and see its account sessions; host admins
+remain trusted. Emulator/profile identity does not guarantee Play Integrity,
+banking/DRM support, app availability, CTS certification or a retail device. See Google's
 [AVD documentation](https://developer.android.com/studio/run/managing-avds).
 SDK tools and images are separately licensed downloads, not relicensed as open
 source by this repository. The operator must accept and comply with the
@@ -348,11 +388,58 @@ are a future possibility only if a compatible image can be legally obtained,
 used for the intended purpose, and legally redistributed under its actual terms;
 no OEM software is included or promised by this uplift.
 
-Agents have full access by default: *sudo* is on in every backend until an
-admin turns it off (the owner, 2026-10-31: *"Agents get FULL access"*). In the
-container that means one person's agent can read another's workstation home,
-and the panel says so beside the switch; in a person's own VM it reaches only
-their machine. The network is full by default too — an admin narrows it to
+Android's open-source core (AOSP) and Google's SDK/Play software have different
+licences. Offering this integration in open-source code does not confer rights
+to redistribute Google images or operate a general-purpose hosted Play service.
+The SDK agreement limits its granted use to Android application development.
+No Google SDK image or Play package is committed to this repository or downloaded
+without an explicit installation choice. This change is a development integration,
+not a claim of distribution rights for a consumer Android service.
+
+**USB tether · send files to Android** transfers one chosen upload or one owned
+Pantheon document's **current text** (Markdown stays `.md`, other text uses `.txt`).
+Use *Upload a file* for binary originals such as PDFs, images or APK files.
+Nothing is installed or executed by a transfer. Each transfer is bounded to
+20 MB and goes into a unique folder under `Download/Pantheon` on the caller's
+running Android device. Android's returned SHA-256 must match the bytes sent.
+There is no blanket host mount, arbitrary host path, user selector or network
+tether; browser preview cannot receive Android files. Temporary staging files
+are private to that user and removed after success or failure.
+
+For local testing from `dev`, build from that checkout: the repository's Docker
+publish workflow currently runs on `main` only, so pulling a `:dev` registry tag
+does not establish that this source is running. Rebuild Pantheon and the VM host
+in your own test stack; no SDK download is part of an ordinary source build.
+
+For an opt-in isolation check, build a **separate test image** with
+`docker build -f workstation/vm.Dockerfile -t pantheon-isolation-check workstation`,
+then run the harness in a fresh container with no network or existing volumes:
+
+```bash
+mkdir android-isolation-results
+docker run --rm --network none --workdir /work \
+  --mount "type=bind,source=$PWD,target=/work,readonly" \
+  --mount "type=bind,source=$PWD/android-isolation-results,target=/results" \
+  --entrypoint python3 pantheon-isolation-check \
+  -u scripts/check-android-isolation.py --output /results
+```
+
+Use a new empty results directory each time. The script verifies the pinned
+Ubuntu cloud-image hash, uses fresh disposable qcow2 disks, and runs two real
+TCG Linux kernels with the shipped daemon and VM routing. Guest-root probes
+check cross-user files and session **markers**, authenticated daemon ports,
+fixture listeners standing in for ADB/console, and each user's separate fixture
+9p project export, including sibling and symlink reads. JSON results and serial
+logs are retained; the test disks and tokens are removed. This verifies those
+specific isolation checks, **not Android, real ADB, Google sign-in, KVM, or all
+possible hypervisor/9p exploits**. Android acceptance still requires a suitable
+KVM host and an explicitly authorized SDK install.
+
+An unset *sudo* choice is on in each user's own VM and off in the shared
+container; an admin can choose explicitly. In the shared container, enabling
+sudo lets one person's agent read another's workstation home, and the panel
+says so beside the switch. In a person's own VM, root reaches only their
+machine. The network is full by default too — an admin narrows it to
 *internet only* or *none* in the same panel, held by the small
 `workstation-net` container beside the container backend, so an agent using
 *sudo* cannot lift it (`P20-06`). Neither backend has access to Docker or to

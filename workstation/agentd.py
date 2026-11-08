@@ -975,6 +975,12 @@ class Workstation:
                 return phone.info()
             if action == "start":
                 return phone.start(body.get("device"))
+            if action == "preview":
+                return phone.preview(body.get("device"))
+            if action == "edition":
+                return phone.select_edition(body.get("edition"))
+            if action == "transfer":
+                return phone.transfer(body.get("name"), body.get("data_b64"))
             if action == "install":
                 # `B1756`: a device picked and not here yet is installed, then
                 # booted. The SDK License is a person's to accept, never the agent's.
@@ -987,11 +993,12 @@ class Workstation:
                 return phone.stop()
             if action == "device":
                 device = body.get("device")
-                if device not in P.PHONE_DEVICES:
+                if not isinstance(device, str) or device not in P.PHONE_DEVICES:
                     raise WorkstationError("bad_request",
                                            f"“device” is one of {', '.join(P.PHONE_DEVICES)}.")
                 if phone.running():
-                    return dict(phone.start(device), action="device")
+                    change = phone.preview if phone.mode() == "mobile_view" else phone.start
+                    return dict(change(device), action="device")
                 with phone.lock:
                     phone.device = device
                     phone._save_device()

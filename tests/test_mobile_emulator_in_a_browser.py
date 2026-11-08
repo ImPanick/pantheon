@@ -37,6 +37,7 @@ const BASE = process.argv[2], devices = JSON.parse(process.argv[3]);
   page.on('pageerror', e => errors.push(String(e.message || e)));
   page.setDefaultTimeout(20000);
   const state = { available: true, state: 'off', mode: 'android', device: 'galaxy_z_fold6',
+    isolation: 'per_user_vm', edition: 'standard', google_play: false, preview_available: true,
     devices, posture: 'open', rotation: 0, screen_is_active: true, boot_phase: 'off',
     license: { accepted: true }, install: { state: 'idle' } };
   let holder = 'agent', streamReady = false, refuseRotate = false;
@@ -69,6 +70,12 @@ const BASE = process.argv[2], devices = JSON.parse(process.argv[3]);
         await route.fulfill({ status: 503, json: { detail: 'Rotation refused by test device.' } }); return;
       }
       if (b.action === 'start' || b.action === 'install') { state.state = 'starting'; state.boot_phase = 'emulator'; }
+      if (b.action === 'install' && b.accept_license) state.license.accepted = true;
+      if (b.action === 'preview') { state.mode = 'mobile_view'; state.state = 'on'; }
+      if (b.action === 'edition') {
+        state.edition = b.edition; state.google_play = b.edition === 'google_play';
+        state.license.accepted = false; state.state = 'off'; streamReady = false;
+      }
       if (b.action === 'stop') { state.state = 'off'; streamReady = false; }
       if (b.action === 'device' || b.action === 'install') {
         state.device = b.device; state.rotation = 0;
@@ -99,6 +106,16 @@ const BASE = process.argv[2], devices = JSON.parse(process.argv[3]);
     if (holder === 'agent' && onHandBack) { onHandBack(); onHandBack = null; }
     await route.fulfill({ json: snapshot });
   });
+  const files = [];
+  await page.route('**/api/workstation/phone/files*', async route => {
+    const req = route.request();
+    files.push({ type: req.headers()['content-type'], data: req.postDataBuffer().toString() });
+    await route.fulfill({ json: { ok: true, name: 'selected.txt', bytes: 12,
+      destination: '/sdcard/Download/Pantheon/test-fixture/selected.txt', sha256: 'fixture' } });
+  });
+  await page.route('**/api/documents/library?**', route => route.fulfill({ json: {
+    documents: [{ id: 'owned-document-fixture', title: '<img src=x onerror=alert(1)> Document' }],
+  } }));
   await page.route('**/api/workstation/desktop/client/phone-test.html', route => route.fulfill({
     contentType: 'text/html', body: '<!doctype html><html><body style="margin:0;background:#101010;color:white;font:20px monospace;display:grid;place-content:center;height:100vh;text-align:center"><p>Stream fixture</p><p>Android is not running<br>in this UI test</p><button id="target" style="font:inherit;padding:20px">Touch target</button><script>document.getElementById("target").onclick=()=>document.getElementById("target").textContent="Tapped";</script></body></html>',
   }));
@@ -223,12 +240,47 @@ const BASE = process.argv[2], devices = JSON.parse(process.argv[3]);
   assert.deepEqual(controlRequests.slice(-2), ['person', 'agent']);
   await page.locator('[data-surf="phone"]').click();
   await page.waitForSelector('.phw-bezel[data-state="on"]');
-  state.mode = 'mobile_view'; state.state = 'off'; streamReady = false;
+
+  // Selecting Play is explicit, including when the SDK is already present.
+  await page.getByLabel('Android image', { exact: true }).selectOption('google_play');
+  await page.waitForFunction(() => document.querySelector('.phw-runtime').textContent.includes('Google Play developer'));
+  const beforeConsent = requests.length;
+  await page.locator('.phw-power').click();
+  await page.waitForSelector('.phw-license:not([hidden])');
+  assert.match(await page.locator('.phw-license').innerText(), /proprietary Google Play/);
+  assert.equal(requests.length, beforeConsent);
+  await page.locator('.phw-license-accept').click();
+  await page.waitForSelector('.phw-bezel[data-state="starting"]');
+  assert.equal(requests.at(-1).accept_license, true);
+  state.state = 'on'; streamReady = true; await poll();
+  await page.locator('.phw-transfer > summary').click();
+  await page.locator('.phw-transfer input[type="file"]').setInputFiles({
+    name: 'selected.txt', mimeType: 'application/octet-stream', buffer: Buffer.from('selected file'),
+  });
+  await page.waitForFunction(() => document.querySelector('.phw-transfer').textContent.includes('Checksum verified'));
+  assert.equal(files[0].type, 'application/octet-stream'); assert.equal(files[0].data, 'selected file');
+  await page.locator('.phw-doc-find').click();
+  await page.waitForSelector('.phw-doc-select:not([hidden])');
+  assert.equal(await page.locator('.phw-doc-select img').count(), 0);
+  await page.locator('.phw-doc-send').click();
+  await page.waitForFunction(() => document.querySelector('.phw-doc-send').disabled === false);
+  assert.equal(JSON.parse(files[1].data).document_id, 'owned-document-fixture');
+  await shot('mobile-play-transfer-fixture');
+
+  state.mode = null; state.state = 'unavailable'; streamReady = false;
+  state.why = 'No KVM is available on this test workstation.';
   state.why_not_android = 'No KVM is available on this test workstation.';
   await poll();
+  assert.equal(await page.locator('.phw-stage').isVisible(), false);
+  assert.equal(await page.locator('.phw-power').isEnabled(), false);
+  await shot('mobile-android-blocker');
+  await page.locator('.phw-preview').click();
+  await page.waitForFunction(() => document.querySelector('.phw-runtime').textContent.includes('Browser preview'));
+  assert.equal(requests.at(-1).action, 'preview');
   assert.match(await page.locator('.phw-runtime').innerText(), /Browser preview · Web only/);
   assert.match(await page.locator('.phw-runtime').innerText(), /No KVM/);
-  assert.equal(await page.locator('.phw-power').innerText(), 'Open browser preview');
+  assert.equal(await page.locator('.phw-power').innerText(), 'Close preview');
+  assert.equal(await page.locator('.phw-transfer').isVisible(), false);
   assert.equal(await page.locator('[data-key="volume_up"]').isEnabled(), false);
   await shot('mobile-browser-preview-labelled');
 

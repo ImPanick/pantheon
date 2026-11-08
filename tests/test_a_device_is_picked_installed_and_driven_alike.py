@@ -42,6 +42,7 @@ IMAGE = "system-images;android-35;google_apis;x86_64"
 
 
 class _System:
+    backend = "vm"  # isolated guest fixture; this test does not boot a VM
     def __init__(self, root):
         self.root = root
 
@@ -131,7 +132,7 @@ def test_a_workstation_that_cannot_install_says_how_to_build_the_phone_in(bare, 
     with pytest.raises(PH.PhoneError) as e:
         PH.Installer(run=lambda pkg, on_line: 0).start(IMAGE, accept=True)
     assert e.value.code == "unavailable" and "root" in e.value.message
-    assert "WORKSTATION_PHONE=on" in e.value.message
+    assert "workstation-vm" in e.value.message
 
 
 def test_one_install_at_a_time(bare):
@@ -340,7 +341,7 @@ console.log(JSON.stringify({{
     pixel, fold = got["groups"][0]["devices"][0], got["groups"][1]["devices"][0]
     assert pixel["current"] is True and pixel["verb"] == "In use" and pixel["installed"] is True
     assert fold["verb"] == "Install and use" and fold["installed"] is False and fold["foldable"] is True
-    assert got["mobile"]["verb"] == "Use this device", "the mobile view has nothing to install"
+    assert got["mobile"]["verb"] == "Preview this profile", "preview is an explicit web-only action"
     assert got["installing"]["verb"] == "Installing…" and got["installing"]["busy"] is True
     assert got["line"] == {"text": "Downloading Android (Android 15)", "percent": 55, "failed": False}
     assert got["failed"]["failed"] is True and "exit 7" in got["failed"]["text"]

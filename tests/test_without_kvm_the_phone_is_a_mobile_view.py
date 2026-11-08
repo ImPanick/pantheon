@@ -108,6 +108,7 @@ def test_a_mobile_view_whose_screen_will_not_start_says_so_and_never_goes_headle
 # ── which one runs ────────────────────────────────────────────────────────────
 
 class _System:
+    backend = "vm"  # guest fixture with KVM explicitly unavailable
     def __init__(self, root):
         self.root = root
         self.owned = []
@@ -198,18 +199,22 @@ def no_kvm(tmp_path, monkeypatch):
 
 
 def _started(phone, device=None):
-    phone.start(device)
+    phone.preview(device)
     phone._booting.join(5)
     assert phone.state == "on", phone.why
     return phone
 
 
-def test_without_kvm_the_phone_is_offered_as_a_mobile_view_and_says_why(no_kvm):
+def test_without_kvm_android_is_blocked_and_preview_requires_an_explicit_choice(no_kvm):
     info = no_kvm.info()
-    assert info["available"] is True and info["state"] == "off"
-    assert info["mode"] == "mobile_view" and "why" not in info
-    # `B1756`: KVM is asked first — with it, a pick installs the rest.
-    assert "KVM" in info["why_not_android"]
+    assert info["available"] is False and info["state"] == "unavailable"
+    assert info["mode"] is None and "KVM" in info["why"]
+    assert info["preview_available"] and not info["installed"]
+    assert no_kvm.start()["state"] == "unavailable"
+    assert no_kvm.mobile is None and no_kvm.calls == []
+    _started(no_kvm)
+    info = no_kvm.info()
+    assert info["mode"] == "mobile_view" and "KVM" in info["why_not_android"]
     assert "Mozilla/5.0 (Android" in info["user_agent"]
     assert info["accel"] is None
 
@@ -255,7 +260,8 @@ def test_back_and_home_work_and_the_keys_android_has_say_why_not(no_kvm):
 
 def test_power_turns_the_mobile_view_off(no_kvm):
     _started(no_kvm)
-    assert no_kvm.button("power")["state"] == "off"
+    assert no_kvm.button("power")["mode"] is None
+    assert no_kvm.state == "off"
     assert no_kvm.mobile is None and not no_kvm.running()
 
 
@@ -282,7 +288,7 @@ def test_a_mobile_view_that_will_not_start_says_why_and_is_not_left_starting(no_
         raise B.BrowserError("unavailable", "Firefox crashed")
 
     monkeypatch.setattr(PH.MobileView, "start", boom)
-    no_kvm.start()
+    no_kvm.preview()
     no_kvm._booting.join(5)
     assert no_kvm.state == "unavailable" and "Firefox crashed" in no_kvm.why
 
@@ -350,6 +356,7 @@ def test_the_agent_is_told_the_phone_is_a_mobile_view():
     got = asyncio.run(CT._phone_on(_Client([{"state": "off"}, {
         "state": "starting", "mode": "mobile_view", "device": "pixel_8",
         "devices": [{"id": "pixel_8", "name": "Google Pixel 8"}]}]), ACCOUNT))
-    assert "mobile view" in got["output"] and "Google Pixel 8" in got["output"]
+    assert "browser preview" in got["output"] and "Google Pixel 8" in got["output"]
+    assert "web pages only, not Android apps" in got["output"]
     line = CT._shot_line({"width": 450, "height": 1000, "mode": "mobile_view"}, "phone")
     assert "not Android" in line and "450×1000" in line

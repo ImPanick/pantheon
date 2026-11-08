@@ -154,6 +154,7 @@ real in the image and about 20 ms a grab there against 65–70 ms for PNG
 from __future__ import annotations
 
 import asyncio
+import base64
 import logging
 import re
 from typing import Any, Dict, Optional
@@ -180,6 +181,7 @@ _STATUS_FOR = {
     "unavailable": 503,
     "not_found": 404,
     "bad_request": 400,
+    "license": 409,
 }
 
 
@@ -833,6 +835,10 @@ def setup_workstation_routes() -> APIRouter:
             raise HTTPException(400, f"“action” is one of {', '.join(_PHONE_PERSON_ACTIONS)}.")
         fields = {k: body[k] for k in _PHONE_FIELDS if k in body}
         try:
+            if action in ("start", "install", "preview", "edition", "device"):
+                # VM startup and SDK installation are command/file traffic:
+                # sync policy and learn the VM cold-start timeout first.
+                await wa.sync_config(client)
             answer = await client.phone(account, action, holder="person", **fields)
         except WorkstationError as e:
             raise _http_error(e)
@@ -859,6 +865,56 @@ def setup_workstation_routes() -> APIRouter:
         else:
             out["why"] = str(answer.get("why") or "The phone has no live screen.")[:500]
         return JSONResponse(out, headers=_NO_STORE)
+
+    @router.post("/phone/files")
+    async def workstation_phone_file(request: Request, name: str = ""):
+        """Selected bytes only, into the caller's phone; never a host mount.
+
+        An octet stream is a custom upload. JSON names one owned document to
+        export as its current text. Neither form accepts an owner or a path.
+        """
+        client, account = _mine(request)
+        try:
+            await wa.sync_config(client)
+            status = await client.phone(account, "status", holder="person")
+            if status.get("isolation") != "per_user_vm":
+                raise HTTPException(409, "File transfer requires the per-user VM Android runtime.")
+            if status.get("mode") != "android" or status.get("state") != "on":
+                raise HTTPException(409, "Turn on Android before transferring files. Browser preview has no Android storage.")
+            content_type = request.headers.get("content-type", "").split(";", 1)[0].strip().lower()
+            if content_type not in ("application/json", "application/octet-stream"):
+                raise HTTPException(415, "Send a file as application/octet-stream or a document selection as JSON.")
+            limit = 4096 if content_type == "application/json" else P.MAX_FILE_BYTES
+            raw = bytearray()
+            async for chunk in request.stream():
+                if len(raw) + len(chunk) > limit:
+                    raise HTTPException(413, f"This transfer exceeds {limit} bytes.")
+                raw.extend(chunk)
+            if content_type == "application/json":
+                import json
+                try:
+                    selection = json.loads(raw)
+                except (ValueError, UnicodeError):
+                    raise HTTPException(400, "Select one document by document_id.")
+                if (not isinstance(selection, dict) or set(selection) != {"document_id"}
+                        or not isinstance(selection["document_id"], str) or not selection["document_id"]):
+                    raise HTTPException(400, "Select one document by document_id.")
+                from src.auth_helpers import require_privilege
+                from src.feature_gate import require_feature
+                require_feature("document_editor", label="The document editor")()
+                owner = require_privilege(request, "can_use_documents")
+                data, name = await asyncio.to_thread(_phone_document, selection["document_id"], owner)
+            else:
+                data = bytes(raw)
+            if len(data) > P.MAX_FILE_BYTES:
+                raise HTTPException(413, f"Each transfer is at most {P.MAX_FILE_BYTES} bytes.")
+            answer = await client.phone(account, "transfer", holder="person", name=name,
+                                        data_b64=base64.b64encode(data).decode("ascii"))
+        except WorkstationError as e:
+            raise _http_error(e)
+        return JSONResponse({"ok": answer.get("ok") is True, "name": str(answer.get("name") or "")[:180],
+                             "bytes": answer.get("bytes"), "sha256": str(answer.get("sha256") or "")[:64],
+                             "destination": str(answer.get("destination") or "")[:500]}, headers=_NO_STORE)
 
     @router.websocket("/phone/websockify")
     async def workstation_phone_stream(websocket: WebSocket):
@@ -1024,8 +1080,29 @@ _BROWSER_FIELDS = ("url", "x", "y", "text", "submit", "keys", "dx", "dy", "tab",
 # the daemon validates every one (`workstation/phone.py`). Touch is not here:
 # it is the stream's, while the person holds the screens.
 _PHONE_PERSON_ACTIONS = ("start", "stop", "device", "button", "posture", "rotate", "open_url",
-                         "install")
-_PHONE_FIELDS = ("device", "button", "posture", "url", "accept_license")
+                         "install", "preview", "edition")
+_PHONE_FIELDS = ("device", "button", "posture", "url", "accept_license", "edition")
+
+
+def _phone_document(document_id: str, owner: str):
+    """The existing document ownership check, also for session-backed legacy rows."""
+    from core.database import SessionLocal, Document
+    from routes.document_helpers import _verify_doc_owner
+    from src.file_names import display_name
+    db = SessionLocal()
+    try:
+        doc = db.query(Document).filter(Document.id == document_id).first()
+        if doc is None:
+            raise HTTPException(404, "Document not found")
+        _verify_doc_owner(db, doc, owner)
+        # This exports the current editable text. Binary originals can be
+        # selected in Upload file; no PDF/source marker grants file access.
+        title = display_name(doc.title or "document")
+        title = title.encode("utf-8")[:150].decode("utf-8", "ignore").strip(" .-") or "document"
+        extension = ".md" if doc.language == "markdown" else ".txt"
+        return (doc.current_content or "").encode("utf-8"), title + extension
+    finally:
+        db.close()
 
 
 _HEX = re.compile(r"^#[0-9a-fA-F]{6}$")
@@ -1066,7 +1143,7 @@ def _phone_state(answer: Dict[str, Any]) -> Dict[str, Any]:
                             "kind": d.get("kind") if d.get("kind") in ("phone", "foldable", "tablet") else "phone",
                             "foldable": bool(d.get("foldable")),
                             # `B1756`: whether picking it boots it now or installs it first.
-                            "installed": d.get("installed") is not False,
+                            "installed": d.get("installed") is True,
                             "android": str(d.get("android") or "")[:40],
                             "width": P.PHONE_DEVICES[d["id"]]["width"],
                             "height": P.PHONE_DEVICES[d["id"]]["height"],
@@ -1091,6 +1168,16 @@ def _phone_state(answer: Dict[str, Any]) -> Dict[str, Any]:
         "android": str(answer.get("android") or "")[:120],
         "buttons": list(P.PHONE_BUTTONS),
         "stream_ready": answer.get("stream_ready") is True,
+        "preview_available": answer.get("preview_available") is True,
+        "can_start": answer.get("can_start") is True,
+        "edition": answer.get("edition") if answer.get("edition") in P.PHONE_EDITIONS else "standard",
+        "image_kind": answer.get("image_kind") if answer.get("image_kind") in
+                      ("google_apis", "google_play", "aosp", "custom") else "custom",
+        "standard_image_kind": answer.get("standard_image_kind") if answer.get("standard_image_kind") in
+                               ("google_apis", "google_play", "aosp", "custom") else "custom",
+        "google_play": answer.get("google_play") is True,
+        "isolation": "per_user_vm" if answer.get("isolation") == "per_user_vm" else "shared",
+        "transfer_max_bytes": P.MAX_FILE_BYTES,
         "screen_is_active": answer.get("screen_is_active") is True,
         "boot_phase": answer.get("boot_phase") if answer.get("boot_phase") in
                       ("off", "emulator", "android", "browser", "ready") else "off",
@@ -1101,7 +1188,7 @@ def _phone_state(answer: Dict[str, Any]) -> Dict[str, Any]:
         out["why_not_android"] = str(answer.get("why_not_android") or "")[:500]
         out["user_agent"] = str(answer.get("user_agent") or "")[:200]
     # `B1756`: the install a pick starts, and the licence it needs once.
-    out["installed"] = answer.get("installed") is not False
+    out["installed"] = answer.get("installed") is True
     lic = answer.get("license") if isinstance(answer.get("license"), dict) else {}
     out["license"] = {"accepted": bool(lic.get("accepted")),
                       "url": "https://developer.android.com/studio/terms"}

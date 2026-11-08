@@ -272,7 +272,7 @@ def _minutes(seconds: float) -> str:
 # ── what the host can do ─────────────────────────────────────────────────────
 
 def choose_accel(dev: Path = Path("/dev/kvm"), *, want: str = "auto",
-                 mknod: Callable = os.mknod, opener: Callable = os.open) -> Tuple[str, str]:
+                 mknod: Optional[Callable] = None, opener: Callable = os.open) -> Tuple[str, str]:
     """`(accel, why)`: `kvm` when /dev/kvm opens, `tcg` with the reason when not.
 
     A missing node is made first: inside a container the node is absent
@@ -282,8 +282,18 @@ def choose_accel(dev: Path = Path("/dev/kvm"), *, want: str = "auto",
     if want == "tcg":
         return "tcg", "TCG was asked for."
     if not os.path.exists(dev):
+        # Diagnostics and protocol tests may import this module on Windows.
+        # Linux's device-node API is needed only when a node must be made;
+        # absent support means no KVM, not an import-time AttributeError.
+        make_node = mknod or getattr(os, "mknod", None)
+        make_device = getattr(os, "makedev", None)
+        if make_node is None or make_device is None:
+            why = f"there is no {dev} and this operating system cannot make a Linux KVM device"
+            if want == "kvm":
+                raise WorkstationError("unavailable", f"KVM was asked for, but {why}.")
+            return "tcg", f"No KVM: {why}."
         try:
-            mknod(str(dev), stat.S_IFCHR | 0o660, os.makedev(KVM_MAJOR, KVM_MINOR))
+            make_node(str(dev), stat.S_IFCHR | 0o660, make_device(KVM_MAJOR, KVM_MINOR))
         except OSError as e:
             if e.errno != errno.EEXIST:
                 why = f"there is no {dev} and it could not be made ({e.strerror or e})"
@@ -291,7 +301,7 @@ def choose_accel(dev: Path = Path("/dev/kvm"), *, want: str = "auto",
                     raise WorkstationError("unavailable", f"KVM was asked for, but {why}.")
                 return "tcg", f"No KVM: {why}."
     try:
-        fd = opener(str(dev), os.O_RDWR | os.O_CLOEXEC)
+        fd = opener(str(dev), os.O_RDWR | getattr(os, "O_CLOEXEC", 0))
     except OSError as e:
         why = {errno.ENXIO: "the host kernel has no KVM device",
                errno.ENODEV: "the host kernel has no KVM device",
@@ -572,13 +582,19 @@ class QemuMachine(Machine):
         os.replace(tmp, self.disk)
 
     def _app_disk(self) -> Path:
-        """The daemon's code and this machine's token, as a read-only disk."""
+        """Current daemon/phone-installer code and this machine's token.
+
+        The phone installer must upgrade with the daemon, including for VMs
+        whose persistent disk was made from an older provisioning image.
+        """
         root = self.dir / "app"
         shutil.rmtree(root, ignore_errors=True)
         (root / "workstation").mkdir(parents=True)
         for src in sorted(PACKAGE_DIR.glob("*.py")):
             shutil.copy2(src, root / "workstation" / src.name)
             os.chmod(root / "workstation" / src.name, 0o644)
+        shutil.copy2(self.fleet.payload / "provision.sh", root / "workstation" / "provision.sh")
+        os.chmod(root / "workstation" / "provision.sh", 0o644)
         fd = os.open(root / "token", os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
         with os.fdopen(fd, "w", encoding="utf-8") as f:
             f.write(self.token + "\n")
@@ -1043,17 +1059,40 @@ class Fleet(System):
         root = Path(os.environ.get(P.PROJECTS_DIR_ENV, "").strip() or P.PROJECTS_DIR)
         if not root.is_dir():
             return None
-        folder = root / P.project_folder_of(account)
+        root = root.resolve()
+        name = P.project_folder_of(account)
+        folder = root / name
+        root_fd = folder_fd = None
         try:
-            folder.mkdir(mode=0o2770, exist_ok=True)
+            # The parent is Pantheon's trusted host directory, never exported
+            # to a guest. Refuse a linked/replaced leaf and apply permissions
+            # through its descriptor, never by following a user-supplied link.
+            flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+            root_fd = os.open(root, flags)
+            try:
+                os.mkdir(name, mode=0o2770, dir_fd=root_fd)
+            except FileExistsError:
+                pass  # Existing exports are expected; the no-follow open below still validates the leaf.
+            folder_fd = os.open(name, flags, dir_fd=root_fd)
+            opened = os.fstat(folder_fd)
             from workstation.__main__ import PAIRING_GID_ENV   # the one spelling
             gid = os.environ.get(PAIRING_GID_ENV, "").strip()
             if gid.isdigit() and int(gid) and os.geteuid() == 0:
-                os.chown(folder, -1, int(gid))
-            os.chmod(folder, 0o2770)
+                os.fchown(folder_fd, -1, int(gid))
+            os.fchmod(folder_fd, 0o2770)
+            now = os.stat(name, dir_fd=root_fd, follow_symlinks=False)
+            if (not stat.S_ISDIR(now.st_mode) or (now.st_dev, now.st_ino)
+                    != (opened.st_dev, opened.st_ino) or folder.resolve().parent != root):
+                raise OSError(errno.ELOOP, "the export folder changed or is a symbolic link")
         except OSError as e:
-            logger.warning("the projects folder for %s could not be made: %s", account, e)
-            return None
+            raise WorkstationError("unavailable", "Your projects folder cannot be exported safely. "
+                                   "Symbolic links or replaced export folders are refused; existing "
+                                   "data was preserved. Ask an admin to inspect the projects directory.") from e
+        finally:
+            if folder_fd is not None:
+                os.close(folder_fd)
+            if root_fd is not None:
+                os.close(root_fd)
         return folder
 
     def machine_for(self, account: str) -> Machine:
@@ -1564,20 +1603,82 @@ class VmStation(Workstation):
         that streams, under its own KasmVNC."""
         return self.system.forward(account, "desktop", timeout=120.0)
 
-    # `B1751`. The phone runs in the container workstation only: a machine
-    # here would need KVM inside KVM to boot Android, and its image has no SDK.
-    PHONE_ELSEWHERE = ("The phone runs in the container workstation, not in a VM. In Settings -> "
-                       "Workstation, set Backend to Container to use it.")
-
     def phone(self, account: str, body: Dict) -> Dict:
-        raise WorkstationError("unavailable", self.PHONE_ELSEWHERE)
+        """The phone belongs inside its person's machine. The guest probes
+        its own KVM and installed SDK; the host must not infer that nested
+        Android acceleration works from its own KVM, or substitute a phone
+        on this shared host when it does not."""
+        action = body.get("action")
+        if action == "status":
+            if not self.system.machine_for(account).running():
+                # The selected profile/image and SDK state live in the guest
+                # disk. Do not invent them or boot/provision a VM to look.
+                out = {"ok": True, "action": "status", "state": "off", "mode": None,
+                       "available": False, "capability": "unknown", "can_start": True,
+                       "machine": "stopped", "isolation": "per_user_vm",
+                       "why": "Your VM is off. Power on to check Android prerequisites inside it."}
+            else:
+                out = self.system.forward(account, "phone", body, timeout=120.0, start=False)
+                if self.system.accel == "kvm" and out.get("state") in ("installing", "starting"):
+                    # A person watching an asynchronous SDK install/boot is
+                    # using the VM even before its live stream can connect.
+                    self.system._touch(account)
+            return self._phone_host_capability(out)
+        if action == "stop" and not self.system.machine_for(account).running():
+            return {"ok": True, "action": "stop", "state": "off", "mode": None,
+                    "machine": "stopped", "isolation": "per_user_vm"}
+        if self.system.accel != "kvm" and action not in ("preview", "stop"):
+            # TCG's virtual CPU can advertise virtualization and even give its
+            # guest a /dev/kvm node. That is not hardware acceleration: the
+            # Android workload is still CPU-emulated by the outer hypervisor.
+            # Navigation remains available for an explicitly opened web preview.
+            if (action in ("start", "install", "edition", "transfer")
+                    or not self._phone_is_preview(account)):
+                raise WorkstationError("unavailable", self._phone_host_why())
+            if action == "button" and body.get("button") == "power":
+                # Never let a concurrent preview stop turn Power into Android
+                # start in the guest. Its browser-preview meaning is just Off.
+                body = {**body, "action": "stop"}
+            elif action == "device":
+                # Likewise, profile changes on this producer stay previews even
+                # if another request closes the old preview between the calls.
+                body = {**body, "action": "preview"}
+        return self.system.forward(account, "phone", body, timeout=120.0)
+
+    def _phone_host_why(self) -> str:
+        detail = str(getattr(self.system, "accel_why", "") or "").strip()
+        return ("Android requires KVM on the workstation VM host and inside your VM. "
+                "This host runs user VMs with TCG CPU emulation; a guest /dev/kvm node "
+                "does not make Android hardware-accelerated. Enable host KVM, then check "
+                "nested KVM inside your VM. " + detail)[:1000].strip()
+
+    def _phone_host_capability(self, out: Dict) -> Dict:
+        if self.system.accel == "kvm" or out.get("mode") == "mobile_view":
+            return out
+        return {**out, "state": "unavailable", "mode": None, "available": False,
+                "capability": "unavailable", "can_start": False, "stream_ready": False,
+                "isolation": "per_user_vm", "why": self._phone_host_why()}
+
+    def _phone_is_preview(self, account: str) -> bool:
+        if not self.system.machine_for(account).running():
+            return False
+        out = self.system.forward(account, "phone", {"action": "status"},
+                                  timeout=120.0, start=False)
+        return out.get("mode") == "mobile_view"
 
     def phone_screen(self, account: str) -> Dict:
-        return {"kind": None, "holder": self.holder(account)["holder"],
-                "why": self.PHONE_ELSEWHERE}
+        if not self.system.machine_for(account).running():
+            return {"kind": None, "holder": self.holder(account)["holder"],
+                    "why": "Your VM is off; the phone has no live screen."}
+        if self.system.accel != "kvm" and not self._phone_is_preview(account):
+            return {"kind": None, "holder": self.holder(account)["holder"],
+                    "why": self._phone_host_why()}
+        return self.system.forward(account, "phone_screen", timeout=120.0, start=False)
 
     def phone_screen_upstream(self, account: str, viewer: str):
-        raise WorkstationError("unavailable", self.PHONE_ELSEWHERE)
+        if self.system.accel != "kvm" and not self._phone_is_preview(account):
+            raise WorkstationError("unavailable", self._phone_host_why())
+        return self._machine_stream(account, viewer, "phone_screen", start=False)
 
     def browser_screen(self, account: str) -> Dict:
         """`D-2026-11-01-01`: the machine's own answer — its browser runs there,
@@ -1593,18 +1694,21 @@ class VmStation(Workstation):
         return self._machine_stream(account, viewer, "browser_screen")
 
     @contextlib.contextmanager
-    def _machine_stream(self, account: str, viewer: str, route: str):
+    def _machine_stream(self, account: str, viewer: str, route: str, *, start: bool = True):
         """`D-2026-10-31-01`: the stream is the machine's. The upgrade goes to
         the daemon there, over the forwarded port with the machine's token, and
         that daemon goes on to its display; the `101` comes back through both.
         While the stream is open the machine is in use, so a person watching is
-        never powered off for being idle (`B979`). `route` is the desktop's or
-        (`D-2026-11-01-01`) the browser screen's."""
+        never powered off for being idle (`B979`). `route` is the desktop's,
+        browser screen's or phone screen's. Only the authenticated daemon
+        port is forwarded; Android's adb and console stay in the guest."""
         if viewer not in P.DESKTOP_VIEWERS:
             raise WorkstationError("bad_request",
                                    f"“viewer” is one of {', '.join(P.DESKTOP_VIEWERS)}.")
         with self.system._using(account):
-            m = self.system.ready(account)
+            m = self.system.ready(account) if start else self.system.machine_for(account)
+            if not m.running() or m.port is None:
+                raise WorkstationError("unavailable", "Your VM is off; the phone has no live screen.")
             _, path = P.route_path(route, account)
             try:
                 sock = socket.create_connection(("127.0.0.1", int(m.port or 0)), timeout=10.0)
@@ -1617,7 +1721,7 @@ class VmStation(Workstation):
                 try:
                     sock.close()
                 except OSError:
-                    pass
+                    pass  # The stream has ended; a failed close cannot restore its dead transport.
 
 
 # ── the command line ──────────────────────────────────────────────────────────

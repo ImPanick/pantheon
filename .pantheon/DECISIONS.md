@@ -3897,3 +3897,31 @@ uplift to be pushed to `dev`, confirming that `dev` is the dedicated test-only
 branch and is not intended for production. Direct delivery to `dev` is authorized
 so the owner can pull it and create a local Docker instance for acceptance testing.
 This authorizes no update to `main` or deployment to the live Arcane instance.
+
+## D-2026-11-08-02 - Android isolation, explicit preview and selected file transfer
+
+The owner rejected the browser-with-a-device-overlay experience and required
+actual Android with optional Google Play, selected file transfer, and mandatory
+per-user isolation including adversarial checks. This supersedes automatic browser
+fallback in D-2026-11-08-01. Preview survives as an explicit web-only action;
+Android start refuses its actual blocker and never launches Firefox.
+
+Use the existing per-user VM backend as the boundary. Do not weaken sudo or treat
+separate shared-loopback ports as isolation. The authenticated daemon is the only
+forwarded guest service; Android ports and storage stay inside the user's VM.
+Host KVM, guest KVM and sufficient memory are prerequisites. Nested accelerated
+Android is experimental and outside Google's supported host configurations, so
+a real host acceptance is required; a fixture does not establish runtime fidelity.
+The client also requires the operator-configured VM role and matching endpoint,
+outside workstation root, rather than trusting a shared daemon's self-description.
+Old daemons without boundary metadata are refused; Stop stays available. The
+current Android installer travels with guest code on its read-only app disk so
+existing device disks do not need resetting to receive installer updates.
+
+Google Play is an explicit SDK developer-image selection under Google's separate
+terms, not open-source AOSP, an OEM system, certification or a redistribution grant.
+No SDK license is accepted by an agent. An incompatible image gets separate AVD
+data; existing data is never silently migrated or wiped. File transfer accepts
+only selected bytes or an owned document's current text, into a fixed Android
+Downloads root with bounded staging and checksum confirmation. It is not a host
+mount or network tether. The owner alone controls live deployments.

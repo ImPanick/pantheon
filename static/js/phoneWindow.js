@@ -70,8 +70,10 @@ export function catalogueOf(state) {
     if (!g) { g = { maker: d.maker || '', devices: [] }; groups.push(g); }
     const current = d.id === s.device;
     // The mobile view has nothing to install: it is the workstation's browser.
-    const installed = mobile || d.installed === true;
+    const installed = d.installed === true;
     let verb = installed ? 'Use this device' : 'Install and use';
+    if (!s.mode) verb = 'Select profile';
+    if (mobile) verb = 'Preview this profile';
     if (current && (s.state === 'on' || s.state === 'starting')) verb = 'In use';
     else if (current && s.state === 'installing') verb = 'Installing…';
     g.devices.push({
@@ -102,6 +104,7 @@ export function installLine(state) {
 export function needsLicense(state, id) {
   const s = state || {};
   if (isMobileView(s)) return false;
+  if ((s.edition === 'google_play' || s.google_play) && !(s.license && s.license.accepted === true)) return true;
   const d = (Array.isArray(s.devices) ? s.devices : []).find((x) => x.id === id);
   if (!d || d.installed === true) return false;
   return !(s.license && s.license.accepted === true);
@@ -131,6 +134,8 @@ let _pose = null;
 let _animations = [];
 let _screenKey = '';
 let _error = '';
+let _sending = false;
+let _transferText = '';
 let _revision = 0;
 let _pollSequence = 0;
 let _actionSequence = 0;
@@ -146,8 +151,12 @@ export function runtimeOf(state) {
     detail: `Android is unavailable. ${s.why_not_android || 'This is Firefox; Android apps and the Android home screen are unavailable.'}`,
   };
   if (s.mode === 'android') return {
-    label: 'Generic Android',
-    detail: 'A real Android OS with home screen and apps. Device profiles model size and appearance; OEM software is not included.',
+    label: s.google_play ? 'Android · Google Play developer image' : 'Generic Android',
+    detail: (s.google_play ? 'Google Play is supplied by the separately licensed SDK image. Sign in on Android itself. '
+      : s.image_kind === 'google_apis' ? 'The Google APIs image includes Play services but no Play Store. '
+        : s.image_kind === 'aosp' ? 'This is AOSP Android without Google Play software. '
+          : 'This is the configured Android SDK image. ')
+      + 'Your agents use this same device. Profiles model size and appearance; OEM software is not included.',
   };
   return { label: 'Android unavailable', detail: s.why || 'Checking the workstation’s Android runtime.' };
 }
@@ -295,7 +304,7 @@ export async function act(payload) {
     if (_win !== win || action !== _actionSequence) return null;
     ++_revision;
     _state = answer;
-    if (['rotate', 'posture', 'device', 'install', 'stop'].includes(payload.action)) {
+    if (['rotate', 'posture', 'device', 'install', 'stop', 'edition', 'preview'].includes(payload.action)) {
       _dropFrame();
       _client = '';
     }
@@ -316,8 +325,58 @@ export async function act(payload) {
 
 function _turnOn() {
   const s = _state || {};
+  if (isMobileView(s)) return act({ action: 'preview' });
+  if (s.can_start) return act({ action: 'start' });
   if (needsLicense(s, s.device)) return useDevice(s.device);
   return act({ action: 'start' });
+}
+
+async function _sendFile({ file = null, documentId = '' }) {
+  if (_sending || !_win || !_state || _state.state !== 'on' || isMobileView(_state)) return;
+  const win = _win;
+  if (file && file.size > (_state.transfer_max_bytes || 20000000)) {
+    _transferText = 'Choose a file of 20 MB or less.'; _render(); return;
+  }
+  _sending = true;
+  _transferText = 'Transferring to Android…';
+  _render();
+  try {
+    const res = await fetch('/api/workstation/phone/files' + (file ? `?name=${encodeURIComponent(file.name)}` : ''), {
+      method: 'POST', credentials: 'same-origin', cache: 'no-store',
+      headers: { 'Content-Type': file ? 'application/octet-stream' : 'application/json' },
+      body: file || JSON.stringify({ document_id: documentId }),
+    });
+    let answer = null;
+    try { answer = await res.json(); } catch (_) { answer = null; }
+    if (!res.ok || !answer || !answer.ok) throw new Error(answer && answer.detail || 'The file transfer did not complete.');
+    if (_win !== win) return;
+    _transferText = `Sent ${answer.name} (${answer.bytes} bytes) to ${answer.destination}. Checksum verified by Android.`;
+  } catch (e) {
+    if (_win !== win) return;
+    _transferText = e.message;
+  } finally {
+    if (_win === win) { _sending = false; _render(); }
+  }
+}
+
+async function _findDocuments() {
+  const win = _win;
+  if (!win) return;
+  win.docFind.disabled = true;
+  try {
+    const result = await _get(`/api/documents/library?limit=50&search=${encodeURIComponent(win.docSearch.value)}`);
+    if (_win !== win) return;
+    win.docSelect.textContent = '';
+    for (const doc of result.documents || []) {
+      const option = document.createElement('option');
+      option.value = doc.id;
+      option.textContent = doc.title || 'Untitled document';
+      win.docSelect.appendChild(option);
+    }
+    win.docSelect.hidden = !win.docSelect.options.length;
+    _transferText = win.docSelect.options.length ? 'Choose a document, then send its current text. Search to find other documents.' : 'No matching documents.';
+  } catch (e) { if (_win === win) _transferText = e.message; }
+  finally { if (_win === win) { win.docFind.disabled = false; _render(); } }
 }
 
 export function press(button) {
@@ -548,17 +607,32 @@ function _render() {
     }
   }
   if (d.id) _win.device.value = d.id;
-  _win.device.disabled = !s.mode || s.state === 'starting' || s.state === 'installing';
+  _win.device.disabled = s.state === 'starting' || s.state === 'installing';
+  _win.edition.value = s.edition || 'standard';
+  _win.edition.options[0].textContent = {
+    google_apis: 'Android · Google APIs (no Play Store)', google_play: 'Android · Google Play (configured image)',
+    aosp: 'Android · AOSP (no Google Play)', custom: 'Android · Configured SDK image',
+  }[s.standard_image_kind || 'custom'];
+  _win.edition.disabled = _busy || s.state === 'starting' || s.state === 'installing';
+  _win.preview.hidden = !s.preview_available || mobile || on || ['starting', 'installing'].includes(s.state);
+  _win.preview.disabled = _busy;
+  _win.stage.hidden = !s.mode;
+  _win.profile.hidden = !s.mode;
 
   _win.power.textContent = mobile ? (on || s.state === 'starting' ? 'Close preview' : 'Open browser preview')
     : (on || s.state === 'starting' ? 'Turn off' : 'Turn on');
-  _win.power.disabled = !s.mode || s.state === 'installing';
+  _win.power.disabled = (!s.mode && !s.can_start) || s.state === 'installing';
   _win.rotate.hidden = !on;
   _win.fold.hidden = !(on && d.foldable);
   _win.fold.textContent = s.posture === 'closed' ? 'Unfold' : 'Fold';
   _win.take.hidden = !on || holding;
   _win.give.hidden = !on || !holding;
   _win.tools.hidden = !on;
+  _win.nav.hidden = !on;
+  _win.transfer.hidden = !(on && !mobile && s.isolation === 'per_user_vm');
+  _win.transferText.textContent = _transferText || 'Files go to Download/Pantheon on your Android device. Each file is limited to 20 MB. No folders are mounted.';
+  _win.upload.disabled = _sending;
+  _win.docSend.disabled = _sending || !_win.docSelect.value;
   const runtime = runtimeOf(s);
   _win.runtimeLabel.textContent = runtime.label;
   _win.runtimeText.textContent = runtime.detail;
@@ -661,7 +735,9 @@ function _renderInstall(s) {
     const d = (s.devices || []).find((x) => x.id === _pending);
     _win.licenseText.textContent = `${d ? d.name : 'This device'} runs Google's Android system image, `
       + 'which Pantheon downloads to your workstation once (about 4 GB). It is offered under the '
-      + 'Android Software Development Kit License Agreement. Accept it to install the device.';
+      + 'Android Software Development Kit License Agreement for Android development and testing. '
+      + (_state.edition === 'google_play' || _state.google_play ? 'This includes proprietary Google Play software. ' : '')
+      + 'Each image keeps separate device data. Accept only if these terms cover your use.';
     const url = s.license && typeof s.license.url === 'string' && /^https:\/\//.test(s.license.url)
       ? s.license.url : 'https://developer.android.com/studio/terms';
     _win.licenseLink.href = url;
@@ -672,6 +748,8 @@ function _renderInstall(s) {
  *  it if the workstation lacks it, and turn it on — the request the agent's
  *  `use_device` sends too. */
 export function useDevice(id, { accept = false } = {}) {
+  if (!_state || !_state.mode) return act({ action: 'device', device: id });
+  if (isMobileView(_state)) return act({ action: 'preview', device: id });
   if (!accept && needsLicense(_state, id)) {
     _pending = id;
     _render();
@@ -721,7 +799,7 @@ function _renderCatalogue(s) {
       text.appendChild(status);
       li.appendChild(text);
       const b = _button('phw-cat-use', d.verb, () => useDevice(d.id), `${d.verb}: ${d.name}`);
-      b.disabled = d.busy || (d.current && d.verb === 'In use') || !s.mode;
+      b.disabled = d.busy || (d.current && d.verb === 'In use');
       li.appendChild(b);
       ul.appendChild(li);
     }
@@ -755,6 +833,14 @@ function _build({ embedded = false } = {}) {
   device.className = 'phw-device';
   device.setAttribute('aria-label', 'Device');
   device.addEventListener('change', () => act({ action: 'device', device: device.value }));
+  const edition = document.createElement('select');
+  edition.className = 'phw-edition';
+  edition.setAttribute('aria-label', 'Android image');
+  for (const [value, label] of [['standard', 'Android · Standard image'], ['google_play', 'Android · Google Play (developer image)']]) {
+    const option = document.createElement('option'); option.value = value; option.textContent = label;
+    edition.appendChild(option);
+  }
+  edition.addEventListener('change', () => { _pending = ''; act({ action: 'edition', edition: edition.value }); });
   const power = _button('phw-power', 'Turn on', () => {
     const s = _state && _state.state;
     if (s === 'on' || s === 'starting') act({ action: 'stop' });
@@ -767,6 +853,7 @@ function _build({ embedded = false } = {}) {
   const take = _button('phw-take', 'Take over', () => { takeOver(); });
   const give = _button('phw-give', 'Hand back', () => { handBack(); });
   bar.appendChild(device);
+  bar.appendChild(edition);
   bar.appendChild(power);
   bar.appendChild(rotate);
   bar.appendChild(fold);
@@ -801,7 +888,33 @@ function _build({ embedded = false } = {}) {
   const runtimeText = _el('span', 'phw-runtime-text');
   runtime.appendChild(runtimeLabel);
   runtime.appendChild(runtimeText);
+  const preview = _button('phw-preview', 'Open browser preview (web only)', () => act({ action: 'preview' }));
+  preview.hidden = true;
+  runtime.appendChild(preview);
   const profile = _el('div', 'phw-profile');
+
+  const transfer = _el('details', 'phw-transfer');
+  transfer.hidden = true;
+  transfer.appendChild(_el('summary', '', 'USB tether · send files to Android'));
+  const transferText = _el('p', 'phw-runtime-text');
+  transferText.setAttribute('role', 'status');
+  transferText.setAttribute('aria-live', 'polite');
+  const file = document.createElement('input'); file.type = 'file'; file.hidden = true;
+  file.addEventListener('change', () => { if (file.files[0]) _sendFile({ file: file.files[0] }); file.value = ''; });
+  const upload = _button('phw-upload', 'Upload a file', () => file.click());
+  const docSearch = document.createElement('input'); docSearch.type = 'search';
+  docSearch.className = 'phw-address'; docSearch.placeholder = 'Search your documents';
+  docSearch.setAttribute('aria-label', 'Search documents to send');
+  const docFind = _button('phw-doc-find', 'Find documents', _findDocuments);
+  const docSelect = document.createElement('select'); docSelect.className = 'phw-doc-select'; docSelect.hidden = true;
+  docSelect.setAttribute('aria-label', 'Document to send as text');
+  docSelect.addEventListener('change', () => _render());
+  const docSend = _button('phw-doc-send', 'Send document text', () => {
+    if (docSelect.value) _sendFile({ documentId: docSelect.value });
+  });
+  const transferRow = _el('div', 'phw-file-row'); transferRow.append(upload, file);
+  const documentRow = _el('div', 'phw-file-row'); documentRow.append(docSearch, docFind, docSelect, docSend);
+  transfer.append(transferText, transferRow, documentRow);
 
   const status = _el('div', 'ws-status phw-status');
   status.dataset.state = 'checking';
@@ -903,6 +1016,7 @@ function _build({ embedded = false } = {}) {
   content.appendChild(profile);
   content.appendChild(nav);
   content.appendChild(tools);
+  content.appendChild(transfer);
 
   let catalogue = null;
   if (embedded) {
@@ -917,7 +1031,8 @@ function _build({ embedded = false } = {}) {
   }
   modal.appendChild(content);
 
-  return { modal, content, header, title, device, power, rotate, fold, take, give, openForm, address,
+  return { modal, content, header, title, device, edition, preview, power, rotate, fold, take, give, openForm, address,
+    transfer, transferText, upload, docSearch, docFind, docSelect, docSend,
     tools, runtime, runtimeLabel, runtimeText, profile, leaf,
     status, statusText, stage, bezel, screen, empty, glass, sideKeys: sideKeysBox, keyBoxes, camera, hinge, nav,
     progress, progressText, progressBar, license, licenseText, licenseLink, catalogue, embedded };
@@ -948,6 +1063,8 @@ function _teardown() {
   _pose = null;
   _screenKey = '';
   _error = '';
+  _sending = false;
+  _transferText = '';
   if (modal.parentNode) modal.parentNode.removeChild(modal);
   // The room keeps its place: a note says where the phone went (`B1756`).
   if (embedded && _room) {

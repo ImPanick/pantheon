@@ -409,12 +409,18 @@ MAX_DESKTOP_HANDSHAKE_BYTES = 16_384
 NETWORK_ACTIONS = ("interfaces", "reach")
 # `B1751`. The phone (`ROUTES["phone"]`, `workstation/phone.py`).
 PHONE_ACTIONS = ("status", "start", "stop", "device", "button", "posture", "rotate",
-                 "open_url", "screenshot", "input", "marks", "install")
+                 "open_url", "screenshot", "input", "marks", "install", "preview", "edition", "transfer")
+PHONE_EDITIONS = ("standard", "google_play")
+PHONE_ISOLATION_REQUIRED = ("Android requires a separate VM for each user. Update the workstation-vm "
+                            "host from this checkout, restart your VM, and choose the VM backend in "
+                            "Settings → Workstation. Shared accounts or a daemon without isolation "
+                            "metadata are refused. Existing device data is preserved; it is not "
+                            "automatically copied into a VM.")
 #: The ones that never move the phone, so never `busy`.
 PHONE_LOOK_ACTIONS = ("status", "screenshot", "marks")
 PHONE_STATES = ("off", "installing", "starting", "on", "unavailable")
 #: `B1753`. What runs as the phone: the real Android ("android", which needs
-#: KVM), or, where there is none, the mobile view ("mobile_view": the
+#: KVM), or an explicitly requested web preview ("mobile_view": the
 #: workstation's Firefox shaped and identified as the device). The state's
 #: "mode" says which; with "mobile_view" it also says "why_not_android".
 PHONE_MODES = ("android", "mobile_view")
@@ -764,6 +770,7 @@ ERRORS: Dict[str, int] = {
     "forbidden": 403,
     "not_found": 404,
     "busy": 409,          # a person holds the display (`control`)
+    "license": 409,       # SDK terms require explicit acceptance by a person
     "too_large": 413,
     "unavailable": 503,   # no display, or the account could not be made
     "internal": 500,
@@ -853,7 +860,8 @@ __all__ = [
     "DEFAULT_SYSTEM", "SYSTEMS", "SYSTEM_NAMES", "SYSTEM_PORTS", "system_pairing_dir",
     "system_pairing_dir_env", "system_url_env",
     # `B1751`, added.
-    "PHONE_ACTIONS", "PHONE_BUTTONS", "PHONE_DEFAULT_DEVICE", "PHONE_DEVICES",
+    "PHONE_ACTIONS", "PHONE_BUTTONS", "PHONE_DEFAULT_DEVICE", "PHONE_DEVICES", "PHONE_EDITIONS",
+    "PHONE_ISOLATION_REQUIRED",
     "PHONE_LOOK_ACTIONS", "PHONE_MODES", "PHONE_POSTURES", "PHONE_SCREEN_MAX", "PHONE_STATES",
     "phone_screen_size",
 ]

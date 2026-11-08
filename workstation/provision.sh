@@ -430,8 +430,8 @@ server() {
 # and at run time by the daemon when a person picks a device the workstation
 # does not have yet (`B1756`, PHONE_RUNTIME=yes) — and then only once a person
 # has accepted the Android SDK License (https://developer.android.com/studio/
-# terms) in the Devices room (PHONE_ACCEPT_LICENSE=yes), which `sdkmanager
-# --licenses` is answered yes to below. About 4 GB. Each part already there is
+# terms) in the Devices room (PHONE_ACCEPT_LICENSE=yes), for the packages
+# selected below. About 4 GB. Each part already there is
 # skipped, so a second device costs only its system image. x86_64 only.
 #
 # The tools' zip is pinned by its build number and checked before it is unpacked:
@@ -573,10 +573,11 @@ PY
         keytool -importcert -noprompt -cacerts -storepass changeit -alias provision-ca \
             -file "$ca" >/dev/null 2>&1 || true
     fi
-    yes | "$sdkm" --sdk_root="$sdk" --licenses >/dev/null
     # What is already installed is not fetched again: sdkmanager skips it.
+    # Only the requested packages' terms are accepted. `--licenses` would
+    # accept every unrelated agreement in Google's repository as well.
     say "step: android"
-    "$sdkm" --sdk_root="$sdk" --install "platform-tools" "emulator" "$image"
+    yes | "$sdkm" --sdk_root="$sdk" --install "platform-tools" "emulator" "$image"
     if [ -n "$cacert" ]; then
         keytool -delete -noprompt -cacerts -storepass changeit -alias provision-ca >/dev/null 2>&1 || true
     fi
