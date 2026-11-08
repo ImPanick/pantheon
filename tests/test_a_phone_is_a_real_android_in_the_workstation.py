@@ -328,6 +328,9 @@ class _FakePhone:
     def stream_ready(self):
         return self.state == "on"
 
+    def touch(self):
+        pass
+
     def _on(self):
         pass
 

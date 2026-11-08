@@ -1020,6 +1020,7 @@ class Workstation:
                 if not phone.stream_ready():
                     phone._on()  # says why there is no capture, including early boot
                     raise WorkstationError("unavailable", "The phone's display is not ready yet. Try again shortly.")
+                phone.touch()
                 return dict(self._phone_shot(phone.screen, str(body.get("format") or "png")),
                             mode=phone.mode(), state=phone.state)
             phone._on()

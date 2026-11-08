@@ -244,8 +244,11 @@ def test_version_probes_are_cached_until_the_binary_changes(tmp_path, monkeypatc
     assert calls == [True, True]
 
 
-def test_booting_screenshots_are_readable_while_touch_still_waits(tmp_path):
+@pytest.mark.parametrize("state", ["starting", "on"])
+def test_live_screenshots_refresh_activity_while_booting_touch_waits(tmp_path, state):
     p = phone(tmp_path)
+    p.state = state
+    p.used_at = 0
     p.scrcpy = Process()
     p.screen = SimpleNamespace(width=494, height=1100, grab=lambda fmt: (b"png", "image/png"))
     station = Workstation.__new__(Workstation)
@@ -253,10 +256,12 @@ def test_booting_screenshots_are_readable_while_touch_still_waits(tmp_path):
     station.phones = SimpleNamespace(get=lambda account: p)
     station.holder = lambda account: {"holder": "agent"}
     shot = station.phone("test", {"action": "screenshot"})
-    assert shot["state"] == "starting" and shot["mode"] == "android"
+    assert shot["state"] == state and shot["mode"] == "android"
+    assert p.used_at > 0
     assert shot["width"] == 494 and shot["data_b64"]
-    with pytest.raises(WorkstationError, match="booting"):
-        station.phone("test", {"action": "input", "input": "click", "x": 1, "y": 1})
+    if state == "starting":
+        with pytest.raises(WorkstationError, match="booting"):
+            station.phone("test", {"action": "input", "input": "click", "x": 1, "y": 1})
 
 
 def test_an_agent_can_look_at_boot_without_treating_it_as_ready(monkeypatch):
