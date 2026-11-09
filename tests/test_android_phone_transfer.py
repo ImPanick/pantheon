@@ -47,9 +47,18 @@ class AdbBoundary:
         self.staged = []
         self.fail_push = False
         self.bad_digest = False
+        self.transport = "device"
+        self.boot_completed = "1"
+        self.ce_available = "true"
 
     def __call__(self, args, **kwargs):
         self.calls.append((list(args), kwargs))
+        if args == ["get-state"]:
+            return self.transport
+        if args == ["shell", "getprop", "sys.boot_completed"]:
+            return self.boot_completed
+        if args == ["shell", "getprop", "sys.user.0.ce_available"]:
+            return self.ce_available
         if args[0] == "push":
             source = Path(args[1])
             self.staged.append(source)
@@ -77,6 +86,7 @@ def make_phone(root, *, backend="vm"):
                              uid=lambda account: 12000, files_as=lambda account: contextlib.nullcontext())
     phone = PH.AccountPhone(system, account_for("transfer-test"), None)
     phone.state, phone.emulator = "on", LiveProcess()
+    phone.port = 5586
     phone.android_why = lambda: None
     phone.adb = AdbBoundary()
     return phone
@@ -124,6 +134,203 @@ def test_exact_binary_bytes_are_verified_then_private_staging_is_removed(phone):
     assert result["destination"].endswith("/photo and notes.bin")
     assert phone.adb.files == {result["destination"]: data}
     assert phone.adb.staged and all(not p.parent.exists() for p in phone.adb.staged)
+
+
+def test_a_live_handle_without_a_selected_serial_never_stages_or_uses_default_adb(phone, monkeypatch):
+    phone.port = None
+    monkeypatch.setattr(PH.tempfile, "TemporaryDirectory", lambda **kwargs: pytest.fail("Staged before selecting a device"))
+    with pytest.raises(PH.PhoneError, match="connection is missing"):
+        phone.transfer("selected.txt", base64.b64encode(b"private").decode())
+    assert not phone.adb.calls
+
+
+def test_a_queued_transfer_refuses_without_staging_or_using_a_fresh_budget(phone, monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+    monkeypatch.setattr(PH, "TRANSFER_TIMEOUT_S", 0.05)
+    executor = ThreadPoolExecutor(max_workers=1)
+    try:
+        with phone.lock:
+            future = executor.submit(phone.transfer, "selected.txt", base64.b64encode(b"private").decode())
+            with pytest.raises(PH.PhoneError, match="Another operation") as error:
+                future.result(timeout=2)
+            assert error.value.code == "busy"
+    finally:
+        executor.shutdown(wait=True)
+    assert not phone.adb.calls and not phone.adb.staged
+
+
+def test_deadline_expiring_during_readiness_does_not_stage_private_bytes(phone, monkeypatch):
+    clock = SimpleNamespace(now=0.0)
+    monkeypatch.setattr(PH.time, "monotonic", lambda: clock.now)
+    boundary = phone.adb
+    def expire(args, **kwargs):
+        result = boundary(args, **kwargs)
+        if args == ["shell", "getprop", "sys.user.0.ce_available"]: clock.now = 91.0
+        return result
+    phone.adb = expire
+    monkeypatch.setattr(PH.tempfile, "TemporaryDirectory", lambda **kwargs: pytest.fail("Staged after the deadline"))
+    with pytest.raises(PH.PhoneError, match="timeout"):
+        phone.transfer("selected.txt", base64.b64encode(b"private").decode())
+    assert not any(args[0] == "push" for args, _ in boundary.calls)
+
+
+@pytest.mark.parametrize("field,value,message", [
+    ("transport", "offline", "connection is not ready"),
+    ("transport", "unauthorized", "connection is not ready"),
+    ("transport", "", "connection is not ready"),
+    ("boot_completed", "0", "still booting"),
+    ("boot_completed", "", "still booting"),
+    ("ce_available", "false", "storage is locked"),
+    ("ce_available", "0", "storage is locked"),
+])
+def test_current_readiness_refuses_before_private_bytes_are_staged(phone, monkeypatch, field, value, message):
+    setattr(phone.adb, field, value)
+    monkeypatch.setattr(PH.tempfile, "TemporaryDirectory", lambda **kwargs: pytest.fail("Readiness failure staged private bytes"))
+    with pytest.raises(PH.PhoneError, match=message) as error:
+        phone.transfer("selected.txt", base64.b64encode(b"private").decode())
+    assert error.value.code == "unavailable"
+    assert not any(args[0] == "push" or args[:2] == ["shell", "mkdir"] for args, _ in phone.adb.calls)
+
+
+@pytest.mark.parametrize("ce", ["", "unknown", "true"])
+def test_unknown_ce_on_a_configured_image_does_not_replace_sync_and_checksum(phone, ce):
+    phone.adb.ce_available = ce
+    result = phone.transfer("legacy image.txt", base64.b64encode(b"confirmed bytes").decode())
+    assert result["ok"] and phone.adb.files[result["destination"]] == b"confirmed bytes"
+
+
+def test_readiness_transport_error_is_structured_without_echoing_remote_diagnostics(phone):
+    def refused(args, **kwargs):
+        raise PH.PhoneError("unavailable", "PRIVATE_REMOTE_DIAGNOSTIC")
+    phone.adb = refused
+    with pytest.raises(PH.PhoneError, match="connection could not be checked") as error:
+        phone.transfer("selected.txt", base64.b64encode(b"private").decode())
+    assert error.value.code == "unavailable" and "PRIVATE" not in error.value.message
+
+
+@pytest.mark.parametrize("name", [" leading.txt", "trailing.txt ", " spaced 'quoted' name .txt"])
+def test_checksum_binding_preserves_filename_whitespace(phone, name):
+    result = phone.transfer(name, base64.b64encode(b"same bytes").decode())
+    assert result["destination"].endswith("/" + name)
+    assert phone.adb.files[result["destination"]] == b"same bytes"
+
+
+@pytest.mark.parametrize("form", ["hash-only", "wrong-path", "extra-record", "empty", "non-hex"])
+def test_checksum_requires_one_record_for_the_exact_selected_destination(phone, form):
+    boundary = phone.adb
+    def response(args, **kwargs):
+        value = boundary(args, **kwargs)
+        if args[:2] == ["shell", "sha256sum"]:
+            digest, _, path = value.partition("  ")
+            return {"hash-only": digest, "wrong-path": digest + "  /sdcard/Download/other.txt",
+                    "extra-record": value + "\n" + value, "empty": "", "non-hex": "g" * 64 + "  " + path}[form]
+        return value
+    phone.adb = response
+    with pytest.raises(PH.PhoneError, match="checksum"):
+        phone.transfer("selected.txt", base64.b64encode(b"private").decode())
+    assert not boundary.files and all(not p.parent.exists() for p in boundary.staged)
+
+
+@pytest.mark.parametrize("cleanup_fault", ["refusal", "timeout"])
+def test_partial_send_and_failed_remote_cleanup_keep_the_primary_error(phone, caplog, cleanup_fault):
+    boundary = phone.adb
+    primary = PH.PhoneError("unavailable", "PRIVATE_SEND_DIAGNOSTIC")
+    def partial(args, **kwargs):
+        if args[:3] == ["shell", "rm", "-f"]:
+            if cleanup_fault == "timeout":
+                try:
+                    raise subprocess.TimeoutExpired("fixture-adb", kwargs["timeout"])
+                except subprocess.TimeoutExpired:
+                    raise PH.PhoneError("unavailable", "PRIVATE_CLEANUP_TIMEOUT")
+            raise PH.PhoneError("unavailable", "PRIVATE_CLEANUP_DIAGNOSTIC")
+        result = boundary(args, **kwargs)
+        if args[0] == "push":
+            boundary.files[args[2]] = b"partial"
+            raise primary
+        return result
+    phone.adb = partial
+    with pytest.raises(PH.PhoneError, match="file-transfer service") as error:
+        phone.transfer("selected.txt", base64.b64encode(b"private").decode())
+    assert error.value.__cause__ is primary
+    assert "unconfirmed file may remain" in error.value.message
+    assert "PRIVATE" not in error.value.message and "PRIVATE" not in caplog.text
+    assert len([args for args, _ in boundary.calls if args[0] == "push"]) == 1
+    assert all(not p.parent.exists() for p in boundary.staged)
+
+
+@pytest.mark.parametrize("replacement_port", [None, 5590])
+def test_changed_serial_never_verifies_or_cleans_a_replacement_device(phone, replacement_port):
+    boundary = phone.adb
+    def replacement(args, **kwargs):
+        result = boundary(args, **kwargs)
+        if args[0] == "push": phone.port = replacement_port
+        return result
+    phone.adb = replacement
+    with pytest.raises(PH.PhoneError, match="checksum") as error:
+        phone.transfer("selected.txt", base64.b64encode(b"private").decode())
+    assert "unconfirmed file may remain" in error.value.message
+    assert not any(args[:2] in (["shell", "sha256sum"], ["shell", "rm"]) for args, _ in boundary.calls)
+    assert len(boundary.files) == 1 and all(not p.parent.exists() for p in boundary.staged)
+
+
+@pytest.mark.parametrize("send_fails", [False, True])
+def test_private_staging_cleanup_failure_is_reported_without_masking_a_send_failure(phone, monkeypatch, send_fails):
+    create = PH.tempfile.TemporaryDirectory
+    cleaned = []
+    def stage(**kwargs):
+        actual = create(**kwargs)
+        def cleanup():
+            actual.cleanup(); cleaned.append(True)
+            raise OSError("PRIVATE_STAGING_DIAGNOSTIC")
+        return SimpleNamespace(name=actual.name, cleanup=cleanup)
+    monkeypatch.setattr(PH.tempfile, "TemporaryDirectory", stage)
+    phone.adb.fail_push = send_fails
+    with pytest.raises(PH.PhoneError) as error:
+        phone.transfer("selected.txt", base64.b64encode(b"private").decode())
+    assert error.value.code == "unavailable" and "PRIVATE" not in error.value.message
+    assert ("file-transfer service" if send_fails else "Android verified the file") in error.value.message
+    assert cleaned == [True] and all(not p.parent.exists() for p in phone.adb.staged)
+
+
+def test_transfer_uses_one_deadline_and_never_retries_a_write(phone, monkeypatch):
+    clock = SimpleNamespace(now=0.0)
+    monkeypatch.setattr(PH.time, "monotonic", lambda: clock.now)
+    boundary = phone.adb
+    def advance(args, **kwargs):
+        result = boundary(args, **kwargs)
+        if args[0] == "push": clock.now = 91.0
+        return result
+    phone.adb = advance
+    with pytest.raises(PH.PhoneError, match="timeout"):
+        phone.transfer("selected.txt", base64.b64encode(b"private").decode())
+    assert len([args for args, _ in boundary.calls if args[0] == "push"]) == 1
+    assert not any(args[:2] == ["shell", "sha256sum"] for args, _ in boundary.calls)
+    assert not boundary.files
+    assert all(0 < kwargs["timeout"] <= 90 for _, kwargs in boundary.calls)
+    assert next(kwargs["timeout"] for args, kwargs in boundary.calls if args[:2] == ["shell", "rm"]) <= 5
+
+
+def test_actual_adb_command_keeps_selected_serial_through_failed_send_and_cleanup(phone, monkeypatch):
+    boundary = phone.adb
+    boundary.fail_push = True
+    argv_seen = []
+    def run(argv, **kwargs):
+        argv_seen.append(argv)
+        assert argv[:3] == ["fixture-adb", "-s", "emulator-5586"]
+        try:
+            value = boundary(argv[3:], timeout=kwargs["timeout"])
+            return SimpleNamespace(returncode=0, stdout=value.encode(), stderr=b"")
+        except PH.PhoneError:
+            return SimpleNamespace(returncode=1, stdout=b"", stderr=b"fixture refusal")
+    monkeypatch.setattr(PH, "tools", lambda: {"adb": "fixture-adb"})
+    monkeypatch.setattr(phone, "_run_as", lambda: ([], {}))
+    monkeypatch.setattr(phone, "env", lambda: {})
+    monkeypatch.setattr(PH.subprocess, "run", run)
+    phone.adb = PH.AccountPhone.adb.__get__(phone)
+    with pytest.raises(PH.PhoneError, match="file-transfer service"):
+        phone.transfer("selected.txt", base64.b64encode(b"private").decode())
+    assert any(argv[3:6] == ["shell", "rm", "-f"] for argv in argv_seen)
+    assert all(not p.parent.exists() for p in boundary.staged)
 
 
 def test_shell_metacharacters_stay_one_remote_filename(phone, tmp_path):
@@ -178,8 +385,9 @@ def test_a_preexisting_staging_symlink_is_not_followed(phone, tmp_path, monkeypa
     cleaned = []
     monkeypatch.setattr(PH.tempfile, "TemporaryDirectory", lambda **kwargs:
                         SimpleNamespace(name=str(stage), cleanup=lambda: cleaned.append(True)))
-    with pytest.raises(FileExistsError):
+    with pytest.raises(PH.PhoneError, match="staged") as error:
         phone.transfer("private.txt", base64.b64encode(b"replacement").decode())
+    assert error.value.code == "unavailable"
     assert victim.read_bytes() == b"untouched" and cleaned == [True]
     assert not any(args[0] == "push" for args, _ in phone.adb.calls)
 
@@ -371,6 +579,7 @@ def route_phone(app, ws, monkeypatch, tmp_path):
             ws.system.ensure(account)
             p = PH.AccountPhone(ws.system, account, None)
             p.state, p.emulator = "on", LiveProcess()
+            p.port = 5586
             p.android_why = lambda: None
             p.adb = AdbBoundary()
             phones[account] = p
@@ -411,6 +620,30 @@ def test_route_transfers_only_the_callers_custom_bytes_despite_forged_query(app,
     assert phones[account_for(ALLOWED)].adb.files == {r.json()["destination"]: body}
     assert account_for(ALSO) not in phones
     assert r.json()["sha256"] == hashlib.sha256(body).hexdigest()
+
+
+def test_fresh_readiness_failure_reaches_the_application_as_a_structured_refusal(app, route_phone):
+    p = route_phone[1](account_for(ALLOWED))
+    p.adb.boot_completed = "0"  # The route saw on; Android restarted before transfer.
+    r = as_user(app, ALLOWED).post("/api/workstation/phone/files?name=selected.txt", content=b"private",
+                                  headers={"Content-Type": "application/octet-stream"})
+    assert r.status_code == 503 and "still booting" in r.json()["detail"]
+    assert not p.adb.staged and not p.adb.files
+
+
+def test_transfer_preserves_the_real_daemon_holder_gate(app, ws, route_phone):
+    import httpx
+    account = account_for(ALLOWED)
+    p = route_phone[1](account)
+    ws.station.control(account, {"holder": "person"})
+    url = ws.url + f"/v1/users/{account}/phone"
+    headers = {"Authorization": "Bearer " + ws.token}
+    body = {"action": "transfer", "name": "selected.txt", "data_b64": base64.b64encode(b"private").decode()}
+    refused = httpx.post(url, headers=headers, json={**body, "holder": "agent"})
+    assert refused.status_code == P.ERRORS["busy"] and refused.json()["error"] == "busy"
+    assert not p.adb.calls
+    allowed = httpx.post(url, headers=headers, json={**body, "holder": "person"})
+    assert allowed.status_code == 200 and allowed.json()["ok"]
 
 
 def test_missing_sdk_license_is_409_on_both_daemon_and_application_http(app, ws, route_phone, monkeypatch):

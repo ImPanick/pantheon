@@ -4114,3 +4114,27 @@ booting a Linux desktop or sending it sudo/network configuration. Any native
 stream format and its trusted Pantheon renderer must land together. Keep APK QA,
 normal application networking and fold/cover touch geometry explicit acceptance
 items rather than treating a home-screen capture as completion.
+
+## D-2026-11-09-06 - harden the existing selected-file path while trust approval is pending
+
+The owner authorized independent transfer work while considering new-device key
+approval. Inspection confirmed that the Linux VM path already uses official SDK
+sync via adb push and remote SHA-256 verification. Keep that transport and the
+VM/KVM, document ownership, byte/name limits and holder gates. Do not add a second
+copy mechanism or publish an unwired native transfer module.
+
+The implemented readiness, target, integrity, budget and cleanup rules are
+recorded in `docs/setup.md`, under Transfer hardening. Positive preflight signals
+do not prove Downloads writability; an unknown external Android CE property is
+not parsed as a Pantheon flag or treated as a general unlock attestation. The
+copy result and an exact path-bound digest remain mandatory.
+
+Cost accepted: lock admission and ADB work are bounded rather than waiting or
+retrying a write indefinitely. A slow operation can refuse with a structured
+error; blocking local filesystem calls remain synchronous. Android cleanup can
+remain unconfirmed when the device disappears or changes, and a private staging
+cleanup failure must not become a success response or hide the primary fault.
+The independently reviewed hermetic tests do not replace real Android acceptance
+or explain the prior native EPERM observations. The native proof/credential
+proposal remains unchanged and unapproved; dev delivery is authorized, with main
+and Arcane untouched.

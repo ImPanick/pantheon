@@ -677,7 +677,41 @@ Nothing is installed or executed by a transfer. Each transfer is bounded to
 running Android device. Android's returned SHA-256 must match the bytes sent.
 There is no blanket host mount, arbitrary host path, user selector or network
 tether; browser preview cannot receive Android files. Temporary staging files
-are private to that user and removed after success or failure.
+are private to that user, with cleanup attempted after success or failure.
+
+**Transfer hardening (2026-11-09).** The existing Linux VM path retains the
+official SDK `adb push` sync service. Before staging private bytes, it requires
+an allocated device serial, a current authorized transport and completed boot.
+An explicit false system-user CE property asks the person to unlock Android;
+missing/unknown values remain compatible with configured images and are not
+proof of general user readiness. The copy and its checksum still decide success.
+
+Admission uses the existing lifecycle lock with a bounded wait. Admission,
+readiness and ADB commands share one transfer budget; an expired queued request
+does not receive a fresh budget or proceed into staging. Local filesystem calls
+are synchronous and are not a hard wall-clock guarantee. No push retry is added.
+Verification requires one standard SHA-256 record naming the exact generated
+destination, preserving spaces in filenames. A changed serial refuses subsequent
+verification and cleanup instead of addressing a default or replacement device.
+
+Failures retain the protocol's existing code/message shape with actionable
+readiness, staging, preparation, send and verification messages. Unconfirmed
+Android cleanup is reported without replacing the primary failure; a cleanup
+timeout cannot relabel that failure. Private staging cleanup failures are logged
+without file contents or remote diagnostics. If Android verified the file but
+private cleanup was not confirmed, the response says so instead of reporting
+complete success.
+
+The final offline Linux regression slice passed 230 cases across transfer,
+device and lifecycle coverage, using real private filesystem staging,
+application/daemon HTTP and explicit ADB fixtures. It covers queued requests,
+deadline expiry, stale/locked devices, selected SDK arguments, malformed checksum
+records, cleanup failures and ownership/holder gates. These are hermetic checks,
+not new Android/KVM runtime acceptance or a resolution of the prototype EPERM
+finding above. Evidence is in the task workspace's
+`validation/transfer-linux-20261109-5/transfer-tests.xml`. Native transport/proof
+files and their pending key-approval plan were not changed; no Android credentials,
+trust, host security settings or live deployment were changed by these tests.
 
 For local testing from `dev`, build from that checkout: the repository's Docker
 publish workflow currently runs on `main` only, so pulling a `:dev` registry tag

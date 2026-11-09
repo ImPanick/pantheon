@@ -81,6 +81,7 @@ import threading
 import time
 import unicodedata
 import xml.etree.ElementTree as ET
+from contextlib import contextmanager
 from functools import lru_cache
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Tuple
@@ -99,6 +100,7 @@ IMAGE_ENV = "PANTHEON_PHONE_IMAGE"
 DEFAULT_IMAGE = "system-images;android-35;google_apis;x86_64"
 PLAY_IMAGE = "system-images;android-35;google_apis_playstore;x86_64"
 TRANSFER_DEST = "/sdcard/Download/Pantheon"
+TRANSFER_TIMEOUT_S = 90.0
 ISOLATION_REQUIRED = P.PHONE_ISOLATION_REQUIRED
 IDLE_ENV = "PANTHEON_PHONE_IDLE_MIN"
 MAX_RUNNING_ENV = "PANTHEON_PHONE_MAX_RUNNING"
@@ -1566,13 +1568,24 @@ class AccountPhone:
             }.get(self.state, "The phone is off. Start it first."))
         self.touch()
 
+    @contextmanager
+    def _transfer_slot(self, deadline):
+        remaining = deadline - time.monotonic()
+        if remaining <= 0 or not self.lock.acquire(timeout=min(5.0, remaining)):
+            raise PhoneError("busy", "Another operation is using your phone. Wait for it to finish before sending a file.")
+        try:
+            yield
+        finally:
+            self.lock.release()
+
     def transfer(self, name, data_b64) -> Dict:
         """Push only caller-supplied bytes into this user's Android Downloads.
 
         No host path, Android destination, owner or shell command is accepted.
         The private temporary file is created as the account, not root, and
         removed on success and failure. A digest read back from Android proves
-        completion; returning from adb push alone does not.
+        completion; returning from adb push alone does not. Readiness is
+        checked afresh, without waiting for or retrying a data write.
         """
         import secrets
         if (not isinstance(name, str) or not name.strip() or name.strip() in (".", "..")
@@ -1588,33 +1601,106 @@ class AccountPhone:
             raise PhoneError("bad_request", "The transfer must contain valid base64 file bytes.")
         if len(data) > P.MAX_FILE_BYTES:
             raise PhoneError("bad_request", f"Each transfer is at most {P.MAX_FILE_BYTES} bytes.")
-        with self.lock:
+        deadline = time.monotonic() + TRANSFER_TIMEOUT_S
+        with self._transfer_slot(deadline):
             self._on()
             if self.mobile is not None:
                 raise PhoneError("unavailable", "File transfer needs a running Android device. Browser preview has no Android storage.")
+            serial = self.serial()
+            if serial is None:
+                raise PhoneError("unavailable", "The Android device connection is missing. Restart your phone before sending a file.")
             self.touch()
             digest = hashlib.sha256(data).hexdigest()
             destination_dir = f"{TRANSFER_DEST}/{secrets.token_hex(8)}"
             destination = f"{destination_dir}/{name}"
-            with self._as_account():
-                stage = tempfile.TemporaryDirectory(prefix="pantheon-phone-")
+            # Lock admission and ADB work share one budget. Local filesystem
+            # operations are synchronous; check again before staging or sending.
+            stage, phase, verified, timed_out = None, "readiness", False, False
+
+            def budget():
+                nonlocal timed_out
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    timed_out = True
+                    raise PhoneError("unavailable", "Android did not confirm the file before the transfer timed out.")
+                return remaining
+
+            def command(args, *, maximum=5.0, cleanup=False):
+                nonlocal timed_out
+                # A retired/malformed handle must never fall back to adb's
+                # default device, including on the failure cleanup path.
+                if self.serial() != serial:
+                    raise PhoneError("unavailable", "The Android device connection changed. Start a new file transfer.")
+                remaining = 5.0 if cleanup else budget()
+                try:
+                    return self.adb(args, timeout=min(maximum, remaining))
+                except PhoneError as error:
+                    if not cleanup and isinstance(error.__context__, subprocess.TimeoutExpired):
+                        timed_out = True
+                    if phase == "readiness":
+                        raise PhoneError("unavailable", "Android's connection could not be checked. Wait for the phone to reconnect, then try again.") from error
+                    raise
+
             try:
+                if command(["get-state"]).strip() != "device":
+                    raise PhoneError("unavailable", "Android's debugging connection is not ready. Wait for the phone to reconnect, then try again.")
+                if command(["shell", "getprop", "sys.boot_completed"]).strip() != "1":
+                    raise PhoneError("unavailable", "Android is still booting. Wait for its home screen, then send the file again.")
+                # Missing on some configured images: unknown is not an unlock
+                # attestation. An explicit locked system-user CE state refuses
+                # the transfer; push/checksum remain the completion checks.
+                ce = command(["shell", "getprop", "sys.user.0.ce_available"]).strip().lower()
+                if ce in ("false", "0"):  # flag-spelling: Android CE wire values; absent is unknown, not a Pantheon flag.
+                    raise PhoneError("unavailable", "Android's storage is locked. Unlock the phone before sending a file.")
+                budget()
+                phase = "staging"
+                with self._as_account():
+                    stage = tempfile.TemporaryDirectory(prefix="pantheon-phone-")
                 source = Path(stage.name) / "payload"
                 with self._as_account():
                     fd = os.open(source, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
                     with os.fdopen(fd, "wb") as f:
                         f.write(data)
-                self.adb(["shell", "mkdir", "-p", destination_dir])
-                self.adb(["push", str(source), destination], timeout=120)
-                checked = self.adb(["shell", "sha256sum", shlex.quote(destination)], timeout=60).split()
-                if not checked or checked[0].lower() != digest:
+                phase = "prepare"
+                command(["shell", "mkdir", "-p", destination_dir], maximum=20)
+                phase = "send"
+                command(["push", str(source), destination], maximum=120)
+                phase = "verify"
+                checked = command(["shell", "sha256sum", shlex.quote(destination)], maximum=60)
+                record = re.fullmatch(r"([0-9a-fA-F]{64}) [ *](.+)", checked.rstrip("\r\n"))
+                if not record or record[1].lower() != digest or record[2] != destination:
                     raise PhoneError("unavailable", "Android did not confirm the transferred file's checksum. Try the transfer again.")
-            except Exception:
-                self.adb(["shell", "rm", "-f", shlex.quote(destination)], quiet=True)
+                verified = True
+            except Exception as error:
+                cleanup_failed = False
+                if phase in ("prepare", "send", "verify"):
+                    try:
+                        command(["shell", "rm", "-f", shlex.quote(destination)], cleanup=True)
+                    except Exception as cleanup_error:
+                        cleanup_failed = True
+                        logger.warning("Unconfirmed Android transfer cleanup (%s).", type(cleanup_error).__name__)
+                if isinstance(error, (PhoneError, OSError)):
+                    message = ("Android did not finish the file transfer before the timeout. Try again after the phone is ready."
+                               if timed_out else error.message if phase == "readiness" and isinstance(error, PhoneError) else {
+                        "readiness": "Android's connection could not be checked. Wait for the phone to reconnect, then try again.",
+                        "staging": "The selected file could not be staged in your private workspace. Check free space and try again.",
+                        "prepare": "Android could not prepare Downloads for this file. Unlock the phone and try again.",
+                        "send": "Android's file-transfer service did not confirm the upload. Try sending the file again.",
+                        "verify": "Android did not confirm the transferred file's checksum. Try sending the file again.",
+                    }[phase])
+                    if cleanup_failed:
+                        message += " An unconfirmed file may remain in Android Downloads."
+                    raise PhoneError("unavailable", message) from error
                 raise
             finally:
-                with self._as_account():
-                    stage.cleanup()
+                if stage is not None:
+                    try:
+                        with self._as_account():
+                            stage.cleanup()
+                    except Exception as cleanup_error:
+                        if verified:
+                            raise PhoneError("unavailable", "Android verified the file, but cleanup of its private staging copy was not confirmed. Ask an admin to check temporary storage.") from cleanup_error
+                        logger.warning("Private Android transfer staging cleanup failed (%s).", type(cleanup_error).__name__)
             return {"ok": True, "name": name, "bytes": len(data), "sha256": digest,
                     "destination": destination}
 
