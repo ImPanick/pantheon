@@ -4079,3 +4079,38 @@ specific future host-policy, service-identity or network change still needs its
 own action-time approval; none is requested or inferred by this decision. The
 existing authorization covers documentation delivery to test-only dev, never
 main or Arcane.
+
+## D-2026-11-09-05 - continue native implementation with independent device trust
+
+The owner subsequently lifted the implementation pause and requested continued
+work toward a fully usable Android phone/tablet inside Pantheon. This supersedes
+the pause in D-2026-11-09-03/-04, not their security or runtime acceptance gates.
+Continue on an isolated development branch and deliver verified slices to dev;
+main and Arcane remain outside scope. The native provider is still unimplemented.
+
+The new runtime evidence and its limits are recorded once in `docs/setup.md`,
+under Native runtime continuation. In particular, a CLI flag is not a Netsim
+security boundary. A trial with no daemon launched still booted Android and
+supported a deliberately narrow network relay; it does not establish complete
+Internet usability or lifetime absence of additional listeners. The source and
+observed credential gates support continuing the design without weakening the
+existing Linux VM backend or changing Windows network policy.
+
+Use independent device credentials and private persistent data for the proposed
+trusted native worker. Published SDK source supports private emulator-home key
+files, but its actual guest bootstrap must be tested on the installed image.
+Prepared config-only test artifacts do not create access. Generating the new
+keys and bootstrapping persistent debugging trust in fresh AVDs requires specific
+approval; the old read-only personal-key permission does not cover it. Approval
+is requested for the new proof-directory ACL and two fresh devices only, with
+no rekeying of existing data or additional SDK terms.
+
+Cost accepted: native integration and personal-account readiness remain
+unverified while that prerequisite and the real owner/root/stream/transfer gates
+are open. The worker must expose the existing phone operations through a
+separately configured authenticated endpoint, never raw SDK control or generic
+host shell. Phone readiness and takeover must reach that same worker without
+booting a Linux desktop or sending it sudo/network configuration. Any native
+stream format and its trusted Pantheon renderer must land together. Keep APK QA,
+normal application networking and fold/cover touch geometry explicit acceptance
+items rather than treating a home-screen capture as completion.

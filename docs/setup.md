@@ -467,10 +467,67 @@ API observer replaced it without changing or bypassing that policy. No new SDK
 package or licence acceptance was involved. The diagnostic direct-ADB clients
 sent no public-key enrollment requests; no persistent-trust UI action or personal
 account sign-in was performed. A complete before/after authorization-state audit
-remains open. Pantheon integration remains paused for the owner's review,
+remains open. At that stage Pantheon integration remained paused for review,
 and the existing Linux VM/KVM guards remain intact. The proposed boundary and its
 remaining acceptance gates are recorded in `.pantheon/DECISIONS.md`,
 `D-2026-11-09-04`.
+
+**Native runtime continuation (2026-11-09).** The owner subsequently authorized
+continuing through implementation of the usable Android experience, superseding
+the earlier pause. The Windows provider is still unimplemented; the following
+results concern real disposable Android/WHPX guests and SDK endpoints, not an
+embedded Pantheon stream. The Linux VM/KVM gates remain intact.
+
+| Check | Result and limit |
+|---|---|
+| File-create comparison | The first ordered comparison recorded 37 fresh-file attempts: two initial shell creates in the existing Downloads folder returned explicit exit status 1 / `Operation not permitted`; the nearby exec and sync operations passed. Later shell attempts passed. The counterordered run recorded 46 successful fresh creates, including a binary sync case. All 35 successful files from the first comparison matched before new writes after a distinct cold boot. An intervening immediate cold-read failure lacked a useful diagnostic; later reads recovered the original bytes. Timing, caller/service and shared-storage create policy remain possible factors. Reliability is not declared fixed. |
+| Transfer service | All 20 sync attempts across those two comparisons returned structured `OKAY` and exact readback bytes, including the binary cases. This supports using Android's sync service instead of shell redirection; it is not a general durability or app-integration guarantee. Shell ran as UID 2000 in the shell SELinux domain with enforcement enabled; no permission override was applied. The hardcoded AOSP MediaProvider query returned no version on this Play image, so provider identity/readiness is unknown. |
+| Console | `avd name` is intentionally public metadata. The privileged read-only `power display` was refused before authentication and returned battery state after approved console authentication. A bogus console token was rejected. |
+| Emulator gRPC | On an explicitly JWT-protected owned endpoint, `getBattery` rejected missing bearer, malformed bearer and an otherwise formed token signed by an unregistered in-memory key with `UNAUTHENTICATED`. No valid gRPC credential or JWK was enrolled. This does not verify authorized streaming or every method/listener. |
+| Netsim services | A fresh standalone daemon served credential-free `CellService/List` in both default and no-CLI modes. `FrontendService/GetVersion` returned `UNIMPLEMENTED` in both. The CLI flag cannot be claimed as isolation, and source/version differences prevent inferring all registered services. |
+| Trial without a Netsim daemon | Android booted and returned real launcher pixels with `WiFiPacketStream` and `Uwb` disabled and the custom packet-stream endpoint held by exclusive non-listening sockets. The harness launched no Netsim daemon, and none appeared in its post-boot process snapshot. Lifetime absence was not measured. Bluetooth/UWB behavior remains unverified. Several other QEMU TCP listeners remain unclassified. |
+| Restricted connectivity | With the trial above, a fixed forwarded relay returned its fixture while the same controlled raw-host fixture did not. Five exact abuse requests were refused: CONNECT, an absolute loopback URL, a foreign Host, an Authorization header and POST. The relay made one fixed credential-free HTTPS GET to Google's connectivity-check endpoint and observed HTTP 204. A prior successful configuration with a captured Netsim daemon also made one such request. Host urllib performed TLS; this is not Android application, Play Store or Google-account networking acceptance, and the relay is not a general proxy. |
+
+Successful evidence is outside this checkout under
+`validation/native-android-test/logs`: `storage-20261109T092028Z-0f28de67`,
+`storage-20261109T092937Z-5b7c175e`,
+`netsim-readonly-20261109T094801Z-0556ecef`,
+`endpoints-20261109T094251Z-ec5fa3f7` and
+`endpoints-20261109T094906Z-42e24939`. Archived sources and the captured frame
+hashes were checked. Failed harness/startup/readback attempts are retained too;
+disconnected-route failures were never counted as successful isolation. Guest
+Wi-Fi preferences were restored. Completed emulator checks recorded console
+acknowledgement, exit code zero and empty captured Jobs. SDK `adb.exe` helpers
+did run and fail to bind the reserved smart-server port; no sampled listening
+ADB server is a narrower claim than no ADB process. The disabled Netsim branch's
+assigned final zero is not an independent process measurement.
+The later independent `logs/final-continuation-process-inventory.json` found no
+remaining processes whose executable was under this isolated SDK directory.
+
+Per-device ADB trust is the next approval gate. The published emulator source
+supports preseeded matching key files in each child's private
+`ANDROID_EMULATOR_HOME`, before fallback to personal-profile keys. Booting a
+fresh image this way installs persistent guest debugging trust, so the earlier
+approval to read existing keys does not authorize it. A concrete config-only plan
+is prepared at `validation/native-android-test/logs/per-user-key-proof-plan.json`,
+with source/config hashes, fresh-tree checks and a guarded runner. It requests
+two new key pairs, proof-directory ACLs restricted to the current Windows user
+and SYSTEM, and two fresh AVDs under `validation/native-android-test/per-user-proof`.
+No new key or guest trust has been created; approval is pending, not denied.
+This would test separate device keys/data under one Windows identity, not two
+Windows owners or the complete broker boundary. Existing AVDs will not be
+rekeyed, reset or migrated. See `D-2026-11-09-05`.
+
+The phone toolbar now also exposes volume down/up and a separate sleep/wake key
+beside Back, Home and Recents, using the same existing phone actions as the side
+keys. These hardware controls are hidden in web-only preview. Process Turn off,
+rotation and applicable folding retain their separate controls. This interface
+change does not enable the proposed native provider.
+The existing actual-app Chromium case passed with explicit stream/transfer
+fixtures and recorded clicks for all three added keys. A legacy crop assertion
+initially raced layout; it now waits for the same required geometry. Desktop and
+narrow-preview screenshots were retained and visually checked. This is browser
+verification, separate from the real SDK runtime checks above.
 
 The proposed native worker would reuse the narrow phone operations in
 `workstation/protocol.py`: lifecycle/status, streamed display, input, device controls

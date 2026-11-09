@@ -683,6 +683,7 @@ function _render() {
   }
   for (const b of _win.nav.querySelectorAll('button')) {
     b.disabled = !on || !keyWorks(s, b.dataset.key);
+    b.hidden = mobile && b.dataset.androidOnly === 'true';
   }
 
   _renderInstall(s);
@@ -962,10 +963,15 @@ function _build({ embedded = false } = {}) {
 
   const nav = _el('div', 'phw-nav');
   nav.setAttribute('role', 'toolbar');
-  nav.setAttribute('aria-label', 'Android navigation');
-  for (const [glyph, key, label] of [['Back', 'back', 'Back'], ['Home', 'home', 'Home'], ['Apps', 'recents', 'Recent apps']]) {
+  nav.setAttribute('aria-label', 'Android device controls');
+  for (const [glyph, key, label] of [
+    ['Back', 'back', 'Back'], ['Home', 'home', 'Home'], ['Apps', 'recents', 'Recent apps'],
+    ['Vol −', 'volume_down', 'Volume down'], ['Vol +', 'volume_up', 'Volume up'],
+    ['Sleep / wake', 'power', 'Sleep or wake Android'],
+  ]) {
     const b = _button('phw-nav-btn', glyph, () => press(key), label);
     b.dataset.key = key;
+    if (['volume_down', 'volume_up', 'power'].includes(key)) b.dataset.androidOnly = 'true';
     nav.appendChild(b);
   }
 

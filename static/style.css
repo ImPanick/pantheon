@@ -51139,8 +51139,9 @@ body.plan-mode-active .chat-input-top > .model-picker-wrap:has(> .model-picker-m
 .phw-side-power { height: 36px; }
 .phw-side-volume_up, .phw-side-volume_down { height: 44px; }
 .phw-bezel[data-maker="samsung"] .phw-side-volume_down { margin-bottom: 10px; }
-.phw-nav { display: flex; justify-content: center; gap: 18px; }
-.phw-nav-btn { min-width: 44px; font-size: 15px; }
+.phw-nav { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+.phw-nav-btn { min-width: 44px; min-height: 44px; font-size: 13px; }
+.phw-nav-btn[hidden] { display: none; }
 .phw-runtime { display: flex; flex-direction: column; gap: 4px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 12px; }
 .phw-runtime-label { color: var(--fg); }
 .phw-runtime-text, .phw-profile { color: var(--fg-muted); font-size: 12px; line-height: 1.45; }
