@@ -404,6 +404,74 @@ tablets across feasible profiles, including agent-driven application QA; Pixel
 is a starting test profile. Vendor-specific compatibility and iOS remain separate
 future work. See `.pantheon/DECISIONS.md`, `D-2026-11-09-03`.
 
+**Guest-to-host ADB follow-up (2026-11-09; validation only).** The controlled
+exposure above was reproduced again, then two separate mitigations were tested
+on the same owned Android AVD. These are scratch prototypes outside Pantheon;
+they are not a native provider or proof of complete per-user isolation.
+
+| Experiment | Verified scope |
+|---|---|
+| Restricted network path | The installed SDK enables `WiFiPacketStream`, described in its `lib/advancedFeatures.ini` as Netsim-provided Wi-Fi. With that default, the guest still reached the owned host marker and ADB smart server despite both network restriction options. The matching-source comparison added `-feature -WiFiPacketStream` to select the other Wi-Fi path, with `restrict=on,ipv6=off` on both network options and explicit marker-only `guestfwd` mappings. The tested raw host marker, ADB and unforwarded virtual ADB paths were then denied. Working allowlisted marker connections and healthy host endpoints ruled out a disconnected guest or dead server as the explanation. |
+| Direct authenticated device control | A separate prototype used `-no-direct-adb`, `-no-sim` and a bounded direct ADB wire client, without relying on an SDK smart server. Before launching the emulator, non-listening exclusive wildcard IPv4 and IPv6 sockets reserved its configured smart-server port. All eight competing bind/listen variants were denied, including loopback/wildcard addresses with and without reuse. An earlier loopback-only reservation failed that check and was rejected. This reservation changes no Windows firewall or port-policy settings and exposes no listening service. |
+
+The restricted run covered initial Wi-Fi, Wi-Fi disabled with cellular
+enabled, Wi-Fi reenabled, and an Android reboot with a changed boot ID. Each phase
+had a working allowlisted network control. A separate full emulator restart also
+verified the previous unique transferred file before a new push; fresh checked
+bytes survived the later Android reboot. Guest network preferences were restored.
+This proves the selected IPv4 TCP paths under that configuration, not general
+Internet/Play connectivity, all IPv6 or UDP paths, or resistance to guest root.
+
+The direct-control test checked that the raw device listener belonged to the
+captured emulator process tree before signing its challenge with the approved
+existing ADB key. It never sent a public-key enrollment request. Keyless,
+wrong-key and concurrent wrong-key clients obtained no authorized stream during
+their bounded three-second observation windows; the authorized connection stayed
+usable. A disposable local Docker bridge client, UID 0 with all capabilities
+dropped and no host mounts, reached the marker and received the device's real
+authentication challenge, but obtained no shell stream. Its parser recorded no
+partial response frame. This is a calibrated Linux-container network-origin
+check, not a second user, hostile workstation VM or Android-root acceptance.
+
+The final direct-control repeat recorded 226 process-owned TCP listener snapshots
+at a nominal 250 ms interval, with no observer errors or identified `adb.exe`
+listeners. Sampling cannot exclude transient listeners or endpoints outside that
+process tree. Other SDK TCP listeners remained; console, gRPC and Netsim surfaces
+still need authentication and cross-owner attack tests. The direct
+experiment did not use the restricted Wi-Fi configuration; their combination has
+not been validated. The approved shared fixture key is not a per-device identity
+or a production credential model.
+
+Fresh selected-byte writes passed in earlier direct-control runs, and the final
+security-only repeat verified the prior unique file after a cold boot. However,
+another preserved direct-shell Downloads write failed with `Operation not
+permitted`; its cause and readiness/reliability remain unresolved. That write
+method differs from the earlier successful checked SDK `adb push`. The final
+security repeat explicitly skipped fresh writes and does not resolve that failure.
+
+Evidence is retained outside this checkout under
+`validation/native-android-test/logs`: the matching-source network comparison is
+`isolation-baseline-20261109T084247Z-b19594eb` against
+`isolation-restricted-20261109T083039Z-69370750`; the strict direct/Linux-origin
+repeat is `direct-adb-20261109T083550Z-27bef584`. Sources and screenshots were
+hash-checked, and independent adversarial review checked the negative-test
+deadlines, positive controls and limited claims. Failed attempts remain alongside
+the successful runs. These completed runs recorded console-kill acknowledgements,
+emulator exit code zero and empty captured process jobs. A final independent
+inventory, `logs/final-mitigation-process-inventory.json`, found no remaining
+processes under the isolated SDK path; the disposable containers were removed.
+
+No Windows feature, firewall, route, service, security policy or restart action
+was taken. PowerShell policy blocked an early observer script; a read-only Windows
+API observer replaced it without changing or bypassing that policy. No new SDK
+package or licence acceptance was involved. The diagnostic direct-ADB clients
+sent no public-key enrollment requests; no persistent-trust UI action or personal
+account sign-in was performed. A complete before/after authorization-state audit
+remains open. Pantheon integration remains paused for the owner's review,
+and the existing Linux VM/KVM guards remain intact. The proposed boundary and its
+remaining acceptance gates are recorded in `.pantheon/DECISIONS.md`,
+`D-2026-11-09-04`.
+
 The proposed native worker would reuse the narrow phone operations in
 `workstation/protocol.py`: lifecycle/status, streamed display, input, device controls
 and selected-byte transfer, all bound to the authenticated owner. A trusted Windows

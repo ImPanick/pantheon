@@ -4035,3 +4035,47 @@ is unnecessary; zoom and a person's screenshot button are secondary, while
 agent screenshot capture remains essential. Preserve takeover and auditable
 actions when the native stream is wired. SDK/GMS licensing and redistribution
 remain separate from AOSP component rights and this authorized developer test.
+
+## D-2026-11-09-04 - validate native ADB mitigations before product integration
+
+The owner authorized further controlled investigation of the demonstrated
+guest-to-host ADB exposure while keeping Pantheon implementation paused. The
+adversary is a different user's Android app/guest or agent-controlled workstation
+trying to reach another device's control plane, files or account session. Testing
+only the owned disposable guest avoids targeting anyone else's device; it does
+not establish that cross-owner boundary.
+
+The real-runtime follow-up and its evidence live in `docs/setup.md`, under
+Guest-to-host ADB follow-up. The separate restricted-network and direct-
+authentication prototypes justify continuing the design, not shipping a native
+provider or claiming personal-account readiness. Their combination, the remaining
+SDK control surfaces, usable online networking and actual cross-owner/root tests
+are still open. The intermittent prototype Downloads-write failure also remains
+unresolved. Keep the existing Linux VM/KVM guards and do not add an unwired flag,
+second phone scaffold or silent browser substitution.
+
+The proposed boundary is a trusted owner-bound broker outside tenant-controlled
+workstations, private Android guest/data per owner, independent device keys and
+an authenticated stream/control/selected-byte interface. Tenants must not reach
+an unauthenticated host ADB smart server. The broker must verify its target before
+signing ADB challenges and protect console, gRPC and Netsim endpoints as well as
+ADB. A shared personal-profile key, different ports, a Windows Job or emulator
+network options alone are insufficient. Test real owners against each other's
+ports, storage, credentials and account sessions, including Android/Linux root,
+before enabling personal sign-in.
+
+Prefer direct authenticated device control with no SDK smart server. Place
+Android application networking behind an operator-controlled boundary that
+denies access to the broker and SDK management endpoints from Android and
+workstation guests while permitting configured application traffic. The
+restricted marker-only test is not that online network. Validate the combined
+design before selecting any specific host enforcement changes.
+
+Cost accepted: this leaves native Pantheon delivery paused while a workable
+boundary and transfer reliability are established. The validated probes remain
+outside the product and require later integration rather than a quick flag flip.
+The app-local experiments changed no Windows security/network settings. Any
+specific future host-policy, service-identity or network change still needs its
+own action-time approval; none is requested or inferred by this decision. The
+existing authorization covers documentation delivery to test-only dev, never
+main or Arcane.
