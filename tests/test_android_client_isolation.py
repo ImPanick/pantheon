@@ -176,6 +176,12 @@ def test_modern_shared_offline_device_choice_only_saves_a_profile():
     assert client.mutations() == [{"action": "device", "holder": "person", "device": "pixel_8"}]
 
 
+def test_modern_shared_preview_can_save_its_next_android_edition_without_starting_it():
+    client = RecordingClient(SHARED_PREVIEW)
+    run(client.phone(ACCOUNT, "edition", holder="person", edition="google_play"))
+    assert client.mutations() == [{"action": "edition", "holder": "person", "edition": "google_play"}]
+
+
 def test_a_stopped_per_user_vm_can_be_started_without_inventing_an_installed_os():
     client = RecordingClient(VM_STOPPED, android_vm_endpoint=True)
     looked = run(client.phone(ACCOUNT, "status"))

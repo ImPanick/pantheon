@@ -849,6 +849,19 @@ def test_uvicorn_has_a_websocket_library_to_serve_the_stream_with():
     assert re.search(r"^websockets==\d+\.\d+(\.\d+)?$", requirements, re.M)
 
 
+def test_a_browser_disconnecting_during_stream_close_is_already_closed():
+    from starlette.websockets import WebSocketDisconnect, WebSocketState
+    from routes.workstation_routes import _close_quietly
+
+    class Gone:
+        application_state = WebSocketState.CONNECTED
+
+        async def close(self, **fields):
+            raise WebSocketDisconnect(code=1006)
+
+    asyncio.run(_close_quietly(Gone(), 1000, ""))
+
+
 def test_the_decision_is_on_the_record_and_the_old_one_says_it_was_replaced():
     decisions = (ROOT / ".pantheon" / "DECISIONS.md").read_text(encoding="utf-8")
     assert "D-2026-10-31-01" in decisions

@@ -88,8 +88,8 @@ from scratch. Introduced 2026-08-31; the folds are listed in § *What this run l
 | P25 | The + menu, git per account, the agent browser | 13 | 0 | 0 | **13** |
 | P26 | Design — the studio, and notes on the live page | 10 | 0 | 0 | **10** |
 | P27 | Connections — the hub and the private vault | 11 | 1 | 0 | **10** |
-| Backlog | Bugs and hardening found in flight | 1655 | 73 | 0 | **1292** |
-| **Total** | | **2150** | **90** | **3** | **1767** |
+| Backlog | Bugs and hardening found in flight | 1656 | 73 | 0 | **1292** |
+| **Total** | | **2151** | **90** | **3** | **1767** |
 
 **Nothing is waiting on a decision** except one, and it is first: `P0-19` has to settle which of
 `CREDITS.md` and `ACKNOWLEDGMENTS.md` is the credits file. All eighteen ledger calls are answered
@@ -241,7 +241,7 @@ location was wrong until it was corrected on the row itself; the row is right no
 ## Progress
 
 ### Device runtime and workspace corrections — in progress (2026-11-09)
-**2150 tracked, 1767 done.** Added B2104–B2106 for persistent Android image selection, pane alignment and the portable independent device runtime. Image-selection regression fails against the unchanged client; native KVM is unavailable in this Mac’s Docker VM. — agent:`root`
+**2151 tracked, 1767 done.** B2104–B2107 cover saved image choice, layout, portable Android and stream cleanup. Developer image persists through a live page reload; reviewer found and corrected the preview-selection variant and missing live announcement. SDK 37.2.13 and API35 Google Play ARM are installed with the owner’s licence acceptance; native boot and selected-byte digest checks work, but UI stalls and cold-boot durability remain under test. Current-source follow-up checks passed 94 image/isolation tests and 132 stream/ledger tests. The frozen a3b158c5 broad run was stopped at 15% to release test resources: its documentation drift, missing-node fixture errors and unrelated timeout failures are retained in the local evidence; no clean full-suite result is claimed. — agent:`root`
 
 
 *The one progress area. Newest first. One entry per completed section — two lines, a
@@ -24148,3 +24148,5 @@ this is the same thing happening to the row that corrected the store.
 - [·] **B2104** **Choosing the Google Play developer image reverts to the standard image while Android is unavailable.** The client rejects `edition` on a shared offline producer before AccountPhone can persist it; the next poll paints the old choice. Save the non-executing image preference without opening the Android execution boundary. `Verify:` `tests/test_android_image_choice_before_boot.py`, including daemon restart, with start/install still refused. — owner report 2026-11-09 — agent:`root`
 - [·] **B2105** **Workspace surface tabs clip against layout controls and docked device controls do not keep their alignment at narrow pane widths.** The header fits labels using a viewport-independent threshold that leaves insufficient space for its layout group. Give the header an explicit compact layout and keep device controls inside their pane; show unavailable-runtime detail once. `Verify:` inspect the running workspace with stacked workstation and phone panes at narrow and wide widths. — owner screenshot 2026-11-09 — agent:`root`
 - [·] **B2106** **Android inherits the desktop backend instead of owning a portable independent VM runtime.** On an Apple Silicon Docker host auto chooses the shared desktop container; selecting the VM backend still needs nested x86 KVM. Extend the device protocol with a separately configured owner-bound runtime and host adapters for macOS, Windows and Linux, keeping image-specific persistent data and independent readiness/takeover. `Verify:` independent runtime routing for person, agent, stream and transfer; real guest/image switching acceptance on supported host adapters. Current source contains no native provider; D-2026-11-09-05 sets the boundary and runtime acceptance requirements. — owner request 2026-11-09 — agent:`root`
+
+- [·] **B2107** **Reloading the workstation stream logs an ASGI traceback while closing an already disconnected browser.** Starlette can raise `WebSocketDisconnect` during `close` after the relay finishes; `_close_quietly` only caught runtime and OS errors. Treat that disconnect as a completed close. `Verify:` `tests/test_the_workstation_desktop_is_live.py::test_a_browser_disconnecting_during_stream_close_is_already_closed`, plus live reload without a new traceback. — found during local deployment verification 2026-11-09 — agent:`root`

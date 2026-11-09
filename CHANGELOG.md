@@ -790,6 +790,14 @@ the next one is cut.
 
 ### Fixed
 
+- **Android image choice survives an unavailable runtime and an open browser preview**
+  (2026-11-09, `B2104`). Selecting the Google Play developer image saves the preference
+  before a VM can boot; polling and reopening the page keep it. Android execution still
+  requires the existing isolated VM boundary. Workspace tabs and device controls also
+  adapt to the pane width, and an unavailable runtime explains itself once while retaining
+  its live announcement (`B2105`). Reloading a closed workstation stream no longer logs
+  a disconnect traceback (`B2107`). The independent portable Android worker remains open
+  in `B2106`; these fixes do not enable a native worker.
 - **The picture and PDF readers are patched, and the two CI checks every pull request had carried
   red since October are green** (2026-11-02, `B1742`, `B1743`). Pillow moves 12.3.0 → 13.0.0
   (thirty-nine advisories in the decoders an uploaded picture reaches: heap overflows, reads of

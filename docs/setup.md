@@ -669,6 +669,29 @@ No Google SDK image or Play package is committed to this repository or downloade
 without an explicit installation choice. This change is a development integration,
 not a claim of distribution rights for a consumer Android service.
 
+**Apple Silicon runtime proof (2026-11-09; outside the product).** With the
+owner's SDK and ARM-image licence acceptance, Emulator 37.2.13, platform-tools
+37.0.1 and API 35 Google Play ARM revision 9 were installed from Google's
+catalogue with archive size and checksum verification. A fresh private AVD
+uses Hypervisor.Framework directly, independently of Docker's desktop and
+without personal SDK keys or Google sign-in. Direct authenticated ADB reached
+Android 15, resumed Settings and sent a fresh 32 KiB payload whose guest-side
+SHA-256 matched. An independent untrusted key was refused; that is one-device
+authentication evidence, not a two-owner isolation result.
+
+The first stop exposed a late SDK ADB smart-server start and a Netsim helper;
+the proof now supplies a non-executing custom ADB path and disables the unused
+radio simulators. A later run observed no leftover processes or smart-server
+listener. Its screenshots still exposed System UI stalls, so framework
+boot-complete and an activity-resumed flag are not treated as interactive
+readiness. A later single-VM test with 4 GiB RAM, four vCPUs and
+`host` rendering plus `GuestAngle` resumed Settings without an error dialog;
+that controlled check does not establish general application responsiveness.
+Ordinary application networking, lifetime listener isolation, root/two-owner
+tests and the actual worker/renderer remain open. Image-specific data switching also needs real acceptance. See
+`D-2026-11-09-07` for the portable provider design; this proof does not change
+the shipping backend or its VM/KVM guards.
+
 **USB tether · send files to Android** transfers one chosen upload or one owned
 Pantheon document's **current text** (Markdown stays `.md`, other text uses `.txt`).
 Use *Upload a file* for binary originals such as PDFs, images or APK files.

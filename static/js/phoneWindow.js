@@ -634,6 +634,7 @@ function _render() {
   _win.upload.disabled = _sending;
   _win.docSend.disabled = _sending || !_win.docSelect.value;
   const runtime = runtimeOf(s);
+  _win.runtime.setAttribute('aria-live', s.state === 'unavailable' ? 'polite' : 'off');
   _win.runtimeLabel.textContent = runtime.label;
   _win.runtimeText.textContent = runtime.detail;
   _win.runtime.dataset.mode = s.mode || 'unavailable';
@@ -888,6 +889,8 @@ function _build({ embedded = false } = {}) {
   tools.appendChild(openForm);
 
   const runtime = _el('div', 'phw-runtime');
+  runtime.setAttribute('role', 'status');
+  runtime.setAttribute('aria-live', 'off');
   const runtimeLabel = _el('strong', 'phw-runtime-label', 'Checking Android');
   const runtimeText = _el('span', 'phw-runtime-text');
   runtime.appendChild(runtimeLabel);

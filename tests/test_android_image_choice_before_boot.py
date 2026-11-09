@@ -50,3 +50,31 @@ def test_developer_image_survives_polling_and_daemon_restart_without_booting_and
         assert state["edition"] == "google_play"
         assert not state["available"] and not state["can_start"]
         assert call(client, "edition", edition="standard")["edition"] == "standard"
+
+
+def test_selecting_an_android_edition_stops_preview_and_keeps_the_choice(tmp_path, monkeypatch):
+    class Preview:
+        stopped = False
+
+        def __init__(self):
+            self.proc = self
+
+        def poll(self):
+            return 0 if self.stopped else None
+
+        def stop(self):
+            self.stopped = True
+
+    with running_workstation(tmp_path) as station:
+        monkeypatch.setattr(station.system, "uid", lambda _: 1000, raising=False)
+        monkeypatch.setattr(station.system, "files_as", lambda _: nullcontext(), raising=False)
+        phone = station.station.phones.get(ACCOUNT)
+        preview = phone.mobile = Preview()
+        phone.state = "on"
+        client = WorkstationClient(station.url, station.token)
+        assert call(client, "status")["mode"] == "mobile_view"
+        state = call(client, "edition", edition="google_play")
+        assert preview.stopped and phone.mobile is None
+        assert state["edition"] == "google_play" and state["mode"] is None
+        assert call(client, "status")["edition"] == "google_play"
+        assert phone.emulator is None

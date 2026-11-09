@@ -906,13 +906,15 @@ class WorkstationClient:
                                           timeout=90.0 + _TIMEOUT)
                 if not (self.android_vm_endpoint and status.get("isolation") == "per_user_vm"):
                     if status.get("isolation") == "shared" and status.get("mode") == "mobile_view" and action in (
-                            "button", "device", "posture", "rotate", "open_url", "input", "screenshot", "marks"):
+                            "button", "device", "edition", "posture", "rotate", "open_url", "input", "screenshot", "marks"):
                         # Preview controls cannot race a preview closing and
                         # turn legacy Power/device into an Android start.
                         if action == "button" and fields.get("button") == "power":
                             body = {"action": "stop", "holder": holder}
                         elif action == "device":
                             body = {**body, "action": "preview"}
+                        # Edition saves the image preference and stops the
+                        # old producer. It never starts Android or installs it.
                     elif not (action in ("device", "edition") and status.get("isolation") == "shared"
                               and status.get("mode") is None and status.get("state") in ("off", "unavailable")):
                         # Choosing a profile or SDK edition only saves the

@@ -991,11 +991,11 @@ def _close_reason(text: str) -> str:
 
 async def _close_quietly(websocket: WebSocket, code: int, reason: str) -> None:
     """Close a desktop websocket that may already be closed, or never accepted."""
-    from starlette.websockets import WebSocketState
+    from starlette.websockets import WebSocketDisconnect, WebSocketState
     try:
         if websocket.application_state != WebSocketState.DISCONNECTED:
             await websocket.close(code=code, reason=_close_reason(reason))
-    except (RuntimeError, OSError):
+    except (RuntimeError, OSError, WebSocketDisconnect):
         pass
 
 
