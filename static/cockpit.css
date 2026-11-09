@@ -3026,3 +3026,47 @@ html.cockpit .wf-say { margin: 4px 14px 0; border-left-width: 2px; color: var(--
 html.cockpit .workbench-maximize { font-size: 13px !important; }
 html.cockpit .workbench-maximize[aria-pressed="true"] { color: var(--ck-text) !important; }
 @media (max-width: 768px) { .workbench-maximize { display: none !important; } }
+
+/* Device panes share the workspace width, not the browser's width. Keep the
+   surface names and the layout switch on separate rows before they collide. */
+html.cockpit #ck-workspace { container-name: ckworkspace; }
+html.cockpit .ck-surf { flex-shrink: 0; }
+html.cockpit .ck-pane-h > svg { flex-shrink: 0; }
+html.cockpit .ck-pane-h .ck-holder:not(:empty) {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 40%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+@container ckworkspace (max-width: 740px) {
+  html.cockpit .ck-ws-head {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    height: auto;
+    min-height: 52px;
+    padding: 8px 10px;
+    gap: 6px 8px;
+  }
+  html.cockpit .ck-ws-head .lbl,
+  html.cockpit .ck-ws-head .grow { display: none; }
+  html.cockpit .ck-surf-list { grid-column: 1 / -1; }
+  html.cockpit .ck-layouts { display: inline-flex; justify-self: start; }
+  html.cockpit #ck-ws-tuck { justify-self: end; }
+}
+html.cockpit .phw-status[hidden] { display: none; }
+html.cockpit .ck-pane .phw-bar { align-items: center; }
+html.cockpit .ck-pane .phw-bar > :is(select, button) {
+  margin-block: 0;
+  min-height: 32px;
+  box-sizing: border-box;
+}
+@container ckpane (max-width: 640px) {
+  html.cockpit .ck-pane .phw-bar > :is(.phw-device, .phw-edition) {
+    flex: 1 1 100%;
+    width: 100%;
+    max-width: 100%;
+  }
+  html.cockpit .ck-pane .wsv-who { margin-left: auto; }
+}

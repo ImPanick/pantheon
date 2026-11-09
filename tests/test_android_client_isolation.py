@@ -143,7 +143,6 @@ def test_web_preview_is_requested_explicitly_and_never_via_legacy_start():
 
 
 @pytest.mark.parametrize("action,fields", [("start", {}), ("install", {}),
-                                         ("edition", {"edition": "google_play"}),
                                          ("transfer", {"name": "x", "data_b64": "eA=="})])
 def test_shared_workstation_cannot_turn_preview_availability_into_android(action, fields):
     client = RecordingClient(SHARED_OFF)

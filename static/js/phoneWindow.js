@@ -710,6 +710,9 @@ function _render() {
   else if (s.state === 'off' && installLine(s) && installLine(s).failed) _say(installLine(s).text, { error: true });
   else if (s.state === 'off' && mobile) _say('Browser preview is closed. Android is unavailable on this workstation.');
   else _say(mobile && s.state === 'starting' ? SAY.mobileStarting : (SAY[s.state] || SAY.checking));
+  // The runtime card already explains an unavailable device. Keep a
+  // distinct action error visible, without repeating the same paragraph.
+  _win.status.hidden = s.state === 'unavailable' && (!_error || _error === runtime.detail);
 }
 
 function _installSay(s) {

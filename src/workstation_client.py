@@ -913,8 +913,12 @@ class WorkstationClient:
                             body = {"action": "stop", "holder": holder}
                         elif action == "device":
                             body = {**body, "action": "preview"}
-                    elif not (action == "device" and status.get("isolation") == "shared"
+                    elif not (action in ("device", "edition") and status.get("isolation") == "shared"
                               and status.get("mode") is None and status.get("state") in ("off", "unavailable")):
+                        # Choosing a profile or SDK edition only saves the
+                        # person's preference. It must remain possible before
+                        # an Android VM is available; executing Android and
+                        # exposing its screen still require the VM boundary.
                         raise WorkstationError("unavailable", P.PHONE_ISOLATION_REQUIRED)
             # A screenshot after an input waits for the screen to settle, and
             # stopping a phone saves it first.

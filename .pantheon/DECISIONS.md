@@ -4138,3 +4138,73 @@ The independently reviewed hermetic tests do not replace real Android acceptance
 or explain the prior native EPERM observations. The native proof/credential
 proposal remains unchanged and unapproved; dev delivery is authorized, with main
 and Arcane untouched.
+
+## D-2026-11-09-07 - portable device runtime, independent of the workstation
+
+The owner requested a system-agnostic design: the whole platform should run on
+Windows, Linux and Apple hardware, and Android should own a dedicated VM whose
+system image follows the requested device and edition. The current desktop
+backend is not a device-runtime selector. On the local Apple Silicon Docker
+installation, `/dev/kvm` can be a device node while opening it returns ENODEV;
+the shared-container fallback cannot execute isolated Android. Changing the
+desktop backend to an x86 Linux VM still leaves nested acceleration unavailable.
+
+Use one device controller and wire contract across host providers. Pantheon's
+web/API services can stay containerized. A trusted device worker runs where the
+hypervisor and emulator are available, locally by default; a configured remote
+worker implements the same contract. It owns Android VMs and never bootstraps a
+Linux desktop, pushes workstation sudo/network policy, or inherits a desktop's
+power, reset or image lifecycle.
+
+The native provider uses the Android Emulator as the dedicated VM, with host
+adapters for Hypervisor.Framework on macOS, Windows Hypervisor Platform on
+Windows, and KVM on Linux. Determine OS, CPU, emulator package, image ABI and
+usable acceleration from capabilities and `emulator -accel-check`, rather than
+equating an OS name or device node with readiness. Keep the provider interface
+open to other local hypervisors and software emulation where an actual runtime
+supports it. Unsupported CPU/package combinations and insufficient resources
+must have an explicit capability result, never a disguised browser preview.
+Google's current package catalogue does not provide the same emulator package
+for every OS/CPU combination; this design is not a claim of universal runtime
+acceptance. See the official [acceleration guide](https://developer.android.com/studio/run/emulator-acceleration),
+[installation requirements](https://developer.android.com/studio/install), and
+[SDK package catalogue](https://dl.google.com/android/repository/repository2-3.xml).
+
+Desired device/edition and its revision are persisted by the owner-bound
+controller before boot is attempted. Status returns that choice while stopped,
+unavailable or installing. Active VM identity and active image are separate
+facts, so a failed start never rewrites the selector to a default. Each owner
+has one active Android VM; incompatible API/variant/ABI images use distinct
+persistent userdata slots, as `AccountPhone._avd_slot` already does. Switching
+images is a serialized stop/flush/select/boot operation; late results from an
+older revision cannot replace a newer choice or its stream. Re-selecting an
+image restores its own data. The SDK image cache may evict downloaded system
+images under disk pressure, but never the desired choice or private userdata.
+
+Readiness, person controls, takeover/hand-back, agent `computer` calls, stream,
+APK QA and selected-file transfer all resolve the same device worker and owner.
+The existing catalogue, bounds, button names, AVD configuration and transfer
+integrity rules remain authoritative. A native worker exposes only typed device
+operations, without generic host shell, raw SDK management or host-folder mounts.
+Ship its trusted stream renderer and input path with its provider; screenshots
+alone do not replace a usable interactive display.
+
+The trust boundary from -03 through -06 remains: independent private device
+credentials, direct authenticated device control, target verification before
+signing challenges, protected console/gRPC/Netsim endpoints, and Android/workstation
+guests kept away from the control plane while application networking works.
+Different localhost ports and an SDK smart server are not tenant isolation.
+SDK/image licence acceptance is a person's action before installation; neither
+an agent nor an image-selection request accepts it. Package installation uses
+the official host/ABI-specific archives with checked sizes and checksums and
+has no unrequested background update check.
+
+Acceptance requires independent phone routing while the desktop is off; saved
+selection across failed boots and controller restart; real image switching and
+userdata preservation; person/agent input on the same VM and coordinates;
+bounded selected transfer with readback; application networking; process cleanup;
+and two-owner control/storage isolation including guest root. Platform adapter
+unit tests establish selection logic, not real hypervisor or Android acceptance.
+The current local change fixes the offline image-preference save and workspace
+layout. The portable native provider and its real-runtime acceptance are still
+tracked as open in B2106; this decision does not label them implemented.
