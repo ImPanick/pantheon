@@ -313,17 +313,17 @@ Android acceptance. The controlled development probe on 2026-11-08 found running
 Docker Desktop/WSL and a Windows hypervisor, but no usable Linux KVM device.
 
 **Native Windows direction (proposal, not an enabled backend).** On Cybertooth,
-the read-only 2026-11-09 probe of `WHvGetCapability` returned success with
-`HypervisorPresent=true`. The native Android SDK was absent in the checked
-locations and PATH, so neither `emulator -accel-check` nor Android boot was tested.
-WHP API availability is a prerequisite, not proof that the emulator will run.
+the initial read-only 2026-11-09 probe of `WHvGetCapability` returned success with
+`HypervisorPresent=true`. The SDK was absent in the checked locations at that
+stage. The subsequently authorized official SDK test below has now booted real
+Android on WHPX; Pantheon has no native Windows device-host adapter yet.
 An additional read-only Windows feature inventory reported `HypervisorPlatform`
 **disabled** (`Win32_OptionalFeature.InstallState=2`), with Hyper-V and Virtual
 Machine Platform enabled (`1`). A hypervisor-present capability response does not
-mean that the WHPX feature is enabled. A native test must first run the selected
-emulator's `-accel-check`; enabling Windows Hypervisor Platform and a possible
-reboot are separate system changes requiring explicit authorization. No feature,
-firewall, security exclusion, service or driver was changed by these probes.
+establish the optional feature's state. The installed emulator's actual
+`-accel-check` and real guest boot succeeded without enabling it. Any future
+feature or security-policy change and any restart need separate authorization.
+No feature, firewall, security exclusion, service or driver was changed.
 Google's supported Windows path is native
 [WHPX](https://developer.android.com/studio/run/emulator-acceleration#vm-windows);
 keep Hyper-V enabled.
@@ -357,19 +357,52 @@ No SDK binaries or images are vendored in this repository.
 The actual native `emulator -accel-check` returned success and reported
 `WHPX(10.0.26200) is installed and usable`, despite the feature inventory above.
 No feature change or restart was needed for that check. A fresh manual AVD is
-recognized by `-list-avds`; this is not an Android boot or tenant-isolation proof.
+recognized by `-list-avds`. Actual native boot and control results are below;
+none of these SDK checks establish tenant isolation.
 
 Boot preflight found an exception to workspace-only credential storage: the
 native Windows console implementation uses the Windows profile's
 `.emulator_console_auth_token`, and ADB loads or generates `.android/adbkey`
 and `adbkey.pub` there. Android SDK environment variables do not reliably relocate
-those native Windows lookups. The test profile had existing ADB keys and no
-console token; boot is paused pending explicit approval for those credential
-paths. Do not overwrite keys or disable authentication to avoid this boundary.
+those native Windows lookups. The owner subsequently authorized creation of the
+console token and read-only use of the existing ADB keys. The token was created
+with access restricted to that Windows user and SYSTEM; the keys were held
+read-only without write sharing during the tests. Existing key files were left
+unchanged, no private key was copied into the test directories, and the assistant
+did not enable persistent debugging trust. The profile token
+remains at the approved location. A deployed worker needs its own host identity
+and credentials rather than this personal-profile test arrangement.
 The [console source](https://android.googlesource.com/platform/external/qemu/+/emu-master-dev/android/emu/telnet/auth/src/android/console_auth.cpp)
 and [ADB key source](https://android.googlesource.com/platform/packages/modules/adb/+/refs/heads/main/client/auth.cpp)
 explain these defaults. A future worker still needs independent per-user
 stream/control/storage isolation and actual adversarial acceptance.
+
+**Native acceptance results (2026-11-09; validation only).** These are actual
+official SDK guests using WHPX on Cybertooth, not browser streams, mocked Android
+or Linux/KVM. The phone and fold-profile guests also ran concurrently with
+separate AVD directories. Both owned process trees were stopped afterwards; a
+separate inventory found no processes remaining under this test SDK path.
+
+| Check | Observed result |
+|---|---|
+| Generic Android 15 / API 35 | Cold boot, Android properties, real home/Settings pixels and UI hierarchy passed. Play Store and Play services packages are present; no Google account was used. |
+| Touch and navigation | Explicit touchscreen input opened Network & internet; Back, Home and Recents passed on the final scoped pass. Earlier automation attempts had intermittent touch failures and an overview tutorial; this is not a long-duration reliability result. |
+| Device keys and rotation | Power reported Asleep then Awake; volume changed 4 to 5 to 4, requiring two Up presses and one Down, with restoration checked. A 1080 by 2400 frame became 2400 by 1080; rotation preferences were restored. Playback was enabled for these checks, with microphone and cameras disabled. Audio streaming into Pantheon was not tested. |
+| Selected generated file | A new destination and new payload passed checked ADB push, byte/hash readback and sync. The previous unique 67-byte transfer was verified before any push after the next cold boot. This is the SDK transfer primitive, not Pantheon's native document/upload integration. |
+| Data and shutdown | Earlier short/forced-shutdown attempts left a zero-byte marker. Subsequent explicit guest sync and a longer wait after console kill preserved both the original marker and the later unique transfer. Kill acknowledgement/exit code was not independently recorded. The cause was not isolated, and power-loss durability is not established. Final owned emulator/ADB process counts were measured as zero. |
+| Fold profile | A separate generic-Android Pixel Fold geometry accepted fold/unfold and reported hinge angle 180 then 0. SDK rotation swapped capture dimensions. The capture still returned the full framebuffer after folding, with distorted/partial layouts; cover viewport, scaling and touch mapping remain unverified. This is partial support, not retail Pixel Fold fidelity. |
+| Guest-to-host isolation | **Failed.** Android shell reached a disposable loopback marker and the test's unauthenticated ADB smart server through `10.0.2.2`, despite `restrict=on` options. A harmless generated-marker command on that same test guest was executed through the host ADB server. No other user's device was targeted. Separate ports and Windows Jobs do not close this boundary. |
+| Pantheon native integration | Not implemented. Live embedded streaming, owner-bound native device operations, takeover, cross-owner access denial and actual two-user isolation remain acceptance gates. No user APK install/QA flow or personal Google sign-in was tested. |
+
+The exact probe sources, configurations, JSON results and hash-checked screenshots
+are retained locally under `validation/native-android-test/logs/proof-phone-20261109T070410Z`
+and `proof-fold-20261109T070409Z` in the task workspace, outside this checkout.
+No SDK payloads, device disks, credentials or raw emulator logs are committed.
+The owner requested review of these results **before** starting Pantheon
+implementation. The intended scope remains usable generic Android phones and
+tablets across feasible profiles, including agent-driven application QA; Pixel
+is a starting test profile. Vendor-specific compatibility and iOS remain separate
+future work. See `.pantheon/DECISIONS.md`, `D-2026-11-09-03`.
 
 The proposed native worker would reuse the narrow phone operations in
 `workstation/protocol.py`: lifecycle/status, streamed display, input, device controls
@@ -412,12 +445,13 @@ which is evidence of a management interface, not integration or redistribution
 rights. No vendor implementation or image is copied into Pantheon. Google SDK/GMS
 terms remain separate from AOSP's component licences.
 
-Before enabling a native provider: obtain an explicitly authorized SDK/image,
-prove WHPX acceleration and persistent cold boot, wire the actual stream/touch and
-file checksum path, then attack it from a second Windows identity and guest-root
+Before enabling a native provider: close the demonstrated guest-to-host control
+exposure, wire the actual stream/touch and selected-file checksum path, then
+attack it from a second Windows identity and guest-root
 in Android/Linux, including access through WSL/Docker. Check ports, device files,
-account sessions and the broker's credentials. Real Android boot and this two-user
-acceptance remain open; no personal-account readiness is claimed.
+account sessions and the broker's credentials. The local native SDK boot passed;
+this two-user acceptance and the native Pantheon integration remain open. No
+personal-account readiness is claimed.
 
 The Android start action **never substitutes Firefox**. A separate *Open browser
 preview (web only)* action runs Firefox with the selected profile, mobile user

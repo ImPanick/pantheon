@@ -3940,8 +3940,9 @@ polling. The preview's worker owns its display through startup and teardown;
 requests detach/cancel without waiting on that worker. A replacement must wait for
 old ownership to end. Browser preview remains explicitly web-only.
 
-The read-only native WHP capability query succeeded. The native Android SDK was
-absent in checked locations; an Android/WHPX boot was not attempted or verified.
+The initial read-only native WHP capability query succeeded. The Android SDK was
+absent in checked locations at that stage. The later authorized SDK installation
+and actual WHPX guest results are recorded in `D-2026-11-09-02` and `-03`.
 Native Windows WHPX is the proposed local development
 direction, with an independently trusted device broker, owner-scoped storage and
 host-enforced port protection. Reuse the existing phone protocol rather than add
@@ -3960,10 +3961,11 @@ install/update. Guest loopback is not host loopback. A companion or custom AOSP
 service cannot bypass Android permissions, and needs privacy/licensing review.
 Neither is implemented here and neither blocks the basic Android milestone.
 
-No proprietary emulator code/images are copied, no SDK/GMS licence is accepted,
-and no Windows feature is disabled. Native real boot, streaming/control/transfer
-and two-user isolation must pass before enabling that provider or claiming the
-full Android experience complete. Arcane remains owner-operated only.
+No proprietary vendor emulator code/images are copied into Pantheon, and no
+Windows feature is disabled. This investigation accepted no SDK licence; the
+subsequent explicitly authorized SDK test did (`D-2026-11-09-02`). Native broker
+integration and two-user isolation must pass before enabling that provider or
+claiming the full Android experience complete. Arcane remains owner-operated only.
 
 ## D-2026-11-09-02 - authorized native SDK test and profile-credential boundary
 
@@ -3978,13 +3980,58 @@ approval. Arcane remains exclusively owner-operated.
 
 Actual native SDK diagnostics now report usable WHPX, with no host change. That
 supersedes treating the disabled optional-feature inventory as a definitive native
-blocker. The fresh manual AVD is recognized; Android has not yet booted.
+blocker. The fresh manual AVD was recognized; subsequent actual Android boot and
+acceptance results are in `D-2026-11-09-03`.
 
 The earlier workspace-only file plan omitted native Windows profile credentials:
 the console token and ADB's default private/public keys use the actual Windows
 profile despite the SDK directory environment variables. Source review found this
 before boot; only existence was checked. Existing ADB keys were present, the
-console token absent. Keep boot paused for explicit authorization of those paths,
-preserve existing keys, and do not disable authentication or replace profile
-directories. Separately disable USB, emulator scanning and mDNS in any test ADB
-server and target only the fresh AVD. Ports alone never establish tenant isolation.
+console token absent. Boot was paused until the owner explicitly authorized token
+creation and read-only use of those existing keys. That approval has now been
+used, with the keys unchanged and token protected; it authorizes no persistent
+debugging-consent click, unrelated credential operation or Windows security
+change. Disable USB, emulator scanning and mDNS in any test ADB server and target
+only the owned AVD. Ports alone never establish tenant isolation.
+
+## D-2026-11-09-03 - native Android proof; review results before integration
+
+The owner requested continued validation and review of the results before
+Pantheon implementation. Keep the native test outside the product; do not ship
+an unwired host flag or relabel it as the Linux VM backend. Existing test-only
+dev delivery authorization remains, while main and Arcane stay untouched.
+
+Actual native SDK guests now boot Android on WHPX without any Windows feature,
+security-policy or restart action. The completed scoped checks and remaining
+failures are recorded once in `docs/setup.md` under Native acceptance results.
+These are real runtime checks, distinct from earlier mocked UI and TCG VM tests.
+An independently reviewed harness required fresh transfer bytes/destination,
+pre-push persistence readback and measured zero-process cleanup before reporting
+those checks as passed. Earlier failures remain in the local evidence.
+
+The proposed multi-user boundary failed its controlled probe: an Android guest
+reached the host ADB smart server and executed a generated-marker command on
+that same test device without authenticating to the host server. `restrict=on`,
+different ports and Windows Jobs cannot be claimed as isolation on this setup.
+This did not test another person's account or bypass the shipping Linux VM
+guard. A native broker must keep raw control endpoints inaccessible from tenant
+guests and expose authenticated owner-bound operations instead. Two actual
+Android tenants, including hostile Android/Linux guest-root access, must verify
+that boundary before personal account use. No such broker is implemented yet.
+
+Use feasible generic Android phone/tablet configurations; Pixel is a starting
+profile, not the product's boundary. Hardware profiles do not supply OEM firmware
+or retail identity. The fold sensor works, but native cover-display geometry and
+input alignment still need acceptance. The agent QA use case requires scoped
+APK install/launch and the same device used by the person, without generic host
+shell or blanket file mounts. No user APK or Google account was used in this
+test. iOS is a separate future investigation. The existing internal-companion
+proposal remains optional after the basic runtime and isolation milestone.
+
+Retain power, volume up/down, Back, Home, Recents, rotation and applicable folding
+in the eventual mobile controls. Process off/cold boot and the physical Power
+key's sleep/wake are distinct operations. A separate extended-controls window
+is unnecessary; zoom and a person's screenshot button are secondary, while
+agent screenshot capture remains essential. Preserve takeover and auditable
+actions when the native stream is wired. SDK/GMS licensing and redistribution
+remain separate from AOSP component rights and this authorized developer test.
