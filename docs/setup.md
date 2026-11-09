@@ -317,6 +317,13 @@ the read-only 2026-11-09 probe of `WHvGetCapability` returned success with
 `HypervisorPresent=true`. The native Android SDK was absent in the checked
 locations and PATH, so neither `emulator -accel-check` nor Android boot was tested.
 WHP API availability is a prerequisite, not proof that the emulator will run.
+An additional read-only Windows feature inventory reported `HypervisorPlatform`
+**disabled** (`Win32_OptionalFeature.InstallState=2`), with Hyper-V and Virtual
+Machine Platform enabled (`1`). A hypervisor-present capability response does not
+mean that the WHPX feature is enabled. A native test must first run the selected
+emulator's `-accel-check`; enabling Windows Hypervisor Platform and a possible
+reboot are separate system changes requiring explicit authorization. No feature,
+firewall, security exclusion, service or driver was changed by these probes.
 Google's supported Windows path is native
 [WHPX](https://developer.android.com/studio/run/emulator-acceleration#vm-windows);
 keep Hyper-V enabled.
