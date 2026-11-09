@@ -325,6 +325,19 @@ still requires Linux KVM, so moving it into the same WSL/Docker environment does
 not solve this host's current blocker. An authorized separate Linux/KVM worker is
 the other viable direction to validate.
 
+An open-source QEMU/WHPX host with a PC-targeted AOSP image is another
+investigation, not a working provider. No clean, current drop-in image has been
+verified here. A "FOSS" download name does not establish component rights; for
+example, [Bliss's licensing page](https://blissos.org/licensing.html) identifies
+proprietary components in some variants. Cuttlefish's Linux host integration also
+needs porting before its images can be treated as native Windows targets. A full
+modern [AOSP source build](https://source.android.com/docs/setup/start/requirements)
+requires at least 400 GB free storage and 64 GB RAM; the current authorized C:
+workspace does not have that free storage. No alternate drive/build host is
+selected or modified. A local SDK development test needs the operator's explicit
+SDK licence consent; it does not establish consumer deployment or redistribution
+rights.
+
 The proposed native worker would reuse the narrow phone operations in
 `workstation/protocol.py`: lifecycle/status, streamed display, input, device controls
 and selected-byte transfer, all bound to the authenticated owner. A trusted Windows
