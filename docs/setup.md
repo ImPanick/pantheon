@@ -312,6 +312,67 @@ stream, touch and file-transfer acceptance run. This host path has not passed th
 Android acceptance. The controlled development probe on 2026-11-08 found running
 Docker Desktop/WSL and a Windows hypervisor, but no usable Linux KVM device.
 
+**Native Windows direction (proposal, not an enabled backend).** On Cybertooth,
+the read-only 2026-11-09 probe of `WHvGetCapability` returned success with
+`HypervisorPresent=true`. The native Android SDK was absent in the checked
+locations and PATH, so neither `emulator -accel-check` nor Android boot was tested.
+WHP API availability is a prerequisite, not proof that the emulator will run.
+Google's supported Windows path is native
+[WHPX](https://developer.android.com/studio/run/emulator-acceleration#vm-windows);
+keep Hyper-V enabled.
+[Cuttlefish](https://source.android.com/docs/devices/cuttlefish/get-started)
+still requires Linux KVM, so moving it into the same WSL/Docker environment does
+not solve this host's current blocker. An authorized separate Linux/KVM worker is
+the other viable direction to validate.
+
+The proposed native worker would reuse the narrow phone operations in
+`workstation/protocol.py`: lifecycle/status, streamed display, input, device controls
+and selected-byte transfer, all bound to the authenticated owner. A trusted Windows
+broker, outside agent-controlled guests, would own the emulator and ADB processes,
+per-user AVD directories/ACLs, and host-enforced restrictions on **every** raw ADB,
+console and gRPC entry point. Different ports or Windows usernames alone are not
+that boundary. It would need an explicit operator-configured worker role; it must
+not impersonate the existing Linux VM backend to bypass its checks. Capture, input
+and transfers must operate the same device through that broker.
+
+Agent interaction does not require a custom Android build or an MCP server inside
+the guest. The existing Linux phone protocol already mediates screenshots, UI
+marks, touch/key input, device controls and selected-file transfer, with the same
+person/agent holder boundary. The proposed Windows adapter must preserve those
+owner checks and user takeover, record authorized actions without logging secrets
+or file contents, and keep raw ADB, console and unrestricted shell private. Apps
+can initially be opened through their UI; a dedicated app-launch operation would
+need explicit validation and authorization. No native adapter or guest MCP is
+implemented here.
+
+The owner supports an **optional internal companion APK**, delivered directly to
+their emulated device, with no Play Store listing. It remains future work after
+real boot, per-user isolation and selected-transfer acceptance. Pair each install
+to one authenticated owner/device with revocable credentials; request only needed
+permissions with explicit consent. Use an operator-configured reachable broker
+address and authenticated encrypted transport. Android guest loopback is the
+guest itself, not Pantheon's host loopback, and emulator networking is not a tenant
+boundary. Constrain the connection to that broker and preserve Android permission
+checks. Installs/updates need a trusted signing identity, verified artifact hashes
+and an authorized update path; credentials must not enter screenshots or logs. A
+custom AOSP service would need a demonstrated gap and separate review of its
+permissions, privacy and applicable SDK/GMS/licensing terms. No companion APK is
+built, installed or connected by this change.
+
+Installed emulator metadata supports the host-manager/Android-guest/separate-disk
+architecture; it does not reveal proprietary stream internals. LDPlayer documents
+[instance management and ADB commands](https://www.ldplayer.net/support/introduction-to-ldplayer-command-line-interface.html),
+which is evidence of a management interface, not integration or redistribution
+rights. No vendor implementation or image is copied into Pantheon. Google SDK/GMS
+terms remain separate from AOSP's component licences.
+
+Before enabling a native provider: obtain an explicitly authorized SDK/image,
+prove WHPX acceleration and persistent cold boot, wire the actual stream/touch and
+file checksum path, then attack it from a second Windows identity and guest-root
+in Android/Linux, including access through WSL/Docker. Check ports, device files,
+account sessions and the broker's credentials. Real Android boot and this two-user
+acceptance remain open; no personal-account readiness is claimed.
+
 The Android start action **never substitutes Firefox**. A separate *Open browser
 preview (web only)* action runs Firefox with the selected profile, mobile user
 agent and touch events. It persistently says **Browser preview · Web only**.
@@ -321,6 +382,13 @@ runs **generic Android** when Android is available. Profiles approximate the
 selected device's size, density, body and fold; they do not provide retail
 device identity, OEM firmware or certified hardware behavior. The folded display
 uses a region of the inner display, rather than a second OEM cover panel.
+Preview port discovery has a real deadline even for silent or newline-free Firefox
+output. Stop cancels its owned process without waiting for the phone's status lock.
+Display startup and teardown run on a separate lifecycle worker; a replacement
+waits for the old display to be released. A failed or cancelled old worker cannot
+publish itself or close the replacement's screen. These fixes were exercised with
+controlled processes and a fresh real Firefox/KasmVNC preview, not a captured live
+stack trace or an Android boot.
 iPhones cannot be emulated by this Android backend. Each running
 phone takes about `PANTHEON_PHONE_MEMORY_MIB` (2 GB); at most
 `PANTHEON_PHONE_MAX_RUNNING` (2) run at once, and one nobody has used or

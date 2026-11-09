@@ -3925,3 +3925,42 @@ data; existing data is never silently migrated or wiped. File transfer accepts
 only selected bytes or an owned document's current text, into a fixed Android
 Downloads root with bounded staging and checksum confirmation. It is not a host
 mount or network tether. The owner alone controls live deployments.
+
+## D-2026-11-09-01 - bounded preview startup; native Windows investigation
+
+The current Cybertooth Docker/WSL path has no usable KVM despite enabled firmware
+virtualization and Windows hypervisor. Keep the isolation/outer-TCG refusal. A
+completed Ubuntu base-image build is not evidence that a user's Android device
+booted. The reported preview hang exposed an independently reproducible defect:
+blocking stdout.readline exceeded its nominal deadline while preview startup held
+the phone lock. No live-stack trace established this as the sole cause.
+
+Use one bounded-output reader per captured Firefox process and cancellable port
+polling. The preview's worker owns its display through startup and teardown;
+requests detach/cancel without waiting on that worker. A replacement must wait for
+old ownership to end. Browser preview remains explicitly web-only.
+
+The read-only native WHP capability query succeeded. The native Android SDK was
+absent in checked locations; an Android/WHPX boot was not attempted or verified.
+Native Windows WHPX is the proposed local development
+direction, with an independently trusted device broker, owner-scoped storage and
+host-enforced port protection. Reuse the existing phone protocol rather than add
+an unused provider flag or weaken its Linux VM gate. A separate authorized Linux
+KVM host is the alternative; Cuttlefish still needs KVM. See setup.md's Mobile
+Emulator section for primary sources, proposed interface and acceptance criteria.
+
+Agent operation reuses the external owner-bound phone controls; it does not need
+a custom Android build or an MCP service inside the guest. A native adapter must
+keep raw ADB/console/shell private, preserve user takeover and auditable actions,
+and mediate only authorized display, input and selected-transfer operations. The
+owner supports an optional internal companion APK with no Play Store listing,
+after real boot/isolation/transfer acceptance. It needs authenticated owner/device
+pairing, explicit permissions/consent, restricted networking and signed/verified
+install/update. Guest loopback is not host loopback. A companion or custom AOSP
+service cannot bypass Android permissions, and needs privacy/licensing review.
+Neither is implemented here and neither blocks the basic Android milestone.
+
+No proprietary emulator code/images are copied, no SDK/GMS licence is accepted,
+and no Windows feature is disabled. Native real boot, streaming/control/transfer
+and two-user isolation must pass before enabling that provider or claiming the
+full Android experience complete. Arcane remains owner-operated only.

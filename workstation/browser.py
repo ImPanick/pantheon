@@ -61,6 +61,9 @@ logger = logging.getLogger(__name__)
 
 PROFILE_DIR = ".pantheon/browser"
 START_TIMEOUT_S = 30.0
+STOP_TIMEOUT_S = 5.0
+CANCEL_GRACE_S = 0.25
+START_POLL_S = 0.05
 # `B1721`. A browser that has been started this many times inside this window
 # is not started again until the oldest of those starts leaves it. It is on the
 # person's desktop, so every start is a Firefox window opening, and whatever
@@ -512,6 +515,53 @@ def find_firefox() -> Optional[str]:
     return None
 
 
+class _FirefoxOutput:
+    """One pipe reader per process, with bounded diagnostics and no caller I/O.
+
+    The reader may block waiting for the child; the startup caller never does.
+    It also drains after readiness, always from this process's captured pipe.
+    """
+
+    def __init__(self, proc):
+        self.proc = proc
+        self.ready = threading.Event()
+        self.eof = threading.Event()
+        self.port: Optional[int] = None
+        self.tail = ""
+        self._lock = threading.Lock()
+        self.thread = threading.Thread(target=self._read, args=(proc,), name="firefox-output", daemon=True)
+        self.thread.start()
+
+    def _read(self, proc) -> None:
+        pipe = proc.stdout
+        pending = b""
+        try:
+            while True:
+                chunk = pipe.read1(4096) if hasattr(pipe, "read1") else pipe.read(4096)
+                if not chunk:
+                    break
+                pending += chunk
+                with self._lock:
+                    self.tail = (self.tail + chunk.decode("utf-8", "replace"))[-8192:]
+                while b"\n" in pending:
+                    line, pending = pending.split(b"\n", 1)
+                    match = _LISTENING_RE.search(line.decode("utf-8", "replace"))
+                    if self.port is None and match and 0 < int(match.group(2)) <= 65535:
+                        self.port = int(match.group(2))
+                        self.ready.set()
+                pending = pending[-8192:]  # a newline-free log must not grow memory
+        except (OSError, ValueError):
+            logger.debug("browser: output pipe closed", exc_info=True)
+        finally:
+            pipe.close()
+            self.eof.set()
+            self.ready.set()
+
+    def last_words(self) -> str:
+        with self._lock:
+            return " ".join(self.tail.strip().splitlines()[-2:])[-200:] or "it said nothing."
+
+
 class AccountBrowser:
     """One person's browser: the process, its session, its tabs."""
 
@@ -551,6 +601,11 @@ class AccountBrowser:
         self.pointed: Optional[Dict] = None   # `P25-10`: what the person last pointed at
         self._act_lock = threading.Lock()
         self._starts: List[float] = []        # `B1721`: when it was last started
+        self._startup_lock = threading.Lock()
+        self._startup_cancel: Optional[threading.Event] = None
+        self._startup_proc = None
+        self._output: Optional[_FirefoxOutput] = None
+        self._stopping: Dict = {}
 
     # -- life -------------------------------------------------------------------
 
@@ -624,7 +679,39 @@ class AccountBrowser:
         except (OSError, subprocess.SubprocessError) as e:
             logger.info("browser: its window could not be fitted to its screen: %s", e)
 
-    def start(self) -> None:
+    def start(self, *, cancel: Optional[threading.Event] = None) -> None:
+        with self.lock:
+            if self.running():
+                if cancel is not None:
+                    self._check_cancel(cancel)
+                return
+            if self.proc is not None or self.session is not None:
+                self.stop()
+            self._start_guarded(cancel=cancel)
+
+    def _start_guarded(self, *, cancel: Optional[threading.Event] = None) -> None:
+        with self._startup_lock:
+            if self._startup_cancel is not None:
+                raise BrowserError("busy", "The browser is already starting.")
+            cancelled = cancel if cancel is not None else threading.Event()
+            self._startup_cancel = cancelled
+        try:
+            self._start(cancelled)
+        except Exception:
+            self.stop()
+            raise
+        finally:
+            with self._startup_lock:
+                self._startup_cancel = None
+                self._startup_proc = None
+
+    @staticmethod
+    def _check_cancel(cancelled) -> None:
+        if cancelled.is_set():
+            raise BrowserError("unavailable", "The browser startup was cancelled.")
+
+    def _start(self, cancelled) -> None:
+        self._check_cancel(cancelled)
         firefox = find_firefox()
         if not firefox:
             raise BrowserError("unavailable", "This workstation has no Firefox, so it has no browser.")
@@ -660,50 +747,118 @@ class AccountBrowser:
         if headless:
             argv.append("--headless")
         argv.append("about:blank")
-        self.proc = subprocess.Popen(argv, env=env or self.env, stdout=subprocess.PIPE,
-                                     stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
-                                     start_new_session=True)
-        port = self._listening_port()
+        self._check_cancel(cancelled)
+        with self._startup_lock:
+            self._check_cancel(cancelled)
+            proc = subprocess.Popen(argv, env=env or self.env, stdout=subprocess.PIPE,
+                                    stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
+                                    start_new_session=True)
+            self.proc = self._startup_proc = proc
+        output = _FirefoxOutput(proc)
+        self._output = output
+        self._check_cancel(cancelled)
+        port = self._listening_port(proc=proc, output=output, cancelled=cancelled)
         try:
+            self._check_cancel(cancelled)
             self.session = Session("127.0.0.1", port)
             self.session.start()
-        except BidiError as e:
-            self.stop()
-            raise BrowserError("unavailable", f"The browser started but could not be driven: {e.message}")
-        threading.Thread(target=self._drain, daemon=True).start()
+        except (BidiError, OSError) as e:
+            self._check_cancel(cancelled)
+            detail = getattr(e, "message", None) or str(e)
+            raise BrowserError("unavailable", f"The browser started but could not be driven: {detail}") from e
+        self._check_cancel(cancelled)
         ctx = self._contexts()[0]["context"]
         self.current = ctx
         if env is not None:
             self._fit_window(env)
         self._viewport(ctx)
+        self._check_cancel(cancelled)
 
-    def _listening_port(self) -> int:
+    def _listening_port(self, *, proc=None, output=None, cancelled=None) -> int:
         end = time.monotonic() + START_TIMEOUT_S
-        assert self.proc is not None and self.proc.stdout is not None
-        seen: List[str] = []
+        proc = proc if proc is not None else self.proc
+        assert proc is not None and proc.stdout is not None
+        output = output or (self._output if self._output is not None and self._output.proc is proc
+                            else _FirefoxOutput(proc))
+        cancelled = cancelled if cancelled is not None else self._startup_cancel or threading.Event()
         while time.monotonic() < end:
-            line = self.proc.stdout.readline()
-            if not line:
-                if self.proc.poll() is not None:
+            self._check_cancel(cancelled)
+            if proc.poll() is not None:
+                output.eof.wait(START_POLL_S)  # bounded drain of a process that already exited
+                break
+            if output.port is not None:
+                return output.port
+            if output.ready.wait(min(START_POLL_S, max(0, end - time.monotonic()))):
+                if output.port is None:
                     break
-                continue
-            text = line.decode("utf-8", "replace")
-            seen.append(text.strip())
-            m = _LISTENING_RE.search(text)
-            if m:
-                return int(m.group(2))
-        self.stop()
+        self._check_cancel(cancelled)
+        self._signal_stop(proc)  # captured process only; never a replacement launch
         raise BrowserError("unavailable", "The browser did not start: "
-                           + ((" ".join(seen[-2:]))[:200] or "it said nothing."))
+                           + output.last_words())
 
-    def _drain(self) -> None:
+    def cancel_start(self) -> None:
+        """Wake startup without waiting for the browser/action lock."""
+        self._cancel_process(CANCEL_GRACE_S)
+
+    def _cancel_process(self, grace: float) -> None:
+        with self._startup_lock:
+            if self._startup_cancel is not None:
+                self._startup_cancel.set()
+                grace = min(grace, CANCEL_GRACE_S)
+            proc = self._startup_proc or self.proc
+            if proc is None:
+                return
+            output = self._output if self._output is not None and self._output.proc is proc else None
+            deadline = time.monotonic() + grace
+            pending = self._stopping.get(id(proc))
+            if pending is None:
+                wake = threading.Event()
+                self._stopping[id(proc)] = (deadline, wake)
+            else:
+                previous, wake = pending
+                self._stopping[id(proc)] = (min(previous, deadline), wake)
+                wake.set()
+        self._signal_stop(proc)
+        if pending is None:
+            # A blocked BiDi handshake/call holds self.lock. Escalation must
+            # remain independent of that lock and retain only this process.
+            threading.Thread(target=self._reap_cancelled, args=(proc, output),
+                             name="firefox-stop", daemon=True).start()
+
+    def _reap_cancelled(self, proc, output) -> None:
         try:
-            while self.proc and self.proc.stdout and self.proc.stdout.readline():
-                pass
-        except (OSError, ValueError):
-            pass  # the drain only keeps Firefox's pipe from filling; it ends when Firefox does
+            while True:
+                with self._startup_lock:
+                    deadline, wake = self._stopping[id(proc)]
+                    wake.clear()
+                if not wake.wait(max(0, deadline - time.monotonic())):
+                    break
+            # A launcher can exit before a child which retains the output
+            # pipe and BiDi socket. Finish that captured process group too.
+            descendants = output is not None and not output.eof.is_set()
+            self._signal_stop(proc, force=True, descendants=descendants)
+            try:
+                proc.wait(timeout=1)
+            except (OSError, subprocess.TimeoutExpired):
+                logger.debug("browser: cancelled process did not reap", exc_info=True)
+        finally:
+            with self._startup_lock:
+                self._stopping.pop(id(proc), None)
+
+    @staticmethod
+    def _signal_stop(proc, *, force: bool = False, descendants: bool = False) -> None:
+        if proc is not None:
+            try:
+                if hasattr(os, "killpg"):
+                    if descendants or proc.poll() is None:
+                        os.killpg(proc.pid, 9 if force else 15)
+                elif proc.poll() is None:
+                    proc.kill() if force else proc.terminate()
+            except OSError:
+                logger.debug("browser: cancelled process already exited", exc_info=True)
 
     def stop(self) -> None:
+        self._cancel_process(STOP_TIMEOUT_S)
         with self.lock:
             if self.session is not None:
                 try:
@@ -711,18 +866,19 @@ class AccountBrowser:
                 except Exception:  # noqa: BLE001
                     pass
             self.session = None
-            if self.proc is not None and self.proc.poll() is None and not hasattr(os, "killpg"):
-                self.proc.kill()   # Windows: no process groups; Firefox's children follow it
             if self.proc is not None and self.proc.poll() is None:
                 try:
-                    os.killpg(self.proc.pid, 15)
-                    self.proc.wait(timeout=5)
+                    self._signal_stop(self.proc)
+                    self.proc.wait(timeout=STOP_TIMEOUT_S)
                 except (OSError, subprocess.TimeoutExpired):
-                    try:
-                        os.killpg(self.proc.pid, 9)
-                    except OSError:
-                        pass  # already gone between the check and the kill
+                    self._signal_stop(self.proc, force=True)
+            if self.proc is not None:
+                try:
+                    self.proc.wait(timeout=1)
+                except (OSError, subprocess.TimeoutExpired):
+                    logger.debug("browser: process did not reap after stop", exc_info=True)
             self.proc = None
+            self._output = None
             self.current = None
 
     # -- BiDi -------------------------------------------------------------------

@@ -29,6 +29,7 @@ import contextlib
 import json
 import shutil
 import subprocess
+import time
 from pathlib import Path
 
 import pytest
@@ -171,7 +172,7 @@ def no_kvm(tmp_path, monkeypatch):
     monkeypatch.setattr(PH, "find_firefox", lambda: "/usr/bin/firefox")
     calls = []
 
-    def start(self):
+    def start(self, *, cancel=None):
         calls.append(("start", self.window_size, self.extra_args, self.extra_prefs))
         self.proc = _Proc()
 
@@ -183,6 +184,7 @@ def no_kvm(tmp_path, monkeypatch):
 
     monkeypatch.setattr(PH.MobileView, "start", start)
     monkeypatch.setattr(PH.MobileView, "stop", stop)
+    monkeypatch.setattr(PH.MobileView, "cancel_start", lambda self: None)  # no OS process in this fixture
     monkeypatch.setattr(PH.MobileView, "_ctx", lambda self: "ctx-1")
     monkeypatch.setattr(PH.MobileView, "_act",
                         lambda self, action, body, at=None: calls.append(("act", action, body)) or {})
@@ -195,12 +197,21 @@ def no_kvm(tmp_path, monkeypatch):
     screen = _Screen()
     phone = PH.AccountPhone(system, ACCOUNT, screen, kvm=lambda: (False, "the host has no KVM"))
     phone.calls = calls
-    return phone
+    yield phone
+    phone.stop()
+    if phone._booting:
+        phone._booting.join(5)
 
 
 def _started(phone, device=None):
     phone.preview(device)
-    phone._booting.join(5)
+    return _ready(phone)
+
+
+def _ready(phone):
+    end = time.monotonic() + 5
+    while phone.state == "starting" and time.monotonic() < end:
+        time.sleep(0.01)
     assert phone.state == "on", phone.why
     return phone
 
@@ -269,10 +280,12 @@ def test_turning_and_folding_reopen_the_page_at_the_new_shape(no_kvm):
     _started(no_kvm, "galaxy_z_fold6")
     assert no_kvm.posture == "open"
     no_kvm.rotate()
+    _ready(no_kvm)
     assert no_kvm.state == "on" and no_kvm.rotation == 1
     assert no_kvm.screen.sizes[-1] == PH.mobile_view_size("galaxy_z_fold6", "open", 1)
     assert ("act", "open", {"url": "https://example.org/shop"}) in no_kvm.calls
     no_kvm.set_posture("closed")
+    _ready(no_kvm)
     assert no_kvm.screen.sizes[-1] == PH.mobile_view_size("galaxy_z_fold6", "closed", 1)
     assert no_kvm.info()["posture"] == "closed"
 
@@ -284,12 +297,14 @@ def test_an_address_opens_in_the_mobile_view(no_kvm):
 
 
 def test_a_mobile_view_that_will_not_start_says_why_and_is_not_left_starting(no_kvm, monkeypatch):
-    def boom(self):
+    def boom(self, **kwargs):
         raise B.BrowserError("unavailable", "Firefox crashed")
 
     monkeypatch.setattr(PH.MobileView, "start", boom)
     no_kvm.preview()
-    no_kvm._booting.join(5)
+    end = time.monotonic() + 5
+    while no_kvm.state == "starting" and time.monotonic() < end:
+        time.sleep(0.01)
     assert no_kvm.state == "unavailable" and "Firefox crashed" in no_kvm.why
 
 
