@@ -345,6 +345,32 @@ selected or modified. A local SDK development test needs the operator's explicit
 SDK licence consent; it does not establish consumer deployment or redistribution
 rights.
 
+**Authorized local SDK preparation (2026-11-09).** The owner subsequently
+authorized the three pinned official archives for an isolated native test:
+emulator 37.2.13, platform-tools 37.0.1 and API 35 Google Play x86_64 image
+revision 9. They were checksum-verified and extracted under the task's
+`validation/native-android-test`; the exact package `android-sdk-license`
+agreement dated January 16, 2019 was disclosed, compared with the public 2026
+agreement and accepted under that authorization. Component notices were retained.
+No SDK binaries or images are vendored in this repository.
+
+The actual native `emulator -accel-check` returned success and reported
+`WHPX(10.0.26200) is installed and usable`, despite the feature inventory above.
+No feature change or restart was needed for that check. A fresh manual AVD is
+recognized by `-list-avds`; this is not an Android boot or tenant-isolation proof.
+
+Boot preflight found an exception to workspace-only credential storage: the
+native Windows console implementation uses the Windows profile's
+`.emulator_console_auth_token`, and ADB loads or generates `.android/adbkey`
+and `adbkey.pub` there. Android SDK environment variables do not reliably relocate
+those native Windows lookups. The test profile had existing ADB keys and no
+console token; boot is paused pending explicit approval for those credential
+paths. Do not overwrite keys or disable authentication to avoid this boundary.
+The [console source](https://android.googlesource.com/platform/external/qemu/+/emu-master-dev/android/emu/telnet/auth/src/android/console_auth.cpp)
+and [ADB key source](https://android.googlesource.com/platform/packages/modules/adb/+/refs/heads/main/client/auth.cpp)
+explain these defaults. A future worker still needs independent per-user
+stream/control/storage isolation and actual adversarial acceptance.
+
 The proposed native worker would reuse the narrow phone operations in
 `workstation/protocol.py`: lifecycle/status, streamed display, input, device controls
 and selected-byte transfer, all bound to the authenticated owner. A trusted Windows

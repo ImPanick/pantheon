@@ -3964,3 +3964,27 @@ No proprietary emulator code/images are copied, no SDK/GMS licence is accepted,
 and no Windows feature is disabled. Native real boot, streaming/control/transfer
 and two-user isolation must pass before enabling that provider or claiming the
 full Android experience complete. Arcane remains owner-operated only.
+
+## D-2026-11-09-02 - authorized native SDK test and profile-credential boundary
+
+The owner explicitly authorized the isolated official SDK installation and SDK
+licence acceptance after the package list, sizes, destination and licence-date
+discrepancy were disclosed. The exact package agreement (`android-sdk-license`,
+January 16, 2019) was shown before acceptance; its development/redistribution/OSS
+clauses match the disclosed public 2026 agreement. This authorization covers the
+three pinned test packages, not unrelated licences or broader distribution rights.
+No Windows feature or restart is authorized by it without separate per-action
+approval. Arcane remains exclusively owner-operated.
+
+Actual native SDK diagnostics now report usable WHPX, with no host change. That
+supersedes treating the disabled optional-feature inventory as a definitive native
+blocker. The fresh manual AVD is recognized; Android has not yet booted.
+
+The earlier workspace-only file plan omitted native Windows profile credentials:
+the console token and ADB's default private/public keys use the actual Windows
+profile despite the SDK directory environment variables. Source review found this
+before boot; only existence was checked. Existing ADB keys were present, the
+console token absent. Keep boot paused for explicit authorization of those paths,
+preserve existing keys, and do not disable authentication or replace profile
+directories. Separately disable USB, emulator scanning and mDNS in any test ADB
+server and target only the fresh AVD. Ports alone never establish tenant isolation.
