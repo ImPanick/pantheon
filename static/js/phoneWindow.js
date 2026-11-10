@@ -647,7 +647,7 @@ function _render() {
   _win.transfer.hidden = !(on && !mobile && s.isolation === 'per_user_vm');
   const usb = s.usb || {};
   _win.usbCable.dataset.connected = String(!!usb.connected);
-  _win.usbConnect.textContent = _win.usbBusy ? 'Connecting…' : usb.connected ? 'Eject USB' : 'Connect USB';
+  _win.usbConnect.textContent = _win.usbBusy ? (usb.connected ? 'Ejecting…' : 'Connecting…') : usb.connected ? 'Eject USB' : 'Connect USB';
   _win.usbConnect.disabled = !!_win.usbBusy;
   _win.usbSummary.textContent = usb.connected ? 'USB connected · shared files' : 'USB · connect shared files';
   _win.usbFolder.textContent = usb.folder ? `Your Pantheon projects / ${usb.folder} ↔ Android / Download / PantheonUSB. ${usb.workstation_connected ? 'The workstation is connected to this same folder.' : 'Workstation folder sharing is not connected.'}` : 'Connect your Android storage to your Pantheon projects and workstation.';
@@ -668,7 +668,9 @@ function _render() {
   _win.runtimeLabel.textContent = runtime.label;
   _win.runtimeText.textContent = runtime.detail;
   _win.runtime.dataset.mode = s.mode || 'unavailable';
-  _win.profile.textContent = [d.name, d.width && d.height ? `${d.width} × ${d.height}` : '',
+  if (_win.runtime.dataset.state !== s.state) _win.runtime.open = s.state === 'unavailable';
+  _win.runtime.dataset.state = s.state;
+  _win.profile.textContent = [d.name, d.width && d.height ? (s.posture === 'closed' && d.cover_width ? `Cover ${d.cover_width} × ${d.cover_height || d.height}` : `${d.width} × ${d.height}`) : '',
     s.mode === 'android' ? d.android : '', s.posture ? `${s.posture === 'closed' ? 'Folded' : s.posture === 'half_open' ? 'Half-open · 90°' : 'Unfolded'}` : '',
     `Rotation ${(s.rotation || 0) * 90}°`].filter(Boolean).join(' · ');
 
@@ -898,12 +900,13 @@ function _build({ embedded = false } = {}) {
   bar.appendChild(take);
   bar.appendChild(give);
 
-  const runtime = _el('div', 'phw-runtime');
-  runtime.setAttribute('role', 'status');
+  const runtime = _el('details', 'phw-runtime');
   runtime.setAttribute('aria-live', 'off');
   const runtimeLabel = _el('strong', 'phw-runtime-label', 'Checking Android');
   const runtimeText = _el('span', 'phw-runtime-text');
-  runtime.appendChild(runtimeLabel);
+  const runtimeSummary = _el('summary', 'phw-runtime-summary');
+  runtimeSummary.appendChild(runtimeLabel);
+  runtime.appendChild(runtimeSummary);
   runtime.appendChild(runtimeText);
   const preview = _button('phw-preview', 'Open browser preview (web only)', () => act({ action: 'preview' }));
   preview.hidden = true;

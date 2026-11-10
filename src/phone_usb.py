@@ -119,8 +119,9 @@ _locks={}
 
 def _lock(owner):return _locks.setdefault((id(asyncio.get_running_loop()),owner),asyncio.Lock())
 
-def status(owner):
+def status(owner,profile=None):
     item=_connections.get(owner)
+    if item and profile is not None and item.profile!=tuple(profile):return {'connected':False,'files':[]}
     return item.public() if item else {'connected':False,'files':[]}
 
 

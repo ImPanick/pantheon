@@ -113,9 +113,10 @@ Clamshell profiles use generic Android firmware with horizontal hinges and
 open/90-degree/closed postures. Panel dimensions come from
 [Samsung's Z Flip6 specification](https://www.samsung.com/uk/business/smartphones/galaxy-z/galaxy-z-flip6-blue-256gb-sm-f741blbgeub/)
 and [Motorola's Razr 50 Ultra specification](https://en-us.support.motorola.com/app/answers/detail/a_id/183647/~/technischen-daten--motorola-razr-50-ultra-).
-Cover regions exercise Android configuration changes; they do not reproduce
+The authenticated posture bridge changes Android’s WindowManager size, verifies its actual logical viewport, and normalizes the captured physical region to the same coordinates used by touch. These generic cover viewports exercise Android configuration changes; they do not reproduce
 Samsung/Motorola firmware, camera masking, proprietary cover launchers or retail
-multi-display policies. Real-device acceptance is still needed for those.
+multi-display policies. Jetpack WindowLayoutInfo/FoldingFeature delivery is not
+validated by these generic profiles. Real-device acceptance is still needed for those.
 
 ## USB shared folders
 

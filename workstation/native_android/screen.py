@@ -4,9 +4,11 @@ from __future__ import annotations
 import io
 import threading
 import time
+import re
 from workstation.phone import PhoneError
 from .adb import AdbError
-from .control import raw_capture
+from .control import raw_capture, MAX_PIXELS
+from workstation import protocol as P
 
 # X11 keysyms to Android keycodes; printable Unicode uses the same clipboard
 # transport as agent typing. Modifiers remain key events for shortcuts.
@@ -19,11 +21,35 @@ NAMES={'Return':66,'Enter':66,'Tab':61,'Escape':111,'BackSpace':67,'Delete':112,
 MODIFIERS={'ctrl':(113,0x1000),'Control_L':(113,0x1000),'alt':(57,2),'shift':(59,1),'super':(117,0x10000)}
 
 
+def normalize_viewport(image, text):
+    """Map SurfaceFlinger pixels onto the default logical input display."""
+    lines=[line for line in text.splitlines() if 'Viewport INTERNAL: displayId=0,' in line and 'isActive=[1]' in line]
+    if not lines:raise ValueError('Android has no active default display viewport.')
+    line=lines[0]
+    def values(label,count):
+        match=re.search(re.escape(label)+r'=\[([0-9, ]+)\]',line)
+        result=[int(value.strip()) for value in match[1].split(',')] if match else []
+        if len(result)!=count:raise ValueError('Invalid Android viewport geometry.')
+        return result
+    l,t,r,b=values('physicalFrame',4);x,y,right,bottom=values('logicalFrame',4)
+    w,h=values('deviceSize',2)
+    found=re.search(r'orientation=([0-3])(?:,| )',line)
+    if not found or not (0<=l<r<=w and 0<=t<b<=h and x==y==0 and 0<right<=8192 and 0<bottom<=8192 and right*bottom<=MAX_PIXELS):
+        raise ValueError('Android viewport leaves its physical display.')
+    # Recent screencap emits the logical display after wm size; older builds
+    # emit the physical panel with letterboxing. Both share logical input coords.
+    if image.size==(right,bottom):return image.copy()
+    # Android already rotates deviceSize and physicalFrame into display space.
+    if image.size!=(w,h):raise ValueError('Android capture and input display disagree.')
+    return image.crop((l,t,r,b)).resize((right,bottom))
+
+
 class Screen:
     desktop_kind='kasmvnc'  # The pinned Kasm viewer's wire dialect, not a desktop daemon.
     def __init__(self,phone):
         self.phone=phone;self.size=self.physical=None
         self.lock=threading.RLock();self.cache=None;self.cached_at=0
+        self.viewport=None;self.viewport_key=None;self.viewport_at=0;self.viewport_signature=None
         self.gestures={};self.key_states={};self.last_point=None
 
     @property
@@ -35,6 +61,27 @@ class Screen:
         with self.lock:
             try: image=raw_capture(self.phone.direct)
             except AdbError as error: raise PhoneError('unavailable',str(error)) from error
+            device=P.PHONE_DEVICES.get(getattr(self.phone,'device',None),{})
+            if device.get('kind')=='foldable' and self.phone.posture=='closed':
+                key=(image.size,self.phone.device,self.phone.posture,self.phone.rotation)
+                if key!=self.viewport_key or time.monotonic()-self.viewport_at>1:
+                    text=self.phone.direct.shell(['dumpsys','input'],timeout=5)
+                    try:active=normalize_viewport(image,text)
+                    except ValueError as error:raise PhoneError('unavailable',str(error)) from error
+                    expected=(device['cover_width'],device.get('cover_height',device['height']))
+                    if active.size not in (expected,expected[::-1]):raise PhoneError('unavailable','Android is still changing its cover viewport.')
+                    signature=(next(line for line in text.splitlines() if 'Viewport INTERNAL: displayId=0,' in line and 'isActive=[1]' in line),image.size)
+                    if self.viewport_signature is not None and signature!=self.viewport_signature:
+                        self.release_all()
+                        import secrets
+                        self.phone.generation=secrets.token_hex(16)
+                    self.viewport_signature=signature
+                    self.viewport,self.viewport_key,self.viewport_at=text,key,time.monotonic()
+                    image=active
+                else:
+                    try:image=normalize_viewport(image,self.viewport)
+                    except ValueError as error:raise PhoneError('unavailable',str(error)) from error
+            else:self.viewport_key=None;self.viewport_signature=None
             physical=image.size
             image.thumbnail((1280,1100))
             if self.physical is not None and physical!=self.physical:
@@ -48,7 +95,7 @@ class Screen:
             return image
 
     def frame(self):
-        with self.lock:
+        with self.phone.lock,self.lock:
             self.phone._active()
             if not self.phone.stream_ready(): raise PhoneError('unavailable','Android has no live display.')
             self.phone.touch()
@@ -56,7 +103,7 @@ class Screen:
             return image.copy(),(self.phone.generation,self.size,self.physical)
 
     def grab(self,fmt):
-        with self.lock:
+        with self.phone.lock,self.lock:
             image,_=self.frame();out=io.BytesIO()
             image.save(out,format='JPEG' if fmt=='jpeg' else 'PNG',**({'quality':85} if fmt=='jpeg' else {}))
             return out.getvalue(),'image/jpeg' if fmt=='jpeg' else 'image/png'

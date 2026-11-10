@@ -11,6 +11,7 @@ import hashlib
 import json
 import os
 import platform
+import re
 import secrets
 import signal
 import socket
@@ -168,6 +169,7 @@ class NativePhone(PH.AccountPhone):
         self.control = self.direct = self.radio = None
         self.generation = secrets.token_hex(16)
         self.process_identity = None
+        self._processes = {}
         super().__init__(*args,**kwargs)
 
     def package(self, device=None):
@@ -271,19 +273,35 @@ class NativePhone(PH.AccountPhone):
         write_private(avd_home/(self.avd+'.ini'),PH.avd_ini(self.device,avd_home,self.package(),name=self.avd))
         write_private(android/'emu-update-last-check.ini','Android.Emulator.LastCheck=4102444800000\n')
 
+    def _process_family(self):
+        """Keep birth identities after the launcher exits; never kill a reused PID."""
+        if self.emulator is not None and self.emulator.poll() is None:
+            try:
+                parent=psutil.Process(self.emulator.pid)
+                if parent.create_time()==self.process_identity:
+                    for process in [parent,*parent.children(recursive=True)]:
+                        self._processes[process.pid]=process.create_time()
+            except psutil.Error:pass
+        family=[]
+        for pid,born in list(self._processes.items()):
+            try:
+                process=psutil.Process(pid)
+                if process.create_time()==born and process.is_running():family.append(process);continue
+            except psutil.Error:pass
+            self._processes.pop(pid,None)
+        return family
+
     def _owned(self):
-        if self.emulator is None or self.emulator.poll() is not None or self.process_identity is None: return False
         try:
-            process=psutil.Process(self.emulator.pid)
-            if process.create_time()!=self.process_identity: return False
-            family=[process,*process.children(recursive=True)]
-            listeners=[p for p in family for conn in p.net_connections(kind='tcp')
-                       if conn.status==psutil.CONN_LISTEN and conn.laddr.port==self.port+1]
-            # The SDK launcher may exec the guest; every listener must descend
-            # from this captured launch and execute inside this private SDK.
-            if not listeners: return False
-            return all(Path(p.exe()).resolve().is_relative_to(self.system.sdk/'emulator') for p in listeners)
-        except (psutil.Error,OSError): return False
+            family=self._process_family()
+            for process in family:
+                try:
+                    if not Path(process.exe()).resolve().is_relative_to(self.system.sdk/'emulator'):continue
+                    if any(conn.status==psutil.CONN_LISTEN and conn.laddr.port==self.port+1
+                           for conn in process.net_connections(kind='tcp')):return True
+                except (psutil.Error,OSError):continue  # An unrelated SDK helper may exit during enumeration.
+            return False
+        except (psutil.Error,OSError):return False
 
     def _launch_android(self):
         self.port=self._claim_port(self.account)
@@ -317,6 +335,8 @@ class NativePhone(PH.AccountPhone):
             self.emulator=subprocess.Popen(args,cwd=self.home(),env=env,stdin=subprocess.DEVNULL,
                                            stdout=log,stderr=subprocess.STDOUT,**options)
         self.process_identity=psutil.Process(self.emulator.pid).create_time()
+        self._processes={self.emulator.pid:self.process_identity}
+        self._process_family()
         self.direct=DirectAdb(self.port+1,android/'adbkey',self._owned)
         self.generation=secrets.token_hex(16)
         self.state,self.why,self.boot_phase='starting','','emulator'
@@ -339,6 +359,9 @@ class NativePhone(PH.AccountPhone):
                 if complete:
                     if self.direct.shell(['getprop','ro.adb.secure'],timeout=5).strip()!='1':
                         error='Android did not enforce private ADB authentication.';break
+                    # wm overrides persist in userdata; every cold boot starts open.
+                    self.direct.shell(['wm','size','reset'],timeout=10)
+                    self.direct.shell(['wm','scaling','auto'],timeout=10)
                     if self.system.config.get('internet'):
                         self.boot_phase='android'
                         self.direct.shell(['svc','wifi','enable'],timeout=10)
@@ -408,6 +431,38 @@ class NativePhone(PH.AccountPhone):
             if quiet: return b'' if binary else ''
             raise PH.PhoneError('unavailable',str(error)) from error
 
+    def set_posture(self,posture):
+        with self.lock:
+            if posture not in PH.P.PHONE_POSTURES:raise PH.PhoneError('bad_request','Choose open, half_open or closed.')
+            self._on()
+            device=PH.P.PHONE_DEVICES[self.device]
+            if device['kind']!='foldable':raise PH.PhoneError('bad_request','This device does not fold.')
+            self.screen.release_all()
+            command=['sensor','set','hinge-angle0','90'] if posture=='half_open' else ['fold' if posture=='closed' else 'unfold']
+            self.console(command,20)
+            reported=self.console(['sensor','get','hinge-angle0'],5)
+            match=re.search(r'hinge-angle0\s*=\s*([0-9.]+)',reported)
+            lo,hi={'closed':(0,30),'half_open':(89,91),'open':(150,180)}[posture]
+            if not match or not lo<=float(match[1])<=hi:raise PH.PhoneError('unavailable','Android did not confirm its hinge angle.')
+            size=f"{device['cover_width']}x{device.get('cover_height',device['height'])}" if posture=='closed' else 'reset'
+            self.direct.shell(['wm','size',size],timeout=10)
+            self.direct.shell(['wm','scaling','auto'],timeout=10)
+            self.posture=posture;self.screen.viewport_key=None
+            deadline=time.monotonic()+5
+            while True:
+                try:
+                    report=self.direct.shell(['dumpsys','input'],timeout=5)
+                    line=next((line for line in report.splitlines() if 'Viewport INTERNAL: displayId=0,' in line and 'isActive=[1]' in line),'')
+                    dimensions=re.search(r'logicalFrame=\[0, 0, (\d+), (\d+)\]',line)
+                    expected=(device['cover_width'],device.get('cover_height',device['height'])) if posture=='closed' else (device['width'],device['height'])
+                    if not dimensions or tuple(map(int,dimensions.groups())) not in (expected,expected[::-1]):
+                        raise PH.PhoneError('unavailable','Android is still changing its display viewport.')
+                    self.screen.refresh();break
+                except PH.PhoneError:
+                    if time.monotonic()>deadline:raise
+                    time.sleep(.1)
+            return self.info('posture')
+
     def console(self,args,timeout):
         if args not in (['rotate'],['fold'],['unfold'],['sensor','set','hinge-angle0','90'],['sensor','get','hinge-angle0']): raise AdbError('Unsupported Android console operation.')
         if not self._owned(): raise AdbError('The Android console no longer belongs to this VM.')
@@ -435,23 +490,29 @@ class NativePhone(PH.AccountPhone):
         if self.screen is not None: self.screen.release_all()
         if self.control is not None: self.control.close();self.control=None
         proc=self.emulator
+        self._process_family()
         if proc is not None and proc.poll() is None:
-            try: self.direct.shell(['sync'],timeout=10);self.direct.shell(['svc','power','shutdown'],timeout=5)
-            except AdbError: pass
-            try: proc.wait(timeout=30)
-            except subprocess.TimeoutExpired:
-                parent=psutil.Process(proc.pid)
-                if parent.create_time()!=self.process_identity: raise PH.PhoneError('unavailable','Android process identity changed; refusing to stop an unrelated process.')
-                children=parent.children(recursive=True)
-                for process in reversed(children):
-                    try: process.terminate()
-                    except psutil.NoSuchProcess: pass
-                parent.terminate()
-                alive=psutil.wait_procs([parent,*children],timeout=10)[1]
-                for process in alive:
-                    try: process.kill()
-                    except psutil.NoSuchProcess: pass
-                if psutil.wait_procs(alive,timeout=5)[1]: raise PH.PhoneError('unavailable','Android did not stop; its VM slot stays reserved.')
+            try:self.direct.shell(['sync'],timeout=10);self.direct.shell(['svc','power','shutdown'],timeout=5)
+            except AdbError:pass
+            try:proc.wait(timeout=30)
+            except subprocess.TimeoutExpired:pass
+        family=self._process_family()
+        for process in reversed(family):
+            try:process.terminate()
+            except psutil.NoSuchProcess:pass
+        alive=psutil.wait_procs(family,timeout=10)[1] if family else []
+        for process in alive:
+            try:
+                if process.create_time()==self._processes.get(process.pid):process.kill()
+            except psutil.NoSuchProcess:pass
+        if alive and psutil.wait_procs(alive,timeout=5)[1]:
+            raise PH.PhoneError('unavailable','Android did not stop; its VM slot stays reserved.')
+        self._processes={}
+        if self.screen is not None:
+            with self.screen.lock:
+                self.screen.size=self.screen.physical=self.screen.cache=None
+                self.screen.viewport_key=self.screen.viewport_signature=None
+                self.screen.cached_at=0
         self.emulator=self.direct=None
         if self.radio is not None: self.radio.__exit__(None,None,None);self.radio=None
         self._release();self.boot_phase='off';self.state='off'

@@ -126,6 +126,19 @@ def pixel_bytes(image, pixel_format):
     return image.convert("RGB").tobytes("raw", mode)
 
 
+def crosshair(pixel_format):
+    """Native-size, outlined cursor: stays visible over dark and light apps."""
+    from PIL import Image
+    image=Image.new('RGB',(21,21))
+    mask=bytearray(21*3)
+    for y in range(21):
+        for x in range(21):
+            if (abs(x-10)<=1 and 2<=y<=18) or (abs(y-10)<=1 and 2<=x<=18):
+                mask[y*3+x//8] |= 0x80 >> (x%8)
+                if x==10 or y==10:image.putpixel((x,y),(255,255,255))
+    return struct.pack('>HHHHi',10,10,21,21,-239)+pixel_bytes(image,pixel_format)+mask
+
+
 def serve(stream, frame, event, release, *, frame_interval=.25):
     """`frame` returns (PIL RGB image, immutable geometry token).
 
@@ -154,6 +167,7 @@ def serve(stream, frame, event, release, *, frame_interval=.25):
         stream.write(struct.pack(">HH", width, height) + pixel_format + struct.pack(">I", len(name)) + name)
         encodings, last_frame_at = set(), 0.0
         geometry_sent = False
+        cursor_sent = False
         while True:
             kind = stream.read(1)[0]
             if kind == 0:
@@ -194,7 +208,8 @@ def serve(stream, frame, event, release, *, frame_interval=.25):
                     if value > 127:
                         length.append(value >> 7)
                 report_geometry = not geometry_sent and -308 in encodings
-                stream.write(struct.pack(">BBH", 0, 0, 3 if report_geometry else 2))
+                report_cursor = not cursor_sent and -239 in encodings
+                stream.write(struct.pack(">BBH", 0, 0, 2 + int(report_geometry) + int(report_cursor)))
                 if report_geometry:
                     # Kasm needs ExtendedDesktopSize to distinguish physical
                     # framebuffer dimensions from its CSS viewport dimensions.
@@ -202,6 +217,8 @@ def serve(stream, frame, event, release, *, frame_interval=.25):
                     stream.write(struct.pack('>HHHHi',0,0,width,height,-308)
                                  + b'\1\0\0\0' + struct.pack('>IHHHHI',0,0,0,width,height,0))
                     geometry_sent = True
+                if report_cursor:
+                    stream.write(crosshair(pixel_format));cursor_sent=True
                 stream.write(struct.pack(">HHHHi", 0, 0, width, height, 7))
                 stream.write(b"\x90" + length + data)
                 stream.write(struct.pack(">HHHHi", 0, 0, 0, 0, -224))

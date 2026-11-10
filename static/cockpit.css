@@ -1314,7 +1314,7 @@ html.cockpit .ck-pane > .modal.ck-docked > .modal-content {
   -webkit-backdrop-filter: none !important; backdrop-filter: none !important; display: flex; flex-direction: column; animation: none !important;
 }
 html.cockpit .ck-pane > .modal.ck-docked > .modal-content > .modal-header { display: none !important; }
-html.cockpit .ck-pane .phw-stage { min-height: 180px; }
+html.cockpit .ck-pane .phw-stage { min-height: 360px; flex-shrink: 0; }
 html.cockpit .ck-pane .phw-content { overflow-y: auto; }
 html.cockpit .ck-pane > .modal.ck-docked .window-resize-handle,
 html.cockpit .ck-pane > .modal.ck-docked [class*="resize-handle"] { display: none !important; }

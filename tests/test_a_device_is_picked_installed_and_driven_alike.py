@@ -458,6 +458,7 @@ def test_clamshell_profiles_have_horizontal_hinges_and_real_cover_regions():
         d = P.PHONE_DEVICES[model]
         config = dict(line.split("=", 1) for line in PH.avd_config(model, IMAGE, memory_mib=2048).splitlines())
         assert config["hw.sensor.hinge.type"] == "0"
+        assert config["hw.sensor.hinge.sub_type"] == "0"
         assert config["hw.sensor.hinge.areas"] == f"0-{d['height']//2}-{d['width']}-1"
         assert config["hw.displayRegion.0.1.height"] == str(d["cover_height"])
         assert PH._shape(d, "closed", 0) == (d["cover_width"], d["cover_height"])

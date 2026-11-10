@@ -460,7 +460,7 @@ def avd_config(device: str, package: str, *, memory_mib: int = DEFAULT_MEMORY_MI
             "hw.sensor.hinge": "yes",
             "hw.sensor.hinge.count": "1",
             "hw.sensor.hinge.type": "0" if d.get("fold_axis") == "horizontal" else "1",
-            "hw.sensor.hinge.sub_type": "1",
+            "hw.sensor.hinge.sub_type": "0",
             "hw.sensor.hinge.ranges": "0-180",
             "hw.sensor.hinge.defaults": "180",
             "hw.sensor.hinge.areas": f"0-{h//2}-{w}-1" if d.get("fold_axis") == "horizontal" else f"{w//2}-0-1-{h}",

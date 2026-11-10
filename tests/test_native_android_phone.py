@@ -184,7 +184,7 @@ def test_stop_during_image_install_cancels_late_automatic_boot(tmp_path,monkeypa
     system=SimpleNamespace(config={'consent':str(consent)},sdk=tmp_path/'sdk',abi='arm64-v8a',why=None,accel='hvf',
                            home=lambda _:home,files_as=lambda _:nullcontext())
     installer=Installer();phone=NativePhone(system,'owned',None,installer=installer)
-    phone.screen=SimpleNamespace(release_all=lambda:None,size=None)
+    phone.screen=SimpleNamespace(release_all=lambda:None,size=None,lock=__import__('threading').RLock())
     monkeypatch.setattr(phone,'installed',lambda device=None:False)
     starts=[];monkeypatch.setattr(phone,'start',lambda *a,**k:starts.append(True))
     assert phone.install()['state']=='installing'
@@ -457,3 +457,99 @@ def test_usb_connection_syncs_both_ways_preserves_conflicts_and_stops_on_profile
             assert remote.files['just-before-eject.txt']==b'must reach Android'
         finally:U._connections.pop('owner',None)
     asyncio.run(check())
+
+
+def test_phone_stream_supplies_a_visible_crosshair_once_per_connection():
+    request=b'\3'+struct.pack('>BHHHH',0,0,0,8,6)
+    greeting=b'RFB 003.008\n\1\1'+b'\2\0\0\3'+struct.pack('>iii',7,-224,-239)
+    stream=Stream(greeting+request*2)
+    with pytest.raises(rfb.StreamEnded):
+        rfb.serve(stream,lambda:(Image.new('RGB',(8,6)),'one'),lambda _:None,lambda:None,frame_interval=0)
+    rect=struct.pack('>HHHHi',10,10,21,21,-239)
+    assert bytes(stream.output).count(rect)==1
+    offset=bytes(stream.output).index(rect)+len(rect)
+    pixels=bytes(stream.output)[offset:offset+21*21*4]
+    mask=bytes(stream.output)[offset+21*21*4:offset+21*21*4+21*3]
+    assert pixels[(10*21+10)*4:(10*21+10)*4+3]==b'\xff\xff\xff'
+    assert mask[10*3+1] & (0x80 >> (10%8))
+
+
+def test_native_cleanup_retains_owned_children_after_launcher_exit_without_pid_reuse(monkeypatch):
+    from workstation.native_android import host as H
+    class Process:
+        def __init__(self,pid,born):self.pid=pid;self.born=born
+        def create_time(self):return self.born
+        def is_running(self):return True
+        def children(self,recursive=True):return [child]
+    parent,child=Process(1,100),Process(2,200)
+    processes={1:parent,2:child}
+    monkeypatch.setattr(H,'psutil',SimpleNamespace(Process=lambda pid:processes[pid],Error=Exception))
+    phone=object.__new__(H.NativePhone);phone.process_identity=100;phone._processes={}
+    phone.emulator=SimpleNamespace(pid=1,poll=lambda:None)
+    assert {p.pid for p in phone._process_family()}=={1,2}
+    phone.emulator=SimpleNamespace(pid=1,poll=lambda:0)
+    parent.born=999
+    assert {p.pid for p in phone._process_family()}=={2}
+
+
+def test_fold_cover_frame_uses_androids_actual_viewport_for_pixels_and_touch():
+    from workstation.native_android.screen import normalize_viewport
+    image=Image.new('RGB',(1080,2640),(0,0,0))
+    for y in range(759,1881):image.paste((20,80,140),(0,y,1080,y+1))
+    line='Viewport INTERNAL: displayId=0, orientation=0, logicalFrame=[0, 0, 720, 748], physicalFrame=[0, 759, 1080, 1881], deviceSize=[1080, 2640], isActive=[1]'
+    cover=normalize_viewport(image,line)
+    assert cover.size==(720,748)
+    assert cover.getpixel((0,0))==(20,80,140)
+    assert cover.getpixel((719,747))==(20,80,140)
+    with pytest.raises(ValueError):normalize_viewport(image,line.replace('1881','99999'))
+
+
+def test_fold_capture_can_already_be_the_logical_display():
+    from workstation.native_android.screen import normalize_viewport
+    image=Image.new('RGB',(720,748),(20,80,140))
+    line='Viewport INTERNAL: displayId=0, orientation=0, logicalFrame=[0, 0, 720, 748], physicalFrame=[0, 759, 1080, 1881], deviceSize=[1080, 2640], isActive=[1]'
+    assert normalize_viewport(image,line).size==(720,748)
+
+
+def test_listener_attestation_ignores_an_exited_sibling(monkeypatch,tmp_path):
+    from workstation.native_android import host as H
+    class Gone(Exception):pass
+    class Process:
+        def __init__(self,gone=False):self.gone=gone
+        def exe(self):return str(tmp_path/'emulator/qemu')
+        def net_connections(self,kind):
+            if self.gone:raise Gone()
+            return [SimpleNamespace(status='LISTEN',laddr=SimpleNamespace(port=5587))]
+    monkeypatch.setattr(H,'psutil',SimpleNamespace(Error=Gone,CONN_LISTEN='LISTEN'))
+    phone=object.__new__(H.NativePhone);phone.port=5586;phone.system=SimpleNamespace(sdk=tmp_path)
+    monkeypatch.setattr(phone,'_process_family',lambda:[Process(True),Process()])
+    assert phone._owned()
+    monkeypatch.setattr(phone,'_process_family',lambda:[Process(True)])
+    assert not phone._owned()
+
+
+def test_capture_and_grab_acquire_phone_before_screen_lock(monkeypatch):
+    from workstation.native_android.screen import Screen
+    held=[]
+    class Lock:
+        def __init__(self,name):self.name=name
+        def __enter__(self):
+            if self.name=='screen':assert 'phone' in held, 'screen lock must follow phone lock'
+            held.append(self.name)
+        def __exit__(self,*_):held.pop()
+    phone=SimpleNamespace(lock=Lock('phone'),_active=lambda:None,stream_ready=lambda:True,touch=lambda:None,generation='one')
+    screen=Screen(phone);screen.lock=Lock('screen');screen.size=screen.physical=(4,4)
+    monkeypatch.setattr(screen,'refresh',lambda:Image.new('RGB',(4,4)))
+    assert screen.frame()[0].size==(4,4)
+    assert screen.grab('png')[1]=='image/png'
+
+
+@pytest.mark.parametrize('rotation',[1,3])
+def test_physical_fold_capture_uses_already_rotated_viewport_bounds(rotation):
+    from workstation.native_android.screen import normalize_viewport
+    image=Image.new('RGB',(2640,1080))
+    image.paste((20,80,140),(730,10,1852,1070))
+    line=f'Viewport INTERNAL: displayId=0, orientation={rotation}, logicalFrame=[0, 0, 748, 720], physicalFrame=[730, 10, 1852, 1070], deviceSize=[2640, 1080], isActive=[1]'
+    cover=normalize_viewport(image,line)
+    assert cover.size==(748,720)
+    assert cover.getpixel((0,0))==cover.getpixel((747,719))==(20,80,140)

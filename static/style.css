@@ -51511,3 +51511,8 @@ body.plan-mode-active .chat-input-top > .model-picker-wrap:has(> .model-picker-m
 .phw-usb-cable[data-connected="true"] .phw-usb-plug { margin-right: 1px; }
 .phw-usb-files { display: grid; gap: 5px; max-height: 140px; overflow-y: auto; }
 .phw-usb-file { overflow-wrap: anywhere; }
+
+.phw-bezel[data-fold-axis="horizontal"][data-posture="closed"] .phw-camera { display: none; }
+
+.phw-runtime-summary { cursor: pointer; }
+.phw-runtime[open] .phw-runtime-text { display: block; margin-top: 6px; }

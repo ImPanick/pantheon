@@ -843,7 +843,7 @@ def setup_workstation_routes() -> APIRouter:
             answer = {"available": False, "state": "unavailable", "why": e.message}
         from src.phone_usb import status as usb_status
         shaped = _phone_state(answer)
-        shaped['usb'] = usb_status(require_user(request))
+        shaped['usb'] = usb_status(require_user(request),(shaped['device'],shaped['edition']))
         return JSONResponse(shaped, headers=_NO_STORE)
 
     @router.post("/phone")
