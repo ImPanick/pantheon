@@ -51516,3 +51516,5 @@ body.plan-mode-active .chat-input-top > .model-picker-wrap:has(> .model-picker-m
 
 .phw-runtime-summary { cursor: pointer; }
 .phw-runtime[open] .phw-runtime-text { display: block; margin-top: 6px; }
+.phw-content > .phw-runtime,
+.phw-content > .phw-transfer { flex: 0 0 auto; }
