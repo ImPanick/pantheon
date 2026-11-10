@@ -624,11 +624,14 @@ _BOUNDS_RE = re.compile(r"\[(-?\d+),(-?\d+)\]\[(-?\d+),(-?\d+)\]")
 _EDITABLE = ("EditText", "AutoCompleteTextView", "SearchView")
 
 
-def marks_from_dump(xml: str, screen: Tuple[int, int]) -> Dict:
+def marks_from_dump(xml: str, screen: Tuple[int, int], *,
+                    source_size: Optional[Tuple[int, int]] = None) -> Dict:
     """`ROUTES["marks"]`'s answer from a `uiautomator dump`: each control a
     person could tap or type into, its box moved from the device's pixels to
-    the phone screen's — scrcpy fits the device's display into the screen,
-    centred, keeping its shape — named by its text or its description."""
+    the phone screen's, named by its text or its description. A full-display
+    capture supplies its source size; a partial UI tree cannot establish that
+    size. Legacy scrcpy views retain their centred fit when no size is known.
+    """
     end = xml.rfind("</hierarchy>")
     if end < 0:
         raise PhoneError("unavailable", "The phone's UI tree could not be read.")
@@ -640,16 +643,25 @@ def marks_from_dump(xml: str, screen: Tuple[int, int]) -> Dict:
     nodes = list(root.iter("node"))
     if not nodes:
         return {"marks": [], "windows": [], "why": "The phone's screen has nothing on it to tap."}
-    dev_w = dev_h = 0
-    for n in nodes:
-        m = _BOUNDS_RE.match(n.get("bounds", ""))
-        if m:
-            dev_w, dev_h = max(dev_w, int(m.group(3))), max(dev_h, int(m.group(4)))
+    if source_size is None:
+        dev_w = dev_h = 0
+        for n in nodes:
+            m = _BOUNDS_RE.match(n.get("bounds", ""))
+            if m:
+                dev_w, dev_h = max(dev_w, int(m.group(3))), max(dev_h, int(m.group(4)))
+    else:
+        dev_w, dev_h = source_size
     sw, sh = screen
     if dev_w <= 0 or dev_h <= 0:
         raise PhoneError("unavailable", "The phone's UI tree has no sizes in it.")
-    scale = min(sw / dev_w, sh / dev_h)
-    ox, oy = (sw - dev_w * scale) / 2, (sh - dev_h * scale) / 2
+    if source_size is None:
+        scale_x = scale_y = min(sw / dev_w, sh / dev_h)
+        ox, oy = (sw - dev_w * scale_x) / 2, (sh - dev_h * scale_y) / 2
+    else:
+        # The native capture fills its bitmap. Match touch's independent axes,
+        # including the integer rounding of thumbnail dimensions.
+        scale_x, scale_y = sw / dev_w, sh / dev_h
+        ox = oy = 0
     marks: List[Dict] = []
     seen = set()
     for n in nodes:
@@ -664,8 +676,8 @@ def marks_from_dump(xml: str, screen: Tuple[int, int]) -> Dict:
         if not m:
             continue
         x1, y1, x2, y2 = (int(v) for v in m.groups())
-        box = [int(round(ox + x1 * scale)), int(round(oy + y1 * scale)),
-               int(round((x2 - x1) * scale)), int(round((y2 - y1) * scale))]
+        box = [int(round(ox + x1 * scale_x)), int(round(oy + y1 * scale_y)),
+               int(round((x2 - x1) * scale_x)), int(round((y2 - y1) * scale_y))]
         if box[2] < 4 or box[3] < 4 or box[0] < 0 or box[1] < 0 \
                 or box[0] + box[2] > sw or box[1] + box[3] > sh:
             continue
@@ -1769,13 +1781,22 @@ class AccountPhone:
                       shlex.quote(url)])
             return self.info("open_url")
 
+    def _marks_source_size(self) -> Optional[Tuple[int, int]]:
+        """Full logical display size when the screen can supply it."""
+        return None
+
     def marks(self) -> Dict:
         with self.lock:
             self._on()
             if self.mobile is not None:
                 raise PhoneError("unavailable", MOBILE_NO_MARKS)
         xml = self.adb(["exec-out", "uiautomator", "dump", "/dev/tty"], timeout=30.0)
-        return marks_from_dump(xml, self.screen_size())
+        with self.lock:
+            # A native override refreshes the capture, which can also change
+            # its viewer size. Read that size only after refreshing the source.
+            source_size = self._marks_source_size()
+            screen = self.screen_size()
+        return marks_from_dump(xml, screen, source_size=source_size)
 
 
 def _kill(proc: subprocess.Popen) -> None:

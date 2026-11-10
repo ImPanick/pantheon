@@ -163,6 +163,8 @@ class Host:
             phones=list(self.phones.values())
             for phone in phones:phone.retire()
         errors=[]
+        try:self.installer.stop()
+        except Exception as error:errors.append(str(error))
         for phone in phones:
             try: phone.stop()
             except Exception as error: errors.append(str(error))
@@ -318,7 +320,9 @@ class NativePhone(PH.AccountPhone):
         self.radio=PrivateRadio(self.home()/'.android/radio',cfg['radio_binary'],internet=cfg.get('internet',False))
         self.radio.__enter__()
         android=self.home()/'.android'
-        env={key:value for key,value in os.environ.items() if key in ('PATH','SystemRoot','WINDIR','TEMP','TMP','LANG','LC_ALL','USER','LOGNAME')}
+        # Python normalizes Windows environment keys to uppercase. Preserve
+        # SYSTEMROOT for the Windows loader while retaining a narrow allowlist.
+        env={key:value for key,value in os.environ.items() if key.upper() in ('PATH','SYSTEMROOT','WINDIR','TEMP','TMP','LANG','LC_ALL','USER','LOGNAME')}
         env.update(HOME=str(self.home()),USERPROFILE=str(self.home()),ANDROID_HOME=str(self.system.sdk),
                    ANDROID_SDK_ROOT=str(self.system.sdk),ANDROID_USER_HOME=str(android),ANDROID_EMULATOR_HOME=str(android),
                    ANDROID_AVD_HOME=str(android/'avd'),ANDROID_SDK_HOME=str(self.home()),ADB_VENDOR_KEYS=str(android/'adbkey'),
@@ -390,6 +394,8 @@ class NativePhone(PH.AccountPhone):
             except AdbAuthenticationError as auth:
                 if auth.reason!='key_rejected' or time.monotonic()>bootstrap_deadline:
                     error='Android private-device authentication failed: '+auth.reason;break
+            except OSError as failure:
+                error='Android startup failed: '+str(failure)[:300];break
             except (AdbError,PH.PhoneError):pass
             time.sleep(2)
         with self.lock:
@@ -414,6 +420,10 @@ class NativePhone(PH.AccountPhone):
     def screen_size(self):
         if self.screen is not None and self.screen.size is not None: return self.screen.size
         return super().screen_size()
+
+    def _marks_source_size(self):
+        self.screen.refresh()
+        return self.screen.physical
 
     def _on(self):
         self._active()
@@ -507,10 +517,14 @@ class NativePhone(PH.AccountPhone):
         proc=self.emulator
         self._process_family()
         if proc is not None and proc.poll() is None:
-            try:self.direct.shell(['sync'],timeout=10);self.direct.shell(['svc','power','shutdown'],timeout=5)
-            except AdbError:pass
-            try:proc.wait(timeout=30)
-            except subprocess.TimeoutExpired:pass
+            if self.direct is not None:
+                try:self.direct.shell(['sync'],timeout=10);self.direct.shell(['svc','power','shutdown'],timeout=5)
+                except AdbError:pass
+                try:proc.wait(timeout=30)
+                except subprocess.TimeoutExpired:pass
+            # Popen still owns its child even if startup failed before psutil
+            # recorded its identity or the authenticated ADB client existed.
+            if proc.poll() is None:proc.terminate()
         family=self._process_family()
         for process in reversed(family):
             try:process.terminate()
@@ -522,6 +536,13 @@ class NativePhone(PH.AccountPhone):
             except psutil.NoSuchProcess:pass
         if alive and psutil.wait_procs(alive,timeout=5)[1]:
             raise PH.PhoneError('unavailable','Android did not stop; its VM slot stays reserved.')
+        if proc is not None and proc.poll() is None:
+            try:proc.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                try:proc.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    raise PH.PhoneError('unavailable','Android did not stop; its VM slot stays reserved.')
         self._processes={}
         if self.screen is not None:
             with self.screen.lock:

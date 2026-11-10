@@ -292,6 +292,160 @@ def test_a_tree_that_is_not_one_is_said():
         PH.marks_from_dump("ERROR: could not get idle state.", (494, 1100))
 
 
+_DIALOG_DUMP = """<hierarchy rotation="0">
+<node class="android.widget.FrameLayout" clickable="false" enabled="true" bounds="{root_bounds}">
+  <node text="Allow" class="android.widget.Button" clickable="true" enabled="true" bounds="[200,700][400,800]"/>
+</node>
+</hierarchy>"""
+
+
+@pytest.mark.parametrize("root_bounds", ["[100,500][980,1800]", "[0,100][1080,2200]"],
+                         ids=["dialog", "inset-window"])
+def test_partial_ui_trees_use_the_actual_display_coordinates(root_bounds):
+    got = PH.marks_from_dump(_DIALOG_DUMP.format(root_bounds=root_bounds), (495, 1100),
+                             source_size=(1080, 2400))
+    # The button is at its full-display coordinates, regardless of which
+    # window uiautomator happened to include in this dump.
+    assert got["marks"][0]["box"] == [92, 321, 92, 46]
+
+
+def test_full_display_marks_match_the_rounded_native_thumbnail_axes():
+    xml = _DIALOG_DUMP.format(root_bounds="[0,0][1856,2160]").replace(
+        "[200,700][400,800]", "[100,44][300,144]")
+    got = PH.marks_from_dump(xml, (945, 1100), source_size=(1856, 2160))
+    assert got["marks"][0]["box"] == [51, 22, 102, 51]
+
+
+def test_the_phone_marks_use_the_authoritative_source_size_hook(tmp_path, monkeypatch):
+    phone = _phone(tmp_path)
+    monkeypatch.setattr(phone, "_on", lambda: None)
+    capture = {"size": (944, 1100)}
+    monkeypatch.setattr(phone, "screen_size", lambda: capture["size"])
+    monkeypatch.setattr(phone, "adb", lambda *args, **kwargs:
+                        _DIALOG_DUMP.format(root_bounds="[100,500][980,1800]"))
+    calls = []
+    def source_size():
+        calls.append(True)
+        capture["size"] = (495, 1100)
+        return 1080, 2400
+    monkeypatch.setattr(phone, "_marks_source_size", source_size, raising=False)
+    assert phone.marks()["marks"][0]["box"] == [92, 321, 92, 46]
+    assert calls == [True]
+
+
+def test_native_image_shutdown_waits_for_cleanup_and_skips_late_callback(monkeypatch):
+    import threading
+    from types import SimpleNamespace
+    from workstation.native_android.images import ImageInstaller
+    host = SimpleNamespace(lock=threading.RLock(), claims={}, closing=False)
+    installer = ImageInstaller(host)
+    entered, release, stopped = threading.Event(), threading.Event(), threading.Event()
+    callbacks, errors = [], []
+    def install(package):
+        entered.set()
+        assert release.wait(3)
+        installer._checkpoint()
+    monkeypatch.setattr(installer, "install_image", install)
+    installer.start(PH.DEFAULT_IMAGE, accept=False, then=callbacks.append)
+    def stop():
+        try:
+            installer.stop(timeout=2)
+        except Exception as error:
+            errors.append(error)
+        finally:
+            stopped.set()
+    waiter = threading.Thread(target=stop)
+    try:
+        assert entered.wait(2)
+        waiter.start()
+        assert not stopped.wait(.05)
+        release.set()
+        waiter.join(3)
+        assert stopped.is_set() and not errors
+        assert not installer._thread.is_alive()
+        assert callbacks == [] and installer.info()["state"] == "failed"
+        assert "cancel" in installer.info()["why"].lower()
+    finally:
+        release.set()
+        installer._thread.join(3)
+        if waiter.ident is not None:
+            waiter.join(3)
+
+
+def test_native_image_shutdown_reports_a_worker_that_has_not_finished():
+    import threading
+    from types import SimpleNamespace
+    from workstation.native_android.images import ImageInstaller
+    installer = ImageInstaller(SimpleNamespace(lock=threading.RLock(), claims={}, closing=False))
+    release = threading.Event()
+    installer._thread = threading.Thread(target=release.wait, daemon=True)
+    installer._thread.start()
+    try:
+        with pytest.raises(RuntimeError, match="still|stop"):
+            installer.stop(timeout=.02)
+        assert installer._thread.is_alive()
+    finally:
+        release.set()
+        installer._thread.join(2)
+
+
+def test_native_image_install_refuses_a_closing_host(monkeypatch):
+    import threading
+    from types import SimpleNamespace
+    from workstation.native_android.images import ImageInstaller
+    installer = ImageInstaller(SimpleNamespace(lock=threading.RLock(), claims={}, closing=True))
+    monkeypatch.setattr(installer, "install_image", lambda package: None)
+    with pytest.raises(PH.PhoneError, match="shutting|closing"):
+        installer.start(PH.DEFAULT_IMAGE, accept=False)
+
+
+def test_canceled_native_extraction_removes_staging_without_promoting_an_image(tmp_path, monkeypatch):
+    import hashlib
+    import io
+    import json
+    import threading
+    import zipfile
+    from types import SimpleNamespace
+    from workstation.native_android import images as I
+    package = "system-images;android-35;google_apis_playstore;x86_64"
+    archive = io.BytesIO()
+    with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as out:
+        out.writestr("x86_64/system.img", b"fixture" * (400 << 10))
+    payload, licence = archive.getvalue(), "Fixture SDK terms"
+    metadata = (f'<repository><license id="fixture-license">{licence}</license>'
+                f'<remotePackage path="{package}"><uses-license ref="fixture-license"/>'
+                f'<archives><archive><complete><url>fixture.zip</url><size>{len(payload)}</size>'
+                f'<checksum>{hashlib.sha1(payload).hexdigest()}</checksum></complete></archive></archives>'
+                '</remotePackage></repository>').encode()
+    root, sdk = tmp_path / "state", tmp_path / "sdk"
+    root.mkdir(); (sdk / "licenses").mkdir(parents=True)
+    consent = root / "consent.json"
+    consent.write_text(json.dumps({"license_ids": ["fixture-license"]}))
+    (sdk / "licenses/fixture-license").write_text(hashlib.sha1(licence.encode()).hexdigest())
+    host = SimpleNamespace(root=root, sdk=sdk, abi="x86_64", config={"consent": str(consent)},
+                           lock=threading.RLock(), claims={}, closing=False)
+    installer = I.ImageInstaller(host)
+    monkeypatch.setattr(I.urllib.request, "urlopen", lambda url, **kwargs:
+                        io.BytesIO(metadata if url.endswith(".xml") else payload))
+    monkeypatch.setattr(I.shutil, "disk_usage", lambda path: SimpleNamespace(free=10 << 30))
+    real_extract = I.extract
+    checks = []
+    def cancel_during_extract(archive_path, destination, *, check=None):
+        def checkpoint():
+            checks.append(True)
+            if len(checks) == 3:
+                installer._cancel.set()
+            check()
+        real_extract(archive_path, destination, check=checkpoint)
+    monkeypatch.setattr(I, "extract", cancel_during_extract)
+    with pytest.raises(RuntimeError, match="cancel"):
+        installer.install_image(package)
+    assert len(checks) == 3
+    assert not (sdk / PH.image_parts(package)["sysdir"]).exists()
+    assert not list(sdk.rglob(".image-*"))
+    assert not (root / "image-cache.json").exists()
+
+
 # ── the daemon ────────────────────────────────────────────────────────────────
 
 class _Screen:

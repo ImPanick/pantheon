@@ -144,6 +144,11 @@ Without `internet`, the VM has no application egress. An unavailable packet
 service does not authorize direct SDK networking.
 
 Graceful worker shutdown stops guests and private helpers and preserves storage.
+It also cancels an active image installation and waits for staging cleanup;
+an operation still blocked after the shutdown wait reports an unfinished stop.
+The installer thread remains owned until it exits, and an already-started atomic
+image promotion finishes its cache record before stopping. Cancellation preserves
+AVD userdata and suppresses the installer's automatic device start.
 Do not delete a locked AVD or remove user data to resolve a failed boot. Windows
 process cleanup, two-live-guest isolation and crash recovery need host-specific
 acceptance; they are not established by a Mac cold-boot test.
@@ -177,7 +182,10 @@ app and workstation UIDs, verifies files in both directions and rejects symlinks
 That proves Linux container filesystem behavior, not a native Linux emulator.
 
 Windows-specific Python/console paths and Linux radio mount selection have
-regression coverage. Native Windows and Linux worker acceptance is still open:
+regression coverage, including Windows launch variables, failed-start cleanup,
+installer cancellation and control-coordinate mapping for partial Android UI
+trees. Code-level tests do not certify platform drivers or every SDK subprocess
+lifecycle. Native Windows and Linux worker acceptance is still open:
 it needs the current worker to cold-boot on WHPX and KVM respectively, authenticate
 with the owner key, reject another owner's key, exercise viewer input and USB in
 both directions, change images without losing data, and shut down cleanly. WSL

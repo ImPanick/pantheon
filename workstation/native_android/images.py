@@ -25,11 +25,13 @@ def sha(path,algorithm='sha256'):
     return digest.hexdigest()
 
 
-def extract(archive,destination):
+def extract(archive,destination,*,check=None):
+    check=check or (lambda:None)
     root=Path(destination).resolve()
     with zipfile.ZipFile(archive) as package:
         if len(package.infolist())>20000:raise RuntimeError('The SDK archive contains too many files.')
         for item in package.infolist():
+            check()
             name=PurePosixPath(item.filename)
             if name.is_absolute() or '..' in name.parts or '\\' in item.filename:
                 raise RuntimeError('The SDK archive contains an unsafe path.')
@@ -44,6 +46,7 @@ def extract(archive,destination):
                 path.symlink_to(target);continue
             with package.open(item) as source,path.open('wb') as output:
                 for block in iter(lambda:source.read(1<<20),b''):
+                    check()
                     if block.strip(b'\0'):
                         if shutil.disk_usage(root).free<1<<30:raise RuntimeError('Android install stopped to preserve 1 GiB free. Device data was kept.')
                         output.write(block)
@@ -55,34 +58,63 @@ def extract(archive,destination):
 class ImageInstaller(PH.Installer):
     def __init__(self,host):
         super().__init__();self.host=host
+        self._cancel=threading.Event()
+        self._stopping=False
+
+    def _checkpoint(self):
+        if self._cancel.is_set():raise RuntimeError('Android image installation canceled during shutdown; device data was kept.')
+
+    def stop(self,timeout=75):
+        # Joining under either the host or installer lock would block the
+        # worker's completion bookkeeping and its owner callback.
+        with self.lock:
+            self._stopping=True
+            self._cancel.set()
+            worker=self._thread
+        if worker is not None:
+            if worker is threading.current_thread():
+                raise RuntimeError('The Android image installer is still stopping on its worker thread.')
+            worker.join(timeout)
+            if worker.is_alive():
+                raise RuntimeError('The Android image installer is still stopping; cache cleanup has not finished.')
 
     def start(self,package,*,accept,then=None):
         with self.host.lock,self.lock:
-            if self.state.get('state')=='running':raise PH.PhoneError('busy','Another Android image is being installed.')
+            if getattr(self.host,'closing',False) or self._stopping:
+                raise PH.PhoneError('unavailable','The Android host is shutting down.')
+            if self.state.get('state')=='running' or (self._thread is not None and self._thread.is_alive()):
+                raise PH.PhoneError('busy','Another Android image is being installed.')
             if self.host.claims:raise PH.PhoneError('busy','Stop running Android VMs before changing the image cache.')
+            self._cancel.clear()
             self.state=dict(state='running',package=package,step='image',percent=0,started=time.time())
-            self._thread=threading.Thread(target=self._work,args=(package,then),daemon=True);self._thread.start()
+            # Ordinary interpreter exit must not abort staging cleanup halfway
+            # through a blocked network operation after a bounded join fails.
+            self._thread=threading.Thread(target=self._work,args=(package,then),daemon=False);self._thread.start()
             return dict(self.state)
 
     def _work(self,package,then):
         ok=False
         try:
+            self._checkpoint()
             self.install_image(package)
+            self._checkpoint()
             ok=True
         except Exception as error:
             with self.lock:self.state.update(state='failed',why=str(error)[:500],finished=time.time())
         else:
             with self.lock:self.state.update(state='done',percent=100,finished=time.time())
-        if then:then(ok)
+        if then and not self._cancel.is_set():then(ok)
 
     def install_image(self,package):
         from .host import write_private
+        self._checkpoint()
         parts=PH.image_parts(package);tag=parts['tag'];abi=parts['abi']
         if tag not in ('google_apis','google_apis_playstore','default') or abi!=self.host.abi:
             raise RuntimeError('This image is not offered by this host adapter.')
         directory={'google_apis':'google_apis','google_apis_playstore':'google_apis_playstore','default':'android'}[tag]
         base=BASE+directory+'/'
         with urllib.request.urlopen(base+'sys-img2-3.xml',timeout=30) as response:metadata=response.read(8<<20)
+        self._checkpoint()
         tree=ET.fromstring(metadata)
         record_file=self.host.root/'image-cache.json'
         records=json.loads(record_file.read_text()) if record_file.exists() else dict(self.host.config.get('managed_images',{}))
@@ -113,6 +145,7 @@ class ImageInstaller(PH.Installer):
         # Delete only explicitly managed immutable images, while no SDK guest is
         # running. AVDs, saved keys, files and snapshots are outside this tree.
         for old in list(records):
+            self._checkpoint()
             if old==package:continue
             target=self.host.sdk/PH.image_parts(old)['sysdir']
             if target.is_dir():shutil.rmtree(target)
@@ -124,20 +157,27 @@ class ImageInstaller(PH.Installer):
             root=Path(temporary);archive=root/'package.zip';done=0
             with urllib.request.urlopen(url,timeout=60) as response,archive.open('wb') as output:
                 for block in iter(lambda:response.read(1<<20),b''):
+                    self._checkpoint()
                     done+=len(block)
                     if done>spec['size'] or shutil.disk_usage(root).free<1<<30:raise RuntimeError('Android image download exceeded its size or available storage.')
                     output.write(block)
                     with self.lock:self.state.update(percent=int(done/spec['size']*75))
+            self._checkpoint()
             if done!=spec['size'] or sha(archive,'sha1')!=spec['sha1']:raise RuntimeError('The Android image checksum did not match Google’s catalogue.')
             archive_hash=sha(archive)
             if spec.get('sha256',archive_hash)!=archive_hash:raise RuntimeError('The pinned Android archive SHA-256 did not match.')
             spec.update(sha256=archive_hash,url=url)
-            unpack=root/'unpack';unpack.mkdir();extract(archive,unpack)
+            unpack=root/'unpack';unpack.mkdir();extract(archive,unpack,check=self._checkpoint)
             source=unpack/abi
             if not (source/'system.img').is_file():raise RuntimeError('The SDK archive has no Android system image.')
             if tag!='google_apis_playstore':
+                self._checkpoint()
                 policy=build(source/'ramdisk.img',self.host.root/'boot-policies'/hashlib.sha256(package.encode()).hexdigest()[:16])
+                self._checkpoint()
                 self.host.config.setdefault('boot_policies',{})[package]=policy
                 write_private(self.host.root/'boot-policies.json',json.dumps(self.host.config['boot_policies']))
+            self._checkpoint()
+            # Once the atomic directory promotion begins, finish its cache
+            # record even when shutdown arrives; never leave an unmanaged ROM.
             target.parent.mkdir(parents=True,exist_ok=True);source.replace(target)
             records[package]=spec;write_private(record_file,json.dumps(records,indent=2))

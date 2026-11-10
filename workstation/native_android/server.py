@@ -184,7 +184,9 @@ def main():
     def stop(*_):threading.Thread(target=server.shutdown,daemon=True).start()
     signal.signal(signal.SIGTERM,stop);signal.signal(signal.SIGINT,stop)
     try:server.serve_forever()
-    finally:server.host.stop_all();server.server_close()
+    finally:
+        try:server.host.stop_all()
+        finally:server.server_close()
 
 
 if __name__=='__main__':main()

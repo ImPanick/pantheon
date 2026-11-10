@@ -653,3 +653,150 @@ def test_radio_cleanup_accepts_dockers_lowercase_missing_object(tmp_path,monkeyp
     monkeypatch.setattr(radio,'docker',missing)
     radio.__exit__(None,None,None)
     assert radio.report['cleanup_error'] is None
+
+
+def test_native_cleanup_before_control_initialization_stops_owned_launcher(tmp_path,monkeypatch):
+    from workstation.native_android import host as H
+    system=SimpleNamespace(config={},sdk=tmp_path/'sdk',abi='x86_64',why=None,home=lambda _:tmp_path)
+    released=[]
+    phone=H.NativePhone(system,'owned',None,release_port=lambda account:released.append(account))
+    class Proc:
+        stopped=False
+        def poll(self):return 0 if self.stopped else None
+        def terminate(self):self.stopped=True
+        def wait(self,timeout):assert self.stopped;return 0
+    phone.emulator=proc=Proc();phone.port=5586;phone.direct=None
+    monkeypatch.setattr(phone,'_process_family',lambda:[])
+    phone._stop_locked()
+    assert proc.stopped and phone.emulator is None and phone.port is None
+    assert released==['owned']
+
+
+def test_native_boot_reports_missing_control_file_instead_of_leaving_starting(tmp_path,monkeypatch):
+    from workstation.native_android import host as H
+    system=SimpleNamespace(config={},sdk=tmp_path/'sdk',abi='x86_64',why=None,home=lambda _:tmp_path)
+    phone=H.NativePhone(system,'owned',None);phone.state='starting'
+    phone.emulator=proc=SimpleNamespace(poll=lambda:None)
+    phone.direct=SimpleNamespace(shell=lambda args,**kwargs:'1' if args[0]=='getprop' else '')
+    monkeypatch.setattr(phone,'_show',lambda:(_ for _ in ()).throw(FileNotFoundError('control server absent')))
+    stopped=[]
+    monkeypatch.setattr(phone,'_stop_locked',lambda:stopped.append(True))
+    phone._boot(proc)
+    assert stopped==[True] and phone.state=='unavailable'
+    assert 'control server absent' in phone.why
+
+
+@pytest.mark.parametrize('system_root_key',['SYSTEMROOT','SystemRoot'])
+def test_windows_launch_preserves_system_root_and_private_sdk_environment(tmp_path,monkeypatch,system_root_key):
+    from workstation.native_android import host as H
+    home=tmp_path/'owner with spaces';(home/'.android').mkdir(parents=True)
+    system=SimpleNamespace(config={'radio_binary':'radio','scrcpy_server':'control'},sdk=tmp_path/'sdk with spaces',
+                           emulator=tmp_path/'sdk with spaces/emulator/emulator.exe',abi='x86_64',why=None,home=lambda _:home)
+    phone=H.NativePhone(system,'owned',None,claim_port=lambda _:5586);phone.avd='owned-avd'
+    monkeypatch.setattr(phone,'_write_avd',lambda:None)
+    radio=SimpleNamespace(env={'HTTP_PROXY':'private-radio'},TARGET='pantheon-radio.invalid:7443',__enter__=lambda:None)
+    monkeypatch.setattr(H,'PrivateRadio',lambda *args,**kwargs:radio)
+    monkeypatch.setattr(H,'os',SimpleNamespace(name='nt',environ={system_root_key:r'C:\Windows','WINDIR':r'C:\Windows','PATH':'sdk-bin','PERSONAL_API_KEY':'not-inherited'}))
+    monkeypatch.setattr(H.subprocess,'CREATE_NEW_PROCESS_GROUP',512,raising=False)
+    captured={}
+    class Launched(Exception):pass
+    def launch(args,**kwargs):captured.update(kwargs);captured['args']=args;raise Launched()
+    monkeypatch.setattr(H.subprocess,'Popen',launch)
+    with pytest.raises(Launched):phone._launch_android()
+    assert captured['env'][system_root_key]==r'C:\Windows'
+    assert captured['env']['WINDIR']==r'C:\Windows' and captured['env']['PATH']=='sdk-bin'
+    assert captured['env']['ANDROID_EMULATOR_HOME']==str(home/'.android')
+    assert captured['env']['USERPROFILE']==str(home)
+    assert captured['creationflags']==512 and 'start_new_session' not in captured
+    assert 'PERSONAL_API_KEY' not in captured['env']
+    assert captured['args'][0]==str(system.emulator)
+
+
+def test_native_marks_refresh_geometry_before_mapping_a_partial_dialog(tmp_path,monkeypatch):
+    from workstation.native_android import host as H
+    system=SimpleNamespace(config={},sdk=tmp_path/'sdk',abi='x86_64',why=None,home=lambda _:tmp_path)
+    phone=H.NativePhone(system,'owned',None)
+    phone.screen=SimpleNamespace(size=(1,1),physical=None)
+    def refresh():phone.screen.size=(495,1100);phone.screen.physical=(1080,2400)
+    phone.screen.refresh=refresh
+    monkeypatch.setattr(phone,'_on',lambda:None)
+    xml='<hierarchy><node bounds="[100,500][980,1800]"><node text="Allow" clickable="true" bounds="[200,700][400,800]"/></node></hierarchy>'
+    monkeypatch.setattr(phone,'adb',lambda *args,**kwargs:xml)
+    assert phone.marks()['marks'][0]['box']==[92,321,92,46]
+
+
+def test_host_shutdown_joins_installer_outside_host_lock_before_stopping_phones():
+    import threading
+    from workstation.native_android.host import Host
+    host=object.__new__(Host);host.lock=threading.RLock();host.closing=False
+    order=[]
+    def stop_installer():
+        assert host.closing and not host.lock._is_owned()
+        order.append('installer')
+    host.installer=SimpleNamespace(stop=stop_installer)
+    host.phones={'owned':SimpleNamespace(retire=lambda:order.append('retire'),stop=lambda:order.append('phone'))}
+    host.stop_all()
+    assert order==['retire','installer','phone']
+
+
+def test_native_server_closes_listener_even_when_guest_shutdown_fails(tmp_path,monkeypatch):
+    import json,sys
+    from workstation.native_android import server as S
+    config=tmp_path/'config.json';config.write_text(json.dumps({}))
+    closed=[]
+    def failed():raise RuntimeError('guest stop failed')
+    server=SimpleNamespace(host=SimpleNamespace(stop_all=failed),serve_forever=lambda:None,server_close=lambda:closed.append(True))
+    monkeypatch.setattr(S,'make_server',lambda config:server)
+    monkeypatch.setattr(S.signal,'signal',lambda *args:None)
+    monkeypatch.setattr(sys,'argv',['android-host','--config',str(config)])
+    with pytest.raises(RuntimeError,match='guest stop failed'):S.main()
+    assert closed==[True]
+
+
+@pytest.mark.parametrize('initially_exists',[True,False])
+def test_radio_network_cleanup_is_repeatable_after_failed_start(tmp_path,monkeypatch,initially_exists):
+    import json,subprocess
+    from workstation.native_android.radio import PrivateRadio
+    radio=PrivateRadio(tmp_path,tmp_path/'netsimd',internet=True)
+    radio.network=network=radio.name+'-network'
+    exists=initially_exists;removed=[]
+    def docker(*args,**kwargs):
+        nonlocal exists
+        if args[0]=='inspect':
+            raise subprocess.CalledProcessError(1,args,stderr=b'error: no such object')
+        if args[:2]==('network','inspect'):
+            if not exists:
+                raise subprocess.CalledProcessError(1,args,stderr=('Error response from daemon: network '+network+' not found').encode())
+            return SimpleNamespace(stdout=json.dumps([{'Labels':{'pantheon.android-radio':radio.name}}]).encode())
+        assert args==('network','rm',network)
+        exists=False;removed.append(network)
+        return SimpleNamespace(stdout=b'')
+    monkeypatch.setattr(radio,'docker',docker)
+    radio.__exit__(None,None,None)
+    from workstation.native_android.host import NativePhone
+    system=SimpleNamespace(config={},sdk=tmp_path/'sdk',abi='x86_64',why=None,home=lambda _:tmp_path)
+    released=[]
+    phone=NativePhone(system,'owned',None,release_port=lambda account:released.append(account))
+    phone.radio=radio;phone.port=5586
+    phone._stop_locked()
+    assert released==['owned'] and phone.port is None and phone.radio is None
+    assert radio.network is None and radio.report['cleanup_error'] is None
+    assert len(removed)==int(initially_exists)
+
+
+@pytest.mark.parametrize('failure',['inspect','label','remove'])
+def test_radio_cleanup_keeps_unconfirmed_network_reserved(tmp_path,monkeypatch,failure):
+    import json,subprocess
+    from workstation.native_android.radio import PrivateRadio
+    radio=PrivateRadio(tmp_path,tmp_path/'netsimd',internet=True)
+    radio.network=network=radio.name+'-network'
+    def docker(*args,**kwargs):
+        if args[0]=='inspect':
+            raise subprocess.CalledProcessError(1,args,stderr=b'error: no such object')
+        if args[:2]==('network','inspect') and failure!='inspect':
+            label='someone-else' if failure=='label' else radio.name
+            return SimpleNamespace(stdout=json.dumps([{'Labels':{'pantheon.android-radio':label}}]).encode())
+        raise subprocess.CalledProcessError(1,args,stderr=b'Docker daemon unavailable')
+    monkeypatch.setattr(radio,'docker',docker)
+    with pytest.raises(RuntimeError,match='Could not remove'):radio.__exit__(None,None,None)
+    assert radio.network==network

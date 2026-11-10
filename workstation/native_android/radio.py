@@ -284,11 +284,21 @@ class PrivateRadio:
                             cleanup_error = "The owned radio container could not be removed."
             if self.network is not None:
                 try:
-                    network=json.loads(self.docker('network','inspect',self.network).stdout)[0]
-                    if network.get('Labels',{}).get('pantheon.android-radio')!=self.name:
-                        raise RuntimeError('The radio network ownership label changed.')
-                    self.docker('network','rm',self.network)
-                    self.report['owned_network_removed']=True
+                    try:
+                        network=json.loads(self.docker('network','inspect',self.network).stdout)[0]
+                    except subprocess.CalledProcessError as error:
+                        detail=(error.stderr or b'').lower()
+                        missing=('network '+self.network+' not found').encode().lower()
+                        if b'no such network' not in detail and missing not in detail:raise
+                        self.report['owned_network_absent']=True
+                    else:
+                        if network.get('Labels',{}).get('pantheon.android-radio')!=self.name:
+                            raise RuntimeError('The radio network ownership label changed.')
+                        self.docker('network','rm',self.network)
+                        self.report['owned_network_removed']=True
+                    # Failed startup is cleaned here and again by the phone.
+                    # Clear only after removal or a confirmed absent network.
+                    self.network=None
                 except Exception:
                     cleanup_error='Could not remove the owned radio network.'
             self.report["cleanup_error"] = cleanup_error
