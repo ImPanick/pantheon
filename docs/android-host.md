@@ -75,9 +75,11 @@ ends its old stream, releases held input, and reconnects at the new geometry.
 The image installer checks the catalogue size/checksum and records SHA256 and
 licence identity. A cached restore uses that exact archive revision. The managed
 cache may evict immutable images while no Android VM runs; AVD userdata, keys and
-restore records remain. Unmanaged SDK images are never evicted. New devices use
-2GiB data partitions by default; `data_size_gib` controls newly created slots.
-Existing disk sizes are preserved. `max_running` defaults to one for a small host.
+restore records remain. Unmanaged SDK images are never evicted. New devices request
+2GiB data partitions by default; `data_size_gib` controls the request for newly
+created slots. The SDK may enlarge this to the image minimum (API35 grew to
+6GiB during testing), and requires additional free host space to start. Existing
+disk sizes are preserved. `max_running` defaults to one for a small host.
 
 With `internet` enabled, Wi-Fi packets go to that VM's private Docker network
 service. The existing Internet-only kernel rules protect private addresses for
