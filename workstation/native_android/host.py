@@ -27,6 +27,7 @@ from workstation import phone as PH
 from .adb import AdbError, AdbAuthenticationError, DirectAdb
 from .control import ScrcpyControl
 from .radio import PrivateRadio
+from .platform_support import check_python, console_path
 
 
 def native_abi():
@@ -67,6 +68,7 @@ def write_private(path, text):
 class Host:
     backend = 'native_android'
     def __init__(self, config):
+        check_python()
         if psutil is None:
             raise RuntimeError('Install the Android host dependencies from workstation/native_android/host-dependencies.txt.')
         self.config = config
@@ -94,6 +96,10 @@ class Host:
                 self.accel = accelerator_name(result.stdout + result.stderr)
         except (OSError, subprocess.TimeoutExpired):
             self.why = 'Install the Android SDK emulator on this host, then check its acceleration support.'
+        try:
+            console_path(self.config, self.root)
+        except RuntimeError as error:
+            self.why = str(error)
 
     def home(self, account):
         # An operator may explicitly register an existing owned SDK profile.
@@ -244,8 +250,9 @@ class NativePhone(PH.AccountPhone):
             subprocess.run([str(adb),'keygen',str(key)],check=True,capture_output=True,timeout=15,
                            env={**os.environ,'HOME':str(self.home()),'ANDROID_USER_HOME':str(android)})
             key.chmod(0o600)
-        console=self.home()/'.emulator_console_auth_token'
-        if not console.exists(): write_private(console,secrets.token_hex(32))
+        console=console_path(self.system.config,self.home())
+        if platform.system() != 'Windows' and not console.exists():
+            write_private(console,secrets.token_hex(32))
         registered=self.system.config.get('profiles',{}).get(self.account,{})
         selected=registered.get('slots',{}).get(self.package(),{})
         if selected and selected.get('device')==self.device:
@@ -413,6 +420,14 @@ class NativePhone(PH.AccountPhone):
         if not self.running() or self.state!='on': raise PH.PhoneError('unavailable','Wait for Android to finish booting, or turn it on first.')
         self.touch()
 
+    def _last_words(self):
+        # The inherited reader protects a guest-writable Linux log with
+        # O_NOFOLLOW. Windows has no such flag: do not follow a reparse point
+        # merely to decorate an error, or leave the boot thread in 'starting'.
+        if not hasattr(os,'O_NOFOLLOW'):
+            return ' (see .android/pantheon-emulator.log in the Android host profile)'
+        return super()._last_words()
+
     def adb(self,args,*,timeout=20,quiet=False,data=None,binary=False):
         try:
             if self.direct is None: raise AdbError('The Android VM is not connected.')
@@ -477,7 +492,7 @@ class NativePhone(PH.AccountPhone):
                     if b'\r\nKO:' in data or data.startswith(b'KO:'): raise AdbError('Android refused its console operation.')
                 return data
             response()
-            token=(self.home()/'.emulator_console_auth_token').read_text().strip()
+            token=console_path(self.system.config,self.home()).read_text().strip()
             connection.sendall(('auth '+token+'\n').encode());response()
             if not self._owned(): raise AdbError('The Android console changed before input.')
             self.screen.release_all();self.generation=secrets.token_hex(16)

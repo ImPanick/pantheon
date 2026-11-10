@@ -1659,7 +1659,9 @@ class AccountPhone:
                     stage = tempfile.TemporaryDirectory(prefix="pantheon-phone-")
                 source = Path(stage.name) / "payload"
                 with self._as_account():
-                    fd = os.open(source, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+                    # Exclusive creation rejects an existing file/link on Windows
+                    # too; keep the additional POSIX flag where it exists.
+                    fd = os.open(source, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o600)
                     with os.fdopen(fd, "wb") as f:
                         f.write(data)
                 phase = "prepare"

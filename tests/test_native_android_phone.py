@@ -553,3 +553,103 @@ def test_physical_fold_capture_uses_already_rotated_viewport_bounds(rotation):
     cover=normalize_viewport(image,line)
     assert cover.size==(748,720)
     assert cover.getpixel((0,0))==cover.getpixel((747,719))==(20,80,140)
+
+
+def test_native_transfer_without_posix_nofollow_keeps_exclusive_staging(tmp_path,monkeypatch):
+    import base64,hashlib,os
+    from contextlib import nullcontext
+    from workstation.native_android.host import NativePhone
+    home=tmp_path/'owner';home.mkdir()
+    system=SimpleNamespace(config={},sdk=tmp_path/'sdk',abi='x86_64',why=None,home=lambda _:home,files_as=lambda _:nullcontext())
+    phone=NativePhone(system,'owned',None);phone.state='on';phone.port=5586
+    phone.emulator=SimpleNamespace(poll=lambda:None)
+    received={}
+    def adb(args,**kw):
+        if args==['get-state']:return 'device'
+        if args[:2]==['shell','getprop']:return '1'
+        if args[0]=='push':received[args[2]]=Path(args[1]).read_bytes();return ''
+        if args[:2]==['shell','sha256sum']:
+            import shlex
+            path=shlex.split(args[2])[0];return hashlib.sha256(received[path]).hexdigest()+'  '+path
+        return ''
+    monkeypatch.setattr(phone,'adb',adb)
+    monkeypatch.delattr(os,'O_NOFOLLOW',raising=False)
+    answer=phone.transfer('portable.txt',base64.b64encode(b'Windows transfer').decode())
+    assert received[answer['destination']]==b'Windows transfer'
+
+
+def test_native_startup_failure_without_posix_nofollow_leaves_starting(tmp_path,monkeypatch):
+    import os
+    from workstation.native_android.host import NativePhone
+    home=tmp_path/'owner';home.mkdir()
+    system=SimpleNamespace(config={},sdk=tmp_path/'sdk',abi='x86_64',why=None,home=lambda _:home)
+    phone=NativePhone(system,'owned',None);phone.state='starting'
+    proc=SimpleNamespace(poll=lambda:7);phone.emulator=proc
+    monkeypatch.delattr(os,'O_NOFOLLOW',raising=False)
+    monkeypatch.setattr(phone,'_stop_locked',lambda:None)
+    phone._boot(proc)
+    assert phone.state=='unavailable' and 'Android stopped' in phone.why
+
+
+def test_linux_radio_relabels_only_a_private_copy_of_the_sdk_binary(tmp_path,monkeypatch):
+    from workstation.native_android import radio as R
+    sdk=tmp_path/'sdk/netsimd';sdk.parent.mkdir();sdk.write_bytes(b'licensed SDK fixture');sdk.chmod(0o640)
+    radio=R.PrivateRadio(tmp_path/'owner/radio',sdk)
+    monkeypatch.setattr(R.platform,'system',lambda:'Linux')
+    args=radio.binary_mount()
+    staged=radio.folder/'netsimd'
+    assert args==['--volume',str(staged)+':/opt/netsimd:ro,z']
+    assert staged.read_bytes()==sdk.read_bytes() and staged.stat().st_ino!=sdk.stat().st_ino
+    assert staged.stat().st_mode&0o777==0o755 and sdk.stat().st_mode&0o777==0o640
+
+
+def test_windows_console_uses_only_explicit_worker_profile_token(tmp_path,monkeypatch):
+    from workstation.native_android import platform_support as S
+    profile=tmp_path/'worker-profile';profile.mkdir()
+    token=profile/'.emulator_console_auth_token';token.write_text('a'*32)
+    monkeypatch.setattr(S.platform,'system',lambda:'Windows')
+    monkeypatch.setattr(S,'windows_profile',lambda:profile)
+    with pytest.raises(RuntimeError,match='explicit'):S.console_path({},tmp_path/'owner')
+    other=tmp_path/'owner-token';other.write_text('b'*32)
+    with pytest.raises(RuntimeError,match='Windows profile'):S.console_path({'windows_console_token':str(other)},tmp_path/'owner')
+    assert S.console_path({'windows_console_token':str(token)},tmp_path/'owner')==token
+    assert token.read_text()=='a'*32
+    token.write_text('')
+    with pytest.raises(RuntimeError,match='empty'):S.console_path({'windows_console_token':str(token)},tmp_path/'owner')
+
+
+@pytest.mark.parametrize('version,allowed',[
+    ((3,11,9),False),((3,11,10),True),((3,12,3),False),
+    ((3,12,4),True),((3,13,0),True),((3,14,0),True),
+])
+def test_windows_private_directory_python_requirement(version,allowed,monkeypatch):
+    from workstation.native_android import platform_support as S
+    monkeypatch.setattr(S.platform,'system',lambda:'Windows')
+    monkeypatch.setattr(S.sys,'version_info',version)
+    if allowed:S.check_python()
+    else:
+        with pytest.raises(RuntimeError,match='private state'):S.check_python()
+
+
+def test_windows_host_reports_missing_console_configuration_before_launch(tmp_path,monkeypatch):
+    from workstation.native_android import host as H,platform_support as S
+    monkeypatch.setattr(H,'psutil',SimpleNamespace())
+    monkeypatch.setattr(S.platform,'system',lambda:'Windows')
+    monkeypatch.setattr(S.sys,'version_info',(3,13,0))
+    monkeypatch.setattr(H.subprocess,'run',lambda *a,**kw:SimpleNamespace(returncode=0,stdout='WHPX',stderr=''))
+    host=H.Host({'state':str(tmp_path/'state'),'sdk':str(tmp_path/'sdk'),'abi':'x86_64'})
+    assert host.accel=='whpx'
+    assert 'explicit --windows-console-token' in host.why
+    assert not list(tmp_path.rglob('.emulator_console_auth_token'))
+
+
+def test_radio_cleanup_accepts_dockers_lowercase_missing_object(tmp_path,monkeypatch):
+    import subprocess
+    from workstation.native_android.radio import PrivateRadio
+    radio=PrivateRadio(tmp_path,tmp_path/'netsimd')
+    def missing(*args,**kwargs):
+        assert args[0]=='inspect'
+        raise subprocess.CalledProcessError(1,['docker',*args],stderr=b'error: no such object: owned-radio')
+    monkeypatch.setattr(radio,'docker',missing)
+    radio.__exit__(None,None,None)
+    assert radio.report['cleanup_error'] is None

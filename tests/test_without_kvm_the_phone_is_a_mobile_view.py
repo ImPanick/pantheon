@@ -231,11 +231,12 @@ def test_without_kvm_android_is_blocked_and_preview_requires_an_explicit_choice(
 
 
 def test_without_a_screen_there_is_neither_and_the_android_reason_is_given(tmp_path, monkeypatch):
+    monkeypatch.setattr("platform.machine", lambda: "x86_64")
     monkeypatch.setenv(PH.SDK_ENV, str(tmp_path / "no-sdk"))
     monkeypatch.setattr(PH, "find_firefox", lambda: "/usr/bin/firefox")
     system = _System(tmp_path)
     system.ensure(ACCOUNT)
-    info = PH.AccountPhone(system, ACCOUNT, None).info()
+    info = PH.AccountPhone(system, ACCOUNT, None, kvm=lambda: (False, "the host has no KVM")).info()
     assert info["available"] is False and info["mode"] is None
     assert "KVM" in info["why"]   # `B1756`: asked before what is installed
 

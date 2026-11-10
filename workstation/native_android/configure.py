@@ -15,6 +15,7 @@ from .boot_policy import build
 from .host import write_private,native_abi
 from .control import SERVER_SHA256
 from .images import sha
+from .platform_support import check_python, console_path
 
 
 def main():
@@ -27,7 +28,14 @@ def main():
     parser.add_argument('--bind',default='127.0.0.1',help='Worker listen address. Linux Docker: use a private host bridge address reachable from the app.')
     parser.add_argument('--app-url',help='Worker URL reachable from the app, including scheme and port; remote connections require TLS.')
     parser.add_argument('--gpu',choices=('auto','host','software','swiftshader'),default='software')
+    parser.add_argument('--windows-console-token',type=Path,help='Existing console token in the dedicated Windows worker profile; used read-only.')
     args=parser.parse_args();os.umask(0o077)
+    host_options={}
+    if args.windows_console_token:host_options['windows_console_token']=str(args.windows_console_token.resolve())
+    try:
+        check_python()
+        console_path(host_options,args.state)
+    except RuntimeError as error:parser.error(str(error))
     root=args.state.resolve();root.mkdir(parents=True,exist_ok=True,mode=0o700)
     sdk=args.sdk.resolve()
     try:abi=native_abi()
@@ -53,6 +61,7 @@ def main():
     config={'state':str(root),'sdk':str(sdk),'abi':abi,'consent':str(consent),'token_file':str(pairing),
             'radio_binary':str(args.radio_binary.resolve()),'scrcpy_server':str(args.scrcpy_server.resolve()),
             'boot_policies':policies,'internet':args.internet,'port':args.port,'bind':args.bind,'gpu':args.gpu,'max_running':1,'memory_mib':4096,'data_size_gib':2}
+    config.update(host_options)
     write_private(config_file,json.dumps(config,indent=2)+'\n')
     print('Android host config: '+str(config_file))
     print('PANTHEON_ANDROID_PAIRING_DIR='+str(pairing.parent))

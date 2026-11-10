@@ -312,11 +312,14 @@ stream, touch and file-transfer acceptance run. This host path has not passed th
 Android acceptance. The controlled development probe on 2026-11-08 found running
 Docker Desktop/WSL and a Windows hypervisor, but no usable Linux KVM device.
 
-**Native Windows direction (proposal, not an enabled backend).** On Cybertooth,
+**Historical native Windows probes (2026-11-09).** The current independent worker
+and its Windows setup are documented in [Android host](android-host.md); its
+native Windows/Linux acceptance remains open. The following records the earlier
+standalone SDK investigation, not verification of today's integration. On Cybertooth,
 the initial read-only 2026-11-09 probe of `WHvGetCapability` returned success with
 `HypervisorPresent=true`. The SDK was absent in the checked locations at that
 stage. The subsequently authorized official SDK test below has now booted real
-Android on WHPX; Pantheon has no native Windows device-host adapter yet.
+Android on WHPX; Pantheon had no native Windows device-host adapter at that point.
 An additional read-only Windows feature inventory reported `HypervisorPlatform`
 **disabled** (`Win32_OptionalFeature.InstallState=2`), with Hyper-V and Virtual
 Machine Platform enabled (`1`). A hypervisor-present capability response does not
@@ -474,7 +477,7 @@ remaining acceptance gates are recorded in `.pantheon/DECISIONS.md`,
 
 **Native runtime continuation (2026-11-09).** The owner subsequently authorized
 continuing through implementation of the usable Android experience, superseding
-the earlier pause. The Windows provider is still unimplemented; the following
+the earlier pause. The Windows provider was unimplemented at that point; the following
 results concern real disposable Android/WHPX guests and SDK endpoints, not an
 embedded Pantheon stream. The Linux VM/KVM gates remain intact.
 

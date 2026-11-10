@@ -9,6 +9,8 @@ import base64
 import hmac
 import json
 import os
+import platform
+import shutil
 import secrets
 import socket
 import socketserver
@@ -62,6 +64,26 @@ class PrivateRadio:
         return subprocess.run(["docker", *args], check=True, capture_output=True,
                               timeout=kwargs.pop("timeout", 30), **kwargs)
 
+    def binary_mount(self):
+        # Relabel only an expendable helper copy on SELinux hosts. Never relabel
+        # an operator's SDK or home directory, or disable container confinement.
+        self.folder.mkdir(parents=True, exist_ok=True, mode=0o700)
+        staged=self.folder/'netsimd'
+        temporary=self.folder/('netsimd-'+secrets.token_hex(8))
+        try:
+            shutil.copyfile(self.binary,temporary)
+            temporary.chmod(0o755)
+            temporary.replace(staged)
+        finally:temporary.unlink(missing_ok=True)
+        if platform.system()=='Linux':
+            if ':' in str(staged):raise RuntimeError('The Android radio directory cannot contain a colon on Linux.')
+            return ['--volume',str(staged)+':/opt/netsimd:ro,z']
+        # Docker's --mount uses CSV; preserve Windows paths containing commas.
+        import csv,io
+        value=io.StringIO();csv.writer(value,lineterminator='').writerow(
+            ['type=bind','source='+str(staged),'target=/opt/netsimd','readonly'])
+        return ['--mount',value.getvalue()]
+
     def __enter__(self):
         binary = self.binary
         if not binary.is_file():
@@ -82,7 +104,7 @@ class PrivateRadio:
                         "--log-driver=local", "--log-opt=max-size=1m", "--log-opt=max-file=2",
                         "--pids-limit=128", "--memory=384m", "--cpus=1", "--user", "0:0" if self.internet else str(getattr(os, "getuid", lambda: 1000)()) + ":" + str(getattr(os, "getgid", lambda: 1000)()),
                         "--tmpfs", "/tmp:rw,nosuid,nodev,size=64m,mode=1777", "-e", "HOME=/tmp", "-e", "TMPDIR=/tmp",
-                        "--mount", "type=bind,source=" + str(binary) + ",target=/opt/netsimd,readonly",
+                        *self.binary_mount(),
                         *entrypoint, image, *command, timeout=90)
             self.started = True
             deadline = time.monotonic() + 25
@@ -239,7 +261,7 @@ class PrivateRadio:
             try:
                 state = json.loads(self.docker("inspect", self.name).stdout)[0]
             except subprocess.CalledProcessError as e:
-                if b"No such" not in e.stderr:
+                if b"no such" not in (e.stderr or b'').lower():
                     cleanup_error = "Could not determine whether the owned radio container remains."
                 state = None
             except Exception:
