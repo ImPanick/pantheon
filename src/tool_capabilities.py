@@ -1095,7 +1095,7 @@ def _action_from_content(tool_name: str, content: Any) -> str | None:
 # after untrusted content (the tool's own classification above). The result
 # stays `EXTERNAL_UNTRUSTED`: what the screen shows is still a stranger's page.
 _OBSERVE_ONLY_ACTIONS: Mapping[str, frozenset[str]] = MappingProxyType({
-    "computer": frozenset({"screenshot", "wait"}),
+    "computer": frozenset({"screenshot", "wait", "usb_status"}),
 })
 _OBSERVE_ONLY_CAPABILITIES = _capabilities(
     ToolEffect.READ_WORKSPACE,

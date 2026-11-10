@@ -783,6 +783,7 @@ ERRORS: Dict[str, int] = {
     "forbidden": 403,
     "not_found": 404,
     "busy": 409,          # a person holds the display (`control`)
+    "usb_ejected": 409,   # USB lease revoked; reconnect rather than retry it
     "license": 409,       # SDK terms require explicit acceptance by a person
     "too_large": 413,
     "unavailable": 503,   # no display, or the account could not be made

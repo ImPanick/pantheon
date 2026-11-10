@@ -1,35 +1,33 @@
 ---
 name: workstation-phone
-description: Use the person's generic Android device, with a selected hardware profile, through the computer tool (screen phone) and adb to test an app or mobile website.
-version: 1.2.0
+description: Operate the user's Android phone with the computer tool, inspect its screen, tap and type, rotate or fold it, and choose a device profile.
+version: 2.0.0
 category: workstation
-tags: [workstation, phone, android, mobile, emulator, pixel, galaxy, samsung, fold, tablet, app, apk, adb, touch, responsive]
-requires_toolsets: [computer, bash]
+tags: [workstation, phone, android, mobile, emulator, pixel, galaxy, samsung, fold, flip, tablet, touch]
+requires_toolsets: [computer]
 status: published
-confidence: 0.85
+confidence: 0.95
 source: pantheon
 ---
 
 ## When to Use
 
-Anything on a phone: how a site looks and works on a phone, an Android app (install, run, read its log), a foldable's display regions. Android runs in the person's own VM with a generic OS and the selected hardware profile; it does not provide OEM firmware or retail identity. Its first use turns it on only when its actual prerequisites are met.
+Use when the user asks you to operate an Android phone, tap or type in a mobile app, change orientation or exercise a foldable.
 
 ## Procedure
 
-1. `computer` with `"screen": "phone"` and action `screenshot`. Booting? `wait` (ms) and look again; the first boot takes a minute or two.
-2. Touch by mark or by the screenshot's own pixels (its size is stated with it): `click` taps, `drag` swipes (x,y to to_x,to_y), `scroll` flings, `type` enters text into the focused field, `key` `Return` submits. `right_click` is Back, `middle_click` Home.
-3. adb in `bash` reaches this phone already (`ANDROID_SERIAL` is set): `adb shell am start -a android.intent.action.VIEW -d 'https://…'` opens a page in Chrome; `adb install -r app.apk`; `adb logcat -d | tail -200` reads the log; `adb shell input keyevent 26` power, `24`/`25` volume; `adb emu fold` / `adb emu unfold` a foldable; `adb emu rotate` turns it.
-4. A site served in the workstation is at `http://10.0.2.2:<port>` from the phone (the emulator's address for its host).
-5. Drive it as the person does, with the phone's own controls (each returns a screenshot after it): `press` with `button` (power, volume_up, volume_down, back, home, recents), `rotate`, `fold` / `unfold` a foldable, `open_url` with `url`.
-6. Another device: `use_device` with `device` (such as galaxy_z_fold6), as the person picks it in the Devices room. One not on the workstation yet is installed first, which takes minutes; the result says so — `wait` and take a `screenshot` until it is on. If it says the Android SDK License must be accepted, ask the person to accept it in the Workbench's Devices room; you cannot accept it for them.
-7. Look at every result before the next step, and say what the last screenshot shows.
+1. Start with `computer` action `screenshot`, `screen: phone`. This uses the selected Android VM and can start it if it is off. If it is booting, use `wait` with `ms` on `screen: phone`, then inspect again. Report a missing image, license or runtime prerequisite as returned; a person accepts SDK terms and chooses the image in the phone panel.
+2. Use marks from the latest phone screenshot, or that screenshot's own pixel coordinates. `click` taps; `drag` swipes from x,y to to_x,to_y; `scroll` flings; `type` enters text after focusing a field. `key` with `Return` submits. `right_click` is Back and `middle_click` is Home. Never reuse desktop marks on the phone.
+3. `press` with `button: back|home|recents|power|volume_up|volume_down` uses Android's controls. `rotate` turns the display a quarter. `fold` and `unfold` change a supported foldable's posture; inspect the new screenshot before touching it. `open_url` with `url` opens Android's browser when the task calls for it.
+4. Use `use_device` with an ID from the computer schema, such as `galaxy_z_flip6`, only when the task calls for a different profile. It can stop the current phone and start/install the selected profile. Images and device profiles have separate saved data; do not promise files follow a switch.
+5. `usb_status` reports the connected folder and per-file delivery state. `usb_connect` and `usb_eject` control shared storage without returning a screenshot. For file workflows load `android-usb-files`; for device/layout testing load `android-mobile-qa` through `use_skill` or `manage_skills action=view`.
 
 ## Pitfalls
 
-- Typing before a field is tapped sends nothing useful; tap it first.
-- "Busy" means a person holds the screens: ask them, or wait. Do not retry in a loop.
-- Unavailable says why (no KVM, cannot install): tell the person that sentence.
-- Android requires host KVM and usable KVM inside that user's VM. A shared workstation, separate ADB ports, or a guest KVM node under software emulation is insufficient. Do not change backend/security settings, accept SDK terms, migrate device data, or substitute a browser to work around a refusal.
-- Google Play is an optional separately licensed developer image, selected and accepted by a person. Sign-in happens on Android itself; the user's agents share that device and can see its sessions. Never claim sign-in, Play Integrity or a retail device is verified from a browser preview.
-- The person's USB tether control sends selected uploads or owned document text into Android Downloads. It is file transfer, not a host mount or network tether; do not promise binary originals from the document-text export.
-- A mobile view (the screenshot says so) is a phone-shaped Firefox, not Android: web pages only, no adb, no apps, no marks. Back and Home are the phone action's buttons; scroll moves the page. Say it is a mobile view when you report what a site looks like.
+- The dedicated Android worker may run on macOS, Windows or Linux, separately from the workstation. Workstation `bash` and its ADB do not automatically reach it. Do not start a second emulator, search for private ADB keys, or assume `10.0.2.2` points to the workstation. Use a reachable URL supplied by the deployment for development servers.
+- There is no agent APK-install/logcat API in this tool. Sharing an APK file is not installing it; installing through Android UI requires the task's authorization. Do not invent shell access to the Android host.
+- If a person holds the phone, stop input and ask them to hand it back. A transient busy operation can be checked once after waiting; do not repeatedly submit mutations.
+- A browser preview is web-only, not Android. Hardware profiles use a generic Android OS, not Samsung/Pixel OEM firmware; emulator checks do not establish retail-device compatibility or Play Integrity.
+## Verification
+
+Inspect every returned picture. Report what actually worked and any untested device/OS behavior.

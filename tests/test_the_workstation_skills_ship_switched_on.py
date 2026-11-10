@@ -49,7 +49,7 @@ SHIPPED = {
     "workstation-shell": ["computer", "bash"],
     "workstation-self-test": ["computer", "bash"],
     # `B1751`: the phone, by the same tool and adb in the shell.
-    "workstation-phone": ["computer", "bash"],
+    "workstation-phone": ["computer"],
 }
 BUILD_REQUEST = "Create a website for my bakery and make sure it works"
 GO_AHEAD = "Yes, go ahead."
@@ -140,7 +140,7 @@ def test_without_the_workstations_screen_none_of_them_is_offered(store):
 
 def test_with_the_screen_but_no_shell_only_the_screen_skill_is_offered(store):
     got = _names(store.injectable_skills(owner="alice", active_toolsets=["computer"]))
-    assert set(SHIPPED) & got == {"workstation-desktop"}
+    assert set(SHIPPED) & got == {"workstation-desktop", "workstation-phone"}
 
 
 def test_a_persons_own_skill_of_the_same_name_wins_for_them_only(store):

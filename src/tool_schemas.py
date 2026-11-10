@@ -716,7 +716,7 @@ FUNCTION_TOOL_SCHEMAS = [
                 "Work the workstation's desktop — an Ubuntu machine with a browser, "
                 "separate from Pantheon — by looking at its screen and using its mouse "
                 "and keyboard. One call is one action. `screenshot` shows the screen; "
-                "every other action returns a screenshot taken after it, so look at it "
+                "screen actions return a screenshot taken after them, so look at it "
                 "before the next action. Each screenshot has the things you can click "
                 "boxed and numbered, listed in words beside it: send \"mark\": N to act on "
                 "one — it is more exact than coordinates. Coordinates are pixels in the "
@@ -728,7 +728,11 @@ FUNCTION_TOOL_SCHEMAS = [
                 "taken over the screen the action is refused; ask them or wait. "
                 "The phone also has its controls, as on its window: `press` a key, "
                 "`rotate`, `fold` or `unfold` a foldable, `open_url`, and `use_device` "
-                "to switch to another phone from its list."
+                "to switch to another phone from its list. `usb_status`, `usb_connect` and "
+                "`usb_eject` inspect/connect/eject the Android shared folder; these return "
+                "structured USB state and per-file sync status, without a screenshot. "
+                "USB status does not start Android. Shared files live under the returned "
+                "folder within the user's projects, and Download/PantheonUSB on Android."
             ),
             "parameters": {
                 "type": "object",

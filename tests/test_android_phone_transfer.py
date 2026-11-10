@@ -793,3 +793,9 @@ def test_route_requires_an_on_android_vm_before_accepting_upload_bytes(app, rout
                                   headers={"Content-Type": "application/octet-stream"})
     assert r.status_code == 409, r.text
     assert not p.adb.calls
+
+
+def test_verified_direct_upload_notifies_android_media_index(phone):
+    answer=phone.transfer('picture.png',base64.b64encode(b'picture bytes').decode())
+    commands=[shlex.split(args[1]) for args,kw in phone.adb.calls if len(args)==2 and args[0]=='shell' and args[1].startswith('content call')]
+    assert commands==[['content','call','--uri','content://media','--method','scan_file','--arg',answer['destination']]]

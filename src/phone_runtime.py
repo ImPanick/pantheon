@@ -131,6 +131,7 @@ class PhoneClient:
                 answer=await self.client.phone(account,action,holder=holder,**fields)
                 return dict(answer,device=choice['device'],edition=choice['edition'],preview_available=True)
             except WorkstationError as error:
+                if error.code == 'busy':raise
                 if action not in ('status','device','edition'):raise
                 return {'available':False,'state':'unavailable','mode':None,'isolation':'per_user_vm',
                         'device':choice['device'],'edition':choice['edition'],'why':error.message,

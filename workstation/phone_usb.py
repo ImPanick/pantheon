@@ -28,6 +28,18 @@ def filename(value):
 def digest(data):return hashlib.sha256(data).hexdigest()
 
 
+def scan_media(call,path):
+    """Notify MediaStore after a verified write; indexing is best effort.
+
+    Android's MediaStore.scanFile uses this provider method (Android 35).
+    Failure must not delete a file whose bytes were already confirmed.
+    """
+    from workstation.phone import PhoneError
+    try:
+        call(['shell','content call --uri content://media --method scan_file --arg '+shlex.quote(path)],timeout=5,quiet=True)
+    except (PhoneError,OSError):pass
+
+
 def operation(phone, op, connection=None, name=None, data_b64=None, expected=None, *, _deadline=None):
     from workstation.phone import PhoneError
     deadline = _deadline if _deadline is not None else time.monotonic() + 30
@@ -45,7 +57,7 @@ def operation(phone, op, connection=None, name=None, data_b64=None, expected=Non
             phone._usb_connection=(secrets.token_urlsafe(32),identity)
             return {'connection':phone._usb_connection[0], 'directory':DIRECTORY}
         active=getattr(phone,'_usb_connection',None)
-        if not active or active!=(connection,identity):raise PhoneError('unavailable','USB was ejected or the Android device changed.')
+        if not active or active!=(connection,identity):raise PhoneError('usb_ejected','USB was ejected or the Android device changed. Reconnect USB.')
         if op == 'eject':
             call(['shell','sync'],timeout=20)
             phone._usb_connection=None;return {'connected':False}
@@ -101,6 +113,7 @@ def operation(phone, op, connection=None, name=None, data_b64=None, expected=Non
             raise PhoneError('bad_request','USB folder is full; no files were overwritten.')
         if current(path)!=expected:raise PhoneError('busy','USB file changed during synchronization; retrying without overwriting it.')
         stage=DIRECTORY+'/.usb-'+secrets.token_hex(12)
+        committed=False
         try:
             with tempfile.TemporaryDirectory(prefix='usb-',dir=phone.home()) as tmp:
                 source=Path(tmp)/'file';source.write_bytes(data)
@@ -108,7 +121,11 @@ def operation(phone, op, connection=None, name=None, data_b64=None, expected=Non
             if current(stage)!=digest(data):raise PhoneError('unavailable','Android did not confirm USB file bytes.')
             if current(path)!=expected:raise PhoneError('busy','USB file changed during synchronization.')
             shell('mv -fT '+shlex.quote(stage)+' '+q)
+            committed=True
             if current(path)!=digest(data):raise PhoneError('unavailable','Android did not confirm the committed USB file.')
+            # ADB writes bypass MediaStore. Tell Android about the committed
+            # file so Photos and system file pickers can discover it.
+            scan_media(call,path)
             return {'sha256':digest(data),'bytes':len(data)}
         finally:
-            call(['shell','rm','-f',shlex.quote(stage)],quiet=True)
+            if not committed:call(['shell','rm','-f',shlex.quote(stage)],quiet=True)

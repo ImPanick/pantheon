@@ -56,7 +56,7 @@ SCREENSHOT = "screenshot"
 #: (the side and navigation keys, rotate, fold, an address, the device list) —
 #: so the agent works the phone exactly as a person does, through the same
 #: route and the same holder, not a side channel. Each one is on the phone.
-PHONE_CONTROLS: Tuple[str, ...] = ("press", "rotate", "fold", "unfold", "open_url", "use_device")
+PHONE_CONTROLS: Tuple[str, ...] = ("press", "rotate", "fold", "unfold", "open_url", "use_device", "usb_status", "usb_connect", "usb_eject")
 ACTIONS: Tuple[str, ...] = (SCREENSHOT,) + tuple(P.INPUT_ACTIONS) + PHONE_CONTROLS
 
 # Spellings a model trained on another computer-use tool reaches for. Accepted
@@ -185,6 +185,7 @@ def describe_action(args: Dict[str, Any]) -> str:
             "rotate": "rotate", "fold": "fold", "unfold": "unfold",
             "open_url": f"open {args.get('url')}",
             "use_device": f"use the {_device_name(args.get('device'))}",
+            "usb_status": "inspect shared files", "usb_connect": "connect shared files", "usb_eject": "eject shared files",
         }[action]
     if args.get("screen") == "phone":  # `B1751`
         return "phone: " + describe_action({k: v for k, v in args.items() if k != "screen"})
@@ -500,6 +501,19 @@ class ComputerTool:
 
         what = describe_action(args)
         on_phone = args.get("screen") == "phone"
+        if action in ("usb_status", "usb_connect", "usb_eject"):
+            from src import phone_usb
+            try:
+                if action == "usb_connect":
+                    answer = await phone_usb.connect(owner,client,account,holder='agent')
+                elif action == "usb_eject":
+                    answer = await phone_usb.eject(owner,holder='agent')
+                else:
+                    state = await client.phone(account,'status',holder='agent')
+                    answer = phone_usb.status(owner,(state.get('device'),state.get('edition')))
+                return {"output":json.dumps(answer),"exit_code":0,"usb":answer}
+            except WorkstationError as error:return error.as_result()
+            except (RuntimeError,ValueError,OSError) as error:return {"error":str(error),"exit_code":1}
         if action in PHONE_CONTROLS:
             return await self._control(client, account, args, owner, what)
         if on_phone:

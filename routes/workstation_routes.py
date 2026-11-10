@@ -969,6 +969,7 @@ def setup_workstation_routes() -> APIRouter:
         except WorkstationError as e:
             raise _http_error(e)
         return JSONResponse({"ok": answer.get("ok") is True, "name": str(answer.get("name") or "")[:180],
+                             "queued": answer.get("queued") is True,
                              "bytes": answer.get("bytes"), "sha256": str(answer.get("sha256") or "")[:64],
                              "destination": str(answer.get("destination") or "")[:500]}, headers=_NO_STORE)
 

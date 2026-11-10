@@ -136,13 +136,13 @@ class Connection:
         self.baseline={};self.files=[];self.error='';self.synced=None;self.stopping=asyncio.Event();self.task=None;self.io_lock=asyncio.Lock();self.closing=False
     def folder(self):return Folder(self.base,self.parts,self.owner_uid)
     def public(self):
-        return {'connected':not self.stopping.is_set(),'folder':'/'.join(self.parts[1:]),
+        return {'connected':not self.stopping.is_set(),'device':self.profile[0],'edition':self.profile[1],'folder':'/'.join(self.parts[1:]),
                 'android_folder':DIRECTORY,'workstation_connected':self.workstation_connected,'files':self.files,'error':self.error,'synced_at':self.synced}
     async def call(self,op,**fields):
         from src.workstation_client import WorkstationError
         try:return await self.client.phone(self.account,'usb',holder='person',operation=op,connection=self.lease,**fields)
         except WorkstationError as error:
-            if error.code == 'unavailable':self.stopping.set()
+            if error.code=='usb_ejected':self.stopping.set()
             raise
     async def remote_bytes(self,name,expected):
         answer=await self.call('read',name=name)
@@ -156,8 +156,10 @@ class Connection:
         if not may_use(self.owner,auth_manager=getattr(self.client,'auth_manager',None)):
             self.stopping.set();raise RuntimeError('Workstation access was revoked; USB ejected.')
         state=await self.client.phone(self.account,'status',holder='person')
-        if (state.get('device'),state.get('edition'))!=self.profile or state.get('state')!='on':
+        if (state.get('device'),state.get('edition'))!=self.profile or state.get('state')=='off':
             self.stopping.set();raise RuntimeError('Android stopped or changed device; USB ejected.')
+        if state.get('state')!='on':
+            raise RuntimeError(state.get('why') or 'Waiting for Android; files remain queued for USB.')
         remote=(await self.call('list')).get('files')
         if not isinstance(remote,dict) or len(remote)>COUNT:raise RuntimeError('Invalid Android USB listing.')
         aliases=set();total=0
@@ -212,7 +214,7 @@ class Connection:
             current=await asyncio.to_thread(folder.manifest)
             for name in left.keys() & right.keys():
                 if left[name]==right[name]:self.baseline[name]=left[name]
-            self.files=[{'name':n,**v} for n,v in sorted(current.items())];self.synced=time.time();self.error=''
+            self.files=[{'name':n,**v,'synced':self.baseline.get(n)==v['sha256']} for n,v in sorted(current.items())];self.synced=time.time();self.error=''
     async def run(self):
         while not self.stopping.is_set():
             try:
@@ -223,10 +225,15 @@ class Connection:
             except asyncio.TimeoutError:pass
 
 
-async def connect(owner,client,account):
+async def connect(owner,client,account,*,holder='person'):
     async with _lock(owner):
+        state=await client.phone(account,'status',holder=holder)
+        if state.get('state')!='on' or state.get('mode')!='android':raise RuntimeError('Turn on Android before connecting USB.')
         old=_connections.get(owner)
-        if old and not old.stopping.is_set():return old.public()
+        if old and not old.stopping.is_set():
+            if old.profile==(state.get('device'),state.get('edition')):return old.public()
+            old.stopping.set()
+            if old.task:await old.task
         if not getattr(client,'native_android',False):raise RuntimeError('USB shared folders require the dedicated Android host.')
         from src import workstation_access as wa
         station=None;owner_uid=None
@@ -239,9 +246,7 @@ async def connect(owner,client,account):
             owner_uid=int(identity.get('stdout','').strip())
         except Exception:
             station=None  # Independent phone/app USB still works without a desktop.
-        state=await client.phone(account,'status',holder='person')
-        if state.get('state')!='on' or state.get('mode')!='android':raise RuntimeError('Turn on Android before connecting USB.')
-        lease=await client.phone(account,'usb',holder='person',operation='connect')
+        lease=await client.phone(account,'usb',holder=holder,operation='connect')
         item=Connection(owner,client,account,state,lease['connection'],owner_uid)
         with item.folder() as folder:
             if station is not None:
@@ -258,10 +263,18 @@ async def connect(owner,client,account):
         return item.public()
 
 
-async def eject(owner):
+async def eject(owner,*,holder='person'):
     async with _lock(owner):
         item=_connections.get(owner)
         if not item:return status(owner)
+        if holder=='agent':
+            # Gate the actual mutation at the worker, including takeover races.
+            # Pending local files stay local after an explicit ejection.
+            async with item.io_lock:
+                await item.client.phone(item.account,'usb',holder='agent',operation='eject',connection=item.lease)
+                item.closing=True;item.stopping.set()
+            if item.task:await item.task
+            return item.public()
         item.closing=True
         final_error=''
         async with item.io_lock:
@@ -286,7 +299,9 @@ async def upload(owner,name,data):
             listing=await asyncio.to_thread(folder.manifest)
             if len(listing)>=COUNT or sum(e['bytes'] for e in listing.values())+len(data)>TOTAL:raise RuntimeError('USB folder is full.')
             await asyncio.to_thread(folder.put,name,data,None)
-    return {'ok':True,'name':name,'bytes':len(data),'sha256':digest(data),'destination':'/'.join(item.parts[1:])+'/'+name}
+            current=await asyncio.to_thread(folder.manifest)
+            item.files=[{'name':n,**v,'synced':item.baseline.get(n)==v['sha256']} for n,v in sorted(current.items())]
+    return {'ok':True,'queued':True,'name':name,'bytes':len(data),'sha256':digest(data),'destination':'/'.join(item.parts[1:])+'/'+name}
 
 
 async def download(owner,name):

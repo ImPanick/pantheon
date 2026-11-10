@@ -1716,6 +1716,8 @@ class AccountPhone:
                         if verified:
                             raise PhoneError("unavailable", "Android verified the file, but cleanup of its private staging copy was not confirmed. Ask an admin to check temporary storage.") from cleanup_error
                         logger.warning("Private Android transfer staging cleanup failed (%s).", type(cleanup_error).__name__)
+            from workstation.phone_usb import scan_media
+            scan_media(lambda args, **kw: command(args, maximum=kw['timeout']), destination)
             return {"ok": True, "name": name, "bytes": len(data), "sha256": digest,
                     "destination": destination}
 

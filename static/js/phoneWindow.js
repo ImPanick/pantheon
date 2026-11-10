@@ -351,7 +351,8 @@ async function _sendFile({ file = null, documentId = '' }) {
     try { answer = await res.json(); } catch (_) { answer = null; }
     if (!res.ok || !answer || !answer.ok) throw new Error(answer && answer.detail || 'The file transfer did not complete.');
     if (_win !== win) return;
-    _transferText = `Sent ${answer.name} (${answer.bytes} bytes) to ${answer.destination}. The USB folder syncs automatically while connected.`;
+    _transferText = answer.queued ? '' : `Sent ${answer.name} (${answer.bytes} bytes) to ${answer.destination}.`;
+    if (answer.queued) _kick(100);
   } catch (e) {
     if (_win !== win) return;
     _transferText = e.message;
@@ -651,12 +652,12 @@ function _render() {
   _win.usbConnect.disabled = !!_win.usbBusy;
   _win.usbSummary.textContent = usb.connected ? 'USB connected · shared files' : 'USB · connect shared files';
   _win.usbFolder.textContent = usb.folder ? `Your Pantheon projects / ${usb.folder} ↔ Android / Download / PantheonUSB. ${usb.workstation_connected ? 'The workstation is connected to this same folder.' : 'Workstation folder sharing is not connected.'}` : 'Connect your Android storage to your Pantheon projects and workstation.';
-  _win.transferText.textContent = _transferText || usb.error || (usb.connected ?
+  _win.transferText.textContent = usb.error || _transferText || (usb.connected ?
     'Syncs both ways every five seconds. Conflicts keep both copies; deletions stay local. Up to 64 files, 20 MB each, 128 MiB total. Use portable filenames; subfolders are not synced.' :
     'Plug in to share files. Eject stops syncing and keeps the files on both sides.');
   _win.usbFiles.replaceChildren();
   for (const file of (usb.files || [])) {
-    const link = _el('a', 'phw-usb-file', `${file.name} · ${file.bytes} bytes`);
+    const link = _el('a', 'phw-usb-file', `${file.name} · ${file.bytes} bytes · ${file.synced ? 'Synced with Android' : 'Waiting for Android'}`);
     link.href = `/api/workstation/phone/usb/file?name=${encodeURIComponent(file.name)}`;
     link.download = file.name;
     _win.usbFiles.appendChild(link);
