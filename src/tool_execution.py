@@ -646,13 +646,14 @@ WORKSTATION_ONLY_SENTENCE = (
 )
 
 
-def _inside_workstation_now(tool: Any, owner: Optional[str], routed: bool) -> bool:
+def _inside_workstation_now(tool: Any, owner: Optional[str], routed: bool, content: Any = None) -> bool:
     """`B1725`. Does this call still run inside the workstation? `computer`
     only ever does; `agent_browser` when the workstation's browser answers
     it, not Pantheon's own; the nine shell and file tools when routed.
     Unanswerable is a no."""
     if tool == "computer":
-        return True
+        from src.phone_runtime import computer_in_workstation
+        return computer_in_workstation(content)
     if tool == "agent_browser":
         try:
             from src.local_browser import LocalBrowserClient, browser_for
@@ -1588,7 +1589,7 @@ async def _execute_tool_block_impl(
     # file tools, with the workstation on, routing not switched off and the
     # person allowed to use it (`workstation_tools.routes`).
     in_workstation = _runs_in_workstation(tool, owner)
-    if workstation_only and not _inside_workstation_now(tool, owner, in_workstation):
+    if workstation_only and not _inside_workstation_now(tool, owner, in_workstation, block.content):
         logger.warning("Computer Use step %s not run: it would no longer run in the workstation",
                        tool)
         return f"{tool}: NOT RUN", {

@@ -669,6 +669,8 @@ No Google SDK image or Play package is committed to this repository or downloade
 without an explicit installation choice. This change is a development integration,
 not a claim of distribution rights for a consumer Android service.
 
+For the independent host worker and Docker pairing, see [Independent Android host](android-host.md).
+
 **Apple Silicon runtime proof (2026-11-09; outside the product).** With the
 owner's SDK and ARM-image licence acceptance, Emulator 37.2.13, platform-tools
 37.0.1 and API 35 Google Play ARM revision 9 were installed from Google's
@@ -679,18 +681,35 @@ Android 15, resumed Settings and sent a fresh 32 KiB payload whose guest-side
 SHA-256 matched. An independent untrusted key was refused; that is one-device
 authentication evidence, not a two-owner isolation result.
 
-The first stop exposed a late SDK ADB smart-server start and a Netsim helper;
-the proof now supplies a non-executing custom ADB path and disables the unused
-radio simulators. A later run observed no leftover processes or smart-server
-listener. Its screenshots still exposed System UI stalls, so framework
-boot-complete and an activity-resumed flag are not treated as interactive
-readiness. A later single-VM test with 4 GiB RAM, four vCPUs and
-`host` rendering plus `GuestAngle` resumed Settings without an error dialog;
-that controlled check does not establish general application responsiveness.
-Ordinary application networking, lifetime listener isolation, root/two-owner
-tests and the actual worker/renderer remain open. Image-specific data switching also needs real acceptance. See
-`D-2026-11-09-07` for the portable provider design; this proof does not change
-the shipping backend or its VM/KVM guards.
+The first stop exposed a late SDK ADB smart-server start and a Netsim helper.
+The scoped harness now supplies a non-executing custom ADB path, reserves the
+smart-server ports and inventories private SDK executable identities and
+listeners before and after shutdown. Later runs observed no smart server or
+leftover SDK process; these snapshots are not lifetime listener attestation.
+Earlier low-memory/software-rendering trials exposed UI stalls. With 4 GiB RAM,
+four vCPUs and `host` rendering plus `GuestAngle`, a stricter run verified an
+actual Settings touch transition, a prior selected file surviving a cold boot,
+another exact transfer with sync, and natural guest poweroff. Hidden stale
+WindowManager error records are distinguished from visible dialogs.
+
+Disabling Bluetooth's host backend caused Android HAL crashes. A separate
+network-none, read-only Docker Netsim instance with an authenticated fixed-target
+host relay let the real Android guest reach Bluetooth ON. Two independently
+keyed radio instances passed workstation-root cross-owner transport negatives;
+their trusted connections worked before and after. This is not two-real-VM or
+Android-root acceptance. The native worker and renderer now have app routes and a shared phone UI; live product acceptance remains in progress.
+
+The standard Google APIs ARM image was then installed under byte-identical
+accepted ARM terms. Its default ADB listener returned CNXN without an AUTH
+challenge, so the private client refused it before signing or executing a
+command. SDK boot-property switches did not fix that refusal. A separate
+derived boot-policy ramdisk is under test; it is not an accepted runtime.
+To fit the owner's disk budget, immutable image archives are removed after
+verified extraction and only one system-image cache is retained at a time;
+private userdata and the pinned restore package records are kept separately.
+Ordinary application networking, lifetime listener isolation, rooted/two-owner
+tests, real image switching and product integration remain open. See
+`D-2026-11-09-07`; these proofs do not change the shipping VM/KVM guards.
 
 **USB tether · send files to Android** transfers one chosen upload or one owned
 Pantheon document's **current text** (Markdown stays `.md`, other text uses `.txt`).

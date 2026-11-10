@@ -1860,7 +1860,9 @@ class Handler(BaseHTTPRequestHandler):
                        "names": lambda: self.station.names(account, body),
                        "network": lambda: self.station.network(account, body),
                        # `B1733`
-                       "starting_point": lambda: self.station.starting_point(account, body)}[name]
+                       "starting_point": lambda: self.station.starting_point(account, body)}.get(name)
+            if handler is None:
+                raise WorkstationError("not_found", "This workstation backend does not serve that route.")
             answer = handler()
             if answer is None:          # `P25-05`: a browser frame the caller has
                 self._send(304, None)

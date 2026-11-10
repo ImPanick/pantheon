@@ -288,7 +288,11 @@ def unavailable_reason(owner: Optional[str], *, delegated_credential: bool = Fal
     from src.workstation_client import WorkstationError
 
     try:
-        workstation_for(owner)
+        try:
+            workstation_for(owner)
+        except WorkstationError:
+            from src.phone_runtime import phone_for
+            phone_for(owner)
     except WorkstationError as e:
         return e.message
     except Exception as e:  # noqa: BLE001 — an unanswerable question is a no
@@ -480,7 +484,16 @@ class ComputerTool:
         try:
             # The admin's `sudo` in force and the person's display started
             # before the first action needs it (`P20-02`'s `ensure_ready`).
-            ready = await ensure_ready(owner)
+            if args.get("screen") == "phone" or action in PHONE_CONTROLS:
+                from src.phone_runtime import phone_for
+                from types import SimpleNamespace
+                client, account = phone_for(owner)
+                if not getattr(client, "native_android", False):
+                    ready = await ensure_ready(owner)
+                else:
+                    ready = SimpleNamespace(client=client, account=account)
+            else:
+                ready = await ensure_ready(owner)
         except WorkstationError as e:
             return e.as_result()
         client, account = ready.client, ready.account

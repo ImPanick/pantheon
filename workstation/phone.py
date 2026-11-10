@@ -425,7 +425,7 @@ def avd_config(device: str, package: str, *, memory_mib: int = DEFAULT_MEMORY_MI
         "avd.ini.displayname": d["name"],
         "avd.ini.encoding": "UTF-8",
         "abi.type": img["abi"],
-        "hw.cpu.arch": "x86_64" if img["abi"] == "x86_64" else img["abi"],
+        "hw.cpu.arch": "arm64" if img["abi"] == "arm64-v8a" else img["abi"],
         "hw.cpu.ncore": "2",
         "hw.ramSize": str(memory_mib),
         "vm.heapSize": "256",

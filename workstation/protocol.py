@@ -389,6 +389,7 @@ ROUTES: Dict[str, Tuple[str, str]] = {
     # shapes and rules exactly, for the phone's display. The GET without the
     # upgrade starts nothing: a phone boots only when asked to (`phone` start).
     "phone_screen": ("GET", "/v1/users/{account}/phone/screen"),
+    "phone_choice": ("POST", "/v1/users/{account}/phone/choice"),
 }
 
 # ── what the fields may hold ──────────────────────────────────────────────────

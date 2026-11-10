@@ -507,7 +507,7 @@ class WorkstationClient:
     """One workstation, one token. Every method is one route in `ROUTES`."""
 
     def __init__(self, base: str, token: str, *, timeout: float = _TIMEOUT,
-                 android_vm_endpoint: bool = False):
+                 android_vm_endpoint: bool = False, tls_pin_override: Optional[str] = None):
         parsed = parse_base(base)
         if not parsed:
             raise WorkstationError("bad_request", f"{base!r} is not a workstation address.")
@@ -515,6 +515,7 @@ class WorkstationClient:
         self.token = token or ""
         self.timeout = timeout
         self.android_vm_endpoint = android_vm_endpoint is True
+        self._tls_pin_override = tls_pin_override
         # `P20-07`: learnt from this workstation's own `health`.
         self._starts_machines = False
         # `B1661`: which run of the daemon answered `health` — None until it
@@ -537,7 +538,8 @@ class WorkstationClient:
         parts = urlsplit(self.base)
         host = parts.hostname or ""
         if parts.scheme == "https":
-            pin, source, raw = resolve_pin()  # `B980`: the setting, then the environment
+            pin, source, raw = resolve_pin() if self._tls_pin_override is None else (
+                normalise_pin(self._tls_pin_override), SOURCE_ENV, self._tls_pin_override)  # Endpoint-specific pins never borrow the desktop pin.
             self._pin_source = source
             if raw and pin is None:
                 where = ("The certificate fingerprint in Settings → Workstation"
@@ -890,6 +892,12 @@ class WorkstationClient:
         # may take its own time to load on top.
         return await self._call("browser", account, body, timeout=120.0 + _TIMEOUT, allow_304=True)
 
+
+    async def phone_choice(self, account: str, device: str, edition: str, *, holder: str, changing: bool = False) -> Dict:
+        """Persist an independent host's desired profile without booting it."""
+        if not self.android_vm_endpoint:
+            raise WorkstationError("unavailable", "This endpoint is not an independent Android host.")
+        return await self._call("phone_choice", account, {"device": device, "edition": edition, "holder": holder, "changing": changing}, timeout=90.0 + _TIMEOUT)
 
     async def phone(self, account: str, action: str, *, holder: str = "agent",
                     **fields: Any) -> Dict:

@@ -4208,3 +4208,37 @@ unit tests establish selection logic, not real hypervisor or Android acceptance.
 The current local change fixes the offline image-preference save and workspace
 layout. The portable native provider and its real-runtime acceptance are still
 tracked as open in B2106; this decision does not label them implemented.
+
+The local Mac continuation has demonstrated the radio transport to investigate:
+one owner-specific Netsim in a read-only, network-none Docker container, with no
+published raw SDK ports. A fresh owner-specific credential admits only the fixed
+radio CONNECT target at a trusted host relay; the relay reaches Netsim through
+Docker's local exec transport. The installed SDK's `grpc_proxy` supports this
+authentication, and real Android Bluetooth reached ON. Independent radio
+credentials rejected cross-owner workstation-root attempts. These are disposable
+proofs outside product source, not a production worker or complete isolation
+acceptance. The relay must bound unauthenticated concurrency and total header
+time, preserve cleanup after failed startup/log capture, and never expose the
+Docker API or its own credential to a guest. Rooted Goldfish TCP/Unix-pipe probes
+against disposable markers, all SDK control endpoints and two real guests still
+precede integration. Normal Slirp application networking does not intrinsically
+require a custom VPN: reachable management ports must be independently
+authenticated or genuinely private, as the existing VM policy already requires.
+
+The standard Google APIs ARM35 image falsified a further native assumption:
+its default ADB listener answered CNXN without an AUTH challenge. The private
+client refuses that state before signing or executing a command. Boot-property
+switches did not make it authenticated. A separately derived boot-policy
+ramdisk is being tested while preserving the original SDK files; no such
+policy is accepted until authentication is observed from boot and after a
+root-daemon restart, with real distinct-key rejection and trusted controls.
+Keep this native-only refusal; the existing Linux VM's outer isolation is
+unchanged. Image cache eviction under the owner's disk budget never removes
+private userdata or its pinned restore package record.
+
+
+**D-2026-11-09-07 continuation: native device integration.** The dedicated host now reuses AccountPhone's catalogue, validation, transfer and marks; an allowlisted phone-only worker exposes no host shell/files. App-side desired choice is separate from active VM state, and phone takeover is independent of desktop takeover. Choice synchronization is serialized; an agent must pass the worker's atomic holder check before changing saved intent. Native phone calls do not inherit a desktop Computer Use acceptance. Cold-boot tests cover a Python-decoded, concatenated SDK ramdisk with only an appended ADB-auth policy; the original SDK files stay unchanged. The verified SDK vendor's engineering public key is trusted along with its OS code; this is cross-owner isolation under vendor trust, not exclusive-owner authorization.
+
+The SDK transparent HTTP proxy was rejected as the network boundary because its setup/fallback can permit direct connections. WiFiPacketStream instead carries packets to this VM's private Docker Netsim service. The existing netrules Internet policy applies before Netsim drops all Linux capabilities and runs as UID501; its private loopback remains available for Slirp's signal pipe. No raw Netsim port is published. SDK legacy networking stays restricted. Public HTTP succeeded from the real guest. Rooted guest TCP/UDP to owned host listeners were refused, with specific destination counters (2 TCP packets,1 UDP packet); trusted namespace controls reached both listeners. Workstation-root raw-radio reach timed out. These checks do not establish two-live-guest or Windows/Linux acceptance.
+
+The installer retains pinned archive URL, size, SHA1/SHA256 and licence identity across immutable-ROM eviction; image-specific userdata and keys are preserved. Stop invalidates an install generation so a late download cannot resurrect the VM. Source-level routing/protocol suites pass; actual app UI/image-switch acceptance is still in progress and tracked on B2106.

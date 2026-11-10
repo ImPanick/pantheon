@@ -388,7 +388,7 @@ function _queueControl(holder, keepalive = false) {
   // Server mutations must keep their order too: ignoring a stale response
   // cannot undo a takeover that already happened. Cleanup precedes any newer
   // window's takeover, including when the earlier response is still pending.
-  const request = _controlTail.then(() => _post('/api/workstation/control', { holder }, { keepalive }));
+  const request = _controlTail.then(() => _post('/api/workstation/phone/control', { holder }, { keepalive }));
   _controlTail = request.catch(() => null);
   return request;
 }

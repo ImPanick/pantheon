@@ -807,6 +807,26 @@ def setup_workstation_routes() -> APIRouter:
             out["pointed"] = _pointed(answer["pointed"])
         return out
 
+    def _phone_mine(request):
+        from src.phone_runtime import phone_for
+        owner = require_user(request)
+        try:
+            return phone_for(owner, auth_manager=_auth_manager(request))
+        except WorkstationError as error:
+            raise _http_error(error)
+
+    @router.post("/phone/control")
+    async def workstation_phone_control(request: Request):
+        client, account = _phone_mine(request)
+        body = await _body(request)
+        if body.get("holder") not in P.HOLDERS:
+            raise HTTPException(400, "holder is person or agent.")
+        try:
+            answer = await client.control(account, body["holder"])
+        except WorkstationError as error:
+            raise _http_error(error)
+        return JSONResponse(_holder_answer(answer.get("holder"), changed=True), headers=_NO_STORE)
+
     # ── `B1751`: the phone ─────────────────────────────────────────────────────
 
     @router.get("/phone")
@@ -814,7 +834,7 @@ def setup_workstation_routes() -> APIRouter:
         """The caller's own phone: whether this workstation can run one (and
         why not), the devices it can be, which one is chosen, and its state.
         Starts nothing."""
-        client, account = _mine(request)
+        client, account = _phone_mine(request)
         try:
             answer = await client.phone(account, "status", holder="person")
         except WorkstationError as e:
@@ -828,7 +848,7 @@ def setup_workstation_routes() -> APIRouter:
         """The person's own hand on their phone: turn it on or off, choose the
         device, press a side or navigation key, fold it, turn it, open an
         address. Touch itself travels in the stream, while they hold it."""
-        client, account = _mine(request)
+        client, account = _phone_mine(request)
         body = await _body(request)
         action = body.get("action")
         if action not in _PHONE_PERSON_ACTIONS:
@@ -838,7 +858,8 @@ def setup_workstation_routes() -> APIRouter:
             if action in ("start", "install", "preview", "edition", "device"):
                 # VM startup and SDK installation are command/file traffic:
                 # sync policy and learn the VM cold-start timeout first.
-                await wa.sync_config(client)
+                if not getattr(client, "native_android", False):
+                    await wa.sync_config(client)
             answer = await client.phone(account, action, holder="person", **fields)
         except WorkstationError as e:
             raise _http_error(e)
@@ -850,7 +871,7 @@ def setup_workstation_routes() -> APIRouter:
         """Whether the caller's phone's screen streams now, who holds it, and
         the client's page pointed at the stream below; or why not."""
         from src import desktop_client
-        client, account = _mine(request)
+        client, account = _phone_mine(request)
         try:
             answer = await client.phone_screen(account)
         except WorkstationError as e:
@@ -873,9 +894,10 @@ def setup_workstation_routes() -> APIRouter:
         An octet stream is a custom upload. JSON names one owned document to
         export as its current text. Neither form accepts an owner or a path.
         """
-        client, account = _mine(request)
+        client, account = _phone_mine(request)
         try:
-            await wa.sync_config(client)
+            if not getattr(client, "native_android", False):
+                await wa.sync_config(client)
             status = await client.phone(account, "status", holder="person")
             if status.get("isolation") != "per_user_vm":
                 raise HTTPException(409, "File transfer requires the per-user VM Android runtime.")
@@ -925,7 +947,7 @@ def setup_workstation_routes() -> APIRouter:
             await websocket.close(code=4401)
             return
         try:
-            client, account = _mine(websocket)  # type: ignore[arg-type]
+            client, account = _phone_mine(websocket)  # type: ignore[arg-type]
         except HTTPException as e:
             await websocket.close(code=4403, reason=_close_reason(str(e.detail)))
             return
