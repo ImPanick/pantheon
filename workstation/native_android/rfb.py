@@ -153,6 +153,7 @@ def serve(stream, frame, event, release, *, frame_interval=.25):
         pixel_format = DEFAULT_FORMAT
         stream.write(struct.pack(">HH", width, height) + pixel_format + struct.pack(">I", len(name)) + name)
         encodings, last_frame_at = set(), 0.0
+        geometry_sent = False
         while True:
             kind = stream.read(1)[0]
             if kind == 0:
@@ -192,7 +193,15 @@ def serve(stream, frame, event, release, *, frame_interval=.25):
                     length.append((value & 127) | (128 if value > 127 else 0))
                     if value > 127:
                         length.append(value >> 7)
-                stream.write(struct.pack(">BBH", 0, 0, 2))
+                report_geometry = not geometry_sent and -308 in encodings
+                stream.write(struct.pack(">BBH", 0, 0, 3 if report_geometry else 2))
+                if report_geometry:
+                    # Kasm needs ExtendedDesktopSize to distinguish physical
+                    # framebuffer dimensions from its CSS viewport dimensions.
+                    # Otherwise it scales pixels while sending unscaled input.
+                    stream.write(struct.pack('>HHHHi',0,0,width,height,-308)
+                                 + b'\1\0\0\0' + struct.pack('>IHHHHI',0,0,0,width,height,0))
+                    geometry_sent = True
                 stream.write(struct.pack(">HHHHi", 0, 0, width, height, 7))
                 stream.write(b"\x90" + length + data)
                 stream.write(struct.pack(">HHHHi", 0, 0, 0, 0, -224))
@@ -203,10 +212,11 @@ def serve(stream, frame, event, release, *, frame_interval=.25):
                     raise ProtocolError("Invalid RFB key state.")
                 event({"kind": "key", "down": bool(down), "keysym": keysym, "geometry": geometry})
             elif kind == 5:
-                buttons, x, y, relative_x, relative_y = struct.unpack(">HHHHH", stream.read(10))
+                buttons, x, y, scroll_x, scroll_y = struct.unpack(">HHHhh", stream.read(10))
                 if x >= width or y >= height or buttons & ~0x1ff:
                     raise ProtocolError("The pointer event leaves the current phone display.")
-                event({"kind": "pointer", "buttons": buttons, "x": x, "y": y, "geometry": geometry})
+                event({"kind": "pointer", "buttons": buttons, "x": x, "y": y,
+                       "scroll_x": scroll_x, "scroll_y": scroll_y, "geometry": geometry})
             elif kind == 6:
                 packet = stream.read(7)
                 size = struct.unpack(">I", packet[3:])[0]
@@ -244,6 +254,22 @@ def serve(stream, frame, event, release, *, frame_interval=.25):
                 stream.read(count * 4)  # Kasm codec capability list; this server sends Tight JPEG only.
             elif kind == 185:
                 pass  # Kasm keepalive
+            elif kind == 252:
+                # Kasm sends its preferred video limit after ExtendedDesktopSize.
+                # Android retains its bounded, authoritative physical geometry.
+                stream.read(4)
+            elif kind == 251:
+                # ExtendedDesktopSize advertises this request too. Android's
+                # device profile owns its resolution; refuse other layouts
+                # without terminating an otherwise valid viewer connection.
+                padding, requested_w, requested_h, count, padding2 = struct.unpack('>BHHBB',stream.read(7))
+                if count > 16:
+                    raise ProtocolError('Too many requested Android screens.')
+                layout = stream.read(count * 16)
+                fixed = struct.pack('>IHHHHI',0,0,0,width,height,0)
+                result = 0 if (requested_w,requested_h)==(width,height) and count==1 and layout==fixed else 3
+                stream.write(struct.pack('>BBHHHHHi',0,0,1,1,result,width,height,-308)
+                             + b'\1\0\0\0' + fixed)
             else:
                 raise ProtocolError(f"Unsupported unadvertised phone RFB message {kind}.")
     finally:

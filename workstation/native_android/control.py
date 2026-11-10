@@ -109,6 +109,13 @@ class ScrcpyControl:
         data = value.encode()
         self.send(struct.pack(">BqBI", 9, 0, 1, len(data)) + data)
 
+    def scroll(self, x, y, width, height, dx, dy):
+        # scrcpy3.3.4 uses signed 16-bit fixed point spanning [-16,16].
+        # Kasm sends browser pixel deltas: 40 pixels is one wheel step.
+        # A single bounded packet avoids queuing a sleeping swipe per delta.
+        axis=lambda value:max(-32768,min(32767,round(value*2048/40)))
+        self.send(struct.pack('>BiiHHhhI',3,x,y,width,height,axis(dx),axis(-dy),0))
+
     def close(self):
         with self.lock:
             if self.context is not None:

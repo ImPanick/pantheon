@@ -101,7 +101,10 @@ class Screen:
                     if buttons&1:
                         self.touch(2 if old else 0,x,y);self.gestures[session]=(x,y)
                     elif old:self.touch(1,x,y);self.gestures.pop(session,None)
+                    if buttons&2:control.press(3)
                     if buttons&4:control.press(4)
+                    dx,dy=event.get('scroll_x',0),event.get('scroll_y',0)
+                    if dx or dy:control.scroll(*self.point(x,y),dx,dy)
                     if buttons&0x78:
                         dx=(1 if buttons&64 else -1 if buttons&32 else 0)
                         dy=(1 if buttons&16 else -1 if buttons&8 else 0)

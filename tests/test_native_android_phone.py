@@ -268,3 +268,38 @@ def test_unchanged_native_choice_still_allows_agent_observation_during_takeover(
         state=await phone.phone('owned','status')
         assert state['device']=='pixel_9'
     asyncio.run(check())
+
+
+def test_kasm_scroll_and_middle_button_reach_android_without_blocking_swipes():
+    import threading
+    from workstation.native_android.screen import Screen
+    from workstation.native_android.control import ScrcpyControl
+    packets=[]
+    control=object.__new__(ScrcpyControl);control.send=packets.append
+    phone=SimpleNamespace(lock=threading.RLock(),generation='one',control=control,_on=lambda:None,touch=lambda:None)
+    screen=Screen(phone);screen.size=(100,200);screen.physical=(1000,2000)
+    geometry=('one',screen.size,screen.physical)
+    pointer=lambda mask,dx,dy:b'\5'+struct.pack('>HHHhh',mask,25,50,dx,dy)
+    stream=Stream(hello(pointer(0,-40,80)+pointer(2,0,0)+pointer(0,0,0)))
+    with pytest.raises(rfb.StreamEnded):
+        rfb.serve(stream,lambda:(Image.new('RGB',screen.size),geometry),
+                  lambda e:screen.rfb_event(e,'viewer',lambda:'person'),lambda:None)
+    # Signed browser pixels become bounded Android wheel axes, not sleep-based swipes.
+    assert packets==[struct.pack('>BiiHHhhI',3,250,500,1000,2000,-2048,-4096,0),
+                     struct.pack('>BBiii',0,0,3,0,0)+struct.pack('>BBiii',0,1,3,0,0)]
+
+
+def test_kasm_receives_actual_screen_geometry_before_scaling_input():
+    # Kasm's current renderer otherwise assumes its viewport is the server
+    # resolution, scaling pixels but leaving pointer coordinates unscaled.
+    request=b'\3'+struct.pack('>BHHHH',0,0,0,490,1100)
+    encodings=b'\2\0\0\3'+struct.pack('>iii',7,-224,-308)
+    resize=b'\xfb'+struct.pack('>BHHBB',0,800,600,1,0)+struct.pack('>IHHHHI',0,0,0,800,600,0)
+    stream=Stream(b'RFB 003.008\n\1\1'+encodings+request+b'\xfc'+struct.pack('>HH',1280,1280)+resize+request)
+    with pytest.raises(rfb.StreamEnded):
+        rfb.serve(stream,lambda:(Image.new('RGB',(490,1100)),'one'),lambda _:None,lambda:None,frame_interval=0)
+    geometry=struct.pack('>HHHHi',0,0,490,1100,-308)+b'\1\0\0\0'+struct.pack('>IHHHHI',0,0,0,490,1100,0)
+    assert bytes(stream.output).count(geometry)==1
+    assert stream.output.index(geometry)<stream.output.index(b'\xff\xd8')
+    assert struct.pack('>HHHHi',1,3,490,1100,-308) in stream.output
+    assert bytes(stream.output).count(b'\xff\xd8')==2
