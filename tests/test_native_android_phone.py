@@ -3,6 +3,7 @@
 import asyncio
 import io
 import struct
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -242,6 +243,12 @@ def test_image_restore_uses_recorded_revision_and_keeps_private_userdata(tmp_pat
         assert url==spec['url']
         return io.BytesIO(data)
     monkeypatch.setattr('urllib.request.urlopen',urlopen)
+    original_replace = Path.replace
+    def cross_volume_replace(source, target):
+        if source.is_relative_to(state) and Path(target).is_relative_to(sdk):
+            raise OSError(18, 'Cross-device link')
+        return original_replace(source, target)
+    monkeypatch.setattr(Path, 'replace', cross_volume_replace)
     ImageInstaller(host).install_image(package)
     assert spec['url'] in requests and not any('new-r99' in url for url in requests)
     assert private.read_bytes()==b'private userdata'
@@ -303,3 +310,150 @@ def test_kasm_receives_actual_screen_geometry_before_scaling_input():
     assert stream.output.index(geometry)<stream.output.index(b'\xff\xd8')
     assert struct.pack('>HHHHi',1,3,490,1100,-308) in stream.output
     assert bytes(stream.output).count(b'\xff\xd8')==2
+
+
+def test_native_host_capabilities_follow_host_cpu_and_sdk_output(monkeypatch):
+    from workstation.native_android import host as H
+    monkeypatch.setattr(H.platform, 'system', lambda: 'Darwin')
+    monkeypatch.setattr(H.platform, 'machine', lambda: 'x86_64')
+    monkeypatch.setattr(H.subprocess, 'run', lambda *a, **k: SimpleNamespace(returncode=0, stdout='1\n'))
+    assert H.native_abi() == 'arm64-v8a'
+    monkeypatch.setattr(H.platform, 'system', lambda: 'Windows')
+    monkeypatch.setenv('PROCESSOR_ARCHITEW6432', 'ARM64')
+    with pytest.raises(RuntimeError, match='compatible Android worker'):
+        H.native_abi()
+    assert H.accelerator_name('AEHD (version 2.2) is installed and usable.') == 'aehd'
+    assert H.accelerator_name('Hypervisor.Framework OS X is usable') == 'hvf'
+
+
+def test_usb_merge_keeps_both_initial_versions_and_uses_content_baselines():
+    from src.phone_usb import plan_sync
+    assert plan_sync({'a.txt':'A'}, {'a.txt':'B'}, {}) == [('conflict','a.txt')]
+    assert plan_sync({'a.txt':'A2'}, {'a.txt':'A'}, {'a.txt':'A'}) == [('push','a.txt')]
+    assert plan_sync({'a.txt':'A'}, {'a.txt':'A2'}, {'a.txt':'A'}) == [('pull','a.txt')]
+    assert plan_sync({}, {'a.txt':'A'}, {'a.txt':'A'}) == [('pull','a.txt')]
+    assert plan_sync({'a.txt':'A'}, {'a.txt':'A'}, {}) == []
+
+
+def test_usb_project_folder_refuses_symlink_and_hardlink_exports(tmp_path):
+    from src.phone_usb import Folder
+    outside=tmp_path/'private';outside.mkdir();(outside/'secret').write_text('secret')
+    root=tmp_path/'projects';root.mkdir();(root/'owner').symlink_to(outside,target_is_directory=True)
+    with pytest.raises(OSError):
+        with Folder(root, ['owner','Android USB','pixel-standard']):pass
+    (root/'owner').unlink();(root/'owner').mkdir(mode=0o700)
+    with Folder(root,['owner','Android USB','pixel-standard']) as folder:
+        folder.put('hello.txt', b'hello', expected=None)
+        assert folder.read('hello.txt') == b'hello'
+        with pytest.raises(RuntimeError):folder.put('hello.txt',b'overwrite',expected=None)
+        import os
+        os.link(outside/'secret', root/'owner/Android USB/pixel-standard/leak.txt')
+        with pytest.raises(RuntimeError):folder.manifest()
+
+
+def test_usb_typed_storage_round_trip_conflict_bounds_and_eject(tmp_path,monkeypatch):
+    import base64,subprocess,threading,os
+    from workstation import phone_usb as U
+    from workstation.phone import PhoneError
+    guest=tmp_path/'guest';guest.mkdir();monkeypatch.setattr(U,'DIRECTORY',str(guest))
+    monkeypatch.setattr(U,'COUNT',2)
+    class Phone:
+        lock=threading.RLock();device='pixel_9';edition='standard';emulator=SimpleNamespace(pid=123)
+        def _on(self):pass
+        def mode(self):return 'android'
+        def home(self):return tmp_path
+        def adb(self,args,**kwargs):
+            if args[0]=='push':
+                import shutil
+                shutil.copyfile(args[1],args[2]);return ''
+            result=subprocess.run(' '.join(args[1:]),shell=True,capture_output=True,timeout=10)
+            if result.returncode and not kwargs.get('quiet'):raise RuntimeError('guest command failed')
+            return result.stdout if kwargs.get('binary') else result.stdout.decode()
+    phone=Phone();key=U.operation(phone,'connect')['connection']
+    data=b'hello Android';encoded=base64.b64encode(data).decode()
+    got=U.operation(phone,'write',key,'a.txt',encoded)
+    assert got['sha256']==U.digest(data)
+    assert base64.b64decode(U.operation(phone,'read',key,'a.txt')['data_b64'])==data
+    with pytest.raises(PhoneError):U.operation(phone,'write',key,'a.txt',encoded)
+    U.operation(phone,'write',key,'b.txt',encoded)
+    with pytest.raises(PhoneError,match='full'):U.operation(phone,'write',key,'c.txt',encoded)
+    assert set(U.operation(phone,'list',key)['files'])=={'a.txt','b.txt'}
+    U.operation(phone,'eject',key)
+    with pytest.raises(PhoneError,match='ejected'):U.operation(phone,'list',key)
+    assert (guest/'a.txt').read_bytes()==data
+    key=U.operation(phone,'connect')['connection'];phone.device='galaxy_z_flip6'
+    with pytest.raises(PhoneError,match='changed'):U.operation(phone,'list',key)
+
+
+def test_usb_live_folder_replacement_is_refused(tmp_path):
+    from src.phone_usb import Folder
+    root=tmp_path/'projects';root.mkdir()
+    with Folder(root,['owner','USB']) as folder:
+        folder.put('a.txt',b'a',None)
+        (root/'owner/USB').rename(root/'owner/moved')
+        (root/'owner/USB').mkdir()
+        with pytest.raises(RuntimeError,match='moved'):folder.put('b.txt',b'b',None)
+    assert not (root/'owner/moved/b.txt').exists()
+
+
+def test_usb_export_allows_the_desktop_uid_but_keeps_the_owner_root_private(tmp_path):
+    import os,stat
+    from src.phone_usb import Folder
+    base=tmp_path/'projects';base.mkdir()
+    with Folder(base,['owner','Android USB','pixel-standard']) as folder:
+        folder.put('test.txt',b'hello',None)
+        assert stat.S_IMODE((base/'owner').stat().st_mode)==0o700
+        assert stat.S_IMODE((base/'owner/Android USB').stat().st_mode)==0o777
+        assert stat.S_IMODE((base/'owner/Android USB/pixel-standard/test.txt').stat().st_mode)==0o666
+        (base/'owner').chmod(0o755)
+        with pytest.raises(RuntimeError,match='private'):folder.read('test.txt')
+
+
+def test_usb_connection_syncs_both_ways_preserves_conflicts_and_stops_on_profile_change(tmp_path,monkeypatch):
+    import base64
+    from src import phone_usb as U,tool_execution as T,workstation_access as W
+    monkeypatch.setattr(T,'projects_base',lambda:str(tmp_path))
+    monkeypatch.setattr(T,'projects_root',lambda owner,**kw:str(tmp_path/owner))
+    monkeypatch.setattr(W,'may_use',lambda *a,**kw:True)
+    class Remote:
+        def __init__(self):self.files={'shared.txt':b'Android version'};self.device='pixel_9'
+        async def phone(self,account,action,**kw):
+            assert account=='owner-account'
+            if action=='status':return dict(state='on',device=self.device,edition='standard')
+            assert kw['connection']=='private-lease'
+            op=kw['operation'];name=kw.get('name')
+            if op=='eject':return {'connected':False}
+            if op=='list':return {'files':{n:{'sha256':U.digest(d),'bytes':len(d)} for n,d in self.files.items()}}
+            if op=='read':return {'data_b64':base64.b64encode(self.files[name]).decode()}
+            if op=='write':
+                current=self.files.get(name)
+                assert (U.digest(current) if current is not None else None)==kw.get('expected')
+                self.files[name]=base64.b64decode(kw['data_b64']);return {}
+            raise AssertionError(op)
+    async def check():
+        remote=Remote();item=U.Connection('owner',remote,'owner-account',{'device':'pixel_9','edition':'standard'},'private-lease')
+        with item.folder() as folder:folder.put('shared.txt',b'Workstation version',None)
+        await item.round()
+        assert remote.files['shared.txt']==b'Workstation version'
+        copy=next(n for n in remote.files if '(Android ' in n)
+        assert remote.files[copy]==b'Android version'
+        await item.round();assert len(remote.files)==2
+        remote.files['from-phone.txt']=b'phone file'
+        await item.round()
+        with item.folder() as folder:
+            assert folder.read('from-phone.txt')==b'phone file'
+            folder.put('shared.txt',b'edited on desktop',U.digest(b'Workstation version'))
+        await item.round();assert remote.files['shared.txt']==b'edited on desktop'
+        remote.device='galaxy_z_flip6'
+        with pytest.raises(RuntimeError,match='changed'):await item.round()
+        assert item.stopping.is_set()
+        remote.device='pixel_9'
+        fresh=U.Connection('owner',remote,'owner-account',{'device':'pixel_9','edition':'standard'},'private-lease')
+        U._connections['owner']=fresh
+        try:
+            await U.upload('owner','just-before-eject.txt',b'must reach Android')
+            result=await U.eject('owner')
+            assert result['connected'] is False and not result['error']
+            assert remote.files['just-before-eject.txt']==b'must reach Android'
+        finally:U._connections.pop('owner',None)
+    asyncio.run(check())

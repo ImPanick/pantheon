@@ -263,13 +263,14 @@ export function bodyGeometry(look, shape, W, H) {
   const f = l.bezel;
   const m = Math.min(aspect, 1);   // the short side, as a share of the screen's height
   const sh = Math.max(0, Math.min(H / (1 + 2 * f * m), W / (aspect + 2 * f * m)));
-  const rim = Math.max(4, f * m * sh);
-  const screenH = Math.floor(sh);
-  const screenW = Math.floor(sh * aspect);
+  const rim = f * m * sh;
+  const screenH = sh;
+  const screenW = sh * aspect;
   const short = Math.min(screenW, screenH) + 2 * rim;
-  const radius = Math.max(rim + 2, l.corner * short);
-  return { screenW, screenH, rim: Math.round(rim), radius: Math.round(radius),
-    inner: Math.max(2, Math.round(radius - rim * 0.85)) };
+  const unit = short / 400;
+  const radius = Math.max(rim + 2 * unit, l.corner * short);
+  return { screenW, screenH, rim, radius, unit,
+    inner: Math.max(2 * unit, radius - rim * 0.85) };
 }
 
 async function _get(url) {
@@ -350,13 +351,24 @@ async function _sendFile({ file = null, documentId = '' }) {
     try { answer = await res.json(); } catch (_) { answer = null; }
     if (!res.ok || !answer || !answer.ok) throw new Error(answer && answer.detail || 'The file transfer did not complete.');
     if (_win !== win) return;
-    _transferText = `Sent ${answer.name} (${answer.bytes} bytes) to ${answer.destination}. Checksum verified by Android.`;
+    _transferText = `Sent ${answer.name} (${answer.bytes} bytes) to ${answer.destination}. The USB folder syncs automatically while connected.`;
   } catch (e) {
     if (_win !== win) return;
     _transferText = e.message;
   } finally {
     if (_win === win) { _sending = false; _render(); }
   }
+}
+
+async function _toggleUsb() {
+  const win = _win;
+  if (!win || win.usbBusy) return;
+  win.usbBusy = true; _render();
+  try {
+    const usb = await _post('/api/workstation/phone/usb', {action: _state?.usb?.connected ? 'eject' : 'connect'});
+    if (_win === win && _state) { _state.usb = usb; _transferText = ''; }
+  } catch (error) { if (_win === win) _transferText = error.message; }
+  finally { if (_win === win) { win.usbBusy = false; _render(); _kick(100); } }
 }
 
 async function _findDocuments() {
@@ -505,6 +517,7 @@ function _shapeBody(shape, look, rotation = 0) {
   const natural = sideways ? { w: shape.h, h: shape.w } : shape;
   const g = bodyGeometry(look, natural, sideways ? H : W, sideways ? W : H);
   const st = _win.bezel.style;
+  st.setProperty('--phw-unit', `${g.unit}px`);
   st.setProperty('--phw-rim', `${g.rim}px`);
   st.setProperty('--phw-radius', `${g.radius}px`);
   st.setProperty('--phw-inner', `${g.inner}px`);
@@ -567,10 +580,11 @@ function _moveBody(s, previous) {
   _animations.push(body);
   if (fold) {
     const closing = next.posture === 'closed';
+    const axis = _win.bezel.dataset.foldAxis === 'horizontal' ? 'X' : 'Y';
     _animations.push(_win.leaf.animate([
-      { opacity: 0, transform: `rotateY(${closing ? 0 : -150}deg)` },
-      { opacity: .9, transform: 'rotateY(-80deg)', offset: .5 },
-      { opacity: 0, transform: `rotateY(${closing ? -150 : 0}deg)` },
+      { opacity: 0, transform: `rotate${axis}(${closing ? 0 : -150}deg)` },
+      { opacity: .9, transform: `rotate${axis}(-80deg)`, offset: .5 },
+      { opacity: 0, transform: `rotate${axis}(${closing ? -150 : 0}deg)` },
     ], opts));
   }
   body.onfinish = () => { if (_animations.includes(body)) _cancelMotion(); };
@@ -625,12 +639,28 @@ function _render() {
   _win.rotate.hidden = !on;
   _win.fold.hidden = !(on && d.foldable);
   _win.fold.textContent = s.posture === 'closed' ? 'Unfold' : 'Fold';
+  _win.halfFold.hidden = !(on && d.foldable);
+  _win.halfFold.disabled = _busy || s.posture === 'half_open';
   _win.take.hidden = !on || holding;
   _win.give.hidden = !on || !holding;
-  _win.tools.hidden = !on;
   _win.nav.hidden = !on;
   _win.transfer.hidden = !(on && !mobile && s.isolation === 'per_user_vm');
-  _win.transferText.textContent = _transferText || 'Files go to Download/Pantheon on your Android device. Each file is limited to 20 MB. No folders are mounted.';
+  const usb = s.usb || {};
+  _win.usbCable.dataset.connected = String(!!usb.connected);
+  _win.usbConnect.textContent = _win.usbBusy ? 'Connecting…' : usb.connected ? 'Eject USB' : 'Connect USB';
+  _win.usbConnect.disabled = !!_win.usbBusy;
+  _win.usbSummary.textContent = usb.connected ? 'USB connected · shared files' : 'USB · connect shared files';
+  _win.usbFolder.textContent = usb.folder ? `Your Pantheon projects / ${usb.folder} ↔ Android / Download / PantheonUSB. ${usb.workstation_connected ? 'The workstation is connected to this same folder.' : 'Workstation folder sharing is not connected.'}` : 'Connect your Android storage to your Pantheon projects and workstation.';
+  _win.transferText.textContent = _transferText || usb.error || (usb.connected ?
+    'Syncs both ways every five seconds. Conflicts keep both copies; deletions stay local. Up to 64 files, 20 MB each, 128 MiB total. Use portable filenames; subfolders are not synced.' :
+    'Plug in to share files. Eject stops syncing and keeps the files on both sides.');
+  _win.usbFiles.replaceChildren();
+  for (const file of (usb.files || [])) {
+    const link = _el('a', 'phw-usb-file', `${file.name} · ${file.bytes} bytes`);
+    link.href = `/api/workstation/phone/usb/file?name=${encodeURIComponent(file.name)}`;
+    link.download = file.name;
+    _win.usbFiles.appendChild(link);
+  }
   _win.upload.disabled = _sending;
   _win.docSend.disabled = _sending || !_win.docSelect.value;
   const runtime = runtimeOf(s);
@@ -639,7 +669,7 @@ function _render() {
   _win.runtimeText.textContent = runtime.detail;
   _win.runtime.dataset.mode = s.mode || 'unavailable';
   _win.profile.textContent = [d.name, d.width && d.height ? `${d.width} × ${d.height}` : '',
-    s.mode === 'android' ? d.android : '', s.posture ? `${s.posture === 'closed' ? 'Folded' : 'Unfolded'}` : '',
+    s.mode === 'android' ? d.android : '', s.posture ? `${s.posture === 'closed' ? 'Folded' : s.posture === 'half_open' ? 'Half-open · 90°' : 'Unfolded'}` : '',
     `Rotation ${(s.rotation || 0) * 90}°`].filter(Boolean).join(' · ');
 
   // `B1752`. The bezel: the device's shape, its keys on its maker's side.
@@ -650,6 +680,7 @@ function _render() {
   _win.bezel.style.setProperty('--phw-aspect', `${shape.w} / ${shape.h}`);
   if (look.finish) _win.bezel.style.setProperty('--phw-finish', look.finish);
   else _win.bezel.style.removeProperty('--phw-finish');
+  _win.bezel.dataset.foldAxis = d.fold_axis || 'vertical';
   _win.bezel.dataset.kind = d.kind || 'phone';
   _win.bezel.dataset.maker = (d.maker || '').toLowerCase();
   _win.bezel.dataset.device = d.id || '';
@@ -862,31 +893,10 @@ function _build({ embedded = false } = {}) {
   bar.appendChild(power);
   bar.appendChild(rotate);
   bar.appendChild(fold);
+  const halfFold = _button('phw-half-fold', 'Half-open', () => act({action: 'posture', posture: 'half_open'}), 'Set the hinge to 90 degrees');
+  bar.appendChild(halfFold);
   bar.appendChild(take);
   bar.appendChild(give);
-
-  const openForm = _el('form', 'phw-open');
-  const address = document.createElement('input');
-  address.type = 'text';
-  address.className = 'phw-address';
-  address.spellcheck = false;
-  address.autocomplete = 'off';
-  address.placeholder = 'Open an address on the phone';
-  address.setAttribute('aria-label', 'Address to open on the phone');
-  const go = _el('button', 'memory-toolbar-btn phw-go', 'Open');
-  go.type = 'submit';
-  openForm.appendChild(address);
-  openForm.appendChild(go);
-  openForm.addEventListener('submit', (e) => {
-    e.preventDefault();
-    let url = address.value.trim();
-    if (!url) return;
-    if (!/^https?:\/\//i.test(url)) url = `https://${url}`;
-    act({ action: 'open_url', url });
-  });
-  const tools = _el('details', 'phw-tools');
-  tools.appendChild(_el('summary', '', 'Open a web address'));
-  tools.appendChild(openForm);
 
   const runtime = _el('div', 'phw-runtime');
   runtime.setAttribute('role', 'status');
@@ -902,7 +912,14 @@ function _build({ embedded = false } = {}) {
 
   const transfer = _el('details', 'phw-transfer');
   transfer.hidden = true;
-  transfer.appendChild(_el('summary', '', 'USB tether · send files to Android'));
+  const usbSummary = _el('summary', '', 'USB · connect shared files');
+  transfer.appendChild(usbSummary);
+  const usbCable = _el('div', 'phw-usb-cable'); usbCable.setAttribute('aria-hidden', 'true');
+  usbCable.append(_el('span', 'phw-usb-host', '▣'), _el('span', 'phw-usb-wire'), _el('span', 'phw-usb-plug'), _el('span', 'phw-usb-socket', '▯'));
+  const usbConnect = _button('phw-usb-connect', 'Connect USB', _toggleUsb);
+  const usbFolder = _el('p', 'phw-runtime-text');
+  const usbFiles = _el('div', 'phw-usb-files');
+  transfer.append(usbCable, usbConnect, usbFolder, usbFiles);
   const transferText = _el('p', 'phw-runtime-text');
   transferText.setAttribute('role', 'status');
   transferText.setAttribute('aria-live', 'polite');
@@ -1027,7 +1044,6 @@ function _build({ embedded = false } = {}) {
   content.appendChild(stage);
   content.appendChild(profile);
   content.appendChild(nav);
-  content.appendChild(tools);
   content.appendChild(transfer);
 
   let catalogue = null;
@@ -1043,9 +1059,9 @@ function _build({ embedded = false } = {}) {
   }
   modal.appendChild(content);
 
-  return { modal, content, header, title, device, edition, preview, power, rotate, fold, take, give, openForm, address,
-    transfer, transferText, upload, docSearch, docFind, docSelect, docSend,
-    tools, runtime, runtimeLabel, runtimeText, profile, leaf,
+  return { modal, content, header, title, device, edition, preview, power, rotate, fold, halfFold, take, give,
+    transfer, transferText, usbSummary, usbCable, usbConnect, usbFolder, usbFiles, upload, docSearch, docFind, docSelect, docSend,
+    runtime, runtimeLabel, runtimeText, profile, leaf,
     status, statusText, stage, bezel, screen, empty, glass, sideKeys: sideKeysBox, keyBoxes, camera, hinge, nav,
     progress, progressText, progressBar, license, licenseText, licenseLink, catalogue, embedded };
 }

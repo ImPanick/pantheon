@@ -459,18 +459,18 @@ def avd_config(device: str, package: str, *, memory_mib: int = DEFAULT_MEMORY_MI
         lines.update({
             "hw.sensor.hinge": "yes",
             "hw.sensor.hinge.count": "1",
-            "hw.sensor.hinge.type": "1",
+            "hw.sensor.hinge.type": "0" if d.get("fold_axis") == "horizontal" else "1",
             "hw.sensor.hinge.sub_type": "1",
             "hw.sensor.hinge.ranges": "0-180",
             "hw.sensor.hinge.defaults": "180",
-            "hw.sensor.hinge.areas": f"{cover}-0-1-{h}",
+            "hw.sensor.hinge.areas": f"0-{h//2}-{w}-1" if d.get("fold_axis") == "horizontal" else f"{w//2}-0-1-{h}",
             "hw.sensor.posture_list": "1, 2, 3",
             "hw.sensor.hinge_angles_posture_definitions": "0-30, 30-150, 150-180",
             "hw.sensor.hinge.fold_to_displayRegion.0.1_at_posture": "1",
             "hw.displayRegion.0.1.xOffset": "0",
             "hw.displayRegion.0.1.yOffset": "0",
             "hw.displayRegion.0.1.width": str(cover),
-            "hw.displayRegion.0.1.height": str(h),
+            "hw.displayRegion.0.1.height": str(d.get("cover_height", h)),
         })
     return "".join(f"{k}={v}\n" for k, v in lines.items())
 
@@ -547,6 +547,7 @@ def _shape(d: Dict, posture: Optional[str], rotation: int) -> Tuple[int, int]:
     w, h = d["width"], d["height"]
     if posture == "closed" and d.get("cover_width"):
         w = d["cover_width"]
+        h = d.get("cover_height", h)
     if rotation % 2:
         w, h = h, w
     return w, h
@@ -1733,7 +1734,10 @@ class AccountPhone:
                     self.posture = posture
                     self._reshape()
                 return self.info("posture")
-            self.adb(["emu", "fold" if posture == "closed" else "unfold"])
+            if posture == "half_open":
+                self.adb(["emu", "sensor", "set", "hinge-angle0", "90"])
+            else:
+                self.adb(["emu", "fold" if posture == "closed" else "unfold"])
             self.posture = posture
             self._show()
             return self.info("posture")

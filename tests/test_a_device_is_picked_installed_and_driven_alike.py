@@ -371,7 +371,8 @@ def test_the_catalogue_has_phones_foldables_and_tablets_from_several_makers():
     assert {d["maker"] for d in P.PHONE_DEVICES.values()} >= {"Google", "Samsung", "OnePlus", "Nothing"}
     for id_, d in P.PHONE_DEVICES.items():
         if d["kind"] == "foldable":
-            assert 0 < d["cover_width"] < d["width"], id_
+            assert 0 < d["cover_width"] <= d["width"], id_
+            assert d["cover_width"] < d["width"] or d.get("cover_height", d["height"]) < d["height"], id_
 
 
 @pytest.mark.parametrize("device", sorted(P.PHONE_DEVICES))
@@ -409,7 +410,7 @@ def test_the_body_is_drawn_at_the_devices_shape_with_its_keys_on_their_edges(tmp
                  src, flags=re.M)
     mod = tmp_path / "phoneWindow.mjs"
     mod.write_text(src)
-    looks = json.dumps({k: P.PHONE_LOOKS[k] for k in ("oneplus_12", "galaxy_tab_s9", "pixel_9_pro")})
+    looks = json.dumps(P.PHONE_LOOKS)
     script = f"""
 import {{ keysOf, lookOf, bodyGeometry }} from {json.dumps(mod.as_uri())};
 const looks = {looks};
@@ -422,6 +423,11 @@ console.log(JSON.stringify({{
   one: [ids(one.left), ids(one.right), ids(one.top)], tab: [ids(tab.left), ids(tab.right), ids(tab.top)],
   old: ids(keysOf({{ maker: 'Samsung' }}).right),
   phone, slab, plain: lookOf({{}}),
+  scales: Object.entries({json.dumps(P.PHONE_DEVICES)}).map(([id, d]) => {{
+    const look = lookOf({{look: looks[id]}});
+    return [bodyGeometry(look, {{w:d.width,h:d.height}}, 500, 800),
+      bodyGeometry(look, {{w:d.width,h:d.height}}, 125, 200)];
+  }}),
 }}));
 """
     out = subprocess.run(["node", "--input-type=module", "-e", script], capture_output=True,
@@ -439,3 +445,21 @@ console.log(JSON.stringify({{
     s = got["slab"]
     assert s["screenW"] > s["screenH"] and s["radius"] < p["radius"] * 1.5
     assert got["plain"]["cutout"] == "punch-center" and got["plain"]["finish"] == ""
+
+    for large, small in got["scales"]:
+        for key in ("screenW", "screenH", "rim", "radius", "inner", "unit"):
+            assert small[key] == pytest.approx(large[key] / 4), key
+        assert small["screenW"] + small["rim"] * 2 <= 125 + 1e-9
+        assert small["screenH"] + small["rim"] * 2 <= 200 + 1e-9
+
+
+def test_clamshell_profiles_have_horizontal_hinges_and_real_cover_regions():
+    for model in ("galaxy_z_flip6", "razr_50_ultra"):
+        d = P.PHONE_DEVICES[model]
+        config = dict(line.split("=", 1) for line in PH.avd_config(model, IMAGE, memory_mib=2048).splitlines())
+        assert config["hw.sensor.hinge.type"] == "0"
+        assert config["hw.sensor.hinge.areas"] == f"0-{d['height']//2}-{d['width']}-1"
+        assert config["hw.displayRegion.0.1.height"] == str(d["cover_height"])
+        assert PH._shape(d, "closed", 0) == (d["cover_width"], d["cover_height"])
+        assert PH._shape(d, "half_open", 0) == (d["width"], d["height"])
+    assert "half_open" in P.PHONE_POSTURES

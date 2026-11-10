@@ -979,6 +979,12 @@ class Workstation:
                 return phone.preview(body.get("device"))
             if action == "edition":
                 return phone.select_edition(body.get("edition"))
+            if action == "usb":
+                if not getattr(phone, "native_android_usb", False):
+                    raise WorkstationError("unavailable", "USB shared folders need the dedicated Android host.")
+                from workstation.phone_usb import operation
+                return operation(phone, body.get("operation"), body.get("connection"), body.get("name"),
+                                 body.get("data_b64"), body.get("expected"))
             if action == "transfer":
                 return phone.transfer(body.get("name"), body.get("data_b64"))
             if action == "install":

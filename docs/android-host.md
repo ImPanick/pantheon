@@ -92,3 +92,47 @@ Graceful worker shutdown stops guests and private helpers and preserves storage.
 Do not delete a locked AVD or remove user data to resolve a failed boot. Windows
 process cleanup, two-live-guest isolation and crash recovery need host-specific
 acceptance; they are not established by a Mac cold-boot test.
+
+
+## Host portability and clamshell QA
+
+The app and Android worker are independently deployable. Stock SDK local workers
+support Linux x86-64, Windows x86-64, and macOS x86-64/ARM64; other app hosts can
+pair with a compatible remote worker over pinned TLS. Detection checks the native
+CPU even when Python is translated and reports the SDK's actual accelerator.
+`configure --gpu software` is the portable graphics default; `--gpu host` opts into
+hardware rendering. On Linux Docker bridges, set `--bind` to a private host bridge
+address and `--app-url` to the URL reachable from the app. Loopback alone is not
+reachable through Docker's host-gateway mapping. Remote listeners need the
+existing TLS certificate/key and app certificate pin configuration. The private
+radio helper requires Docker Linux/AMD64 execution; build the documented helper
+for both online and offline use. SDK images can reside on a separate drive from
+runtime state; staging and atomic installation happen on the SDK volume.
+
+Clamshell profiles use generic Android firmware with horizontal hinges and
+open/90-degree/closed postures. Panel dimensions come from
+[Samsung's Z Flip6 specification](https://www.samsung.com/uk/business/smartphones/galaxy-z/galaxy-z-flip6-blue-256gb-sm-f741blbgeub/)
+and [Motorola's Razr 50 Ultra specification](https://en-us.support.motorola.com/app/answers/detail/a_id/183647/~/technischen-daten--motorola-razr-50-ultra-).
+Cover regions exercise Android configuration changes; they do not reproduce
+Samsung/Motorola firmware, camera masking, proprietary cover launchers or retail
+multi-display policies. Real-device acceptance is still needed for those.
+
+## USB shared folders
+
+Connect USB in the phone pane to synchronize `Download/PantheonUSB` with the
+owner's `Android USB/<device>-<edition>` folder in Pantheon projects. The workstation
+uses that same existing projects export. The pane lists/downloads these user files;
+its file/document upload controls add to the connected folder. Sync continues
+while the app is running and USB is connected, even if the pane closes. Restarting
+the app leaves USB disconnected. Eject drains in-flight operations and flushes the
+guest; files remain on both sides. Changing/stopping the device ejects it.
+
+This is a software USB folder bridge, not raw host USB passthrough or a full disk
+mount. It supports 64 flat files, 20,000,000 bytes per file and 128 MiB total, with
+portable ASCII filenames. Subfolders, links and case aliases are refused visibly.
+Conflicting versions retain a deterministic Android copy; deletions do not
+propagate. Only this explicitly exported folder crosses the VM boundary. The
+shared workstation backend retains its existing shared-root projects limitation;
+use the per-user workstation VM export when isolation from other workstation-root
+users is required. Worker pairing keys and private Android userdata never enter
+this export.

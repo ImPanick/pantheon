@@ -61,7 +61,8 @@ def test_each_phone_screen_fits_the_protocols_bounds_at_its_own_shape(device):
     assert w % 2 == 0 and h % 2 == 0
     assert abs(w / h - d["width"] / d["height"]) < 0.01
     if d["kind"] == "foldable":
-        assert 0 < d["cover_width"] < d["width"]
+        assert 0 < d["cover_width"] <= d["width"]
+        assert d["cover_width"] < d["width"] or d.get("cover_height", d["height"]) < d["height"]
 
 
 # ── the device ────────────────────────────────────────────────────────────────

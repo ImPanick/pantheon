@@ -108,7 +108,7 @@ def page_url(*, watch_person: Optional[str] = None, stream: str = STREAM_PATH) -
         "clipboard_up": "false" if watch_person else "true",
         "clipboard_down": "false" if watch_person else "true",
         "clipboard_seamless": "false",
-        "show_dot": "false",
+        "show_dot": "true" if stream == PHONE_STREAM_PATH else "false",
         "enable_webrtc": "false",
     }
     # Kasm scopes its BroadcastChannel by URL directory, ignoring the query.

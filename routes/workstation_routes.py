@@ -841,7 +841,10 @@ def setup_workstation_routes() -> APIRouter:
             if e.code != "unavailable":
                 raise _http_error(e)
             answer = {"available": False, "state": "unavailable", "why": e.message}
-        return JSONResponse(_phone_state(answer), headers=_NO_STORE)
+        from src.phone_usb import status as usb_status
+        shaped = _phone_state(answer)
+        shaped['usb'] = usb_status(require_user(request))
+        return JSONResponse(shaped, headers=_NO_STORE)
 
     @router.post("/phone")
     async def workstation_phone_act(request: Request):
@@ -887,6 +890,32 @@ def setup_workstation_routes() -> APIRouter:
             out["why"] = str(answer.get("why") or "The phone has no live screen.")[:500]
         return JSONResponse(out, headers=_NO_STORE)
 
+    @router.post("/phone/usb")
+    async def workstation_phone_usb(request: Request):
+        client, account = _phone_mine(request)
+        owner = require_user(request)
+        body = await _body(request)
+        if set(body) != {"action"} or body.get("action") not in ("connect", "eject"):
+            raise HTTPException(400, "Choose connect or eject.")
+        from src import phone_usb
+        try:
+            answer = await phone_usb.connect(owner, client, account) if body["action"] == "connect" else await phone_usb.eject(owner)
+        except (RuntimeError, ValueError, OSError, WorkstationError) as error:
+            raise HTTPException(409, str(error))
+        return JSONResponse(answer, headers=_NO_STORE)
+
+    @router.get("/phone/usb/file")
+    async def workstation_phone_usb_file(request: Request, name: str):
+        _phone_mine(request)
+        from src.phone_usb import download
+        from urllib.parse import quote
+        try:
+            data = await download(require_user(request), name)
+        except (RuntimeError, ValueError, OSError) as error:
+            raise HTTPException(409, str(error))
+        return Response(data, media_type="application/octet-stream", headers={**_NO_STORE,
+            "Content-Disposition": "attachment; filename*=UTF-8''" + quote(name, safe="")})
+
     @router.post("/phone/files")
     async def workstation_phone_file(request: Request, name: str = ""):
         """Selected bytes only, into the caller's phone; never a host mount.
@@ -930,8 +959,13 @@ def setup_workstation_routes() -> APIRouter:
                 data = bytes(raw)
             if len(data) > P.MAX_FILE_BYTES:
                 raise HTTPException(413, f"Each transfer is at most {P.MAX_FILE_BYTES} bytes.")
-            answer = await client.phone(account, "transfer", holder="person", name=name,
-                                        data_b64=base64.b64encode(data).decode("ascii"))
+            from src import phone_usb
+            if phone_usb.status(require_user(request)).get('connected'):
+                try:answer = await phone_usb.upload(require_user(request), name, data)
+                except (RuntimeError, ValueError, OSError) as error:raise HTTPException(409, str(error))
+            else:
+                answer = await client.phone(account, "transfer", holder="person", name=name,
+                                            data_b64=base64.b64encode(data).decode("ascii"))
         except WorkstationError as e:
             raise _http_error(e)
         return JSONResponse({"ok": answer.get("ok") is True, "name": str(answer.get("name") or "")[:180],
@@ -1171,6 +1205,8 @@ def _phone_state(answer: Dict[str, Any]) -> Dict[str, Any]:
                             "height": P.PHONE_DEVICES[d["id"]]["height"],
                             "density": P.PHONE_DEVICES[d["id"]]["density"],
                             "cover_width": P.PHONE_DEVICES[d["id"]].get("cover_width"),
+                            "cover_height": P.PHONE_DEVICES[d["id"]].get("cover_height"),
+                            "fold_axis": P.PHONE_DEVICES[d["id"]].get("fold_axis", "vertical"),
                             "look": _phone_look(d.get("look"))})
     if not devices:
         devices = [{"id": k, "name": v["name"], "maker": v["maker"], "kind": v["kind"],

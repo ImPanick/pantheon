@@ -12,7 +12,7 @@ import platform
 import secrets
 from pathlib import Path
 from .boot_policy import build
-from .host import write_private
+from .host import write_private,native_abi
 from .control import SERVER_SHA256
 from .images import sha
 
@@ -24,9 +24,14 @@ def main():
     parser.add_argument('--accept-arm-license',action='store_true',help='Accept the ARM image terms in https://dl.google.com/android/repository/sys-img/google_apis/sys-img2-3.xml')
     parser.add_argument('--internet',action='store_true',help='Enable the private packet network with Internet-only kernel rules.')
     parser.add_argument('--port',type=int,default=7993)
+    parser.add_argument('--bind',default='127.0.0.1',help='Worker listen address. Linux Docker: use a private host bridge address reachable from the app.')
+    parser.add_argument('--app-url',help='Worker URL reachable from the app, including scheme and port; remote connections require TLS.')
+    parser.add_argument('--gpu',choices=('auto','host','software','swiftshader'),default='software')
     args=parser.parse_args();os.umask(0o077)
     root=args.state.resolve();root.mkdir(parents=True,exist_ok=True,mode=0o700)
-    sdk=args.sdk.resolve();abi='arm64-v8a' if platform.machine().lower() in ('arm64','aarch64') else 'x86_64'
+    sdk=args.sdk.resolve()
+    try:abi=native_abi()
+    except RuntimeError as error:parser.error(str(error))
     consent=root/'license-consent.json'
     if not consent.exists():
         if not args.accept_sdk_license or (abi=='arm64-v8a' and not args.accept_arm_license):
@@ -47,11 +52,14 @@ def main():
     if not pairing.exists():write_private(pairing,secrets.token_urlsafe(48))
     config={'state':str(root),'sdk':str(sdk),'abi':abi,'consent':str(consent),'token_file':str(pairing),
             'radio_binary':str(args.radio_binary.resolve()),'scrcpy_server':str(args.scrcpy_server.resolve()),
-            'boot_policies':policies,'internet':args.internet,'port':args.port,'max_running':1,'memory_mib':4096,'data_size_gib':2}
+            'boot_policies':policies,'internet':args.internet,'port':args.port,'bind':args.bind,'gpu':args.gpu,'max_running':1,'memory_mib':4096,'data_size_gib':2}
     write_private(config_file,json.dumps(config,indent=2)+'\n')
     print('Android host config: '+str(config_file))
     print('PANTHEON_ANDROID_PAIRING_DIR='+str(pairing.parent))
-    print('PANTHEON_ANDROID_URL=http://host.docker.internal:'+str(args.port))
+    address = args.app_url or ('http://' + ('host.docker.internal' if platform.system() in ('Darwin','Windows') else args.bind) + ':' + str(args.port))
+    print('PANTHEON_ANDROID_URL='+address)
+    if platform.system() == 'Linux' and args.bind == '127.0.0.1':
+        print('Linux Docker bridge apps cannot reach this loopback listener. Set --bind to a private host bridge IP and --app-url to its reachable URL, or run the app in the host network.')
     print('Start: python -m workstation.native_android.server --config '+str(config_file))
 
 

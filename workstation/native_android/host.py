@@ -28,6 +28,28 @@ from .control import ScrcpyControl
 from .radio import PrivateRadio
 
 
+def native_abi():
+    """Native CPU, including translated Python; only stock SDK host targets."""
+    system = platform.system()
+    cpu = os.environ.get('PROCESSOR_ARCHITEW6432', platform.machine()).lower() if system == 'Windows' else platform.machine().lower()
+    if system == 'Darwin':
+        try:
+            probe = subprocess.run(['/usr/sbin/sysctl', '-n', 'hw.optional.arm64'], capture_output=True, text=True, timeout=5)
+            if probe.returncode == 0 and probe.stdout.strip() == '1': cpu = 'arm64'
+        except (OSError, subprocess.TimeoutExpired): pass
+    if system == 'Darwin' and cpu in ('arm64', 'aarch64'): return 'arm64-v8a'
+    if system in ('Darwin', 'Windows', 'Linux') and cpu in ('amd64', 'x86_64'): return 'x86_64'
+    raise RuntimeError('The stock SDK has no local emulator for this OS/CPU. Connect Pantheon to a compatible Android worker.')
+
+
+def accelerator_name(output):
+    value = output.lower()
+    for needles, name in ((('hypervisor.framework', 'hvf'), 'hvf'), (('whpx',), 'whpx'),
+                          (('aehd', 'gvm'), 'aehd'), (('kvm',), 'kvm'), (('haxm',), 'haxm')):
+        if any(word in value for word in needles): return name
+    return 'sdk'  # successful SDK probe, unknown accelerator label
+
+
 def write_private(path, text):
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -59,7 +81,7 @@ class Host:
         self.closing = False
         self.claims = {}
         self.max_running = max(1, min(16, int(config.get('max_running', 1))))
-        self.abi = config.get('abi') or ('arm64-v8a' if platform.machine().lower() in ('aarch64','arm64') else 'x86_64')
+        self.abi = config.get('abi') or native_abi()
         self.emulator = self.sdk / 'emulator' / ('emulator.exe' if os.name == 'nt' else 'emulator')
         self.accel = None
         self.why = None
@@ -68,7 +90,7 @@ class Host:
             if result.returncode:
                 self.why = 'Android acceleration is unavailable: ' + (result.stdout + result.stderr)[-400:]
             else:
-                self.accel = {'Darwin':'hvf','Windows':'whpx','Linux':'kvm'}.get(platform.system(), 'sdk')
+                self.accel = accelerator_name(result.stdout + result.stderr)
         except (OSError, subprocess.TimeoutExpired):
             self.why = 'Install the Android SDK emulator on this host, then check its acceleration support.'
 
@@ -141,6 +163,7 @@ class Host:
 
 
 class NativePhone(PH.AccountPhone):
+    native_android_usb = True
     def __init__(self,*args,**kwargs):
         self.control = self.direct = self.radio = None
         self.generation = secrets.token_hex(16)
@@ -278,7 +301,7 @@ class NativePhone(PH.AccountPhone):
         args=[str(self.system.emulator),'-avd',self.avd,'-port',str(self.port),'-no-window','-no-audio',
               '-no-snapshot','-no-metrics','-crash-report-mode','disabled','-no-direct-adb','-no-sim',
               '-adb-path',str(Path(__file__).with_name('no_adb.py')),'-memory',str(self.memory_mib),'-cores','4',
-              '-accel','on','-gpu',cfg.get('gpu','host'),'-feature',
+              '-accel','on','-gpu',cfg.get('gpu','software'),'-feature',
               '-WiFiPacketStream,-Uwb,BluetoothEmulation,-ModemSimulator,-GnssGrpcV1,GuestAngle',
               '-wifi-user-mode-options','restrict=on,ipv6=off','-network-user-mode-options','restrict=on,ipv6=off',
               '-packet-streamer-endpoint','dns:///'+self.radio.TARGET]
@@ -386,7 +409,7 @@ class NativePhone(PH.AccountPhone):
             raise PH.PhoneError('unavailable',str(error)) from error
 
     def console(self,args,timeout):
-        if args not in (['rotate'],['fold'],['unfold']): raise AdbError('Unsupported Android console operation.')
+        if args not in (['rotate'],['fold'],['unfold'],['sensor','set','hinge-angle0','90'],['sensor','get','hinge-angle0']): raise AdbError('Unsupported Android console operation.')
         if not self._owned(): raise AdbError('The Android console no longer belongs to this VM.')
         with socket.create_connection(('127.0.0.1',self.port),timeout=timeout) as connection:
             connection.settimeout(timeout)
@@ -403,10 +426,11 @@ class NativePhone(PH.AccountPhone):
             connection.sendall(('auth '+token+'\n').encode());response()
             if not self._owned(): raise AdbError('The Android console changed before input.')
             self.screen.release_all();self.generation=secrets.token_hex(16)
-            connection.sendall((' '.join(args)+'\n').encode());response()
-        return ''
+            connection.sendall((' '.join(args)+'\n').encode());answer=response()
+        return answer.decode('utf-8',errors='replace')
 
     def _stop_locked(self):
+        self._usb_connection = None
         self.generation=secrets.token_hex(16)
         if self.screen is not None: self.screen.release_all()
         if self.control is not None: self.control.close();self.control=None

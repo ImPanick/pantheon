@@ -73,8 +73,9 @@ class PrivateRadio:
                 self.docker('network','create','--label','pantheon.android-radio='+self.name,self.network)
             mode=self.network or 'none'
             capabilities=['--cap-add=NET_ADMIN','--cap-add=SETPCAP','--cap-add=SETUID','--cap-add=SETGID'] if self.internet else []
-            image='pantheon-android-radio:37.2.13' if self.internet else IMAGE
-            command=['--internet'] if self.internet else ['/opt/netsimd','--grpc-port','7443','--hci-port','0','--no-web-ui','--no-cli-ui','--no-shutdown','--logtostderr']
+            image='pantheon-android-radio:37.2.13'
+            entrypoint=[] if self.internet else ['--entrypoint=/opt/netsimd']
+            command=['--internet'] if self.internet else ['--grpc-port','7443','--hci-port','0','--no-web-ui','--no-cli-ui','--no-shutdown','--logtostderr']
             self.docker("run", "-d", "--name", self.name, "--pull=never", "--platform=linux/amd64",
                         "--label", "pantheon.android-radio=" + self.name,
                         "--network="+mode, "--read-only", "--cap-drop=ALL", *capabilities, "--security-opt=no-new-privileges",
@@ -82,7 +83,7 @@ class PrivateRadio:
                         "--pids-limit=128", "--memory=384m", "--cpus=1", "--user", "0:0" if self.internet else str(getattr(os, "getuid", lambda: 1000)()) + ":" + str(getattr(os, "getgid", lambda: 1000)()),
                         "--tmpfs", "/tmp:rw,nosuid,nodev,size=64m,mode=1777", "-e", "HOME=/tmp", "-e", "TMPDIR=/tmp",
                         "--mount", "type=bind,source=" + str(binary) + ",target=/opt/netsimd,readonly",
-                        image, *command, timeout=90)
+                        *entrypoint, image, *command, timeout=90)
             self.started = True
             deadline = time.monotonic() + 25
             while True:

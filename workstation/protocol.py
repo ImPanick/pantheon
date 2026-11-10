@@ -410,7 +410,7 @@ MAX_DESKTOP_HANDSHAKE_BYTES = 16_384
 NETWORK_ACTIONS = ("interfaces", "reach")
 # `B1751`. The phone (`ROUTES["phone"]`, `workstation/phone.py`).
 PHONE_ACTIONS = ("status", "start", "stop", "device", "button", "posture", "rotate",
-                 "open_url", "screenshot", "input", "marks", "install", "preview", "edition", "transfer")
+                 "open_url", "screenshot", "input", "marks", "install", "preview", "edition", "transfer", "usb")
 PHONE_EDITIONS = ("standard", "google_play")
 PHONE_ISOLATION_REQUIRED = ("Android requires a separate VM for each user. Update the workstation-vm "
                             "host from this checkout, restart your VM, and choose the VM backend in "
@@ -429,7 +429,7 @@ PHONE_MODES = ("android", "mobile_view")
 PHONE_BUTTONS = {"power": 26, "volume_up": 24, "volume_down": 25, "back": 4, "home": 3,
                  "recents": 187}
 #: A foldable's two postures: open flat, or closed onto its cover screen.
-PHONE_POSTURES = ("open", "closed")
+PHONE_POSTURES = ("open", "half_open", "closed")
 #: The real devices a phone can be: each one's screen as the maker ships it
 #: (pixels and the density Android draws at), and for a foldable the cover
 #: screen it shows when closed — emulated as a region of the inner screen, the
@@ -469,6 +469,13 @@ PHONE_DEVICES: Dict[str, Dict] = {
                       "width": 2560, "height": 1600, "density": 320},
     "galaxy_tab_s10_ultra": {"name": "Samsung Galaxy Tab S10 Ultra", "maker": "Samsung", "kind": "tablet",
                              "width": 2960, "height": 1848, "density": 320},
+    # Generic SDK clamshells at the manufacturers' panel resolutions; not OEM firmware.
+    "galaxy_z_flip6": {"name": "Samsung Galaxy Z Flip6", "maker": "Samsung", "kind": "foldable",
+                       "width": 1080, "height": 2640, "density": 420, "cover_width": 720,
+                       "cover_height": 748, "fold_axis": "horizontal"},
+    "razr_50_ultra": {"name": "Motorola Razr 50 Ultra", "maker": "Motorola", "kind": "foldable",
+                      "width": 1080, "height": 2640, "density": 420, "cover_width": 1080,
+                      "cover_height": 1272, "fold_axis": "horizontal"},
     # ── OnePlus and Nothing ──
     "oneplus_12": {"name": "OnePlus 12", "maker": "OnePlus", "kind": "phone",
                    "width": 1440, "height": 3168, "density": 560},
@@ -490,6 +497,11 @@ _SAMSUNG_KEYS = {"right": ["volume_up", "volume_down", "power"]}
 _SPLIT_KEYS = {"left": ["volume_up", "volume_down"], "right": ["power"]}
 _TABLET_KEYS = {"top": ["power", "volume_up", "volume_down"]}
 PHONE_LOOKS: Dict[str, Dict] = {
+    "galaxy_z_flip6": {"finish": "#b1c5d9", "finish_name": "Blue", "corner": 0.07, "bezel": 0.025,
+                       "cutout": "punch-center", "keys": {"right": ["volume_up", "volume_down", "power"]}},
+    "razr_50_ultra": {"finish": "#37534d", "finish_name": "Spring Green", "corner": 0.09, "bezel": 0.025,
+                      "cutout": "punch-center", "keys": {"right": ["volume_up", "volume_down", "power"]}},
+
     "pixel_9": {"finish": "#202124", "finish_name": "Obsidian", "corner": 0.12, "bezel": 0.035,
                 "cutout": "punch-center", "keys": _GOOGLE_KEYS},
     "pixel_9_pro": {"finish": "#8b8e83", "finish_name": "Hazel", "corner": 0.12, "bezel": 0.03,

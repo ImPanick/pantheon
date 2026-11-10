@@ -118,7 +118,9 @@ class ImageInstaller(PH.Installer):
             if target.is_dir():shutil.rmtree(target)
         target=self.host.sdk/parts['sysdir']
         if target.exists():raise RuntimeError('The image directory already exists; refusing to overwrite an unmanaged image.')
-        with tempfile.TemporaryDirectory(prefix='image-',dir=self.host.root) as temporary:
+        # Stage beside the SDK destination: state and SDK may be on different drives.
+        target.parent.mkdir(parents=True,exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix='.image-',dir=target.parent) as temporary:
             root=Path(temporary);archive=root/'package.zip';done=0
             with urllib.request.urlopen(url,timeout=60) as response,archive.open('wb') as output:
                 for block in iter(lambda:response.read(1<<20),b''):

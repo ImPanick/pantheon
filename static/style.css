@@ -51037,44 +51037,45 @@ body.plan-mode-active .chat-input-top > .model-picker-wrap:has(> .model-picker-m
 }
 .phw-bezel {
   --phw-aspect: 492 / 1100;
-  --phw-rim: 10px;
+  --phw-rim: calc(var(--phw-unit) * 10);
+  --phw-unit: 1px;
   position: relative;
   /* The rim is outside the screen (content-box), so the screen keeps the
      device's own shape exactly. */
-  height: calc(100% - 2 * var(--phw-rim) - 2px);
-  max-width: calc(100% - 2 * var(--phw-rim) - 2px);
+  height: calc(100% - 2 * var(--phw-rim) - calc(var(--phw-unit) * 2));
+  max-width: calc(100% - 2 * var(--phw-rim) - calc(var(--phw-unit) * 2));
   aspect-ratio: var(--phw-aspect);
   padding: var(--phw-rim);
   /* `B1757`: the device's own corners and finish, set from its look. */
-  border-radius: var(--phw-radius, 34px);
+  border-radius: var(--phw-radius, calc(var(--phw-unit) * 34));
   background: var(--phw-finish, color-mix(in srgb, var(--fg) 82%, var(--bg)));
-  border: 1px solid color-mix(in srgb, var(--phw-finish, var(--fg)) 70%, #000);
+  border: calc(var(--phw-unit) * 1) solid color-mix(in srgb, var(--phw-finish, var(--fg)) 70%, #000);
   box-shadow:
-    inset 0 0 0 2px color-mix(in srgb, var(--bg) 14%, transparent),
-    0 10px 28px var(--shadow-ink-4);
+    inset 0 0 0 calc(var(--phw-unit) * 2) color-mix(in srgb, var(--bg) 14%, transparent),
+    0 calc(var(--phw-unit) * 10) calc(var(--phw-unit) * 28) var(--shadow-ink-4);
   box-sizing: content-box;
   transition: aspect-ratio 0.25s ease;
 }
-.phw-bezel[data-kind="tablet"] { --phw-rim: 16px; }
+.phw-bezel[data-kind="tablet"] { --phw-rim: calc(var(--phw-unit) * 16); }
 .phw-speaker {
   position: absolute;
-  top: calc(var(--phw-rim) / 2 - 1.5px);
+  top: calc(var(--phw-rim) / 2 - calc(var(--phw-unit) * 1.5));
   left: 50%;
-  width: 46px;
-  height: 3px;
+  width: calc(var(--phw-unit) * 46);
+  height: calc(var(--phw-unit) * 3);
   transform: translateX(-50%);
-  border-radius: 2px;
+  border-radius: calc(var(--phw-unit) * 2);
   background: color-mix(in srgb, var(--bg) 30%, transparent);
 }
 .phw-screen {
   position: relative;
   width: 100%;
   height: 100%;
-  border-radius: var(--phw-inner, 24px);
+  border-radius: var(--phw-inner, calc(var(--phw-unit) * 24));
   overflow: hidden;
   background: #000;
 }
-.phw-bezel[data-kind="tablet"] .phw-screen, .phw-bezel[data-kind="foldable"] .phw-screen { border-radius: var(--phw-inner, 12px); }
+.phw-bezel[data-kind="tablet"] .phw-screen, .phw-bezel[data-kind="foldable"] .phw-screen { border-radius: var(--phw-inner, calc(var(--phw-unit) * 12)); }
 .phw-live-frame { position: absolute; top: 0; height: 100%; border: 0; background: #000; }
 .phw-empty {
   position: absolute;
@@ -51082,7 +51083,7 @@ body.plan-mode-active .chat-input-top > .model-picker-wrap:has(> .model-picker-m
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 18px;
+  padding: 12px;
   text-align: center;
   font-size: 13px;
   line-height: 1.45;
@@ -51094,51 +51095,62 @@ body.plan-mode-active .chat-input-top > .model-picker-wrap:has(> .model-picker-m
 /* `B1757`: each edge's keys where the device has them — the right edge, the
    left, or (a tablet held landscape) the top. */
 .phw-side-keys { position: absolute; inset: 0; pointer-events: none; }
-.phw-keys { position: absolute; display: flex; gap: 10px; pointer-events: auto; }
+.phw-keys { position: absolute; display: flex; gap: calc(var(--phw-unit) * 10); pointer-events: auto; }
 .phw-keys[hidden] { display: none; }
-.phw-keys-right { top: 18%; right: -6px; flex-direction: column; }
-.phw-keys-left { top: 18%; left: -6px; flex-direction: column; }
-.phw-keys-left .phw-side { border-radius: 3px 0 0 3px; }
-.phw-keys-top { top: -6px; right: 14%; flex-direction: row; }
-.phw-keys-top .phw-side { width: auto; height: 5px; border-radius: 3px 3px 0 0; }
-.phw-keys-top .phw-side-power { width: 36px; }
-.phw-keys-top :is(.phw-side-volume_up, .phw-side-volume_down) { width: 44px; }
+.phw-keys-right { top: 18%; right: calc(var(--phw-unit) * -6); flex-direction: column; }
+.phw-keys-left { top: 18%; left: calc(var(--phw-unit) * -6); flex-direction: column; }
+.phw-keys-left .phw-side { border-radius: calc(var(--phw-unit) * 3) 0 0 calc(var(--phw-unit) * 3); }
+.phw-keys-top { top: calc(var(--phw-unit) * -6); right: 14%; flex-direction: row; }
+.phw-keys-top .phw-side { width: auto; height: calc(var(--phw-unit) * 5); border-radius: calc(var(--phw-unit) * 3) calc(var(--phw-unit) * 3) 0 0; }
+.phw-keys-top .phw-side-power { width: calc(var(--phw-unit) * 36); }
+.phw-keys-top :is(.phw-side-volume_up, .phw-side-volume_down) { width: calc(var(--phw-unit) * 44); }
 /* The front camera: a hole punched in the screen, or a lens in the rim. */
 .phw-camera {
   position: absolute;
   z-index: 2;
-  width: 10px;
-  height: 10px;
+  width: calc(var(--phw-unit) * 10);
+  height: calc(var(--phw-unit) * 10);
   border-radius: 50%;
   background: radial-gradient(circle at 35% 35%, #2a3140 0 25%, #05070a 60%);
-  box-shadow: 0 0 0 1.5px color-mix(in srgb, #000 70%, var(--phw-finish, #222));
+  box-shadow: 0 0 0 calc(var(--phw-unit) * 1.5) color-mix(in srgb, #000 70%, var(--phw-finish, #222));
   pointer-events: none;
 }
-.phw-bezel[data-cutout="punch-center"] .phw-camera { top: calc(var(--phw-rim) + 12px); left: 50%; transform: translateX(-50%); }
-.phw-bezel[data-cutout="punch-left"] .phw-camera { top: calc(var(--phw-rim) + 12px); left: calc(var(--phw-rim) + 16px); }
-.phw-bezel[data-cutout="punch-right"] .phw-camera { top: calc(var(--phw-rim) + 12px); right: calc(var(--phw-rim) + 16%); }
-.phw-bezel[data-cutout="bezel-top"] .phw-camera { top: calc(var(--phw-rim) / 2 - 3px); left: 50%; width: 6px; height: 6px; transform: translateX(-50%); }
-.phw-bezel[data-cutout="bezel-right"] .phw-camera { top: calc(var(--phw-rim) / 2 - 3px); right: 18%; width: 6px; height: 6px; }
+.phw-bezel[data-cutout="punch-center"] .phw-camera { top: calc(var(--phw-rim) + calc(var(--phw-unit) * 12)); left: 50%; transform: translateX(-50%); }
+.phw-bezel[data-cutout="punch-left"] .phw-camera { top: calc(var(--phw-rim) + calc(var(--phw-unit) * 12)); left: calc(var(--phw-rim) + calc(var(--phw-unit) * 16)); }
+.phw-bezel[data-cutout="punch-right"] .phw-camera { top: calc(var(--phw-rim) + calc(var(--phw-unit) * 12)); right: calc(var(--phw-rim) + 16%); }
+.phw-bezel[data-cutout="bezel-top"] .phw-camera { top: calc(var(--phw-rim) / 2 - calc(var(--phw-unit) * 3)); left: 50%; width: calc(var(--phw-unit) * 6); height: calc(var(--phw-unit) * 6); transform: translateX(-50%); }
+.phw-bezel[data-cutout="bezel-right"] .phw-camera { top: calc(var(--phw-rim) / 2 - calc(var(--phw-unit) * 3)); right: 18%; width: calc(var(--phw-unit) * 6); height: calc(var(--phw-unit) * 6); }
 .phw-bezel:is([data-cutout="bezel-top"], [data-cutout="bezel-right"]) .phw-speaker { display: none; }
 /* A foldable open flat shows its crease down the middle. */
-.phw-hinge { display: none; position: absolute; top: 0; bottom: 0; left: 50%; width: 10px; transform: translateX(-50%);
+.phw-hinge { display: none; position: absolute; top: 0; bottom: 0; left: 50%; width: calc(var(--phw-unit) * 10); transform: translateX(-50%);
   background: linear-gradient(90deg, transparent, color-mix(in srgb, #fff 6%, transparent) 45%, color-mix(in srgb, #000 22%, transparent) 55%, transparent);
   pointer-events: none; z-index: 1; }
 .phw-bezel[data-kind="foldable"][data-posture="open"] .phw-hinge { display: block; }
+.phw-bezel[data-posture="half_open"] .phw-hinge { display: block; opacity: 0.9; }
+.phw-bezel[data-fold-axis="horizontal"] .phw-hinge {
+  top: 50%; left: 0; right: 0; bottom: auto; width: auto;
+  height: calc(var(--phw-unit) * 10); transform: translateY(-50%);
+  background: linear-gradient(180deg, transparent, #ffffff10 45%, #00000038 55%, transparent);
+}
+.phw-bezel[data-fold-axis="horizontal"] .phw-fold-leaf {
+  inset: 50% 0 0; transform-origin: center top;
+}
+
 .phw-side {
-  width: 5px;
+  min-width: 0; min-height: 0; flex-shrink: 0;
+  width: calc(var(--phw-unit) * 5);
   padding: 0;
   border: 0;
-  border-radius: 0 3px 3px 0;
+  border-radius: 0 calc(var(--phw-unit) * 3) calc(var(--phw-unit) * 3) 0;
   background: color-mix(in srgb, var(--phw-finish, var(--fg)) 78%, #000);
   cursor: pointer;
 }
 .phw-side:hover:not(:disabled), .phw-side:focus-visible { background: color-mix(in srgb, var(--phw-finish, var(--fg)) 55%, #fff); }
-.phw-side:active:not(:disabled) { transform: translateX(-1px); }
+.phw-side:active:not(:disabled) { transform: translateX(calc(var(--phw-unit) * -1)); }
 .phw-side:disabled { cursor: default; filter: saturate(0.6) brightness(0.9); }
-.phw-side-power { height: 36px; }
-.phw-side-volume_up, .phw-side-volume_down { height: 44px; }
-.phw-bezel[data-maker="samsung"] .phw-side-volume_down { margin-bottom: 10px; }
+.phw-side-power { height: calc(var(--phw-unit) * 36); }
+.phw-side-volume_up, .phw-side-volume_down { height: calc(var(--phw-unit) * 44); }
+.phw-bezel[data-maker="samsung"] .phw-side-volume_down { margin-bottom: calc(var(--phw-unit) * 10); }
 .phw-nav { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
 .phw-nav-btn { min-width: 44px; min-height: 44px; font-size: 13px; }
 .phw-nav-btn[hidden] { display: none; }
@@ -51488,3 +51500,14 @@ body.plan-mode-active .chat-input-top > .model-picker-wrap:has(> .model-picker-m
 .ws-machine-name { font-weight: 600; min-width: 8rem; }
 .ws-machine-state { color: color-mix(in oklab, var(--fg) 75%, var(--fg-muted)); margin-right: auto; }
 .ws-machine-logs { max-height: 16rem; overflow: auto; font-size: 11px; white-space: pre-wrap; }
+
+/* USB plug and socket describe the actual shared-folder connection state. */
+.phw-usb-cable { display: flex; align-items: center; justify-content: center; height: 38px; color: var(--fg-muted); }
+.phw-usb-host, .phw-usb-socket { font-size: 26px; line-height: 1; }
+.phw-usb-wire { height: 4px; width: 60px; background: currentColor; }
+.phw-usb-plug { width: 18px; height: 12px; border: 2px solid currentColor; border-radius: 3px; margin-right: 18px; transition: margin-right .2s ease; }
+.phw-usb-plug::after { content: ''; display: block; width: 5px; height: 6px; background: currentColor; margin: 1px 0 0 14px; }
+.phw-usb-cable[data-connected="true"] { color: var(--accent); }
+.phw-usb-cable[data-connected="true"] .phw-usb-plug { margin-right: 1px; }
+.phw-usb-files { display: grid; gap: 5px; max-height: 140px; overflow-y: auto; }
+.phw-usb-file { overflow-wrap: anywhere; }
