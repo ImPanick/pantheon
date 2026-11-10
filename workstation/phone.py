@@ -1019,7 +1019,7 @@ class AccountPhone:
                 with self._as_account():
                     config = (folder / "config.ini").read_text(encoding="utf-8")
                 image = next((line.split("=", 1)[1].strip() for line in config.splitlines()
-                              if line.startswith("image.sysdir.1=")), None)
+                              if "=" in line and line.split("=", 1)[0].strip() == "image.sysdir.1"), None)
                 if image == expected:
                     return name
             except (FileNotFoundError, UnicodeError):

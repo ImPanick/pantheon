@@ -232,12 +232,19 @@ def serve(stream, frame, event, release, *, frame_interval=.25):
                 except UnicodeDecodeError as error:
                     raise ProtocolError("Phone clipboard text is not UTF8.") from error
                 event({"kind": "text", "text": text, "geometry": geometry})
+            elif kind == 182:
+                # The bundled Kasm client asks for printer/smartcard relays
+                # immediately after initialization, without negotiation.
+                # Consume its bounded name and decline; Android exposes none.
+                stream.read(stream.read(1)[0])
+                reason = b"Android has no relays."
+                stream.write(bytes((182, 0, len(reason))) + reason)
             elif kind == 184:
                 count = stream.read(1)[0]
                 stream.read(count * 4)  # Kasm codec capability list; this server sends Tight JPEG only.
             elif kind == 185:
                 pass  # Kasm keepalive
             else:
-                raise ProtocolError("Unsupported unadvertised phone RFB message.")
+                raise ProtocolError(f"Unsupported unadvertised phone RFB message {kind}.")
     finally:
         release()

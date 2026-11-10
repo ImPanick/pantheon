@@ -123,6 +123,19 @@ def test_pinned_kasm_first_and_later_jpeg_frames_have_completion_and_correct_pix
     assert released==[True]
 
 
+def test_bundled_kasm_optional_relays_are_refused_without_interrupting_frames():
+    request=b'\3'+struct.pack('>BHHHH',0,0,0,8,6)
+    subscriptions=b'\xb6\x07printer\xb6\x09smartcard'
+    stream=Stream(hello(request+subscriptions+request));events=[]
+    with pytest.raises(rfb.StreamEnded):
+        rfb.serve(stream,lambda:(Image.new('RGB',(8,6)),'one'),events.append,lambda:None,frame_interval=0)
+    output=bytes(stream.output)
+    assert output.count(struct.pack('>HHHHi',0,0,0,0,-224))==2
+    reason=b'Android has no relays.'
+    assert output.count(b'\xb6\0'+bytes([len(reason)])+reason)==2
+    assert events==[]
+
+
 def test_kasm_plaintext_clipboard_and_same_size_image_switch():
     text='café Ω 測試'.encode();paste=b'\xb4\1\x0atext/plain'+struct.pack('>I',len(text))+text
     request=b'\3'+struct.pack('>BHHHH',0,0,0,8,6)

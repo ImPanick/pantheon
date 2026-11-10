@@ -230,8 +230,8 @@ class NativePhone(PH.AccountPhone):
         folder=avd_home/(self.avd+'.avd')
         folder.mkdir(exist_ok=True,mode=0o700)
         previous=folder/'config.ini'
-        data_size=next((line.split('=',1)[1] for line in previous.read_text().splitlines()
-                        if line.startswith('disk.dataPartition.size=')),None) if previous.exists() else None
+        data_size=next((line.split('=',1)[1].strip() for line in previous.read_text().splitlines()
+                        if '=' in line and line.split('=',1)[0].strip()=='disk.dataPartition.size'),None) if previous.exists() else None
         if data_size is None:
             data_size='6G' if (folder/'userdata-qemu.img').exists() else str(max(2,min(64,int(self.system.config.get('data_size_gib',2)))))+'G'
         config=PH.avd_config(self.device,self.package(),memory_mib=self.memory_mib,name=self.avd)

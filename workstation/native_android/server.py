@@ -139,7 +139,10 @@ class Handler(agentd.Handler):
             if not upgraded:self._fail(error)
         except PhoneError as error:
             if not upgraded:self._fail(agentd.WorkstationError(error.code,error.message))
-        except (StreamEnded,ProtocolError,OSError,ConnectionError):
+        except ProtocolError as error:
+            logger.warning('Android viewer protocol rejected: %s', error)
+            self.close_connection=True
+        except (StreamEnded,OSError,ConnectionError):
             self.close_connection=True
         except Exception:
             logger.exception('Android request failed')

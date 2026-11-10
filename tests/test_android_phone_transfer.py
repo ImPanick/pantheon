@@ -404,6 +404,17 @@ def test_transfers_require_real_android_inside_the_per_user_vm(tmp_path, backend
     assert error.value.code == "unavailable" and not p.adb.calls
 
 
+def test_emulator_reformatted_ini_reuses_its_existing_image_disk(phone):
+    package = PH.DEFAULT_IMAGE
+    name = PH.avd_name(phone.device) + "_" + hashlib.sha256(package.encode()).hexdigest()[:12]
+    folder = phone.home() / ".android" / "avd" / (name + ".avd")
+    folder.mkdir(parents=True)
+    (folder / "config.ini").write_text("image.sysdir.1 = " + PH.image_parts(package)["sysdir"] + "\n")
+    (folder / "userdata-qemu.img").write_bytes(b"existing Android data")
+    assert phone._avd_slot(package) == name
+    assert (folder / "userdata-qemu.img").read_bytes() == b"existing Android data"
+
+
 def test_switching_image_preserves_both_disks_and_reuses_only_matching_legacy_data(phone, monkeypatch):
     monkeypatch.setattr(phone, "_stop_locked", lambda: None)
     monkeypatch.setattr(phone, "info", lambda action="status": {"edition": phone.edition})
