@@ -9,6 +9,14 @@ The README covers the headline features. This is the full list, and what the for
   downloads
 - Tool execution, MCP servers (and a builder that makes one in your workstation and tries it before an
   admin registers it), shell, filesystem, skills and memory, behind per-person approval rules
+- Skills learned from finished chats, used again on their own above a confidence bar you set
+  (85% by default), and written, edited or published from chat when you ask; a stuck model can ask a
+  stronger one and keep the answer as a skill
+- Automations from a sentence in chat: a scheduled or event-driven task, or a multi-step workflow
+  drafted switched off for you to check in the Workbench, where steps are wired by dragging from a
+  port; a failed step comes back with the model's explanation and a fix you can apply
+- Tool approvals on your lock screen, by Web Push, with Pantheon closed
+- Models by API key, or by signing in with a ChatGPT or GitHub Copilot subscription
 - Plan mode that asks what you have in mind before it drafts; reasoning effort from Low to Max, and
   `ultrathink` for one turn at Max
 - Chat compaction that brings a long conversation to about a tenth of the window from a dense summary

@@ -145,6 +145,27 @@ data, `.pantheon/retrieval_eval.py --generate` builds a test set from your memor
   computer-use API. From testing, run something larger than 12B. At 8B, 4B and below, models tend to
   avoid the computer-use tool and fall back to shell commands and web fetches instead of moving the
   mouse.
+- **Automations you can talk into existence.** Say "every morning at 7:30, summarize my unread
+  mail" and it sets up the task. Say "when this finishes, do that and then this" and it drafts a
+  whole workflow. Or build one by hand in the Workbench: drag from a step's port onto the next step
+  to wire it, on success or on failure, much like n8n. If and Switch need no code, and steps can be
+  HTTP calls, MCP tools, skills, model calls or code in your workstation. A drafted workflow arrives
+  switched off with every step flagged for you to check, a dry run plans the chain without running
+  it, and when a step fails the model tells you why and offers a fix you can apply.
+- **Skills it learns as you work.** After a chat that took real work, it writes down how it got
+  there as a skill, and the ones it's at least 85% sure of come back on their own the next time
+  they fit. You set that bar, or approve each one yourself, under Brain → Skills. Ask in chat and it
+  writes, edits and publishes a skill on the spot. When a model is stuck it can ask a stronger one
+  and keep the answer as a skill.
+- **MCP servers it writes for itself.** Name the tools you want and Pantheon sets up an MCP server
+  in your workstation for you and the agent to fill in. It starts the server, completes the
+  handshake and lists the tools to prove it works. An admin registers it from a list without
+  retyping anything (on your own install, that's you), and from then on the agent can call it. The
+  agent can't register a server itself, on purpose: text it reads must never become a program it
+  runs.
+- **259 agents to hire.** 26 departments and 18 teams, each agent a runbook with its own schedule,
+  tools and evaluation cases. `@` in the message box summons one, `/` calls a skill. The roster is
+  growing: more agents are coming, and the ones already here keep getting sharper.
 - **A desktop of its own.** XFCE on Ubuntu 24.04, Debian 13, Fedora 44 or Rocky Linux 9, kept
   between chats and streamed live over [KasmVNC](https://github.com/kasmtech/KasmVNC). The agent
   uses the mouse, keyboard, shell and files; you watch, take over, or reset it to a starting point
@@ -153,21 +174,18 @@ data, `.pantheon/retrieval_eval.py --generate` builds a test set from your memor
   control, from the accessibility tree, the page's own elements, or the image itself where neither
   says anything. It clicks by number instead of guessing pixels, and `scripts/grounding_eval.py` measures the
   difference on your own model.
-- **259 agents to hire.** 26 departments and 18 teams, each agent a runbook with its own schedule,
-  tools and evaluation cases. `@` in the message box summons one, `/` calls a skill. The roster is
-  growing: more agents are coming, and the ones already here keep getting sharper.
-- **A Workbench for automations.** A node editor: steps wired on success and on failure, If and
-  Switch without code, HTTP calls, MCP tools, skills, model steps and code in your workstation.
-  Describe a workflow in a sentence and it drafts one, switched off, every step flagged for you to
-  check. A dry run plans the whole chain and runs none of it.
-- **Local models as the main case.** A local model gets a small core tool set under a token budget
-  instead of every tool on every message, the same set each turn so the server's prompt cache holds,
-  and `find_tools` for the rest. Tool calls in Qwen3-Coder's format and eight other families are
-  parsed, not dropped.
+- **Local models first, any model you like.** A local model gets a small core tool set under a
+  token budget instead of every tool on every message, the same set each turn so the server's
+  prompt cache holds, and `find_tools` for the rest. Tool calls in Qwen3-Coder's format and eight
+  other families are parsed, not dropped. Or bring an API key, or sign in with a ChatGPT or GitHub
+  Copilot subscription.
+- **Approve from your lock screen.** When the agent needs your yes for a step, the request reaches
+  your phone or desktop as a push notification, even with Pantheon closed.
 - **Voice.** Talk to it like a call and cut it off mid-sentence. Kokoro, Chatterbox or Piper speak,
   Whisper listens, and all of it runs on your hardware.
 - **The rest of a workspace.** Mail over IMAP/SMTP with triage and reply drafts, documents, notes,
-  tasks, a CalDAV calendar, deep research, model serving with
+  tasks, a CalDAV calendar, deep research, Compare for blind side-by-side model tests, image
+  generation and editing, a vault for the keys and logins the agent may use, model serving with
   hardware-aware picks, twenty themes, and the whole app at phone width.
 
 The full list, and what the fork added over Odysseus, is in [docs/features.md](docs/features.md).
