@@ -81,10 +81,11 @@ export function toursEnabled() {
 export const HINT_KEYS = Object.freeze([
   'pantheon-hint-drag-to-snap-seen',
   'pantheon-notes-first-open-hint-v1',
+  'pantheon-hint-phone-controls-v1',
 ]);
 
 /** Clears every per-tour marker, so the walkthroughs play again — and the
- *  two first-open hints with them. */
+ *  first-open hints with them. */
 export function resetSeenTours() {
   Object.values(TOUR_FOR_MODAL).forEach(tour => {
     try { localStorage.removeItem(SEEN_KEY(tour)); } catch (_) {}
