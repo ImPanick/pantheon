@@ -106,7 +106,7 @@ async def test_account_config_uses_shared_imap_timeout(monkeypatch):
         def logout(self):
             captured["logout"] = True
 
-    def fake_open(host, port, *, starttls, timeout, owner=""):
+    def fake_open(host, port, *, starttls, timeout, owner="", reach=None):
         captured["open"] = (host, port, starttls, timeout)
         return _Conn()
 

@@ -27,6 +27,9 @@ class TTSRequest(BaseModel):
     engine: Optional[str] = None
     voice: Optional[str] = None
     speed: Optional[float] = None
+    # `B2097`. Spoken for a Nobody chat: said, and not kept in the speech
+    # cache (`TTSService._put_cache` asks `src/nobody_mode.keeps_nothing`).
+    incognito: bool = False
 
 def setup_tts_routes(tts_service):
     """Setup TTS routes with the provided TTS service"""
@@ -89,6 +92,12 @@ def setup_tts_routes(tts_service):
     @router.post("/synthesize")
     async def synthesize_speech(request: TTSRequest, http: Request):
         """Synthesize speech from text"""
+        from src import nobody_mode
+        # `B2097`: the worker threads below inherit the mark.
+        with nobody_mode.turn_scope(request.incognito):
+            return await _synthesize_speech(request, http)
+
+    async def _synthesize_speech(request: TTSRequest, http: Request):
         # `B1717`. What this server says when it cannot speak: why, when it
         # knows (the voice call shows it rather than going quiet).
         def _said(default: str) -> str:

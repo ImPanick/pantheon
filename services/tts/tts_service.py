@@ -424,6 +424,11 @@ class TTSService:
         return None
 
     def _put_cache(self, key: str, data: bytes):
+        # `B2097`. Speech for a Nobody chat is said and not kept: the cache is
+        # named by a hash of the words, and the file is the reply as sound.
+        from src import nobody_mode
+        if nobody_mode.keeps_nothing():
+            return
         ext = ".mp3" if (len(data) >= 3 and (data[:3] == b'ID3' or (data[0] == 0xff and (data[1] & 0xe0) == 0xe0))) else ".wav"
         (self.cache_dir / f"{key}{ext}").write_bytes(data)
 

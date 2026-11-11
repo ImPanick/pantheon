@@ -34,6 +34,7 @@ from src.tool_approvals import ExactToolApproval
 from src.tool_policy import ToolPolicy
 from src.constants import MAX_OUTPUT_CHARS, MAX_READ_CHARS, MAX_DIFF_LINES, DATA_DIR
 from src.owner_identity import normalize_owner
+from src import nobody_mode   # `B2097`
 from src.tool_utils import _truncate, get_mcp_manager
 
 
@@ -949,6 +950,8 @@ async def _call_mcp_tool(
     server_id, tool_name = _MCP_TOOL_MAP[tool]
     qualified = f"mcp__{server_id}__{tool_name}"
     args = _build_mcp_args(tool, content)
+    if tool == "generate_image" and nobody_mode.keeps_nothing():   # `B2097`
+        return await _image_keeping_nothing(args, session_id, owner)
     refused = _manage_rag_refusal(tool, args, owner)   # `B1923`
     if refused:
         return refused
@@ -975,6 +978,29 @@ async def _call_mcp_tool(
     if tool == "generate_image":
         _promote_image_fields(result)
 
+    return result
+
+
+async def _image_keeping_nothing(args: Dict, session_id: Optional[str],
+                                 owner: Optional[str]) -> Dict:
+    """`B2097`. A Nobody turn's `generate_image`, made in this process.
+
+    The `image_gen` server is its own process and writes a file and a Gallery
+    row for every picture; nothing in it can know which turn asked. So in
+    Nobody the call is answered here, by `do_generate_image`, which reads the
+    turn's mark (`src/nobody_mode.keeps_nothing`) and hands the picture back as
+    data. The administrator's switch is asked as the server asks it."""
+    from src.settings import get_setting
+    from src.ai_interaction import do_generate_image
+
+    if not get_setting("image_gen_enabled", True):
+        return {"error": "Image generation is disabled by the administrator.", "exit_code": 1}
+    args = args if isinstance(args, dict) else {}
+    lines = [" ".join(str(args.get("prompt") or "").split())]
+    for key in ("model", "size", "quality"):
+        lines.append(" ".join(str(args.get(key) or "").split()))
+    result = await do_generate_image("\n".join(lines), session_id, owner=owner)
+    result.setdefault("exit_code", 1 if result.get("error") else 0)
     return result
 
 
@@ -1949,6 +1975,9 @@ async def _execute_tool_block_impl(
                 result = {"error": parse_error, "exit_code": 1}
             elif refused:
                 result = refused
+            elif tool == "mcp__image_gen__generate_image" and nobody_mode.keeps_nothing():
+                # `B2097`: as the bare name's call — made here, kept nowhere.
+                result = await _image_keeping_nothing(args, session_id, owner)
             else:
                 # `B1922`: the image server is told whom it draws for too,
                 # and `B1923` the RAG server whose index it reads.
@@ -1980,7 +2009,10 @@ async def _execute_tool_block_impl(
             "exit_code": 1
         }
 
-    logger.info(f"Tool executed: {desc} -> exit_code={result.get('exit_code', 'n/a')}")
+    # `B2097`: a Nobody turn's command, query or prompt is not written to the
+    # log — only which tool ran.
+    _logged = tool if nobody_mode.keeps_nothing() else desc
+    logger.info(f"Tool executed: {_logged} -> exit_code={result.get('exit_code', 'n/a')}")
     return desc, result
 
 
@@ -2056,6 +2088,12 @@ def format_tool_result(description: str, result: Dict) -> str:
     # Without this, tools that return {"response": "...", "events": [...]} would
     # silently drop the events list and the model would only see the summary line.
     extra = {k: v for k, v in result.items() if k not in _FORMATTER_HANDLED_KEYS}
+    # `B2097`. A picture made in Nobody has no file, so its address is the
+    # picture itself — megabytes of base64 the model cannot see as a picture
+    # and the 8,000-character cap below would only cut. It is told the picture
+    # was shown instead.
+    if nobody_mode.is_data_url(extra.get("image_url")):
+        extra["image_url"] = nobody_mode.SHOWN_NOT_SAVED
     if extra:
         try:
             extra_json = json.dumps(extra, indent=2, default=str, ensure_ascii=False)

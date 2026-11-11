@@ -27,6 +27,7 @@ from core.database import (
 )
 from src.auth_helpers import effective_user, is_delegated_credential
 from src.owner_identity import is_request_sentinel_owner
+from src.env_flags import request_flag   # `B2097`
 from src.attachment_refs import attachment_refs_from_metadata
 # `P21-03`: the person's name for a file, and the download header that keeps it.
 from src.file_names import attachment_disposition, upload_display_name
@@ -441,12 +442,19 @@ def setup_upload_routes(upload_handler):
         request: Request,
         files: List[UploadFile] = File(...),
         session_id: Optional[str] = Form(None),
+        incognito: Optional[str] = Form(None),
     ):
-        """Upload files with enhanced security and organization."""
+        """Upload files with enhanced security and organization.
+
+        `B2097`. ``incognito`` is the composer saying the file is for a Nobody
+        chat: it is saved for the turn to read and is not put in the Gallery.
+        The file itself is referenced by nothing that is kept, so the upload
+        sweep removes it once it is past its age."""
         # `B1820`. A token needs a write scope and an owner before anything is saved.
         _token_upload_gate(request, write=True, check_owner=False)
         if not isinstance(session_id, str):
             session_id = None
+        keeps_nothing = request_flag(incognito if isinstance(incognito, str) else None)   # `B97`
         if not files:
             raise HTTPException(400, "No files uploaded")
 
@@ -533,7 +541,8 @@ def setup_upload_routes(upload_handler):
         for u in files:
             try:
                 meta = upload_handler.save_upload(u, client_ip, owner=owner)
-                gallery_id = _promote_chat_image_to_gallery(meta, owner, session_id)
+                gallery_id = (None if keeps_nothing
+                              else _promote_chat_image_to_gallery(meta, owner, session_id))
                 item = {
                     "id": meta["id"],
                     # `P21-03`. What the chip, the markdown image's alt text and

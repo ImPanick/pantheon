@@ -209,6 +209,17 @@ async def do_edit_image(content: str, owner: Optional[str] = None) -> Dict:
         return {"error": f"{action} failed: {path} returned unreadable image data",
                 "exit_code": 1}
 
+    from src import nobody_mode
+    if nobody_mode.keeps_nothing():
+        # `B2097`. Shown in the chat as data; no file, no Gallery row.
+        return {
+            "output": f"Image edited ({action}). {nobody_mode.SHOWN_NOT_SAVED}",
+            "exit_code": 0,
+            "image_url": nobody_mode.picture_data_url(edited),
+            "image_prompt": args.get("prompt") or getattr(row, "prompt", "") or action,
+            "image_model": f"edit_image:{action}",
+        }
+
     new_id = _save_gallery_image(
         edited, owner=owner,
         prompt=(args.get("prompt") or getattr(row, "prompt", "") or action),

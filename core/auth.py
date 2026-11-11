@@ -70,6 +70,13 @@ DEFAULT_PRIVILEGES = {
     # everyone but admins until an admin grants it, per person in Settings →
     # Users or to everyone holding a role.
     "can_run_instance": False,
+    # `B2102`. May this person's mail accounts reach a mail server on this
+    # machine or a private network (the LAN, Tailscale), or on a port mail does
+    # not use? Off for everyone but admins until an admin grants it, because
+    # without it the account form's Test told a member which ports on the
+    # Pantheon box and the LAN were open. Link-local and cloud metadata stay
+    # refused either way (`src/mail_reach.py`).
+    "can_reach_private_mail": False,
     "max_messages_per_day": 0,
     "allowed_models": [],
     "allowed_models_restricted": False,

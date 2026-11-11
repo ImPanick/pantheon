@@ -42,6 +42,7 @@ from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from src.constants import DATA_DIR
 from src import mail_auth, providers
 from src import mail_tls as _mail_tls  # `B2096`: which certificate gets a password
+from src import mail_reach as _mail_reach  # `B2102`: which servers an account may reach
 
 from src.llm_core import llm_call_async
 from src.upload_limits import read_upload_limited, resolve_byte_limit
@@ -6203,6 +6204,7 @@ def setup_email_routes():
         cfg.pop("oauth_access_token", None)
         cfg.pop("oauth_refresh_token", None)
         cfg.pop("oauth_token_expiry", None)
+        cfg.pop("asked_by", None)   # `B2102`: the server's own bookkeeping
         # Include preferences from settings.json
         settings = _load_settings()
         auto_reply_settings = _get_auto_reply_settings_for_account(settings, account_id)
@@ -6241,6 +6243,14 @@ def setup_email_routes():
         """
         if account_id:
             _assert_owns_account(account_id, owner)
+        # `B2102`: a host or port this person's mail may not reach is refused
+        # before anything is written (`src/mail_reach.py`).
+        refused = _mail_reach.first_refusal(_mail_reach.reach_for(owner), (
+            (data.get("imap_host"), data.get("imap_port") or 993),
+            (data.get("smtp_host"), data.get("smtp_port") or 465),
+        ))
+        if refused:
+            return _account_refused(refused)
 
         # Non-reply automation flags stay global. Away/auto-reply settings are
         # account-scoped when an account_id is supplied by the Email Settings UI.
@@ -6388,6 +6398,12 @@ def setup_email_routes():
         smtp_port, port_err = _coerce_port(data.get("smtp_port"), 465)
         if port_err:
             return _account_refused(port_err)
+        # `B2102`: a host or port the creator's mail may not reach is refused
+        # here, as typed; a name is judged by its addresses when connected to.
+        refused = _mail_reach.first_refusal(_mail_reach.reach_for(owner), (
+            (data.get("imap_host"), imap_port), (data.get("smtp_host"), smtp_port)))
+        if refused:
+            return _account_refused(refused)
         db = SessionLocal()
         try:
             _lock_email_account_owner_mutation(db, owner)
@@ -6450,6 +6466,18 @@ def setup_email_routes():
                     if port_err:
                         return _account_refused(port_err)
                     setattr(row, key, port)
+            # `B2102`: a host or port changed here is asked of the account's
+            # owner and of the person changing it, as its connections will be.
+            reach = _mail_reach.reach_for(row.owner, owner)
+            changed = []
+            if {"imap_host", "imap_port"} & set(data):
+                changed.append((row.imap_host, row.imap_port))
+            if {"smtp_host", "smtp_port"} & set(data):
+                changed.append((row.smtp_host, row.smtp_port))
+            refused = _mail_reach.first_refusal(reach, changed)
+            if refused:
+                db.rollback()
+                return _account_refused(refused)
             if "smtp_security" in data:
                 row.smtp_security = _smtp_security_mode({"smtp_security": data.get("smtp_security"), "smtp_port": data.get("smtp_port") or row.smtp_port})
             for key in ("imap_starttls", "enabled"):
@@ -6583,9 +6611,9 @@ def setup_email_routes():
         # own pool, carrying this request's context as `asyncio.to_thread` does.
         return await asyncio.get_running_loop().run_in_executor(
             _ACCOUNT_TEST_POOL, contextvars.copy_context().run, _probe_account_connections,
-            body, pin_owner)
+            body, pin_owner, owner or "")
 
-    def _probe_account_connections(body: dict, pin_owner: str = "") -> dict:
+    def _probe_account_connections(body: dict, pin_owner: str = "", asked_by: str = "") -> dict:
         """`B1921`. The blocking half of `POST /api/email/accounts/test`: connect
         to the IMAP and SMTP servers in `body`, sign in, and say how each went.
         Runs in `_ACCOUNT_TEST_POOL`; the sign-in check, the owner check and the
@@ -6595,9 +6623,16 @@ def setup_email_routes():
         will (`src/mail_tls.py`, under `pin_owner`'s pins), so a certificate the
         Test passes is one the inbox and the sender accept. A refused one comes
         back as the half's `certificate` (`mail_tls.offer`), which the form
-        reads to offer *Trust this certificate*."""
+        reads to offer *Trust this certificate*.
+
+        `B2102`: both halves connect through `src/mail_reach.py` under the
+        narrower reach of the account's owner (`pin_owner`) and the person
+        pressing Test (`asked_by`), so the form is not a port scanner: a host
+        on this machine or a private network, or a port mail does not use, is
+        refused before a socket is opened, with one sentence."""
         imap_result = {"ok": False}
         smtp_result = None
+        reach = _mail_reach.reach_for(pin_owner, asked_by)
 
         imap_host = (body.get("imap_host") or "").strip()
         imap_port, imap_port_err = _coerce_port(body.get("imap_port"), 993)
@@ -6657,6 +6692,7 @@ def setup_email_routes():
                     starttls=imap_starttls,
                     timeout=_IMAP_TIMEOUT_SECONDS,
                     owner=pin_owner,
+                    reach=reach,
                 )
                 try:
                     if oauth_record is not None:
@@ -6672,7 +6708,8 @@ def setup_email_routes():
                 imap_result = {"ok": False, "error": _friendly_email_auth_error("IMAP", imap_host, e, port=imap_port)}
                 # `B1963`'s rule for which TLS the port takes, as the opener reads it.
                 imap_tls = "ssl" if imap_port == 993 else ("starttls" if imap_starttls else None)
-                certificate = _mail_tls.offer(e, "imap", imap_host, imap_port, tls=imap_tls)
+                certificate = _mail_tls.offer(e, "imap", imap_host, imap_port, tls=imap_tls,
+                                              reach=reach)
                 if certificate:
                     imap_result["certificate"] = certificate
 
@@ -6707,7 +6744,7 @@ def setup_email_routes():
             try:
                 if smtp_security == "ssl":
                     with _mail_tls.handshake(smtp_host, smtp_port):
-                        smtp = smtplib.SMTP_SSL(
+                        smtp = _mail_reach.pinned(smtplib.SMTP_SSL, reach)(
                             smtp_host,
                             smtp_port,
                             timeout=_MAIL_CONNECT_SECONDS,
@@ -6715,7 +6752,8 @@ def setup_email_routes():
                         )
                     _mail_tls.check_connection(smtp, pin_owner, smtp_host, smtp_port)
                 else:
-                    smtp = smtplib.SMTP(smtp_host, smtp_port, timeout=_MAIL_CONNECT_SECONDS)
+                    smtp = _mail_reach.pinned(smtplib.SMTP, reach)(
+                        smtp_host, smtp_port, timeout=_MAIL_CONNECT_SECONDS)
                     if smtp_security == "starttls":
                         try:
                             with _mail_tls.handshake(smtp_host, smtp_port):
@@ -6746,7 +6784,8 @@ def setup_email_routes():
             except Exception as e:
                 smtp_result = {"ok": False, "error": _friendly_email_auth_error("SMTP", smtp_host, e, port=smtp_port)}
                 smtp_tls = smtp_security if smtp_security in ("ssl", "starttls") else None
-                certificate = _mail_tls.offer(e, "smtp", smtp_host, smtp_port, tls=smtp_tls)
+                certificate = _mail_tls.offer(e, "smtp", smtp_host, smtp_port, tls=smtp_tls,
+                                              reach=reach)
                 if certificate:
                     smtp_result["certificate"] = certificate
             finally:

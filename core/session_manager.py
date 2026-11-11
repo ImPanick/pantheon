@@ -648,22 +648,29 @@ class SessionManager:
         """Permanently delete a session and all its messages."""
         db = SessionLocal()
         try:
-            try:
-                from src.session_image_cleanup import cleanup_session_images
-                cleanup_session_images(session_id, db=db)
-            except Exception as e:
-                logger.warning(f"Image cleanup failed while deleting session {session_id}: {e}")
+            db_session = db.query(DbSession).filter(DbSession.id == session_id).first()
+            from src import nobody_mode
+            if db_session is not None and nobody_mode.is_nobody_session_name(db_session.name):
+                # `B2097`. A Nobody chat keeps nothing, so what it left goes
+                # with it — pictures and their rows, documents rather than
+                # detached into the Library, messages, and its transcript.
+                nobody_mode.forget_session(db, session_id)
+            else:
+                try:
+                    from src.session_image_cleanup import cleanup_session_images
+                    cleanup_session_images(session_id, db=db)
+                except Exception as e:
+                    logger.warning(f"Image cleanup failed while deleting session {session_id}: {e}")
 
-            # Detach documents so they survive as orphans in the library
-            db.query(DbDocument).filter(DbDocument.session_id == session_id).update(
-                {DbDocument.session_id: None}, synchronize_session=False
-            )
+                # Detach documents so they survive as orphans in the library
+                db.query(DbDocument).filter(DbDocument.session_id == session_id).update(
+                    {DbDocument.session_id: None}, synchronize_session=False
+                )
 
-            # Delete messages
-            db.query(DbChatMessage).filter(DbChatMessage.session_id == session_id).delete()
+                # Delete messages
+                db.query(DbChatMessage).filter(DbChatMessage.session_id == session_id).delete()
 
             # Delete session
-            db_session = db.query(DbSession).filter(DbSession.id == session_id).first()
             if db_session:
                 db.delete(db_session)
 
