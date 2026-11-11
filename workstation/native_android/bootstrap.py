@@ -351,6 +351,7 @@ def ensure_consent(layout: Layout, abi: str, catalogue: Catalogue, *, accept: se
              f'into {layout.sdk}. They are Google\'s, under the agreement{"s" if len(ids) > 1 else ""} above '
              f'({", ".join(ids)}); Pantheon does not redistribute them.')
         answer = ask(f'Do you accept {" and ".join(ids)}? Type yes to accept: ').strip().lower()
+        # flag-spelling: a person's typed answer to a licence prompt, not a Pantheon flag; only a yes accepts.
         if answer not in ('y', 'yes'):
             raise BootstrapError('Not accepted, so Android was not installed. Pantheon runs without it.',
                                  EXIT_CONSENT)

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """USB acceptance must not masquerade as delivery or eject on contention."""
 import asyncio
 import base64
