@@ -94,6 +94,7 @@ class Handler(agentd.Handler):
                 raise agentd.WorkstationError('unauthorized','The Android host token is missing or wrong.')
             parts=urlsplit(self.path);path=parts.path.rstrip('/')
             if path=='/v1/health' and method=='GET':
+                getattr(self.station.system,'reprobe',lambda:None)()
                 self._send(200,{'ok':True,'protocol':P.PROTOCOL_VERSION,'agent':P.AGENT_NAME,
                     'backend':'native_android','run':self.station.run,'accel':self.station.system.accel,
                     'why':self.station.system.why});return
@@ -183,6 +184,8 @@ def main():
     server=make_server(json.loads(args.config.read_text()))
     def stop(*_):threading.Thread(target=server.shutdown,daemon=True).start()
     signal.signal(signal.SIGTERM,stop);signal.signal(signal.SIGINT,stop)
+    # Windows: the launcher stops its process group with CTRL_BREAK_EVENT.
+    if hasattr(signal,'SIGBREAK'):signal.signal(signal.SIGBREAK,stop)
     try:server.serve_forever()
     finally:
         try:server.host.stop_all()

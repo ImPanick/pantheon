@@ -231,6 +231,17 @@ cp .env.example .env
 docker compose up -d --build
 ```
 
+For the Android phones, run Pantheon with this line instead of `docker compose up -d --build`:
+
+```bash
+python3 -m workstation.native_android.bootstrap up --app docker --compose -- up -d --build
+```
+
+Android runs as a real VM on your machine, beside Docker. The first run asks you to accept Google's
+Android SDK License, downloads Google's emulator once and starts it; it needs Python 3.11+ and a
+hypervisor the emulator can use. `./start-macos.sh` and `launch-windows.ps1` do this on their own.
+See [the Android host](docs/android-host.md).
+
 Open `http://localhost:7000` once the containers are healthy. The app binds to `127.0.0.1`
 unless you set `APP_BIND`, and the port is `APP_PORT`. The first visit asks you to make the
 admin account on the sign-in page, and lets you open sign-up for everyone else — or set
