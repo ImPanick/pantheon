@@ -264,7 +264,8 @@ def test_live_screenshots_refresh_activity_while_booting_touch_waits(tmp_path, s
             station.phone("test", {"action": "input", "input": "click", "x": 1, "y": 1})
 
 
-def test_an_agent_can_look_at_boot_without_treating_it_as_ready(monkeypatch):
+@pytest.mark.parametrize("native", [False, True], ids=["workstation", "native-host"])
+def test_an_agent_can_look_at_boot_without_treating_it_as_ready(monkeypatch, native):
     import asyncio
     import json
     from src.agent_tools.computer_tools import ComputerTool
@@ -272,6 +273,8 @@ def test_an_agent_can_look_at_boot_without_treating_it_as_ready(monkeypatch):
     calls = []
 
     class Client:
+        native_android = native
+
         async def phone(self, account, action, **fields):
             calls.append(action)
             if action == "status":
@@ -285,6 +288,10 @@ def test_an_agent_can_look_at_boot_without_treating_it_as_ready(monkeypatch):
         return SimpleNamespace(client=Client(), account="test")
 
     monkeypatch.setattr("src.workstation_access.ensure_ready", ready)
+    # The phone is routed first (`src.phone_runtime.phone_for`): to the native
+    # Android host when one is paired, else through the workstation. Both are
+    # given here so the test is about boot, not about which host is configured.
+    monkeypatch.setattr("src.phone_runtime.phone_for", lambda owner, **_: (Client(), "test"))
     tool = ComputerTool()
     result = asyncio.run(tool.execute(json.dumps({"action": "screenshot", "screen": "phone"}),
                                       {"owner": "mobile-test"}))
