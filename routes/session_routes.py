@@ -22,6 +22,7 @@ from src.auth_helpers import (
     require_chat_api_token_scope,
 )
 from src.session_actions import is_session_recently_active
+from src.nobody_mode import NOBODY_SESSION_NAMES, is_nobody_session_name   # `B2097`
 from src.chat_helpers import CHAT_GONE   # `B1216`
 from src.upload_handler import reserve_message_upload_references
 from src.tool_approval_scopes import sanitize_client_message_metadata
@@ -385,15 +386,15 @@ def setup_session_routes(
             _cutoff = utcnow_naive() - _td(minutes=10)
             _purge_db = SessionLocal()
             try:
-                from core.database import ChatMessage as _DbMsg
+                from src.nobody_mode import forget_session as _forget   # `B2097`
                 _ghosts = _purge_db.query(DbSession).filter(
-                    DbSession.name.in_(("Nobody", "Incognito")),
+                    DbSession.name.in_(NOBODY_SESSION_NAMES),
                     DbSession.created_at < _cutoff,
                 ).all()
                 for _g in _ghosts:
                     if active_incognito_id and _g.id == active_incognito_id:
                         continue
-                    _purge_db.query(_DbMsg).filter(_DbMsg.session_id == _g.id).delete()
+                    _forget(_purge_db, _g.id)   # with its pictures and documents
                     _purge_db.delete(_g)
                     if hasattr(session_manager, "delete_session"):
                         try:
@@ -414,7 +415,7 @@ def setup_session_routes(
         # not the newest 100 of everyone's, cut before the owner filter.
         page, has_more = session_manager.list_page(
             user, limit=max(1, min(int(limit), SESSION_PAGE_MAX)), offset=offset,
-            hidden_names=("Nobody", "Incognito", *_HIDDEN_SYSTEM_SESSION_NAMES))
+            hidden_names=(*NOBODY_SESSION_NAMES, *_HIDDEN_SYSTEM_SESSION_NAMES))
         if has_more and response is not None:
             response.headers["X-More-Chats"] = "1"
         # Fetch folder info from DB for each session
@@ -481,7 +482,7 @@ def setup_session_routes(
                      "message_count": msg_count_map.get(s.id, 0)}
                     for s in page
                     if not s.archived
-                    and (s.name or "").strip() not in ("Nobody", "Incognito")
+                    and (s.name or "").strip() not in NOBODY_SESSION_NAMES
                     and (s.name or "").strip() not in _HIDDEN_SYSTEM_SESSION_NAMES]
 
         return sessions
@@ -1387,8 +1388,12 @@ def setup_session_routes(
                 # Never delete important sessions
                 if getattr(row, 'is_important', False):
                     continue
-                # Always delete incognito sessions during cleanup
-                if (row.name or "").strip() == "Incognito":
+                # Always delete incognito sessions during cleanup. `B2097`: by
+                # either name (the browser's is *Nobody*), whole, and not one
+                # still in use (`src/session_actions.run_auto_sort`, the same).
+                if is_nobody_session_name(row.name):
+                    if is_session_recently_active(row, now=cleanup_now):
+                        continue
                     should_delete = True
                     deleted_throwaway += 1
                     db.delete(row)
@@ -1464,7 +1469,7 @@ def setup_session_routes(
         TIDY_BATCH_SIZE = 15
         all_candidates = []
         for s in user_sessions:
-            if s.archived or s.name == "Incognito":
+            if s.archived or is_nobody_session_name(s.name):   # `B2097`
                 continue
             if folder_map.get(s.id):
                 # Already in a folder — skip on this pass.

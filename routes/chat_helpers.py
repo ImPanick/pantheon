@@ -89,6 +89,12 @@ def _append_incognito_message(session_id: str, role: str, content: Any, metadata
     bundle["updated_at"] = time.time()
 
 
+def forget_incognito_transcript(session_id: str) -> None:
+    """`B2097`. Drop a Nobody chat's transcript when the chat ends, rather than
+    leaving it in memory until it expires."""
+    _INCOGNITO_CONTEXTS.pop(str(session_id or "").strip(), None)
+
+
 # ── Data containers ────────────────────────────────────────────────────── #
 
 @dataclass
@@ -1783,8 +1789,10 @@ async def run_post_response_tasks(
     if last_metrics:
         await asyncio.to_thread(accumulate_token_usage, session_id, last_metrics)
 
-    # Webhook
-    if webhook_manager and not compare_mode:
+    # Webhook. `B2097`: not for a Nobody turn — the person's words and the
+    # reply would leave for wherever the hook points, as `fire_message_event`
+    # already refuses to send them.
+    if webhook_manager and not compare_mode and not incognito:
         webhook_manager.fire_and_forget("chat.completed", {
             "session_id": session_id, "model": sess.model,
             "user_message": message, "response": full_response[:2000],

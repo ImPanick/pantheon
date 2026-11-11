@@ -34,6 +34,7 @@ from src.agent_loop import (
 from src import agent_runs
 from src import reasoning_effort as _reasoning_effort
 from src import message_reactions as _message_reactions   # `B1736`
+from src import nobody_mode as _nobody   # `B2097`
 from src.model_context import estimate_tokens
 from src.context_compactor import (
     apply_compaction_state,
@@ -934,7 +935,9 @@ def _last_user_plain_text(messages: List[Dict[str, Any]]) -> str:
     return ""
 
 
-def _ensure_current_request_is_latest_user(messages: List[Dict[str, Any]], current_message: str) -> List[Dict[str, Any]]:
+def _ensure_current_request_is_latest_user(
+    messages: List[Dict[str, Any]], current_message: str, *, incognito: bool = False,
+) -> List[Dict[str, Any]]:
     """Defensively keep detached streams grounded on the request that created them."""
     current = str(current_message or "").strip()
     if not current:
@@ -942,11 +945,18 @@ def _ensure_current_request_is_latest_user(messages: List[Dict[str, Any]], curre
     latest = _last_user_plain_text(messages).strip()
     if latest == current or current in latest or latest in current:
         return messages
-    logger.warning(
-        "[chat_stream] latest user context mismatch; appending current request for model call. latest=%r current=%r",
-        latest[:120],
-        current[:120],
-    )
+    if incognito:
+        # `B2097`. The log keeps what it is told; a Nobody turn's words are not told it.
+        logger.warning(
+            "[chat_stream] latest user context mismatch; appending current request for model call "
+            "(Nobody: %d and %d characters, not logged)", len(latest), len(current),
+        )
+    else:
+        logger.warning(
+            "[chat_stream] latest user context mismatch; appending current request for model call. latest=%r current=%r",
+            latest[:120],
+            current[:120],
+        )
     repaired = list(messages or [])
     repaired.append({"role": "user", "content": current})
     return repaired
@@ -2319,41 +2329,44 @@ def setup_chat_routes(
             allowed_models=_allowed_models_for_request(request),
         )
 
-        # Build shared context (stream path uses enhanced_message for context preface)
-        ctx = await build_chat_context(
-            sess, request, chat_handler, chat_processor,
-            message=message,
-            session_id=session,
-            preset_id=preset_id,
-            att_ids=att_ids,
-            use_web=use_web,
-            use_rag=use_rag,
-            time_filter=time_filter,
-            incognito=incognito,
-            no_memory=no_memory,
-            search_context=search_context,
-            compare_mode=compare_mode,
-            webhook_manager=webhook_manager,
-            use_enhanced_message=True,
-            # Skills index only ships when the model can actually call
-            # manage_skills (agent mode). In plain chat or incognito the
-            # index would be useless / unwanted noise.
-            agent_mode=(chat_mode == "agent"),
-            allow_tool_preprocessing=allow_tool_preprocessing,
-            defer_context_shaping=foreground_policy.enabled,
-            continuation_context_message=(
-                pending_tool_approval.continuation_query
-                if exact_tool_approval
-                and pending_tool_approval
-                and pending_tool_approval.continuation_query
-                else None
-            ),
-            persist_user_message=not tool_approval_continuation,
-            invoked_skill=invoked_skill,   # `B1374`
-            # `B1736`. A fresh message may be reacted to; a continuation after
-            # an approval card answers a message the model already saw.
-            offer_reactions=not tool_approval_continuation,
-        )
+        # Build shared context (stream path uses enhanced_message for context preface).
+        # `B2097`: inside a Nobody turn's scope, so an attachment read here
+        # (a PDF, an office file, a photo's description) is not kept.
+        with _nobody.turn_scope(incognito):
+            ctx = await build_chat_context(
+                sess, request, chat_handler, chat_processor,
+                message=message,
+                session_id=session,
+                preset_id=preset_id,
+                att_ids=att_ids,
+                use_web=use_web,
+                use_rag=use_rag,
+                time_filter=time_filter,
+                incognito=incognito,
+                no_memory=no_memory,
+                search_context=search_context,
+                compare_mode=compare_mode,
+                webhook_manager=webhook_manager,
+                use_enhanced_message=True,
+                # Skills index only ships when the model can actually call
+                # manage_skills (agent mode). In plain chat or incognito the
+                # index would be useless / unwanted noise.
+                agent_mode=(chat_mode == "agent"),
+                allow_tool_preprocessing=allow_tool_preprocessing,
+                defer_context_shaping=foreground_policy.enabled,
+                continuation_context_message=(
+                    pending_tool_approval.continuation_query
+                    if exact_tool_approval
+                    and pending_tool_approval
+                    and pending_tool_approval.continuation_query
+                    else None
+                ),
+                persist_user_message=not tool_approval_continuation,
+                invoked_skill=invoked_skill,   # `B1374`
+                # `B1736`. A fresh message may be reacted to; a continuation after
+                # an approval card answers a message the model already saw.
+                offer_reactions=not tool_approval_continuation,
+            )
         _reactions_on = (
             not tool_approval_continuation and not incognito
             and _message_reactions.wanted(ctx.uprefs, compare_mode=compare_mode)
@@ -2554,6 +2567,12 @@ def setup_chat_routes(
                 "send_to_session",
                 "chat_with_model",
             }, WITHHELD_BY_POLICY)
+            # `B2097`. And every tool that writes into what Pantheon keeps for
+            # them — documents, notes, calendar, tasks, todos, research, RAG,
+            # the Gallery's editor — because Nobody keeps nothing. Derived from
+            # the effects register (`src/nobody_mode.withheld_writes`);
+            # `generate_image` still runs, and keeps nothing.
+            _withholds.deny(_nobody.withheld_writes(), WITHHELD_BY_POLICY)
 
         # Active email reader open → strip the tools that let the agent drift
         # away from the visible email or skip review. The only allowed compose
@@ -2714,8 +2733,12 @@ def setup_chat_routes(
             tool_policy.blocks("trigger_research")
             or tool_policy.blocks("manage_research")
         )
+        # `B2097`: a research run keeps its report and its findings, so a
+        # Nobody turn never starts one (the browser turns research off when
+        # Nobody comes on; this holds for a request that sends both).
         effective_do_research = bool(
             do_research and _research_flags["do"] and not research_blocked_by_policy
+            and not incognito
         )
 
         # Persist session mode after policy/privilege gates so blocked research
@@ -2948,7 +2971,7 @@ def setup_chat_routes(
             messages = (
                 list(context_source)
                 if tool_approval_continuation
-                else _ensure_current_request_is_latest_user(context_source, message)
+                else _ensure_current_request_is_latest_user(context_source, message, incognito=incognito)
             )
 
             # Auto-compact notification
@@ -4081,7 +4104,8 @@ def setup_chat_routes(
                 # screen: the filter sends it as a `reaction` event instead.
                 _reaction_filter = _message_reactions.ReactionStreamFilter() if _reactions_on else None
                 with _reasoning_effort.turn_scope(_turn_reasoning_level), \
-                        _message_reactions.turn_scope(_reactions_on):
+                        _message_reactions.turn_scope(_reactions_on), \
+                        _nobody.turn_scope(incognito):   # `B2097`
                     async for chunk in stream_with_save():
                         if _reaction_filter is None:
                             yield chunk
@@ -4348,7 +4372,7 @@ def setup_chat_routes(
                 owner=_user,
                 restrict_owner=_user is not None,
                 include_legacy_owner=False,
-                hidden_names=("Nobody", "Incognito", *_HIDDEN_SYSTEM_SESSION_NAMES),
+                hidden_names=(*_nobody.NOBODY_SESSION_NAMES, *_HIDDEN_SYSTEM_SESSION_NAMES),
             ),
             "results": results,
             "meaning": meaning,

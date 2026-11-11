@@ -954,6 +954,9 @@ export async function uploadPending(opts = {}) {
   const submitted = pendingFiles.slice();   // input order, frozen for the pairing below
   submitted.forEach(f => fd.append('files', f, _wireName(f)));
   if (opts.sessionId) fd.append('session_id', opts.sessionId);
+  // `B2097`. A file sent in Nobody is read for the turn and kept out of the
+  // Gallery (`routes/upload_routes.py`).
+  if (document.getElementById('incognito-toggle')?.checked) fd.append('incognito', 'true');
   _uploadAbortCtrl = new AbortController();
   _uploading = true;
   const timeoutId = setTimeout(() => {
