@@ -511,7 +511,7 @@ Argued in: `P3-11`, `B54`, `B58`.
 **How we got there.** Counted by AST, not grep — an earlier estimate said 199 and was wrong twice before the parser settled it at 440. The split is the useful part: **11 were genuinely hiding a failure** and now log, **15 were correct to swallow** and now say why. The remaining 402 are a ratchet that can only come down, because closing all of them at once would have been a very large change made on very little evidence.
 
 ```
-python3 .pantheon/check-silent-failures.py --max 402
+python3 .pantheon/check-silent-failures.py
 ```
 
 Argued in: `P3-17`.

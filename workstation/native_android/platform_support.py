@@ -64,7 +64,7 @@ def native_abi():
         try:
             probe = subprocess.run(['/usr/sbin/sysctl', '-n', 'hw.optional.arm64'], capture_output=True, text=True, timeout=5)
             if probe.returncode == 0 and probe.stdout.strip() == '1': cpu = 'arm64'
-        except (OSError, subprocess.TimeoutExpired): pass
+        except (OSError, subprocess.TimeoutExpired): pass  # no sysctl answer: keep platform.machine(), which is right outside Rosetta
     if system == 'Darwin' and cpu in ('arm64', 'aarch64'): return 'arm64-v8a'
     if system in ('Darwin', 'Windows', 'Linux') and cpu in ('amd64', 'x86_64'): return 'x86_64'
     raise RuntimeError('The stock SDK has no local emulator for this OS/CPU. Connect Pantheon to a compatible Android worker.')
