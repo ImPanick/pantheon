@@ -139,10 +139,16 @@ Setting it up: [Android host guide](docs/android-host.md).
   instead of every tool on every message, the same set each turn so the server's prompt cache holds,
   and `find_tools` for the rest. Tool calls in Qwen3-Coder's format and eight other families are
   parsed, not dropped.
+- **A memory that learns as you use it.** The Brain keeps what it learns about you, where each memory
+  came from and how often it's used, and you can read all of it. It was rebuilt around a local
+  embedding model that ships in the image and needs no service or network. On the retrieval test set,
+  putting the right memory first went from an MRR of 0.319 with Odysseus's keyword search to 0.931.
+  That set is a fixture, not your data, so the [proof ledger](LEDGER.md#memory-and-retrieval) says so
+  next to the number, and `.pantheon/retrieval_eval.py --generate` builds one from your own memories.
 - **Voice.** Talk to it like a call and cut it off mid-sentence. Kokoro, Chatterbox or Piper speak,
   Whisper listens, and all of it runs on your hardware.
 - **The rest of a workspace.** Mail over IMAP/SMTP with triage and reply drafts, documents, notes,
-  tasks, a CalDAV calendar, deep research, a memory you can inspect, model serving with
+  tasks, a CalDAV calendar, deep research, model serving with
   hardware-aware picks, twenty themes, and the whole app at phone width.
 
 The full list, and what the fork added over Odysseus, is in [docs/features.md](docs/features.md).
