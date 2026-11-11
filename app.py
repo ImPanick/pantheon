@@ -457,11 +457,23 @@ def _is_auth_exempt(path: str, method: str) -> bool:
 # in app.state, called by routes/api_token_routes.
 _token_cache: dict = {}
 _token_cache_lock = _asyncio.Lock()
-_token_cache_dirty = True
+# Invalidation is a version number, not a flag. The flag this replaces was
+# written into `app.state.__dict__`, which shadows Starlette's `State` storage,
+# so the `= False` a refresh wrote never reached it: after the first
+# invalidation every bearer request rebuilt the whole map under one lock. A
+# flag reset by the refresh would also lose a revocation that lands during the
+# refresh's read; a version the refresh snapshots before reading cannot.
+_token_cache_version = 1
+_token_cache_built_version = 0
+
 
 def _token_cache_invalidate():
-    nonlocal_dict = app.state.__dict__
-    nonlocal_dict["_token_cache_dirty"] = True
+    global _token_cache_version
+    _token_cache_version += 1
+
+
+def _token_cache_stale() -> bool:
+    return _token_cache_built_version != _token_cache_version
 app.state.invalidate_token_cache = _token_cache_invalidate
 # Same setter, reachable without a `Request`. Routes keep using
 # `app.state.invalidate_token_cache` exactly as before; the agent's tool
@@ -470,7 +482,6 @@ app.state.invalidate_token_cache = _token_cache_invalidate
 # authenticating out of the cache until the next restart (`B43`).
 _register_token_cache_invalidator(_token_cache_invalidate)
 app.state._token_cache = _token_cache
-app.state._token_cache_dirty = True
 
 # A bearer token that has already passed bcrypt once, keyed by the SHA-256 of
 # the raw token, holding only the token row's id. API tokens are 256-bit random
@@ -511,7 +522,9 @@ def _bcrypt_match_bearer_token(raw_token: str, candidates):
 
 def _refresh_token_cache():
     """Rebuild the prefix→[(id,hash)] map from the DB."""
+    global _token_cache_built_version
     from collections import defaultdict
+    building = _token_cache_version
     new_map = defaultdict(list)
     db = SessionLocal()
     try:
@@ -529,9 +542,12 @@ def _refresh_token_cache():
             new_map[r.token_prefix].append((r.id, r.token_hash, owner_key, scopes))
     finally:
         db.close()
-    _token_cache.clear()
+    # Swap without an empty moment: the refresh runs in a thread while the
+    # loop keeps answering, and a `clear()` first would refuse a valid token.
     _token_cache.update(new_map)
-    app.state._token_cache_dirty = False
+    for stale_prefix in [k for k in _token_cache if k not in new_map]:
+        _token_cache.pop(stale_prefix, None)
+    _token_cache_built_version = building
 
 # Headers that prove a request was forwarded by a proxy/tunnel (cloudflared,
 # nginx, Caddy, Tailscale Funnel, …). cloudflared connects to the app FROM
@@ -622,9 +638,9 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 return JSONResponse(status_code=401, content={"error": "Invalid API token"})
             prefix = raw_token[:8]
             try:
-                if app.state._token_cache_dirty:
+                if _token_cache_stale():
                     async with _token_cache_lock:
-                        if app.state._token_cache_dirty:
+                        if _token_cache_stale():
                             await _asyncio.to_thread(_refresh_token_cache)
                 candidates = list(_token_cache.get(prefix, ()))
                 matched_id = None

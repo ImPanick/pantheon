@@ -37,7 +37,7 @@ def bearer_app(monkeypatch):
     A._token_cache.clear()
     A._token_cache[raw[:8]] = [("tok1", thash, "alice", ["chat"])]
     A._verified_bearer.clear()
-    monkeypatch.setattr(A.app.state, "_token_cache_dirty", False, raising=False)
+    monkeypatch.setattr(A, "_token_cache_built_version", A._token_cache_version)
     logging.disable(logging.CRITICAL)
     try:
         yield A, raw
@@ -98,3 +98,31 @@ def test_a_revoked_token_stops_matching_although_it_was_verified_before(bearer_a
     assert asyncio.run(get()) != 401
     A._token_cache[raw[:8]] = []  # what a refresh leaves after the row is revoked
     assert asyncio.run(get()) == 401
+
+
+def test_one_invalidation_costs_one_rebuild_not_one_per_request(bearer_app, monkeypatch):
+    """The flag this replaced lived in `app.state.__dict__`, so a refresh never
+    cleared it: after one invalidation every bearer request rebuilt the map."""
+    A, raw = bearer_app
+    rows = list(A._token_cache[raw[:8]])
+    rebuilds = []
+
+    def fake_refresh():
+        rebuilds.append(1)
+        building = A._token_cache_version
+        A._token_cache[raw[:8]] = rows
+        A._token_cache_built_version = building
+
+    monkeypatch.setattr(A, "_refresh_token_cache", fake_refresh)
+    A._token_cache_invalidate()
+
+    async def run():
+        transport = httpx.ASGITransport(app=A.app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://127.0.0.1") as c:
+            return [(await c.get("/api/health/detail",
+                                 headers={"Authorization": "Bearer " + raw})).status_code
+                    for _ in range(5)]
+
+    codes = asyncio.run(run())
+    assert 401 not in codes, codes
+    assert len(rebuilds) == 1, f"{len(rebuilds)} rebuilds for 5 requests after one invalidation"
