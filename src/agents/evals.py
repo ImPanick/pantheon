@@ -1314,6 +1314,12 @@ async def run_case(manifest, case: Dict[str, Any], *, factory, data_dir: str,
         # refused before the world could answer it, and Site Builder's sample
         # said "screenshot taken" over a refusal.
         p.set(agent_loop, "_computer_unavailable_reason", lambda owner, **kw: None)
+        # The `network` tool is asked its own question since the phone got a
+        # host of its own (`9ebc7ddf`, `network_tools.unavailable_reason`):
+        # the world is the workstation for it too, or every case's `network`
+        # call is withheld before the world can answer it.
+        import src.agent_tools.network_tools as network_tools
+        p.set(network_tools, "unavailable_reason", lambda owner, **kw: None)
         p.set(agent_loop, "get_mcp_manager", lambda: None)
         url, name = endpoint or SCRIPTED_URL, model or SCRIPTED_MODEL
         if endpoint is None:
