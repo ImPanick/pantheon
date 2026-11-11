@@ -3775,6 +3775,14 @@
                 <label class="settings-label" for="set-taskModel">Model</label>
                 <select id="set-taskModel" class="settings-select settings-control-wide"><option value="">Default</option></select>
               </div>
+              <!-- `B2100`. Off (the default): a built-in task that picks a model
+                   runs on it, and is refused with a sentence when that model is
+                   gone. On: this model runs every task, whatever it picked
+                   (`task_model_over_task_choice`, `TaskScheduler._action_model_pin`). -->
+              <div class="settings-row">
+                <label class="settings-label" for="set-taskModelOverTasks">Use this model for every task, over the model a task picks</label>
+                <label class="admin-switch"><input type="checkbox" id="set-taskModelOverTasks" /><span class="admin-slider"></span></label>
+              </div>
               <div id="set-taskModelMsg" style="font-size:11px;color:color-mix(in oklab, var(--fg) 45%, var(--fg-muted));"></div>
             </div>
           </div>
