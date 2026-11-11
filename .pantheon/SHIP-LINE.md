@@ -920,6 +920,7 @@ weakest one in this document: it means nobody adjudicated them individually.
 | `B2097` | tracked | decision | Nobody mode promises "nothing saved", and an image made in it is saved with its prompt and the prompt logged; what Nobody keeps of an image is the owner's call |
 | `B2098` | tracked | decision | a skill learned from a chat is published at 0.6 while the Brain's switches say the Skills Audit publishes; the path from an outside page runs only through what the model wrote, 500 characters a message, and whether learned skills wait for the audit is the owner's call |
 | `B2102` | tracked | second-line | a member can still tell the box's and the LAN's open ports from closed ones through the mail Test; the banners no longer come back (`B2032`) and the server no longer stalls (`B1921`), and which hosts a member may name is the owner's call — `B492`'s line |
+| `B1756` | tracked | security | in the native-host verification a guest reached an unauthenticated host ADB server through `10.0.2.2` and ran a marker command on that same test guest, and Netsim's cell-list RPC answered without auth: isolation between guests on a shared host, which matters once one host serves more than one person. The worker runs one VM by default, starts no shared ADB server (`-no-direct-adb`, `no_adb.py` as the SDK's adb) and keeps Netsim in its private radio container; tracked by the owner's call (2026-11-11) until multi-user hosting |
 
 ---
 
