@@ -4,6 +4,8 @@ import mimetypes
 import os
 import sys
 import asyncio
+import collections
+import hashlib
 import time
 
 # On Windows, asyncio.create_subprocess_exec/shell require the ProactorEventLoop.
@@ -49,6 +51,8 @@ from dotenv import load_dotenv
 load_dotenv(encoding="utf-8-sig")
 
 import asyncio
+import collections
+import hashlib
 import logging
 import secrets
 from datetime import datetime, timezone
@@ -468,6 +472,43 @@ _register_token_cache_invalidator(_token_cache_invalidate)
 app.state._token_cache = _token_cache
 app.state._token_cache_dirty = True
 
+# A bearer token that has already passed bcrypt once, keyed by the SHA-256 of
+# the raw token, holding only the token row's id. API tokens are 256-bit random
+# strings, so a fast digest is a sufficient key for "this exact token was
+# verified"; bcrypt stays the stored hash. A hit is honoured only while that id
+# is still among the active candidates for the prefix, so a revoked token
+# (the cache refresh drops its row) stops matching on the next request.
+_VERIFIED_BEARER_MAX = 1024
+_verified_bearer: "collections.OrderedDict[bytes, str]" = collections.OrderedDict()
+
+
+def _match_bearer_token(raw_token: str, candidates):
+    """The candidate row a previously verified `raw_token` belongs to, or None."""
+    digest = hashlib.sha256(raw_token.encode()).digest()
+    tid = _verified_bearer.get(digest)
+    if tid is None:
+        return None
+    for row in candidates:
+        if row[0] == tid:
+            _verified_bearer.move_to_end(digest)
+            return row
+    _verified_bearer.pop(digest, None)
+    return None
+
+
+def _bcrypt_match_bearer_token(raw_token: str, candidates):
+    """Check `raw_token` against each candidate's bcrypt hash (off the loop)."""
+    encoded = raw_token.encode()
+    for row in candidates:
+        if _bcrypt.checkpw(encoded, row[1].encode()):
+            digest = hashlib.sha256(encoded).digest()
+            _verified_bearer[digest] = row[0]
+            _verified_bearer.move_to_end(digest)
+            while len(_verified_bearer) > _VERIFIED_BEARER_MAX:
+                _verified_bearer.popitem(last=False)
+            return row
+    return None
+
 def _refresh_token_cache():
     """Rebuild the prefix→[(id,hash)] map from the DB."""
     from collections import defaultdict
@@ -589,12 +630,15 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 matched_id = None
                 matched_owner = None
                 matched_scopes = []
-                for tid, thash, owner, scopes in candidates:
-                    if _bcrypt.checkpw(raw_token.encode(), thash.encode()):
-                        matched_id = tid
-                        matched_owner = owner
-                        matched_scopes = scopes or []
-                        break
+                hit = _match_bearer_token(raw_token, candidates)
+                if hit is None and candidates:
+                    # bcrypt at the default cost is ~0.3 s of CPU. Run on the
+                    # event loop it stalled every other request on the server
+                    # for that long, once per bearer-authenticated call.
+                    hit = await _asyncio.to_thread(_bcrypt_match_bearer_token, raw_token, candidates)
+                if hit is not None:
+                    matched_id, _thash, matched_owner, matched_scopes = hit
+                    matched_scopes = matched_scopes or []
                 if matched_id:
                     # Update last_used_at off the hot path. Doing it
                     # inline used to keep the request open across an
