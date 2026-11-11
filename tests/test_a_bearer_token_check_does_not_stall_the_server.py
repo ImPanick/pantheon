@@ -24,7 +24,8 @@ import pytest
 
 @pytest.fixture()
 def bearer_app(monkeypatch):
-    import app as A
+    from tests.helpers.fresh_import import import_app_in_this_test
+    A = import_app_in_this_test(monkeypatch)
     from core.api_tokens import ACCEPTED_TOKEN_PREFIXES
 
     raw = ACCEPTED_TOKEN_PREFIXES[0] + secrets.token_urlsafe(32)
