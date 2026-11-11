@@ -63,11 +63,13 @@ until the work lives somewhere without an API: a settings page, a web app behind
 that only exists on a phone. People do that work with a screen, a keyboard and a thumb. In
 Pantheon, so does the agent.
 
-It started as a fork of [Odysseus](https://github.com/pewdiepie-archdaemon/odysseus), a self-hosted
-AI workspace I used for real work and liked. When I went to change something small, I found a lot
-of finished features that had never been connected: panels with no button, an upscaler with no
-menu, a plan mode with no window. I forked it to wire those up, and kept going. The desktop came
-next, then the phone, then everything that has to sit around them for an agent to be useful.
+It started as a fork of [Odysseus](https://github.com/pewdiepie-archdaemon/odysseus). I used it and
+liked its shell, but underneath it was a chatbot with a few half-baked automations, plus a lot of
+finished work nobody had wired up: panels with no button, an upscaler with no menu, a plan mode with
+no window. I was stuck in a creative rut on another project at the time, so this became the new
+one. I connected what was there, then set out to build what would actually be useful to people:
+the desktop first, then the phone, then everything an agent needs around them to get real work
+done.
 
 It's free, it's AGPL, and it isn't for sale. It runs on your machine, you pick the models, and the
 third-party code it ships is pinned, vendored and licence-checked in CI instead of pulled at
@@ -113,14 +115,20 @@ Setting it up: [Android host guide](docs/android-host.md).
 
 ## What else it does
 
+- **Full computer use for any model that can see.** Any model with vision, tool calling and
+  reasoning can drive the desktop and the phone: mouse, keyboard, windows, its own Firefox, taps and
+  swipes. Pantheon supplies the tool and the screen, so you aren't tied to one vendor's
+  computer-use API. From testing, run something larger than 12B. At 8B, 4B and below, models tend to
+  avoid the computer-use tool and fall back to shell commands and web fetches instead of moving the
+  mouse.
 - **A desktop of its own.** XFCE on Ubuntu 24.04, Debian 13, Fedora 44 or Rocky Linux 9, kept
   between chats and streamed live over [KasmVNC](https://github.com/kasmtech/KasmVNC). The agent
   uses the mouse, keyboard, shell and files; you watch, take over, or reset it to a starting point
   you saved. It runs as a container, or as a full QEMU/KVM VM where the host has KVM.
 - **Screens it can actually read.** Every screenshot the agent sees has a numbered box on each
   control, from the accessibility tree, the page's own elements, or the image itself where neither
-  says anything. It clicks by number. That's what lets a small local model use a desktop at all, and
-  `scripts/grounding_eval.py` measures the difference on your model.
+  says anything. It clicks by number instead of guessing pixels, and `scripts/grounding_eval.py` measures the
+  difference on your own model.
 - **259 agents to hire.** 26 departments and 18 teams, each agent a runbook with its own schedule,
   tools and evaluation cases. `@` in the message box summons one, `/` calls a skill.
 - **A Workbench for automations.** A node editor: steps wired on success and on failure, If and
