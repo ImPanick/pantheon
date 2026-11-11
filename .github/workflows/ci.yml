@@ -503,7 +503,7 @@ jobs:
       # by nothing is worse than an undocumented one, because an operator who
       # sets it believes something changed.
       - name: check-env-declared
-        run: python3 .pantheon/check-env-declared.py --max 71
+        run: python3 .pantheon/check-env-declared.py --max 69
       # P4-11. The round has been on the wire since the first agent loop and it
       # was on most events; the gaps were invisible because nothing rendered it.
       # The streamed result card had none while its persisted twin did, the

@@ -1382,7 +1382,8 @@ def main() -> int:
     # in the switches block took it to 71: three names of slack, which is three
     # undocumented variables a future change could have added without anything saying
     # so. A ratchet left loose is where the next regression hides.
-    ap.add_argument("--max", type=int, default=71,
+    # 2026-11-11: WEB_FETCH_USER_AGENT, ARCHIVE_FOLDER and TRASH_FOLDER documented, 69.
+    ap.add_argument("--max", type=int, default=69,
                     help="ceiling for undeclared variables (may fall, never rise)")
     ap.add_argument("--list", action="store_true")
     args = ap.parse_args()
