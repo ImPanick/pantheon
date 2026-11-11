@@ -39,6 +39,8 @@ import pytest
 
 from test_the_command_palette_in_a_browser import NODE, _SKIP, app_url  # noqa: F401,E402
 
+pytestmark = pytest.mark.skipif(NODE is None, reason=_SKIP or "")
+
 _SCRIPT = r"""
 const { chromium } = require('playwright');
 const BASE = process.argv[2];

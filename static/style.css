@@ -51507,7 +51507,7 @@ body.plan-mode-active .chat-input-top > .model-picker-wrap:has(> .model-picker-m
 .phw-usb-wire { height: 4px; width: 60px; background: currentColor; }
 .phw-usb-plug { width: 18px; height: 12px; border: 2px solid currentColor; border-radius: 3px; margin-right: 18px; transition: margin-right .2s ease; }
 .phw-usb-plug::after { content: ''; display: block; width: 5px; height: 6px; background: currentColor; margin: 1px 0 0 14px; }
-.phw-usb-cable[data-connected="true"] { color: var(--accent); }
+.phw-usb-cable[data-connected="true"] { color: var(--fg); }
 .phw-usb-cable[data-connected="true"] .phw-usb-plug { margin-right: 1px; }
 .phw-usb-files { display: grid; gap: 5px; max-height: 140px; overflow-y: auto; }
 .phw-usb-file { overflow-wrap: anywhere; }
