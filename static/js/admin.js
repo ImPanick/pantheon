@@ -834,7 +834,7 @@ async function loadEndpoints() {
           <div style="display:flex;align-items:center;justify-content:space-between;${hasModels ? 'cursor:pointer;' : ''}padding:4px 0;" data-adm-ep-header="${ep.id}">
             <div class="admin-user-info" style="flex:1;flex-wrap:wrap;gap:0.3rem;align-items:center;">
               <span class="adm-ep-row-logo" style="display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;flex-shrink:0;opacity:0.9;">${providerLogoFromUrl(ep.base_url) || ''}</span>
-              <span class="admin-user-name">${esc(ep.name)}</span>
+              <span class="admin-user-name" data-adm-ep-name="${ep.id}">${esc(ep.name)}</span>
               ${ep.model_type === 'image' ? '<span class="admin-badge" style="background:color-mix(in srgb, var(--accent) 20%, transparent);color:var(--accent);">Image</span>' : ''}
               ${kindLabel ? `<span class="admin-badge">${esc(kindLabel)}</span>` : ''}
               ${statusBadge}
@@ -842,6 +842,7 @@ async function loadEndpoints() {
               ${hasModels ? `<span style="font-size:10px;opacity:0.4;${category === 'api' ? 'flex-basis:100%;' : ''}">Click to manage models</span>` : ''}
             </div>
             <div style="display:flex;gap:4px;align-items:center;">
+              <button class="admin-btn-sm" data-adm-rename-ep="${ep.id}" title="Rename this endpoint">Rename</button>
               <button class="admin-btn-sm" data-adm-toggle-ep="${ep.id}">${ep.is_enabled ? 'Disable' : 'Enable'}</button>
               <button class="admin-btn-delete" data-adm-del-ep="${ep.id}" data-adm-ep-online="${ep.online ? '1' : '0'}">Delete</button>
               ${hasModels ? chevronIcon({ size: 12, className: 'admin-user-chevron', style: 'opacity:0.3;transition:transform 0.2s,opacity 0.2s;' }) : ''}
@@ -897,6 +898,55 @@ async function loadEndpoints() {
         await fetch(`/api/model-endpoints/${btn.dataset.admToggleEp}`, { method: 'PATCH' });
         await _refreshAfterEndpointChange();
         loadEndpoints();
+      });
+    });
+    // `B2101`. The PATCH route always took a name and the row only showed it,
+    // so an endpoint the Forge had renamed could not be named back. The name
+    // turns into a field in place: Enter or leaving it saves, Escape cancels.
+    queryAll('[data-adm-rename-ep]').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const epId = btn.dataset.admRenameEp;
+        const label = queryAll('[data-adm-ep-name]').find(n => n.dataset.admEpName === epId);
+        if (!label || label.querySelector('input')) return;
+        const before = label.textContent;
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.className = 'settings-select';
+        input.value = before;
+        input.setAttribute('aria-label', 'Endpoint name');
+        input.addEventListener('click', (ev) => ev.stopPropagation());
+        label.textContent = '';
+        label.appendChild(input);
+        input.focus();
+        input.select();
+        let done = false;
+        const finish = async (save) => {
+          if (done) return;
+          done = true;
+          const name = input.value.trim();
+          if (!save || !name || name === before) { label.textContent = before; return; }
+          try {
+            const res = await fetch(`/api/model-endpoints/${epId}`, {
+              method: 'PATCH',
+              credentials: 'same-origin',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ name }),
+            });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          } catch (err) {
+            label.textContent = before;
+            if (uiModule && uiModule.showError) uiModule.showError('Could not rename the endpoint.');
+            return;
+          }
+          await _refreshAfterEndpointChange();
+          loadEndpoints();
+        };
+        input.addEventListener('keydown', (ev) => {
+          if (ev.key === 'Enter') { ev.preventDefault(); finish(true); }
+          else if (ev.key === 'Escape') { ev.preventDefault(); finish(false); }
+        });
+        input.addEventListener('blur', () => finish(true));
       });
     });
     queryAll('[data-adm-ep-tools]').forEach(sel => {
