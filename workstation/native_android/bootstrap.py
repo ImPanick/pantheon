@@ -764,8 +764,8 @@ def wait_healthy(layout: Layout, config: dict, token: str, supervisor: int, *, w
     tail = ''
     try:
         tail = layout.log.read_text(errors='replace')[-1200:]
-    except OSError:
-        pass
+    except OSError as error:
+        tail = f'(the log could not be read: {error})'
     raise BootstrapError(f'The Android worker did not come up. Its log is {layout.log}:\n{tail}')
 
 
@@ -787,8 +787,10 @@ def stop_worker(layout: Layout, *, wait=STOP_WAIT_S) -> bool:
             say(f'process {pid} did not stop in {int(wait)} s; ending it')
             try:
                 os.kill(int(pid), signal.SIGKILL if hasattr(signal, 'SIGKILL') else signal.SIGTERM)
-            except OSError:
-                pass
+            except ProcessLookupError:
+                pass  # it exited between the check and the kill, which is what was wanted
+            except OSError as error:
+                say(f'could not end process {pid}: {error}; end it yourself before the next start')
     layout.stop_file.unlink(missing_ok=True)
     layout.worker.unlink(missing_ok=True)
     return True
@@ -819,7 +821,7 @@ def supervise(layout: Layout, *, restarts: int = 5, window: float = 600.0) -> in
                 try:
                     child.send_signal(signal.CTRL_BREAK_EVENT if os.name == 'nt' else signal.SIGTERM)
                 except OSError:
-                    pass
+                    pass  # it already exited: the wait below returns at once and nothing is left to stop
                 try:
                     child.wait(STOP_WAIT_S - 10)
                 except subprocess.TimeoutExpired:
@@ -877,7 +879,7 @@ def dotenv(path: Path) -> dict[str, str]:
             key, value = line.split('=', 1)
             out[key.strip()] = value.split(' #', 1)[0].strip().strip('"').strip("'")
     except OSError:
-        pass
+        pass  # no readable .env: Compose itself then uses its defaults, so this does too
     return out
 
 

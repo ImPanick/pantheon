@@ -273,13 +273,13 @@ class NativePhone(PH.AccountPhone):
                 if parent.create_time()==self.process_identity:
                     for process in [parent,*parent.children(recursive=True)]:
                         self._processes[process.pid]=process.create_time()
-            except psutil.Error:pass
+            except psutil.Error:pass  # the emulator exited while being listed; the loop below drops what is gone
         family=[]
         for pid,born in list(self._processes.items()):
             try:
                 process=psutil.Process(pid)
                 if process.create_time()==born and process.is_running():family.append(process);continue
-            except psutil.Error:pass
+            except psutil.Error:pass  # exited or its pid was reused: no longer ours, forgotten just below
             self._processes.pop(pid,None)
         return family
 
@@ -379,7 +379,7 @@ class NativePhone(PH.AccountPhone):
                     error='Android private-device authentication failed: '+auth.reason;break
             except OSError as failure:
                 error='Android startup failed: '+str(failure)[:300];break
-            except (AdbError,PH.PhoneError):pass
+            except (AdbError,PH.PhoneError):pass  # still booting: retried until the deadline, which reports the failure
             time.sleep(2)
         with self.lock:
             if self.emulator is proc:
@@ -502,21 +502,21 @@ class NativePhone(PH.AccountPhone):
         if proc is not None and proc.poll() is None:
             if self.direct is not None:
                 try:self.direct.shell(['sync'],timeout=10);self.direct.shell(['svc','power','shutdown'],timeout=5)
-                except AdbError:pass
+                except AdbError:pass  # no clean in-guest shutdown: the terminate below still stops it
                 try:proc.wait(timeout=30)
-                except subprocess.TimeoutExpired:pass
+                except subprocess.TimeoutExpired:pass  # still running: terminated just below
             # Popen still owns its child even if startup failed before psutil
             # recorded its identity or the authenticated ADB client existed.
             if proc.poll() is None:proc.terminate()
         family=self._process_family()
         for process in reversed(family):
             try:process.terminate()
-            except psutil.NoSuchProcess:pass
+            except psutil.NoSuchProcess:pass  # already gone, which is the goal
         alive=psutil.wait_procs(family,timeout=10)[1] if family else []
         for process in alive:
             try:
                 if process.create_time()==self._processes.get(process.pid):process.kill()
-            except psutil.NoSuchProcess:pass
+            except psutil.NoSuchProcess:pass  # already gone; anything still alive is reported below
         if alive and psutil.wait_procs(alive,timeout=5)[1]:
             raise PH.PhoneError('unavailable','Android did not stop; its VM slot stays reserved.')
         if proc is not None and proc.poll() is None:

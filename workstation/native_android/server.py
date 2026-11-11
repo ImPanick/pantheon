@@ -78,7 +78,7 @@ class Handler(agentd.Handler):
     def expire(self):
         import socket
         try:self.connection.shutdown(socket.SHUT_RDWR)
-        except OSError:pass
+        except OSError:pass  # the client already went; closed just below
         self.connection.close()
 
     def finish(self):
