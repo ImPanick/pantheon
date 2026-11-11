@@ -12,7 +12,7 @@ name: CodeQL
 # has to be maintained is the thing that broke.
 on:
   push:
-    branches: [main]
+    branches: [main, dev]
   pull_request:
   schedule:
     - cron: "17 3 * * 1"

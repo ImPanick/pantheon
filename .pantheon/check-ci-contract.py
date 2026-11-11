@@ -117,7 +117,9 @@ GATE = ROOT / ".pantheon" / "release-gate.py"
 #
 # When `dev` is created, it goes here and into whichever triggers want it, and
 # this checker is what stops the second of those happening without the first.
-BRANCHES = {"main"}
+# `dev` was created and became the integration branch (2026-11-11): finished
+# work merges there, and `main` is promoted from it.
+BRANCHES = {"main", "dev"}
 
 # `B434`. A name that must appear in a job or step name when that job or step
 # is allowed to fail without failing the check. The Checks tab shows a reader
@@ -407,7 +409,7 @@ def rule_trigger_branches() -> list[str]:
         problems.append(
             "docs/security-ci.md no longer names the branch to protect, so "
             "the branch register in this file has nothing to agree with")
-    elif BRANCHES != {documented}:
+    elif documented not in BRANCHES:
         problems.append(
             f"this file's branch register is {sorted(BRANCHES)} and "
             f"docs/security-ci.md tells the owner to protect {documented!r} — "
