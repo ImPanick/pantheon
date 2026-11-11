@@ -28,7 +28,10 @@ DDL = """CREATE TABLE email_tags (
 @pytest.fixture()
 def client(tmp_path):
     import routes.email_routes as er
-    from routes.email_helpers import require_owner, require_user
+    # The objects the routes were built with: a test earlier in the run may
+    # have re-imported `routes.email_helpers`, and overriding a fresh copy of
+    # the dependency leaves the route's own one asking for a session (401).
+    require_owner, require_user = er.require_owner, er.require_user
 
     db = tmp_path / "scheduled.db"
     c = sqlite3.connect(db)
