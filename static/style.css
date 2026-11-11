@@ -51539,12 +51539,14 @@ body.plan-mode-active .chat-input-top > .model-picker-wrap:has(> .model-picker-m
   --ctl-raise: color-mix(in oklab, var(--fg) 13%, var(--bg));
   --ctl-hi: color-mix(in oklab, #fff 12%, transparent);
   --ctl-accent: var(--accent, var(--red));
-  --ctl-accent-2: var(--accent, var(--red));
+  --ctl-accent-2: var(--ctl-accent);
   --ctl-on-accent: var(--on-accent, #fff);
   --ctl-glow: color-mix(in oklab, var(--ctl-accent) 45%, transparent);
   --ctl-ok: var(--color-success, var(--green));
   --ctl-font: inherit;
   --ctl-ease: cubic-bezier(.22, .9, .24, 1);
+  /* the tooltip and the ⋯ menu: the raised tier, above the panel they open over */
+  --ctl-z-pop: 45;
   --ctl-tip-bg: color-mix(in oklab, var(--fg) 92%, var(--bg));
   --ctl-tip-fg: var(--bg);
 }
@@ -51553,13 +51555,13 @@ body.plan-mode-active .chat-input-top > .model-picker-wrap:has(> .model-picker-m
 .ctl-tip { position: relative; }
 .ctl-tip[data-tip]::after {
   content: attr(data-tip);
-  position: absolute; z-index: 40; left: 50%; top: calc(100% + 8px);
+  position: absolute; z-index: var(--ctl-z-pop); left: 50%; top: calc(100% + 8px);
   transform: translate(-50%, -3px);
   padding: 5px 8px; border-radius: 7px;
   background: var(--ctl-tip-bg); color: var(--ctl-tip-fg);
   font: 500 11.5px/1.3 var(--ctl-font); letter-spacing: 0; text-transform: none;
   white-space: nowrap; pointer-events: none; opacity: 0;
-  box-shadow: 0 8px 22px -10px rgba(0, 0, 0, .55);
+  box-shadow: 0 8px 22px -10px var(--shadow-ink-4);
   transition: opacity .14s var(--ctl-ease), transform .14s var(--ctl-ease);
 }
 .ctl-tip[data-tip]:hover::after { opacity: 1; transform: translate(-50%, 0); transition-delay: .35s; }
@@ -51588,7 +51590,7 @@ body.plan-mode-active .chat-input-top > .model-picker-wrap:has(> .model-picker-m
 }
 .ctl-ibtn:hover:not(:disabled) { background: var(--ctl-tint-2) !important; color: var(--ctl-text) !important; }
 .ctl-ibtn:active:not(:disabled) { transform: scale(.94); }
-.ctl-ibtn:disabled { opacity: .42; cursor: default; }
+.ctl-ibtn:disabled { color: var(--ctl-text-3) !important; cursor: default; }
 .ctl-ibtn[hidden], .ctl-pill[hidden] { display: none !important; }
 
 .ctl-pill {
@@ -51616,11 +51618,11 @@ body.plan-mode-active .chat-input-top > .model-picker-wrap:has(> .model-picker-m
 /* the segmented switch: who holds the screen, the held side raised */
 .ctl-seg {
   display: inline-flex; align-items: stretch; padding: 3px; gap: 2px; border-radius: 999px;
-  background: var(--ctl-tint); border: 1px solid var(--ctl-edge); box-shadow: inset 0 1px 2px rgba(0, 0, 0, .12);
+  background: var(--ctl-tint); border: 1px solid var(--ctl-edge); box-shadow: inset 0 1px 2px var(--shadow-ink-2);
   position: relative; flex: none;
 }
 .ctl-seg > :not(.ctl-seg-thumb) {
-  position: relative; z-index: 1; display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 12px;
+  position: relative; display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 12px;
   border-radius: 999px !important; border: 0 !important; background: transparent !important; box-shadow: none !important;
   color: var(--ctl-text-3) !important; font: 500 12.5px/1 var(--ctl-font) !important; white-space: nowrap; margin: 0;
   transition: color .2s var(--ctl-ease);
@@ -51631,15 +51633,15 @@ body.plan-mode-active .chat-input-top > .model-picker-wrap:has(> .model-picker-m
 .ctl-seg > [hidden] { display: none !important; }
 .ctl-seg .ctl-i { width: 15px; height: 15px; }
 .ctl-seg-thumb {
-  position: absolute; z-index: 0; top: 3px; bottom: 3px; left: 0; width: 0; border-radius: 999px;
-  background: var(--ctl-raise); box-shadow: inset 0 1px 0 var(--ctl-hi), 0 1px 3px rgba(0, 0, 0, .22);
+  position: absolute; top: 3px; bottom: 3px; left: 0; width: 0; border-radius: 999px;
+  background: var(--ctl-raise); box-shadow: inset 0 1px 0 var(--ctl-hi), 0 1px 3px var(--shadow-ink-3);
   transition: transform .32s var(--ctl-ease), width .32s var(--ctl-ease);
 }
 /* You holding reads in the same green as the frame round the screen. */
 .ctl-seg[data-who="person"] .ctl-seg-thumb { background: var(--ctl-ok); box-shadow: 0 0 12px -2px color-mix(in oklab, var(--ctl-ok) 60%, transparent); }
 .ctl-seg[data-who="person"] > [aria-current="true"] { color: var(--ctl-on-accent) !important; font-weight: 600; }
-.ctl-seg .ctl-led { width: 6px; height: 6px; border-radius: 50%; background: currentColor; opacity: .55; }
-.ctl-seg > [aria-current="true"] .ctl-led { opacity: 1; background: var(--ctl-ok); box-shadow: 0 0 0 3px color-mix(in oklab, var(--ctl-ok) 22%, transparent); }
+.ctl-seg .ctl-led { width: 6px; height: 6px; border-radius: 50%; background: var(--ctl-text-3); }
+.ctl-seg > [aria-current="true"] .ctl-led { background: var(--ctl-ok); box-shadow: 0 0 0 3px color-mix(in oklab, var(--ctl-ok) 22%, transparent); }
 .ctl-seg[data-who="person"] > [aria-current="true"] .ctl-led { background: currentColor; box-shadow: none; }
 
 /* the toggle */
@@ -51650,7 +51652,8 @@ body.plan-mode-active .chat-input-top > .model-picker-wrap:has(> .model-picker-m
   cursor: pointer; white-space: nowrap; transition: background .16s var(--ctl-ease), color .16s var(--ctl-ease);
 }
 .ctl-switch:hover:not(:disabled) { background: var(--ctl-tint) !important; color: var(--ctl-text) !important; }
-.ctl-switch:disabled { opacity: .45; cursor: default; }
+.ctl-switch:disabled { color: var(--ctl-text-3) !important; cursor: default; }
+.ctl-switch:disabled .ctl-switch-track { filter: grayscale(1); }
 .ctl-switch-track {
   position: relative; width: 30px; height: 18px; border-radius: 999px; flex: none;
   background: var(--ctl-tint-2); box-shadow: inset 0 0 0 1px var(--ctl-edge);
@@ -51658,7 +51661,7 @@ body.plan-mode-active .chat-input-top > .model-picker-wrap:has(> .model-picker-m
 }
 .ctl-switch-track::after {
   content: ''; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%;
-  background: var(--ctl-text-2); box-shadow: 0 1px 2px rgba(0, 0, 0, .3);
+  background: var(--ctl-text-2); box-shadow: 0 1px 2px var(--shadow-ink-3);
   transition: transform .22s var(--ctl-ease), background .2s var(--ctl-ease);
 }
 .ctl-switch[aria-checked="true"] { color: var(--ctl-text) !important; }
@@ -51670,10 +51673,10 @@ body.plan-mode-active .chat-input-top > .model-picker-wrap:has(> .model-picker-m
 .ctl-menu-wrap { position: relative; display: inline-flex; }
 .ctl-menu-wrap[hidden] { display: none; }
 .ctl-menu {
-  position: absolute; z-index: 45; top: calc(100% + 6px); right: 0; min-width: 230px; padding: 5px;
+  position: absolute; z-index: var(--ctl-z-pop); top: calc(100% + 6px); right: 0; min-width: 230px; padding: 5px;
   display: flex; flex-direction: column; gap: 1px; border-radius: 12px;
   background: var(--ctl-raise); border: 1px solid var(--ctl-edge);
-  box-shadow: inset 0 1px 0 var(--ctl-hi), 0 18px 40px -16px rgba(0, 0, 0, .55);
+  box-shadow: inset 0 1px 0 var(--ctl-hi), 0 18px 40px -16px var(--shadow-ink-4);
 }
 .ctl-menu[hidden] { display: none; }
 .ctl-menu-item {
@@ -51711,7 +51714,7 @@ body.plan-mode-active .chat-input-top > .model-picker-wrap:has(> .model-picker-m
 }
 .phw-chip select.phw-edition { color: var(--ctl-text-2) !important; font-weight: 400 !important; max-width: 170px; }
 .phw-chip select:hover:not(:disabled) { background-color: var(--ctl-tint-2) !important; }
-.phw-chip select:disabled { opacity: .6; cursor: default; }
+.phw-chip select:disabled { color: var(--ctl-text-3) !important; cursor: default; }
 .phw-chip select[hidden], .phw-chip select[hidden] + .phw-chip-rule { display: none; }
 .phw-acts { display: inline-flex; align-items: center; gap: 2px; flex: none; }
 .phw-bar > .ctl-tip::after, .phw-acts > .ctl-tip:last-child::after { left: auto; right: 0; transform: translate(0, -3px); }
@@ -51737,7 +51740,7 @@ body.plan-mode-active .chat-input-top > .model-picker-wrap:has(> .model-picker-m
 .phw-nav .phw-nav-btn .ctl-i { width: 15px; height: 15px; }
 .phw-nav .phw-nav-btn:hover:not(:disabled) { background: var(--ctl-tint-2) !important; color: var(--ctl-text) !important; }
 .phw-nav .phw-nav-btn:active:not(:disabled) { transform: scale(.92); }
-.phw-nav .phw-nav-btn:disabled { opacity: .4; cursor: default; }
+.phw-nav .phw-nav-btn:disabled { color: var(--ctl-text-3) !important; cursor: default; }
 .phw-nav .ctl-tip::after { top: auto; bottom: calc(100% + 8px); transform: translate(-50%, 3px); }
 
 /* the keys on the device's edge: a wider reach than their drawing */
@@ -51745,12 +51748,11 @@ body.plan-mode-active .chat-input-top > .model-picker-wrap:has(> .model-picker-m
 .phw-side::before { content: ''; position: absolute; inset: -4px -12px -4px -4px; }
 .phw-keys-left .phw-side::before { inset: -4px -4px -4px -12px; }
 .phw-keys-top .phw-side::before { inset: -12px -4px -4px -4px; }
-.phw-content:has(> .phw-hint:not([hidden])) .phw-side:not(:disabled) { animation: phw-key-call 1.6s var(--ctl-ease) 3; }
-@keyframes phw-key-call {
-  0%, 100% { box-shadow: 0 0 0 0 transparent; }
-  45% { box-shadow: 0 0 0 3px color-mix(in oklab, var(--ctl-accent) 55%, transparent), 0 0 14px 2px var(--ctl-glow); }
+/* while the hint shows, the keys it names are ringed: still, not pulsing, so
+   it needs no reduced-motion guard and adds no keyframes */
+.phw-content:has(> .phw-hint:not([hidden])) .phw-side:not(:disabled) {
+  box-shadow: 0 0 0 2px color-mix(in oklab, var(--ctl-accent) 55%, transparent), 0 0 12px 1px var(--ctl-glow);
 }
-@media (prefers-reduced-motion: reduce) { .phw-content .phw-side { animation: none !important; } }
 
 .phw-hint {
   display: flex; align-items: center; gap: 12px; padding: 8px 8px 8px 12px; border-radius: 12px;

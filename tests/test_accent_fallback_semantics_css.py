@@ -389,8 +389,12 @@ It was 552 until 2026-09-18, and the one that arrived is named rather than
     # 559 -> 558, 811 -> 810: `B1552` gave `#doc-indicator-btn.active` the
     # composer strip's one on-state; its label was the accent, spelled
     # `var(--accent, var(--accent-primary, var(--red)))`, so not an exact one.
-    assert len(exact) == 550, (
-        f"expected 550 sites spelling the fallback `var(--red)` exactly, found "
+    # 550 -> 551: the controls redesign (PR 60) defined the shared control
+    # accent once, `--ctl-accent: var(--accent, var(--red))` on `:root` in
+    # style.css; every `.ctl-*` control reads that token instead of spelling
+    # the fallback itself.
+    assert len(exact) == 551, (
+        f"expected 551 sites spelling the fallback `var(--red)` exactly, found "
         f"{len(exact)}. If a site was legitimately added or removed, move this "
         "number and say which site in the commit — do not widen the assertion."
     )
@@ -408,8 +412,9 @@ It was 552 until 2026-09-18, and the one that arrived is named rather than
             continue  # a gaining site, counted by the population above
         if painted == red:
             resolving.append(expr)
-    assert len(resolving) == 558, (
-        f"expected 558 sites whose fallback resolves to the theme's red, found "
+    # 558 -> 559: the same `--ctl-accent` site (PR 60) as above.
+    assert len(resolving) == 559, (
+        f"expected 559 sites whose fallback resolves to the theme's red, found "
         f"{len(resolving)}"
     )
     assert len(_var_uses("accent")) == 810, (

@@ -328,7 +328,7 @@ function slotGlyph(lay, n, at) {
 
 /** A floating window, brought to the top and given the focus. */
 function raiseFloating(k) {
-  if (k === 'doc') { const p = panes.doc; p.style.zIndex = String((parseInt(getComputedStyle(p).zIndex, 10) || 1000) + 1); p.focus?.(); return; }
+  if (k === 'doc') { const p = panes.doc; import('./toolWindowZOrder.js').then((Z) => { p.style.zIndex = String(Z.nextToolWindowZ()); }).catch(() => {}); p.focus?.(); return; }
   import('./modalManager.js?v=20261009census').then((M) => {
     M.raiseWindow(MODAL_IDS[k]);
     M.focusWindowHandle(MODAL_IDS[k]);
