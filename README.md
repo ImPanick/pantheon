@@ -154,7 +154,8 @@ data, `.pantheon/retrieval_eval.py --generate` builds a test set from your memor
   says anything. It clicks by number instead of guessing pixels, and `scripts/grounding_eval.py` measures the
   difference on your own model.
 - **259 agents to hire.** 26 departments and 18 teams, each agent a runbook with its own schedule,
-  tools and evaluation cases. `@` in the message box summons one, `/` calls a skill.
+  tools and evaluation cases. `@` in the message box summons one, `/` calls a skill. The roster is
+  growing: more agents are coming, and the ones already here keep getting sharper.
 - **A Workbench for automations.** A node editor: steps wired on success and on failure, If and
   Switch without code, HTTP calls, MCP tools, skills, model steps and code in your workstation.
   Describe a workflow in a sentence and it drafts one, switched off, every step flagged for you to
