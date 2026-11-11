@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Private radio transport for a dedicated Android VM.
 
 Netsim listens only inside its own Docker network namespace. The host proxy admits one
