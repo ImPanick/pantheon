@@ -2517,7 +2517,10 @@ def setup_chat_routes(
             # `P20-04`: the workstation's desktop has a terminal one click away,
             # so `computer` is a way to run commands too and goes with them.
             # `P27-07`: a command with vault logins in it is a command too.
-            _withholds.deny({"bash", "host_shell", "computer", "shell_with_login"}, WITHHELD_BY_POLICY)
+            # `python` is an unsandboxed subprocess: `os.system` and
+            # `subprocess.run` are commands, so it goes with the shell too.
+            _withholds.deny({"bash", "host_shell", "computer", "shell_with_login", "python"},
+                            WITHHELD_BY_POLICY)
         _explicit_web_intent = _explicit_web_intent or bool(_tool_intent and _tool_intent.category == "web")
         if is_web_search_explicitly_denied(allow_web_search) or not _search_enabled:
             _withholds.deny(WEB_TOOL_NAMES, WITHHELD_BY_POLICY)

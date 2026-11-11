@@ -735,7 +735,9 @@ def _normalize_bare_json_reply(text: str) -> str:
     if len(calls) != 1:
         return text
     from src.tool_schemas import dispatch_name_for
-    name = _clean_call_name(calls[0][0]).lower()
+    name = _clean_call_name(calls[0][0])
+    if not name.startswith("mcp__"):
+        name = name.lower()
     if dispatch_name_for(_TOOL_NAME_MAP.get(name, name)) is None:
         return text
     return _hermes_call(name, calls[0][1])
@@ -1423,16 +1425,19 @@ def _parse_tool_call_block(raw: str) -> Optional[ToolBlock]:
     # Extract the command/content — try several patterns
     content = None
 
-    # Pattern: --command "value" or --command 'value'
-    cmd_match = re.search(r'--command\s+["\'](.+?)["\']', raw, re.DOTALL)
+    # Pattern: --command "value" or --command 'value'. The value runs to the
+    # same unescaped quote that opened it: a lazy match to the first quote of
+    # either kind cut `rm -rf ./dist/'old build'` to `rm -rf ./dist/` and ran
+    # that.
+    cmd_match = _COMMAND_FLAG_RE.search(raw)
     if cmd_match:
-        content = cmd_match.group(1)
+        content = _unquote(cmd_match)
 
     # Pattern: command => "value" or command: "value"
     if not content:
-        cmd_match = re.search(r'command\s*(?:=>|:|=)\s*["\'](.+?)["\']', raw, re.DOTALL)
+        cmd_match = _COMMAND_KEY_RE.search(raw)
         if cmd_match:
-            content = cmd_match.group(1)
+            content = _unquote(cmd_match)
 
     # Pattern: args => {content} — extract everything inside the nested braces.
     # Find the opener, then take through the LAST `}` (rfind). Equivalent to the
@@ -1486,7 +1491,10 @@ def _parse_xml_invoke(name, body) -> Optional[ToolBlock]:
     # (e.g. <invoke name="Bash">) and function_call_to_tool_block matches
     # case-sensitively against the lowercase _TOOL_NAME_MAP / TOOL_TAGS, so a
     # raw capitalized name would be silently dropped.
-    tool_name = name.lower()
+    # An `mcp__server__tool` name keeps its case: MCP tool names are
+    # case-sensitive (`getJiraIssue`), and the plan/step denylists hold them as
+    # written.
+    tool_name = name if name.startswith("mcp__") else name.lower()
     params = {}
     for pname, pval in _iter_named_blocks(body, _XML_PARAM_OPEN_RE, _XML_PARAM_CLOSE_RE):
         params[pname] = pval.strip()
@@ -1575,7 +1583,9 @@ def _parse_json_tool_call_body(body: str) -> Optional[ToolBlock]:
         return None
     args = parsed.get("arguments", {})
     from src.tool_schemas import function_call_to_tool_block
-    return function_call_to_tool_block(name.strip().lower(), json.dumps(args))
+    name = name.strip()
+    return function_call_to_tool_block(name if name.startswith("mcp__") else name.lower(),
+                                       json.dumps(args))
 
 
 def _iter_stepfun_tool_calls(text: str):
@@ -2317,3 +2327,16 @@ def strip_tool_blocks(text: str, skip_fenced: bool = False) -> str:
     cleaned = _strip_bare_invoke_markup(cleaned)
     cleaned = re.sub(r'\n{3,}', '\n\n', cleaned)
     return cleaned.strip()
+
+# A quoted value: the opening quote, then escaped characters or anything but
+# that quote, then the same quote. Linear: each character is consumed once.
+_QUOTED = r'(["\'])((?:\\.|(?!\1)[^\\])*)\1'
+_COMMAND_FLAG_RE = re.compile(r'--command\s+' + _QUOTED, re.DOTALL)
+_COMMAND_KEY_RE = re.compile(r'command\s*(?:=>|:|=)\s*' + _QUOTED, re.DOTALL)
+
+
+def _unquote(match) -> str:
+    quote, body = match.group(1), match.group(2)
+    return body.replace("\\" + quote, quote)
+
+

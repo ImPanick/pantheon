@@ -50,7 +50,7 @@ def test_a_workspace_promotion_that_was_refused_the_shell_says_so():
     assert escalation_withholds(
         promoted=True, workspace_intent=True, allow_browser=False,
         browser_tools={"browser_click"}, shell_granted=False,
-    ) == ["bash", "computer", "host_shell"]  # `computer`: a desktop with a terminal (`P20-04`)
+    ) == ["bash", "computer", "host_shell", "python"]  # `computer`: a desktop with a terminal (`P20-04`); `python`: subprocess runs commands too
 
 
 def test_the_granted_case_is_byte_for_byte_what_it_was():
