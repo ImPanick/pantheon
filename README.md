@@ -24,6 +24,7 @@
 <p align="center">
   <a href="#why-pantheon-exists">Why</a> ·
   <a href="#a-real-phone-not-a-mobile-view">The phone</a> ·
+  <a href="#a-memory-that-actually-recalls">The memory</a> ·
   <a href="#what-else-it-does">What else</a> ·
   <a href="#quick-start">Quick start</a> ·
   <a href="LEDGER.md">Proof ledger</a> ·
@@ -113,6 +114,29 @@ Setting it up: [Android host guide](docs/android-host.md).
 
 ---
 
+## A memory that actually recalls
+
+The Brain is what Pantheon learns about you as you use it: preferences, projects, people, facts.
+Every memory shows where it came from and how often it's been used, and you can read all of it. I
+rebuilt it around a local embedding model that ships in the image, so it needs no extra service and
+no network.
+
+On the retrieval test set, putting the right memory first went from an MRR of **0.319** with
+Odysseus's keyword search to **0.931**. That's nearly three times better, a 192% gain, and it
+matters because memories are injected into a limited number of slots: a right answer ranked fifth
+might as well not be there.
+
+| Retrieval test set | MRR | recall@5 |
+|---|---|---|
+| Odysseus, keyword search (BM25) | 0.319 | 0.40 |
+| Pantheon, local embeddings | 0.931 | 1.00 |
+
+The test set is a fixture, not anyone's real memories, and the
+[proof ledger](LEDGER.md#memory-and-retrieval) says so next to the number. To score it on your own
+data, `.pantheon/retrieval_eval.py --generate` builds a test set from your memories.
+
+---
+
 ## What else it does
 
 - **Full computer use for any model that can see.** Any model with vision, tool calling and
@@ -139,12 +163,6 @@ Setting it up: [Android host guide](docs/android-host.md).
   instead of every tool on every message, the same set each turn so the server's prompt cache holds,
   and `find_tools` for the rest. Tool calls in Qwen3-Coder's format and eight other families are
   parsed, not dropped.
-- **A memory that learns as you use it.** The Brain keeps what it learns about you, where each memory
-  came from and how often it's used, and you can read all of it. It was rebuilt around a local
-  embedding model that ships in the image and needs no service or network. On the retrieval test set,
-  putting the right memory first went from an MRR of 0.319 with Odysseus's keyword search to 0.931.
-  That set is a fixture, not your data, so the [proof ledger](LEDGER.md#memory-and-retrieval) says so
-  next to the number, and `.pantheon/retrieval_eval.py --generate` builds one from your own memories.
 - **Voice.** Talk to it like a call and cut it off mid-sentence. Kokoro, Chatterbox or Piper speak,
   Whisper listens, and all of it runs on your hardware.
 - **The rest of a workspace.** Mail over IMAP/SMTP with triage and reply drafts, documents, notes,
@@ -221,16 +239,27 @@ Native installs, GPUs, the workstation VM, Windows, macOS and HTTPS: [setup guid
 
 ---
 
-## How it's built
+## How it's built and shipped
 
-Every change is a tracked row with a `Verify:` line, and a row stays open until the person who
-asked for it has tested it. Twenty-nine checkers run in CI, each one added after a specific defect
-got past the ones before it. Even this README is checked: its numbers are pinned to their sources,
-and the build fails when one drifts. Every claim about the fork has a command you can run in the
-[proof ledger](LEDGER.md).
+Pantheon is one engineer directing AI agents the way you'd run a small team. I decide what gets
+built and in what order, agents do the work on branches, nothing reaches `main` without my review,
+and every push and pull request runs the full pipeline. LLMs write much of the code and the commit messages; I review what
+lands and test it on my own machines. The repository is the evidence:
 
-LLMs help write the code and the commit messages. I decide what gets built, I review what lands,
-and I test it on my own machines before a row closes.
+- **Every change is a tracked row.** [`.pantheon/ROADMAP.md`](.pantheon/ROADMAP.md) holds over two
+  thousand of them, each with a `Verify:` line saying how it's proven. A row closes when the person
+  who asked for it has tested it, not when the code lands.
+- **A test has to fail first.** A new test earns its place by failing on the tree as it stood before
+  the fix, and mutation testing checks that it would catch the bug coming back.
+- **Twenty-nine checkers run in CI**, each added after a specific defect got through: unwired
+  buttons, licence gaps, missing SPDX headers, unpinned versions, outbound calls, stale claims.
+- **Security gates every merge.** CodeQL, secret scanning, workflow security, dependency review with
+  `pip-audit`, and Trivy on the container image.
+- **Pull requests have a contract.** Titles follow Conventional Commits and descriptions follow a
+  template, both checked by CI; work lands on `dev` first and reaches `main` through a PR.
+- **Claims carry receipts.** Every number about the fork is in the [proof ledger](LEDGER.md) with a
+  command you can run, and this README's own figures are pinned to their sources, so the build
+  fails when one drifts.
 
 **2147 tracked tasks, 1767 done.** Over the last ten waves, done went **96.4% → 82.3%** and open
 went **66 → 380**: 314 rows filed against 0 closed, a file-to-close ratio of **∞**. That's new work
