@@ -437,8 +437,11 @@ def test_changed_and_sent_again_it_is_registered_again_in_one_save(client, stati
 #: `fingerprint` of the folder `_plant_every_kind` makes, computed by the
 #: harness as it stood before B1130 (`7a7f9b2`). Every registration stored
 #: since `integrate-e` carries a pin from that walk; a walk that hashed one
-#: byte differently would take every one of them off the air.
-PIN_BEFORE_B1130 = "3ebc910e2ea7ce63a670666fa1f12588e28c63a96f95bacff82da5eef4cfae9a"
+#: byte differently would take every one of them off the air. The folder holds
+#: nothing of the machine's: `link.py` is a `.py`, so the walk reads what it
+#: points at, and it used to point at `/etc/hostname` — a pin of whichever
+#: host computed it.
+PIN_BEFORE_B1130 = "6f6b2189d43edb7da957a6f683fcefed2549e1cb40b10adb0b301ca58e089bd2"
 
 
 def _plant_every_kind(root):
@@ -448,7 +451,8 @@ def _plant_every_kind(root):
     (root / "pkg" / "__pycache__" / "m.cpython-312.pyc").write_bytes(b"\x00\x01\x02")
     (root / "README.md").write_text("not code\n")
     (root / "native.so").write_bytes(b"\x7fELF")
-    os.symlink("/etc/hostname", root / "link.py")
+    (root.parent / "outside.txt").write_text("vm\n")
+    os.symlink("../outside.txt", root / "link.py")
     os.symlink("/usr/lib", root / "vendored")
 
 
