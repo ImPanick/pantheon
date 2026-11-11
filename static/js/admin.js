@@ -94,6 +94,8 @@ const PRIV_LABELS = {
   // the owner's credentials, accounts or shell. Last, so the switches above
   // keep their order; off for everyone until granted here or by a role.
   can_run_instance: 'Run this instance',
+  // `B2102`. Off for everyone until granted here or by a role; admins hold it.
+  can_reach_private_mail: 'Mail servers on this network',
 };
 
 // `B1195`, the owner's call (`D-2026-10-26-01` §6). What a switch takes that
@@ -108,6 +110,8 @@ const PRIV_TAKES = {
   can_use_workbench: 'Off also holds their workflows.',
   // `B683`: what it hands out and what it never does, in one line.
   can_run_instance: 'On lets them add and switch models and endpoints, serve from the Forge, read diagnostics and logs, and manage webhooks and embeddings. Never credentials, accounts, roles or the shell.',
+  // `B2102`: what it opens, and what it never does.
+  can_reach_private_mail: 'On lets their mail accounts reach a server on this machine or your private network, on any port. Off, they reach public mail servers on mail ports only. Cloud metadata addresses are refused either way.',
 };
 
 // `B966`, the owner's call (`D-2026-10-01-01`). A privilege this panel no

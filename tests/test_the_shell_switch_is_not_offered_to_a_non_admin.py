@@ -284,4 +284,6 @@ def test_users_offers_no_shell_switch_and_says_where_the_shell_is(auth, tmp_path
             "can_use_assistant", "can_use_calendar", "can_use_compare", "can_use_email",
             "can_use_notes", "can_use_tasks", "can_use_theme", "can_use_workbench",
             # `B683`: the operator tier's grant, last so nothing above moves.
-            "can_run_instance"]
+            "can_run_instance",
+            # `B2102`: mail servers on this network, after it for the same reason.
+            "can_reach_private_mail"]

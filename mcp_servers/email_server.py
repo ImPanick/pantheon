@@ -50,6 +50,7 @@ from src.file_names import display_name as _display_name, stored_name as _stored
 # can import it without reaching into a request-handler module.
 from src import mail_auth as _mail_auth
 from src import mail_tls as _mail_tls  # `B2096`: which certificate gets a password
+from src import mail_reach as _mail_reach  # `B2102`: which servers an account may reach
 # `B1232`. The header decode the routes use, so an 8-bit Subject reads the same
 # to the agent as it does in the browser — one definition, in `src/`.
 from src.mail_headers import decode_header as _shared_decode_header
@@ -469,9 +470,13 @@ def _imap_connect(account: str | None = None):
     # `_open_imap_connection` does.
     host, port = cfg["imap_host"], cfg["imap_port"]
     owner = str(cfg.get("owner") or "")
+    # `B2102`: connected through `src/mail_reach.py`, under the narrower reach
+    # of the account's owner and the person the agent runs for, as the app's
+    # own opener is.
+    reach = _mail_reach.reach_for(owner, _current_owner())
     if cfg["imap_ssl"]:
         with _mail_tls.handshake(host, port):
-            conn = imaplib.IMAP4_SSL(
+            conn = _mail_reach.pinned(imaplib.IMAP4_SSL, reach)(
                 host,
                 port,
                 timeout=EMAIL_CONNECT_TIMEOUT,
@@ -479,7 +484,7 @@ def _imap_connect(account: str | None = None):
             )
         _mail_tls.check_connection(conn, owner, host, port)
     else:
-        conn = imaplib.IMAP4(
+        conn = _mail_reach.pinned(imaplib.IMAP4, reach)(
             host,
             port,
             timeout=EMAIL_CONNECT_TIMEOUT,
@@ -1442,8 +1447,10 @@ def _smtp_connect(account=None, cfg=None):
     # certificate is checked before the sign-in below.
     host = cfg["smtp_host"]
     owner = str(cfg.get("owner") or "")
+    # `B2102`: as `_imap_connect`, through `src/mail_reach.py`.
+    reach = _mail_reach.reach_for(owner, _current_owner())
     if security == "starttls":
-        conn = smtplib.SMTP(
+        conn = _mail_reach.pinned(smtplib.SMTP, reach)(
             host,
             port,
             timeout=EMAIL_CONNECT_TIMEOUT,
@@ -1462,7 +1469,7 @@ def _smtp_connect(account=None, cfg=None):
         _mail_tls.check_connection(conn, owner, host, port)
     elif security == "ssl":
         with _mail_tls.handshake(host, port):
-            conn = smtplib.SMTP_SSL(
+            conn = _mail_reach.pinned(smtplib.SMTP_SSL, reach)(
                 host,
                 port,
                 timeout=EMAIL_CONNECT_TIMEOUT,
@@ -1470,7 +1477,7 @@ def _smtp_connect(account=None, cfg=None):
             )
         _mail_tls.check_connection(conn, owner, host, port)
     else:
-        conn = smtplib.SMTP(
+        conn = _mail_reach.pinned(smtplib.SMTP, reach)(
             cfg["smtp_host"],
             port,
             timeout=EMAIL_CONNECT_TIMEOUT,

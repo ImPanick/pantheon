@@ -85,11 +85,14 @@ def test_a_slow_answer_still_gets_the_calls_own_timeout():
 
 def test_a_mail_server_that_is_not_there_is_reported_in_seconds():
     from routes.email_helpers import _IMAP_CONNECT_SECONDS, _open_imap_connection
+    from src.mail_reach import PRIVATE
 
     with _Blackhole() as hole:
         start = time.monotonic()
         with pytest.raises(OSError):
-            _open_imap_connection("127.0.0.1", hole.port, starttls=False, timeout=30)
+            # `B2102`: a loopback server, reached as a person allowed it.
+            _open_imap_connection("127.0.0.1", hole.port, starttls=False, timeout=30,
+                                  reach=PRIVATE)
         elapsed = time.monotonic() - start
     assert elapsed < _IMAP_CONNECT_SECONDS + 2, f"reported after {elapsed:.1f}s"
 
@@ -97,6 +100,7 @@ def test_a_mail_server_that_is_not_there_is_reported_in_seconds():
 def test_once_connected_the_reads_keep_the_full_timeout():
     """A server that greets: the session's socket waits the configured timeout."""
     from routes.email_helpers import _open_imap_connection
+    from src.mail_reach import PRIVATE
 
     server = socket.socket()
     server.bind(("127.0.0.1", 0))
@@ -117,7 +121,8 @@ def test_once_connected_the_reads_keep_the_full_timeout():
     t = threading.Thread(target=greet)
     t.start()
     try:
-        conn = _open_imap_connection("127.0.0.1", port, starttls=False, timeout=30)
+        conn = _open_imap_connection("127.0.0.1", port, starttls=False, timeout=30,
+                                     reach=PRIVATE)
         assert conn.sock.gettimeout() == 30
         conn.sock.close()
     finally:
