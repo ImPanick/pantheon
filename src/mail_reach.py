@@ -21,10 +21,15 @@ and the narrowest answer wins:
   and the `metadata` names), multicast, reserved, unspecified and `0/8` — the
   addresses `outbound_fetch._always_blocked` refuses every fetch, loopback aside;
 * **only with `can_reach_private_mail`** (`core/auth.py`; every admin holds it,
-  and an admin may grant it to a member in Settings → Users): this machine —
-  loopback and every address this host answers on — the private ranges
-  (RFC 1918, Tailscale's CGNAT `100.64/10`, ULA `fc00::/7`, `outbound_fetch`'s
-  `_LAN_NETWORKS` plus whatever CPython calls private), and any port;
+  and an admin may grant it to a member in Settings → Users): the private
+  ranges (RFC 1918, Tailscale's CGNAT `100.64/10`, ULA `fc00::/7`,
+  `outbound_fetch`'s `_LAN_NETWORKS` plus whatever CPython calls private), and
+  any port;
+* **only for an admin:** this machine — loopback and every address this host
+  answers on. The grant was the key to both until the 2026-11-11 audit, so a
+  member granted it for the house mail server could aim an account at
+  `127.0.0.1` on any port: Pantheon's own database, model servers, the
+  Android worker. An admin already holds the shell;
 * **everyone else:** a public address, on a mail port (`MAIL_PORTS`).
 
 An account nobody owns (`owner` empty: a row from before accounts had owners,
@@ -113,13 +118,19 @@ class MailHostRefused(OSError):
 
 @dataclass(frozen=True)
 class Reach:
-    """What a connection may reach. `private`: this machine, the private
-    ranges and any port; without it, public addresses on `MAIL_PORTS`."""
+    """What a connection may reach. `private`: the private ranges and any
+    port; without it, public addresses on `MAIL_PORTS`. `machine`: this
+    machine too (loopback and this host's own addresses), only with
+    `private`."""
     private: bool = False
+    machine: bool = False
 
 
 MEMBER = Reach(private=False)
-PRIVATE = Reach(private=True)
+#: A member an admin granted `PRIVILEGE` to.
+LAN = Reach(private=True, machine=False)
+#: An admin, or the install's own account.
+PRIVATE = Reach(private=True, machine=True)
 
 
 # ---------------------------------------------------------------------------
@@ -143,15 +154,28 @@ def _holds(owner: str) -> bool:
         return False
 
 
+def _is_admin(owner: str) -> bool:
+    """`owner` is an admin (`src.tool_security.owner_is_admin`, which answers
+    no for anything it cannot answer)."""
+    from src.tool_security import owner_is_admin
+    return owner_is_admin(owner)
+
+
 def reach_for(*owners: Optional[str]) -> Reach:
     """The narrowest reach of everyone named: an account's owner and whoever
     asks for it. An empty name is the install's own account and narrows
-    nothing; any named person without `PRIVILEGE` makes it `MEMBER`."""
+    nothing; any named person without `PRIVILEGE` makes it `MEMBER`, and any
+    who holds it but is not an admin makes it `LAN`."""
+    reach = PRIVATE
     for owner in owners:
         name = str(owner or "").strip()
-        if name and not _holds(name):
+        if not name:
+            continue
+        if not _holds(name):
             return MEMBER
-    return PRIVATE
+        if not _is_admin(name):
+            reach = LAN
+    return reach
 
 
 # ---------------------------------------------------------------------------
@@ -229,14 +253,16 @@ def _address_refusal(addr: ipaddress._BaseAddress, reach: Reach) -> Optional[str
     kind = _kind(addr)
     if kind == _NEVER:
         return f"{addr} is never reached (link-local, metadata, multicast or reserved)"
-    if reach.private:
+    if reach.machine:
         return None
     if kind == _MACHINE:
         return f"{addr} is this machine"
-    if kind == _PRIVATE:
-        return f"{addr} is on a private network"
     if _is_this_host(addr):
         return f"{addr} is one of this machine's own addresses"
+    if reach.private:
+        return None
+    if kind == _PRIVATE:
+        return f"{addr} is on a private network"
     return None
 
 
@@ -278,7 +304,7 @@ def _typed_refusal(host, port, reach: Reach) -> Tuple[str, int, Optional[str]]:
         return name, number, f"port {number} is not a mail port"
     if name in _METADATA_NAMES:
         return name, number, f"{name} is a cloud metadata name"
-    if not reach.private and (name in _LOOPBACK_NAMES or name.endswith(".localhost")):
+    if not reach.machine and (name in _LOOPBACK_NAMES or name.endswith(".localhost")):
         return name, number, f"{name} is this machine"
     addr = _literal(name)
     if addr is not None:
