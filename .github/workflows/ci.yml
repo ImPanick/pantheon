@@ -8,7 +8,12 @@ on:
     # contributors to the same branch and the workflows were missed.
     # `.pantheon/check-ci-contract.py` rule 3 is what fails now if a trigger
     # names a branch this repository does not have.
-    branches: [main]
+    #
+    # 2026-11-11: `dev` exists now and is where finished work lands before it
+    # is promoted to `main`, so a push to it gets the same suite a pull request
+    # gets. Pull requests were never filtered, so a PR into `dev` already ran
+    # this; what never ran is a direct push to `dev`.
+    branches: [main, dev]
   pull_request:
 
 # Least privilege: none of the jobs write to the repo.
@@ -498,7 +503,7 @@ jobs:
       # by nothing is worse than an undocumented one, because an operator who
       # sets it believes something changed.
       - name: check-env-declared
-        run: python3 .pantheon/check-env-declared.py --max 71
+        run: python3 .pantheon/check-env-declared.py --max 69
       # P4-11. The round has been on the wire since the first agent loop and it
       # was on most events; the gaps were invisible because nothing rendered it.
       # The streamed result card had none while its persisted twin did, the
