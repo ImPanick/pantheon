@@ -163,7 +163,41 @@ if (Test-Path $cudaBase) {
     }
 }
 
-# 7. Start the server (use `python -m uvicorn` - bare `uvicorn` may not be on PATH)
+# 7. Android. The phone is a real Android VM on this PC (Windows Hypervisor
+# Platform), run by a small worker beside Pantheon. The first run asks you to
+# accept Google's Android SDK licence, then downloads Google's emulator into
+# %USERPROFILE%\.pantheon\android-host; later runs only start the worker. It
+# needs Docker Desktop for the phone's private network. If anything is missing
+# it says what, and Pantheon starts without Android. PANTHEON_ANDROID=off skips
+# it; a PANTHEON_ANDROID_URL you set (a remote worker) is left alone.
+function Get-DotEnvValue($name) {
+    $value = [Environment]::GetEnvironmentVariable($name)
+    if ($value) { return $value }
+    $file = Join-Path $PSScriptRoot ".env"
+    if (Test-Path $file) {
+        foreach ($line in Get-Content $file) {
+            if ($line -match ("^\s*" + [regex]::Escape($name) + "\s*=\s*([^#]*)")) { return $Matches[1].Trim().Trim('"').Trim("'") }
+        }
+    }
+    return $null
+}
+$androidUp = $false
+if ((Get-DotEnvValue "PANTHEON_ANDROID") -eq "off") {
+    Write-Host "PANTHEON_ANDROID=off - not starting Android."
+} elseif (Get-DotEnvValue "PANTHEON_ANDROID_URL") {
+    Write-Host "PANTHEON_ANDROID_URL is set - using that Android worker."
+} else {
+    Write-Step "Preparing Android (the first run downloads Google's Android emulator once)"
+    $androidEnv = & $venvPy -m workstation.native_android.bootstrap up --app native --print-env powershell
+    if ($LASTEXITCODE -eq 0) {
+        $androidEnv | Out-String | Invoke-Expression
+        $androidUp = $true
+    } else {
+        Write-Host "Android is off for this run (the reason is above); Pantheon starts without it." -ForegroundColor Yellow
+    }
+}
+
+# 8. Start the server (use `python -m uvicorn` - bare `uvicorn` may not be on PATH)
 # -Port only reaches uvicorn as a flag. Everything that builds a URL for this
 # instance - internal_api_base(), companion pairing, the MCP OAuth callback -
 # reads APP_PORT, so set it too or they all assume 7000.
@@ -171,4 +205,8 @@ $env:APP_PORT = $Port
 Write-Step ("Starting Pantheon at http://{0}:{1}" -f $BindHost, $Port)
 Write-Host "Press Ctrl+C to stop."
 Write-Host ""
-& $venvPy -m uvicorn app:app --host $BindHost --port $Port
+try {
+    & $venvPy -m uvicorn app:app --host $BindHost --port $Port
+} finally {
+    if ($androidUp) { & $venvPy -m workstation.native_android.bootstrap down }
+}

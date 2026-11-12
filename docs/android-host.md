@@ -14,7 +14,65 @@ Windows and Linux adapters still require real-host acceptance. This does not
 promise that Google publishes an emulator for every CPU, or that unsupported
 hardware acquires acceleration through Docker.
 
-## Install and pair
+## Automatic setup
+
+Pantheon's launchers do everything in the next section themselves.
+`./start-macos.sh` and `launch-windows.ps1` prepare Android before the server
+starts and stop it when the server exits. A Docker install runs one command in
+place of `docker compose up`:
+
+```sh
+python3 -m workstation.native_android.bootstrap up --app docker --compose -- up -d --build
+python3 -m workstation.native_android.bootstrap down --compose -- down
+```
+
+The first run shows Google's Android SDK License (and on Apple silicon the ARM
+image agreement) and asks the operator to type `yes`. Nothing is downloaded
+before that. Without a terminal it stops and says how to accept:
+`--accept-sdk-license` / `--accept-arm-license`, or
+`PANTHEON_ANDROID_ACCEPT_LICENSES=android-sdk-license,android-sdk-arm-dbt-license`,
+set by the operator who accepts them. The acceptance is kept in
+`license-consent.json` beside the host state.
+
+Then, each step only when it is missing, under `~/.pantheon/android-host`
+(`PANTHEON_ANDROID_HOST_DIR`; the SDK can go elsewhere with `PANTHEON_ANDROID_SDK`):
+
+1. A venv for the worker, from `host-requirements.lock`
+   (`pip install --require-hashes`; every file's PyPI SHA-256 is pinned).
+2. Emulator 37.2.13 and platform-tools 37.0.1 from `dl.google.com`, checked
+   against the size and SHA-1 in Google's catalogue. The SHA-256 of each
+   archive is recorded the first time and required on every reinstall;
+   `bootstrap pins` prints them in the shape of `sdk-pins.json`, so they can be
+   committed. An SDK folder Pantheon did not install is used only at the
+   pinned revision and never changed.
+3. `emulator -accel-check`. With no usable hypervisor it stops here and says
+   what to change on this OS (`/dev/kvm` and the `kvm` group, Windows
+   Hypervisor Platform, or running on the Mac rather than in a VM).
+4. Linux `netsimd` from the same emulator release (on a Mac or PC, only that
+   file and its notices are taken from the Linux archive), and
+   scrcpy-server 3.3.4 against its pinned SHA-256.
+5. The radio image `pantheon-android-radio:37.2.13`, rebuilt only when its
+   sources change. Docker with Linux containers is required.
+6. On Windows, the emulator console token in the worker's profile.
+7. Pairing (`configure`, re-runnable: device data, the token and boot
+   policies are kept), then the worker under a supervisor that restarts it
+   after a crash and stops it with every VM on `down`. Its log is
+   `worker.log`; `bootstrap status` says whether it is up.
+
+The app is then pointed at it: `PANTHEON_ANDROID_URL` and the token file for a
+native app, or `PANTHEON_ANDROID_URL`, `PANTHEON_ANDROID_PAIRING_DIR` and
+`docker/android-host.yml` added to `COMPOSE_FILE` for Docker. On Linux the
+Docker worker listens on Docker's bridge address and the app's `PUID` must be
+the worker's uid; the command says so if it is not. If any step fails, the
+launchers print why and start Pantheon without Android.
+`PANTHEON_ANDROID=off` skips Android; a `PANTHEON_ANDROID_URL` already set (a
+remote worker) is left alone. Images are still installed when a person picks a
+device, as before.
+
+Exit codes: 0 ready, 3 licence not accepted, 4 no hardware acceleration,
+5 Docker missing or not running Linux containers, 1 anything else.
+
+## Install and pair by hand
 
 Use Python3.11+ and Docker running Linux containers. On Windows, use patched
 Python3.11.10+, 3.12.4+, or 3.13+: these versions apply private Windows ACLs when

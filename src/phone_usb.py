@@ -43,7 +43,7 @@ class Folder:
                 if not part or part in ('.','..') or '/' in part or '\\' in part:raise ValueError('Invalid USB folder.')
                 created=False
                 try:os.mkdir(part,0o700,dir_fd=fd);created=True
-                except FileExistsError:pass
+                except FileExistsError:pass  # already there; the O_NOFOLLOW open below refuses anything but a real directory
                 child=os.open(part,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW,dir_fd=fd)
                 if index == 0 and not self.private_root(child):
                     os.close(child);raise RuntimeError('The user projects folder must be private before connecting USB.')
@@ -222,7 +222,7 @@ class Connection:
                     if not self.stopping.is_set():await self.round()
             except Exception as error:self.error=str(error)[:300]
             try:await asyncio.wait_for(self.stopping.wait(),5)
-            except asyncio.TimeoutError:pass
+            except asyncio.TimeoutError:pass  # the 5 s poll interval passed: the normal path, round again
 
 
 async def connect(owner,client,account,*,holder='person'):

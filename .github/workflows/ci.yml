@@ -492,7 +492,7 @@ jobs:
       # say the same thing about swallowing `os.unlink(tmp)` as about
       # swallowing a schema migration. The hard one is zero and stays zero.
       - name: check-silent-failures
-        run: python3 .pantheon/check-silent-failures.py --max 402
+        run: python3 .pantheon/check-silent-failures.py --max 401
       # P3-23. Four sources of truth about this product's configuration and no
       # two agree: what the code reads, what .env.example declares, what compose
       # forwards, what docs/setup.md explains. An operator looks in

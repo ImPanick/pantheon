@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Add only an ADB-authentication policy to a disposable SDK ramdisk copy.
 
 Android first-stage init copies adb_debug.prop from a marked ramdisk into its
