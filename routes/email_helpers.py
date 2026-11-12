@@ -1404,6 +1404,14 @@ def _get_email_config(account_id: str | None = None, owner: str = "") -> dict:
     # nothing in `settings.json` to see. Named before it fires.
     from src.settings import env_backed
     _v = lambda k, e, d="": env_backed(settings, k, e, d)  # noqa: E731
+    # Audit 2026-11-11 #10. The flat keys and the env are the install's own
+    # mailbox: the admin's, and the system's (a poller asks with no owner). A
+    # member with no account of their own has none configured; they were
+    # handed this one, passwords included.
+    if owner:
+        from src.tool_security import owner_is_admin
+        if not owner_is_admin(owner):
+            _v = lambda k, e, d="": d  # noqa: E731
     cfg = {
         "account_id": resolved_id,
         "account_name": "legacy",

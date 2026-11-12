@@ -333,6 +333,11 @@ def _resolve_account_from_rows(rows: list[dict], selector: str | None) -> dict |
     return None
 
 
+def _owner_is_admin(owner: str) -> bool:
+    from src.tool_security import owner_is_admin
+    return owner_is_admin(owner)
+
+
 def _load_config(account: str | None = None) -> dict:
     """Return the full config dict for the requested account (or default).
 
@@ -424,6 +429,14 @@ def _load_config(account: str | None = None) -> dict:
         for _col in ("oauth_provider", "oauth_access_token",
                      "oauth_refresh_token", "oauth_token_expiry"):
             cfg[_col] = row[_col] if _col in row.keys() else ""
+    elif _current_owner() and not _owner_is_admin(_current_owner()):
+        # Audit 2026-11-11 #10. With no row of their own, what is left is the
+        # env and `settings.json`: the install's own mailbox, the admin's. A
+        # member's agent was handed it, passwords included, whenever the
+        # accounts table was empty. They have no mailbox configured.
+        for _key in ("imap_host", "imap_user", "imap_password",
+                     "smtp_host", "smtp_user", "smtp_password", "from_address"):
+            cfg[_key] = ""
     else:
         # Legacy fallback: settings.json flat keys
         try:
