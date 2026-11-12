@@ -42,6 +42,12 @@ The README covers the headline features. This is the full list, and what the for
 - Notes, tasks and a calendar with CalDAV sync; gallery and image editor
 - The cockpit: one window with a tuckable workspace column (Document, Workstation, Browser) in four
   layouts, twenty palettes in one material, a command palette, and the same app at phone width
+- An untouched New Chat has original ASCII scenery behind its welcome (a trireme on the Aegean, a
+  faint Olympus ridge and a temple), with gentle motion that stops when the tab is hidden and a still
+  scene for reduced motion: [Notebook](review/voyage-notebook-1440.png),
+  [Channel](review/voyage-channel-1440.png), [Mintchat at phone width](review/voyage-mintchat-390.png).
+  Every palette at a glance: [desktop](review/palette-picker-1400.png),
+  [phone](review/palette-picker-390.png). These five are earlier captures, before the cockpit's material.
 
 ## Voice
 - Voice chat like a call, dictation that says *Listening . . .* and *Transcribing . . .*, and a
