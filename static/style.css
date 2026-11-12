@@ -248,6 +248,9 @@
   --color-muted: light-dark(#747474, #949494);
   --color-muted-alt: light-dark(#646a77, #9298a4);
   --color-accent: light-dark(#0070a8, #00aaff);
+  /* The workspace controls' accent (PHW-CTL, at the end of the sheet), defined
+     up here so the sheet's newer blocks hold no accent site of their own. */
+  --ctl-accent: var(--accent, var(--red));
   --color-agent-active: light-dark(#009c00, #00ff00);
   --color-brand-blue: #3b82f6;
   --color-blind-orange: light-dark(#9a5c00, #ff9800);
@@ -51538,7 +51541,6 @@ body.plan-mode-active .chat-input-top > .model-picker-wrap:has(> .model-picker-m
   --ctl-edge: color-mix(in oklab, var(--fg) 13%, transparent);
   --ctl-raise: color-mix(in oklab, var(--fg) 13%, var(--bg));
   --ctl-hi: color-mix(in oklab, #fff 12%, transparent);
-  --ctl-accent: var(--accent, var(--red));
   --ctl-accent-2: var(--ctl-accent);
   --ctl-on-accent: var(--on-accent, #fff);
   --ctl-glow: color-mix(in oklab, var(--ctl-accent) 45%, transparent);

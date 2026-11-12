@@ -417,8 +417,9 @@ It was 552 until 2026-09-18, and the one that arrived is named rather than
         f"expected 559 sites whose fallback resolves to the theme's red, found "
         f"{len(resolving)}"
     )
-    assert len(_var_uses("accent")) == 810, (
-        f"expected 810 uses of --accent in total, found {len(_var_uses('accent'))}"
+    # 810 -> 811: the same `--ctl-accent` site (PR 60).
+    assert len(_var_uses("accent")) == 811, (
+        f"expected 811 uses of --accent in total, found {len(_var_uses('accent'))}"
     )
 
 
