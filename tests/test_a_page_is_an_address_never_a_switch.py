@@ -126,10 +126,29 @@ needs_chromium = pytest.mark.skipif(CHROMIUM is None, reason="no Chromium on thi
 
 
 def _with_chromium(station):
-    """`chromium` on `PATH` is the real one; as root it needs `--no-sandbox`,
-    put before everything the command hands it."""
-    sandbox = " --no-sandbox" if os.geteuid() == 0 else ""
-    station.tool("chromium", f'#!/bin/sh\nexec {_q(CHROMIUM)}{sandbox} "$@"\n')
+    """`chromium` on `PATH` is the real one, with `--no-sandbox` put before
+    everything the command hands it, and what it says on stderr kept beside
+    the station (the runbooks send it to `/dev/null`).
+
+    The sandbox is not what these tests are about — Chromium's switch parsing
+    is — and it does not start everywhere the suite runs: not as root, and not
+    as an ordinary user on a kernel whose AppArmor policy restricts
+    unprivileged user namespaces (Ubuntu 23.10 onward, so the `ubuntu-26.04`
+    image CI's suite job runs on), where a Chromium without a setuid helper
+    aborts before it draws a page. Measured in CI from 2026-11: every launch
+    `Aborted (core dumped)`, so the control's program never ran and no page
+    was captured. This used to add the switch for root only, which is the
+    machine these tests were written on. Playwright launches every in-browser
+    test here the same way. The wrapper is the test's stand-in on `PATH`; the
+    runbooks' own commands are what each test runs, unchanged."""
+    err = _q(str(station.root / "chromium.err"))
+    station.tool("chromium", f'#!/bin/sh\nexec {_q(CHROMIUM)} --no-sandbox "$@" 2>>{err}\n')
+
+
+def _said(station) -> str:
+    f = station.root / "chromium.err"
+    return "\n-- chromium stderr --\n" + (f.read_text(encoding="utf-8", errors="replace")[-3000:]
+                                         if f.exists() else "(none)")
 
 
 def _real_page(station) -> str:
@@ -145,7 +164,7 @@ def test_chromium_reads_a_page_written_last_as_a_switch_and_runs_it(station):
     shot = station.root / "c.png"
     station.run(f"chromium --headless --hide-scrollbars --window-size=320,200 --screenshot={shot} "
                 f"{_q(station.hostile)} >/dev/null 2>&1")
-    assert station.ran()
+    assert station.ran(), _said(station)
 
 
 @needs_chromium
@@ -160,7 +179,7 @@ def test_screenshot_reporter_captures_such_a_page_as_an_address(station):
     command = command.replace("--window-size=1280,2000", "--window-size=320,200")
     out = station.run(command)
     assert not station.ran(), out
-    assert f"OK 2 {real}" in out, out
+    assert f"OK 2 {real}" in out, out + _said(station)
     assert f"OK 1 {station.hostile}" in out or f"FAILED {station.hostile}" in out, out
     assert _runs_under_its_own_hire("screenshot-reporter", command)
 
@@ -176,8 +195,8 @@ def test_visual_regression_captures_such_a_page_as_an_address(station):
     out = station.run(command)
     assert not station.ran(), out
     name = re.sub(r"[^A-Za-z0-9]", "_", real)
-    assert f"SHOT {name}" in out, out
-    assert list((station.root / "projects" / "shots").glob(f"*/{name}.png")), out
+    assert f"SHOT {name}" in out, out + _said(station)
+    assert list((station.root / "projects" / "shots").glob(f"*/{name}.png")), out + _said(station)
     assert _runs_under_its_own_hire("visual-regression", command)
 
 

@@ -199,15 +199,15 @@ def test_node_check_rejects_a_module_that_does_not_parse():
     assert "_b10_probe" in detail
 
 
-def test_passing_a_path_to_node_check_is_what_made_it_a_no_op(tmp_path):
-    """Pins the mechanism, so nobody 'simplifies' the piping back out.
+def _node_check_both_ways(tmp_path):
+    """`node --check` on ESM garbage outside `static/js/`, by path and piped.
 
     `node --check <path>` resolves module type from the nearest `package.json`.
     The repo root declares no `"type"`, so anything outside `static/js/` parses
-    as CommonJS — and node's module-syntax detection retries the failed parse
-    as ESM and does not re-check, which passes ANY text containing an `import`.
-    This test builds that layout in a temp directory and shows both answers.
-    """
+    as CommonJS — and node's module-syntax detection (20, 22, 24.11) retries the
+    failed parse as ESM and does not re-check, which passes ANY text containing
+    an `import`. This builds that layout in a temp directory and asks both
+    ways."""
     if not release_gate.shutil.which("node"):
         pytest.skip("node not on PATH")
     (tmp_path / "package.json").write_text("{}", encoding="utf-8")
@@ -220,9 +220,31 @@ def test_passing_a_path_to_node_check_is_what_made_it_a_no_op(tmp_path):
     piped = subprocess.run(["node", "--input-type=module", "--check"],
                            input=garbage.read_text(encoding="utf-8"),
                            capture_output=True, text=True, cwd=str(tmp_path))
+    version = subprocess.run(["node", "--version"], capture_output=True, text=True).stdout.strip()
+    return by_path, piped, version
 
-    assert by_path.returncode == 0, "node started rejecting this — re-read B10"
-    assert piped.returncode != 0, "the piped form must still catch it"
+
+def test_the_piped_form_the_gate_uses_rejects_the_garbage_on_every_node(tmp_path):
+    """The half that is the gate's whole check (`B10`): piped in with
+    `--input-type=module`, the garbage fails on every node, old or new."""
+    _, piped, version = _node_check_both_ways(tmp_path)
+    assert piped.returncode != 0, f"the piped form must still catch it (node {version})"
+
+
+def test_passing_a_path_to_node_check_is_what_made_it_a_no_op(tmp_path):
+    """Pins the mechanism, so nobody 'simplifies' the piping back out.
+
+    The hole is a property of a node version, not of this repository: node 20,
+    22 and 24.11.0 return 0 by path, and 24.22.2 (the runner's own node in the
+    suite job, which pins none, from 2026-11) rejects the same file. Where this node already rejects
+    it there is no hole to demonstrate, and the test says so rather than
+    failing — the gate still pipes, because the nodes people run are not all
+    24, and the piped half above holds on all of them."""
+    by_path, _, version = _node_check_both_ways(tmp_path)
+    if by_path.returncode != 0:
+        pytest.skip(f"node {version} rejects the garbage by path too — the B10 hole "
+                    f"is closed on this node; the piped half is asserted separately")
+    assert by_path.returncode == 0
 
 
 def test_the_gate_checks_every_js_file_that_is_ours():
