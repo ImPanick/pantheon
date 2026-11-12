@@ -954,7 +954,8 @@ class SkillsManager:
             return None
 
     def restore_version(self, name: str, version_id: str,
-                        owner: Optional[str] = None) -> bool:
+                        owner: Optional[str] = None,
+                        keep_lifecycle: bool = False) -> bool:
         """Put an earlier copy back as the live SKILL.md. `P8-11`.
 
         The restore goes through the ordinary writer, so **the copy it replaces
@@ -985,6 +986,11 @@ class SkillsManager:
         sk.category = current.category
         sk.owner = current.owner
         sk.created = current.created or sk.created
+        if keep_lifecycle:
+            # `B2098`. For a restore the agent asks for: an earlier copy that
+            # was published is not a publish, so today's status, confidence and
+            # source stay (`skill_publish.LIFECYCLE_FIELDS`).
+            sk.status, sk.confidence, sk.source = current.status, current.confidence, current.source
         self._write_skill(sk)
         return True
 
@@ -1387,8 +1393,16 @@ class SkillsManager:
                 out[rel] = text
         return out
 
-    def install_package(self, pkg, *, owner: Optional[str] = None) -> Dict:
+    def install_package(self, pkg, *, owner: Optional[str] = None,
+                        publish: bool = True) -> Dict:
         """Install, or refresh, every skill of a fetched package. `P8-49`.
+
+        `B2098`: a skill installed for the first time is **published** —
+        whatever its own frontmatter says — because an imported skill is one a
+        person chose (the owner's ruling). `publish=False` installs it a draft;
+        the route passes that when the import is not a person's
+        (`request_is_a_person`). A refresh leaves a skill already installed at
+        the status it has.
 
         Each skill is written once, under its section's category — or the
         package's, when it declares no sections — and the package is recorded
@@ -1464,6 +1478,7 @@ class SkillsManager:
                 self._write_skill(sk)
                 updated.append(local)
             else:
+                sk.status = "published" if publish else "draft"   # `B2098`
                 path = self._skill_file(cat, local)
                 os.makedirs(os.path.dirname(path), exist_ok=True)
                 atomic_write_text(path, sk.to_markdown())
@@ -1826,8 +1841,12 @@ class SkillsManager:
         owner: Optional[str] = None,
         source_url: str = "",
         category: str = "imported",
+        publish: bool = True,
     ) -> Dict:
-        """Install a fetched skill bundle (relative path → text) under skills/."""
+        """Install a fetched skill bundle (relative path → text) under skills/.
+
+        `B2098`: published, as every import is, unless `publish=False` — the
+        route's answer when the import is not a person's."""
         from .skill_importer import SkillImportError, pick_skill_md, _safe_relpath
         from core.atomic_io import atomic_write_text
 
@@ -1867,6 +1886,7 @@ class SkillsManager:
         sk.category = cat
         sk.owner = owner
         sk.source = "imported"
+        sk.status = "published" if publish else "draft"   # `B2098`
         if source_url:
             extra = (sk.body_extra or "").strip()
             note = f"Imported from {source_url}"

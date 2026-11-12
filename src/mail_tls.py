@@ -444,29 +444,31 @@ def close_quietly(conn) -> None:
 # What the account form's Test says about a refused server
 # ---------------------------------------------------------------------------
 
-def peek(kind: str, host: str, port, *, tls: str, timeout: float = 5.0) -> str:
+def peek(kind: str, host: str, port, *, tls: str, timeout: float = 5.0, reach=None) -> str:
     """The fingerprint `host:port` shows now, read over a connection that
     sends no credential, so the account form can offer to trust it.
 
     `kind` is `imap` or `smtp`; `tls` is `ssl` (TLS from the first byte) or
-    `starttls`.
+    `starttls`. `B2102`: connected through `src/mail_reach.py` under `reach`
+    (none is a member's), as the Test's own connection was.
     """
     import imaplib
     import smtplib
+    from src.mail_reach import pinned as through_reach   # not this module's `pinned`
 
     ctx = _pinning_context()
     port = int(port)
     conn = None
     try:
         if kind == "imap" and tls == "ssl":
-            conn = imaplib.IMAP4_SSL(host, port, ssl_context=ctx, timeout=timeout)
+            conn = through_reach(imaplib.IMAP4_SSL, reach)(host, port, ssl_context=ctx, timeout=timeout)
         elif kind == "imap":
-            conn = imaplib.IMAP4(host, port, timeout=timeout)
+            conn = through_reach(imaplib.IMAP4, reach)(host, port, timeout=timeout)
             conn.starttls(ssl_context=ctx)
         elif tls == "ssl":
-            conn = smtplib.SMTP_SSL(host, port, context=ctx, timeout=timeout)
+            conn = through_reach(smtplib.SMTP_SSL, reach)(host, port, context=ctx, timeout=timeout)
         else:
-            conn = smtplib.SMTP(host, port, timeout=timeout)
+            conn = through_reach(smtplib.SMTP, reach)(host, port, timeout=timeout)
             conn.starttls(context=ctx)
         der = conn.sock.getpeercert(binary_form=True)
         return fingerprint(der) if der else ""
@@ -475,7 +477,8 @@ def peek(kind: str, host: str, port, *, tls: str, timeout: float = 5.0) -> str:
             close_quietly(conn)
 
 
-def offer(exc: BaseException, kind: str, host: str, port, *, tls: str | None) -> dict | None:
+def offer(exc: BaseException, kind: str, host: str, port, *, tls: str | None,
+          reach=None) -> dict | None:
     """The `certificate` the account form's Test returns beside a refusal, or
     `None` when `exc` is not one.
 
@@ -495,7 +498,7 @@ def offer(exc: BaseException, kind: str, host: str, port, *, tls: str | None) ->
     seen = found.fingerprint
     if not seen:
         try:
-            seen = peek(kind, host, port, tls=tls)
+            seen = peek(kind, host, port, tls=tls, reach=reach)
         except Exception as peek_exc:  # the refusal is the answer; the offer is extra
             logger.info("could not read the certificate %s:%s shows: %s", host, port, peek_exc)
             seen = ""

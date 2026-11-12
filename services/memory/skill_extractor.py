@@ -195,7 +195,8 @@ async def draft_skill_from_description(
 
 
 # Skills the model is unsure about (or that read as one-offs) add clutter —
-# drop anything below this confidence.
+# drop anything below this confidence. This is the floor for KEEPING a draft;
+# the floor for publishing one is `skill_publish.learned_publish_floor` (`B2098`).
 MIN_CONFIDENCE = 0.6
 
 # How many recent messages to include
@@ -465,19 +466,19 @@ async def maybe_extract_skill(
             logger.debug("[skill-extract] '%s' already exists — dropped as duplicate", title)
             return None
 
-        # Auto-publish gate: if the user has `auto_approve_skills` on, the
-        # newly-extracted skill is created `published` immediately rather
-        # than waiting for the next audit batch. The audit still runs later
-        # and can demote it back to `draft` (or delete) on failure. Default
-        # ON matches the UI label "Auto-approve skills".
-        _initial_status = "draft"
-        try:
-            from routes.prefs_routes import _load_for_user as _load_prefs
-            _prefs = _load_prefs(owner) or {}
-            if _prefs.get("auto_approve_skills", True):
-                _initial_status = "published"
-        except Exception:
-            pass
+        # Publish gate — `B2098`. This published every skill it kept, from
+        # `MIN_CONFIDENCE` (0.6) up, whenever `auto_approve_skills` was on, while
+        # the Brain's switches said the Skills Audit publishes the ones that
+        # pass and the audit publishes only at the person's floor (0.85 unless
+        # set). A published skill is the person's own context in every later
+        # turn, and this path has had no test run and no judge. Now a learned
+        # skill publishes itself only at or above `learned_publish_floor` —
+        # the person's floor, never under 0.85 (`skill_publish.
+        # LEARNED_PUBLISH_MINIMUM` says why that number). Below it, it is kept
+        # as a draft between 0.6 and the floor, for the audit's dry run to
+        # publish or for the person to publish by hand.
+        from services.memory.skill_publish import learned_status
+        _initial_status = learned_status(owner, _conf)
 
         entry = skills_manager.add_skill(
             name=fields["name"] or None,
@@ -489,7 +490,9 @@ async def maybe_extract_skill(
             verification=fields["verification"],
             tags=fields["tags"],
             source="learned",
-            confidence=data.get("confidence", 0.7),
+            # The number the gate above read, so the stored confidence is the
+            # one the publish decision was made on.
+            confidence=_conf,
             session_id=getattr(session, "session_id", None),
             owner=owner,
             status=_initial_status,

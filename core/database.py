@@ -989,6 +989,11 @@ class ModelEndpoint(TimestampMixin, Base):
     # a row their own serve still owns. NULL = registered before this column,
     # or added by hand: never deleted automatically.
     cookbook_serve_session_id = Column(String, nullable=True)
+    # `B2101`: the name the Forge last gave this row. A launch renames the row
+    # after its model only while its name is still this one, so a name a person
+    # gave (Add Models, the server scan, `manage_endpoints add`, a rename in
+    # Settings) survives every later launch. NULL = the Forge never named it.
+    forge_name = Column(String, nullable=True)
 
 
 class ProviderAuthSession(TimestampMixin, Base):
@@ -2782,6 +2787,33 @@ def _migrate_add_pinned_models_column():
             pass
 
 
+def _migrate_add_forge_name_column():
+    """Add forge_name to model_endpoints if it doesn't exist. `B2101`.
+
+    Rows that predate it stay NULL, so the Forge renames none of them: an
+    existing name is kept whoever gave it."""
+    import sqlite3
+    db_path = DATABASE_URL.replace("sqlite:///", "")
+    if not os.path.exists(db_path):
+        return
+    conn = None
+    try:
+        conn = sqlite3.connect(db_path)
+        cursor = conn.execute("PRAGMA table_info(model_endpoints)")
+        columns = [row[1] for row in cursor.fetchall()]
+        if columns and "forge_name" not in columns:
+            conn.execute("ALTER TABLE model_endpoints ADD COLUMN forge_name VARCHAR")
+            conn.commit()
+            logging.getLogger(__name__).info("Migrated: added 'forge_name' column to model_endpoints")
+    except Exception as e:
+        logging.getLogger(__name__).warning(f"forge_name migration failed: {e}")
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+
 def _migrate_add_cookbook_serve_session_id_column():
     """Add cookbook_serve_session_id to model_endpoints if it doesn't exist. `B1928`.
 
@@ -3889,6 +3921,7 @@ def init_db():
     _migrate_add_provider_auth_id_column()
     _migrate_add_supports_tools_column()
     _migrate_add_cookbook_serve_session_id_column()   # `B1928`
+    _migrate_add_forge_name_column()                  # `B2101`
     _migrate_add_comparison_vote_meta_column()
     _migrate_add_task_run_model_column()
     _migrate_add_vault_item_agents()

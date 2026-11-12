@@ -2093,6 +2093,13 @@ def build_user_content(
     content = [{"type": "text", "text": text}]
     if reach is not None:
         reach.clear()
+    # `B2097`. A Nobody turn keeps nothing, so an attached PDF or office file
+    # is read into the message and not also made into a Library document (nor
+    # a form's field sidecar). Every such write below asks for a chat to hang
+    # it on; without one the file is inlined as for any caller that names none.
+    from src import nobody_mode
+    if nobody_mode.keeps_nothing():
+        session_id = None
     # `P12-04` / `P12-03`. Resolved once for the whole turn and threaded into
     # every processor below, not resolved per file: a settings save or a role
     # change landing between the first attachment and the last would otherwise

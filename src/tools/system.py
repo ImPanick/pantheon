@@ -288,7 +288,8 @@ async def do_manage_skills(content: str, owner: Optional[str] = None) -> Dict:
                                    raw SKILL.md text. Fails on ambiguous
                                    `old_string` (multiple matches).
       edit  {name, content}      — Replace the entire SKILL.md.
-      publish {name}             — Flip status: draft -> published.
+      publish {name}             — Refused (`B2098`): publishing is the
+                                   person's, from the Skills window.
       delete {name}              — Remove the skill directory.
       search {query}             — Relevance match on published skills.
       lint  {name | fields…}     — What is wrong with a skill, with no model
@@ -388,17 +389,15 @@ async def do_manage_skills(content: str, owner: Optional[str] = None) -> Dict:
             proc = args.get("steps") or []
         if not proc and not args.get("body_extra") and not args.get("solution"):
             return {"error": "procedure (or solution body) is required", "exit_code": 1}
-        # Same auto-publish gate as the extractor path — when the user
-        # has auto_approve_skills on and the caller didn't pin an explicit
-        # status, publish immediately. Audit later demotes/removes on fail.
-        _status_arg = args.get("status")
-        if not _status_arg:
-            try:
-                from routes.prefs_routes import _load_for_user as _load_prefs
-                _prefs = _load_prefs(owner) or {}
-                _status_arg = "published" if _prefs.get("auto_approve_skills", True) else "draft"
-            except Exception:
-                _status_arg = "draft"
+        # `B2098`. A skill the agent writes is custom-built, and the owner's
+        # ruling is that a custom-built skill is a draft until a person has
+        # tried it and published it. This used to publish whenever
+        # `auto_approve_skills` was on, and took `status` from the arguments, so
+        # the model could write its own guidance into every later chat. The
+        # argument is still read — `draft` is honoured — and `published` is
+        # answered below rather than obeyed.
+        _asked_to_publish = str(args.get("status") or "").strip().lower() == "published"
+        _status_arg = "draft"
         entry = sm.add_skill(
             name=args.get("name"),
             description=(args.get("description") or args.get("title") or "").strip(),
@@ -459,9 +458,13 @@ async def do_manage_skills(content: str, owner: Optional[str] = None) -> Dict:
                 {"gate": "requires", "tools": unknown, "unknown": unknown})
         verify_hint = ""
         if entry.get("status") == "draft":
+            # `B2098`: the next step is the person's, so the result names it
+            # instead of pointing the model at a publish it cannot make.
             verify_hint = (
-                "\n\nThis skill is a DRAFT. Run through the procedure once to verify, "
-                f"then publish with action='publish', name='{entry['name']}'."
+                ("\n\nIt was saved as a DRAFT, not published. " if _asked_to_publish
+                 else "\n\nThis skill is a DRAFT. ")
+                + "Publishing it is the person's step, after they test it, "
+                "from the Skills window."
             )
         # `P4-03`. The frontend has always had a `skill_saved` handler and
         # nothing ever emitted the event — while the three *failure* paths in
@@ -497,7 +500,10 @@ async def do_manage_skills(content: str, owner: Optional[str] = None) -> Dict:
             return {"error": f"Skill {name!r} not found", "exit_code": 1}
         if not sk_new.owner:
             sk_new.owner = match.get("owner") or owner
-        ok = sm.update_skill(name, _skill_dump(sk_new), owner=owner,
+        # `B2098`: the body's `status`, `confidence` and `source` are the
+        # model's words; the stored ones stay.
+        from services.memory.skill_publish import pin_lifecycle
+        ok = sm.update_skill(name, pin_lifecycle(_skill_dump(sk_new), match), owner=owner,
                              why="the assistant edited it")   # `P13-08`
         return {"results": f"Edited skill `{sk_new.name}`."} if ok else {"error": "Update failed", "exit_code": 1}
 
@@ -522,7 +528,11 @@ async def do_manage_skills(content: str, owner: Optional[str] = None) -> Dict:
         except Exception as e:
             return {"error": f"Patched content is not valid SKILL.md: {e}", "exit_code": 1}
         sk_new.name = slugify(sk_new.name or name)
-        ok = sm.update_skill(name, _skill_dump(sk_new), owner=owner,
+        # `B2098`, as `edit` above: a patch that rewrites the frontmatter's
+        # `status: draft` to `published` changes the text and not the status.
+        from services.memory.skill_publish import pin_lifecycle
+        _current = next((s for s in sm.load(owner=owner) if s.get("name") == name), None)
+        ok = sm.update_skill(name, pin_lifecycle(_skill_dump(sk_new), _current), owner=owner,
                              why="the assistant edited it")   # `P13-08`
         return {"results": f"Patched skill `{sk_new.name}`."} if ok else {"error": "Patch update failed", "exit_code": 1}
 
@@ -533,11 +543,15 @@ async def do_manage_skills(content: str, owner: Optional[str] = None) -> Dict:
         match = next((s for s in all_skills if s.get("name") == name), None)
         if not match:
             return {"error": f"Skill {name!r} not found", "exit_code": 1}
-        updates = {"status": "published"}
-        if args.get("confidence") is not None:
-            updates["confidence"] = max(0.0, min(1.0, float(args["confidence"])))
-        sm.update_skill(name, updates, owner=owner, why="the assistant published it")   # `P13-08`
-        return {"results": f"✅ Published `{name}`. It now appears in the skills index for future turns."}
+        if match.get("status") == "published":
+            return {"results": f"`{name}` is already published."}
+        # `B2098`. The action stays, so a model that reaches for it is told
+        # what to do instead of finding the action gone; what it no longer does
+        # is publish. A skill the agent could publish is guidance it wrote for
+        # itself into every later chat — the owner's ruling puts a person, a
+        # test or the Skills Audit between the two. Nothing is written.
+        from services.memory.skill_publish import AGENT_CANNOT_PUBLISH
+        return {"error": f"`{name}` was not published. {AGENT_CANNOT_PUBLISH}", "exit_code": 1}
 
     if action == "delete":
         if not name:
@@ -673,7 +687,8 @@ async def do_manage_skills(content: str, owner: Optional[str] = None) -> Dict:
         if not version_id:
             return {"error": "version_id is required for restore — list them with "
                              "action='versions'", "exit_code": 1}
-        if not sm.restore_version(name, version_id, owner=owner):
+        # `B2098`: an earlier published copy is not a publish.
+        if not sm.restore_version(name, version_id, owner=owner, keep_lifecycle=True):
             return {"error": f"No version {version_id!r} of {name!r} to restore",
                     "exit_code": 1}
         return {"results": (

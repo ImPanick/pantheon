@@ -965,7 +965,15 @@ async def do_generate_image(content: str, session_id: Optional[str] = None, owne
         else:
             payload["quality"] = "medium"
 
-    logger.info(f"Image generation: model={model_id}, size={size}, quality={quality}, prompt={prompt[:80]}")
+    # `B2097`. A Nobody turn's picture is shown and kept nowhere: no file, no
+    # Gallery row, and its prompt is not logged.
+    from src import nobody_mode
+    keep = not nobody_mode.keeps_nothing()
+    if keep:
+        logger.info(f"Image generation: model={model_id}, size={size}, quality={quality}, prompt={prompt[:80]}")
+    else:
+        logger.info("Image generation: model=%s, size=%s, quality=%s (Nobody: prompt not logged)",
+                    model_id, size, quality)
 
     try:
         # GPT image models can take 30-120s+ depending on quality
@@ -1018,7 +1026,10 @@ async def do_generate_image(content: str, session_id: Optional[str] = None, owne
                     return ""
 
             # GPT image models always return b64_json; DALL-E may return url
-            if img.get("b64_json"):
+            if img.get("b64_json") and not keep:
+                image_url = nobody_mode.picture_data_url(base64.b64decode(img.get("b64_json")))
+                image_id = ""
+            elif img.get("b64_json"):
                 img_dir = Path(GENERATED_IMAGES_DIR)
                 img_dir.mkdir(parents=True, exist_ok=True)
                 filename = f"{uuid.uuid4().hex[:12]}.png"
@@ -1043,7 +1054,10 @@ async def do_generate_image(content: str, session_id: Optional[str] = None, owne
                     # minute. The URL check above is unchanged; no redirect is
                     # followed, as `httpx.get` followed none.
                     dl_resp = await paced_http.get(result_url, timeout=60, follow_redirects=False)
-                    if dl_resp.status_code == 200:
+                    if dl_resp.status_code == 200 and not keep:
+                        image_url = nobody_mode.picture_data_url(dl_resp.content)
+                        image_id = ""
+                    elif dl_resp.status_code == 200:
                         img_dir = Path(GENERATED_IMAGES_DIR)
                         img_dir.mkdir(parents=True, exist_ok=True)
                         filename = f"{uuid.uuid4().hex[:12]}.png"
@@ -1148,7 +1162,14 @@ async def do_edit_image(
     request_id = uuid.uuid4().hex
     payload["request_id"] = request_id
 
-    logger.info("Image edit: model=%s, size=%s, quality=%s, image=%s, prompt=%s", model_id, size, quality, path.name, prompt[:80])
+    # `B2097`: as `do_generate_image` — a Nobody turn's edit is shown, not kept.
+    from src import nobody_mode
+    keep = not nobody_mode.keeps_nothing()
+    if keep:
+        logger.info("Image edit: model=%s, size=%s, quality=%s, image=%s, prompt=%s", model_id, size, quality, path.name, prompt[:80])
+    else:
+        logger.info("Image edit: model=%s, size=%s, quality=%s (Nobody: prompt not logged)",
+                    model_id, size, quality)
 
     def _save_edited_image_to_gallery(filename: str) -> str:
         try:
@@ -1173,6 +1194,8 @@ async def do_edit_image(
             return ""
 
     def _save_image_bytes(image_bytes: bytes, suffix: str = ".png") -> tuple[str, str]:
+        if not keep:
+            return nobody_mode.picture_data_url(image_bytes), ""
         img_dir = Path(GENERATED_IMAGES_DIR)
         img_dir.mkdir(parents=True, exist_ok=True)
         filename = f"{uuid.uuid4().hex[:12]}{suffix}"

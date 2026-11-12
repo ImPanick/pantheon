@@ -917,9 +917,9 @@ weakest one in this document: it means nobody adjudicated them individually.
 | `B2084` | tracked | security | `B1903`'s unasked fetch on a forward, open: `GET /api/img` enforces only `block`, so a forward's draw still reaches it; the reader keeps `ask` |
 | `B2083` | tracked | defect | the rule read *attribution* in `_strip_trailing_attribution`: a mail with a long run of "<" before its quote holds the server for seconds when it is opened — a slow pattern on outside text, `B1902`'s class, open; it gets past no control |
 | `B2091` | tracked | display | the rule read *privilege* in the route's path: after a refused save Admin shows a model limit the server never stored, and the server enforces the one it kept |
-| `B2097` | tracked | decision | Nobody mode promises "nothing saved", and an image made in it is saved with its prompt and the prompt logged; what Nobody keeps of an image is the owner's call |
-| `B2098` | tracked | decision | a skill learned from a chat is published at 0.6 while the Brain's switches say the Skills Audit publishes; the path from an outside page runs only through what the model wrote, 500 characters a message, and whether learned skills wait for the audit is the owner's call |
-| `B2102` | tracked | second-line | a member can still tell the box's and the LAN's open ports from closed ones through the mail Test; the banners no longer come back (`B2032`) and the server no longer stalls (`B1921`), and which hosts a member may name is the owner's call — `B492`'s line |
+| `B2097` | tracked | decision | ruled 2026-11-11 (`D-2026-11-11-01` §1): Nobody keeps nothing — pictures are shown and not saved, every tool that writes what Pantheon keeps is withheld, and every way a chat ends deletes what it held; workspace, exec, send and admin tools in Nobody are the owner's next call |
+| `B2098` | tracked | decision | ruled 2026-11-11 (`D-2026-11-11-01` §2): a learned skill publishes itself only at 0.85 or more, an imported one publishes, a written one waits for a person, and the agent cannot publish its own; `B2112` is the agent naming a teacher's origin |
+| `B2102` | tracked | second-line | fixed 2026-11-11 (`D-2026-11-11-01` §6): every mail socket opens through `src/mail_reach.py` — one lookup, connect to the checked address, link-local and metadata refused to all, loopback, this host, private ranges and non-mail ports only with `can_reach_private_mail`, one sentence for every refusal |
 
 ---
 
