@@ -89,6 +89,22 @@ const SCREEN_ICON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none"
   + 'aria-hidden="true"><rect x="2" y="3" width="20" height="14" rx="2"/>'
   + '<path d="M8 21h8M12 17v4"/></svg>';
 
+// `PHW-CTL`. The controls' glyphs: constants, never server text.
+const GLYPHS = {
+  copy: '<rect x="8.5" y="8.5" width="11" height="11" rx="2"/><path d="M15.5 8.5V6a1.5 1.5 0 0 0-1.5-1.5H6A1.5 1.5 0 0 0 4.5 6v8A1.5 1.5 0 0 0 6 15.5h2.5"/>',
+  paste: '<rect x="5.5" y="5" width="13" height="15.5" rx="2"/><path d="M9 5V3.8h6V5M9 11h6M9 14.5h4"/>',
+  more: '<circle cx="6" cy="12" r="1.3" fill="currentColor"/><circle cx="12" cy="12" r="1.3" fill="currentColor"/><circle cx="18" cy="12" r="1.3" fill="currentColor"/>',
+  save: '<path d="M7 4.5h10v15.5l-5-3.6-5 3.6z"/>',
+  reset: '<path d="M4.5 12a7.5 7.5 0 1 0 2.2-5.3"/><path d="M4.2 4.2v4.5h4.5"/>',
+  hand: '<path d="M8.5 12.5V6.8a1.3 1.3 0 0 1 2.6 0V11M11.1 10.6V5.4a1.3 1.3 0 0 1 2.6 0v5.2M13.7 10.6V6.9a1.3 1.3 0 0 1 2.6 0v6.6a6 6 0 0 1-6 6h-.5a5 5 0 0 1-3.9-1.9l-2.4-3a1.4 1.4 0 0 1 2.1-1.8l1.3 1.4"/>',
+  giveback: '<path d="M9 7.5L4.5 12 9 16.5"/><path d="M4.8 12h9.7a5 5 0 0 1 0 10"/>',
+  agent: '<path d="M12 3.5l7.5 4.2v8.6L12 20.5l-7.5-4.2V7.7z"/><path d="M12 12l7.5-4.3M12 12v8.5M12 12L4.5 7.7"/>',
+};
+function _glyph(name) {
+  return '<svg class="ctl-i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" '
+    + `stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${GLYPHS[name] || ''}</svg>`;
+}
+
 // The lines a person reads under the picture. The sentences about who holds
 // the screen come from the server with each answer (`holder_sentence`).
 const HINT = {
@@ -349,15 +365,30 @@ function _render() {
   // `B1725`, `B1733`: this person's own switch and starting point — never
   // on a screen they only watch.
   _hidden(_win.save, !up || !!_watching);
+  // `PHW-CTL`. The rarer acts live behind ⋯; it goes when both are gone.
+  _hidden(_win.moreWrap, _win.save.hidden && _win.reset.hidden);
+  if (_win.moreWrap.hidden) _menu(false);
+  // `PHW-CTL`. Agent ⇄ You: the lit side holds the mouse and keyboard; the
+  // other side is the verb that moves them (Take over, Hand back).
+  _hidden(_win.agentSide, holding);
+  _hidden(_win.youSide, !holding && !_win.take.hidden);
+  _win.youSide.setAttribute('aria-current', holding ? 'true' : 'false');
+  _win.agentSide.setAttribute('aria-current', holding ? 'false' : 'true');
+  _win.hold.dataset.who = holding ? 'person' : 'agent';
+  _hidden(_win.hold, !up && !holding);
+  _placeThumb();
   const cu = _computerUse;
   _hidden(_win.cu, !!_watching || !cu || (!cu.allowed && !cu.on));
   if (cu) {
-    _win.cu.setAttribute('aria-pressed', cu.on ? 'true' : 'false');
-    _win.cu.textContent = cu.on ? 'Computer Use: on' : 'Computer Use: off';
-    _win.cu.title = cu.on
-      ? 'The agent clicks, types and runs commands here without asking. Click to make it ask again.'
-      : 'Let the agent act in this workstation without asking, after a warning.';
+    _win.cu.setAttribute('aria-checked', cu.on ? 'true' : 'false');
+    _win.cu.dataset.tip = cu.on
+      ? 'On: the agent acts here without asking. Switch off to make it ask again.'
+      : 'Off: the agent asks before it acts here. Switch on, after a warning, to let it act without asking.';
   }
+  // The holder's sentence is the switch's, said to a screen reader; the line
+  // shows only what the switch cannot say (an error, a save, a reset).
+  _win.status.classList.toggle('wsv-status-quiet', !_error && up && !!_holderSentence
+    && _win.statusText.textContent === _holderSentence);
   // A picture is shown only while it is the screen as it is: when the
   // workstation stops answering, the last frame goes with it rather than
   // standing under a sentence that says it is down.
@@ -1100,6 +1131,75 @@ function _button(cls, text, onClick) {
   return b;
 }
 
+/** An icon control: its name is its label, its tooltip and what a screen
+ *  reader says. */
+function _iconButton(cls, glyph, label, onClick) {
+  const b = _el('button', `ctl-ibtn ctl-tip ${cls}`);
+  b.type = 'button';
+  b.innerHTML = _glyph(glyph);   // a constant above, never server text
+  b.setAttribute('aria-label', label);
+  b.dataset.tip = label;
+  b.addEventListener('click', (e) => { e.preventDefault(); onClick(); });
+  return b;
+}
+
+/** A menu row: its act in words and, under it, what the act does. */
+function _menuItem(cls, glyph, text, detail, onClick) {
+  const b = _el('button', `ctl-menu-item ${cls}`);
+  b.type = 'button';
+  b.setAttribute('role', 'menuitem');
+  b.innerHTML = _glyph(glyph);
+  const words = _el('span', 'ctl-menu-words', text);
+  words.appendChild(_el('small', '', detail));
+  b.appendChild(words);
+  b.title = detail;
+  b.addEventListener('click', (e) => { e.preventDefault(); _menu(false); onClick(); });
+  return b;
+}
+
+/** The ⋯ menu, opened, closed or flipped. A press anywhere else closes it. */
+let _escOff = null;   // the menu's place on the Escape stack, while it is open
+function _onOutside(ev) {
+  if (!_win) return;
+  const t = ev.target;
+  if (t && t.closest && t.closest('.wsv-more-wrap')) return;
+  _menu(false);
+}
+function _menu(open) {
+  if (!_win) return;
+  const on = typeof open === 'boolean' ? open : _win.menu.hidden;
+  if (on === !_win.menu.hidden) return;
+  _win.menu.hidden = !on;
+  _win.more.setAttribute('aria-expanded', String(on));
+  _win.more.classList.toggle('is-open', on);
+  if (typeof document.addEventListener === 'function') {
+    if (on) document.addEventListener('pointerdown', _onOutside, true);
+    else document.removeEventListener('pointerdown', _onOutside, true);
+  }
+  // The page's one Escape closes this menu before it closes the window.
+  if (_escOff) { _escOff(); _escOff = null; }
+  if (on) {
+    import('./escMenuStack.js').then((m) => {
+      if (_win && !_win.menu.hidden && !_escOff) _escOff = m.registerMenuDismiss(() => { _escOff = null; _menu(false); });
+    }).catch(() => {});
+  }
+  if (on) {
+    const first = [_win.save, _win.reset].find((x) => !x.hidden);
+    try { if (first) first.focus(); } catch (_) {}
+  }
+}
+
+/** The switch's raised half, under whichever side is lit. */
+function _placeThumb() {
+  if (!_win) return;
+  const lit = [_win.agentSide, _win.youSide].find((x) => !x.hidden && x.getAttribute('aria-current') === 'true');
+  const left = lit && lit.offsetLeft, width = lit && lit.offsetWidth;
+  if (!lit || !(width > 0)) { _win.thumb.style.opacity = '0'; return; }
+  _win.thumb.style.opacity = '1';
+  _win.thumb.style.width = `${width}px`;
+  _win.thumb.style.transform = `translateX(${left}px)`;
+}
+
 function _build() {
   const modal = _el('div', 'modal wsv-modal');
   modal.id = MODAL_ID;
@@ -1130,21 +1230,82 @@ function _build() {
   status.appendChild(dot);
   status.appendChild(statusText);
   const actions = _el('div', 'wsv-actions');
-  const take = _button('wsv-take', 'Take over', () => { takeOver(); });
-  const give = _button('wsv-give', 'Hand back', () => { handBack(); });
-  const reset = _button('wsv-reset', 'Reset…', () => { resetToClean(); });
-  reset.title = 'Put the workstation back to its starting point';
-  // `B1733`: what Reset puts back, saved from here.
-  const save = _button('wsv-save', 'Save starting point…', () => { saveStartingPoint(); });
-  save.title = 'Make the workstation as it is now what Reset puts back';
-  // `B1725`: Computer Use, as a switch.
-  const cu = _button('wsv-cu', 'Computer Use: off', () => { toggleComputerUse(); });
-  cu.setAttribute('aria-pressed', 'false');
+  // `PHW-CTL`. Who holds the mouse and keyboard, as one two-way switch. The
+  // lit side is the holder; the other side is the verb: *Take over* while the
+  // agent has them, *Hand back* while you do.
+  const hold = _el('div', 'ctl-seg wsv-hold');
+  hold.setAttribute('role', 'group');
+  hold.setAttribute('aria-label', 'Who has the mouse and keyboard');
+  hold.dataset.who = 'agent';
+  const thumb = _el('span', 'ctl-seg-thumb');
+  thumb.setAttribute('aria-hidden', 'true');
+  const agentSide = _el('span', 'wsv-hold-side wsv-hold-agent');
+  agentSide.innerHTML = '<span class="ctl-led" aria-hidden="true"></span>';
+  agentSide.appendChild(_el('span', 'ctl-lbl', 'Agent'));
+  const give = _el('button', 'ctl-tip wsv-give');
+  give.type = 'button';
+  give.innerHTML = _glyph('giveback');
+  give.appendChild(_el('span', 'ctl-lbl', 'Hand back'));
+  give.setAttribute('aria-label', 'Hand back: the agent gets the mouse and keyboard');
+  give.dataset.tip = 'Give the mouse and keyboard back to the agent';
+  give.addEventListener('click', (e) => { e.preventDefault(); handBack(); });
+  const take = _el('button', 'ctl-tip wsv-take');
+  take.type = 'button';
+  take.innerHTML = _glyph('hand');
+  take.appendChild(_el('span', 'ctl-lbl', 'Take over'));
+  take.setAttribute('aria-label', 'Take over: you get the mouse and keyboard');
+  take.dataset.tip = 'Use the mouse and keyboard yourself. The agent waits.';
+  take.addEventListener('click', (e) => { e.preventDefault(); takeOver(); });
+  const youSide = _el('span', 'wsv-hold-side wsv-hold-you');
+  youSide.innerHTML = '<span class="ctl-led" aria-hidden="true"></span>';
+  youSide.appendChild(_el('span', 'ctl-lbl', 'You'));
+  hold.appendChild(thumb);
+  hold.appendChild(agentSide);
+  hold.appendChild(give);
+  hold.appendChild(take);
+  hold.appendChild(youSide);
+  // `B1725`: Computer Use, as a real switch.
+  const cu = _el('button', 'ctl-switch ctl-tip wsv-cu');
+  cu.type = 'button';
+  cu.setAttribute('role', 'switch');
+  cu.setAttribute('aria-checked', 'false');
+  cu.innerHTML = '<span class="ctl-switch-track" aria-hidden="true"></span>';
+  cu.appendChild(_el('span', 'ctl-lbl', 'Computer Use'));
+  cu.addEventListener('click', (e) => { e.preventDefault(); toggleComputerUse(); });
   // The live desktop's clipboard, both ways (`_onMessage`).
-  const paste = _button('wsv-paste', 'Paste', () => { pasteToDesktop(); });
-  paste.title = 'Send your clipboard to the workstation';
-  const copy = _button('wsv-copy', 'Copy', () => { copyFromDesktop(); });
-  copy.title = 'Put what the workstation copied on your clipboard';
+  const paste = _iconButton('wsv-paste', 'paste', 'Paste your clipboard into the workstation', () => { pasteToDesktop(); });
+  const copy = _iconButton('wsv-copy', 'copy', 'Copy what the workstation copied', () => { copyFromDesktop(); });
+  // `B1733`, `PHW-CTL`: the starting point and Reset, behind ⋯. Both ask first.
+  const moreWrap = _el('div', 'ctl-menu-wrap wsv-more-wrap');
+  const more = _iconButton('wsv-more', 'more', 'Starting point and reset', () => { _menu(); });
+  more.setAttribute('aria-haspopup', 'menu');
+  more.setAttribute('aria-expanded', 'false');
+  const menu = _el('div', 'ctl-menu wsv-menu');
+  menu.setAttribute('role', 'menu');
+  menu.setAttribute('aria-label', 'Starting point and reset');
+  menu.hidden = true;
+  const save = _menuItem('wsv-save', 'save', 'Save starting point…', 'Make the workstation as it is now what Reset puts back.',
+    () => { saveStartingPoint(); });
+  const rule = _el('div', 'ctl-menu-rule');
+  rule.setAttribute('role', 'separator');
+  const reset = _menuItem('wsv-reset', 'reset', 'Reset…', 'Put the workstation back to its starting point. Asks first.',
+    () => { resetToClean(); });
+  reset.dataset.tone = 'danger';
+  menu.appendChild(save);
+  menu.appendChild(rule);
+  menu.appendChild(reset);
+  menu.addEventListener('keydown', (e) => {
+    const items = [save, reset].filter((x) => !x.hidden);
+    const at = items.indexOf(document.activeElement);
+    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); _menu(false); try { more.focus(); } catch (_) {} return; }
+    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+    e.preventDefault();
+    const next = items[(at + (e.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length];
+    if (next) next.focus();
+  });
+  moreWrap.appendChild(more);
+  moreWrap.appendChild(menu);
+  moreWrap.hidden = true;
   take.hidden = true;
   give.hidden = true;
   reset.hidden = true;
@@ -1155,10 +1316,7 @@ function _build() {
   actions.appendChild(cu);
   actions.appendChild(copy);
   actions.appendChild(paste);
-  actions.appendChild(take);
-  actions.appendChild(give);
-  actions.appendChild(save);
-  actions.appendChild(reset);
+  actions.appendChild(moreWrap);
   // `B1424`. For an admin: whose screen. Hidden until the user list answers,
   // which it does only for an admin (`GET /api/auth/users`).
   const whoLabel = _el('label', 'wsv-who');
@@ -1174,6 +1332,7 @@ function _build() {
   who.addEventListener('change', () => { watchPerson(who.value); });
   whoLabel.appendChild(whoText);
   whoLabel.appendChild(who);
+  bar.appendChild(hold);
   bar.appendChild(status);
   bar.appendChild(whoLabel);
   bar.appendChild(actions);
@@ -1239,6 +1398,7 @@ function _build() {
   }
 
   return { modal, content, header, status, statusText, take, give, reset, save, cu, paste, copy,
+    hold, thumb, agentSide, youSide, more, menu, moreWrap,
     stage, screen, img, empty, hint, note, whoLabel, who, agent, hand, caption };
 }
 
@@ -1246,6 +1406,7 @@ function _build() {
  *  person still held it — nobody is left holding a screen they cannot see. */
 function _teardown() {
   if (!_win) return;
+  _menu(false);
   if (_timer) { clearTimeout(_timer); _timer = null; }
   if (_typeTimer) { clearTimeout(_typeTimer); _typeTimer = null; }
   if (_clicks && _clicks.timer) clearTimeout(_clicks.timer);

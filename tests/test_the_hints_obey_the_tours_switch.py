@@ -63,7 +63,8 @@ def test_replay_knows_the_keys_the_hints_write():
     rename in one would leave *Replay* clearing a key nobody writes."""
     keys = _binding_value("tourAutoplay.js", "HINT_KEYS")
     assert sorted(keys) == sorted([_binding_value("tourHints.js", "HINT_SEEN_KEY"),
-                                   _binding_value("notes.js", "NOTES_FIRST_OPEN_HINT_KEY")])
+                                   _binding_value("notes.js", "NOTES_FIRST_OPEN_HINT_KEY"),
+                                   _binding_value("phoneWindow.js", "PHONE_CONTROLS_HINT_KEY")])
 
 
 def test_replay_clears_both_hints(sandbox):

@@ -95,7 +95,7 @@ const BASE = process.argv[2], devices = JSON.parse(process.argv[3]);
     }
     await route.fulfill({ json: snapshot });
   });
-  await page.route('**/api/workstation/control', async route => {
+  await page.route(/\/api\/workstation(\/phone)?\/control(\?.*)?$/, async route => {
     holder = route.request().postDataJSON().holder;
     controlRequests.push(holder);
     const snapshot = { holder };
@@ -169,8 +169,11 @@ const BASE = process.argv[2], devices = JSON.parse(process.argv[3]);
   await tap();
 
   // Primary hardware controls send Android keys, without stopping the process.
+  // `PHW-CTL`: volume and power are the keys on the phone's edge; the nav bar
+  // under the screen carries only Back, Home and Recent apps.
+  assert.equal(await page.locator('.phw-nav [data-key="power"]').count(), 0);
   for (const key of ['volume_down', 'volume_up', 'power']) {
-    const button = page.locator(`.phw-nav [data-key="${key}"]`);
+    const button = page.locator(`.phw-side[data-key="${key}"]`);
     assert.equal(await button.isVisible(), true);
     const sent = page.waitForResponse(response => response.url().endsWith('/api/workstation/phone')
       && response.request().method() === 'POST' && response.request().postDataJSON().button === key);
@@ -296,11 +299,10 @@ const BASE = process.argv[2], devices = JSON.parse(process.argv[3]);
   assert.equal(requests.at(-1).action, 'preview');
   assert.match(await page.locator('.phw-runtime').innerText(), /Browser preview · Web only/);
   assert.match(await page.locator('.phw-runtime').innerText(), /No KVM/);
-  assert.equal(await page.locator('.phw-power').innerText(), 'Close preview');
+  assert.equal(await page.locator('.phw-power').getAttribute('aria-label'), 'Close preview');
   assert.equal(await page.locator('.phw-transfer').isVisible(), false);
   assert.equal(await page.locator('.phw-side[data-key="volume_up"]').isEnabled(), false);
-  assert.equal(await page.locator('.phw-nav [data-key="volume_up"]').isVisible(), false);
-  assert.equal(await page.locator('.phw-nav [data-key="power"]').isVisible(), false);
+  assert.equal(await page.locator('.phw-nav [data-key="recents"]').isVisible(), false);
   await shot('mobile-browser-preview-labelled');
 
   // Float and close use the existing window, including handing control back.
