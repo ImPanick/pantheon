@@ -565,7 +565,13 @@ async function _markNotSpam(em, btn) {
   if (!em || em.uid == null) return;
   btn.disabled = true;
   try {
-    const res = await fetch(`${API_BASE}/api/email/${encodeURIComponent(em.uid)}/unflag-spam`, {
+    // The folder and account narrow it to this message: a UID is unique only
+    // inside one folder of one mailbox.
+    const scope = new URLSearchParams({
+      folder: String(em.folder || state._libFolder || 'INBOX'),
+      account_id: String(em.account_id || state._libAccountId || ''),
+    });
+    const res = await fetch(`${API_BASE}/api/email/${encodeURIComponent(em.uid)}/unflag-spam?${scope}`, {
       method: 'POST', credentials: 'same-origin',
     });
     const d = await res.json().catch(() => ({}));

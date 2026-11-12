@@ -41,6 +41,8 @@ const SURFACES = {
   phone: { label: 'Mobile Emulator', icon: 'phone', node: () => document.querySelector('.modal.phw-modal') },
 };
 const ORDER = ['doc', 'vm', 'browser', 'phone'];
+const LAYOUTS = [['one', 'l1', 'One at a time'], ['cols', 'lcols', 'Side by side'], ['rows', 'lrows', 'Stacked'], ['main', 'lmain', 'One large, the rest below']];
+const MODAL_IDS = { vm: 'workstation-screen-modal', browser: 'agent-browser-modal', phone: 'phone-modal' };
 
 const W = {
   layout: 'rows', focus: 'doc', max: null,
@@ -69,6 +71,7 @@ function save() {
 }
 
 let ws, grid, empty, tab, ghost, resizer;
+let pendingFocus = '';   // a surface asked for from its tab, until its window lands
 const panes = {};
 
 /** Is this surface open at all (docked or floating), and not minimized? */
@@ -159,7 +162,11 @@ function syncHeader(key) {
     title = $('.phw-title', node)?.textContent?.trim() || title;
     const give = $('.phw-give', node);
     if (give && !give.hidden) { hold = 'You have control'; cls = 'you'; }
-    else hold = $('.phw-runtime-label', node)?.textContent?.trim() || 'Checking';
+    else {
+      // The image is the device chip's; the header says the phone's state.
+      const st = $('.phw-bezel', node)?.dataset.state || 'checking';
+      hold = { on: 'Watching', starting: 'Starting', off: 'Off', installing: 'Installing', unavailable: 'Unavailable' }[st] || 'Checking';
+    }
   }
   ttl.textContent = title;
   holder.textContent = hold;
@@ -219,7 +226,8 @@ function render() {
   const docked = ORDER.filter((k) => isOpen(k) && !W.floating.has(k));
   ORDER.forEach((k) => { if (isOpen(k)) seat(k); });
   if (W.max && !docked.includes(W.max)) W.max = null;
-  if (W.layout === 'one' && !docked.includes(W.focus)) W.focus = docked[0] || W.focus;
+  if (pendingFocus && docked.includes(pendingFocus)) { W.focus = pendingFocus; pendingFocus = ''; }
+  if (!docked.includes(W.focus) && (W.layout === 'one' || !pendingFocus)) W.focus = docked[0] || W.focus;
   const shown = W.max ? [W.max] : (W.layout === 'one' ? docked.filter((k) => k === W.focus) : docked);
   ORDER.forEach((k) => {
     const p = panes[k];
@@ -251,18 +259,90 @@ function render() {
   grid.style.gridTemplateRows = rows;
   $$('.ck-surf', ws).forEach((b) => {
     const k = b.dataset.surf;
-    b.setAttribute('aria-pressed', String(isOpen(k)));
+    const open = isOpen(k);
+    b.setAttribute('aria-pressed', String(open));
     const live = (k === 'browser' && SURFACES.browser.node()?.classList.contains('abw-agent-busy'))
-      || (k === 'doc' && byId('doc-stream-indicator') && byId('doc-stream-indicator').style.display !== 'none');
+      || (k === 'doc' && byId('doc-stream-indicator') && byId('doc-stream-indicator').style.display !== 'none')
+      || (k === 'vm' && open && /agent/i.test($('.wsv-modal .ws-status-text')?.textContent || '') && /driv|work|using/i.test($('.wsv-modal .ws-status-text')?.textContent || ''));
     let act = $('.act', b);
     if (live && !act) b.insertAdjacentHTML('beforeend', '<span class="act" aria-hidden="true"></span>');
     if (!live && act) act.remove();
+    // Where it is: a pane (and which), floating, open behind the one shown, or closed.
+    const at = shown.indexOf(k);
+    const where = !open ? 'closed' : W.floating.has(k) ? 'float' : at >= 0 ? 'pane' : 'behind';
+    b.dataset.where = where;
+    b.classList.toggle('is-focus', where === 'pane' && W.focus === k);
+    const slot = $('.ck-slot', b);
+    const mark = where === 'pane' ? `pane:${lay}:${n}:${at}` : where;
+    if (slot.dataset.mark !== mark) {
+      slot.dataset.mark = mark;
+      slot.innerHTML = where === 'pane' ? slotGlyph(lay, n, at) : where === 'float' ? icon('popout') : '';
+    }
+    const name = SURFACES[k].label;
+    const tip = where === 'pane' ? (n > 1 ? `${name} · pane ${at + 1} of ${n}` : `${name} · open`)
+      : where === 'float' ? `${name} · floating. Bring it forward`
+        : where === 'behind' ? `${name} · open behind. Show it` : `Open ${name}`;
+    b.dataset.tip = live ? `${tip} · working now` : tip;
   });
   $$('.ck-layouts button', ws).forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.layout === W.layout)));
   document.documentElement.classList.toggle('ck-ws-off', W.off);
   const anyLive = $$('.ck-surf .act', ws).length > 0;
   $('.act', tab).hidden = !anyLive;
   if (W.width) document.documentElement.style.setProperty('--ck-ws-w', W.width);
+  $$('.ck-pane', grid).forEach((p) => p.classList.toggle('is-focus', n > 1 && p.dataset.pane === W.focus && !p.hidden));
+  placeIndicator();
+}
+
+/** The lit slide under the surface in use: the focused pane's tab. */
+function placeIndicator() {
+  if (!ws) return;
+  const list = $('.ck-surf-list', ws);
+  const ind = $('.ck-surf-ind', ws);
+  const on = $('.ck-surf.is-focus', ws) || (fittedN === 1 ? $('.ck-surf[data-where="pane"]', ws) : null);
+  if (!on || !list.offsetWidth) { ind.style.opacity = '0'; return; }
+  ind.style.opacity = '1';
+  ind.style.width = on.offsetWidth + 'px';
+  ind.style.transform = `translateX(${on.offsetLeft}px)`;
+}
+
+/** A small map of the layout with this surface's pane filled in. */
+function slotGlyph(lay, n, at) {
+  const cells = [];
+  const X = 3, Y = 4, Wd = 18, H = 16, g = 1.6;
+  if (n <= 1 || lay === 'one') cells.push([X, Y, Wd, H]);
+  else if (lay === 'cols') for (let i = 0; i < n; i += 1) { const w = (Wd - g * (n - 1)) / n; cells.push([X + i * (w + g), Y, w, H]); }
+  else if (lay === 'main' && n > 2) {
+    const top = H * 0.58, bot = H - top - g, w = (Wd - g * (n - 2)) / (n - 1);
+    cells.push([X, Y, Wd, top]);
+    for (let i = 0; i < n - 1; i += 1) cells.push([X + i * (w + g), Y + top + g, w, bot]);
+  } else {
+    const weights = lay === 'main' ? [1.4, 1] : Array(n).fill(1);
+    const sum = weights.reduce((a, b) => a + b, 0), free = H - g * (n - 1);
+    let y = Y;
+    for (const wt of weights) { const h = free * wt / sum; cells.push([X, y, Wd, h]); y += h + g; }
+  }
+  const r = (v) => Math.round(v * 10) / 10;
+  return `<svg class="ck-i" viewBox="0 0 24 24" aria-hidden="true">${cells.map(([x, y, w, h], i) =>
+    `<rect x="${r(x)}" y="${r(y)}" width="${r(w)}" height="${r(h)}" rx="1.2" class="${i === at ? 'on' : ''}"/>`).join('')}</svg>`;
+}
+
+/** A floating window, brought to the top and given the focus. */
+function raiseFloating(k) {
+  if (k === 'doc') { const p = panes.doc; import('./toolWindowZOrder.js').then((Z) => { p.style.zIndex = String(Z.nextToolWindowZ()); }).catch(() => {}); p.focus?.(); return; }
+  import('./modalManager.js?v=20261009census').then((M) => {
+    M.raiseWindow(MODAL_IDS[k]);
+    M.focusWindowHandle(MODAL_IDS[k]);
+  }).catch(() => {});
+  const c = $('.modal-content', SURFACES[k].node());
+  if (c && !reduced()) c.animate([{ boxShadow: '0 0 0 2px var(--ck-accent-line)' }, { boxShadow: '0 0 0 0 transparent' }], { duration: 700, easing: EASE });
+}
+
+/** The pane of a tab pressed while it is already shown: in view, and lit once. */
+function flashPane(k) {
+  const p = panes[k];
+  if (!p || p.hidden) return;
+  p.scrollIntoView?.({ block: 'nearest' });
+  if (!reduced()) p.animate([{ boxShadow: '0 0 0 2px var(--ck-accent-line)' }, { boxShadow: '0 0 0 0 transparent' }], { duration: 700, easing: EASE });
 }
 
 /* ───────────── float and dock ───────────── */
@@ -466,13 +546,16 @@ function build() {
   ws = document.createElement('section');
   ws.id = 'ck-workspace';
   ws.setAttribute('aria-label', 'Workspace');
+  // `PHW-CTL`. One track: the surfaces as tabs, a lit slide under the one in
+  // use, each tab marking where its surface is (which pane, or floating), and
+  // the layouts at the end of the same track.
   ws.innerHTML = '<div class="ck-ws-head"><span class="lbl">Workspace</span>'
-    + '<div class="ck-surf-list" role="group" aria-label="Surfaces">'
-    + ORDER.map((k) => `<button type="button" class="ck-surf" data-surf="${k}" aria-label="${SURFACES[k].label}" title="${SURFACES[k].label}" aria-pressed="false">${icon(SURFACES[k].icon)}<span class="tx">${SURFACES[k].label}</span></button>`).join('')
-    + '</div><span class="grow"></span><div class="ck-layouts" role="group" aria-label="Layout">'
-    + [['one', 'l1', 'One at a time'], ['cols', 'lcols', 'Side by side'], ['rows', 'lrows', 'Stacked'], ['main', 'lmain', 'One large, the rest below']]
-      .map(([v, ic, t]) => `<button type="button" data-layout="${v}" aria-pressed="false" title="${t}" aria-label="${t}">${icon(ic)}</button>`).join('')
-    + `</div><button type="button" class="ck-ibtn" id="ck-ws-tuck" title="Tuck workspace" aria-label="Tuck workspace">${icon('chev')}</button></div>`
+    + '<div class="ck-switch" role="toolbar" aria-label="Workspace surfaces and layout">'
+    + '<div class="ck-surf-list" role="group" aria-label="Surfaces"><span class="ck-surf-ind" aria-hidden="true"></span>'
+    + ORDER.map((k) => `<button type="button" class="ck-surf ctl-tip" data-surf="${k}" aria-label="${SURFACES[k].label}" data-tip="${SURFACES[k].label}" aria-pressed="false">${icon(SURFACES[k].icon)}<span class="tx">${SURFACES[k].label}</span><span class="ck-slot" aria-hidden="true"></span></button>`).join('')
+    + '</div><span class="ck-switch-rule" aria-hidden="true"></span><div class="ck-layouts" role="group" aria-label="Layout">'
+    + LAYOUTS.map(([v, ic, t]) => `<button type="button" class="ctl-tip" data-layout="${v}" aria-pressed="false" data-tip="${t}" aria-label="${t}">${icon(ic)}</button>`).join('')
+    + `</div></div><span class="grow"></span><button type="button" class="ck-ibtn ctl-tip" id="ck-ws-tuck" data-tip="Tuck workspace" aria-label="Tuck workspace">${icon('chev')}</button></div>`
     + '<div id="ck-ws-grid"></div>';
   grid = $('#ck-ws-grid', ws);
   ORDER.forEach((k) => { panes[k] = buildPane(k); grid.appendChild(panes[k]); });
@@ -498,11 +581,37 @@ function build() {
 
   $$('.ck-surf', ws).forEach((b) => b.addEventListener('click', () => {
     const k = b.dataset.surf;
-    if (W.layout === 'one' && isOpen(k) && W.focus !== k && !W.floating.has(k)) { W.focus = k; render(); return; }
-    if (isOpen(k)) closeSurface(k);
-    else { W.focus = k; W.off = false; openSurface(k); }
+    // A tab never closes its surface (the pane's × does): open brings it
+    // forward — the floating window raised, the pane in view and lit.
+    if (isOpen(k) && W.floating.has(k)) { raiseFloating(k); return; }
+    if (isOpen(k)) { W.focus = k; render(); flashPane(k); return; }
+    W.focus = k; pendingFocus = k; W.off = false; openSurface(k);
     setTimeout(render, 60);
   }));
+  $('.ck-surf-list', ws).addEventListener('keydown', (e) => {
+    // Delete closes the open surface under the focus, as its pane's × would.
+    const b = e.target.closest('.ck-surf');
+    if (!b || (e.key !== 'Delete' && e.key !== 'Backspace')) return;
+    if (!isOpen(b.dataset.surf)) return;
+    e.preventDefault();
+    closeSurface(b.dataset.surf);
+    setTimeout(render, 60);
+  });
+  $('.ck-switch', ws).addEventListener('keydown', (e) => {
+    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) return;
+    const items = $$('.ck-switch button', ws).filter((x) => x.offsetParent !== null);
+    const at = items.indexOf(document.activeElement);
+    if (at < 0) return;
+    e.preventDefault();
+    const next = e.key === 'Home' ? 0 : e.key === 'End' ? items.length - 1 : (at + (e.key === 'ArrowRight' ? 1 : -1) + items.length) % items.length;
+    items[next].focus();
+  });
+  // The pane a person works in is the one the slide sits under.
+  grid.addEventListener('pointerdown', (e) => {
+    const pane = e.target.closest && e.target.closest('.ck-pane');
+    if (pane && pane.dataset.pane && W.focus !== pane.dataset.pane) { W.focus = pane.dataset.pane; render(); }
+  }, true);
+  window.addEventListener('resize', () => placeIndicator());
   $$('.ck-layouts button', ws).forEach((b) => b.addEventListener('click', () => { W.layout = b.dataset.layout; W.max = null; save(); render(); }));
   $('#ck-ws-tuck', ws).addEventListener('click', () => toggleWorkspace(true));
   tab.addEventListener('click', () => toggleWorkspace(false));

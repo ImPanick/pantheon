@@ -2987,14 +2987,30 @@ def setup_email_routes():
 
     @router.post("/{uid}/unflag-spam")
     # `B1609`: a plain `def` — it awaits nothing, so its session (and any IMAP) work runs in the thread pool.
-    def unflag_spam(uid: str, owner: str = Depends(require_owner)):
-        """User override — mark email as not spam."""
+    def unflag_spam(uid: str, folder: str = "", account_id: str = "",
+                    owner: str = Depends(require_owner)):
+        """User override — mark email as not spam.
+
+        An IMAP UID is unique only inside one folder of one account, so the
+        row is narrowed by the folder and account the message was shown in.
+        Keyed on `uid` and the owner alone, one click cleared the verdict of
+        every message of that person's that shared the UID number, in every
+        folder of every mailbox.
+        """
         try:
-            owner_clause, owner_params = _email_tag_owner_clause(None, owner)
+            owner_clause, owner_params = _email_tag_owner_clause(account_id or None, owner)
+            where, params = f"uid=? AND {owner_clause}", [uid, *owner_params]
+            if folder:
+                where += " AND folder=?"
+                params.append(folder)
+            if account_id:
+                account_clause, account_params = _email_tag_account_clause(account_id)
+                where += f" AND {account_clause}"
+                params.extend(account_params)
             _c = _sql3.connect(SCHEDULED_DB)
             _c.execute(
-                f"UPDATE email_tags SET spam_verdict=0, spam_reason='' WHERE uid=? AND {owner_clause}",
-                [uid, *owner_params],
+                f"UPDATE email_tags SET spam_verdict=0, spam_reason='' WHERE {where}",
+                params,
             )
             _c.commit()
             _c.close()
