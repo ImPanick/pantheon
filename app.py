@@ -1767,12 +1767,15 @@ async def _startup_event():
     # Wipe any leftover incognito sessions from previous process — they're
     # ephemeral by design and must not survive a restart.
     try:
-        from core.database import SessionLocal as _SL, Session as _DbSess, ChatMessage as _DbMsg
+        from core.database import SessionLocal as _SL, Session as _DbSess
         _db = _SL()
         try:
-            _ghosts = _db.query(_DbSess).filter(_DbSess.name.in_(("Nobody", "Incognito"))).all()
+            # `B2097`: by `nobody_mode`'s names, and with everything a Nobody
+            # chat left (`forget_session`), not only its messages.
+            from src import nobody_mode as _nobody
+            _ghosts = _db.query(_DbSess).filter(_DbSess.name.in_(_nobody.NOBODY_SESSION_NAMES)).all()
             for _g in _ghosts:
-                _db.query(_DbMsg).filter(_DbMsg.session_id == _g.id).delete()
+                _nobody.forget_session(_db, _g.id)
                 _db.delete(_g)
             if _ghosts:
                 _db.commit()

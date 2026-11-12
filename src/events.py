@@ -473,9 +473,13 @@ def record_llm_round(session_id: str, metrics: Dict[str, Any], *,
                 k: metrics.get(k) for k in ("endpoint_id", "requested_model")
                 if metrics.get(k) is not None
             }
+            # `B2097`. A Nobody turn is counted — its model, tokens and time,
+            # which say nothing of what was said — but not tied to its chat,
+            # which ends and keeps nothing.
+            from src import nobody_mode
             db.add(Event(
                 kind="llm_round",
-                session_id=session_id,
+                session_id=None if nobody_mode.keeps_nothing() else session_id,
                 run_id=_run_id.get(),
                 owner=owner,
                 model=_safe_label(metrics.get("model") or metrics.get("actual_model")),

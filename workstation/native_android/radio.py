@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Private radio transport for a dedicated Android VM.
 
 Netsim listens only inside its own Docker network namespace. The host proxy admits one
@@ -177,12 +178,12 @@ class PrivateRadio:
                                     relay.stdin.write(block)
                                     relay.stdin.flush()
                             except (OSError, ValueError):
-                                pass
+                                pass  # either end hung up: closing the relay's input below ends this connection
                             finally:
                                 try:
                                     relay.stdin.close()
                                 except OSError:
-                                    pass
+                                    pass  # the relay already exited
 
                         pump = threading.Thread(target=incoming, daemon=True)
                         pump.start()
@@ -197,7 +198,7 @@ class PrivateRadio:
                             try:
                                 self.request.sendall(b"HTTP/1.1 407 Proxy Authentication Required\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
                             except OSError:
-                                pass
+                                pass  # the refused client already left; the refusal is counted above
                     finally:
                         with owner.lock:
                             owner.connections.discard(self.request)
@@ -253,7 +254,7 @@ class PrivateRadio:
                     try:
                         conn.shutdown(socket.SHUT_RDWR)
                     except OSError:
-                        pass
+                        pass  # already disconnected; closed next either way
                     conn.close()
                 self.server.server_close()
         finally:

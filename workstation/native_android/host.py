@@ -27,42 +27,7 @@ from workstation import phone as PH
 from .adb import AdbError, AdbAuthenticationError, DirectAdb
 from .control import ScrcpyControl
 from .radio import PrivateRadio
-from .platform_support import check_python, console_path
-
-
-def native_abi():
-    """Native CPU, including translated Python; only stock SDK host targets."""
-    system = platform.system()
-    cpu = os.environ.get('PROCESSOR_ARCHITEW6432', platform.machine()).lower() if system == 'Windows' else platform.machine().lower()
-    if system == 'Darwin':
-        try:
-            probe = subprocess.run(['/usr/sbin/sysctl', '-n', 'hw.optional.arm64'], capture_output=True, text=True, timeout=5)
-            if probe.returncode == 0 and probe.stdout.strip() == '1': cpu = 'arm64'
-        except (OSError, subprocess.TimeoutExpired): pass
-    if system == 'Darwin' and cpu in ('arm64', 'aarch64'): return 'arm64-v8a'
-    if system in ('Darwin', 'Windows', 'Linux') and cpu in ('amd64', 'x86_64'): return 'x86_64'
-    raise RuntimeError('The stock SDK has no local emulator for this OS/CPU. Connect Pantheon to a compatible Android worker.')
-
-
-def accelerator_name(output):
-    value = output.lower()
-    for needles, name in ((('hypervisor.framework', 'hvf'), 'hvf'), (('whpx',), 'whpx'),
-                          (('aehd', 'gvm'), 'aehd'), (('kvm',), 'kvm'), (('haxm',), 'haxm')):
-        if any(word in value for word in needles): return name
-    return 'sdk'  # successful SDK probe, unknown accelerator label
-
-
-def write_private(path, text):
-    path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-    temporary = path.with_name(path.name + '.new-' + secrets.token_hex(4))
-    fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-    try:
-        with os.fdopen(fd, 'w', encoding='utf-8') as stream:
-            stream.write(text); stream.flush(); os.fsync(stream.fileno())
-        os.replace(temporary, path)
-    finally:
-        temporary.unlink(missing_ok=True)
+from .platform_support import accelerator_name, check_python, console_path, native_abi, write_private  # noqa: F401 — re-exported
 
 
 class Host:
@@ -88,18 +53,35 @@ class Host:
         self.emulator = self.sdk / 'emulator' / ('emulator.exe' if os.name == 'nt' else 'emulator')
         self.accel = None
         self.why = None
+        self._probed = 0.0
+        self.probe()
+
+    REPROBE_S = 30.0
+
+    def probe(self):
+        """Ask the SDK again what accelerates it here. A host whose hypervisor
+        was off when the worker started (KVM group not yet applied, Windows
+        Hypervisor Platform turned on later) becomes usable without a worker
+        restart; a usable one is not asked again."""
+        accel, why = None, None
         try:
             result = subprocess.run([str(self.emulator), '-accel-check'], capture_output=True, text=True, timeout=20)
             if result.returncode:
-                self.why = 'Android acceleration is unavailable: ' + (result.stdout + result.stderr)[-400:]
+                why = 'Android acceleration is unavailable: ' + (result.stdout + result.stderr)[-400:]
             else:
-                self.accel = accelerator_name(result.stdout + result.stderr)
+                accel = accelerator_name(result.stdout + result.stderr)
         except (OSError, subprocess.TimeoutExpired):
-            self.why = 'Install the Android SDK emulator on this host, then check its acceleration support.'
+            why = 'Install the Android SDK emulator on this host, then check its acceleration support.'
         try:
             console_path(self.config, self.root)
         except RuntimeError as error:
-            self.why = str(error)
+            why = str(error)
+        self.accel, self.why, self._probed = accel, why, time.monotonic()
+
+    def reprobe(self):
+        if self.why is not None and time.monotonic() - self._probed >= self.REPROBE_S:
+            self.probe()
+        return self.why
 
     def home(self, account):
         # An operator may explicitly register an existing owned SDK profile.
@@ -184,7 +166,8 @@ class NativePhone(PH.AccountPhone):
         return super().package(device).rsplit(';',1)[0] + ';' + self.system.abi
 
     def _availability(self):
-        return self.system.why
+        reprobe = getattr(self.system, 'reprobe', None)
+        return reprobe() if callable(reprobe) else self.system.why
 
     def _edition_accepted(self):
         try:
@@ -290,13 +273,13 @@ class NativePhone(PH.AccountPhone):
                 if parent.create_time()==self.process_identity:
                     for process in [parent,*parent.children(recursive=True)]:
                         self._processes[process.pid]=process.create_time()
-            except psutil.Error:pass
+            except psutil.Error:pass  # the emulator exited while being listed; the loop below drops what is gone
         family=[]
         for pid,born in list(self._processes.items()):
             try:
                 process=psutil.Process(pid)
                 if process.create_time()==born and process.is_running():family.append(process);continue
-            except psutil.Error:pass
+            except psutil.Error:pass  # exited or its pid was reused: no longer ours, forgotten just below
             self._processes.pop(pid,None)
         return family
 
@@ -396,7 +379,7 @@ class NativePhone(PH.AccountPhone):
                     error='Android private-device authentication failed: '+auth.reason;break
             except OSError as failure:
                 error='Android startup failed: '+str(failure)[:300];break
-            except (AdbError,PH.PhoneError):pass
+            except (AdbError,PH.PhoneError):pass  # still booting: retried until the deadline, which reports the failure
             time.sleep(2)
         with self.lock:
             if self.emulator is proc:
@@ -519,21 +502,21 @@ class NativePhone(PH.AccountPhone):
         if proc is not None and proc.poll() is None:
             if self.direct is not None:
                 try:self.direct.shell(['sync'],timeout=10);self.direct.shell(['svc','power','shutdown'],timeout=5)
-                except AdbError:pass
+                except AdbError:pass  # no clean in-guest shutdown: the terminate below still stops it
                 try:proc.wait(timeout=30)
-                except subprocess.TimeoutExpired:pass
+                except subprocess.TimeoutExpired:pass  # still running: terminated just below
             # Popen still owns its child even if startup failed before psutil
             # recorded its identity or the authenticated ADB client existed.
             if proc.poll() is None:proc.terminate()
         family=self._process_family()
         for process in reversed(family):
             try:process.terminate()
-            except psutil.NoSuchProcess:pass
+            except psutil.NoSuchProcess:pass  # already gone, which is the goal
         alive=psutil.wait_procs(family,timeout=10)[1] if family else []
         for process in alive:
             try:
                 if process.create_time()==self._processes.get(process.pid):process.kill()
-            except psutil.NoSuchProcess:pass
+            except psutil.NoSuchProcess:pass  # already gone; anything still alive is reported below
         if alive and psutil.wait_procs(alive,timeout=5)[1]:
             raise PH.PhoneError('unavailable','Android did not stop; its VM slot stays reserved.')
         if proc is not None and proc.poll() is None:

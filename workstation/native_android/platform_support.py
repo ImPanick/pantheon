@@ -1,8 +1,13 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Native SDK profile conventions that environment overrides cannot change."""
+from datetime import datetime, timezone
 from pathlib import Path
+import json
+import os
 import platform
 import re
+import secrets
+import subprocess
 import sys
 
 
@@ -49,3 +54,69 @@ def console_path(config, owner_home):
     if not re.fullmatch(r'[A-Za-z0-9_+/=-]{16,256}', token):
         raise RuntimeError('The Windows worker console token has an invalid format.')
     return path
+
+
+def native_abi():
+    """Native CPU, including translated Python; only stock SDK host targets."""
+    system = platform.system()
+    cpu = os.environ.get('PROCESSOR_ARCHITEW6432', platform.machine()).lower() if system == 'Windows' else platform.machine().lower()
+    if system == 'Darwin':
+        try:
+            probe = subprocess.run(['/usr/sbin/sysctl', '-n', 'hw.optional.arm64'], capture_output=True, text=True, timeout=5)
+            if probe.returncode == 0 and probe.stdout.strip() == '1': cpu = 'arm64'
+        except (OSError, subprocess.TimeoutExpired): pass  # no sysctl answer: keep platform.machine(), which is right outside Rosetta
+    if system == 'Darwin' and cpu in ('arm64', 'aarch64'): return 'arm64-v8a'
+    if system in ('Darwin', 'Windows', 'Linux') and cpu in ('amd64', 'x86_64'): return 'x86_64'
+    raise RuntimeError('The stock SDK has no local emulator for this OS/CPU. Connect Pantheon to a compatible Android worker.')
+
+
+def write_private(path, text):
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    temporary = path.with_name(path.name + '.new-' + secrets.token_hex(4))
+    fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    try:
+        with os.fdopen(fd, 'w', encoding='utf-8') as stream:
+            stream.write(text); stream.flush(); os.fsync(stream.fileno())
+        os.replace(temporary, path)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+SDK_LICENSE='android-sdk-license'
+ARM_LICENSE='android-sdk-arm-dbt-license'
+
+
+def required_licenses(abi):
+    return [SDK_LICENSE]+([ARM_LICENSE] if abi=='arm64-v8a' else [])
+
+
+def record_consent(root,license_ids,*,source,texts=None):
+    """The operator's acceptance, kept beside the host's state. Earlier
+    acceptances are kept; `texts` maps an id to the SHA-256 of the exact
+    agreement text that was shown."""
+    consent=Path(root)/'license-consent.json'
+    old=json.loads(consent.read_text()) if consent.exists() else {}
+    ids=sorted(set(old.get('license_ids',[]))|set(license_ids))
+    shown=dict(old.get('license_text_sha256',{}));shown.update(texts or {})
+    record={'accepted_at':old.get('accepted_at') or datetime.now(timezone.utc).isoformat(),'license_ids':ids,
+            'scope':'Installed SDK and selected development images on this private Android host','source':source}
+    if shown:record['license_text_sha256']=shown
+    if set(ids)!=set(old.get('license_ids',[])) and old:record['updated_at']=datetime.now(timezone.utc).isoformat()
+    write_private(consent,json.dumps(record,indent=2))
+    return consent
+
+
+def accepted(root,abi):
+    consent=Path(root)/'license-consent.json'
+    try:ids=set(json.loads(consent.read_text())['license_ids'])
+    except (OSError,ValueError,KeyError,TypeError):return False
+    return set(required_licenses(abi))<=ids
+
+
+def accelerator_name(output):
+    value = output.lower()
+    for needles, name in ((('hypervisor.framework', 'hvf'), 'hvf'), (('whpx',), 'whpx'),
+                          (('aehd', 'gvm'), 'aehd'), (('kvm',), 'kvm'), (('haxm',), 'haxm')):
+        if any(word in value for word in needles): return name
+    return 'sdk'  # successful SDK probe, unknown accelerator label

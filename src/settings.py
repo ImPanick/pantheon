@@ -873,6 +873,9 @@ DEFAULT_SETTINGS = {
     "skill_audit_batch": 8,     # skills per night; the library rotates
     "task_endpoint_id": "",
     "task_model": "",
+    # `B2100`. Off: a built-in task that picked a model runs on it. On: the
+    # Background Tasks model above runs every task, whatever it picked.
+    "task_model_over_task_choice": False,
     "default_endpoint_id": "",
     "default_model": "",
     # Optional prose style used only for normal document writing/editing.

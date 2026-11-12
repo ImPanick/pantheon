@@ -122,11 +122,11 @@ class Screen:
             old=self.gestures.pop(session,None)
             if old and self.phone.control:
                 try:self.touch(1,min(self.width-1,old[0]),min(self.height-1,old[1]))
-                except (AdbError,PhoneError):pass
+                except (AdbError,PhoneError):pass  # the phone is gone or stopped, and a stopped phone holds no touch
             for code in self.key_states.pop(session,set()):
                 if self.phone.control:
                     try:self.phone.control.key(code,down=False)
-                    except AdbError:pass
+                    except AdbError:pass  # as above: no control channel, no key left held
 
     def release_all(self):
         with self.lock:

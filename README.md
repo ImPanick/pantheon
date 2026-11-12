@@ -231,6 +231,17 @@ cp .env.example .env
 docker compose up -d --build
 ```
 
+For the Android phones, run Pantheon with this line instead of `docker compose up -d --build`:
+
+```bash
+python3 -m workstation.native_android.bootstrap up --app docker --compose -- up -d --build
+```
+
+Android runs as a real VM on your machine, beside Docker. The first run asks you to accept Google's
+Android SDK License, downloads Google's emulator once and starts it; it needs Python 3.11+ and a
+hypervisor the emulator can use. `./start-macos.sh` and `launch-windows.ps1` do this on their own.
+See [the Android host](docs/android-host.md).
+
 Open `http://localhost:7000` once the containers are healthy. The app binds to `127.0.0.1`
 unless you set `APP_BIND`, and the port is `APP_PORT`. The first visit asks you to make the
 admin account on the sign-in page, and lets you open sign-up for everyone else — or set
@@ -332,22 +343,23 @@ proved it dead.
 
 ## Status
 
-**2155 tracked tasks, 1767 done.** The tracker is [`.pantheon/ROADMAP.md`](.pantheon/ROADMAP.md) and
+**2156 tracked tasks, 1950 done.** The tracker is [`.pantheon/ROADMAP.md`](.pantheon/ROADMAP.md) and
 it is the only place work is tracked — one list, one progress area, validated by a script that
 recounts every phase row against its own ticks. It exists because the summary line was once wrong
 by nineteen and carried forward unread from entry to entry, because each author copied the line
 above.
 
 **Read that number with the trend beside it.** Over the last ten waves, *done* went
-**96.3% → 82.0%** and *open* went **67 → 388**: 321 rows filed against 0 closed, a
-file-to-close ratio of **∞**. That is not a backlog of defects piling up: those waves were the owner's
+**96.3% → 90.4%** and *open* went **68 → 206**: 321 rows filed against 183 closed, a
+file-to-close ratio of **1.754**. That is not a backlog of defects piling up: those waves were the owner's
 own asks — the Odysseus port and the faults it turned up, the Workbench automations, push to a phone,
 the Devices room, the alignment audit's ninety fixes, the slim tool set for local models and the
 agent's own pointer on the desktop — each built and then held open, by rule, until the owner has tested
-it on his own machine. A row is closed by the person who asked for it, not by the agent that wrote it.
+it on his own machine. A row is closed by the person who asked for it, not by the agent that wrote it;
+on 2026-11-11 he closed 177 of them on CI evidence, every test each one names passing.
 Wave by wave, with every row named, is in the tracker's progress area.
 
-What matters more is a different number: of the last 40 backlog rows filed (`B2072`–`B2111`), **none** is
+What matters more is a different number: of the last 40 backlog rows filed (`B2073`–`B2112`), **none** is
 on the ship line's open list — the short list of rows that stop a stranger relying on this
 repository now that it is public. The series, the classification and what counts as blocking are in
 [`.pantheon/SHIP-LINE.md`](.pantheon/SHIP-LINE.md). Every figure in this section is

@@ -1,6 +1,9 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Shared resolver for background-task AI endpoints."""
 
+import contextvars
+from contextlib import contextmanager
+
 from src.endpoint_resolver import (
     resolve_endpoint,
     resolve_utility_fallback_candidates,
@@ -19,6 +22,27 @@ def resolve_task_endpoint(fallback_url=None, fallback_model=None, fallback_heade
     return resolve_endpoint("task", fallback_url, fallback_model, fallback_headers, owner=owner)
 
 
+#: `B2100`. The model a built-in task picked, for the length of its run. The
+#: task form offers Model for every task and the list shows it, but the ten
+#: model-backed actions resolved their model here, with no per-task choice, so
+#: the Background Tasks model always won. `TaskScheduler._execute_action` sets
+#: this (after `_usable_route` has checked the pick is still listed) and every
+#: action's call reaches it through `resolve_task_candidates`, the one resolver
+#: they already share. A contextvar rather than a parameter: ten actions and a
+#: dozen call sites inherit it without a signature changing.
+_TASK_MODEL_PIN = contextvars.ContextVar("pantheon_task_model_pin", default=None)
+
+
+@contextmanager
+def task_model_pinned(url, model, headers=None):
+    """Run the body with `(url, model)` as the only background-task candidate."""
+    token = _TASK_MODEL_PIN.set((url, model, dict(headers or {})))
+    try:
+        yield
+    finally:
+        _TASK_MODEL_PIN.reset(token)
+
+
 def resolve_task_candidates(
     fallback_url=None,
     fallback_model=None,
@@ -32,7 +56,14 @@ def resolve_task_candidates(
     2. Utility endpoint/model
     3. Default endpoint/model
     4. Utility fallback chain
+
+    Inside `task_model_pinned` (`B2100`) the pinned model is the only
+    candidate: a task that picked a model runs on it or not at all, never on
+    the default (`D-2026-10-07-02` §1).
     """
+    pinned = _TASK_MODEL_PIN.get()
+    if pinned is not None:
+        return [pinned]
     candidates = []
 
     def _append(url, model, headers):

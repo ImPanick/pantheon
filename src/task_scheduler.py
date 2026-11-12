@@ -5507,7 +5507,13 @@ class TaskScheduler:
                     db.close()
                 if zone:
                     kwargs["tz_name"] = zone
-            return coerce_node_result(await action_fn(**kwargs))
+            pin = self._action_model_pin(task)
+            if pin is None:
+                return coerce_node_result(await action_fn(**kwargs))
+            from src.task_endpoint import task_model_pinned
+            self.set_run_model(run_id, pin[1])
+            with task_model_pinned(*pin):
+                return coerce_node_result(await action_fn(**kwargs))
         except (TaskNoop, TaskDeferred) as signal:
             # `P8-24`. The two signals the engine has always had, spoken in the
             # same vocabulary as everything else a node can say — so all four
@@ -5515,8 +5521,44 @@ class TaskScheduler:
             # being a separate control-flow channel nobody can branch on.
             return NodeResult.from_signal(signal)
         except Exception as e:
+            from src.endpoint_resolver import NoUsableModel
+            if isinstance(e, NoUsableModel):
+                # The picked model is gone: the run says so in a sentence and
+                # does not fall back to the default (`B2100`).
+                return NodeResult(NODE_STATUS_ERROR, payload=str(e))
             logger.error(f"Action '{task.action}' failed: {e}")
             return NodeResult(NODE_STATUS_ERROR, payload=str(e))
+
+    def _action_model_pin(self, task):
+        """`B2100`. `(chat_url, model, headers)` a model-backed built-in action
+        runs on, or `None` for the Background Tasks chain.
+
+        A task whose Model field names a model runs on that model, checked by
+        the same `_usable_route` a Prompt task uses, so a pick that is no longer
+        listed raises `NoUsableModel` with its sentence instead of quietly
+        running on the default. The Settings switch "Use this model for every
+        task" (`task_model_over_task_choice`, off by default) puts the Background
+        Tasks model back over every task's pick. Actions that call no model, and
+        tasks that name none, keep the chain as it was.
+        """
+        from src.builtin_actions import MODEL_BACKED_ACTIONS
+        if task.action not in MODEL_BACKED_ACTIONS or not (task.model or "").strip():
+            return None
+        try:
+            from src.settings import get_setting
+            if get_setting("task_model_over_task_choice", False) is True:
+                return None
+        except Exception:
+            logger.debug("could not read task_model_over_task_choice", exc_info=True)
+        from core.database import SessionLocal
+        db = SessionLocal()
+        try:
+            endpoint_url, model = self._usable_route(db, task, task.endpoint_url, task.model)
+            endpoint_url = _normalize_chat_endpoint(endpoint_url)
+            headers = _registered_endpoint_headers(endpoint_url, task.owner or None, db=db)
+        finally:
+            db.close()
+        return endpoint_url, model, headers
 
     # ── Check-in source discovery ──
     # Pattern-based: if an MCP server has a tool matching a pattern, it becomes

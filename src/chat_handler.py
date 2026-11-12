@@ -46,6 +46,9 @@ def _sync_upload_vision_to_gallery(file_info: Dict[str, Any], owner: Optional[st
     file_hash = (file_info or {}).get("hash")
     if not file_hash or not text:
         return
+    from src import nobody_mode
+    if nobody_mode.keeps_nothing():   # `B2097`: a Nobody turn's reading is not kept
+        return
     try:
         from core.database import GalleryImage, SessionLocal
         db = SessionLocal()
@@ -285,7 +288,10 @@ class ChatHandler:
                             vl_result = analyze_image_with_vl_result(file_info["path"], owner=owner)
                             vl_desc = vl_result.get("text", "")
                             vl_model = vl_result.get("model", "")
-                            if vl_desc and not vl_desc.startswith("["):
+                            # `B2097`: a Nobody turn's description is used and
+                            # not cached on disk.
+                            from src import nobody_mode as _nobody
+                            if vl_desc and not vl_desc.startswith("[") and not _nobody.keeps_nothing():
                                 try:
                                     os.makedirs(os.path.join(UPLOAD_DIR, ".vision"), exist_ok=True)
                                     with open(_vcache, "w", encoding="utf-8") as _vf:

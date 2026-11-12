@@ -704,6 +704,7 @@ async function initTaskModel() {
   var epSel = el('set-taskEndpoint');
   var modelSel = el('set-taskModel');
   var msg = el('set-taskModelMsg');
+  var overTasks = el('set-taskModelOverTasks');
   if (!epSel || !modelSel) return;
   var _endpoints = [];
   try {
@@ -721,7 +722,21 @@ async function initTaskModel() {
     var settings = await res.json();
     if (settings.task_endpoint_id) epSel.value = settings.task_endpoint_id;
     refreshModels(settings.task_model || '');
+    // `B2100`: a real boolean, off unless saved on.
+    if (overTasks) overTasks.checked = settings.task_model_over_task_choice === true;
   } catch (e) { /* the selects still work */ }
+
+  async function saveOverTasks() {
+    try {
+      await _postSettings({ task_model_over_task_choice: !!overTasks.checked });
+      if (msg) {
+        msg.textContent = overTasks.checked
+          ? 'Every task runs on this model, whatever model it picks.'
+          : 'A task that picks a model runs on it; the rest run on this one.';
+        msg.style.color = 'var(--fg)';
+      }
+    } catch (e) { if (msg) { msg.textContent = _notSaved(e); msg.style.color = 'var(--red)'; } }
+  }
 
   async function save() {
     try {
@@ -737,6 +752,7 @@ async function initTaskModel() {
 
   epSel.addEventListener('change', function() { refreshModels(''); save(); });
   modelSel.addEventListener('change', save);
+  if (overTasks) overTasks.addEventListener('change', saveOverTasks);
 }
 
 /* ── Utility Model ── */

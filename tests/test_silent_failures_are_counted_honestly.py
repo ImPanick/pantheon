@@ -234,11 +234,11 @@ def test_no_silent_handler_in_the_tree_hides_a_mutation():
 
 def test_the_ratchet_is_at_or_below_where_ci_holds_it():
     ci = (_REPO / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
-    assert "check-silent-failures.py --max 402" in ci, (
+    assert "check-silent-failures.py --max 401" in ci, (
         "CI's ceiling moved; if it moved down that is the point, and this "
         "line moves with it"
     )
-    proc = _run("--max", "402")
+    proc = _run("--max", "401")
     assert proc.returncode == 0, proc.stdout
 
 

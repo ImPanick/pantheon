@@ -2584,10 +2584,16 @@ async def action_ping_notes(owner: str, **kwargs) -> Tuple[str, bool]:
         return str(e), False
 
 
+#: The reason a keyword verdict carries when no keyword decided anything. A
+#: verdict with no tags and this reason is the one `B2099` hands to the model.
+_KEYWORD_DEFAULT_REASON = "categorized by email metadata"
+
+
 def _heuristic_email_verdict(item: dict, *, triage_version: int, category_tags) -> dict:
     """The Email Tags verdict for one email, by keyword and with no model
-    call: `action_check_email_urgency` caches it as the whole classification.
-    `B1945`: at module level, so it can be tested.
+    call: `action_check_email_urgency` caches it as the classification of
+    every message it tags, and asks the task's model about the ones it leaves
+    untagged (`B2099`). `B1945`: at module level, so it can be tested.
     """
     import re as _re
     import time as _time
@@ -2657,7 +2663,7 @@ def _heuristic_email_verdict(item: dict, *, triage_version: int, category_tags) 
             break
 
     score = 0
-    reason = "categorized by email metadata"
+    reason = _KEYWORD_DEFAULT_REASON
     if "action-needed" in response_tags:
         score = 2
         reason = "action likely needed"
@@ -3065,10 +3071,21 @@ async def action_check_email_urgency(owner: str, **kwargs) -> Tuple[str, bool]:
                     continue
                 verdict = _heuristic_email_verdict(
                     item, triage_version=TRIAGE_VERSION, category_tags=CATEGORY_TAGS)
-                cache.setdefault("uids", {})[item["uid"]] = verdict
-                per_uid_scores[key] = verdict
-                saved_classifications += 1
-                continue
+                # `B2099`. The keyword verdict used to be final, with an
+                # unconditional `continue` here, so the model step below never
+                # ran and the task form's "Email triage rules" box
+                # (`urgent_email_prompt`) changed nothing. The keywords still
+                # decide every message they recognise; a message they leave
+                # untagged at their own default reason goes to the task's
+                # model once, with the person's rules, and falls back to the
+                # keyword verdict when the model gives no usable answer. The
+                # guard is Odysseus `218d7624`'s.
+                if verdict.get("tags") or verdict.get("reason") != _KEYWORD_DEFAULT_REASON:
+                    cache.setdefault("uids", {})[item["uid"]] = verdict
+                    per_uid_scores[key] = verdict
+                    saved_classifications += 1
+                    continue
+                keyword_verdict = verdict
                 # ── LLM-classify. JSON-only response; bullet-proof parse.
                 llm_attempts += 1
                 prompt = (
@@ -3112,6 +3129,8 @@ async def action_check_email_urgency(owner: str, **kwargs) -> Tuple[str, bool]:
                             "from": item.get("from") or "",
                             "reason": "model returned no JSON",
                         })
+                        # Not cached, so the next run asks the model again.
+                        per_uid_scores[key] = keyword_verdict
                         continue
                     obj = _json.loads(txt[s:e + 1])
                     score = int(obj.get("score", 0))
@@ -3183,6 +3202,7 @@ async def action_check_email_urgency(owner: str, **kwargs) -> Tuple[str, bool]:
                         "reason": str(e)[:120] or "classification failed",
                     })
                     logger.debug(f"urgency: LLM classify failed for {key}: {e}")
+                    per_uid_scores[key] = keyword_verdict
                     continue
 
             if scan_complete:

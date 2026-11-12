@@ -508,9 +508,15 @@ export async function syncPrefSlider(elementId, prefKey, labelId, defaultVal, pr
  *  invisible, and an invisible coupling is how a person concludes the product
  *  is ignoring them.
  */
+/** `B2098`. The lowest confidence at which a skill learned from a chat
+ *  publishes itself — `services/memory/skill_publish.LEARNED_PUBLISH_MINIMUM`,
+ *  which says why. A copy, so a test holds the two to one value. */
+export const LEARNED_PUBLISH_MINIMUM = 0.85;
+
 export function skillGateHints({ autoApprove = true, minConfidence = 0.85 } = {}) {
   const value = Number(minConfidence) || 0;
   const pct = Math.round(value * 100);
+  const learnedPct = Math.round(Math.max(LEARNED_PUBLISH_MINIMUM, value) * 100);
   // `D-9` (P23-02, Doc 2 § 5): one line each, the words of `BRAIN-U-17`
   // (draft / published, auto-publish). The coupling `P8-05` made visible is
   // kept where it bites — auto-publish off — and is silent when it does not.
@@ -539,7 +545,11 @@ export function skillGateHints({ autoApprove = true, minConfidence = 0.85 } = {}
     confidence: value <= 0
       ? 'No minimum, for both things this sets: every draft the teacher writes is used when a message matches it, and Audit publishes every draft that passes — the loosest setting.'
       : `One bar for two things: drafts the teacher writes are used from ${pct}%, and Audit publishes a draft that passes at ${pct}% or more. Published skills are always used; a draft you write is used once you publish it.`,
-    coupling: '',
+    // `B2098`. The third reader of the same number, and the one with no review
+    // before it publishes: `skill_extractor` publishes a learned skill at this
+    // bar but never under `LEARNED_PUBLISH_MINIMUM`. Said in its own line so
+    // the sentence above keeps saying one number for its two readings.
+    coupling: `A skill learned from a chat is published by itself at ${learnedPct}% or more; below that it stays a draft until Audit passes it or you publish it. Imported skills are published; a skill you or the assistant write waits for you.`,
   };
 }
 

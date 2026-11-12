@@ -37,7 +37,7 @@ def scan_media(call,path):
     from workstation.phone import PhoneError
     try:
         call(['shell','content call --uri content://media --method scan_file --arg '+shlex.quote(path)],timeout=5,quiet=True)
-    except (PhoneError,OSError):pass
+    except (PhoneError,OSError):pass  # the file is delivered; Android indexes it on its next media scan anyway
 
 
 def operation(phone, op, connection=None, name=None, data_b64=None, expected=None, *, _deadline=None):

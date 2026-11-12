@@ -4242,3 +4242,36 @@ private userdata or its pinned restore package record.
 The SDK transparent HTTP proxy was rejected as the network boundary because its setup/fallback can permit direct connections. WiFiPacketStream instead carries packets to this VM's private Docker Netsim service. The existing netrules Internet policy applies before Netsim drops all Linux capabilities and runs as UID501; its private loopback remains available for Slirp's signal pipe. No raw Netsim port is published. SDK legacy networking stays restricted. Public HTTP succeeded from the real guest. Rooted guest TCP/UDP to owned host listeners were refused, with specific destination counters (2 TCP packets,1 UDP packet); trusted namespace controls reached both listeners. Workstation-root raw-radio reach timed out. These checks do not establish two-live-guest or Windows/Linux acceptance.
 
 The installer retains pinned archive URL, size, SHA1/SHA256 and licence identity across immutable-ROM eviction; image-specific userdata and keys are preserved. Stop invalidates an install generation so a late download cannot resurrect the VM. Source-level routing/protocol suites pass; actual app UI/image-switch acceptance is still in progress and tracked on B2106.
+
+## D-2026-11-11-01 - the owner's rulings on the 2026-11-11 change analysis
+
+The owner answered § 7 of the change analysis of 2026-11-11 on the same day.
+Each ruling below is his, in his words where they are short.
+
+1. **`B2097` Nobody mode.** *"Nobody mode is 'incognito' which should
+   'discard' everything in that session."* Nothing a Nobody chat makes is
+   kept: pictures are shown and not saved, every tool that writes what
+   Pantheon keeps is withheld, and every way a chat ends deletes what it held.
+   What stays open is the owner's next call: workspace and exec tools,
+   `send_email`, admin tools and user-added MCP tools still run in Nobody.
+2. **`B2098` skill publishing.** The floor for a learned skill to publish
+   itself is at least 0.85. *"Any imported skill gets auto-published. Custom
+   built skills and low-confidence system generated skills get dry-runs or
+   corrective review before published (manually)."*
+3. **`B2099`** fixed as filed.
+4. **`B2100`** a built-in task runs on the model it picked, and *"user should
+   be able to override"*: the Settings switch `task_model_over_task_choice`
+   puts the Background Tasks model back over every pick. It is off.
+5. **`B2101`** fixed as filed: a Forge launch renames only a row the Forge
+   named, and Settings can rename an endpoint.
+6. **`B2102`** fixed as filed: the mail Test does not reach the box itself,
+   loopback, link-local or private addresses.
+7. **The claimed port rows close on CI evidence.** A row whose `Verify:` names
+   tests that pass in the suite on `dev` is done; a row whose test runs only in
+   a browser CI does not install stays claimed and says so.
+8. **CI on `dev`.** *"dev does get CI and it will merge to main before
+   Windows/Linux worker acceptance."* Pull requests into `dev` always ran CI;
+   pushes to `dev` did not until PR #61 (the owner, 2026-11-11: *"Add dev to
+   CI"*).
+9. **Code-scanning alerts** `#526`, `#528`, `#530`, `#531` and `#536` are false
+   positives to dismiss. *"Dismiss false-positives."*
