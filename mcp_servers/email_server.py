@@ -333,9 +333,9 @@ def _resolve_account_from_rows(rows: list[dict], selector: str | None) -> dict |
     return None
 
 
-def _owner_is_admin(owner: str) -> bool:
-    from src.tool_security import owner_is_admin
-    return owner_is_admin(owner)
+def _runs_instance(owner: str) -> bool:
+    from src.mail_reach import runs_instance
+    return runs_instance(owner)
 
 
 def _load_config(account: str | None = None) -> dict:
@@ -429,7 +429,7 @@ def _load_config(account: str | None = None) -> dict:
         for _col in ("oauth_provider", "oauth_access_token",
                      "oauth_refresh_token", "oauth_token_expiry"):
             cfg[_col] = row[_col] if _col in row.keys() else ""
-    elif _current_owner() and not _owner_is_admin(_current_owner()):
+    elif _current_owner() and not _runs_instance(_current_owner()):
         # Audit 2026-11-11 #10. With no row of their own, what is left is the
         # env and `settings.json`: the install's own mailbox, the admin's. A
         # member's agent was handed it, passwords included, whenever the

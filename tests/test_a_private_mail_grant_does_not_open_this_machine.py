@@ -30,7 +30,10 @@ class _Auth:
     is_configured = True
 
     def get_privileges(self, name):
-        return {"can_reach_private_mail": True} if name in (ADMIN, GRANTED) else {}
+        from core.auth import ADMIN_PRIVILEGES
+        if name == ADMIN:  # as the real manager answers an admin
+            return dict(ADMIN_PRIVILEGES)
+        return {"can_reach_private_mail": True} if name == GRANTED else {}
 
     def is_admin(self, name):
         return name == ADMIN

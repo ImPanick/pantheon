@@ -25,7 +25,9 @@ class _Auth:
     is_configured = True
 
     def get_privileges(self, name):
-        return {}
+        # As the real manager answers: an admin holds every privilege.
+        from core.auth import ADMIN_PRIVILEGES
+        return dict(ADMIN_PRIVILEGES) if name == ADMIN else {}
 
     def is_admin(self, name):
         return name == ADMIN

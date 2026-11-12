@@ -374,19 +374,21 @@ _INSTALL_WIDE_MAIL_FLAGS = (
 
 #: Said to a member who asks to change one of them.
 INSTALL_WIDE_MAIL_SENTENCE = (
-    "Only an admin can change mail settings that apply to every mailbox. "
+    "Only an admin, or someone an admin lets run this Pantheon, can change mail "
+    "settings that apply to every mailbox. "
     "Choose your own account to set its away reply or writing style."
 )
 
 
 def _may_change_install_wide_mail(owner: str) -> bool:
-    """An admin may; so may `owner == ""`, which `_require_auth` never answers
+    """Whoever runs this instance may (`mail_reach.runs_instance`: every admin,
+    and anyone granted `can_run_instance`); so may `owner == ""`, which `_require_auth` never answers
     for a request and which this module reads as the install itself
     (`_assert_owns_account`)."""
     if not owner:
         return True
-    from src.tool_security import owner_is_admin
-    return owner_is_admin(owner)
+    from src.mail_reach import runs_instance
+    return runs_instance(owner)
 
 
 def _changes_install_wide_mail(data: dict, account_id: str | None) -> bool:

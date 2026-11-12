@@ -24,14 +24,18 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-ADMIN, MEMBER = "alice", "bob"
+ADMIN, MEMBER, OPERATOR = "alice", "bob", "carol"
 
 
 class _Auth:
     is_configured = True
 
     def get_privileges(self, name):
-        return {}
+        # As the real manager answers: an admin holds every privilege.
+        from core.auth import ADMIN_PRIVILEGES
+        if name == ADMIN:
+            return dict(ADMIN_PRIVILEGES)
+        return {"can_run_instance": True} if name == OPERATOR else {}
 
     def is_admin(self, name):
         return name == ADMIN
@@ -169,3 +173,12 @@ def test_an_admin_still_sets_the_install_wide_automation(store, db):
     r = _client(ADMIN).put("/api/email/style", json={"style": "the admin's new style"})
     assert r.status_code == 200, r.text
     assert _on_disk(store)["email_writing_style"] == "the admin's new style"
+
+
+def test_someone_an_admin_lets_run_this_pantheon_sets_it_too(store, db):
+    """The gate is the operator tier (`can_run_instance`, `B683`), asked
+    through the one privilege resolver rather than as a further admin
+    decision (`.pantheon/check-auth-map.py` rule C)."""
+    r = _client(OPERATOR).put("/api/email/config", json={"email_auto_spam": True})
+    assert r.status_code == 200, r.text
+    assert _on_disk(store)["email_auto_spam"] is True

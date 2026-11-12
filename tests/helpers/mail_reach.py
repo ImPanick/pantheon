@@ -15,4 +15,4 @@ def allow_this_network(monkeypatch) -> None:
     reach this machine, which takes an admin (`src/mail_reach.py`)."""
     import src.mail_reach as mail_reach
     monkeypatch.setattr(mail_reach, "_holds", lambda owner: True)
-    monkeypatch.setattr(mail_reach, "_is_admin", lambda owner: True)
+    monkeypatch.setattr(mail_reach, "runs_instance", lambda owner: True)
