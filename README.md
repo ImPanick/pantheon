@@ -110,7 +110,7 @@ device in somebody else's cloud.
 | No hardware acceleration | none | No Android. You get a mobile browser view instead, and it says so |
 
 The phone runs on a small host worker outside Docker, because that's where the hypervisor is.
-Setting it up: [Android host guide](docs/android-host.md).
+Pantheon sets it up and starts it for you on launch: [Android host guide](docs/android-host.md).
 
 ---
 
@@ -252,7 +252,15 @@ account, or set `PANTHEON_ADMIN_PASSWORD` in `.env` first and it's made for you.
 `.env.example` is commented and works as it is. The workstation images build on your machine, so
 after pulling a new version run `docker compose build --pull` too.
 
-The phone needs one more piece, the host worker: [Android host guide](docs/android-host.md).
+For the Android phones, start it with this line instead of `docker compose up -d --build`:
+
+```bash
+python3 -m workstation.native_android.bootstrap up --app docker --compose -- up -d --build
+```
+
+The first run asks you to accept Google's Android SDK License, downloads the emulator once and
+starts it. It needs Python 3.11+ and a hypervisor the emulator can use. `./start-macos.sh` and
+`launch-windows.ps1` do this on their own. More in the [Android host guide](docs/android-host.md).
 Native installs, GPUs, the workstation VM, Windows, macOS and HTTPS: [setup guide](docs/setup.md).
 `main` is the release branch; `dev` is where work lands first.
 
@@ -280,10 +288,11 @@ lands and test it on my own machines. The repository is the evidence:
   command you can run, and this README's own figures are pinned to their sources, so the build
   fails when one drifts.
 
-**2147 tracked tasks, 1767 done.** Over the last ten waves, done went **96.4% → 82.3%** and open
-went **66 → 380**: 314 rows filed against 0 closed, a file-to-close ratio of **∞**. That's new work
-held open until it's been tested by hand, not a pile of defects. Of the last 40 rows filed
-(`B2064`–`B2103`), **none** is on the ship line, the short list of things that would stop a
+**2156 tracked tasks, 1950 done.** Over the last ten waves, done went **96.3% → 90.4%** and open
+went **68 → 206**: 321 rows filed against 183 closed, a file-to-close ratio of **1.754**. That's new
+work held open until it's been tested by hand, not a pile of defects; on 2026-11-11 I closed 177 rows
+on CI evidence, every test each one names passing. Of the last 40 rows filed
+(`B2073`–`B2112`), **none** is on the ship line, the short list of things that would stop a
 stranger relying on this repository ([`.pantheon/SHIP-LINE.md`](.pantheon/SHIP-LINE.md)).
 
 Test suite: **20,309 passing**, measured 2026-10-18 at `c66fe54`. A full run takes over an hour, so
