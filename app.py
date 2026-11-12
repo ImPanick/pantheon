@@ -4,6 +4,8 @@ import mimetypes
 import os
 import sys
 import asyncio
+import collections
+import hashlib
 import time
 
 # On Windows, asyncio.create_subprocess_exec/shell require the ProactorEventLoop.
@@ -49,6 +51,8 @@ from dotenv import load_dotenv
 load_dotenv(encoding="utf-8-sig")
 
 import asyncio
+import collections
+import hashlib
 import logging
 import secrets
 from datetime import datetime, timezone
@@ -453,11 +457,23 @@ def _is_auth_exempt(path: str, method: str) -> bool:
 # in app.state, called by routes/api_token_routes.
 _token_cache: dict = {}
 _token_cache_lock = _asyncio.Lock()
-_token_cache_dirty = True
+# Invalidation is a version number, not a flag. The flag this replaces was
+# written into `app.state.__dict__`, which shadows Starlette's `State` storage,
+# so the `= False` a refresh wrote never reached it: after the first
+# invalidation every bearer request rebuilt the whole map under one lock. A
+# flag reset by the refresh would also lose a revocation that lands during the
+# refresh's read; a version the refresh snapshots before reading cannot.
+_token_cache_version = 1
+_token_cache_built_version = 0
+
 
 def _token_cache_invalidate():
-    nonlocal_dict = app.state.__dict__
-    nonlocal_dict["_token_cache_dirty"] = True
+    global _token_cache_version
+    _token_cache_version += 1
+
+
+def _token_cache_stale() -> bool:
+    return _token_cache_built_version != _token_cache_version
 app.state.invalidate_token_cache = _token_cache_invalidate
 # Same setter, reachable without a `Request`. Routes keep using
 # `app.state.invalidate_token_cache` exactly as before; the agent's tool
@@ -466,11 +482,49 @@ app.state.invalidate_token_cache = _token_cache_invalidate
 # authenticating out of the cache until the next restart (`B43`).
 _register_token_cache_invalidator(_token_cache_invalidate)
 app.state._token_cache = _token_cache
-app.state._token_cache_dirty = True
+
+# A bearer token that has already passed bcrypt once, keyed by the SHA-256 of
+# the raw token, holding only the token row's id. API tokens are 256-bit random
+# strings, so a fast digest is a sufficient key for "this exact token was
+# verified"; bcrypt stays the stored hash. A hit is honoured only while that id
+# is still among the active candidates for the prefix, so a revoked token
+# (the cache refresh drops its row) stops matching on the next request.
+_VERIFIED_BEARER_MAX = 1024
+_verified_bearer: "collections.OrderedDict[bytes, str]" = collections.OrderedDict()
+
+
+def _match_bearer_token(raw_token: str, candidates):
+    """The candidate row a previously verified `raw_token` belongs to, or None."""
+    digest = hashlib.sha256(raw_token.encode()).digest()
+    tid = _verified_bearer.get(digest)
+    if tid is None:
+        return None
+    for row in candidates:
+        if row[0] == tid:
+            _verified_bearer.move_to_end(digest)
+            return row
+    _verified_bearer.pop(digest, None)
+    return None
+
+
+def _bcrypt_match_bearer_token(raw_token: str, candidates):
+    """Check `raw_token` against each candidate's bcrypt hash (off the loop)."""
+    encoded = raw_token.encode()
+    for row in candidates:
+        if _bcrypt.checkpw(encoded, row[1].encode()):
+            digest = hashlib.sha256(encoded).digest()
+            _verified_bearer[digest] = row[0]
+            _verified_bearer.move_to_end(digest)
+            while len(_verified_bearer) > _VERIFIED_BEARER_MAX:
+                _verified_bearer.popitem(last=False)
+            return row
+    return None
 
 def _refresh_token_cache():
     """Rebuild the prefix→[(id,hash)] map from the DB."""
+    global _token_cache_built_version
     from collections import defaultdict
+    building = _token_cache_version
     new_map = defaultdict(list)
     db = SessionLocal()
     try:
@@ -488,9 +542,12 @@ def _refresh_token_cache():
             new_map[r.token_prefix].append((r.id, r.token_hash, owner_key, scopes))
     finally:
         db.close()
-    _token_cache.clear()
+    # Swap without an empty moment: the refresh runs in a thread while the
+    # loop keeps answering, and a `clear()` first would refuse a valid token.
     _token_cache.update(new_map)
-    app.state._token_cache_dirty = False
+    for stale_prefix in [k for k in _token_cache if k not in new_map]:
+        _token_cache.pop(stale_prefix, None)
+    _token_cache_built_version = building
 
 # Headers that prove a request was forwarded by a proxy/tunnel (cloudflared,
 # nginx, Caddy, Tailscale Funnel, …). cloudflared connects to the app FROM
@@ -581,20 +638,23 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 return JSONResponse(status_code=401, content={"error": "Invalid API token"})
             prefix = raw_token[:8]
             try:
-                if app.state._token_cache_dirty:
+                if _token_cache_stale():
                     async with _token_cache_lock:
-                        if app.state._token_cache_dirty:
+                        if _token_cache_stale():
                             await _asyncio.to_thread(_refresh_token_cache)
                 candidates = list(_token_cache.get(prefix, ()))
                 matched_id = None
                 matched_owner = None
                 matched_scopes = []
-                for tid, thash, owner, scopes in candidates:
-                    if _bcrypt.checkpw(raw_token.encode(), thash.encode()):
-                        matched_id = tid
-                        matched_owner = owner
-                        matched_scopes = scopes or []
-                        break
+                hit = _match_bearer_token(raw_token, candidates)
+                if hit is None and candidates:
+                    # bcrypt at the default cost is ~0.3 s of CPU. Run on the
+                    # event loop it stalled every other request on the server
+                    # for that long, once per bearer-authenticated call.
+                    hit = await _asyncio.to_thread(_bcrypt_match_bearer_token, raw_token, candidates)
+                if hit is not None:
+                    matched_id, _thash, matched_owner, matched_scopes = hit
+                    matched_scopes = matched_scopes or []
                 if matched_id:
                     # Update last_used_at off the hot path. Doing it
                     # inline used to keep the request open across an

@@ -7930,6 +7930,16 @@ async def stream_agent_loop(
     # `B1609`: `load_disabled_map` opens its session as `_SessionLocal`, which
     # the off-the-loop scan did not read as one; the read goes to a thread.
     _mcp_disabled_map = (await asyncio.to_thread(_load_mcp_disabled_map)) if mcp_mgr else {}
+    # An MCP tool the operator switched off was only hidden from the prompt
+    # and the schemas; a model that named it anyway (a text tool call, a
+    # remembered name) still ran it. Refuse it at call time by its qualified
+    # name, the way plan mode refuses its write tools.
+    if _mcp_disabled_map:
+        from src.mcp_manager import qualify_mcp_tool_name as _qualify_mcp
+        disabled_tools.withhold(
+            (_qualify_mcp(_sid, _n)
+             for _sid, _names in _mcp_disabled_map.items() for _n in (_names or ())),
+            because=WITHHELD_BY_PRIVILEGE)
     if _direct_low_signal:
         logger.info("[agent] direct low-signal reply path for latest=%r", _last_user[:80])
         direct_messages = (

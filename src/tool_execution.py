@@ -173,11 +173,16 @@ def _is_install_record(resolved: str) -> bool:
     parent = os.path.dirname(target)
     if parent == data and not os.path.isdir(resolved):
         return True
-    ssh = os.path.join(data, "ssh")
-    try:
-        return target == ssh or os.path.commonpath([target, ssh]) == ssh
-    except ValueError:
-        return False
+    # `ssh/` holds the install's keys; `mcp_oauth/` holds the Gmail OAuth
+    # client secret and refresh token (`MCP_OAUTH_DIR`). Neither is the
+    # agent's to read, list or search.
+    for private in (os.path.join(data, "ssh"), os.path.join(data, "mcp_oauth")):
+        try:
+            if target == private or os.path.commonpath([target, private]) == private:
+                return True
+        except ValueError:
+            continue
+    return False
 
 
 def _hidden_from_search(resolved: str) -> bool:
