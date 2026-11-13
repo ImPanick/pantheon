@@ -104,11 +104,19 @@ class Host:
             if self.closing:raise PH.PhoneError('unavailable','The Android host is shutting down. Try again after it restarts.')
             if account not in self.phones:
                 self.ensure(account)
-                phone = NativePhone(self, account, None, memory_mib=int(self.config.get('memory_mib',4096)),
+                phone = NativePhone(self, account, None, memory_mib=self.phone_memory_mib(),
                                     claim_port=self.claim, release_port=self.free, can_start=self.room,installer=self.installer)
                 phone.screen = Screen(phone)
                 self.phones[account] = phone
             return self.phones[account]
+
+    def phone_memory_mib(self):
+        """The operator's `memory_mib` when set, otherwise sized to this
+        machine (`PH.default_memory_mib`: 8 to 12 GiB) on macOS, Windows and Linux alike."""
+        chosen = self.config.get('memory_mib')
+        if chosen:
+            return int(chosen)
+        return PH.default_memory_mib(psutil.virtual_memory().total // (1024 * 1024))
 
     def room(self, account):
         with self.lock:

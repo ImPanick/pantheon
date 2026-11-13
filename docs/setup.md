@@ -297,7 +297,7 @@ Android needs hardware acceleration **inside that VM**, not merely on the host.
 The VM host must actually use KVM and the guest must open `/dev/kvm`; without
 both Android is refused. A guest device node under software emulation is not
 evidence of real acceleration. Allocate at least the
-Android memory budget plus 1536 MiB to each VM; 8192 MiB, 4 vCPUs and adequate
+Android memory budget plus 1536 MiB to each VM; 10240 MiB, 4 vCPUs and adequate
 disk space are recommended for a desktop plus Android (`PANTHEON_WORKSTATION_VM_MEMORY_MIB`,
 `PANTHEON_WORKSTATION_VM_CPUS`, `PANTHEON_WORKSTATION_VM_DISK_GIB`). Stop/start an
 existing VM to apply its host resource settings; its disk is kept.
@@ -598,7 +598,7 @@ publish itself or close the replacement's screen. These fixes were exercised wit
 controlled processes and a fresh real Firefox/KasmVNC preview, not a captured live
 stack trace or an Android boot.
 iPhones cannot be emulated by this Android backend. Each running
-phone takes about `PANTHEON_PHONE_MEMORY_MIB` (2 GB); at most
+phone takes about `PANTHEON_PHONE_MEMORY_MIB` (8 GB); at most
 `PANTHEON_PHONE_MAX_RUNNING` (2) run at once, and one nobody has used or
 watched for `PANTHEON_PHONE_IDLE_MIN` (30) minutes is saved and stopped. Each user's
 ADB server, emulator console and ADB device port remain inside their VM; only that
