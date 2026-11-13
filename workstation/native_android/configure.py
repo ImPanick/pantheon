@@ -34,7 +34,10 @@ def prepare(*,state,sdk,radio_binary,scrcpy_server,internet=None,port=None,bind=
     if not Path(radio_binary).is_file():raise RuntimeError('The verified Linux Netsim executable is missing.')
     config_file=root/'host-config.json'
     config=json.loads(config_file.read_text()) if config_file.exists() else {
-        'internet':False,'port':7993,'bind':'127.0.0.1','gpu':'software','max_running':1,'memory_mib':4096,'data_size_gib':2}
+        'internet':False,'port':7993,'bind':'127.0.0.1','gpu':'software','max_running':1,'data_size_gib':2}
+    # 4096 was the default this file wrote before the phone was sized to its host
+    # (8 to 12 GiB, owner's Windows run 2026-11-13); dropping it lets the host size it.
+    if config.get('memory_mib')==4096:config.pop('memory_mib')
     if windows_console_token:config['windows_console_token']=str(Path(windows_console_token).resolve())
     console_path(config,root)  # Windows: the token must already be the worker profile's own.
     policies=dict(config.get('boot_policies',{}))
