@@ -336,7 +336,7 @@ services:
       # this many run at once, each about this much memory.
       - PANTHEON_PHONE_IDLE_MIN=${PANTHEON_PHONE_IDLE_MIN:-30}
       - PANTHEON_PHONE_MAX_RUNNING=${PANTHEON_PHONE_MAX_RUNNING:-2}
-      - PANTHEON_PHONE_MEMORY_MIB=${PANTHEON_PHONE_MEMORY_MIB:-2048}
+      - PANTHEON_PHONE_MEMORY_MIB=${PANTHEON_PHONE_MEMORY_MIB:-8192}
     # `B1751`. The phone's emulator runs on KVM: the one device-cgroup rule for
     # /dev/kvm, as `workstation-vm` has. On a host without KVM it opens nothing
     # and the phone says why.

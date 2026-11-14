@@ -194,6 +194,10 @@ created slots. The SDK may enlarge this to the image minimum (API35 grew to
 6GiB during testing), and requires additional free host space to start. Existing
 disk sizes are preserved. `max_running` defaults to one for a small host.
 
+Each Android VM gets a quarter of the host's memory, kept between 8 and 12GiB
+and never more than leaves 4GiB for the host (2GiB would not boot on a real
+Windows host). Set `memory_mib` in `host-config.json` to choose it yourself.
+
 With `internet` enabled, Wi-Fi packets go to that VM's private Docker network
 service. The existing Internet-only kernel rules protect private addresses for
 TCP and UDP. Netsim drops its Linux capabilities before serving guest packets;

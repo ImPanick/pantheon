@@ -107,7 +107,12 @@ MAX_RUNNING_ENV = "PANTHEON_PHONE_MAX_RUNNING"
 MEMORY_ENV = "PANTHEON_PHONE_MEMORY_MIB"
 DEFAULT_IDLE_MIN = 30
 DEFAULT_MAX_RUNNING = 2
-DEFAULT_MEMORY_MIB = 2048
+#: An Android phone's memory. The owner's real-machine run on Windows
+#: (2026-11-13): Android would not run with 2 GiB; it gets 8 to 12 GiB.
+DEFAULT_MEMORY_MIB = 8192
+MAX_DEFAULT_MEMORY_MIB = 12288
+#: What a host keeps for itself and Pantheon when a phone is sized to it.
+HOST_RESERVE_MIB = 4096
 MIN_SCRCPY_VERSION = (2, 4)  # Android 15 display API support, upstream scrcpy v2.4
 #: Where a person's choice of device is kept, in their home.
 PREFS_FILE = ".pantheon/phone.json"
@@ -405,6 +410,16 @@ def tools(root: Optional[Path] = None) -> Dict[str, Optional[str]]:
     return {"emulator": there(root / "emulator" / "emulator"),
             "adb": there(root / "platform-tools" / "adb"),
             "scrcpy": bundled or shutil.which("scrcpy")}
+
+
+def default_memory_mib(total_mib: Optional[int]) -> int:
+    """A phone's memory on a host with `total_mib`: a quarter of it, kept
+    between 8 and 12 GiB, and never more than the host can give while it keeps
+    `HOST_RESERVE_MIB` for itself. 8 GiB when the host's memory is unknown."""
+    if not total_mib:
+        return DEFAULT_MEMORY_MIB
+    sized = min(MAX_DEFAULT_MEMORY_MIB, max(DEFAULT_MEMORY_MIB, total_mib // 4 // 256 * 256))
+    return max(2048, min(sized, total_mib - HOST_RESERVE_MIB))
 
 
 def avd_name(device: str) -> str:
@@ -852,7 +867,8 @@ class AccountPhone:
         if total_mib is not None and total_mib < self.memory_mib + 1536:
             return (f"This user's VM has {total_mib} MiB of memory; Android alone needs "
                     f"{self.memory_mib} MiB plus 1536 MiB for the workstation. Ask an admin "
-                    "to increase PANTHEON_WORKSTATION_VM_MEMORY_MIB (8192 recommended), then restart your VM.")
+                    f"to increase PANTHEON_WORKSTATION_VM_MEMORY_MIB ({self.memory_mib + 2048} recommended), "
+                    "then restart your VM.")
         # `B1756`: a phone that is not installed yet is one picking a device
         # installs — where this daemon can install it.
         if tools_installed() and image_installed(self.package()):
@@ -1825,7 +1841,7 @@ def _env_int(name: str, default: int, lo: int, hi: int) -> int:
 class Phones:
     """Every account's phone, made on first ask; a phone nobody used or
     watched for `idle_s` is stopped, and at most `max_running` run at once —
-    each one is a whole Android, about two gigabytes of memory."""
+    each one is a whole Android, about eight gigabytes of memory."""
 
     def __init__(self, system, *, kvm: Optional[Callable[[], Tuple[bool, str]]] = None) -> None:
         self.system = system
