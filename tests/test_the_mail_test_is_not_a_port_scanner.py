@@ -94,7 +94,8 @@ class _Auth:
     is_configured = True
 
     def get_privileges(self, name):
-        return {"can_reach_private_mail": True} if name == ADMIN else {}
+        from core.auth import ADMIN_PRIVILEGES  # as the real manager answers an admin
+        return dict(ADMIN_PRIVILEGES) if name == ADMIN else {}
 
     def is_admin(self, name):
         return name == ADMIN

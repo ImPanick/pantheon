@@ -364,6 +364,39 @@ def _account_refused(sentence: str, status: int = 400) -> JSONResponse:
     return JSONResponse({"ok": False, "error": sentence}, status_code=status)
 
 
+#: Audit 2026-11-11 #9. Mail settings every mailbox's poller reads, whoever
+#: owns the mailbox: the four automation flags (install-wide even when the
+#: request names an account) and, when it names none, the away reply and the
+#: shared writing style.
+_INSTALL_WIDE_MAIL_FLAGS = (
+    "email_auto_summarize", "email_auto_tag", "email_auto_spam", "email_auto_calendar",
+)
+
+#: Said to a member who asks to change one of them.
+INSTALL_WIDE_MAIL_SENTENCE = (
+    "Only an admin, or someone an admin lets run this Pantheon, can change mail "
+    "settings that apply to every mailbox. "
+    "Choose your own account to set its away reply or writing style."
+)
+
+
+def _may_change_install_wide_mail(owner: str) -> bool:
+    """Whoever runs this instance may (`mail_reach.runs_instance`: every admin,
+    and anyone granted `can_run_instance`); so may `owner == ""`, which `_require_auth` never answers
+    for a request and which this module reads as the install itself
+    (`_assert_owns_account`)."""
+    if not owner:
+        return True
+    from src.mail_reach import runs_instance
+    return runs_instance(owner)
+
+
+def _changes_install_wide_mail(data: dict, account_id: str | None) -> bool:
+    if any(key in data for key in _INSTALL_WIDE_MAIL_FLAGS):
+        return True
+    return not account_id and any(key in data for key in _AUTO_REPLY_KEYS)
+
+
 #: `B1593`: the sentence for an account created with no name, saying what to
 #: give it rather than only that something is missing (`Law 15`).
 ACCOUNT_NEEDS_A_NAME = "Give the account a name — its address, or a word you will know it by."
@@ -6194,6 +6227,9 @@ def setup_email_routes():
         """Manually update the writing style prompt."""
         if account_id:
             _assert_owns_account(account_id, owner)
+        elif not _may_change_install_wide_mail(owner):
+            # Audit #9: with no account named this is the shared style.
+            return _account_refused(INSTALL_WIDE_MAIL_SENTENCE, status=403)
         settings = _load_settings()
         _set_email_writing_style_for_account(settings, data.get("style", ""), account_id)
         _save_settings(settings)
@@ -6259,6 +6295,10 @@ def setup_email_routes():
         """
         if account_id:
             _assert_owns_account(account_id, owner)
+        # Audit #9: settings every mailbox's poller reads are the admin's.
+        # Refused before anything is written, the credentials included.
+        if _changes_install_wide_mail(data, account_id) and not _may_change_install_wide_mail(owner):
+            return _account_refused(INSTALL_WIDE_MAIL_SENTENCE, status=403)
         # `B2102`: a host or port this person's mail may not reach is refused
         # before anything is written (`src/mail_reach.py`).
         refused = _mail_reach.first_refusal(_mail_reach.reach_for(owner), (

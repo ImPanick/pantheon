@@ -84,16 +84,37 @@ def turn_scope(enabled: bool) -> Iterator[None]:
             pass
 
 
+def _leaves_a_trace() -> frozenset:
+    """The effects a Nobody turn may not have: each leaves something behind
+    once the chat is gone. Writing what Pantheon keeps (`B2097`), and — the
+    owner's ruling, *"discard everything"* — writing the workspace, running
+    code (which can write anything), acting outside Pantheon under the
+    person's name, changing the install, and deleting."""
+    from src.tool_capabilities import ToolEffect
+
+    return frozenset({
+        ToolEffect.WRITE_PRIVATE,
+        ToolEffect.WRITE_WORKSPACE,
+        ToolEffect.EXECUTE_CODE,
+        ToolEffect.EXTERNAL_SIDE_EFFECT,
+        ToolEffect.ADMIN_CHANGE,
+        ToolEffect.DESTRUCTIVE,
+    })
+
+
 def withheld_writes() -> frozenset:
-    """Every tool that writes into what Pantheon keeps for the person, less the
-    ones that run keeping nothing: what Nobody withholds beside its reads."""
-    from src.tool_capabilities import TOOL_CAPABILITIES, ToolEffect
+    """Every tool with an effect that leaves a trace (`_leaves_a_trace`), less
+    the ones that run keeping nothing: what Nobody withholds beside its reads.
+    An MCP server the person added is withheld by the agent loop, which knows
+    its tools (`src/agent_loop.py`, as plan mode)."""
+    from src.tool_capabilities import TOOL_CAPABILITIES
 
     from src.tool_execution import _MCP_TOOL_MAP
 
+    trace = _leaves_a_trace()
     writes = {
         name for name, caps in TOOL_CAPABILITIES.items()
-        if ToolEffect.WRITE_PRIVATE in caps.effects
+        if caps.effects & trace
     }
     bare = writes - KEPT_RUNNING
     # A built-in server's tool reaches the model by its bare name; the
