@@ -224,7 +224,10 @@ export class CallSpeaker {
         method: 'POST',
         credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: item.text, format: 'audio' }),
+        // `B2097`: in Nobody, spoken and not kept in the speech cache.
+        body: JSON.stringify(Object.assign({ text: item.text, format: 'audio' },
+          (typeof document !== 'undefined' && document.getElementById('incognito-toggle')?.checked)
+            ? { incognito: true } : {})),
         signal: item.controller ? item.controller.signal : undefined,
       })).then(async (res) => {
         if (!res.ok) return { error: (await detailOf(res)) || `the server answered ${res.status}` };

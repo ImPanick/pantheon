@@ -456,10 +456,10 @@ def test_the_stacks_vm_host_asks_for_one_device_and_nothing_else_of_the_host():
               for m in ws["volumes"]]
     # `B1427`: and the projects folder — the one host folder, which the host
     # shares into each person's machine one person's folder at a time.
-    assert mounts[:2] == [("volume", "workstation-vm", str(vm.DEFAULT_STATE), False),
+    assert mounts[:2] == [("volume", "workstation-vm", vm.DEFAULT_STATE.as_posix(), False),
                           ("volume", "workstation-vm-pairing", P.DEFAULT_PAIRING_DIR, False)]
     assert len(mounts) == 3 and mounts[2][0] == "bind" and mounts[2][2] == "/projects"
-    assert mounts[2][1].endswith("/projects") and mounts[2][3] is False
+    assert Path(mounts[2][1]).name == "projects" and mounts[2][3] is False
     assert not any("docker.sock" in str(m) for m in ws["volumes"])
     assert ws["environment"]["PANTHEON_WORKSTATION_PAIRING_GID"] == "1234"
     assert ws["environment"][vm.ENV["accel"]] == "auto"

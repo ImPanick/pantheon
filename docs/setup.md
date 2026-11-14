@@ -258,9 +258,23 @@ Size the VM for the people who work at once: each running machine takes up to
 `PANTHEON_WORKSTATION_VM_MEMORY_MIB` (2 GB) and `PANTHEON_WORKSTATION_VM_CPUS`
 (2), on top of Pantheon itself.
 
-**A phone in the workstation.** Each person can have a real Android device in
-their container workstation: Google's Android Emulator running Android 15
-(Google APIs), as one of seventeen devices: Google's Pixel 9, 9 Pro, 9 Pro XL,
+### Mobile Emulator
+
+Android runs **inside each user's own VM**, through the existing VM workstation
+backend. The shared container backend is refused for Android: Unix accounts,
+different ADB ports and turning sudo off do not isolate device ports; sudo would
+also expose other users' files. Select **VM** in Settings → Workstation. Nothing
+copies or wipes an existing container AVD when you switch backend. Preserve its
+home volume; moving old device data requires a separate, deliberate migration.
+Android eligibility is bound to the operator's configured VM endpoint, as well
+as the daemon's isolation metadata. A custom workstation URL needs an explicit
+**VM** backend choice; choosing VM without a configured VM host does not turn a
+container endpoint into one. The host operator and Pantheon configuration are
+trusted; root in a user's guest cannot change that configuration or read the VM
+host's token.
+
+The emulator runs generic Android 15 (Google APIs by default), as one of the
+device profiles: Google's Pixel 9, 9 Pro, 9 Pro XL,
 8 and 8a, Pixel Fold and 9 Pro Fold, and Pixel Tablet; Samsung's Galaxy S25,
 S25 Ultra and A55, Z Fold6, and Galaxy Tab S9 and Tab S10 Ultra; the OnePlus 12
 and OnePlus Pad 2; and the Nothing Phone (2). Each is drawn as it looks: its
@@ -269,41 +283,515 @@ the edges they are on. The Workbench's **Devices** room lists them:
 pick one and Pantheon downloads, installs and sets up what that device needs
 (the first time, after you accept the
 [Android SDK License](https://developer.android.com/studio/terms) there, about
-4 GB), then turns it on beside the list. The + menu's *Phone* opens the same
+4 GB), then turns it on beside the list. The + menu's *Mobile Emulator* opens the same
 phone in a window of its own. Either way it is drawn as the device, with its
 side keys working; the mouse is a finger (click to tap, drag to swipe, scroll
 to fling, right click for Back). The agent uses it exactly as you do: the same
 screen, taps, keys, rotate and fold, and the same device list (`computer` with
 `screen: phone`, `press`, `rotate`, `fold`, `open_url`, `use_device`), plus
-`adb` from its shell. What is installed is kept in the `workstation-android-sdk`
-volume, so a rebuild does not download it again. To have it in the image from
-the start instead (for a machine that will be offline later):
+`adb` from its shell. The SDK, apps and account state are on that user's VM disk.
+They survive a VM power cycle. **Reset to clean** still replaces the whole VM,
+including its phone; do not use reset to troubleshoot a missing KVM device.
 
-```sh
-echo WORKSTATION_PHONE=on >> .env
-docker compose up -d --build workstation
+Android needs hardware acceleration **inside that VM**, not merely on the host.
+The VM host must actually use KVM and the guest must open `/dev/kvm`; without
+both Android is refused. A guest device node under software emulation is not
+evidence of real acceleration. Allocate at least the
+Android memory budget plus 1536 MiB to each VM; 10240 MiB, 4 vCPUs and adequate
+disk space are recommended for a desktop plus Android (`PANTHEON_WORKSTATION_VM_MEMORY_MIB`,
+`PANTHEON_WORKSTATION_VM_CPUS`, `PANTHEON_WORKSTATION_VM_DISK_GIB`). Stop/start an
+existing VM to apply its host resource settings; its disk is kept.
+
+**Nested virtualization is experimental here.** Google's
+[acceleration documentation](https://developer.android.com/studio/run/emulator-acceleration)
+does not support a VM-accelerated emulator inside another VM. Do not infer support
+from a BIOS/Windows toggle or from host KVM. Before installing an SDK image, verify
+`/dev/kvm` actually opens in the user's VM; after an authorized SDK install, run
+`/opt/android-sdk/emulator/emulator -accel-check` there and perform a real cold-boot,
+stream, touch and file-transfer acceptance run. This host path has not passed that
+Android acceptance. The controlled development probe on 2026-11-08 found running
+Docker Desktop/WSL and a Windows hypervisor, but no usable Linux KVM device.
+
+**Historical native Windows probes (2026-11-09).** The current independent worker
+and its Windows setup are documented in [Android host](android-host.md); its
+native Windows/Linux acceptance remains open. The following records the earlier
+standalone SDK investigation, not verification of today's integration. On Cybertooth,
+the initial read-only 2026-11-09 probe of `WHvGetCapability` returned success with
+`HypervisorPresent=true`. The SDK was absent in the checked locations at that
+stage. The subsequently authorized official SDK test below has now booted real
+Android on WHPX; Pantheon had no native Windows device-host adapter at that point.
+An additional read-only Windows feature inventory reported `HypervisorPlatform`
+**disabled** (`Win32_OptionalFeature.InstallState=2`), with Hyper-V and Virtual
+Machine Platform enabled (`1`). A hypervisor-present capability response does not
+establish the optional feature's state. The installed emulator's actual
+`-accel-check` and real guest boot succeeded without enabling it. Any future
+feature or security-policy change and any restart need separate authorization.
+No feature, firewall, security exclusion, service or driver was changed.
+Google's supported Windows path is native
+[WHPX](https://developer.android.com/studio/run/emulator-acceleration#vm-windows);
+keep Hyper-V enabled.
+[Cuttlefish](https://source.android.com/docs/devices/cuttlefish/get-started)
+still requires Linux KVM, so moving it into the same WSL/Docker environment does
+not solve this host's current blocker. An authorized separate Linux/KVM worker is
+the other viable direction to validate.
+
+An open-source QEMU/WHPX host with a PC-targeted AOSP image is another
+investigation, not a working provider. No clean, current drop-in image has been
+verified here. A "FOSS" download name does not establish component rights; for
+example, [Bliss's licensing page](https://blissos.org/licensing.html) identifies
+proprietary components in some variants. Cuttlefish's Linux host integration also
+needs porting before its images can be treated as native Windows targets. A full
+modern [AOSP source build](https://source.android.com/docs/setup/start/requirements)
+requires at least 400 GB free storage and 64 GB RAM; the current authorized C:
+workspace does not have that free storage. No alternate drive/build host is
+selected or modified. A local SDK development test needs the operator's explicit
+SDK licence consent; it does not establish consumer deployment or redistribution
+rights.
+
+**Authorized local SDK preparation (2026-11-09).** The owner subsequently
+authorized the three pinned official archives for an isolated native test:
+emulator 37.2.13, platform-tools 37.0.1 and API 35 Google Play x86_64 image
+revision 9. They were checksum-verified and extracted under the task's
+`validation/native-android-test`; the exact package `android-sdk-license`
+agreement dated January 16, 2019 was disclosed, compared with the public 2026
+agreement and accepted under that authorization. Component notices were retained.
+No SDK binaries or images are vendored in this repository.
+
+The actual native `emulator -accel-check` returned success and reported
+`WHPX(10.0.26200) is installed and usable`, despite the feature inventory above.
+No feature change or restart was needed for that check. A fresh manual AVD is
+recognized by `-list-avds`. Actual native boot and control results are below;
+none of these SDK checks establish tenant isolation.
+
+Boot preflight found an exception to workspace-only credential storage: the
+native Windows console implementation uses the Windows profile's
+`.emulator_console_auth_token`, and ADB loads or generates `.android/adbkey`
+and `adbkey.pub` there. Android SDK environment variables do not reliably relocate
+those native Windows lookups. The owner subsequently authorized creation of the
+console token and read-only use of the existing ADB keys. The token was created
+with access restricted to that Windows user and SYSTEM; the keys were held
+read-only without write sharing during the tests. Existing key files were left
+unchanged, no private key was copied into the test directories, and the assistant
+did not enable persistent debugging trust. The profile token
+remains at the approved location. A deployed worker needs its own host identity
+and credentials rather than this personal-profile test arrangement.
+The [console source](https://android.googlesource.com/platform/external/qemu/+/emu-master-dev/android/emu/telnet/auth/src/android/console_auth.cpp)
+and [ADB key source](https://android.googlesource.com/platform/packages/modules/adb/+/refs/heads/main/client/auth.cpp)
+explain these defaults. A future worker still needs independent per-user
+stream/control/storage isolation and actual adversarial acceptance.
+
+**Native acceptance results (2026-11-09; validation only).** These are actual
+official SDK guests using WHPX on Cybertooth, not browser streams, mocked Android
+or Linux/KVM. The phone and fold-profile guests also ran concurrently with
+separate AVD directories. Both owned process trees were stopped afterwards; a
+separate inventory found no processes remaining under this test SDK path.
+
+| Check | Observed result |
+|---|---|
+| Generic Android 15 / API 35 | Cold boot, Android properties, real home/Settings pixels and UI hierarchy passed. Play Store and Play services packages are present; no Google account was used. |
+| Touch and navigation | Explicit touchscreen input opened Network & internet; Back, Home and Recents passed on the final scoped pass. Earlier automation attempts had intermittent touch failures and an overview tutorial; this is not a long-duration reliability result. |
+| Device keys and rotation | Power reported Asleep then Awake; volume changed 4 to 5 to 4, requiring two Up presses and one Down, with restoration checked. A 1080 by 2400 frame became 2400 by 1080; rotation preferences were restored. Playback was enabled for these checks, with microphone and cameras disabled. Audio streaming into Pantheon was not tested. |
+| Selected generated file | A new destination and new payload passed checked ADB push, byte/hash readback and sync. The previous unique 67-byte transfer was verified before any push after the next cold boot. This is the SDK transfer primitive, not Pantheon's native document/upload integration. |
+| Data and shutdown | Earlier short/forced-shutdown attempts left a zero-byte marker. Subsequent explicit guest sync and a longer wait after console kill preserved both the original marker and the later unique transfer. Kill acknowledgement/exit code was not independently recorded. The cause was not isolated, and power-loss durability is not established. Final owned emulator/ADB process counts were measured as zero. |
+| Fold profile | A separate generic-Android Pixel Fold geometry accepted fold/unfold and reported hinge angle 180 then 0. SDK rotation swapped capture dimensions. The capture still returned the full framebuffer after folding, with distorted/partial layouts; cover viewport, scaling and touch mapping remain unverified. This is partial support, not retail Pixel Fold fidelity. |
+| Guest-to-host isolation | **Failed.** Android shell reached a disposable loopback marker and the test's unauthenticated ADB smart server through `10.0.2.2`, despite `restrict=on` options. A harmless generated-marker command on that same test guest was executed through the host ADB server. No other user's device was targeted. Separate ports and Windows Jobs do not close this boundary. |
+| Pantheon native integration | Not implemented. Live embedded streaming, owner-bound native device operations, takeover, cross-owner access denial and actual two-user isolation remain acceptance gates. No user APK install/QA flow or personal Google sign-in was tested. |
+
+The exact probe sources, configurations, JSON results and hash-checked screenshots
+are retained locally under `validation/native-android-test/logs/proof-phone-20261109T070410Z`
+and `proof-fold-20261109T070409Z` in the task workspace, outside this checkout.
+No SDK payloads, device disks, credentials or raw emulator logs are committed.
+The owner requested review of these results **before** starting Pantheon
+implementation. The intended scope remains usable generic Android phones and
+tablets across feasible profiles, including agent-driven application QA; Pixel
+is a starting test profile. Vendor-specific compatibility and iOS remain separate
+future work. See `.pantheon/DECISIONS.md`, `D-2026-11-09-03`.
+
+**Guest-to-host ADB follow-up (2026-11-09; validation only).** The controlled
+exposure above was reproduced again, then two separate mitigations were tested
+on the same owned Android AVD. These are scratch prototypes outside Pantheon;
+they are not a native provider or proof of complete per-user isolation.
+
+| Experiment | Verified scope |
+|---|---|
+| Restricted network path | The installed SDK enables `WiFiPacketStream`, described in its `lib/advancedFeatures.ini` as Netsim-provided Wi-Fi. With that default, the guest still reached the owned host marker and ADB smart server despite both network restriction options. The matching-source comparison added `-feature -WiFiPacketStream` to select the other Wi-Fi path, with `restrict=on,ipv6=off` on both network options and explicit marker-only `guestfwd` mappings. The tested raw host marker, ADB and unforwarded virtual ADB paths were then denied. Working allowlisted marker connections and healthy host endpoints ruled out a disconnected guest or dead server as the explanation. |
+| Direct authenticated device control | A separate prototype used `-no-direct-adb`, `-no-sim` and a bounded direct ADB wire client, without relying on an SDK smart server. Before launching the emulator, non-listening exclusive wildcard IPv4 and IPv6 sockets reserved its configured smart-server port. All eight competing bind/listen variants were denied, including loopback/wildcard addresses with and without reuse. An earlier loopback-only reservation failed that check and was rejected. This reservation changes no Windows firewall or port-policy settings and exposes no listening service. |
+
+The restricted run covered initial Wi-Fi, Wi-Fi disabled with cellular
+enabled, Wi-Fi reenabled, and an Android reboot with a changed boot ID. Each phase
+had a working allowlisted network control. A separate full emulator restart also
+verified the previous unique transferred file before a new push; fresh checked
+bytes survived the later Android reboot. Guest network preferences were restored.
+This proves the selected IPv4 TCP paths under that configuration, not general
+Internet/Play connectivity, all IPv6 or UDP paths, or resistance to guest root.
+
+The direct-control test checked that the raw device listener belonged to the
+captured emulator process tree before signing its challenge with the approved
+existing ADB key. It never sent a public-key enrollment request. Keyless,
+wrong-key and concurrent wrong-key clients obtained no authorized stream during
+their bounded three-second observation windows; the authorized connection stayed
+usable. A disposable local Docker bridge client, UID 0 with all capabilities
+dropped and no host mounts, reached the marker and received the device's real
+authentication challenge, but obtained no shell stream. Its parser recorded no
+partial response frame. This is a calibrated Linux-container network-origin
+check, not a second user, hostile workstation VM or Android-root acceptance.
+
+The final direct-control repeat recorded 226 process-owned TCP listener snapshots
+at a nominal 250 ms interval, with no observer errors or identified `adb.exe`
+listeners. Sampling cannot exclude transient listeners or endpoints outside that
+process tree. Other SDK TCP listeners remained; console, gRPC and Netsim surfaces
+still need authentication and cross-owner attack tests. The direct
+experiment did not use the restricted Wi-Fi configuration; their combination has
+not been validated. The approved shared fixture key is not a per-device identity
+or a production credential model.
+
+Fresh selected-byte writes passed in earlier direct-control runs, and the final
+security-only repeat verified the prior unique file after a cold boot. However,
+another preserved direct-shell Downloads write failed with `Operation not
+permitted`; its cause and readiness/reliability remain unresolved. That write
+method differs from the earlier successful checked SDK `adb push`. The final
+security repeat explicitly skipped fresh writes and does not resolve that failure.
+
+Evidence is retained outside this checkout under
+`validation/native-android-test/logs`: the matching-source network comparison is
+`isolation-baseline-20261109T084247Z-b19594eb` against
+`isolation-restricted-20261109T083039Z-69370750`; the strict direct/Linux-origin
+repeat is `direct-adb-20261109T083550Z-27bef584`. Sources and screenshots were
+hash-checked, and independent adversarial review checked the negative-test
+deadlines, positive controls and limited claims. Failed attempts remain alongside
+the successful runs. These completed runs recorded console-kill acknowledgements,
+emulator exit code zero and empty captured process jobs. A final independent
+inventory, `logs/final-mitigation-process-inventory.json`, found no remaining
+processes under the isolated SDK path; the disposable containers were removed.
+
+No Windows feature, firewall, route, service, security policy or restart action
+was taken. PowerShell policy blocked an early observer script; a read-only Windows
+API observer replaced it without changing or bypassing that policy. No new SDK
+package or licence acceptance was involved. The diagnostic direct-ADB clients
+sent no public-key enrollment requests; no persistent-trust UI action or personal
+account sign-in was performed. A complete before/after authorization-state audit
+remains open. At that stage Pantheon integration remained paused for review,
+and the existing Linux VM/KVM guards remain intact. The proposed boundary and its
+remaining acceptance gates are recorded in `.pantheon/DECISIONS.md`,
+`D-2026-11-09-04`.
+
+**Native runtime continuation (2026-11-09).** The owner subsequently authorized
+continuing through implementation of the usable Android experience, superseding
+the earlier pause. The Windows provider was unimplemented at that point; the following
+results concern real disposable Android/WHPX guests and SDK endpoints, not an
+embedded Pantheon stream. The Linux VM/KVM gates remain intact.
+
+| Check | Result and limit |
+|---|---|
+| File-create comparison | The first ordered comparison recorded 37 fresh-file attempts: two initial shell creates in the existing Downloads folder returned explicit exit status 1 / `Operation not permitted`; the nearby exec and sync operations passed. Later shell attempts passed. The counterordered run recorded 46 successful fresh creates, including a binary sync case. All 35 successful files from the first comparison matched before new writes after a distinct cold boot. An intervening immediate cold-read failure lacked a useful diagnostic; later reads recovered the original bytes. Timing, caller/service and shared-storage create policy remain possible factors. Reliability is not declared fixed. |
+| Transfer service | All 20 sync attempts across those two comparisons returned structured `OKAY` and exact readback bytes, including the binary cases. This supports using Android's sync service instead of shell redirection; it is not a general durability or app-integration guarantee. Shell ran as UID 2000 in the shell SELinux domain with enforcement enabled; no permission override was applied. The hardcoded AOSP MediaProvider query returned no version on this Play image, so provider identity/readiness is unknown. |
+| Console | `avd name` is intentionally public metadata. The privileged read-only `power display` was refused before authentication and returned battery state after approved console authentication. A bogus console token was rejected. |
+| Emulator gRPC | On an explicitly JWT-protected owned endpoint, `getBattery` rejected missing bearer, malformed bearer and an otherwise formed token signed by an unregistered in-memory key with `UNAUTHENTICATED`. No valid gRPC credential or JWK was enrolled. This does not verify authorized streaming or every method/listener. |
+| Netsim services | A fresh standalone daemon served credential-free `CellService/List` in both default and no-CLI modes. `FrontendService/GetVersion` returned `UNIMPLEMENTED` in both. The CLI flag cannot be claimed as isolation, and source/version differences prevent inferring all registered services. |
+| Trial without a Netsim daemon | Android booted and returned real launcher pixels with `WiFiPacketStream` and `Uwb` disabled and the custom packet-stream endpoint held by exclusive non-listening sockets. The harness launched no Netsim daemon, and none appeared in its post-boot process snapshot. Lifetime absence was not measured. Bluetooth/UWB behavior remains unverified. Several other QEMU TCP listeners remain unclassified. |
+| Restricted connectivity | With the trial above, a fixed forwarded relay returned its fixture while the same controlled raw-host fixture did not. Five exact abuse requests were refused: CONNECT, an absolute loopback URL, a foreign Host, an Authorization header and POST. The relay made one fixed credential-free HTTPS GET to Google's connectivity-check endpoint and observed HTTP 204. A prior successful configuration with a captured Netsim daemon also made one such request. Host urllib performed TLS; this is not Android application, Play Store or Google-account networking acceptance, and the relay is not a general proxy. |
+
+Successful evidence is outside this checkout under
+`validation/native-android-test/logs`: `storage-20261109T092028Z-0f28de67`,
+`storage-20261109T092937Z-5b7c175e`,
+`netsim-readonly-20261109T094801Z-0556ecef`,
+`endpoints-20261109T094251Z-ec5fa3f7` and
+`endpoints-20261109T094906Z-42e24939`. Archived sources and the captured frame
+hashes were checked. Failed harness/startup/readback attempts are retained too;
+disconnected-route failures were never counted as successful isolation. Guest
+Wi-Fi preferences were restored. Completed emulator checks recorded console
+acknowledgement, exit code zero and empty captured Jobs. SDK `adb.exe` helpers
+did run and fail to bind the reserved smart-server port; no sampled listening
+ADB server is a narrower claim than no ADB process. The disabled Netsim branch's
+assigned final zero is not an independent process measurement.
+The later independent `logs/final-continuation-process-inventory.json` found no
+remaining processes whose executable was under this isolated SDK directory.
+
+Per-device ADB trust is the next approval gate. The published emulator source
+supports preseeded matching key files in each child's private
+`ANDROID_EMULATOR_HOME`, before fallback to personal-profile keys. Booting a
+fresh image this way installs persistent guest debugging trust, so the earlier
+approval to read existing keys does not authorize it. A concrete config-only plan
+is prepared at `validation/native-android-test/logs/per-user-key-proof-plan.json`,
+with source/config hashes, fresh-tree checks and a guarded runner. It requests
+two new key pairs, proof-directory ACLs restricted to the current Windows user
+and SYSTEM, and two fresh AVDs under `validation/native-android-test/per-user-proof`.
+No new key or guest trust has been created; approval is pending, not denied.
+This would test separate device keys/data under one Windows identity, not two
+Windows owners or the complete broker boundary. Existing AVDs will not be
+rekeyed, reset or migrated. See `D-2026-11-09-05`.
+
+The phone toolbar now also exposes volume down/up and a separate sleep/wake key
+beside Back, Home and Recents, using the same existing phone actions as the side
+keys. These hardware controls are hidden in web-only preview. Process Turn off,
+rotation and applicable folding retain their separate controls. This interface
+change does not enable the proposed native provider.
+The existing actual-app Chromium case passed with explicit stream/transfer
+fixtures and recorded clicks for all three added keys. A legacy crop assertion
+initially raced layout; it now waits for the same required geometry. Desktop and
+narrow-preview screenshots were retained and visually checked. This is browser
+verification, separate from the real SDK runtime checks above.
+
+The proposed native worker would reuse the narrow phone operations in
+`workstation/protocol.py`: lifecycle/status, streamed display, input, device controls
+and selected-byte transfer, all bound to the authenticated owner. A trusted Windows
+broker, outside agent-controlled guests, would own the emulator and ADB processes,
+per-user AVD directories/ACLs, and host-enforced restrictions on **every** raw ADB,
+console and gRPC entry point. Different ports or Windows usernames alone are not
+that boundary. It would need an explicit operator-configured worker role; it must
+not impersonate the existing Linux VM backend to bypass its checks. Capture, input
+and transfers must operate the same device through that broker.
+
+Agent interaction does not require a custom Android build or an MCP server inside
+the guest. The existing Linux phone protocol already mediates screenshots, UI
+marks, touch/key input, device controls and selected-file transfer, with the same
+person/agent holder boundary. The proposed Windows adapter must preserve those
+owner checks and user takeover, record authorized actions without logging secrets
+or file contents, and keep raw ADB, console and unrestricted shell private. Apps
+can initially be opened through their UI; a dedicated app-launch operation would
+need explicit validation and authorization. No native adapter or guest MCP is
+implemented here.
+
+The owner supports an **optional internal companion APK**, delivered directly to
+their emulated device, with no Play Store listing. It remains future work after
+real boot, per-user isolation and selected-transfer acceptance. Pair each install
+to one authenticated owner/device with revocable credentials; request only needed
+permissions with explicit consent. Use an operator-configured reachable broker
+address and authenticated encrypted transport. Android guest loopback is the
+guest itself, not Pantheon's host loopback, and emulator networking is not a tenant
+boundary. Constrain the connection to that broker and preserve Android permission
+checks. Installs/updates need a trusted signing identity, verified artifact hashes
+and an authorized update path; credentials must not enter screenshots or logs. A
+custom AOSP service would need a demonstrated gap and separate review of its
+permissions, privacy and applicable SDK/GMS/licensing terms. No companion APK is
+built, installed or connected by this change.
+
+Installed emulator metadata supports the host-manager/Android-guest/separate-disk
+architecture; it does not reveal proprietary stream internals. LDPlayer documents
+[instance management and ADB commands](https://www.ldplayer.net/support/introduction-to-ldplayer-command-line-interface.html),
+which is evidence of a management interface, not integration or redistribution
+rights. No vendor implementation or image is copied into Pantheon. Google SDK/GMS
+terms remain separate from AOSP's component licences.
+
+Before enabling a native provider: close the demonstrated guest-to-host control
+exposure, wire the actual stream/touch and selected-file checksum path, then
+attack it from a second Windows identity and guest-root
+in Android/Linux, including access through WSL/Docker. Check ports, device files,
+account sessions and the broker's credentials. The local native SDK boot passed;
+this two-user acceptance and the native Pantheon integration remain open. No
+personal-account readiness is claimed.
+
+The Android start action **never substitutes Firefox**. A separate *Open browser
+preview (web only)* action runs Firefox with the selected profile, mobile user
+agent and touch events. It persistently says **Browser preview · Web only**.
+Apps, Play Store, sign-in to Android and Android file transfer are unavailable in
+that preview. Every device profile
+runs **generic Android** when Android is available. Profiles approximate the
+selected device's size, density, body and fold; they do not provide retail
+device identity, OEM firmware or certified hardware behavior. The folded display
+uses a region of the inner display, rather than a second OEM cover panel.
+Preview port discovery has a real deadline even for silent or newline-free Firefox
+output. Stop cancels its owned process without waiting for the phone's status lock.
+Display startup and teardown run on a separate lifecycle worker; a replacement
+waits for the old display to be released. A failed or cancelled old worker cannot
+publish itself or close the replacement's screen. These fixes were exercised with
+controlled processes and a fresh real Firefox/KasmVNC preview, not a captured live
+stack trace or an Android boot.
+iPhones cannot be emulated by this Android backend. Each running
+phone takes about `PANTHEON_PHONE_MEMORY_MIB` (8 GB); at most
+`PANTHEON_PHONE_MAX_RUNNING` (2) run at once, and one nobody has used or
+watched for `PANTHEON_PHONE_IDLE_MIN` (30) minutes is saved and stopped. Each user's
+ADB server, emulator console and ADB device port remain inside their VM; only that
+VM's authenticated workstation daemon is forwarded, never those Android ports.
+
+The cockpit's **Workspace** offers **Documents**, **Workstation**, **Browser**
+and **Mobile Emulator**. The emulator docks, floats and fills the workspace like
+the other surfaces, and the Workbench's Devices room still opens the same device.
+Turn on starts a cold Android boot with its own boot animation enabled; installed
+apps and settings remain on the device's persistent disk. The side Power key
+starts an off device and sleeps or wakes a running Android device. *Turn off*
+stops the emulator. Back, Home, Recent apps and the side volume keys operate
+Android. Fold/Unfold and Rotate animate the body only after the device command
+succeeds, with reduced motion respected. They resize the shared screen used by
+people and agents; the animation is presentation, not a model of physical hinge
+mechanics. Live capture is attempted once Android's display service is running;
+the earliest boot frames depend on when that image accepts scrcpy. Before that,
+the screen shows that it is waiting for Android. Cold boots can take minutes on
+first use.
+Agents can take screenshots of that same live boot display; touch and numbered
+UI marks wait for Android to finish booting.
+
+Update the workstation image along with the Pantheon UI to receive the new boot
+and active-display behavior. Rebuild the VM host too; guest daemon code and the
+current Android installer are loaded read-only on its next VM start, including
+for an existing VM disk. Older daemon Android answers without per-user isolation
+metadata are refused by both the UI and agent client, including their stream;
+Stop remains available. Animated physical rotation and the early boot stream
+need the updated daemon. Provisioning installs a checksum-pinned scrcpy client
+and server together in the SDK volume; Ubuntu 24.04's older scrcpy cannot capture
+the default Android 15 image. Existing SDK installations are reused while the
+display bridge is upgraded. The pin and checksum come from
+[scrcpy's tagged Linux release instructions](https://github.com/Genymobile/scrcpy/blob/v3.3.4/doc/linux.md).
+
+To install an APK, put it in the workstation and use its per-account
+`adb install -r /path/to/app.apk`, or ask the agent to do so. Use Home to launch
+apps and *Open a web address* for the optional URL tool. No APK or app store is
+downloaded merely by opening this workspace surface.
+
+The **Android image** selector offers the existing Android 15 **Google APIs**
+image (Play services, no Play Store) and **Google Play (developer image)**
+(`system-images;android-35;google_apis_playstore;x86_64`, present in Google's
+[image manifest](https://dl.google.com/android/repository/sys-img/google_apis_playstore/sys-img2-3.xml)).
+Choosing Play is explicit and asks for agreement even if the SDK was installed
+for another image. Different image packages have **separate AVD storage**;
+switching back restores that image's own apps and data. A matching legacy AVD is
+reused; an incompatible or ambiguous saved image is never rewritten into another
+OS. No image is silently upgraded or wiped. The SDK's package terms are accepted
+only for the packages being installed, not every agreement in its catalogue.
+
+Play images are release-signed and do not offer `adb root`. Sign in directly on
+Android, using its own screens; Pantheon has no Google password form. Your own
+agents can operate this same device and see its account sessions; host admins
+remain trusted. Emulator/profile identity does not guarantee Play Integrity,
+banking/DRM support, app availability, CTS certification or a retail device. See Google's
+[AVD documentation](https://developer.android.com/studio/run/managing-avds).
+SDK tools and images are separately licensed downloads, not relicensed as open
+source by this repository. The operator must accept and comply with the
+[Android SDK License](https://developer.android.com/studio/terms), including its
+use and redistribution restrictions. Do not redistribute built SDK images on
+the assumption that Pantheon's source license covers them. OEM-specific systems
+are a future possibility only if a compatible image can be legally obtained,
+used for the intended purpose, and legally redistributed under its actual terms;
+no OEM software is included or promised by this uplift.
+
+Android's open-source core (AOSP) and Google's SDK/Play software have different
+licences. Offering this integration in open-source code does not confer rights
+to redistribute Google images or operate a general-purpose hosted Play service.
+The SDK agreement limits its granted use to Android application development.
+No Google SDK image or Play package is committed to this repository or downloaded
+without an explicit installation choice. This change is a development integration,
+not a claim of distribution rights for a consumer Android service.
+
+For the independent host worker and Docker pairing, see [Independent Android host](android-host.md).
+
+**Apple Silicon runtime proof (2026-11-09; outside the product).** With the
+owner's SDK and ARM-image licence acceptance, Emulator 37.2.13, platform-tools
+37.0.1 and API 35 Google Play ARM revision 9 were installed from Google's
+catalogue with archive size and checksum verification. A fresh private AVD
+uses Hypervisor.Framework directly, independently of Docker's desktop and
+without personal SDK keys or Google sign-in. Direct authenticated ADB reached
+Android 15, resumed Settings and sent a fresh 32 KiB payload whose guest-side
+SHA-256 matched. An independent untrusted key was refused; that is one-device
+authentication evidence, not a two-owner isolation result.
+
+The first stop exposed a late SDK ADB smart-server start and a Netsim helper.
+The scoped harness now supplies a non-executing custom ADB path, reserves the
+smart-server ports and inventories private SDK executable identities and
+listeners before and after shutdown. Later runs observed no smart server or
+leftover SDK process; these snapshots are not lifetime listener attestation.
+Earlier low-memory/software-rendering trials exposed UI stalls. With 4 GiB RAM,
+four vCPUs and `host` rendering plus `GuestAngle`, a stricter run verified an
+actual Settings touch transition, a prior selected file surviving a cold boot,
+another exact transfer with sync, and natural guest poweroff. Hidden stale
+WindowManager error records are distinguished from visible dialogs.
+
+Disabling Bluetooth's host backend caused Android HAL crashes. A separate
+network-none, read-only Docker Netsim instance with an authenticated fixed-target
+host relay let the real Android guest reach Bluetooth ON. Two independently
+keyed radio instances passed workstation-root cross-owner transport negatives;
+their trusted connections worked before and after. This is not two-real-VM or
+Android-root acceptance. The native worker and renderer now have app routes and a shared phone UI; live product acceptance remains in progress.
+
+The standard Google APIs ARM image was then installed under byte-identical
+accepted ARM terms. Its default ADB listener returned CNXN without an AUTH
+challenge, so the private client refused it before signing or executing a
+command. SDK boot-property switches did not fix that refusal. A separate
+derived boot-policy ramdisk is under test; it is not an accepted runtime.
+To fit the owner's disk budget, immutable image archives are removed after
+verified extraction and only one system-image cache is retained at a time;
+private userdata and the pinned restore package records are kept separately.
+Ordinary application networking, lifetime listener isolation, rooted/two-owner
+tests, real image switching and product integration remain open. See
+`D-2026-11-09-07`; these proofs do not change the shipping VM/KVM guards.
+
+**USB tether · send files to Android** transfers one chosen upload or one owned
+Pantheon document's **current text** (Markdown stays `.md`, other text uses `.txt`).
+Use *Upload a file* for binary originals such as PDFs, images or APK files.
+Nothing is installed or executed by a transfer. Each transfer is bounded to
+20 MB and goes into a unique folder under `Download/Pantheon` on the caller's
+running Android device. Android's returned SHA-256 must match the bytes sent.
+There is no blanket host mount, arbitrary host path, user selector or network
+tether; browser preview cannot receive Android files. Temporary staging files
+are private to that user, with cleanup attempted after success or failure.
+
+**Transfer hardening (2026-11-09).** The existing Linux VM path retains the
+official SDK `adb push` sync service. Before staging private bytes, it requires
+an allocated device serial, a current authorized transport and completed boot.
+An explicit false system-user CE property asks the person to unlock Android;
+missing/unknown values remain compatible with configured images and are not
+proof of general user readiness. The copy and its checksum still decide success.
+
+Admission uses the existing lifecycle lock with a bounded wait. Admission,
+readiness and ADB commands share one transfer budget; an expired queued request
+does not receive a fresh budget or proceed into staging. Local filesystem calls
+are synchronous and are not a hard wall-clock guarantee. No push retry is added.
+Verification requires one standard SHA-256 record naming the exact generated
+destination, preserving spaces in filenames. A changed serial refuses subsequent
+verification and cleanup instead of addressing a default or replacement device.
+
+Failures retain the protocol's existing code/message shape with actionable
+readiness, staging, preparation, send and verification messages. Unconfirmed
+Android cleanup is reported without replacing the primary failure; a cleanup
+timeout cannot relabel that failure. Private staging cleanup failures are logged
+without file contents or remote diagnostics. If Android verified the file but
+private cleanup was not confirmed, the response says so instead of reporting
+complete success.
+
+The final offline Linux regression slice passed 230 cases across transfer,
+device and lifecycle coverage, using real private filesystem staging,
+application/daemon HTTP and explicit ADB fixtures. It covers queued requests,
+deadline expiry, stale/locked devices, selected SDK arguments, malformed checksum
+records, cleanup failures and ownership/holder gates. These are hermetic checks,
+not new Android/KVM runtime acceptance or a resolution of the prototype EPERM
+finding above. Evidence is in the task workspace's
+`validation/transfer-linux-20261109-5/transfer-tests.xml`. Native transport/proof
+files and their pending key-approval plan were not changed; no Android credentials,
+trust, host security settings or live deployment were changed by these tests.
+
+For local testing from `dev`, build from that checkout: the repository's Docker
+publish workflow currently runs on `main` only, so pulling a `:dev` registry tag
+does not establish that this source is running. Rebuild Pantheon and the VM host
+in your own test stack; no SDK download is part of an ordinary source build.
+
+For an opt-in isolation check, build a **separate test image** with
+`docker build -f workstation/vm.Dockerfile -t pantheon-isolation-check workstation`,
+then run the harness in a fresh container with no network or existing volumes:
+
+```bash
+mkdir android-isolation-results
+docker run --rm --network none --workdir /work \
+  --mount "type=bind,source=$PWD,target=/work,readonly" \
+  --mount "type=bind,source=$PWD/android-isolation-results,target=/results" \
+  --entrypoint python3 pantheon-isolation-check \
+  -u scripts/check-android-isolation.py --output /results
 ```
 
-It needs KVM. On Linux that is `/dev/kvm` on the host; on Docker Desktop for
-Windows it is the nested virtualization above (`.wslconfig`, Windows 11). The
-window says when it is missing. Without KVM,
-the phone opens as a **mobile view** instead: the workstation's Firefox alone on
-the phone's screen, at the chosen device's shape and CSS width, with a mobile
-user agent and touch on, so a website lays itself out as it does on that phone.
-The window's title says *mobile view*; it runs web pages only, and its volume
-and recents keys are greyed. The Samsung devices have the real screens,
-densities and fold, but run stock Android, not One UI, which Samsung does not
-let anyone redistribute. iPhones cannot be emulated outside a Mac. Each running
-phone takes about `PANTHEON_PHONE_MEMORY_MIB` (2 GB); at most
-`PANTHEON_PHONE_MAX_RUNNING` (2) run at once, and one nobody has used or
-watched for `PANTHEON_PHONE_IDLE_MIN` (30) minutes is saved and stopped. The
-phone runs in the container workstation only, not in a per-person VM.
+Use a new empty results directory each time. The script verifies the pinned
+Ubuntu cloud-image hash, uses fresh disposable qcow2 disks, and runs two real
+TCG Linux kernels with the shipped daemon and VM routing. Guest-root probes
+check cross-user files and session **markers**, authenticated daemon ports,
+fixture listeners standing in for ADB/console, and each user's separate fixture
+9p project export, including sibling and symlink reads. JSON results and serial
+logs are retained; the test disks and tokens are removed. This verifies those
+specific isolation checks, **not Android, real ADB, Google sign-in, KVM, or all
+possible hypervisor/9p exploits**. Android acceptance still requires a suitable
+KVM host and an explicitly authorized SDK install.
 
-Agents have full access by default: *sudo* is on in every backend until an
-admin turns it off (the owner, 2026-10-31: *"Agents get FULL access"*). In the
-container that means one person's agent can read another's workstation home,
-and the panel says so beside the switch; in a person's own VM it reaches only
-their machine. The network is full by default too — an admin narrows it to
+An unset *sudo* choice is on in each user's own VM and off in the shared
+container; an admin can choose explicitly. In the shared container, enabling
+sudo lets one person's agent read another's workstation home, and the panel
+says so beside the switch. In a person's own VM, root reaches only their
+machine. The network is full by default too — an admin narrows it to
 *internet only* or *none* in the same panel, held by the small
 `workstation-net` container beside the container backend, so an agent using
 *sudo* cannot lift it (`P20-06`). Neither backend has access to Docker or to
@@ -721,6 +1209,7 @@ A grab-bag of small gotchas that otherwise turn into long debugging sessions.
 - **Self-hosted ntfy reminders don't reach your phone.** Two things: (1) the bundled ntfy binds to loopback by default — to reach it from your phone set `NTFY_BIND` to your host/Tailscale IP and `NTFY_BASE_URL` to the same server URL in `.env`, then recreate the ntfy container (see the `NTFY_*` block in `.env.example`); (2) in the ntfy **Android** app, subscribe to the topic with **Instant delivery** enabled — non-`ntfy.sh` servers don't get instant push otherwise.
 - **Local mail (Dovecot) login fails: "Plaintext authentication disallowed on non-encrypted connections."** Your IMAP/SMTP server is refusing cleartext auth over an unencrypted link. Prefer enabling TLS on the mail server; on a trusted LAN only, you can allow cleartext (Dovecot: `disable_plaintext_auth = no`).
 - **A mail account stops with "showed a different certificate from the one this account trusts" or "showed a certificate no trusted authority signed".** Pantheon checks the mail server's certificate before it sends a password or a sign-in token. A public host such as `imap.example.com` has to show a certificate an authority signed for its name, as every mail provider's does. A host on your own network has its first certificate remembered, and a different one later is refused. That covers a private or Tailscale address, a name with no dot such as `dovecot`, and a name ending `.lan`, `.local`, `.internal` or `.home.arpa`. If you replaced the server's certificate, or your own server answers on a public name with a self-signed one, open the account in Settings → Email and press **Test**. Check the fingerprint it shows against your server's, then press **Trust this certificate**. A mail provider's own hosts (Gmail's, Outlook's) are never trusted by hand. The remembered certificates are kept per member in `data/mail_tls_pins.json`.
+- **A mail account's Test, inbox or send says "Pantheon will not connect this mail account to that server."** A member's mail account reaches public mail servers on mail ports (IMAP 143 and 993, SMTP 25, 465 and 587). A server on the Pantheon machine itself, on your private network (a `192.168.x.x`, `10.x.x.x` or Tailscale address, or a name that resolves to one), or on another port is reached only for an admin, or a member an admin allowed it: Settings → Users → **Mail servers on this network**. Without that, the account form could be used to find out which ports on your network are open. Link-local and cloud metadata addresses (`169.254.169.254` and the like) are refused to everyone.
 - **Calendar/contacts (Radicale) won't sync.** Point Pantheon at the **full collection URL** with its trailing slash — e.g. `http://host:5232/<user>/<collection-id>/` — not just the server root. Radicale shows this address for each calendar/address book in its web UI.
 
 ### Speech on a native install

@@ -42,6 +42,7 @@ IMAGE = "system-images;android-35;google_apis;x86_64"
 
 
 class _System:
+    backend = "vm"  # isolated guest fixture; this test does not boot a VM
     def __init__(self, root):
         self.root = root
 
@@ -71,6 +72,7 @@ def bare(tmp_path, monkeypatch):
     script = tmp_path / "provision.sh"
     script.write_text("#!/bin/sh\n")
     monkeypatch.setenv(PH.SDK_ENV, str(sdk))
+    monkeypatch.setattr(PH, "scrcpy_version", lambda path: (3, 3))
     monkeypatch.setenv(PH.PROVISION_ENV, str(script))
     monkeypatch.setattr(PH.os, "geteuid", lambda: 0, raising=False)
     monkeypatch.setattr(PH.shutil, "which", lambda name: "/usr/bin/scrcpy" if name == "scrcpy" else None)
@@ -130,7 +132,7 @@ def test_a_workstation_that_cannot_install_says_how_to_build_the_phone_in(bare, 
     with pytest.raises(PH.PhoneError) as e:
         PH.Installer(run=lambda pkg, on_line: 0).start(IMAGE, accept=True)
     assert e.value.code == "unavailable" and "root" in e.value.message
-    assert "WORKSTATION_PHONE=on" in e.value.message
+    assert "workstation-vm" in e.value.message
 
 
 def test_one_install_at_a_time(bare):
@@ -304,12 +306,14 @@ def test_the_agents_pick_waits_on_the_install_like_the_person_does():
 def test_the_room_lists_the_devices_and_asks_for_the_license_once(tmp_path):
     src = (ROOT / "static" / "js" / "phoneWindow.js").read_text()
     src = re.sub(r"^import \* as Modals from .*$", "const Modals = {};", src, flags=re.M)
+    src = re.sub(r"^import \{ prefersReducedMotion \} from .*$",
+                 "const prefersReducedMotion = () => false;", src, flags=re.M)
     src = re.sub(r"^import \{ makeWindowDraggable \} from .*$", "const makeWindowDraggable = () => {};",
                  src, flags=re.M)
     mod = tmp_path / "phoneWindow.mjs"
     mod.write_text(src)
     script = f"""
-import {{ catalogueOf, installLine, needsLicense }} from {json.dumps(str(mod))};
+import {{ catalogueOf, installLine, needsLicense }} from {json.dumps(mod.as_uri())};
 const devices = [
   {{ id: 'pixel_9_pro', name: 'Google Pixel 9 Pro', maker: 'Google', kind: 'phone', installed: true, android: 'Android 15' }},
   {{ id: 'galaxy_z_fold6', name: 'Samsung Galaxy Z Fold6', maker: 'Samsung', kind: 'foldable', foldable: true, installed: false }},
@@ -337,7 +341,7 @@ console.log(JSON.stringify({{
     pixel, fold = got["groups"][0]["devices"][0], got["groups"][1]["devices"][0]
     assert pixel["current"] is True and pixel["verb"] == "In use" and pixel["installed"] is True
     assert fold["verb"] == "Install and use" and fold["installed"] is False and fold["foldable"] is True
-    assert got["mobile"]["verb"] == "Use this device", "the mobile view has nothing to install"
+    assert got["mobile"]["verb"] == "Preview this profile", "preview is an explicit web-only action"
     assert got["installing"]["verb"] == "Installing…" and got["installing"]["busy"] is True
     assert got["line"] == {"text": "Downloading Android (Android 15)", "percent": 55, "failed": False}
     assert got["failed"]["failed"] is True and "exit 7" in got["failed"]["text"]
@@ -367,7 +371,8 @@ def test_the_catalogue_has_phones_foldables_and_tablets_from_several_makers():
     assert {d["maker"] for d in P.PHONE_DEVICES.values()} >= {"Google", "Samsung", "OnePlus", "Nothing"}
     for id_, d in P.PHONE_DEVICES.items():
         if d["kind"] == "foldable":
-            assert 0 < d["cover_width"] < d["width"], id_
+            assert 0 < d["cover_width"] <= d["width"], id_
+            assert d["cover_width"] < d["width"] or d.get("cover_height", d["height"]) < d["height"], id_
 
 
 @pytest.mark.parametrize("device", sorted(P.PHONE_DEVICES))
@@ -399,13 +404,15 @@ def test_the_look_reaches_the_window_shaped():
 def test_the_body_is_drawn_at_the_devices_shape_with_its_keys_on_their_edges(tmp_path):
     src = (ROOT / "static" / "js" / "phoneWindow.js").read_text()
     src = re.sub(r"^import \* as Modals from .*$", "const Modals = {};", src, flags=re.M)
+    src = re.sub(r"^import \{ prefersReducedMotion \} from .*$",
+                 "const prefersReducedMotion = () => false;", src, flags=re.M)
     src = re.sub(r"^import \{ makeWindowDraggable \} from .*$", "const makeWindowDraggable = () => {};",
                  src, flags=re.M)
     mod = tmp_path / "phoneWindow.mjs"
     mod.write_text(src)
-    looks = json.dumps({k: P.PHONE_LOOKS[k] for k in ("oneplus_12", "galaxy_tab_s9", "pixel_9_pro")})
+    looks = json.dumps(P.PHONE_LOOKS)
     script = f"""
-import {{ keysOf, lookOf, bodyGeometry }} from {json.dumps(str(mod))};
+import {{ keysOf, lookOf, bodyGeometry }} from {json.dumps(mod.as_uri())};
 const looks = {looks};
 const dev = (id, maker) => ({{ id, maker, look: looks[id] }});
 const ids = (side) => side.map((k) => k.id);
@@ -416,6 +423,11 @@ console.log(JSON.stringify({{
   one: [ids(one.left), ids(one.right), ids(one.top)], tab: [ids(tab.left), ids(tab.right), ids(tab.top)],
   old: ids(keysOf({{ maker: 'Samsung' }}).right),
   phone, slab, plain: lookOf({{}}),
+  scales: Object.entries({json.dumps(P.PHONE_DEVICES)}).map(([id, d]) => {{
+    const look = lookOf({{look: looks[id]}});
+    return [bodyGeometry(look, {{w:d.width,h:d.height}}, 500, 800),
+      bodyGeometry(look, {{w:d.width,h:d.height}}, 125, 200)];
+  }}),
 }}));
 """
     out = subprocess.run(["node", "--input-type=module", "-e", script], capture_output=True,
@@ -433,3 +445,22 @@ console.log(JSON.stringify({{
     s = got["slab"]
     assert s["screenW"] > s["screenH"] and s["radius"] < p["radius"] * 1.5
     assert got["plain"]["cutout"] == "punch-center" and got["plain"]["finish"] == ""
+
+    for large, small in got["scales"]:
+        for key in ("screenW", "screenH", "rim", "radius", "inner", "unit"):
+            assert small[key] == pytest.approx(large[key] / 4), key
+        assert small["screenW"] + small["rim"] * 2 <= 125 + 1e-9
+        assert small["screenH"] + small["rim"] * 2 <= 200 + 1e-9
+
+
+def test_clamshell_profiles_have_horizontal_hinges_and_real_cover_regions():
+    for model in ("galaxy_z_flip6", "razr_50_ultra"):
+        d = P.PHONE_DEVICES[model]
+        config = dict(line.split("=", 1) for line in PH.avd_config(model, IMAGE, memory_mib=2048).splitlines())
+        assert config["hw.sensor.hinge.type"] == "0"
+        assert config["hw.sensor.hinge.sub_type"] == "0"
+        assert config["hw.sensor.hinge.areas"] == f"0-{d['height']//2}-{d['width']}-1"
+        assert config["hw.displayRegion.0.1.height"] == str(d["cover_height"])
+        assert PH._shape(d, "closed", 0) == (d["cover_width"], d["cover_height"])
+        assert PH._shape(d, "half_open", 0) == (d["width"], d["height"])
+    assert "half_open" in P.PHONE_POSTURES

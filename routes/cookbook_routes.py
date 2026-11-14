@@ -76,6 +76,21 @@ _HF_TOKEN_STATUS_SNIPPET = (
 )
 
 
+def forge_may_rename(ep) -> bool:
+    """`B2101`. Whether a Forge launch on `ep`'s address may rename it.
+
+    The Forge finds an endpoint by `base_url` alone, so a launch on a port
+    someone already registered used to overwrite that person's name with the
+    model's, and Settings could not name it back. Only an empty name, or the
+    name the Forge itself last wrote (`forge_name`), is the Forge's to change.
+    """
+    name = (getattr(ep, "name", None) or "").strip()
+    if not name:
+        return True
+    forge_name = getattr(ep, "forge_name", None)
+    return forge_name is not None and name == forge_name
+
+
 def _windows_local_pid_record_line(pid_path: Path, ready_path: Path) -> str:
     """Build the Git Bash prelude that records a Win32-stoppable PID.
 
@@ -1368,7 +1383,11 @@ def setup_cookbook_routes() -> APIRouter:
             if existing:
                 existing.is_enabled = True
                 existing.model_type = "image"
-                existing.name = display_name
+                # `B2101`: the row is renamed after the launched model only
+                # while it still carries the name the Forge gave it.
+                if forge_may_rename(existing):
+                    existing.name = display_name
+                    existing.forge_name = display_name
                 existing.endpoint_kind = "local"
                 # `D-2026-10-07-02` §1: listed by the image server's own
                 # `/v1/models` (`scripts/diffusion_server.py`,
@@ -1393,6 +1412,7 @@ def setup_cookbook_routes() -> APIRouter:
             ep = ModelEndpoint(
                 id=ep_id,
                 name=display_name,
+                forge_name=display_name,   # `B2101`
                 base_url=base_url,
                 api_key=None,
                 is_enabled=True,
@@ -1702,7 +1722,11 @@ def setup_cookbook_routes() -> APIRouter:
             if existing:
                 existing.is_enabled = True
                 existing.model_type = "llm"
-                existing.name = display_name
+                # `B2101`: the row is renamed after the launched model only
+                # while it still carries the name the Forge gave it.
+                if forge_may_rename(existing):
+                    existing.name = display_name
+                    existing.forge_name = display_name
                 existing.endpoint_kind = "local"
                 existing.model_refresh_mode = "auto"
                 # `B1928`: the row now belongs to this serve; an older serve's
@@ -1757,6 +1781,7 @@ def setup_cookbook_routes() -> APIRouter:
             ep = ModelEndpoint(
                 id=ep_id,
                 name=display_name,
+                forge_name=display_name,   # `B2101`
                 base_url=base_url,
                 api_key=None,
                 is_enabled=True,

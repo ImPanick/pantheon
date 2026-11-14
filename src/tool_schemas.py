@@ -716,7 +716,7 @@ FUNCTION_TOOL_SCHEMAS = [
                 "Work the workstation's desktop — an Ubuntu machine with a browser, "
                 "separate from Pantheon — by looking at its screen and using its mouse "
                 "and keyboard. One call is one action. `screenshot` shows the screen; "
-                "every other action returns a screenshot taken after it, so look at it "
+                "screen actions return a screenshot taken after them, so look at it "
                 "before the next action. Each screenshot has the things you can click "
                 "boxed and numbered, listed in words beside it: send \"mark\": N to act on "
                 "one — it is more exact than coordinates. Coordinates are pixels in the "
@@ -728,7 +728,11 @@ FUNCTION_TOOL_SCHEMAS = [
                 "taken over the screen the action is refused; ask them or wait. "
                 "The phone also has its controls, as on its window: `press` a key, "
                 "`rotate`, `fold` or `unfold` a foldable, `open_url`, and `use_device` "
-                "to switch to another phone from its list."
+                "to switch to another phone from its list. `usb_status`, `usb_connect` and "
+                "`usb_eject` inspect/connect/eject the Android shared folder; these return "
+                "structured USB state and per-file sync status, without a screenshot. "
+                "USB status does not start Android. Shared files live under the returned "
+                "folder within the user's projects, and Download/PantheonUSB on Android."
             ),
             "parameters": {
                 "type": "object",
@@ -1176,7 +1180,7 @@ FUNCTION_TOOL_SCHEMAS = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "action": {"type": "string", "enum": ["list", "view", "view_ref", "add", "edit", "patch", "publish", "delete", "search", "lint", "versions", "restore", "export"], "description": "list = name+description summary; view = full SKILL.md; view_ref = sub-file under the skill dir; add = create; edit = full rewrite (content); patch = old_string→new_string; publish = flip status; delete; search = relevance match on published skills; lint = what is wrong with a skill, instantly and with no model call — pass the fields to check a draft before saving it; versions = earlier copies kept automatically on every content change; restore = put one of those back (itself undoable); export = the skill's whole directory as {path: text}."},
+                    "action": {"type": "string", "enum": ["list", "view", "view_ref", "add", "edit", "patch", "publish", "delete", "search", "lint", "versions", "restore", "export"], "description": "list = name+description summary; view = full SKILL.md; view_ref = sub-file under the skill dir; add = create, always as a draft; edit = full rewrite (content); patch = old_string→new_string; publish = refused: a person publishes a skill, from the Skills window; delete; search = relevance match on published skills; lint = what is wrong with a skill, instantly and with no model call — pass the fields to check a draft before saving it; versions = earlier copies kept automatically on every content change; restore = put one of those back (itself undoable); export = the skill's whole directory as {path: text}."},
                     "name": {"type": "string", "description": "Slug/name of the skill. Required for add/view/view_ref/edit/patch/publish/delete/versions/restore/export. For add, choose the exact kebab-case name the user should see and report only the returned name."},
                     "version_id": {"type": "string", "description": "Which earlier copy to restore, as listed by action='versions' (e.g. '0003-1.0.2')."},
                     "path": {"type": "string", "description": "Sub-path under the skill directory for view_ref (e.g. 'references/example.md')."},

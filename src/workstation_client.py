@@ -377,10 +377,17 @@ def from_settings(system: Optional[str] = None) -> Optional["WorkstationClient"]
     `B1747`: `system` is the one the person uses (`system_in_use`)."""
     if not enabled():
         return None
-    base = configured_base(system)
+    base, source = resolve_base(system)
     if not base:
         return None
-    return WorkstationClient(base, configured_token(system))
+    # This trust comes from the operator's configuration, outside workstation
+    # root. A shared daemon must not grant itself a VM role in its status JSON.
+    vm_base = parse_base(os.environ.get(P.VM_URL_ENV, ""))
+    android_vm_endpoint = system in (None, P.DEFAULT_SYSTEM) and (
+        (source == SOURCE_SETTING and backend_choice() == "vm") or
+        (source == SOURCE_ENVIRONMENT and vm_base is not None and base == vm_base
+         and effective_backend() == "vm"))
+    return WorkstationClient(base, configured_token(system), android_vm_endpoint=android_vm_endpoint)
 
 
 ProgressCb = Callable[[str, str], Union[None, Awaitable[None]]]
@@ -499,13 +506,16 @@ def _not_global(host: str) -> Optional[bool]:
 class WorkstationClient:
     """One workstation, one token. Every method is one route in `ROUTES`."""
 
-    def __init__(self, base: str, token: str, *, timeout: float = _TIMEOUT):
+    def __init__(self, base: str, token: str, *, timeout: float = _TIMEOUT,
+                 android_vm_endpoint: bool = False, tls_pin_override: Optional[str] = None):
         parsed = parse_base(base)
         if not parsed:
             raise WorkstationError("bad_request", f"{base!r} is not a workstation address.")
         self.base = parsed
         self.token = token or ""
         self.timeout = timeout
+        self.android_vm_endpoint = android_vm_endpoint is True
+        self._tls_pin_override = tls_pin_override
         # `P20-07`: learnt from this workstation's own `health`.
         self._starts_machines = False
         # `B1661`: which run of the daemon answered `health` — None until it
@@ -528,7 +538,8 @@ class WorkstationClient:
         parts = urlsplit(self.base)
         host = parts.hostname or ""
         if parts.scheme == "https":
-            pin, source, raw = resolve_pin()  # `B980`: the setting, then the environment
+            pin, source, raw = resolve_pin() if self._tls_pin_override is None else (
+                normalise_pin(self._tls_pin_override), SOURCE_ENV, self._tls_pin_override)  # Endpoint-specific pins never borrow the desktop pin.
             self._pin_source = source
             if raw and pin is None:
                 where = ("The certificate fingerprint in Settings → Workstation"
@@ -882,6 +893,12 @@ class WorkstationClient:
         return await self._call("browser", account, body, timeout=120.0 + _TIMEOUT, allow_304=True)
 
 
+    async def phone_choice(self, account: str, device: str, edition: str, *, holder: str, changing: bool = False) -> Dict:
+        """Persist an independent host's desired profile without booting it."""
+        if not self.android_vm_endpoint:
+            raise WorkstationError("unavailable", "This endpoint is not an independent Android host.")
+        return await self._call("phone_choice", account, {"device": device, "edition": edition, "holder": holder, "changing": changing}, timeout=90.0 + _TIMEOUT)
+
     async def phone(self, account: str, action: str, *, holder: str = "agent",
                     **fields: Any) -> Dict:
         """`B1751`. One action on the account's phone (`ROUTES["phone"]`). A
@@ -892,9 +909,35 @@ class WorkstationClient:
                                    f"“{action}” is not one of {', '.join(P.PHONE_ACTIONS)}.")
         body = {"action": action, "holder": holder, **{k: v for k, v in fields.items() if v is not None}}
         try:
+            if action not in ("status", "stop", "preview"):
+                status = await self._call("phone", account, {"action": "status", "holder": holder},
+                                          timeout=90.0 + _TIMEOUT)
+                if not (self.android_vm_endpoint and status.get("isolation") == "per_user_vm"):
+                    if status.get("isolation") == "shared" and status.get("mode") == "mobile_view" and action in (
+                            "button", "device", "edition", "posture", "rotate", "open_url", "input", "screenshot", "marks"):
+                        # Preview controls cannot race a preview closing and
+                        # turn legacy Power/device into an Android start.
+                        if action == "button" and fields.get("button") == "power":
+                            body = {"action": "stop", "holder": holder}
+                        elif action == "device":
+                            body = {**body, "action": "preview"}
+                        # Edition saves the image preference and stops the
+                        # old producer. It never starts Android or installs it.
+                    elif not (action in ("device", "edition") and status.get("isolation") == "shared"
+                              and status.get("mode") is None and status.get("state") in ("off", "unavailable")):
+                        # Choosing a profile or SDK edition only saves the
+                        # person's preference. It must remain possible before
+                        # an Android VM is available; executing Android and
+                        # exposing its screen still require the VM boundary.
+                        raise WorkstationError("unavailable", P.PHONE_ISOLATION_REQUIRED)
             # A screenshot after an input waits for the screen to settle, and
             # stopping a phone saves it first.
-            return await self._call("phone", account, body, timeout=90.0 + _TIMEOUT)
+            answer = await self._call("phone", account, body, timeout=90.0 + _TIMEOUT)
+            if (action in ("status", "start", "install", "stop", "device", "edition", "preview")
+                    and not self._phone_boundary(answer)):
+                return {**answer, "available": False, "state": "unavailable", "mode": None,
+                        "can_start": False, "stream_ready": False, "why": P.PHONE_ISOLATION_REQUIRED}
+            return answer
         except WorkstationError as e:
             if e.status == 404:
                 raise WorkstationError(
@@ -902,10 +945,19 @@ class WorkstationClient:
                                    "docker compose up -d --build.") from e
             raise
 
+    def _phone_boundary(self, state: Dict) -> bool:
+        # Missing metadata is an old/unverified daemon, including for a
+        # preview whose producer might change between status and the stream.
+        return ((self.android_vm_endpoint and state.get("isolation") == "per_user_vm") or
+                (state.get("isolation") == "shared" and state.get("mode") == "mobile_view"))
+
     async def phone_screen(self, account: str) -> Dict:
         """`B1751`. `{"kind", "holder", "why"?}` for the phone's screen —
         `browser_screen`'s answer, for the phone."""
         try:
+            status = await self.phone(account, "status")
+            if not self._phone_boundary(status):
+                return {"kind": None, "holder": None, "why": P.PHONE_ISOLATION_REQUIRED}
             return await self._call("phone_screen", account, timeout=60.0)
         except WorkstationError as e:
             if e.status == 404:
@@ -994,6 +1046,10 @@ class WorkstationClient:
 
         if route not in ("desktop", "browser_screen", "phone_screen"):
             raise WorkstationError("bad_request", "That is not a stream the workstation serves.")
+        if route == "phone_screen":
+            status = await self.phone(account, "status")
+            if not self._phone_boundary(status):
+                raise WorkstationError("unavailable", P.PHONE_ISOLATION_REQUIRED)
         headers = self._headers()
         verify = await self._wire()  # `P20-07`: before the token goes anywhere
         _, url = self._url(route, account, {"viewer": viewer})

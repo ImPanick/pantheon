@@ -56,7 +56,7 @@ SCREENSHOT = "screenshot"
 #: (the side and navigation keys, rotate, fold, an address, the device list) —
 #: so the agent works the phone exactly as a person does, through the same
 #: route and the same holder, not a side channel. Each one is on the phone.
-PHONE_CONTROLS: Tuple[str, ...] = ("press", "rotate", "fold", "unfold", "open_url", "use_device")
+PHONE_CONTROLS: Tuple[str, ...] = ("press", "rotate", "fold", "unfold", "open_url", "use_device", "usb_status", "usb_connect", "usb_eject")
 ACTIONS: Tuple[str, ...] = (SCREENSHOT,) + tuple(P.INPUT_ACTIONS) + PHONE_CONTROLS
 
 # Spellings a model trained on another computer-use tool reaches for. Accepted
@@ -185,6 +185,7 @@ def describe_action(args: Dict[str, Any]) -> str:
             "rotate": "rotate", "fold": "fold", "unfold": "unfold",
             "open_url": f"open {args.get('url')}",
             "use_device": f"use the {_device_name(args.get('device'))}",
+            "usb_status": "inspect shared files", "usb_connect": "connect shared files", "usb_eject": "eject shared files",
         }[action]
     if args.get("screen") == "phone":  # `B1751`
         return "phone: " + describe_action({k: v for k, v in args.items() if k != "screen"})
@@ -288,7 +289,11 @@ def unavailable_reason(owner: Optional[str], *, delegated_credential: bool = Fal
     from src.workstation_client import WorkstationError
 
     try:
-        workstation_for(owner)
+        try:
+            workstation_for(owner)
+        except WorkstationError:
+            from src.phone_runtime import phone_for
+            phone_for(owner)
     except WorkstationError as e:
         return e.message
     except Exception as e:  # noqa: BLE001 — an unanswerable question is a no
@@ -381,7 +386,7 @@ async def _marked(client, account: str, shot: Dict[str, Any], owner: Optional[st
     return dict(shot, data_b64=base64.b64encode(data).decode(), mime=mime), screen_marks.listing(marks)
 
 
-async def _phone_on(client, account: str) -> Optional[Dict[str, Any]]:
+async def _phone_on(client, account: str, *, observe_boot: bool = False) -> Optional[Dict[str, Any]]:
     """`B1751`. None when the phone is on and the action can go ahead; else
     what the model is told — the phone turned on and booting (so it waits and
     looks again), or why there is no phone here."""
@@ -392,7 +397,8 @@ async def _phone_on(client, account: str) -> Optional[Dict[str, Any]]:
             state = await client.phone(account, "start")
     except WorkstationError as e:
         return e.as_result()
-    if state.get("state") == "on":
+    if state.get("state") == "on" or (observe_boot and state.get("state") == "starting"
+                                     and state.get("stream_ready") is True):
         return None
     if state.get("state") == "installing":  # `B1756`
         name = next((d.get("name") for d in state.get("devices") or []
@@ -405,9 +411,9 @@ async def _phone_on(client, account: str) -> Optional[Dict[str, Any]]:
         name = next((d.get("name") for d in state.get("devices") or []
                      if d.get("id") == state.get("device")), state.get("device"))
         if state.get("mode") == "mobile_view":  # `B1753`
-            return {"output": (f"The phone ({name}) is opening as a mobile view: this "
-                               "workstation has no KVM for Android, so it is a browser shaped "
-                               "and identified as that device. Wait a few seconds (`wait` with "
+                return {"output": (f"An explicitly selected browser preview ({name}) is opening: "
+                                   "it runs web pages only, not Android apps. It is a browser shaped "
+                                   "and identified as that device. Wait a few seconds (`wait` with "
                                "ms) and take a screenshot of the phone."), "exit_code": 0}
         return {"output": (f"The phone ({name}) is booting; Android takes a minute or two the "
                            "first time. Wait (`wait` with ms) and take a screenshot of the "
@@ -479,13 +485,35 @@ class ComputerTool:
         try:
             # The admin's `sudo` in force and the person's display started
             # before the first action needs it (`P20-02`'s `ensure_ready`).
-            ready = await ensure_ready(owner)
+            if args.get("screen") == "phone" or action in PHONE_CONTROLS:
+                from src.phone_runtime import phone_for
+                from types import SimpleNamespace
+                client, account = phone_for(owner)
+                if not getattr(client, "native_android", False):
+                    ready = await ensure_ready(owner)
+                else:
+                    ready = SimpleNamespace(client=client, account=account)
+            else:
+                ready = await ensure_ready(owner)
         except WorkstationError as e:
             return e.as_result()
         client, account = ready.client, ready.account
 
         what = describe_action(args)
         on_phone = args.get("screen") == "phone"
+        if action in ("usb_status", "usb_connect", "usb_eject"):
+            from src import phone_usb
+            try:
+                if action == "usb_connect":
+                    answer = await phone_usb.connect(owner,client,account,holder='agent')
+                elif action == "usb_eject":
+                    answer = await phone_usb.eject(owner,holder='agent')
+                else:
+                    state = await client.phone(account,'status',holder='agent')
+                    answer = phone_usb.status(owner,(state.get('device'),state.get('edition')))
+                return {"output":json.dumps(answer),"exit_code":0,"usb":answer}
+            except WorkstationError as error:return error.as_result()
+            except (RuntimeError,ValueError,OSError) as error:return {"error":str(error),"exit_code":1}
         if action in PHONE_CONTROLS:
             return await self._control(client, account, args, owner, what)
         if on_phone:
@@ -497,7 +525,7 @@ class ComputerTool:
                 ms = ms if isinstance(ms, int) and not isinstance(ms, bool) else 1000
                 await asyncio.sleep(max(0, min(ms, P.MAX_WAIT_MS)) / 1000)
                 action = args["action"] = SCREENSHOT
-            started = await _phone_on(client, account)
+            started = await _phone_on(client, account, observe_boot=action == SCREENSHOT)
             if started:
                 return started
         # `B1754`: the agent's hand, for the screen window to draw.
@@ -548,9 +576,11 @@ class ComputerTool:
                               "next action.", "exit_code": 0}
         caption = (("Phone" if on_phone else "Screen") if action == SCREENSHOT
                    else f"{'Phone' if on_phone else 'Screen'} after {what}")
+        if on_phone and shot.get("state") == "starting":
+            caption = "Phone booting"
         from src import screen_marks
         listed = ""
-        if screen_marks.ENABLED and args.get("marks") is not False:
+        if screen_marks.ENABLED and args.get("marks") is not False and shot.get("state") != "starting":
             shot, listed = await _marked(client, account, shot, owner, args["screen"])
         else:
             screen_marks.forget(owner, PHONE_SURFACE if on_phone else SURFACE)

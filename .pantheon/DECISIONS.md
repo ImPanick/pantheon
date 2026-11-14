@@ -3868,3 +3868,410 @@ Parrot, with their toolsets, are kept on the branch `security/kali-parrot-workst
 built. Windows stays scoped, not built (it needs the KVM VM backend and a licence).
 
 What reopens it: a system the owner wants that KasmVNC builds for, or the owner shipping the security systems.
+
+## D-2026-11-08-01 — generic Android for every Mobile Emulator profile
+
+The owner chose generic Android for every device profile now. OEM-specific
+software is a future possibility only if technically feasible, legally obtainable,
+and legally distributable in an open-source project. It does not block the current
+uplift. Device names identify approximate hardware profiles and drawings, not
+retail device identity or OEM firmware. Google's SDK components remain separately
+licensed downloads; Pantheon's source licence does not relicense them.
+
+The Mobile Emulator is a Workspace surface alongside Documents, Workstation and
+Browser, using the same persistent device and person/agent control boundary as
+the Workbench's Devices room. Android should cold boot visibly and retain apps
+and settings. A browser fallback stays available but must persistently say that
+it is a web-only browser preview and why Android is unavailable. Rotation and
+fold/unfold animate acknowledged device actions, with reduced motion respected.
+
+Cost accepted: cold boot is slower than restoring a snapshot; scrcpy may attach
+after the first Android boot frames; profiles and fold regions approximate
+hardware rather than reproduce OEM mechanics, firmware, cameras or certification.
+Actual Android/KVM acceptance remains necessary before calling runtime fidelity
+verified. Future OEM work requires both a compatible executable image and a
+review of the actual acquisition, use and redistribution rights.
+
+**Delivery clarification, 2026-11-08.** The owner explicitly instructed this
+uplift to be pushed to `dev`, confirming that `dev` is the dedicated test-only
+branch and is not intended for production. Direct delivery to `dev` is authorized
+so the owner can pull it and create a local Docker instance for acceptance testing.
+This authorizes no update to `main` or deployment to the live Arcane instance.
+
+## D-2026-11-08-02 - Android isolation, explicit preview and selected file transfer
+
+The owner rejected the browser-with-a-device-overlay experience and required
+actual Android with optional Google Play, selected file transfer, and mandatory
+per-user isolation including adversarial checks. This supersedes automatic browser
+fallback in D-2026-11-08-01. Preview survives as an explicit web-only action;
+Android start refuses its actual blocker and never launches Firefox.
+
+Use the existing per-user VM backend as the boundary. Do not weaken sudo or treat
+separate shared-loopback ports as isolation. The authenticated daemon is the only
+forwarded guest service; Android ports and storage stay inside the user's VM.
+Host KVM, guest KVM and sufficient memory are prerequisites. Nested accelerated
+Android is experimental and outside Google's supported host configurations, so
+a real host acceptance is required; a fixture does not establish runtime fidelity.
+The client also requires the operator-configured VM role and matching endpoint,
+outside workstation root, rather than trusting a shared daemon's self-description.
+Old daemons without boundary metadata are refused; Stop stays available. The
+current Android installer travels with guest code on its read-only app disk so
+existing device disks do not need resetting to receive installer updates.
+
+Google Play is an explicit SDK developer-image selection under Google's separate
+terms, not open-source AOSP, an OEM system, certification or a redistribution grant.
+No SDK license is accepted by an agent. An incompatible image gets separate AVD
+data; existing data is never silently migrated or wiped. File transfer accepts
+only selected bytes or an owned document's current text, into a fixed Android
+Downloads root with bounded staging and checksum confirmation. It is not a host
+mount or network tether. The owner alone controls live deployments.
+
+## D-2026-11-09-01 - bounded preview startup; native Windows investigation
+
+The current Cybertooth Docker/WSL path has no usable KVM despite enabled firmware
+virtualization and Windows hypervisor. Keep the isolation/outer-TCG refusal. A
+completed Ubuntu base-image build is not evidence that a user's Android device
+booted. The reported preview hang exposed an independently reproducible defect:
+blocking stdout.readline exceeded its nominal deadline while preview startup held
+the phone lock. No live-stack trace established this as the sole cause.
+
+Use one bounded-output reader per captured Firefox process and cancellable port
+polling. The preview's worker owns its display through startup and teardown;
+requests detach/cancel without waiting on that worker. A replacement must wait for
+old ownership to end. Browser preview remains explicitly web-only.
+
+The initial read-only native WHP capability query succeeded. The Android SDK was
+absent in checked locations at that stage. The later authorized SDK installation
+and actual WHPX guest results are recorded in `D-2026-11-09-02` and `-03`.
+Native Windows WHPX is the proposed local development
+direction, with an independently trusted device broker, owner-scoped storage and
+host-enforced port protection. Reuse the existing phone protocol rather than add
+an unused provider flag or weaken its Linux VM gate. A separate authorized Linux
+KVM host is the alternative; Cuttlefish still needs KVM. See setup.md's Mobile
+Emulator section for primary sources, proposed interface and acceptance criteria.
+
+Agent operation reuses the external owner-bound phone controls; it does not need
+a custom Android build or an MCP service inside the guest. A native adapter must
+keep raw ADB/console/shell private, preserve user takeover and auditable actions,
+and mediate only authorized display, input and selected-transfer operations. The
+owner supports an optional internal companion APK with no Play Store listing,
+after real boot/isolation/transfer acceptance. It needs authenticated owner/device
+pairing, explicit permissions/consent, restricted networking and signed/verified
+install/update. Guest loopback is not host loopback. A companion or custom AOSP
+service cannot bypass Android permissions, and needs privacy/licensing review.
+Neither is implemented here and neither blocks the basic Android milestone.
+
+No proprietary vendor emulator code/images are copied into Pantheon, and no
+Windows feature is disabled. This investigation accepted no SDK licence; the
+subsequent explicitly authorized SDK test did (`D-2026-11-09-02`). Native broker
+integration and two-user isolation must pass before enabling that provider or
+claiming the full Android experience complete. Arcane remains owner-operated only.
+
+## D-2026-11-09-02 - authorized native SDK test and profile-credential boundary
+
+The owner explicitly authorized the isolated official SDK installation and SDK
+licence acceptance after the package list, sizes, destination and licence-date
+discrepancy were disclosed. The exact package agreement (`android-sdk-license`,
+January 16, 2019) was shown before acceptance; its development/redistribution/OSS
+clauses match the disclosed public 2026 agreement. This authorization covers the
+three pinned test packages, not unrelated licences or broader distribution rights.
+No Windows feature or restart is authorized by it without separate per-action
+approval. Arcane remains exclusively owner-operated.
+
+Actual native SDK diagnostics now report usable WHPX, with no host change. That
+supersedes treating the disabled optional-feature inventory as a definitive native
+blocker. The fresh manual AVD was recognized; subsequent actual Android boot and
+acceptance results are in `D-2026-11-09-03`.
+
+The earlier workspace-only file plan omitted native Windows profile credentials:
+the console token and ADB's default private/public keys use the actual Windows
+profile despite the SDK directory environment variables. Source review found this
+before boot; only existence was checked. Existing ADB keys were present, the
+console token absent. Boot was paused until the owner explicitly authorized token
+creation and read-only use of those existing keys. That approval has now been
+used, with the keys unchanged and token protected; it authorizes no persistent
+debugging-consent click, unrelated credential operation or Windows security
+change. Disable USB, emulator scanning and mDNS in any test ADB server and target
+only the owned AVD. Ports alone never establish tenant isolation.
+
+## D-2026-11-09-03 - native Android proof; review results before integration
+
+The owner requested continued validation and review of the results before
+Pantheon implementation. Keep the native test outside the product; do not ship
+an unwired host flag or relabel it as the Linux VM backend. Existing test-only
+dev delivery authorization remains, while main and Arcane stay untouched.
+
+Actual native SDK guests now boot Android on WHPX without any Windows feature,
+security-policy or restart action. The completed scoped checks and remaining
+failures are recorded once in `docs/setup.md` under Native acceptance results.
+These are real runtime checks, distinct from earlier mocked UI and TCG VM tests.
+An independently reviewed harness required fresh transfer bytes/destination,
+pre-push persistence readback and measured zero-process cleanup before reporting
+those checks as passed. Earlier failures remain in the local evidence.
+
+The proposed multi-user boundary failed its controlled probe: an Android guest
+reached the host ADB smart server and executed a generated-marker command on
+that same test device without authenticating to the host server. `restrict=on`,
+different ports and Windows Jobs cannot be claimed as isolation on this setup.
+This did not test another person's account or bypass the shipping Linux VM
+guard. A native broker must keep raw control endpoints inaccessible from tenant
+guests and expose authenticated owner-bound operations instead. Two actual
+Android tenants, including hostile Android/Linux guest-root access, must verify
+that boundary before personal account use. No such broker is implemented yet.
+
+Use feasible generic Android phone/tablet configurations; Pixel is a starting
+profile, not the product's boundary. Hardware profiles do not supply OEM firmware
+or retail identity. The fold sensor works, but native cover-display geometry and
+input alignment still need acceptance. The agent QA use case requires scoped
+APK install/launch and the same device used by the person, without generic host
+shell or blanket file mounts. No user APK or Google account was used in this
+test. iOS is a separate future investigation. The existing internal-companion
+proposal remains optional after the basic runtime and isolation milestone.
+
+Retain power, volume up/down, Back, Home, Recents, rotation and applicable folding
+in the eventual mobile controls. Process off/cold boot and the physical Power
+key's sleep/wake are distinct operations. A separate extended-controls window
+is unnecessary; zoom and a person's screenshot button are secondary, while
+agent screenshot capture remains essential. Preserve takeover and auditable
+actions when the native stream is wired. SDK/GMS licensing and redistribution
+remain separate from AOSP component rights and this authorized developer test.
+
+## D-2026-11-09-04 - validate native ADB mitigations before product integration
+
+The owner authorized further controlled investigation of the demonstrated
+guest-to-host ADB exposure while keeping Pantheon implementation paused. The
+adversary is a different user's Android app/guest or agent-controlled workstation
+trying to reach another device's control plane, files or account session. Testing
+only the owned disposable guest avoids targeting anyone else's device; it does
+not establish that cross-owner boundary.
+
+The real-runtime follow-up and its evidence live in `docs/setup.md`, under
+Guest-to-host ADB follow-up. The separate restricted-network and direct-
+authentication prototypes justify continuing the design, not shipping a native
+provider or claiming personal-account readiness. Their combination, the remaining
+SDK control surfaces, usable online networking and actual cross-owner/root tests
+are still open. The intermittent prototype Downloads-write failure also remains
+unresolved. Keep the existing Linux VM/KVM guards and do not add an unwired flag,
+second phone scaffold or silent browser substitution.
+
+The proposed boundary is a trusted owner-bound broker outside tenant-controlled
+workstations, private Android guest/data per owner, independent device keys and
+an authenticated stream/control/selected-byte interface. Tenants must not reach
+an unauthenticated host ADB smart server. The broker must verify its target before
+signing ADB challenges and protect console, gRPC and Netsim endpoints as well as
+ADB. A shared personal-profile key, different ports, a Windows Job or emulator
+network options alone are insufficient. Test real owners against each other's
+ports, storage, credentials and account sessions, including Android/Linux root,
+before enabling personal sign-in.
+
+Prefer direct authenticated device control with no SDK smart server. Place
+Android application networking behind an operator-controlled boundary that
+denies access to the broker and SDK management endpoints from Android and
+workstation guests while permitting configured application traffic. The
+restricted marker-only test is not that online network. Validate the combined
+design before selecting any specific host enforcement changes.
+
+Cost accepted: this leaves native Pantheon delivery paused while a workable
+boundary and transfer reliability are established. The validated probes remain
+outside the product and require later integration rather than a quick flag flip.
+The app-local experiments changed no Windows security/network settings. Any
+specific future host-policy, service-identity or network change still needs its
+own action-time approval; none is requested or inferred by this decision. The
+existing authorization covers documentation delivery to test-only dev, never
+main or Arcane.
+
+## D-2026-11-09-05 - continue native implementation with independent device trust
+
+The owner subsequently lifted the implementation pause and requested continued
+work toward a fully usable Android phone/tablet inside Pantheon. This supersedes
+the pause in D-2026-11-09-03/-04, not their security or runtime acceptance gates.
+Continue on an isolated development branch and deliver verified slices to dev;
+main and Arcane remain outside scope. The native provider is still unimplemented.
+
+The new runtime evidence and its limits are recorded once in `docs/setup.md`,
+under Native runtime continuation. In particular, a CLI flag is not a Netsim
+security boundary. A trial with no daemon launched still booted Android and
+supported a deliberately narrow network relay; it does not establish complete
+Internet usability or lifetime absence of additional listeners. The source and
+observed credential gates support continuing the design without weakening the
+existing Linux VM backend or changing Windows network policy.
+
+Use independent device credentials and private persistent data for the proposed
+trusted native worker. Published SDK source supports private emulator-home key
+files, but its actual guest bootstrap must be tested on the installed image.
+Prepared config-only test artifacts do not create access. Generating the new
+keys and bootstrapping persistent debugging trust in fresh AVDs requires specific
+approval; the old read-only personal-key permission does not cover it. Approval
+is requested for the new proof-directory ACL and two fresh devices only, with
+no rekeying of existing data or additional SDK terms.
+
+Cost accepted: native integration and personal-account readiness remain
+unverified while that prerequisite and the real owner/root/stream/transfer gates
+are open. The worker must expose the existing phone operations through a
+separately configured authenticated endpoint, never raw SDK control or generic
+host shell. Phone readiness and takeover must reach that same worker without
+booting a Linux desktop or sending it sudo/network configuration. Any native
+stream format and its trusted Pantheon renderer must land together. Keep APK QA,
+normal application networking and fold/cover touch geometry explicit acceptance
+items rather than treating a home-screen capture as completion.
+
+## D-2026-11-09-06 - harden the existing selected-file path while trust approval is pending
+
+The owner authorized independent transfer work while considering new-device key
+approval. Inspection confirmed that the Linux VM path already uses official SDK
+sync via adb push and remote SHA-256 verification. Keep that transport and the
+VM/KVM, document ownership, byte/name limits and holder gates. Do not add a second
+copy mechanism or publish an unwired native transfer module.
+
+The implemented readiness, target, integrity, budget and cleanup rules are
+recorded in `docs/setup.md`, under Transfer hardening. Positive preflight signals
+do not prove Downloads writability; an unknown external Android CE property is
+not parsed as a Pantheon flag or treated as a general unlock attestation. The
+copy result and an exact path-bound digest remain mandatory.
+
+Cost accepted: lock admission and ADB work are bounded rather than waiting or
+retrying a write indefinitely. A slow operation can refuse with a structured
+error; blocking local filesystem calls remain synchronous. Android cleanup can
+remain unconfirmed when the device disappears or changes, and a private staging
+cleanup failure must not become a success response or hide the primary fault.
+The independently reviewed hermetic tests do not replace real Android acceptance
+or explain the prior native EPERM observations. The native proof/credential
+proposal remains unchanged and unapproved; dev delivery is authorized, with main
+and Arcane untouched.
+
+## D-2026-11-09-07 - portable device runtime, independent of the workstation
+
+The owner requested a system-agnostic design: the whole platform should run on
+Windows, Linux and Apple hardware, and Android should own a dedicated VM whose
+system image follows the requested device and edition. The current desktop
+backend is not a device-runtime selector. On the local Apple Silicon Docker
+installation, `/dev/kvm` can be a device node while opening it returns ENODEV;
+the shared-container fallback cannot execute isolated Android. Changing the
+desktop backend to an x86 Linux VM still leaves nested acceleration unavailable.
+
+Use one device controller and wire contract across host providers. Pantheon's
+web/API services can stay containerized. A trusted device worker runs where the
+hypervisor and emulator are available, locally by default; a configured remote
+worker implements the same contract. It owns Android VMs and never bootstraps a
+Linux desktop, pushes workstation sudo/network policy, or inherits a desktop's
+power, reset or image lifecycle.
+
+The native provider uses the Android Emulator as the dedicated VM, with host
+adapters for Hypervisor.Framework on macOS, Windows Hypervisor Platform on
+Windows, and KVM on Linux. Determine OS, CPU, emulator package, image ABI and
+usable acceleration from capabilities and `emulator -accel-check`, rather than
+equating an OS name or device node with readiness. Keep the provider interface
+open to other local hypervisors and software emulation where an actual runtime
+supports it. Unsupported CPU/package combinations and insufficient resources
+must have an explicit capability result, never a disguised browser preview.
+Google's current package catalogue does not provide the same emulator package
+for every OS/CPU combination; this design is not a claim of universal runtime
+acceptance. See the official [acceleration guide](https://developer.android.com/studio/run/emulator-acceleration),
+[installation requirements](https://developer.android.com/studio/install), and
+[SDK package catalogue](https://dl.google.com/android/repository/repository2-3.xml).
+
+Desired device/edition and its revision are persisted by the owner-bound
+controller before boot is attempted. Status returns that choice while stopped,
+unavailable or installing. Active VM identity and active image are separate
+facts, so a failed start never rewrites the selector to a default. Each owner
+has one active Android VM; incompatible API/variant/ABI images use distinct
+persistent userdata slots, as `AccountPhone._avd_slot` already does. Switching
+images is a serialized stop/flush/select/boot operation; late results from an
+older revision cannot replace a newer choice or its stream. Re-selecting an
+image restores its own data. The SDK image cache may evict downloaded system
+images under disk pressure, but never the desired choice or private userdata.
+
+Readiness, person controls, takeover/hand-back, agent `computer` calls, stream,
+APK QA and selected-file transfer all resolve the same device worker and owner.
+The existing catalogue, bounds, button names, AVD configuration and transfer
+integrity rules remain authoritative. A native worker exposes only typed device
+operations, without generic host shell, raw SDK management or host-folder mounts.
+Ship its trusted stream renderer and input path with its provider; screenshots
+alone do not replace a usable interactive display.
+
+The trust boundary from -03 through -06 remains: independent private device
+credentials, direct authenticated device control, target verification before
+signing challenges, protected console/gRPC/Netsim endpoints, and Android/workstation
+guests kept away from the control plane while application networking works.
+Different localhost ports and an SDK smart server are not tenant isolation.
+SDK/image licence acceptance is a person's action before installation; neither
+an agent nor an image-selection request accepts it. Package installation uses
+the official host/ABI-specific archives with checked sizes and checksums and
+has no unrequested background update check.
+
+Acceptance requires independent phone routing while the desktop is off; saved
+selection across failed boots and controller restart; real image switching and
+userdata preservation; person/agent input on the same VM and coordinates;
+bounded selected transfer with readback; application networking; process cleanup;
+and two-owner control/storage isolation including guest root. Platform adapter
+unit tests establish selection logic, not real hypervisor or Android acceptance.
+The current local change fixes the offline image-preference save and workspace
+layout. The portable native provider and its real-runtime acceptance are still
+tracked as open in B2106; this decision does not label them implemented.
+
+The local Mac continuation has demonstrated the radio transport to investigate:
+one owner-specific Netsim in a read-only, network-none Docker container, with no
+published raw SDK ports. A fresh owner-specific credential admits only the fixed
+radio CONNECT target at a trusted host relay; the relay reaches Netsim through
+Docker's local exec transport. The installed SDK's `grpc_proxy` supports this
+authentication, and real Android Bluetooth reached ON. Independent radio
+credentials rejected cross-owner workstation-root attempts. These are disposable
+proofs outside product source, not a production worker or complete isolation
+acceptance. The relay must bound unauthenticated concurrency and total header
+time, preserve cleanup after failed startup/log capture, and never expose the
+Docker API or its own credential to a guest. Rooted Goldfish TCP/Unix-pipe probes
+against disposable markers, all SDK control endpoints and two real guests still
+precede integration. Normal Slirp application networking does not intrinsically
+require a custom VPN: reachable management ports must be independently
+authenticated or genuinely private, as the existing VM policy already requires.
+
+The standard Google APIs ARM35 image falsified a further native assumption:
+its default ADB listener answered CNXN without an AUTH challenge. The private
+client refuses that state before signing or executing a command. Boot-property
+switches did not make it authenticated. A separately derived boot-policy
+ramdisk is being tested while preserving the original SDK files; no such
+policy is accepted until authentication is observed from boot and after a
+root-daemon restart, with real distinct-key rejection and trusted controls.
+Keep this native-only refusal; the existing Linux VM's outer isolation is
+unchanged. Image cache eviction under the owner's disk budget never removes
+private userdata or its pinned restore package record.
+
+
+**D-2026-11-09-07 continuation: native device integration.** The dedicated host now reuses AccountPhone's catalogue, validation, transfer and marks; an allowlisted phone-only worker exposes no host shell/files. App-side desired choice is separate from active VM state, and phone takeover is independent of desktop takeover. Choice synchronization is serialized; an agent must pass the worker's atomic holder check before changing saved intent. Native phone calls do not inherit a desktop Computer Use acceptance. Cold-boot tests cover a Python-decoded, concatenated SDK ramdisk with only an appended ADB-auth policy; the original SDK files stay unchanged. The verified SDK vendor's engineering public key is trusted along with its OS code; this is cross-owner isolation under vendor trust, not exclusive-owner authorization.
+
+The SDK transparent HTTP proxy was rejected as the network boundary because its setup/fallback can permit direct connections. WiFiPacketStream instead carries packets to this VM's private Docker Netsim service. The existing netrules Internet policy applies before Netsim drops all Linux capabilities and runs as UID501; its private loopback remains available for Slirp's signal pipe. No raw Netsim port is published. SDK legacy networking stays restricted. Public HTTP succeeded from the real guest. Rooted guest TCP/UDP to owned host listeners were refused, with specific destination counters (2 TCP packets,1 UDP packet); trusted namespace controls reached both listeners. Workstation-root raw-radio reach timed out. These checks do not establish two-live-guest or Windows/Linux acceptance.
+
+The installer retains pinned archive URL, size, SHA1/SHA256 and licence identity across immutable-ROM eviction; image-specific userdata and keys are preserved. Stop invalidates an install generation so a late download cannot resurrect the VM. Source-level routing/protocol suites pass; actual app UI/image-switch acceptance is still in progress and tracked on B2106.
+
+## D-2026-11-11-01 - the owner's rulings on the 2026-11-11 change analysis
+
+The owner answered § 7 of the change analysis of 2026-11-11 on the same day.
+Each ruling below is his, in his words where they are short.
+
+1. **`B2097` Nobody mode.** *"Nobody mode is 'incognito' which should
+   'discard' everything in that session."* Nothing a Nobody chat makes is
+   kept: pictures are shown and not saved, every tool that writes what
+   Pantheon keeps is withheld, and every way a chat ends deletes what it held.
+   What stays open is the owner's next call: workspace and exec tools,
+   `send_email`, admin tools and user-added MCP tools still run in Nobody.
+2. **`B2098` skill publishing.** The floor for a learned skill to publish
+   itself is at least 0.85. *"Any imported skill gets auto-published. Custom
+   built skills and low-confidence system generated skills get dry-runs or
+   corrective review before published (manually)."*
+3. **`B2099`** fixed as filed.
+4. **`B2100`** a built-in task runs on the model it picked, and *"user should
+   be able to override"*: the Settings switch `task_model_over_task_choice`
+   puts the Background Tasks model back over every pick. It is off.
+5. **`B2101`** fixed as filed: a Forge launch renames only a row the Forge
+   named, and Settings can rename an endpoint.
+6. **`B2102`** fixed as filed: the mail Test does not reach the box itself,
+   loopback, link-local or private addresses.
+7. **The claimed port rows close on CI evidence.** A row whose `Verify:` names
+   tests that pass in the suite on `dev` is done; a row whose test runs only in
+   a browser CI does not install stays claimed and says so.
+8. **CI on `dev`.** *"dev does get CI and it will merge to main before
+   Windows/Linux worker acceptance."* Pull requests into `dev` always ran CI;
+   pushes to `dev` did not until PR #61 (the owner, 2026-11-11: *"Add dev to
+   CI"*).
+9. **Code-scanning alerts** `#526`, `#528`, `#530`, `#531` and `#536` are false
+   positives to dismiss. *"Dismiss false-positives."*

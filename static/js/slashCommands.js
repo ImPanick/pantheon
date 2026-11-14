@@ -2226,7 +2226,9 @@ async function _cmdTts(args, ctx) {
     const res = await fetch(`${API_BASE}/api/tts/synthesize`, {
       method: 'POST', credentials: 'same-origin',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text, format: 'base64' })
+      // `B2097`: in Nobody, spoken and not kept in the speech cache.
+      body: JSON.stringify(Object.assign({ text, format: 'base64' },
+        document.getElementById('incognito-toggle')?.checked ? { incognito: true } : {}))
     });
     if (res.ok) {
       const data = await res.json();

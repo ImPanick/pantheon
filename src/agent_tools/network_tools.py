@@ -251,3 +251,18 @@ class NetworkTool:
     async def execute(self, content: str, ctx: Optional[dict] = None) -> Dict[str, Any]:
         c = ctx or {}
         return await run_network(content, owner=c.get("owner"), agent_id=c.get("agent_id"))
+
+
+def unavailable_reason(owner, *, delegated_credential=False):
+    """The network tool still needs the desktop host, even with a native phone."""
+    if delegated_credential:
+        return "An API token cannot use the workstation network."
+    from src.workstation_access import workstation_for
+    from src.workstation_client import WorkstationError
+    try:
+        workstation_for(owner)
+    except WorkstationError as error:
+        return error.message
+    except Exception:
+        return "Pantheon could not read the workstation settings."
+    return None

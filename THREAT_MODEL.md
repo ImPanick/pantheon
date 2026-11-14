@@ -185,20 +185,47 @@ These are open, acknowledged, and contributor help is welcome. Each one was re-c
 
 3. **Prompt-injection hardening is a convention, not an enforced boundary.** `untrusted_context_message` has to be *called*. Nothing in the type system or the test suite proves that every path carrying external content into the LLM goes through it — a new tool that returns fetched text and injects it directly is a security bug that compiles, imports and passes review. The list of surfaces above is maintained by hand.
 
-4. **A phone's adb is on the workstation's shared loopback** (`B1751`). Each person's phone
-   (`workstation/phone.py`) is an Android emulator run as their account, and its adb port listens on the
-   container's loopback, which every account there shares. Its console asks for a token kept in the
-   person's home, its port is above the range adb scans by itself, and each account has its own adb
-   server; but an account that knows the port can `adb connect` to another person's phone, whose
-   Google APIs image does not ask adb for a key. With `sudo` on (the default) this adds nothing — every
-   account is root in the workstation already. With `sudo` off it is a way into another person's phone.
-   The fix is a rule in the network gate (`workstation/gate.py`; `netrules.py` already writes per-uid rules) that
-   admits a phone's two ports to its own account's uid alone.
+4. **Android needs a machine boundary, not different loopback ports** (`B1751`,
+   uplift 2026-11-08). Earlier daemons ran everyone's emulator in one shared
+   workstation. A separate ADB server/port and console token did not prevent
+   another Unix account connecting directly to a Google APIs emulator's ADB port;
+   with sudo, another home and device disk were reachable too. The current daemon
+   refuses Android on the shared backend and permits it only in the per-user VM
+   backend. That boundary has separate kernels, disks and machine-specific daemon
+   tokens. Only authenticated port 7040 is forwarded; ADB server, console and
+   device ports stay in the guest. The QEMU host alias can reach other guests'
+   forwarded daemon ports, so unique tokens remain essential. Root in one guest
+   can read its own token but must receive 401 from every other guest. Host admins
+   and the user's own agents remain trusted with that user's device/account.
+   Older deployed daemons retain the shared-loopback exposure until updated;
+   stopping sudo alone is insufficient. The current client refuses Android,
+   its screenshots/stream and start-capable actions without per-user isolation
+   metadata **and an operator-configured VM endpoint**, for both person and agent
+   callers. A shared-root daemon cannot grant itself that role in JSON. Automatic
+   selection must match the configured VM URL; a stored custom URL needs an
+   explicit VM backend choice. The VM host, its token and Pantheon's configuration
+   remain outside guest/shared-workstation root and are trusted. Stop remains available. A legacy
+   browser start is never used as a preview: KVM appearing must not start Android.
+   A browser preview is still a shared
+   workstation browser and carries no claim of Android isolation. Actual Android
+   acceptance and guest KVM must be verified separately from HTTP/token and
+   hypervisor isolation tests; nested accelerated Android is experimental here.
+   The VM host must use KVM too: a TCG guest can expose an emulated KVM device.
+
+   File transfer accepts selected bytes, not host paths or mounts, into the
+   authenticated caller's running Android. Owned-document checks include legacy
+   session ownership. Private temporary staging uses the account's filesystem
+   identity and no-follow/exclusive creation, bounded by `MAX_FILE_BYTES`; fixed
+   Android Downloads destinations, quoted remote shell paths and a returned
+   SHA-256 guard completion. A document's embedded source-upload marker grants
+   no access to its referenced file. A rooted Android device or the user's own
+   VM root may alter that user's storage; neither may select another user's VM.
 
 ### Closed gaps
 
 - ~~**An admin's webhook could not reach anything the operator runs.**~~ Decided (`B692`, `D-2026-10-26-01` §2). A webhook an admin types may point at the LAN, a tailnet (CGNAT) or an IPv6 ULA — n8n, Home Assistant — and the route logs that it does; loopback, link-local (cloud metadata), multicast and the unspecified address stay refused, and delivery stays pinned to the addresses that were checked, so a name that rebinds to loopback is refused at the socket. The agent's own `webhooks add` keeps the public-only rule, now with CGNAT in it.
 
+- ~~**The mail account form's Test as a port scanner.**~~ Fixed (`B2102`). Any member could aim the Test, or a saved account, at the Pantheon box or the LAN and tell an open port from a closed one by the answer. Every mail connection (the Test, the inbox check and list, every send, the certificate read for *Trust this certificate*, and the agent's mail tools) now opens its socket through `src/mail_reach.py`: the name is resolved once, every address it resolved to is checked, and the connection goes to a checked address while TLS still sees the typed name, so a rebinding name is never connected to on its second answer. Without `can_reach_private_mail` (admins hold it; an admin may grant it) only a public address on a mail port is reached; loopback, this host's own addresses, the private ranges, CGNAT and ULA are refused before any socket, with one sentence whatever listens there. Link-local and the cloud metadata hosts are refused to everyone. Account saves refuse such a host or port as typed.
 - ~~**SSRF via `/api/v1/chat` `base_url`.**~~ Fixed. `routes/webhook/webhook_routes.py:311` passes a token-supplied `base_url` through `src/url_security.py:validate_public_http_url` and returns `400` on rejection. Auto-resolved known-provider URLs and admin-configured LAN endpoints are deliberately still allowed, which is the `Law 17` position — a self-hoster pointing at their own Ollama is the intended case.
 - ~~**`src/search/` partial consolidation.**~~ Fixed. All seven modules under `src/search/` are now shims over `services.search`: `analytics`, `cache`, `content`, `core`, `providers` and `query` alias by `sys.modules` replacement, and `ranking` re-exports. None holds a parallel implementation, so there is nothing left to drift.
 - ~~**Coarse token scopes.**~~ Partly fixed, and what remains is gap 2 above. The claim that tokens carried "either `chat` or `admin` scope" is no longer true; there is no `admin` scope in `ALLOWED_SCOPES` at all.

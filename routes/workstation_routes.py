@@ -154,6 +154,7 @@ real in the image and about 20 ms a grab there against 65–70 ms for PNG
 from __future__ import annotations
 
 import asyncio
+import base64
 import logging
 import re
 from typing import Any, Dict, Optional
@@ -180,6 +181,7 @@ _STATUS_FOR = {
     "unavailable": 503,
     "not_found": 404,
     "bad_request": 400,
+    "license": 409,
 }
 
 
@@ -805,6 +807,26 @@ def setup_workstation_routes() -> APIRouter:
             out["pointed"] = _pointed(answer["pointed"])
         return out
 
+    def _phone_mine(request):
+        from src.phone_runtime import phone_for
+        owner = require_user(request)
+        try:
+            return phone_for(owner, auth_manager=_auth_manager(request))
+        except WorkstationError as error:
+            raise _http_error(error)
+
+    @router.post("/phone/control")
+    async def workstation_phone_control(request: Request):
+        client, account = _phone_mine(request)
+        body = await _body(request)
+        if body.get("holder") not in P.HOLDERS:
+            raise HTTPException(400, "holder is person or agent.")
+        try:
+            answer = await client.control(account, body["holder"])
+        except WorkstationError as error:
+            raise _http_error(error)
+        return JSONResponse(_holder_answer(answer.get("holder"), changed=True), headers=_NO_STORE)
+
     # ── `B1751`: the phone ─────────────────────────────────────────────────────
 
     @router.get("/phone")
@@ -812,27 +834,35 @@ def setup_workstation_routes() -> APIRouter:
         """The caller's own phone: whether this workstation can run one (and
         why not), the devices it can be, which one is chosen, and its state.
         Starts nothing."""
-        client, account = _mine(request)
+        client, account = _phone_mine(request)
         try:
             answer = await client.phone(account, "status", holder="person")
         except WorkstationError as e:
             if e.code != "unavailable":
                 raise _http_error(e)
             answer = {"available": False, "state": "unavailable", "why": e.message}
-        return JSONResponse(_phone_state(answer), headers=_NO_STORE)
+        from src.phone_usb import status as usb_status
+        shaped = _phone_state(answer)
+        shaped['usb'] = usb_status(require_user(request),(shaped['device'],shaped['edition']))
+        return JSONResponse(shaped, headers=_NO_STORE)
 
     @router.post("/phone")
     async def workstation_phone_act(request: Request):
         """The person's own hand on their phone: turn it on or off, choose the
         device, press a side or navigation key, fold it, turn it, open an
         address. Touch itself travels in the stream, while they hold it."""
-        client, account = _mine(request)
+        client, account = _phone_mine(request)
         body = await _body(request)
         action = body.get("action")
         if action not in _PHONE_PERSON_ACTIONS:
             raise HTTPException(400, f"“action” is one of {', '.join(_PHONE_PERSON_ACTIONS)}.")
         fields = {k: body[k] for k in _PHONE_FIELDS if k in body}
         try:
+            if action in ("start", "install", "preview", "edition", "device"):
+                # VM startup and SDK installation are command/file traffic:
+                # sync policy and learn the VM cold-start timeout first.
+                if not getattr(client, "native_android", False):
+                    await wa.sync_config(client)
             answer = await client.phone(account, action, holder="person", **fields)
         except WorkstationError as e:
             raise _http_error(e)
@@ -844,7 +874,7 @@ def setup_workstation_routes() -> APIRouter:
         """Whether the caller's phone's screen streams now, who holds it, and
         the client's page pointed at the stream below; or why not."""
         from src import desktop_client
-        client, account = _mine(request)
+        client, account = _phone_mine(request)
         try:
             answer = await client.phone_screen(account)
         except WorkstationError as e:
@@ -860,6 +890,89 @@ def setup_workstation_routes() -> APIRouter:
             out["why"] = str(answer.get("why") or "The phone has no live screen.")[:500]
         return JSONResponse(out, headers=_NO_STORE)
 
+    @router.post("/phone/usb")
+    async def workstation_phone_usb(request: Request):
+        client, account = _phone_mine(request)
+        owner = require_user(request)
+        body = await _body(request)
+        if set(body) != {"action"} or body.get("action") not in ("connect", "eject"):
+            raise HTTPException(400, "Choose connect or eject.")
+        from src import phone_usb
+        try:
+            answer = await phone_usb.connect(owner, client, account) if body["action"] == "connect" else await phone_usb.eject(owner)
+        except (RuntimeError, ValueError, OSError, WorkstationError) as error:
+            raise HTTPException(409, str(error))
+        return JSONResponse(answer, headers=_NO_STORE)
+
+    @router.get("/phone/usb/file")
+    async def workstation_phone_usb_file(request: Request, name: str):
+        _phone_mine(request)
+        from src.phone_usb import download
+        from urllib.parse import quote
+        try:
+            data = await download(require_user(request), name)
+        except (RuntimeError, ValueError, OSError) as error:
+            raise HTTPException(409, str(error))
+        return Response(data, media_type="application/octet-stream", headers={**_NO_STORE,
+            "Content-Disposition": "attachment; filename*=UTF-8''" + quote(name, safe="")})
+
+    @router.post("/phone/files")
+    async def workstation_phone_file(request: Request, name: str = ""):
+        """Selected bytes only, into the caller's phone; never a host mount.
+
+        An octet stream is a custom upload. JSON names one owned document to
+        export as its current text. Neither form accepts an owner or a path.
+        """
+        client, account = _phone_mine(request)
+        try:
+            if not getattr(client, "native_android", False):
+                await wa.sync_config(client)
+            status = await client.phone(account, "status", holder="person")
+            if status.get("isolation") != "per_user_vm":
+                raise HTTPException(409, "File transfer requires the per-user VM Android runtime.")
+            if status.get("mode") != "android" or status.get("state") != "on":
+                raise HTTPException(409, "Turn on Android before transferring files. Browser preview has no Android storage.")
+            content_type = request.headers.get("content-type", "").split(";", 1)[0].strip().lower()
+            if content_type not in ("application/json", "application/octet-stream"):
+                raise HTTPException(415, "Send a file as application/octet-stream or a document selection as JSON.")
+            limit = 4096 if content_type == "application/json" else P.MAX_FILE_BYTES
+            raw = bytearray()
+            async for chunk in request.stream():
+                if len(raw) + len(chunk) > limit:
+                    raise HTTPException(413, f"This transfer exceeds {limit} bytes.")
+                raw.extend(chunk)
+            if content_type == "application/json":
+                import json
+                try:
+                    selection = json.loads(raw)
+                except (ValueError, UnicodeError):
+                    raise HTTPException(400, "Select one document by document_id.")
+                if (not isinstance(selection, dict) or set(selection) != {"document_id"}
+                        or not isinstance(selection["document_id"], str) or not selection["document_id"]):
+                    raise HTTPException(400, "Select one document by document_id.")
+                from src.auth_helpers import require_privilege
+                from src.feature_gate import require_feature
+                require_feature("document_editor", label="The document editor")()
+                owner = require_privilege(request, "can_use_documents")
+                data, name = await asyncio.to_thread(_phone_document, selection["document_id"], owner)
+            else:
+                data = bytes(raw)
+            if len(data) > P.MAX_FILE_BYTES:
+                raise HTTPException(413, f"Each transfer is at most {P.MAX_FILE_BYTES} bytes.")
+            from src import phone_usb
+            if phone_usb.status(require_user(request)).get('connected'):
+                try:answer = await phone_usb.upload(require_user(request), name, data)
+                except (RuntimeError, ValueError, OSError) as error:raise HTTPException(409, str(error))
+            else:
+                answer = await client.phone(account, "transfer", holder="person", name=name,
+                                            data_b64=base64.b64encode(data).decode("ascii"))
+        except WorkstationError as e:
+            raise _http_error(e)
+        return JSONResponse({"ok": answer.get("ok") is True, "name": str(answer.get("name") or "")[:180],
+                             "queued": answer.get("queued") is True,
+                             "bytes": answer.get("bytes"), "sha256": str(answer.get("sha256") or "")[:64],
+                             "destination": str(answer.get("destination") or "")[:500]}, headers=_NO_STORE)
+
     @router.websocket("/phone/websockify")
     async def workstation_phone_stream(websocket: WebSocket):
         """The phone screen's stream, relayed as the browser's is: the
@@ -869,7 +982,7 @@ def setup_workstation_routes() -> APIRouter:
             await websocket.close(code=4401)
             return
         try:
-            client, account = _mine(websocket)  # type: ignore[arg-type]
+            client, account = _phone_mine(websocket)  # type: ignore[arg-type]
         except HTTPException as e:
             await websocket.close(code=4403, reason=_close_reason(str(e.detail)))
             return
@@ -935,11 +1048,11 @@ def _close_reason(text: str) -> str:
 
 async def _close_quietly(websocket: WebSocket, code: int, reason: str) -> None:
     """Close a desktop websocket that may already be closed, or never accepted."""
-    from starlette.websockets import WebSocketState
+    from starlette.websockets import WebSocketDisconnect, WebSocketState
     try:
         if websocket.application_state != WebSocketState.DISCONNECTED:
             await websocket.close(code=code, reason=_close_reason(reason))
-    except (RuntimeError, OSError):
+    except (RuntimeError, OSError, WebSocketDisconnect):
         pass
 
 
@@ -1024,8 +1137,29 @@ _BROWSER_FIELDS = ("url", "x", "y", "text", "submit", "keys", "dx", "dy", "tab",
 # the daemon validates every one (`workstation/phone.py`). Touch is not here:
 # it is the stream's, while the person holds the screens.
 _PHONE_PERSON_ACTIONS = ("start", "stop", "device", "button", "posture", "rotate", "open_url",
-                         "install")
-_PHONE_FIELDS = ("device", "button", "posture", "url", "accept_license")
+                         "install", "preview", "edition")
+_PHONE_FIELDS = ("device", "button", "posture", "url", "accept_license", "edition")
+
+
+def _phone_document(document_id: str, owner: str):
+    """The existing document ownership check, also for session-backed legacy rows."""
+    from core.database import SessionLocal, Document
+    from routes.document_helpers import _verify_doc_owner
+    from src.file_names import display_name
+    db = SessionLocal()
+    try:
+        doc = db.query(Document).filter(Document.id == document_id).first()
+        if doc is None:
+            raise HTTPException(404, "Document not found")
+        _verify_doc_owner(db, doc, owner)
+        # This exports the current editable text. Binary originals can be
+        # selected in Upload file; no PDF/source marker grants file access.
+        title = display_name(doc.title or "document")
+        title = title.encode("utf-8")[:150].decode("utf-8", "ignore").strip(" .-") or "document"
+        extension = ".md" if doc.language == "markdown" else ".txt"
+        return (doc.current_content or "").encode("utf-8"), title + extension
+    finally:
+        db.close()
 
 
 _HEX = re.compile(r"^#[0-9a-fA-F]{6}$")
@@ -1066,8 +1200,14 @@ def _phone_state(answer: Dict[str, Any]) -> Dict[str, Any]:
                             "kind": d.get("kind") if d.get("kind") in ("phone", "foldable", "tablet") else "phone",
                             "foldable": bool(d.get("foldable")),
                             # `B1756`: whether picking it boots it now or installs it first.
-                            "installed": d.get("installed") is not False,
+                            "installed": d.get("installed") is True,
                             "android": str(d.get("android") or "")[:40],
+                            "width": P.PHONE_DEVICES[d["id"]]["width"],
+                            "height": P.PHONE_DEVICES[d["id"]]["height"],
+                            "density": P.PHONE_DEVICES[d["id"]]["density"],
+                            "cover_width": P.PHONE_DEVICES[d["id"]].get("cover_width"),
+                            "cover_height": P.PHONE_DEVICES[d["id"]].get("cover_height"),
+                            "fold_axis": P.PHONE_DEVICES[d["id"]].get("fold_axis", "vertical"),
                             "look": _phone_look(d.get("look"))})
     if not devices:
         devices = [{"id": k, "name": v["name"], "maker": v["maker"], "kind": v["kind"],
@@ -1086,6 +1226,20 @@ def _phone_state(answer: Dict[str, Any]) -> Dict[str, Any]:
         "rotation": answer.get("rotation") if answer.get("rotation") in (0, 1, 2, 3) else 0,
         "android": str(answer.get("android") or "")[:120],
         "buttons": list(P.PHONE_BUTTONS),
+        "stream_ready": answer.get("stream_ready") is True,
+        "preview_available": answer.get("preview_available") is True,
+        "can_start": answer.get("can_start") is True,
+        "edition": answer.get("edition") if answer.get("edition") in P.PHONE_EDITIONS else "standard",
+        "image_kind": answer.get("image_kind") if answer.get("image_kind") in
+                      ("google_apis", "google_play", "aosp", "custom") else "custom",
+        "standard_image_kind": answer.get("standard_image_kind") if answer.get("standard_image_kind") in
+                               ("google_apis", "google_play", "aosp", "custom") else "custom",
+        "google_play": answer.get("google_play") is True,
+        "isolation": "per_user_vm" if answer.get("isolation") == "per_user_vm" else "shared",
+        "transfer_max_bytes": P.MAX_FILE_BYTES,
+        "screen_is_active": answer.get("screen_is_active") is True,
+        "boot_phase": answer.get("boot_phase") if answer.get("boot_phase") in
+                      ("off", "emulator", "android", "browser", "ready") else "off",
     }
     # `B1753`: Android, or the mobile view where there is no KVM, and why.
     out["mode"] = answer.get("mode") if answer.get("mode") in P.PHONE_MODES else None
@@ -1093,7 +1247,7 @@ def _phone_state(answer: Dict[str, Any]) -> Dict[str, Any]:
         out["why_not_android"] = str(answer.get("why_not_android") or "")[:500]
         out["user_agent"] = str(answer.get("user_agent") or "")[:200]
     # `B1756`: the install a pick starts, and the licence it needs once.
-    out["installed"] = answer.get("installed") is not False
+    out["installed"] = answer.get("installed") is True
     lic = answer.get("license") if isinstance(answer.get("license"), dict) else {}
     out["license"] = {"accepted": bool(lic.get("accepted")),
                       "url": "https://developer.android.com/studio/terms"}

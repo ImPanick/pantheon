@@ -71,6 +71,7 @@ async def run_auto_sort(owner: str, skip_llm: bool = False, delete_throwaway: bo
     Returns a human-readable summary of what was done.
     """
     from core.database import SessionLocal, Session as DbSession, ChatMessage as DbMsg
+    from src import nobody_mode
     from src.llm_core import llm_call_async
     from src.task_endpoint import resolve_task_endpoint
 
@@ -91,8 +92,15 @@ async def run_auto_sort(owner: str, skip_llm: bool = False, delete_throwaway: bo
                 continue
             created_at = _as_naive_utc(row.created_at or row.updated_at) or _utcnow_naive()
             is_fresh = (_utcnow_naive() - created_at) < _FRESH_EMPTY_SESSION_GRACE
-            if (row.name or "").strip() == "Incognito":
+            # `B2097`. A Nobody chat goes whole, by either of its names — the
+            # browser has called it *Nobody* since the rename, and this read
+            # only *Incognito*, so a Nobody chat waited for the empty-chat rule.
+            # One still in use is left to its own end (the browser deletes it).
+            if nobody_mode.is_nobody_session_name(row.name):
+                if is_fresh or is_session_recently_active(row, now=cleanup_now):
+                    continue
                 deleted_throwaway += 1
+                nobody_mode.forget_session(db, row.id)
                 db.delete(row)
                 continue
             if is_session_recently_active(row, now=cleanup_now):
@@ -157,7 +165,7 @@ async def run_auto_sort(owner: str, skip_llm: bool = False, delete_throwaway: bo
 
         session_list = []
         for row in remaining:
-            if row.name == "Incognito":
+            if nobody_mode.is_nobody_session_name(row.name):   # `B2097`
                 continue
             session_list.append({
                 "id": row.id,

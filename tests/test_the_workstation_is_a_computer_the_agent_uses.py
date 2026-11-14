@@ -80,7 +80,7 @@ def _tainted(**fields) -> ToolRunSecurityContext:
 
 def _inside(*tools):
     """A lookup that says these tools run inside the workstation."""
-    return lambda tool: tool in tools
+    return lambda tool, content: tool in tools
 
 
 CLICK = json.dumps({"action": "click", "x": 640, "y": 400})
@@ -169,7 +169,7 @@ def test_a_command_that_deletes_asks_with_auto_on_too():
 def test_nothing_outside_the_workstation_is_lifted(tool, content):
     """Even when a careless lookup says *everything* is inside: the gate
     lifts only the workstation's own tools (`WORKSTATION_LIFTED_TOOLS`)."""
-    run_ = _tainted(workstation_lift=True, workstation_lookup=lambda t: True)
+    run_ = _tainted(workstation_lift=True, workstation_lookup=lambda t, content: True)
     decision = run_.decision_for(tool, content)
     assert decision.workstation_approved is False
     assert decision.allowed is False
@@ -178,7 +178,7 @@ def test_nothing_outside_the_workstation_is_lifted(tool, content):
 @pytest.mark.parametrize("lookup", [
     _inside(),                                # this call runs here, not there
     None,                                     # nobody said where it runs
-    lambda tool: (_ for _ in ()).throw(RuntimeError("cannot tell")),
+    lambda tool, content: (_ for _ in ()).throw(RuntimeError("cannot tell")),
 ])
 def test_a_call_not_known_to_run_inside_asks(lookup):
     """`agent_browser` on Pantheon's own browser, a shell tool the
@@ -244,7 +244,7 @@ def test_a_cleared_browser_step_is_not_run_on_pantheons_own_browser(monkeypatch)
     assert te._inside_workstation_now("agent_browser", ADMIN, False) is False
     monkeypatch.setattr(lb, "browser_for", lambda owner, **k: (object(), "pw-x"))
     assert te._inside_workstation_now("agent_browser", ADMIN, False) is True
-    assert te._inside_workstation_now("computer", ADMIN, False) is True
+    assert te._inside_workstation_now("computer", ADMIN, False, CLICK) is True
     assert te._inside_workstation_now("bash", ADMIN, True) is True
     assert te._inside_workstation_now("bash", ADMIN, False) is False
 
@@ -441,7 +441,7 @@ def test_the_loop_resolves_the_lift_offers_the_screen_and_records_the_step():
     source = inspect.getsource(al.stream_agent_loop)
     assert "workstation_lift_for, owner, delegated_credential=bool(delegated_credential)" in source
     assert "workstation_lift=_workstation_lift" in source
-    assert "_runs_in(tool, owner) == RUNS_IN_WORKSTATION" in source
+    assert "_runs_in(tool, owner, content) == RUNS_IN_WORKSTATION" in source
     assert '_relevant_tools.add("computer")' in source
     assert "computer_use=_workstation_lift" in source
     assert '"workstation_approved": True' in source

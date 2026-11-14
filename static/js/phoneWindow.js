@@ -31,26 +31,63 @@
 
 import * as Modals from './modalManager.js?v=20261009census';
 import { makeWindowDraggable } from './windowDrag.js';
+import { prefersReducedMotion } from './motion.js';
 
 export const MODAL_ID = 'phone-modal';
 
-const TIMING = { STATE_MS: 2500, BOOTING_MS: 1500, HOLDER_MS: 4000 };
+const TIMING = { STATE_MS: 2500, BOOTING_MS: 1500, HOLDER_MS: 4000, MOTION_MS: 650 };
 const LIVE_CLIENT = '/api/workstation/desktop/client/';
 
 const PHONE_ICON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" '
   + 'stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" '
   + 'aria-hidden="true"><rect x="6" y="2" width="12" height="20" rx="2.5"/><path d="M11 18h2"/></svg>';
 
+// The controls' glyphs: constants, never server text. Back, Home and Recents
+// are Android's own (a triangle, a circle, a square), so they read as the
+// phone's keys, not the window's.
+const GLYPHS = {
+  back: [['path', {d: 'M16.5 5.5v13L6 12z'}]],
+  home: [['circle', {cx: '12', cy: '12', r: '6.2'}]],
+  recents: [['rect', {x: '6.2', y: '6.2', width: '11.6', height: '11.6', rx: '2'}]],
+  rotate: [['path', {d: 'M19.5 12a7.5 7.5 0 1 1-2.2-5.3'}], ['path', {d: 'M19.8 4.2v4.5h-4.5'}]],
+  fold: [['rect', {x: '4', y: '5', width: '16', height: '14', rx: '2'}], ['path', {d: 'M12 5v14', 'stroke-dasharray': '1.6 2.2'}]],
+  unfold: [['rect', {x: '7', y: '5', width: '10', height: '14', rx: '2'}], ['path', {d: 'M3.5 12h2M18.5 12h2'}]],
+  half: [['path', {d: 'M4.5 19.5h15M4.5 19.5V5.5'}], ['path', {d: 'M4.5 19.5l9.5-9.5', 'stroke-dasharray': '1.6 2.2'}]],
+  power: [['path', {d: 'M12 3.8v7.4'}], ['path', {d: 'M7.2 6.7a7 7 0 1 0 9.6 0'}]],
+  hand: [['path', {d: 'M8.5 12.5V6.8a1.3 1.3 0 0 1 2.6 0V11M11.1 10.6V5.4a1.3 1.3 0 0 1 2.6 0v5.2M13.7 10.6V6.9a1.3 1.3 0 0 1 2.6 0v6.6a6 6 0 0 1-6 6h-.5a5 5 0 0 1-3.9-1.9l-2.4-3a1.4 1.4 0 0 1 2.1-1.8l1.3 1.4'}]],
+  giveback: [['path', {d: 'M9 7.5L4.5 12 9 16.5'}], ['path', {d: 'M4.8 12h9.7a5 5 0 0 1 0 10'}]],
+  usb: [['path', {d: 'M12 3.5v13'}], ['path', {d: 'M9.6 6L12 3.5 14.4 6'}], ['path', {d: 'M12 13.2l-3.6-2.1V8.6'}], ['circle', {cx: '8.4', cy: '7.6', r: '1'}], ['path', {d: 'M12 11.4l3.6-2V7.2h-1.8v-1.8h3.6v1.8h-1.8'}], ['circle', {cx: '12', cy: '18.3', r: '2'}]],
+  chip: [['rect', {x: '7', y: '3', width: '10', height: '18', rx: '2.4'}], ['path', {d: 'M10.8 18h2.4'}]],
+};
+const SVG_NS = 'http://www.w3.org/2000/svg';
+/** A glyph, built as nodes rather than parsed from markup: the title's phone
+ *  icon stays the window's one parsed constant. */
+function _glyph(name, cls = 'ctl-i') {
+  const svg = document.createElementNS(SVG_NS, 'svg');
+  for (const [k, v] of Object.entries({ class: cls, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor',
+    'stroke-width': '1.7', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'aria-hidden': 'true' })) svg.setAttribute(k, v);
+  for (const [tag, attrs] of GLYPHS[name] || []) {
+    const el = document.createElementNS(SVG_NS, tag);
+    for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+    svg.appendChild(el);
+  }
+  return svg;
+}
+
+/** `PHW-CTL`: the one-time note on where the hardware keys went. Cleared by
+ *  the tours' *Replay* (`tourAutoplay.js` `HINT_KEYS`). */
+export const PHONE_CONTROLS_HINT_KEY = 'pantheon-hint-phone-controls-v1';
+
 const SAY = {
   checking: 'Looking for your phone…',
   off: 'Your phone is off. Press Power to turn it on.',
-  starting: 'Your phone is booting. The first boot of a device takes a minute or two.',
+  starting: 'Android is booting. Its live display appears as soon as it is available.',
   on: 'Ready.',
   holding: 'You have the phone: click to tap, drag to swipe, scroll to fling, right click for Back.',
   agent: 'The agent has the screens. Click the phone or Take over to use it yourself.',
   // `B1753`: where there is no KVM, the phone is a phone-shaped browser.
   mobileStarting: 'Opening the mobile view…',
-  mobile: 'Mobile view: web pages only, laid out as this device shows them. The real Android needs KVM.',
+  mobile: 'Browser preview: web pages only. Android apps are unavailable in this mode.',
   // `B1756`: a device picked that the workstation does not have yet.
   installing: 'Installing the device. Pantheon downloads its Android image, then turns it on.',
   moved: 'Your phone is open in its own window. Close it there to use it here.',
@@ -69,8 +106,10 @@ export function catalogueOf(state) {
     if (!g) { g = { maker: d.maker || '', devices: [] }; groups.push(g); }
     const current = d.id === s.device;
     // The mobile view has nothing to install: it is the workstation's browser.
-    const installed = mobile || d.installed === true;
+    const installed = d.installed === true;
     let verb = installed ? 'Use this device' : 'Install and use';
+    if (!s.mode) verb = 'Select profile';
+    if (mobile) verb = 'Preview this profile';
     if (current && (s.state === 'on' || s.state === 'starting')) verb = 'In use';
     else if (current && s.state === 'installing') verb = 'Installing…';
     g.devices.push({
@@ -101,6 +140,7 @@ export function installLine(state) {
 export function needsLicense(state, id) {
   const s = state || {};
   if (isMobileView(s)) return false;
+  if ((s.edition === 'google_play' || s.google_play) && !(s.license && s.license.accepted === true)) return true;
   const d = (Array.isArray(s.devices) ? s.devices : []).find((x) => x.id === id);
   if (!d || d.installed === true) return false;
   return !(s.license && s.license.accepted === true);
@@ -126,6 +166,42 @@ let _timer = null;
 let _busy = false;       // a press on its way
 let _room = null;        // `B1756`: the Phone room's host, while it is mounted
 let _pending = '';       // `B1756`: a device waiting on the license's Accept
+let _pose = null;
+let _animations = [];
+let _screenKey = '';
+let _error = '';
+let _sending = false;
+let _transferText = '';
+let _revision = 0;
+let _pollSequence = 0;
+let _actionSequence = 0;
+let _controlSequence = 0;
+let _controlTail = Promise.resolve();
+const _pendingTakeovers = new Map();
+
+/** Keep runtime identity in view even while a person holds the screen. */
+export function runtimeOf(state) {
+  const s = state || {};
+  if (isMobileView(s)) return {
+    label: 'Browser preview · Web only',
+    detail: `Android is unavailable. ${s.why_not_android || 'This is Firefox; Android apps and the Android home screen are unavailable.'}`,
+  };
+  if (s.mode === 'android') return {
+    label: s.google_play ? 'Android · Google Play developer image' : 'Generic Android',
+    detail: (s.google_play ? 'Google Play is supplied by the separately licensed SDK image. Sign in on Android itself. '
+      : s.image_kind === 'google_apis' ? 'The Google APIs image includes Play services but no Play Store. '
+        : s.image_kind === 'aosp' ? 'This is AOSP Android without Google Play software. '
+          : 'This is the configured Android SDK image. ')
+      + 'Your agents use this same device. Profiles model size and appearance; OEM software is not included.',
+  };
+  return { label: 'Android unavailable', detail: s.why || 'Checking the workstation’s Android runtime.' };
+}
+
+/** A physical quarter-turn can wrap 270 -> 0 without spinning backwards. */
+export function rotationStep(from, to) {
+  const delta = ((to - from) % 4 + 4) % 4;
+  return delta === 3 ? -90 : delta * 90;
+}
 
 function _el(tag, cls, text) {
   const n = document.createElement(tag);
@@ -140,6 +216,31 @@ function _button(cls, text, onClick, label) {
   if (label) { b.title = label; b.setAttribute('aria-label', label); }
   b.addEventListener('click', (e) => { e.preventDefault(); onClick(); });
   return b;
+}
+
+/** An icon control: its name is its label, its tooltip and what a screen
+ *  reader says; `text` (optional) is a visible word beside the glyph. */
+function _iconButton(cls, glyph, label, onClick, text = '') {
+  const b = _el('button', `ctl-ibtn ctl-tip ${cls}`);
+  b.type = 'button';
+  b.appendChild(_glyph(glyph));
+  b.appendChild(_el('span', 'ctl-lbl', text));
+  _label(b, label);
+  b.addEventListener('click', (e) => { e.preventDefault(); onClick(); });
+  return b;
+}
+
+function _label(b, label) {
+  b.setAttribute('aria-label', label);
+  b.dataset.tip = label;
+}
+
+/** Whether the one-time controls hint may show: tours on, never dismissed. */
+function _hintWanted() {
+  try {
+    if (typeof window.pantheonToursEnabled === 'function' && window.pantheonToursEnabled() === false) return false;
+    return !localStorage.getItem(PHONE_CONTROLS_HINT_KEY);
+  } catch (_) { return false; }
 }
 
 let _noun = 'phone';   // `B1757`: "tablet" while the device is one
@@ -168,7 +269,7 @@ export function bezelShape(state) {
   const [w, h] = screen;
   const d = deviceOf(state);
   // The mobile view's screen is already the cover's shape (`B1753`).
-  if (d.foldable && state.posture === 'closed' && !isMobileView(state)) return { w: Math.round(w / 2), h };
+  if (d.foldable && state.posture === 'closed' && !isMobileView(state) && !state.screen_is_active) return { w: Math.round(w / 2), h };
   return { w, h };
 }
 
@@ -223,13 +324,14 @@ export function bodyGeometry(look, shape, W, H) {
   const f = l.bezel;
   const m = Math.min(aspect, 1);   // the short side, as a share of the screen's height
   const sh = Math.max(0, Math.min(H / (1 + 2 * f * m), W / (aspect + 2 * f * m)));
-  const rim = Math.max(4, f * m * sh);
-  const screenH = Math.floor(sh);
-  const screenW = Math.floor(sh * aspect);
+  const rim = f * m * sh;
+  const screenH = sh;
+  const screenW = sh * aspect;
   const short = Math.min(screenW, screenH) + 2 * rim;
-  const radius = Math.max(rim + 2, l.corner * short);
-  return { screenW, screenH, rim: Math.round(rim), radius: Math.round(radius),
-    inner: Math.max(2, Math.round(radius - rim * 0.85)) };
+  const unit = short / 400;
+  const radius = Math.max(rim + 2 * unit, l.corner * short);
+  return { screenW, screenH, rim, radius, unit,
+    inner: Math.max(2 * unit, radius - rim * 0.85) };
 }
 
 async function _get(url) {
@@ -240,9 +342,10 @@ async function _get(url) {
   return body;
 }
 
-async function _post(url, payload) {
+async function _post(url, payload, { keepalive = false } = {}) {
   const res = await fetch(url, {
     method: 'POST', credentials: 'same-origin', cache: 'no-store',
+    keepalive,
     headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
   });
   let body = null;
@@ -254,72 +357,188 @@ async function _post(url, payload) {
 /** One of the person's own presses on the phone. */
 export async function act(payload) {
   if (_busy) return null;
+  const win = _win, action = ++_actionSequence;
+  ++_revision;  // a pending status read predates this explicit act
   _busy = true;
+  _error = '';
   try {
     const answer = await _post('/api/workstation/phone', payload);
+    if (_win !== win || action !== _actionSequence) return null;
+    ++_revision;
     _state = answer;
+    if (['rotate', 'posture', 'device', 'install', 'stop', 'edition', 'preview'].includes(payload.action)) {
+      _dropFrame();
+      _client = '';
+    }
     _render();
     return answer;
   } catch (e) {
+    if (_win !== win || action !== _actionSequence) return null;
+    _error = e.message;
     _say(e.message, { error: true });
     return null;
   } finally {
-    _busy = false;
-    _kick(TIMING.BOOTING_MS);
+    if (_win === win && action === _actionSequence) {
+      _busy = false;
+      _kick(0);
+    }
   }
 }
 
-export function press(button) { return act({ action: 'button', button }); }
-
-export async function takeOver() {
-  try {
-    const a = await _post('/api/workstation/control', { holder: 'person' });
-    _holder = a && a.holder;
-  } catch (e) { _say(e.message, { error: true }); }
-  _render();
+function _turnOn() {
+  const s = _state || {};
+  if (isMobileView(s)) return act({ action: 'preview' });
+  if (s.can_start) return act({ action: 'start' });
+  if (needsLicense(s, s.device)) return useDevice(s.device);
+  return act({ action: 'start' });
 }
 
-export async function handBack() {
-  try {
-    const a = await _post('/api/workstation/control', { holder: 'agent' });
-    _holder = a && a.holder;
-  } catch (e) { _say(e.message, { error: true }); }
+async function _sendFile({ file = null, documentId = '' }) {
+  if (_sending || !_win || !_state || _state.state !== 'on' || isMobileView(_state)) return;
+  const win = _win;
+  if (file && file.size > (_state.transfer_max_bytes || 20000000)) {
+    _transferText = 'Choose a file of 20 MB or less.'; _render(); return;
+  }
+  _sending = true;
+  _transferText = 'Transferring to Android…';
   _render();
+  try {
+    const res = await fetch('/api/workstation/phone/files' + (file ? `?name=${encodeURIComponent(file.name)}` : ''), {
+      method: 'POST', credentials: 'same-origin', cache: 'no-store',
+      headers: { 'Content-Type': file ? 'application/octet-stream' : 'application/json' },
+      body: file || JSON.stringify({ document_id: documentId }),
+    });
+    let answer = null;
+    try { answer = await res.json(); } catch (_) { answer = null; }
+    if (!res.ok || !answer || !answer.ok) throw new Error(answer && answer.detail || 'The file transfer did not complete.');
+    if (_win !== win) return;
+    _transferText = answer.queued ? '' : `Sent ${answer.name} (${answer.bytes} bytes) to ${answer.destination}.`;
+    if (answer.queued) _kick(100);
+  } catch (e) {
+    if (_win !== win) return;
+    _transferText = e.message;
+  } finally {
+    if (_win === win) { _sending = false; _render(); }
+  }
 }
+
+async function _toggleUsb() {
+  const win = _win;
+  if (!win || win.usbBusy) return;
+  win.usbBusy = true; _render();
+  try {
+    const usb = await _post('/api/workstation/phone/usb', {action: _state?.usb?.connected ? 'eject' : 'connect'});
+    if (_win === win && _state) { _state.usb = usb; _transferText = ''; }
+  } catch (error) { if (_win === win) _transferText = error.message; }
+  finally { if (_win === win) { win.usbBusy = false; _render(); _kick(100); } }
+}
+
+async function _findDocuments() {
+  const win = _win;
+  if (!win) return;
+  win.docFind.disabled = true;
+  try {
+    const result = await _get(`/api/documents/library?limit=50&search=${encodeURIComponent(win.docSearch.value)}`);
+    if (_win !== win) return;
+    win.docSelect.textContent = '';
+    for (const doc of result.documents || []) {
+      const option = document.createElement('option');
+      option.value = doc.id;
+      option.textContent = doc.title || 'Untitled document';
+      win.docSelect.appendChild(option);
+    }
+    win.docSelect.hidden = !win.docSelect.options.length;
+    _transferText = win.docSelect.options.length ? 'Choose a document, then send its current text. Search to find other documents.' : 'No matching documents.';
+  } catch (e) { if (_win === win) _transferText = e.message; }
+  finally { if (_win === win) { win.docFind.disabled = false; _render(); } }
+}
+
+export function press(button) {
+  if (button === 'power' && _state && !['on', 'starting'].includes(_state.state)) return _turnOn();
+  return act({ action: 'button', button });
+}
+
+function _queueControl(holder, keepalive = false) {
+  // Server mutations must keep their order too: ignoring a stale response
+  // cannot undo a takeover that already happened. Cleanup precedes any newer
+  // window's takeover, including when the earlier response is still pending.
+  const request = _controlTail.then(() => _post('/api/workstation/phone/control', { holder }, { keepalive }));
+  _controlTail = request.catch(() => null);
+  return request;
+}
+
+async function _changeControl(holder) {
+  const win = _win, request = ++_controlSequence;
+  if (holder === 'person') _pendingTakeovers.set(win, (_pendingTakeovers.get(win) || 0) + 1);
+  ++_revision;
+  let changed = false;
+  try {
+    const a = await _queueControl(holder);
+    if (_win !== win || request !== _controlSequence) return;
+    _holder = a && a.holder;
+    _error = '';
+    changed = true;
+  } catch (e) { if (_win !== win || request !== _controlSequence) return; _error = e.message; }
+  finally {
+    if (holder === 'person') {
+      const left = (_pendingTakeovers.get(win) || 1) - 1;
+      if (left) _pendingTakeovers.set(win, left);
+      else _pendingTakeovers.delete(win);
+    }
+  }
+  ++_revision;
+  _render();
+  _kick(changed ? 0 : TIMING.HOLDER_MS);
+}
+
+export function takeOver() { return _changeControl('person'); }
+export function handBack() { return _changeControl('agent'); }
 
 /** `B1756`. Whether the room's copy is out of sight — its room switched away
  *  from or the Workbench closed. It stops asking then, and gives the screens
  *  back; showing the room again resumes. */
 function _roomHidden() {
-  if (!_win || !_win.embedded) return false;
+  if (!_win) return false;
   const el = _win.modal;
   return !el.isConnected || (typeof el.getClientRects === 'function' && el.getClientRects().length === 0);
 }
 
 async function _tick() {
+  if (_timer) clearTimeout(_timer);
   _timer = null;
   if (!_win) return;
+  if (_busy) { _kick(TIMING.BOOTING_MS); return; }
   if (_roomHidden()) {
-    if (_holder === 'person') handBack();
+    if (_holder === 'person' || _pendingTakeovers.has(_win)) handBack();
+    _dropFrame();
+    _client = '';
     return;
   }
+  const win = _win, revision = _revision, sequence = ++_pollSequence;
+  const current = () => _win === win && revision === _revision && sequence === _pollSequence;
+  let state;
   try {
-    _state = await _get('/api/workstation/phone');
+    state = await _get('/api/workstation/phone');
   } catch (e) {
-    _state = { available: false, state: 'unavailable', why: e.message, devices: [] };
+    state = { available: false, state: 'unavailable', why: e.message, devices: [] };
   }
-  if (_state.state === 'on') {
+  if (!current()) return;
+  if (state.state === 'on' || state.state === 'starting') {
     try {
       const s = await _get('/api/workstation/phone/screen');
+      if (!current()) return;
       if (s && (s.holder === 'agent' || s.holder === 'person')) _holder = s.holder;
       const client = s && s.kind === 'kasmvnc' && typeof s.client === 'string'
         && s.client.startsWith(LIVE_CLIENT) ? s.client : '';
-      if (client !== _client) { _dropFrame(); _client = client; }
+      const key = JSON.stringify([state.device, state.screen, state.rotation, state.posture]);
+      if (client !== _client || key !== _screenKey) { _dropFrame(); _client = client; _screenKey = key; }
     } catch (_) { /* the state says enough; the screen is asked again */ }
   } else if (_client) {
     _dropFrame();
     _client = '';
   }
+  if (!current()) return;
+  _state = state;
   _render();
   _kick(_state.state === 'starting' ? TIMING.BOOTING_MS : TIMING.STATE_MS);
 }
@@ -348,7 +567,7 @@ function _dropFrame() {
 }
 
 /** `B1757`. Size the body to the stage at the device's own proportions. */
-function _shapeBody(shape, look) {
+function _shapeBody(shape, look, rotation = 0) {
   if (!_win) return;
   const box = _win.stage.getBoundingClientRect();
   if (!box.width || !box.height) return;   // not laid out yet: CSS's fallback holds
@@ -356,14 +575,18 @@ function _shapeBody(shape, look) {
   const pad = (k) => (cs ? parseFloat(cs[k]) || 0 : 0);
   const W = box.width - pad('paddingLeft') - pad('paddingRight') - 12;   // room for the keys
   const H = box.height - pad('paddingTop') - pad('paddingBottom') - 12;
-  const g = bodyGeometry(look, shape, W, H);
+  const sideways = rotation % 2 === 1;
+  const natural = sideways ? { w: shape.h, h: shape.w } : shape;
+  const g = bodyGeometry(look, natural, sideways ? H : W, sideways ? W : H);
   const st = _win.bezel.style;
+  st.setProperty('--phw-unit', `${g.unit}px`);
   st.setProperty('--phw-rim', `${g.rim}px`);
   st.setProperty('--phw-radius', `${g.radius}px`);
   st.setProperty('--phw-inner', `${g.inner}px`);
   st.width = `${g.screenW}px`;
   st.height = `${g.screenH}px`;
   st.maxWidth = 'none';
+  st.transform = `rotate(${rotation * 90}deg)`;
 }
 
 /** The stream laid in the bezel's screen at the phone screen's own shape,
@@ -371,13 +594,62 @@ function _shapeBody(shape, look) {
  *  bezel's narrower screen shows just it. */
 function _placeFrame() {
   if (!_win || !_frame || !_state) return;
-  const box = _win.screen.getBoundingClientRect();
-  const [w, h] = _state.screen || [492, 1100];
-  if (!box.height || !h) return;
-  const width = box.height * (w / h);
+  if (!_state.screen_is_active && !isMobileView(_state)) {
+    // Existing workstation images stream the whole inner screen. Keep their
+    // original centred crop until the daemon is upgraded with active geometry.
+    const [sw, sh] = _state.screen || [492, 1100];
+    const h = _win.screen.clientHeight, w = h * sw / sh;
+    Object.assign(_frame.style, { width: `${w}px`, height: `${h}px`,
+      left: `${(_win.screen.clientWidth - w) / 2}px`, top: '0px', transform: 'none' });
+    return;
+  }
+  const rotation = _state.rotation || 0;
+  const w = _win.screen.clientWidth, h = _win.screen.clientHeight;
+  const turned = rotation % 2 === 1;
+  const width = turned ? h : w, height = turned ? w : h;
   _frame.style.width = `${width}px`;
-  _frame.style.height = `${box.height}px`;
-  _frame.style.left = `${(box.width - width) / 2}px`;
+  _frame.style.height = `${height}px`;
+  _frame.style.left = `${(w - width) / 2}px`;
+  _frame.style.top = `${(h - height) / 2}px`;
+  _frame.style.transform = `rotate(${-rotation * 90}deg)`;
+}
+
+function _cancelMotion() {
+  for (const a of _animations) a.cancel();
+  _animations = [];
+  if (_win) _win.bezel.classList.remove('phw-moving');
+}
+
+/** Animate acknowledged state, including movement performed by an agent.
+ * The stream is the real device; no simulated OS is painted here. */
+function _moveBody(s, previous) {
+  const next = { device: s.device, rotation: s.rotation || 0, posture: s.posture,
+    width: _win.bezel.style.width, height: _win.bezel.style.height };
+  const old = _pose;
+  _pose = next;
+  if (!old || old.device !== next.device || prefersReducedMotion() || !_win.bezel.animate) return;
+  const turn = rotationStep(old.rotation, next.rotation);
+  const fold = old.posture && next.posture && old.posture !== next.posture;
+  if (!turn && !fold) return;
+  _cancelMotion();
+  _win.bezel.classList.add('phw-moving');
+  const opts = { duration: TIMING.MOTION_MS, easing: 'cubic-bezier(.22,.9,.24,1)' };
+  const end = next.rotation * 90;
+  const body = _win.bezel.animate([
+    { width: previous.width, height: previous.height, transform: `rotate(${end - turn}deg)` },
+    { width: next.width, height: next.height, transform: `rotate(${end}deg)` },
+  ], opts);
+  _animations.push(body);
+  if (fold) {
+    const closing = next.posture === 'closed';
+    const axis = _win.bezel.dataset.foldAxis === 'horizontal' ? 'X' : 'Y';
+    _animations.push(_win.leaf.animate([
+      { opacity: 0, transform: `rotate${axis}(${closing ? 0 : -150}deg)` },
+      { opacity: .9, transform: `rotate${axis}(-80deg)`, offset: .5 },
+      { opacity: 0, transform: `rotate${axis}(${closing ? -150 : 0}deg)` },
+    ], opts));
+  }
+  body.onfinish = () => { if (_animations.includes(body)) _cancelMotion(); };
 }
 
 function _render() {
@@ -387,9 +659,11 @@ function _render() {
   const on = s.state === 'on';
   const holding = _holder === 'person';
   const mobile = isMobileView(s);
+  const stream = (on || s.state === 'starting') && !!_client;
   // `B1757`: a tablet is called one.
   const noun = d.kind === 'tablet' ? 'Tablet' : 'Phone';
-  _win.title.textContent = d.name ? `${noun} · ${d.name}${mobile ? ' · mobile view' : ''}` : 'Phone';
+  // `PHW-CTL`: the device's name is the chip's; the title names the surface.
+  _win.title.textContent = mobile ? 'Mobile Emulator · browser preview' : 'Mobile Emulator';
   _noun = noun.toLowerCase();
   _win.title.title = mobile ? (s.why_not_android || '') : '';
 
@@ -410,16 +684,76 @@ function _render() {
     }
   }
   if (d.id) _win.device.value = d.id;
-  _win.device.disabled = s.state === 'unavailable' || s.state === 'starting' || s.state === 'installing';
+  _win.device.disabled = s.state === 'starting' || s.state === 'installing';
+  _win.edition.value = s.edition || 'standard';
+  _win.edition.options[0].textContent = {
+    google_apis: 'Google APIs', google_play: 'Google Play · configured',
+    aosp: 'AOSP', custom: 'SDK image',
+  }[s.standard_image_kind || 'custom'];
+  _win.edition.disabled = _busy || s.state === 'starting' || s.state === 'installing';
+  _win.preview.hidden = !s.preview_available || mobile || on || ['starting', 'installing'].includes(s.state);
+  _win.chip.dataset.state = s.state || 'checking';
+  _win.preview.disabled = _busy;
+  _win.stage.hidden = !s.mode;
+  _win.profile.hidden = !s.mode;
 
-  _win.power.textContent = on || s.state === 'starting' ? 'Turn off' : 'Turn on';
-  _win.power.disabled = s.state === 'unavailable' || s.state === 'installing';
+  // `PHW-CTL`: off, Power is the window's one call to act and says so in
+  // words; running, it is an icon beside Rotate, named by its tooltip.
+  const running = on || s.state === 'starting';
+  const powerSays = mobile ? (running ? 'Close preview' : 'Open browser preview') : (running ? 'Turn off' : 'Turn on');
+  _label(_win.power, powerSays);
+  _win.power.querySelector('.ctl-lbl').textContent = running ? '' : powerSays;
+  _win.power.classList.toggle('ctl-labelled', !running);
+  _win.power.classList.toggle('ctl-primary', !running);
+  _win.power.disabled = (!s.mode && !s.can_start) || s.state === 'installing';
   _win.rotate.hidden = !on;
   _win.fold.hidden = !(on && d.foldable);
-  _win.fold.textContent = s.posture === 'closed' ? 'Unfold' : 'Fold';
+  const folded = s.posture === 'closed';
+  if (_win.fold.dataset.folded !== String(folded)) {
+    _win.fold.dataset.folded = String(folded);
+    _win.fold.querySelector('svg').replaceWith(_glyph(folded ? 'unfold' : 'fold'));
+  }
+  _label(_win.fold, folded ? 'Unfold' : 'Fold');
+  _win.halfFold.hidden = !(on && d.foldable);
+  _win.halfFold.disabled = _busy || s.posture === 'half_open';
   _win.take.hidden = !on || holding;
   _win.give.hidden = !on || !holding;
-  _win.openForm.hidden = !on;
+  _win.nav.hidden = !on;
+  _win.transfer.hidden = !(on && !mobile && s.isolation === 'per_user_vm');
+  const usb = s.usb || {};
+  _win.usbCable.dataset.connected = String(!!usb.connected);
+  _win.usbConnect.textContent = _win.usbBusy ? (usb.connected ? 'Ejecting…' : 'Connecting…') : usb.connected ? 'Eject USB' : 'Connect USB';
+  _win.usbConnect.disabled = !!_win.usbBusy;
+  _win.usbSummary.textContent = usb.connected ? 'USB connected · shared files' : 'USB · connect shared files';
+  _win.usbFolder.textContent = usb.folder ? `Your Pantheon projects / ${usb.folder} ↔ Android / Download / PantheonUSB. ${usb.workstation_connected ? 'The workstation is connected to this same folder.' : 'Workstation folder sharing is not connected.'}` : 'Connect your Android storage to your Pantheon projects and workstation.';
+  _win.transferText.textContent = usb.error || _transferText || (usb.connected ?
+    'Syncs both ways every five seconds. Conflicts keep both copies; deletions stay local. Up to 64 files, 20 MB each, 128 MiB total. Use portable filenames; subfolders are not synced.' :
+    'Plug in to share files. Eject stops syncing and keeps the files on both sides.');
+  _win.usbFiles.replaceChildren();
+  for (const file of (usb.files || [])) {
+    const link = _el('a', 'phw-usb-file', `${file.name} · ${file.bytes} bytes · ${file.synced ? 'Synced with Android' : 'Waiting for Android'}`);
+    link.href = `/api/workstation/phone/usb/file?name=${encodeURIComponent(file.name)}`;
+    link.download = file.name;
+    _win.usbFiles.appendChild(link);
+  }
+  _win.upload.disabled = _sending;
+  _win.docSend.disabled = _sending || !_win.docSelect.value;
+  const runtime = runtimeOf(s);
+  _win.runtime.setAttribute('aria-live', s.state === 'unavailable' ? 'polite' : 'off');
+  _win.runtimeLabel.textContent = runtime.label;
+  _win.runtimeText.textContent = runtime.detail;
+  _win.runtime.dataset.mode = s.mode || 'unavailable';
+  if (_win.runtime.dataset.state !== s.state) _win.runtime.open = s.state === 'unavailable';
+  _win.runtime.dataset.state = s.state;
+  // `PHW-CTL`: the chip already names the Android image. The runtime card
+  // speaks only when it says something the chip cannot: no Android here, or
+  // only the browser preview. Its words stay the image's tooltip.
+  _win.runtime.hidden = !(s.state === 'unavailable' || mobile || !_win.preview.hidden);
+  _win.edition.title = runtime.detail;
+  _win.hint.hidden = !(on && !mobile && _hintWanted());
+  _win.profile.textContent = [d.name, d.width && d.height ? (s.posture === 'closed' && d.cover_width ? `Cover ${d.cover_width} × ${d.cover_height || d.height}` : `${d.width} × ${d.height}`) : '',
+    s.mode === 'android' ? d.android : '', s.posture ? `${s.posture === 'closed' ? 'Folded' : s.posture === 'half_open' ? 'Half-open · 90°' : 'Unfolded'}` : '',
+    `Rotation ${(s.rotation || 0) * 90}°`].filter(Boolean).join(' · ');
 
   // `B1752`. The bezel: the device's shape, its keys on its maker's side.
   // `B1757`: and the device as it looks — its finish, its corners, its bezel,
@@ -429,13 +763,17 @@ function _render() {
   _win.bezel.style.setProperty('--phw-aspect', `${shape.w} / ${shape.h}`);
   if (look.finish) _win.bezel.style.setProperty('--phw-finish', look.finish);
   else _win.bezel.style.removeProperty('--phw-finish');
+  _win.bezel.dataset.foldAxis = d.fold_axis || 'vertical';
   _win.bezel.dataset.kind = d.kind || 'phone';
   _win.bezel.dataset.maker = (d.maker || '').toLowerCase();
   _win.bezel.dataset.device = d.id || '';
   _win.bezel.dataset.cutout = d.foldable && s.posture === 'closed' && !mobile ? 'punch-center' : look.cutout;
   _win.bezel.dataset.posture = d.foldable ? (s.posture || 'open') : '';
   _win.bezel.title = look.finishName ? `${d.name} · ${look.finishName}` : (d.name || '');
-  _shapeBody(shape, look);
+  const previous = { width: _win.bezel.style.width, height: _win.bezel.style.height };
+  const rotation = s.screen_is_active || mobile ? (s.rotation || 0) : 0;
+  _shapeBody(shape, look, rotation);
+  _moveBody({ ...s, rotation }, previous);
   if (_win.sideKeys.dataset.device !== d.id) {
     const sides = keysOf(d);
     for (const side of KEY_SIDES) {
@@ -444,8 +782,8 @@ function _render() {
       for (const k of sides[side]) {
         const b = _el('button', `phw-side phw-side-${k.id}`);
         b.type = 'button';
-        b.title = k.label;
-        b.setAttribute('aria-label', k.label);
+        b.classList.add('ctl-tip', `ctl-tip-${side}`);
+        _label(b, k.label);
         b.dataset.key = k.id;
         b.addEventListener('click', (e) => { e.preventDefault(); press(k.id); });
         box.appendChild(b);
@@ -455,32 +793,41 @@ function _render() {
     _win.sideKeys.dataset.device = d.id || '';
   }
   for (const b of _win.bezel.querySelectorAll('.phw-side')) {
-    b.disabled = !on || !keyWorks(s, b.dataset.key);
+    b.disabled = b.dataset.key === 'power' ? (!s.mode || s.state === 'starting' || s.state === 'installing')
+      : (!on || !keyWorks(s, b.dataset.key));
   }
   for (const b of _win.nav.querySelectorAll('button')) {
     b.disabled = !on || !keyWorks(s, b.dataset.key);
+    b.hidden = mobile && !keyWorks(s, b.dataset.key);
   }
 
   _renderInstall(s);
   if (_win.catalogue) _renderCatalogue(s);
 
   _win.screen.classList.toggle('phw-holding', holding);
-  _win.empty.hidden = on && !!_client;
+  _win.empty.hidden = stream;
   _win.bezel.dataset.state = s.state || 'checking';
-  if (on && _client) {
+  if (stream) {
     _mountFrame();
     _placeFrame();
   } else {
     _dropFrame();
-    _win.empty.textContent = s.state === 'unavailable' ? (s.why || 'There is no phone here.')
+    _win.empty.textContent = s.state === 'off' && mobile ? 'Browser preview is closed. Open preview to browse web pages.'
+      : s.state === 'starting' && !mobile ? (s.boot_phase === 'android' ? 'Android is booting. Connecting to its live display.' : 'Starting virtual hardware. Waiting for the Android display.')
+      : s.state === 'unavailable' ? (s.why || 'There is no phone here.')
       : _words(mobile && s.state === 'starting' ? SAY.mobileStarting : (SAY[s.state] || SAY.checking));
   }
-  if (s.state === 'unavailable') _say(s.why || 'There is no phone here.', { error: true });
+  if (_error) _say(_error, { error: true });
+  else if (s.state === 'unavailable') _say(s.why || 'There is no phone here.', { error: true });
   else if (on && mobile && !holding) _say(SAY.mobile);
   else if (on) _say(holding ? (mobile ? 'You have the phone: click to tap, scroll to move the page.' : SAY.holding) : SAY.agent);
   else if (s.state === 'installing') _say(_installSay(s));
   else if (s.state === 'off' && installLine(s) && installLine(s).failed) _say(installLine(s).text, { error: true });
+  else if (s.state === 'off' && mobile) _say('Browser preview is closed. Android is unavailable on this workstation.');
   else _say(mobile && s.state === 'starting' ? SAY.mobileStarting : (SAY[s.state] || SAY.checking));
+  // The runtime card already explains an unavailable device. Keep a
+  // distinct action error visible, without repeating the same paragraph.
+  _win.status.hidden = s.state === 'unavailable' && (!_error || _error === runtime.detail);
 }
 
 function _installSay(s) {
@@ -507,7 +854,9 @@ function _renderInstall(s) {
     const d = (s.devices || []).find((x) => x.id === _pending);
     _win.licenseText.textContent = `${d ? d.name : 'This device'} runs Google's Android system image, `
       + 'which Pantheon downloads to your workstation once (about 4 GB). It is offered under the '
-      + 'Android Software Development Kit License Agreement. Accept it to install the device.';
+      + 'Android Software Development Kit License Agreement for Android development and testing. '
+      + (_state.edition === 'google_play' || _state.google_play ? 'This includes proprietary Google Play software. ' : '')
+      + 'Each image keeps separate device data. Accept only if these terms cover your use.';
     const url = s.license && typeof s.license.url === 'string' && /^https:\/\//.test(s.license.url)
       ? s.license.url : 'https://developer.android.com/studio/terms';
     _win.licenseLink.href = url;
@@ -518,6 +867,8 @@ function _renderInstall(s) {
  *  it if the workstation lacks it, and turn it on — the request the agent's
  *  `use_device` sends too. */
 export function useDevice(id, { accept = false } = {}) {
+  if (!_state || !_state.mode) return act({ action: 'device', device: id });
+  if (isMobileView(_state)) return act({ action: 'preview', device: id });
   if (!accept && needsLicense(_state, id)) {
     _pending = id;
     _render();
@@ -567,13 +918,25 @@ function _renderCatalogue(s) {
       text.appendChild(status);
       li.appendChild(text);
       const b = _button('phw-cat-use', d.verb, () => useDevice(d.id), `${d.verb}: ${d.name}`);
-      b.disabled = d.busy || (d.current && d.verb === 'In use') || s.state === 'unavailable';
+      b.disabled = d.busy || (d.current && d.verb === 'In use');
       li.appendChild(b);
       ul.appendChild(li);
     }
     section.appendChild(ul);
     _win.catalogue.appendChild(section);
   }
+}
+
+/** Arrow keys move focus along a toolbar's visible, enabled buttons. */
+function _rove(box, e) {
+  if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) return;
+  const items = Array.from(box.querySelectorAll('button')).filter((b) => !b.hidden && !b.disabled);
+  const at = items.indexOf(document.activeElement);
+  if (at < 0 || !items.length) return;
+  e.preventDefault();
+  const next = e.key === 'Home' ? 0 : e.key === 'End' ? items.length - 1
+    : (at + (e.key === 'ArrowRight' ? 1 : -1) + items.length) % items.length;
+  items[next].focus();
 }
 
 function _build({ embedded = false } = {}) {
@@ -584,7 +947,7 @@ function _build({ embedded = false } = {}) {
   const h = _el('h4', 'phw-heading');
   const icon = _el('span', 'phw-icon');
   icon.innerHTML = PHONE_ICON;   // a constant above, never server text
-  const title = _el('span', 'phw-title', 'Phone');
+  const title = _el('span', 'phw-title', 'Mobile Emulator');
   h.appendChild(icon);
   h.appendChild(title);
   const close = _el('button', 'close-btn');
@@ -596,47 +959,106 @@ function _build({ embedded = false } = {}) {
   header.appendChild(h);
   header.appendChild(close);
 
+  // `PHW-CTL`. One row: the device chip (which device, which Android image),
+  // the device's own acts as icons, and who holds it as the one primary.
   const bar = _el('div', 'phw-bar');
+  const chip = _el('div', 'phw-chip');
+  chip.setAttribute('role', 'group');
+  chip.setAttribute('aria-label', 'Device and Android image');
+  const chipIcon = _el('span', 'phw-chip-icon');
+  chipIcon.appendChild(_glyph('chip'));
   const device = document.createElement('select');
   device.className = 'phw-device';
   device.setAttribute('aria-label', 'Device');
   device.addEventListener('change', () => act({ action: 'device', device: device.value }));
-  const power = _button('phw-power', 'Turn on', () => {
-    const s = _state && _state.state;
-    act({ action: s === 'on' || s === 'starting' ? 'stop' : 'start' });
-  }, 'Turn the phone on or off');
-  const rotate = _button('phw-rotate', 'Rotate', () => act({ action: 'rotate' }), 'Turn the phone a quarter');
-  const fold = _button('phw-fold', 'Fold', () => act({
-    action: 'posture', posture: _state && _state.posture === 'closed' ? 'open' : 'closed',
-  }), 'Fold or unfold the phone');
-  const take = _button('phw-take', 'Take over', () => { takeOver(); });
-  const give = _button('phw-give', 'Hand back', () => { handBack(); });
-  bar.appendChild(device);
-  bar.appendChild(power);
-  bar.appendChild(rotate);
-  bar.appendChild(fold);
-  bar.appendChild(take);
-  bar.appendChild(give);
+  const chipRule = _el('span', 'phw-chip-rule');
+  chipRule.setAttribute('aria-hidden', 'true');
+  const edition = document.createElement('select');
+  edition.className = 'phw-edition';
+  edition.setAttribute('aria-label', 'Android image');
+  for (const [value, label] of [['standard', 'Standard image'], ['google_play', 'Google Play']]) {
+    const option = document.createElement('option'); option.value = value; option.textContent = label;
+    edition.appendChild(option);
+  }
+  edition.addEventListener('change', () => { _pending = ''; act({ action: 'edition', edition: edition.value }); });
+  chip.append(chipIcon, device, chipRule, edition);
 
-  const openForm = _el('form', 'phw-open');
-  const address = document.createElement('input');
-  address.type = 'text';
-  address.className = 'phw-address';
-  address.spellcheck = false;
-  address.autocomplete = 'off';
-  address.placeholder = 'Open an address on the phone';
-  address.setAttribute('aria-label', 'Address to open on the phone');
-  const go = _el('button', 'memory-toolbar-btn phw-go', 'Open');
-  go.type = 'submit';
-  openForm.appendChild(address);
-  openForm.appendChild(go);
-  openForm.addEventListener('submit', (e) => {
-    e.preventDefault();
-    let url = address.value.trim();
-    if (!url) return;
-    if (!/^https?:\/\//i.test(url)) url = `https://${url}`;
-    act({ action: 'open_url', url });
+  const tools = _el('div', 'phw-acts');
+  tools.setAttribute('role', 'toolbar');
+  tools.setAttribute('aria-label', 'Device actions');
+  const rotate = _iconButton('phw-rotate', 'rotate', 'Rotate a quarter turn', () => act({ action: 'rotate' }));
+  const fold = _iconButton('phw-fold', 'fold', 'Fold', () => act({
+    action: 'posture', posture: _state && _state.posture === 'closed' ? 'open' : 'closed',
+  }));
+  const halfFold = _iconButton('phw-half-fold', 'half', 'Half-open · hinge at 90°', () => act({ action: 'posture', posture: 'half_open' }));
+  const power = _iconButton('phw-power', 'power', 'Turn on', () => {
+    const s = _state && _state.state;
+    if (s === 'on' || s === 'starting') act({ action: 'stop' });
+    else _turnOn();
   });
+  tools.append(rotate, fold, halfFold, power);
+  const take = _el('button', 'ctl-pill ctl-tip phw-take');
+  take.type = 'button';
+  take.appendChild(_glyph('hand'));
+  take.appendChild(_el('span', 'ctl-lbl', 'Take over'));
+  take.dataset.tip = 'Use the phone yourself. The agent waits.';
+  take.addEventListener('click', (e) => { e.preventDefault(); takeOver(); });
+  const give = _el('button', 'ctl-pill ctl-primary ctl-tip phw-give');
+  give.type = 'button';
+  give.appendChild(_glyph('giveback'));
+  give.appendChild(_el('span', 'ctl-lbl', 'Hand back'));
+  give.dataset.tip = 'Give the phone back to the agent';
+  give.addEventListener('click', (e) => { e.preventDefault(); handBack(); });
+  const grow = _el('span', 'phw-grow');
+  bar.append(chip, grow, tools, take, give);
+
+  const runtime = _el('details', 'phw-runtime');
+  runtime.setAttribute('aria-live', 'off');
+  const runtimeLabel = _el('strong', 'phw-runtime-label', 'Checking Android');
+  const runtimeText = _el('span', 'phw-runtime-text');
+  const runtimeSummary = _el('summary', 'phw-runtime-summary');
+  runtimeSummary.appendChild(runtimeLabel);
+  runtime.appendChild(runtimeSummary);
+  runtime.appendChild(runtimeText);
+  const preview = _button('phw-preview', 'Open browser preview (web only)', () => act({ action: 'preview' }));
+  preview.hidden = true;
+  runtime.appendChild(preview);
+  const profile = _el('div', 'phw-profile');
+
+  const transfer = _el('details', 'phw-transfer');
+  transfer.hidden = true;
+  // `PHW-CTL`: a quiet row, not the warning-coloured fold every <details> gets.
+  const usbHead = _el('summary', 'phw-usb-head');
+  const usbIcon = _el('span', 'phw-usb-icon');
+  usbIcon.appendChild(_glyph('usb'));
+  const usbSummary = _el('span', 'phw-usb-summary', 'USB · connect shared files');
+  usbHead.append(usbIcon, usbSummary);
+  transfer.appendChild(usbHead);
+  const usbCable = _el('div', 'phw-usb-cable'); usbCable.setAttribute('aria-hidden', 'true');
+  usbCable.append(_el('span', 'phw-usb-host', '▣'), _el('span', 'phw-usb-wire'), _el('span', 'phw-usb-plug'), _el('span', 'phw-usb-socket', '▯'));
+  const usbConnect = _button('phw-usb-connect', 'Connect USB', _toggleUsb);
+  const usbFolder = _el('p', 'phw-runtime-text');
+  const usbFiles = _el('div', 'phw-usb-files');
+  transfer.append(usbCable, usbConnect, usbFolder, usbFiles);
+  const transferText = _el('p', 'phw-runtime-text');
+  transferText.setAttribute('role', 'status');
+  transferText.setAttribute('aria-live', 'polite');
+  const file = document.createElement('input'); file.type = 'file'; file.hidden = true;
+  file.addEventListener('change', () => { if (file.files[0]) _sendFile({ file: file.files[0] }); file.value = ''; });
+  const upload = _button('phw-upload', 'Upload a file', () => file.click());
+  const docSearch = document.createElement('input'); docSearch.type = 'search';
+  docSearch.className = 'phw-address'; docSearch.placeholder = 'Search your documents';
+  docSearch.setAttribute('aria-label', 'Search documents to send');
+  const docFind = _button('phw-doc-find', 'Find documents', _findDocuments);
+  const docSelect = document.createElement('select'); docSelect.className = 'phw-doc-select'; docSelect.hidden = true;
+  docSelect.setAttribute('aria-label', 'Document to send as text');
+  docSelect.addEventListener('change', () => _render());
+  const docSend = _button('phw-doc-send', 'Send document text', () => {
+    if (docSelect.value) _sendFile({ documentId: docSelect.value });
+  });
+  const transferRow = _el('div', 'phw-file-row'); transferRow.append(upload, file);
+  const documentRow = _el('div', 'phw-file-row'); documentRow.append(docSearch, docFind, docSelect, docSend);
+  transfer.append(transferText, transferRow, documentRow);
 
   const status = _el('div', 'ws-status phw-status');
   status.dataset.state = 'checking';
@@ -673,20 +1095,46 @@ function _build({ embedded = false } = {}) {
   const hinge = _el('span', 'phw-hinge');
   hinge.setAttribute('aria-hidden', 'true');
   screen.appendChild(hinge);
+  const leaf = _el('span', 'phw-fold-leaf');
+  leaf.setAttribute('aria-hidden', 'true');
+  screen.appendChild(leaf);
   bezel.appendChild(speaker);
   bezel.appendChild(screen);
   bezel.appendChild(camera);
   bezel.appendChild(sideKeysBox);
   stage.appendChild(bezel);
 
+  // `PHW-CTL`. Android's own three keys, in a slim bar under the screen. The
+  // volume rocker and power are the keys on the device's edge (`keysOf`).
   const nav = _el('div', 'phw-nav');
   nav.setAttribute('role', 'toolbar');
   nav.setAttribute('aria-label', 'Android navigation');
-  for (const [glyph, key, label] of [['◁', 'back', 'Back'], ['○', 'home', 'Home'], ['▢', 'recents', 'Recent apps']]) {
-    const b = _button('phw-nav-btn', glyph, () => press(key), label);
+  for (const [key, label] of [['back', 'Back'], ['home', 'Home'], ['recents', 'Recent apps']]) {
+    const b = _el('button', 'phw-nav-btn ctl-tip');
+    b.type = 'button';
+    b.appendChild(_glyph(key));
+    _label(b, label);
     b.dataset.key = key;
+    b.addEventListener('click', (e) => { e.preventDefault(); press(key); });
     nav.appendChild(b);
   }
+  // Arrow keys move along a toolbar; Tab leaves it.
+  for (const box of [nav, tools]) box.addEventListener('keydown', (e) => _rove(box, e));
+
+  // `PHW-CTL`. Once: where the controls are now. Dismissed for good.
+  const hint = _el('div', 'phw-hint');
+  hint.setAttribute('role', 'note');
+  hint.hidden = true;
+  const hintText = _el('p', 'phw-hint-text', 'Volume and power are the keys on the phone’s edge. '
+    + 'Back, Home and Recent apps sit under the screen.');
+  const hintOk = _el('button', 'ctl-pill phw-hint-ok', 'Got it');
+  hintOk.type = 'button';
+  hintOk.addEventListener('click', (e) => {
+    e.preventDefault();
+    try { localStorage.setItem(PHONE_CONTROLS_HINT_KEY, '1'); } catch (_) {}
+    hint.hidden = true;
+  });
+  hint.append(hintText, hintOk);
 
   // `B1756`. The install's progress, and the license a person accepts once.
   const progress = _el('div', 'phw-progress');
@@ -727,12 +1175,15 @@ function _build({ embedded = false } = {}) {
   }
   content.appendChild(header);
   content.appendChild(bar);
-  content.appendChild(openForm);
+  content.appendChild(runtime);
   content.appendChild(status);
   content.appendChild(progress);
   content.appendChild(license);
+  content.appendChild(hint);
   content.appendChild(stage);
   content.appendChild(nav);
+  content.appendChild(profile);
+  content.appendChild(transfer);
 
   let catalogue = null;
   if (embedded) {
@@ -747,19 +1198,26 @@ function _build({ embedded = false } = {}) {
   }
   modal.appendChild(content);
 
-  return { modal, content, header, title, device, power, rotate, fold, take, give, openForm, address,
+  return { modal, content, header, title, chip, device, edition, preview, power, rotate, fold, halfFold, take, give, hint,
+    transfer, transferText, usbSummary, usbCable, usbConnect, usbFolder, usbFiles, upload, docSearch, docFind, docSelect, docSend,
+    runtime, runtimeLabel, runtimeText, profile, leaf,
     status, statusText, stage, bezel, screen, empty, glass, sideKeys: sideKeysBox, keyBoxes, camera, hinge, nav,
     progress, progressText, progressBar, license, licenseText, licenseLink, catalogue, embedded };
 }
 
 function _teardown() {
   if (!_win) return;
+  ++_revision;
+  ++_actionSequence;
+  ++_controlSequence;
+  _busy = false;
+  _cancelMotion();
+  if (_win.observer) _win.observer.disconnect();
   if (_timer) { clearTimeout(_timer); _timer = null; }
-  if (_holder === 'person') {
-    fetch('/api/workstation/control', {
-      method: 'POST', credentials: 'same-origin', keepalive: true,
-      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ holder: 'agent' }),
-    }).catch(() => {});
+  if (_holder === 'person' || _pendingTakeovers.has(_win)) {
+    _queueControl('agent', true).catch((e) => {
+      console.warn('The phone could not hand control back:', e.message);
+    });
   }
   _dropFrame();
   const modal = _win.modal;
@@ -769,6 +1227,11 @@ function _teardown() {
   _client = '';
   _holder = null;
   _pending = '';
+  _pose = null;
+  _screenKey = '';
+  _error = '';
+  _sending = false;
+  _transferText = '';
   if (modal.parentNode) modal.parentNode.removeChild(modal);
   // The room keeps its place: a note says where the phone went (`B1756`).
   if (embedded && _room) {
@@ -778,6 +1241,16 @@ function _teardown() {
 }
 
 function _resume() { _kick(0); }
+
+function _observeSize() {
+  if (!_win || typeof ResizeObserver !== 'function') return;
+  _win.observer = new ResizeObserver(() => {
+    if (!_win) return;
+    _render();
+    if (!_roomHidden()) _kick(0);
+  });
+  _win.observer.observe(_win.stage);
+}
 
 /** Open the window, or bring it forward. */
 export function openPhone() {
@@ -790,6 +1263,7 @@ export function openPhone() {
   if (_win) _teardown();   // the room's copy gives way to the window (`B1756`)
   _win = _build();
   document.body.appendChild(_win.modal);
+  _observeSize();
   Modals.register(MODAL_ID, { restoreFn: _resume, closeFn: _teardown });
   Modals.injectMinimizeButton(_win.modal, MODAL_ID);
   makeWindowDraggable(_win.modal, {
@@ -824,6 +1298,7 @@ export function mountPhoneRoom(host) {
     host.textContent = '';
     _win = _build({ embedded: true });
     host.appendChild(_win.modal);
+    _observeSize();
     _render();
     _kick(0);
   };

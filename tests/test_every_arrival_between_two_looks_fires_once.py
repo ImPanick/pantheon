@@ -27,6 +27,15 @@ from tests.test_mail_arriving_runs_its_workflow_with_nobody_looking import (  # 
     ACCOUNT, OWNER, world,
 )
 
+
+@pytest.fixture(autouse=True)
+def _a_person_allowed_this_network(monkeypatch):
+    """`B2102`: the mail servers here stand on loopback, which a mail account
+    reaches only for a person holding `can_reach_private_mail`."""
+    from tests.helpers.mail_reach import allow_this_network
+    allow_this_network(monkeypatch)
+
+
 pytestmark = pytest.mark.asyncio
 
 

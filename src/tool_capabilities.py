@@ -1095,7 +1095,7 @@ def _action_from_content(tool_name: str, content: Any) -> str | None:
 # after untrusted content (the tool's own classification above). The result
 # stays `EXTERNAL_UNTRUSTED`: what the screen shows is still a stranger's page.
 _OBSERVE_ONLY_ACTIONS: Mapping[str, frozenset[str]] = MappingProxyType({
-    "computer": frozenset({"screenshot", "wait"}),
+    "computer": frozenset({"screenshot", "wait", "usb_status"}),
 })
 _OBSERVE_ONLY_CAPABILITIES = _capabilities(
     ToolEffect.READ_WORKSPACE,
@@ -2491,7 +2491,7 @@ class ToolRunSecurityContext:
     # accepted its warning, so a step inside their own workstation runs
     # without a card (`_workstation_decision_for`). Resolved once per run by
     # the caller (`src.approval_mode.workstation_lift_for`), as
-    # `auto_approved` is. `workstation_lookup` is `(tool_name) -> bool`, the
+    # `auto_approved` is. `workstation_lookup` is `(tool_name, content) -> bool`, the
     # caller's answer to *does this call run inside the workstation* — a
     # callable for `allow_rule_lookup`'s reason: this module reads no
     # setting. False / None for every run without it, which the gate answers
@@ -2737,14 +2737,14 @@ class ToolRunSecurityContext:
             auto_approved=True,
         )
 
-    def _runs_in_workstation(self, tool_name: Any) -> bool:
+    def _runs_in_workstation(self, tool_name: Any, content: Any = None) -> bool:
         """`B1725`. The caller's answer to *does this call run inside the
         workstation*. A lookup that is missing or fails is a no — the one
         direction a failure here can go is *ask the person*."""
         if self.workstation_lookup is None or tool_name not in WORKSTATION_LIFTED_TOOLS:
             return False
         try:
-            return bool(self.workstation_lookup(tool_name))
+            return bool(self.workstation_lookup(tool_name, content))
         except Exception:  # noqa: BLE001 — unanswerable is "not inside"
             logger.debug("could not tell whether %r runs in the workstation", tool_name,
                          exc_info=True)
@@ -2798,7 +2798,7 @@ class ToolRunSecurityContext:
         `None` means "not this amendment's": the ladder answers as before.
         A step the ladder runs anyway is `None` too — nothing was lifted, so
         nothing is recorded."""
-        if not self.workstation_lift or not self._runs_in_workstation(tool_name):
+        if not self.workstation_lift or not self._runs_in_workstation(tool_name, content):
             return None
         if self_escalation_for(tool_name, content) is not None:
             return None

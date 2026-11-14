@@ -50,7 +50,7 @@
         s.setProperty('--panel', c.panel);
         s.setProperty('--border', c.border);
         if (c.red) s.setProperty('--red', c.red);
-        // P1-01, mirrored from applyColors() in static/js/theme.js. The 550
+        // P1-01, mirrored from applyColors() in static/js/theme.js. The 551
         // `var(--accent, var(--red))` sites in style.css ride the `--red` set
         // on the line above, but the 200 bare `var(--accent)` ones stay voided
         // until the module boots — a visible flash on every cold load without
@@ -824,14 +824,14 @@
                   <h2 style="margin:0;display:inline-flex;align-items:center;gap:6px"><svg width="13" height="13" viewBox="0 0 24 24" fill="var(--accent, var(--red))" aria-hidden="true"><path d="M12 0L14.59 8.41L23 12L14.59 15.59L12 24L9.41 15.59L1 12L9.41 8.41Z"/></svg>Auto-extract skills</h2>
                   <label class="admin-switch" style="flex-shrink:0"><input type="checkbox" id="auto-skills-toggle" aria-label="Auto-extract skills" /><span class="admin-slider"></span></label>
                 </div>
-                <span class="admin-toggle-sub" style="display:block;margin-top:6px;opacity:0.6">Draft skills from what you do. Audit publishes the ones that pass.</span>
+                <span class="admin-toggle-sub" style="display:block;margin-top:6px;opacity:0.6">Learn skills from what you do. Below the bar under Auto-publish, a learned skill stays a draft until Audit passes it or you publish it.</span>
               </div>
               <div class="admin-card">
                 <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:32px">
-                  <h2 style="margin:0;display:inline-flex;align-items:center;gap:6px"><svg width="13" height="13" viewBox="0 0 24 24" fill="var(--accent, var(--red))" aria-hidden="true"><path d="M12 0L14.59 8.41L23 12L14.59 15.59L12 24L9.41 15.59L1 12L9.41 8.41Z"/></svg>Auto-publish audited skills</h2>
-                  <label class="admin-switch" style="flex-shrink:0"><input type="checkbox" id="auto-approve-skills-toggle" aria-label="Auto-publish audited skills" checked /><span class="admin-slider"></span></label>
+                  <h2 style="margin:0;display:inline-flex;align-items:center;gap:6px"><svg width="13" height="13" viewBox="0 0 24 24" fill="var(--accent, var(--red))" aria-hidden="true"><path d="M12 0L14.59 8.41L23 12L14.59 15.59L12 24L9.41 15.59L1 12L9.41 8.41Z"/></svg>Auto-publish skills</h2>
+                  <label class="admin-switch" style="flex-shrink:0"><input type="checkbox" id="auto-approve-skills-toggle" aria-label="Auto-publish skills" checked /><span class="admin-slider"></span></label>
                 </div>
-                <span class="admin-toggle-sub" style="display:block;margin-top:6px;opacity:0.6">Publish audited skills at or above this confidence. Off keeps them drafts.</span>
+                <span class="admin-toggle-sub" style="display:block;margin-top:6px;opacity:0.6">Publish learned and audited skills at or above this confidence (a learned one never under 85%). Off keeps them drafts. Imported skills are published; ones you or the assistant write wait for you.</span>
                 <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:6px">
                   <span class="admin-toggle-sub" style="margin:0">Minimum confidence</span>
                   <span style="display:flex;align-items:center;gap:8px;flex-shrink:0">
@@ -1870,8 +1870,8 @@
             <!-- `B1751`. The phone's window (`phoneWindow.js`'s door). -->
             <button type="button" class="overflow-menu-item" data-open-phone>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="2" width="12" height="20" rx="2.5"/><path d="M11 18h2"/></svg>
-              <span>Phone</span>
-              <span class="overflow-hint">A real Android device: test an app or your site on a phone</span>
+              <span>Mobile Emulator</span>
+              <span class="overflow-hint">Power on a generic Android phone or tablet; browser previews are labelled separately</span>
             </button>
             <button type="button" class="overflow-menu-item" id="overflow-modes-btn" data-submenu="modes" aria-haspopup="menu" aria-expanded="false">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="17" x2="20" y2="17"/><circle cx="9" cy="7" r="2.5"/><circle cx="15" cy="17" r="2.5"/></svg>
@@ -3774,6 +3774,14 @@
               <div class="settings-row">
                 <label class="settings-label" for="set-taskModel">Model</label>
                 <select id="set-taskModel" class="settings-select settings-control-wide"><option value="">Default</option></select>
+              </div>
+              <!-- `B2100`. Off (the default): a built-in task that picks a model
+                   runs on it, and is refused with a sentence when that model is
+                   gone. On: this model runs every task, whatever it picked
+                   (`task_model_over_task_choice`, `TaskScheduler._action_model_pin`). -->
+              <div class="settings-row">
+                <label class="settings-label" for="set-taskModelOverTasks">Use this model for every task, over the model a task picks</label>
+                <label class="admin-switch"><input type="checkbox" id="set-taskModelOverTasks" /><span class="admin-slider"></span></label>
               </div>
               <div id="set-taskModelMsg" style="font-size:11px;color:color-mix(in oklab, var(--fg) 45%, var(--fg-muted));"></div>
             </div>

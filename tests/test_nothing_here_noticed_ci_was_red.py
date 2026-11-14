@@ -157,7 +157,7 @@ def test_a_badge_pinned_to_a_branch_that_does_not_exist_is_caught(contract,
     _write(fake_repo / "README.md",
            "git clone https://github.com/ImPanick/pantheon.git\n"
            '<img src="https://github.com/ImPanick/pantheon/actions/workflows/'
-           'ci.yml/badge.svg?branch=dev" alt="CI">\n')
+           'ci.yml/badge.svg?branch=trunk" alt="CI">\n')
     _problems, owners = contract.rule_required_checks_exist()
     assert any("not a branch this repository has" in p
                for p in contract.rule_badges(owners))
@@ -195,9 +195,9 @@ def test_a_trigger_naming_a_branch_that_does_not_exist_is_caught(contract,
                                                                  fake_repo):
     text = (fake_repo / ".github" / "workflows" / "ci.yml").read_text()
     _write(fake_repo / ".github" / "workflows" / "ci.yml",
-           text.replace("branches: [main]", "branches: [main, dev]"))
+           text.replace("branches: [main]", "branches: [main, trunk]"))
     problems = contract.rule_trigger_branches()
-    assert any("'dev'" in p and "no such branch" in p for p in problems), problems
+    assert any("'trunk'" in p and "no such branch" in p for p in problems), problems
 
 
 def test_the_branch_register_must_agree_with_the_security_guide(contract,
@@ -213,16 +213,28 @@ def test_the_branch_register_must_agree_with_the_security_guide(contract,
                for p in contract.rule_trigger_branches())
 
 
-@pytest.mark.parametrize("workflow", sorted(p.name for p in WORKFLOWS.glob("*.yml")))
-def test_no_workflow_in_the_tree_triggers_on_dev(workflow):
-    """The row itself. `ci.yml`, `codeql.yml` and `docker-publish.yml` all named
-    `dev` and there has never been a `dev` branch — `B352` corrected the PR and
-    issue templates pointing contributors at it and the workflows were missed.
-    """
+# The workflows that guard a merge. Each runs on every pull request, whatever
+# it targets, and on a push to either branch this repository has.
+GATES = ("ci.yml", "codeql.yml", "secret-scan.yml", "workflow-security.yml",
+         "container-scan.yml")
+
+
+@pytest.mark.parametrize("workflow", GATES)
+def test_a_push_to_dev_runs_the_gates_a_push_to_main_runs(workflow):
+    """2026-11-11. `B433` took `dev` out of every trigger because there was no
+    `dev` branch. There is one now, finished work merges into it, and with the
+    triggers still reading `[main]` a direct push to `dev` ran nothing at all:
+    its head carried no check of any kind. Pull requests into `dev` were always
+    covered, because no `pull_request` trigger here filters on a branch."""
     contract = _load(CHECKER, "check_ci_contract_real")
     doc = contract.load_workflow(WORKFLOWS / workflow)
-    for where, named in contract.trigger_branches(doc).items():
-        assert "dev" not in named, f"{workflow} still triggers on {where}=dev"
+    triggers = contract._triggers(doc)
+    branches = contract.trigger_branches(doc)
+    assert set(branches.get("push.branches", [])) == {"main", "dev"}, (
+        f"{workflow} pushes trigger on {branches.get('push.branches')}")
+    assert "pull_request" in triggers
+    assert "pull_request.branches" not in branches, (
+        f"{workflow} filters pull requests by target branch again")
 
 
 def test_codeql_analyses_pull_requests_at_all():

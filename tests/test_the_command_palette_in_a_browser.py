@@ -130,11 +130,17 @@ def app_url(tmp_path_factory):
         yield url
     finally:
         try:
-            os.killpg(proc.pid, signal.SIGTERM)
+            if os.name == "nt":
+                proc.terminate()
+            else:
+                os.killpg(proc.pid, signal.SIGTERM)
             proc.wait(timeout=20)
         except (ProcessLookupError, subprocess.TimeoutExpired):
             try:
-                os.killpg(proc.pid, signal.SIGKILL)
+                if os.name == "nt":
+                    proc.kill()
+                else:
+                    os.killpg(proc.pid, signal.SIGKILL)
             except ProcessLookupError:
                 pass
         log.close()

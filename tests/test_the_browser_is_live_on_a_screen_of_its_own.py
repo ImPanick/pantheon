@@ -724,7 +724,9 @@ def test_pantheon_offers_its_own_client_pointed_at_the_browsers_stream(live):
     assert r.status_code == 200, r.text
     body = r.json()
     assert body["kind"] == "kasmvnc" and body["holder"] == "agent"
-    assert body["client"].startswith("/api/workstation/desktop/client/vnc.html?")
+    # `896694ef`: the browser's client has a directory of its own, so Kasm's
+    # BroadcastChannel (scoped by directory) never reaches another viewer.
+    assert body["client"].startswith("/api/workstation/desktop/client/browser/vnc.html?")
     q = parse_qs(urlsplit(body["client"]).query)
     assert q["path"] == ["api/workstation/browser/websockify"]
     assert q["view_only"] == ["false"] and q["resize"] == ["scale"]

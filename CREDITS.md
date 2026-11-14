@@ -107,6 +107,22 @@ licences in
 
 ## Licence scope — what applies to what
 
+### Optional Android display runtime
+
+The Mobile Emulator displays Android through
+[scrcpy](https://github.com/Genymobile/scrcpy), by Romain Vimont and the
+Genymobile contributors. Its source is Apache-2.0. The optional workstation
+provisioner downloads an unmodified, checksum-pinned upstream Linux release,
+keeping its client and Android server together. The release bundle's dependencies
+retain their own licences and redistribution obligations; Pantheon's licence does
+not replace them. Keep upstream notices with any redistributed runtime and meet
+the corresponding source requirements of its dependencies where applicable.
+Google's SDK tools and Android system images are separate downloads under their
+own terms. See [Mobile Emulator setup](docs/setup.md) and the
+[Android SDK License](https://developer.android.com/studio/terms).
+
+### Pantheon's source and included assets
+
 This section exists because the acknowledgements Pantheon inherited from
 Odysseus opened their compatibility notes with *"the core ships fully permissive
 (MIT-compatible)"*, and that sentence, read alone, contradicts the `LICENSE`

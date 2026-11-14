@@ -203,12 +203,23 @@ def test_without_a_workstation_it_is_pantheons_own(no_workstation):
     assert LB.runs_in(client) is None
 
 
-def test_with_a_workstation_it_is_the_workstations(monkeypatch):
+@pytest.mark.parametrize("local_usable", [False, True])
+def test_with_a_workstation_it_is_the_workstations(monkeypatch, local_usable):
     import src.workstation_access as wa
-    sentinel = object()
+    calls = []
+    class Primary:
+        async def browser(self, account, action):
+            calls.append((account, action))
+            return {"source": "workstation"}
+    sentinel = Primary()
     monkeypatch.setattr(wa, "workstation_for", lambda owner, auth_manager=None: (sentinel, "pws-alice"))
-    assert LB.browser_for("alice") == (sentinel, "pws-alice")
-    assert LB.runs_in(sentinel) == LB.RUNS_IN_WORKSTATION
+    monkeypatch.setattr(LB, "_local_usable", lambda *args: local_usable)
+    client, account = LB.browser_for("alice")
+    assert account == "pws-alice"
+    assert (client.primary if local_usable else client) is sentinel
+    assert asyncio.run(client.browser(account, "status")) == {"source": "workstation"}
+    assert calls == [(account, "status")]
+    assert LB.runs_in(client) == LB.RUNS_IN_WORKSTATION
 
 
 def test_no_firefox_and_no_workstation_says_both(no_workstation, monkeypatch):

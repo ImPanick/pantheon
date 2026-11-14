@@ -849,9 +849,40 @@ def test_uvicorn_has_a_websocket_library_to_serve_the_stream_with():
     assert re.search(r"^websockets==\d+\.\d+(\.\d+)?$", requirements, re.M)
 
 
+def test_a_browser_disconnecting_during_stream_close_is_already_closed():
+    from starlette.websockets import WebSocketDisconnect, WebSocketState
+    from routes.workstation_routes import _close_quietly
+
+    class Gone:
+        application_state = WebSocketState.CONNECTED
+
+        async def close(self, **fields):
+            raise WebSocketDisconnect(code=1006)
+
+    asyncio.run(_close_quietly(Gone(), 1000, ""))
+
+
 def test_the_decision_is_on_the_record_and_the_old_one_says_it_was_replaced():
     decisions = (ROOT / ".pantheon" / "DECISIONS.md").read_text(encoding="utf-8")
     assert "D-2026-10-31-01" in decisions
     old = decisions[decisions.index("D-2026-09-30-03"):]
     old = old[:old.index("\n## ", 10) if "\n## " in old[10:] else len(old)]
     assert "D-2026-10-31-01" in old, "the screenshot-stream decision does not say what replaced it"
+
+
+def test_surface_and_watcher_viewers_have_separate_kasm_channels(client_dir):
+    from urllib.parse import urlsplit
+    from fastapi.testclient import TestClient
+    from src import desktop_client as D
+    paths=[urlsplit(D.page_url(stream=s)).path for s in (D.STREAM_PATH,D.BROWSER_STREAM_PATH,D.PHONE_STREAM_PATH)]
+    paths += [urlsplit(D.page_url(watch_person=p)).path for p in ('alice','bob')]
+    directories=[p.rsplit('/',1)[0] for p in paths]
+    assert len(set(directories))==len(paths)
+    c=TestClient(_client_app())
+    original=c.get(D.PREFIX+'/vnc.html')
+    for path in paths:
+        page=c.get(path)
+        assert page.status_code==200 and page.content==original.content
+        assert page.headers['content-security-policy']==original.headers['content-security-policy']
+        asset=c.get(path.rsplit('/',1)[0]+'/assets/ui-AbC.js')
+        assert asset.status_code==200

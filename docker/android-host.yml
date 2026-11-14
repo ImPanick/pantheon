@@ -1,0 +1,15 @@
+# Dedicated Android host; independent of the desktop backend.
+# Set PANTHEON_ANDROID_PAIRING_DIR to the host worker's private pairing folder.
+services:
+  pantheon:
+    environment:
+      PANTHEON_ANDROID_URL: ${PANTHEON_ANDROID_URL:-http://host.docker.internal:7993}
+      PANTHEON_ANDROID_TOKEN_FILE: /android-pairing/token
+      PANTHEON_ANDROID_TLS_PIN: ${PANTHEON_ANDROID_TLS_PIN:-}
+    volumes:
+      - type: bind
+        source: ${PANTHEON_ANDROID_PAIRING_DIR:?Set the Android host pairing folder}
+        target: /android-pairing
+        read_only: true
+        bind:
+          create_host_path: false

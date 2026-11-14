@@ -206,6 +206,12 @@ def in_force(table: str, *, run: Runner = _run, nft: Optional[str] = None) -> Op
         t = item.get("table") if isinstance(item, dict) else None
         if isinstance(t, dict) and t.get("name") == table:
             comment = str(t.get("comment") or "")
+            if "comment" not in t:
+                # nft 1.0.6 (Debian 12) omits table comments from JSON while
+                # its text formatter reads the same kernel comment correctly.
+                code, text, _err = run([binary, "list", "table", "inet", table], None)
+                match = re.match(rf'^table inet {re.escape(table)} \{{\s+comment "([^"\n]+)"', text) if code == 0 else None
+                comment = match[1] if match else ""
             if comment.startswith(COMMENT_PREFIX):
                 mode = comment[len(COMMENT_PREFIX):]
                 return mode if mode in P.NETWORK_MODES else None

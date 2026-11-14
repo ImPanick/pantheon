@@ -435,11 +435,17 @@ def test_the_three_populations_hold_at_their_counts():
     # fails" note, New workflow's no-model line and *Test this step*'s two
     # "What it reads" lines — each a rung of the ladder, not an opacity, so
     # `check-contrast.py`'s opacity count holds at 407. All text.
-    assert len(uses) == 893, f"expected 893 uses of --fg-muted, found {len(uses)}"
+    # 893 -> 895, 885 -> 887 bare: the Android phone window's two, both
+    # `color:` and both bare — `.phw-runtime-text, .phw-profile`, the runtime
+    # and profile lines under the screen (6e0089cc), and `.phw-usb-cable`'s
+    # resting state (f2b24b8b), an aria-hidden cable drawn in `currentColor`
+    # that a 4.5:1 token clears for the 3:1 a graphic needs. Its connected
+    # state lifts to `var(--fg)`, not the accent.
+    assert len(uses) == 895, f"expected 895 uses of --fg-muted, found {len(uses)}"
 
     bare = [expr for _, expr in uses if not _fallback(expr)]
-    assert len(bare) == 885, (
-        f"expected 885 bare `var(--fg-muted)` uses, found {len(bare)}. If a site "
+    assert len(bare) == 887, (
+        f"expected 887 bare `var(--fg-muted)` uses, found {len(bare)}. If a site "
         "was legitimately added or removed, move this number and say which in "
         "the commit — do not widen the assertion."
     )
@@ -502,7 +508,8 @@ def test_the_bare_uses_split_across_properties_as_measured():
     # 862 -> 866: the four quiet lines counted above, all `color:`.
     # 866 -> 867: `B1734`'s `.reasoning-effort-item-desc`, `color:` too.
     # 867 -> 875: the Workbench automations wave's eight quiet lines (above).
-    assert tally == {"color": 875, "border-color": 4, "background": 3, "--ctx-stroke": 3}, tally
+    # 875 -> 877: the phone window's runtime/profile lines and USB cable (above).
+    assert tally == {"color": 877, "border-color": 4, "background": 3, "--ctx-stroke": 3}, tally
 
 
 def test_the_javascript_uses_are_recorded_but_not_this_rows_work():

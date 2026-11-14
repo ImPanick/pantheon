@@ -35,7 +35,9 @@ pictures, as it did before the desktop streamed.
 from __future__ import annotations
 
 import logging
+import hashlib
 import os
+import re
 from pathlib import Path
 from typing import Optional
 from urllib.parse import quote, urlencode
@@ -106,10 +108,16 @@ def page_url(*, watch_person: Optional[str] = None, stream: str = STREAM_PATH) -
         "clipboard_up": "false" if watch_person else "true",
         "clipboard_down": "false" if watch_person else "true",
         "clipboard_seamless": "false",
-        "show_dot": "false",
+        "show_dot": "true" if stream == PHONE_STREAM_PATH else "false",
         "enable_webrtc": "false",
     }
-    return f"{PREFIX}/{PAGE}?" + urlencode(query, quote_via=quote)
+    # Kasm scopes its BroadcastChannel by URL directory, ignoring the query.
+    # Each surface and watched person needs a distinct directory so secondary
+    # monitor registrations and forwarded input cannot reach another viewer.
+    namespace = {STREAM_PATH: "", BROWSER_STREAM_PATH: "/browser", PHONE_STREAM_PATH: "/phone"}[stream]
+    if watch_person:
+        namespace = "/watch-" + hashlib.sha256((stream + "\0" + watch_person).encode()).hexdigest()[:24]
+    return f"{PREFIX}{namespace}/{PAGE}?" + urlencode(query, quote_via=quote)
 
 
 class DesktopClientFiles(StaticFiles):
@@ -128,6 +136,9 @@ class DesktopClientFiles(StaticFiles):
         if not available():
             return PlainTextResponse(UNAVAILABLE_SENTENCE, status_code=404,
                                      headers={"Cache-Control": "no-store"})
+        namespace, separator, rest = path.partition("/")
+        if separator and (namespace in ("phone", "browser") or re.fullmatch(r"watch-[0-9a-f]{24}", namespace)):
+            path = rest
         response = await super().get_response(path, scope)
         # The page names its assets by content (`ui-DKMQOe2K.js`), so they may
         # be kept; the page itself is asked again each time, like the app's.

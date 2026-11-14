@@ -389,6 +389,7 @@ ROUTES: Dict[str, Tuple[str, str]] = {
     # shapes and rules exactly, for the phone's display. The GET without the
     # upgrade starts nothing: a phone boots only when asked to (`phone` start).
     "phone_screen": ("GET", "/v1/users/{account}/phone/screen"),
+    "phone_choice": ("POST", "/v1/users/{account}/phone/choice"),
 }
 
 # ── what the fields may hold ──────────────────────────────────────────────────
@@ -409,12 +410,18 @@ MAX_DESKTOP_HANDSHAKE_BYTES = 16_384
 NETWORK_ACTIONS = ("interfaces", "reach")
 # `B1751`. The phone (`ROUTES["phone"]`, `workstation/phone.py`).
 PHONE_ACTIONS = ("status", "start", "stop", "device", "button", "posture", "rotate",
-                 "open_url", "screenshot", "input", "marks", "install")
+                 "open_url", "screenshot", "input", "marks", "install", "preview", "edition", "transfer", "usb")
+PHONE_EDITIONS = ("standard", "google_play")
+PHONE_ISOLATION_REQUIRED = ("Android requires a separate VM for each user. Update the workstation-vm "
+                            "host from this checkout, restart your VM, and choose the VM backend in "
+                            "Settings → Workstation. Shared accounts or a daemon without isolation "
+                            "metadata are refused. Existing device data is preserved; it is not "
+                            "automatically copied into a VM.")
 #: The ones that never move the phone, so never `busy`.
 PHONE_LOOK_ACTIONS = ("status", "screenshot", "marks")
 PHONE_STATES = ("off", "installing", "starting", "on", "unavailable")
 #: `B1753`. What runs as the phone: the real Android ("android", which needs
-#: KVM), or, where there is none, the mobile view ("mobile_view": the
+#: KVM), or an explicitly requested web preview ("mobile_view": the
 #: workstation's Firefox shaped and identified as the device). The state's
 #: "mode" says which; with "mobile_view" it also says "why_not_android".
 PHONE_MODES = ("android", "mobile_view")
@@ -422,14 +429,15 @@ PHONE_MODES = ("android", "mobile_view")
 PHONE_BUTTONS = {"power": 26, "volume_up": 24, "volume_down": 25, "back": 4, "home": 3,
                  "recents": 187}
 #: A foldable's two postures: open flat, or closed onto its cover screen.
-PHONE_POSTURES = ("open", "closed")
+PHONE_POSTURES = ("open", "half_open", "closed")
 #: The real devices a phone can be: each one's screen as the maker ships it
 #: (pixels and the density Android draws at), and for a foldable the cover
 #: screen it shows when closed — emulated as a region of the inner screen, the
 #: way the SDK's own foldable devices are, so its width is the cover's and its
-#: height the inner's. Samsung's devices run stock Android: One UI is
-#: Samsung's and is not redistributable, so their size, density and fold are
-#: real and their skin is not.
+#: height the inner's. Every profile runs generic Android. These profiles
+#: approximate hardware dimensions and appearance, not retail device identity
+#: or OEM firmware. OEM images are a future option only after technical
+#: validation and an explicit review of acquisition and redistribution rights.
 PHONE_DEVICES: Dict[str, Dict] = {
     # ── Google ──
     "pixel_9": {"name": "Google Pixel 9", "maker": "Google", "kind": "phone",
@@ -461,6 +469,13 @@ PHONE_DEVICES: Dict[str, Dict] = {
                       "width": 2560, "height": 1600, "density": 320},
     "galaxy_tab_s10_ultra": {"name": "Samsung Galaxy Tab S10 Ultra", "maker": "Samsung", "kind": "tablet",
                              "width": 2960, "height": 1848, "density": 320},
+    # Generic SDK clamshells at the manufacturers' panel resolutions; not OEM firmware.
+    "galaxy_z_flip6": {"name": "Samsung Galaxy Z Flip6", "maker": "Samsung", "kind": "foldable",
+                       "width": 1080, "height": 2640, "density": 420, "cover_width": 720,
+                       "cover_height": 748, "fold_axis": "horizontal"},
+    "razr_50_ultra": {"name": "Motorola Razr 50 Ultra", "maker": "Motorola", "kind": "foldable",
+                      "width": 1080, "height": 2640, "density": 420, "cover_width": 1080,
+                      "cover_height": 1272, "fold_axis": "horizontal"},
     # ── OnePlus and Nothing ──
     "oneplus_12": {"name": "OnePlus 12", "maker": "OnePlus", "kind": "phone",
                    "width": 1440, "height": 3168, "density": 560},
@@ -482,6 +497,11 @@ _SAMSUNG_KEYS = {"right": ["volume_up", "volume_down", "power"]}
 _SPLIT_KEYS = {"left": ["volume_up", "volume_down"], "right": ["power"]}
 _TABLET_KEYS = {"top": ["power", "volume_up", "volume_down"]}
 PHONE_LOOKS: Dict[str, Dict] = {
+    "galaxy_z_flip6": {"finish": "#b1c5d9", "finish_name": "Blue", "corner": 0.07, "bezel": 0.025,
+                       "cutout": "punch-center", "keys": {"right": ["volume_up", "volume_down", "power"]}},
+    "razr_50_ultra": {"finish": "#37534d", "finish_name": "Spring Green", "corner": 0.09, "bezel": 0.025,
+                      "cutout": "punch-center", "keys": {"right": ["volume_up", "volume_down", "power"]}},
+
     "pixel_9": {"finish": "#202124", "finish_name": "Obsidian", "corner": 0.12, "bezel": 0.035,
                 "cutout": "punch-center", "keys": _GOOGLE_KEYS},
     "pixel_9_pro": {"finish": "#8b8e83", "finish_name": "Hazel", "corner": 0.12, "bezel": 0.03,
@@ -763,6 +783,8 @@ ERRORS: Dict[str, int] = {
     "forbidden": 403,
     "not_found": 404,
     "busy": 409,          # a person holds the display (`control`)
+    "usb_ejected": 409,   # USB lease revoked; reconnect rather than retry it
+    "license": 409,       # SDK terms require explicit acceptance by a person
     "too_large": 413,
     "unavailable": 503,   # no display, or the account could not be made
     "internal": 500,
@@ -852,7 +874,8 @@ __all__ = [
     "DEFAULT_SYSTEM", "SYSTEMS", "SYSTEM_NAMES", "SYSTEM_PORTS", "system_pairing_dir",
     "system_pairing_dir_env", "system_url_env",
     # `B1751`, added.
-    "PHONE_ACTIONS", "PHONE_BUTTONS", "PHONE_DEFAULT_DEVICE", "PHONE_DEVICES",
+    "PHONE_ACTIONS", "PHONE_BUTTONS", "PHONE_DEFAULT_DEVICE", "PHONE_DEVICES", "PHONE_EDITIONS",
+    "PHONE_ISOLATION_REQUIRED",
     "PHONE_LOOK_ACTIONS", "PHONE_MODES", "PHONE_POSTURES", "PHONE_SCREEN_MAX", "PHONE_STATES",
     "phone_screen_size",
 ]

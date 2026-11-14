@@ -217,6 +217,34 @@ else
     echo "▶ ChromaDB CLI not found in venv; skipping (tool index will be degraded)."
 fi
 
+# Android. The phone is a real Android VM on this Mac (Hypervisor.framework),
+# run by a small worker beside Pantheon rather than inside it. The first run asks
+# you to accept Google's Android SDK licence, then downloads Google's emulator
+# into ~/.pantheon/android-host; later runs only start the worker. It needs
+# Docker Desktop for the phone's private network. If anything is missing it
+# says what, and Pantheon starts without Android. PANTHEON_ANDROID=off skips it;
+# a PANTHEON_ANDROID_URL you set yourself (a remote worker) is left alone.
+ANDROID_UP=""
+if [ "${PANTHEON_ANDROID:-on}" = "off" ]; then
+    echo "▶ PANTHEON_ANDROID=off - not starting Android."
+elif [ -n "${PANTHEON_ANDROID_URL:-}" ]; then
+    echo "▶ PANTHEON_ANDROID_URL is set - using that Android worker."
+else
+    echo "▶ Preparing Android (the first run downloads Google's Android emulator once)…"
+    if ANDROID_ENV="$("$VENV_PY" -m workstation.native_android.bootstrap up --app native --print-env sh)"; then
+        eval "$ANDROID_ENV"
+        ANDROID_UP=1
+    else
+        echo "  Android is off for this run (the reason is above); Pantheon starts without it."
+    fi
+fi
+stop_android() {
+    if [ -n "$ANDROID_UP" ]; then
+        ANDROID_UP=""
+        "$VENV_PY" -m workstation.native_android.bootstrap down || true
+    fi
+}
+
 # 5. Launch. Bind to loopback by default; opt into LAN/Tailscale with
 #    PANTHEON_HOST=0.0.0.0.
 URL_HOST="$HOST"
@@ -259,7 +287,7 @@ fi
 # Setup is done — drop the setup-failure handler, and clean up the background
 # opener when the server exits or the user presses Ctrl+C.
 trap - ERR
-trap '[ -n "$POLLER_PID" ] && kill "$POLLER_PID" 2>/dev/null; [ -n "$APFEL_PID" ] && kill "$APFEL_PID" 2>/dev/null; [ -n "$CHROMA_PID" ] && kill "$CHROMA_PID" 2>/dev/null' EXIT INT TERM
+trap '[ -n "$POLLER_PID" ] && kill "$POLLER_PID" 2>/dev/null; [ -n "$APFEL_PID" ] && kill "$APFEL_PID" 2>/dev/null; [ -n "$CHROMA_PID" ] && kill "$CHROMA_PID" 2>/dev/null; stop_android' EXIT INT TERM
 
 echo
 echo "▶ Starting Pantheon — it will open in your browser at $URL"

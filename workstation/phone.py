@@ -10,11 +10,12 @@ WHAT RUNS
 =========
 
 * **Google's Android Emulator**, from the Android SDK the image was built with
-  (`provision.sh phone`, only with `WORKSTATION_PHONE=on`), booting a real
+  (`provision.sh phone`, after an explicit licensed install), booting a real
   Android system image (`PHONE_IMAGE`, Google APIs, x86_64) — the OS a phone
-  runs, not a look-alike. It runs **as the account**, headless (`-no-window`),
+  runs, not a look-alike. It runs **as the account inside their own VM**,
+  headless (`-no-window`),
   with each device's data in the account's own home
-  (`~/.android/avd/pantheon_<device>.avd`), so a person's phone is theirs, is
+  (`~/.android/avd/pantheon_<device>_<image-hash>.avd`, or a matching legacy AVD), so a person's phone is theirs, is
   kept across restarts, and goes with "Reset to clean" like the rest of the home.
 * **On a screen of its own**: an `XDisplay` of role "phone" (`ubuntu.py`), the
   browser's arrangement — KasmVNC with nothing else on it — sized to the
@@ -32,31 +33,26 @@ WHAT RUNS
 WHAT IT NEEDS, SAID
 ===================
 
-**KVM.** Android's emulator runs x86_64 Android on the host's CPU through KVM;
-without it the emulator either refuses or crawls (minutes a screen), so a phone
-on a host without KVM is `unavailable` with the sentence that says how to get
-it — on Docker Desktop for Windows, nested virtualization in `.wslconfig`
-(`docs/setup.md`). `/dev/kvm` is made in the container as the VM backend makes
-it (`vm.choose_accel`; the compose file's device-cgroup rule is what lets it
-open) and opened to the accounts, who run the emulator.
+**KVM and isolation.** The outer VM host must use actual KVM, and this guest
+must also have usable KVM. A TCG guest can expose an emulated KVM node; that
+does not make Android hardware-accelerated. Shared container/remote accounts
+are refused for Android even when their ports differ or sudo is off. The VM
+backend forwards only its authenticated daemon, not the phone's ports. Nested
+Android is experimental; Google's supported configurations exclude running an
+accelerated emulator inside another VM. See `docs/setup.md` for prerequisites.
 
-**Its own adb, per account.** Each account's adb server listens on a port of
-its own (`ANDROID_ADB_SERVER_PORT`, from the uid), and each emulator's console
-on an even port from `CONSOLE_PORTS` — above the range adb scans by itself, so
-one account's `adb devices` does not list another's phone. The console asks
-for the token in the account's own home. That is not a wall between accounts
-while `sudo` is on (the default: every account is root here, and the jail is a
-fiction the panel already says so beside); with `sudo` off, the emulator's adb
-port is still on the loopback every account shares, which `THREAT_MODEL.md`
-records as this row's open edge.
+**Its own adb.** The account's adb server and emulator console/device ports
+stay on that user's guest loopback. Each VM has separate disks and its own
+daemon token. The user's own agents share this device; host administrators
+remain trusted. Separate ports on a shared loopback were never an isolation
+boundary (`THREAT_MODEL.md`).
 
-WITHOUT KVM: THE MOBILE VIEW (`B1753`)
+EXPLICIT WEB PREVIEW (`B1753`)
 ======================================
 
-The owner chose, 2026-11-02, "Real Android, plus mobile view": on a host
-without KVM (Docker Desktop without nested virtualization, most cloud VMs) the
-phone is not refused — it opens as a **mobile view**: the workstation's own
-Firefox, alone on the phone's screen in kiosk mode, at the device's shape, with
+The web preview survives as an explicit `preview` action. Android `start` and
+`install` never launch it. The workstation's own Firefox runs alone on the
+phone's screen in kiosk mode, at the device's shape, with
 the device's CSS width (`layout.css.devPixelsPerPx`), a mobile user agent, the
 page's `<meta name="viewport">` honoured, and touch events on — so a website
 lays itself out and behaves as it does on that phone. It is not Android: no
@@ -70,6 +66,8 @@ rest of it.
 """
 from __future__ import annotations
 
+import base64
+import hashlib
 import logging
 import os
 import re
@@ -78,9 +76,13 @@ import shutil
 import socket
 import stat
 import subprocess
+import tempfile
 import threading
 import time
+import unicodedata
 import xml.etree.ElementTree as ET
+from contextlib import contextmanager
+from functools import lru_cache
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Tuple
 
@@ -96,12 +98,22 @@ DEFAULT_SDK = "/opt/android-sdk"
 #: Dockerfile from the same build argument that installed it.
 IMAGE_ENV = "PANTHEON_PHONE_IMAGE"
 DEFAULT_IMAGE = "system-images;android-35;google_apis;x86_64"
+PLAY_IMAGE = "system-images;android-35;google_apis_playstore;x86_64"
+TRANSFER_DEST = "/sdcard/Download/Pantheon"
+TRANSFER_TIMEOUT_S = 90.0
+ISOLATION_REQUIRED = P.PHONE_ISOLATION_REQUIRED
 IDLE_ENV = "PANTHEON_PHONE_IDLE_MIN"
 MAX_RUNNING_ENV = "PANTHEON_PHONE_MAX_RUNNING"
 MEMORY_ENV = "PANTHEON_PHONE_MEMORY_MIB"
 DEFAULT_IDLE_MIN = 30
 DEFAULT_MAX_RUNNING = 2
-DEFAULT_MEMORY_MIB = 2048
+#: An Android phone's memory. The owner's real-machine run on Windows
+#: (2026-11-13): Android would not run with 2 GiB; it gets 8 to 12 GiB.
+DEFAULT_MEMORY_MIB = 8192
+MAX_DEFAULT_MEMORY_MIB = 12288
+#: What a host keeps for itself and Pantheon when a phone is sized to it.
+HOST_RESERVE_MIB = 4096
+MIN_SCRCPY_VERSION = (2, 4)  # Android 15 display API support, upstream scrcpy v2.4
 #: Where a person's choice of device is kept, in their home.
 PREFS_FILE = ".pantheon/phone.json"
 #: What the emulator last said, in the person's home (`.android` is the
@@ -120,13 +132,13 @@ ADB_TIMEOUT_S = 20.0
 REAP_EVERY_S = 60.0
 AVAILABILITY_TRUST_S = 30.0
 
-BUILT_WITHOUT = ("This workstation was built without the phone. Rebuild it with the phone in: "
-                 "set WORKSTATION_PHONE=on (which accepts the Android SDK License) and run "
-                 "docker compose up -d --build.")
-NO_KVM = ("The phone needs KVM, and this workstation has none ({why}). Android's emulator runs "
-          "the phone's own CPU through KVM and is unusable without it. On Docker Desktop for "
-          "Windows, turn on nested virtualization in .wslconfig (docs/setup.md, \"A real VM on "
-          "Windows\") and restart Docker; on Linux, the host needs /dev/kvm.")
+BUILT_WITHOUT = ("This VM has no working Android runtime or installer. Rebuild the workstation-vm "
+                 "host from the current checkout and restart your VM, preserving its disk. "
+                 "Install Android only after a person accepts the Android SDK License (docs/setup.md).")
+NO_KVM = ("Android needs usable KVM inside your own VM, and the check failed ({why}). "
+          "Windows virtualization toggles alone do not prove this path works. Ask an admin "
+          "to verify nested KVM and the emulator's -accel-check inside the user's VM "
+          "(docs/setup.md, Mobile Emulator). Browser preview is a separate web-only option.")
 NOT_X86 = "The phone runs x86_64 Android, and this workstation is {arch}."
 NO_SCREEN = ("The phone has no screen to show on: this workstation has no KasmVNC. Rebuild it: "
              "docker compose up -d --build.")
@@ -161,8 +173,9 @@ INSTALL_STEPS = {
 ANDROID_NAMES = {33: "Android 13", 34: "Android 14", 35: "Android 15", 36: "Android 16"}
 NEEDS_LICENSE = ("Installing the phone accepts the Android SDK License ({url}). A person accepts "
                  "it once, in the Workbench's Devices room; then any device can be installed.")
-CANNOT_INSTALL = ("This workstation cannot install the phone itself ({why}). Rebuild it with the "
-                  "phone in: set WORKSTATION_PHONE=on and run docker compose up -d --build.")
+CANNOT_INSTALL = ("This VM cannot install Android ({why}). Check its disk space and update the "
+                  "workstation-vm host from the current checkout, then restart your VM without "
+                  "resetting its data (docs/setup.md, Mobile Emulator).")
 
 
 class PhoneError(Exception):
@@ -188,6 +201,13 @@ def android_name(package: str) -> str:
     return ANDROID_NAMES.get(api, f"Android API {api}")
 
 
+def image_kind(package: str) -> str:
+    tag = image_parts(package)["tag"]
+    if tag == "google_apis_playstore":
+        return "google_play"
+    return {"google_apis": "google_apis", "default": "aosp"}.get(tag, "custom")
+
+
 def image_installed(package: str) -> bool:
     try:
         return (sdk_root() / image_parts(package)["sysdir"]).is_dir()
@@ -197,7 +217,8 @@ def image_installed(package: str) -> bool:
 
 def tools_installed() -> bool:
     found = tools()
-    return bool(found["emulator"] and found["adb"] and found["scrcpy"])
+    return bool(found["emulator"] and found["adb"] and found["scrcpy"]
+                and scrcpy_version(found["scrcpy"]) >= MIN_SCRCPY_VERSION)
 
 
 def license_accepted() -> bool:
@@ -207,8 +228,15 @@ def license_accepted() -> bool:
 
 
 def provision_script() -> Optional[str]:
-    path = os.environ.get(PROVISION_ENV) or PROVISION
-    return path if os.path.isfile(path) else None
+    override = os.environ.get(PROVISION_ENV)
+    if override:
+        return override if os.path.isfile(override) else None
+    # The VM's read-only app disk carries this daemon's current installer;
+    # its original base image's baked script may predate the display bridge.
+    current = Path(__file__).with_name("provision.sh")
+    if current.is_file():
+        return str(current)
+    return PROVISION if os.path.isfile(PROVISION) else None
 
 
 def can_install() -> Optional[str]:
@@ -378,16 +406,28 @@ def tools(root: Optional[Path] = None) -> Dict[str, Optional[str]]:
     def there(path: Path) -> Optional[str]:
         return str(path) if path.is_file() and os.access(path, os.X_OK) else None
 
+    bundled = there(root / "scrcpy" / "scrcpy") if (root / "scrcpy" / "scrcpy-server").is_file() else None
     return {"emulator": there(root / "emulator" / "emulator"),
             "adb": there(root / "platform-tools" / "adb"),
-            "scrcpy": shutil.which("scrcpy")}
+            "scrcpy": bundled or shutil.which("scrcpy")}
+
+
+def default_memory_mib(total_mib: Optional[int]) -> int:
+    """A phone's memory on a host with `total_mib`: a quarter of it, kept
+    between 8 and 12 GiB, and never more than the host can give while it keeps
+    `HOST_RESERVE_MIB` for itself. 8 GiB when the host's memory is unknown."""
+    if not total_mib:
+        return DEFAULT_MEMORY_MIB
+    sized = min(MAX_DEFAULT_MEMORY_MIB, max(DEFAULT_MEMORY_MIB, total_mib // 4 // 256 * 256))
+    return max(2048, min(sized, total_mib - HOST_RESERVE_MIB))
 
 
 def avd_name(device: str) -> str:
     return AVD_PREFIX + device
 
 
-def avd_config(device: str, package: str, *, memory_mib: int = DEFAULT_MEMORY_MIB) -> str:
+def avd_config(device: str, package: str, *, memory_mib: int = DEFAULT_MEMORY_MIB,
+               name: Optional[str] = None) -> str:
     """The device's `config.ini`: its screen exactly as the maker ships it,
     the system image, no skin (scrcpy draws the screen; Pantheon draws the
     bezel), no audio, software GL (no GPU is assumed), and for a foldable the
@@ -396,11 +436,11 @@ def avd_config(device: str, package: str, *, memory_mib: int = DEFAULT_MEMORY_MI
     img = image_parts(package)
     w, h = d["width"], d["height"]
     lines = {
-        "AvdId": avd_name(device),
+        "AvdId": name or avd_name(device),
         "avd.ini.displayname": d["name"],
         "avd.ini.encoding": "UTF-8",
         "abi.type": img["abi"],
-        "hw.cpu.arch": "x86_64" if img["abi"] == "x86_64" else img["abi"],
+        "hw.cpu.arch": "arm64" if img["abi"] == "arm64-v8a" else img["abi"],
         "hw.cpu.ncore": "2",
         "hw.ramSize": str(memory_mib),
         "vm.heapSize": "256",
@@ -426,48 +466,62 @@ def avd_config(device: str, package: str, *, memory_mib: int = DEFAULT_MEMORY_MI
         "skin.dynamic": "yes",
         "skin.name": f"{w}x{h}",
         "skin.path": "_no_skin",
-        "PlayStore.enabled": "true" if "playstore" in img["tag"] else "false",
-        "fastboot.forceColdBoot": "no",
+        "PlayStore.enabled": "true" if image_kind(package) == "google_play" else "false",
+        "fastboot.forceColdBoot": "yes",
     }
     if d["kind"] == "foldable":
         cover = d["cover_width"]
         lines.update({
             "hw.sensor.hinge": "yes",
             "hw.sensor.hinge.count": "1",
-            "hw.sensor.hinge.type": "1",
-            "hw.sensor.hinge.sub_type": "1",
+            "hw.sensor.hinge.type": "0" if d.get("fold_axis") == "horizontal" else "1",
+            "hw.sensor.hinge.sub_type": "0",
             "hw.sensor.hinge.ranges": "0-180",
             "hw.sensor.hinge.defaults": "180",
-            "hw.sensor.hinge.areas": f"{cover}-0-1-{h}",
+            "hw.sensor.hinge.areas": f"0-{h//2}-{w}-1" if d.get("fold_axis") == "horizontal" else f"{w//2}-0-1-{h}",
             "hw.sensor.posture_list": "1, 2, 3",
             "hw.sensor.hinge_angles_posture_definitions": "0-30, 30-150, 150-180",
             "hw.sensor.hinge.fold_to_displayRegion.0.1_at_posture": "1",
             "hw.displayRegion.0.1.xOffset": "0",
             "hw.displayRegion.0.1.yOffset": "0",
             "hw.displayRegion.0.1.width": str(cover),
-            "hw.displayRegion.0.1.height": str(h),
+            "hw.displayRegion.0.1.height": str(d.get("cover_height", h)),
         })
     return "".join(f"{k}={v}\n" for k, v in lines.items())
 
 
-def avd_ini(device: str, avd_home: Path, package: str) -> str:
+def avd_ini(device: str, avd_home: Path, package: str, *, name: Optional[str] = None) -> str:
     """The `<name>.ini` beside the device's folder, which is how the emulator
     finds it."""
-    return (f"avd.ini.encoding=UTF-8\npath={avd_home / (avd_name(device) + '.avd')}\n"
-            f"path.rel=avd/{avd_name(device)}.avd\ntarget={image_parts(package)['target']}\n")
+    name = name or avd_name(device)
+    return (f"avd.ini.encoding=UTF-8\npath={avd_home / (name + '.avd')}\n"
+            f"path.rel=avd/{name}.avd\ntarget={image_parts(package)['target']}\n")
 
 
-def emulator_argv(emulator: str, device: str, *, port: int, memory_mib: int) -> List[str]:
+def emulator_argv(emulator: str, device: str, *, port: int, memory_mib: int,
+                  name: Optional[str] = None) -> List[str]:
     """The emulator, headless — scrcpy is the window — on KVM, with software
-    GL, no audio, no boot animation, and nothing sent anywhere about it."""
-    return [emulator, "-avd", avd_name(device), "-port", str(port), "-no-window", "-no-audio",
-            "-no-boot-anim", "-gpu", "swiftshader_indirect", "-accel", "on",
+    GL, a visible Android boot animation, and no metrics. Cold boot preserves
+    userdata, but deliberately does not resume a snapshot past the boot screen."""
+    return [emulator, "-avd", name or avd_name(device), "-port", str(port), "-no-window", "-no-audio",
+            "-no-snapshot-load", "-gpu", "swiftshader_indirect", "-accel", "on",
             "-memory", str(memory_mib), "-no-metrics"]
 
 
 def scrcpy_version(scrcpy: str) -> Tuple[int, int]:
     """scrcpy's `(major, minor)`, or `(1, 0)` when it does not say: its options
     differ between the release Ubuntu ships and later ones."""
+    try:
+        stamp = os.stat(scrcpy).st_mtime_ns
+    except OSError:
+        stamp = None
+    return _scrcpy_version(scrcpy, stamp)
+
+
+@lru_cache(maxsize=16)
+def _scrcpy_version(scrcpy: str, stamp: Optional[int]) -> Tuple[int, int]:
+    """Cache probes by binary modification time; status polling must not
+    spawn subprocesses repeatedly, and provisioning must invalidate a probe."""
     try:
         out = subprocess.run([scrcpy, "--version"], stdout=subprocess.PIPE,
                              stderr=subprocess.STDOUT, timeout=10).stdout.decode("utf-8", "replace")
@@ -484,7 +538,7 @@ def scrcpy_argv(scrcpy: str, serial: str, size: Tuple[int, int], *,
     kept awake while it shows. Audio is a later scrcpy's and is not wanted."""
     w, h = size
     argv = [scrcpy, "--serial", serial, "--window-title", "Pantheon phone",
-            "--window-borderless", "--window-x", "0", "--window-y", "0",
+            "--window-borderless", "--fullscreen", "--window-x", "0", "--window-y", "0",
             "--window-width", str(w), "--window-height", str(h),
             "--render-driver", "software", "--max-size", str(max(w, h) * 2),
             "--stay-awake", "--disable-screensaver"]
@@ -508,6 +562,7 @@ def _shape(d: Dict, posture: Optional[str], rotation: int) -> Tuple[int, int]:
     w, h = d["width"], d["height"]
     if posture == "closed" and d.get("cover_width"):
         w = d["cover_width"]
+        h = d.get("cover_height", h)
     if rotation % 2:
         w, h = h, w
     return w, h
@@ -584,11 +639,14 @@ _BOUNDS_RE = re.compile(r"\[(-?\d+),(-?\d+)\]\[(-?\d+),(-?\d+)\]")
 _EDITABLE = ("EditText", "AutoCompleteTextView", "SearchView")
 
 
-def marks_from_dump(xml: str, screen: Tuple[int, int]) -> Dict:
+def marks_from_dump(xml: str, screen: Tuple[int, int], *,
+                    source_size: Optional[Tuple[int, int]] = None) -> Dict:
     """`ROUTES["marks"]`'s answer from a `uiautomator dump`: each control a
     person could tap or type into, its box moved from the device's pixels to
-    the phone screen's — scrcpy fits the device's display into the screen,
-    centred, keeping its shape — named by its text or its description."""
+    the phone screen's, named by its text or its description. A full-display
+    capture supplies its source size; a partial UI tree cannot establish that
+    size. Legacy scrcpy views retain their centred fit when no size is known.
+    """
     end = xml.rfind("</hierarchy>")
     if end < 0:
         raise PhoneError("unavailable", "The phone's UI tree could not be read.")
@@ -600,16 +658,25 @@ def marks_from_dump(xml: str, screen: Tuple[int, int]) -> Dict:
     nodes = list(root.iter("node"))
     if not nodes:
         return {"marks": [], "windows": [], "why": "The phone's screen has nothing on it to tap."}
-    dev_w = dev_h = 0
-    for n in nodes:
-        m = _BOUNDS_RE.match(n.get("bounds", ""))
-        if m:
-            dev_w, dev_h = max(dev_w, int(m.group(3))), max(dev_h, int(m.group(4)))
+    if source_size is None:
+        dev_w = dev_h = 0
+        for n in nodes:
+            m = _BOUNDS_RE.match(n.get("bounds", ""))
+            if m:
+                dev_w, dev_h = max(dev_w, int(m.group(3))), max(dev_h, int(m.group(4)))
+    else:
+        dev_w, dev_h = source_size
     sw, sh = screen
     if dev_w <= 0 or dev_h <= 0:
         raise PhoneError("unavailable", "The phone's UI tree has no sizes in it.")
-    scale = min(sw / dev_w, sh / dev_h)
-    ox, oy = (sw - dev_w * scale) / 2, (sh - dev_h * scale) / 2
+    if source_size is None:
+        scale_x = scale_y = min(sw / dev_w, sh / dev_h)
+        ox, oy = (sw - dev_w * scale_x) / 2, (sh - dev_h * scale_y) / 2
+    else:
+        # The native capture fills its bitmap. Match touch's independent axes,
+        # including the integer rounding of thumbnail dimensions.
+        scale_x, scale_y = sw / dev_w, sh / dev_h
+        ox = oy = 0
     marks: List[Dict] = []
     seen = set()
     for n in nodes:
@@ -624,8 +691,8 @@ def marks_from_dump(xml: str, screen: Tuple[int, int]) -> Dict:
         if not m:
             continue
         x1, y1, x2, y2 = (int(v) for v in m.groups())
-        box = [int(round(ox + x1 * scale)), int(round(oy + y1 * scale)),
-               int(round((x2 - x1) * scale)), int(round((y2 - y1) * scale))]
+        box = [int(round(ox + x1 * scale_x)), int(round(oy + y1 * scale_y)),
+               int(round((x2 - x1) * scale_x)), int(round((y2 - y1) * scale_y))]
         if box[2] < 4 or box[3] < 4 or box[0] < 0 or box[1] < 0 \
                 or box[0] + box[2] > sw or box[1] + box[3] > sh:
             continue
@@ -684,7 +751,7 @@ class AccountPhone:
                  release_port: Optional[Callable[[str], None]] = None,
                  can_start: Optional[Callable[[str], Optional[str]]] = None,
                  kvm: Optional[Callable[[], Tuple[bool, str]]] = None,
-                 installer: Optional["Installer"] = None) -> None:
+                 installer: Optional["Installer"] = None, lifecycle=None) -> None:
         self.system = system
         self.account = account
         self.installer = installer or Installer()   # `B1756`: the workstation's one
@@ -698,18 +765,34 @@ class AccountPhone:
         self.state = "off"
         self.why = ""
         self.device = self._saved_device()
+        self.edition = self._saved_edition()
         self.posture: Optional[str] = None
         self.rotation = 0
         self.port: Optional[int] = None
         self.emulator: Optional[subprocess.Popen] = None
         self.scrcpy: Optional[subprocess.Popen] = None
+        self.boot_phase = "off"
         self.used_at = time.monotonic()
         self.watchers = 0
         self._booting: Optional[threading.Thread] = None
         self._avail: Optional[Tuple[float, Optional[str]]] = None
         self.mobile: Optional[MobileView] = None   # `B1753`: the mobile view's Firefox
+        self._mobile_cancel: Optional[threading.Event] = None
+        # The manager keeps this lease across handle eviction: the display is
+        # cached by the system and can outlive any one AccountPhone instance.
+        self._mobile_lifecycle = lifecycle if lifecycle is not None else threading.Lock()
+        self._android_lifecycle = False
+        self._retired = threading.Event()
 
     # -- what it is -------------------------------------------------------------
+
+    def retire(self) -> None:
+        """Invalidate captured handles without waiting for I/O or the phone lock."""
+        self._retired.set()
+
+    def _active(self) -> None:
+        if self._retired.is_set():
+            raise PhoneError("unavailable", "This phone session was replaced. Open the current device again.")
 
     def home(self) -> Path:
         return Path(self.system.home(self.account))
@@ -733,12 +816,8 @@ class AccountPhone:
         return f"emulator-{self.port}" if self.port else None
 
     def availability(self) -> Optional[str]:
-        """Why this workstation can run no phone at all — not Android and not
-        the mobile view (`B1753`) — or None when it can run one."""
-        why = self.android_why()
-        if why is None or self.mobile_why() is None:
-            return None
-        return why
+        """Android's prerequisite, independently of the optional web preview."""
+        return self.android_why()
 
     def mobile_why(self) -> Optional[str]:
         """`B1753`. Why the mobile view cannot run here, or None."""
@@ -749,11 +828,15 @@ class AccountPhone:
         return None
 
     def mode(self) -> Optional[str]:
-        """`B1753`. "android" where the real phone runs, "mobile_view" where
-        only the mobile view does, None where neither."""
+        """Android capability/producer, or an explicitly started web preview.
+        An available Firefox never makes Android available."""
+        if self.mobile is not None:
+            return "mobile_view"
+        if self.emulator is not None and self.running():
+            return "android"
         if self.android_why() is None:
             return "android"
-        return "mobile_view" if self.mobile_why() is None else None
+        return None
 
     def android_why(self) -> Optional[str]:
         """Why this workstation cannot run Android, or None when it can —
@@ -768,19 +851,34 @@ class AccountPhone:
 
     def _availability(self) -> Optional[str]:
         import platform
+        if getattr(self.system, "backend", None) != "vm":
+            return ISOLATION_REQUIRED
         arch = platform.machine().lower()
         if arch not in ("x86_64", "amd64"):
             return NOT_X86.format(arch=arch or "another architecture")
         ok, why = self._kvm()
         if not ok:
             return NO_KVM.format(why=why)
+        try:
+            total_mib = int(next(line.split()[1] for line in Path("/proc/meminfo").read_text().splitlines()
+                                 if line.startswith("MemTotal:"))) // 1024
+        except (OSError, ValueError, StopIteration, IndexError):
+            total_mib = None
+        if total_mib is not None and total_mib < self.memory_mib + 1536:
+            return (f"This user's VM has {total_mib} MiB of memory; Android alone needs "
+                    f"{self.memory_mib} MiB plus 1536 MiB for the workstation. Ask an admin "
+                    f"to increase PANTHEON_WORKSTATION_VM_MEMORY_MIB ({self.memory_mib + 2048} recommended), "
+                    "then restart your VM.")
         # `B1756`: a phone that is not installed yet is one picking a device
         # installs — where this daemon can install it.
-        if tools_installed() and image_installed(image_package()):
+        if tools_installed() and image_installed(self.package()):
             return None
         if can_install() is None:
             return None
         return BUILT_WITHOUT
+
+    def package(self, device: Optional[str] = None) -> str:
+        return PLAY_IMAGE if self.edition == "google_play" else device_image(device or self.device)
 
     def env(self) -> Dict[str, str]:
         """What the emulator, adb and scrcpy run with, as the account — and
@@ -797,16 +895,14 @@ class AccountPhone:
         return out
 
     def screen_size(self) -> Tuple[int, int]:
-        """The phone's screen now: the device's, or (`B1753`) the mobile
-        view's, which turns and folds with it."""
-        if self.mode() == "mobile_view":
-            return mobile_view_size(self.device, self.posture, self.rotation)
-        return P.phone_screen_size(self.device)
+        """The active display at its current posture and orientation, for
+        streaming, screenshots, touch and the agent's marks alike."""
+        return mobile_view_size(self.device, self.posture, self.rotation)
 
     def info(self, action: str = "status") -> Dict:
         mode = self.mode()
         why = self.why if self.state == "unavailable" else ""
-        if self.state == "off":
+        if self.state == "off" or (mode != "mobile_view" and self.android_why()):
             why = self.availability() or ""
         d = P.PHONE_DEVICES.get(self.device) or {}
         out = {"ok": True, "action": action, "available": not why,
@@ -819,17 +915,26 @@ class AccountPhone:
                "posture": self.posture if d.get("kind") == "foldable" else None,
                "rotation": self.rotation,
                "screen": list(self.screen_size()),
+               "screen_is_active": True,
                "accel": "kvm" if self.state in ("starting", "on") and mode == "android" else None,
-               "android": image_package(),
-               "mode": mode}
+               "android": self.package(),
+               "edition": self.edition,
+               "image_kind": image_kind(self.package()),
+               "standard_image_kind": image_kind(device_image(self.device)),
+               "editions": list(P.PHONE_EDITIONS),
+               "isolation": "per_user_vm" if getattr(self.system, "backend", None) == "vm" else "shared",
+               "preview_available": self.mobile_why() is None,
+               "mode": mode,
+               "boot_phase": self.boot_phase,
+               "stream_ready": self.stream_ready()}
         # `B1756`: what each device needs, and the install under way.
         ready_tools = tools_installed()
         for entry in out["devices"]:
-            pkg = device_image(entry["id"])
+            pkg = self.package(entry["id"])
             entry["android"] = android_name(pkg)
-            entry["installed"] = (mode == "mobile_view") or (ready_tools and image_installed(pkg))
-        out["installed"] = (mode == "mobile_view") or (ready_tools and image_installed(device_image(self.device)))
-        out["license"] = {"accepted": license_accepted(), "url": LICENSE_URL}
+            entry["installed"] = ready_tools and image_installed(pkg)
+        out["installed"] = ready_tools and image_installed(self.package())
+        out["license"] = {"accepted": license_accepted() and self._edition_accepted(), "url": LICENSE_URL}
         out["install"] = self.installer.info()
         if mode == "android" and not out["installed"]:
             out["can_install"] = can_install() is None
@@ -838,6 +943,8 @@ class AccountPhone:
             out["user_agent"] = mobile_user_agent(self.device)
         if why:
             out["why"] = why[:500]
+        out["google_play"] = image_kind(self.package()) == "google_play"
+        out["transfer_max_bytes"] = P.MAX_FILE_BYTES
         return out
 
     # -- the person's choice, kept in their home -------------------------------
@@ -849,7 +956,39 @@ class AccountPhone:
             device = raw.get("device") if isinstance(raw, dict) else None
         except (OSError, ValueError, TypeError):
             device = None
-        return device if device in P.PHONE_DEVICES else P.PHONE_DEFAULT_DEVICE
+        return device if isinstance(device, str) and device in P.PHONE_DEVICES else P.PHONE_DEFAULT_DEVICE
+
+    def _saved_edition(self) -> str:
+        import json
+        try:
+            raw = json.loads((self.home() / PREFS_FILE).read_text(encoding="utf-8"))
+            edition = raw.get("edition") if isinstance(raw, dict) else None
+            accepted = raw.get("accepted_editions") if isinstance(raw, dict) else None
+            self._accepted_editions = {x for x in accepted if isinstance(x, str) and x in P.PHONE_EDITIONS} \
+                if isinstance(accepted, list) else set()
+        except (OSError, ValueError, TypeError):
+            edition, self._accepted_editions = None, set()
+        return edition if edition in P.PHONE_EDITIONS else "standard"
+
+    def _edition_accepted(self) -> bool:
+        # Selecting proprietary Google apps is a fresh, explicit choice, even
+        # on a VM whose SDK was installed for a different image previously.
+        return image_kind(self.package()) != "google_play" or "google_play" in self._accepted_editions
+
+    def select_edition(self, edition) -> Dict:
+        if edition not in P.PHONE_EDITIONS:
+            raise PhoneError("bad_request", f"edition is one of {', '.join(P.PHONE_EDITIONS)}.")
+        with self.lock:
+            self._active()
+            if self.installer.running():
+                raise PhoneError("busy", "Wait for the current Android install to finish.")
+            if edition != self.edition:
+                self._stop_locked()
+                self.state, self.why = "off", ""
+                self.edition = edition
+                self._avail = None
+                self._save_device()
+            return self.info("edition")
 
     def _as_account(self):
         """Files in the home are written as the account (`fs_identity`), never
@@ -872,7 +1011,8 @@ class AccountPhone:
     def _save_device(self) -> None:
         import json
         try:
-            self._write_as_account(self.home() / PREFS_FILE, json.dumps({"device": self.device}))
+            self._write_as_account(self.home() / PREFS_FILE, json.dumps({"device": self.device,
+                "edition": self.edition, "accepted_editions": sorted(self._accepted_editions)}))
         except OSError as e:
             logger.info("phone for %s: the choice of device was not kept: %s", self.account, e)
 
@@ -880,16 +1020,44 @@ class AccountPhone:
         """The device's folder and its `.ini` in the account's home, rewritten
         every start so a change to the catalogue reaches a device made before
         it; the device's data (its disk, its snapshot) is never touched."""
-        package = image_package()
+        package = self.package()
         avd_home = self.home() / ".android" / "avd"
-        folder = avd_home / (avd_name(self.device) + ".avd")
+        self.avd = self._avd_slot(package)
+        folder = avd_home / (self.avd + ".avd")
         self._write_as_account(folder / "config.ini", avd_config(self.device, package,
-                                                                 memory_mib=self.memory_mib))
-        self._write_as_account(avd_home / (avd_name(self.device) + ".ini"),
-                               avd_ini(self.device, avd_home, package))
+                                                   memory_mib=self.memory_mib, name=self.avd))
+        self._write_as_account(avd_home / (self.avd + ".ini"),
+                               avd_ini(self.device, avd_home, package, name=self.avd))
         # `Law 16`: the emulator looks for its own updates unless it checked lately.
         self._write_as_account(self.home() / ".android" / "emu-update-last-check.ini",
                                "Android.Emulator.LastCheck=4102444800000\n")
+
+    def _avd_slot(self, package: str) -> str:
+        """Reuse legacy userdata only for its original image; never migrate it.
+
+        Different API/tag/ABI gets a separate persistent disk. Unknown legacy
+        data is left in place; ambiguous data in a named slot is refused.
+        """
+        root = self.home() / ".android" / "avd"
+        expected = image_parts(package)["sysdir"]
+        legacy = avd_name(self.device)
+        slot = legacy + "_" + hashlib.sha256(package.encode()).hexdigest()[:12]
+        for name in (legacy, slot):
+            folder = root / (name + ".avd")
+            try:
+                with self._as_account():
+                    config = (folder / "config.ini").read_text(encoding="utf-8")
+                image = next((line.split("=", 1)[1].strip() for line in config.splitlines()
+                              if "=" in line and line.split("=", 1)[0].strip() == "image.sysdir.1"), None)
+                if image == expected:
+                    return name
+            except (FileNotFoundError, UnicodeError):
+                if name == slot and not folder.exists():
+                    return name
+            if name == slot:
+                raise PhoneError("unavailable", "This device's saved image is incompatible or unknown. "
+                                 "Its data was preserved. Ask an admin to inspect the AVD; do not wipe it.")
+        return slot
 
     # -- life -------------------------------------------------------------------
 
@@ -904,7 +1072,7 @@ class AccountPhone:
     def installed(self, device: Optional[str] = None) -> bool:
         """`B1756`. Whether a device is ready to boot here: the tools and its
         system image installed."""
-        return tools_installed() and image_installed(device_image(device or self.device))
+        return tools_installed() and image_installed(self.package(device))
 
     def install(self, device: Optional[str] = None, *, accept: bool = False,
                 then_start: bool = True) -> Dict:
@@ -912,8 +1080,9 @@ class AccountPhone:
         it. `accept` is the person's acceptance of the Android SDK License,
         asked once; a device already installed just starts."""
         with self.lock:
+            self._active()
             if device is not None:
-                if device not in P.PHONE_DEVICES:
+                if not isinstance(device, str) or device not in P.PHONE_DEVICES:
                     raise PhoneError("bad_request",
                                      f"“device” is one of {', '.join(P.PHONE_DEVICES)}.")
                 if device != self.device:
@@ -921,12 +1090,19 @@ class AccountPhone:
                         self._stop_locked()
                     self.device = device
                     self._save_device()
-            if self.mode() != "android":
-                # The mobile view has nothing to install: a pick starts it.
-                return self.start() if then_start else self.info("install")
+            why = self.android_why()
+            if why:
+                raise PhoneError("unavailable", why)
+            if not (accept or (license_accepted() and self._edition_accepted())):
+                raise PhoneError("license", NEEDS_LICENSE.format(url=LICENSE_URL))
+            if accept:
+                self._accepted_editions.add("google_play" if image_kind(self.package()) == "google_play" else "standard")
+                self._save_device()
+            if self.mobile is not None:
+                self._stop_locked()
             if self.installed():
                 return self.start() if then_start else self.info("install")
-            wanted = self.device
+            wanted, edition = self.device, self.edition
 
             def then(ok: bool) -> None:
                 with self.lock:
@@ -939,22 +1115,23 @@ class AccountPhone:
                         self.state = "off"
                         self.why = self.installer.info().get("why") or "The install did not finish."
                         return
-                if then_start and self.device == wanted:
+                if then_start and self.device == wanted and self.edition == edition:
                     try:
                         self.start()
                     except PhoneError as e:
                         logger.info("phone for %s: after the install: %s", self.account, e.message)
 
-            self.installer.start(device_image(wanted), accept=accept, then=then)
+            self.installer.start(self.package(wanted), accept=accept, then=then)
             self.state, self.why = "installing", ""
             logger.info("phone for %s: installing %s", self.account, wanted)
             return self.info("install")
 
     def start(self, device: Optional[str] = None) -> Dict:
         with self.lock:
+            self._active()
             self.touch()
             if device is not None:
-                if device not in P.PHONE_DEVICES:
+                if not isinstance(device, str) or device not in P.PHONE_DEVICES:
                     raise PhoneError("bad_request",
                                      f"“device” is one of {', '.join(P.PHONE_DEVICES)}.")
                 if device != self.device and self.running():
@@ -962,14 +1139,14 @@ class AccountPhone:
                 if device != self.device:
                     self.device = device
                     self._save_device()
-            if self.running() and self.state in ("starting", "on"):
-                return self.info("start")
             why = self.availability()
             if why:
                 self.state, self.why = "unavailable", why
                 return self.info("start")
-            if self.mode() == "mobile_view":
-                return self._start_mobile()
+            if self.mobile is None and self.running() and self.state in ("starting", "on"):
+                return self.info("start")
+            if not self._edition_accepted():
+                raise PhoneError("license", NEEDS_LICENSE.format(url=LICENSE_URL))
             if self.state == "installing" and self.installer.running():
                 return self.info("start")
             if not self.installed():
@@ -982,112 +1159,194 @@ class AccountPhone:
                 self.state, self.why = "unavailable", NO_SCREEN
                 return self.info("start")
             self._stop_locked()
-            port = self._claim_port(self.account)
-            if port is None:
-                raise PhoneError("unavailable", "Every phone this workstation can run is running.")
-            self.port = port
-            self._write_avd()
-            prefix, env = self._run_as()
-            env = {**env, **self.env()}
-            self._adb_quiet(["start-server"])
+            if not self._mobile_lifecycle.acquire(blocking=False):
+                raise PhoneError("busy", "The previous device is stopping. Try Android again shortly.")
+            self._android_lifecycle = True
             try:
-                # What the emulator says goes to a file in the person's home,
-                # which is where a phone that will not boot says why.
-                with self._as_account():
-                    fd = os.open(self.home() / LOG_FILE,
-                                 os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
-                log = os.fdopen(fd, "wb")
-                try:
-                    self.emulator = subprocess.Popen(
-                        [*prefix, *emulator_argv(tools()["emulator"], self.device, port=port,
-                                                 memory_mib=self.memory_mib)],
-                        env=env, cwd=str(self.home()), stdin=subprocess.DEVNULL,
-                        stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
-                finally:
-                    log.close()
-            except OSError as e:
-                self._release()
-                self.state, self.why = "unavailable", f"The emulator did not start: {e}."
-                return self.info("start")
-            self.state, self.why = "starting", ""
-            self.posture = "open" if P.PHONE_DEVICES[self.device]["kind"] == "foldable" else None
-            self.rotation = 0
-            self._booting = threading.Thread(target=self._boot, args=(self.emulator,), daemon=True)
-            self._booting.start()
-            logger.info("phone for %s: %s starting on console port %s", self.account,
-                        self.device, port)
+                answer = self._launch_android()
+                if self.emulator is None:
+                    self._stop_locked()
+                return answer
+            except Exception:
+                self._stop_locked()
+                raise
+
+    def _launch_android(self) -> Dict:
+        """Launch while the caller holds both the phone lock and display lease."""
+        port = self._claim_port(self.account)
+        if port is None:
+            raise PhoneError("unavailable", "Every phone this workstation can run is running.")
+        self.port = port
+        try:
+            self._write_avd()
+        except PhoneError:
+            self._release()
+            raise
+        except (OSError, UnicodeError) as e:
+            self._release()
+            raise PhoneError("unavailable", "The device configuration could not be read or written. "
+                             "Its data was preserved; ask an admin to inspect the AVD.") from e
+        prefix, env = self._run_as()
+        env = {**env, **self.env()}
+        self._adb_quiet(["start-server"])
+        try:
+            # What the emulator says goes to a file in the person's home,
+            # which is where a phone that will not boot says why.
+            with self._as_account():
+                fd = os.open(self.home() / LOG_FILE,
+                             os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
+            log = os.fdopen(fd, "wb")
+            try:
+                self.emulator = subprocess.Popen(
+                    [*prefix, *emulator_argv(tools()["emulator"], self.device, port=port,
+                                             memory_mib=self.memory_mib, name=self.avd)],
+                    env=env, cwd=str(self.home()), stdin=subprocess.DEVNULL,
+                    stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
+            finally:
+                log.close()
+        except OSError as e:
+            self._release()
+            self.state, self.why = "unavailable", f"The emulator did not start: {e}."
             return self.info("start")
+        self.state, self.why = "starting", ""
+        self.boot_phase = "emulator"
+        self.posture = "open" if P.PHONE_DEVICES[self.device]["kind"] == "foldable" else None
+        self.rotation = 0
+        self._booting = threading.Thread(target=self._boot, args=(self.emulator,), daemon=True)
+        self._booting.start()
+        logger.info("phone for %s: %s starting on console port %s", self.account,
+                    self.device, port)
+        return self.info("start")
+
+    def preview(self, device: Optional[str] = None) -> Dict:
+        """An explicitly requested Firefox preview, never an Android fallback."""
+        with self.lock:
+            self._active()
+            if self.installer.running():
+                raise PhoneError("busy", "Wait for the current Android install to finish.")
+            if device is not None and (not isinstance(device, str) or device not in P.PHONE_DEVICES):
+                raise PhoneError("bad_request", "Choose a device from the catalogue.")
+            why = self.mobile_why()
+            if why:
+                raise PhoneError("unavailable", why)
+            if self.mobile is not None and self.running() and (device is None or device == self.device):
+                return self.info("preview")
+            self._stop_locked()
+            if device is not None:
+                self.device = device
+                self._save_device()
+            self.touch()
+            return self._start_mobile()
 
     def _boot(self, proc: subprocess.Popen) -> None:
-        """Wait for Android to say it has booted, then put scrcpy on the
-        phone's screen. A phone that stops or never boots says why."""
+        """Show the actual display as soon as Android's display service is
+        running, including boot animation where scrcpy can attach that early.
+        Early scrcpy failures are retried while Android continues booting."""
         deadline = time.monotonic() + BOOT_TIMEOUT_S
         while time.monotonic() < deadline:
             if proc.poll() is not None:
                 with self.lock:
                     if self.emulator is proc:
-                        self.state = "unavailable"
-                        self.why = (f"The emulator stopped while the phone was booting (exit "
+                        why = (f"The emulator stopped while the phone was booting (exit "
                                     f"{proc.returncode}). ~/{LOG_FILE} in the workstation says "
                                     f"why{self._last_words()}.")
-                        self._release()
+                        self._stop_locked()
+                        self.state, self.why = "unavailable", why
                 return
-            if self.adb(["shell", "getprop", "sys.boot_completed"], timeout=10.0,
-                        quiet=True).strip() == "1":
+            if self.emulator is not proc:
+                return
+            # ADB may wait for the guest. Keep that wait outside the lifecycle
+            # lock so Stop can cancel a device whose guest never answers.
+            display = self.adb(["shell", "getprop", "init.svc.surfaceflinger"],
+                               timeout=5.0, quiet=True).strip() == "running"
+            completed = self.adb(["shell", "getprop", "sys.boot_completed"],
+                                 timeout=5.0, quiet=True).strip() == "1"
+            with self.lock:
+                if self.emulator is not proc:
+                    return  # stopped or replaced while this worker was waiting
+                if not self.stream_ready() and display:
+                    try:
+                        self._show()
+                        self.boot_phase = "android"
+                    except PhoneError:
+                        pass  # the framework may not accept scrcpy yet
+            if completed:
                 break
             time.sleep(2.0)
         else:
             with self.lock:
                 if self.emulator is proc:
-                    self.state = "unavailable"
-                    self.why = (f"The phone did not finish booting in {int(BOOT_TIMEOUT_S)} s. "
-                                "Stop it and start it again.")
+                    self._stop_locked()
+                    self.state, self.why = "unavailable", (
+                        f"The phone did not finish booting in {int(BOOT_TIMEOUT_S)} s. "
+                        "Start it again to retry.")
             return
         with self.lock:
             if self.emulator is not proc:
                 return
             try:
-                self._show()
+                if not self.stream_ready():
+                    self._show()
             except PhoneError as e:
+                self._stop_locked()
                 self.state, self.why = "unavailable", e.message
                 return
             self.state = "on"
+            self.boot_phase = "ready"
             logger.info("phone for %s: %s is on", self.account, self.device)
 
     # -- `B1753`: the mobile view -------------------------------------------
 
-    def _start_mobile(self) -> Dict:
+    def _start_mobile(self, url: Optional[str] = None, *, keep_pose: bool = False) -> Dict:
+        self._active()
         self._stop_locked()
-        self.posture = "open" if P.PHONE_DEVICES[self.device]["kind"] == "foldable" else None
-        self.rotation = 0
+        if not keep_pose:
+            self.posture = "open" if P.PHONE_DEVICES[self.device]["kind"] == "foldable" else None
+            self.rotation = 0
+        b = self._make_mobile()
+        cancelled = threading.Event()
+        self.mobile, self._mobile_cancel = b, cancelled
         self.state, self.why = "starting", ""
-        self._booting = threading.Thread(target=self._boot_mobile, daemon=True)
+        self.boot_phase = "browser"
+        self._booting = threading.Thread(target=self._boot_mobile, args=(b, cancelled, url),
+                                        name="phone-preview", daemon=True)
         self._booting.start()
         logger.info("phone for %s: %s starting as a mobile view", self.account, self.device)
         return self.info("start")
 
-    def _boot_mobile(self, url: Optional[str] = None) -> None:
-        with self.lock:
-            if self.state != "starting":
+    def _boot_mobile(self, b, cancelled, url: Optional[str] = None) -> None:
+        # One owner for this display through startup, use and teardown. Requests
+        # only cancel/detach it; they never wait on this resource lock or BiDi.
+        with self._mobile_lifecycle:
+            if cancelled.is_set() or self._retired.is_set():
                 return
             try:
-                self._open_mobile(url)
+                self._open_mobile(url, b, cancelled)
+                with self.lock:
+                    if self.mobile is not b or cancelled.is_set() or self._retired.is_set():
+                        return
+                    self.state, self.boot_phase = "on", "ready"
+                cancelled.wait()
             except Exception as e:  # noqa: BLE001 — said on the phone, never a silent "starting"
-                if self.mobile is not None:
-                    self.mobile.stop()
-                    self.mobile = None
-                said = str(getattr(e, "message", None) or e)
-                self.state, self.why = "unavailable", f"The mobile view did not start: {said}"
-                logger.info("phone for %s: %s", self.account, self.why)
-                return
-            self.state = "on"
+                with self.lock:
+                    if self.mobile is b and not cancelled.is_set():
+                        self.mobile, self._mobile_cancel = None, None
+                        said = str(getattr(e, "message", None) or e)
+                        self.state, self.why = "unavailable", f"The mobile view did not start: {said}"
+                        self.boot_phase = "off"
+                        logger.info("phone for %s: %s", self.account, self.why)
+            finally:
+                try:
+                    b.stop()
+                except Exception:
+                    logger.warning("phone for %s: preview cleanup failed", self.account, exc_info=True)
+                stop_screen = getattr(self.screen, "stop", None)
+                if callable(stop_screen):
+                    stop_screen()
 
-    def _open_mobile(self, url: Optional[str]) -> None:
-        """Firefox on the phone's screen as this device, at `url` or Home."""
+    def _make_mobile(self):
+        """Prepare a producer without starting the display or doing pipe/socket I/O."""
         size = mobile_view_size(self.device, self.posture, self.rotation)
-        set_size = getattr(self.screen, "set_size", None)
-        if callable(set_size):
-            set_size(size)
         prefix, env = self._run_as()
         env.setdefault("HOME", str(self.home()))
         env["MOZ_CRASHREPORTER_DISABLE"] = "1"
@@ -1097,12 +1356,21 @@ class AccountPhone:
                        screen=self.screen)
         b.window_size = size
         b.extra_prefs = mobile_view_prefs(self.device, self.posture, self.rotation)
-        self.mobile = b
-        b.start()
+        return b
+
+    def _open_mobile(self, url: Optional[str], b, cancelled) -> None:
+        if cancelled.is_set():
+            return
+        set_size = getattr(self.screen, "set_size", None)
+        if callable(set_size):
+            set_size(b.window_size)
+        b.start(cancel=cancelled)
+        if cancelled.is_set():
+            return
         if url:
             b._act("open", {"url": url})
         else:
-            self._go_home()
+            self._go_home(b)
 
     def _reshape(self) -> None:
         """The mobile view again at its new shape, on the page it was on."""
@@ -1111,18 +1379,12 @@ class AccountPhone:
             url = self.mobile.state().get("url") if self.mobile is not None else None
         except BrowserError:
             url = None
-        if self.mobile is not None:
-            self.mobile.stop()
-            self.mobile = None
-        self.state = "starting"
-        self._boot_mobile(url if url and url.startswith(("http://", "https://")) else None)
-        if self.state != "on":
-            raise PhoneError("unavailable", self.why or "The mobile view did not come back.")
+        self._start_mobile(url if url and url.startswith(("http://", "https://")) else None, keep_pose=True)
 
-    def _go_home(self) -> None:
+    def _go_home(self, browser=None) -> None:
         """Firefox's own Home page — not an address `check_url` lets through,
         so opened directly; a Firefox that will not open it shows a blank page."""
-        b = self.mobile
+        b = browser if browser is not None else self.mobile
         ctx = b._ctx()
         for url in (MOBILE_HOME, "about:blank"):
             try:
@@ -1147,7 +1409,7 @@ class AccountPhone:
 
     def _show(self) -> None:
         """scrcpy on the phone's screen, the screen sized to this device."""
-        size = P.phone_screen_size(self.device)
+        size = self.screen_size()
         set_size = getattr(self.screen, "set_size", None)
         if callable(set_size):
             set_size(size)
@@ -1159,6 +1421,8 @@ class AccountPhone:
         env = {**env, **self.env(), "DISPLAY": display,
                "XAUTHORITY": str(self.screen.auth_path())}
         scrcpy = tools()["scrcpy"]
+        if scrcpy == str(sdk_root() / "scrcpy" / "scrcpy"):
+            env["SCRCPY_SERVER_PATH"] = str(sdk_root() / "scrcpy" / "scrcpy-server")
         if self.scrcpy is not None and self.scrcpy.poll() is None:
             _kill(self.scrcpy)
         try:
@@ -1173,11 +1437,19 @@ class AccountPhone:
     def ensure_shown(self) -> None:
         """scrcpy again if it stopped while the phone stayed on — and a
         mobile view whose Firefox was closed is off (`B1753`)."""
+        if self._retired.is_set() or (self.mobile is None and getattr(self.system, "backend", None) != "vm"):
+            return
         with self.lock:
             if self.mobile is not None:
                 if self.state == "on" and not self.running():
-                    self.mobile = None
+                    self._stop_locked()
                     self.state = "off"
+                    self.boot_phase = "off"
+                return
+            if self.state == "on" and not self.running():
+                why = "The Android emulator stopped. Turn it on again to retry."
+                self._stop_locked()
+                self.state, self.why = "unavailable", why
                 return
             if self.state == "on" and (self.scrcpy is None or self.scrcpy.poll() is not None):
                 try:
@@ -1185,33 +1457,84 @@ class AccountPhone:
                 except PhoneError as e:
                     logger.info("phone for %s: %s", self.account, e.message)
 
+    def stream_ready(self) -> bool:
+        """Whether there is a live display producer, including during boot.
+        Readiness here is transport readiness, never a claim that Android booted."""
+        if self._retired.is_set() or self.state not in ("starting", "on"):
+            return False
+        if self.mobile is not None:
+            return self.state == "on" and self.running()
+        if getattr(self.system, "backend", None) != "vm":
+            return False
+        return self.scrcpy is not None and self.scrcpy.poll() is None and self.running()
+
     def stop(self) -> Dict:
+        b = self.mobile
+        cancel = getattr(b, "cancel_start", None)
+        if callable(cancel):
+            cancel()  # may be called while another request holds the phone lock
         with self.lock:
             self._stop_locked()
+            self.state, self.why = "off", ""
             return self.info("stop")
 
     def _stop_locked(self) -> None:
+        had_producer = (self.mobile is not None or self.emulator is not None
+                        or self.scrcpy is not None or self.port is not None)
+        deferred = (self._mobile_cancel is not None
+                    or (self._mobile_lifecycle.locked() and not self._android_lifecycle))
+        if self._mobile_cancel is not None:
+            self._mobile_cancel.set()
+            self._mobile_cancel = None
         if self.mobile is not None:
-            self.mobile.stop()
+            if deferred:
+                self.mobile.cancel_start()
+            else:
+                self.mobile.stop()
             self.mobile = None
         if self.scrcpy is not None:
             _kill(self.scrcpy)
             self.scrcpy = None
         if self.emulator is not None:
-            if self.emulator.poll() is None:
-                # Asked to stop, so it saves where it was and boots back there.
-                self.adb(["emu", "kill"], timeout=10.0, quiet=True)
+            proc = self.emulator
+            if proc.poll() is None:
+                # Android's persistent disk survives; the next power-on cold boots.
                 try:
-                    self.emulator.wait(timeout=STOP_TIMEOUT_S)
+                    self.adb(["emu", "kill"], timeout=10.0, quiet=True)
+                except Exception:  # cleanup still owns this captured process when ADB is unavailable
+                    logger.warning("phone for %s: graceful ADB stop failed; terminating the emulator",
+                                   self.account, exc_info=True)
+                    _kill(proc)
+                try:
+                    proc.wait(timeout=STOP_TIMEOUT_S)
                 except subprocess.TimeoutExpired:
-                    _kill(self.emulator)
+                    _kill(proc)
+                    try:
+                        proc.wait(timeout=5.0)
+                    except subprocess.TimeoutExpired as e:
+                        self.state, self.why = "unavailable", (
+                            "The previous Android emulator could not be stopped. Its device data "
+                            "was preserved and its display remains reserved. Ask an admin to inspect it.")
+                        logger.error("phone for %s: %s", self.account, self.why)
+                        raise PhoneError("unavailable", self.why) from e
             self.emulator = None
         self._release()
+        self.boot_phase = "off"
         if self.state != "unavailable":
             self.state = "off"
         stop_screen = getattr(self.screen, "stop", None)
-        if callable(stop_screen):
-            stop_screen()
+        owns_display = self._android_lifecycle
+        if not owns_display and had_producer and not deferred:
+            # Compatibility for an already attached producer: claim its free
+            # display before teardown, never stop a replacement's leased screen.
+            owns_display = self._mobile_lifecycle.acquire(blocking=False)
+        if owns_display:
+            try:
+                if callable(stop_screen):
+                    stop_screen()
+            finally:
+                self._android_lifecycle = False
+                self._mobile_lifecycle.release()
 
     def _release(self) -> None:
         if self.port is not None:
@@ -1264,6 +1587,9 @@ class AccountPhone:
         return f" (it last said: {lines[-1].strip()[:200]})" if lines else ""
 
     def _on(self) -> None:
+        self._active()
+        if self.mobile is None and getattr(self.system, "backend", None) != "vm":
+            raise PhoneError("unavailable", ISOLATION_REQUIRED)
         if not self.running() or self.state != "on":
             raise PhoneError("unavailable", {
                 "starting": "The phone is still booting; try again in a moment.",
@@ -1271,10 +1597,152 @@ class AccountPhone:
             }.get(self.state, "The phone is off. Start it first."))
         self.touch()
 
+    @contextmanager
+    def _transfer_slot(self, deadline):
+        remaining = deadline - time.monotonic()
+        if remaining <= 0 or not self.lock.acquire(timeout=min(5.0, remaining)):
+            raise PhoneError("busy", "Another operation is using your phone. Wait for it to finish before sending a file.")
+        try:
+            yield
+        finally:
+            self.lock.release()
+
+    def transfer(self, name, data_b64) -> Dict:
+        """Push only caller-supplied bytes into this user's Android Downloads.
+
+        No host path, Android destination, owner or shell command is accepted.
+        The private temporary file is created as the account, not root, and
+        removed on success and failure. A digest read back from Android proves
+        completion; returning from adb push alone does not. Readiness is
+        checked afresh, without waiting for or retrying a data write.
+        """
+        import secrets
+        if (not isinstance(name, str) or not name.strip() or name.strip() in (".", "..")
+                or name.startswith("-") or any(c in name for c in ("/", "\\"))
+                or any(unicodedata.category(c) in ("Cc", "Cf", "Cs") for c in name)
+                or len(name.encode("utf-8")) > 180):
+            raise PhoneError("bad_request", "Use a filename of at most 180 UTF-8 bytes, without paths or control characters.")
+        if not isinstance(data_b64, str) or len(data_b64) > (P.MAX_FILE_BYTES * 4 + 2) // 3 + 4:
+            raise PhoneError("bad_request", f"Each transfer is at most {P.MAX_FILE_BYTES} bytes.")
+        try:
+            data = base64.b64decode(data_b64, validate=True)
+        except (ValueError, TypeError):
+            raise PhoneError("bad_request", "The transfer must contain valid base64 file bytes.")
+        if len(data) > P.MAX_FILE_BYTES:
+            raise PhoneError("bad_request", f"Each transfer is at most {P.MAX_FILE_BYTES} bytes.")
+        deadline = time.monotonic() + TRANSFER_TIMEOUT_S
+        with self._transfer_slot(deadline):
+            self._on()
+            if self.mobile is not None:
+                raise PhoneError("unavailable", "File transfer needs a running Android device. Browser preview has no Android storage.")
+            serial = self.serial()
+            if serial is None:
+                raise PhoneError("unavailable", "The Android device connection is missing. Restart your phone before sending a file.")
+            self.touch()
+            digest = hashlib.sha256(data).hexdigest()
+            destination_dir = f"{TRANSFER_DEST}/{secrets.token_hex(8)}"
+            destination = f"{destination_dir}/{name}"
+            # Lock admission and ADB work share one budget. Local filesystem
+            # operations are synchronous; check again before staging or sending.
+            stage, phase, verified, timed_out = None, "readiness", False, False
+
+            def budget():
+                nonlocal timed_out
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    timed_out = True
+                    raise PhoneError("unavailable", "Android did not confirm the file before the transfer timed out.")
+                return remaining
+
+            def command(args, *, maximum=5.0, cleanup=False):
+                nonlocal timed_out
+                # A retired/malformed handle must never fall back to adb's
+                # default device, including on the failure cleanup path.
+                if self.serial() != serial:
+                    raise PhoneError("unavailable", "The Android device connection changed. Start a new file transfer.")
+                remaining = 5.0 if cleanup else budget()
+                try:
+                    return self.adb(args, timeout=min(maximum, remaining))
+                except PhoneError as error:
+                    if not cleanup and isinstance(error.__context__, subprocess.TimeoutExpired):
+                        timed_out = True
+                    if phase == "readiness":
+                        raise PhoneError("unavailable", "Android's connection could not be checked. Wait for the phone to reconnect, then try again.") from error
+                    raise
+
+            try:
+                if command(["get-state"]).strip() != "device":
+                    raise PhoneError("unavailable", "Android's debugging connection is not ready. Wait for the phone to reconnect, then try again.")
+                if command(["shell", "getprop", "sys.boot_completed"]).strip() != "1":
+                    raise PhoneError("unavailable", "Android is still booting. Wait for its home screen, then send the file again.")
+                # Missing on some configured images: unknown is not an unlock
+                # attestation. An explicit locked system-user CE state refuses
+                # the transfer; push/checksum remain the completion checks.
+                ce = command(["shell", "getprop", "sys.user.0.ce_available"]).strip().lower()
+                if ce in ("false", "0"):  # flag-spelling: Android CE wire values; absent is unknown, not a Pantheon flag.
+                    raise PhoneError("unavailable", "Android's storage is locked. Unlock the phone before sending a file.")
+                budget()
+                phase = "staging"
+                with self._as_account():
+                    stage = tempfile.TemporaryDirectory(prefix="pantheon-phone-")
+                source = Path(stage.name) / "payload"
+                with self._as_account():
+                    # Exclusive creation rejects an existing file/link on Windows
+                    # too; keep the additional POSIX flag where it exists.
+                    fd = os.open(source, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o600)
+                    with os.fdopen(fd, "wb") as f:
+                        f.write(data)
+                phase = "prepare"
+                command(["shell", "mkdir", "-p", destination_dir], maximum=20)
+                phase = "send"
+                command(["push", str(source), destination], maximum=120)
+                phase = "verify"
+                checked = command(["shell", "sha256sum", shlex.quote(destination)], maximum=60)
+                record = re.fullmatch(r"([0-9a-fA-F]{64}) [ *](.+)", checked.rstrip("\r\n"))
+                if not record or record[1].lower() != digest or record[2] != destination:
+                    raise PhoneError("unavailable", "Android did not confirm the transferred file's checksum. Try the transfer again.")
+                verified = True
+            except Exception as error:
+                cleanup_failed = False
+                if phase in ("prepare", "send", "verify"):
+                    try:
+                        command(["shell", "rm", "-f", shlex.quote(destination)], cleanup=True)
+                    except Exception as cleanup_error:
+                        cleanup_failed = True
+                        logger.warning("Unconfirmed Android transfer cleanup (%s).", type(cleanup_error).__name__)
+                if isinstance(error, (PhoneError, OSError)):
+                    message = ("Android did not finish the file transfer before the timeout. Try again after the phone is ready."
+                               if timed_out else error.message if phase == "readiness" and isinstance(error, PhoneError) else {
+                        "readiness": "Android's connection could not be checked. Wait for the phone to reconnect, then try again.",
+                        "staging": "The selected file could not be staged in your private workspace. Check free space and try again.",
+                        "prepare": "Android could not prepare Downloads for this file. Unlock the phone and try again.",
+                        "send": "Android's file-transfer service did not confirm the upload. Try sending the file again.",
+                        "verify": "Android did not confirm the transferred file's checksum. Try sending the file again.",
+                    }[phase])
+                    if cleanup_failed:
+                        message += " An unconfirmed file may remain in Android Downloads."
+                    raise PhoneError("unavailable", message) from error
+                raise
+            finally:
+                if stage is not None:
+                    try:
+                        with self._as_account():
+                            stage.cleanup()
+                    except Exception as cleanup_error:
+                        if verified:
+                            raise PhoneError("unavailable", "Android verified the file, but cleanup of its private staging copy was not confirmed. Ask an admin to check temporary storage.") from cleanup_error
+                        logger.warning("Private Android transfer staging cleanup failed (%s).", type(cleanup_error).__name__)
+            from workstation.phone_usb import scan_media
+            scan_media(lambda args, **kw: command(args, maximum=kw['timeout']), destination)
+            return {"ok": True, "name": name, "bytes": len(data), "sha256": digest,
+                    "destination": destination}
+
     def button(self, name) -> Dict:
-        if name not in P.PHONE_BUTTONS:
+        if not isinstance(name, str) or name not in P.PHONE_BUTTONS:
             raise PhoneError("bad_request", f"“button” is one of {', '.join(P.PHONE_BUTTONS)}.")
         with self.lock:
+            if name == "power" and not self.running():
+                return self.start()
             if name == "power" and self.mobile is not None:
                 self._stop_locked()       # `B1753`: the mobile view's Power is off
                 return self.info("button")
@@ -1298,8 +1766,12 @@ class AccountPhone:
                     self.posture = posture
                     self._reshape()
                 return self.info("posture")
-            self.adb(["emu", "fold" if posture == "closed" else "unfold"])
+            if posture == "half_open":
+                self.adb(["emu", "sensor", "set", "hinge-angle0", "90"])
+            else:
+                self.adb(["emu", "fold" if posture == "closed" else "unfold"])
             self.posture = posture
+            self._show()
             return self.info("posture")
 
     def rotate(self) -> Dict:
@@ -1311,6 +1783,7 @@ class AccountPhone:
                 return self.info("rotate")
             self.adb(["emu", "rotate"])
             self.rotation = (self.rotation + 1) % 4
+            self._show()
             return self.info("rotate")
 
     def open_url(self, raw) -> Dict:
@@ -1326,13 +1799,22 @@ class AccountPhone:
                       shlex.quote(url)])
             return self.info("open_url")
 
+    def _marks_source_size(self) -> Optional[Tuple[int, int]]:
+        """Full logical display size when the screen can supply it."""
+        return None
+
     def marks(self) -> Dict:
         with self.lock:
             self._on()
             if self.mobile is not None:
                 raise PhoneError("unavailable", MOBILE_NO_MARKS)
         xml = self.adb(["exec-out", "uiautomator", "dump", "/dev/tty"], timeout=30.0)
-        return marks_from_dump(xml, P.phone_screen_size(self.device))
+        with self.lock:
+            # A native override refreshes the capture, which can also change
+            # its viewer size. Read that size only after refreshing the source.
+            source_size = self._marks_source_size()
+            screen = self.screen_size()
+        return marks_from_dump(xml, screen, source_size=source_size)
 
 
 def _kill(proc: subprocess.Popen) -> None:
@@ -1359,7 +1841,7 @@ def _env_int(name: str, default: int, lo: int, hi: int) -> int:
 class Phones:
     """Every account's phone, made on first ask; a phone nobody used or
     watched for `idle_s` is stopped, and at most `max_running` run at once —
-    each one is a whole Android, about two gigabytes of memory."""
+    each one is a whole Android, about eight gigabytes of memory."""
 
     def __init__(self, system, *, kvm: Optional[Callable[[], Tuple[bool, str]]] = None) -> None:
         self.system = system
@@ -1369,6 +1851,7 @@ class Phones:
         self.memory_mib = _env_int(MEMORY_ENV, DEFAULT_MEMORY_MIB, 1024, 16384)
         self._by_account: Dict[str, AccountPhone] = {}
         self._ports: Dict[str, int] = {}
+        self._lifecycles = {}  # screen leases survive stop/get handle replacement
         self._lock = threading.Lock()
         self._reaper: Optional[threading.Thread] = None
         self.installer = Installer()   # `B1756`: one install at a time, for every account
@@ -1388,7 +1871,8 @@ class Phones:
                 p = AccountPhone(self.system, account, screen, memory_mib=self.memory_mib,
                                  claim_port=self._claim, release_port=self._free,
                                  can_start=self._room_for, kvm=self.kvm,
-                                 installer=self.installer)
+                                 installer=self.installer,
+                                 lifecycle=self._lifecycles.setdefault(account, threading.Lock()))
                 self._by_account[account] = p
             if self._reaper is None and self.idle_s:
                 self._reaper = threading.Thread(target=self._reap, daemon=True)
@@ -1442,12 +1926,16 @@ class Phones:
     def stop(self, account: str) -> None:
         with self._lock:
             p = self._by_account.pop(account, None)
+            if p is not None:
+                p.retire()
         if p is not None:
             p.stop()
 
     def stop_all(self) -> None:
         with self._lock:
             items = list(self._by_account.values())
+            for p in items:
+                p.retire()
             self._by_account.clear()
         for p in items:
             try:

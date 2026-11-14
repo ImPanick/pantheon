@@ -1,0 +1,35 @@
+# Linux containers on Windows, macOS or Linux. Keeps Unix ownership/permissions
+# inside Docker; NTFS bind mounts cannot enforce the private USB owner directory.
+# Fresh installs only: existing bind-mounted data is NOT migrated by this overlay.
+# Compose merges volumes by target; pairing and service-specific volumes remain.
+services:
+  pantheon:
+    volumes:
+      - portable-data:/app/data
+      - portable-projects:/app/data/projects
+      - portable-logs:/app/logs
+      - portable-ssh:/app/.ssh
+      - portable-model-cache:/app/.cache/huggingface
+      - portable-python-tools:/app/.local
+  workstation:
+    volumes:
+      - portable-projects:/projects
+  workstation-vm:
+    volumes:
+      - portable-projects:/projects
+  workstation-debian:
+    volumes:
+      - portable-projects:/projects
+  workstation-fedora:
+    volumes:
+      - portable-projects:/projects
+  workstation-rocky:
+    volumes:
+      - portable-projects:/projects
+volumes:
+  portable-data:
+  portable-projects:
+  portable-logs:
+  portable-ssh:
+  portable-model-cache:
+  portable-python-tools:

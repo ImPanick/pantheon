@@ -167,10 +167,11 @@ class AITTSManager {
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({
+                // `B2097`: a Nobody reply is spoken and not kept in the speech cache.
+                body: JSON.stringify(Object.assign({
                     text: plainText,
                     format: 'audio'
-                })
+                }, document.getElementById('incognito-toggle')?.checked ? { incognito: true } : {}))
             });
 
             if (!response.ok) {

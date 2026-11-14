@@ -294,7 +294,7 @@ def _resolve_allow_rule_lookup(owner: Any, session_id: Any):
     return lookup if callable(lookup) else None
 
 
-def _runs_in(tool_name: Any, owner: Any) -> Optional[str]:
+def _runs_in(tool_name: Any, owner: Any, content: Any = None) -> Optional[str]:
     """`B967`. Where this call will run, when it is not this machine.
 
     `computer` only ever acts on the workstation (`P20-04`). The nine routed
@@ -304,7 +304,10 @@ def _runs_in(tool_name: Any, owner: Any) -> Optional[str]:
     pick. Anything else, or a question that cannot be answered, is "here": the
     phrase that was always shown.
     """
-    if tool_name in ("computer", "network"):
+    if tool_name == "computer":
+        from src.phone_runtime import computer_in_workstation
+        return RUNS_IN_WORKSTATION if computer_in_workstation(content) else None
+    if tool_name == "network":
         return RUNS_IN_WORKSTATION
     if tool_name == "agent_browser":
         # Pantheon's own browser when the workstation would not answer them.
@@ -1770,7 +1773,7 @@ Generate an image. Line 1 = description, line 2 = model name, line 3 = WxH (e.g.
     # `tail_serve_output` below.
     "manage_session": "- ```manage_session``` — Rename, archive, delete, fork, switch, or `list` chats (the UI calls them 'chats'; 'session' is internal). Line 1 = action (list/switch/rename/archive/unarchive/delete/important/unimportant/truncate/fork), Line 2 = exact chat id from a `list` result (or `current` where supported). For delete/archive/truncate, always list first and reuse the exact id; never invent placeholder ids. `switch`/`open` returns a clickable anchor link the user can tap to open the chat — use for \"open my X chat\".\n  `list_sessions` returns the same chat ids, most recent first.",
     "manage_memory": "- ```manage_memory``` — Manage the user's persistent memory (facts about the USER themselves, their preferences, context that persists across chats). Line 1 = action (list/add/edit/delete/search), rest = content. Use when user says 'remember this' about themselves, states identity facts like 'my name is <name>' / 'call me <name>' / 'I live in <place>', or asks about stored memories. DO NOT use for info about another person (their address, phone, email, birthday).\n  Info about another person goes in `manage_contact`: if the user pastes an address/phone with a name and says 'save this for <person>', use `manage_contact add` with the address arg, NOT manage_memory.",
-    "manage_skills": "- ```manage_skills``` — Skill registry (SKILL.md format). Args (JSON): {\"action\": \"list|view|view_ref|search|add|edit|patch|publish|delete\", ...}. `list` returns the index of available skills (published + teacher-escalation drafts); `view name=foo` fetches the full SKILL.md; `view_ref name=foo path=...` loads a reference file under the skill directory. For `add`, provide an explicit kebab-case `name` and only report the exact returned name, because storage may normalize or dedupe it. Use this BEFORE doing domain work — there may already be a procedure (published or draft) that prescribes the correct steps. Drafts written by the teacher loop are authoritative guidance even though they're not yet published.",
+    "manage_skills": "- ```manage_skills``` — Skill registry (SKILL.md format). Args (JSON): {\"action\": \"list|view|view_ref|search|add|edit|patch|publish|delete\", ...}. `list` returns the index of available skills (published + teacher-escalation drafts); `view name=foo` fetches the full SKILL.md; `view_ref name=foo path=...` loads a reference file under the skill directory. For `add`, provide an explicit kebab-case `name` and only report the exact returned name, because storage may normalize or dedupe it; what you add is a draft, and publishing it is the person's step, from the Skills window. Use this BEFORE doing domain work — there may already be a procedure (published or draft) that prescribes the correct steps. Drafts written by the teacher loop are authoritative guidance even though they're not yet published.",
     # `B1737`. How the model acts on the skills catalogue itself.
     "use_skill": "- ```use_skill``` — Open a listed skill by `name`, or search skills by `query` (the kind of work).",
     # `B1755`.
@@ -7647,7 +7650,7 @@ async def stream_agent_loop(
         # runs (`_runs_in`, the words `tool_start` already says it with).
         workstation_lift=_workstation_lift,
         workstation_lookup=(
-            (lambda tool: _runs_in(tool, owner) == RUNS_IN_WORKSTATION)
+            (lambda tool, content: _runs_in(tool, owner, content) == RUNS_IN_WORKSTATION)
             if _workstation_lift else None
         ),
         # `P27-08`. A vault login set to ask asks, whatever the rung or Auto.
@@ -7763,9 +7766,10 @@ async def stream_agent_loop(
     # The owner (2026-10-31): the browser runs without a workstation too —
     # Pantheon's own Firefox (`src/local_browser.py`) — so `agent_browser` is
     # asked its own question, which falls back to the workstation's.
-    if disabled_tools.allows("network") and \
-            _computer_unavailable_reason(owner, delegated_credential=bool(delegated_credential)):
-        disabled_tools.withhold({"network"}, because=WITHHELD_BY_WORKSTATION)
+    if disabled_tools.allows("network"):
+        from src.agent_tools.network_tools import unavailable_reason as _network_unavailable_reason
+        if _network_unavailable_reason(owner, delegated_credential=bool(delegated_credential)):
+            disabled_tools.withhold({"network"}, because=WITHHELD_BY_WORKSTATION)
     if disabled_tools.allows("agent_browser"):
         from src.local_browser import unavailable_reason as _browser_unavailable_reason
         if _browser_unavailable_reason(owner, delegated_credential=bool(delegated_credential)):
@@ -7926,6 +7930,16 @@ async def stream_agent_loop(
     # `B1609`: `load_disabled_map` opens its session as `_SessionLocal`, which
     # the off-the-loop scan did not read as one; the read goes to a thread.
     _mcp_disabled_map = (await asyncio.to_thread(_load_mcp_disabled_map)) if mcp_mgr else {}
+    # An MCP tool the operator switched off was only hidden from the prompt
+    # and the schemas; a model that named it anyway (a text tool call, a
+    # remembered name) still ran it. Refuse it at call time by its qualified
+    # name, the way plan mode refuses its write tools.
+    if _mcp_disabled_map:
+        from src.mcp_manager import qualify_mcp_tool_name as _qualify_mcp
+        disabled_tools.withhold(
+            (_qualify_mcp(_sid, _n)
+             for _sid, _names in _mcp_disabled_map.items() for _n in (_names or ())),
+            because=WITHHELD_BY_PRIVILEGE)
     if _direct_low_signal:
         logger.info("[agent] direct low-signal reply path for latest=%r", _last_user[:80])
         direct_messages = (
@@ -9720,7 +9734,7 @@ async def stream_agent_loop(
         # than showing nothing.
         approved_effects = (
             _effect_fields(approved.tool_name, approved.content,
-                           _runs_in(approved.tool_name, owner),   # `B967`
+                           _runs_in(approved.tool_name, owner, approved.content),   # `B967`
                            files=_run_files)                      # `B1660`
             if approval_matches
             else {}
@@ -11692,7 +11706,7 @@ async def stream_agent_loop(
             # one variable means it cannot start giving four different ones.
             # `B967`. Where it will run, asked once: the same answer words the
             # effect here and on the approval card below, if the gate asks.
-            block_runs_in = _runs_in(block.tool_type, owner)
+            block_runs_in = _runs_in(block.tool_type, owner, block.content)
             # `B1660`. A write in the workstation: asked there whether its path
             # holds a file, before anything below classifies the call.
             await _run_files.look(block.tool_type, block.content)
@@ -12529,7 +12543,7 @@ async def stream_agent_loop(
                     else:
                         _later_cmd = _later_full
                     _later_effects = _effect_fields(_later.tool_type, _later.content,
-                                                    _runs_in(_later.tool_type, owner),
+                                                    _runs_in(_later.tool_type, owner, _later.content),
                                                     files=_run_files)   # `B1660`
                     yield (
                         "data: "

@@ -22,8 +22,8 @@ is everything around them, held to what each one is documented to take:
     only what can be tapped or typed into, named by its words;
   * **the daemon** — one holder on every screen (the agent's moves are `busy`
     while a person holds them, a look never is), each field checked, touch
-    checked against the phone screen's own size, and the VM backend saying
-    where the phone is instead;
+    checked against the phone screen's own size, and the VM backend relaying
+    its own guest's Android blocker;
   * **the agent's tool** — `computer` takes `screen: "phone"`, keeps the
     phone's marks apart from the desktop's, and turns a phone that is off on.
 """
@@ -61,7 +61,8 @@ def test_each_phone_screen_fits_the_protocols_bounds_at_its_own_shape(device):
     assert w % 2 == 0 and h % 2 == 0
     assert abs(w / h - d["width"] / d["height"]) < 0.01
     if d["kind"] == "foldable":
-        assert 0 < d["cover_width"] < d["width"]
+        assert 0 < d["cover_width"] <= d["width"]
+        assert d["cover_width"] < d["width"] or d.get("cover_height", d["height"]) < d["height"]
 
 
 # ── the device ────────────────────────────────────────────────────────────────
@@ -146,6 +147,7 @@ def test_only_web_addresses_are_opened(url, ok):
 # ── what the phone says ───────────────────────────────────────────────────────
 
 class _System:
+    backend = "vm"  # isolated guest fixture; this test does not boot a VM
     def __init__(self, root):
         self.root = root
 
@@ -177,6 +179,7 @@ def _sdk(tmp_path, monkeypatch, *, image=True):
     if image:
         (sdk / "system-images/android-35/google_apis/x86_64").mkdir(parents=True)
     monkeypatch.setenv(PH.SDK_ENV, str(sdk))
+    monkeypatch.setattr(PH, "scrcpy_version", lambda path: (3, 3))
     monkeypatch.setattr(PH.shutil, "which", lambda name: "/usr/bin/scrcpy" if name == "scrcpy" else None)
     monkeypatch.setattr("platform.machine", lambda: "x86_64")
     return sdk
@@ -190,17 +193,18 @@ def _phone(tmp_path, kvm=(True, "KVM: /dev/kvm opened.")):
 
 def test_a_workstation_built_without_the_phone_says_how_to_build_it_in(tmp_path, monkeypatch):
     monkeypatch.setenv(PH.SDK_ENV, str(tmp_path / "nothing"))
+    monkeypatch.setattr(PH, "provision_script", lambda: None)
     monkeypatch.setattr("platform.machine", lambda: "x86_64")
     info = _phone(tmp_path).info()
     assert info["available"] is False and info["state"] == "unavailable"
-    assert "WORKSTATION_PHONE=on" in info["why"] and "Android SDK License" in info["why"]
+    assert "workstation-vm" in info["why"] and "Android SDK License" in info["why"]
 
 
 def test_a_host_without_kvm_is_told_how_to_get_it(tmp_path, monkeypatch):
     _sdk(tmp_path, monkeypatch)
     info = _phone(tmp_path, kvm=(False, "the host has no KVM")).info()
     assert info["available"] is False
-    assert "KVM" in info["why"] and ".wslconfig" in info["why"] and "the host has no KVM" in info["why"]
+    assert "KVM" in info["why"] and "inside your own VM" in info["why"] and "the host has no KVM" in info["why"]
 
 
 def test_an_arm_machine_is_told_the_phone_is_x86(tmp_path, monkeypatch):
@@ -233,8 +237,8 @@ def test_the_device_and_its_avd_are_written_into_the_home(tmp_path, monkeypatch)
     p.device = "pixel_9_pro_fold"
     p._write_avd()
     avd = tmp_path / ACCOUNT / ".android" / "avd"
-    assert (avd / "pantheon_pixel_9_pro_fold.ini").is_file()
-    assert "hw.sensor.hinge=yes" in (avd / "pantheon_pixel_9_pro_fold.avd" / "config.ini").read_text()
+    assert (avd / (p.avd + ".ini")).is_file()
+    assert "hw.sensor.hinge=yes" in (avd / (p.avd + ".avd") / "config.ini").read_text()
 
 
 def test_the_accounts_adb_is_its_own(tmp_path, monkeypatch):
@@ -288,6 +292,160 @@ def test_a_tree_that_is_not_one_is_said():
         PH.marks_from_dump("ERROR: could not get idle state.", (494, 1100))
 
 
+_DIALOG_DUMP = """<hierarchy rotation="0">
+<node class="android.widget.FrameLayout" clickable="false" enabled="true" bounds="{root_bounds}">
+  <node text="Allow" class="android.widget.Button" clickable="true" enabled="true" bounds="[200,700][400,800]"/>
+</node>
+</hierarchy>"""
+
+
+@pytest.mark.parametrize("root_bounds", ["[100,500][980,1800]", "[0,100][1080,2200]"],
+                         ids=["dialog", "inset-window"])
+def test_partial_ui_trees_use_the_actual_display_coordinates(root_bounds):
+    got = PH.marks_from_dump(_DIALOG_DUMP.format(root_bounds=root_bounds), (495, 1100),
+                             source_size=(1080, 2400))
+    # The button is at its full-display coordinates, regardless of which
+    # window uiautomator happened to include in this dump.
+    assert got["marks"][0]["box"] == [92, 321, 92, 46]
+
+
+def test_full_display_marks_match_the_rounded_native_thumbnail_axes():
+    xml = _DIALOG_DUMP.format(root_bounds="[0,0][1856,2160]").replace(
+        "[200,700][400,800]", "[100,44][300,144]")
+    got = PH.marks_from_dump(xml, (945, 1100), source_size=(1856, 2160))
+    assert got["marks"][0]["box"] == [51, 22, 102, 51]
+
+
+def test_the_phone_marks_use_the_authoritative_source_size_hook(tmp_path, monkeypatch):
+    phone = _phone(tmp_path)
+    monkeypatch.setattr(phone, "_on", lambda: None)
+    capture = {"size": (944, 1100)}
+    monkeypatch.setattr(phone, "screen_size", lambda: capture["size"])
+    monkeypatch.setattr(phone, "adb", lambda *args, **kwargs:
+                        _DIALOG_DUMP.format(root_bounds="[100,500][980,1800]"))
+    calls = []
+    def source_size():
+        calls.append(True)
+        capture["size"] = (495, 1100)
+        return 1080, 2400
+    monkeypatch.setattr(phone, "_marks_source_size", source_size, raising=False)
+    assert phone.marks()["marks"][0]["box"] == [92, 321, 92, 46]
+    assert calls == [True]
+
+
+def test_native_image_shutdown_waits_for_cleanup_and_skips_late_callback(monkeypatch):
+    import threading
+    from types import SimpleNamespace
+    from workstation.native_android.images import ImageInstaller
+    host = SimpleNamespace(lock=threading.RLock(), claims={}, closing=False)
+    installer = ImageInstaller(host)
+    entered, release, stopped = threading.Event(), threading.Event(), threading.Event()
+    callbacks, errors = [], []
+    def install(package):
+        entered.set()
+        assert release.wait(3)
+        installer._checkpoint()
+    monkeypatch.setattr(installer, "install_image", install)
+    installer.start(PH.DEFAULT_IMAGE, accept=False, then=callbacks.append)
+    def stop():
+        try:
+            installer.stop(timeout=2)
+        except Exception as error:
+            errors.append(error)
+        finally:
+            stopped.set()
+    waiter = threading.Thread(target=stop)
+    try:
+        assert entered.wait(2)
+        waiter.start()
+        assert not stopped.wait(.05)
+        release.set()
+        waiter.join(3)
+        assert stopped.is_set() and not errors
+        assert not installer._thread.is_alive()
+        assert callbacks == [] and installer.info()["state"] == "failed"
+        assert "cancel" in installer.info()["why"].lower()
+    finally:
+        release.set()
+        installer._thread.join(3)
+        if waiter.ident is not None:
+            waiter.join(3)
+
+
+def test_native_image_shutdown_reports_a_worker_that_has_not_finished():
+    import threading
+    from types import SimpleNamespace
+    from workstation.native_android.images import ImageInstaller
+    installer = ImageInstaller(SimpleNamespace(lock=threading.RLock(), claims={}, closing=False))
+    release = threading.Event()
+    installer._thread = threading.Thread(target=release.wait, daemon=True)
+    installer._thread.start()
+    try:
+        with pytest.raises(RuntimeError, match="still|stop"):
+            installer.stop(timeout=.02)
+        assert installer._thread.is_alive()
+    finally:
+        release.set()
+        installer._thread.join(2)
+
+
+def test_native_image_install_refuses_a_closing_host(monkeypatch):
+    import threading
+    from types import SimpleNamespace
+    from workstation.native_android.images import ImageInstaller
+    installer = ImageInstaller(SimpleNamespace(lock=threading.RLock(), claims={}, closing=True))
+    monkeypatch.setattr(installer, "install_image", lambda package: None)
+    with pytest.raises(PH.PhoneError, match="shutting|closing"):
+        installer.start(PH.DEFAULT_IMAGE, accept=False)
+
+
+def test_canceled_native_extraction_removes_staging_without_promoting_an_image(tmp_path, monkeypatch):
+    import hashlib
+    import io
+    import json
+    import threading
+    import zipfile
+    from types import SimpleNamespace
+    from workstation.native_android import images as I
+    package = "system-images;android-35;google_apis_playstore;x86_64"
+    archive = io.BytesIO()
+    with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as out:
+        out.writestr("x86_64/system.img", b"fixture" * (400 << 10))
+    payload, licence = archive.getvalue(), "Fixture SDK terms"
+    metadata = (f'<repository><license id="fixture-license">{licence}</license>'
+                f'<remotePackage path="{package}"><uses-license ref="fixture-license"/>'
+                f'<archives><archive><complete><url>fixture.zip</url><size>{len(payload)}</size>'
+                f'<checksum>{hashlib.sha1(payload).hexdigest()}</checksum></complete></archive></archives>'
+                '</remotePackage></repository>').encode()
+    root, sdk = tmp_path / "state", tmp_path / "sdk"
+    root.mkdir(); (sdk / "licenses").mkdir(parents=True)
+    consent = root / "consent.json"
+    consent.write_text(json.dumps({"license_ids": ["fixture-license"]}))
+    (sdk / "licenses/fixture-license").write_text(hashlib.sha1(licence.encode()).hexdigest())
+    host = SimpleNamespace(root=root, sdk=sdk, abi="x86_64", config={"consent": str(consent)},
+                           lock=threading.RLock(), claims={}, closing=False)
+    installer = I.ImageInstaller(host)
+    monkeypatch.setattr(I.urllib.request, "urlopen", lambda url, **kwargs:
+                        io.BytesIO(metadata if url.endswith(".xml") else payload))
+    monkeypatch.setattr(I.shutil, "disk_usage", lambda path: SimpleNamespace(free=10 << 30))
+    real_extract = I.extract
+    checks = []
+    def cancel_during_extract(archive_path, destination, *, check=None):
+        def checkpoint():
+            checks.append(True)
+            if len(checks) == 3:
+                installer._cancel.set()
+            check()
+        real_extract(archive_path, destination, check=checkpoint)
+    monkeypatch.setattr(I, "extract", cancel_during_extract)
+    with pytest.raises(RuntimeError, match="cancel"):
+        installer.install_image(package)
+    assert len(checks) == 3
+    assert not (sdk / PH.image_parts(package)["sysdir"]).exists()
+    assert not list(sdk.rglob(".image-*"))
+    assert not (root / "image-cache.json").exists()
+
+
 # ── the daemon ────────────────────────────────────────────────────────────────
 
 class _Screen:
@@ -320,6 +478,15 @@ class _FakePhone:
 
     def mode(self):
         return "android"
+
+    def ensure_shown(self):
+        pass
+
+    def stream_ready(self):
+        return self.state == "on"
+
+    def touch(self):
+        pass
 
     def _on(self):
         pass
@@ -378,9 +545,19 @@ def test_the_phone_routes_are_the_protocols():
     assert P.PHONE_BUTTONS["power"] == 26 and P.PHONE_BUTTONS["volume_up"] == 24
 
 
-def test_the_vm_backend_says_where_the_phone_is():
+def test_the_vm_backend_reports_the_guests_own_android_blocker(tmp_path):
     from workstation.vm import VmStation
-    assert "container" in VmStation.PHONE_ELSEWHERE.lower()
+    system = SingleUserSystem(tmp_path / "guest", backend="vm")
+    system.accel = "kvm"
+
+    def guest(account, route, body, **kwargs):
+        assert (account, route, body) == (ACCOUNT, "phone", {"action": "start"})
+        raise DaemonError("unavailable", "Nested KVM is unavailable inside this machine.")
+
+    system.forward = guest
+    with pytest.raises(DaemonError) as error:
+        VmStation(system, "pws_host").phone(ACCOUNT, {"action": "start"})
+    assert error.value.message == "Nested KVM is unavailable inside this machine."
 
 
 def test_a_phone_screen_is_its_devices_shape_on_kasmvnc():
@@ -450,6 +627,8 @@ def _window_module(tmp_path):
     import re
     src = (Path(__file__).resolve().parents[1] / "static" / "js" / "phoneWindow.js").read_text()
     src = re.sub(r"^import \* as Modals from .*$", "const Modals = {};", src, flags=re.M)
+    src = re.sub(r"^import \{ prefersReducedMotion \} from .*$",
+                 "const prefersReducedMotion = () => false;", src, flags=re.M)
     src = re.sub(r"^import \{ makeWindowDraggable \} from .*$", "const makeWindowDraggable = () => {};",
                  src, flags=re.M)
     path = tmp_path / "phoneWindow.mjs"
@@ -463,7 +642,7 @@ def test_the_bezel_is_the_devices_shape_and_its_keys_are_where_its_maker_puts_th
     import subprocess
     mod = _window_module(tmp_path)
     script = f"""
-import {{ sideKeys, bezelShape, deviceOf }} from {json.dumps(str(mod))};
+import {{ sideKeys, bezelShape, deviceOf }} from {json.dumps(mod.as_uri())};
 const fold = {{ device: 'galaxy_z_fold6', screen: [944, 1100], posture: 'closed',
   devices: [{{ id: 'galaxy_z_fold6', name: 'Samsung Galaxy Z Fold6', maker: 'Samsung', kind: 'foldable', foldable: true }}] }};
 console.log(JSON.stringify({{

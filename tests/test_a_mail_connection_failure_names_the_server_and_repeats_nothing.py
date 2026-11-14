@@ -37,6 +37,15 @@ from tests.test_a_send_to_a_mail_server_that_is_not_there_fails_in_seconds impor
     _listener, silent_server,
 )
 
+
+@pytest.fixture(autouse=True)
+def _a_person_allowed_this_network(monkeypatch):
+    """`B2102`: the mail servers here stand on loopback, which a mail account
+    reaches only for a person holding `can_reach_private_mail`."""
+    from tests.helpers.mail_reach import allow_this_network
+    allow_this_network(monkeypatch)
+
+
 #: What each server sends first, and a word of it that must not come back.
 _BANNERS = {
     "ssh": (b"SSH-2.0-OpenSSH_9.6\r\n", "OpenSSH"),

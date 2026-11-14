@@ -1,0 +1,18 @@
+{
+  "_comment": "What the Android host bootstrap installs. Revisions are pinned here. An archive with no sha256 below is checked against the size and SHA-1 in Google's own catalogue, and the SHA-256 it had is recorded in the host's state (sdk-pins.json there) and required on every reinstall. `python -m workstation.native_android.bootstrap pins` prints what a host recorded, in this file's shape, so it can be committed here.",
+  "emulator": {
+    "revision": "37.2.13",
+    "license": "android-sdk-license",
+    "archives": {}
+  },
+  "platform-tools": {
+    "revision": "37.0.1",
+    "license": "android-sdk-license",
+    "archives": {}
+  },
+  "scrcpy-server": {
+    "version": "3.3.4",
+    "url": "https://github.com/Genymobile/scrcpy/releases/download/v3.3.4/scrcpy-server-v3.3.4",
+    "sha256": "8588238c9a5a00aa542906b6ec7e6d5541d9ffb9b5d0f6e1bc0e365e2303079e"
+  }
+}

@@ -63,6 +63,7 @@ export const ICONS = {
   folder: '<path d="M3.5 7a2 2 0 0 1 2-2h4l2 2h7a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"/>',
   monitor: '<rect x="3.5" y="4.5" width="17" height="11.5" rx="1.5"/><path d="M8.5 20h7M12 16v4"/>',
   browser: '<rect x="3.5" y="4.5" width="17" height="15" rx="1.5"/><path d="M3.5 9h17"/><circle cx="6.3" cy="6.8" r=".6" fill="currentColor"/><circle cx="8.5" cy="6.8" r=".6" fill="currentColor"/>',
+  phone: '<rect x="6.5" y="2.5" width="11" height="19" rx="2"/><path d="M10.5 18h3"/>',
   l1: '<rect x="4.5" y="5.5" width="15" height="13" rx="1.5"/>',
   lcols: '<rect x="4.5" y="5.5" width="15" height="13" rx="1.5"/><path d="M12 5.5v13"/>',
   lrows: '<rect x="4.5" y="5.5" width="15" height="13" rx="1.5"/><path d="M4.5 12h15"/>',

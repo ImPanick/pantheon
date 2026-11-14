@@ -117,7 +117,8 @@ invisible to anyone without access.)*
 
 1. every check name this page tells you to require matches a job that exists;
 2. every merge-blocking workflow has a branch-pinned badge in `README.md`;
-3. no workflow trigger names a branch this repository does not have (`B433`:
+3. no workflow trigger names a branch this repository does not have, `main`
+   and `dev` being the two it has (`B433`:
    `ci.yml`, `codeql.yml` and `docker-publish.yml` all said `dev`, which has
    never existed — and in `codeql.yml` the filter was on pull requests, so
    **CodeQL had never analysed a single pull request**);
@@ -176,9 +177,11 @@ This makes the **Merge** button refuse to work until the gating checks pass.
 2. Click **Settings** (top right of the repo).
 3. In the left sidebar, click **Branches**.
 4. Under **Branch protection rules**, click **Add branch ruleset** (or **Add
-   rule**), and set the branch name pattern to `main` (the only branch here —
-   corrected 2026-08-30, this said `dev`, which does not exist, so anyone who
-   followed it protected nothing).
+   rule**), and set the branch name pattern to `main`. Then add the same rule
+   a second time for `dev`, the branch finished work merges into before it is
+   promoted to `main` (2026-08-30 this said `dev` when no `dev` existed, so
+   anyone who followed it protected nothing; `dev` has existed since, and the
+   correctness and security workflows run on pushes to both).
 5. Enable **Require status checks to pass before merging**.
 6. In the search box that appears, add these checks by name:
    - `Python syntax (compileall)`

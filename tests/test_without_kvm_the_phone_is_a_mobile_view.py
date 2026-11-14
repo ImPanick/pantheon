@@ -29,6 +29,7 @@ import contextlib
 import json
 import shutil
 import subprocess
+import time
 from pathlib import Path
 
 import pytest
@@ -108,6 +109,7 @@ def test_a_mobile_view_whose_screen_will_not_start_says_so_and_never_goes_headle
 # ── which one runs ────────────────────────────────────────────────────────────
 
 class _System:
+    backend = "vm"  # guest fixture with KVM explicitly unavailable
     def __init__(self, root):
         self.root = root
         self.owned = []
@@ -170,7 +172,7 @@ def no_kvm(tmp_path, monkeypatch):
     monkeypatch.setattr(PH, "find_firefox", lambda: "/usr/bin/firefox")
     calls = []
 
-    def start(self):
+    def start(self, *, cancel=None):
         calls.append(("start", self.window_size, self.extra_args, self.extra_prefs))
         self.proc = _Proc()
 
@@ -182,6 +184,7 @@ def no_kvm(tmp_path, monkeypatch):
 
     monkeypatch.setattr(PH.MobileView, "start", start)
     monkeypatch.setattr(PH.MobileView, "stop", stop)
+    monkeypatch.setattr(PH.MobileView, "cancel_start", lambda self: None)  # no OS process in this fixture
     monkeypatch.setattr(PH.MobileView, "_ctx", lambda self: "ctx-1")
     monkeypatch.setattr(PH.MobileView, "_act",
                         lambda self, action, body, at=None: calls.append(("act", action, body)) or {})
@@ -194,32 +197,46 @@ def no_kvm(tmp_path, monkeypatch):
     screen = _Screen()
     phone = PH.AccountPhone(system, ACCOUNT, screen, kvm=lambda: (False, "the host has no KVM"))
     phone.calls = calls
-    return phone
+    yield phone
+    phone.stop()
+    if phone._booting:
+        phone._booting.join(5)
 
 
 def _started(phone, device=None):
-    phone.start(device)
-    phone._booting.join(5)
+    phone.preview(device)
+    return _ready(phone)
+
+
+def _ready(phone):
+    end = time.monotonic() + 5
+    while phone.state == "starting" and time.monotonic() < end:
+        time.sleep(0.01)
     assert phone.state == "on", phone.why
     return phone
 
 
-def test_without_kvm_the_phone_is_offered_as_a_mobile_view_and_says_why(no_kvm):
+def test_without_kvm_android_is_blocked_and_preview_requires_an_explicit_choice(no_kvm):
     info = no_kvm.info()
-    assert info["available"] is True and info["state"] == "off"
-    assert info["mode"] == "mobile_view" and "why" not in info
-    # `B1756`: KVM is asked first — with it, a pick installs the rest.
-    assert "KVM" in info["why_not_android"]
+    assert info["available"] is False and info["state"] == "unavailable"
+    assert info["mode"] is None and "KVM" in info["why"]
+    assert info["preview_available"] and not info["installed"]
+    assert no_kvm.start()["state"] == "unavailable"
+    assert no_kvm.mobile is None and no_kvm.calls == []
+    _started(no_kvm)
+    info = no_kvm.info()
+    assert info["mode"] == "mobile_view" and "KVM" in info["why_not_android"]
     assert "Mozilla/5.0 (Android" in info["user_agent"]
     assert info["accel"] is None
 
 
 def test_without_a_screen_there_is_neither_and_the_android_reason_is_given(tmp_path, monkeypatch):
+    monkeypatch.setattr("platform.machine", lambda: "x86_64")
     monkeypatch.setenv(PH.SDK_ENV, str(tmp_path / "no-sdk"))
     monkeypatch.setattr(PH, "find_firefox", lambda: "/usr/bin/firefox")
     system = _System(tmp_path)
     system.ensure(ACCOUNT)
-    info = PH.AccountPhone(system, ACCOUNT, None).info()
+    info = PH.AccountPhone(system, ACCOUNT, None, kvm=lambda: (False, "the host has no KVM")).info()
     assert info["available"] is False and info["mode"] is None
     assert "KVM" in info["why"]   # `B1756`: asked before what is installed
 
@@ -255,7 +272,8 @@ def test_back_and_home_work_and_the_keys_android_has_say_why_not(no_kvm):
 
 def test_power_turns_the_mobile_view_off(no_kvm):
     _started(no_kvm)
-    assert no_kvm.button("power")["state"] == "off"
+    assert no_kvm.button("power")["mode"] is None
+    assert no_kvm.state == "off"
     assert no_kvm.mobile is None and not no_kvm.running()
 
 
@@ -263,10 +281,12 @@ def test_turning_and_folding_reopen_the_page_at_the_new_shape(no_kvm):
     _started(no_kvm, "galaxy_z_fold6")
     assert no_kvm.posture == "open"
     no_kvm.rotate()
+    _ready(no_kvm)
     assert no_kvm.state == "on" and no_kvm.rotation == 1
     assert no_kvm.screen.sizes[-1] == PH.mobile_view_size("galaxy_z_fold6", "open", 1)
     assert ("act", "open", {"url": "https://example.org/shop"}) in no_kvm.calls
     no_kvm.set_posture("closed")
+    _ready(no_kvm)
     assert no_kvm.screen.sizes[-1] == PH.mobile_view_size("galaxy_z_fold6", "closed", 1)
     assert no_kvm.info()["posture"] == "closed"
 
@@ -278,12 +298,14 @@ def test_an_address_opens_in_the_mobile_view(no_kvm):
 
 
 def test_a_mobile_view_that_will_not_start_says_why_and_is_not_left_starting(no_kvm, monkeypatch):
-    def boom(self):
+    def boom(self, **kwargs):
         raise B.BrowserError("unavailable", "Firefox crashed")
 
     monkeypatch.setattr(PH.MobileView, "start", boom)
-    no_kvm.start()
-    no_kvm._booting.join(5)
+    no_kvm.preview()
+    end = time.monotonic() + 5
+    while no_kvm.state == "starting" and time.monotonic() < end:
+        time.sleep(0.01)
     assert no_kvm.state == "unavailable" and "Firefox crashed" in no_kvm.why
 
 
@@ -310,12 +332,14 @@ def test_the_window_greys_the_keys_a_mobile_view_has_not(tmp_path):
     import re
     src = (Path(__file__).resolve().parents[1] / "static" / "js" / "phoneWindow.js").read_text()
     src = re.sub(r"^import \* as Modals from .*$", "const Modals = {};", src, flags=re.M)
+    src = re.sub(r"^import \{ prefersReducedMotion \} from .*$",
+                 "const prefersReducedMotion = () => false;", src, flags=re.M)
     src = re.sub(r"^import \{ makeWindowDraggable \} from .*$", "const makeWindowDraggable = () => {};",
                  src, flags=re.M)
     mod = tmp_path / "phoneWindow.mjs"
     mod.write_text(src)
     script = f"""
-import {{ keyWorks, isMobileView, bezelShape }} from {json.dumps(str(mod))};
+import {{ keyWorks, isMobileView, bezelShape }} from {json.dumps(mod.as_uri())};
 const mv = {{ mode: 'mobile_view', device: 'galaxy_z_fold6', screen: [500, 1100], posture: 'closed',
   devices: [{{ id: 'galaxy_z_fold6', maker: 'Samsung', kind: 'foldable', foldable: true }}] }};
 const ids = ['power', 'volume_up', 'volume_down', 'back', 'home', 'recents'];
@@ -348,6 +372,7 @@ def test_the_agent_is_told_the_phone_is_a_mobile_view():
     got = asyncio.run(CT._phone_on(_Client([{"state": "off"}, {
         "state": "starting", "mode": "mobile_view", "device": "pixel_8",
         "devices": [{"id": "pixel_8", "name": "Google Pixel 8"}]}]), ACCOUNT))
-    assert "mobile view" in got["output"] and "Google Pixel 8" in got["output"]
+    assert "browser preview" in got["output"] and "Google Pixel 8" in got["output"]
+    assert "web pages only, not Android apps" in got["output"]
     line = CT._shot_line({"width": 450, "height": 1000, "mode": "mobile_view"}, "phone")
     assert "not Android" in line and "450×1000" in line

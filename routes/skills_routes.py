@@ -36,6 +36,7 @@ from services.memory.skill_lint import (
     skill_similarity as _skill_similarity,
 )
 from services.memory.skill_improve import pinned_of as _pinned_of
+from services.memory.skill_publish import AGENT_CANNOT_PUBLISH, pin_lifecycle
 from src.auth_helpers import ONLY_A_PERSON_ANSWERS, get_current_user, request_is_a_person
 from src.prompt_security import untrusted_context_message
 from src.text_helpers import strip_closed_think_blocks
@@ -953,23 +954,13 @@ _skill_audit_jobs: dict = {}
 
 
 def _audit_auto_publish_policy(owner) -> tuple[bool, float]:
-    """Return (auto_publish_enabled, minimum_confidence) for audit finalization."""
-    try:
-        from routes.prefs_routes import _load_for_user
-        prefs = _load_for_user(owner) or {}
-    except Exception:
-        prefs = {}
-    try:
-        from src.settings import get_setting
-        default_min = get_setting("skill_autosave_min_confidence", 0.85)
-    except Exception:
-        default_min = 0.85
-    enabled = bool(prefs.get("auto_approve_skills", True))
-    try:
-        min_conf = float(prefs.get("skill_min_confidence", default_min))
-    except (TypeError, ValueError):
-        min_conf = 0.85
-    return enabled, max(0.0, min(1.0, min_conf))
+    """Return (auto_publish_enabled, minimum_confidence) for audit finalization.
+
+    `B2098`: the body is `services.memory.skill_publish.publish_policy` now,
+    which the chat extractor reads too, so the audit's bar and the learned
+    skill's bar are one setting (`Law 14`)."""
+    from services.memory.skill_publish import publish_policy
+    return publish_policy(owner)
 
 
 def _duplicate_keeper_score(sk: dict) -> float:
@@ -2211,7 +2202,13 @@ def setup_skills_routes(skills_manager: SkillsManager) -> APIRouter:
             else:
                 files, src, notes = await run_in_threadpool(si.fetch_skill_bundle_report, url)
                 pkg = si.single_skill_package(files, src, notes)
-            result = await run_in_threadpool(skills_manager.install_package, pkg, owner=user)
+            # `B2098`: an imported skill is published when it lands — a person
+            # chose it. The agent's loopback reaches this route with the
+            # internal token, which `require_admin` accepts; what it imports
+            # lands a draft for the person to publish.
+            result = await run_in_threadpool(
+                lambda: skills_manager.install_package(
+                    pkg, owner=user, publish=request_is_a_person(request)))
         except Exception as e:
             raise _import_errors(e) from e
         return _import_answer(user, result)
@@ -2240,7 +2237,9 @@ def setup_skills_routes(skills_manager: SkillsManager) -> APIRouter:
         try:
             entry = await run_in_threadpool(skills_manager.import_bundle_from_files,
                                             {str(k): str(v) for k, v in files.items()},
-                                            owner=user, category="imported")
+                                            owner=user, category="imported",
+                                            # `B2098`, as the URL import above.
+                                            publish=request_is_a_person(request))
         except Exception as e:
             raise _import_errors(e) from e
         name = entry.get("name")
@@ -2311,7 +2310,12 @@ def setup_skills_routes(skills_manager: SkillsManager) -> APIRouter:
         only = list((rec.get("names") or {}).keys()) if rec.get("mode") == "partial" else None
         try:
             pkg = await run_in_threadpool(si.fetch_skill_package, url, only_folders=only)
-            result = await run_in_threadpool(skills_manager.install_package, pkg, owner=user)
+            # `B2098`: a skill the refresh brings for the first time is
+            # published as any import is; the ones already installed keep the
+            # status a person gave them.
+            result = await run_in_threadpool(
+                lambda: skills_manager.install_package(
+                    pkg, owner=user, publish=request_is_a_person(request)))
         except Exception as e:
             raise _import_errors(e) from e
         return _import_answer(user, result)
@@ -2399,6 +2403,13 @@ def setup_skills_routes(skills_manager: SkillsManager) -> APIRouter:
     @router.post("/add")
     async def add_skill(request: Request, body: SkillAddRequest):
         user = _owner(request)
+        # `B2098`. A skill written here is custom-built, and the Add form saves
+        # it as a draft for the person to test and publish. A published one is
+        # a person's act — *Undo* puts a deleted published skill back through
+        # here — and never the agent's loopback, which reaches this route as
+        # the owner and could otherwise write its own guidance straight in.
+        if body.status == "published" and not request_is_a_person(request):
+            raise HTTPException(403, AGENT_CANNOT_PUBLISH)
         entry = skills_manager.add_skill(
             # New shape
             name=body.name,
@@ -2656,7 +2667,11 @@ def setup_skills_routes(skills_manager: SkillsManager) -> APIRouter:
         user = _owner(request)
         match = _require_own_skill(skills_manager, skill_id, user)
         name = match.get("name")
-        if not skills_manager.restore_version(name, version_id, owner=user):
+        # `B2098`: an earlier copy the agent puts back keeps today's status,
+        # confidence and source — an older published copy is not a publish.
+        if not skills_manager.restore_version(
+                name, version_id, owner=user,
+                keep_lifecycle=not request_is_a_person(request)):
             raise HTTPException(404, "No such earlier copy of this skill.")
         markdown = skills_manager.read_skill_md(name, owner=user)
         return {"ok": True, "name": name, "restored": version_id,
@@ -3150,6 +3165,15 @@ def setup_skills_routes(skills_manager: SkillsManager) -> APIRouter:
         sk.name = match.get("name")
         if not sk.owner:
             sk.owner = match.get("owner") or user
+        if not request_is_a_person(request):
+            # `B2098`: a body the agent sends cannot publish the skill it is
+            # written over, nor move its confidence or source.
+            if sk.status == "published" and match.get("status") != "published":
+                raise HTTPException(403, AGENT_CANNOT_PUBLISH)
+            _kept = pin_lifecycle({}, match)
+            sk.status = _kept.get("status", sk.status)
+            sk.confidence = _kept.get("confidence", sk.confidence)
+            sk.source = _kept.get("source", sk.source)
         ok = skills_manager.update_skill(match.get("name"), {
             "name": sk.name,
             "description": sk.description,
@@ -3191,6 +3215,15 @@ def setup_skills_routes(skills_manager: SkillsManager) -> APIRouter:
         updates = body.dict(exclude_none=True)
         if not updates:
             return {"ok": True}
+        if not request_is_a_person(request):
+            # `B2098`. *Publish* on a card is this route, and it is the person's
+            # alone: the agent's loopback is refused a publish outright, and
+            # keeps the stored confidence and source on anything else it changes.
+            if updates.get("status") == "published" and match.get("status") != "published":
+                raise HTTPException(403, AGENT_CANNOT_PUBLISH)
+            updates = pin_lifecycle(updates, match)
+            if not updates:
+                return {"ok": True}
         if "name" in updates:
             # `B1978`. update_skill refuses a name this owner already uses, and
             # its False would read below as "Skill not found". Say what it is.
