@@ -343,7 +343,9 @@ def _install(tmp_path, *extra):
     out = subprocess.run(
         [sys.executable, str(ROOT / "workstation" / "install.py"), "--root", str(tmp_path),
          "--no-packages", "--no-start", "--address", "127.0.0.2", "--name", "127.0.0.2", *extra],
-        cwd=tmp_path, capture_output=True, text=True, timeout=60)
+        # It takes a fraction of a second; a busy CI runner once stalled it past
+        # a minute (dev CI, 2026-11-13), so the limit only catches a real hang.
+        cwd=tmp_path, capture_output=True, text=True, timeout=300)
     assert out.returncode == 0, out.stdout + out.stderr
     return out.stdout
 
