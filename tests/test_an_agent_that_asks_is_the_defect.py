@@ -255,7 +255,16 @@ def _tools_called(events):
 
 
 def _system_text(request):
-    return "\n".join(m["content"] for m in request if m["role"] == "system")
+    """The system prompt and every note the loop handed the model.
+
+    `B2120`: a loop note is a Pantheon turn note at the end of the request now,
+    not a line folded into the system prompt, so the prompt's cached prefix
+    survives the push. What the model is told is unchanged; where it reads it
+    moved.
+    """
+    from src.prompt_security import is_turn_note_content
+    return "\n".join(str(m["content"]) for m in request
+                     if m["role"] == "system" or is_turn_note_content(m.get("content")))
 
 
 def test_a_turn_handed_back_as_a_question_is_pushed_once(monkeypatch):
@@ -764,8 +773,7 @@ def _run_native(monkeypatch, script, *, relevant_tools, exact_approval=None,
                         lambda *a, **k: (True, False, False), raising=False)
 
     async def _fake_stream(_candidates, messages, **kwargs):
-        seen.append("\n".join(str(m.get("content") or "") for m in messages
-                               if m.get("role") == "system"))
+        seen.append(_system_text(messages))   # `B2120`: notes included
         step = next(steps, "Done.")
         if isinstance(step, list):
             yield f'data: {json.dumps({"type": "tool_calls", "calls": step})}\n\n'

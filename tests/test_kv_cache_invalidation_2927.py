@@ -303,6 +303,7 @@ async def test_run_post_response_tasks_does_not_fire_extraction_concurrently(mon
 
     task_endpoint_mod = types.ModuleType("src.task_endpoint")
     task_endpoint_mod.resolve_task_endpoint = lambda url, model, headers, owner=None: (url, model, headers)
+    task_endpoint_mod.resolve_side_job_endpoint = task_endpoint_mod.resolve_task_endpoint   # `B2136`
     monkeypatch.setitem(sys.modules, "src.task_endpoint", task_endpoint_mod)
 
     captured_jobs = {}

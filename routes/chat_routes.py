@@ -2026,13 +2026,23 @@ def setup_chat_routes(
         # header and preview / the document's text. The page promotes a turn
         # with a document open (`chat.js`) but not one with an email open, and
         # not in incognito; here both promote, and the person is told why.
-        if chat_mode == "chat" and not tool_approval_id and (
-                str(form_data.get("active_email_uid", "") or "").strip()
-                or str(form_data.get("active_doc_id", "") or "").strip()):
+        #
+        # `B2140`. Only when the message calls on it. Promotion sends the
+        # whole Agent request (tools, instructions, the open item), and a
+        # document left open beside the chat promoted every turn, "hi"
+        # included. The document's size is not known here, so words that may
+        # mean "write into it" ("write a poem") still promote.
+        from src.open_item_reference import calls_for_writing, refers_to_open_email, refers_to_open_item
+        _said = message if isinstance(message, str) else ""
+        _open_email_called = bool(str(form_data.get("active_email_uid", "") or "").strip()) and (
+            refers_to_open_email(_said))
+        _open_doc_called = bool(str(form_data.get("active_doc_id", "") or "").strip()) and (
+            refers_to_open_item(_said) or calls_for_writing(_said))
+        if chat_mode == "chat" and not tool_approval_id and (_open_email_called or _open_doc_called):
             chat_mode = "agent"
             auto_escalated = _escalate(
                 "an email is open beside the chat"
-                if str(form_data.get("active_email_uid", "") or "").strip()
+                if _open_email_called
                 else "a document is open beside the chat")
         active_doc_id = form_data.get("active_doc_id", "").strip()
         logger.info(f"[doc-inject] chat_mode={chat_mode}, active_doc_id={active_doc_id!r}")
@@ -3726,7 +3736,11 @@ def setup_chat_routes(
                         # `allow_tool_preprocessing` and the casual-low-signal
                         # test — and none of them reached the loop, which built
                         # its own copy regardless. They arrive as one flag now.
-                        suppress_skills=not ctx.skills_enabled,
+                        # `B2127`. A summoned agent brings its own skills
+                        # whole (`P24-26`), as a hired run does, and its kit
+                        # has no `manage_skills`, so the person's catalogue
+                        # would cost tokens and name a tool it cannot call.
+                        suppress_skills=(not ctx.skills_enabled) or bool(_summoned),
                         max_tool_calls=_tool_budget,
                         max_rounds=_max_rounds,
                         # `P7-12`. These two are Settings' `agent_max_rounds`

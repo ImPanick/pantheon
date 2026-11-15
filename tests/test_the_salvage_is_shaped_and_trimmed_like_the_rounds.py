@@ -191,7 +191,15 @@ def test_with_nothing_to_trim_the_salvage_is_the_forced_round_and_its_instructio
     rounds, salvage, said = _forced_turn(world, "short", after_long_reply=False)
     forced = rounds[-1]
     assert not forced["tools"] and not salvage.get("refused")
-    assert salvage["messages"][:-1] == forced["messages"]
+    sent = salvage["messages"][:-1]
+    # `B2120`. The loop breaker's note is the forced round's last message (a
+    # user-role APPLICATION NOTE, so the system prompt stays the cached one),
+    # and `_sanitize_llm_messages` puts its one boundary between that note and
+    # the instruction that follows it, as it does at every such seam.
+    if sent[-1:] == [{"role": "assistant", "content": "Reference context received."}]:
+        assert _text(forced["messages"][-1]).startswith("APPLICATION NOTE\n")
+        sent = sent[:-1]
+    assert sent == forced["messages"]
     assert _text(salvage["messages"][-1]).startswith(INSTRUCTION)
     assert APOLOGY not in said
 
