@@ -47010,6 +47010,13 @@ body.settings-sidebar-resize-active {
   border-radius: 7px;
   background: var(--panel);
 }
+/* Whose pointer is over the live desktop. KasmVNC's client hides the page's
+   cursor wherever it has the pointer and draws the workstation's instead, so
+   it gets the pointer only while the person holds the screen (`.wsv-driving`,
+   set by `workstationScreen.js`): one cursor, the workstation's. Watching,
+   the pointer passes the frame by and the person keeps their own, as the
+   phone's and the browser's glass already let them. */
+.wsv-screen.wsv-is-live:not(.wsv-driving) .wsv-live { pointer-events: none; }
 /* `B1754`. The agent's hand on the desktop: the live browser's (`.abw-hand`,
    `P25-07`) on a layer over the screen that never takes a pointer. Its colour
    is the theme's accent, set on `.wsv-agent` by `workstationScreen.js` and
