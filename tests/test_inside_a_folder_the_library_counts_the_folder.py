@@ -140,6 +140,17 @@ const folderChip = (name) => win().querySelectorAll('.doclib-folder-chip')
   .find((c) => c.querySelector('.doclib-folder-chip-name').textContent === name);
 const grid = () => win().querySelector('#doclib-grid');
 const stats = () => win().querySelector('#doclib-stats').textContent;
+// The library reads a live server, so a fixed number of turns can come too
+// early on a busy machine (dev CI, 2026-11-13). Wait for what the step draws,
+// then let the rest of that render settle.
+const until = async (ready, what) => {
+  const end = Date.now() + 15000;
+  while (!ready()) {
+    if (Date.now() > end) throw new Error('never drew: ' + what);
+    await new Promise((r) => setTimeout(r, 10));
+  }
+  await tick(40);
+};
 """
 
 
@@ -151,14 +162,14 @@ def test_inside_a_folder_the_chips_count_it_and_the_empty_state_says_where(
     _seed(live)
     out = _window(window_box, live.base, _READ + """
         L.openLibrary();
-        await tick(40);
+        await until(() => chips().length, 'the library chips');
         const library = { chips: chips(), stats: stats() };
         folderChip('Projects').dispatchEvent({ type: 'click' });
-        await tick(40);
+        await until(() => grid().__action, 'the empty folder action');
         const projects = { chips: chips(), stats: stats(), empty: grid().textContent,
           action: grid().__action && grid().__action.label };
         grid().__action.onClick();
-        await tick(40);
+        await until(() => grid().querySelectorAll('.doclib-card').length, 'the Lumen 2.0 cards');
         const lumen = { chips: chips(), stats: stats(),
           cards: grid().querySelectorAll('.doclib-card').length };
         console.log(JSON.stringify({ library, projects, lumen, toasts }));
