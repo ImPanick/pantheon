@@ -147,8 +147,8 @@ def find_tool_matches(query: str = "", names=None, *, mcp_tools=None) -> List[Di
 
 
 def tool_area_listing(area: str = "", *, mcp_tools=None) -> str:
-    """`B2114`. Browse the suite by area: every area with its count, or every
-    tool in one area by name with its few words. Lists, loads nothing: the
+    """`B2114`. The inventory: every tool by area with its few words, or one
+    area's tools with their longer descriptions. Lists, loads nothing: the
     model names what it wants next (`names`), so an area of sixteen email tools
     does not land sixteen schemas in the next request. Read from the same map
     the partial-suite notice prints (`src/tool_map.AREAS`), plus the live MCP
@@ -191,11 +191,23 @@ def tool_area_listing(area: str = "", *, mcp_tools=None) -> str:
                         if t != "find_tools"]
             return ("\n".join(out) + "\n\nLoad the ones you need with "
                     "find_tools {\"names\": [...]}; they are callable from your next step.")
-    lines = [f"- {name} ({sum(1 for t in tools if t != 'find_tools')})" for name, tools in areas]
+    # The whole inventory in one call (the owner, 2026-11-15: the agent
+    # gathers its own tools): every tool by area with the few words the
+    # 2026-11-07 index carried, so a small model that does not know the name
+    # of the thing it needs reads it here instead of guessing search words.
+    def _short(hint: str) -> str:
+        return str(hint or "").split(" · ")[0].strip()
+    lines = []
+    for name, tools in areas:
+        here = [f"{t} ({_short(h)})" if _short(h) else t
+                for t, h in tools.items() if t != "find_tools"]
+        if here:
+            lines.append(f"- {name}: " + ", ".join(here))
     lead = f"No area is called {area!r}. " if want else ""
-    return (lead + "Tool areas:\n" + "\n".join(lines)
-            + "\n\nList one with find_tools {\"area\": \"<area>\"}, or search with "
-            "{\"query\": \"<the job>\"}.")
+    return (lead + "Every tool, by area:\n" + "\n".join(lines)
+            + "\n\nLoad the ones you need with find_tools {\"names\": [...]}; they are "
+            "callable from your next step. {\"area\": \"<area>\"} gives one area's "
+            "longer descriptions.")
 
 
 async def do_find_tools(content: str, owner: Optional[str] = None) -> Dict:

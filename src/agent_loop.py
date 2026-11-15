@@ -2249,13 +2249,14 @@ _PARTIAL_SUITE_WHY = {
 # `B1755`. When `find_tools` is in the set the rest of the suite is one call
 # away, so the notice says so instead of telling the model to stop and ask.
 _PARTIAL_SUITE_NOTICE_FINDABLE = (
-    "## This turn's tool set is partial\n"
-    "You have {n} of your {total} tools loaded — {why}. The rest are listed "
-    "below. To use one, call `find_tools` with its name (JSON: "
-    "{{\"names\": [\"computer\"]}}) or a few words for the job (JSON: "
-    "{{\"query\": \"calendar events\"}}); it is callable from your next "
-    "step. Do not conclude a capability does not exist before looking, and do "
-    "not substitute a shell command for a tool you could load."
+    "## Finding tools\n"
+    "You have {n} of your {total} tools loaded. Gather the rest yourself with "
+    "`find_tools`: no arguments lists every tool by area, "
+    "{{\"names\": [\"computer\"]}} loads tools you know, "
+    "{{\"query\": \"calendar events\"}} searches by the job. What it loads "
+    "is callable from your next step. Do not conclude a capability does not "
+    "exist before looking, and do not substitute a shell command for a tool "
+    "you could load."
 )
 
 
@@ -5738,15 +5739,14 @@ def _suite_notice_for(tool_suite, tool_names, disabled) -> str:
                                        len(tally["candidates"]),
                                        tally["reason"],
                                        findable=findable)
-        # The owner, 2026-11-07: a small model should know every tool's name
-        # and what it is for before it searches. The left-out tools by area,
-        # a few words each (`src/tool_map.py`); the same bytes every turn the
-        # set holds still, so a local server's cached prefix survives.
+        # The owner, 2026-11-15, superseding his 2026-11-07 index: *"leave the
+        # tool gathering up to the agent — just giving a 'you can find and
+        # inventory tools with {tool inventory call}'"*. The index of every
+        # left-out tool (~730 tokens) is no longer pre-paid on each request;
+        # `find_tools` with no arguments returns the same inventory by area
+        # (`tool_area_listing`) the moment a model wants it, which is what the
+        # 11-07 Gemma run lacked. The notice no longer changes with the set.
         if notice and findable:
-            from src.tool_map import index_text
-            index = index_text(tally["withheld"])
-            if index:
-                notice += "\n\n" + index
             off = _switched_off_here(disabled)
             if off:
                 notice += "\n" + off
@@ -6049,7 +6049,13 @@ def _step_budget_note(round_num: int, round_limit: int) -> Optional[Dict]:
             f"This is step {n} of {limit}; the run stops after step {limit}. "
             "Finish the work in the steps left, or say plainly what is left undone."
         )
-    return {"role": "system", "content": text}
+    # `B2119`. A turn note at the end of the request, not a `system` message:
+    # `llm_core` folds every `system` message into the first one, so on the
+    # last two steps of every run (a scheduled task's 20, a background
+    # follow-up's 12, a skill test's 8) the system prompt changed and a local
+    # server re-read the whole prefix for a two-sentence note.
+    from src.prompt_security import turn_note_message
+    return turn_note_message(text)
 
 
 def _unknown_native_call_names(native_tool_calls, converted_calls) -> list:
@@ -7032,6 +7038,10 @@ async def _run_verifier_subagent(
             url=endpoint_url, model=model,
             messages=[{"role": "user", "content": prompt}],
             headers=headers, temperature=0.0, max_tokens=600, timeout=60,
+            # `B2122`. 600 tokens is for two sentences and a verdict line; a
+            # thinking model spent them on reasoning and the check came back
+            # with no VERIFICATION line.
+            thinking=False,
         )
     except Exception as e:
         logger.warning(f"[agent] verifier subagent failed: {e}")
@@ -13236,6 +13246,11 @@ async def stream_agent_loop(
                 # and outside content (or a retired card's taint) still counts.
                 external_untrusted_context_seen=run_security.external_untrusted_context_seen,
                 delegated_credential=bool(delegated_credential),
+                suppress_skills=bool(suppress_skills),   # `B2121`
+                max_rounds=max_rounds,
+                max_tool_calls=max_tool_calls,
+                plan_mode=bool(plan_mode),
+                approved_plan=approved_plan,
             ):
                 yield evt
         except Exception as _esc_err:

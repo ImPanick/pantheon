@@ -195,6 +195,9 @@ class ResearchHandler:
                 headers=llm_headers,
                 timeout=15,
                 max_retries=1,
+                # `B2122`. One line in 200 tokens: a thinking model spent them
+                # on reasoning and the rewrite fell back to the raw message.
+                thinking=False,
             )
             query = strip_thinking(response).strip().strip('"\'')
             if query and len(query) > 5:
@@ -744,6 +747,7 @@ class ResearchHandler:
                 max_tokens=5,
                 headers=headers,
                 timeout=15,
+                thinking=False,   # `B2122`: a reachability probe, five tokens
                 max_retries=1,
             )
             logger.info(f"Endpoint probe OK: {model}")

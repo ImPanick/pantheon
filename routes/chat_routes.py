@@ -3726,7 +3726,11 @@ def setup_chat_routes(
                         # `allow_tool_preprocessing` and the casual-low-signal
                         # test — and none of them reached the loop, which built
                         # its own copy regardless. They arrive as one flag now.
-                        suppress_skills=not ctx.skills_enabled,
+                        # `B2120`. A summoned agent brings its own skills
+                        # whole (`P24-26`), as a hired run does, and its kit
+                        # has no `manage_skills`, so the person's catalogue
+                        # would cost tokens and name a tool it cannot call.
+                        suppress_skills=(not ctx.skills_enabled) or bool(_summoned),
                         max_tool_calls=_tool_budget,
                         max_rounds=_max_rounds,
                         # `P7-12`. These two are Settings' `agent_max_rounds`

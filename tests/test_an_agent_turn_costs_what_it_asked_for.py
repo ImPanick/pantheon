@@ -179,19 +179,22 @@ def test_a_partial_suite_offers_what_was_asked_and_nothing_to_fill_the_room():
 # ── everything stays reachable ───────────────────────────────────────────────
 
 def test_every_tool_is_listed_by_area_with_no_cutoff():
+    """`B2118`. `find_tools` with no arguments is the agent's whole inventory:
+    every selectable tool and every connected MCP tool, by area, no cutoff."""
+    import re
     from src.tool_policy import selectable_tool_names
     from src.tools.system import tool_area_listing
     mcp = {"mcp__tracker__file_issue": "File an issue in the tracker."}
     index = tool_area_listing("", mcp_tools=mcp)
-    areas = [line[2:].rsplit(" (", 1)[0] for line in index.splitlines()
+    missing = sorted(n for n in (set(selectable_tool_names()) | set(mcp)) - {"find_tools"}
+                     if not re.search(r"(?<![\w])" + re.escape(n) + r"(?![\w])", index))
+    assert not missing, missing
+    # Each area the inventory names opens on its own, with longer hints.
+    areas = [line[2:].split(":", 1)[0].split(" = ", 1)[0] for line in index.splitlines()
              if line.startswith("- ")]
-    listed = set()
+    assert len(areas) > 5
     for area in areas:
-        listed |= {line[2:].split(" — ")[0] for line in
-                   tool_area_listing(area, mcp_tools=mcp).splitlines()
-                   if line.startswith("- ")}
-    missing = (set(selectable_tool_names()) | set(mcp)) - listed - {"find_tools"}
-    assert not missing, sorted(missing)
+        assert tool_area_listing(area, mcp_tools=mcp).count("\n- ") >= 1, area
 
 
 def test_a_rare_tool_is_found_by_exact_name_and_by_words_without_embeddings():

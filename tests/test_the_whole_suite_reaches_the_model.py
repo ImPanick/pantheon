@@ -523,11 +523,12 @@ def test_a_workflow_step_still_gets_only_its_own_tools(monkeypatch):
 def test_a_partial_turn_tells_the_model_the_set_is_partial(monkeypatch):
     _base(monkeypatch, _mcp_manager(), window=W8K)
     _events, sent = _drive(monkeypatch, ["Nothing to do."])
-    assert "tool set is partial" in sent[0]["prompt"]
-    # `B1755`. A partial turn carries `find_tools`, so the notice points the
-    # model at it instead of telling it to stop and describe what it lacks.
+    # `B2118`, the owner 2026-11-15: *"leave the tool gathering up to the
+    # agent"*. A partial turn that carries `find_tools` says so in one short
+    # section that points at it, instead of a heading about what is missing.
+    assert "## Finding tools" in sent[0]["prompt"]
     assert "find_tools" in sent[0]["tools"]
-    assert "call `find_tools`" in sent[0]["prompt"]
+    assert "`find_tools`" in sent[0]["prompt"]
 
 
 def test_a_whole_suite_turn_says_nothing_about_being_partial(monkeypatch):

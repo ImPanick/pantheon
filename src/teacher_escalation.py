@@ -538,6 +538,7 @@ async def evaluate_turn_llm(
             [{"role": "user", "content": prompt}],
             headers=headers,
             timeout=20,
+            thinking=False,   # `B2122`: a one-word verdict needs no reasoning
         )
         if response:
             cleaned_response = response.strip().strip("'\"").lower()
@@ -572,6 +573,11 @@ async def run_teacher_inline(
     active_email: Optional[Dict[str, str]] = None,
     external_untrusted_context_seen: bool = False,
     delegated_credential: bool = False,
+    suppress_skills: bool = False,
+    max_rounds: Optional[int] = None,
+    max_tool_calls: int = 0,
+    plan_mode: bool = False,
+    approved_plan: Optional[str] = None,
 ):
     """Async generator. Yields SSE event strings.
 
@@ -600,21 +606,12 @@ async def run_teacher_inline(
     except Exception:
         return
 
-    # Extract original user request — last user-role message
-    user_request = ""
-    for m in reversed(student_messages):
-        if m.get("role") != "user":
-            continue
-        c = m.get("content")
-        if isinstance(c, str):
-            user_request = c
-        elif isinstance(c, list):
-            user_request = next(
-                (p.get("text", "") for p in c
-                 if isinstance(p, dict) and p.get("type") == "text"),
-                "",
-            )
-        break
+    # `B2121`. The person's words, not the last user-role message: Pantheon's
+    # own turn notes (`_loop_note`'s APPLICATION NOTE, the date note) and
+    # framed context are user-role too, and after a supervisor note the
+    # teacher's request (so its planner query and keyword pins) was the note.
+    from src.agent_loop import _extract_last_user_message
+    user_request = _extract_last_user_message(student_messages) or ""
 
     status, reason = evaluate_turn_regex(student_tool_events, student_reply)
     if status != "failure":
@@ -720,6 +717,14 @@ async def run_teacher_inline(
         route_descriptors=[teacher_route] if teacher_route else None,   # `B940`
         external_untrusted_context_seen=bool(external_untrusted_context_seen),   # `B1817`
         delegated_credential=bool(delegated_credential),
+        # `B2121`. The person's own switches and caps for this turn reach the
+        # teacher's run too: skills off stays off, plan mode stays read-only,
+        # and the turn's step and tool-call caps hold.
+        suppress_skills=bool(suppress_skills),
+        plan_mode=bool(plan_mode),
+        approved_plan=approved_plan,
+        **({"max_rounds": int(max_rounds)} if max_rounds else {}),
+        max_tool_calls=int(max_tool_calls or 0),
         _is_teacher_run=True,
     ):
         # Swallow teacher's own [DONE] — outer loop emits the real one
