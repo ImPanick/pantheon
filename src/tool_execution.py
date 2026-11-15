@@ -35,6 +35,7 @@ from src.tool_policy import ToolPolicy
 from src.constants import MAX_OUTPUT_CHARS, MAX_READ_CHARS, MAX_DIFF_LINES, DATA_DIR
 from src.owner_identity import normalize_owner
 from src import nobody_mode   # `B2097`
+from src.result_shaping import compact_json, shape_terminal_output   # `B2128`
 from src.tool_utils import _truncate, get_mcp_manager
 
 
@@ -2049,15 +2050,17 @@ def format_tool_result(description: str, result: Dict) -> str:
     """Format a tool result into text for feeding back to the LLM."""
     parts = [f"### {description}"]
 
+    # `B2128`. A terminal's output without what no model reads: colour codes,
+    # overwritten progress lines, a line repeated, base64 too long to use.
     if "stdout" in result:
         if result["stdout"]:
-            parts.append(f"**stdout:**\n```\n{result['stdout']}\n```")
+            parts.append(f"**stdout:**\n```\n{shape_terminal_output(result['stdout'])}\n```")
         if result["stderr"]:
-            parts.append(f"**stderr:**\n```\n{result['stderr']}\n```")
+            parts.append(f"**stderr:**\n```\n{shape_terminal_output(result['stderr'])}\n```")
         parts.append(f"**exit_code:** {result.get('exit_code', 'unknown')}")
     elif "output" in result:
         # bash / python canonical result shape: {"output": ..., "exit_code": ...}
-        parts.append(f"```\n{result['output']}\n```")
+        parts.append(f"```\n{shape_terminal_output(result['output'])}\n```")
         if result.get("exit_code") not in (0, None):
             parts.append(f"**exit_code:** {result['exit_code']}")
     elif "content" in result:
@@ -2101,7 +2104,8 @@ def format_tool_result(description: str, result: Dict) -> str:
         extra["image_url"] = nobody_mode.SHOWN_NOT_SAVED
     if extra:
         try:
-            extra_json = json.dumps(extra, indent=2, default=str, ensure_ascii=False)
+            # `B2128`. Compact: the indentation was a third of its tokens.
+            extra_json = compact_json(extra)
             # Cap to avoid blowing the context window on huge payloads.
             if len(extra_json) > 8000:
                 extra_json = extra_json[:8000] + f"\n... (truncated, {len(extra_json)} chars total)"

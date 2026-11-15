@@ -334,6 +334,37 @@ def _drop_leading_prior(messages: List[Dict], count: int) -> List[Dict]:
     return _sanitize_tool_messages([m for m in messages if id(m) not in drop])
 
 
+#: `B2128`. What an earlier tool result of this turn is sent as once the turn
+#: has outgrown its room: the call stays, so the model knows what it ran.
+RESULT_LEFT_OUT_NOTICE = ("[An earlier tool result of this turn, {chars:,} characters, "
+                          "left out to make room. Call the tool again if it is needed.]")
+
+
+def _turn_results_before_the_newest_round(messages: List[Dict]) -> List[Dict]:
+    """`B2128`. This turn's tool results, oldest first, not counting the newest
+    round's: the ones the model has already read and acted on."""
+    convo = [m for m in messages if m.get("role") != "system" and not m.get("_protected")]
+    theirs = _the_persons_message(convo)
+    if theirs is None:
+        return []
+    at = next(i for i, m in enumerate(messages) if m is theirs)
+    after = messages[at + 1:]
+    last_call = max((i for i, m in enumerate(after) if m.get("role") == "assistant"), default=-1)
+    return [m for m in after[:max(last_call, 0)]
+            if _is_tool_result(m) and isinstance(m.get("content"), str)
+            and not str(m.get("content")).startswith("[An earlier tool result of this turn")]
+
+
+def _stub_turn_results(messages: List[Dict], count: int) -> List[Dict]:
+    """`B2128`. `messages` with the first `count` of this turn's earlier tool
+    results sent as `RESULT_LEFT_OUT_NOTICE`."""
+    stub = {id(m) for m in _turn_results_before_the_newest_round(messages)[:count]}
+    if not stub:
+        return messages
+    return [dict(m, content=RESULT_LEFT_OUT_NOTICE.format(chars=len(m["content"])))
+            if id(m) in stub else m for m in messages]
+
+
 def trim_for_context(messages: List[Dict], context_length: int, reserve_tokens: int = 512,
                      *, hold: Optional[Dict[str, Any]] = None) -> List[Dict]:
     """Trim system messages to fit within context_length.
@@ -358,6 +389,8 @@ def trim_for_context(messages: List[Dict], context_length: int, reserve_tokens: 
     budget = context_length - reserve_tokens
     if hold is not None and hold.get("prior_dropped"):
         messages = _drop_leading_prior(messages, int(hold["prior_dropped"]))
+    if hold is not None and hold.get("results_left_out"):
+        messages = _stub_turn_results(messages, int(hold["results_left_out"]))
     used = estimate_tokens(messages)
     if used <= budget:
         return messages
@@ -474,6 +507,31 @@ def trim_for_context(messages: List[Dict], context_length: int, reserve_tokens: 
                             len(dropped_ids))
                 return fitted
             convo_msgs = [m for m in convo_msgs if id(m) not in dropped_ids]
+
+        # `B2128`. Then this turn's earlier tool results — read and acted on
+        # already — before the person's message or the instructions are cut,
+        # oldest first, each call kept. Held like the turns above, so a long
+        # turn moves its beginning once in a while, not every round.
+        if not prior or len(dropped_ids) == len(prior):
+            target = budget if hold is None else int(budget * TRIM_HOLD_WATERMARK)
+            current = [m for m in convo_msgs if id(m) not in shed_ids]
+            earlier = _turn_results_before_the_newest_round(current)
+            n = 0
+            shaped = current
+            while n < len(earlier) and estimate_tokens(essential_system + protected_msgs + shaped) > target:
+                n += 1
+                shaped = _stub_turn_results(current, n)
+            if n:
+                fitted = _sanitize_tool_messages(essential_system + protected_msgs + shaped)
+                if estimate_tokens(fitted) <= budget or n == len(earlier):
+                    if hold is not None:
+                        hold["results_left_out"] = int(hold.get("results_left_out") or 0) + n
+                if estimate_tokens(fitted) <= budget:
+                    logger.info("Left out %d earlier tool result(s) of this turn so the instructions fit uncut", n)
+                    return fitted
+                stubbed_ids = {id(m) for m in earlier[:n]}
+                convo_msgs = [dict(m, content=RESULT_LEFT_OUT_NOTICE.format(chars=len(m["content"])))
+                              if id(m) in stubbed_ids else m for m in convo_msgs]
 
     # `B1651`. Then the person's message gives way, before the instructions do.
     # Measured through `/api/chat_stream` (`B1572`'s turn: an Agent-mode turn
@@ -975,6 +1033,10 @@ TRIM_LEFT_OUT = (
 #: fit — the trim keeps its beginning and end (`PASTED_MESSAGE_CUT_NOTICE`).
 MESSAGE_CUT_WORDS = "the middle of your message"
 
+#: `B2128`. Said when this turn's earlier tool results were sent as
+#: `RESULT_LEFT_OUT_NOTICE`.
+TURN_RESULTS_LEFT_OUT_WORDS = "earlier tool results of this turn"
+
 #: `B2126`. Said when turns before the person's latest message were left out
 #: so the instructions and their message fit whole (`B1572`: name the cut).
 EARLIER_TURNS_WORDS = "the earlier part of this chat"
@@ -1050,6 +1112,10 @@ def trim_left_out(before: List[Dict], after: List[Dict]) -> List[str]:
         if id(message) not in kept and _is_plain_turn(message):
             said.append(EARLIER_TURNS_WORDS)
             break
+    # `B2128`. Earlier results of this turn sent as the left-out notice.
+    if any(_is_tool_result(m) and str(m.get("content") or "").startswith("[An earlier tool result of this turn")
+           for m in after or [] if id(m) not in {id(b) for b in before or []}):
+        said.append(TURN_RESULTS_LEFT_OUT_WORDS)
     # `B1943`. A tool result the trim cut: a copy that carries the cut's notice.
     sent = {id(message) for message in before or []}
     results_cut = sum(1 for message in after or []
