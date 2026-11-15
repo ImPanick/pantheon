@@ -820,7 +820,7 @@ def _declared_dependency_gaps() -> list:
         if not spec:
             continue
         declared += 1
-        name = _re.split(r"[<>=!~\[;]", spec, 1)[0].strip()
+        name = _re.split(r"[<>=!~\[;]", spec, maxsplit=1)[0].strip()
         try:
             have = _version(name)
         except PackageNotFoundError:

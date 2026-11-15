@@ -2572,8 +2572,10 @@ def setup_chat_routes(
             }, WITHHELD_BY_POLICY)
             # `B2097`. And every tool that writes into what Pantheon keeps for
             # them — documents, notes, calendar, tasks, todos, research, RAG,
-            # the Gallery's editor — because Nobody keeps nothing. Derived from
-            # the effects register (`src/nobody_mode.withheld_writes`);
+            # the Gallery's editor — because Nobody keeps nothing; and every
+            # tool that runs code, writes the workspace, acts outside Pantheon
+            # or changes the install, because each leaves a trace too. Derived
+            # from the effects register (`src/nobody_mode.withheld_writes`);
             # `generate_image` still runs, and keeps nothing.
             _withholds.deny(_nobody.withheld_writes(), WITHHELD_BY_POLICY)
 

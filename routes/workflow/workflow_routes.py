@@ -66,6 +66,7 @@ import asyncio
 import json
 import logging
 import functools
+import inspect
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
@@ -98,7 +99,7 @@ def _answers(handler):
     FastAPI still runs it in its threadpool and its database work never holds
     the event loop (an `async` wrapper around it would — every chat stream
     would wait on a workflow list's queries)."""
-    if asyncio.iscoroutinefunction(handler):
+    if inspect.iscoroutinefunction(handler):
         @functools.wraps(handler)
         async def async_wrapper(*args, **kwargs):
             try:

@@ -56,7 +56,7 @@ import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Callable, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 from urllib.parse import parse_qs, urlsplit
 
 from workstation import protocol as P
@@ -309,6 +309,11 @@ def write_stamp(folder: Path, at: float) -> None:
 
 # ── systems ───────────────────────────────────────────────────────────────────
 
+# Said when a size is sent to a workstation that has no machines of its own.
+MEMORY_NOT_HERE = ("This workstation runs on its host's own memory: only the VM workstation, "
+                   "which gives each person a machine of their own, has a memory size to set.")
+
+
 class System:
     """How accounts, commands and screens work on one backend."""
 
@@ -485,6 +490,16 @@ class System:
 
     def set_sudo(self, on: bool) -> None:
         self.sudo = bool(on)
+
+    # -- the memory a machine is given ---------------------------------------
+    # Only the VM backend has machines of its own to size (`vm.Fleet`); every
+    # other system reports nothing and refuses a size (`Workstation.config`).
+
+    def memory_report(self) -> Dict:
+        return {}
+
+    def set_memory(self, choice: Optional[int]) -> None:
+        raise WorkstationError("bad_request", MEMORY_NOT_HERE)
 
     # -- the network mode (`P20-06`) -----------------------------------------
     # The base enforces nothing and says so; `UbuntuSystem` holds the mode for
@@ -728,7 +743,8 @@ class Workstation:
                 # `B1642`: where each person's projects folder is here, and
                 # whether anything is mounted there.
                 "projects_root": str(root), "projects_mounted": root.is_dir(),
-                **self.system.network_report()}  # `P20-06`
+                **self.system.network_report(),  # `P20-06`
+                **self.system.memory_report()}
 
     def config(self, body: Dict) -> Dict:
         if "sudo" in body:
@@ -742,6 +758,17 @@ class Workstation:
                 raise WorkstationError("bad_request",
                                        f"“network” is one of {', '.join(P.NETWORK_MODES)}.")
             self.system.set_network(body["network"])
+        # The VM backend's memory for each machine, in MiB; null is automatic.
+        if "memory_mib" in body:
+            size = body["memory_mib"]
+            if not self.system.memory_report():
+                raise WorkstationError("bad_request", MEMORY_NOT_HERE)
+            if size is not None and (isinstance(size, bool) or not isinstance(size, int)
+                                     or not P.VM_MEMORY_MIN_MIB <= size <= P.VM_MEMORY_MAX_MIB):
+                raise WorkstationError(
+                    "bad_request", f"“memory_mib” is a whole number of MiB from "
+                    f"{P.VM_MEMORY_MIN_MIB} to {P.VM_MEMORY_MAX_MIB}, or null for automatic.")
+            self.system.set_memory(size)
         # `B1424`: who may reach every person's projects folder.
         if "admins" in body:
             admins = body["admins"]

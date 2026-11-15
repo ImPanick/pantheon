@@ -483,9 +483,11 @@ services:
   # It costs nothing until it is used: no machine runs, and the Ubuntu image
   # every machine is made from is made only when an admin first turns the
   # workstation on (`PANTHEON_WORKSTATION_VM_IMAGE=on_first_use`) — minutes
-  # with KVM, much longer without. Each machine then takes up to
-  # PANTHEON_WORKSTATION_VM_MEMORY_MIB while it runs and is powered off after
-  # PANTHEON_WORKSTATION_VM_IDLE_MIN minutes unused (`B979`).
+  # with KVM, much longer without. Each machine is given the memory an admin
+  # chooses in Settings (else PANTHEON_WORKSTATION_VM_MEMORY_MIB, else sized
+  # from the host), holds on the host what its guest uses — freed pages go
+  # back — and is powered off after PANTHEON_WORKSTATION_VM_IDLE_MIN minutes
+  # unused (`B979`).
   #
   # Not privileged, no Docker socket, no capability added, no published port:
   # one device-cgroup rule for /dev/kvm alone (QEMU's emulator when the host has
@@ -501,7 +503,7 @@ services:
     environment:
       - PANTHEON_WORKSTATION_PAIRING_GID=${PGID:-1000}
       - PANTHEON_WORKSTATION_VM_IMAGE=${PANTHEON_WORKSTATION_VM_IMAGE:-on_first_use}
-      - PANTHEON_WORKSTATION_VM_MEMORY_MIB=${PANTHEON_WORKSTATION_VM_MEMORY_MIB:-2048}
+      - PANTHEON_WORKSTATION_VM_MEMORY_MIB=${PANTHEON_WORKSTATION_VM_MEMORY_MIB:-}
       - PANTHEON_WORKSTATION_VM_CPUS=${PANTHEON_WORKSTATION_VM_CPUS:-2}
       - PANTHEON_WORKSTATION_VM_DISK_GIB=${PANTHEON_WORKSTATION_VM_DISK_GIB:-20}
       - PANTHEON_WORKSTATION_VM_ACCEL=${PANTHEON_WORKSTATION_VM_ACCEL:-auto}

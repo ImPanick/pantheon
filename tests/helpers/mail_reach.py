@@ -11,6 +11,8 @@ from __future__ import annotations
 
 
 def allow_this_network(monkeypatch) -> None:
-    """Every person named in this test holds `can_reach_private_mail`."""
+    """Every person named in this test holds `can_reach_private_mail` and may
+    reach this machine, which takes an admin (`src/mail_reach.py`)."""
     import src.mail_reach as mail_reach
     monkeypatch.setattr(mail_reach, "_holds", lambda owner: True)
+    monkeypatch.setattr(mail_reach, "runs_instance", lambda owner: True)

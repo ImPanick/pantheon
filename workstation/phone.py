@@ -131,6 +131,7 @@ STOP_TIMEOUT_S = 60.0
 ADB_TIMEOUT_S = 20.0
 REAP_EVERY_S = 60.0
 AVAILABILITY_TRUST_S = 30.0
+MEMINFO = Path("/proc/meminfo")
 
 BUILT_WITHOUT = ("This VM has no working Android runtime or installer. Rebuild the workstation-vm "
                  "host from the current checkout and restart your VM, preserving its disk. "
@@ -410,6 +411,14 @@ def tools(root: Optional[Path] = None) -> Dict[str, Optional[str]]:
     return {"emulator": there(root / "emulator" / "emulator"),
             "adb": there(root / "platform-tools" / "adb"),
             "scrcpy": bundled or shutil.which("scrcpy")}
+
+
+# Said when the person's VM is too small for the phone. An admin raises it in
+# Settings; the machine boots with it on its next use (`vm.Fleet.set_memory`).
+TOO_LITTLE_MEMORY = (
+    "Your workstation machine has {have} MiB of memory; Android needs {need} MiB plus 1536 MiB "
+    "for the desktop. Ask an admin to choose {size} MiB or more under Settings → Workstation → "
+    "Memory for each machine; your machine starts with it on its next use, its files kept.")
 
 
 def default_memory_mib(total_mib: Optional[int]) -> int:
@@ -860,15 +869,17 @@ class AccountPhone:
         if not ok:
             return NO_KVM.format(why=why)
         try:
-            total_mib = int(next(line.split()[1] for line in Path("/proc/meminfo").read_text().splitlines()
+            total_mib = int(next(line.split()[1] for line in MEMINFO.read_text().splitlines()
                                  if line.startswith("MemTotal:"))) // 1024
         except (OSError, ValueError, StopIteration, IndexError):
             total_mib = None
         if total_mib is not None and total_mib < self.memory_mib + 1536:
-            return (f"This user's VM has {total_mib} MiB of memory; Android alone needs "
-                    f"{self.memory_mib} MiB plus 1536 MiB for the workstation. Ask an admin "
-                    f"to increase PANTHEON_WORKSTATION_VM_MEMORY_MIB ({self.memory_mib + 2048} recommended), "
-                    "then restart your VM.")
+            # The VM host plugs the phone's memory in before Android starts
+            # and takes it out after (`workstation/vm.py`): count what it promised.
+            total_mib += int(getattr(self.system, "phone_room_mib", 0) or 0)
+        if total_mib is not None and total_mib < self.memory_mib + 1536:
+            return TOO_LITTLE_MEMORY.format(have=total_mib, need=self.memory_mib,
+                                            size=self.memory_mib + 2048)
         # `B1756`: a phone that is not installed yet is one picking a device
         # installs — where this daemon can install it.
         if tools_installed() and image_installed(self.package()):

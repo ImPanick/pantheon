@@ -210,7 +210,7 @@ def test_a_voice_that_will_not_speak_says_why(world, monkeypatch):
 
     def broken(self, text, syn_config=None):
         raise RuntimeError("ONNXRuntimeError: invalid input 'input'")
-        yield  # noqa: unreachable — a generator, as Piper's is
+        yield  # unreachable on purpose: a generator, as Piper's is
 
     monkeypatch.setattr(world.piper.module.PiperVoice, "synthesize", broken)
     r = _say(client)

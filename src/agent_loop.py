@@ -8246,6 +8246,16 @@ async def stream_agent_loop(
         for _sid, _names in _mcp_block_map.items():
             _mcp_disabled_map.setdefault(_sid, set()).update(_names)
         disabled_tools.withhold(_mcp_block_q, because=WITHHELD_BY_PLAN_MODE)
+    from src import nobody_mode as _nobody_mode
+    if _nobody_mode.keeps_nothing() and mcp_mgr:
+        # A Nobody turn runs nothing that leaves a trace
+        # (`src/nobody_mode._leaves_a_trace`). The route withholds the tools
+        # it can name; an MCP server's tools it cannot, so plan mode's gate
+        # does it here: read-only tools run, every other is hidden and refused.
+        _mcp_block_map, _mcp_block_q = mcp_mgr.plan_mode_blocked_mcp()
+        for _sid, _names in _mcp_block_map.items():
+            _mcp_disabled_map.setdefault(_sid, set()).update(_names)
+        disabled_tools.withhold(_mcp_block_q, because=WITHHELD_BY_POLICY)
     # `P22-16`. A workflow AI step's own tool list (`ToolPolicy.allowed_tools`).
     # Every known name outside it joins the denylist, and every MCP tool
     # outside it the per-server map, because those two are what the prompt,
