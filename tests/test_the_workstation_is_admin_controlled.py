@@ -181,6 +181,8 @@ def test_the_keys_ship_off_and_the_destination_ships_empty():
         "workstation_backend": "auto",
         "workstation_sudo": None,
         "workstation_network": "full",
+        # Automatic: sized from the VM host's memory (`vm.auto_memory_mib`).
+        "workstation_vm_memory_mib": None,
         "workstation_route_tools": True,
     }
     assert DEFAULT_SETTINGS["workstation_backend"] in P.BACKEND_CHOICES

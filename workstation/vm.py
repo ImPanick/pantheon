@@ -141,6 +141,14 @@ ENV = {
     "apt_ca": "PANTHEON_WORKSTATION_VM_APT_CA",
 }
 DEFAULT_MEMORY_MIB = 2048
+# Automatic (nothing chosen in Settings, nothing in `.env`): room for the
+# phone — its 8 GiB plus the 1536 MiB its pre-check keeps for the desktop, and
+# what the guest kernel keeps for itself — where the host still has
+# `PHONE_ROOM_HOST_KEEPS_MIB` left over; the old 2 GiB where it would not.
+# Free page reporting (`qemu_argv`) means a machine this size holds on the host
+# about what its guest uses, not the whole of it.
+PHONE_ROOM_MEMORY_MIB = 10240
+PHONE_ROOM_HOST_KEEPS_MIB = 16384
 DEFAULT_CPUS = 2
 DEFAULT_DISK_GIB = 20
 # Making the image installs the desktop, the tools and Firefox inside the VM.
@@ -239,6 +247,15 @@ def host_memory_mib(meminfo: Path = Path("/proc/meminfo"),
     return total
 
 
+def auto_memory_mib(total_mib: Optional[int]) -> int:
+    """A machine's memory when nobody chose one: room for the phone on a host
+    that can spare it, else `DEFAULT_MEMORY_MIB` — and that too when the
+    host's memory cannot be read, rather than a number made up."""
+    if total_mib is not None and total_mib - PHONE_ROOM_MEMORY_MIB >= PHONE_ROOM_HOST_KEEPS_MIB:
+        return PHONE_ROOM_MEMORY_MIB
+    return DEFAULT_MEMORY_MIB
+
+
 def max_running_from_env(raw: str, memory_mib: int, total_mib: Optional[int]) -> Optional[int]:
     """`PANTHEON_WORKSTATION_VM_MAX_RUNNING`: a number (0: no limit), or `auto`
     / empty for what the memory holds — None when the memory cannot be read,
@@ -335,6 +352,10 @@ def qemu_argv(*, name: str, accel: str, cpus: int, memory_mib: int, disk: Path,
             "-rtc", "base=utc,driftfix=slew",
             "-drive", f"if=virtio,file={disk},format=qcow2,discard=unmap",
             "-device", "virtio-rng-pci",
+            # Pages the guest frees go back to the host (QEMU 5.1+, Linux
+            # 5.7+; the image is Noble's 8.2 and 6.8). Without it a machine
+            # that once touched its memory holds all of it until it powers off.
+            "-device", "virtio-balloon-pci,free-page-reporting=on",
             "-qmp", f"unix:{qmp},server=on,wait=off"]
     if iso is not None:
         # A read-only virtio disk, not a CD-ROM: udev labels a virtio disk as
@@ -675,6 +696,8 @@ class Fleet(System):
                  start_timeout: float = P.MACHINE_START_S - 30.0,
                  idle_stop_s: Optional[float] = DEFAULT_IDLE_STOP_MIN * 60.0,
                  max_running: Optional[int] = None,
+                 max_running_auto: bool = False,
+                 memory_source: str = "default", host_mib: Optional[int] = None,
                  clock: Callable[[], float] = time.monotonic) -> None:
         super().__init__()
         self.state = Path(state)
@@ -682,7 +705,12 @@ class Fleet(System):
         (self.state / "images").mkdir(parents=True, exist_ok=True)
         self.accel, self.accel_why = accel, accel_why
         self.base_image, self.payload = Path(base_image), Path(payload)
-        self.memory_mib, self.cpus, self.disk_gib = memory_mib, cpus, disk_gib
+        self.cpus, self.disk_gib = cpus, disk_gib
+        # The admin's memory, or the operator's / automatic one (`set_memory`).
+        self.memory_default, self.memory_source = int(memory_mib), memory_source
+        self.host_mib = host_mib
+        self.memory_choice = self._persisted_memory()
+        self.memory_mib = self.memory_choice or self.memory_default
         self.factory = machine_factory or QemuMachine
         self.image_options = dict(image_options or {})
         self.start_timeout = start_timeout
@@ -690,6 +718,7 @@ class Fleet(System):
         # Per machine: whether it was started with `restrict=on`, and what its
         # own daemon last said it holds (`network_report`).
         self._restricted: Dict[str, bool] = {}
+        self._started_memory: Dict[str, int] = {}  # what each running machine has
         self._guest_net: Dict[str, Dict] = {}
         self._retiring: List[threading.Thread] = []
         self.image_state = ("ready" if not need_image
@@ -705,6 +734,7 @@ class Fleet(System):
         # it now; the idle time and the cap (module comment above).
         self.idle_stop_s = idle_stop_s
         self.max_running = max_running
+        self._max_running_auto = max_running_auto  # follows the memory (`set_memory`)
         self._clock = clock
         self._use: Dict[str, List] = {}          # account -> [requests in flight, last use]
         self._use_lock = threading.Lock()
@@ -756,6 +786,70 @@ class Fleet(System):
                 except WorkstationError as e:
                     logger.warning("could not tell %s's machine sudo is %s: %s",
                                    account, "on" if on else "off", e.message)
+
+    # -- the memory each machine is given -------------------------------------
+    #
+    # The owner (2026-11-14): a setting in Settings, or memory that grows and
+    # shrinks. Both, here: an admin's size (`config`'s `memory_mib`, kept in
+    # `memory.json` on this volume), else `PANTHEON_WORKSTATION_VM_MEMORY_MIB`,
+    # else automatic (`auto_memory_mib`) — and every machine hands the pages
+    # its guest frees back to the host (`qemu_argv`'s free page reporting), so
+    # a large size costs the host what is used. `-m` cannot change on a
+    # running machine, so one started with another size is powered off cleanly
+    # (its disk kept) and boots with this one on its next use, the way a
+    # network change is (`_retire`).
+
+    def _memory_path(self) -> Path:
+        return self.state / "memory.json"  # `persisted_memory_at` reads it
+
+    def _persisted_memory(self) -> Optional[int]:
+        return self.persisted_memory_at(self.state)
+
+    @staticmethod
+    def persisted_memory_at(state: Path) -> Optional[int]:
+        """The admin's size kept on this volume, or None (automatic)."""
+        try:
+            value = json.loads((Path(state) / "memory.json").read_text(encoding="utf-8")).get(
+                "memory_mib")
+        except (OSError, ValueError, AttributeError):
+            return None
+        if isinstance(value, int) and not isinstance(value, bool) \
+                and P.VM_MEMORY_MIN_MIB <= value <= P.VM_MEMORY_MAX_MIB:
+            return value
+        return None
+
+    def set_memory(self, choice: Optional[int]) -> None:
+        """The admin's size in MiB, or None for automatic (validated by
+        `Workstation.config`)."""
+        path = self._memory_path()
+        tmp = path.with_name(path.name + ".tmp")
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump({"memory_mib": choice}, f)
+        os.replace(tmp, path)
+        self.memory_choice = choice
+        self.memory_mib = choice or self.memory_default
+        if self._max_running_auto:
+            self.max_running = max_running_from_env("", self.memory_mib, self.host_mib)
+        for account in self.running_accounts():
+            if self._out_of_date(account):
+                self._retire(account)
+
+    def memory_report(self) -> Dict:
+        """`health`'s and `config`'s words for it: the size a machine starts
+        with, the admin's choice (None: automatic), what automatic is here and
+        where that came from (`env` or `auto`), the host's memory, and that
+        free pages go back to it."""
+        return {"memory_mib": self.memory_mib, "memory_choice": self.memory_choice,
+                "memory_default_mib": self.memory_default,
+                "memory_default_source": self.memory_source,
+                "host_memory_mib": self.host_mib, "memory_returns_to_host": True}
+
+    def _out_of_date(self, account: str) -> bool:
+        """Started with a network or a memory size that is no longer the one
+        it should have."""
+        return (self._wrong_network(account)
+                or self._started_memory.get(account, self.memory_mib) != self.memory_mib)
 
     # -- `B992`: the admin's network mode, held as far as this backend can ------
     #
@@ -840,9 +934,9 @@ class Fleet(System):
         def go() -> None:
             with self._locks[account]:
                 m = self.machine_for(account)
-                if m.running() and self._wrong_network(account):
-                    logger.info("powering off %s's machine: its network is not %s yet",
-                                account, self.network)
+                if m.running() and self._out_of_date(account):
+                    logger.info("powering off %s's machine: it boots again with network %s "
+                                "and %d MiB", account, self.network, self.memory_mib)
                     m.stop(graceful=True)
         t = threading.Thread(target=go, name=f"retire-{account}", daemon=True)
         self._retiring.append(t)
@@ -1044,7 +1138,8 @@ class Fleet(System):
         is started with is *none* (`B992`)."""
         folder = self.state / "machines" / m.account
         return qemu_argv(name=f"pantheon-{m.account}", accel=self.accel, cpus=self.cpus,
-                         memory_mib=self.memory_mib, disk=folder / "disk.qcow2",
+                         memory_mib=self._started_memory.get(m.account, self.memory_mib),
+                         disk=folder / "disk.qcow2",
                          iso=folder / "app.iso", console=folder / "console.log",
                          qmp=folder / "qmp.sock", forward=("127.0.0.1", int(m.port or 0)),
                          restrict=self._restricted.get(m.account, False),
@@ -1108,10 +1203,10 @@ class Fleet(System):
         self._touch(account)  # `B979`
         with self._locks[account]:
             if m.running() and m.port is not None:
-                if not self._wrong_network(account):
+                if not self._out_of_date(account):
                     return m
-                # Started under another network mode (`B992`): it boots again
-                # with this one.
+                # Started under another network mode (`B992`) or memory size:
+                # it boots again with this one.
                 m.stop(graceful=True)
             if (not m.exists() and self.image_state != "ready"
                     and self.starting_disk(account) is None):   # `B1733`
@@ -1124,6 +1219,7 @@ class Fleet(System):
                 if self.max_running is not None and len(others) >= self.max_running:
                     raise WorkstationError("unavailable", self.cap_sentence(len(others)))
                 self._restricted[account] = self.network == "none"  # `B992`
+                self._started_memory[account] = self.memory_mib
                 self._guest_net.pop(account, None)
                 m.start()
             self._wait_answering(m, started)
@@ -1228,6 +1324,7 @@ class Fleet(System):
             with self._registry:
                 self._machines.pop(account, None)
             self._restricted.pop(account, None)  # `B992`
+            self._started_memory.pop(account, None)
             self._guest_net.pop(account, None)
 
     # -- `B979`: use, idleness and the cap --------------------------------------
@@ -1777,11 +1874,17 @@ def main(argv: Optional[List[str]] = None) -> int:
     args = parser().parse_args(argv)
     logging.basicConfig(stream=sys.stdout, level=getattr(logging, args.log_level),
                         format="%(asctime)s %(levelname)s %(name)s: %(message)s")
-    memory = _int_env(ENV["memory"], DEFAULT_MEMORY_MIB, 1024, 262_144)
+    # Empty (the stack's default since the Settings control): automatic.
+    host_mib = host_memory_mib()
+    memory = _int_env(ENV["memory"], 0, P.VM_MEMORY_MIN_MIB, P.VM_MEMORY_MAX_MIB)
+    memory_source = "env" if memory else "auto"
+    memory = memory or auto_memory_mib(host_mib)
     cpus = _int_env(ENV["cpus"], DEFAULT_CPUS, 1, 64)
     disk = _int_env(ENV["disk"], DEFAULT_DISK_GIB, 8, 4096)
     idle = idle_stop_from_env(os.environ.get(ENV["idle"], ""))  # `B979`
-    cap = max_running_from_env(os.environ.get(ENV["max_running"], ""), memory, host_memory_mib())
+    cap_raw = os.environ.get(ENV["max_running"], "")
+    persisted = Fleet.persisted_memory_at(Path(args.state))
+    cap = max_running_from_env(cap_raw, persisted or memory, host_mib)
     image_when = (os.environ.get(ENV["image_when"]) or "at_start").strip().lower()
     if image_when not in ("at_start", "on_first_use"):
         logger.error("%s is at_start or on_first_use.", ENV["image_when"])
@@ -1809,6 +1912,8 @@ def main(argv: Optional[List[str]] = None) -> int:
                       base_image=Path(args.base_image), payload=Path(args.payload),
                       memory_mib=memory, cpus=cpus, disk_gib=disk, image_options=options,
                       idle_stop_s=idle, max_running=cap,
+                      max_running_auto=cap_raw.strip().lower() in ("", "auto"),
+                      memory_source=memory_source, host_mib=host_mib,
                       image_on_first_use=image_when == "on_first_use")
     except (WorkstationError, argparse.ArgumentTypeError) as e:
         logger.error("%s", getattr(e, "message", None) or e)
@@ -1825,8 +1930,10 @@ def main(argv: Optional[List[str]] = None) -> int:
     threading.Thread(target=fleet.housekeeping, args=(done,), name="housekeeping",
                      daemon=True).start()  # `B979`
     host, port = server.server_address[:2]
-    logger.info("workstation VM backend listening on %s:%s — %s, %d MiB and %d CPUs a machine, "
-                "protocol v%s", host, port, accel, memory, cpus, P.PROTOCOL_VERSION)
+    logger.info("workstation VM backend listening on %s:%s — %s, %d MiB (%s) and %d CPUs a "
+                "machine, free pages returned to the host, protocol v%s", host, port, accel,
+                fleet.memory_mib, "chosen in Settings" if fleet.memory_choice else memory_source,
+                cpus, P.PROTOCOL_VERSION)
     logger.info("%s; %s", f"a machine unused for {_minutes(idle)} is powered off" if idle
                 else "machines are never powered off for being unused",
                 f"at most {cap} run at once" if cap is not None else "any number may run")
