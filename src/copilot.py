@@ -250,7 +250,22 @@ def request_flags(messages) -> tuple:
         as agent-initiated for request accounting.
       * ``vision`` — any message carries an image content part.
     """
-    msgs = messages or []
+    msgs = list(messages or [])
+    # `B2124`. Pantheon's own framing at the end of a request is not the
+    # person speaking. Since `B2113`/`B2119` an in-turn note (the push back,
+    # the step budget) is a user-role `APPLICATION NOTE` at the end of the
+    # request rather than a system message, and `llm_core` puts its
+    # "Reference context received." seam between it and a user turn. Read
+    # past both, so a tool round that ends in a note stays agent-initiated
+    # and a first round still reads as the person's own request.
+    from src.prompt_security import is_framed_context_content
+    from src.llm_core import _REFERENCE_CONTEXT_BOUNDARY
+    while len(msgs) > 1 and isinstance(msgs[-1], dict) and (
+            (msgs[-1].get("role") == "user"
+             and is_framed_context_content(msgs[-1].get("content")))
+            or (msgs[-1].get("role") == "assistant"
+                and msgs[-1].get("content") == _REFERENCE_CONTEXT_BOUNDARY)):
+        msgs.pop()
     last = msgs[-1] if msgs else None
     # A message element can be a non-dict (clients send `"messages": ["hi"]`);
     # the vision loop below already guards each element with isinstance, so do
@@ -266,7 +281,7 @@ def request_flags(messages) -> tuple:
             and msgs[-2].get("role") == "tool" and _is_tool_picture(last)):
         agent = True
     vision = False
-    for m in msgs:
+    for m in messages or []:
         content = m.get("content") if isinstance(m, dict) else None
         if isinstance(content, list) and any(
             isinstance(p, dict) and p.get("type") in _IMAGE_PART_TYPES for p in content

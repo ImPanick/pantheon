@@ -5,8 +5,9 @@
 # Changed by Odysseus, and further by Pantheon: the warning when a result
 # cannot be marked consumed (`P3-17`), the `research_completed` event (`P8-23`),
 # the removal of an unused `generate_plan` (`B1470`), one reading of a research
-# run's numbers for the panel and the scheduler (`B1796`) and the SPDX line
-# above (`P0-18`).
+# run's numbers for the panel and the scheduler (`B1796`), thinking off on the
+# query rewrite and the reachability probe (`B2122`) and the SPDX line above
+# (`P0-18`).
 #
 # Upstream licence text (Tongyi DeepResearch): licenses/DeepResearch-Apache-2.0.txt
 # Attribution: CREDITS.md

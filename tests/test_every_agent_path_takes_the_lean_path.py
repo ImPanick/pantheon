@@ -165,3 +165,29 @@ def test_a_skill_the_model_opens_brings_its_tools_next_step(tmp_path):
     assert "bash" not in first_tools and "read_file" not in first_tools, first_tools
     assert requests and len(requests) >= 2, "the model's second step was not sent"
     assert {"bash", "read_file"} <= set(requests[1]["tools"]), requests[1]["tools"]
+
+
+# ── `B2124`: a turn note does not make a step the person's ──────────────────
+#
+# Found by the full suite on `fix/agent-lean-turn`: once the in-turn notes
+# became user-role turn notes (`B2113`, `B2119`), Copilot read every tool round
+# that ended in one as the person speaking (`x-initiator: user`), which is how
+# Copilot counts premium requests.
+
+def test_a_round_ending_in_a_turn_note_stays_agent_initiated():
+    from src.copilot import request_flags
+    from src.llm_core import _REFERENCE_CONTEXT_BOUNDARY
+    person = {"role": "user", "content": "check the logs"}
+    call = {"role": "assistant", "content": "",
+            "tool_calls": [{"id": "1", "type": "function",
+                            "function": {"name": "bash", "arguments": "{}"}}]}
+    result = {"role": "tool", "tool_call_id": "1", "content": "ok"}
+    note = turn_note_message("You have 1 step left.")
+    seam = {"role": "assistant", "content": _REFERENCE_CONTEXT_BOUNDARY}
+
+    assert request_flags([person, call, result, note])[0] is True
+    assert request_flags([person, {"role": "assistant", "content": "Done?"}, note])[0] is True
+    # The person's own request is still the person's, note or no note.
+    assert request_flags([person])[0] is False
+    assert request_flags([person, note])[0] is False
+    assert request_flags([person, seam, note])[0] is False
