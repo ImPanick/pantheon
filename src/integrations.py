@@ -1295,6 +1295,28 @@ async def execute_api_call(
 # System prompt helper
 # ---------------------------------------------------------------------------
 
+def integrations_named_in(owner: Optional[str], text: Any) -> List[str]:
+    """`B2135`. The ids of `owner`'s callable integrations that `text` names,
+    by name or id, as words.
+
+    The integrations list goes to the model only on a turn that can reach
+    `api_call` (owner ruling 2026-11-15: APIs are used only when needed), and
+    naming one is how a turn asks for it."""
+    said = " " + re.sub(r"[^a-z0-9]+", " ", str(text or "").lower()) + " "
+    if not said.strip():
+        return []
+    named = []
+    for integ in agent_integrations_for(owner):
+        if not integ.get("enabled", True):
+            continue
+        for label in (integ.get("name"), integ.get("id")):
+            words = re.sub(r"[^a-z0-9]+", " ", str(label or "").lower()).strip()
+            if len(words) >= 3 and f" {words} " in said:
+                named.append(str(integ.get("id")))
+                break
+    return named
+
+
 def get_integrations_prompt(owner: Optional[str]) -> str:
     """Return a string describing `owner`'s enabled integrations — their own
     and the shared ones (`P27-02`) — for system prompt injection.

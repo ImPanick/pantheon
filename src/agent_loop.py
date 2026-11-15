@@ -5287,7 +5287,14 @@ def _build_system_prompt(
     # still attributable — which is exactly where §1 put it. Nothing about the
     # envelope changes otherwise: same delimiters, same `user` role,
     # `trusted: False`.
-    if not suppress_local_context:
+    # `B2135`. Owner ruling 2026-11-15: APIs are used only when needed. The
+    # list (every enabled integration with its whole description) went with
+    # every turn, also the turns whose request carries no `api_call`, which
+    # could not call one. It goes now when `api_call` is offered: the turn
+    # named an integration or its words asked for one, or `find_tools` loaded
+    # it. `None` is the whole suite, which offers `api_call`.
+    _api_call_offered = relevant_tools is None or "api_call" in relevant_tools
+    if not suppress_local_context and _api_call_offered:
         try:
             from src.integrations import get_integrations_prompt
             # `P27-02`: this person's own integrations and the shared ones —
@@ -5304,8 +5311,10 @@ def _build_system_prompt(
     # MCP tool descriptions — sourced from external servers, must not be in system role.
     if mcp_mgr:
         try:
+            # `B2135`: the MCP tools this turn offers, not every one.
             _mcp_desc = mcp_mgr.get_tool_descriptions_for_prompt(
-                mcp_disabled_map or {}, channel=schema_offer)
+                mcp_disabled_map or {}, channel=schema_offer,
+                only=None if relevant_tools is None else set(relevant_tools))
             if _mcp_desc:
                 # `fx7-agent`, closing `fx6-tools`'s `B1308`. This went
                 # through `untrusted_context_message`, so
@@ -8576,6 +8585,15 @@ async def stream_agent_loop(
     # race, and no embedding availability in the answer.
     _suite_mcp_names, _suite_mcp_costs, _suite_mcp_servers = _suite_mcp_tools(
         mcp_mgr, _mcp_disabled_map)
+    # `B2135`. Naming a connected integration ("what's new on Miniflux?") asks
+    # for `api_call`, which is how its list reaches the prompt.
+    _turn_pinned_tools = set(pinned_tools or ())
+    try:
+        from src.integrations import integrations_named_in
+        if integrations_named_in(owner, _last_user):
+            _turn_pinned_tools.add("api_call")
+    except Exception as _named_err:
+        logger.debug("integration names skipped: %s", _named_err)
 
     # `B1394`. The `pantheon-qwen3` route modes, decided here — before the
     # planner — rather than after it. Every input (the model's name, the turn's
@@ -8705,7 +8723,7 @@ async def stream_agent_loop(
                 mcp_costs=_suite_mcp_costs,
                 mcp_by_server=_suite_mcp_servers,
                 within_allowed=_within_allowed,
-                pinned_tools=pinned_tools or (),
+                pinned_tools=_turn_pinned_tools,
                 owner=owner,
                 keep=session_tool_set(session_id),   # `B1755`
             )

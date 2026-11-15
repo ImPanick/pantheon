@@ -12,7 +12,7 @@ import os
 import re
 import uuid
 import asyncio 
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
 from src.database import McpServer, SessionLocal
 
 from src.runtime_paths import get_app_root
@@ -2162,8 +2162,14 @@ class McpManager:
         self,
         disabled_map: Optional[Dict[str, set]] = None,
         channel: str = "native",
+        only: Optional[Iterable[str]] = None,
     ) -> str:
         """Generate text describing MCP tools for the agent system prompt. Cached.
+
+        `only` (`B2135`): the qualified names this turn offers. The block named
+        every MCP tool on every turn, also the ones the turn's set held back,
+        which it could not call; with `only` it names the offered ones (and
+        still the servers not answering). `None` is every tool.
 
         `channel` is how THIS turn can reach these tools, and it is a parameter
         because the manager cannot know (`B1304`). The first line used to read
@@ -2180,6 +2186,7 @@ class McpManager:
             len(self._tools),
             self._generation,
             channel,
+            None if only is None else frozenset(str(n) for n in only),
         )
         if self._cached_prompt_desc is not None and self._cached_prompt_desc_key == cache_key:
             return self._cached_prompt_desc
@@ -2228,6 +2235,8 @@ class McpManager:
             if not self.reaches_model_channels(t["server_id"]):
                 continue
             if t.get("is_disabled"):
+                continue
+            if only is not None and t.get("qualified_name") not in cache_key[-1]:
                 continue
             sn = t["server_name"]
             if sn not in by_server:

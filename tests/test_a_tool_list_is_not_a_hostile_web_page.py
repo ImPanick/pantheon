@@ -76,7 +76,8 @@ class _FakeMCP:
         self._desc = desc
         self.channels: list = []
 
-    def get_tool_descriptions_for_prompt(self, disabled_map=None, channel="native"):
+    def get_tool_descriptions_for_prompt(self, disabled_map=None, channel="native", only=None):
+        # `only` (`B2135`): the MCP tools the turn offers; this fake lists one block.
         self.channels.append(channel)
         return self._desc
 
@@ -194,7 +195,8 @@ def _prompt_with_integration(*, question: str = OWNER_QUESTION,
             assert integrations_mod.get_integrations_prompt("joseph"), (
                 "the integration must really be enabled and in the prompt"
             )
-            return _prompt(question=question)
+            # `B2135`: the block goes with a turn that offers `api_call`.
+            return _prompt(question=question, tools=("web_search", "web_fetch", "api_call"))
         finally:
             integrations_mod.DATA_FILE = original
             core.auth._SHARED_AUTH_MANAGER = original_manager
