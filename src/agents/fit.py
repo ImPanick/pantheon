@@ -36,7 +36,7 @@ def family(model: Optional[str]) -> str:
     """`openai/gpt-oss-20b@q4_k_m` and `gpt-oss-20b:latest` are one family."""
     name = str(model or "").strip().lower()
     name = name.rsplit("/", 1)[-1]
-    name = re.split(r"[@:]", name, 1)[0]
+    name = re.split(r"[@:]", name, maxsplit=1)[0]
     name = re.sub(r"[-_.](q\d[\w]*|gguf|mlx|awq|gptq|fp16|bf16|int[48]|\d+bit)$", "", name)
     return name
 

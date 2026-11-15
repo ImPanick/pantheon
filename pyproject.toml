@@ -34,3 +34,22 @@ markers = [
     # duration evidence (see tests/run_focus.py --durations and tests/README.md).
     "slow: opt-in marker for known-slow tests; excluded by the fast lane (not slow)",
 ]
+
+# `B2114`. The one lint CI enforces: names that crash when the line runs.
+#
+# Nothing in CI read Python for anything but syntax (`compileall`), so a name
+# that is never defined shipped as long as no test happened to reach its line.
+# `B2113` is the proof: `src/workstation_client.py` named `SOURCE_ENV`, which
+# does not exist, on the https branch every dedicated Android host takes, and
+# the first request raised `NameError`. pyflakes' undefined-name family
+# (F821-F823), syntax and IO errors (E9), and the comparisons and statements
+# that are always a mistake (F63, F7) are the set where a finding is a bug,
+# not a taste. The `Python lint` job in `.github/workflows/ci.yml` runs it on
+# every tracked `.py` file and fails on one finding. Widen `select` by adding a
+# family at zero, never by adding one with a baseline to ignore.
+[tool.ruff]
+target-version = "py311"
+extend-exclude = ["static/lib", "node_modules"]
+
+[tool.ruff.lint]
+select = ["E9", "F63", "F7", "F82"]
