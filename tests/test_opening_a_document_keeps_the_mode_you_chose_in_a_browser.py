@@ -14,9 +14,10 @@ a person without Agent it pressed a chip they are not shown. Upstream Odysseus
 removed the press for issue #3780 (cad14f81, #6945).
 
 Now opening a document changes neither. The model still gets its document
-tools: a turn sent with a document open already goes as Agent for that turn
-(`chat.js`, and the route's own `B1285`), and so now does a turn sent from an
-editor that is open but still empty, which the press used to cover.
+tools: a turn sent with a document open goes as Agent for that turn when its
+words call on the document (the route's own `B1285`, narrowed by `B2133`), and
+a turn sent from an editor that is open but still empty goes as Agent from the
+page, which the press used to cover.
 
 Driven in headless Chromium on the real app, booted as
 `tests/test_the_command_palette_in_a_browser.py` boots it. The one stand-in is
@@ -245,11 +246,15 @@ def test_a_document_opened_the_way_the_library_opens_one_keeps_them(run):
     assert _chosen(run["fromLibrary"]) == CHAT_WITH_RESEARCH, run["fromLibrary"]
 
 
-def test_a_turn_sent_beside_a_document_still_goes_as_agent(run):
-    """The model keeps its document tools, for the turn, and nothing is saved."""
+def test_a_turn_sent_beside_a_document_names_it_and_leaves_the_mode_to_the_server(run):
+    """The page sends the document's id in the person's mode, and nothing is
+    saved. `B2133` (owner ruling 2026-11-15): the server promotes the turn to
+    Agent only when the words call on the document ("Tighten the second step."
+    does, `tests/test_an_open_item_reaches_the_model_only_when_called_on.py`),
+    so a document left open no longer makes every turn a full Agent request."""
     assert run["researchOff"]["research"] is False and _still_chat(run["researchOff"]), run["researchOff"]
     sent = run["sentBesideDocument"]
-    assert sent and sent["mode"] == "agent" and sent["doc"] and not sent["research"], sent
+    assert sent and sent["mode"] == "chat" and sent["doc"] and not sent["research"], sent
     assert _still_chat(run["afterBesideDocument"]), run["afterBesideDocument"]
 
 

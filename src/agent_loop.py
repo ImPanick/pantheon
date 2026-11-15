@@ -3642,6 +3642,12 @@ def _classify_agent_request(messages: List[Dict], last_user: str,
     }
 
 
+# `B2133`. Up to this size an open document keeps the broad reading of
+# `_turn_targets_active_document` (about 300 tokens at most); past it the
+# person has to point at it.
+ACTIVE_DOCUMENT_BROAD_READING_CHARS = 1200
+
+
 def _turn_targets_active_document(intent: Dict[str, object], last_user: str, active_document) -> bool:
     """Return whether an open document should affect this turn.
 
@@ -3660,9 +3666,27 @@ def _turn_targets_active_document(intent: Dict[str, object], last_user: str, act
         or title_l in {"new email", "new mail", "new message"}
         or ("To:" in raw_doc[:400] and "Subject:" in raw_doc[:400] and "\n---\n" in raw_doc)
     )
+    text = str(last_user or "").strip().lower()
+    # `B2133`. Owner ruling 2026-11-15: stored material reaches the model only
+    # when the person attaches it or calls on it. The whole document goes into
+    # the prompt (no cap), and the catch-all below matched bare words in any
+    # sentence ("change my calendar", "one word answer"), so a long document
+    # rode along with unrelated turns. A reference to it always counts; the
+    # broad reading below is kept only for a short document, where it costs
+    # little and "write a poem" into a near-empty editor still works.
+    from src.open_item_reference import names_title, refers_to_open_email, refers_to_open_item
+    if text and (refers_to_open_item(text) or names_title(text, title_l)):
+        return True
+    # "yes, do it" carries on the turn before it; the intent's retrieval query
+    # holds those earlier words for an explicit continuation.
+    _carried = str(intent.get("retrieval_query") or "") if intent.get("continuation") else ""
+    if _carried and _carried.strip().lower() != text and (
+            refers_to_open_item(_carried) or names_title(_carried, title_l)):
+        return True
+    if len(raw_doc) > ACTIVE_DOCUMENT_BROAD_READING_CHARS:
+        return bool(is_email_doc and refers_to_open_email(text))
     if "documents" in (intent.get("domains") or set()):
         return True
-    text = str(last_user or "").strip().lower()
     if not text:
         return False
     if is_email_doc and re.search(
@@ -3708,6 +3732,34 @@ def _turn_targets_active_document(intent: Dict[str, object], last_user: str, act
         r")\b",
         text,
     ))
+
+
+def _persons_typed_words(messages: List[Dict], fallback: str = "") -> str:
+    """`B2133`. The latest message as the person typed it.
+
+    A message saved with files keeps the person's own words in its metadata
+    (`B2132`); its content carries the files' text as well."""
+    from src.attachment_refs import SAID_WITH_ATTACHMENTS
+    for msg in reversed(messages):
+        if msg.get("role") != "user" or is_framed_context_content(msg.get("content")):
+            continue
+        said = (msg.get("metadata") or {}).get(SAID_WITH_ATTACHMENTS)
+        return str(said) if isinstance(said, str) and said.strip() else fallback
+    return fallback
+
+
+def _turn_targets_active_email(intent: Dict[str, object], last_user: str, active_email) -> bool:
+    """`B2133`. Whether the email open in the reader is called on this turn."""
+    if not active_email:
+        return False
+    from src.open_item_reference import refers_to_open_email
+    if "email" in (intent.get("domains") or set()):
+        return True
+    _subject, _sender = active_email.get("subject", ""), active_email.get("from", "")
+    if refers_to_open_email(last_user, _subject, _sender):
+        return True
+    _carried = str(intent.get("retrieval_query") or "") if intent.get("continuation") else ""
+    return bool(_carried) and refers_to_open_email(_carried, _subject, _sender)
 
 
 def _is_email_document_obj(active_document) -> bool:
@@ -8022,7 +8074,17 @@ async def stream_agent_loop(
     # anything at all.
     _small_talk_turn = _is_small_talk_turn(_last_user)
     _existing_conversation = _user_turn_count(messages) > 1
-    _active_document_relevant = _turn_targets_active_document(_intent, _last_user, active_document)
+    # `B2133`. Whether the open document or email is called on is read from
+    # what the person typed, not from the message with an attachment's text
+    # folded in (a PDF that says "draft" is not the person asking about the
+    # draft beside the chat).
+    _typed_words = _persons_typed_words(messages, _last_user)
+    _active_document_relevant = _turn_targets_active_document(_intent, _typed_words, active_document)
+    if active_email and not _turn_targets_active_email(_intent, _typed_words, active_email):
+        # `B2133`. The reader's header, an 1,800-character preview and the
+        # rules for it went with every turn. The pointer the tools resolve
+        # stays set by the route, so `read_email` still finds the open email.
+        active_email = None
     _active_email_draft_relevant = _active_document_relevant and _is_email_document_obj(active_document)
     if _active_email_draft_relevant:
         # `B1351` (fx11-cap). Both spellings are still named, because they

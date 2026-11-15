@@ -3420,7 +3420,11 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
 	      // opening one no longer switches the person's own mode.
 	      const _editorOpen = !!(documentModule && typeof documentModule.isPanelOpen === 'function'
 	        && documentModule.isPanelOpen());
-	      if (!isIncognito && !isAgentMode && documentModule && (activeDocIdForSend || _editorOpen)) {
+	      // `B2133`: a turn sent beside a document that has an id goes in the
+	      // person's mode with `active_doc_id`, and the server promotes it only
+	      // when the words call on the document (`chat_routes.py`); a document
+	      // left open no longer makes every turn a full Agent request.
+	      if (!isIncognito && !isAgentMode && documentModule && !activeDocIdForSend && _editorOpen) {
 	        isAgentMode = true;
 	      }
 	      fd.append('mode', isAgentMode ? 'agent' : 'chat');
