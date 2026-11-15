@@ -171,7 +171,13 @@ async def test_the_search_provider_is_asked_only_when_the_chat_said_true(
         searches.append(query)
         return "Sunny, 24 degrees.", [{"url": "https://weather.example/lisbon"}]
 
+    async def fake_llm_call_async(url, model, messages, **kwargs):
+        return fake_llm_call(url, model, messages, **kwargs)
+
+    # `B2131`: the route asks for the query with the async call, through the
+    # local model gate; the sync one stays the preface's own path.
     monkeypatch.setattr(llm_core, "llm_call", fake_llm_call)
+    monkeypatch.setattr(llm_core, "llm_call_async", fake_llm_call_async)
     monkeypatch.setattr(chat_processor_module, "comprehensive_web_search", fake_search)
 
     _seen, sess, _fake = _harness(monkeypatch)

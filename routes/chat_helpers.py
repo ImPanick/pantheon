@@ -1098,6 +1098,12 @@ async def build_chat_context(
     # because the composer left the field out.
     if use_rag is not None or not use_rag_val:
         _preface_kwargs["use_rag"] = use_rag_val
+    # `B2131`. The web search query is asked here, awaited: through the local
+    # model gate as this turn's foreground work, and without holding the event
+    # loop while the model answers. The preface asked it with the sync call.
+    if _preface_kwargs["use_web"]:
+        from src.chat_processor import generate_search_query
+        _preface_kwargs["search_query"] = await generate_search_query(_ctx_msg, sess)
     preface, rag_sources, web_sources = chat_processor.build_context_preface(**_preface_kwargs)
 
     # Capture used memories immediately

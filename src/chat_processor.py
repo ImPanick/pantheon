@@ -141,6 +141,61 @@ _STOPWORDS = memory_retrieval.STOPWORDS
 _content_tokens = memory_retrieval.content_tokens
 
 
+
+def search_query_messages(message: str) -> List[Dict[str, str]]:
+    """The request that asks the model for a web search query (`B2131`: one
+    text for the sync and async paths)."""
+    return [
+        {"role": "system", "content": (
+            "Extract a concise search query from the user's message. "
+            "Reply ONLY with the query.")},
+        {"role": "user", "content": message},
+    ]
+
+
+def settle_search_query(message: str, generated: Optional[str]) -> str:
+    """The query searched: the model's, cleaned, or the message's first
+    non-empty line when the model gave nothing usable."""
+    # A model with no reasoning parser puts its thinking inline.
+    from src.text_helpers import strip_think
+    failed = generated is None
+    generated = strip_think(generated or "", prose=False, prompt_echo=False).strip()
+    fallback = next((line.strip() for line in (message or "").split("\n") if line.strip()), "")
+    if generated:
+        query = generated
+    else:
+        if not failed:
+            logger.warning("LLM generated an empty search query, using fallback.")
+        query = fallback
+    query = " ".join(query.split())
+    if len(query) > 150:
+        query = query[:150].strip()
+    # Defensive cleanup of the final selected query (interim fix for #4547):
+    # strip any residual fenced/inline markdown so that neither the generated
+    # query nor the first-line fallback leaks fences or backticks into the
+    # search call. Collapses to "" when the query is all code.
+    return _clean_search_query(query, max_len=150)
+
+
+async def generate_search_query(message: str, session: Any) -> str:
+    """`B2131`. The web search query for a turn, asked of the chat's model as
+    foreground work through the local model gate and without holding the
+    event loop. Measured before it: `build_context_preface` asked with the
+    sync `llm_call` from the async route, so for up to its 15-second timeout
+    no other request was served, and on a local server the call skipped the
+    gate and ran alongside whatever the gate had admitted."""
+    from src.llm_core import llm_call_async
+    try:
+        generated = await llm_call_async(
+            session.endpoint_url, session.model, search_query_messages(message),
+            headers=session.headers, temperature=0.1, max_tokens=50, timeout=15,
+            max_retries=1, workload="foreground", thinking=False,
+        )
+    except Exception as e:
+        logger.warning(f"Failed to generate search query via LLM, using fallback: {e}")
+        generated = None
+    return settle_search_query(message, generated if isinstance(generated, str) or generated is None else "")
+
 class ChatProcessor:
     def __init__(self, memory_manager, personal_docs_manager, memory_vector=None, skills_manager=None):
         self.memory_manager = memory_manager
@@ -255,8 +310,14 @@ class ChatProcessor:
         character_name: Optional[str] = None,
         agent_mode: bool = False,
         incognito: bool = False,
+        search_query: Optional[str] = None,
     ) -> Tuple[List[Dict[str, str]], List[Dict[str, Any]], List[Dict[str, str]]]:
         """Build the context preface for LLM calls.
+
+        ``search_query`` (`B2131`) is the web search query the async caller
+        already asked the model for (`generate_search_query`), through the
+        local model gate and off the event loop's thread. Without it the query
+        is asked here, synchronously, as before.
 
         Returns:
             Tuple of (preface messages, rag_sources list)
@@ -479,57 +540,25 @@ class ChatProcessor:
 
                 t_url, t_model, t_headers = session.endpoint_url, session.model, session.headers
 
-                # Default fallback is the first non-empty line of the original user message
-                fallback_query = next((line.strip() for line in message.split("\n") if line.strip()), "")
-                search_query = fallback_query
-
-                try:
-                    generated_query = llm_call(
-                        t_url,
-                        t_model,
-                        [
-                            {
-                                "role": "system",
-                                "content": (
-                                    "Extract a concise search query from the user's message. "
-                                    "Reply ONLY with the query."
-                                ),
-                            },
-                            {"role": "user", "content": message},
-                        ],
-                        headers=t_headers,
-                        temperature=0.1,
-                        max_tokens=50,
-                        timeout=15,
-                        # Upstream Odysseus e4cc8ef (#7054): 50 tokens of a
-                        # reasoning model's thinking came back as the "query".
-                        thinking=False,
-                    )
-                    # A model with no reasoning parser puts its thinking inline.
-                    from src.text_helpers import strip_think
-                    generated_query = strip_think(generated_query or "", prose=False,
-                                                  prompt_echo=False).strip()
-
-                    if generated_query:
-                        # LLM successfully generated a non-empty query -> use the generated query
-                        search_query = generated_query
-                    else:
-                        # LLM returned an empty or whitespace-only query -> fall back to original query
-                        logger.warning("LLM generated an empty search query, using fallback.")
-                except Exception as e:
-                    # LLM failed (exception/error) -> fall back to original user query
-                    logger.warning(f"Failed to generate search query via LLM, using fallback: {e}")
-
-                search_query = " ".join(search_query.split())
-                if len(search_query) > 150:
-                    search_query = search_query[:150].strip()
-
-                # Defensive cleanup of the final selected query (interim fix
-                # for #4547): strip any residual fenced/inline markdown so that
-                # neither the generated query nor the first-line fallback leaks
-                # fences or backticks into the search call. No-op on clean
-                # generated queries; collapses to "" when the query is all code.
-                search_query = _clean_search_query(search_query, max_len=150)
+                if search_query is None:
+                    try:
+                        generated_query = llm_call(
+                            t_url,
+                            t_model,
+                            search_query_messages(message),
+                            headers=t_headers,
+                            temperature=0.1,
+                            max_tokens=50,
+                            timeout=15,
+                            # Upstream Odysseus e4cc8ef (#7054): 50 tokens of a
+                            # reasoning model's thinking came back as the "query".
+                            thinking=False,
+                        )
+                    except Exception as e:
+                        # LLM failed (exception/error) -> fall back to original user query
+                        logger.warning(f"Failed to generate search query via LLM, using fallback: {e}")
+                        generated_query = None
+                    search_query = settle_search_query(message, generated_query)
 
                 if search_query:
                     # Execute web search using the final selected query
