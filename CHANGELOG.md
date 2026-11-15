@@ -402,6 +402,13 @@ the next one is cut.
 
 ### Changed — read this before upgrading
 
+- **`use_rag` left out of a chat request now means no document search** (2026-11-15, `B2141`).
+  `POST /api/chat_stream` and `POST /api/chat` used to search your personal documents on every turn
+  that did not send `use_rag`, and put up to 10,000 characters of matches in front of the model,
+  whatever the turn asked. Now a request searches them only with `use_rag=true`. The web composer
+  sends the RAG chip's state either way, so the page is unchanged; an API client, script or bridge
+  that relied on the old default has to send `use_rag=true`.
+
 - **A model served locally is sent a core set of tools, and loads the rest with `find_tools`**
   (2026-11-06, `B1755`). LM Studio, llama.cpp, Ollama or vLLM on this machine or your network used
   to receive the whole tool suite (87 tools, ~38K tokens with their instructions) with every message

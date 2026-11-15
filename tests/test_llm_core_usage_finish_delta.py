@@ -92,7 +92,8 @@ def test_usage_on_finish_delta_with_role_is_captured(monkeypatch):
     ]
     usage = _usage_events(_drive(monkeypatch, lines))
     assert usage, "usage on a non-empty finish delta was dropped"
-    assert usage[-1] == {"input_tokens": 9, "output_tokens": 1}
+    # `B2122`: the server's finish reason rides with the usage it reported.
+    assert usage[-1] == {"input_tokens": 9, "output_tokens": 1, "finish_reason": "stop"}
 
 
 def test_usage_on_empty_choices_chunk_still_captured(monkeypatch):

@@ -5,8 +5,9 @@
 # Changed by Odysseus, and further by Pantheon: the warning when a result
 # cannot be marked consumed (`P3-17`), the `research_completed` event (`P8-23`),
 # the removal of an unused `generate_plan` (`B1470`), one reading of a research
-# run's numbers for the panel and the scheduler (`B1796`) and the SPDX line
-# above (`P0-18`).
+# run's numbers for the panel and the scheduler (`B1796`), thinking off on the
+# query rewrite and the reachability probe (`B2129`) and the SPDX line above
+# (`P0-18`).
 #
 # Upstream licence text (Tongyi DeepResearch): licenses/DeepResearch-Apache-2.0.txt
 # Attribution: CREDITS.md
@@ -195,6 +196,9 @@ class ResearchHandler:
                 headers=llm_headers,
                 timeout=15,
                 max_retries=1,
+                # `B2129`. One line in 200 tokens: a thinking model spent them
+                # on reasoning and the rewrite fell back to the raw message.
+                thinking=False,
             )
             query = strip_thinking(response).strip().strip('"\'')
             if query and len(query) > 5:
@@ -744,6 +748,7 @@ class ResearchHandler:
                 max_tokens=5,
                 headers=headers,
                 timeout=15,
+                thinking=False,   # `B2129`: a reachability probe, five tokens
                 max_retries=1,
             )
             logger.info(f"Endpoint probe OK: {model}")

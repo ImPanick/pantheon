@@ -12,7 +12,7 @@ import threading
 import re
 import os
 import math
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, contextmanager
 from fastapi import HTTPException
 from typing import Optional, Dict, List, Tuple
 from src.model_context import get_context_length, DEFAULT_CONTEXT, is_local_endpoint
@@ -26,6 +26,7 @@ from src.rate_limiter import parse_retry_after as _retry_after
 from src.rate_limiter import parse_reset_header as _reset_after
 from src import reasoning_effort as _reasoning_effort
 from src import openai_responses as _openai_responses
+from src import prompt_cache as _prompt_cache
 
 # Longest server-requested wait we will sit through inside a retry loop. Beyond
 # this, honouring the header by sleeping would hold a user's request open for
@@ -112,7 +113,27 @@ def _local_model_gate_enabled() -> bool:
     return env_flag("PANTHEON_LOCAL_MODEL_GATE", True)
 
 
+#: `B2136`. The workload a call is made as when its caller names none: set to
+#: "background" around a turn's after-the-reply jobs (`background_workload`),
+#: so every model call inside one queues behind the person's own and gives way
+#: to it, without each call site passing it.
+_DEFAULT_WORKLOAD: "contextvars.ContextVar[str]" = contextvars.ContextVar(
+    "pantheon_default_workload", default="foreground")
+
+
+@contextmanager
+def background_workload():
+    """`B2136`. Model calls made inside run as background work."""
+    token = _DEFAULT_WORKLOAD.set("background")
+    try:
+        yield
+    finally:
+        _DEFAULT_WORKLOAD.reset(token)
+
+
 def _gate_workload(workload: Optional[str]) -> str:
+    if workload is None:
+        workload = _DEFAULT_WORKLOAD.get()
     return "background" if str(workload or "").lower() == "background" else "foreground"
 
 
@@ -1727,7 +1748,11 @@ def _turn_thinking_off(payload: Dict, url: str) -> None:
     """
     if _is_ollama_openai_compat_url(url):
         payload["think"] = False
-        return
+        # `B2123`. No `return` here. The Ollama test is generous on purpose
+        # (any localhost /v1, docstring of `_is_ollama_openai_compat_url`), so
+        # LM Studio on :1234 matched it and was sent only `think`, which it
+        # does not read: the side calls `B1755` switched off still thought.
+        # `reasoning_effort._turn_thinking_on` already sends both; this does too.
     if _is_self_hosted_openai_compatible(url):
         kwargs = dict(payload.get("chat_template_kwargs") or {})
         kwargs["enable_thinking"] = False
@@ -2421,6 +2446,7 @@ def llm_call(url: str, model: str, messages: List[Dict], temperature: float = LL
             payload["reasoning_effort"] = _MISTRAL_REASONING_EFFORT
         if thinking is False and _supports_thinking(model):
             _turn_thinking_off(payload, url)
+    _prompt_cache.apply(payload, provider=provider, url=url, model=model, session_id=None)   # `B2132`
     try:
         note_model_activity(target_url, model)
         r = httpx_post_kimi_aware(target_url, h, json=payload, timeout=timeout)
@@ -2643,14 +2669,22 @@ async def llm_call_async(
     max_retries: int = LLMConfig.MAX_RETRIES,
     prompt_type: Optional[str] = None,
     session_id: Optional[str] = None,
-    workload: str = "foreground",
+    workload: Optional[str] = None,
     availability_only_transport: bool = False,
     return_model_metadata: bool = False,
     explicit_params=frozenset(),
     max_tokens_floor: Optional[int] = None,
     thinking: Optional[bool] = None,
+    reasoning_level: Optional[str] = None,
 ) -> str | tuple[str, str]:
     """Asynchronous LLM call using httpx with connection pooling, timeout, retry logic, and performance logging.
+
+    ``reasoning_level`` (`B2123`) carries a turn's composer effort into a
+    non-streaming call that is part of that turn — the agent loop's closing
+    synthesis — so the person's Off or High holds on every request the turn
+    makes. Opt-in: the dozens of side calls that pass nothing keep the model's
+    default, as before. Applied on the OpenAI-compatible path, which is where
+    every self-hosted server answers.
 
     ``thinking=False`` (`B1755`) asks a self-hosted thinking model not to
     reason first, for small side calls (a chat's title, the next-step
@@ -2666,6 +2700,8 @@ async def llm_call_async(
     it, a length refusal that states what the server can serve is sent once
     more asking for that, even below the preset.
     """
+    if workload is None:
+        workload = _DEFAULT_WORKLOAD.get()   # `B2136`
     # `P4-25` — the non-streaming path. `/api/chat` reaches the model through
     # `llm_call_async_with_route_fallback` → here and never touches
     # `stream_llm`, so the first version of this recorded nothing for half
@@ -2823,8 +2859,16 @@ async def llm_call_async(
         if thinking is False and _supports_thinking(model):
             # Off the loop: the self-hosted test reads the endpoint rows.
             await asyncio.to_thread(_turn_thinking_off, payload, url)   # `B1755`
+        elif thinking is None and reasoning_level and reasoning_level != _reasoning_effort.AUTO:
+            payload["messages"] = await asyncio.to_thread(
+                _reasoning_effort.apply_to_messages, payload["messages"], url, model,
+                reasoning_level)   # `B2123`
+            await asyncio.to_thread(_reasoning_effort.apply_to_payload, payload, url, model,
+                                    reasoning_level)
         await asyncio.to_thread(_apply_local_profiles, payload, url, target_url, model,
                                 session_id, explicit_params)   # `B1588`
+
+    _prompt_cache.apply(payload, provider=provider, url=url, model=model, session_id=session_id)   # `B2132`
 
     if _is_host_dead(target_url):
         raise HTTPException(503, f"Upstream {_host_key(target_url)} marked unreachable (cooldown active)")
@@ -3576,6 +3620,8 @@ async def _stream_llm_inner(url: str, model: str, messages: List[Dict], temperat
             from src.copilot import apply_request_headers
             apply_request_headers(h, messages_copy)
 
+    _prompt_cache.apply(payload, provider=provider, url=url, model=model, session_id=session_id)   # `B2132`
+
     # Connect budget from LLMConfig.CONNECT_TIMEOUT (env LLM_CONNECT_TIMEOUT).
     # The dead-host cooldown still bounds a genuinely unreachable upstream, so a
     # wider connect budget only affects first contact and stops a brief cold
@@ -4004,6 +4050,7 @@ async def _stream_llm_inner(url: str, model: str, messages: List[Dict], temperat
     _harmony_active = False       # sticky: gpt-oss harmony <|channel|> stream detected
     _actual_model = ""
     _actual_model_announced = False
+    _finish_reason = None   # `B2122`
 
     def _emit_tool_calls():
         """Build the tool_calls event string if any were accumulated."""
@@ -4114,6 +4161,13 @@ async def _stream_llm_inner(url: str, model: str, messages: List[Dict], temperat
                                 # Usage chunk (from stream_options)
                                 _choices = j.get("choices") or []
                                 _delta0 = _choices[0].get("delta") if (_choices and _choices[0] is not None) else None
+                                # `B2122`. Why the server stopped this request
+                                # ("stop", "length", "tool_calls"), kept for the
+                                # usage event: a round cut at the token limit
+                                # and a round that finished read the same in the
+                                # text and are different continuations.
+                                if _choices and isinstance(_choices[0], dict) and _choices[0].get("finish_reason"):
+                                    _finish_reason = str(_choices[0]["finish_reason"])
                                 # Capture usage whenever the chunk carries it and
                                 # the delta has no actual output. Some gateways /
                                 # local servers attach usage to the FINAL delta,
@@ -4142,6 +4196,21 @@ async def _stream_llm_inner(url: str, model: str, messages: List[Dict], temperat
                                     )
                                     if _usage_data is None:
                                         continue
+                                    # `B2122`. How much of the prompt the server
+                                    # read from its cache instead of evaluating:
+                                    # OpenAI-style `prompt_tokens_details`, or
+                                    # llama.cpp's `timings.cache_n` below. A
+                                    # SUBSET of `input_tokens`, so it is kept
+                                    # under its own key and never in the
+                                    # Anthropic-style cache counters, which cost
+                                    # accounting reads as outside the input.
+                                    _ptd = u.get("prompt_tokens_details")
+                                    if isinstance(_ptd, dict):
+                                        _cached = _ptd.get("cached_tokens")
+                                        if isinstance(_cached, int) and not isinstance(_cached, bool) and _cached > 0:
+                                            _usage_data["prompt_cached_tokens"] = _cached
+                                    if _finish_reason:
+                                        _usage_data["finish_reason"] = _finish_reason
                                     # llama.cpp puts a `timings` block alongside `usage` with the
                                     # TRUE generation speed (predicted_per_second) — pure decode,
                                     # excluding prefill/network. Pass it through so the UI shows the
@@ -4182,6 +4251,7 @@ async def _stream_llm_inner(url: str, model: str, messages: List[Dict], temperat
                                         for _src, _dst in (
                                             ("prompt_n", "prefill_tokens"),
                                             ("predicted_n", "decode_tokens"),
+                                            ("cache_n", "prompt_cached_tokens"),   # `B2122`
                                         ):
                                             _v = _tm.get(_src)
                                             if isinstance(_v, int) and not isinstance(_v, bool) and _v > 0:
