@@ -219,7 +219,7 @@ and the container where it cannot:
 
 | | What it is |
 |---|---|
-| **Virtual machines** (`workstation-vm`) | An Ubuntu VM for each person: a hypervisor between people, and *Reset to clean* is a fresh machine. Needs KVM to be quick (Linux with `/dev/kvm`). The machine image is made when the workstation is first used on this backend (minutes with KVM); each person's machine then starts on their first use and takes up to 2 GB of RAM while it runs (`PANTHEON_WORKSTATION_VM_MEMORY_MIB`); one nobody has used for 30 minutes is powered off and starts again on the next use (`PANTHEON_WORKSTATION_VM_IDLE_MIN`), and no more run at once than the host's memory holds (`PANTHEON_WORKSTATION_VM_MAX_RUNNING`). Without KVM (Docker Desktop on Windows or macOS) the machines are emulated: the image takes an hour or more and everything runs several times slower, which is why *Automatic* uses the container there. |
+| **Virtual machines** (`workstation-vm`) | An Ubuntu VM for each person: a hypervisor between people, and *Reset to clean* is a fresh machine. Needs KVM to be quick (Linux with `/dev/kvm`). The machine image is made when the workstation is first used on this backend (minutes with KVM); each person's machine then starts on their first use and is given the memory an admin chooses in **Settings → Workstation** (automatic: 10 GB, room for Android, on a host with 26 GB or more, else 2 GB) and holds on the host only what it uses, because freed memory goes back; one nobody has used for 30 minutes is powered off and starts again on the next use (`PANTHEON_WORKSTATION_VM_IDLE_MIN`), and no more run at once than the host's memory holds (`PANTHEON_WORKSTATION_VM_MAX_RUNNING`). Without KVM (Docker Desktop on Windows or macOS) the machines are emulated: the image takes an hour or more and everything runs several times slower, which is why *Automatic* uses the container there. |
 | **Container** (`workstation`) | An Ubuntu container beside Pantheon. Each person is a Unix account in it. Starts in seconds on any Docker. |
 | **Another machine** | Any Ubuntu 24.04 machine — a Proxmox or libvirt VM, a spare box. Copy the repository's `workstation/` folder to it and run `sudo python3 workstation/install.py`; it prints the four lines to put in Pantheon's `.env` (`COMPOSE_FILE=docker-compose.yml:docker/workstation-remote.yml`, the address, the token and the certificate's fingerprint). HTTPS with that one certificate pinned by default; `--no-tls` for a LAN or a VPN. Pantheon never sends the workstation's token over plain http to a public address. |
 
@@ -254,9 +254,14 @@ speed:
 3. Inside it, `ls /dev/kvm` shows the device; then `docker compose up -d
    --force-recreate workstation-vm`.
 
-Size the VM for the people who work at once: each running machine takes up to
-`PANTHEON_WORKSTATION_VM_MEMORY_MIB` (2 GB) and `PANTHEON_WORKSTATION_VM_CPUS`
-(2), on top of Pantheon itself.
+Size the VM for the people who work at once: each running machine is given
+the memory chosen in **Settings → Workstation → Memory for each machine**
+(*Automatic* sizes it from the host; `PANTHEON_WORKSTATION_VM_MEMORY_MIB` sets
+the automatic size instead) and `PANTHEON_WORKSTATION_VM_CPUS` (2), on top of
+Pantheon itself. Each machine reports the pages its guest frees back to the
+host (virtio-balloon free page reporting), so a 10 GB machine running a desktop
+holds about what the desktop uses; it grows toward its size only while
+something, such as Android, uses it.
 
 ### Mobile Emulator
 
@@ -296,11 +301,13 @@ including its phone; do not use reset to troubleshoot a missing KVM device.
 Android needs hardware acceleration **inside that VM**, not merely on the host.
 The VM host must actually use KVM and the guest must open `/dev/kvm`; without
 both Android is refused. A guest device node under software emulation is not
-evidence of real acceleration. Allocate at least the
-Android memory budget plus 1536 MiB to each VM; 10240 MiB, 4 vCPUs and adequate
-disk space are recommended for a desktop plus Android (`PANTHEON_WORKSTATION_VM_MEMORY_MIB`,
-`PANTHEON_WORKSTATION_VM_CPUS`, `PANTHEON_WORKSTATION_VM_DISK_GIB`). Stop/start an
-existing VM to apply its host resource settings; its disk is kept.
+evidence of real acceleration. Give each VM at least the
+Android memory budget plus 1536 MiB; 10240 MiB, 4 vCPUs and adequate disk space
+are recommended for a desktop plus Android. *Automatic* memory does that on a
+host with 26 GB or more; otherwise choose it in **Settings → Workstation →
+Memory for each machine** (CPUs and disk: `PANTHEON_WORKSTATION_VM_CPUS`,
+`PANTHEON_WORKSTATION_VM_DISK_GIB`). A running machine powers off cleanly and
+starts with the new size on its next use; its disk is kept.
 
 **Nested virtualization is experimental here.** Google's
 [acceleration documentation](https://developer.android.com/studio/run/emulator-acceleration)

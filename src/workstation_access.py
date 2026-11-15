@@ -68,6 +68,7 @@ SETTING_KEYS = (
     "workstation_backend",
     "workstation_sudo",
     "workstation_network",
+    "workstation_vm_memory_mib",
     "workstation_route_tools",
 )
 _BOOL_KEYS = ("workstation_enabled", "workstation_sudo", "workstation_route_tools")
@@ -76,6 +77,9 @@ _ENUM_KEYS = {"workstation_backend": P.BACKEND_CHOICES, "workstation_network": P
 # here would be a header of Pantheon's own making. The daemon mints 47
 # characters (`TOKEN_PREFIX` + 32 bytes urlsafe); 512 is room for an operator's
 # own scheme and no room for a pasted file.
+#: The sizes the panel offers, in MiB; any whole number in the protocol's
+#: bounds is stored (an operator may set one by the API).
+VM_MEMORY_SIZES = (2048, 4096, 6144, 8192, 10240, 12288, 16384, 24576, 32768)
 _TOKEN_RE = re.compile(r"^[\x21-\x7e]{1,512}$")
 
 # ── what the panel is told, as words with one reading each (`Law 10`) ────────
@@ -322,7 +326,8 @@ def _setting(key: str) -> Any:
 # `src.settings.DEFAULT_SETTINGS` is the source; this is the fallback's copy
 # and `tests/test_the_workstation_is_admin_controlled.py` pins the two equal.
 _DEFAULTS = {"workstation_sudo": None, "workstation_route_tools": True,
-             "workstation_network": "full", "workstation_backend": "auto"}
+             "workstation_network": "full", "workstation_backend": "auto",
+             "workstation_vm_memory_mib": None}
 
 
 def _bool(key: str, default: bool = False) -> bool:
@@ -360,6 +365,15 @@ def route_tools_wanted() -> bool:
 def network_setting() -> str:
     value = _setting("workstation_network")
     return value if value in P.NETWORK_MODES else _DEFAULTS["workstation_network"]
+
+
+def vm_memory_choice() -> Optional[int]:
+    """The admin's size for each VM machine in MiB, or None for automatic."""
+    value = _setting("workstation_vm_memory_mib")
+    if isinstance(value, int) and not isinstance(value, bool) \
+            and P.VM_MEMORY_MIN_MIB <= value <= P.VM_MEMORY_MAX_MIB:
+        return value
+    return None
 
 
 def backend_setting() -> str:
@@ -400,6 +414,10 @@ def settings_view() -> Dict[str, Any]:
         "sudo": sudo_wanted(),
         "sudo_choice": sudo_choice(),
         "network": network_setting(),
+        # The VM workstation's memory: the admin's size, or None (automatic);
+        # what automatic is on this host is the daemon's to say (`health`).
+        "vm_memory_choice": vm_memory_choice(),
+        "vm_memory_sizes": list(VM_MEMORY_SIZES),
         "route_tools": route_tools_wanted(),
         # `P16-20`. Reaching the local network, and raw-packet tools.
         "lan_reach": _bool("agent_lan_reach", True),
@@ -424,6 +442,8 @@ def validate_setting(key: str, value: Any) -> Any:
         return None   # `B1428`: back to *by backend*
     if key == "workstation_enabled" and value is None:
         return None   # `B1720`: back to *on when the stack runs one*
+    if key == "workstation_vm_memory_mib":
+        return _memory_size(value)
     if key in _BOOL_KEYS:
         if not isinstance(value, bool):
             raise ValueError(f"{key} is true or false.")
@@ -486,6 +506,21 @@ def validate_setting(key: str, value: Any) -> Any:
     raise KeyError(key)
 
 
+def _memory_size(value: Any) -> Optional[int]:
+    """A size the VM host will take, or None (automatic) — refused here in the
+    host's own terms rather than stored and then refused at every sync."""
+    if value is None:
+        return None
+    if isinstance(value, str) and value.strip().isdigit():
+        value = int(value.strip())
+    if isinstance(value, bool) or not isinstance(value, int) \
+            or not P.VM_MEMORY_MIN_MIB <= value <= P.VM_MEMORY_MAX_MIB:
+        raise ValueError(f"workstation_vm_memory_mib is a whole number of MiB from "
+                         f"{P.VM_MEMORY_MIN_MIB} to {P.VM_MEMORY_MAX_MIB}, or empty for "
+                         "automatic.")
+    return value
+
+
 # ── the daemon, made ready ────────────────────────────────────────────────────
 
 async def sync_config(client: WorkstationClient) -> Dict[str, Any]:
@@ -528,6 +563,12 @@ async def sync_config(client: WorkstationClient) -> Dict[str, Any]:
     admins = admin_accounts()
     if daemon.get("admins") != admins:
         daemon.update(await client.config(admins=admins))
+    # The VM host's memory for each machine. Only a host that reports one has
+    # it (`memory_choice` in its answer); any other would refuse the size.
+    if "memory_choice" in daemon:
+        size = vm_memory_choice()
+        if daemon.get("memory_choice") != size:
+            daemon.update(await client.config(memory_mib=size))
     # A VM host that makes its machine image on first use (the default stack,
     # `PANTHEON_WORKSTATION_VM_IMAGE=on_first_use`) starts on `config`: being
     # here means the switch is on (or an admin pressed *Check now*), so it is

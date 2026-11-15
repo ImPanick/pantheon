@@ -651,6 +651,12 @@ MACHINE_STATES = ("running", "stopped")
 # `P20-06`. What the admin chose; where it is enforced is that row's subject.
 NETWORK_MODES = ("full", "internet", "none")
 
+# The VM backend's memory for each person's machine, in MiB, when an admin
+# chooses one (`config`'s `memory_mib`; null is automatic). The bounds are the
+# ones `PANTHEON_WORKSTATION_VM_MEMORY_MIB` always had.
+VM_MEMORY_MIN_MIB = 1024
+VM_MEMORY_MAX_MIB = 262_144
+
 # ── the network mode in force (`P20-06`, additive) ────────────────────────────
 #
 # THE ADVERSARY (`Law 17`, named in `D-2026-09-30-03`): content the agent reads
