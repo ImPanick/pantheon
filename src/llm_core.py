@@ -26,6 +26,7 @@ from src.rate_limiter import parse_retry_after as _retry_after
 from src.rate_limiter import parse_reset_header as _reset_after
 from src import reasoning_effort as _reasoning_effort
 from src import openai_responses as _openai_responses
+from src import prompt_cache as _prompt_cache
 
 # Longest server-requested wait we will sit through inside a retry loop. Beyond
 # this, honouring the header by sleeping would hold a user's request open for
@@ -2425,6 +2426,7 @@ def llm_call(url: str, model: str, messages: List[Dict], temperature: float = LL
             payload["reasoning_effort"] = _MISTRAL_REASONING_EFFORT
         if thinking is False and _supports_thinking(model):
             _turn_thinking_off(payload, url)
+    _prompt_cache.apply(payload, provider=provider, url=url, model=model, session_id=None)   # `B2125`
     try:
         note_model_activity(target_url, model)
         r = httpx_post_kimi_aware(target_url, h, json=payload, timeout=timeout)
@@ -2843,6 +2845,8 @@ async def llm_call_async(
                                     reasoning_level)
         await asyncio.to_thread(_apply_local_profiles, payload, url, target_url, model,
                                 session_id, explicit_params)   # `B1588`
+
+    _prompt_cache.apply(payload, provider=provider, url=url, model=model, session_id=session_id)   # `B2125`
 
     if _is_host_dead(target_url):
         raise HTTPException(503, f"Upstream {_host_key(target_url)} marked unreachable (cooldown active)")
@@ -3593,6 +3597,8 @@ async def _stream_llm_inner(url: str, model: str, messages: List[Dict], temperat
         if provider == "copilot":
             from src.copilot import apply_request_headers
             apply_request_headers(h, messages_copy)
+
+    _prompt_cache.apply(payload, provider=provider, url=url, model=model, session_id=session_id)   # `B2125`
 
     # Connect budget from LLMConfig.CONNECT_TIMEOUT (env LLM_CONNECT_TIMEOUT).
     # The dead-host cooldown still bounds a genuinely unreachable upstream, so a
