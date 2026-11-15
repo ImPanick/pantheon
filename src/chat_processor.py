@@ -302,7 +302,7 @@ class ChatProcessor:
         message: str,
         session: Any,
         use_web: bool = False,
-        use_rag: bool = True,
+        use_rag: bool = False,  # `B2134`: retrieval only when asked
         use_memory: bool = True,
         time_filter: Optional[str] = None,
         preset_system_prompt: Optional[str] = None,

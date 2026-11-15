@@ -14,6 +14,13 @@ did not say; it is not a licence to overrule a field that did say. Keeping the
 default ON and honouring an explicit *no* are not in tension, and
 `request_flag(raw, default=True)` is both at once.
 
+**`B2134`, owner ruling 2026-11-15: absence now means no.** Stored material
+reaches the model only when the person attaches it or calls on it, and an
+absent `use_rag` searched the person's documents on every API turn and sent up
+to 10,000 characters of matches. The rule this file is about stands, one value
+over: a default answers only when the field did not say, and now it answers
+no. The composer sends the chip's state either way (`static/js/chat.js`).
+
 Every test here drives the real code: the resolver itself, and the real
 `build_chat_context` call site through the harness
 `tests/test_kv_cache_invalidation_2927.py` already established for it (`Law 14`
@@ -37,7 +44,10 @@ CHANGED = ("0", "no", "off", "NO", " Off ", 0)
 
 # Every value whose answer is the same before and after. `Law 1` — the row is a
 # correction at four spellings, not a new policy for the field.
-UNCHANGED_ON = (None, "", "   ", "maybe", "true", "1", "yes", "on", 1, 2, -1, True, {})
+UNCHANGED_ON = ("true", "1", "yes", "on", 1, 2, -1, True)
+
+# `B2134`: the caller did not say, and the answer to that is now no.
+UNSAID = (None, "", "   ", "maybe", {})
 UNCHANGED_OFF = ("false", "FALSE", False)
 
 
@@ -49,13 +59,18 @@ def test_a_caller_who_wrote_no_is_told_no(raw):
 
 
 @pytest.mark.parametrize("raw", UNCHANGED_ON)
-def test_absent_blank_and_unrecognised_still_mean_yes(raw):
-    """The default survives, and it is the half `B97` was right to protect.
-    An absent field, a blank one and a word nobody recognises all mean *the
-    caller did not say*, and this is the one HTTP field in the tree whose
-    answer to that is yes."""
+def test_a_caller_who_wrote_yes_is_told_yes(raw):
     from routes.chat_helpers import rag_requested
     assert rag_requested(raw) is True, raw
+
+
+@pytest.mark.parametrize("raw", UNSAID)
+def test_absent_blank_and_unrecognised_mean_the_default_which_is_now_no(raw):
+    """An absent field, a blank one and a word nobody recognises all mean *the
+    caller did not say*. `B2134`: the answer to that is no, because retrieval
+    sends stored material the person did not call on."""
+    from routes.chat_helpers import rag_requested
+    assert rag_requested(raw) is False, raw
 
 
 @pytest.mark.parametrize("raw", UNCHANGED_OFF)
@@ -69,9 +84,9 @@ def test_an_object_is_not_an_answer():
     that is an arbitrary object *did not say*, so it gets the default — it must
     not be read as a definite yes or no by its own truthiness."""
     from routes.chat_helpers import rag_requested
-    assert rag_requested(object()) is True
-    assert rag_requested({}) is True
-    assert rag_requested([]) is True
+    assert rag_requested(object()) is False
+    assert rag_requested({}) is False
+    assert rag_requested([]) is False
 
 
 def test_the_field_answers_with_the_shared_http_rule_and_not_a_fourth_one():
@@ -79,8 +94,8 @@ def test_the_field_answers_with_the_shared_http_rule_and_not_a_fourth_one():
     HTTP boundary with its own default rather than spelling a fifth rule."""
     from src.env_flags import request_flag
     from routes.chat_helpers import rag_requested
-    for raw in CHANGED + UNCHANGED_ON + UNCHANGED_OFF:
-        assert rag_requested(raw) == request_flag(raw, default=True), raw
+    for raw in CHANGED + UNCHANGED_ON + UNCHANGED_OFF + UNSAID:
+        assert rag_requested(raw) == request_flag(raw, default=False), raw
 
 
 # ══ the upgrade says so before it does it ══════════════════════════════════
@@ -197,10 +212,12 @@ async def test_the_retrieval_step_is_told_what_the_caller_asked_for(
 
 
 @pytest.mark.asyncio
-async def test_a_caller_who_says_nothing_still_gets_retrieval(monkeypatch):
-    """`Law 1`, and the reason `B97` held this site. The field defaults ON and
-    it still does: an omitted `use_rag` does not even reach the preface as a
-    keyword, so the composer's own default answers."""
+async def test_a_caller_who_says_nothing_gets_no_retrieval(monkeypatch):
+    """`B2134` (owner ruling 2026-11-15). Until then the field defaulted ON
+    and an omitted `use_rag` reached the preface as nothing, so the preface's
+    own default (yes) searched the person's documents. Now the answer is always
+    said, and for a caller who said nothing it is no; the preface's own default
+    is no as well, so no caller of it is surprised by a search."""
     import routes.chat_helpers as chat_helpers
     seen, sess, processor = _harness(monkeypatch, chat_helpers)
     await chat_helpers.build_chat_context(
@@ -208,13 +225,12 @@ async def test_a_caller_who_says_nothing_still_gets_retrieval(monkeypatch):
         chat_processor=processor, message="hello there, what is in my notes?",
         session_id="session-C",
     )
-    assert "use_rag" not in seen
+    assert seen["use_rag"] is False
 
     import src.chat_processor as CP
     import inspect
     assert inspect.signature(CP.ChatProcessor.build_context_preface) \
-        .parameters["use_rag"].default is True, (
-        "the composer's own default is the other half of `use_rag` defaulting ON")
+        .parameters["use_rag"].default is False
 
 
 @pytest.mark.asyncio
@@ -284,14 +300,16 @@ class _Index:
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("turn,searched", [
-    ({}, True),
-    ({"incognito": True}, False),
-    ({"allow_tool_preprocessing": False}, False),
-], ids=["plain", "incognito", "no-tools"])
+    ({"use_rag": "true"}, True),
+    ({}, False),
+    ({"use_rag": "true", "incognito": True}, False),
+    ({"use_rag": "true", "allow_tool_preprocessing": False}, False),
+], ids=["asked", "not-asked", "incognito", "no-tools"])
 async def test_the_documents_are_searched_only_on_a_turn_that_may_search_them(
         monkeypatch, turn, searched):
     """The real `ChatProcessor.build_context_preface` behind the real call
-    site, with `use_rag` omitted as the composer omits it with the chip on."""
+    site. `B2134`: a turn that did not ask (`use_rag` omitted) is not searched;
+    the composer sends `true` with the chip on."""
     import routes.chat_helpers as chat_helpers
     from src.chat_processor import ChatProcessor
 

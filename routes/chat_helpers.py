@@ -902,13 +902,21 @@ def _warn_old_use_rag_spelling(raw: object) -> None:
     logger.warning(
         "use_rag=%r now turns retrieval OFF. Before 2026-09-16 only the literal "
         "`false` did, so this call ran WITH retrieval despite asking for it to "
-        "be off (`B152`). Send use_rag=true, or omit the field, to keep it on.",
+        "be off (`B152`). Send use_rag=true to keep it on (an absent field is off since `B2134`).",
         raw,
     )
 
 
 def rag_requested(use_rag: object) -> bool:
-    """Did this request ask for retrieval? Absent means yes.
+    """Did this request ask for retrieval? Absent means no (`B2134`).
+
+    `B2134`, owner ruling 2026-11-15: stored material reaches the model only
+    when the person attaches it or calls on it. An absent field meant yes, so
+    every API turn that left `use_rag` out searched the person's documents and
+    sent up to 10,000 characters of matches, whatever it asked; the composer
+    already sends `false` unless its toggle is on, so the page is unchanged.
+    The rest of this docstring is the `B152` history, from when absence meant
+    yes.
 
     `B152`, and `B97`'s last held HTTP field. Until 2026-09-16 this read
     `(str(use_rag).lower() != "false") if use_rag is not None else True`, so
@@ -939,7 +947,7 @@ def rag_requested(use_rag: object) -> bool:
     """
     from src.env_flags import request_flag
 
-    answer = request_flag(use_rag, default=True)
+    answer = request_flag(use_rag, default=False)
     # The old rule was `str(use_rag).lower() != "false"`, so the set of values
     # that already turned retrieval off is exactly the set whose `str().lower()`
     # is `"false"` — the literal word and a real `False`, and nothing else. The
@@ -947,7 +955,7 @@ def rag_requested(use_rag: object) -> bool:
     # vocabulary, so it cannot drift from the rule it is describing. Note the
     # missing `.strip()`: `" false "` was ON before and is off now, which is a
     # change and does warn.
-    if not answer and str(use_rag).lower() != "false":
+    if not answer and str(use_rag).lower() != "false" and request_flag(use_rag, default=True) is False:
         _warn_old_use_rag_spelling(use_rag)
     return answer
 
@@ -1100,12 +1108,9 @@ async def build_chat_context(
         agent_mode=agent_mode,
         incognito=incognito,
     )
-    # `B152`: a `use_rag` nobody sent stays off the preface, whose own default
-    # answers yes. `B1788`: a no is always said, so an incognito turn or one
-    # whose policy blocks tools no longer searches the person's documents
-    # because the composer left the field out.
-    if use_rag is not None or not use_rag_val:
-        _preface_kwargs["use_rag"] = use_rag_val
+    # `B152` / `B1788` / `B2134`: the answer is always said, so the preface's
+    # own default never decides a turn.
+    _preface_kwargs["use_rag"] = use_rag_val
     # `B2131`. The web search query is asked here, awaited: through the local
     # model gate as this turn's foreground work, and without holding the event
     # loop while the model answers. The preface asked it with the sync call.

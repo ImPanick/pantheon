@@ -3450,10 +3450,10 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
 	        fd.set('plan_mode', 'false');
 	      }
       fd.append('allow_bash', el('bash-toggle').checked ? 'true' : 'false');
+      // `B2134`: the server reads an absent `use_rag` as no, so the chip's
+      // answer is always sent.
       const ragChk = el('rag-toggle');
-      if (ragChk && !ragChk.checked) {
-        fd.append('use_rag', 'false');
-      }
+      fd.append('use_rag', (ragChk && ragChk.checked) ? 'true' : 'false');
       if (isIncognito) {
         fd.append('incognito', 'true');
       }
