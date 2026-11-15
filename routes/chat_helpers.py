@@ -315,7 +315,7 @@ async def auto_name_session(session_manager, sess):
     """Generate a short title for a session from its first user message."""
     try:
         from src.llm_core import llm_call_async
-        from src.task_endpoint import resolve_task_endpoint
+        from src.task_endpoint import resolve_side_job_endpoint   # `B2129`
 
         # Find first user message
         first_msg = ""
@@ -337,7 +337,7 @@ async def auto_name_session(session_manager, sess):
         # `B1598`: the endpoint rows, read in a worker thread — this runs on
         # the event loop, spawned by the chat routes after a reply.
         t_url, t_model, t_headers = await asyncio.to_thread(
-            resolve_task_endpoint, sess.endpoint_url, sess.model, sess.headers, owner=owner
+            resolve_side_job_endpoint, sess.endpoint_url, sess.model, sess.headers, owner=owner
         )
         if not t_model:
             logger.debug("[auto-name] No model provided, skipping")
@@ -1652,7 +1652,19 @@ async def _run_extraction_jobs_sequentially(session_id: str, jobs: list, max_wai
             await asyncio.sleep(poll)
             waited += poll
         try:
-            await job
+            # `B2129`. Background work on a local server: it waits for the
+            # person's own requests and gives way to the next one.
+            from src.llm_core import background_workload
+            with background_workload():
+                await job
+        except asyncio.CancelledError:
+            # A request of the person's took the model: these jobs wait for
+            # the next turn that sets them off.
+            logger.info("[bg-extract] %s extraction gave way to a foreground request (session %s)",
+                        name, session_id)
+            for _rest_name, rest in jobs[jobs.index((name, job)) + 1:]:
+                rest.close()
+            raise
         except Exception:
             logger.warning("[bg-extract] %s extraction job failed for session %s", name, session_id, exc_info=True)
 
@@ -1723,14 +1735,14 @@ async def run_post_response_tasks(
     _should_extract = (_msg_count >= 4) and (_msg_count % 4 == 0)
     if allow_background_extraction and not incognito and not compare_mode and _should_extract and uprefs.get("auto_memory", True):
         from services.memory.memory_extractor import extract_and_store
-        from src.task_endpoint import resolve_task_endpoint
+        from src.task_endpoint import resolve_side_job_endpoint   # `B2129`
 
         async def _memory_job():
             # `B1598`. The endpoint is read in a worker thread when the job
             # runs: this function is called on the event loop, from the chat
             # routes, and the read was a database session there.
             t_url, t_model, t_headers = await asyncio.to_thread(
-                resolve_task_endpoint, sess.endpoint_url, sess.model, sess.headers, owner=owner,
+                resolve_side_job_endpoint, sess.endpoint_url, sess.model, sess.headers, owner=owner,
             )
             await extract_and_store(sess, memory_manager, memory_vector, t_url, t_model, t_headers)
 
@@ -1765,12 +1777,12 @@ async def run_post_response_tasks(
             )
         else:
             from services.memory.skill_extractor import maybe_extract_skill
-            from src.task_endpoint import resolve_task_endpoint
+            from src.task_endpoint import resolve_side_job_endpoint   # `B2129`
 
             async def _skill_job():
                 # `B1598`: as the memory job's, off the event loop.
                 s_url, s_model, s_headers = await asyncio.to_thread(
-                    resolve_task_endpoint, sess.endpoint_url, sess.model, sess.headers, owner=owner,
+                    resolve_side_job_endpoint, sess.endpoint_url, sess.model, sess.headers, owner=owner,
                 )
                 logger.debug("[skill-extract] dispatching extractor (model=%s)", s_model)
                 await maybe_extract_skill(

@@ -12,7 +12,7 @@ import threading
 import re
 import os
 import math
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, contextmanager
 from fastapi import HTTPException
 from typing import Optional, Dict, List, Tuple
 from src.model_context import get_context_length, DEFAULT_CONTEXT, is_local_endpoint
@@ -113,7 +113,27 @@ def _local_model_gate_enabled() -> bool:
     return env_flag("PANTHEON_LOCAL_MODEL_GATE", True)
 
 
+#: `B2129`. The workload a call is made as when its caller names none: set to
+#: "background" around a turn's after-the-reply jobs (`background_workload`),
+#: so every model call inside one queues behind the person's own and gives way
+#: to it, without each call site passing it.
+_DEFAULT_WORKLOAD: "contextvars.ContextVar[str]" = contextvars.ContextVar(
+    "pantheon_default_workload", default="foreground")
+
+
+@contextmanager
+def background_workload():
+    """`B2129`. Model calls made inside run as background work."""
+    token = _DEFAULT_WORKLOAD.set("background")
+    try:
+        yield
+    finally:
+        _DEFAULT_WORKLOAD.reset(token)
+
+
 def _gate_workload(workload: Optional[str]) -> str:
+    if workload is None:
+        workload = _DEFAULT_WORKLOAD.get()
     return "background" if str(workload or "").lower() == "background" else "foreground"
 
 
@@ -2649,7 +2669,7 @@ async def llm_call_async(
     max_retries: int = LLMConfig.MAX_RETRIES,
     prompt_type: Optional[str] = None,
     session_id: Optional[str] = None,
-    workload: str = "foreground",
+    workload: Optional[str] = None,
     availability_only_transport: bool = False,
     return_model_metadata: bool = False,
     explicit_params=frozenset(),
@@ -2680,6 +2700,8 @@ async def llm_call_async(
     it, a length refusal that states what the server can serve is sent once
     more asking for that, even below the preset.
     """
+    if workload is None:
+        workload = _DEFAULT_WORKLOAD.get()   # `B2129`
     # `P4-25` — the non-streaming path. `/api/chat` reaches the model through
     # `llm_call_async_with_route_fallback` → here and never touches
     # `stream_llm`, so the first version of this recorded nothing for half
