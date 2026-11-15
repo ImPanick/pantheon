@@ -113,7 +113,7 @@ def _local_model_gate_enabled() -> bool:
     return env_flag("PANTHEON_LOCAL_MODEL_GATE", True)
 
 
-#: `B2129`. The workload a call is made as when its caller names none: set to
+#: `B2136`. The workload a call is made as when its caller names none: set to
 #: "background" around a turn's after-the-reply jobs (`background_workload`),
 #: so every model call inside one queues behind the person's own and gives way
 #: to it, without each call site passing it.
@@ -123,7 +123,7 @@ _DEFAULT_WORKLOAD: "contextvars.ContextVar[str]" = contextvars.ContextVar(
 
 @contextmanager
 def background_workload():
-    """`B2129`. Model calls made inside run as background work."""
+    """`B2136`. Model calls made inside run as background work."""
     token = _DEFAULT_WORKLOAD.set("background")
     try:
         yield
@@ -1748,7 +1748,7 @@ def _turn_thinking_off(payload: Dict, url: str) -> None:
     """
     if _is_ollama_openai_compat_url(url):
         payload["think"] = False
-        # `B2116`. No `return` here. The Ollama test is generous on purpose
+        # `B2123`. No `return` here. The Ollama test is generous on purpose
         # (any localhost /v1, docstring of `_is_ollama_openai_compat_url`), so
         # LM Studio on :1234 matched it and was sent only `think`, which it
         # does not read: the side calls `B1755` switched off still thought.
@@ -2446,7 +2446,7 @@ def llm_call(url: str, model: str, messages: List[Dict], temperature: float = LL
             payload["reasoning_effort"] = _MISTRAL_REASONING_EFFORT
         if thinking is False and _supports_thinking(model):
             _turn_thinking_off(payload, url)
-    _prompt_cache.apply(payload, provider=provider, url=url, model=model, session_id=None)   # `B2125`
+    _prompt_cache.apply(payload, provider=provider, url=url, model=model, session_id=None)   # `B2132`
     try:
         note_model_activity(target_url, model)
         r = httpx_post_kimi_aware(target_url, h, json=payload, timeout=timeout)
@@ -2679,7 +2679,7 @@ async def llm_call_async(
 ) -> str | tuple[str, str]:
     """Asynchronous LLM call using httpx with connection pooling, timeout, retry logic, and performance logging.
 
-    ``reasoning_level`` (`B2116`) carries a turn's composer effort into a
+    ``reasoning_level`` (`B2123`) carries a turn's composer effort into a
     non-streaming call that is part of that turn — the agent loop's closing
     synthesis — so the person's Off or High holds on every request the turn
     makes. Opt-in: the dozens of side calls that pass nothing keep the model's
@@ -2701,7 +2701,7 @@ async def llm_call_async(
     more asking for that, even below the preset.
     """
     if workload is None:
-        workload = _DEFAULT_WORKLOAD.get()   # `B2129`
+        workload = _DEFAULT_WORKLOAD.get()   # `B2136`
     # `P4-25` — the non-streaming path. `/api/chat` reaches the model through
     # `llm_call_async_with_route_fallback` → here and never touches
     # `stream_llm`, so the first version of this recorded nothing for half
@@ -2862,13 +2862,13 @@ async def llm_call_async(
         elif thinking is None and reasoning_level and reasoning_level != _reasoning_effort.AUTO:
             payload["messages"] = await asyncio.to_thread(
                 _reasoning_effort.apply_to_messages, payload["messages"], url, model,
-                reasoning_level)   # `B2116`
+                reasoning_level)   # `B2123`
             await asyncio.to_thread(_reasoning_effort.apply_to_payload, payload, url, model,
                                     reasoning_level)
         await asyncio.to_thread(_apply_local_profiles, payload, url, target_url, model,
                                 session_id, explicit_params)   # `B1588`
 
-    _prompt_cache.apply(payload, provider=provider, url=url, model=model, session_id=session_id)   # `B2125`
+    _prompt_cache.apply(payload, provider=provider, url=url, model=model, session_id=session_id)   # `B2132`
 
     if _is_host_dead(target_url):
         raise HTTPException(503, f"Upstream {_host_key(target_url)} marked unreachable (cooldown active)")
@@ -3620,7 +3620,7 @@ async def _stream_llm_inner(url: str, model: str, messages: List[Dict], temperat
             from src.copilot import apply_request_headers
             apply_request_headers(h, messages_copy)
 
-    _prompt_cache.apply(payload, provider=provider, url=url, model=model, session_id=session_id)   # `B2125`
+    _prompt_cache.apply(payload, provider=provider, url=url, model=model, session_id=session_id)   # `B2132`
 
     # Connect budget from LLMConfig.CONNECT_TIMEOUT (env LLM_CONNECT_TIMEOUT).
     # The dead-host cooldown still bounds a genuinely unreachable upstream, so a
@@ -4050,7 +4050,7 @@ async def _stream_llm_inner(url: str, model: str, messages: List[Dict], temperat
     _harmony_active = False       # sticky: gpt-oss harmony <|channel|> stream detected
     _actual_model = ""
     _actual_model_announced = False
-    _finish_reason = None   # `B2115`
+    _finish_reason = None   # `B2122`
 
     def _emit_tool_calls():
         """Build the tool_calls event string if any were accumulated."""
@@ -4161,7 +4161,7 @@ async def _stream_llm_inner(url: str, model: str, messages: List[Dict], temperat
                                 # Usage chunk (from stream_options)
                                 _choices = j.get("choices") or []
                                 _delta0 = _choices[0].get("delta") if (_choices and _choices[0] is not None) else None
-                                # `B2115`. Why the server stopped this request
+                                # `B2122`. Why the server stopped this request
                                 # ("stop", "length", "tool_calls"), kept for the
                                 # usage event: a round cut at the token limit
                                 # and a round that finished read the same in the
@@ -4196,7 +4196,7 @@ async def _stream_llm_inner(url: str, model: str, messages: List[Dict], temperat
                                     )
                                     if _usage_data is None:
                                         continue
-                                    # `B2115`. How much of the prompt the server
+                                    # `B2122`. How much of the prompt the server
                                     # read from its cache instead of evaluating:
                                     # OpenAI-style `prompt_tokens_details`, or
                                     # llama.cpp's `timings.cache_n` below. A
@@ -4251,7 +4251,7 @@ async def _stream_llm_inner(url: str, model: str, messages: List[Dict], temperat
                                         for _src, _dst in (
                                             ("prompt_n", "prefill_tokens"),
                                             ("predicted_n", "decode_tokens"),
-                                            ("cache_n", "prompt_cached_tokens"),   # `B2115`
+                                            ("cache_n", "prompt_cached_tokens"),   # `B2122`
                                         ):
                                             _v = _tm.get(_src)
                                             if isinstance(_v, int) and not isinstance(_v, bool) and _v > 0:

@@ -15,7 +15,7 @@ removed the press for issue #3780 (cad14f81, #6945).
 
 Now opening a document changes neither. The model still gets its document
 tools: a turn sent with a document open goes as Agent for that turn when its
-words call on the document (the route's own `B1285`, narrowed by `B2133`), and
+words call on the document (the route's own `B1285`, narrowed by `B2140`), and
 a turn sent from an editor that is open but still empty goes as Agent from the
 page, which the press used to cover.
 
@@ -248,7 +248,7 @@ def test_a_document_opened_the_way_the_library_opens_one_keeps_them(run):
 
 def test_a_turn_sent_beside_a_document_names_it_and_leaves_the_mode_to_the_server(run):
     """The page sends the document's id in the person's mode, and nothing is
-    saved. `B2133` (owner ruling 2026-11-15): the server promotes the turn to
+    saved. `B2140` (owner ruling 2026-11-15): the server promotes the turn to
     Agent only when the words call on the document ("Tighten the second step."
     does, `tests/test_an_open_item_reaches_the_model_only_when_called_on.py`),
     so a document left open no longer makes every turn a full Agent request."""

@@ -3420,7 +3420,7 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
 	      // opening one no longer switches the person's own mode.
 	      const _editorOpen = !!(documentModule && typeof documentModule.isPanelOpen === 'function'
 	        && documentModule.isPanelOpen());
-	      // `B2133`: a turn sent beside a document that has an id goes in the
+	      // `B2140`: a turn sent beside a document that has an id goes in the
 	      // person's mode with `active_doc_id`, and the server promotes it only
 	      // when the words call on the document (`chat_routes.py`); a document
 	      // left open no longer makes every turn a full Agent request.
@@ -3450,7 +3450,7 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
 	        fd.set('plan_mode', 'false');
 	      }
       fd.append('allow_bash', el('bash-toggle').checked ? 'true' : 'false');
-      // `B2134`: the server reads an absent `use_rag` as no, so the chip's
+      // `B2141`: the server reads an absent `use_rag` as no, so the chip's
       // answer is always sent.
       const ragChk = el('rag-toggle');
       fd.append('use_rag', (ragChk && ragChk.checked) ? 'true' : 'false');

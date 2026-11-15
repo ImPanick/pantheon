@@ -315,7 +315,7 @@ async def auto_name_session(session_manager, sess):
     """Generate a short title for a session from its first user message."""
     try:
         from src.llm_core import llm_call_async
-        from src.task_endpoint import resolve_side_job_endpoint   # `B2129`
+        from src.task_endpoint import resolve_side_job_endpoint   # `B2136`
 
         # Find first user message
         first_msg = ""
@@ -526,7 +526,7 @@ def add_user_message(sess, chat_handler, preprocessed: PreprocessedMessage, inco
         return None
     user_meta = {"attachments": preprocessed.attachment_meta} if preprocessed.attachment_meta else None
     if user_meta:
-        # `B2132`: what the person wrote, without the files' text, so a later
+        # `B2139`: what the person wrote, without the files' text, so a later
         # turn sends this message as their words and the files' names.
         from src.attachment_refs import SAID_WITH_ATTACHMENTS
         user_meta[SAID_WITH_ATTACHMENTS] = str(preprocessed.enhanced_message or "")
@@ -902,15 +902,15 @@ def _warn_old_use_rag_spelling(raw: object) -> None:
     logger.warning(
         "use_rag=%r now turns retrieval OFF. Before 2026-09-16 only the literal "
         "`false` did, so this call ran WITH retrieval despite asking for it to "
-        "be off (`B152`). Send use_rag=true to keep it on (an absent field is off since `B2134`).",
+        "be off (`B152`). Send use_rag=true to keep it on (an absent field is off since `B2141`).",
         raw,
     )
 
 
 def rag_requested(use_rag: object) -> bool:
-    """Did this request ask for retrieval? Absent means no (`B2134`).
+    """Did this request ask for retrieval? Absent means no (`B2141`).
 
-    `B2134`, owner ruling 2026-11-15: stored material reaches the model only
+    `B2141`, owner ruling 2026-11-15: stored material reaches the model only
     when the person attaches it or calls on it. An absent field meant yes, so
     every API turn that left `use_rag` out searched the person's documents and
     sent up to 10,000 characters of matches, whatever it asked; the composer
@@ -1016,7 +1016,7 @@ async def build_chat_context(
     user_message = None
     if persist_user_message and incognito:
         user_meta = {"attachments": preprocessed.attachment_meta} if preprocessed.attachment_meta else None
-        if user_meta:   # `B2132`
+        if user_meta:   # `B2139`
             from src.attachment_refs import SAID_WITH_ATTACHMENTS
             user_meta[SAID_WITH_ATTACHMENTS] = str(preprocessed.enhanced_message or "")
         _append_incognito_message(session_id, "user", preprocessed.user_content, user_meta)
@@ -1108,10 +1108,10 @@ async def build_chat_context(
         agent_mode=agent_mode,
         incognito=incognito,
     )
-    # `B152` / `B1788` / `B2134`: the answer is always said, so the preface's
+    # `B152` / `B1788` / `B2141`: the answer is always said, so the preface's
     # own default never decides a turn.
     _preface_kwargs["use_rag"] = use_rag_val
-    # `B2131`. The web search query is asked here, awaited: through the local
+    # `B2138`. The web search query is asked here, awaited: through the local
     # model gate as this turn's foreground work, and without holding the event
     # loop while the model answers. The preface asked it with the sync call.
     if _preface_kwargs["use_web"]:
@@ -1155,7 +1155,7 @@ async def build_chat_context(
     # earlier turn's would be sent again to whatever model the chat is on now.
     from src.attachment_refs import earlier_attachments_as_references, without_sounds
     messages = without_sounds(messages, keep_last_user=True)
-    # `B2132`. An earlier turn's files went with that turn; later turns send
+    # `B2139`. An earlier turn's files went with that turn; later turns send
     # their names unless the person calls on them again.
     messages = earlier_attachments_as_references(messages)
     # `B1736`. The model may react to the person's message, and hears how they
@@ -1674,7 +1674,7 @@ async def _run_extraction_jobs_sequentially(session_id: str, jobs: list, max_wai
             await asyncio.sleep(poll)
             waited += poll
         try:
-            # `B2129`. Background work on a local server: it waits for the
+            # `B2136`. Background work on a local server: it waits for the
             # person's own requests and gives way to the next one.
             from src.llm_core import background_workload
             with background_workload():
@@ -1757,7 +1757,7 @@ async def run_post_response_tasks(
     _should_extract = (_msg_count >= 4) and (_msg_count % 4 == 0)
     if allow_background_extraction and not incognito and not compare_mode and _should_extract and uprefs.get("auto_memory", True):
         from services.memory.memory_extractor import extract_and_store
-        from src.task_endpoint import resolve_side_job_endpoint   # `B2129`
+        from src.task_endpoint import resolve_side_job_endpoint   # `B2136`
 
         async def _memory_job():
             # `B1598`. The endpoint is read in a worker thread when the job
@@ -1799,7 +1799,7 @@ async def run_post_response_tasks(
             )
         else:
             from services.memory.skill_extractor import maybe_extract_skill
-            from src.task_endpoint import resolve_side_job_endpoint   # `B2129`
+            from src.task_endpoint import resolve_side_job_endpoint   # `B2136`
 
             async def _skill_job():
                 # `B1598`: as the memory job's, off the event loop.

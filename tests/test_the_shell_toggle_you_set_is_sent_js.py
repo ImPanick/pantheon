@@ -157,7 +157,7 @@ def test_a_chat_turn_sent_from_an_open_editor_goes_as_agent_for_that_turn(tmp_pa
     a document: an editor open with nothing in it yet asks for the same tools.
     Not in Incognito, and not once the editor is shut.
 
-    `B2133` (owner ruling 2026-11-15): beside a document that has an id the
+    `B2140` (owner ruling 2026-11-15): beside a document that has an id the
     page sends the person's mode with `active_doc_id`, and the server promotes
     the turn only when its words call on the document (`chat_routes.py`,
     `tests/test_what_is_open_and_attached_reaches_the_model.py`)."""

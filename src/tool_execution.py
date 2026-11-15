@@ -35,7 +35,7 @@ from src.tool_policy import ToolPolicy
 from src.constants import MAX_OUTPUT_CHARS, MAX_READ_CHARS, MAX_DIFF_LINES, DATA_DIR
 from src.owner_identity import normalize_owner
 from src import nobody_mode   # `B2097`
-from src.result_shaping import compact_json, shape_terminal_output   # `B2128`
+from src.result_shaping import compact_json, shape_terminal_output   # `B2135`
 from src.tool_utils import _truncate, get_mcp_manager
 
 
@@ -2050,7 +2050,7 @@ def format_tool_result(description: str, result: Dict) -> str:
     """Format a tool result into text for feeding back to the LLM."""
     parts = [f"### {description}"]
 
-    # `B2128`. A terminal's output without what no model reads: colour codes,
+    # `B2135`. A terminal's output without what no model reads: colour codes,
     # overwritten progress lines, a line repeated, base64 too long to use.
     if "stdout" in result:
         if result["stdout"]:
@@ -2104,7 +2104,7 @@ def format_tool_result(description: str, result: Dict) -> str:
         extra["image_url"] = nobody_mode.SHOWN_NOT_SAVED
     if extra:
         try:
-            # `B2128`. Compact: the indentation was a third of its tokens.
+            # `B2135`. Compact: the indentation was a third of its tokens.
             extra_json = compact_json(extra)
             # Cap to avoid blowing the context window on huge payloads.
             if len(extra_json) > 8000:

@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""`B2125`: a cloud model reads what it was already sent from its cache.
+"""`B2132`: a cloud model reads what it was already sent from its cache.
 
 The owner, 2026-11-15: *"we need to rework the cloud hints entirely that can
 get VERY expensive, VERY fast... massive waste of tokens."* Before this, an

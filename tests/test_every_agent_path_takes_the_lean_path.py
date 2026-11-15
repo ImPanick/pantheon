@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""`B2119`–`B2122`: the agents follow the same lean path as a chat turn.
+"""`B2126`–`B2129`: the agents follow the same lean path as a chat turn.
 
 The owner, 2026-11-15: *"look at the agents as well.. we have to ensure the
 agents are also going to be following the most efficient token use pathway
@@ -9,14 +9,14 @@ agent's kit is already what its author picked (1 to 6 tools across the
 shipped library), so the kit is left as it is; these are the gaps that were
 not:
 
-  * `B2119`: the step-budget note on the last two steps of every run was a
+  * `B2126`: the step-budget note on the last two steps of every run was a
     `system` message, which `llm_core` folds into the first one, so the
     system prompt changed and a local server re-read its whole prefix.
-  * `B2120`: a summoned agent and a skill test carried the person's skills
+  * `B2127`: a summoned agent and a skill test carried the person's skills
     catalogue beside skills that are already in the request whole.
-  * `B2121`: the teacher's takeover read Pantheon's own turn note as the
+  * `B2128`: the teacher's takeover read Pantheon's own turn note as the
     person's request, and dropped the turn's skills switch, plan mode and caps.
-  * `B2122`: one-word and few-token side calls left thinking on.
+  * `B2129`: one-word and few-token side calls left thinking on.
 """
 from __future__ import annotations
 
@@ -108,7 +108,7 @@ def test_one_word_and_few_token_side_calls_turn_thinking_off():
     assert src.count("thinking=False") >= 2
 
 
-# ── `B2123`: skills on demand ────────────────────────────────────────────────
+# ── `B2130`: skills on demand ────────────────────────────────────────────────
 #
 # The owner, 2026-11-15: *"Pull/call skills only when needed. If the user is
 # just running a base chat, leave it at base... if the LLM thinks it should be
@@ -167,10 +167,10 @@ def test_a_skill_the_model_opens_brings_its_tools_next_step(tmp_path):
     assert {"bash", "read_file"} <= set(requests[1]["tools"]), requests[1]["tools"]
 
 
-# ── `B2124`: a turn note does not make a step the person's ──────────────────
+# ── `B2131`: a turn note does not make a step the person's ──────────────────
 #
 # Found by the full suite on `fix/agent-lean-turn`: once the in-turn notes
-# became user-role turn notes (`B2113`, `B2119`), Copilot read every tool round
+# became user-role turn notes (`B2120`, `B2126`), Copilot read every tool round
 # that ended in one as the person speaking (`x-initiator: user`), which is how
 # Copilot counts premium requests.
 

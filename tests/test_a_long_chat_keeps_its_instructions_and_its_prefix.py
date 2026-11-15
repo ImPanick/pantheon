@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""`B2126`: a long chat over its budget keeps its instructions, and keeps the
+"""`B2133`: a long chat over its budget keeps its instructions, and keeps the
 same beginning from one round to the next.
 
 Measured on `fix/agent-lean-turn` before this (a 9,000-character prompt, a
@@ -52,7 +52,7 @@ def test_a_held_trim_keeps_the_same_beginning_round_after_round():
     history = _history()
     firsts, cuts = [], 0
     # Nine rounds: by the ninth every earlier turn is gone, and what is left
-    # is this turn's own results, which `B2128` shapes as they arrive.
+    # is this turn's own results, which `B2135` shapes as they arrive.
     for n in range(1, 10):
         sent = trim_for_context([PROMPT] + history + _round(n), BUDGET, hold=hold)
         assert sent[0]["content"] == PROMPT["content"]

@@ -14,7 +14,7 @@ did not say; it is not a licence to overrule a field that did say. Keeping the
 default ON and honouring an explicit *no* are not in tension, and
 `request_flag(raw, default=True)` is both at once.
 
-**`B2134`, owner ruling 2026-11-15: absence now means no.** Stored material
+**`B2141`, owner ruling 2026-11-15: absence now means no.** Stored material
 reaches the model only when the person attaches it or calls on it, and an
 absent `use_rag` searched the person's documents on every API turn and sent up
 to 10,000 characters of matches. The rule this file is about stands, one value
@@ -46,7 +46,7 @@ CHANGED = ("0", "no", "off", "NO", " Off ", 0)
 # correction at four spellings, not a new policy for the field.
 UNCHANGED_ON = ("true", "1", "yes", "on", 1, 2, -1, True)
 
-# `B2134`: the caller did not say, and the answer to that is now no.
+# `B2141`: the caller did not say, and the answer to that is now no.
 UNSAID = (None, "", "   ", "maybe", {})
 UNCHANGED_OFF = ("false", "FALSE", False)
 
@@ -67,7 +67,7 @@ def test_a_caller_who_wrote_yes_is_told_yes(raw):
 @pytest.mark.parametrize("raw", UNSAID)
 def test_absent_blank_and_unrecognised_mean_the_default_which_is_now_no(raw):
     """An absent field, a blank one and a word nobody recognises all mean *the
-    caller did not say*. `B2134`: the answer to that is no, because retrieval
+    caller did not say*. `B2141`: the answer to that is no, because retrieval
     sends stored material the person did not call on."""
     from routes.chat_helpers import rag_requested
     assert rag_requested(raw) is False, raw
@@ -213,7 +213,7 @@ async def test_the_retrieval_step_is_told_what_the_caller_asked_for(
 
 @pytest.mark.asyncio
 async def test_a_caller_who_says_nothing_gets_no_retrieval(monkeypatch):
-    """`B2134` (owner ruling 2026-11-15). Until then the field defaulted ON
+    """`B2141` (owner ruling 2026-11-15). Until then the field defaulted ON
     and an omitted `use_rag` reached the preface as nothing, so the preface's
     own default (yes) searched the person's documents. Now the answer is always
     said, and for a caller who said nothing it is no; the preface's own default
@@ -308,7 +308,7 @@ class _Index:
 async def test_the_documents_are_searched_only_on_a_turn_that_may_search_them(
         monkeypatch, turn, searched):
     """The real `ChatProcessor.build_context_preface` behind the real call
-    site. `B2134`: a turn that did not ask (`use_rag` omitted) is not searched;
+    site. `B2141`: a turn that did not ask (`use_rag` omitted) is not searched;
     the composer sends `true` with the chip on."""
     import routes.chat_helpers as chat_helpers
     from src.chat_processor import ChatProcessor

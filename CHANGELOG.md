@@ -402,7 +402,7 @@ the next one is cut.
 
 ### Changed — read this before upgrading
 
-- **`use_rag` left out of a chat request now means no document search** (2026-11-15, `B2134`).
+- **`use_rag` left out of a chat request now means no document search** (2026-11-15, `B2141`).
   `POST /api/chat_stream` and `POST /api/chat` used to search your personal documents on every turn
   that did not send `use_rag`, and put up to 10,000 characters of matches in front of the model,
   whatever the turn asked. Now a request searches them only with `use_rag=true`. The web composer

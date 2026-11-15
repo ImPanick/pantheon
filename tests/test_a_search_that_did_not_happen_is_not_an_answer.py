@@ -71,7 +71,7 @@ def _system_pushes(requests):
     seen = []
     for req in requests:
         for m in req:
-            # `B2113`: a loop note is a turn note at the request's end now.
+            # `B2120`: a loop note is a turn note at the request's end now.
             if m.get("role") == "system" or is_turn_note_content(m.get("content")):
                 seen.append(str(m.get("content") or ""))
     return seen

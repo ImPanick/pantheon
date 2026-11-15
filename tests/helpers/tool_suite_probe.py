@@ -386,7 +386,7 @@ class _ProbeHandler(BaseHTTPRequestHandler):
                     "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
                 }) + "\n\n",
             ]
-            # `B2115`. A server that reports usage after the last delta, the
+            # `B2122`. A server that reports usage after the last delta, the
             # way LM Studio and llama.cpp do with `include_usage`; off unless a
             # test sets `usage` (and optionally `timings`).
             usage = getattr(self.server, "usage", None)
@@ -419,7 +419,7 @@ class ProbeEndpoint:
         self._srv = ThreadingHTTPServer(("127.0.0.1", port), _ProbeHandler)
         self._srv.recorded = []            # type: ignore[attr-defined]
         self._srv.reply = "Nothing to do." # type: ignore[attr-defined]
-        self._srv.usage = None             # type: ignore[attr-defined]  # `B2115`
+        self._srv.usage = None             # type: ignore[attr-defined]  # `B2122`
         self._srv.timings = None           # type: ignore[attr-defined]
         self._thread = threading.Thread(target=self._srv.serve_forever, daemon=True)
         self._thread.start()

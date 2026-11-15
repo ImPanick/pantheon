@@ -140,7 +140,7 @@ def test_a_chat_mode_turn_with_nothing_open_is_not_promoted(world):
     assert _promoted(events) == []
 
 
-# ── `B2133`: what is open goes only when the words call on it ──────────
+# ── `B2140`: what is open goes only when the words call on it ──────────
 #
 # Owner ruling 2026-11-15: stored material reaches the model only when the
 # person attaches it or calls on it. The turns above say "Use what I gave you",

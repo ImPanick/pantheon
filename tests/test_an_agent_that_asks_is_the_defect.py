@@ -257,7 +257,7 @@ def _tools_called(events):
 def _system_text(request):
     """The system prompt and every note the loop handed the model.
 
-    `B2113`: a loop note is a Pantheon turn note at the end of the request now,
+    `B2120`: a loop note is a Pantheon turn note at the end of the request now,
     not a line folded into the system prompt, so the prompt's cached prefix
     survives the push. What the model is told is unchanged; where it reads it
     moved.
@@ -773,7 +773,7 @@ def _run_native(monkeypatch, script, *, relevant_tools, exact_approval=None,
                         lambda *a, **k: (True, False, False), raising=False)
 
     async def _fake_stream(_candidates, messages, **kwargs):
-        seen.append(_system_text(messages))   # `B2113`: notes included
+        seen.append(_system_text(messages))   # `B2120`: notes included
         step = next(steps, "Done.")
         if isinstance(step, list):
             yield f'data: {json.dumps({"type": "tool_calls", "calls": step})}\n\n'

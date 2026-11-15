@@ -143,7 +143,7 @@ _content_tokens = memory_retrieval.content_tokens
 
 
 def search_query_messages(message: str) -> List[Dict[str, str]]:
-    """The request that asks the model for a web search query (`B2131`: one
+    """The request that asks the model for a web search query (`B2138`: one
     text for the sync and async paths)."""
     return [
         {"role": "system", "content": (
@@ -178,7 +178,7 @@ def settle_search_query(message: str, generated: Optional[str]) -> str:
 
 
 async def generate_search_query(message: str, session: Any) -> str:
-    """`B2131`. The web search query for a turn, asked of the chat's model as
+    """`B2138`. The web search query for a turn, asked of the chat's model as
     foreground work through the local model gate and without holding the
     event loop. Measured before it: `build_context_preface` asked with the
     sync `llm_call` from the async route, so for up to its 15-second timeout
@@ -302,7 +302,7 @@ class ChatProcessor:
         message: str,
         session: Any,
         use_web: bool = False,
-        use_rag: bool = False,  # `B2134`: retrieval only when asked
+        use_rag: bool = False,  # `B2141`: retrieval only when asked
         use_memory: bool = True,
         time_filter: Optional[str] = None,
         preset_system_prompt: Optional[str] = None,
@@ -314,7 +314,7 @@ class ChatProcessor:
     ) -> Tuple[List[Dict[str, str]], List[Dict[str, Any]], List[Dict[str, str]]]:
         """Build the context preface for LLM calls.
 
-        ``search_query`` (`B2131`) is the web search query the async caller
+        ``search_query`` (`B2138`) is the web search query the async caller
         already asked the model for (`generate_search_query`), through the
         local model gate and off the event loop's thread. Without it the query
         is asked here, synchronously, as before.

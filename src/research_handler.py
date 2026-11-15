@@ -6,7 +6,7 @@
 # cannot be marked consumed (`P3-17`), the `research_completed` event (`P8-23`),
 # the removal of an unused `generate_plan` (`B1470`), one reading of a research
 # run's numbers for the panel and the scheduler (`B1796`), thinking off on the
-# query rewrite and the reachability probe (`B2122`) and the SPDX line above
+# query rewrite and the reachability probe (`B2129`) and the SPDX line above
 # (`P0-18`).
 #
 # Upstream licence text (Tongyi DeepResearch): licenses/DeepResearch-Apache-2.0.txt
@@ -196,7 +196,7 @@ class ResearchHandler:
                 headers=llm_headers,
                 timeout=15,
                 max_retries=1,
-                # `B2122`. One line in 200 tokens: a thinking model spent them
+                # `B2129`. One line in 200 tokens: a thinking model spent them
                 # on reasoning and the rewrite fell back to the raw message.
                 thinking=False,
             )
@@ -748,7 +748,7 @@ class ResearchHandler:
                 max_tokens=5,
                 headers=headers,
                 timeout=15,
-                thinking=False,   # `B2122`: a reachability probe, five tokens
+                thinking=False,   # `B2129`: a reachability probe, five tokens
                 max_retries=1,
             )
             logger.info(f"Endpoint probe OK: {model}")

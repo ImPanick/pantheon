@@ -738,7 +738,7 @@ async def _run_skill_test_job(
             url, model, messages, headers=headers,
             temperature=0.3, max_tokens=0, max_rounds=8, owner=owner,
             exact_approval=exact_approval,
-            # `B2120`. The skill under test is in the request whole; the
+            # `B2127`. The skill under test is in the request whole; the
             # person's catalogue beside it cost tokens and let the run open an
             # installed copy of the skill instead of the draft being tested.
             suppress_skills=True,
@@ -1276,7 +1276,7 @@ async def _run_skill_test_once(md: str, task: str, url, model, headers, owner) -
         # preset's max_tokens) worked. 4096 matches the chat default.
         async for chunk in stream_agent_loop(url, model, messages, headers=headers,
                                              temperature=0.3, max_tokens=4096, max_rounds=8, owner=owner,
-                                             suppress_skills=True):   # `B2120`
+                                             suppress_skills=True):   # `B2127`
             if not chunk.startswith("data: ") or chunk.strip() == "data: [DONE]":
                 continue
             try:

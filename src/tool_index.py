@@ -1224,7 +1224,7 @@ def plan_tool_suite(
 ) -> ToolSuite:
     """Decide this turn's tool set: the whole suite, or a deterministic part.
 
-    `B2114`. A part is what the turn asked for — the pinned names, the
+    `B2121`. A part is what the turn asked for — the pinned names, the
     request's keyword picks, its intent domains' tools, the connected MCP tools
     (the owner's own servers, 2026-10-14) and `keep`. The walk used to go on
     through the built-in "everything else" until the room was spent, so a local

@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """An Agent turn sends what the request needs, once, and says why it went again.
 
-`B2113`, `B2114`, `B2115`, `B2116`. Measured on the owner's desktop
+`B2120`, `B2121`, `B2122`, `B2123`. Measured on the owner's desktop
 (2026-11-15, a 27B model on LM Studio, 262,144-token window, effort Low): the
 same short question cost 830 input tokens in Chat and 12,008 in Agent mode,
 193 s of prefill, and then a **second** request of 12,094 tokens after the
@@ -179,7 +179,7 @@ def test_a_partial_suite_offers_what_was_asked_and_nothing_to_fill_the_room():
 # ── everything stays reachable ───────────────────────────────────────────────
 
 def test_every_tool_is_listed_by_area_with_no_cutoff():
-    """`B2118`. `find_tools` with no arguments is the agent's whole inventory:
+    """`B2125`. `find_tools` with no arguments is the agent's whole inventory:
     every selectable tool and every connected MCP tool, by area, no cutoff."""
     import re
     from src.tool_policy import selectable_tool_names

@@ -2166,7 +2166,7 @@ class McpManager:
     ) -> str:
         """Generate text describing MCP tools for the agent system prompt. Cached.
 
-        `only` (`B2135`): the qualified names this turn offers. The block named
+        `only` (`B2142`): the qualified names this turn offers. The block named
         every MCP tool on every turn, also the ones the turn's set held back,
         which it could not call; with `only` it names the offered ones (and
         still the servers not answering). `None` is every tool.

@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""`B2128`. What a tool result is sent to the model as: the same facts, without
+"""`B2135`. What a tool result is sent to the model as: the same facts, without
 the bytes no model reads.
 
 The owner, 2026-11-15: *"per-round trimming is also critical as well, we can

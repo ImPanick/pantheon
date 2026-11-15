@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""`B2125`. Provider prompt-cache hints, in one place.
+"""`B2132`. Provider prompt-cache hints, in one place.
 
 The owner, 2026-11-15, on the cloud caching hints: *"we need to rework the
 cloud hints entirely that can get VERY expensive, VERY fast... massive waste

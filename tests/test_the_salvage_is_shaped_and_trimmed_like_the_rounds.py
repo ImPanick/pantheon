@@ -192,7 +192,7 @@ def test_with_nothing_to_trim_the_salvage_is_the_forced_round_and_its_instructio
     forced = rounds[-1]
     assert not forced["tools"] and not salvage.get("refused")
     sent = salvage["messages"][:-1]
-    # `B2113`. The loop breaker's note is the forced round's last message (a
+    # `B2120`. The loop breaker's note is the forced round's last message (a
     # user-role APPLICATION NOTE, so the system prompt stays the cached one),
     # and `_sanitize_llm_messages` puts its one boundary between that note and
     # the instruction that follows it, as it does at every such seam.

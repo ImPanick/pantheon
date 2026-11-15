@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""`B2135` — APIs and the vault are put in front of the model only when needed.
+"""`B2142` — APIs and the vault are put in front of the model only when needed.
 
 Owner ruling 2026-11-15: "add API's and Vault items - ensure they're only
 called/used when needed". Measured on `fix/agent-lean-turn` before the fix:

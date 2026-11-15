@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""`B2131`: the web search query is asked as the turn's own foreground work,
+"""`B2138`: the web search query is asked as the turn's own foreground work,
 through the local model gate, without holding the event loop.
 
 Measured on `fix/agent-lean-turn` before this: `build_chat_context` (async)

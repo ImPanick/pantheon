@@ -204,7 +204,7 @@ def test_compaction_keeps_the_report_word_for_word_and_loses_no_stored_row(discu
         assert f"question {i} " in summarised and f"answer {i} " in summarised
     # What is stored: the primer, the summary, then every newer row, so each
     # stored row is either summarised or kept.
-    # `B2127`: the cut is at the person's latest message now, not the newer
+    # `B2134`: the cut is at the person's latest message now, not the newer
     # half by count; whatever is kept is the stored rows' own tail, and every
     # row before it went to the summariser.
     assert sess.history[0] is primer

@@ -147,7 +147,7 @@ def find_tool_matches(query: str = "", names=None, *, mcp_tools=None) -> List[Di
 
 
 def tool_area_listing(area: str = "", *, mcp_tools=None) -> str:
-    """`B2114`. The inventory: every tool by area with its few words, or one
+    """`B2121`. The inventory: every tool by area with its few words, or one
     area's tools with their longer descriptions. Lists, loads nothing: the
     model names what it wants next (`names`), so an area of sixteen email tools
     does not land sixteen schemas in the next request. Read from the same map

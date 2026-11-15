@@ -287,7 +287,7 @@ def test_on_a_qa_request_the_model_finds_and_opens_the_qa_skill_itself(scratch, 
                 dispatch="real", max_rounds=4)
             first = record.first
             assert "use_skill" in first["tools"], first["tools"]
-            # `B2123`, the owner 2026-11-15: skills on demand. The request
+            # `B2130`, the owner 2026-11-15: skills on demand. The request
             # names the way in and lists no skill; the model's own search
             # below is what finds `qa-a-change`.
             assert "`qa-a-change`" not in first["prompt"]

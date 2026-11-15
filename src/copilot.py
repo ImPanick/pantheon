@@ -251,8 +251,8 @@ def request_flags(messages) -> tuple:
       * ``vision`` — any message carries an image content part.
     """
     msgs = list(messages or [])
-    # `B2124`. Pantheon's own framing at the end of a request is not the
-    # person speaking. Since `B2113`/`B2119` an in-turn note (the push back,
+    # `B2131`. Pantheon's own framing at the end of a request is not the
+    # person speaking. Since `B2120`/`B2126` an in-turn note (the push back,
     # the step budget) is a user-role `APPLICATION NOTE` at the end of the
     # request rather than a system message, and `llm_core` puts its
     # "Reference context received." seam between it and a user turn. Read

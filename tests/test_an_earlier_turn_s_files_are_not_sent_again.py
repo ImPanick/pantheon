@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""`B2132`: an earlier turn's attachments go with that turn, not every turn
+"""`B2139`: an earlier turn's attachments go with that turn, not every turn
 after it, unless the person calls on them again.
 
 The owner, 2026-11-15: *"Ensure documents and other storage materials aren't

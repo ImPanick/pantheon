@@ -90,7 +90,7 @@ def _drive(monkeypatch, *, max_rounds, script):
 
 
 def _notes(request):
-    # `B2119`: the note is a user-role turn note at the end of the request, so
+    # `B2126`: the note is a user-role turn note at the end of the request, so
     # it no longer changes the system prompt a server has cached.
     assert not [m for m in request if m.get("role") == "system"
                 and "This is step" in str(m.get("content"))]

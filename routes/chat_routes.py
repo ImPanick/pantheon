@@ -2027,7 +2027,7 @@ def setup_chat_routes(
         # with a document open (`chat.js`) but not one with an email open, and
         # not in incognito; here both promote, and the person is told why.
         #
-        # `B2133`. Only when the message calls on it. Promotion sends the
+        # `B2140`. Only when the message calls on it. Promotion sends the
         # whole Agent request (tools, instructions, the open item), and a
         # document left open beside the chat promoted every turn, "hi"
         # included. The document's size is not known here, so words that may
@@ -3736,7 +3736,7 @@ def setup_chat_routes(
                         # `allow_tool_preprocessing` and the casual-low-signal
                         # test — and none of them reached the loop, which built
                         # its own copy regardless. They arrive as one flag now.
-                        # `B2120`. A summoned agent brings its own skills
+                        # `B2127`. A summoned agent brings its own skills
                         # whole (`P24-26`), as a hired run does, and its kit
                         # has no `manage_skills`, so the person's catalogue
                         # would cost tokens and name a tool it cannot call.

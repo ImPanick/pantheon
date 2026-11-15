@@ -23,7 +23,7 @@ def resolve_task_endpoint(fallback_url=None, fallback_model=None, fallback_heade
 
 
 def resolve_side_job_endpoint(fallback_url=None, fallback_model=None, fallback_headers=None, owner=None):
-    """`B2129`. The model for a job a chat turn sets off beside its answer (the
+    """`B2136`. The model for a job a chat turn sets off beside its answer (the
     title, saved-memory and skill extraction): the Background Tasks model,
     else the Utility model, else the chat's own model. Whatever model each
     setting names; none is assumed (`D-2026-10-07-02` §1).

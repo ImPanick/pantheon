@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""`B2129`: what a chat turn sets off beside its answer runs on the background
+"""`B2136`: what a chat turn sets off beside its answer runs on the background
 model, whatever model that is, and as background work.
 
 The owner, 2026-11-15: *"Pantheon should have a background model (extremely

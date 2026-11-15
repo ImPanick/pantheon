@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""`B2127`: compaction is what keeps a long chat in its room.
+"""`B2134`: compaction is what keeps a long chat in its room.
 
 The owner, 2026-11-15: *"we have a monitor to watch where the context fill is
 at, then at a certain point, we compact the chat (condense to a

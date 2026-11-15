@@ -36,7 +36,7 @@ from services.memory.skills import SkillsManager
 
 @pytest.fixture(autouse=True)
 def _catalogue_path(monkeypatch):
-    """`B2123`. An agent turn now loads skills on demand (the owner,
+    """`B2130`. An agent turn now loads skills on demand (the owner,
     2026-11-15), so no catalogue rides in by default:
     `tests/test_every_agent_path_takes_the_lean_path.py` holds that. The
     catalogue path is still the code behind `SKILLS_ON_DEMAND = False`, and

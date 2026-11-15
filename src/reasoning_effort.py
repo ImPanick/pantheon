@@ -45,7 +45,7 @@ from typing import Dict, Iterator, List, Optional
 
 AUTO = "auto"
 LEVELS = ("low", "medium", "high", "extra", "max")
-# `B2116`. Thinking switched off, for a model whose server has a real switch.
+# `B2123`. Thinking switched off, for a model whose server has a real switch.
 # Not a rung of the ladder above: Low on a Qwen3 hybrid still turns thinking
 # ON (the switch has no depth), so the only way to skip the thinking was not
 # offered at all. Offered per model, only where something reads it.
@@ -236,7 +236,7 @@ def _needs_instruction(mech: str, level: str, native: Optional[str]) -> bool:
 
 
 def has_off_switch(url: str, model: str) -> bool:
-    """`B2116`. Whether Off reaches this model as a switch, not as words.
+    """`B2123`. Whether Off reaches this model as a switch, not as words.
 
     A Qwen3 hybrid reads ``enable_thinking`` / Ollama's ``think`` / the
     ``/no_think`` soft switch. Another thinking model served by a self-hosted
@@ -278,7 +278,7 @@ def effort_support(url: str, model: str) -> Dict[str, object]:
         value = native.get(lvl)
         words = _needs_instruction(mech, lvl, value)
         if mech == "qwen3_switch":
-            # `B2116`. Said as it is: this switch is on or off, so every level
+            # `B2123`. Said as it is: this switch is on or off, so every level
             # here turns thinking ON and the level itself is only words.
             how = ("Thinking switched on, at the model's usual depth." if lvl == "medium"
                    else f"Thinking switched on; \"{LEVEL_LABELS[lvl]}\" is only a "
@@ -324,7 +324,7 @@ def apply_to_messages(messages: List[Dict], url: str, model: str, level: str) ->
     """The messages with this level's written instruction (and Qwen3's
     ``/think`` switch) added to the system prompt. Returns a new list."""
     if level == OFF:
-        # `B2116`. The Qwen3 soft switch, beside the server-side one, because
+        # `B2123`. The Qwen3 soft switch, beside the server-side one, because
         # a server that ignores `chat_template_kwargs` still renders the words.
         if mechanism(url, model) != "qwen3_switch":
             return messages

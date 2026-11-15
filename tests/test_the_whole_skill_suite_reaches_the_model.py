@@ -281,7 +281,7 @@ def test_the_loop_itself_ships_the_catalogue_for_a_procedure_question(store, mon
     `_low_signal_turn` back in `_skills_suppressed`."""
     seen = _one_request(monkeypatch, PROCEDURE_QUESTION, relevant_tools={"bash"})
     assert seen.get("messages"), "no request was built, so this asserts nothing"
-    # `B2123`, the owner 2026-11-15: *"Pull/call skills only when needed"*.
+    # `B2130`, the owner 2026-11-15: *"Pull/call skills only when needed"*.
     # The catalogue no longer rides in the request; the question a skill
     # answers still gets the way in, so its procedures are one call away.
     assert _skills_block(seen["messages"]) == ""
@@ -303,7 +303,7 @@ def test_the_loop_offers_the_tool_the_catalogue_names(store, monkeypatch):
     where the two gates disagreed — measured live, the model called the tool the
     block named and got *"Tool is disabled for this request."*"""
     seen = _one_request(monkeypatch, PROCEDURE_QUESTION, relevant_tools={"bash"})
-    # `B2123`: no catalogue, so nothing names `manage_skills`; the tool the
+    # `B2130`: no catalogue, so nothing names `manage_skills`; the tool the
     # prompt does name, `use_skill`, is in the request's own array.
     assert _skills_block(seen["messages"]) == ""
     assert "use_skill" in seen["tools"]
@@ -787,7 +787,7 @@ def test_a_skill_the_turn_will_never_see_does_not_pull_tools_in(store, tmp_path,
     question = "rotate the log files on a server, it is half-written"
     seen = _one_request(monkeypatch, question, relevant_tools={"web_search"},
                         owner=OWNER)
-    # `B2123`: the way in is `use_skill`; the editor waits for `find_tools`.
+    # `B2130`: the way in is `use_skill`; the editor waits for `find_tools`.
     assert "use_skill" in seen["tools"], "the turn's way to its skills is still offered"
     assert "bash" not in seen["tools"], (
         "a draft the turn will never be shown pulled a shell into the tool set"

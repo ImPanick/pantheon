@@ -413,7 +413,7 @@ def test_spinoff_detected_from_chatmessage_history():
 
 
 def test_auto_name_session_passes_session_fallback_to_task_resolver(monkeypatch):
-    # `B2129`: the side-job resolver (Background Tasks, then Utility, then the
+    # `B2136`: the side-job resolver (Background Tasks, then Utility, then the
     # chat's model) is the one the title job reads now.
     import src.llm_core as llm_core
     import src.task_endpoint as task_endpoint

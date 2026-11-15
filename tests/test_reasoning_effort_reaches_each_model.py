@@ -46,7 +46,7 @@ def test_a_thinking_model_shows_the_selector(url, model, mech):
     assert support["supported"] is True
     assert support["mechanism"] == mech
     ids = [lvl["id"] for lvl in support["levels"]]
-    # `B2116`: Off leads the ladder exactly where a server switch reads it —
+    # `B2123`: Off leads the ladder exactly where a server switch reads it —
     # a Qwen3 hybrid, or a thinking model a self-hosted server runs — and is
     # never offered where it would only be words.
     expect_off = mech == "qwen3_switch" or (mech == "instruction" and url == LMSTUDIO)

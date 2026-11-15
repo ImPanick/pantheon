@@ -43,7 +43,7 @@ from src.chat_processor import ChatProcessor
 
 @pytest.fixture(autouse=True)
 def _catalogue_path(monkeypatch):
-    """`B2123`. An agent turn now loads skills on demand (the owner,
+    """`B2130`. An agent turn now loads skills on demand (the owner,
     2026-11-15), so no catalogue or matched procedure rides in by default:
     `tests/test_every_agent_path_takes_the_lean_path.py` holds that. The
     catalogue path is still the code behind `SKILLS_ON_DEMAND = False`, and
@@ -289,7 +289,7 @@ def test_the_route_hands_that_decision_to_the_only_site_left(skills):
     # The two halves have to be connected or the extraction is decoration.
     route = (Path(__file__).resolve().parent.parent
              / "routes" / "chat_routes.py").read_text(encoding="utf-8")
-    # `B2120` adds a summoned agent (its own skills ride whole) beside it.
+    # `B2127` adds a summoned agent (its own skills ride whole) beside it.
     assert "suppress_skills=(not ctx.skills_enabled)" in route
     from routes.chat_helpers import ChatContext
     assert "skills_enabled" in ChatContext.__dataclass_fields__

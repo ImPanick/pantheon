@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Does the person's message call on what is open beside the chat?
 
-`B2133`. An editor document or an email reader can stay open while the person
+`B2140`. An editor document or an email reader can stay open while the person
 asks about something else, and every turn sent the document's whole text (no
 cap) or the email's header, an 1,800-character preview and about 2,500
 characters of instructions. The owner's ruling of 2026-11-15: stored material

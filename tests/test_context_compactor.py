@@ -41,7 +41,7 @@ class TestCompactThreshold:
 
 
 class TestSelfSummaryPrompt:
-    """`B2127` (owner ruling 2026-11-15): a keyed state record for the model,
+    """`B2134` (owner ruling 2026-11-15): a keyed state record for the model,
     not the markdown report with `### User Goal` headings it replaced."""
 
     def test_asks_for_the_goal_the_state_and_what_is_open(self):
@@ -220,7 +220,7 @@ class TestTheTrimKeepsThePersonsRequest:
 
         assert any(m is question for m in after), "the person's question is sent, whole"
         results = [m for m in after if m.get("role") == "tool"]
-        # `B2128` (owner ruling 2026-11-15): an older round keeps its call and
+        # `B2135` (owner ruling 2026-11-15): an older round keeps its call and
         # its result is sent as a short notice, oldest first, so the model
         # still knows what it ran; it used to go whole, call and all.
         words = [m["content"].split()[0] for m in results]

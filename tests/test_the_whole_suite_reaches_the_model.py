@@ -523,7 +523,7 @@ def test_a_workflow_step_still_gets_only_its_own_tools(monkeypatch):
 def test_a_partial_turn_tells_the_model_the_set_is_partial(monkeypatch):
     _base(monkeypatch, _mcp_manager(), window=W8K)
     _events, sent = _drive(monkeypatch, ["Nothing to do."])
-    # `B2118`, the owner 2026-11-15: *"leave the tool gathering up to the
+    # `B2125`, the owner 2026-11-15: *"leave the tool gathering up to the
     # agent"*. A partial turn that carries `find_tools` says so in one short
     # section that points at it, instead of a heading about what is missing.
     assert "## Finding tools" in sent[0]["prompt"]

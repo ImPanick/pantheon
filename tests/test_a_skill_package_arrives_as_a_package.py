@@ -475,7 +475,7 @@ def test_a_switched_off_skill_is_in_no_part_of_what_the_model_is_sent(tmp_path, 
     monkeypatch.setattr(agent_loop, "_cached_base_prompt_key", None, raising=False)
     sm = SkillsManager(str(tmp_path))
     on = json.dumps(_request_messages(monkeypatch, _preface(sm)))
-    # `B2123`, the owner 2026-11-15: skills on demand. No skill, on or off,
+    # `B2130`, the owner 2026-11-15: skills on demand. No skill, on or off,
     # rides in the request any more; the model lists and opens them itself,
     # and `test_the_model_s_own_list_and_search_leave_it_out_too` below is
     # where a switched-off skill must stay out.

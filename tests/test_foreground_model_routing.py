@@ -30,7 +30,7 @@ from src.foreground_model_routing import (
 
 
 def _without_request(buckets):
-    """`B2115` adds each round's `request` record (why it ran, what it carried)
+    """`B2122` adds each round's `request` record (why it ran, what it carried)
     to its bucket; the cost accounting these tests pin is the rest."""
     return [{k: v for k, v in b.items() if k != "request"} for b in buckets]
 
@@ -3471,7 +3471,7 @@ def test_agent_fallback_request_uses_candidate_context_budget(
         )
     )
 
-    # `B2127`: the route builder reads each candidate's budget too (to decide
+    # `B2134`: the route builder reads each candidate's budget too (to decide
     # whether to compact), so a candidate is looked up more than once; each
     # lookup is still its own, and each trim still takes its own budget.
     assert list(dict.fromkeys((url, model) for url, model, _fallback in context_lookups)) == [
@@ -3887,7 +3887,7 @@ async def test_each_candidate_measures_a_shaping_step_against_its_own_boundary(m
         "messages_before": 10, "messages_after": 6,
         "tokens_before": 1000, "tokens_after": 600,
     }
-    # `B2126`: the stub's cut leaves out turns, which the record now names
+    # `B2133`: the stub's cut leaves out turns, which the record now names
     # (`left_out`); the figures are what this test measures.
     figures = {k: v for k, v in state["trim_stats"][0].items() if k != "left_out"}
     assert figures == {

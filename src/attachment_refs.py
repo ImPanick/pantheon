@@ -219,7 +219,7 @@ def without_sounds(messages: list, *, keep_last_user: bool = False) -> list:
     return out
 
 
-# ── `B2132`: an earlier turn's files go with that turn, not every turn after ──
+# ── `B2139`: an earlier turn's files go with that turn, not every turn after ──
 
 #: Metadata key on a saved user message that carried attachments: what the
 #: person wrote, without the files' text folded in after it.
@@ -263,7 +263,7 @@ def earlier_attachments_as_references(messages: list) -> list:
     """`messages` with each earlier user turn's attachments sent as their
     reference lines, not their contents; the newest user message whole.
 
-    `B2132`. The owner, 2026-11-15: *"Ensure documents and other storage
+    `B2139`. The owner, 2026-11-15: *"Ensure documents and other storage
     materials aren't constantly passed to the LLM per turn ... unless
     explicitly attached/called upon by the user ... This includes documents,
     markdowns, pdf's, images etc... the whole suite."* Measured before this: a
@@ -302,7 +302,7 @@ def earlier_attachments_as_references(messages: list) -> list:
         if isinstance(said, str):
             words = said.strip()
         elif isinstance(content, list):
-            # Saved before `B2132`, still in memory: the pictures and sounds
+            # Saved before `B2139`, still in memory: the pictures and sounds
             # go; the text, which holds the person's words and the files'
             # folded together, stays as it was.
             words = _plain_text(content).strip()

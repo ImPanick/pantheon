@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""`B2133` — an open document or email reaches the model only when called on.
+"""`B2140` — an open document or email reaches the model only when called on.
 
 Owner ruling 2026-11-15: stored material is not sent each turn unless the person
 attaches it or calls on it. Measured on `fix/agent-lean-turn` before the fix:
@@ -117,7 +117,7 @@ def test_an_open_email_is_called_on_by_email_words_or_a_reference():
 
 def test_the_reference_is_read_from_what_the_person_typed():
     """A PDF's text folded into the message is not the person calling on the
-    draft beside the chat; the saved words are (`B2132`)."""
+    draft beside the chat; the saved words are (`B2139`)."""
     folded = "what's the capital of France?\n\n[report.pdf]\nThis draft paragraph ..."
     msgs = [{"role": "user", "content": folded,
              "metadata": {SAID_WITH_ATTACHMENTS: "what's the capital of France?"}}]

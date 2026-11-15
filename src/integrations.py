@@ -1296,7 +1296,7 @@ async def execute_api_call(
 # ---------------------------------------------------------------------------
 
 def integrations_named_in(owner: Optional[str], text: Any) -> List[str]:
-    """`B2135`. The ids of `owner`'s callable integrations that `text` names,
+    """`B2142`. The ids of `owner`'s callable integrations that `text` names,
     by name or id, as words.
 
     The integrations list goes to the model only on a turn that can reach

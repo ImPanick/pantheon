@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""`B2128`: what the model is sent of a tool's work, round after round.
+"""`B2135`: what the model is sent of a tool's work, round after round.
 
 The owner, 2026-11-15: *"per-round trimming is also critical as well, we can
 take a users dense input - and trim what the model wouldn't need to do the
@@ -85,7 +85,7 @@ def test_a_long_turn_keeps_its_instructions_while_its_earlier_results_give_way()
 
 
 def test_results_stay_whole_when_leaving_them_out_would_not_save_the_instructions():
-    """`B2130`. If the instructions are cut either way, the turn's earlier
+    """`B2137`. If the instructions are cut either way, the turn's earlier
     results are sent as they were and the older steps give way as before:
     a turn resumed after an approval had its first result sent as the notice
     and its instructions cut all the same."""

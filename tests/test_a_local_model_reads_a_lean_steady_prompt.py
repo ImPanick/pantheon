@@ -69,7 +69,7 @@ _POOL = {f"tool_{i:02d}" for i in range(30)} | {FIND_TOOLS, "ask_user"}
 
 def _plan(pinned=(), keep=(), room=1000, local_cap=1000):
     # These pin `keep` against the room, so the room is filled as it was when
-    # they were written; `B2114`'s lean default is pinned in
+    # they were written; `B2121`'s lean default is pinned in
     # `test_an_agent_turn_costs_what_it_asked_for.py`.
     return plan_tool_suite(_POOL, cost=lambda n: 100, room=room, window=262_144,
                            pinned=pinned, keep=keep, local_cap=local_cap, fill=True)
@@ -203,7 +203,7 @@ def _names(body):
 
 
 def test_every_turn_of_a_local_conversation_sends_the_same_prefix(conversations):
-    """`B2114` made the first set what the request needs, not the whole room,
+    """`B2121` made the first set what the request needs, not the whole room,
     so a turn that needs something new (the weather: `web_search`) adds it and
     drops nothing; a turn that needs nothing new sends the previous turn's
     system prompt and tools byte for byte."""

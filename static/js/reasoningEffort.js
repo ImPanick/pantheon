@@ -26,12 +26,12 @@ import { handlePickerKeydown } from './pickerKeys.js';
 
 const STORE_KEY = 'pantheon-reasoning-effort';
 const AUTO = 'auto';
-// `B2116`: Off is offered only for a model whose server can switch thinking
+// `B2123`: Off is offered only for a model whose server can switch thinking
 // off; the server's answer says so with an `off` row.
 const LEVELS = ['off', 'low', 'medium', 'high', 'extra', 'max'];
 const LABELS = { auto: 'Auto', off: 'Off', low: 'Low', medium: 'Medium', high: 'High', extra: 'Extra', max: 'Max' };
 const ITEM = '.reasoning-effort-item:not([hidden])';
-const ANY_ITEM = '.reasoning-effort-item';   // `B2116`: render reaches the hidden Off row
+const ANY_ITEM = '.reasoning-effort-item';   // `B2123`: render reaches the hidden Off row
 
 let _level = _readStored();
 let _support = null;        // the server's last answer for the selected model
