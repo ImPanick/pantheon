@@ -343,14 +343,14 @@ proved it dead.
 
 ## Status
 
-**2179 tracked tasks, 1972 done.** The tracker is [`.pantheon/ROADMAP.md`](.pantheon/ROADMAP.md) and
+**2186 tracked tasks, 1975 done.** The tracker is [`.pantheon/ROADMAP.md`](.pantheon/ROADMAP.md) and
 it is the only place work is tracked — one list, one progress area, validated by a script that
 recounts every phase row against its own ticks. It exists because the summary line was once wrong
 by nineteen and carried forward unread from entry to entry, because each author copied the line
 above.
 
 **Read that number with the trend beside it.** Over the last ten waves, *done* went
-**96.2% → 90.5%** and *open* went **69 → 207**: 343 rows filed against 205 closed, a
+**96.1% → 90.3%** and *open* went **71 → 211**: 348 rows filed against 208 closed, a
 file-to-close ratio of **1.673**. That is not a backlog of defects piling up: those waves were the owner's
 own asks — the Odysseus port and the faults it turned up, the Workbench automations, push to a phone,
 the Devices room, the alignment audit's ninety fixes, the slim tool set for local models and the
@@ -359,7 +359,7 @@ it on his own machine. A row is closed by the person who asked for it, not by th
 on 2026-11-11 he closed 177 of them on CI evidence, every test each one names passing.
 Wave by wave, with every row named, is in the tracker's progress area.
 
-What matters more is a different number: of the last 40 backlog rows filed (`B2096`–`B2142`), **none** is
+What matters more is a different number: of the last 40 backlog rows filed (`B2103`–`B2142`), **none** is
 on the ship line's open list — the short list of rows that stop a stranger relying on this
 repository now that it is public. The series, the classification and what counts as blocking are in
 [`.pantheon/SHIP-LINE.md`](.pantheon/SHIP-LINE.md). Every figure in this section is

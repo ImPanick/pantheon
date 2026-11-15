@@ -3217,7 +3217,7 @@ def setup_skills_routes(skills_manager: SkillsManager) -> APIRouter:
             raise HTTPException(404, "Skill not found")
         _verify_owner(match, user)
 
-        updates = body.dict(exclude_none=True)
+        updates = body.model_dump(exclude_none=True)
         if not updates:
             return {"ok": True}
         if not request_is_a_person(request):
