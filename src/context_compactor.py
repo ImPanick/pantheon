@@ -521,17 +521,18 @@ def trim_for_context(messages: List[Dict], context_length: int, reserve_tokens: 
             while n < len(earlier) and estimate_tokens(essential_system + protected_msgs + shaped) > target:
                 n += 1
                 shaped = _stub_turn_results(current, n)
+            # Only when that is what saves the instructions (`B1425`'s rule):
+            # if they are cut either way, the results stay as they were sent and
+            # the steps below give way as before (`B2130`; a turn resumed after
+            # an approval was sent its first result as the notice and its
+            # instructions cut all the same).
             if n:
                 fitted = _sanitize_tool_messages(essential_system + protected_msgs + shaped)
-                if estimate_tokens(fitted) <= budget or n == len(earlier):
+                if estimate_tokens(fitted) <= budget:
                     if hold is not None:
                         hold["results_left_out"] = int(hold.get("results_left_out") or 0) + n
-                if estimate_tokens(fitted) <= budget:
                     logger.info("Left out %d earlier tool result(s) of this turn so the instructions fit uncut", n)
                     return fitted
-                stubbed_ids = {id(m) for m in earlier[:n]}
-                convo_msgs = [dict(m, content=RESULT_LEFT_OUT_NOTICE.format(chars=len(m["content"])))
-                              if id(m) in stubbed_ids else m for m in convo_msgs]
 
     # `B1651`. Then the person's message gives way, before the instructions do.
     # Measured through `/api/chat_stream` (`B1572`'s turn: an Agent-mode turn

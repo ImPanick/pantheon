@@ -82,3 +82,19 @@ def test_a_long_turn_keeps_its_instructions_while_its_earlier_results_give_way()
         if len(firsts) > 1 and firsts[-1] != firsts[-2]:
             moves += 1
     assert moves <= 5, f"the beginning moved {moves} times in 15 rounds"
+
+
+def test_results_stay_whole_when_leaving_them_out_would_not_save_the_instructions():
+    """`B2130`. If the instructions are cut either way, the turn's earlier
+    results are sent as they were and the older steps give way as before:
+    a turn resumed after an approval had its first result sent as the notice
+    and its instructions cut all the same."""
+    prompt = {"role": "system", "content": "Rules of the house. " * 450}
+    msgs = [prompt] + _long._round(3)
+    budget = estimate_tokens([prompt]) + 1000    # too small for the prompt with any result
+    hold: dict = {}
+    sent = trim_for_context(msgs, budget, hold=hold)
+    assert PROMPT_CUT_NOTICE in sent[0]["content"], "this budget should cut the prompt"
+    assert not any(str(m.get("content", "")).startswith("[An earlier tool result")
+                   for m in sent), "a result was left out and the instructions cut anyway"
+    assert not hold.get("results_left_out")

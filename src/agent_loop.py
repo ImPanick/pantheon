@@ -9137,8 +9137,11 @@ async def stream_agent_loop(
     # yield) and emitted once by the generator below.
     _injected_skills_seen: list = []
 
-    def _trim_route_request_messages(candidate_url, candidate_model, route_messages):
-        """Apply the candidate route's own context budget to its request."""
+    def _trim_route_request_messages(candidate_url, candidate_model, route_messages,
+                                     extra_reserve_tokens: int = 0):
+        """Apply the candidate route's own context budget to its request.
+        `extra_reserve_tokens` is room kept for a message the caller adds after
+        the trim (the salvage's instruction, `B2130`)."""
 
         def _without_protection(items):
             # Route markers remain internal for later prompt rebuilding;
@@ -9165,7 +9168,7 @@ async def stream_agent_loop(
                 _note_memories(route_messages, route_messages)   # `B1650`
                 return _without_protection(route_messages)
             before_trim_tokens = estimate_tokens(route_messages)
-            reserve_tokens = min(max(max_tokens or 1024, 512), 2048)
+            reserve_tokens = min(max(max_tokens or 1024, 512), 2048) + max(int(extra_reserve_tokens), 0)
             # `P20-04`. `estimate_tokens` counts text, so a picture is neither
             # its base64 nor anything at all to it — right for the context
             # wheel, which lists a picture as not counted (`B892`), and blind
@@ -11266,7 +11269,7 @@ async def stream_agent_loop(
                 _synth = ""
                 try:
                     from src.llm_core import llm_call_async
-                    _synth_messages = list(messages) + [{
+                    _synth_instruction = {
                         "role": "user",
                         "content": (
                             "Using ONLY the information already gathered above, write "
@@ -11275,7 +11278,7 @@ async def stream_agent_loop(
                             "directly. If some data couldn't be fetched, just work with "
                             "what you have and note what's missing in one short line."
                         ),
-                    }]
+                    }
                     # `B1091`. Shaped and trimmed as every round is,
                     # for the candidate it goes to (`_candidate_request`): the
                     # tool pictures as this model can take them (`P20-04`),
@@ -11284,10 +11287,20 @@ async def stream_agent_loop(
                     # rounds were trimmed to it and the salvage sent 80,975
                     # characters the server refused outright (20,244 tokens of
                     # prompt), so the turn ended on the apology below.
+                    #
+                    # `B2130`. The trim runs on what the turn gathered and the
+                    # instruction is added after it, with room kept for it: the
+                    # trimmer keeps the person's latest message and gives way
+                    # around it, and the instruction, sent as the last `user`
+                    # message, was taken for theirs, so the person's own
+                    # request went first as an earlier turn (`B2126`).
+                    _synth_gathered = list(messages)
                     _synth_messages = _trim_route_request_messages(
                         endpoint_url, model,
-                        tool_result_images.in_words(_synth_messages) if _pictures_refused
-                        else await tool_result_images.for_model(_synth_messages, model, endpoint_url))
+                        tool_result_images.in_words(_synth_gathered) if _pictures_refused
+                        else await tool_result_images.for_model(_synth_gathered, model, endpoint_url),
+                        extra_reserve_tokens=estimate_tokens([_synth_instruction]),
+                    ) + [_synth_instruction]
                     # `B1050`. Asked of the candidate that answered: once a
                     # fallback answers, the pin rebinds `endpoint_url`, `model`
                     # and `headers` to it, so the call already went there — but
