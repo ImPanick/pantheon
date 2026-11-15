@@ -338,9 +338,9 @@ def test_the_trim_gate_reserves_room_for_each_picture_it_sends(station, monkeypa
     reserves = []
     real = context_compactor.trim_for_context
 
-    def recording(messages, budget, reserve_tokens=512):
+    def recording(messages, budget, reserve_tokens=512, **kwargs):
         reserves.append((images.count_image_parts(messages), reserve_tokens))
-        return real(messages, budget, reserve_tokens=reserve_tokens)
+        return real(messages, budget, reserve_tokens=reserve_tokens, **kwargs)
 
     monkeypatch.setattr(context_compactor, "trim_for_context", recording)
     steps = [{"action": "wait", "ms": n} for n in range(1, 6)]

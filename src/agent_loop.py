@@ -9117,6 +9117,7 @@ async def stream_agent_loop(
     # turn); `left_out` is every trim's, in `trim_left_out`'s words; `said` is
     # how much of it a `context_trimmed` frame has carried.
     _turn_trim: Dict[str, Any] = {}
+    _turn_trim_holds: Dict[tuple, Dict[str, Any]] = {}   # `B2126`
     # `B1650`. The saved memories this turn's requests were built with, and the
     # ones a request carried after its trim: a memory no request carried was
     # never used, and the `context_trimmed` notice names it so the route takes
@@ -9180,6 +9181,9 @@ async def stream_agent_loop(
                 route_messages,
                 effective_budget,
                 reserve_tokens=reserve_tokens,
+                # `B2126`: one record per route for the turn, so a cut, once
+                # made, stays where it is for the rounds after.
+                hold=_turn_trim_holds.setdefault((candidate_url, candidate_model), {}),
             )
             after_trim_tokens = estimate_tokens(trimmed_messages)
             _note_memories(route_messages, trimmed_messages)   # `B1650`

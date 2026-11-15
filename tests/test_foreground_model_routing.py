@@ -3410,7 +3410,7 @@ def test_agent_fallback_request_uses_candidate_context_budget(
     def fake_compute(soft_budget, candidate_context, explicit, hard_max=None):
         return candidate_context
 
-    def fake_trim(messages, effective_budget, reserve_tokens=0):
+    def fake_trim(messages, effective_budget, reserve_tokens=0, **_):
         trim_budgets.append(effective_budget)
         if effective_budget != 100:
             return list(messages)
@@ -3885,7 +3885,10 @@ async def test_each_candidate_measures_a_shaping_step_against_its_own_boundary(m
         "messages_before": 10, "messages_after": 6,
         "tokens_before": 1000, "tokens_after": 600,
     }
-    assert state["trim_stats"][0] == {
+    # `B2126`: the stub's cut leaves out turns, which the record now names
+    # (`left_out`); the figures are what this test measures.
+    figures = {k: v for k, v in state["trim_stats"][0].items() if k != "left_out"}
+    assert figures == {
         "messages_before": 6, "messages_after": 4,
         "tokens_before": 600, "tokens_after": 400,
     }

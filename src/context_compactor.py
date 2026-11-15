@@ -288,7 +288,46 @@ PROMPT_CUT_CHARS = 2000
 PROMPT_CUT_NOTICE = "\n[System prompt truncated for context limits]"
 
 
-def trim_for_context(messages: List[Dict], context_length: int, reserve_tokens: int = 512) -> List[Dict]:
+#: `B2126`. Where a held trim brings the request down to, as a share of the
+#: budget, so the next rounds' results fit without moving the cut again.
+TRIM_HOLD_WATERMARK = 0.7
+
+
+def _is_plain_turn(m: Dict) -> bool:
+    """`B2126`. A turn of the chat itself: not a system message, not one the
+    turn is built around (`_protected`), and not context a source framed into
+    the conversation (memory, references, attachments), which keep the
+    trimmer's old rule (`B1425`, `B1651`)."""
+    if m.get("role") == "system" or m.get("_protected"):
+        return False
+    if (m.get("metadata") or {}).get("source"):
+        return False
+    try:
+        from src.prompt_security import is_framed_context_content
+        if is_framed_context_content(m.get("content")):
+            return False
+    except Exception:
+        pass
+    return True
+
+
+def _drop_leading_prior(messages: List[Dict], count: int) -> List[Dict]:
+    """`B2126`. `messages` without the first `count` plain turns before the
+    person's latest message; never that message or anything after it."""
+    convo = [m for m in messages if m.get("role") != "system" and not m.get("_protected")]
+    theirs = _the_persons_message(convo)
+    drop, seen = set(), 0
+    for m in messages:
+        if m is theirs or seen >= count:
+            break
+        if _is_plain_turn(m):
+            drop.add(id(m))
+            seen += 1
+    return _sanitize_tool_messages([m for m in messages if id(m) not in drop])
+
+
+def trim_for_context(messages: List[Dict], context_length: int, reserve_tokens: int = 512,
+                     *, hold: Optional[Dict[str, Any]] = None) -> List[Dict]:
     """Trim system messages to fit within context_length.
 
     For small-context models, progressively strips:
@@ -299,8 +338,18 @@ def trim_for_context(messages: List[Dict], context_length: int, reserve_tokens: 
     system prompt is cut. A compaction summary is kept with the leading
     prompt, and the turns are trimmed around the person's latest message,
     which is cut last and never dropped (`B1943`).
+
+    `B2126`. Turns before the person's latest message go before the
+    instructions or the person's own words are cut. ``hold`` is the agent
+    loop's per-turn record: when given, the turns dropped and the extra system
+    messages kept are decided once and kept for the rounds after, and a drop
+    goes down to `TRIM_HOLD_WATERMARK` of the budget rather than just under it,
+    so the request keeps the same beginning, and a local server keeps its
+    cached prefix, until the turn outgrows the room again.
     """
     budget = context_length - reserve_tokens
+    if hold is not None and hold.get("prior_dropped"):
+        messages = _drop_leading_prior(messages, int(hold["prior_dropped"]))
     used = estimate_tokens(messages)
     if used <= budget:
         return messages
@@ -342,6 +391,13 @@ def trim_for_context(messages: List[Dict], context_length: int, reserve_tokens: 
     essential_system = (_non_primer[:1] if _non_primer else []) + _primers + _summaries
     extra_system = _non_primer[1:]
 
+    # `B2126`. Extras the turn already settled stay settled: an extra that
+    # comes back or goes away mid-turn changes the system prompt itself.
+    if hold is not None and "extras" in hold:
+        extra_system = extra_system[:int(hold["extras"])]
+        essential_system = essential_system + extra_system
+        extra_system = []
+
     # Try dropping extra system messages one by one (from the end)
     trimmed = essential_system + convo_msgs
     if estimate_tokens(trimmed) <= budget:
@@ -353,7 +409,11 @@ def trim_for_context(messages: List[Dict], context_length: int, reserve_tokens: 
                 result.append(msg)
             else:
                 break
+        if hold is not None and "extras" not in hold:
+            hold["extras"] = len(result) - len(essential_system)
         return _sanitize_tool_messages(result + protected_msgs + convo_msgs)
+    if hold is not None and "extras" not in hold:
+        hold["extras"] = 0
 
     # `B1425`. Before the instructions every tool is called by are cut, shed the
     # skills block. It is reference — a catalogue and matched procedures, each
@@ -374,6 +434,38 @@ def trim_for_context(messages: List[Dict], context_length: int, reserve_tokens: 
             logger.info("Shed %d reference message(s) so the system prompt fits uncut",
                         len(shed_ids))
             return _sanitize_tool_messages(essential_system + protected_msgs + without)
+
+    # `B2126`. Then the turns before the person's latest message, oldest
+    # first, before their message or the instructions are cut. Measured on
+    # `fix/agent-lean-turn` (a 9,000-character prompt, a 60-message chat, one
+    # 6,000-character tool result a round, a 20,000-token budget): the prompt
+    # was cut to 2,045 characters while every old turn was still sent, and the
+    # first message after it moved every round, so a local server re-read the
+    # whole request each time.
+    kept_convo = [m for m in convo_msgs if id(m) not in shed_ids]
+    theirs_now = _the_persons_message(kept_convo)
+    if theirs_now is not None:
+        at = next(i for i, m in enumerate(kept_convo) if m is theirs_now)
+        prior = [m for m in kept_convo[:at] if _is_plain_turn(m)]
+        if prior:
+            target = budget if hold is None else int(budget * TRIM_HOLD_WATERMARK)
+            dropped_ids: set = set()
+
+            def _without_dropped():
+                return [m for m in kept_convo if id(m) not in dropped_ids]
+
+            while len(dropped_ids) < len(prior) and estimate_tokens(
+                    essential_system + protected_msgs + _without_dropped()) > target:
+                dropped_ids.add(id(prior[len(dropped_ids)]))
+            fitted = _sanitize_tool_messages(essential_system + protected_msgs + _without_dropped())
+            done = estimate_tokens(fitted) <= budget
+            if hold is not None and dropped_ids and (done or len(dropped_ids) == len(prior)):
+                hold["prior_dropped"] = int(hold.get("prior_dropped") or 0) + len(dropped_ids)
+            if done:
+                logger.info("Dropped %d earlier message(s) so the instructions fit uncut",
+                            len(dropped_ids))
+                return fitted
+            convo_msgs = [m for m in convo_msgs if id(m) not in dropped_ids]
 
     # `B1651`. Then the person's message gives way, before the instructions do.
     # Measured through `/api/chat_stream` (`B1572`'s turn: an Agent-mode turn
@@ -824,6 +916,10 @@ TRIM_LEFT_OUT = (
 #: fit — the trim keeps its beginning and end (`PASTED_MESSAGE_CUT_NOTICE`).
 MESSAGE_CUT_WORDS = "the middle of your message"
 
+#: `B2126`. Said when turns before the person's latest message were left out
+#: so the instructions and their message fit whole (`B1572`: name the cut).
+EARLIER_TURNS_WORDS = "the earlier part of this chat"
+
 #: `B1651`. Said when the leading system message — the instructions the model
 #: works by, an agent's tool rules among them — was cut to its first
 #: `PROMPT_CUT_CHARS` to fit. It was cut and nothing said so.
@@ -887,6 +983,14 @@ def trim_left_out(before: List[Dict], after: List[Dict]) -> List[str]:
         for prefix, words in TRIM_LEFT_OUT:
             if source.startswith(prefix) and words not in said:
                 said.append(words)
+    # `B2126`. Turns before the person's latest message that were left out.
+    theirs_before = _the_persons_message(before)
+    for message in before or []:
+        if message is theirs_before:
+            break
+        if id(message) not in kept and _is_plain_turn(message):
+            said.append(EARLIER_TURNS_WORDS)
+            break
     # `B1943`. A tool result the trim cut: a copy that carries the cut's notice.
     sent = {id(message) for message in before or []}
     results_cut = sum(1 for message in after or []
