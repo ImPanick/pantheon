@@ -539,7 +539,7 @@ class WorkstationClient:
         host = parts.hostname or ""
         if parts.scheme == "https":
             pin, source, raw = resolve_pin() if self._tls_pin_override is None else (
-                normalise_pin(self._tls_pin_override), SOURCE_ENV, self._tls_pin_override)  # Endpoint-specific pins never borrow the desktop pin.
+                normalise_pin(self._tls_pin_override), SOURCE_ENVIRONMENT, self._tls_pin_override)  # Endpoint-specific pins never borrow the desktop pin.
             self._pin_source = source
             if raw and pin is None:
                 where = ("The certificate fingerprint in Settings → Workstation"

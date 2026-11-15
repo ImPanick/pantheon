@@ -1170,3 +1170,54 @@ def test_closing_takes_the_live_desktop_down_with_the_window(sandbox):
     assert out["gone"] is True and out["inBody"] is False
     assert out["live"]["client"] == "" and out["live"]["frame"] is None
     assert out["asked"] == 1
+
+
+# ── whose pointer is over the live desktop ───────────────────────────────────
+# KasmVNC's client hides the page's cursor wherever it has the pointer. The
+# frame is given the pointer (`.wsv-driving`, read by `style.css`) only while
+# the person holds the screen; watching, they keep their own cursor. The
+# cascade itself is pinned in `test_the_pointer_follows_take_control_css.py`
+# and, in Chromium, `test_the_pointer_follows_take_control_in_a_browser.py`.
+
+def test_the_live_desktop_takes_the_pointer_only_while_the_person_holds_it(sandbox):
+    out = _live(sandbox, """
+        streams();
+        await open();
+        const s = () => mod._test.win().screen.classList.contains('wsv-driving');
+        const watching = s();
+        await take();
+        const holding = s();
+        await mod.handBack();
+        await settle(20);
+        const back = s();
+        // Taken over from another tab, then handed back there: it follows
+        // the holder as it is read, with no press here.
+        server.holder = 'person';
+        await settle(150);
+        const elsewhere = s();
+        server.holder = 'agent';
+        await settle(150);
+        out({ watching, holding, back, elsewhere, again: s(), frames: live().frame ? 1 : 0 });
+    """)
+    assert out["watching"] is False, "the client had the pointer while the person only watched"
+    assert out["holding"] is True, "the client did not get the pointer when the person took over"
+    assert out["back"] is False, "the client kept the pointer after the person handed back"
+    assert out["elsewhere"] is True and out["again"] is False
+    assert out["frames"] == 1, "flipping control reloaded the live desktop"
+
+
+def test_pictures_and_a_watched_screen_never_hand_the_pointer_to_a_client(sandbox):
+    out = _live(sandbox, """
+        await open();
+        await take();
+        const pictures = mod._test.win().screen.classList.contains('wsv-driving');
+        await mod.handBack();
+        server.desktop = (url) => ({ kind: 'kasmvnc', holder: 'person', sentence: 'x',
+          watching: url.includes('person='), client: '/api/workstation/desktop/client/vnc.html' });
+        server.holder = 'person';
+        mod.watchPerson('bob');
+        await settle(150);
+        out({ pictures, watched: mod._test.win().screen.classList.contains('wsv-driving') });
+    """)
+    assert out["pictures"] is False
+    assert out["watched"] is False, "another person's screen took the watcher's pointer"

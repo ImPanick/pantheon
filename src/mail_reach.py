@@ -21,10 +21,16 @@ and the narrowest answer wins:
   and the `metadata` names), multicast, reserved, unspecified and `0/8` — the
   addresses `outbound_fetch._always_blocked` refuses every fetch, loopback aside;
 * **only with `can_reach_private_mail`** (`core/auth.py`; every admin holds it,
-  and an admin may grant it to a member in Settings → Users): this machine —
-  loopback and every address this host answers on — the private ranges
-  (RFC 1918, Tailscale's CGNAT `100.64/10`, ULA `fc00::/7`, `outbound_fetch`'s
-  `_LAN_NETWORKS` plus whatever CPython calls private), and any port;
+  and an admin may grant it to a member in Settings → Users): the private
+  ranges (RFC 1918, Tailscale's CGNAT `100.64/10`, ULA `fc00::/7`,
+  `outbound_fetch`'s `_LAN_NETWORKS` plus whatever CPython calls private), and
+  any port;
+* **only for whoever runs this instance** (`can_run_instance`: every admin,
+  and anyone an admin grants it, `B683`)**:** this machine — loopback and every
+  address this host answers on. The grant was the key to both until the 2026-11-11 audit, so a
+  member granted it for the house mail server could aim an account at
+  `127.0.0.1` on any port: Pantheon's own database, model servers, the
+  Android worker. Whoever runs the instance already runs those;
 * **everyone else:** a public address, on a mail port (`MAIL_PORTS`).
 
 An account nobody owns (`owner` empty: a row from before accounts had owners,
@@ -113,21 +119,27 @@ class MailHostRefused(OSError):
 
 @dataclass(frozen=True)
 class Reach:
-    """What a connection may reach. `private`: this machine, the private
-    ranges and any port; without it, public addresses on `MAIL_PORTS`."""
+    """What a connection may reach. `private`: the private ranges and any
+    port; without it, public addresses on `MAIL_PORTS`. `machine`: this
+    machine too (loopback and this host's own addresses), only with
+    `private`."""
     private: bool = False
+    machine: bool = False
 
 
 MEMBER = Reach(private=False)
-PRIVATE = Reach(private=True)
+#: A member an admin granted `PRIVILEGE` to.
+LAN = Reach(private=True, machine=False)
+#: Whoever runs this instance (`runs_instance`), or the install's own account.
+PRIVATE = Reach(private=True, machine=True)
 
 
 # ---------------------------------------------------------------------------
 # Who may reach what
 # ---------------------------------------------------------------------------
 
-def _holds(owner: str) -> bool:
-    """`owner` holds `PRIVILEGE`, resolved the way every privilege is
+def _holds(owner: str, key: str = PRIVILEGE) -> bool:
+    """`owner` holds `key` (`PRIVILEGE` unless named), resolved the way every privilege is
     (`src.auth_helpers.resolve_privilege`), as `workstation_access.may_use`
     asks it. An unanswerable question is a no."""
     try:
@@ -137,21 +149,37 @@ def _holds(owner: str) -> bool:
             return False
         from src.auth_helpers import resolve_privilege
         privs = auth.get_privileges(owner) or {}
-        return resolve_privilege(privs if isinstance(privs, dict) else {}, PRIVILEGE) is True
+        return resolve_privilege(privs if isinstance(privs, dict) else {}, key) is True
     except Exception as exc:  # noqa: BLE001 — a no, said in the log
-        logger.warning("could not resolve %s for %r: %s", PRIVILEGE, owner, exc)
+        logger.warning("could not resolve %s for %r: %s", key, owner, exc)
         return False
+
+
+def runs_instance(owner: str) -> bool:
+    """`owner` runs this instance: holds `core.auth.OPERATOR_PRIVILEGE`, which
+    every admin holds and an admin may grant (`B683`). Asked through the one
+    resolver, not as a further admin decision (`.pantheon/check-auth-map.py`
+    rule C, `B955`). This machine, the install's own mailbox and the mail
+    settings every mailbox reads are this tier's."""
+    from core.auth import OPERATOR_PRIVILEGE
+    return _holds(owner, OPERATOR_PRIVILEGE)
 
 
 def reach_for(*owners: Optional[str]) -> Reach:
     """The narrowest reach of everyone named: an account's owner and whoever
     asks for it. An empty name is the install's own account and narrows
-    nothing; any named person without `PRIVILEGE` makes it `MEMBER`."""
+    nothing; any named person without `PRIVILEGE` makes it `MEMBER`, and any
+    who holds it but does not run this instance makes it `LAN`."""
+    reach = PRIVATE
     for owner in owners:
         name = str(owner or "").strip()
-        if name and not _holds(name):
+        if not name:
+            continue
+        if not _holds(name):
             return MEMBER
-    return PRIVATE
+        if not runs_instance(name):
+            reach = LAN
+    return reach
 
 
 # ---------------------------------------------------------------------------
@@ -229,14 +257,16 @@ def _address_refusal(addr: ipaddress._BaseAddress, reach: Reach) -> Optional[str
     kind = _kind(addr)
     if kind == _NEVER:
         return f"{addr} is never reached (link-local, metadata, multicast or reserved)"
-    if reach.private:
+    if reach.machine:
         return None
     if kind == _MACHINE:
         return f"{addr} is this machine"
-    if kind == _PRIVATE:
-        return f"{addr} is on a private network"
     if _is_this_host(addr):
         return f"{addr} is one of this machine's own addresses"
+    if reach.private:
+        return None
+    if kind == _PRIVATE:
+        return f"{addr} is on a private network"
     return None
 
 
@@ -278,7 +308,7 @@ def _typed_refusal(host, port, reach: Reach) -> Tuple[str, int, Optional[str]]:
         return name, number, f"port {number} is not a mail port"
     if name in _METADATA_NAMES:
         return name, number, f"{name} is a cloud metadata name"
-    if not reach.private and (name in _LOOPBACK_NAMES or name.endswith(".localhost")):
+    if not reach.machine and (name in _LOOPBACK_NAMES or name.endswith(".localhost")):
         return name, number, f"{name} is this machine"
     addr = _literal(name)
     if addr is not None:

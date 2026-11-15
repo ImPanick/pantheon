@@ -185,6 +185,7 @@ This makes the **Merge** button refuse to work until the gating checks pass.
 5. Enable **Require status checks to pass before merging**.
 6. In the search box that appears, add these checks by name:
    - `Python syntax (compileall)`
+   - `Python lint (ruff, names that crash)`
    - `JS syntax (node --check)`
    - `gitleaks`
    - `actionlint`
@@ -193,7 +194,7 @@ This makes the **Merge** button refuse to work until the gating checks pass.
    - `dependency-review (PR gate)`
    - `pip-audit (blocking)`
 
-   The first two come from the correctness CI (`ci.yml`); the rest are this
+   The first three come from the correctness CI (`ci.yml`); the rest are this
    security suite.
 
    > **`JS syntax (node --check)` was a required check that checked nothing on
