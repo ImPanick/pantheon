@@ -385,8 +385,18 @@ class _ProbeHandler(BaseHTTPRequestHandler):
                 "data: " + json.dumps({
                     "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
                 }) + "\n\n",
-                "data: [DONE]\n\n",
             ]
+            # `B2115`. A server that reports usage after the last delta, the
+            # way LM Studio and llama.cpp do with `include_usage`; off unless a
+            # test sets `usage` (and optionally `timings`).
+            usage = getattr(self.server, "usage", None)
+            if usage:
+                extra = {"choices": [], "usage": usage}
+                timings = getattr(self.server, "timings", None)
+                if timings:
+                    extra["timings"] = timings
+                chunks.append("data: " + json.dumps(extra) + "\n\n")
+            chunks.append("data: [DONE]\n\n")
             payload = "".join(chunks).encode()
             self.send_response(200)
             self.send_header("Content-Type", "text/event-stream")
@@ -409,6 +419,8 @@ class ProbeEndpoint:
         self._srv = ThreadingHTTPServer(("127.0.0.1", port), _ProbeHandler)
         self._srv.recorded = []            # type: ignore[attr-defined]
         self._srv.reply = "Nothing to do." # type: ignore[attr-defined]
+        self._srv.usage = None             # type: ignore[attr-defined]  # `B2115`
+        self._srv.timings = None           # type: ignore[attr-defined]
         self._thread = threading.Thread(target=self._srv.serve_forever, daemon=True)
         self._thread.start()
 

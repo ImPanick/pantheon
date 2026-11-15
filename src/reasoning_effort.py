@@ -45,7 +45,13 @@ from typing import Dict, Iterator, List, Optional
 
 AUTO = "auto"
 LEVELS = ("low", "medium", "high", "extra", "max")
+# `B2116`. Thinking switched off, for a model whose server has a real switch.
+# Not a rung of the ladder above: Low on a Qwen3 hybrid still turns thinking
+# ON (the switch has no depth), so the only way to skip the thinking was not
+# offered at all. Offered per model, only where something reads it.
+OFF = "off"
 LEVEL_LABELS = {
+    "off": "Off",
     "low": "Low",
     "medium": "Medium",
     "high": "High",
@@ -63,9 +69,10 @@ def normalize_level(raw: object) -> str:
     """A level from a request, or `AUTO` for anything unknown or empty."""
     value = str(raw or "").strip().lower()
     aliases = {"med": "medium", "xhigh": "extra", "extra-high": "extra",
-               "extra_high": "extra", "maximum": "max", "default": AUTO}
+               "extra_high": "extra", "maximum": "max", "default": AUTO,
+               "none": OFF, "no_think": OFF, "no-think": OFF}
     value = aliases.get(value, value)
-    return value if value in LEVELS else AUTO
+    return value if value in LEVELS or value == OFF else AUTO
 
 
 _ULTRATHINK = re.compile(r"(?<![\w-])ultrathink(?![\w-])", re.IGNORECASE)
@@ -228,6 +235,28 @@ def _needs_instruction(mech: str, level: str, native: Optional[str]) -> bool:
     return _RANK[level] > _RANK["high"]
 
 
+def has_off_switch(url: str, model: str) -> bool:
+    """`B2116`. Whether Off reaches this model as a switch, not as words.
+
+    A Qwen3 hybrid reads ``enable_thinking`` / Ollama's ``think`` / the
+    ``/no_think`` soft switch. Another thinking model served by a self-hosted
+    server (LM Studio, llama.cpp, vLLM, Ollama) is sent the same template
+    switch, which the families that have one read; a cloud API is not, because
+    a strict one refuses a field it does not know."""
+    mech = mechanism(url, model)
+    if mech == "qwen3_switch":
+        return True
+    if mech == "instruction":
+        try:
+            from src.llm_core import (_is_ollama_native_url, _is_ollama_openai_compat_url,
+                                      _is_self_hosted_openai_compatible)
+            return bool(_is_ollama_native_url(url) or _is_ollama_openai_compat_url(url)
+                        or _is_self_hosted_openai_compatible(url))
+        except Exception:
+            return False
+    return False
+
+
 def effort_support(url: str, model: str) -> Dict[str, object]:
     """What the composer shows for this model: whether to show the selector
     and, per level, how it reaches the model (said to the person on hover)."""
@@ -236,12 +265,25 @@ def effort_support(url: str, model: str) -> Dict[str, object]:
         return {"supported": False, "levels": [], "mechanism": None}
     native = _native_values(mech, model)
     levels = []
+    if has_off_switch(url, model):
+        levels.append({
+            "id": OFF, "label": LEVEL_LABELS[OFF], "native": "thinking off",
+            "instruction": False,
+            "how": ("Thinking switched off on the server: the model answers "
+                    "without reasoning first." if mech == "qwen3_switch" else
+                    "Asks the server to switch thinking off; a model whose "
+                    "template has no switch still thinks."),
+        })
     for lvl in LEVELS:
         value = native.get(lvl)
         words = _needs_instruction(mech, lvl, value)
         if mech == "qwen3_switch":
-            how = ("Thinking switched on." if lvl == "medium"
-                   else "Thinking switched on, plus a note on how hard to think.")
+            # `B2116`. Said as it is: this switch is on or off, so every level
+            # here turns thinking ON and the level itself is only words.
+            how = ("Thinking switched on, at the model's usual depth." if lvl == "medium"
+                   else f"Thinking switched on; \"{LEVEL_LABELS[lvl]}\" is only a "
+                        "written note, because this model's switch has no depth."
+                        + (" Choose Off to skip thinking." if lvl == "low" else ""))
         elif value and words:
             how = f"Model set to {value} (its highest), plus a note to think harder."
         elif value:
@@ -281,6 +323,12 @@ def instruction_for(level: str) -> str:
 def apply_to_messages(messages: List[Dict], url: str, model: str, level: str) -> List[Dict]:
     """The messages with this level's written instruction (and Qwen3's
     ``/think`` switch) added to the system prompt. Returns a new list."""
+    if level == OFF:
+        # `B2116`. The Qwen3 soft switch, beside the server-side one, because
+        # a server that ignores `chat_template_kwargs` still renders the words.
+        if mechanism(url, model) != "qwen3_switch":
+            return messages
+        return _add_to_system(messages, "/no_think")
     if level not in LEVELS:
         return messages
     mech = mechanism(url, model)
@@ -296,7 +344,10 @@ def apply_to_messages(messages: List[Dict], url: str, model: str, level: str) ->
             parts.append(text)
     if not parts:
         return messages
-    addition = "\n\n".join(parts)
+    return _add_to_system(messages, "\n\n".join(parts))
+
+
+def _add_to_system(messages: List[Dict], addition: str) -> List[Dict]:
     out = list(messages or [])
     if out and out[0].get("role") == "system" and isinstance(out[0].get("content"), str):
         first = dict(out[0])
@@ -309,6 +360,14 @@ def apply_to_messages(messages: List[Dict], url: str, model: str, level: str) ->
 
 def apply_to_payload(payload: Dict, url: str, model: str, level: str) -> Dict:
     """Write the level's native field into an already-built request body."""
+    if level == OFF:
+        if has_off_switch(url, model):
+            from src.llm_core import _turn_thinking_off
+            _turn_thinking_off(payload, url)
+            from src.llm_core import _is_ollama_native_url
+            if _is_ollama_native_url(url):
+                payload["think"] = False
+        return payload
     if level not in LEVELS:
         return payload
     mech = mechanism(url, model)

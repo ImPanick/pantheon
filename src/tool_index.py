@@ -1220,8 +1220,19 @@ def plan_tool_suite(
     domain_order: Sequence[str] = SUITE_DOMAIN_ORDER,
     keep: Iterable[str] = (),
     local_cap: int = 0,
+    fill: bool = False,
 ) -> ToolSuite:
     """Decide this turn's tool set: the whole suite, or a deterministic part.
+
+    `B2114`. A part is what the turn asked for — the pinned names, the
+    request's keyword picks, its intent domains' tools, the connected MCP tools
+    (the owner's own servers, 2026-10-14) and `keep`. The walk used to go on
+    through the built-in "everything else" until the room was spent, so a local
+    model's 8,000-token room was always spent: measured on the owner's desktop (2026-11-15), "a
+    name for a cat" shipped 22 tool schemas nobody asked for and a 12,008-token
+    first request. The rest is one `find_tools` call away, by name, by words
+    or by area, so nothing is out of reach; it is only not pre-paid. `fill=True`
+    restores the old walk for a caller that wants the room used.
 
     `B1755`. `keep` is the set this conversation was offered last turn. When it
     still fits, this turn's set is `keep` plus whatever the request pins and
@@ -1290,6 +1301,15 @@ def plan_tool_suite(
             pool, pinned=pinned_in, mcp=mcp, keyword_picks=keyword_picks,
             domains=domains, domain_map=domain_map, domain_order=domain_order,
         )
+        if not fill:
+            # Owner-registered MCP servers stay in: connecting one is the
+            # person saying they want it on hand (the owner, 2026-10-14:
+            # *"even with its own MCP's provided"*).
+            asked_for = (set(pinned_in) | {str(n) for n in (keyword_picks or ())}
+                         | {str(n) for n in (mcp or ())})
+            for domain in domains or ():
+                asked_for |= {str(n) for n in ((domain_map or {}).get(str(domain)) or ())}
+            order = [name for name in order if name in asked_for]
         for name in order:
             price = int(cost(name) or 0)
             if name in pinned_in:

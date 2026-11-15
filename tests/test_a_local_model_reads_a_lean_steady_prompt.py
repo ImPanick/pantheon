@@ -68,8 +68,11 @@ _POOL = {f"tool_{i:02d}" for i in range(30)} | {FIND_TOOLS, "ask_user"}
 
 
 def _plan(pinned=(), keep=(), room=1000, local_cap=1000):
+    # These pin `keep` against the room, so the room is filled as it was when
+    # they were written; `B2114`'s lean default is pinned in
+    # `test_an_agent_turn_costs_what_it_asked_for.py`.
     return plan_tool_suite(_POOL, cost=lambda n: 100, room=room, window=262_144,
-                           pinned=pinned, keep=keep, local_cap=local_cap)
+                           pinned=pinned, keep=keep, local_cap=local_cap, fill=True)
 
 
 def test_a_partial_turn_always_carries_find_tools():
@@ -195,12 +198,25 @@ def test_a_local_model_is_sent_a_fraction_of_the_suite(conversations):
     assert FIND_TOOLS in {t["function"]["name"] for t in lean["tools"]}
 
 
+def _names(body):
+    return [t["function"]["name"] for t in body.get("tools") or []]
+
+
 def test_every_turn_of_a_local_conversation_sends_the_same_prefix(conversations):
+    """`B2114` made the first set what the request needs, not the whole room,
+    so a turn that needs something new (the weather: `web_search`) adds it and
+    drops nothing; a turn that needs nothing new sends the previous turn's
+    system prompt and tools byte for byte."""
     bodies = conversations["lean"]
-    first = bodies[0]
-    for body in bodies[1:]:
-        assert body["messages"][0] == first["messages"][0]
-        assert body["tools"] == first["tools"]
+    for before, body in zip(bodies, bodies[1:]):
+        if set(_names(body)) == set(_names(before)):
+            assert body["messages"][0] == before["messages"][0]
+            assert body["tools"] == before["tools"]
+        else:
+            assert set(_names(body)) > set(_names(before))
+    assert set(_names(bodies[1])) > set(_names(bodies[0]))
+    assert bodies[2]["messages"][0] == bodies[1]["messages"][0]
+    assert bodies[2]["tools"] == bodies[1]["tools"]
 
 
 def test_find_tools_makes_a_withheld_tool_callable_next_round(tmp_path):

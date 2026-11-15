@@ -29,6 +29,12 @@ from src.foreground_model_routing import (
 )
 
 
+def _without_request(buckets):
+    """`B2115` adds each round's `request` record (why it ran, what it carried)
+    to its bucket; the cost accounting these tests pin is the rest."""
+    return [{k: v for k, v in b.items() if k != "request"} for b in buckets]
+
+
 @pytest.fixture(autouse=True)
 def _no_endpoint_answers(monkeypatch):
     """`B1520`: the model's context-window lookups fail as an unreachable host
@@ -2757,7 +2763,7 @@ def test_direct_low_signal_fallback_estimates_winning_route_prompt(
     assert accounted["model"] == backup[1]
     assert accounted["endpoint_id"] == "backup"
     assert accounted["input_tokens"] == 99
-    assert accounted["usage_buckets"] == [{
+    assert _without_request(accounted["usage_buckets"]) == [{
         "round": 1,
         "model": backup[1],
         "endpoint_id": "backup",
@@ -3000,7 +3006,7 @@ def test_agent_metrics_attribute_usage_to_each_answering_route(monkeypatch):
     assert metrics["input_tokens"] == 300
     assert metrics["output_tokens"] == 30
     assert metrics["usage_source"] == "real"
-    assert metrics["usage_buckets"] == [
+    assert _without_request(metrics["usage_buckets"]) == [
         {
             "round": 1,
             "model": "selected-alias",
@@ -3271,7 +3277,7 @@ def test_agent_terminal_retains_completed_paid_fallback_usage(monkeypatch):
     assert terminal["input_tokens"] == 125
     assert terminal["output_tokens"] == 25
     assert terminal["usage_source"] == "real"
-    assert terminal["usage_buckets"] == [{
+    assert _without_request(terminal["usage_buckets"]) == [{
         "round": 1,
         "model": "backup-model",
         "endpoint_id": "paid",

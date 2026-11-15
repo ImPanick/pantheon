@@ -54,6 +54,7 @@ from src.prompt_security import (
     capability_manifest_message,
     is_framed_context_content,
     own_context_message,
+    turn_note_message,
     untrusted_context_message,
 )
 from src.document_provenance import document_context_message  # `B1325`
@@ -1777,7 +1778,7 @@ Generate an image. Line 1 = description, line 2 = model name, line 3 = WxH (e.g.
     # `B1737`. How the model acts on the skills catalogue itself.
     "use_skill": "- ```use_skill``` — Open a listed skill by `name`, or search skills by `query` (the kind of work).",
     # `B1755`.
-    "find_tools": "- ```find_tools``` — Load tools that are not in this turn's list. Args (JSON): {\"query\": \"a few words for the job\"} or {\"names\": [\"manage_calendar\"]}. The tools it finds are callable from your next step.",
+    "find_tools": "- ```find_tools``` — Load tools that are not in this turn's list. Args (JSON): {\"query\": \"a few words for the job\"} or {\"names\": [\"manage_calendar\"]}, or {\"area\": \"Email\"} to list an area. The tools it finds are callable from your next step.",
     "manage_tasks": "- ```manage_tasks``` — Create and manage scheduled background tasks (recurring AI jobs). Args (JSON): {\"action\": \"list|create|edit|delete|pause|resume|run|dry_run|draft_workflow\", ...}. For steps that run one after another, draft_workflow with {\"description\": \"<the user's words>\"} drafts a workflow, switched off, that a person checks in the Workbench.",
     # `B1878`. Offered on a workflow turn only (`tool_index.ON_REQUEST_ONLY`).
     "manage_workflows": "- ```manage_workflows``` — The person's workflows (Automations). Args (JSON): {\"action\": \"list|show|runs|explain|dry_run|test_run|export\", \"workflow_id\": \"<id or exact name>\"}. explain says why a run's step failed; test_run runs it once now, even switched off. It changes no workflow: checking a step, applying a fix and answering a waiting step are the person's, in the Workbench.",
@@ -6315,6 +6316,112 @@ def _in_turn(message: Dict) -> Dict:
     return message
 
 
+# `B2113`. The verbs that name a step a tool takes — the intent supervisor's
+# list (`_INTENT_RE`), lifted here so the hand-back supervisor asks the same
+# question of an offer (`Law 7`). "Look at" is a phrase in the intent regex;
+# both arms read it.
+_TOOL_ACTION_VERBS = (
+    "tail", "check", "investigate", "look at", "look", "see", "read", "fetch",
+    "inspect", "verify", "diagnose", "examine", "debug", "capture", "grab",
+    "pull", "view", "run", "call", "trigger", "launch", "start", "kick off",
+    "stop", "kill", "restart", "adopt", "serve", "register", "list", "search",
+    "find", "query", "hit", "ping", "test", "use", "perform", "do",
+)
+_TOOL_ACTION_VERB_RE = re.compile(
+    r"\b(?:" + "|".join(_TOOL_ACTION_VERBS) + r")\b", re.IGNORECASE)
+# The verb an offer names: "want me to SUGGEST", "should I READ", "I can DRAFT".
+_OFFERED_VERB_RE = re.compile(
+    r"(?:\b(?:me|us)\s+to|\bi\s+(?:can|could)|\b(?:shall|should|can|may)\s+i)"
+    r"\s+(?:also\s+|just\s+|go\s+ahead\s+and\s+)?(\w+(?:\s+(?:at|off|up))?)",
+    re.IGNORECASE,
+)
+
+
+def _offer_is_more_of_the_answer(
+    tail: str,
+    *,
+    tools_ran: bool,
+    request_asked_for_tool_work: bool,
+) -> bool:
+    """Whether a reply that ends on an offer is a finished answer, not a hand-back.
+
+    `B2113`. `B1327`'s supervisor pushes a turn that ends "Do you want me to
+    check the logs?" back to the model, because the person already asked for
+    the check (`D-2026-10-09-01` §3). It pushed "Here are three names. Want
+    me to suggest more?" back too, and that is not a step the person asked for
+    — it is the answer, finished, with an offer of more. Measured on the
+    owner's desktop (2026-11-15): the push re-sent a 12K-token request after a
+    complete reply and the turn ran 453 s for an answer it already had.
+
+    A hand-back needs a step a tool takes that the person asked for. So the
+    offer is more of the answer when nothing has run this turn and either the
+    person asked for no tool work at all, or the step offered is not one a
+    tool takes ("suggest", "draft", "explain", "go deeper"). After a tool ran,
+    the turn was work, and `B1327` stands unchanged.
+    """
+    if tools_ran:
+        return False
+    if not request_asked_for_tool_work:
+        return True
+    match = _OFFERED_VERB_RE.search(tail or "")
+    if match is None:
+        # "Say the word" / "let me know if you'd like": no step named.
+        return True
+    return _TOOL_ACTION_VERB_RE.fullmatch(match.group(1).strip()) is None and (
+        _TOOL_ACTION_VERB_RE.fullmatch(match.group(1).split()[0]) is None)
+
+
+def _request_asks_for_tool_work(text: str, intent: Dict[str, object], *,
+                                approved_plan: Optional[str],
+                                forced_tools) -> bool:
+    """`B2113`. Did the person ask for a step a tool takes?
+
+    The classifier's domains and continuation, an approved plan or a forced
+    tool all say yes; so does a tool-action verb in the person's own words
+    ("read the three files"), which the classifier files as low-signal.
+    """
+    if approved_plan or forced_tools:
+        return True
+    if intent.get("domains") or intent.get("continuation"):
+        return True
+    words = _TOOL_ACTION_VERB_RE.findall(str(text or ""))
+    # "What do you think", "how do I use it", "see you": the three verbs plain
+    # speech uses for everything do not, alone, ask for a tool.
+    return any(w.lower() not in {"do", "use", "see"} for w in words)
+
+
+def _turn_reasoning_level() -> str:
+    """The composer's effort for the turn this code runs in. `B2116`."""
+    try:
+        from src import reasoning_effort
+        return reasoning_effort.current_level()
+    except Exception:
+        return "auto"
+
+
+def _loop_note(messages: List[Dict], note: str, *, answer: Optional[str] = None) -> None:
+    """Hand the model one of the loop's own notes, at the END of the request.
+
+    `B2113`. Every supervisor note was an in-turn ``system`` message, and
+    `llm_core` folds every ``system`` message into the first one (some models
+    refuse a second). So a note did not land after the reply it was about: it
+    landed in the middle of the system prompt, which changed the request's
+    first bytes and threw away the whole cached prefix. Measured on the
+    owner's desktop (2026-11-15, a 27B model on LM Studio): the follow-up
+    round re-read 12,094 tokens for an 86-token note and the turn took 453 s.
+
+    Now the round's own words go in as the assistant turn they were, and the
+    note follows as Pantheon's turn note (`turn_note_message`, the envelope
+    `_extract_last_user_message` already skips, so no reader takes it for
+    the person's words). Everything before it is byte-for-byte the request
+    the server just read, so only the new tail is evaluated.
+    """
+    prose = _strip_think_blocks(str(answer or "")).strip()
+    if prose:
+        messages.append(_in_turn({"role": "assistant", "content": prose}))
+    messages.append(_in_turn(turn_note_message(note)))
+
+
 def _approval_ids_answered_by(message: Dict) -> Set[str]:
     """The approval cards a saved reply carries, by id."""
     metadata = message.get("metadata") if isinstance(message, dict) else None
@@ -6700,8 +6807,15 @@ def _usage_bucket(
     prefill_tps: float = 0,
     prefill_ms: float = 0,
     decode_ms: float = 0,
+    request: Optional[dict] = None,
 ) -> dict:
-    """Build non-secret usage attribution for one concrete Agent round."""
+    """Build non-secret usage attribution for one concrete Agent round.
+
+    ``request`` (`B2115`) is the round's own record: why it ran
+    (``continuation_reason``), its id, fingerprints, finish reason, cached
+    prompt tokens and section sizes. Copied in under ``request`` so the keys
+    above keep their meaning for everything that already reads them.
+    """
 
     bucket = {
         "round": round_num,
@@ -6740,7 +6854,42 @@ def _usage_bucket(
     ):
         if isinstance(_value, (int, float)) and not isinstance(_value, bool) and _value > 0:
             bucket[_key] = round(float(_value), 2)
+    if request:
+        bucket["request"] = {k: v for k, v in request.items() if v not in (None, "", {})}
     return bucket
+
+
+def _request_cost_record(request_messages, tools) -> dict:
+    """`B2115`. What one request carried, for the per-request log and bucket.
+
+    ``fingerprint`` changes when anything in the request changes;
+    ``prefix_fingerprint`` covers only the system prompt and the tool schemas,
+    the part a server's prompt cache can reuse. Two rounds of one turn with the
+    same prefix fingerprint can share a cached prefix; two with different ones
+    cannot, whatever the server supports. ``sections`` is the request split by
+    `measure_request_segments` (`B892`), the same meter the context wheel reads.
+    """
+    import hashlib
+
+    def _digest(value) -> str:
+        raw = json.dumps(value, sort_keys=True, default=str, ensure_ascii=False)
+        return hashlib.sha256(raw.encode("utf-8", "replace")).hexdigest()[:12]
+
+    clean = [{k: v for k, v in m.items() if not str(k).startswith("_")}
+             for m in (request_messages or []) if isinstance(m, dict)]
+    system = [m.get("content") for m in clean if m.get("role") == "system"]
+    record = {
+        "fingerprint": _digest([clean, tools or []]),
+        "prefix_fingerprint": _digest([system, tools or []]),
+    }
+    try:
+        from src.context_budget import measure_request_segments
+        measured = measure_request_segments(request_messages or [], tools or None)
+        record["sections"] = {c["key"]: int(c.get("tokens") or 0)
+                              for c in measured.get("categories") or []}
+    except Exception as exc:  # a meter never fails a turn
+        logger.debug("request sections not measured: %s", exc)
+    return record
 
 
 def _usage_bucket_summary(usage_buckets: list) -> dict:
@@ -9494,10 +9643,7 @@ async def stream_agent_loop(
     _INTENT_RE = re.compile(
         r"(?:^|\n)\s*(?:let me|i'?ll|i will|i need to|we need to|need to|"
         r"i should|we should|i must|we must|going to|let's)\s+"
-        r"(?:tail|check|investigate|look at|see|tail|read|fetch|inspect|"
-        r"verify|diagnose|examine|debug|capture|grab|pull|view|run|call|"
-        r"trigger|launch|start|kick off|stop|kill|restart|adopt|serve|"
-        r"register|adopt|list|search|find|query|hit|ping|test|use|perform|do)"
+        r"(?:" + "|".join(_TOOL_ACTION_VERBS) + r")"
         r"\b[^.\n]{0,140}",
         re.IGNORECASE,
     )
@@ -10181,8 +10327,15 @@ async def stream_agent_loop(
         if _mcp_note is not None:
             yield f"data: {json.dumps(_mcp_note)}\n\n"
 
+    # `B2113`. Why the loop is about to send another request. Every path that
+    # goes round again names itself here; a round that runs with none named is
+    # recorded as `unlabelled`, so a new continuation shows up in the log as a
+    # question rather than hiding behind a default.
+    _next_round_reason = "first"
     for round_num in _round_numbers():
         yield _budget_frame(round_num)   # `P4-23`: a round only starts here
+        _round_reason = _next_round_reason or "unlabelled"
+        _next_round_reason = None
         round_response = ""
         round_reasoning = ""  # reasoning_content deltas (DeepSeek-thinking, vLLM --reasoning-parser)
         native_tool_calls = []  # populated if model uses function calling
@@ -10193,6 +10346,7 @@ async def stream_agent_loop(
         # top of this file explains why, and the UI is required to say so.
         _steers_applied = consume_steers_for_round(session_id, messages)
         if _steers_applied:
+            _round_reason = f"{_round_reason}+steer"   # `B2113`
             logger.info("[agent] applying %d steer(s) at round %d for session=%s",
                         len(_steers_applied), round_num, session_id)
             yield (
@@ -10271,7 +10425,7 @@ async def stream_agent_loop(
         _candidate_request_states = {0: _active_route_state}
 
         async def _candidate_request(index, candidate_url, candidate_model, candidate_headers):
-            nonlocal _last_route_request_messages, _last_route_context_length, _last_route_state
+            nonlocal _last_route_request_messages, _last_route_context_length, _last_route_state, _round_request_record
             if index == 0:
                 state = _active_route_state
             else:
@@ -10317,6 +10471,7 @@ async def stream_agent_loop(
             run_security.observe_messages(request_messages)
             candidate_tools = _tool_schemas_for_route(state)
             state["tools"] = candidate_tools
+            _round_request_record = _request_cost_record(request_messages, candidate_tools)   # `B2115`
             state["route_key"] = (candidate_url, candidate_model)   # `B1989`
             _last_route_state = state
             _candidate_request_states[index] = state
@@ -10386,6 +10541,9 @@ async def stream_agent_loop(
         _round_real_output_tokens = 0
         _round_has_real_usage = False
         _round_usage_finalized = False
+        _round_finish_reason = ""      # `B2115`
+        _round_prompt_cached = 0       # `B2115`
+        _round_request_record: dict = {}   # `B2115`
         candidate_index = 0
 
         def _finalize_round_usage(*, include_empty: bool = True):
@@ -10427,7 +10585,31 @@ async def stream_agent_loop(
                 prefill_tps=_round_prefill_tps,
                 prefill_ms=_round_prefill_ms,
                 decode_ms=_round_decode_ms,
+                request=_round_request_info(),
             ))
+            # `B2115`. One line per request the turn made, with why it ran.
+            # A second request after a finished answer shows its reason here.
+            _info = usage_buckets[-1].get("request") or {}
+            logger.info(
+                "[agent-request] turn=%s request=%s round=%s purpose=agent_round "
+                "reason=%s finish=%s input=%s cached=%s source=%s prefix=%s fp=%s sections=%s",
+                _info.get("turn_id"), _info.get("request_id"), round_num,
+                _info.get("continuation_reason"), _info.get("finish_reason") or "-",
+                round_input_tokens, _info.get("prompt_cached_tokens", "-"), usage_source,
+                _info.get("prefix_fingerprint"), _info.get("fingerprint"),
+                json.dumps(_info.get("sections") or {}, sort_keys=True),
+            )
+
+        def _round_request_info() -> dict:
+            return {
+                "turn_id": str(getattr(run_security, "run_id", "") or ""),
+                "request_id": f"{getattr(run_security, 'run_id', '') or 'run'}:r{round_num}",
+                "continuation_reason": _round_reason,
+                "finish_reason": _round_finish_reason,
+                "prompt_cached_tokens": _round_prompt_cached or None,
+                **_round_request_record,
+            }
+
         logger.info(
             "[agent-timing] round_start round=%s model=%s endpoint=%s prompt_tokens=%s tools=%s native_tools=%s timeout=%s",
             round_num,
@@ -10637,6 +10819,11 @@ async def stream_agent_loop(
                         # where.
                         _round_cache_read += normalized_usage.get("cache_read_input_tokens", 0)
                         _round_cache_write += normalized_usage.get("cache_creation_input_tokens", 0)
+                        # `B2115`.
+                        if u.get("finish_reason"):
+                            _round_finish_reason = str(u["finish_reason"])
+                        if isinstance(u.get("prompt_cached_tokens"), int):
+                            _round_prompt_cached += max(u["prompt_cached_tokens"], 0)
                         round_input = normalized_usage["input_tokens"]
                         round_output = normalized_usage["output_tokens"]
                         real_input_tokens += round_input
@@ -10831,6 +11018,7 @@ async def stream_agent_loop(
             # `B1281`: the same step, asked again with the pictures in words —
             # not a step of its own (`_round_numbers` does not count it).
             _redo_round.append(round_num)
+            _next_round_reason = "retry:in_words"   # `B2113`
             continue
         if _retry_round_without_tools:
             # `B1989`: the same step again, fenced. The route that refused is
@@ -10853,6 +11041,7 @@ async def stream_agent_loop(
                 _is_ollama_native = _route_state["is_ollama_native"]
                 _ollama_openai_compat = _route_state["ollama_openai_compat"]
             _redo_round.append(round_num)
+            _next_round_reason = "retry:without_tools"   # `B2113`
             continue
         logger.info(
             "[agent-timing] round_stream_done round=%s elapsed=%.3fs text_chars=%s tool_calls=%s first_event=%s first_token=%s",
@@ -10991,13 +11180,11 @@ async def stream_agent_loop(
                     native_tool_calls = _filtered_converted_calls
                 if not tool_blocks:
                     _force_answer = True
-                    messages.append(_in_turn({
-                        "role": "system",
-                        "content": (
-                            "Answer the user's identity/personal-memory question from the compact "
-                            "saved memory facts already provided. Do not call manage_memory or any tool."
-                        ),
-                    }))
+                    _next_round_reason = "supervisor:memory_answer"   # `B2113`
+                    _loop_note(messages, (
+                        "Answer the user's identity/personal-memory question from the compact "
+                        "saved memory facts already provided. Do not call manage_memory or any tool."
+                    ))
                     _step = _next_step_frame(round_num)   # `B906`
                     if _step:
                         yield _step
@@ -11074,6 +11261,8 @@ async def stream_agent_loop(
                         max_tokens=_synth_max_tokens,
                         max_tokens_floor=_preset_max_tokens,   # `B1029`
                         timeout=60,
+                        # `B2116`: the turn's effort holds on its last request.
+                        reasoning_level=_turn_reasoning_level(),
                     )
                     _raw_text = _raw or ""
                     _synth = _strip_think_blocks(strip_tool_blocks(_raw_text)).strip()
@@ -11156,14 +11345,12 @@ async def stream_agent_loop(
             if _unknown_tool_nudges < _MAX_UNKNOWN_TOOL_NUDGES:
                 _unknown_tool_nudges += 1
                 _listed = ", ".join(f"`{n}`" for n in _unknown_tool_names)
-                messages.append(_in_turn({
-                    "role": "system",
-                    "content": (
-                        f"You called {_listed}, but no tool by that name exists "
-                        "here, so nothing ran. Use one of the tools you were "
-                        "given, by its exact name, or answer without a tool."
-                    ),
-                }))
+                _next_round_reason = "supervisor:unknown_tool"   # `B2113`
+                _loop_note(messages, (
+                    f"You called {_listed}, but no tool by that name exists "
+                    "here, so nothing ran. Use one of the tools you were "
+                    "given, by its exact name, or answer without a tool."
+                ), answer=cleaned_round)
                 _step = _next_step_frame(round_num)   # `B906`
                 if _step:
                     yield _step
@@ -11224,15 +11411,13 @@ async def stream_agent_loop(
                     _note = "\n\n_Double-checked the work and found something to fix._\n\n"
                     yield f'data: {json.dumps({"delta": _note})}\n\n'
                     full_response += _note
-                    messages.append(_in_turn({
-                        "role": "system",
-                        "content": (
-                            "An independent verifier reviewed your work against the "
-                            "original request and found issues that must be fixed before "
-                            "this is actually done:\n- " + "\n- ".join(_vfail.issues) +
-                            "\n\nFix these now using tools, then finish."
-                        ),
-                    }))
+                    _next_round_reason = "verifier"   # `B2113`
+                    _loop_note(messages, (
+                        "An independent verifier reviewed your work against the "
+                        "original request and found issues that must be fixed before "
+                        "this is actually done:\n- " + "\n- ".join(_vfail.issues) +
+                        "\n\nFix these now using tools, then finish."
+                    ), answer=cleaned_round)
                     # Require fresh effectful work before verifying again, so we
                     # never re-verify an unchanged state in a loop.
                     _effectful_used = False
@@ -11299,19 +11484,17 @@ async def stream_agent_loop(
                         "session_id from the serve/list result. Never answer with "
                         "\"check logs\" when those tools are available."
                     )
-                messages.append(_in_turn({
-                    "role": "system",
-                    "content": (
-                        f"You just wrote: \"{_matched_phrase}\" — but ended the "
-                        "turn without making the actual tool call. The user can "
-                        "see you announced the action but didn't run it, which "
-                        "is the most frustrating thing you can do. "
-                        "DO IT NOW: emit the actual function call this turn. "
-                        f"{_cookbook_log_hint}"
-                        "If you decided not to do it after all, say so plainly in "
-                        "one sentence instead of restating the plan."
-                    ),
-                }))
+                _next_round_reason = "supervisor:intent"   # `B2113`
+                _loop_note(messages, (
+                    f"You just wrote: \"{_matched_phrase}\" — but ended the "
+                    "turn without making the actual tool call. The user can "
+                    "see you announced the action but didn't run it, which "
+                    "is the most frustrating thing you can do. "
+                    "DO IT NOW: emit the actual function call this turn. "
+                    f"{_cookbook_log_hint}"
+                    "If you decided not to do it after all, say so plainly in "
+                    "one sentence instead of restating the plan."
+                ), answer=cleaned_round)
                 # Visible signal in the stream so the user knows we caught it.
                 _step = _next_step_frame(round_num)   # `B906`
                 if _step:
@@ -11366,6 +11549,15 @@ async def stream_agent_loop(
                 and not _force_answer
                 and _handback_match is not None
                 and _has_other_tools
+                # `B2113`. A finished answer with an offer of more is not a
+                # step handed back; see `_offer_is_more_of_the_answer`.
+                and not _offer_is_more_of_the_answer(
+                    _handback_tail[_handback_match.start():],
+                    tools_ran=not _nothing_looked_at(total_tool_calls),
+                    request_asked_for_tool_work=_request_asks_for_tool_work(
+                        _last_user, _intent,
+                        approved_plan=approved_plan, forced_tools=forced_tools),
+                )
             )
             if _looks_like_handback and _handback_nudges < _MAX_HANDBACK_NUDGES:
                 _handback_nudges += 1
@@ -11375,18 +11567,16 @@ async def stream_agent_loop(
                     "[agent] question-instead-of-work nudge #%d on round %d: %r",
                     _handback_nudges, round_num, _handback_phrase,
                 )
-                messages.append(_in_turn({
-                    "role": "system",
-                    "content": (
-                        f"You ended the turn by asking \"{_handback_phrase}\" instead "
-                        "of doing it. The user already asked for this, so the "
-                        "question is answered by taking the step: make the call "
-                        "now and report what it returned. If it is genuinely a "
-                        "fork with no obvious answer, or an act that cannot be "
-                        "undone, ask with the `ask_user` tool and its options "
-                        "rather than ending a turn on a question in prose."
-                    ),
-                }))
+                _next_round_reason = "supervisor:handback"   # `B2113`
+                _loop_note(messages, (
+                    f"You ended the turn by asking \"{_handback_phrase}\" instead "
+                    "of doing it. The user already asked for this, so the "
+                    "question is answered by taking the step: make the call "
+                    "now and report what it returned. If it is genuinely a "
+                    "fork with no obvious answer, or an act that cannot be "
+                    "undone, ask with the `ask_user` tool and its options "
+                    "rather than ending a turn on a question in prose."
+                ), answer=cleaned_round)
                 _step = _next_step_frame(round_num)   # `B906`
                 if _step:
                     yield _step
@@ -11436,24 +11626,22 @@ async def stream_agent_loop(
                         "[agent] claimed retrieval with no web call on round %d: %r",
                         round_num, _claim_phrase,
                     )
-                    messages.append(_in_turn({
-                        "role": "system",
-                        "content": (
-                            f"You wrote: \"{_claim_phrase}\" — but no search or "
-                            "fetch ran this turn. That sentence is not true, and "
-                            "anything you wrote under it came from memory rather "
-                            "than from a source, which is the one thing you must "
-                            "never do.\n"
-                            "Fix it one of two ways, this turn:\n"
-                            "1. Actually call `web_search` (and `web_fetch` for a "
-                            "page you need the body of), then answer from what "
-                            "comes back; or\n"
-                            "2. If you are not going to search, say plainly that "
-                            "you did not and that the answer is from memory, and "
-                            "remove every specific you cannot source.\n"
-                            "Do not repeat the claim."
-                        ),
-                    }))
+                    _next_round_reason = "supervisor:retrieval_claim"   # `B2113`
+                    _loop_note(messages, (
+                        f"You wrote: \"{_claim_phrase}\" — but no search or "
+                        "fetch ran this turn. That sentence is not true, and "
+                        "anything you wrote under it came from memory rather "
+                        "than from a source, which is the one thing you must "
+                        "never do.\n"
+                        "Fix it one of two ways, this turn:\n"
+                        "1. Actually call `web_search` (and `web_fetch` for a "
+                        "page you need the body of), then answer from what "
+                        "comes back; or\n"
+                        "2. If you are not going to search, say plainly that "
+                        "you did not and that the answer is from memory, and "
+                        "remove every specific you cannot source.\n"
+                        "Do not repeat the claim."
+                    ), answer=cleaned_round)
                     continue
                 logger.warning(
                     "[agent] claimed retrieval stands after %d nudge(s) on round %d: %r "
@@ -11604,16 +11792,14 @@ async def stream_agent_loop(
             _off_note = (f" ({', '.join(_off)} is currently disabled — say so if "
                          f"you needed it.)" if _off else "")
             _force_answer = True
-            messages.append(_in_turn({
-                "role": "system",
-                "content": (
-                    "You're repeating tool calls without converging. STOP calling "
-                    "tools and end the turn one of two ways: (a) write your best "
-                    "final answer NOW from the information already gathered, or "
-                    "(b) if you're genuinely blocked, say plainly what's blocking "
-                    "you in a sentence or two." + _off_note
-                ),
-            }))
+            _next_round_reason = "loop_breaker"   # `B2113`
+            _loop_note(messages, (
+                "You're repeating tool calls without converging. STOP calling "
+                "tools and end the turn one of two ways: (a) write your best "
+                "final answer NOW from the information already gathered, or "
+                "(b) if you're genuinely blocked, say plainly what's blocking "
+                "you in a sentence or two." + _off_note
+            ))
             full_response += "\n\n"
             _step = _next_step_frame(round_num)   # `B906`
             if _step:
@@ -11655,17 +11841,15 @@ async def stream_agent_loop(
                 "with no tool result yet this turn",
                 round_num, len(tool_blocks),
             )
-            messages.append(_in_turn({
-                "role": "system",
-                "content": (
-                    "You asked the user a question as the first thing this turn, "
-                    "before running anything. Look first: use the tools you have "
-                    "to answer it yourself, then do the work the user asked for "
-                    "and report the result. If after looking it is still a real "
-                    "fork with no obvious answer, or an act that cannot be "
-                    "undone, ask then — with the options the tools showed you."
-                ),
-            }))
+            _next_round_reason = "supervisor:ask_first"   # `B2113`
+            _loop_note(messages, (
+                "You asked the user a question as the first thing this turn, "
+                "before running anything. Look first: use the tools you have "
+                "to answer it yourself, then do the work the user asked for "
+                "and report the result. If after looking it is still a real "
+                "fork with no obvious answer, or an act that cannot be "
+                "undone, ask then — with the options the tools showed you."
+            ), answer=cleaned_round)
             # `B1412`. Held, not discarded. The ruling this nudge serves says a
             # question the agent could have answered itself is the defect; it
             # does not say the question should vanish. Keeping it costs nothing
@@ -12807,6 +12991,7 @@ async def stream_agent_loop(
         # (and left the real call answered empty).
         # `B1797`: `endpoint_url` is the route that answered — a fallback that
         # answered is pinned into it above.
+        _next_round_reason = "tool_results"   # `B2113`
         _append_tool_results(messages, round_response, converted_calls,
                              tool_results, tool_result_texts, used_native, round_num,
                              round_reasoning=round_reasoning,
@@ -12817,13 +13002,11 @@ async def stream_agent_loop(
             # that named nothing get a line too, or the model is left waiting
             # on a result that will never come.
             _listed = ", ".join(f"`{n}`" for n in _unknown_tool_names)
-            messages.append(_in_turn({
-                "role": "system",
-                "content": (
-                    f"You also called {_listed}, but no tool by that name "
-                    "exists here, so nothing ran for it."
-                ),
-            }))
+            _next_round_reason = "tool_results+unknown_tool"   # `B2113`
+            _loop_note(messages, (
+                f"You also called {_listed}, but no tool by that name "
+                "exists here, so nothing ran for it."
+            ))
 
         # Emit agent_step event — only when there is a next step (`B906`)
         _step = _next_step_frame(round_num)

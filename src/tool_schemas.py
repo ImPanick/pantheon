@@ -1233,13 +1233,15 @@ FUNCTION_TOOL_SCHEMAS = [
             "description": (
                 "Load tools that are not in this turn's list: search by a few "
                 "words for the job, or name them. What it finds is callable "
-                "from your next step."
+                "from your next step. With `area`, or no arguments, it lists "
+                "tools by area instead."
             ),
             "parameters": {
                 "type": "object",
                 "properties": {
                     "query": {"type": "string", "description": "What the tool should do."},
-                    "names": {"type": "array", "items": {"type": "string"}}
+                    "names": {"type": "array", "items": {"type": "string"}},
+                    "area": {"type": "string", "description": "An area to list, e.g. Email."}
                 }
             }
         }

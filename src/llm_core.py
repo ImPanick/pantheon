@@ -1727,7 +1727,11 @@ def _turn_thinking_off(payload: Dict, url: str) -> None:
     """
     if _is_ollama_openai_compat_url(url):
         payload["think"] = False
-        return
+        # `B2116`. No `return` here. The Ollama test is generous on purpose
+        # (any localhost /v1, docstring of `_is_ollama_openai_compat_url`), so
+        # LM Studio on :1234 matched it and was sent only `think`, which it
+        # does not read: the side calls `B1755` switched off still thought.
+        # `reasoning_effort._turn_thinking_on` already sends both; this does too.
     if _is_self_hosted_openai_compatible(url):
         kwargs = dict(payload.get("chat_template_kwargs") or {})
         kwargs["enable_thinking"] = False
@@ -2649,8 +2653,16 @@ async def llm_call_async(
     explicit_params=frozenset(),
     max_tokens_floor: Optional[int] = None,
     thinking: Optional[bool] = None,
+    reasoning_level: Optional[str] = None,
 ) -> str | tuple[str, str]:
     """Asynchronous LLM call using httpx with connection pooling, timeout, retry logic, and performance logging.
+
+    ``reasoning_level`` (`B2116`) carries a turn's composer effort into a
+    non-streaming call that is part of that turn — the agent loop's closing
+    synthesis — so the person's Off or High holds on every request the turn
+    makes. Opt-in: the dozens of side calls that pass nothing keep the model's
+    default, as before. Applied on the OpenAI-compatible path, which is where
+    every self-hosted server answers.
 
     ``thinking=False`` (`B1755`) asks a self-hosted thinking model not to
     reason first, for small side calls (a chat's title, the next-step
@@ -2823,6 +2835,12 @@ async def llm_call_async(
         if thinking is False and _supports_thinking(model):
             # Off the loop: the self-hosted test reads the endpoint rows.
             await asyncio.to_thread(_turn_thinking_off, payload, url)   # `B1755`
+        elif thinking is None and reasoning_level and reasoning_level != _reasoning_effort.AUTO:
+            payload["messages"] = await asyncio.to_thread(
+                _reasoning_effort.apply_to_messages, payload["messages"], url, model,
+                reasoning_level)   # `B2116`
+            await asyncio.to_thread(_reasoning_effort.apply_to_payload, payload, url, model,
+                                    reasoning_level)
         await asyncio.to_thread(_apply_local_profiles, payload, url, target_url, model,
                                 session_id, explicit_params)   # `B1588`
 
@@ -4004,6 +4022,7 @@ async def _stream_llm_inner(url: str, model: str, messages: List[Dict], temperat
     _harmony_active = False       # sticky: gpt-oss harmony <|channel|> stream detected
     _actual_model = ""
     _actual_model_announced = False
+    _finish_reason = None   # `B2115`
 
     def _emit_tool_calls():
         """Build the tool_calls event string if any were accumulated."""
@@ -4114,6 +4133,13 @@ async def _stream_llm_inner(url: str, model: str, messages: List[Dict], temperat
                                 # Usage chunk (from stream_options)
                                 _choices = j.get("choices") or []
                                 _delta0 = _choices[0].get("delta") if (_choices and _choices[0] is not None) else None
+                                # `B2115`. Why the server stopped this request
+                                # ("stop", "length", "tool_calls"), kept for the
+                                # usage event: a round cut at the token limit
+                                # and a round that finished read the same in the
+                                # text and are different continuations.
+                                if _choices and isinstance(_choices[0], dict) and _choices[0].get("finish_reason"):
+                                    _finish_reason = str(_choices[0]["finish_reason"])
                                 # Capture usage whenever the chunk carries it and
                                 # the delta has no actual output. Some gateways /
                                 # local servers attach usage to the FINAL delta,
@@ -4142,6 +4168,21 @@ async def _stream_llm_inner(url: str, model: str, messages: List[Dict], temperat
                                     )
                                     if _usage_data is None:
                                         continue
+                                    # `B2115`. How much of the prompt the server
+                                    # read from its cache instead of evaluating:
+                                    # OpenAI-style `prompt_tokens_details`, or
+                                    # llama.cpp's `timings.cache_n` below. A
+                                    # SUBSET of `input_tokens`, so it is kept
+                                    # under its own key and never in the
+                                    # Anthropic-style cache counters, which cost
+                                    # accounting reads as outside the input.
+                                    _ptd = u.get("prompt_tokens_details")
+                                    if isinstance(_ptd, dict):
+                                        _cached = _ptd.get("cached_tokens")
+                                        if isinstance(_cached, int) and not isinstance(_cached, bool) and _cached > 0:
+                                            _usage_data["prompt_cached_tokens"] = _cached
+                                    if _finish_reason:
+                                        _usage_data["finish_reason"] = _finish_reason
                                     # llama.cpp puts a `timings` block alongside `usage` with the
                                     # TRUE generation speed (predicted_per_second) — pure decode,
                                     # excluding prefill/network. Pass it through so the UI shows the
@@ -4182,6 +4223,7 @@ async def _stream_llm_inner(url: str, model: str, messages: List[Dict], temperat
                                         for _src, _dst in (
                                             ("prompt_n", "prefill_tokens"),
                                             ("predicted_n", "decode_tokens"),
+                                            ("cache_n", "prompt_cached_tokens"),   # `B2115`
                                         ):
                                             _v = _tm.get(_src)
                                             if isinstance(_v, int) and not isinstance(_v, bool) and _v > 0:

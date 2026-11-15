@@ -146,6 +146,58 @@ def find_tool_matches(query: str = "", names=None, *, mcp_tools=None) -> List[Di
     return out
 
 
+def tool_area_listing(area: str = "", *, mcp_tools=None) -> str:
+    """`B2114`. Browse the suite by area: every area with its count, or every
+    tool in one area by name with its few words. Lists, loads nothing: the
+    model names what it wants next (`names`), so an area of sixteen email tools
+    does not land sixteen schemas in the next request. Read from the same map
+    the partial-suite notice prints (`src/tool_map.AREAS`), plus the live MCP
+    tools, so the browse and the notice cannot disagree (`Law 7`). No cutoff:
+    an area lists all of its tools."""
+    from src.tool_map import AREAS
+    if mcp_tools is None:
+        mcp_tools = {}
+        try:
+            from src.tool_utils import get_mcp_manager
+            mgr = get_mcp_manager()
+            if mgr:
+                for tool in mgr.get_all_tools({}, overrides={}) or []:
+                    qualified = tool.get("qualified_name")
+                    if qualified and not tool.get("is_disabled"):
+                        mcp_tools[str(qualified)] = str(tool.get("description") or "")
+        except Exception:
+            logger.debug("find_tools: MCP tools unreadable", exc_info=True)
+    areas = [(name, dict(tools)) for name, tools in AREAS]
+    try:
+        from src.tool_policy import selectable_tool_names
+        mapped = {t for _n, tools in areas for t in tools}
+        other = sorted(set(selectable_tool_names()) - mapped - {"find_tools"})
+        if other:
+            areas.append(("Other", {t: "" for t in other}))
+    except Exception:
+        logger.debug("find_tools: tool register unreadable", exc_info=True)
+    if mcp_tools:
+        areas.append(("Connected MCP servers",
+                      {n: str(d).split(". ")[0][:120] for n, d in sorted(mcp_tools.items())}))
+    want = str(area or "").strip().lower()
+    if want:
+        hits = [(n, t) for n, t in areas if want == n.lower()] or [
+            (n, t) for n, t in areas if want in n.lower() or n.lower() in want]
+        if hits:
+            out = []
+            for name, tools in hits:
+                out.append(f"{name}:")
+                out += [f"- {t}" + (f" — {h}" if h else "") for t, h in tools.items()
+                        if t != "find_tools"]
+            return ("\n".join(out) + "\n\nLoad the ones you need with "
+                    "find_tools {\"names\": [...]}; they are callable from your next step.")
+    lines = [f"- {name} ({sum(1 for t in tools if t != 'find_tools')})" for name, tools in areas]
+    lead = f"No area is called {area!r}. " if want else ""
+    return (lead + "Tool areas:\n" + "\n".join(lines)
+            + "\n\nList one with find_tools {\"area\": \"<area>\"}, or search with "
+            "{\"query\": \"<the job>\"}.")
+
+
 async def do_find_tools(content: str, owner: Optional[str] = None) -> Dict:
     """Search the whole tool suite; the agent loop loads what it may. `B1755`."""
     try:
@@ -158,8 +210,9 @@ async def do_find_tools(content: str, owner: Optional[str] = None) -> Dict:
     names = args.get("names") or args.get("name") or []
     if isinstance(names, str):
         names = [n.strip() for n in names.split(",") if n.strip()]
-    if not query and not names:
-        return {"error": "Pass query (a few words for the job) or names.", "exit_code": 1}
+    area = str(args.get("area") or args.get("category") or "").strip()
+    if area or (not query and not names):
+        return {"output": tool_area_listing(area), "exit_code": 0, "found": []}
     found = find_tool_matches(query, names)
     skills = _skills_for(query, owner) if query else []
     if not found:

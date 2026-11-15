@@ -26,9 +26,12 @@ import { handlePickerKeydown } from './pickerKeys.js';
 
 const STORE_KEY = 'pantheon-reasoning-effort';
 const AUTO = 'auto';
-const LEVELS = ['low', 'medium', 'high', 'extra', 'max'];
-const LABELS = { auto: 'Auto', low: 'Low', medium: 'Medium', high: 'High', extra: 'Extra', max: 'Max' };
-const ITEM = '.reasoning-effort-item';
+// `B2116`: Off is offered only for a model whose server can switch thinking
+// off; the server's answer says so with an `off` row.
+const LEVELS = ['off', 'low', 'medium', 'high', 'extra', 'max'];
+const LABELS = { auto: 'Auto', off: 'Off', low: 'Low', medium: 'Medium', high: 'High', extra: 'Extra', max: 'Max' };
+const ITEM = '.reasoning-effort-item:not([hidden])';
+const ANY_ITEM = '.reasoning-effort-item';   // `B2116`: render reaches the hidden Off row
 
 let _level = _readStored();
 let _support = null;        // the server's last answer for the selected model
@@ -70,6 +73,7 @@ function _items(n) {
 // How it reaches this model (its own setting, or a note) is the row's tooltip.
 const WHAT = {
   auto: "The model's own default.",
+  off: 'No thinking. Fastest replies.',
   low: 'Light thinking. Quick replies.',
   medium: 'Thinks a little harder. A bit more detail.',
   high: 'Thinks hard. Takes longer to reply.',
@@ -91,7 +95,14 @@ export function isShown() {
 
 /** The level a send carries, or '' when it carries none. */
 export function levelForSend() {
-  return isShown() && _level !== AUTO ? _level : '';
+  if (!isShown() || _level === AUTO) return '';
+  if (_level === 'off' && !_offered('off')) return '';
+  return _level;
+}
+
+function _offered(level) {
+  return !!(_support && Array.isArray(_support.levels)
+    && _support.levels.some((l) => l && l.id === level));
 }
 
 export function currentLevel() {
@@ -111,9 +122,11 @@ export function render() {
     n.chip.title = name + ' (type "ultrathink" in a message for one turn at Max)';
   }
   if (n.label) n.label.textContent = LABELS[_level];
-  for (const item of _items(n)) {
+  const every = n.options ? [...n.options.querySelectorAll(ANY_ITEM)] : [];
+  for (const item of every) {
     const level = item.getAttribute('data-effort');
     item.setAttribute('aria-checked', level === _level ? 'true' : 'false');
+    if (level === 'off') item.hidden = !_offered('off');
     const desc = item.querySelector('.reasoning-effort-item-desc');
     if (desc) desc.textContent = WHAT[level] || '';
     const how = _howFor(level);
