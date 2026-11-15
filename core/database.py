@@ -11,7 +11,7 @@ from urllib.parse import unquote, urlparse
 from sqlalchemy import DDL, event, create_engine, Column, String, Text, Boolean, DateTime, Integer, Float, ForeignKey, JSON, Index, UniqueConstraint, func, inspect, text
 from sqlalchemy.engine import Engine, make_url
 from sqlalchemy.types import TypeDecorator
-from sqlalchemy.ext.declarative import declarative_base, declared_attr
+from sqlalchemy.orm import declarative_base, declared_attr
 from sqlalchemy.orm import relationship, sessionmaker, backref, deferred
 from sqlalchemy.pool import Pool, StaticPool
 

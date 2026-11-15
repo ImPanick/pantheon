@@ -399,6 +399,11 @@ function _render() {
   // `B1754`: while the person holds the screen the agent's hand is not on it.
   if (holding) { _hidden(_win.hand, true); _hidden(_win.caption, true); }
   _win.screen.classList.toggle('wsv-is-live', !!_live);
+  // Live, the client's frame takes the pointer only while the person holds
+  // the screen, and then draws the workstation's cursor as the only one.
+  // Watching, the pointer passes it by and stays the person's own: the client
+  // hides the page's cursor wherever it has the pointer, whoever holds it.
+  _win.screen.classList.toggle('wsv-driving', holding && !!_live);
   _win.screen.tabIndex = _live ? -1 : 0;
   _win.stage.classList.toggle('wsv-held', holding);
   _win.screen.setAttribute('role', holding ? 'application' : 'img');

@@ -115,6 +115,36 @@ jobs:
           sys.exit(subprocess.run([sys.executable, '-m', 'py_compile', *files]).returncode)
           "
 
+  python-lint:
+    name: Python lint (ruff, names that crash)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with:
+          python-version: "3.11"
+      # `B2114`. `compileall` above proves a file parses; nothing proved a
+      # name it uses exists. `B2113` shipped a `NameError` on the https
+      # branch of every dedicated Android host for that reason. The rule set
+      # is `[tool.ruff.lint]` in `pyproject.toml` (undefined names, syntax,
+      # always-wrong comparisons), held at zero. The file list is the gate's
+      # `_python_files()`, the same one `py_compile` reads (`B436`), so CI
+      # keeps no second list of which Python is ours.
+      - name: ruff check
+        run: |
+          set -euo pipefail
+          pip install ruff==0.17.5
+          python3 -c "
+          import importlib.util, subprocess, sys
+          spec = importlib.util.spec_from_file_location('gate', '.pantheon/release-gate.py')
+          gate = importlib.util.module_from_spec(spec); spec.loader.exec_module(gate)
+          files = gate._python_files()
+          print(f'{len(files)} python files')
+          sys.exit(subprocess.run(['ruff', 'check', '--force-exclude', *files]).returncode)
+          "
+
   wiring-ratchet:
     name: Wiring ratchet (check-wiring.py --max 0)
     runs-on: ubuntu-latest

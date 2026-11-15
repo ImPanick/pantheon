@@ -1284,6 +1284,7 @@ def setup_gallery_routes() -> APIRouter:
                 raise HTTPException(400, f"Rejected endpoint URL: {reason}")
         chosen_model = (body.pop("_model", "") or "").strip()
         api_key = None
+        base = ""  # bound here so `_db_work`'s nonlocal names it plainly
 
         def _db_work():
             nonlocal api_key, base
@@ -1557,6 +1558,7 @@ def setup_gallery_routes() -> APIRouter:
         model = (body.get("_model") or "").strip()
 
         api_key = None
+        base = ""  # bound here so `_db_work`'s nonlocal names it plainly
 
         def _db_work():
             nonlocal api_key, base
