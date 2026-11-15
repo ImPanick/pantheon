@@ -217,3 +217,99 @@ def without_sounds(messages: list, *, keep_last_user: bool = False) -> list:
             parts = "\n".join(str(p.get("text") or "") for p in parts).strip()
         out.append({**message, "content": parts})
     return out
+
+
+# ── `B2132`: an earlier turn's files go with that turn, not every turn after ──
+
+#: Metadata key on a saved user message that carried attachments: what the
+#: person wrote, without the files' text folded in after it.
+SAID_WITH_ATTACHMENTS = "said_with_attachments"
+
+EARLIER_ATTACHMENT_NOTE = (
+    "[The attached file's contents went with this message and are not sent "
+    "again. If they are needed now, ask the person to attach it again or to "
+    "name it.]"
+)
+
+_KIND_WORDS = (r"attachments?|files?|pdfs?|docs?|documents?|images?|pictures?|photos?|"
+               r"screenshots?|spreadsheets?|sheets?|uploads?|markdown|md|csv|slides?|"
+               r"deck|scan|attached")
+_REFERS_TO_AN_ATTACHMENT = re.compile(
+    r"\b(?:the|that|this|those|these|my|your|same|attached|uploaded)\s+(?:\w+\s+)?(?:"
+    + _KIND_WORDS + r")\b"
+    r"|\b(?:i|we)\s+(?:just\s+)?(?:sent|attached|uploaded|shared|gave)\b",
+    re.IGNORECASE)
+
+
+def _plain_text(content: Any) -> str:
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return "\n".join(str(p.get("text") or "") for p in content
+                         if isinstance(p, dict) and p.get("type") == "text")
+    return ""
+
+
+def _named_in(text: str, ref: dict[str, Any]) -> bool:
+    name = str(ref.get("name") or "").strip().lower()
+    if not name or not text:
+        return False
+    stem = name.rsplit(".", 1)[0] if "." in name else name
+    low = text.lower()
+    return name in low or (len(stem) >= 4 and stem in low)
+
+
+def earlier_attachments_as_references(messages: list) -> list:
+    """`messages` with each earlier user turn's attachments sent as their
+    reference lines, not their contents; the newest user message whole.
+
+    `B2132`. The owner, 2026-11-15: *"Ensure documents and other storage
+    materials aren't constantly passed to the LLM per turn ... unless
+    explicitly attached/called upon by the user ... This includes documents,
+    markdowns, pdf's, images etc... the whole suite."* Measured before this: a
+    PDF's extracted text (24,000 characters by default, up to half the model's
+    window) is folded into the message it came with, and that message went in
+    every later request of the chat; a picture's base64 too, while the session
+    stayed in memory.
+
+    An earlier turn keeps its files when the newest message calls on them: by
+    the file's name, or as "the PDF", "that screenshot", "the file I sent"
+    (then the newest turn with files). Copies; never mutates the session."""
+    last_user = next((i for i in range(len(messages) - 1, -1, -1)
+                      if isinstance(messages[i], dict) and messages[i].get("role") == "user"
+                      and not (messages[i].get("metadata") or {}).get("source")), -1)
+    if last_user < 0:
+        return messages
+    asked = _plain_text(messages[last_user].get("content"))
+    carrying = [i for i in range(last_user)
+                if isinstance(messages[i], dict) and messages[i].get("role") == "user"
+                and attachment_refs_from_metadata(messages[i].get("metadata"))]
+    if not carrying:
+        return messages
+    keep = {i for i in carrying
+            if any(_named_in(asked, r) for r in attachment_refs_from_metadata(messages[i].get("metadata")))}
+    if not keep and _REFERS_TO_AN_ATTACHMENT.search(asked or ""):
+        keep = {carrying[-1]}
+    out = list(messages)
+    for i in carrying:
+        if i in keep:
+            continue
+        message = messages[i]
+        metadata = message.get("metadata") or {}
+        refs = attachment_refs_from_metadata(metadata)
+        said = metadata.get(SAID_WITH_ATTACHMENTS)
+        content = message.get("content")
+        if isinstance(said, str):
+            words = said.strip()
+        elif isinstance(content, list):
+            # Saved before `B2132`, still in memory: the pictures and sounds
+            # go; the text, which holds the person's words and the files'
+            # folded together, stays as it was.
+            words = _plain_text(content).strip()
+        else:
+            continue
+        lines = [words] if words else []
+        lines += [_ref_line(r) for r in refs]
+        lines.append(EARLIER_ATTACHMENT_NOTE)
+        out[i] = {**message, "content": "\n".join(lines)}
+    return out

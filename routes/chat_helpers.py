@@ -525,6 +525,11 @@ def add_user_message(sess, chat_handler, preprocessed: PreprocessedMessage, inco
     if incognito:
         return None
     user_meta = {"attachments": preprocessed.attachment_meta} if preprocessed.attachment_meta else None
+    if user_meta:
+        # `B2132`: what the person wrote, without the files' text, so a later
+        # turn sends this message as their words and the files' names.
+        from src.attachment_refs import SAID_WITH_ATTACHMENTS
+        user_meta[SAID_WITH_ATTACHMENTS] = str(preprocessed.enhanced_message or "")
     if from_person:
         from src.attachment_refs import persistable_message_content
         from src.tool_approval_scopes import PERSON_MESSAGE_SEAL_FIELD, seal_person_message
@@ -1003,6 +1008,9 @@ async def build_chat_context(
     user_message = None
     if persist_user_message and incognito:
         user_meta = {"attachments": preprocessed.attachment_meta} if preprocessed.attachment_meta else None
+        if user_meta:   # `B2132`
+            from src.attachment_refs import SAID_WITH_ATTACHMENTS
+            user_meta[SAID_WITH_ATTACHMENTS] = str(preprocessed.enhanced_message or "")
         _append_incognito_message(session_id, "user", preprocessed.user_content, user_meta)
     elif persist_user_message:
         # `B1223`. The person's message is written off the event loop: on it, a
@@ -1140,8 +1148,11 @@ async def build_chat_context(
     messages = preface + (_incognito_messages(session_id) if incognito else sess.get_context_messages())
     # `B1290`. A recording goes to a model as sound on its own turn only: an
     # earlier turn's would be sent again to whatever model the chat is on now.
-    from src.attachment_refs import without_sounds
+    from src.attachment_refs import earlier_attachments_as_references, without_sounds
     messages = without_sounds(messages, keep_last_user=True)
+    # `B2132`. An earlier turn's files went with that turn; later turns send
+    # their names unless the person calls on them again.
+    messages = earlier_attachments_as_references(messages)
     # `B1736`. The model may react to the person's message, and hears how they
     # reacted to its recent replies (`src/message_reactions.py`).
     if offer_reactions and not incognito:
