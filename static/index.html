@@ -4341,6 +4341,15 @@
               </div>
               <div id="ws-network-effect" class="admin-toggle-sub ws-effect"></div>
 
+              <!-- The VM workstation's memory for each person's machine: the
+                   admin's size, or Automatic. Shown only when the workstation
+                   that answered is the VM one (`workstation.js` renderMemory). -->
+              <div class="settings-row ws-field" id="ws-vm-memory-row" hidden>
+                <label class="settings-label" for="ws-vm-memory">Memory for each machine</label>
+                <select id="ws-vm-memory" class="settings-select" aria-describedby="ws-vm-memory-effect"></select>
+              </div>
+              <div id="ws-vm-memory-effect" class="admin-toggle-sub ws-effect" hidden></div>
+
               <div class="admin-toggle-row ws-toggle">
                 <div>
                   <label class="admin-toggle-label" for="ws-route-tools">Agent shell, Python and file tools run in the workstation</label>

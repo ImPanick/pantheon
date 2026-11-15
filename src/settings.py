@@ -518,6 +518,13 @@ DEFAULT_SETTINGS = {
     # lift it; by the daemon for accounts only where its machine lets it; and
     # the panel says which (`workstation_access.network_view`), never more.
     "workstation_network": "full",
+    # The VM workstation's memory for each person's machine, in MiB. `None`
+    # (the shipped default) is automatic: room for the phone on a host that can
+    # spare it, else 2 GiB (`workstation/vm.auto_memory_mib`), unless the
+    # operator set `PANTHEON_WORKSTATION_VM_MEMORY_MIB`. Pushed by `sync_config`
+    # to a VM host only; every machine hands the memory its guest frees back to
+    # the host, so a larger size costs the host what is used.
+    "workstation_vm_memory_mib": None,
     # When the workstation is on, do the agent's `bash`, `python` and file
     # tools run in it (`P20-03`)? ON: that is the point of the phase — a shell
     # stops being a key to the house. Off puts them back where they run today.

@@ -431,6 +431,7 @@ function renderEffects(settings, daemon, network) {
 
   renderSudo(settings, daemon);
   renderRecreate(settings, daemon);
+  renderMemory(settings, daemon);
 
   const networkEffect = $('ws-network-effect');
   if (networkEffect) {
@@ -445,6 +446,66 @@ function renderEffects(settings, daemon, network) {
     const state = quiet ? '' : networkStateSentence(view);
     networkEffect.textContent = `${words ? words.says : chosen}${state ? ` ${state}` : ''}`;
   }
+}
+
+// ── the VM workstation's memory ──────────────────────────────────────────────
+//
+// The owner (2026-11-14): a setting for it in Settings. The size is the
+// daemon's to report (`health.memory_*`); a workstation that reports none has
+// no machines of its own to size, and the control is not shown.
+
+// What the phone needs of its machine: 8 GiB for Android, 1536 MiB for the
+// desktop, and what the guest kernel keeps (`vm.PHONE_ROOM_MEMORY_MIB`).
+const ANDROID_ROOM_MIB = 10240;
+
+function memoryWords(mib) {
+  if (typeof mib !== 'number') return '';
+  return mib % 1024 === 0 ? `${mib / 1024} GB` : `${mib} MiB`;
+}
+
+function renderMemory(settings, daemon) {
+  const row = $('ws-vm-memory-row');
+  const select = $('ws-vm-memory');
+  const effect = $('ws-vm-memory-effect');
+  const here = !!(daemon && 'memory_choice' in daemon);
+  show(row, here);
+  show(effect, here);
+  if (!here || !select) return;
+  const choice = typeof settings.vm_memory_choice === 'number' ? settings.vm_memory_choice : null;
+  const sizes = Array.isArray(settings.vm_memory_sizes) ? settings.vm_memory_sizes.slice() : [];
+  if (choice !== null && !sizes.includes(choice)) sizes.push(choice);
+  sizes.sort((a, b) => a - b);
+  select.textContent = '';
+  const auto = document.createElement('option');
+  auto.value = '';
+  auto.textContent = `Automatic (${memoryWords(daemon.memory_default_mib)} here)`;
+  select.appendChild(auto);
+  for (const mib of sizes) {
+    const opt = document.createElement('option');
+    opt.value = String(mib);
+    opt.textContent = memoryWords(mib);
+    select.appendChild(opt);
+  }
+  select.value = choice === null ? '' : String(choice);
+  if (!effect) return;
+  const size = choice === null ? daemon.memory_default_mib : choice;
+  const parts = [];
+  if (choice === null) {
+    parts.push(daemon.memory_default_source === 'env'
+      ? `Automatic is ${memoryWords(daemon.memory_default_mib)}, set by `
+        + 'PANTHEON_WORKSTATION_VM_MEMORY_MIB where Pantheon is started.'
+      : `Automatic is ${memoryWords(daemon.memory_default_mib)}, sized from this host's `
+        + `${memoryWords(daemon.host_memory_mib) || 'memory'}.`);
+  }
+  if (daemon.memory_returns_to_host) {
+    parts.push('A machine holds on the host only what it uses: freed memory goes back to the host.');
+  }
+  parts.push('A running machine powers off cleanly and starts with a new size on its next use, '
+    + 'its files kept.');
+  if (typeof size === 'number' && size < ANDROID_ROOM_MIB) {
+    parts.push(`Android needs ${memoryWords(ANDROID_ROOM_MIB)} or more.`);
+  }
+  effect.textContent = parts.join(' ');
 }
 
 /**
@@ -894,6 +955,8 @@ function wire() {
     if (btn) machineAction(btn.dataset.service, btn.dataset.action);
   });
   onChange('ws-network', 'workstation_network', (n) => n.value);
+  onChange('ws-vm-memory', 'workstation_vm_memory_mib',
+    (n) => (n.value === '' ? null : Number(n.value)));
   $('ws-sudo-reset')?.addEventListener('click', () => { save({ workstation_sudo: null }); });
   $('ws-save-address')?.addEventListener('click', () => { saveAddress(); });
   $('ws-recreate-copy')?.addEventListener('click', () => {
