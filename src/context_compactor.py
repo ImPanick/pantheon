@@ -310,13 +310,8 @@ def _is_plain_turn(m: Dict) -> bool:
         return False
     if (m.get("metadata") or {}).get("source"):
         return False
-    try:
-        from src.prompt_security import is_framed_context_content
-        if is_framed_context_content(m.get("content")):
-            return False
-    except Exception:
-        pass
-    return True
+    from src.prompt_security import is_framed_context_content
+    return not is_framed_context_content(m.get("content"))
 
 
 def _drop_leading_prior(messages: List[Dict], count: int) -> List[Dict]:
