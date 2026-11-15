@@ -43,34 +43,42 @@ COMPACT_THRESHOLD = 0.85  # Trigger compaction at 85% of context window
 SUMMARY_MAX_TOKENS = 1024
 SMALL_CONTEXT_LIMIT = 8192  # Models with context <= this get aggressive trimming
 
-# Cursor-style self-summarization prompt — produces structured, dense summaries
-SELF_SUMMARY_SYSTEM_PROMPT = """You are summarizing a conversation to preserve context after compaction. Produce a structured summary that lets the conversation continue seamlessly.
+#: `B2134`. What a compaction leaves word for word before the person's latest
+#: message, as a share of the room it measured against: the rest of what came
+#: before is the summary. It was the newer half by count.
+COMPACT_TAIL_SHARE = 0.05
+#: …and never more than this many tokens, however large the room: on a 200K
+#: window 5% would keep 10K of old turns word for word.
+COMPACT_TAIL_CAP = 1000
+#: `B2134`. A summary is asked to be this share of what it replaces, between
+#: `SUMMARY_MIN_TOKENS` and `SUMMARY_MAX_TOKENS`.
+SUMMARY_OF_REPLACED = 0.05
 
-Use this format:
+# `B2134`. A state record for the model that carries on, not a report for a
+# person. The owner, 2026-11-15: *"condense to a machine-readable super-fast
+# summary... Reducing 200k down to ~sub 1k is the goal"*. One fact a line,
+# keyed, values copied exactly; the markdown report it replaced spent its
+# tokens on headings and prose.
+SELF_SUMMARY_SYSTEM_PROMPT = """You compact a conversation into a state record so the work can continue in a fresh context. The reader is a model, not a person. Everything you leave out is lost: keep every fact that matters and drop only wording.
 
-## Conversation Summary
-**Turns summarized:** {count}  |  **Compactions so far:** {n}
+First line, exactly: SUMMARY turns={count} compactions={n}
 
-### User Goal
-One sentence describing what the user is trying to accomplish.
+Then only lines of the form KEY: value, in this order. GOAL and STATE appear once; the others repeat, one item a line:
+GOAL: what the user wants
+RULE: a constraint, preference or limit the user set
+FACT: a name, path, command, URL, number, version, id or setting, copied exactly
+DECIDED: a decision and its reason
+DONE: an action taken and its result
+FILE: path = what changed in it or why it matters
+ERROR: an error met = how it was resolved
+STATE: where things stand at the end
+OPEN: what remains, a question or a blocker
 
-### What Was Done
-- Bullet points of completed actions, decisions made, and key outputs
-- Include specific file paths, function names, variable names, URLs, and config values
-- Note any errors encountered and how they were resolved
-
-### Current State
-What is the system/code/task state right now? What was the last thing discussed?
-
-### Pending / Next Steps
-- What remains to be done
-- Any open questions or blockers
-
-### Key Context
-- Important constraints, preferences, or decisions that must not be forgotten
-- Specific values: model names, ports, paths, credentials references, versions
-
-Keep the summary under 1000 tokens. Be dense — every token should carry information. Do not include pleasantries or meta-commentary."""
+Rules:
+- If the transcript begins with an EARLIER SUMMARY, merge it: keep every line of it that still holds.
+- No headings, no prose, no greetings, no commentary about summarizing.
+- Abbreviate words freely; never abbreviate or round a value.
+- Stay under {budget} tokens."""
 
 
 def normalize_compaction_summary(summary: str) -> str:
@@ -288,7 +296,72 @@ PROMPT_CUT_CHARS = 2000
 PROMPT_CUT_NOTICE = "\n[System prompt truncated for context limits]"
 
 
-def trim_for_context(messages: List[Dict], context_length: int, reserve_tokens: int = 512) -> List[Dict]:
+#: `B2133`. Where a held trim brings the request down to, as a share of the
+#: budget, so the next rounds' results fit without moving the cut again.
+TRIM_HOLD_WATERMARK = 0.7
+
+
+def _is_plain_turn(m: Dict) -> bool:
+    """`B2133`. A turn of the chat itself: not a system message, not one the
+    turn is built around (`_protected`), and not context a source framed into
+    the conversation (memory, references, attachments), which keep the
+    trimmer's old rule (`B1425`, `B1651`)."""
+    if m.get("role") == "system" or m.get("_protected"):
+        return False
+    if (m.get("metadata") or {}).get("source"):
+        return False
+    from src.prompt_security import is_framed_context_content
+    return not is_framed_context_content(m.get("content"))
+
+
+def _drop_leading_prior(messages: List[Dict], count: int) -> List[Dict]:
+    """`B2133`. `messages` without the first `count` plain turns before the
+    person's latest message; never that message or anything after it."""
+    convo = [m for m in messages if m.get("role") != "system" and not m.get("_protected")]
+    theirs = _the_persons_message(convo)
+    drop, seen = set(), 0
+    for m in messages:
+        if m is theirs or seen >= count:
+            break
+        if _is_plain_turn(m):
+            drop.add(id(m))
+            seen += 1
+    return _sanitize_tool_messages([m for m in messages if id(m) not in drop])
+
+
+#: `B2135`. What an earlier tool result of this turn is sent as once the turn
+#: has outgrown its room: the call stays, so the model knows what it ran.
+RESULT_LEFT_OUT_NOTICE = ("[An earlier tool result of this turn, {chars:,} characters, "
+                          "left out to make room. Call the tool again if it is needed.]")
+
+
+def _turn_results_before_the_newest_round(messages: List[Dict]) -> List[Dict]:
+    """`B2135`. This turn's tool results, oldest first, not counting the newest
+    round's: the ones the model has already read and acted on."""
+    convo = [m for m in messages if m.get("role") != "system" and not m.get("_protected")]
+    theirs = _the_persons_message(convo)
+    if theirs is None:
+        return []
+    at = next(i for i, m in enumerate(messages) if m is theirs)
+    after = messages[at + 1:]
+    last_call = max((i for i, m in enumerate(after) if m.get("role") == "assistant"), default=-1)
+    return [m for m in after[:max(last_call, 0)]
+            if _is_tool_result(m) and isinstance(m.get("content"), str)
+            and not str(m.get("content")).startswith("[An earlier tool result of this turn")]
+
+
+def _stub_turn_results(messages: List[Dict], count: int) -> List[Dict]:
+    """`B2135`. `messages` with the first `count` of this turn's earlier tool
+    results sent as `RESULT_LEFT_OUT_NOTICE`."""
+    stub = {id(m) for m in _turn_results_before_the_newest_round(messages)[:count]}
+    if not stub:
+        return messages
+    return [dict(m, content=RESULT_LEFT_OUT_NOTICE.format(chars=len(m["content"])))
+            if id(m) in stub else m for m in messages]
+
+
+def trim_for_context(messages: List[Dict], context_length: int, reserve_tokens: int = 512,
+                     *, hold: Optional[Dict[str, Any]] = None) -> List[Dict]:
     """Trim system messages to fit within context_length.
 
     For small-context models, progressively strips:
@@ -299,8 +372,20 @@ def trim_for_context(messages: List[Dict], context_length: int, reserve_tokens: 
     system prompt is cut. A compaction summary is kept with the leading
     prompt, and the turns are trimmed around the person's latest message,
     which is cut last and never dropped (`B1943`).
+
+    `B2133`. Turns before the person's latest message go before the
+    instructions or the person's own words are cut. ``hold`` is the agent
+    loop's per-turn record: when given, the turns dropped and the extra system
+    messages kept are decided once and kept for the rounds after, and a drop
+    goes down to `TRIM_HOLD_WATERMARK` of the budget rather than just under it,
+    so the request keeps the same beginning, and a local server keeps its
+    cached prefix, until the turn outgrows the room again.
     """
     budget = context_length - reserve_tokens
+    if hold is not None and hold.get("prior_dropped"):
+        messages = _drop_leading_prior(messages, int(hold["prior_dropped"]))
+    if hold is not None and hold.get("results_left_out"):
+        messages = _stub_turn_results(messages, int(hold["results_left_out"]))
     used = estimate_tokens(messages)
     if used <= budget:
         return messages
@@ -342,6 +427,13 @@ def trim_for_context(messages: List[Dict], context_length: int, reserve_tokens: 
     essential_system = (_non_primer[:1] if _non_primer else []) + _primers + _summaries
     extra_system = _non_primer[1:]
 
+    # `B2133`. Extras the turn already settled stay settled: an extra that
+    # comes back or goes away mid-turn changes the system prompt itself.
+    if hold is not None and "extras" in hold:
+        extra_system = extra_system[:int(hold["extras"])]
+        essential_system = essential_system + extra_system
+        extra_system = []
+
     # Try dropping extra system messages one by one (from the end)
     trimmed = essential_system + convo_msgs
     if estimate_tokens(trimmed) <= budget:
@@ -353,7 +445,11 @@ def trim_for_context(messages: List[Dict], context_length: int, reserve_tokens: 
                 result.append(msg)
             else:
                 break
+        if hold is not None and "extras" not in hold:
+            hold["extras"] = len(result) - len(essential_system)
         return _sanitize_tool_messages(result + protected_msgs + convo_msgs)
+    if hold is not None and "extras" not in hold:
+        hold["extras"] = 0
 
     # `B1425`. Before the instructions every tool is called by are cut, shed the
     # skills block. It is reference — a catalogue and matched procedures, each
@@ -374,6 +470,64 @@ def trim_for_context(messages: List[Dict], context_length: int, reserve_tokens: 
             logger.info("Shed %d reference message(s) so the system prompt fits uncut",
                         len(shed_ids))
             return _sanitize_tool_messages(essential_system + protected_msgs + without)
+
+    # `B2133`. Then the turns before the person's latest message, oldest
+    # first, before their message or the instructions are cut. Measured on
+    # `fix/agent-lean-turn` (a 9,000-character prompt, a 60-message chat, one
+    # 6,000-character tool result a round, a 20,000-token budget): the prompt
+    # was cut to 2,045 characters while every old turn was still sent, and the
+    # first message after it moved every round, so a local server re-read the
+    # whole request each time.
+    kept_convo = [m for m in convo_msgs if id(m) not in shed_ids]
+    theirs_now = _the_persons_message(kept_convo)
+    if theirs_now is not None:
+        at = next(i for i, m in enumerate(kept_convo) if m is theirs_now)
+        prior = [m for m in kept_convo[:at] if _is_plain_turn(m)]
+        if prior:
+            target = budget if hold is None else int(budget * TRIM_HOLD_WATERMARK)
+            dropped_ids: set = set()
+
+            def _without_dropped():
+                return [m for m in kept_convo if id(m) not in dropped_ids]
+
+            while len(dropped_ids) < len(prior) and estimate_tokens(
+                    essential_system + protected_msgs + _without_dropped()) > target:
+                dropped_ids.add(id(prior[len(dropped_ids)]))
+            fitted = _sanitize_tool_messages(essential_system + protected_msgs + _without_dropped())
+            done = estimate_tokens(fitted) <= budget
+            if hold is not None and dropped_ids and (done or len(dropped_ids) == len(prior)):
+                hold["prior_dropped"] = int(hold.get("prior_dropped") or 0) + len(dropped_ids)
+            if done:
+                logger.info("Dropped %d earlier message(s) so the instructions fit uncut",
+                            len(dropped_ids))
+                return fitted
+            convo_msgs = [m for m in convo_msgs if id(m) not in dropped_ids]
+
+        # `B2135`. Then this turn's earlier tool results — read and acted on
+        # already — before the person's message or the instructions are cut,
+        # oldest first, each call kept. Held like the turns above, so a long
+        # turn moves its beginning once in a while, not every round.
+        if not prior or len(dropped_ids) == len(prior):
+            target = budget if hold is None else int(budget * TRIM_HOLD_WATERMARK)
+            current = [m for m in convo_msgs if id(m) not in shed_ids]
+            earlier = _turn_results_before_the_newest_round(current)
+            n = 0
+            shaped = current
+            while n < len(earlier) and estimate_tokens(essential_system + protected_msgs + shaped) > target:
+                n += 1
+                shaped = _stub_turn_results(current, n)
+            # Only when that is what saves the instructions (`B1425`'s rule):
+            # if they are cut either way, the results stay as they were sent and
+            # the steps below give way as before (`B2137`; a turn resumed after
+            # an approval was sent its first result as the notice and its
+            # instructions cut all the same).
+            if n:
+                fitted = _sanitize_tool_messages(essential_system + protected_msgs + shaped)
+                if estimate_tokens(fitted) <= budget:
+                    if hold is not None:
+                        hold["results_left_out"] = int(hold.get("results_left_out") or 0) + n
+                    logger.info("Left out %d earlier tool result(s) of this turn so the instructions fit uncut", n)
+                    return fitted
 
     # `B1651`. Then the person's message gives way, before the instructions do.
     # Measured through `/api/chat_stream` (`B1572`'s turn: an Agent-mode turn
@@ -585,22 +739,39 @@ async def maybe_compact(
     *,
     persist: bool = True,
     compaction_state: Optional[Dict[str, Any]] = None,
+    budget: Optional[int] = None,
+    overhead_tokens: int = 0,
 ) -> tuple:
     """Check context usage and compact if above threshold.
 
     Returns (messages, context_length, was_compacted).
+
+    `B2134`. ``budget`` is the room the request may use, when the caller knows
+    a smaller one than the window (the agent's input budget): the fill is
+    measured against it, with ``overhead_tokens`` (the agent's own prompt,
+    which ``messages`` does not carry yet) counted in. Measured on
+    `fix/agent-lean-turn`: compaction measured the chat against the window
+    while the trim measured the request against the agent budget, so on an
+    agent turn the trim bound first and compaction did not fire at all.
+
+    What is kept word for word is the person's latest message and what follows
+    it, and the newest messages before it that fit `COMPACT_TAIL_SHARE` of the
+    room; everything older, an earlier summary merged in, becomes one keyed
+    state record of `SUMMARY_OF_REPLACED` of its size (`SELF_SUMMARY_SYSTEM_PROMPT`).
     """
     # `B1598`. A cache miss reads the endpoint table and may ask the server:
     # a worker thread's work, as `llm_core`'s own reads are (`B1588`).
     context_length = await asyncio.to_thread(get_context_length, endpoint_url, model)
     used = estimate_tokens(messages)
-    pct = (used / context_length) * 100 if context_length else 0
+    room = int(budget) if budget and budget > 0 else context_length
+    filled = used + max(0, int(overhead_tokens or 0))
+    pct = (filled / room) * 100 if room else 0
 
     if pct < COMPACT_THRESHOLD * 100:
         return messages, context_length, False
 
     logger.info(
-        f"Context at {pct:.1f}% ({used}/{context_length} tokens) — compacting"
+        f"Context at {pct:.1f}% ({filled}/{room} tokens) — compacting"
     )
 
     # Split into system preface and conversation
@@ -622,22 +793,37 @@ async def maybe_compact(
     if len(convo_msgs) < 4:
         return messages, context_length, False
 
-    # Split conversation: summarize older half, keep recent half
-    split_point = len(convo_msgs) // 2
+    # `B2134`. Where the verbatim tail starts: at the person's latest message,
+    # then back over the newest messages that fit the tail's share — never
+    # starting on a tool result without the call it answers.
+    theirs = _the_persons_message(convo_msgs)
+    if theirs is None:
+        split_point = len(convo_msgs) // 2
+    else:
+        split_point = next(i for i, m in enumerate(convo_msgs) if m is theirs)
+        tail_room = min(int(room * COMPACT_TAIL_SHARE), COMPACT_TAIL_CAP)
+        spent = 0
+        while split_point > 0:
+            cost = estimate_tokens([convo_msgs[split_point - 1]])
+            if spent + cost > tail_room:
+                break
+            spent += cost
+            split_point -= 1
+        while split_point < len(convo_msgs) and convo_msgs[split_point].get("role") == "tool":
+            split_point += 1
+    if split_point < 2:
+        return messages, context_length, False
     older = convo_msgs[:split_point]
     recent = convo_msgs[split_point:]
 
-    # Build the text to summarize
-    convo_text = "\n".join(
-        f"{msg.get('role', 'user').upper()}: {_content_as_text(msg.get('content'))[:2000]}"
-        for msg in older
-    )
-
-    # Count prior compactions from existing summary messages
-    compaction_count = sum(
-        1 for m in system_msgs
-        if "[Conversation summary" in m.get("content", "")
-    )
+    # `B2134`. An earlier summary is merged into this one, not kept beside it:
+    # each compaction used to add one more.
+    earlier = [m for m in system_msgs if _is_summary_message(m)]
+    keep_system = [m for m in system_msgs if not _is_summary_message(m)]
+    compaction_count = len(earlier)
+    older_tokens = estimate_tokens(older)
+    summary_tokens = max(SUMMARY_MIN_TOKENS,
+                         min(SUMMARY_MAX_TOKENS, int(older_tokens * SUMMARY_OF_REPLACED)))
 
     # Use utility model if configured, otherwise fall back to session model
     # `B1598`: the endpoint rows, read in a worker thread — compaction runs
@@ -651,12 +837,27 @@ async def maybe_compact(
         "{count}", str(len(older))
     ).replace(
         "{n}", str(compaction_count + 1)
-    )
+    ).replace("{budget}", str(summary_tokens))
     # `B1731`. gpt-oss reads its reasoning effort from the system message, and
     # its reasoning comes out of the same `max_tokens` as the summary.
     _reasons = "gpt-oss" in (compact_model or "").lower()
     if _reasons:
         prompt = "Reasoning: low\n\n" + prompt
+    max_tokens = int(summary_tokens * 1.5) + (1024 if _reasons else 256)
+    # `B2134`. Each message in full where the summariser's window has room
+    # (`build_summary_source`), not each cut to its first 2,000 characters.
+    if (compact_url, compact_model) == (endpoint_url, model):
+        summariser_window = context_length
+    else:
+        try:
+            summariser_window = await asyncio.to_thread(get_context_length, compact_url, compact_model)
+        except Exception:
+            summariser_window = 0
+    summariser_window = int(summariser_window or 0) or UNKNOWN_SUMMARIZER_WINDOW
+    source_room = max(500, summariser_window - max_tokens - int(len(prompt) * 0.3) - 128)
+    convo_text = build_summary_source(
+        [dict(m, metadata=dict(m.get("metadata") or {}, compacted=True)) for m in earlier]
+        + older, source_room)
     summary_messages = [
         {"role": "system", "content": prompt},
         {"role": "user", "content": convo_text},
@@ -668,7 +869,7 @@ async def maybe_compact(
             compact_model,
             summary_messages,
             temperature=0.2,
-            max_tokens=SUMMARY_MAX_TOKENS + (1024 if _reasons else 0),
+            max_tokens=max_tokens,
             headers=compact_headers,
             timeout=30,
         )
@@ -684,13 +885,14 @@ async def maybe_compact(
         # summary; replacing the older half with nothing would lose it.
         logger.error("Compaction summary was empty; keeping the conversation as it was")
         return messages, context_length, False
+    summary = _fit_to_tokens(summary, summary_tokens)
 
     summary_msg = {
         "role": "system",
         "content": f"[Conversation summary — earlier messages were compacted]\n{summary}",
     }
 
-    compacted = system_msgs + kept + [summary_msg] + recent   # `B1955`: `kept`
+    compacted = keep_system + kept + [summary_msg] + recent   # `B1955`: `kept`
     new_used = estimate_tokens(compacted)
 
     # Update session history to match. Pass len(system_msgs) so the
@@ -703,6 +905,7 @@ async def maybe_compact(
             "split_point": split_point,
             "summary": summary,
             "system_msg_count": len(system_msgs),
+            "merged_earlier": bool(earlier),   # `B2134`
             "applied": False,
             # `B921`. What this compaction measured, in `shaping_stats` shape
             # (`routes/chat_helpers.py`): the list it was handed and the list it
@@ -716,7 +919,8 @@ async def maybe_compact(
             "tokens_after": new_used,
         })
     if persist:
-        _update_session_history(session, split_point, summary, system_msg_count=len(system_msgs))
+        _update_session_history(session, split_point, summary, system_msg_count=len(system_msgs),
+                                merged_earlier=bool(earlier))
         if compaction_state is not None:
             compaction_state["applied"] = True
 
@@ -750,6 +954,7 @@ def apply_compaction_state(session, compaction_state: Optional[Dict[str, Any]]) 
         split_point,
         summary,
         system_msg_count=system_msg_count if isinstance(system_msg_count, int) else 0,
+        merged_earlier=bool(state.get("merged_earlier")),
     )
     state["applied"] = True
     return True
@@ -824,6 +1029,14 @@ TRIM_LEFT_OUT = (
 #: fit — the trim keeps its beginning and end (`PASTED_MESSAGE_CUT_NOTICE`).
 MESSAGE_CUT_WORDS = "the middle of your message"
 
+#: `B2135`. Said when this turn's earlier tool results were sent as
+#: `RESULT_LEFT_OUT_NOTICE`.
+TURN_RESULTS_LEFT_OUT_WORDS = "earlier tool results of this turn"
+
+#: `B2133`. Said when turns before the person's latest message were left out
+#: so the instructions and their message fit whole (`B1572`: name the cut).
+EARLIER_TURNS_WORDS = "the earlier part of this chat"
+
 #: `B1651`. Said when the leading system message — the instructions the model
 #: works by, an agent's tool rules among them — was cut to its first
 #: `PROMPT_CUT_CHARS` to fit. It was cut and nothing said so.
@@ -887,6 +1100,18 @@ def trim_left_out(before: List[Dict], after: List[Dict]) -> List[str]:
         for prefix, words in TRIM_LEFT_OUT:
             if source.startswith(prefix) and words not in said:
                 said.append(words)
+    # `B2133`. Turns before the person's latest message that were left out.
+    theirs_before = _the_persons_message(before)
+    for message in before or []:
+        if message is theirs_before:
+            break
+        if id(message) not in kept and _is_plain_turn(message):
+            said.append(EARLIER_TURNS_WORDS)
+            break
+    # `B2135`. Earlier results of this turn sent as the left-out notice.
+    if any(_is_tool_result(m) and str(m.get("content") or "").startswith("[An earlier tool result of this turn")
+           for m in after or [] if id(m) not in {id(b) for b in before or []}):
+        said.append(TURN_RESULTS_LEFT_OUT_WORDS)
     # `B1943`. A tool result the trim cut: a copy that carries the cut's notice.
     sent = {id(message) for message in before or []}
     results_cut = sum(1 for message in after or []
@@ -978,7 +1203,7 @@ def apply_compaction_state_for_session(
 
 
 def _update_session_history(session, split_point: int, summary: str,
-                            system_msg_count: int = 0):
+                            system_msg_count: int = 0, merged_earlier: bool = False):
     """Update the in-memory session history after compaction.
 
     `split_point` is the index in `convo_msgs` (system-stripped). The
@@ -998,6 +1223,9 @@ def _update_session_history(session, split_point: int, summary: str,
     # Keep the recent messages, prepend summary AND the leading system
     # messages so the system prompt survives compaction.
     system_prefix = list(session.history[:system_msg_count])
+    if merged_earlier:
+        # `B2134`. The new summary carries the earlier one's facts.
+        system_prefix = [r for r in system_prefix if not is_compaction_summary(r)]
     recent_history = session.history[effective_split:]
     summary = normalize_compaction_summary(summary)
     summary_msg = ChatMessage(

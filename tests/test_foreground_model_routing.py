@@ -29,6 +29,12 @@ from src.foreground_model_routing import (
 )
 
 
+def _without_request(buckets):
+    """`B2122` adds each round's `request` record (why it ran, what it carried)
+    to its bucket; the cost accounting these tests pin is the rest."""
+    return [{k: v for k, v in b.items() if k != "request"} for b in buckets]
+
+
 @pytest.fixture(autouse=True)
 def _no_endpoint_answers(monkeypatch):
     """`B1520`: the model's context-window lookups fail as an unreachable host
@@ -2757,7 +2763,7 @@ def test_direct_low_signal_fallback_estimates_winning_route_prompt(
     assert accounted["model"] == backup[1]
     assert accounted["endpoint_id"] == "backup"
     assert accounted["input_tokens"] == 99
-    assert accounted["usage_buckets"] == [{
+    assert _without_request(accounted["usage_buckets"]) == [{
         "round": 1,
         "model": backup[1],
         "endpoint_id": "backup",
@@ -3000,7 +3006,7 @@ def test_agent_metrics_attribute_usage_to_each_answering_route(monkeypatch):
     assert metrics["input_tokens"] == 300
     assert metrics["output_tokens"] == 30
     assert metrics["usage_source"] == "real"
-    assert metrics["usage_buckets"] == [
+    assert _without_request(metrics["usage_buckets"]) == [
         {
             "round": 1,
             "model": "selected-alias",
@@ -3271,7 +3277,7 @@ def test_agent_terminal_retains_completed_paid_fallback_usage(monkeypatch):
     assert terminal["input_tokens"] == 125
     assert terminal["output_tokens"] == 25
     assert terminal["usage_source"] == "real"
-    assert terminal["usage_buckets"] == [{
+    assert _without_request(terminal["usage_buckets"]) == [{
         "round": 1,
         "model": "backup-model",
         "endpoint_id": "paid",
@@ -3404,7 +3410,7 @@ def test_agent_fallback_request_uses_candidate_context_budget(
     def fake_compute(soft_budget, candidate_context, explicit, hard_max=None):
         return candidate_context
 
-    def fake_trim(messages, effective_budget, reserve_tokens=0):
+    def fake_trim(messages, effective_budget, reserve_tokens=0, **_):
         trim_budgets.append(effective_budget)
         if effective_budget != 100:
             return list(messages)
@@ -3465,9 +3471,11 @@ def test_agent_fallback_request_uses_candidate_context_budget(
         )
     )
 
-    assert [(url, model) for url, model, _fallback in context_lookups] == [
+    # `B2134`: the route builder reads each candidate's budget too (to decide
+    # whether to compact), so a candidate is looked up more than once; each
+    # lookup is still its own, and each trim still takes its own budget.
+    assert list(dict.fromkeys((url, model) for url, model, _fallback in context_lookups)) == [
         (primary[0], primary[1]),
-        (backup[0], backup[1]),
         (backup[0], backup[1]),
     ]
     assert trim_budgets == [primary_context, backup_context, backup_context]
@@ -3879,7 +3887,10 @@ async def test_each_candidate_measures_a_shaping_step_against_its_own_boundary(m
         "messages_before": 10, "messages_after": 6,
         "tokens_before": 1000, "tokens_after": 600,
     }
-    assert state["trim_stats"][0] == {
+    # `B2133`: the stub's cut leaves out turns, which the record now names
+    # (`left_out`); the figures are what this test measures.
+    figures = {k: v for k, v in state["trim_stats"][0].items() if k != "left_out"}
+    assert figures == {
         "messages_before": 6, "messages_after": 4,
         "tokens_before": 600, "tokens_after": 400,
     }

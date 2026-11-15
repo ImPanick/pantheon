@@ -63,12 +63,16 @@ def _stops(events, kind=None):
     return out
 
 
+from src.prompt_security import is_turn_note_content
+
+
 def _system_pushes(requests):
     """Every system message the loop appended mid-turn, across all requests."""
     seen = []
     for req in requests:
         for m in req:
-            if m.get("role") == "system":
+            # `B2120`: a loop note is a turn note at the request's end now.
+            if m.get("role") == "system" or is_turn_note_content(m.get("content")):
                 seen.append(str(m.get("content") or ""))
     return seen
 

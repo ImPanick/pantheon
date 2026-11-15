@@ -315,7 +315,7 @@ async def auto_name_session(session_manager, sess):
     """Generate a short title for a session from its first user message."""
     try:
         from src.llm_core import llm_call_async
-        from src.task_endpoint import resolve_task_endpoint
+        from src.task_endpoint import resolve_side_job_endpoint   # `B2136`
 
         # Find first user message
         first_msg = ""
@@ -337,7 +337,7 @@ async def auto_name_session(session_manager, sess):
         # `B1598`: the endpoint rows, read in a worker thread — this runs on
         # the event loop, spawned by the chat routes after a reply.
         t_url, t_model, t_headers = await asyncio.to_thread(
-            resolve_task_endpoint, sess.endpoint_url, sess.model, sess.headers, owner=owner
+            resolve_side_job_endpoint, sess.endpoint_url, sess.model, sess.headers, owner=owner
         )
         if not t_model:
             logger.debug("[auto-name] No model provided, skipping")
@@ -525,6 +525,11 @@ def add_user_message(sess, chat_handler, preprocessed: PreprocessedMessage, inco
     if incognito:
         return None
     user_meta = {"attachments": preprocessed.attachment_meta} if preprocessed.attachment_meta else None
+    if user_meta:
+        # `B2139`: what the person wrote, without the files' text, so a later
+        # turn sends this message as their words and the files' names.
+        from src.attachment_refs import SAID_WITH_ATTACHMENTS
+        user_meta[SAID_WITH_ATTACHMENTS] = str(preprocessed.enhanced_message or "")
     if from_person:
         from src.attachment_refs import persistable_message_content
         from src.tool_approval_scopes import PERSON_MESSAGE_SEAL_FIELD, seal_person_message
@@ -897,13 +902,21 @@ def _warn_old_use_rag_spelling(raw: object) -> None:
     logger.warning(
         "use_rag=%r now turns retrieval OFF. Before 2026-09-16 only the literal "
         "`false` did, so this call ran WITH retrieval despite asking for it to "
-        "be off (`B152`). Send use_rag=true, or omit the field, to keep it on.",
+        "be off (`B152`). Send use_rag=true to keep it on (an absent field is off since `B2141`).",
         raw,
     )
 
 
 def rag_requested(use_rag: object) -> bool:
-    """Did this request ask for retrieval? Absent means yes.
+    """Did this request ask for retrieval? Absent means no (`B2141`).
+
+    `B2141`, owner ruling 2026-11-15: stored material reaches the model only
+    when the person attaches it or calls on it. An absent field meant yes, so
+    every API turn that left `use_rag` out searched the person's documents and
+    sent up to 10,000 characters of matches, whatever it asked; the composer
+    already sends `false` unless its toggle is on, so the page is unchanged.
+    The rest of this docstring is the `B152` history, from when absence meant
+    yes.
 
     `B152`, and `B97`'s last held HTTP field. Until 2026-09-16 this read
     `(str(use_rag).lower() != "false") if use_rag is not None else True`, so
@@ -934,7 +947,7 @@ def rag_requested(use_rag: object) -> bool:
     """
     from src.env_flags import request_flag
 
-    answer = request_flag(use_rag, default=True)
+    answer = request_flag(use_rag, default=False)
     # The old rule was `str(use_rag).lower() != "false"`, so the set of values
     # that already turned retrieval off is exactly the set whose `str().lower()`
     # is `"false"` — the literal word and a real `False`, and nothing else. The
@@ -942,7 +955,7 @@ def rag_requested(use_rag: object) -> bool:
     # vocabulary, so it cannot drift from the rule it is describing. Note the
     # missing `.strip()`: `" false "` was ON before and is off now, which is a
     # change and does warn.
-    if not answer and str(use_rag).lower() != "false":
+    if not answer and str(use_rag).lower() != "false" and request_flag(use_rag, default=True) is False:
         _warn_old_use_rag_spelling(use_rag)
     return answer
 
@@ -1003,6 +1016,9 @@ async def build_chat_context(
     user_message = None
     if persist_user_message and incognito:
         user_meta = {"attachments": preprocessed.attachment_meta} if preprocessed.attachment_meta else None
+        if user_meta:   # `B2139`
+            from src.attachment_refs import SAID_WITH_ATTACHMENTS
+            user_meta[SAID_WITH_ATTACHMENTS] = str(preprocessed.enhanced_message or "")
         _append_incognito_message(session_id, "user", preprocessed.user_content, user_meta)
     elif persist_user_message:
         # `B1223`. The person's message is written off the event loop: on it, a
@@ -1092,12 +1108,15 @@ async def build_chat_context(
         agent_mode=agent_mode,
         incognito=incognito,
     )
-    # `B152`: a `use_rag` nobody sent stays off the preface, whose own default
-    # answers yes. `B1788`: a no is always said, so an incognito turn or one
-    # whose policy blocks tools no longer searches the person's documents
-    # because the composer left the field out.
-    if use_rag is not None or not use_rag_val:
-        _preface_kwargs["use_rag"] = use_rag_val
+    # `B152` / `B1788` / `B2141`: the answer is always said, so the preface's
+    # own default never decides a turn.
+    _preface_kwargs["use_rag"] = use_rag_val
+    # `B2138`. The web search query is asked here, awaited: through the local
+    # model gate as this turn's foreground work, and without holding the event
+    # loop while the model answers. The preface asked it with the sync call.
+    if _preface_kwargs["use_web"]:
+        from src.chat_processor import generate_search_query
+        _preface_kwargs["search_query"] = await generate_search_query(_ctx_msg, sess)
     preface, rag_sources, web_sources = chat_processor.build_context_preface(**_preface_kwargs)
 
     # Capture used memories immediately
@@ -1134,8 +1153,11 @@ async def build_chat_context(
     messages = preface + (_incognito_messages(session_id) if incognito else sess.get_context_messages())
     # `B1290`. A recording goes to a model as sound on its own turn only: an
     # earlier turn's would be sent again to whatever model the chat is on now.
-    from src.attachment_refs import without_sounds
+    from src.attachment_refs import earlier_attachments_as_references, without_sounds
     messages = without_sounds(messages, keep_last_user=True)
+    # `B2139`. An earlier turn's files went with that turn; later turns send
+    # their names unless the person calls on them again.
+    messages = earlier_attachments_as_references(messages)
     # `B1736`. The model may react to the person's message, and hears how they
     # reacted to its recent replies (`src/message_reactions.py`).
     if offer_reactions and not incognito:
@@ -1652,7 +1674,19 @@ async def _run_extraction_jobs_sequentially(session_id: str, jobs: list, max_wai
             await asyncio.sleep(poll)
             waited += poll
         try:
-            await job
+            # `B2136`. Background work on a local server: it waits for the
+            # person's own requests and gives way to the next one.
+            from src.llm_core import background_workload
+            with background_workload():
+                await job
+        except asyncio.CancelledError:
+            # A request of the person's took the model: these jobs wait for
+            # the next turn that sets them off.
+            logger.info("[bg-extract] %s extraction gave way to a foreground request (session %s)",
+                        name, session_id)
+            for _rest_name, rest in jobs[jobs.index((name, job)) + 1:]:
+                rest.close()
+            raise
         except Exception:
             logger.warning("[bg-extract] %s extraction job failed for session %s", name, session_id, exc_info=True)
 
@@ -1723,14 +1757,14 @@ async def run_post_response_tasks(
     _should_extract = (_msg_count >= 4) and (_msg_count % 4 == 0)
     if allow_background_extraction and not incognito and not compare_mode and _should_extract and uprefs.get("auto_memory", True):
         from services.memory.memory_extractor import extract_and_store
-        from src.task_endpoint import resolve_task_endpoint
+        from src.task_endpoint import resolve_side_job_endpoint   # `B2136`
 
         async def _memory_job():
             # `B1598`. The endpoint is read in a worker thread when the job
             # runs: this function is called on the event loop, from the chat
             # routes, and the read was a database session there.
             t_url, t_model, t_headers = await asyncio.to_thread(
-                resolve_task_endpoint, sess.endpoint_url, sess.model, sess.headers, owner=owner,
+                resolve_side_job_endpoint, sess.endpoint_url, sess.model, sess.headers, owner=owner,
             )
             await extract_and_store(sess, memory_manager, memory_vector, t_url, t_model, t_headers)
 
@@ -1765,12 +1799,12 @@ async def run_post_response_tasks(
             )
         else:
             from services.memory.skill_extractor import maybe_extract_skill
-            from src.task_endpoint import resolve_task_endpoint
+            from src.task_endpoint import resolve_side_job_endpoint   # `B2136`
 
             async def _skill_job():
                 # `B1598`: as the memory job's, off the event loop.
                 s_url, s_model, s_headers = await asyncio.to_thread(
-                    resolve_task_endpoint, sess.endpoint_url, sess.model, sess.headers, owner=owner,
+                    resolve_side_job_endpoint, sess.endpoint_url, sess.model, sess.headers, owner=owner,
                 )
                 logger.debug("[skill-extract] dispatching extractor (model=%s)", s_model)
                 await maybe_extract_skill(

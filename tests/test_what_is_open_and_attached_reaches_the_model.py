@@ -84,12 +84,12 @@ def world(tmp_path_factory):
         server.stop()
 
 
-def _turn(world, mode, extra=None, sid=None, attach=None):
+def _turn(world, mode, extra=None, sid=None, attach=None, words=WORDS):
     client, ep, log = world
     if sid is None:
         sess = seed._ok(client.post("/api/session", data={"endpoint_id": ep, "model": MODEL}), "chat")
         sid = sess.get("session_id") or sess.get("id")
-    form = {"message": WORDS, "session": sid, "mode": mode, "plan_mode": "false",
+    form = {"message": words, "session": sid, "mode": mode, "plan_mode": "false",
             "selected_model": MODEL, "selected_endpoint_id": ep,
             "allow_bash": "false", "allow_web_search": "false", **(extra or {})}
     if attach:
@@ -138,6 +138,46 @@ def test_incognito_is_promoted_too(world):
 def test_a_chat_mode_turn_with_nothing_open_is_not_promoted(world):
     events, _sent = _turn(world, "chat")
     assert _promoted(events) == []
+
+
+# ── `B2140`: what is open goes only when the words call on it ──────────
+#
+# Owner ruling 2026-11-15: stored material reaches the model only when the
+# person attaches it or calls on it. The turns above say "Use what I gave you",
+# which does; these say something else.
+
+_LONG = "The code word is MARKLONGQ7. " + "Unrelated filler sentence for length. " * 80
+
+
+def test_a_long_document_left_open_is_not_sent_with_an_unrelated_turn(world):
+    client, _ep, _log = world
+    d = seed._ok(client.post("/api/document", json={"title": "Field notes", "language": "markdown",
+                                                     "content": _LONG}), "doc")
+    doc_id = d.get("id") or d["document"]["id"]
+    # "word" alone used to count as calling on the document.
+    events, sent = _turn(world, "agent", {"active_doc_id": doc_id},
+                         words="In one word, what is the capital of France?")
+    assert "MARKLONGQ7" not in sent, "the open document rode along with an unrelated question"
+    _events, sent = _turn(world, "agent", {"active_doc_id": doc_id}, words="Tighten the second paragraph.")
+    assert "MARKLONGQ7" in sent, "a turn that calls on the document was not given it"
+
+
+def test_a_chat_mode_turn_beside_a_document_is_promoted_only_when_it_calls_on_it(world):
+    client, _ep, _log = world
+    d = seed._ok(client.post("/api/document", json={"title": "Steps", "language": "markdown",
+                                                     "content": "The code word is MARKSTEPQ7."}), "doc")
+    doc_id = d.get("id") or d["document"]["id"]
+    events, sent = _turn(world, "chat", {"active_doc_id": doc_id}, words="Thanks.")
+    assert _promoted(events) == [] and "MARKSTEPQ7" not in sent
+    events, _sent = _turn(world, "chat", {"active_doc_id": doc_id}, words="Tighten the second step.")
+    assert "a document is open beside the chat" in _promoted(events)
+
+
+def test_an_email_open_in_the_reader_is_not_sent_with_an_unrelated_turn(world):
+    _events, sent = _turn(world, "agent", {"active_email_uid": "77"}, words="What is the capital of France?")
+    assert "ACTIVE EMAIL OPEN" not in sent, "the open email's block rode along with an unrelated question"
+    _events, sent = _turn(world, "agent", {"active_email_uid": "78"}, words="Reply and say thanks.")
+    assert "UID: 78" in sent
 
 
 def test_agent_mode_was_already_given_both(world):

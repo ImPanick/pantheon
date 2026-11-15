@@ -41,20 +41,26 @@ class TestCompactThreshold:
 
 
 class TestSelfSummaryPrompt:
-    def test_contains_goal_section(self):
-        assert "### User Goal" in SELF_SUMMARY_SYSTEM_PROMPT
+    """`B2134` (owner ruling 2026-11-15): a keyed state record for the model,
+    not the markdown report with `### User Goal` headings it replaced."""
 
-    def test_contains_what_was_done_section(self):
-        assert "### What Was Done" in SELF_SUMMARY_SYSTEM_PROMPT
+    def test_asks_for_the_goal_the_state_and_what_is_open(self):
+        for key in ("GOAL:", "STATE:", "OPEN:"):
+            assert key in SELF_SUMMARY_SYSTEM_PROMPT
 
-    def test_contains_current_state_section(self):
-        assert "### Current State" in SELF_SUMMARY_SYSTEM_PROMPT
+    def test_asks_for_exact_facts_decisions_and_work_done(self):
+        for key in ("FACT:", "DECIDED:", "DONE:", "FILE:", "ERROR:", "RULE:"):
+            assert key in SELF_SUMMARY_SYSTEM_PROMPT
 
-    def test_contains_pending_section(self):
-        assert "### Pending / Next Steps" in SELF_SUMMARY_SYSTEM_PROMPT
+    def test_asks_for_no_headings_or_prose(self):
+        assert "###" not in SELF_SUMMARY_SYSTEM_PROMPT
+        assert "No headings, no prose" in SELF_SUMMARY_SYSTEM_PROMPT
 
-    def test_contains_key_context_section(self):
-        assert "### Key Context" in SELF_SUMMARY_SYSTEM_PROMPT
+    def test_merges_an_earlier_summary(self):
+        assert "EARLIER SUMMARY" in SELF_SUMMARY_SYSTEM_PROMPT
+
+    def test_budget_placeholder(self):
+        assert "{budget}" in SELF_SUMMARY_SYSTEM_PROMPT
 
     def test_count_placeholder(self):
         assert "{count}" in SELF_SUMMARY_SYSTEM_PROMPT
@@ -63,7 +69,7 @@ class TestSelfSummaryPrompt:
         assert "{n}" in SELF_SUMMARY_SYSTEM_PROMPT
 
     def test_mentions_compactions(self):
-        assert "Compactions so far" in SELF_SUMMARY_SYSTEM_PROMPT
+        assert "compactions={n}" in SELF_SUMMARY_SYSTEM_PROMPT
 
 
 class TestTrimForContext:
@@ -214,9 +220,14 @@ class TestTheTrimKeepsThePersonsRequest:
 
         assert any(m is question for m in after), "the person's question is sent, whole"
         results = [m for m in after if m.get("role") == "tool"]
-        assert [m["content"].split()[0] for m in results] == [
-            "RESULT-1", "RESULT-2", "RESULT-3", "RESULT-4"]
-        assert all(any(m is r for r in rounds) for m in results), "each newer round is sent whole"
+        # `B2135` (owner ruling 2026-11-15): an older round keeps its call and
+        # its result is sent as a short notice, oldest first, so the model
+        # still knows what it ran; it used to go whole, call and all.
+        words = [m["content"].split()[0] for m in results]
+        stubbed = words.count("[An")
+        assert 1 <= stubbed < 5 and words == ["[An"] * stubbed + [
+            f"RESULT-{i}" for i in range(stubbed, 5)]
+        assert all(any(m is r for r in rounds) for m in results[stubbed:]), "each newer round is sent whole"
         assert [m.get("tool_call_id") for m in after if m.get("role") == "tool"] == [
             m["tool_calls"][0]["id"] for m in after if m.get("tool_calls")], "no orphaned result"
         assert estimate_tokens(after) <= 6000 - 1024

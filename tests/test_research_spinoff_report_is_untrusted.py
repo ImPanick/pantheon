@@ -204,9 +204,15 @@ def test_compaction_keeps_the_report_word_for_word_and_loses_no_stored_row(discu
         assert f"question {i} " in summarised and f"answer {i} " in summarised
     # What is stored: the primer, the summary, then every newer row, so each
     # stored row is either summarised or kept.
+    # `B2134`: the cut is at the person's latest message now, not the newer
+    # half by count; whatever is kept is the stored rows' own tail, and every
+    # row before it went to the summariser.
     assert sess.history[0] is primer
     assert sess.history[1].role == "system" and sess.history[1].metadata.get("compacted") is True
-    assert sess.history[2:] == stored[5:]
+    kept = sess.history[2:]
+    assert kept and kept == stored[len(stored) - len(kept):]
+    for row in stored[1:len(stored) - len(kept)]:
+        assert row.content.split()[0] + " " + row.content.split()[1] in summarised
 
 
 def test_the_style_reading_takes_only_the_person_s_words(discuss_chat, monkeypatch):

@@ -22,6 +22,23 @@ def resolve_task_endpoint(fallback_url=None, fallback_model=None, fallback_heade
     return resolve_endpoint("task", fallback_url, fallback_model, fallback_headers, owner=owner)
 
 
+def resolve_side_job_endpoint(fallback_url=None, fallback_model=None, fallback_headers=None, owner=None):
+    """`B2136`. The model for a job a chat turn sets off beside its answer (the
+    title, saved-memory and skill extraction): the Background Tasks model,
+    else the Utility model, else the chat's own model. Whatever model each
+    setting names; none is assumed (`D-2026-10-07-02` §1).
+
+    It read the Background Tasks setting and then the chat's model, so a
+    Utility model an admin set for exactly this light work was passed over and
+    the chat's own model, on a local server the one holding the conversation's
+    cache, did the job."""
+    for prefix in ("task", "utility"):
+        url, model, headers = resolve_endpoint(prefix, owner=owner)
+        if url and model:
+            return url, model, headers
+    return fallback_url, fallback_model, fallback_headers
+
+
 #: `B2100`. The model a built-in task picked, for the length of its run. The
 #: task form offers Model for every task and the list shows it, but the ten
 #: model-backed actions resolved their model here, with no per-task choice, so

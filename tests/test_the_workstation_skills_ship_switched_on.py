@@ -41,6 +41,18 @@ from src import agent_loop, constants
 from src.agent_tools import computer_tools
 from workstation import protocol as P
 
+
+@pytest.fixture(autouse=True)
+def _catalogue_path(monkeypatch):
+    """`B2130`. An agent turn now loads skills on demand (the owner,
+    2026-11-15), so no catalogue or matched procedure rides in by default:
+    `tests/test_every_agent_path_takes_the_lean_path.py` holds that. The
+    catalogue path is still the code behind `SKILLS_ON_DEMAND = False`, and
+    these tests keep guarding it there."""
+    import src.agent_loop as _agent_loop
+    monkeypatch.setattr(_agent_loop, "SKILLS_ON_DEMAND", False)
+
+
 REPO = Path(__file__).resolve().parent.parent
 FIRST_PARTY = REPO / "library" / "pantheon" / "skills"
 SHIPPED = {

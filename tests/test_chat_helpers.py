@@ -413,6 +413,8 @@ def test_spinoff_detected_from_chatmessage_history():
 
 
 def test_auto_name_session_passes_session_fallback_to_task_resolver(monkeypatch):
+    # `B2136`: the side-job resolver (Background Tasks, then Utility, then the
+    # chat's model) is the one the title job reads now.
     import src.llm_core as llm_core
     import src.task_endpoint as task_endpoint
 
@@ -432,7 +434,7 @@ def test_auto_name_session_passes_session_fallback_to_task_resolver(monkeypatch)
         llm_calls.append((url, model, messages, kwargs))
         return "Focused Fix"
 
-    monkeypatch.setattr(task_endpoint, "resolve_task_endpoint", fake_resolve_task_endpoint)
+    monkeypatch.setattr(task_endpoint, "resolve_side_job_endpoint", fake_resolve_task_endpoint)
     monkeypatch.setattr(llm_core, "llm_call_async", fake_llm_call)
 
     session_headers = {"Authorization": "Bearer session"}

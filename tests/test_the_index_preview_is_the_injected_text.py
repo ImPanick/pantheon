@@ -34,6 +34,16 @@ from services.memory.skill_injection import (
 from services.memory.skills import SkillsManager
 
 
+@pytest.fixture(autouse=True)
+def _catalogue_path(monkeypatch):
+    """`B2130`. An agent turn now loads skills on demand (the owner,
+    2026-11-15), so no catalogue rides in by default:
+    `tests/test_every_agent_path_takes_the_lean_path.py` holds that. The
+    catalogue path is still the code behind `SKILLS_ON_DEMAND = False`, and
+    the preview has to keep matching it there."""
+    monkeypatch.setattr(agent_loop, "SKILLS_ON_DEMAND", False)
+
+
 # The same wording `tests/test_the_skill_index_is_injected_once.py` uses. The
 # loop has its own low-signal read — a short instruction pulls no catalogue —
 # so the request has to be one that genuinely would.

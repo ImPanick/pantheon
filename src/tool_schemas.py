@@ -1213,8 +1213,9 @@ FUNCTION_TOOL_SCHEMAS = [
         "function": {
             "name": "use_skill",
             "description": (
-                "Open a listed skill (a proven procedure) by name and follow it, "
-                "or search skills by the kind of work. Read-only."
+                "The person's saved skills (proven procedures): no arguments "
+                "lists them, `query` searches by the kind of work, `name` opens "
+                "one to follow. Read-only."
             ),
             "parameters": {
                 "type": "object",
@@ -1233,13 +1234,15 @@ FUNCTION_TOOL_SCHEMAS = [
             "description": (
                 "Load tools that are not in this turn's list: search by a few "
                 "words for the job, or name them. What it finds is callable "
-                "from your next step."
+                "from your next step. With `area`, or no arguments, it lists "
+                "tools by area instead."
             ),
             "parameters": {
                 "type": "object",
                 "properties": {
                     "query": {"type": "string", "description": "What the tool should do."},
-                    "names": {"type": "array", "items": {"type": "string"}}
+                    "names": {"type": "array", "items": {"type": "string"}},
+                    "area": {"type": "string", "description": "An area to list, e.g. Email."}
                 }
             }
         }
