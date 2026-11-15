@@ -3471,9 +3471,11 @@ def test_agent_fallback_request_uses_candidate_context_budget(
         )
     )
 
-    assert [(url, model) for url, model, _fallback in context_lookups] == [
+    # `B2127`: the route builder reads each candidate's budget too (to decide
+    # whether to compact), so a candidate is looked up more than once; each
+    # lookup is still its own, and each trim still takes its own budget.
+    assert list(dict.fromkeys((url, model) for url, model, _fallback in context_lookups)) == [
         (primary[0], primary[1]),
-        (backup[0], backup[1]),
         (backup[0], backup[1]),
     ]
     assert trim_budgets == [primary_context, backup_context, backup_context]

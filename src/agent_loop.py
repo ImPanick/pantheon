@@ -9238,11 +9238,34 @@ async def stream_agent_loop(
     # this turn: each is built `fenced` from then on (the builder below).
     _tools_refused_routes: Set[tuple] = set()
 
-    async def _build_route_request_state(candidate_url, candidate_model, candidate_headers, source_messages):
+    def _route_input_budget(candidate_url, candidate_model) -> Optional[int]:
+        """`B2127`. The room this route's request may use, as the trim below
+        measures it (`_trim_route_request_messages`), or `None` when the agent
+        budget is off."""
+        try:
+            from src.context_budget import (
+                agent_input_budget, resolve_agent_input_budget_setting,
+            )
+            from src.model_context import budget_context_for_model
+            if int(resolve_agent_input_budget_setting(owner).value or 0) <= 0:
+                return None
+            candidate_context = budget_context_for_model(
+                candidate_url, candidate_model, fallback=context_length)
+            reserve = min(max(max_tokens or 1024, 512), 2048)
+            room = int(agent_input_budget(candidate_context, get_setting, owner=owner)) - reserve
+            return room if room > 0 else None
+        except Exception as e:
+            logger.debug("[agent] no input budget for %s: %s", candidate_model, e)
+            return None
+
+    async def _build_route_request_state(candidate_url, candidate_model, candidate_headers, source_messages,
+                                         _compacted: Optional[tuple] = None):
         compaction_state: Dict = {}
         compacted_source = list(source_messages)
         was_compacted = False
-        if defer_context_shaping or fallbacks:
+        if _compacted is not None:
+            compaction_state, was_compacted = _compacted
+        elif defer_context_shaping or fallbacks:
             compacted_source, _candidate_context, was_compacted = await maybe_compact(
                 None,
                 candidate_url,
@@ -9387,6 +9410,29 @@ async def stream_agent_loop(
             # its own blocked call as a failure rather than as the user's
             # choice.
             _prepend_agent_directive(route_messages, CONFIRM_TOOLS_DIRECTIVE)
+        # `B2127`. Compaction measured against what this route may send — the
+        # agent's own prompt counted in — so it fires before the trim has to
+        # cut. It measured the chat alone against the window, and on an agent
+        # turn the trim bound long before that. Once a turn, before round one;
+        # the plan is applied when the answering route commits (`B921`).
+        _room = None if was_compacted else _route_input_budget(candidate_url, candidate_model)
+        if _room:
+            _did = False
+            try:
+                _overhead = max(0, estimate_tokens(route_messages) - estimate_tokens(compacted_source))
+                _state: Dict = {}
+                _smaller, _ctx, _did = await maybe_compact(
+                    None, candidate_url, candidate_model, compacted_source, candidate_headers,
+                    owner=owner, persist=False, compaction_state=_state,
+                    budget=_room, overhead_tokens=_overhead,
+                )
+            except Exception as e:
+                # A compaction that cannot run leaves the turn to the trim.
+                logger.warning("[agent] compaction against the route budget skipped: %s", e)
+            if _did:
+                return await _build_route_request_state(
+                    candidate_url, candidate_model, candidate_headers, _smaller,
+                    _compacted=(_state, True))
         return {
             "messages": route_messages,
             "mcp_schemas": route_mcp_schemas,

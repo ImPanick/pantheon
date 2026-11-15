@@ -43,34 +43,42 @@ COMPACT_THRESHOLD = 0.85  # Trigger compaction at 85% of context window
 SUMMARY_MAX_TOKENS = 1024
 SMALL_CONTEXT_LIMIT = 8192  # Models with context <= this get aggressive trimming
 
-# Cursor-style self-summarization prompt — produces structured, dense summaries
-SELF_SUMMARY_SYSTEM_PROMPT = """You are summarizing a conversation to preserve context after compaction. Produce a structured summary that lets the conversation continue seamlessly.
+#: `B2127`. What a compaction leaves word for word before the person's latest
+#: message, as a share of the room it measured against: the rest of what came
+#: before is the summary. It was the newer half by count.
+COMPACT_TAIL_SHARE = 0.05
+#: …and never more than this many tokens, however large the room: on a 200K
+#: window 5% would keep 10K of old turns word for word.
+COMPACT_TAIL_CAP = 1000
+#: `B2127`. A summary is asked to be this share of what it replaces, between
+#: `SUMMARY_MIN_TOKENS` and `SUMMARY_MAX_TOKENS`.
+SUMMARY_OF_REPLACED = 0.05
 
-Use this format:
+# `B2127`. A state record for the model that carries on, not a report for a
+# person. The owner, 2026-11-15: *"condense to a machine-readable super-fast
+# summary... Reducing 200k down to ~sub 1k is the goal"*. One fact a line,
+# keyed, values copied exactly; the markdown report it replaced spent its
+# tokens on headings and prose.
+SELF_SUMMARY_SYSTEM_PROMPT = """You compact a conversation into a state record so the work can continue in a fresh context. The reader is a model, not a person. Everything you leave out is lost: keep every fact that matters and drop only wording.
 
-## Conversation Summary
-**Turns summarized:** {count}  |  **Compactions so far:** {n}
+First line, exactly: SUMMARY turns={count} compactions={n}
 
-### User Goal
-One sentence describing what the user is trying to accomplish.
+Then only lines of the form KEY: value, in this order. GOAL and STATE appear once; the others repeat, one item a line:
+GOAL: what the user wants
+RULE: a constraint, preference or limit the user set
+FACT: a name, path, command, URL, number, version, id or setting, copied exactly
+DECIDED: a decision and its reason
+DONE: an action taken and its result
+FILE: path = what changed in it or why it matters
+ERROR: an error met = how it was resolved
+STATE: where things stand at the end
+OPEN: what remains, a question or a blocker
 
-### What Was Done
-- Bullet points of completed actions, decisions made, and key outputs
-- Include specific file paths, function names, variable names, URLs, and config values
-- Note any errors encountered and how they were resolved
-
-### Current State
-What is the system/code/task state right now? What was the last thing discussed?
-
-### Pending / Next Steps
-- What remains to be done
-- Any open questions or blockers
-
-### Key Context
-- Important constraints, preferences, or decisions that must not be forgotten
-- Specific values: model names, ports, paths, credentials references, versions
-
-Keep the summary under 1000 tokens. Be dense — every token should carry information. Do not include pleasantries or meta-commentary."""
+Rules:
+- If the transcript begins with an EARLIER SUMMARY, merge it: keep every line of it that still holds.
+- No headings, no prose, no greetings, no commentary about summarizing.
+- Abbreviate words freely; never abbreviate or round a value.
+- Stay under {budget} tokens."""
 
 
 def normalize_compaction_summary(summary: str) -> str:
@@ -677,22 +685,39 @@ async def maybe_compact(
     *,
     persist: bool = True,
     compaction_state: Optional[Dict[str, Any]] = None,
+    budget: Optional[int] = None,
+    overhead_tokens: int = 0,
 ) -> tuple:
     """Check context usage and compact if above threshold.
 
     Returns (messages, context_length, was_compacted).
+
+    `B2127`. ``budget`` is the room the request may use, when the caller knows
+    a smaller one than the window (the agent's input budget): the fill is
+    measured against it, with ``overhead_tokens`` (the agent's own prompt,
+    which ``messages`` does not carry yet) counted in. Measured on
+    `fix/agent-lean-turn`: compaction measured the chat against the window
+    while the trim measured the request against the agent budget, so on an
+    agent turn the trim bound first and compaction did not fire at all.
+
+    What is kept word for word is the person's latest message and what follows
+    it, and the newest messages before it that fit `COMPACT_TAIL_SHARE` of the
+    room; everything older, an earlier summary merged in, becomes one keyed
+    state record of `SUMMARY_OF_REPLACED` of its size (`SELF_SUMMARY_SYSTEM_PROMPT`).
     """
     # `B1598`. A cache miss reads the endpoint table and may ask the server:
     # a worker thread's work, as `llm_core`'s own reads are (`B1588`).
     context_length = await asyncio.to_thread(get_context_length, endpoint_url, model)
     used = estimate_tokens(messages)
-    pct = (used / context_length) * 100 if context_length else 0
+    room = int(budget) if budget and budget > 0 else context_length
+    filled = used + max(0, int(overhead_tokens or 0))
+    pct = (filled / room) * 100 if room else 0
 
     if pct < COMPACT_THRESHOLD * 100:
         return messages, context_length, False
 
     logger.info(
-        f"Context at {pct:.1f}% ({used}/{context_length} tokens) — compacting"
+        f"Context at {pct:.1f}% ({filled}/{room} tokens) — compacting"
     )
 
     # Split into system preface and conversation
@@ -714,22 +739,37 @@ async def maybe_compact(
     if len(convo_msgs) < 4:
         return messages, context_length, False
 
-    # Split conversation: summarize older half, keep recent half
-    split_point = len(convo_msgs) // 2
+    # `B2127`. Where the verbatim tail starts: at the person's latest message,
+    # then back over the newest messages that fit the tail's share — never
+    # starting on a tool result without the call it answers.
+    theirs = _the_persons_message(convo_msgs)
+    if theirs is None:
+        split_point = len(convo_msgs) // 2
+    else:
+        split_point = next(i for i, m in enumerate(convo_msgs) if m is theirs)
+        tail_room = min(int(room * COMPACT_TAIL_SHARE), COMPACT_TAIL_CAP)
+        spent = 0
+        while split_point > 0:
+            cost = estimate_tokens([convo_msgs[split_point - 1]])
+            if spent + cost > tail_room:
+                break
+            spent += cost
+            split_point -= 1
+        while split_point < len(convo_msgs) and convo_msgs[split_point].get("role") == "tool":
+            split_point += 1
+    if split_point < 2:
+        return messages, context_length, False
     older = convo_msgs[:split_point]
     recent = convo_msgs[split_point:]
 
-    # Build the text to summarize
-    convo_text = "\n".join(
-        f"{msg.get('role', 'user').upper()}: {_content_as_text(msg.get('content'))[:2000]}"
-        for msg in older
-    )
-
-    # Count prior compactions from existing summary messages
-    compaction_count = sum(
-        1 for m in system_msgs
-        if "[Conversation summary" in m.get("content", "")
-    )
+    # `B2127`. An earlier summary is merged into this one, not kept beside it:
+    # each compaction used to add one more.
+    earlier = [m for m in system_msgs if _is_summary_message(m)]
+    keep_system = [m for m in system_msgs if not _is_summary_message(m)]
+    compaction_count = len(earlier)
+    older_tokens = estimate_tokens(older)
+    summary_tokens = max(SUMMARY_MIN_TOKENS,
+                         min(SUMMARY_MAX_TOKENS, int(older_tokens * SUMMARY_OF_REPLACED)))
 
     # Use utility model if configured, otherwise fall back to session model
     # `B1598`: the endpoint rows, read in a worker thread — compaction runs
@@ -743,12 +783,27 @@ async def maybe_compact(
         "{count}", str(len(older))
     ).replace(
         "{n}", str(compaction_count + 1)
-    )
+    ).replace("{budget}", str(summary_tokens))
     # `B1731`. gpt-oss reads its reasoning effort from the system message, and
     # its reasoning comes out of the same `max_tokens` as the summary.
     _reasons = "gpt-oss" in (compact_model or "").lower()
     if _reasons:
         prompt = "Reasoning: low\n\n" + prompt
+    max_tokens = int(summary_tokens * 1.5) + (1024 if _reasons else 256)
+    # `B2127`. Each message in full where the summariser's window has room
+    # (`build_summary_source`), not each cut to its first 2,000 characters.
+    if (compact_url, compact_model) == (endpoint_url, model):
+        summariser_window = context_length
+    else:
+        try:
+            summariser_window = await asyncio.to_thread(get_context_length, compact_url, compact_model)
+        except Exception:
+            summariser_window = 0
+    summariser_window = int(summariser_window or 0) or UNKNOWN_SUMMARIZER_WINDOW
+    source_room = max(500, summariser_window - max_tokens - int(len(prompt) * 0.3) - 128)
+    convo_text = build_summary_source(
+        [dict(m, metadata=dict(m.get("metadata") or {}, compacted=True)) for m in earlier]
+        + older, source_room)
     summary_messages = [
         {"role": "system", "content": prompt},
         {"role": "user", "content": convo_text},
@@ -760,7 +815,7 @@ async def maybe_compact(
             compact_model,
             summary_messages,
             temperature=0.2,
-            max_tokens=SUMMARY_MAX_TOKENS + (1024 if _reasons else 0),
+            max_tokens=max_tokens,
             headers=compact_headers,
             timeout=30,
         )
@@ -776,13 +831,14 @@ async def maybe_compact(
         # summary; replacing the older half with nothing would lose it.
         logger.error("Compaction summary was empty; keeping the conversation as it was")
         return messages, context_length, False
+    summary = _fit_to_tokens(summary, summary_tokens)
 
     summary_msg = {
         "role": "system",
         "content": f"[Conversation summary — earlier messages were compacted]\n{summary}",
     }
 
-    compacted = system_msgs + kept + [summary_msg] + recent   # `B1955`: `kept`
+    compacted = keep_system + kept + [summary_msg] + recent   # `B1955`: `kept`
     new_used = estimate_tokens(compacted)
 
     # Update session history to match. Pass len(system_msgs) so the
@@ -795,6 +851,7 @@ async def maybe_compact(
             "split_point": split_point,
             "summary": summary,
             "system_msg_count": len(system_msgs),
+            "merged_earlier": bool(earlier),   # `B2127`
             "applied": False,
             # `B921`. What this compaction measured, in `shaping_stats` shape
             # (`routes/chat_helpers.py`): the list it was handed and the list it
@@ -808,7 +865,8 @@ async def maybe_compact(
             "tokens_after": new_used,
         })
     if persist:
-        _update_session_history(session, split_point, summary, system_msg_count=len(system_msgs))
+        _update_session_history(session, split_point, summary, system_msg_count=len(system_msgs),
+                                merged_earlier=bool(earlier))
         if compaction_state is not None:
             compaction_state["applied"] = True
 
@@ -842,6 +900,7 @@ def apply_compaction_state(session, compaction_state: Optional[Dict[str, Any]]) 
         split_point,
         summary,
         system_msg_count=system_msg_count if isinstance(system_msg_count, int) else 0,
+        merged_earlier=bool(state.get("merged_earlier")),
     )
     state["applied"] = True
     return True
@@ -1082,7 +1141,7 @@ def apply_compaction_state_for_session(
 
 
 def _update_session_history(session, split_point: int, summary: str,
-                            system_msg_count: int = 0):
+                            system_msg_count: int = 0, merged_earlier: bool = False):
     """Update the in-memory session history after compaction.
 
     `split_point` is the index in `convo_msgs` (system-stripped). The
@@ -1102,6 +1161,9 @@ def _update_session_history(session, split_point: int, summary: str,
     # Keep the recent messages, prepend summary AND the leading system
     # messages so the system prompt survives compaction.
     system_prefix = list(session.history[:system_msg_count])
+    if merged_earlier:
+        # `B2127`. The new summary carries the earlier one's facts.
+        system_prefix = [r for r in system_prefix if not is_compaction_summary(r)]
     recent_history = session.history[effective_split:]
     summary = normalize_compaction_summary(summary)
     summary_msg = ChatMessage(
