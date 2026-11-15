@@ -165,6 +165,9 @@ class NativePhone(PH.AccountPhone):
     native_android_usb = True
     def __init__(self,*args,**kwargs):
         self.control = self.direct = self.radio = None
+        # Android's own display is up (SurfaceFlinger runs) while it still
+        # boots: its boot animation streams before control attaches.
+        self.boot_display = False
         self.generation = secrets.token_hex(16)
         self.process_identity = None
         self._processes = {}
@@ -342,6 +345,7 @@ class NativePhone(PH.AccountPhone):
         self.direct=DirectAdb(self.port+1,android/'adbkey',self._owned)
         self.generation=secrets.token_hex(16)
         self.state,self.why,self.boot_phase='starting','','emulator'
+        self.boot_display=False
         self.posture='open' if PH.P.PHONE_DEVICES[self.device]['kind']=='foldable' else None
         self.rotation=0
         self._booting=threading.Thread(target=self._boot,args=(self.emulator,),daemon=True)
@@ -357,6 +361,16 @@ class NativePhone(PH.AccountPhone):
             if proc.poll() is not None:
                 error='Android stopped during startup'+self._last_words();break
             try:
+                if not self.boot_display and self.direct.shell(
+                        ['getprop','init.svc.surfaceflinger'],timeout=5).strip()=='running':
+                    # The owner (2026-11-15): show Android actually starting.
+                    # Its display streams from here, boot animation and all,
+                    # once Android says its ADB is private.
+                    if self.direct.shell(['getprop','ro.adb.secure'],timeout=5).strip()!='1':
+                        error='Android did not enforce private ADB authentication.';break
+                    with self.lock:
+                        if self.emulator is not proc:return
+                        self.boot_display=True;self.boot_phase='android'
                 complete=self.direct.shell(['getprop','sys.boot_completed'],timeout=5).strip()=='1'
                 if complete:
                     if self.direct.shell(['getprop','ro.adb.secure'],timeout=5).strip()!='1':
@@ -388,7 +402,7 @@ class NativePhone(PH.AccountPhone):
             except OSError as failure:
                 error='Android startup failed: '+str(failure)[:300];break
             except (AdbError,PH.PhoneError):pass  # still booting: retried until the deadline, which reports the failure
-            time.sleep(2)
+            time.sleep(2 if self.boot_display else .5)  # quickly to the first frame
         with self.lock:
             if self.emulator is proc:
                 self._stop_locked()
@@ -406,7 +420,8 @@ class NativePhone(PH.AccountPhone):
                 self._stop_locked();self.state,self.why='unavailable','Android stopped. Turn it on again to retry.'
 
     def stream_ready(self):
-        return self.state in ('starting','on') and self.running() and self.control is not None
+        if self.state not in ('starting','on') or not self.running(): return False
+        return self.control is not None or (self.state=='starting' and self.boot_display)
 
     def screen_size(self):
         if self.screen is not None and self.screen.size is not None: return self.screen.size
@@ -501,6 +516,7 @@ class NativePhone(PH.AccountPhone):
         return answer.decode('utf-8',errors='replace')
 
     def _stop_locked(self):
+        self.boot_display=False  # no more frames from here
         self._usb_connection = None
         self.generation=secrets.token_hex(16)
         if self.screen is not None: self.screen.release_all()
