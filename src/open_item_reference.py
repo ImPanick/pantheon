@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Does the person's message call on what is open beside the chat?
 
 `B2133`. An editor document or an email reader can stay open while the person
