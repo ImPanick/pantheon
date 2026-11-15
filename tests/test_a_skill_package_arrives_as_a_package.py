@@ -475,15 +475,18 @@ def test_a_switched_off_skill_is_in_no_part_of_what_the_model_is_sent(tmp_path, 
     monkeypatch.setattr(agent_loop, "_cached_base_prompt_key", None, raising=False)
     sm = SkillsManager(str(tmp_path))
     on = json.dumps(_request_messages(monkeypatch, _preface(sm)))
-    assert "tidy-logs" in on and "rotate-files" in on
-    assert "PRUNE-STEP-SENTINEL" in on, "the matched procedure was not injected to begin with"
+    # `B2123`, the owner 2026-11-15: skills on demand. No skill, on or off,
+    # rides in the request any more; the model lists and opens them itself,
+    # and `test_the_model_s_own_list_and_search_leave_it_out_too` below is
+    # where a switched-off skill must stay out.
+    assert "tidy-logs" not in on and "rotate-files" not in on
+    assert "PRUNE-STEP-SENTINEL" not in on
     sm.collections.create_group(None, "Ops", ["tidy-logs"])
     sm.collections.update_group(None, "ops", enabled=False)
     monkeypatch.setattr(agent_loop, "_cached_base_prompt", None, raising=False)
     off = json.dumps(_request_messages(monkeypatch, _preface(sm)))
     assert "tidy-logs" not in off, "a switched-off skill still reached the model"
     assert "PRUNE-STEP-SENTINEL" not in off, "its procedure was still injected by retrieval"
-    assert "rotate-files" in off
 
 
 def test_the_model_s_own_list_and_search_leave_it_out_too(tmp_path, monkeypatch):

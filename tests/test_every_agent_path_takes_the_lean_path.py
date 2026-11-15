@@ -106,3 +106,62 @@ def test_one_word_and_few_token_side_calls_turn_thinking_off():
     assert "thinking=False" in inspect.getsource(teacher_escalation.evaluate_turn_llm)
     src = inspect.getsource(research_handler)
     assert src.count("thinking=False") >= 2
+
+
+# ── `B2123`: skills on demand ────────────────────────────────────────────────
+#
+# The owner, 2026-11-15: *"Pull/call skills only when needed. If the user is
+# just running a base chat, leave it at base... if the LLM thinks it should be
+# using or calling a skill, it should then index them itself, and then use them
+# itself. We don't need to send the whole manage skills and skills catalogue
+# either... Just need to present a *way* for the LLM to see the skills to then
+# use."* Measured with the probe install: the cat question went from ~4.9K to
+# ~3.2K estimated tokens and 6 tools to 5.
+
+def _probe_turn(tmp_path, message, script):
+    from tests.helpers import tool_suite_probe as probe
+
+    async def go():
+        cell = probe.Cell(embeddings="down", mcp="absent", mode="agent",
+                          privilege="admin", window="large")
+        async with probe.probe_world(str(tmp_path), mcp_states=("absent",),
+                                     local_tool_budget=8000) as world:
+            from services.memory.skills import invalidate_skill_cache
+            invalidate_skill_cache()
+            return await probe.drive_turn(world, cell, message, script=script,
+                                          dispatch="real", max_rounds=3)
+    return asyncio.run(go())
+
+
+def test_a_plain_question_carries_no_skills_only_the_way_to_them(tmp_path):
+    import json as _json
+    record = _probe_turn(tmp_path, "What's a good name for a grey cat?", ["Miso."])
+    first = record.first
+    assert "use_skill" in first["tools"], first["tools"]
+    assert "manage_skills" not in first["tools"], first["tools"]
+    sent = _json.dumps(first.get("messages") or first["prompt"])
+    assert "Available skills" not in sent and "SKILL.md" not in sent
+    assert "use_skill" in first["prompt"], "the prompt names the way in"
+
+
+def test_the_model_lists_its_skills_itself_when_it_decides_to(tmp_path):
+    from tests.helpers import tool_suite_probe as probe
+    listing = probe.reply_shapes("use_skill", {})["native"]
+    record = _probe_turn(tmp_path, "QA the sign-up form before we ship",
+                         [listing, "Listed."])
+    outputs = [str(e.get("output") or "") for e in record.events
+               if e.get("type") == "tool_output"]
+    assert [t for t, _ in record.dispatched] == ["use_skill"]
+    assert any("qa-a-change" in o for o in outputs), outputs
+
+
+def test_a_skill_the_model_opens_brings_its_tools_next_step(tmp_path):
+    """The tools a skill declares load when the model opens it, not before."""
+    from tests.helpers import tool_suite_probe as probe
+    open_ = probe.reply_shapes("use_skill", {"name": "qa-a-change"})["native"]
+    record = _probe_turn(tmp_path, "What's a good name for a grey cat?", [open_, "Done."])
+    requests = record.requests
+    first_tools = set(record.first["tools"])
+    assert "bash" not in first_tools and "read_file" not in first_tools, first_tools
+    assert requests and len(requests) >= 2, "the model's second step was not sent"
+    assert {"bash", "read_file"} <= set(requests[1]["tools"]), requests[1]["tools"]

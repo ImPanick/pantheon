@@ -1213,8 +1213,9 @@ FUNCTION_TOOL_SCHEMAS = [
         "function": {
             "name": "use_skill",
             "description": (
-                "Open a listed skill (a proven procedure) by name and follow it, "
-                "or search skills by the kind of work. Read-only."
+                "The person's saved skills (proven procedures): no arguments "
+                "lists them, `query` searches by the kind of work, `name` opens "
+                "one to follow. Read-only."
             ),
             "parameters": {
                 "type": "object",

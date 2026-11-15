@@ -287,8 +287,11 @@ def test_on_a_qa_request_the_model_finds_and_opens_the_qa_skill_itself(scratch, 
                 dispatch="real", max_rounds=4)
             first = record.first
             assert "use_skill" in first["tools"], first["tools"]
-            assert "`qa-a-change`" in first["prompt"]
-            assert "`use_skill` name=<name>" in first["prompt"]
+            # `B2123`, the owner 2026-11-15: skills on demand. The request
+            # names the way in and lists no skill; the model's own search
+            # below is what finds `qa-a-change`.
+            assert "`qa-a-change`" not in first["prompt"]
+            assert "use_skill" in first["prompt"]
             assert [t for t, _ in record.dispatched] == ["use_skill", "use_skill"]
             outputs = [str(e.get("output") or "") for e in record.events
                        if e.get("type") == "tool_output"]

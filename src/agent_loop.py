@@ -1776,7 +1776,7 @@ Generate an image. Line 1 = description, line 2 = model name, line 3 = WxH (e.g.
     "manage_memory": "- ```manage_memory``` — Manage the user's persistent memory (facts about the USER themselves, their preferences, context that persists across chats). Line 1 = action (list/add/edit/delete/search), rest = content. Use when user says 'remember this' about themselves, states identity facts like 'my name is <name>' / 'call me <name>' / 'I live in <place>', or asks about stored memories. DO NOT use for info about another person (their address, phone, email, birthday).\n  Info about another person goes in `manage_contact`: if the user pastes an address/phone with a name and says 'save this for <person>', use `manage_contact add` with the address arg, NOT manage_memory.",
     "manage_skills": "- ```manage_skills``` — Skill registry (SKILL.md format). Args (JSON): {\"action\": \"list|view|view_ref|search|add|edit|patch|publish|delete\", ...}. `list` returns the index of available skills (published + teacher-escalation drafts); `view name=foo` fetches the full SKILL.md; `view_ref name=foo path=...` loads a reference file under the skill directory. For `add`, provide an explicit kebab-case `name` and only report the exact returned name, because storage may normalize or dedupe it; what you add is a draft, and publishing it is the person's step, from the Skills window. Use this BEFORE doing domain work — there may already be a procedure (published or draft) that prescribes the correct steps. Drafts written by the teacher loop are authoritative guidance even though they're not yet published.",
     # `B1737`. How the model acts on the skills catalogue itself.
-    "use_skill": "- ```use_skill``` — Open a listed skill by `name`, or search skills by `query` (the kind of work).",
+    "use_skill": "- ```use_skill``` — The person's saved skills: proven step-by-step procedures. Before a job that may have one, look: no arguments lists them, `query` searches by the kind of work, `name` opens one to follow.",
     # `B1755`.
     "find_tools": "- ```find_tools``` — Load tools that are not in this turn's list. Args (JSON): {\"query\": \"a few words for the job\"} or {\"names\": [\"manage_calendar\"]}, or {\"area\": \"Email\"} to list an area. The tools it finds are callable from your next step.",
     "manage_tasks": "- ```manage_tasks``` — Create and manage scheduled background tasks (recurring AI jobs). Args (JSON): {\"action\": \"list|create|edit|delete|pause|resume|run|dry_run|draft_workflow\", ...}. For steps that run one after another, draft_workflow with {\"description\": \"<the user's words>\"} drafts a workflow, switched off, that a person checks in the Workbench.",
@@ -4540,8 +4540,13 @@ def _build_system_prompt(
     tool_suite=None,
     approved_plan: Optional[str] = None,
     computer_use: bool = False,
+    skills_on_demand: bool = False,
 ) -> List[Dict]:
     """Build agent system prompt, inject MCP/document context, merge consecutive system msgs.
+
+    `skills_on_demand` (`B2123`): no catalogue and no matched procedure; the
+    turn reaches skills through `use_skill`. A tool's manual (`B1719`) still
+    rides with its tool.
 
     `computer_use` (`B1725`): this person's Computer Use is on, so a turn
     offered `computer` is told to work the workstation screen-first.
@@ -4581,7 +4586,7 @@ def _build_system_prompt(
         (len(tool_suite.candidates), tool_suite.reason, len(tool_suite.offered))
         if tool_suite is not None else None
     )
-    cache_key = (frozenset(disabled_tools or []), bool(mcp_mgr), needs_admin, _rt_key, compact, _ov_sig, owner, suppress_local_context, suppress_skills, _suite_key)
+    cache_key = (frozenset(disabled_tools or []), bool(mcp_mgr), needs_admin, _rt_key, compact, _ov_sig, owner, suppress_local_context, suppress_skills, _suite_key, bool(skills_on_demand))
     if _cached_base_prompt and _cached_base_prompt_key == cache_key and not active_document:
         agent_prompt = _cached_base_prompt
         # Skill index is user-editable (name + description), so it must never
@@ -4594,6 +4599,7 @@ def _build_system_prompt(
             suppress_skills=suppress_skills,
             context_report=context_report,
             tool_suite=tool_suite,
+            skills_on_demand=skills_on_demand,
         )
     else:
         agent_prompt, _skill_index_block = _build_base_prompt(
@@ -4608,6 +4614,7 @@ def _build_system_prompt(
             suppress_skills=suppress_skills,
             context_report=context_report,
             tool_suite=tool_suite,
+            skills_on_demand=skills_on_demand,
         )
         if not active_document:
             _cached_base_prompt = agent_prompt
@@ -5057,13 +5064,17 @@ def _build_system_prompt(
                     owner=owner,
                     active_toolsets=_skill_active_toolsets(disabled_tools)
                 ) if _skill_max_injected > 0 else []
+                # `B2123`: on demand, no procedure is matched in; the model
+                # looks with `use_skill`. The tool manual below still rides
+                # with its tool, because it is paid only on a turn that
+                # already carries that tool.
                 relevant_skills = sm.get_relevant_skills(
                     _skill_query(last_user, approved_plan),
                     skills=_injectable,
                     threshold=0.25,
                     max_items=_skill_max_injected,
                     min_confidence=_skill_min_conf,
-                ) if _skill_max_injected > 0 else []
+                ) if _skill_max_injected > 0 and not skills_on_demand else []
                 # `B1719`. The tool's manual rides with the tool: a turn
                 # offered `computer` is told how to drive the desktop however
                 # its request is worded. `relevant_tools` of `None` (every
@@ -5383,6 +5394,18 @@ def _skill_prefs(owner) -> dict:
         return _load_prefs(owner) or {}
     except Exception:
         return {}
+
+
+#: `B2123`. The owner, 2026-11-15: *"Pull/call skills only when needed. If the
+#: user is just running a base chat, leave it at base... if the LLM thinks it
+#: should be using or calling a skill, it should then index them itself, and
+#: then use them itself. We don't need to send the whole manage skills and
+#: skills catalogue"*. So an agent turn carries no catalogue and no matched
+#: procedure; it carries `use_skill`, which lists, searches and opens them.
+#: Supersedes `B1359`/`B1360` (catalogue on a procedure question), `B1426`
+#: (`manage_skills` with the owner's skills) and `B1715` (core set as a matched
+#: body). `B1719`'s tool manual still rides with its tool.
+SKILLS_ON_DEMAND = True
 
 
 def _skills_pref_enabled(owner) -> bool:
@@ -5766,6 +5789,7 @@ def _build_base_prompt(
     owner: Optional[str] = None,
     suppress_local_context: bool = False,
     suppress_skills: bool = False,
+    skills_on_demand: bool = False,   # `B2123`
     context_report: Optional[Dict[str, Any]] = None,
     tool_suite=None,
 ):
@@ -5848,7 +5872,7 @@ def _build_base_prompt(
     # without asking the store a second time — the same list, not a second pass
     # over it with arguments that can drift out of step (`Law 13`).
     skill_index_used: list = []
-    if not suppress_local_context and not suppress_skills:
+    if not suppress_local_context and not suppress_skills and not skills_on_demand:
         try:
             from services.memory.skills import SkillsManager
             from services.memory.skill_injection import render_skill_index_block
@@ -8884,60 +8908,19 @@ async def stream_agent_loop(
     # withholds it, and `_skills_suppressed` is a superset of the old gate's
     # greeting case.
     if not guide_only and _relevant_tools is not None and not _skills_suppressed:
+        # `B2123`. Skills on demand (the owner, 2026-11-15): the turn carries
+        # `use_skill`, a read-only way to list, search and open the person's
+        # skills, and nothing else of theirs. `manage_skills` (the editor,
+        # ~1,000 tokens of schema and prose) is one `find_tools` call away,
+        # and a skill's `requires_toolsets` load when the model opens it.
+        # Supersedes `B1426`'s "rides with the owner's own skills" and the
+        # matched-skill tool pass.
         try:
             from services.memory.skills import SkillsManager
             from src.constants import DATA_DIR
-            _skills_on = _skills_pref_enabled(owner)
-            _sm = SkillsManager(DATA_DIR)
-            _owner_skills = _skills_for_turn(_sm, owner, disabled_tools) if _skills_on else []
-            # `B1737`. The catalogue now lists the core set and points at the
-            # library, and `use_skill` is how the model acts on it — offered
-            # whenever there is anything to open, the core set included, so
-            # the model picks a QA or frontend procedure itself instead of
-            # waiting for the request's words to match one. Read-only and two
-            # arguments, so it is not `manage_skills`' cost on every turn
-            # (`B1426`), which still rides only with the person's own skills.
-            if _skills_on and _skills_to_open(_sm, owner, disabled_tools):
+            if _skills_pref_enabled(owner) and _skills_to_open(
+                    SkillsManager(DATA_DIR), owner, disabled_tools):
                 _relevant_tools.add("use_skill")
-            if _owner_skills:
-                _relevant_tools.add("manage_skills")
-                if _retrieval_query:
-                    # Validate against every known executable tool, not just
-                    # TOOL_SECTIONS — code-nav tools (grep/glob/ls) ship as
-                    # schemas without a prompt-prose section.
-                    #
-                    # `B1354` (agent:`fx11-reach`). "Executable" is the point,
-                    # and `known_tool_names()` is not that set: a skill whose
-                    # `requires_toolsets` named `builtin_browser` — a server
-                    # id, not a tool — put a name in this turn's offer that no
-                    # channel carries. (`vault_get` was this comment's example
-                    # until `D-2026-10-14-01` §4 made it callable; the rule is
-                    # asked of the register at runtime, so the ruling changed
-                    # the answer here with no edit to this line.) The offer register
-                    # is `selectable_tool_names()`, which is this one's routable
-                    # half; the skill is still indexed and still runs, it just
-                    # cannot conjure a tool the model could not call.
-                    from src.tool_policy import selectable_tool_names
-                    _known = selectable_tool_names()
-                    # `B1361`. This matched over `load_active`, so a skill the
-                    # turn will never be shown — a user's half-written draft, or
-                    # one whose own `requires_toolsets` are switched off — could
-                    # still pull tools into the selection. Offering
-                    # `manage_skills` keys off "has any skill at all" above,
-                    # because `view` by exact name opens a draft too; this pass
-                    # is about the skills whose procedures may actually arrive,
-                    # which is the one list the catalogue reads.
-                    for _sk in _sm.get_relevant_skills(
-                        _retrieval_query,
-                        skills=_sm.injectable_skills(
-                            owner=owner,
-                            active_toolsets=_skill_active_toolsets(disabled_tools)),
-                        threshold=0.25, max_items=3,
-                    ):
-                        _relevant_tools.update(
-                            t for t in (_sk.get("requires_toolsets") or [])
-                            if t in _known
-                        )
         except Exception as _e:
             logger.debug(f"[tool-rag] skill-aware tool include skipped: {_e}")
 
@@ -9347,6 +9330,7 @@ async def stream_agent_loop(
             # of the six were enforced on a copy of the index that another
             # copy shipped anyway.
             suppress_skills=_skills_suppressed,
+            skills_on_demand=SKILLS_ON_DEMAND,   # `B2123`
             active_email=active_email,
             workspace=workspace,
             context_report=_prompt_report,
@@ -12291,7 +12275,7 @@ async def stream_agent_loop(
             # schema list includes them — otherwise the model reads "use
             # grep" from the skill it fetched but has no grep schema to call.
             if (
-                block.tool_type == "manage_skills"
+                block.tool_type in ("manage_skills", "use_skill")   # `B2123`
                 and _relevant_tools is not None
                 and not result.get("error")
             ):
@@ -12303,7 +12287,10 @@ async def stream_agent_loop(
                     except json.JSONDecodeError:
                         _ms_args = {}
                 _ms_name = str(_ms_args.get("name", "") or "").strip()
-                if _ms_name and _ms_args.get("action") in ("view", "view_ref"):
+                if not _ms_args and block.tool_type == "use_skill" and _ms_raw:
+                    _ms_name = _ms_raw   # a bare name
+                if _ms_name and (block.tool_type == "use_skill"
+                                 or _ms_args.get("action") in ("view", "view_ref")):
                     try:
                         from services.memory.skills import SkillsManager as _SkM
                         from src.constants import DATA_DIR as _DD
@@ -12314,7 +12301,16 @@ async def stream_agent_loop(
                         # call no channel can carry.
                         from src.tool_policy import selectable_tool_names as _stn
                         _known = _stn()
-                        for _sk in _SkM(_DD).load(owner=owner):
+                        _skm = _SkM(_DD)
+                        _opened = [_sk for _sk in _skm.load(owner=owner)
+                                   if _sk.get("name") == _ms_name]
+                        if not _opened and block.tool_type == "use_skill":
+                            # `B2123`. `use_skill` opens the shipped library
+                            # too, so its tools load from the same file it read.
+                            _lib = _skm._readable_skill_path(_ms_name, owner, True)
+                            _row = _skm._read_skill_dict(_lib) if _lib else None
+                            _opened = [_row] if _row else []
+                        for _sk in _opened:
                             if _sk.get("name") == _ms_name:
                                 # `B1352` (fx11-cap). Filtered by the
                                 # turn's cap and by a step's own list, not only
