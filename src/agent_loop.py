@@ -10602,10 +10602,14 @@ async def stream_agent_loop(
             _info = usage_buckets[-1].get("request") or {}
             logger.info(
                 "[agent-request] turn=%s request=%s round=%s purpose=agent_round "
-                "reason=%s finish=%s input=%s cached=%s source=%s prefix=%s fp=%s sections=%s",
+                "effort=%s reason=%s finish=%s input=%s cached=%s prefill_ms=%s decode_ms=%s source=%s "
+                "prefix=%s fp=%s sections=%s",
                 _info.get("turn_id"), _info.get("request_id"), round_num,
+                _turn_reasoning_level(),
                 _info.get("continuation_reason"), _info.get("finish_reason") or "-",
-                round_input_tokens, _info.get("prompt_cached_tokens", "-"), usage_source,
+                round_input_tokens, _info.get("prompt_cached_tokens", "-"),
+                _round_prefill_ms if _round_prefill_ms is not None else "-",
+                _round_decode_ms if _round_decode_ms is not None else "-", usage_source,
                 _info.get("prefix_fingerprint"), _info.get("fingerprint"),
                 json.dumps(_info.get("sections") or {}, sort_keys=True),
             )

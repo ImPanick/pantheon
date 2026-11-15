@@ -123,6 +123,23 @@ def test_the_server_s_finish_reason_and_cached_prompt_are_kept():
     assert bucket["request"]["prompt_cached_tokens"] == 640
 
 
+
+def test_each_request_writes_one_log_line_a_person_can_measure_from(caplog):
+    """The owner measures on his own machine from the app log: one line per
+    request, with its reason, effort, input, cached tokens and timings."""
+    import logging
+    import re
+    with caplog.at_level(logging.INFO, logger="src.agent_loop"):
+        _drive(CAT, "Miso.",
+               usage={"prompt_tokens": 900, "completion_tokens": 3},
+               timings={"prompt_n": 900, "cache_n": 0, "prompt_ms": 410.0})
+    lines = [r.getMessage() for r in caplog.records if "[agent-request]" in r.getMessage()]
+    assert len(lines) == 1, lines
+    fields = dict(re.findall(r"(\w+)=(\S+)", lines[0]))
+    assert fields["reason"] == "first" and fields["input"] == "900"
+    assert fields["effort"] and fields["finish"] == "stop"
+    assert "prefill_ms" in fields and "decode_ms" in fields
+
 # ── the first request is proportional to the request ─────────────────────────
 
 def test_a_question_that_needs_no_tool_is_not_sent_the_suite():
