@@ -109,6 +109,7 @@ def settings(environ, *, total_mib):
     else:
         max_running = _int(environ, ENV['max_running'], 1, 1, MAX_PHONES)
     internet = (environ.get(ENV['internet']) or 'on').strip().lower()
+    # flag-spelling: the workstation package is standard library only and imports nothing of Pantheon's; on and off as the compose file writes them.
     if internet not in ('on', 'off'):
         raise SettingsError(f"{ENV['internet']} is on or off, not {internet!r}.")
     gpu = (environ.get(ENV['gpu']) or 'software').strip().lower()

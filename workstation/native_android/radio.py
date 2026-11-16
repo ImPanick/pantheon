@@ -406,7 +406,7 @@ class ProcessRadio(PrivateRadio):
         if self.internet:
             command += ["--host-dns", DOCKER_DNS]
         env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "HOME": str(home), "TMPDIR": str(home),
-               "LANG": os.environ.get("LANG", "C.UTF-8")}
+               "LANG": "C.UTF-8"}
         log = (self.folder / "netsim.log").open("wb")
         try:
             self.process = subprocess.Popen(command, cwd=str(home), env=env, stdin=subprocess.DEVNULL,
