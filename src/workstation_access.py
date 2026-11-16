@@ -69,6 +69,7 @@ SETTING_KEYS = (
     "workstation_sudo",
     "workstation_network",
     "workstation_vm_memory_mib",
+    "workstation_vm_cpus_max",
     "workstation_route_tools",
 )
 _BOOL_KEYS = ("workstation_enabled", "workstation_sudo", "workstation_route_tools")
@@ -327,7 +328,7 @@ def _setting(key: str) -> Any:
 # and `tests/test_the_workstation_is_admin_controlled.py` pins the two equal.
 _DEFAULTS = {"workstation_sudo": None, "workstation_route_tools": True,
              "workstation_network": "full", "workstation_backend": "auto",
-             "workstation_vm_memory_mib": None}
+             "workstation_vm_memory_mib": None, "workstation_vm_cpus_max": None}
 
 
 def _bool(key: str, default: bool = False) -> bool:
@@ -376,6 +377,16 @@ def vm_memory_choice() -> Optional[int]:
     return None
 
 
+def vm_cpus_max_choice() -> Optional[int]:
+    """The admin's pool of processors for each VM machine, or None for every
+    one the host has."""
+    value = _setting("workstation_vm_cpus_max")
+    if isinstance(value, int) and not isinstance(value, bool) \
+            and P.VM_CPUS_MIN <= value <= P.VM_CPUS_MAX:
+        return value
+    return None
+
+
 def backend_setting() -> str:
     """The backend in use (`auto` resolved — `wc.effective_backend`)."""
     return wc.effective_backend()
@@ -418,6 +429,9 @@ def settings_view() -> Dict[str, Any]:
         # what automatic is on this host is the daemon's to say (`health`).
         "vm_memory_choice": vm_memory_choice(),
         "vm_memory_sizes": list(VM_MEMORY_SIZES),
+        # Its pool of processors for each machine: the admin's, or None (all of
+        # the host's); what the host has is the daemon's to say (`health`).
+        "vm_cpus_max_choice": vm_cpus_max_choice(),
         "route_tools": route_tools_wanted(),
         # `P16-20`. Reaching the local network, and raw-packet tools.
         "lan_reach": _bool("agent_lan_reach", True),
@@ -444,6 +458,8 @@ def validate_setting(key: str, value: Any) -> Any:
         return None   # `B1720`: back to *on when the stack runs one*
     if key == "workstation_vm_memory_mib":
         return _memory_size(value)
+    if key == "workstation_vm_cpus_max":
+        return _cpus_count(value)
     if key in _BOOL_KEYS:
         if not isinstance(value, bool):
             raise ValueError(f"{key} is true or false.")
@@ -521,6 +537,20 @@ def _memory_size(value: Any) -> Optional[int]:
     return value
 
 
+def _cpus_count(value: Any) -> Optional[int]:
+    """A pool the VM host will take, or None (every processor it has). One
+    above what the host has is held there by the host, not refused."""
+    if value is None:
+        return None
+    if isinstance(value, str) and value.strip().isdigit():
+        value = int(value.strip())
+    if isinstance(value, bool) or not isinstance(value, int) \
+            or not P.VM_CPUS_MIN <= value <= P.VM_CPUS_MAX:
+        raise ValueError(f"workstation_vm_cpus_max is a whole number of processors from "
+                         f"{P.VM_CPUS_MIN} to {P.VM_CPUS_MAX}, or empty for all of the host's.")
+    return value
+
+
 # ── the daemon, made ready ────────────────────────────────────────────────────
 
 async def sync_config(client: WorkstationClient) -> Dict[str, Any]:
@@ -569,6 +599,11 @@ async def sync_config(client: WorkstationClient) -> Dict[str, Any]:
         size = vm_memory_choice()
         if daemon.get("memory_choice") != size:
             daemon.update(await client.config(memory_mib=size))
+    # …and its pool of processors, the same way (`cpus_max_choice`).
+    if "cpus_max_choice" in daemon:
+        pool = vm_cpus_max_choice()
+        if daemon.get("cpus_max_choice") != pool:
+            daemon.update(await client.config(cpus_max=pool))
     # A VM host that makes its machine image on first use (the default stack,
     # `PANTHEON_WORKSTATION_VM_IMAGE=on_first_use`) starts on `config`: being
     # here means the switch is on (or an admin pressed *Check now*), so it is
@@ -746,12 +781,53 @@ async def starting_point(owner: Optional[str], action: str = "status", *,
     return starting_point_view(answer)
 
 
+CPUS_OLD_DAEMON = ("This workstation is older than the processors setting: start it again "
+                   "from the current Pantheon to choose your machine's processors.")
+
+
+def cpus_view(answer: Dict[str, Any]) -> Dict[str, Any]:
+    """The VM host's answer about one person's processors, with the sentence
+    Settings shows beside the choice."""
+    keys = ("cpus", "cpus_choice", "cpus_default", "cpus_max", "running_cpus")
+    out = {k: answer.get(k) for k in keys}
+    words = (f"Your machine starts with {out['cpus']} of the {out['cpus_max']} processors this "
+             "workstation makes available to each machine.")
+    running = out.get("running_cpus")
+    if isinstance(running, int) and running != out["cpus"]:
+        words += (f" It is running with {running} now: it powers off cleanly and starts with "
+                  f"{out['cpus']} on its next use, its files kept.")
+    out["sentence"] = words
+    return out
+
+
+async def machine_cpus(owner: Optional[str], *count: Optional[int],
+                       auth_manager: Any = None) -> Dict[str, Any]:
+    """This person's own VM machine's processors — asked, or chosen inside
+    the admin's pool — and nobody else's: the account is derived from the
+    caller, as for `reset_home`."""
+    client, account = workstation_for(owner, auth_manager=auth_manager)
+    if count:
+        await sync_config(client)   # the admin's pool, there before the choice is checked
+    try:
+        answer = await client.cpus(account, *count)
+    except WorkstationError as e:
+        if e.status == 404 and e.code == "not_found" and "route" in (e.message or "").lower():
+            raise WorkstationError("unavailable", CPUS_OLD_DAEMON)
+        raise
+    return cpus_view(answer)
+
+
 def _daemon_view(daemon: Dict[str, Any]) -> Dict[str, Any]:
     """The daemon's own answer, in the fields the panel shows."""
     keep = ("agent", "protocol", "backend", "version", "sudo", "network", "screen", "accounts",
             "machine",   # `P20-07`: what it runs on, and for a VM whether it is emulated
             "machines",  # `B979`: on the VM backend, how many run and when one stops
-            "system")    # `B1747`: which system answered (its /etc/os-release)
+            "system",    # `B1747`: which system answered (its /etc/os-release)
+            # The VM host's memory and processors for each machine — what
+            # Settings shows beside the admin's choices.
+            "memory_mib", "memory_choice", "memory_default_mib", "memory_default_source",
+            "host_memory_mib", "memory_returns_to_host", "phone_room_mib",
+            "cpus_max", "cpus_max_choice", "cpus_default", "host_cpus")
     return {k: daemon.get(k) for k in keep if k in daemon}
 
 

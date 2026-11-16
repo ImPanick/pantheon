@@ -312,6 +312,8 @@ def write_stamp(folder: Path, at: float) -> None:
 # Said when a size is sent to a workstation that has no machines of its own.
 MEMORY_NOT_HERE = ("This workstation runs on its host's own memory: only the VM workstation, "
                    "which gives each person a machine of their own, has a memory size to set.")
+CPUS_NOT_HERE = ("This workstation runs on its host's own processors: only the VM workstation, "
+                 "which gives each person a machine of their own, has processors to set.")
 
 
 class System:
@@ -500,6 +502,19 @@ class System:
 
     def set_memory(self, choice: Optional[int]) -> None:
         raise WorkstationError("bad_request", MEMORY_NOT_HERE)
+
+    # -- the processors each machine is given ----------------------------------
+    # Likewise only the VM backend's (`vm.Fleet`): the pool an admin makes
+    # available, and each person's own count inside it (`ROUTES["cpus"]`).
+
+    def cpus_report(self) -> Dict:
+        return {}
+
+    def set_cpus_max(self, choice: Optional[int]) -> None:
+        raise WorkstationError("bad_request", CPUS_NOT_HERE)
+
+    def machine_cpus(self, account: str, body: Dict) -> Dict:
+        raise WorkstationError("bad_request", CPUS_NOT_HERE)
 
     # -- the network mode (`P20-06`) -----------------------------------------
     # The base enforces nothing and says so; `UbuntuSystem` holds the mode for
@@ -744,7 +759,8 @@ class Workstation:
                 # whether anything is mounted there.
                 "projects_root": str(root), "projects_mounted": root.is_dir(),
                 **self.system.network_report(),  # `P20-06`
-                **self.system.memory_report()}
+                **self.system.memory_report(),
+                **self.system.cpus_report()}
 
     def config(self, body: Dict) -> Dict:
         if "sudo" in body:
@@ -769,6 +785,18 @@ class Workstation:
                     "bad_request", f"“memory_mib” is a whole number of MiB from "
                     f"{P.VM_MEMORY_MIN_MIB} to {P.VM_MEMORY_MAX_MIB}, or null for automatic.")
             self.system.set_memory(size)
+        # The VM backend's pool of processors for each machine; null is every
+        # processor its host has. Above the host's, it is held at the host's.
+        if "cpus_max" in body:
+            pool = body["cpus_max"]
+            if not self.system.cpus_report():
+                raise WorkstationError("bad_request", CPUS_NOT_HERE)
+            if pool is not None and (isinstance(pool, bool) or not isinstance(pool, int)
+                                     or not P.VM_CPUS_MIN <= pool <= P.VM_CPUS_MAX):
+                raise WorkstationError(
+                    "bad_request", f"“cpus_max” is a whole number of processors from "
+                    f"{P.VM_CPUS_MIN} to {P.VM_CPUS_MAX}, or null for all of the host's.")
+            self.system.set_cpus_max(pool)
         # `B1424`: who may reach every person's projects folder.
         if "admins" in body:
             admins = body["admins"]
@@ -827,6 +855,17 @@ class Workstation:
         if action == "forget":
             return self.system.forget_starting_point(account)
         return self.system.starting_point(account)
+
+    def cpus(self, account: str, body: Dict) -> Dict:
+        """`ROUTES["cpus"]`: the processors of the account's own machine,
+        asked or chosen (`System.machine_cpus` checks the count)."""
+        if "cpus" in body:
+            count = body["cpus"]
+            if count is not None and (isinstance(count, bool) or not isinstance(count, int)
+                                      or count < P.VM_CPUS_MIN):
+                raise WorkstationError("bad_request", "“cpus” is a whole number of processors, "
+                                       "or null for the default.")
+        return self.system.machine_cpus(account, body)
 
     def stop_names(self) -> None:
         """`P27-04`. Every account's names proxy, when the daemon stops."""
@@ -1893,7 +1932,8 @@ class Handler(BaseHTTPRequestHandler):
                        "names": lambda: self.station.names(account, body),
                        "network": lambda: self.station.network(account, body),
                        # `B1733`
-                       "starting_point": lambda: self.station.starting_point(account, body)}.get(name)
+                       "starting_point": lambda: self.station.starting_point(account, body),
+                       "cpus": lambda: self.station.cpus(account, body)}.get(name)
             if handler is None:
                 raise WorkstationError("not_found", "This workstation backend does not serve that route.")
             answer = handler()

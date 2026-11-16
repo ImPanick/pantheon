@@ -241,6 +241,27 @@ def idle_stop_from_env(raw: str) -> Optional[float]:
     return int(raw) * 60.0 or None
 
 
+def host_cpus(cpu_max: Path = Path("/sys/fs/cgroup/cpu.max")) -> Optional[int]:
+    """The processors this host's machines share: the ones this process may
+    run on (a server's cpuset, a container's `--cpuset-cpus`), or fewer when
+    this container's cgroup quota (`--cpus`) allows fewer. Every one by
+    default; the pool an admin may make smaller (`Fleet.set_cpus_max`). None
+    when the count cannot be read."""
+    try:
+        count: Optional[int] = len(os.sched_getaffinity(0))
+    except (AttributeError, OSError):
+        count = os.cpu_count()
+    if not isinstance(count, int) or count <= 0:
+        return None
+    try:
+        quota, period = cpu_max.read_text().split()[:2]
+        if quota.isdigit() and period.isdigit() and int(period) > 0:
+            count = min(count, max(1, -(-int(quota) // int(period))))
+    except (OSError, ValueError):
+        pass  # no cgroup v2 quota to read: the processors it may run on are the answer
+    return count
+
+
 def host_memory_mib(meminfo: Path = Path("/proc/meminfo"),
                     cgroup: Path = Path("/sys/fs/cgroup/memory.max")) -> Optional[int]:
     """The memory this host's machines share, in MiB: the machine's, or this
@@ -798,6 +819,7 @@ class Fleet(System):
                  max_running: Optional[int] = None,
                  max_running_auto: bool = False,
                  memory_source: str = "default", host_mib: Optional[int] = None,
+                 host_cpus: Optional[int] = None,
                  clock: Callable[[], float] = time.monotonic) -> None:
         super().__init__()
         self.state = Path(state)
@@ -811,6 +833,11 @@ class Fleet(System):
         self.host_mib = host_mib
         self.memory_choice = self._persisted_memory()
         self.memory_mib = self.memory_choice or self.memory_default
+        # The processors: the admin's pool, each person's own count inside it,
+        # and `PANTHEON_WORKSTATION_VM_CPUS` for whoever chose none (`set_cpus_max`).
+        self.host_cpus = host_cpus
+        self._cpus_lock = threading.Lock()
+        self.cpus_max_choice, self._account_cpus = self._persisted_cpus()
         self.factory = machine_factory or QemuMachine
         self.image_options = dict(image_options or {})
         self.start_timeout = start_timeout
@@ -819,6 +846,7 @@ class Fleet(System):
         # own daemon last said it holds (`network_report`).
         self._restricted: Dict[str, bool] = {}
         self._started_memory: Dict[str, int] = {}  # what each running machine has
+        self._started_cpus: Dict[str, int] = {}    # and its processors
         self._phone_room: Dict[str, int] = {}      # the phone's memory plugged in now
         self._guest_net: Dict[str, Dict] = {}
         self._retiring: List[threading.Thread] = []
@@ -947,6 +975,97 @@ class Fleet(System):
                 "host_memory_mib": self.host_mib, "memory_returns_to_host": True,
                 "phone_room_mib": self.phone_room_mib}
 
+    # -- the processors each machine is given -----------------------------------
+    #
+    # The owner (2026-11-16): *"The CPU setting should be user configurable
+    # with whatever is available for pantheon to use (admin set)"*. The pool is
+    # the admin's (`config`'s `cpus_max`, kept in `cpus.json` on this volume),
+    # every processor the host has until one is chosen, and held at the host's
+    # when it is set above it. Inside it each person chooses their own
+    # machine's count (`ROUTES["cpus"]`), else `PANTHEON_WORKSTATION_VM_CPUS`.
+    # One machine's count is nobody else's. `-smp` cannot change on a running
+    # machine, so one started with another count is powered off cleanly and
+    # boots with this one on its next use, as with memory.
+
+    def _cpus_path(self) -> Path:
+        return self.state / "cpus.json"
+
+    def _persisted_cpus(self) -> Tuple[Optional[int], Dict[str, int]]:
+        try:
+            data = json.loads(self._cpus_path().read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return None, {}
+        if not isinstance(data, dict):
+            return None, {}
+
+        def count(v) -> bool:
+            return (isinstance(v, int) and not isinstance(v, bool)
+                    and P.VM_CPUS_MIN <= v <= P.VM_CPUS_MAX)
+
+        pool = data.get("cpus_max")
+        accounts = data.get("accounts") if isinstance(data.get("accounts"), dict) else {}
+        return (pool if count(pool) else None,
+                {a: v for a, v in accounts.items()
+                 if isinstance(a, str) and P.ACCOUNT_RE.match(a) and count(v)})
+
+    def _save_cpus(self) -> None:
+        path = self._cpus_path()
+        tmp = path.with_name(path.name + ".tmp")
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump({"cpus_max": self.cpus_max_choice,
+                       "accounts": dict(sorted(self._account_cpus.items()))}, f)
+        os.replace(tmp, path)
+
+    @property
+    def cpus_max(self) -> int:
+        """The most processors any one machine may have: the admin's pool,
+        held at what the host has."""
+        host = self.host_cpus or P.VM_CPUS_MAX
+        return min(self.cpus_max_choice or host, host)
+
+    def account_cpus(self, account: str) -> int:
+        """What this person's machine starts with."""
+        return max(P.VM_CPUS_MIN,
+                   min(self._account_cpus.get(account) or self.cpus, self.cpus_max))
+
+    def set_cpus_max(self, choice: Optional[int]) -> None:
+        """The admin's pool, or None for every processor the host has
+        (validated by `Workstation.config`)."""
+        with self._cpus_lock:
+            self.cpus_max_choice = choice
+            self._save_cpus()
+        for account in self.running_accounts():
+            if self._out_of_date(account):
+                self._retire(account)
+
+    def cpus_report(self) -> Dict:
+        """`health`'s and `config`'s words for the pool."""
+        return {"cpus_max": self.cpus_max, "cpus_max_choice": self.cpus_max_choice,
+                "cpus_default": min(self.cpus, self.cpus_max), "host_cpus": self.host_cpus}
+
+    def machine_cpus(self, account: str, body: Dict) -> Dict:
+        """`ROUTES["cpus"]` for one person: asked, or chosen inside the pool."""
+        if "cpus" in body:
+            count = body["cpus"]
+            if count is not None and count > self.cpus_max:
+                raise WorkstationError(
+                    "bad_request", f"“cpus” is at most {self.cpus_max}: that is how many "
+                    "processors this workstation makes available to each machine.")
+            with self._cpus_lock:
+                if count is None:
+                    self._account_cpus.pop(account, None)
+                else:
+                    self._account_cpus[account] = count
+                self._save_cpus()
+            if self.machine_for(account).running() and self._out_of_date(account):
+                self._retire(account)
+        running = self._started_cpus.get(account) if self.machine_for(account).running() else None
+        return {"account": account, "cpus": self.account_cpus(account),
+                "cpus_choice": self._account_cpus.get(account),
+                "cpus_default": min(self.cpus, self.cpus_max), "cpus_max": self.cpus_max,
+                "running_cpus": running}
+
     # -- the phone's memory, plugged in while Android runs ---------------------
 
     def phone_room_for(self, memory_mib: int) -> int:
@@ -987,10 +1106,12 @@ class Fleet(System):
         return got
 
     def _out_of_date(self, account: str) -> bool:
-        """Started with a network or a memory size that is no longer the one
-        it should have."""
+        """Started with a network, a memory size or a number of processors
+        that is no longer the one it should have."""
         return (self._wrong_network(account)
-                or self._started_memory.get(account, self.memory_mib) != self.memory_mib)
+                or self._started_memory.get(account, self.memory_mib) != self.memory_mib
+                or self._started_cpus.get(account, self.account_cpus(account))
+                != self.account_cpus(account))
 
     # -- `B992`: the admin's network mode, held as far as this backend can ------
     #
@@ -1076,8 +1197,9 @@ class Fleet(System):
             with self._locks[account]:
                 m = self.machine_for(account)
                 if m.running() and self._out_of_date(account):
-                    logger.info("powering off %s's machine: it boots again with network %s "
-                                "and %d MiB", account, self.network, self.memory_mib)
+                    logger.info("powering off %s's machine: it boots again with network %s, "
+                                "%d MiB and %d CPUs", account, self.network, self.memory_mib,
+                                self.account_cpus(account))
                     m.stop(graceful=True)
         t = threading.Thread(target=go, name=f"retire-{account}", daemon=True)
         self._retiring.append(t)
@@ -1278,7 +1400,8 @@ class Fleet(System):
         own folder, its forwarded port, and `restrict=on` when the network it
         is started with is *none* (`B992`)."""
         folder = self.state / "machines" / m.account
-        return qemu_argv(name=f"pantheon-{m.account}", accel=self.accel, cpus=self.cpus,
+        return qemu_argv(name=f"pantheon-{m.account}", accel=self.accel,
+                         cpus=self._started_cpus.get(m.account, self.account_cpus(m.account)),
                          memory_mib=self._started_memory.get(m.account, self.memory_mib),
                          disk=folder / "disk.qcow2",
                          iso=folder / "app.iso", console=folder / "console.log",
@@ -1362,6 +1485,7 @@ class Fleet(System):
                     raise WorkstationError("unavailable", self.cap_sentence(len(others)))
                 self._restricted[account] = self.network == "none"  # `B992`
                 self._started_memory[account] = self.memory_mib
+                self._started_cpus[account] = self.account_cpus(account)
                 self._phone_room.pop(account, None)  # every machine starts with none plugged
                 self._guest_net.pop(account, None)
                 m.start()
@@ -1468,6 +1592,7 @@ class Fleet(System):
                 self._machines.pop(account, None)
             self._restricted.pop(account, None)  # `B992`
             self._started_memory.pop(account, None)
+            self._started_cpus.pop(account, None)  # the person's choice is kept
             self._phone_room.pop(account, None)
             self._guest_net.pop(account, None)
 
@@ -2098,6 +2223,7 @@ def main(argv: Optional[List[str]] = None) -> int:
                       idle_stop_s=idle, max_running=cap,
                       max_running_auto=cap_raw.strip().lower() in ("", "auto"),
                       memory_source=memory_source, host_mib=host_mib,
+                      host_cpus=host_cpus(),
                       image_on_first_use=image_when == "on_first_use")
     except (WorkstationError, argparse.ArgumentTypeError) as e:
         logger.error("%s", getattr(e, "message", None) or e)
@@ -2115,9 +2241,10 @@ def main(argv: Optional[List[str]] = None) -> int:
                      daemon=True).start()  # `B979`
     host, port = server.server_address[:2]
     logger.info("workstation VM backend listening on %s:%s — %s, %d MiB (%s) and %d CPUs a "
-                "machine, free pages returned to the host, protocol v%s", host, port, accel,
-                fleet.memory_mib, "chosen in Settings" if fleet.memory_choice else memory_source,
-                cpus, P.PROTOCOL_VERSION)
+                "machine unless its person chose otherwise (at most %d), free pages returned "
+                "to the host, protocol v%s", host, port, accel, fleet.memory_mib,
+                "chosen in Settings" if fleet.memory_choice else memory_source,
+                min(cpus, fleet.cpus_max), fleet.cpus_max, P.PROTOCOL_VERSION)
     logger.info("%s; %s", f"a machine unused for {_minutes(idle)} is powered off" if idle
                 else "machines are never powered off for being unused",
                 f"at most {cap} run at once" if cap is not None else "any number may run")
@@ -2142,7 +2269,7 @@ if __name__ == "__main__":
 
 
 __all__ = ["CLOCK_MAX_RTT_S", "CLOCK_STEP_S", "CLOCK_SYNC_S",  # `B984`
-           "DEFAULT_IDLE_STOP_MIN", "MEMORY_RESERVE_MIB", "host_memory_mib",  # `B979`
+           "DEFAULT_IDLE_STOP_MIN", "MEMORY_RESERVE_MIB", "host_cpus", "host_memory_mib",  # `B979`
            "idle_stop_from_env", "max_running_from_env", "HOST_LOCK", "hold_state",
            "Fleet", "Machine", "QemuMachine", "VmStation", "choose_accel", "guest_unit",
            "image_meta_data", "image_user_data", "make_iso", "payload_digest", "payload_files",

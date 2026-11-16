@@ -340,6 +340,39 @@ def setup_workstation_routes() -> APIRouter:
                     else "forgotten", owner)
         return answer
 
+    # The caller's own VM machine's processors, inside the pool the admin
+    # makes available (`workstation_vm_cpus_max`). Theirs alone: the account
+    # is derived from the caller, and only the person sets it.
+    @router.get("/cpus")
+    async def workstation_cpus(request: Request):
+        """How many processors my machine starts with, and the most I may give it."""
+        owner = require_user(request)
+        try:
+            return await wa.machine_cpus(owner, auth_manager=_auth_manager(request))
+        except WorkstationError as e:
+            raise _http_error(e)
+
+    @router.post("/cpus")
+    async def workstation_cpus_set(request: Request):
+        """`{"cpus": n}` gives my machine n processors on its next start;
+        `{"cpus": null}` gives it the default again."""
+        from src.auth_helpers import request_is_a_person
+        owner = require_user(request)
+        if not request_is_a_person(request):
+            raise HTTPException(403, "Only you can choose your machine's processors.")
+        body = await _body(request)
+        count = body.get("cpus", "missing")
+        if count is not None and (isinstance(count, bool) or not isinstance(count, int)):
+            raise HTTPException(400, "“cpus” is a whole number of processors, or null for "
+                                     "the default.")
+        try:
+            answer = await wa.machine_cpus(owner, count, auth_manager=_auth_manager(request))
+        except WorkstationError as e:
+            raise _http_error(e)
+        logger.info("workstation machine processors for %s: %s", owner,
+                    "the default" if count is None else count)
+        return answer
+
     # ── `B1725` / `D-2026-11-01-02`: Computer Use, on the caller's own workstation ──
     #
     # No card for a step the agent takes inside the caller's workstation, on

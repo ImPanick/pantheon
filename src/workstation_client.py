@@ -755,6 +755,16 @@ class WorkstationClient:
         return await self._call("starting_point", account, {"action": action},
                                 timeout=300.0 if action == "save" else 30.0 + _TIMEOUT)
 
+    async def cpus(self, account: str, *count: Optional[int]) -> Dict:
+        """`{"account", "cpus", "cpus_choice", "cpus_default", "cpus_max",
+        "running_cpus"}`: the processors of the account's own VM machine —
+        asked, or chosen when a count (None: the default) is given
+        (`protocol.ROUTES["cpus"]`). A daemon older than the route answers
+        `not_found`; one with no machines of its own, `bad_request`."""
+        if len(count) > 1:
+            raise TypeError("cpus() takes one count at most")
+        return await self._call("cpus", account, {"cpus": count[0]} if count else {})
+
     async def control(self, account: str, holder: str) -> Dict:
         return await self._call("control", account, {"holder": holder})
 

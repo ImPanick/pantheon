@@ -324,6 +324,17 @@ ROUTES: Dict[str, Tuple[str, str]] = {
     # image's clean start again. A daemon older than this answers
     # `404 not_found`.
     "starting_point": ("POST", "/v1/users/{account}/starting-point"),
+    # The VM backend's processors for the account's own machine, within the
+    # pool an admin makes available (`config`'s `cpus_max`). Kept on the host
+    # with the machines, never asked of the machine itself.
+    #   {"cpus": VM_CPUS_MIN..cpus_max | null (the default)}, or {} to ask
+    #   -> {"account", "cpus": what the machine starts with,
+    #       "cpus_choice": int | null, "cpus_default", "cpus_max",
+    #       "running_cpus": what the running machine has | null}
+    # A running machine given another count powers off cleanly and boots with
+    # it on its next use. A backend without machines of its own answers
+    # `400 bad_request`; a daemon older than this, `404 not_found`.
+    "cpus": ("POST", "/v1/users/{account}/cpus"),
     # `G2` (`D-2026-11-01-04`), added: what on the account's screen can be
     # clicked or typed into, as the desktop's accessibility tree describes it
     # (`workstation/a11y_marks.py`, read as the account on its display) — so
@@ -656,6 +667,13 @@ NETWORK_MODES = ("full", "internet", "none")
 # ones `PANTHEON_WORKSTATION_VM_MEMORY_MIB` always had.
 VM_MEMORY_MIN_MIB = 1024
 VM_MEMORY_MAX_MIB = 262_144
+
+# The VM backend's processors for each person's machine (`ROUTES["cpus"]`) and
+# the pool an admin makes available (`config`'s `cpus_max`; null is every
+# processor the host has). The bounds are the ones
+# `PANTHEON_WORKSTATION_VM_CPUS` always had.
+VM_CPUS_MIN = 1
+VM_CPUS_MAX = 64
 
 # ── the network mode in force (`P20-06`, additive) ────────────────────────────
 #

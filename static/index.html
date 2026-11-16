@@ -4244,6 +4244,13 @@
               <select id="ws-system" class="settings-select" aria-describedby="ws-system-why"></select>
             </div>
             <div id="ws-system-why" class="admin-toggle-sub ws-effect" hidden></div>
+            <!-- This person's own VM machine's processors, inside the pool the
+                 admin sets below (`workstation.js` renderCpus). Theirs alone. -->
+            <div class="settings-row ws-field" id="ws-cpus-row" hidden>
+              <label class="settings-label" for="ws-cpus">Processors for your machine</label>
+              <select id="ws-cpus" class="settings-select" aria-describedby="ws-cpus-why"></select>
+            </div>
+            <div id="ws-cpus-why" class="admin-toggle-sub ws-effect" hidden></div>
             <!-- `B1725` / `D-2026-11-01-02`. Computer Use: no card for a step
                  inside this person's workstation, behind a warning the server
                  words (`GET /api/workstation/computer-use`). -->
@@ -4349,6 +4356,15 @@
                 <select id="ws-vm-memory" class="settings-select" aria-describedby="ws-vm-memory-effect"></select>
               </div>
               <div id="ws-vm-memory-effect" class="admin-toggle-sub ws-effect" hidden></div>
+
+              <!-- The processors the VM workstation makes available to each
+                   person's machine: all of the host's, or a smaller pool
+                   (`workstation.js` renderCpusPool). -->
+              <div class="settings-row ws-field" id="ws-vm-cpus-row" hidden>
+                <label class="settings-label" for="ws-vm-cpus">Processors each machine may have</label>
+                <select id="ws-vm-cpus" class="settings-select" aria-describedby="ws-vm-cpus-effect"></select>
+              </div>
+              <div id="ws-vm-cpus-effect" class="admin-toggle-sub ws-effect" hidden></div>
 
               <div class="admin-toggle-row ws-toggle">
                 <div>
