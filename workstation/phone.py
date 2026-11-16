@@ -510,11 +510,31 @@ def avd_ini(device: str, avd_home: Path, package: str, *, name: Optional[str] = 
 def emulator_argv(emulator: str, device: str, *, port: int, memory_mib: int,
                   name: Optional[str] = None) -> List[str]:
     """The emulator, headless — scrcpy is the window — on KVM, with software
-    GL, a visible Android boot animation, and no metrics. Cold boot preserves
+    GL, a visible Android boot animation, the guest kernel's console in the
+    log, and no metrics. Cold boot preserves
     userdata, but deliberately does not resume a snapshot past the boot screen."""
     return [emulator, "-avd", name or avd_name(device), "-port", str(port), "-no-window", "-no-audio",
             "-no-snapshot-load", "-gpu", "swiftshader_indirect", "-accel", "on",
-            "-memory", str(memory_mib), "-no-metrics"]
+            "-memory", str(memory_mib), "-no-metrics",
+            # The guest kernel's console into the log: without it the log ends
+            # at the emulator's own setup and a guest that stalls before adb
+            # answers leaves nothing to read (owner's Windows run, 2026-11-16).
+            "-show-kernel"]
+
+
+def stalled_sentence(reached: str, said: str = "") -> str:
+    """Why a phone that ran out of boot time stopped, by how far Android got:
+    `adb` (adbd never answered), `android` (it answered, no display service)
+    or `display` (the display ran, the boot never completed)."""
+    head = f"The phone did not finish booting in {int(BOOT_TIMEOUT_S)} s"
+    where = {
+        "adb": ": Android never answered adb, so the guest was still starting or stuck "
+               "before its system came up",
+        "android": ": Android answered adb, but its display service never started",
+        "display": ": Android's display started, but the boot did not complete",
+    }.get(reached, "")
+    return (f"{head}{where}. ~/{LOG_FILE} in the workstation shows where it "
+            f"stopped{said}. Start it again to retry.")
 
 
 def scrcpy_version(scrcpy: str) -> Tuple[int, int]:
@@ -1254,6 +1274,8 @@ class AccountPhone:
         running, including boot animation where scrcpy can attach that early.
         Early scrcpy failures are retried while Android continues booting."""
         deadline = time.monotonic() + BOOT_TIMEOUT_S
+        # How far Android got, for the sentence if it never finishes.
+        reached = "adb"
         while time.monotonic() < deadline:
             if proc.poll() is not None:
                 with self.lock:
@@ -1270,6 +1292,8 @@ class AccountPhone:
             # lock so Stop can cancel a device whose guest never answers.
             display = self.adb(["shell", "getprop", "init.svc.surfaceflinger"],
                                timeout=5.0, quiet=True).strip() == "running"
+            if display:
+                reached = "display"
             completed = self.adb(["shell", "getprop", "sys.boot_completed"],
                                  timeout=5.0, quiet=True).strip() == "1"
             with self.lock:
@@ -1285,12 +1309,16 @@ class AccountPhone:
                 break
             time.sleep(2.0)
         else:
+            # adb's link stays `offline` until adbd inside Android answers;
+            # asked once, here, outside the lock like every other adb wait.
+            if reached == "adb" and self.adb(["get-state"], timeout=5.0,
+                                             quiet=True).strip() == "device":
+                reached = "android"
             with self.lock:
                 if self.emulator is proc:
+                    said = self._last_words()
                     self._stop_locked()
-                    self.state, self.why = "unavailable", (
-                        f"The phone did not finish booting in {int(BOOT_TIMEOUT_S)} s. "
-                        "Start it again to retry.")
+                    self.state, self.why = "unavailable", stalled_sentence(reached, said)
             return
         with self.lock:
             if self.emulator is not proc:
@@ -1964,5 +1992,5 @@ def _listening(port: int) -> bool:
 
 
 __all__ = ["AccountPhone", "PhoneError", "Phones", "adb_port", "avd_config", "avd_ini",
-           "avd_name", "check_url", "emulator_argv", "image_parts", "kvm_for_accounts",
+           "avd_name", "check_url", "emulator_argv", "image_parts", "stalled_sentence", "kvm_for_accounts",
            "marks_from_dump", "scrcpy_argv", "tools"]
