@@ -134,6 +134,8 @@ class Screen:
 
     def rfb_event(self,event,session,holder):
         with self.phone.lock,self.lock:
+            if getattr(self.phone,'state',None)=='starting' and self.phone.control is None:
+                return  # the boot screen is watched, not touched: input once Android is on
             self.phone._on()
             if event['geometry']!=(self.phone.generation,self.size,self.physical):
                 self.release(session);raise PhoneError('unavailable','The Android display changed. Reconnect before touching it.')
