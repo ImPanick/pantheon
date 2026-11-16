@@ -460,7 +460,7 @@ const ANDROID_ROOM_MIB = 10240;
 
 function memoryWords(mib) {
   if (typeof mib !== 'number') return '';
-  return mib % 1024 === 0 ? `${mib / 1024} GB` : `${mib} MiB`;
+  return mib % 512 === 0 ? `${mib / 1024} GB` : `${mib} MiB`;
 }
 
 function renderMemory(settings, daemon) {
@@ -478,7 +478,13 @@ function renderMemory(settings, daemon) {
   select.textContent = '';
   const auto = document.createElement('option');
   auto.value = '';
-  auto.textContent = `Automatic (${memoryWords(daemon.memory_default_mib)} here)`;
+  // Under KVM a machine too small for Android is given its memory only while
+  // it runs (`vm.PHONE_ROOM_HOTPLUG_MIB`); the host says how much.
+  const room = typeof daemon.phone_room_mib === 'number' ? daemon.phone_room_mib : 0;
+  const roomFor = (mib) => (room > 0 && typeof mib === 'number' && mib < ANDROID_ROOM_MIB);
+  auto.textContent = roomFor(daemon.memory_default_mib)
+    ? `Automatic (${memoryWords(daemon.memory_default_mib)}, plus ${memoryWords(room)} while Android runs)`
+    : `Automatic (${memoryWords(daemon.memory_default_mib)} here)`;
   select.appendChild(auto);
   for (const mib of sizes) {
     const opt = document.createElement('option');
@@ -502,7 +508,10 @@ function renderMemory(settings, daemon) {
   }
   parts.push('A running machine powers off cleanly and starts with a new size on its next use, '
     + 'its files kept.');
-  if (typeof size === 'number' && size < ANDROID_ROOM_MIB) {
+  if (roomFor(size)) {
+    parts.push(`Android's ${memoryWords(room)} is added while Android runs and given back `
+      + 'when it stops.');
+  } else if (typeof size === 'number' && size < ANDROID_ROOM_MIB) {
     parts.push(`Android needs ${memoryWords(ANDROID_ROOM_MIB)} or more.`);
   }
   effect.textContent = parts.join(' ');

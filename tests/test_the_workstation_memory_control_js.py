@@ -104,3 +104,24 @@ def test_a_choice_writes_its_key_and_asks_again(sandbox, value, stored):
 def test_the_container_has_no_size_to_set(sandbox):
     out = _open(sandbox, ADMIN_UP)["memory"]
     assert out["shown"] is False and out["effect"] is None
+
+
+ROOM_DAEMON = {**VM_DAEMON, "memory_mib": 2048, "memory_default_mib": 2048,
+               "phone_room_mib": 9728}
+
+
+def test_automatic_says_androids_memory_is_added_while_it_runs(sandbox):
+    """`vm.PHONE_ROOM_HOTPLUG_MIB`: under KVM a small machine is given the
+    phone's memory only while Android runs, so 2 GB is no warning."""
+    out = _open(sandbox, {**VM_UP, "daemon": ROOM_DAEMON})["memory"]
+    assert out["options"][0]["label"] == "Automatic (2 GB, plus 9.5 GB while Android runs)"
+    assert "Android needs" not in out["effect"]
+    assert "added while Android runs and given back when it stops" in out["effect"]
+
+
+def test_a_size_that_holds_android_itself_gets_no_room(sandbox):
+    status = {**VM_UP, "daemon": {**ROOM_DAEMON, "memory_choice": 12288},
+              "settings": {**VM_UP["settings"], "vm_memory_choice": 12288}}
+    out = _open(sandbox, status)["memory"]
+    assert "added while Android runs" not in out["effect"]
+    assert "Android needs" not in out["effect"]

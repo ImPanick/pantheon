@@ -149,6 +149,22 @@ DEFAULT_MEMORY_MIB = 2048
 # about what its guest uses, not the whole of it.
 PHONE_ROOM_MEMORY_MIB = 10240
 PHONE_ROOM_HOST_KEEPS_MIB = 16384
+# Under KVM a machine smaller than that is given the phone's memory only while
+# Android runs: a virtio-mem device sized for it, plugged at zero, grown by the
+# VM host before the phone starts and shrunk after it stops (`VmStation.phone`).
+# Its size is the phone's 8 GiB plus the 1536 MiB its pre-check keeps for the
+# desktop (`workstation/phone.py`), so a 2 GB desktop with it plugged in passes
+# that check. A host gives it where, with the room plugged in, it still keeps
+# `PHONE_ROOM_HOTPLUG_HOST_KEEPS_MIB` for itself (`phone_room_fits`).
+PHONE_ROOM_HOTPLUG_MIB = 8192 + 1536
+PHONE_ROOM_HOTPLUG_HOST_KEEPS_MIB = 4096
+PHONE_ROOM_MEMDEV = "phone-mem"
+PHONE_ROOM_DEVICE = "phone-mem-dev"
+#: On the app disk: the room the host gave this machine, in MiB, so the guest's
+#: phone counts it before it is plugged in (`workstation/__main__.py`).
+PHONE_ROOM_FILE = "phone-room-mib"
+#: How long the host waits for the guest to take the memory it plugged in.
+PHONE_ROOM_WAIT_S = 60.0
 DEFAULT_CPUS = 2
 DEFAULT_DISK_GIB = 20
 # Making the image installs the desktop, the tools and Firefox inside the VM.
@@ -247,10 +263,24 @@ def host_memory_mib(meminfo: Path = Path("/proc/meminfo"),
     return total
 
 
-def auto_memory_mib(total_mib: Optional[int]) -> int:
-    """A machine's memory when nobody chose one: room for the phone on a host
-    that can spare it, else `DEFAULT_MEMORY_MIB` — and that too when the
-    host's memory cannot be read, rather than a number made up."""
+def phone_room_fits(total_mib: Optional[int], memory_mib: int) -> bool:
+    """Whether a host of `total_mib` can plug the phone's room into a machine
+    of `memory_mib` and keep `PHONE_ROOM_HOTPLUG_HOST_KEEPS_MIB` for itself.
+    True when the host's memory cannot be read: the phone's own check inside
+    the machine still says so if the memory is not there."""
+    if total_mib is None:
+        return True
+    return total_mib - memory_mib - PHONE_ROOM_HOTPLUG_MIB >= PHONE_ROOM_HOTPLUG_HOST_KEEPS_MIB
+
+
+def auto_memory_mib(total_mib: Optional[int], *, phone_room: bool = False) -> int:
+    """A machine's memory when nobody chose one: the plain desktop where the
+    phone's memory is plugged in while Android runs (`phone_room`); else room
+    for the phone on a host that can spare it, else `DEFAULT_MEMORY_MIB` —
+    and that too when the host's memory cannot be read, rather than a number
+    made up."""
+    if phone_room:
+        return DEFAULT_MEMORY_MIB
     if total_mib is not None and total_mib - PHONE_ROOM_MEMORY_MIB >= PHONE_ROOM_HOST_KEEPS_MIB:
         return PHONE_ROOM_MEMORY_MIB
     return DEFAULT_MEMORY_MIB
@@ -336,7 +366,8 @@ def qemu_argv(*, name: str, accel: str, cpus: int, memory_mib: int, disk: Path,
               iso: Optional[Path], console: Path, qmp: Path,
               forward: Optional[Tuple[str, int]] = None,
               dump: Optional[Path] = None, qemu: str = "qemu-system-x86_64",
-              restrict: bool = False, share: Optional[Path] = None) -> List[str]:
+              restrict: bool = False, share: Optional[Path] = None,
+              hotplug_mib: int = 0) -> List[str]:
     """One machine's command line. No display device (the desktop is Xvfb
     inside), no default devices, the serial console to a file, one virtio
     disk, the read-only seed or app disk (`iso`), user-mode network with at most one
@@ -347,7 +378,9 @@ def qemu_argv(*, name: str, accel: str, cpus: int, memory_mib: int, disk: Path,
     argv = [qemu, "-name", name, "-nodefaults", "-no-user-config",
             "-machine", "q35", "-accel", "kvm" if accel == "kvm" else "tcg,thread=multi,tb-size=256",
             "-cpu", "host" if accel == "kvm" else "max",
-            "-smp", str(int(cpus)), "-m", str(int(memory_mib)),
+            "-smp", str(int(cpus)),
+            "-m", (f"{int(memory_mib)},maxmem={int(memory_mib) + int(hotplug_mib)}M"
+                   if hotplug_mib else str(int(memory_mib))),
             "-display", "none", "-serial", f"file:{console}",
             "-rtc", "base=utc,driftfix=slew",
             "-drive", f"if=virtio,file={disk},format=qcow2,discard=unmap",
@@ -357,6 +390,12 @@ def qemu_argv(*, name: str, accel: str, cpus: int, memory_mib: int, disk: Path,
             # that once touched its memory holds all of it until it powers off.
             "-device", "virtio-balloon-pci,free-page-reporting=on",
             "-qmp", f"unix:{qmp},server=on,wait=off"]
+    if hotplug_mib:
+        # The phone's memory, plugged in only while Android runs (QEMU 5.1+,
+        # Linux 5.8+): reserved by nothing until the guest is asked to take it.
+        argv += ["-object", f"memory-backend-ram,id={PHONE_ROOM_MEMDEV},size={int(hotplug_mib)}M",
+                 "-device", f"virtio-mem-pci,id={PHONE_ROOM_DEVICE},memdev={PHONE_ROOM_MEMDEV},"
+                            "requested-size=0"]
     if iso is not None:
         # A read-only virtio disk, not a CD-ROM: udev labels a virtio disk as
         # soon as it is probed, where a CD-ROM's label waits on `cdrom_id`
@@ -515,6 +554,42 @@ def qmp_command(sock_path: Path, command: str, timeout: float = 5.0) -> bool:
         return False
 
 
+class QmpError(Exception):
+    """QEMU refused a command, or was not there to take it."""
+
+
+def qmp_execute(sock_path: Path, command: str, arguments: Optional[Dict] = None,
+                timeout: float = 5.0):
+    """One QMP command with its arguments; what QEMU returned, or `QmpError`
+    with what it said. Events QEMU sends in between are skipped."""
+    try:
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
+            s.settimeout(timeout)
+            s.connect(str(sock_path))
+            f = s.makefile("rwb")
+            f.readline()  # the greeting
+            result = None
+            for cmd, args in (("qmp_capabilities", None), (command, arguments)):
+                msg_out: Dict = {"execute": cmd}
+                if args:
+                    msg_out["arguments"] = args
+                f.write(json.dumps(msg_out).encode() + b"\n")
+                f.flush()
+                while True:
+                    line = f.readline()
+                    if not line:
+                        raise QmpError("QEMU closed its control socket.")
+                    msg = json.loads(line)
+                    if "error" in msg:
+                        raise QmpError(str((msg["error"] or {}).get("desc") or msg["error"]))
+                    if "return" in msg:
+                        result = msg["return"]
+                        break
+            return result
+    except (OSError, ValueError) as e:
+        raise QmpError(f"QEMU's control socket did not answer: {e}") from e
+
+
 # ── one person's machine ──────────────────────────────────────────────────────
 
 class Machine:
@@ -540,6 +615,12 @@ class Machine:
 
     def destroy(self) -> None:  # pragma: no cover - interface
         raise NotImplementedError
+
+    def set_phone_room(self, mib: int, *, wait_s: float = PHONE_ROOM_WAIT_S) -> int:
+        """Plug `mib` of the phone's memory into the running machine (0 takes
+        it out); what the guest holds once it has taken it. A machine with no
+        room for the phone holds none."""
+        return 0
 
 
 def mint_machine_token(path: Path) -> str:
@@ -622,6 +703,9 @@ class QemuMachine(Machine):
         # `B1427`: which folder the machine mounts its projects share at.
         (root / PROJECTS_FOLDER_FILE).write_text(P.project_folder_of(self.account) + "\n",
                                                  encoding="utf-8")
+        # The phone's room, so the guest's phone counts it before it is plugged in.
+        (root / PHONE_ROOM_FILE).write_text(
+            f"{self.fleet.started_phone_room(self.account)}\n", encoding="utf-8")
         iso = self.dir / "app.iso"
         make_iso(iso, APP_LABEL, root, keep_modes=True)
         shutil.rmtree(root, ignore_errors=True)
@@ -672,6 +756,22 @@ class QemuMachine(Machine):
         self.stop(graceful=False)
         shutil.rmtree(self.dir, ignore_errors=True)
 
+    def set_phone_room(self, mib: int, *, wait_s: float = PHONE_ROOM_WAIT_S) -> int:
+        """Ask QEMU to resize the virtio-mem device, then wait until the guest
+        has plugged (or unplugged) the blocks — what it holds when that wait
+        ends, which is less than asked when the guest did not take it all."""
+        path = f"/machine/peripheral/{PHONE_ROOM_DEVICE}"
+        want = int(mib) * 1024 * 1024
+        qmp_execute(self.qmp, "qom-set", {"path": path, "property": "requested-size",
+                                          "value": want})
+        deadline = time.monotonic() + wait_s
+        size = 0
+        while True:
+            size = int(qmp_execute(self.qmp, "qom-get", {"path": path, "property": "size"}) or 0)
+            if size == want or time.monotonic() >= deadline:
+                return size // (1024 * 1024)
+            time.sleep(0.2)
+
     def why_not(self) -> str:
         """What the machine said before it stopped answering, for a sentence."""
         return tail(self.dir / "qemu.log", 2) or tail(self.console, 3)
@@ -719,6 +819,7 @@ class Fleet(System):
         # own daemon last said it holds (`network_report`).
         self._restricted: Dict[str, bool] = {}
         self._started_memory: Dict[str, int] = {}  # what each running machine has
+        self._phone_room: Dict[str, int] = {}      # the phone's memory plugged in now
         self._guest_net: Dict[str, Dict] = {}
         self._retiring: List[threading.Thread] = []
         self.image_state = ("ready" if not need_image
@@ -843,7 +944,47 @@ class Fleet(System):
         return {"memory_mib": self.memory_mib, "memory_choice": self.memory_choice,
                 "memory_default_mib": self.memory_default,
                 "memory_default_source": self.memory_source,
-                "host_memory_mib": self.host_mib, "memory_returns_to_host": True}
+                "host_memory_mib": self.host_mib, "memory_returns_to_host": True,
+                "phone_room_mib": self.phone_room_mib}
+
+    # -- the phone's memory, plugged in while Android runs ---------------------
+
+    def phone_room_for(self, memory_mib: int) -> int:
+        """The room a machine of `memory_mib` is started with: the phone's
+        memory under KVM (Android needs it) where the machine is too small to
+        hold the phone and the host can spare it; else none."""
+        if (self.accel != "kvm" or memory_mib >= PHONE_ROOM_MEMORY_MIB
+                or not phone_room_fits(self.host_mib, memory_mib)):
+            return 0
+        return PHONE_ROOM_HOTPLUG_MIB
+
+    @property
+    def phone_room_mib(self) -> int:
+        return self.phone_room_for(self.memory_mib)
+
+    def started_phone_room(self, account: str) -> int:
+        return self.phone_room_for(self._started_memory.get(account, self.memory_mib))
+
+    def plugged_room(self, account: str) -> int:
+        return self._phone_room.get(account, 0)
+
+    def set_phone_room(self, account: str, mib: int) -> int:
+        """Plug `mib` of the phone's memory into this person's running machine,
+        or take it out (0); what it holds afterwards."""
+        m = self.machine_for(account)
+        room = self.started_phone_room(account)
+        if not room or not m.running():
+            self._phone_room.pop(account, None)
+            return 0
+        mib = max(0, min(int(mib), room))
+        try:
+            got = m.set_phone_room(mib)
+        except QmpError as e:
+            logger.warning("could not resize %s's phone memory to %d MiB: %s", account, mib, e)
+            got = self._phone_room.get(account, 0) if mib else 0
+        self._phone_room[account] = got
+        logger.info("%s's machine holds %d MiB of the phone's memory", account, got)
+        return got
 
     def _out_of_date(self, account: str) -> bool:
         """Started with a network or a memory size that is no longer the one
@@ -1143,7 +1284,8 @@ class Fleet(System):
                          iso=folder / "app.iso", console=folder / "console.log",
                          qmp=folder / "qmp.sock", forward=("127.0.0.1", int(m.port or 0)),
                          restrict=self._restricted.get(m.account, False),
-                         share=self.project_share(m.account))
+                         share=self.project_share(m.account),
+                         hotplug_mib=self.started_phone_room(m.account))
 
     def project_share(self, account: str) -> Optional[Path]:
         """`B1427`. This person's own projects folder on this host, made if
@@ -1220,6 +1362,7 @@ class Fleet(System):
                     raise WorkstationError("unavailable", self.cap_sentence(len(others)))
                 self._restricted[account] = self.network == "none"  # `B992`
                 self._started_memory[account] = self.memory_mib
+                self._phone_room.pop(account, None)  # every machine starts with none plugged
                 self._guest_net.pop(account, None)
                 m.start()
             self._wait_answering(m, started)
@@ -1325,6 +1468,7 @@ class Fleet(System):
                 self._machines.pop(account, None)
             self._restricted.pop(account, None)  # `B992`
             self._started_memory.pop(account, None)
+            self._phone_room.pop(account, None)
             self._guest_net.pop(account, None)
 
     # -- `B979`: use, idleness and the cap --------------------------------------
@@ -1700,7 +1844,44 @@ class VmStation(Workstation):
         that streams, under its own KasmVNC."""
         return self.system.forward(account, "desktop", timeout=120.0)
 
+    #: What may start Android: the phone's memory is plugged in first.
+    PHONE_STARTS = ("start", "install", "edition", "device")
+    TOO_LITTLE_ROOM = ("Your workstation machine did not take the memory Android needs "
+                       "({got} of {want} MiB). Turn Android on again; if it says this again, "
+                       "restart your workstation machine.")
+
     def phone(self, account: str, body: Dict) -> Dict:
+        """`_phone`, with the phone's memory plugged in before anything that
+        may start Android and taken out again once Android is off — after a
+        stop, after a start that failed, or when a status finds it off
+        (the guest stops an idle phone on its own)."""
+        fleet = self.system
+        if not isinstance(fleet, Fleet):
+            return self._phone(account, body)
+        action = body.get("action")
+        starts = (action in self.PHONE_STARTS
+                  or (action == "button" and body.get("button") == "power"))
+        room = fleet.started_phone_room(account) if fleet.machine_for(account).running() else 0
+        grew = False
+        if starts and room and fleet.plugged_room(account) < room:
+            got = fleet.set_phone_room(account, room)
+            grew = True
+            if got < room:
+                fleet.set_phone_room(account, 0)
+                raise WorkstationError("unavailable",
+                                       self.TOO_LITTLE_ROOM.format(got=got, want=room))
+        try:
+            out = self._phone(account, body)
+        except Exception:
+            if grew:
+                fleet.set_phone_room(account, 0)
+            raise
+        if (room and isinstance(out, dict) and out.get("state") in ("off", "unavailable")
+                and (grew or action == "stop" or fleet.plugged_room(account))):
+            fleet.set_phone_room(account, 0)
+        return out
+
+    def _phone(self, account: str, body: Dict) -> Dict:
         """The phone belongs inside its person's machine. The guest probes
         its own KVM and installed SDK; the host must not infer that nested
         Android acceleration works from its own KVM, or substitute a phone
@@ -1878,13 +2059,11 @@ def main(argv: Optional[List[str]] = None) -> int:
     host_mib = host_memory_mib()
     memory = _int_env(ENV["memory"], 0, P.VM_MEMORY_MIN_MIB, P.VM_MEMORY_MAX_MIB)
     memory_source = "env" if memory else "auto"
-    memory = memory or auto_memory_mib(host_mib)
     cpus = _int_env(ENV["cpus"], DEFAULT_CPUS, 1, 64)
     disk = _int_env(ENV["disk"], DEFAULT_DISK_GIB, 8, 4096)
     idle = idle_stop_from_env(os.environ.get(ENV["idle"], ""))  # `B979`
     cap_raw = os.environ.get(ENV["max_running"], "")
     persisted = Fleet.persisted_memory_at(Path(args.state))
-    cap = max_running_from_env(cap_raw, persisted or memory, host_mib)
     image_when = (os.environ.get(ENV["image_when"]) or "at_start").strip().lower()
     if image_when not in ("at_start", "on_first_use"):
         logger.error("%s is at_start or on_first_use.", ENV["image_when"])
@@ -1902,6 +2081,11 @@ def main(argv: Optional[List[str]] = None) -> int:
     try:
         gid = _gid(os.environ.get(PAIRING_GID_ENV, ""))
         accel, why = choose_accel(want=want)
+        # Automatic is the plain desktop where the phone's memory is plugged
+        # in while Android runs (KVM, and a host with room for it).
+        memory = memory or auto_memory_mib(
+            host_mib, phone_room=accel == "kvm" and phone_room_fits(host_mib, DEFAULT_MEMORY_MIB))
+        cap = max_running_from_env(cap_raw, persisted or memory, host_mib)
         pairing = Path(args.pairing_dir)
         token = load_or_create_token(pairing)
         if not (os.environ.get(P.TOKEN_ENV) or "").strip():

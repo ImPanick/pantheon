@@ -131,6 +131,7 @@ STOP_TIMEOUT_S = 60.0
 ADB_TIMEOUT_S = 20.0
 REAP_EVERY_S = 60.0
 AVAILABILITY_TRUST_S = 30.0
+MEMINFO = Path("/proc/meminfo")
 
 BUILT_WITHOUT = ("This VM has no working Android runtime or installer. Rebuild the workstation-vm "
                  "host from the current checkout and restart your VM, preserving its disk. "
@@ -868,10 +869,14 @@ class AccountPhone:
         if not ok:
             return NO_KVM.format(why=why)
         try:
-            total_mib = int(next(line.split()[1] for line in Path("/proc/meminfo").read_text().splitlines()
+            total_mib = int(next(line.split()[1] for line in MEMINFO.read_text().splitlines()
                                  if line.startswith("MemTotal:"))) // 1024
         except (OSError, ValueError, StopIteration, IndexError):
             total_mib = None
+        if total_mib is not None and total_mib < self.memory_mib + 1536:
+            # The VM host plugs the phone's memory in before Android starts
+            # and takes it out after (`workstation/vm.py`): count what it promised.
+            total_mib += int(getattr(self.system, "phone_room_mib", 0) or 0)
         if total_mib is not None and total_mib < self.memory_mib + 1536:
             return TOO_LITTLE_MEMORY.format(have=total_mib, need=self.memory_mib,
                                             size=self.memory_mib + 2048)

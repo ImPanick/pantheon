@@ -205,6 +205,37 @@ def mount_project_share(app_dir: Path = Path("/opt/pantheon-workstation/app"), *
     return target
 
 
+def online_hotplugged_memory(
+        knob: Path = Path("/sys/devices/system/memory/auto_online_blocks")) -> Optional[str]:
+    """Inside a VM backend's machine: have the kernel bring memory the host
+    plugs in (the phone's, `workstation/vm.py`'s virtio-mem) online as
+    movable at once, so it can be unplugged again when Android stops. Noble
+    leaves it offline. Any other choice already made is kept. None where the
+    kernel has no memory hotplug."""
+    try:
+        now = knob.read_text(encoding="utf-8").strip()
+    except OSError:
+        return None
+    if now != "offline":
+        return now
+    try:
+        knob.write_text("online_movable\n", encoding="utf-8")
+    except OSError as e:
+        logging.getLogger(__name__).warning("hotplugged memory stays offline: %s", e)
+        return now
+    return knob.read_text(encoding="utf-8").strip()
+
+
+def phone_room_promised(app_dir: Path = Path("/opt/pantheon-workstation/app")) -> int:
+    """The phone's memory the host plugs in while Android runs, in MiB (0:
+    none). Written on the app disk by the host (`vm.PHONE_ROOM_FILE`)."""
+    try:
+        raw = (app_dir / "phone-room-mib").read_text(encoding="utf-8").strip()
+    except OSError:
+        return 0
+    return int(raw) if raw.isdigit() and int(raw) <= 1 << 20 else 0
+
+
 def make_system(args: argparse.Namespace) -> System:
     if args.system == "ubuntu":
         # Imported here: the module needs Linux's setfsuid, and `single` runs
@@ -261,9 +292,13 @@ def check_pairing_group(system: System, gid: Optional[int]) -> None:
 
 def build(args: argparse.Namespace):
     """`(server, system)`, listening, not yet serving."""
-    if getattr(args, "backend", None) == "vm" and getattr(args, "token_file", None):
+    in_machine = getattr(args, "backend", None) == "vm" and getattr(args, "token_file", None)
+    if in_machine:
         mount_project_share()   # `B1427`: a machine's own projects folder, if shared
+        online_hotplugged_memory()   # the phone's memory, when the host plugs it in
     system = make_system(args)
+    if in_machine:
+        system.phone_room_mib = phone_room_promised()
     check_pairing_group(system, args.pairing_group)
     from_env = bool((os.environ.get(P.TOKEN_ENV) or "").strip())
     token_file = getattr(args, "token_file", None)

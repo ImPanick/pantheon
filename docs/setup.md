@@ -263,6 +263,13 @@ host (virtio-balloon free page reporting), so a 10 GB machine running a desktop
 holds about what the desktop uses; it grows toward its size only while
 something, such as Android, uses it.
 
+Under KVM a machine smaller than 10 GB is also started with room for Android
+(a virtio-mem device of 9.5 GB, plugged at zero). The VM host plugs that
+memory in just before Android starts and takes it out once Android stops, so a
+2 GB desktop is 2 GB on the host until the phone is on. *Automatic* is then
+2 GB wherever the host keeps 4 GB for itself with a phone running; a host too
+small for that gets no room, and *Automatic* sizes the whole machine as before.
+
 ### Mobile Emulator
 
 Android runs **inside each user's own VM**, through the existing VM workstation

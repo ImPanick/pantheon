@@ -119,6 +119,7 @@ class InProcessMachine(vm.Machine):
         self.starts = 0
         self.stops: List[bool] = []          # graceful, per stop
         self.argv: List[str] = []            # QEMU's command line, had it been QEMU
+        self.rooms: List[int] = []           # the phone's memory asked for, in order
 
     def exists(self) -> bool:
         return (self.dir / "homes").is_dir()
@@ -150,6 +151,11 @@ class InProcessMachine(vm.Machine):
     def destroy(self) -> None:
         self.stop(graceful=False)
         shutil.rmtree(self.dir, ignore_errors=True)
+
+    def set_phone_room(self, mib: int, *, wait_s: float = 0.0) -> int:
+        """A guest that takes the phone's memory at once, as Noble's does."""
+        self.rooms.append(mib)
+        return mib
 
     def screen(self) -> CountingScreen:
         assert self.system is not None

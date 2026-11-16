@@ -58,7 +58,7 @@ def run(coro):
 
 def _memory(machine) -> int:
     argv = machine.argv
-    return int(argv[argv.index("-m") + 1])
+    return int(argv[argv.index("-m") + 1].split(",")[0])  # the desktop, before any phone room
 
 
 # ── free page reporting ───────────────────────────────────────────────────────
