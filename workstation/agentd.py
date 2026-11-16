@@ -188,6 +188,11 @@ class Screen:
     def set_driver(self, person: bool) -> None:
         """Whether the person's viewer may drive (they hold the display)."""
 
+    def restart(self) -> None:
+        """`ROUTES["restart"]`: start this display again from nothing — its
+        server and its desktop session. A screen with neither has nothing to
+        start again."""
+
     # -- `G2` (`D-2026-11-01-04`), added: what on the screen can be clicked --
 
     def marks(self) -> Dict:
@@ -842,6 +847,16 @@ class Workstation:
         self._set_driver(account, False)   # `D-2026-10-31-01`: the fresh desktop is the agent's
         self.system.reset(account)
         return {"account": account, "reset": True}
+
+    def restart(self, account: str) -> Dict:
+        """`ROUTES["restart"]`: the account's desktop started again, nothing
+        erased — its display and desktop session, not its browser's or its
+        phone's screen, and nobody else's. Who holds the screen is kept."""
+        self.system.ensure(account)
+        self.system.screen(account).restart()
+        with self._lock:
+            self._frames.pop(account, None)  # `B974`: the next picture is a new one
+        return {"account": account, "restarted": "desktop"}
 
     def starting_point(self, account: str, body: Dict) -> Dict:
         """`B1733`. `ROUTES["starting_point"]`: ask, save or forget the
@@ -1920,6 +1935,7 @@ class Handler(BaseHTTPRequestHandler):
                 return
             handler = {"ensure": lambda: self.station.ensure(account),
                        "reset": lambda: self.station.reset(account),
+                       "restart": lambda: self.station.restart(account),
                        "control": lambda: self.station.control(account, body),
                        "exec": lambda: self.station.exec(account, body),
                        "read": lambda: self.station.read(account, body),

@@ -188,6 +188,14 @@ ROUTES: Dict[str, Tuple[str, str]] = {
     # The home back to the image's skeleton, the display restarted.
     # {} -> {"account", "reset": true}
     "reset": ("POST", "/v1/users/{account}/reset"),
+    # The account's own workstation started again, nothing erased (the owner,
+    # 2026-11-16: logged out of the desktop, and nothing brought it back).
+    # {} -> {"account", "restarted": one of RESTART_KINDS}: "machine" where
+    # the person has a machine of their own (the VM backend: powered off
+    # cleanly and started again, its disk as it was), "desktop" where accounts
+    # share one system (their display and desktop session, started again).
+    # Nobody else's is touched. A daemon older than the route answers 404.
+    "restart": ("POST", "/v1/users/{account}/restart"),
     # {"command": str, "shell": "bash"|"python", "cwd": str|None,
     #  "timeout_s": float, "env": {str: str}, "stdin": str|None,
     #  "stream": bool}
@@ -570,6 +578,8 @@ def phone_screen_size(device: str) -> Tuple[int, int]:
 # and what one holds.
 STARTING_POINT_ACTIONS = ("status", "save", "forget")
 STARTING_POINT_SCOPES = ("home", "machine")
+# What `ROUTES["restart"]` started again.
+RESTART_KINDS = ("desktop", "machine")
 # Every action takes coordinates in the screenshot's own pixels; the screen is
 # a fixed size, so there is no scaling for either side to get wrong.
 INPUT_ACTIONS = (
@@ -894,6 +904,8 @@ __all__ = [
     "INTERNET_EXCLUDED_V6", "NETWORK_ENFORCEMENT",
     # `B1733`, added.
     "STARTING_POINT_ACTIONS", "STARTING_POINT_SCOPES",
+    # Restart (2026-11-16), added.
+    "RESTART_KINDS",
     # `B1747`, added.
     "DEFAULT_SYSTEM", "SYSTEMS", "SYSTEM_NAMES", "SYSTEM_PORTS", "system_pairing_dir",
     "system_pairing_dir_env", "system_url_env",

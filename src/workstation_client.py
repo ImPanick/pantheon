@@ -743,6 +743,14 @@ class WorkstationClient:
     async def reset(self, account: str) -> Dict:
         return await self._call("reset", account, timeout=120.0)
 
+    async def restart(self, account: str) -> Dict:
+        """`{"account", "restarted": "desktop"|"machine"}`: the account's own
+        workstation started again, nothing erased (`protocol.ROUTES["restart"]`).
+        A machine's clean power-off (up to 90 s, then QEMU is told to quit)
+        and its desktop coming up are in the wait; its boot is the grace a VM
+        backend's calls are given anyway (`_grace`)."""
+        return await self._call("restart", account, timeout=240.0)
+
     async def starting_point(self, account: str, action: str = "status") -> Dict:
         """`B1733`. `{"account", "saved", "at", "scope"}`: the account's
         starting point — asked, saved or forgotten

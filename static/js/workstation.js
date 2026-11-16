@@ -883,6 +883,35 @@ export async function confirmAndResetMine() {
   return { ok: true, message: body.sentence || 'Your workstation home is back to a clean start.' };
 }
 
+/** Restart the person's own workstation, behind a confirmation: nothing is
+ *  erased. Resolves `null` when they said no, else `{ ok, message }`.
+ *  `onGo` runs once they said yes, before the wait (a machine's clean
+ *  power-off and boot take a while). */
+export async function confirmAndRestartMine(onGo) {
+  const message = 'Your workstation starts again: a desktop you cannot reach comes back, and '
+    + 'what was running in it stops. Your files and everything installed are kept. Nobody '
+    + 'else\'s workstation is touched.';
+  let ok = false;
+  try {
+    ok = uiModule && uiModule.styledConfirm
+      ? await uiModule.styledConfirm(message, {
+        title: 'Restart your workstation?', confirmText: 'Restart',
+      })
+      : window.confirm(`Restart your workstation?\n\n${message}`);
+  } catch (_) { ok = false; }
+  if (!ok) return null;
+  if (typeof onGo === 'function') onGo();
+  let res;
+  try {
+    res = await fetch('/api/workstation/restart', { method: 'POST', credentials: 'same-origin' });
+  } catch (_) {
+    return { ok: false, message: 'Pantheon did not answer. Try again.' };
+  }
+  if (!res.ok) return { ok: false, message: await readError(res) };
+  const body = await res.json().catch(() => ({}));
+  return { ok: true, message: body.sentence || 'Your workstation started again.' };
+}
+
 // ── `B1725` / `D-2026-11-01-02`: Computer Use ─────────────────────────────────
 //
 // No card for a step the agent takes inside this person's workstation, once
