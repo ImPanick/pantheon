@@ -1,6 +1,7 @@
 # Everything in Pantheon
 
 The README covers the headline features. This is the full list, and what the fork added over [Odysseus](https://github.com/pewdiepie-archdaemon/odysseus).
+How each one is controlled, and by whom, is in the [capabilities reference](capabilities.md); running it on a server is the [deployment guide](deployment.md).
 
 ## Agents and models
 - Local or API models: OpenAI-compatible servers (LM Studio, Ollama, vLLM, llama.cpp) and the frontier
