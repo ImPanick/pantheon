@@ -183,6 +183,8 @@ def test_the_keys_ship_off_and_the_destination_ships_empty():
         "workstation_network": "full",
         # Automatic: sized from the VM host's memory (`vm.auto_memory_mib`).
         "workstation_vm_memory_mib": None,
+        # Every processor the VM host may run on, until an admin sets a pool.
+        "workstation_vm_cpus_max": None,
         "workstation_route_tools": True,
     }
     assert DEFAULT_SETTINGS["workstation_backend"] in P.BACKEND_CHOICES
@@ -503,6 +505,16 @@ def test_an_api_token_does_not_inherit_its_owners_workstation(app, ws):
     bearer = TestClient(app, headers={"X-Test-Bearer": ADMIN})
     assert bearer.get("/api/workstation/status").status_code == 403
     assert bearer.post("/api/workstation/reset").status_code == 403
+    # A person's machine's processors are theirs to choose, not a token's.
+    assert bearer.post("/api/workstation/cpus", json={"cpus": 4}).status_code == 403
+
+
+def test_the_container_says_it_has_no_processors_to_choose(app, ws):
+    switch_on(app, ws)
+    person = as_user(app, ADMIN)
+    answer = person.post("/api/workstation/cpus", json={"cpus": 4})
+    assert answer.status_code == 400 and "VM" in answer.json()["detail"]
+    assert person.post("/api/workstation/cpus", json={"cpus": "4"}).status_code == 400
 
 
 # ── up, down, off ────────────────────────────────────────────────────────────

@@ -525,6 +525,12 @@ DEFAULT_SETTINGS = {
     # to a VM host only; every machine hands the memory its guest frees back to
     # the host, so a larger size costs the host what is used.
     "workstation_vm_memory_mib": None,
+    # The processors the VM workstation makes available to each person's
+    # machine: null (the shipped default) is every one its host may run on;
+    # a number is a smaller pool. Each person chooses their own machine's count
+    # inside it in Settings -> Workstation, else `PANTHEON_WORKSTATION_VM_CPUS`.
+    # Pushed by `sync_config` to a VM host only.
+    "workstation_vm_cpus_max": None,
     # When the workstation is on, do the agent's `bash`, `python` and file
     # tools run in it (`P20-03`)? ON: that is the point of the phase — a shell
     # stops being a key to the house. Off puts them back where they run today.

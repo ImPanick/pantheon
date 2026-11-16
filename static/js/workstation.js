@@ -330,6 +330,10 @@ function render(status) {
   // may use it — the starting point only while it answers.
   if (status.may_use) loadComputerUse(); else renderComputerUse(null);
   if (status.may_use && status.state === 'up') loadStartingPoint(); else renderStartingPoint(null);
+  // Only a workstation that gives each person a machine of their own has
+  // processors to choose (`daemon.cpus_max`); no call is made to any other.
+  const ownMachines = !!(status.daemon && typeof status.daemon.cpus_max === 'number');
+  if (status.may_use && status.state === 'up' && ownMachines) loadCpus(); else renderCpus(null);
 
   show($('ws-admin'), !!status.settings);
 }
@@ -432,6 +436,7 @@ function renderEffects(settings, daemon, network) {
   renderSudo(settings, daemon);
   renderRecreate(settings, daemon);
   renderMemory(settings, daemon);
+  renderCpusPool(settings, daemon);
 
   const networkEffect = $('ws-network-effect');
   if (networkEffect) {
@@ -446,6 +451,108 @@ function renderEffects(settings, daemon, network) {
     const state = quiet ? '' : networkStateSentence(view);
     networkEffect.textContent = `${words ? words.says : chosen}${state ? ` ${state}` : ''}`;
   }
+}
+
+// ── the VM workstation's processors ───────────────────────────────────────────
+//
+// The owner (2026-11-16): *"The CPU setting should be user configurable with
+// whatever is available for pantheon to use (admin set)"*. The admin sets the
+// pool here (`workstation_vm_cpus_max`); each person chooses their own
+// machine's count inside it, above (`/api/workstation/cpus`). A workstation
+// that reports no pool has no machines of its own, and neither is shown.
+
+function cpusWords(n) {
+  return n === 1 ? '1 processor' : `${n} processors`;
+}
+
+function renderCpusPool(settings, daemon) {
+  const row = $('ws-vm-cpus-row');
+  const select = $('ws-vm-cpus');
+  const effect = $('ws-vm-cpus-effect');
+  const here = !!(daemon && 'cpus_max_choice' in daemon);
+  show(row, here);
+  show(effect, here);
+  if (!here || !select) return;
+  const host = typeof daemon.host_cpus === 'number' ? daemon.host_cpus : null;
+  const choice = typeof settings.vm_cpus_max_choice === 'number' ? settings.vm_cpus_max_choice : null;
+  const top = Math.min(64, Math.max(host || 0, choice || 0, daemon.cpus_max || 0));
+  select.textContent = '';
+  const all = document.createElement('option');
+  all.value = '';
+  all.textContent = host ? `All ${host} of this host's` : "All of this host's";
+  select.appendChild(all);
+  for (let n = 1; n <= top; n += 1) {
+    const opt = document.createElement('option');
+    opt.value = String(n);
+    opt.textContent = String(n);
+    select.appendChild(opt);
+  }
+  select.value = choice === null ? '' : String(choice);
+  if (!effect) return;
+  const parts = [`Each person may give their own machine up to ${cpusWords(daemon.cpus_max)}; `
+    + `one who chooses none gets ${cpusWords(daemon.cpus_default)}, set by `
+    + 'PANTHEON_WORKSTATION_VM_CPUS where Pantheon is started.'];
+  if (choice !== null && host && choice > host) {
+    parts.push(`This host has ${cpusWords(host)}, so that is the most for now.`);
+  }
+  parts.push('A machine running with more powers off cleanly and starts within the pool on its '
+    + 'next use, its files kept.');
+  effect.textContent = parts.join(' ');
+}
+
+/** `{ cpus, cpus_choice, cpus_default, cpus_max, running_cpus, sentence }`, or `null`. */
+export async function readCpus() {
+  try {
+    const res = await fetch('/api/workstation/cpus', { credentials: 'same-origin' });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch (_) { return null; }
+}
+
+function renderCpus(state) {
+  const row = $('ws-cpus-row');
+  const select = $('ws-cpus');
+  const why = $('ws-cpus-why');
+  const here = !!(state && typeof state.cpus_max === 'number');
+  show(row, here);
+  show(why, here);
+  if (!here || !select) return;
+  select.textContent = '';
+  const auto = document.createElement('option');
+  auto.value = '';
+  auto.textContent = `Default (${state.cpus_default})`;
+  select.appendChild(auto);
+  for (let n = 1; n <= state.cpus_max; n += 1) {
+    const opt = document.createElement('option');
+    opt.value = String(n);
+    opt.textContent = String(n);
+    select.appendChild(opt);
+  }
+  select.value = typeof state.cpus_choice === 'number' ? String(state.cpus_choice) : '';
+  if (why) why.textContent = state.sentence || '';
+}
+
+async function loadCpus() {
+  renderCpus(await readCpus());
+}
+
+async function chooseCpus(value) {
+  const select = $('ws-cpus');
+  if (select) select.disabled = true;
+  let answer = null;
+  try {
+    const res = await fetch('/api/workstation/cpus', {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ cpus: value === '' ? null : Number(value) }),
+    });
+    if (res.ok) answer = await res.json();
+    else say('ws-result', await readError(res), false);
+  } catch (_) {
+    say('ws-result', 'Pantheon did not answer. Try again.', false);
+  }
+  if (select) select.disabled = false;
+  renderCpus(answer || await readCpus());
 }
 
 // ── the VM workstation's memory ──────────────────────────────────────────────
@@ -966,6 +1073,9 @@ function wire() {
   onChange('ws-network', 'workstation_network', (n) => n.value);
   onChange('ws-vm-memory', 'workstation_vm_memory_mib',
     (n) => (n.value === '' ? null : Number(n.value)));
+  onChange('ws-vm-cpus', 'workstation_vm_cpus_max',
+    (n) => (n.value === '' ? null : Number(n.value)));
+  $('ws-cpus')?.addEventListener('change', () => { chooseCpus($('ws-cpus').value); });
   $('ws-sudo-reset')?.addEventListener('click', () => { save({ workstation_sudo: null }); });
   $('ws-save-address')?.addEventListener('click', () => { saveAddress(); });
   $('ws-recreate-copy')?.addEventListener('click', () => {
