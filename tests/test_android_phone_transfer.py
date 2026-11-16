@@ -580,6 +580,21 @@ def route_phone(app, ws, monkeypatch, tmp_path):
     # The application explicitly grants this fixture endpoint the VM role;
     # the fake producer's own metadata is not enough to establish trust.
     switch_on(app, ws, workstation_backend="vm")
+    # A desktop is never the phone's endpoint
+    # (`tests/test_a_phone_never_runs_inside_a_desktop.py`): Pantheon reaches a
+    # phone only through the Android VM service. Here the real daemon plays
+    # that service, granted the Android role explicitly, so these tests still
+    # drive the real route, client, wire and daemon.
+    from src import workstation_access as wa
+    from src.workstation_client import WorkstationClient, WorkstationError
+
+    def phone_for(owner, *, auth_manager=None):
+        if not wa.may_use(owner, auth_manager=auth_manager):
+            raise WorkstationError("not_permitted", wa.NOT_PERMITTED_SENTENCE)
+        return (WorkstationClient(ws.url, ws.token, android_vm_endpoint=True),
+                wa.account_of(owner))
+
+    monkeypatch.setattr("src.phone_runtime.phone_for", phone_for)
     phones = {}
     ws.system.backend = "vm"  # Explicit runtime fixture, not a real VM/kernel.
     ws.system.uid = lambda account: 12000
