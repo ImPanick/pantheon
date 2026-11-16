@@ -30,7 +30,7 @@ def phone_for(owner,*,auth_manager=None):
     if not wa.may_use(owner,auth_manager=auth_manager):raise WorkstationError('not_permitted',wa.NOT_PERMITTED_SENTENCE)
     account=wa.account_of(owner)
     try:token=Path(os.environ[TOKEN_ENV]).read_text().strip()
-    except (KeyError,OSError):raise WorkstationError('unconfigured','The Android host pairing file is missing. Run its installer and mount the pairing file into Pantheon.') from None
+    except (KeyError,OSError):raise WorkstationError('unconfigured',"Android's VM service has not paired with Pantheon yet. An admin starts it with the rest of Pantheon (docker compose up -d android-vm); a worker on the host mounts its pairing folder instead (docs/android-host.md).") from None
     client=WorkstationClient(os.environ[URL_ENV],token,android_vm_endpoint=True,
                              tls_pin_override=os.environ.get(PIN_ENV,''))
     return PhoneClient(owner,client,auth_manager=auth_manager),account

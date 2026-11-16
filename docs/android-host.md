@@ -1,5 +1,13 @@
 # Independent Android host
 
+> **With Docker on Linux or Windows, you don't need this guide.** Pantheon's own
+> `docker compose up` runs the Android VM service (`android-vm`): each person's
+> phone as a VM of its own beside their desktop VM. An admin accepts Google's
+> licence once with `docker compose run --rm android-vm accept-license`. See
+> [VM services](vm-services.md). This guide is for a worker on the host itself:
+> a Mac, whose Docker has no KVM, or a worker you run by hand. Its overlay
+> (`docker/android-host.yml`) keeps `android-vm` from starting.
+
 Android can use its own host worker while the desktop remains stopped or uses a
 different backend. The phone window, agent controls, file transfer and live viewer
 all use this worker. Each person gets a private SDK home, control key and VM;
