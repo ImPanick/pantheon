@@ -1614,6 +1614,7 @@ class AccountPhone:
 
     def _last_words(self) -> str:
         """The emulator's last line, for the sentence: `: <line>` or nothing."""
+        from workstation.agentd import WorkstationError  # loaded by now; not at import (a cycle)
         try:
             with self._as_account():
                 fd = os.open(self.home() / LOG_FILE, os.O_RDONLY | os.O_NOFOLLOW)
@@ -1621,7 +1622,9 @@ class AccountPhone:
                 f.seek(0, os.SEEK_END)
                 f.seek(max(0, f.tell() - 2000))
                 lines = [ln for ln in f.read().decode("utf-8", "replace").splitlines() if ln.strip()]
-        except OSError:
+        except (OSError, WorkstationError):
+            # Not readable as the account (a host that cannot switch to it, as
+            # CI's unprivileged runner cannot): the sentence goes without it.
             return ""
         return f" (it last said: {lines[-1].strip()[:200]})" if lines else ""
 
