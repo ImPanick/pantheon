@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from pathlib import Path
 
 import pytest
@@ -172,7 +173,12 @@ def test_improve_through_the_route_and_through_manage_skills_write_the_same_text
 
     def _text(sm):
         return sm.read_skill_md("rotate-logs", owner=None)
-    assert _text(route_sm) == _text(tool_sm)
+
+    # The two writes are stamped to the second, a moment apart: CI saw them
+    # straddle one (`…08:17:28Z` against `…08:17:29Z`). The text is the claim.
+    def _unstamped(sm):
+        return re.sub(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ", "<time>", _text(sm))
+    assert _unstamped(route_sm) == _unstamped(tool_sm)
     assert "logrotate -f /etc/logrotate.d/nginx" in _text(route_sm)
 
 
