@@ -258,9 +258,11 @@ def _configured_client(monkeypatch, *, backend="container", system=None, manual=
 
 @pytest.mark.parametrize("backend", ["vm", "container", "remote", "auto"])
 @pytest.mark.parametrize("system", [None, "ubuntu", "debian"])
-def test_a_manual_endpoint_needs_an_explicit_vm_role_on_the_default_system(monkeypatch, backend, system):
+def test_a_desktop_endpoint_never_takes_the_android_role(monkeypatch, backend, system):
+    # A phone is its own VM beside the desktop (`test_a_phone_never_runs_inside_a_desktop`):
+    # no desktop endpoint is trusted with Android, the VM backend's included.
     client, boundary = _configured_client(monkeypatch, backend=backend, system=system)
-    trusted = backend == "vm" and system in (None, P.DEFAULT_SYSTEM)
+    trusted = False
     answer = run(client.phone(ACCOUNT, "status"))
     assert client.android_vm_endpoint is trusted
     assert (answer["state"] == "on") is trusted
@@ -274,15 +276,15 @@ def test_a_manual_endpoint_needs_an_explicit_vm_role_on_the_default_system(monke
 
 
 @pytest.mark.parametrize("backend,vm_env,container_env,accel,trusted,port", [
-    ("vm", True, True, "kvm", True, 7140),
+    ("vm", True, True, "kvm", False, 7140),
     ("container", True, True, "kvm", False, 7040),
-    ("auto", True, True, "kvm", True, 7140),
+    ("auto", True, True, "kvm", False, 7140),
     ("auto", True, True, "tcg", False, 7040),
     ("auto", True, True, None, False, 7040),
-    ("auto", True, False, "tcg", True, 7140),
+    ("auto", True, False, "tcg", False, 7140),
     ("vm", False, True, None, False, 7040),
 ])
-def test_vm_role_tracks_the_endpoint_actually_selected_from_the_environment(
+def test_no_desktop_endpoint_selected_from_the_environment_takes_the_android_role(
         monkeypatch, backend, vm_env, container_env, accel, trusted, port):
     client, boundary = _configured_client(monkeypatch, backend=backend, manual="", vm_env=vm_env,
                                           container_env=container_env, accel=accel)
