@@ -1579,6 +1579,23 @@ class Fleet(System):
         logger.info("saved %s's machine disk as its starting point", account)
         return {**self.starting_point(account), "was_running": was_running}
 
+    def restart(self, account: str) -> None:
+        """This person's machine powered off — cleanly, as a stop for a new
+        size is (`STOP_GRACE_S`, then QEMU is told to quit) — and started
+        again with its disk as it was: the way back from a desktop nobody can
+        reach (the owner, 2026-11-16), short of Reset, which erases. Only this
+        account's machine, under its own lock; every other person's runs on.
+        What the host remembers of the running machine goes with it, as at a
+        reset (`ready` forgets it as it starts the machine), and the person's
+        own choices (processors, memory) are kept. Nothing else is stopped:
+        anything of theirs that runs beside this machine runs on."""
+        m = self.machine_for(account)
+        with self._locks[account]:
+            if m.running():
+                logger.info("restarting %s's machine at their request", account)
+                m.stop(graceful=True)
+        self.ready(account)
+
     def reset(self, account: str) -> None:
         """A fresh machine from the newest image (module docstring)."""
         m = self.machine_for(account)
@@ -1897,6 +1914,13 @@ class VmStation(Workstation):
         # The protocol says a reset ends on a fresh desktop (`ROUTES["reset"]`).
         self.system.forward(account, "ensure", {}, timeout=120.0)
         return {"account": account, "reset": True}
+
+    def restart(self, account: str) -> Dict:
+        """`ROUTES["restart"]`: this person's machine powered off cleanly and
+        started again (`Fleet.restart`), and their desktop up on it."""
+        self.system.restart(account)
+        self.system.forward(account, "ensure", {}, timeout=120.0)
+        return {"account": account, "restarted": "machine"}
 
     def starting_point(self, account: str, body: Dict) -> Dict:
         """`B1733`. Kept here, on the host, with the disks — never asked of

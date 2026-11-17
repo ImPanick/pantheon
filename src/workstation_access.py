@@ -743,6 +743,33 @@ async def reset_home(owner: Optional[str], *, auth_manager: Any = None) -> Dict[
     return await client.reset(account)
 
 
+#: What the person reads once their workstation started again, by what did.
+RESTART_WORDS = {
+    "machine": ("Your workstation machine powered off cleanly and started again. Your files and "
+                "everything installed are as they were."),
+    "desktop": "Your workstation desktop started again. Your files are as they were.",
+}
+RESTART_OLD_DAEMON = ("This workstation is older than Restart. Update it, or ask whoever runs "
+                      "Pantheon to restart the workstation.")
+
+
+async def restart_mine(owner: Optional[str], *, auth_manager: Any = None) -> Dict[str, Any]:
+    """This person's own workstation started again, nothing erased
+    (`protocol.ROUTES["restart"]`), and nobody else's. There is no parameter
+    naming whose: the account is derived from the caller."""
+    client, account = workstation_for(owner, auth_manager=auth_manager)
+    await client.health()
+    try:
+        answer = await client.restart(account)
+    except WorkstationError as e:
+        if e.status == 404 and e.code == "not_found":
+            raise WorkstationError("unavailable", RESTART_OLD_DAEMON, status=503) from e
+        raise
+    kind = answer.get("restarted")
+    return {"account": answer.get("account"), "restarted": kind,
+            "sentence": RESTART_WORDS.get(kind, RESTART_WORDS["desktop"])}
+
+
 #: `B1733`. What the person reads about their starting point, by its scope.
 STARTING_POINT_WORDS = {
     "home": ("Reset puts back your workstation home as you saved it. Software installed "
