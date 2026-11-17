@@ -185,6 +185,10 @@ def test_the_keys_ship_off_and_the_destination_ships_empty():
         "workstation_vm_memory_mib": None,
         # Every processor the VM host may run on, until an admin sets a pool.
         "workstation_vm_cpus_max": None,
+        # A machine of their own for each new person, nobody named
+        # (the owner, 2026-11-17: own VM or the shared one, the admin's call).
+        "workstation_vm_placement": "own",
+        "workstation_vm_placement_people": {},
         "workstation_route_tools": True,
     }
     assert DEFAULT_SETTINGS["workstation_backend"] in P.BACKEND_CHOICES

@@ -46883,6 +46883,10 @@ body.settings-sidebar-resize-active {
 .ws-toggle .admin-toggle-label { display: block; }
 .ws-field .settings-label { min-width: 110px; }
 .ws-effect { margin-top: -4px; line-height: 1.45; }
+/* Each person's machine: a name and their own choice, one line each. */
+.ws-placement-people { display: flex; flex-direction: column; gap: 6px; flex: 1; min-width: 0; }
+.ws-placement-person { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.ws-placement-person label { overflow-wrap: anywhere; }
 .ws-warn { color: var(--warn); }
 @media (max-width: 520px) {
   .ws-field { flex-wrap: wrap; }

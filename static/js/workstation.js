@@ -437,6 +437,7 @@ function renderEffects(settings, daemon, network) {
   renderRecreate(settings, daemon);
   renderMemory(settings, daemon);
   renderCpusPool(settings, daemon);
+  renderPlacement(settings, daemon);
 
   const networkEffect = $('ws-network-effect');
   if (networkEffect) {
@@ -500,6 +501,82 @@ function renderCpusPool(settings, daemon) {
   effect.textContent = parts.join(' ');
 }
 
+// ── own machine or the shared one ─────────────────────────────────────────────
+//
+// The owner (2026-11-17): the admin decides whether each person runs their own
+// VM or an account in a shared one. The default is for people who have no
+// workstation yet; each person's own row overrides it, and an empty row leaves
+// them where their workstation was made. Shown only when the workstation that
+// answered is the VM one that reports `placement`.
+
+const PLACEMENT_WORDS = {
+  own: 'Own machine',
+  shared: 'Shared machine',
+};
+
+export function placementPeopleBody(rows) {
+  const people = {};
+  rows.forEach((row) => { if (row.value) people[row.name] = row.value; });
+  return { workstation_vm_placement_people: people };
+}
+
+function renderPlacement(settings, daemon) {
+  const row = $('ws-vm-placement-row');
+  const select = $('ws-vm-placement');
+  const effect = $('ws-vm-placement-effect');
+  const peopleRow = $('ws-vm-placement-people-row');
+  const list = $('ws-vm-placement-people');
+  const here = !!(daemon && daemon.placement && typeof daemon.placement === 'object');
+  show(row, here);
+  show(effect, here);
+  show(peopleRow, here);
+  if (!here) return;
+  const chosen = settings.vm_placement === 'shared' ? 'shared' : 'own';
+  if (select) select.value = chosen;
+  if (effect) {
+    const shared = daemon.placement.shared || {};
+    const count = Array.isArray(shared.accounts) ? shared.accounts.length : 0;
+    effect.textContent = (chosen === 'shared'
+      ? 'People who have no workstation yet get an account on the one machine several people share. '
+        + 'Sudo is off there and each person sees only their own home, projects and processes.'
+      : 'People who have no workstation yet get a machine of their own.')
+      + ` ${count === 1 ? '1 person works' : `${count} people work`} on the shared machine now.`
+      + ' Changing this moves nobody who already has a workstation; choose them below.';
+  }
+  if (!list) return;
+  list.textContent = '';
+  const people = Array.isArray(settings.vm_people) ? settings.vm_people : [];
+  const picks = [];
+  people.forEach((person) => {
+    const line = document.createElement('div');
+    line.className = 'ws-placement-person';
+    const name = document.createElement('label');
+    name.textContent = person.name;
+    const pick = document.createElement('select');
+    pick.className = 'settings-select';
+    pick.dataset.person = person.name;
+    pick.id = `ws-vm-placement-${person.account}`;
+    name.htmlFor = pick.id;
+    const now = person.where ? PLACEMENT_WORDS[person.where].toLowerCase() : 'none yet';
+    [['', `Leave it (now: ${now})`],
+      ['own', PLACEMENT_WORDS.own], ['shared', PLACEMENT_WORDS.shared]].forEach(([value, words]) => {
+      const opt = document.createElement('option');
+      opt.value = value;
+      opt.textContent = words;
+      pick.appendChild(opt);
+    });
+    pick.value = person.choice || '';
+    picks.push(pick);
+    // The whole list goes, so one person's row never drops another's.
+    pick.addEventListener('change', () => {
+      save(placementPeopleBody(picks.map((n) => ({ name: n.dataset.person, value: n.value }))));
+    });
+    line.appendChild(name);
+    line.appendChild(pick);
+    list.appendChild(line);
+  });
+}
+
 /** `{ cpus, cpus_choice, cpus_default, cpus_max, running_cpus, sentence }`, or `null`. */
 export async function readCpus() {
   try {
@@ -514,8 +591,15 @@ function renderCpus(state) {
   const select = $('ws-cpus');
   const why = $('ws-cpus-why');
   const here = !!(state && typeof state.cpus_max === 'number');
-  show(row, here);
-  show(why, here);
+  // On the shared machine the count is not theirs to choose: the sentence
+  // says so and why, and the choice is not offered.
+  const shared = !!(state && state.placement === 'shared');
+  show(row, here && !shared);
+  show(why, here || shared);
+  if (shared) {
+    if (why) why.textContent = state.sentence || '';
+    return;
+  }
   if (!here || !select) return;
   select.textContent = '';
   const auto = document.createElement('option');
@@ -1104,6 +1188,7 @@ function wire() {
     (n) => (n.value === '' ? null : Number(n.value)));
   onChange('ws-vm-cpus', 'workstation_vm_cpus_max',
     (n) => (n.value === '' ? null : Number(n.value)));
+  onChange('ws-vm-placement', 'workstation_vm_placement', (n) => n.value);
   $('ws-cpus')?.addEventListener('change', () => { chooseCpus($('ws-cpus').value); });
   $('ws-sudo-reset')?.addEventListener('click', () => { save({ workstation_sudo: null }); });
   $('ws-save-address')?.addEventListener('click', () => { saveAddress(); });

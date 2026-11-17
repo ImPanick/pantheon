@@ -179,6 +179,19 @@ ROUTES: Dict[str, Tuple[str, str]] = {
     # "admins": [account, ...] — the accounts admitted to every person's
     # projects folder (`B1424`, added)}.
     # Answers the effective settings, the same shape `health` reports them in.
+    # Placement (the owner, 2026-11-17), added — the VM backend's host only:
+    #   "placement": {"default": one of PLACEMENTS,
+    #                 "people": {account: one of PLACEMENTS}}
+    # where each person's machine is: one of their own, or the one machine
+    # several people share (`SHARED_MACHINE`), an account each in it. `default`
+    # is for a person who has no machine yet; once a person's workstation is
+    # made, it stays where it was made unless `people` names them. `people`
+    # replaces the whole list. The host's `health` and `config` answer
+    #   "placement": {"default", "people", "where": {account: one of
+    #                 PLACEMENTS} for every person with a workstation,
+    #                 "shared": {"running": bool,
+    #                 "accounts": [account, ...]}, "shared_sudo": false}
+    # and every other backend answers nothing and refuses the field (`400`).
     "config": ("POST", "/v1/config"),
     # Makes the account, its home and its display on first use; a no-op after.
     # {} -> {"account", "home", "display", "created": bool, "sudo": bool,
@@ -239,6 +252,8 @@ ROUTES: Dict[str, Tuple[str, str]] = {
     # until this route a panel that only looked made an account (and, on the
     # Ubuntu backend, a Unix user and a desktop). Never `ensure`s, never
     # starts anything. -> {"account", "exists": bool, "home": str|None}
+    # Placement, added: the VM backend's host also answers "placement" (one
+    # of PLACEMENTS: where this person's workstation is or will be made).
     # A daemon older than this answers `404 not_found`; a caller reads that
     # as "cannot tell", never as "does not exist".
     # `B1684`, added: "projects_env" — the folder this daemon gives every
@@ -686,6 +701,19 @@ VM_MEMORY_MAX_MIB = 262_144
 VM_CPUS_MIN = 1
 VM_CPUS_MAX = 64
 
+# Placement (the owner, 2026-11-17): where a person's machine is on the VM
+# backend. `own` is a machine of their own, the wall between people a
+# hypervisor. `shared` is one machine several people share, a Unix account and
+# desktop each in it, the wall Unix permissions — so `sudo` is always off in
+# it, whatever the admin chose for machines of their own: with it on, one
+# person's agent is root there and reads everyone's home. `SHARED_MACHINE` is
+# that machine's name on the host; it never matches `ACCOUNT_RE`, so no
+# person's own machine can be it.
+PLACEMENTS = ("own", "shared")
+DEFAULT_PLACEMENT = "own"
+SHARED_MACHINE = "shared"
+MAX_PLACEMENT_PEOPLE = 10_000
+
 # ── the network mode in force (`P20-06`, additive) ────────────────────────────
 #
 # THE ADVERSARY (`Law 17`, named in `D-2026-09-30-03`): content the agent reads
@@ -907,6 +935,8 @@ __all__ = [
     "STARTING_POINT_ACTIONS", "STARTING_POINT_SCOPES",
     # Restart (2026-11-16), added.
     "RESTART_KINDS",
+    # Placement (2026-11-17), added.
+    "DEFAULT_PLACEMENT", "MAX_PLACEMENT_PEOPLE", "PLACEMENTS", "SHARED_MACHINE",
     # `B1747`, added.
     "DEFAULT_SYSTEM", "SYSTEMS", "SYSTEM_NAMES", "SYSTEM_PORTS", "system_pairing_dir",
     "system_pairing_dir_env", "system_url_env",

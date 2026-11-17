@@ -1747,8 +1747,19 @@ class UbuntuSystem(System):
                     # account (sudo is on to be here) can still fix itself.
                     logger.warning("could not give %s to %s: %s", p, account, e)
 
+    #: Placement (the owner, 2026-11-17). Set on a VM backend's SHARED machine
+    #: (`__main__.build`, from its app disk): several people have an account
+    #: here and only Unix permissions keep them apart, so `sudo` is off and
+    #: stays off — a `config` asking for it on writes it off, here as well as
+    #: on the host that never asks (`vm.Fleet.ready`).
+    sudo_locked_off = False
+
     def set_sudo(self, on: bool) -> None:
         on = bool(on)
+        if on and self.sudo_locked_off:
+            logger.warning("sudo stays off: this machine is shared by several people, and "
+                           "with sudo one person's agent is root and reads every home")
+            on = False
         write_sudoers(on, self.sudoers_path)
         self.state_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
         path = self._settings_path()
