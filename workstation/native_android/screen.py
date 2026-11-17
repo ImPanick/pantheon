@@ -99,7 +99,16 @@ class Screen:
             self.phone._active()
             if not self.phone.stream_ready(): raise PhoneError('unavailable','Android has no live display.')
             self.phone.touch()
-            image=self.refresh() if time.monotonic()-self.cached_at>.20 else self.cache
+            if time.monotonic()-self.cached_at>.20:
+                try:image=self.refresh()
+                except PhoneError:
+                    # Android's display is not steady while it starts: a capture
+                    # fails as SurfaceFlinger hands over from the boot animation.
+                    # A phone that still streams shows its last picture; only one
+                    # with no picture yet fails (2026-11-17).
+                    if self.cache is None:raise
+                    image=self.cache;self.cached_at=time.monotonic()
+            else:image=self.cache
             return image.copy(),(self.phone.generation,self.size,self.physical)
 
     def grab(self,fmt):
@@ -138,7 +147,9 @@ class Screen:
                 return  # the boot screen is watched, not touched: input once Android is on
             self.phone._on()
             if event['geometry']!=(self.phone.generation,self.size,self.physical):
-                self.release(session);raise PhoneError('unavailable','The Android display changed. Reconnect before touching it.')
+                # Aimed at a display that has since changed: the stream carries
+                # the new one with its next frame, so this input is dropped.
+                self.release(session);return
             if holder()!='person':
                 self.release(session);return
             self.phone.touch()

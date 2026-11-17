@@ -190,8 +190,20 @@ def serve(stream, frame, event, release, *, frame_interval=.25):
                 new_width, new_height = current.size
                 if not (0 < new_width <= 1280 and 0 < new_height <= 1280):
                     raise ProtocolError("The updated phone frame is outside its bound.")
+                resize = None
                 if current_geometry != geometry or current.size != (width, height):
-                    raise StreamEnded("The Android display changed; reconnect to its new geometry.")
+                    # Android's display changes while it boots (the boot
+                    # animation hands over; `wm size reset` at completion) and
+                    # when it turns or folds. A viewer that can be told a new
+                    # size is told it in this stream; ending the stream instead
+                    # spends the viewer's few reconnects on a boot (2026-11-17).
+                    if current.size != (width, height) and -308 in encodings:
+                        resize = -308
+                    elif current.size != (width, height) and -223 in encodings:
+                        resize = -223
+                    elif current.size != (width, height) or not encodings & {-308, -223}:
+                        raise StreamEnded("The Android display changed; reconnect to its new geometry.")
+                    geometry, (width, height) = current_geometry, current.size
                 if not {7, -224} <= encodings:
                     raise ProtocolError("The bundled phone viewer requires Tight JPEG and LastRect.")
                 encoded = io.BytesIO()
@@ -209,7 +221,14 @@ def serve(stream, frame, event, release, *, frame_interval=.25):
                         length.append(value >> 7)
                 report_geometry = not geometry_sent and -308 in encodings
                 report_cursor = not cursor_sent and -239 in encodings
-                stream.write(struct.pack(">BBH", 0, 0, 2 + int(report_geometry) + int(report_cursor)))
+                stream.write(struct.pack(">BBH", 0, 0, 2 + int(report_geometry) + int(report_cursor) + int(resize is not None)))
+                if resize == -308:
+                    # Reason 0, status 0: the server changed its own size.
+                    stream.write(struct.pack('>HHHHi', 0, 0, width, height, -308)
+                                 + b'\1\0\0\0' + struct.pack('>IHHHHI', 0, 0, 0, width, height, 0))
+                    geometry_sent = True
+                elif resize == -223:
+                    stream.write(struct.pack('>HHHHi', 0, 0, width, height, -223))
                 if report_geometry:
                     # Kasm needs ExtendedDesktopSize to distinguish physical
                     # framebuffer dimensions from its CSS viewport dimensions.
