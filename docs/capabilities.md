@@ -196,8 +196,8 @@ A real Android phone per person, not a desktop browser at phone width.
 - **Isolated per person:** own SDK home, ADB keys, console token and emulator. Secure ADB is
   checked at boot, scrcpy-server must match a pinned SHA-256, and a phone host on another machine
   needs TLS with a pinned certificate.
-- **Where it runs:** today on a native host worker beside Docker; an `android-vm` Compose service
-  beside the desktops is in progress. See [phones](deployment.md#phones-today).
+- **Where it runs:** `android-vm`, a Compose service of its own beside the desktops, one Android VM
+  per person; on a Mac, a native host worker beside Docker. See [phones](deployment.md#phones).
 
 ---
 
@@ -255,7 +255,7 @@ Infrastructure work that's designed or under way, so you can plan around it:
 
 | Item | Status |
 |---|---|
-| `android-vm`: phones as their own Compose service, one Android VM per person beside the desktops, with its own admin pool | In progress |
+| `android-vm`: phones as their own Compose service, one Android VM per person beside the desktops, with its own admin pool | Shipped |
 | An iOS VM family, as a third sibling service | Planned, nothing built |
 | Direct hypervisor backend: each person's desktop and phone created as sibling VMs on Proxmox, vSphere or KubeVirt | Planned, nothing built |
 | A Docker Swarm stack file | Planned |
