@@ -8,6 +8,11 @@
 </p>
 
 <p align="center">
+  <strong>Free and open source, forever.</strong> Whether you're one person running inference on a
+  single GPU or a multi-billion-dollar firm: if it's useful, use it. That's why I created it.
+</p>
+
+<p align="center">
   <img src="https://img.shields.io/badge/licence-AGPL--3.0--or--later-blue" alt="AGPL-3.0-or-later">
   <img src="https://img.shields.io/badge/tests-20%2C309%20passing%20on%202026--10--18-lightgrey" alt="20,309 tests passing, measured 2026-10-18">
   <img src="https://img.shields.io/badge/docker-compose-2496ED?logo=docker&logoColor=white" alt="Docker Compose">
@@ -27,6 +32,8 @@
   <a href="#a-memory-that-actually-recalls">The memory</a> ·
   <a href="#what-else-it-does">What else</a> ·
   <a href="#quick-start">Quick start</a> ·
+  <a href="docs/deployment.md">Deploy</a> ·
+  <a href="docs/capabilities.md">Capabilities</a> ·
   <a href="LEDGER.md">Proof ledger</a> ·
   <a href=".pantheon/ROADMAP.md">Roadmap</a> ·
   <a href="docs/setup.md">Setup guide</a>
@@ -265,6 +272,8 @@ WSL 2. On a Mac the phone runs on a worker on the host instead, which `./start-m
 How the VM services fit together: [VM services](docs/vm-services.md). The host worker:
 [Android host guide](docs/android-host.md).
 Native installs, GPUs, the workstation VM, Windows, macOS and HTTPS: [setup guide](docs/setup.md).
+Servers, per-service rebuilds, hypervisor hosts, Swarm and Kubernetes: [deployment guide](docs/deployment.md).
+Everything it does and who controls it: [capabilities reference](docs/capabilities.md).
 `main` is the release branch; `dev` is where work lands first.
 
 ---
@@ -363,7 +372,11 @@ terms require, so the *or-later* qualifier is stated here, in [`NOTICE`](NOTICE)
 headers. Vendored third-party files keep their own licences; [`CREDITS.md`](CREDITS.md) lists every
 one.
 
-Pantheon is free software and isn't sold. Use it at your company if it's useful.
+**Pantheon will stay free and open source, forever.** It doesn't matter if you're one person running
+inference on a single GPU or a multi-billion-dollar firm. If it's useful, use it. That's why I
+created it. Running it unmodified asks nothing of you; if you change it and let other people use it
+over a network, the AGPL asks you to offer them your source, and the
+[deployment guide](docs/deployment.md#the-licence-in-a-deployment) shows how.
 
 Pantheon is a modified version of Odysseus, forked from commit `b4d1293`, which was committed
 upstream on 20 August 2026; the fork itself began on 24 August 2026 (UTC), and it is released
