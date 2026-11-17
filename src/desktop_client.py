@@ -101,6 +101,11 @@ def page_url(*, watch_person: Optional[str] = None, stream: str = STREAM_PATH) -
         "resize": "scale",
         "reconnect": "true",
         "reconnect_delay": "1500",
+        # The client's default gives up after five tries (`ui.js`
+        # `getReconnectRetries`); 0 is its "no limit". A phone's display drops
+        # while it boots and turns, and its window drops the frame itself
+        # when the phone is off (2026-11-17).
+        **({"reconnect_retries": "0"} if stream == PHONE_STREAM_PATH else {}),
         # Minutes. 0 is read as the client's default (20), so a large number is
         # "never": a person watching an agent work for an hour has not left.
         "idle_disconnect": "1440",

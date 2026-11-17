@@ -379,6 +379,11 @@ class NativePhone(PH.AccountPhone):
                     # wm overrides persist in userdata; every cold boot starts open.
                     self.direct.shell(['wm','size','reset'],timeout=10)
                     self.direct.shell(['wm','scaling','auto'],timeout=10)
+                    # The emulator's own post-boot setup goes through adb, which
+                    # this host withholds from it, so the screen would sleep at
+                    # Android's default timeout. Keep it on here instead.
+                    self.direct.shell(['settings','put','system','screen_off_timeout','2147483647'],timeout=10)
+                    self.direct.shell(['svc','power','stayon','true'],timeout=10)
                     if self.system.config.get('internet'):
                         self.boot_phase='android'
                         self.direct.shell(['svc','wifi','enable'],timeout=10)
