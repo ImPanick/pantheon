@@ -259,15 +259,18 @@ account, or set `PANTHEON_ADMIN_PASSWORD` in `.env` first and it's made for you.
 `.env.example` is commented and works as it is. The workstation images build on your machine, so
 after pulling a new version run `docker compose build --pull` too.
 
-For the Android phones, start it with this line instead of `docker compose up -d --build`:
+Each person's Android phone is a VM of its own, run by the `android-vm` service beside the
+desktop VMs, never inside them. Before the first phone starts, an admin accepts Google's Android
+SDK License once at a terminal:
 
 ```bash
-python3 -m workstation.native_android.bootstrap up --app docker --compose -- up -d --build
+docker compose run --rm android-vm accept-license
 ```
 
-The first run asks you to accept Google's Android SDK License, downloads the emulator once and
-starts it. It needs Python 3.11+ and a hypervisor the emulator can use. `./start-macos.sh` and
-`launch-windows.ps1` do this on their own. More in the [Android host guide](docs/android-host.md).
+Nothing of Google's is downloaded before that. The service needs KVM: Linux, or Docker Desktop on
+WSL 2. On a Mac the phone runs on a worker on the host instead, which `./start-macos.sh` sets up.
+How the VM services fit together: [VM services](docs/vm-services.md). The host worker:
+[Android host guide](docs/android-host.md).
 Native installs, GPUs, the workstation VM, Windows, macOS and HTTPS: [setup guide](docs/setup.md).
 Servers, per-service rebuilds, hypervisor hosts, Swarm and Kubernetes: [deployment guide](docs/deployment.md).
 Everything it does and who controls it: [capabilities reference](docs/capabilities.md).

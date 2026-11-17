@@ -85,49 +85,59 @@ class PrivateRadio:
             ['type=bind','source='+str(staged),'target=/opt/netsimd','readonly'])
         return ['--mount',value.getvalue()]
 
+    def _start_netsim(self):
+        """Netsim in its own Docker container and network namespace."""
+        if self.internet:
+            self.network=self.name+'-network'
+            self.docker('network','create','--label','pantheon.android-radio='+self.name,self.network)
+        mode=self.network or 'none'
+        capabilities=['--cap-add=NET_ADMIN','--cap-add=SETPCAP','--cap-add=SETUID','--cap-add=SETGID'] if self.internet else []
+        image='pantheon-android-radio:37.2.13'
+        entrypoint=[] if self.internet else ['--entrypoint=/opt/netsimd']
+        command=['--internet'] if self.internet else ['--grpc-port','7443','--hci-port','0','--no-web-ui','--no-cli-ui','--no-shutdown','--logtostderr']
+        self.docker("run", "-d", "--name", self.name, "--pull=never", "--platform=linux/amd64",
+                    "--label", "pantheon.android-radio=" + self.name,
+                    "--network="+mode, "--read-only", "--cap-drop=ALL", *capabilities, "--security-opt=no-new-privileges",
+                    "--log-driver=local", "--log-opt=max-size=1m", "--log-opt=max-file=2",
+                    "--pids-limit=128", "--memory=384m", "--cpus=1", "--user", "0:0" if self.internet else str(getattr(os, "getuid", lambda: 1000)()) + ":" + str(getattr(os, "getgid", lambda: 1000)()),
+                    "--tmpfs", "/tmp:rw,nosuid,nodev,size=64m,mode=1777", "-e", "HOME=/tmp", "-e", "TMPDIR=/tmp",
+                    *self.binary_mount(),
+                    *entrypoint, image, *command, timeout=90)
+        self.started = True
+        deadline = time.monotonic() + 25
+        while True:
+            state = json.loads(self.docker("inspect", self.name).stdout)[0]
+            if not state["State"]["Running"]:
+                raise RuntimeError("Private Netsim exited: " + self.docker("logs", self.name).stdout.decode()[-3000:])
+            try:
+                probe = "import socket;s=socket.create_connection(('127.0.0.1',7443),1);s.sendall(" + repr(PREFACE) + ");assert s.recv(100);s.close()"
+                self.docker("exec", "--user=0", self.name, "python3", "-c", probe, timeout=5)
+                break
+            except subprocess.CalledProcessError:
+                if time.monotonic() > deadline:
+                    raise RuntimeError("Private Netsim did not become ready.")
+                time.sleep(.25)
+        time.sleep(2)
+        state=json.loads(self.docker('inspect',self.name).stdout)[0]
+        if not state['State']['Running']:
+            raise RuntimeError('The Android radio stopped during its network initialization.')
+        assert state["HostConfig"]["NetworkMode"] == mode
+        self.report["network_mode"] = "internet_kernel_rules" if self.internet else "none"
+        assert not state["NetworkSettings"]["Ports"]
+
+    def relay(self):
+        """One authenticated connection's byte pipe to Netsim: Docker's local
+        exec transport into the radio's own namespace."""
+        return subprocess.Popen(["docker", "exec", "--user=0", "-i", self.name, "python3", "-u", "-c", RELAY],
+                                stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+
     def __enter__(self):
         binary = self.binary
         if not binary.is_file():
             raise RuntimeError("The licensed and verified private Netsim binary is absent.")
         self.folder.mkdir(parents=True, exist_ok=True)
         try:
-            if self.internet:
-                self.network=self.name+'-network'
-                self.docker('network','create','--label','pantheon.android-radio='+self.name,self.network)
-            mode=self.network or 'none'
-            capabilities=['--cap-add=NET_ADMIN','--cap-add=SETPCAP','--cap-add=SETUID','--cap-add=SETGID'] if self.internet else []
-            image='pantheon-android-radio:37.2.13'
-            entrypoint=[] if self.internet else ['--entrypoint=/opt/netsimd']
-            command=['--internet'] if self.internet else ['--grpc-port','7443','--hci-port','0','--no-web-ui','--no-cli-ui','--no-shutdown','--logtostderr']
-            self.docker("run", "-d", "--name", self.name, "--pull=never", "--platform=linux/amd64",
-                        "--label", "pantheon.android-radio=" + self.name,
-                        "--network="+mode, "--read-only", "--cap-drop=ALL", *capabilities, "--security-opt=no-new-privileges",
-                        "--log-driver=local", "--log-opt=max-size=1m", "--log-opt=max-file=2",
-                        "--pids-limit=128", "--memory=384m", "--cpus=1", "--user", "0:0" if self.internet else str(getattr(os, "getuid", lambda: 1000)()) + ":" + str(getattr(os, "getgid", lambda: 1000)()),
-                        "--tmpfs", "/tmp:rw,nosuid,nodev,size=64m,mode=1777", "-e", "HOME=/tmp", "-e", "TMPDIR=/tmp",
-                        *self.binary_mount(),
-                        *entrypoint, image, *command, timeout=90)
-            self.started = True
-            deadline = time.monotonic() + 25
-            while True:
-                state = json.loads(self.docker("inspect", self.name).stdout)[0]
-                if not state["State"]["Running"]:
-                    raise RuntimeError("Private Netsim exited: " + self.docker("logs", self.name).stdout.decode()[-3000:])
-                try:
-                    probe = "import socket;s=socket.create_connection(('127.0.0.1',7443),1);s.sendall(" + repr(PREFACE) + ");assert s.recv(100);s.close()"
-                    self.docker("exec", "--user=0", self.name, "python3", "-c", probe, timeout=5)
-                    break
-                except subprocess.CalledProcessError:
-                    if time.monotonic() > deadline:
-                        raise RuntimeError("Private Netsim did not become ready.")
-                    time.sleep(.25)
-            time.sleep(2)
-            state=json.loads(self.docker('inspect',self.name).stdout)[0]
-            if not state['State']['Running']:
-                raise RuntimeError('The Android radio stopped during its network initialization.')
-            assert state["HostConfig"]["NetworkMode"] == mode
-            self.report["network_mode"] = "internet_kernel_rules" if self.internet else "none"
-            assert not state["NetworkSettings"]["Ports"]
+            self._start_netsim()
             owner = self
 
             class Handler(socketserver.BaseRequestHandler):
@@ -164,8 +174,7 @@ class PrivateRadio:
                         if b"transfer-encoding" in values or values.get(b"content-length", b"0") != b"0":
                             raise ValueError("CONNECT request body")
                         owner.report["authorized_connections"] += 1
-                        relay = subprocess.Popen(["docker", "exec", "--user=0", "-i", owner.name, "python3", "-u", "-c", RELAY],
-                                                 stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+                        relay = owner.relay()
                         self.request.sendall(b"HTTP/1.1 200 Connection established\r\n\r\n")
                         self.request.settimeout(90)
 
@@ -243,6 +252,55 @@ class PrivateRadio:
             self.__exit__(None, None, None)
             raise
 
+    def _stop_netsim(self):
+        """Remove the owned container and network; the reason if that failed, else None."""
+        cleanup_error = None
+        # Even a timed-out docker run may have created its unique container.
+        try:
+            state = json.loads(self.docker("inspect", self.name).stdout)[0]
+        except subprocess.CalledProcessError as e:
+            if b"no such" not in (e.stderr or b'').lower():
+                cleanup_error = "Could not determine whether the owned radio container remains."
+            state = None
+        except Exception:
+            cleanup_error = "Could not inspect the owned radio container during cleanup."
+            state = None
+        if state is not None:
+            if state["Config"].get("Labels", {}).get("pantheon.android-radio") != self.name:
+                cleanup_error = "The radio container ownership label changed; refusing removal."
+            else:
+                try:
+                    logs = self.docker("logs", "--tail=200", self.name)
+                    (self.folder / "netsim-container.log").write_bytes(logs.stdout + logs.stderr)
+                except Exception:
+                    self.report["cleanup_log_capture"] = "failed"
+                finally:
+                    try:
+                        self.docker("rm", "-f", self.name, timeout=45)
+                        self.report["owned_container_removed"] = True
+                    except Exception:
+                        cleanup_error = "The owned radio container could not be removed."
+        if self.network is not None:
+            try:
+                try:
+                    network=json.loads(self.docker('network','inspect',self.network).stdout)[0]
+                except subprocess.CalledProcessError as error:
+                    detail=(error.stderr or b'').lower()
+                    missing=('network '+self.network+' not found').encode().lower()
+                    if b'no such network' not in detail and missing not in detail:raise
+                    self.report['owned_network_absent']=True
+                else:
+                    if network.get('Labels',{}).get('pantheon.android-radio')!=self.name:
+                        raise RuntimeError('The radio network ownership label changed.')
+                    self.docker('network','rm',self.network)
+                    self.report['owned_network_removed']=True
+                # Failed startup is cleaned here and again by the phone.
+                # Clear only after removal or a confirmed absent network.
+                self.network=None
+            except Exception:
+                cleanup_error='Could not remove the owned radio network.'
+        return cleanup_error
+
     def __exit__(self, *exc):
         cleanup_error = None
         try:
@@ -258,51 +316,147 @@ class PrivateRadio:
                     conn.close()
                 self.server.server_close()
         finally:
-            # Even a timed-out docker run may have created its unique container.
-            try:
-                state = json.loads(self.docker("inspect", self.name).stdout)[0]
-            except subprocess.CalledProcessError as e:
-                if b"no such" not in (e.stderr or b'').lower():
-                    cleanup_error = "Could not determine whether the owned radio container remains."
-                state = None
-            except Exception:
-                cleanup_error = "Could not inspect the owned radio container during cleanup."
-                state = None
-            if state is not None:
-                if state["Config"].get("Labels", {}).get("pantheon.android-radio") != self.name:
-                    cleanup_error = "The radio container ownership label changed; refusing removal."
-                else:
-                    try:
-                        logs = self.docker("logs", "--tail=200", self.name)
-                        (self.folder / "netsim-container.log").write_bytes(logs.stdout + logs.stderr)
-                    except Exception:
-                        self.report["cleanup_log_capture"] = "failed"
-                    finally:
-                        try:
-                            self.docker("rm", "-f", self.name, timeout=45)
-                            self.report["owned_container_removed"] = True
-                        except Exception:
-                            cleanup_error = "The owned radio container could not be removed."
-            if self.network is not None:
-                try:
-                    try:
-                        network=json.loads(self.docker('network','inspect',self.network).stdout)[0]
-                    except subprocess.CalledProcessError as error:
-                        detail=(error.stderr or b'').lower()
-                        missing=('network '+self.network+' not found').encode().lower()
-                        if b'no such network' not in detail and missing not in detail:raise
-                        self.report['owned_network_absent']=True
-                    else:
-                        if network.get('Labels',{}).get('pantheon.android-radio')!=self.name:
-                            raise RuntimeError('The radio network ownership label changed.')
-                        self.docker('network','rm',self.network)
-                        self.report['owned_network_removed']=True
-                    # Failed startup is cleaned here and again by the phone.
-                    # Clear only after removal or a confirmed absent network.
-                    self.network=None
-                except Exception:
-                    cleanup_error='Could not remove the owned radio network.'
+            cleanup_error = self._stop_netsim()
             self.report["cleanup_error"] = cleanup_error
             (self.folder / "radio-transport.json").write_text(json.dumps(self.report, indent=2) + "\n")
         if cleanup_error:
             raise RuntimeError(cleanup_error)
+
+
+class _SocketEnd:
+    """The half of a relay the proxy handler writes to or reads from, shaped
+    like the pipes of the Docker relay's process so one handler serves both."""
+
+    def __init__(self, sock):
+        self.sock = sock
+
+    def write(self, block):
+        self.sock.sendall(block)
+
+    def flush(self):
+        pass  # sendall already handed every byte to the kernel
+
+    def close(self):
+        try:
+            self.sock.shutdown(socket.SHUT_WR)
+        except OSError:
+            pass  # Netsim already closed its end; the read side sees that next
+
+    def read1(self, size):
+        try:
+            return self.sock.recv(size)
+        except OSError:
+            return b""
+
+
+class SocketRelay:
+    """A direct loopback connection to this phone's own Netsim, with the
+    interface the proxy handler uses on the Docker relay's process."""
+
+    def __init__(self, port):
+        self.sock = socket.create_connection(("127.0.0.1", port), 5)
+        self.sock.settimeout(90)
+        self.stdin = _SocketEnd(self.sock)
+        self.stdout = _SocketEnd(self.sock)
+
+    def terminate(self):
+        try:
+            self.sock.shutdown(socket.SHUT_RDWR)
+        except OSError:
+            pass  # already disconnected
+        self.sock.close()
+
+    def wait(self, timeout=None):
+        return 0
+
+    def kill(self):
+        self.terminate()
+
+
+class ProcessRadio(PrivateRadio):
+    """The radio inside the Android VM service's own container (`android-vm`).
+
+    That container is already Android's own: nothing of Pantheon, no Docker
+    socket, no host files, and its kernel rules (`workstation/native_android/
+    service.py`) keep every process in it, Netsim included, off private and
+    LAN addresses; with phone internet off the emulator has no Wi-Fi packet
+    stream to send it. So each phone's Netsim is a process of its own here,
+    on a loopback port of its own, in a folder of its own, reached only through
+    the same authenticated CONNECT proxy as the Docker transport: the guest
+    gets no new listener, and the emulator still names one fixed target."""
+
+    def __init__(self, folder, binary, *, internet=False):
+        super().__init__(folder, binary, internet=internet)
+        self.process = None
+        self.netsim_port = None
+        self.report.update({"container": None, "network_mode": "service_kernel_rules",
+                            "transport": "authenticated_private_process"})
+
+    def _free_port(self):
+        with socket.socket() as probe:
+            probe.bind(("127.0.0.1", 0))
+            return probe.getsockname()[1]
+
+    def _start_netsim(self):
+        home = self.folder / "netsim-home"
+        home.mkdir(parents=True, exist_ok=True, mode=0o700)
+        self.netsim_port = self._free_port()
+        command = [str(self.binary), "--grpc-port", str(self.netsim_port), "--hci-port", "0",
+                   "--no-web-ui", "--no-cli-ui", "--no-shutdown", "--logtostderr"]
+        if self.internet:
+            command += ["--host-dns", DOCKER_DNS]
+        env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "HOME": str(home), "TMPDIR": str(home),
+               "LANG": "C.UTF-8"}
+        log = (self.folder / "netsim.log").open("wb")
+        try:
+            self.process = subprocess.Popen(command, cwd=str(home), env=env, stdin=subprocess.DEVNULL,
+                                            stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
+        finally:
+            log.close()
+        self.started = True
+        deadline = time.monotonic() + 25
+        while True:
+            if self.process.poll() is not None:
+                raise RuntimeError("Private Netsim exited: " + self._log_tail())
+            try:
+                with socket.create_connection(("127.0.0.1", self.netsim_port), 1) as probe:
+                    probe.sendall(PREFACE)
+                    probe.settimeout(1)
+                    if probe.recv(100):
+                        break
+            except OSError:
+                pass  # not listening yet
+            if time.monotonic() > deadline:
+                raise RuntimeError("Private Netsim did not become ready.")
+            time.sleep(.25)
+        self.report["netsim_pid"] = self.process.pid
+
+    def _log_tail(self):
+        try:
+            return (self.folder / "netsim.log").read_bytes()[-3000:].decode(errors="replace")
+        except OSError:
+            return ""
+
+    def relay(self):
+        return SocketRelay(self.netsim_port)
+
+    def _stop_netsim(self):
+        if self.process is None:
+            return None
+        try:
+            if self.process.poll() is None:
+                self.process.terminate()
+                try:
+                    self.process.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    self.process.kill()
+                    self.process.wait(timeout=10)
+            self.report["owned_process_stopped"] = True
+            self.process = None
+            return None
+        except Exception:
+            return "The owned radio process could not be stopped."
+
+
+DOCKER_DNS = "127.0.0.11"
+

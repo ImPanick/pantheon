@@ -34,6 +34,8 @@ services:
       - workstation-pairing:/workstation-pairing:ro
       - workstation-net-pairing:/workstation-net-pairing:ro
       - workstation-vm-pairing:/workstation-vm-pairing:ro
+      # The Android VM service's pairing token (`android-vm` below).
+      - android-vm-pairing:/android-pairing:ro
       - workstation-debian-pairing:/workstation-debian-pairing:ro
       - workstation-fedora-pairing:/workstation-fedora-pairing:ro
       - workstation-rocky-pairing:/workstation-rocky-pairing:ro
@@ -138,6 +140,12 @@ services:
       - PANTHEON_WORKSTATION_NET_URL=http://workstation:7041
       - PANTHEON_WORKSTATION_VM_URL=http://workstation-vm:7040
       - PANTHEON_WORKSTATION_VM_PAIRING=/workstation-vm-pairing
+      # Each person's phone: its own VM on the Android VM service, beside the
+      # desktop VM (`src/phone_runtime.py`). `docker/android-host.yml` points
+      # these at a worker on the host instead.
+      - PANTHEON_ANDROID_URL=${PANTHEON_ANDROID_URL:-http://android-vm:7993}
+      - PANTHEON_ANDROID_TOKEN_FILE=/android-pairing/token
+      - PANTHEON_ANDROID_TLS_PIN=${PANTHEON_ANDROID_TLS_PIN:-}
       # `B1747`: the other systems a person may pick, each where its profile
       # starts it (below); one that is not running is never routed to.
       - PANTHEON_WORKSTATION_DEBIAN_URL=http://workstation:7042
@@ -530,6 +538,66 @@ services:
     stop_grace_period: 2m
     restart: unless-stopped
 
+  # The Android phones — a VM of their own for each person, BESIDE that
+  # person's desktop VM (`workstation-vm`), never inside it. The owner
+  # (2026-11-16): the host is layer 0, Pantheon and its services layer 1, and
+  # each family of VMs a container of its own: *"Another independent docker
+  # service - because we can control host allocation per machine a little
+  # easier than just having one bundled VM container running tons of VM's, and
+  # this also allows for further control, being able to restart single
+  # components of pantheon without interrupting workflows in Linux VM's."*
+  # Nested in the desktop VM, the phone stalled before its display under
+  # Docker Desktop, and would have depended on which system the desktop runs.
+  # What this service is and refuses: `workstation/native_android/service.py`;
+  # the pattern every VM service follows: `docs/vm-services.md`.
+  #
+  # Nothing of Google's is in the image. Until an admin accepts Google's
+  # Android SDK License at a terminal — `docker compose run --rm android-vm
+  # accept-license` — it downloads nothing and every phone says so.
+  #
+  # Its own pool, set here rather than shared with the desktops:
+  # PANTHEON_ANDROID_VM_MAX_RUNNING phones at once (`auto`: sized to the host's
+  # memory), each with PANTHEON_ANDROID_VM_PHONE_MEMORY_MIB (empty: sized to
+  # the host) and PANTHEON_ANDROID_VM_PHONE_CPUS; and, for the whole service,
+  # PANTHEON_ANDROID_VM_SERVICE_CPUS and PANTHEON_ANDROID_VM_SERVICE_MEMORY
+  # (0: no limit beyond the host's).
+  #
+  # Not privileged, no Docker socket, no published port. One device-cgroup
+  # rule for /dev/kvm, and NET_ADMIN only to write the service's kernel rules
+  # at start; then every process runs as uid 500 with no capability at all.
+  android-vm:
+    build:
+      context: ./workstation
+      dockerfile: android-vm.Dockerfile
+    hostname: android-vm
+    environment:
+      - PANTHEON_ANDROID_PAIRING_GID=${PGID:-1000}
+      - PANTHEON_ANDROID_VM_MAX_RUNNING=${PANTHEON_ANDROID_VM_MAX_RUNNING:-auto}
+      - PANTHEON_ANDROID_VM_PHONE_MEMORY_MIB=${PANTHEON_ANDROID_VM_PHONE_MEMORY_MIB:-}
+      - PANTHEON_ANDROID_VM_PHONE_CPUS=${PANTHEON_ANDROID_VM_PHONE_CPUS:-4}
+      - PANTHEON_ANDROID_VM_INTERNET=${PANTHEON_ANDROID_VM_INTERNET:-on}
+      - PANTHEON_ANDROID_VM_GPU=${PANTHEON_ANDROID_VM_GPU:-software}
+    volumes:
+      - android-vm:/var/lib/pantheon-android
+      - android-vm-pairing:/android-pairing
+    cap_add:
+      - NET_ADMIN
+    device_cgroup_rules:
+      - "c 10:232 rwm"
+    cpus: ${PANTHEON_ANDROID_VM_SERVICE_CPUS:-0}
+    mem_limit: ${PANTHEON_ANDROID_VM_SERVICE_MEMORY:-0}
+    # Each phone's emulator wants a larger /dev/shm than Docker's 64 MB.
+    shm_size: "512mb"
+    healthcheck:
+      test: ["CMD", "python3", "-m", "workstation.native_android.service", "health"]
+      interval: 15s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    # Each phone is shut down cleanly (its data is the person's).
+    stop_grace_period: 2m
+    restart: unless-stopped
+
   # NVIDIA overlay (from docker/gpu.nvidia.yml). `B1729`: Chatterbox Turbo,
   # the voice for the GPU, opt-in with COMPOSE_PROFILES=chatterbox in .env;
   # docker/gpu.nvidia.yml says what it is and holds.
@@ -560,6 +628,8 @@ volumes:
   workstation-net-pairing:
   workstation-vm:
   workstation-vm-pairing:
+  android-vm:
+  android-vm-pairing:
   workstation-debian-homes:
   workstation-debian-pairing:
   workstation-fedora-homes:

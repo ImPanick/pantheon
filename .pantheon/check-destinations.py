@@ -65,7 +65,7 @@ DESTINATION_KEY = re.compile(
 LOCAL_NAMES = {
     "localhost", "host.docker.internal", "gateway.docker.internal",
     "pantheon", "searxng", "chromadb", "chroma", "ntfy", "ollama", "workstation",
-    "workstation-vm",   # compose services
+    "workstation-vm", "android-vm",   # compose services
     "chatterbox",       # `B1729`: the NVIDIA overlay's voice sidecar, profile "chatterbox"
 }
 LOCAL_SUFFIXES = (".local", ".lan", ".internal", ".localdomain", ".home.arpa")

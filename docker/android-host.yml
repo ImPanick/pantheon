@@ -1,4 +1,6 @@
-# Dedicated Android host; independent of the desktop backend.
+# Android on a worker on the host itself (`python -m workstation.native_android.bootstrap up`),
+# in place of the Android VM service (`android-vm` in docker-compose.yml): a Mac,
+# whose Docker has no KVM, or an admin who runs the worker by hand.
 # Set PANTHEON_ANDROID_PAIRING_DIR to the host worker's private pairing folder.
 services:
   pantheon:
@@ -13,3 +15,7 @@ services:
         read_only: true
         bind:
           create_host_path: false
+  # The host's worker runs the phones, so the service does not start with the
+  # rest: one Android host, never two answering for the same people.
+  android-vm:
+    profiles: ["android-vm-service"]

@@ -26,7 +26,7 @@ except ImportError:
 from workstation import phone as PH
 from .adb import AdbError, AdbAuthenticationError, DirectAdb
 from .control import ScrcpyControl
-from .radio import PrivateRadio
+from .radio import PrivateRadio, ProcessRadio
 from .platform_support import accelerator_name, check_python, console_path, native_abi, write_private  # noqa: F401 — re-exported
 
 
@@ -311,7 +311,8 @@ class NativePhone(PH.AccountPhone):
         if self.port is None: raise PH.PhoneError('unavailable','No Android VM slot is free.')
         self._write_avd()
         cfg=self.system.config
-        self.radio=PrivateRadio(self.home()/'.android/radio',cfg['radio_binary'],internet=cfg.get('internet',False))
+        radio=ProcessRadio if cfg.get('radio_transport')=='process' else PrivateRadio
+        self.radio=radio(self.home()/'.android/radio',cfg['radio_binary'],internet=cfg.get('internet',False))
         self.radio.__enter__()
         android=self.home()/'.android'
         # Python normalizes Windows environment keys to uppercase. Preserve
@@ -323,7 +324,7 @@ class NativePhone(PH.AccountPhone):
                    ANDROID_ADB_SERVER_PORT='20586',ADB_SERVER_PORT='20586',ADB_SERVER_SOCKET='tcp:127.0.0.1:20586',**self.radio.env)
         args=[str(self.system.emulator),'-avd',self.avd,'-port',str(self.port),'-no-window','-no-audio',
               '-no-snapshot','-no-metrics','-crash-report-mode','disabled','-no-direct-adb','-no-sim',
-              '-adb-path',str(Path(__file__).with_name('no_adb.py')),'-memory',str(self.memory_mib),'-cores','4',
+              '-adb-path',str(Path(__file__).with_name('no_adb.py')),'-memory',str(self.memory_mib),'-cores',str(max(1,min(16,int(cfg.get('cores',4))))),
               '-accel','on','-gpu',cfg.get('gpu','software'),'-feature',
               '-WiFiPacketStream,-Uwb,BluetoothEmulation,-ModemSimulator,-GnssGrpcV1,GuestAngle',
               '-wifi-user-mode-options','restrict=on,ipv6=off','-network-user-mode-options','restrict=on,ipv6=off',

@@ -377,17 +377,15 @@ def from_settings(system: Optional[str] = None) -> Optional["WorkstationClient"]
     `B1747`: `system` is the one the person uses (`system_in_use`)."""
     if not enabled():
         return None
-    base, source = resolve_base(system)
+    base, _ = resolve_base(system)
     if not base:
         return None
-    # This trust comes from the operator's configuration, outside workstation
-    # root. A shared daemon must not grant itself a VM role in its status JSON.
-    vm_base = parse_base(os.environ.get(P.VM_URL_ENV, ""))
-    android_vm_endpoint = system in (None, P.DEFAULT_SYSTEM) and (
-        (source == SOURCE_SETTING and backend_choice() == "vm") or
-        (source == SOURCE_ENVIRONMENT and vm_base is not None and base == vm_base
-         and effective_backend() == "vm"))
-    return WorkstationClient(base, configured_token(system), android_vm_endpoint=android_vm_endpoint)
+    # A desktop is never an Android endpoint, whatever its backend: a phone is
+    # its own VM beside the desktop, on the Android VM service
+    # (`src/phone_runtime.py`), never a VM nested inside the desktop's. Nested,
+    # it stalled before its display under Docker Desktop (2026-11-16), and it
+    # would have tied the phone to whichever system the desktop runs.
+    return WorkstationClient(base, configured_token(system), android_vm_endpoint=False)
 
 
 ProgressCb = Callable[[str, str], Union[None, Awaitable[None]]]

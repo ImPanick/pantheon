@@ -423,11 +423,12 @@ NETWORK_ACTIONS = ("interfaces", "reach")
 PHONE_ACTIONS = ("status", "start", "stop", "device", "button", "posture", "rotate",
                  "open_url", "screenshot", "input", "marks", "install", "preview", "edition", "transfer", "usb")
 PHONE_EDITIONS = ("standard", "google_play")
-PHONE_ISOLATION_REQUIRED = ("Android requires a separate VM for each user. Update the workstation-vm "
-                            "host from this checkout, restart your VM, and choose the VM backend in "
-                            "Settings → Workstation. Shared accounts or a daemon without isolation "
-                            "metadata are refused. Existing device data is preserved; it is not "
-                            "automatically copied into a VM.")
+PHONE_ISOLATION_REQUIRED = ("Android runs as its own VM beside your desktop, on Pantheon's Android VM "
+                            "service, never inside the desktop. That service isn't running here. An "
+                            "admin starts it with the rest of Pantheon (docker compose up -d --build "
+                            "android-vm), or on a host without Docker with python -m "
+                            "workstation.native_android.bootstrap up (docs/android-host.md). Your "
+                            "device data is kept.")
 #: The ones that never move the phone, so never `busy`.
 PHONE_LOOK_ACTIONS = ("status", "screenshot", "marks")
 PHONE_STATES = ("off", "installing", "starting", "on", "unavailable")

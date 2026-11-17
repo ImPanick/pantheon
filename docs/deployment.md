@@ -28,7 +28,7 @@ together is that **virtual machines are never nested inside each other by Panthe
 | Layer | What lives there |
 |---|---|
 | **0, the host** | Bare metal, or a VM on ESXi, Proxmox or Hyper-V. Supplies the CPU's virtualization extensions (`/dev/kvm` on Linux). |
-| **1, Pantheon's services** | The app and its helpers (`pantheon`, `chromadb`, `searxng`, `ntfy`), and one service per VM family: `workstation-vm` for Linux desktops, `android-vm` for phones (in progress), a future one for iOS (nothing built). Each family is its own container, so they're siblings. |
+| **1, Pantheon's services** | The app and its helpers (`pantheon`, `chromadb`, `searxng`, `ntfy`), and one service per VM family: `workstation-vm` for Linux desktops, `android-vm` for phones, a future one for iOS (nothing built). Each family is its own container, so they're siblings. |
 | **The VMs** | One per person per family. Alice's desktop and Alice's phone are two VMs side by side, each in its family's service, never one inside the other. Bob gets his own pair. |
 
 A container isn't a virtualization layer, so on a bare-metal Linux host each person's desktop and
@@ -57,7 +57,7 @@ Splitting the families into separate services is deliberate:
 | `workstation` | Container backend for the desktop: one Ubuntu container, a Unix account and desktop per person. For hosts without KVM. | built from `workstation/` | `workstation-homes`, Android SDK volume | No added capability, `NET_RAW` dropped, one device-cgroup rule for `/dev/kvm` |
 | `workstation-debian` / `-fedora` / `-rocky` | The same desktop on another distro, for people who pick it. Off unless its profile is on. | built from `workstation/` | own homes and pairing volumes | as `workstation` |
 | `workstation-vm` | VM backend for the desktop: a QEMU/KVM machine per person | built from `workstation/vm.Dockerfile` | `workstation-vm` volume (each person's disk) | No added capability, no Docker socket, one device-cgroup rule for `/dev/kvm` (`c 10:232 rwm`) |
-| `android-vm` | Phones: an Android VM per person, beside the desktops | **In progress** | | |
+| `android-vm` | Phones: an Android VM per person, beside the desktops, on the host's KVM | built from `workstation/android-vm.Dockerfile` | `android-vm` volume (each person's phone, SDK and keys), `android-vm-pairing` | Starts with `NET_ADMIN` only to write its own kernel rules, then every process runs as uid 500 with no capability. No Docker socket, one device-cgroup rule for `/dev/kvm` (`c 10:232 rwm`) |
 
 None of the workstation services mounts the Docker socket, runs privileged or publishes a port.
 The pairing token each one shares with the app lives on a named volume the app reads read-only.
@@ -122,9 +122,10 @@ said out loud, instead of the container refusing to start. `PANTHEON_WORKSTATION
 | Desktop VM disk | `PANTHEON_WORKSTATION_VM_DISK_GIB=20` per person | Operator |
 | Desktops running at once | `PANTHEON_WORKSTATION_VM_MAX_RUNNING=auto` | Operator |
 | Idle desktop powered off after | `PANTHEON_WORKSTATION_VM_IDLE_MIN=30` minutes | Operator |
-| Phone memory | `PANTHEON_PHONE_MEMORY_MIB=8192` each | Operator |
-| Phones running at once | `PANTHEON_PHONE_MAX_RUNNING=2` | Operator |
-| Idle phone stopped after | `PANTHEON_PHONE_IDLE_MIN=30` minutes | Operator |
+| Phone memory | `PANTHEON_ANDROID_VM_PHONE_MEMORY_MIB` each, sized from the host when empty | Operator |
+| Phone processors | `PANTHEON_ANDROID_VM_PHONE_CPUS=4` each | Operator |
+| Phones running at once | `PANTHEON_ANDROID_VM_MAX_RUNNING=auto` (sized from the host's memory) | Operator |
+| Whole phone service | `PANTHEON_ANDROID_VM_SERVICE_CPUS`, `PANTHEON_ANDROID_VM_SERVICE_MEMORY` (0: no limit beyond the host's) | Operator |
 
 A VM holds on the host only what its guest is actually using and gives freed pages back, so the
 memory setting is a ceiling, not a reservation. Plan for the ceiling anyway on a shared box. If the
@@ -191,7 +192,7 @@ What a restart of each service interrupts:
 |---|---|---|
 | `pantheon` | Agent turns in flight, open browser tabs reconnect | Every desktop and phone, and what's running in them |
 | `workstation-vm` | Every person's desktop VM. Each is shut down cleanly (`stop_grace_period: 2m`), because its disk is someone's work. | The app, the phones |
-| `android-vm` (in progress) | Phones | The app, the desktops |
+| `android-vm` | Every person's phone, each shut down cleanly (`stop_grace_period: 2m`) | The app, the desktops |
 | `workstation` | The container-backend desktops | The VM backend |
 | `workstation-net` | Recreate `workstation` right after (`docker compose up -d workstation`): a new namespace leaves the old one with loopback only, which fails closed | |
 | `chromadb`, `searxng`, `ntfy` | Memory search, web search, push, for the seconds they're down | |
@@ -243,11 +244,23 @@ COMPOSE_FILE=docker-compose.yml:docker/gpu.nvidia.yml        # Linux, macOS
 COMPOSE_FILE=docker-compose.yml;docker/gpu.nvidia.yml        # Windows
 ```
 
-### Phones today
+### Phones
 
-**Shipped:** phones run on a small native host worker beside Docker, because that's where the
-hypervisor is. One command replaces `docker compose up` and sets it up the first time (the
-operator is asked to accept Google's Android SDK licence; nothing is downloaded before that):
+**Shipped:** `android-vm`, a Compose service of its own beside `workstation-vm`, running one
+Android VM per person on the host's KVM, with its own pool of processors, memory and running
+phones that an admin sets independently of the desktops'. It comes up with the rest of the stack.
+Nothing of Google's is in its image: an admin accepts Google's Android SDK licence once, at a
+terminal on the host, and until then it downloads nothing and every phone shows the command:
+
+```bash
+docker compose up -d --build
+docker compose run --rm android-vm accept-license
+```
+
+A phone never runs inside a desktop VM, whatever the desktop's backend. Without KVM in Docker
+(a Mac), the phone runs on a small native host worker beside Docker instead, which uses WHPX on
+Windows and Hypervisor.Framework on macOS; `docker/android-host.yml` points the app at it and keeps
+`android-vm` from starting:
 
 ```bash
 python3 -m workstation.native_android.bootstrap up --app docker --compose -- up -d --build
@@ -259,15 +272,8 @@ py -3 -m workstation.native_android.bootstrap up --app docker --compose -- up -d
 py -3 -m workstation.native_android.bootstrap down --compose -- down
 ```
 
-It uses KVM on Linux, WHPX on Windows and Hypervisor.Framework on macOS. The full walkthrough is
-the [Android host guide](android-host.md).
-
-**In progress:** `android-vm`, a Compose service of its own beside `workstation-vm`, running one
-Android VM per person on the host's KVM, with its own pool of processors, memory and running
-phones that an admin sets independently of the desktops'. When it lands, phones on a Linux server
-become a plain `docker compose up` and this section will be rewritten around it. Until then, if
-the native host worker isn't running, the phone falls back to the emulator inside the person's
-desktop VM, which is a nested VM and slow; the `android-vm` work removes that fallback.
+The contract every VM service follows is in [VM services](vm-services.md); the host worker's
+walkthrough is the [Android host guide](android-host.md).
 
 ### A workstation on another machine
 
