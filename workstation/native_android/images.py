@@ -3,6 +3,7 @@
 from pathlib import Path,PurePosixPath
 import hashlib
 import json
+import logging
 import os
 import shutil
 import stat
@@ -15,6 +16,7 @@ import zipfile
 from workstation import phone as PH
 from .boot_policy import build
 
+logger=logging.getLogger(__name__)
 BASE='https://dl.google.com/android/repository/sys-img/'
 
 
@@ -90,10 +92,11 @@ class ImageInstaller(PH.Installer):
             # Ordinary interpreter exit must not abort staging cleanup halfway
             # through a blocked network operation after a bounded join fails.
             self._thread=threading.Thread(target=self._work,args=(package,then),daemon=False);self._thread.start()
+            logger.info('Installing the Android image %s.',package)
             return dict(self.state)
 
     def _work(self,package,then):
-        ok=False
+        ok=False;began=time.monotonic()
         try:
             self._checkpoint()
             self.install_image(package)
@@ -101,8 +104,12 @@ class ImageInstaller(PH.Installer):
             ok=True
         except Exception as error:
             with self.lock:self.state.update(state='failed',why=str(error)[:500],finished=time.time())
+            # The person sees this sentence on their phone; the log names the fault too.
+            logger.warning('The Android image %s was not installed after %.0f s: %s: %s',
+                           package,time.monotonic()-began,type(error).__name__,str(error)[:500])
         else:
             with self.lock:self.state.update(state='done',percent=100,finished=time.time())
+            logger.info('The Android image %s is installed (%.0f s).',package,time.monotonic()-began)
         if then and not self._cancel.is_set():then(ok)
 
     def install_image(self,package):

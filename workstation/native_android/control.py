@@ -86,7 +86,19 @@ class ScrcpyControl:
             if self.channel is None:
                 raise AdbError("Android's control server is not connected.")
             self.channel.wire.deadline = time.monotonic() + 5
-            self.channel.write(data)
+            try:
+                self.channel.write(data)
+            except OSError as error:
+                # This stream is opened once and kept, so nothing else turns
+                # a socket that broke or timed out into this channel's error.
+                raise AdbError(f"Android's control connection failed ({type(error).__name__}).") from error
+            except AdbError as error:
+                # `write` words a closed stream for a file transfer. Here it
+                # is the control server that ended: it exits with its stream.
+                if self.channel.closed:
+                    raise AdbError("Android's control server closed its connection. "
+                                   "Turn Android off and on to control it again.") from error
+                raise
             # Sequence0, no clipboard autosync: unexpected device data is
             # bounded above and discarded rather than exported to the host.
             self.channel.pending.clear()
