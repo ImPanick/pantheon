@@ -520,7 +520,7 @@ def test_listener_attestation_ignores_an_exited_sibling(monkeypatch,tmp_path):
         def net_connections(self,kind):
             if self.gone:raise Gone()
             return [SimpleNamespace(status='LISTEN',laddr=SimpleNamespace(port=5587))]
-    monkeypatch.setattr(H,'psutil',SimpleNamespace(Error=Gone,CONN_LISTEN='LISTEN'))
+    monkeypatch.setattr(H,'psutil',SimpleNamespace(Error=Gone,AccessDenied=type('Denied',(Gone,),{}),CONN_LISTEN='LISTEN'))
     phone=object.__new__(H.NativePhone);phone.port=5586;phone.system=SimpleNamespace(sdk=tmp_path)
     monkeypatch.setattr(phone,'_process_family',lambda:[Process(True),Process()])
     assert phone._owned()
