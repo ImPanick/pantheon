@@ -476,19 +476,19 @@ def test_phone_stream_supplies_a_visible_crosshair_once_per_connection():
 
 def test_native_cleanup_retains_owned_children_after_launcher_exit_without_pid_reuse(monkeypatch):
     from workstation.native_android import host as H
+    started={1:100,2:200}  # pid: the tick its present holder started on
     class Process:
-        def __init__(self,pid,born):self.pid=pid;self.born=born
-        def create_time(self):return self.born
-        def is_running(self):return True
-        def children(self,recursive=True):return [child]
-    parent,child=Process(1,100),Process(2,200)
-    processes={1:parent,2:child}
-    monkeypatch.setattr(H,'psutil',SimpleNamespace(Process=lambda pid:processes[pid],Error=Exception))
-    phone=object.__new__(H.NativePhone);phone.process_identity=100;phone._processes={}
+        """A psutil handle: equal to another of the same process, never to a later process on its pid."""
+        def __init__(self,pid):self.pid=pid;self.started=started[pid]
+        def __eq__(self,other):return isinstance(other,Process) and (self.pid,self.started)==(other.pid,other.started)
+        def __hash__(self):return hash((self.pid,self.started))
+        def children(self,recursive=True):return [Process(2)]
+    monkeypatch.setattr(H,'psutil',SimpleNamespace(Process=Process,Error=Exception))
+    phone=object.__new__(H.NativePhone);phone._processes={1:Process(1)}  # as a launch keeps its launcher
     phone.emulator=SimpleNamespace(pid=1,poll=lambda:None)
     assert {p.pid for p in phone._process_family()}=={1,2}
     phone.emulator=SimpleNamespace(pid=1,poll=lambda:0)
-    parent.born=999
+    started[1]=999  # the launcher exited and another process got its pid
     assert {p.pid for p in phone._process_family()}=={2}
 
 
@@ -521,7 +521,7 @@ def test_listener_attestation_ignores_an_exited_sibling(monkeypatch,tmp_path):
             if self.gone:raise Gone()
             return [SimpleNamespace(status='LISTEN',laddr=SimpleNamespace(port=5587))]
     monkeypatch.setattr(H,'psutil',SimpleNamespace(Error=Gone,AccessDenied=type('Denied',(Gone,),{}),CONN_LISTEN='LISTEN'))
-    phone=object.__new__(H.NativePhone);phone.port=5586;phone.system=SimpleNamespace(sdk=tmp_path)
+    phone=object.__new__(H.NativePhone);phone.port=5586;phone.system=SimpleNamespace(sdk=tmp_path);phone.account='owned'
     monkeypatch.setattr(phone,'_process_family',lambda:[Process(True),Process()])
     assert phone._owned()
     monkeypatch.setattr(phone,'_process_family',lambda:[Process(True)])

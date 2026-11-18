@@ -1,12 +1,15 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """A phone proves its control listener is its own when the host hides sockets.
 
-Found on the owner's Windows host (2026-11-18, Docker Desktop): as the phone
-service's own user, the emulator's executable was readable but its open
-sockets were not (psutil AccessDenied). The listener check therefore always
-failed: every control connection said "The Android control listener no longer
-belongs to this VM", the Google APIs phone hung at "Starting virtual
-hardware" and the Google Play phone showed but took no taps or keys.
+Seen on the owner's Windows host (2026-11-18, Docker Desktop) from a shell
+running as the phone service's user: the emulator's executable was readable
+but its open sockets were not (psutil AccessDenied). A later audit found that
+shell had the service's user but not its group (`docker exec -u 500`), which
+is what hid them; the service itself read them, and what made every control
+connection say "The Android control listener no longer belongs to this VM"
+there was the host's stepping clock
+(`test_a_phone_stays_its_vms_own_when_the_clock_steps.py`). This proof stays
+for a host that does hide another process's sockets from the service.
 
 Pinned here: with the sockets hidden, the phone is attested by the kernel's
 listener table plus the emulator console, which must accept this account's

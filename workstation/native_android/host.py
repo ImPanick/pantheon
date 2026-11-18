@@ -199,8 +199,8 @@ class NativePhone(PH.AccountPhone):
         # boots: its boot animation streams before control attaches.
         self.boot_display = False
         self.generation = secrets.token_hex(16)
-        self.process_identity = None
-        self._processes = {}
+        self.process_identity = None  # this launch: an attestation is kept only for it
+        self._processes = {}  # pid: the psutil handle kept from when that process was first seen
         self._attested = None  # which emulator last proved itself by console token
         super().__init__(*args,**kwargs)
 
@@ -308,19 +308,37 @@ class NativePhone(PH.AccountPhone):
         write_private(android/'emu-update-last-check.ini','Android.Emulator.LastCheck=4102444800000\n')
 
     def _process_family(self):
-        """Keep birth identities after the launcher exits; never kill a reused PID."""
+        """The emulator and its descendants that still run. Kept after the
+        launcher exits; a process that reuses one of their pids is never
+        among them.
+
+        Each is known by the psutil handle kept from when it was first seen,
+        and found again by comparing a handle made now with that one. Never by
+        a remembered create_time(): psutil derives that from the wall clock
+        (on Linux, the kernel's start tick plus the boot time as the clock
+        reads now), so once a host steps its clock every later reading
+        differs, for a process that never changed. Found in the owner's log
+        (2026-11-18, Windows, Docker Desktop): the Linux VM's clock went back
+        about 1.5 s every 30 s, so within 30 s of every launch the emulator
+        stopped counting as this VM's own. A phone then never finished
+        booting, or it showed and took no input. Two psutil handles compare by
+        pid and the kernel's own start time, which no later clock change
+        moves."""
         if self.emulator is not None and self.emulator.poll() is None:
             try:
-                parent=psutil.Process(self.emulator.pid)
-                if parent.create_time()==self.process_identity:
-                    for process in [parent,*parent.children(recursive=True)]:
-                        self._processes[process.pid]=process.create_time()
+                # A handle made now, like those returned below: a kept one
+                # answers from what it read first (its executable, and the
+                # create_time its children are compared with).
+                launcher=psutil.Process(self.emulator.pid)
+                if launcher==self._processes.get(launcher.pid):
+                    for process in launcher.children(recursive=True):
+                        if self._processes.get(process.pid)!=process:self._processes[process.pid]=process
             except psutil.Error:pass  # the emulator exited while being listed; the loop below drops what is gone
         family=[]
-        for pid,born in list(self._processes.items()):
+        for pid,kept in list(self._processes.items()):
             try:
                 process=psutil.Process(pid)
-                if process.create_time()==born and process.is_running():family.append(process);continue
+                if process==kept:family.append(process);continue
             except psutil.Error:pass  # exited or its pid was reused: no longer ours, forgotten just below
             self._processes.pop(pid,None)
         return family
@@ -343,9 +361,12 @@ class NativePhone(PH.AccountPhone):
     def _owned_without_sockets(self,emulators):
         """The same proof when the host hides the emulator's open sockets.
 
-        Found on the owner's Windows host (2026-11-18, Docker Desktop): the
-        service can read the emulator's executable but not its open sockets,
-        so every attestation failed and the phone hung or had no controls.
+        Seen from a shell on the owner's Windows host (2026-11-18, `docker
+        exec -u 500`: the service's user but group 0): the emulator's
+        executable was readable, its open sockets were not. That was the
+        shell's limit, not the service's, which read them (its phone attested
+        before this existed; what failed there was `_process_family`). It
+        stays for a host that does hide them from the service.
         Then the kernel's own listener table must show both of this phone's
         ports held by the emulator's user and nobody else, and the console on
         this phone's port must accept this account's private token and name
@@ -405,8 +426,9 @@ class NativePhone(PH.AccountPhone):
         with open(self.home()/PH.LOG_FILE,'wb') as log:
             self.emulator=subprocess.Popen(args,cwd=self.home(),env=env,stdin=subprocess.DEVNULL,
                                            stdout=log,stderr=subprocess.STDOUT,**options)
-        self.process_identity=psutil.Process(self.emulator.pid).create_time()
-        self._processes={self.emulator.pid:self.process_identity}
+        # Popen's child cannot have been reaped yet, so this handle is the launcher's own.
+        self._processes={self.emulator.pid:psutil.Process(self.emulator.pid)}
+        self.process_identity=secrets.token_hex(8)
         self._process_family()
         self.direct=DirectAdb(self.port+1,android/'adbkey',self._owned)
         self.generation=secrets.token_hex(16)
@@ -652,7 +674,8 @@ class NativePhone(PH.AccountPhone):
         alive=psutil.wait_procs(family,timeout=10)[1] if family else []
         for process in alive:
             try:
-                if process.create_time()==self._processes.get(process.pid):process.kill()
+                # Only a process kept for this phone, and only while its pid is still that process.
+                if self._processes.get(process.pid)==process and process.is_running():process.kill()
             except psutil.NoSuchProcess:pass  # already gone; anything still alive is reported below
         if alive and psutil.wait_procs(alive,timeout=5)[1]:
             raise PH.PhoneError('unavailable','Android did not stop; its VM slot stays reserved.')
