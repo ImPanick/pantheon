@@ -21,13 +21,23 @@ import threading
 import time as real_time
 from types import SimpleNamespace
 
-import psutil
 import pytest
 
 from workstation.native_android import host as H
 from workstation.native_android.adb import AdbError
 
 UID = 500
+
+
+class Gone(Exception):
+    """psutil.Error, without needing psutil installed (CI's lean leg has none)."""
+
+
+class Denied(Gone):
+    """psutil.AccessDenied: the host hides another process's open sockets."""
+
+
+FAKE_PSUTIL = SimpleNamespace(Error=Gone, AccessDenied=Denied, CONN_LISTEN="LISTEN")
 
 
 class Console:
@@ -75,7 +85,7 @@ class HiddenEmulator:
         return self._exe
 
     def net_connections(self, kind):
-        raise psutil.AccessDenied(self.pid)
+        raise Denied(self.pid)
 
     def uids(self):
         return SimpleNamespace(real=self._uid, effective=self._uid, saved=self._uid)
@@ -102,6 +112,7 @@ def phone(tmp_path, monkeypatch):
     home.mkdir()
     (home / ".emulator_console_auth_token").write_text("this-accounts-token\n")
     system = SimpleNamespace(config={}, sdk=tmp_path / "sdk", abi="x86_64", why=None, home=lambda _: home)
+    monkeypatch.setattr(H, "psutil", FAKE_PSUTIL)
     made = H.NativePhone(system, "owned", None)
     made.avd = "pantheon_owned_pixel"
     made.process_identity = 1.0
