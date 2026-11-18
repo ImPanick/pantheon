@@ -31,6 +31,33 @@ from .radio import PrivateRadio, ProcessRadio
 from .platform_support import accelerator_name, check_python, console_path, native_abi, write_private  # noqa: F401 — re-exported
 
 logger = logging.getLogger(__name__)
+PROC_NET = Path('/proc/net')  # this container's own network namespace
+
+
+def _listening_uids(port):
+    """Users of the TCP sockets listening on this port, from the kernel's table.
+    Readable without access to the listening process."""
+    uids=set()
+    for name in ('tcp','tcp6'):
+        try:lines=(PROC_NET/name).read_text().splitlines()[1:]
+        except OSError:continue
+        for line in lines:
+            fields=line.split()
+            if len(fields)<10 or fields[3]!='0A':continue  # 0A: LISTEN
+            try:
+                if int(fields[1].rsplit(':',1)[1],16)==port:uids.add(int(fields[7]))
+            except ValueError:continue
+    return uids
+
+
+def _console_reply(connection):
+    data=bytearray()
+    while not data.endswith((b'OK\r\n',b'KO\r\n')):
+        block=connection.recv(1024)
+        if not block or len(data)>8192: raise AdbError('Invalid Android console response.')
+        data.extend(block)
+        if b'\r\nKO:' in data or data.startswith(b'KO:'): raise AdbError('Android refused its console operation.')
+    return data
 
 
 class Host:
@@ -174,6 +201,7 @@ class NativePhone(PH.AccountPhone):
         self.generation = secrets.token_hex(16)
         self.process_identity = None
         self._processes = {}
+        self._attested = None  # which emulator last proved itself by console token
         super().__init__(*args,**kwargs)
 
     def package(self, device=None):
@@ -300,14 +328,48 @@ class NativePhone(PH.AccountPhone):
     def _owned(self):
         try:
             family=self._process_family()
+            hidden=[]
             for process in family:
                 try:
                     if not Path(process.exe()).resolve().is_relative_to(self.system.sdk/'emulator'):continue
+                    try:connections=process.net_connections(kind='tcp')
+                    except psutil.AccessDenied:hidden.append(process);continue
                     if any(conn.status==psutil.CONN_LISTEN and conn.laddr.port==self.port+1
-                           for conn in process.net_connections(kind='tcp')):return True
+                           for conn in connections):return True
                 except (psutil.Error,OSError):continue  # An unrelated SDK helper may exit during enumeration.
-            return False
+            return bool(hidden) and self._owned_without_sockets(hidden)
         except (psutil.Error,OSError):return False
+
+    def _owned_without_sockets(self,emulators):
+        """The same proof when the host hides the emulator's open sockets.
+
+        Found on the owner's Windows host (2026-11-18, Docker Desktop): the
+        service can read the emulator's executable but not its open sockets,
+        so every attestation failed and the phone hung or had no controls.
+        Then the kernel's own listener table must show both of this phone's
+        ports held by the emulator's user and nobody else, and the console on
+        this phone's port must accept this account's private token and name
+        this account's AVD. Another account's emulator has another token, so
+        it never passes. A pass is kept for this emulator until it changes."""
+        try:owners={process.uids().real for process in emulators}
+        except (psutil.Error,OSError):return False
+        for port in (self.port,self.port+1):
+            holders=_listening_uids(port)
+            if not holders or not holders<=owners:return False
+        identity=(self.port,self.process_identity,frozenset((p.pid,self._processes.get(p.pid)) for p in emulators))
+        if self._attested==identity:return True
+        try:
+            with socket.create_connection(('127.0.0.1',self.port),timeout=3) as connection:
+                connection.settimeout(3)
+                _console_reply(connection)
+                token=console_path(self.system.config,self.home()).read_text().strip()
+                connection.sendall(('auth '+token+'\n').encode());_console_reply(connection)
+                connection.sendall(b'avd name\n')
+                named=_console_reply(connection).decode('utf-8',errors='replace').splitlines()
+        except (AdbError,OSError):return False
+        if self.avd not in (line.strip() for line in named):return False
+        self._attested=identity
+        return True
 
     def _launch_android(self):
         self.port=self._claim_port(self.account)
@@ -362,6 +424,7 @@ class NativePhone(PH.AccountPhone):
         error=None
         complete=False
         said=None  # what Android last answered after it booted, for the owner
+        unanswered,unanswered_since,unanswered_logged=None,0.0,False  # the same, before it booted
         while time.monotonic()<deadline:
             if self.emulator is not proc:return
             if proc.poll() is not None:
@@ -407,12 +470,20 @@ class NativePhone(PH.AccountPhone):
                 if complete and now!=said:
                     logger.warning('Android phone for %s booted, then a startup step failed (retrying): %s',self.account,now)
                     said=now
+                elif not complete:
+                    # Before boot, failures are normal for a while. One that
+                    # outlasts a minute is logged once, and named at the end.
+                    if now!=unanswered:unanswered,unanswered_since,unanswered_logged=now,time.monotonic(),False
+                    elif not unanswered_logged and time.monotonic()-unanswered_since>60:
+                        logger.warning('Android phone for %s: Pantheon cannot reach Android yet (still trying): %s',self.account,now)
+                        unanswered_logged=True
             time.sleep(2 if self.boot_display else .5)  # quickly to the first frame
         with self.lock:
             if self.emulator is proc:
                 self._stop_locked()
                 self.state,self.why='unavailable',error or (
                     f'Android booted, but Pantheon could not finish setting it up: {said.rstrip(".")}. Start it again to retry.' if said
+                    else f'Pantheon never reached Android: {unanswered.rstrip(".")}. Start it again to retry.' if unanswered
                     else 'Android did not finish booting. Start it again to retry.')
                 logger.warning('Android phone for %s did not start: %s',self.account,self.why)
 
@@ -548,14 +619,7 @@ class NativePhone(PH.AccountPhone):
         if not self._owned(): raise AdbError('The Android console no longer belongs to this VM.')
         with socket.create_connection(('127.0.0.1',self.port),timeout=timeout) as connection:
             connection.settimeout(timeout)
-            def response():
-                data=bytearray()
-                while not data.endswith((b'OK\r\n',b'KO\r\n')):
-                    block=connection.recv(1024)
-                    if not block or len(data)>8192: raise AdbError('Invalid Android console response.')
-                    data.extend(block)
-                    if b'\r\nKO:' in data or data.startswith(b'KO:'): raise AdbError('Android refused its console operation.')
-                return data
+            def response():return _console_reply(connection)
             response()
             token=console_path(self.system.config,self.home()).read_text().strip()
             connection.sendall(('auth '+token+'\n').encode());response()
