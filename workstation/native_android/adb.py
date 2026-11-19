@@ -132,12 +132,16 @@ class Channel:
 class DirectAdb:
     """A single immutable target; callers cannot supply arbitrary host addresses."""
 
-    def __init__(self, port: int, key: Path, attest: Callable[[], bool]):
-        self.port, self.key, self.attest = port, Path(key), attest
+    def __init__(self, port: int, key: Path, attest: Callable[[], bool],
+                 why: Callable[[], str | None] | None = None):
+        # `why` names the reason for the last refusal, when the caller knows it.
+        self.port, self.key, self.attest, self.why = port, Path(key), attest, why
 
     def _owned(self):
         if not self.attest():
-            raise AdbError("The Android control listener no longer belongs to this VM.")
+            reason = self.why() if self.why else None
+            raise AdbError("The Android control listener no longer belongs to this VM"
+                           + (f": {reason}." if reason else "."))
 
     @contextmanager
     def channel(self, service: str, timeout=20.0):

@@ -38,7 +38,13 @@ class Station:
         try:
             # The inherited typed dispatcher checks the holder while the same
             # lock serializes takeover, input, profile changes and transfers.
-            return agentd.Workstation.phone(self,account,body)
+            answer=agentd.Workstation.phone(self,account,body)
+            if body.get('action') in ('start','install') and isinstance(answer,dict) and answer.get('state')=='unavailable':
+                # A start this host cannot make is answered 200, its reason
+                # on the phone. The log names it as well.
+                logger.warning('Android phone for %s did not start: %s',account,
+                               ' '.join(str(answer.get('why') or 'no reason was given').split())[:500])
+            return answer
         finally:phone.lock.release()
 
     def choice(self,account,body):
@@ -84,6 +90,18 @@ class Handler(agentd.Handler):
     def finish(self):
         self.deadline.cancel()
         super().finish()
+
+    def _refuse(self,error,upgraded):
+        """Answer a refused request; a stream that was already upgraded just
+        ends. A fault on this host's side is named in the log either way: the
+        access line says only "503", and a stream's end says nothing."""
+        said=' '.join(str(error.message).split())[:500]  # one line, whatever the guest made part of it
+        if upgraded:
+            logger.info('Android viewer stream ended: %s',said)
+            self.close_connection=True
+            return
+        if P.ERRORS.get(error.code,500)>=500:logger.warning('Android request refused (%s): %s',error.code,said)
+        self._fail(error)
 
     def _dispatch(self,method):
         self.deadline.cancel()
@@ -137,14 +155,22 @@ class Handler(agentd.Handler):
                 return
             raise agentd.WorkstationError('not_found','No such Android route.')
         except agentd.WorkstationError as error:
-            if not upgraded:self._fail(error)
+            self._refuse(error,upgraded)
         except PhoneError as error:
-            if not upgraded:self._fail(agentd.WorkstationError(error.code,error.message))
+            self._refuse(agentd.WorkstationError(error.code,error.message),upgraded)
         except ProtocolError as error:
             logger.warning('Android viewer protocol rejected: %s', error)
             self.close_connection=True
-        except (StreamEnded,OSError,ConnectionError):
+        except (StreamEnded,OSError,ConnectionError) as error:
             self.close_connection=True
+            if upgraded or isinstance(error,StreamEnded):return  # a viewer leaving is its stream's ordinary end
+            # A plain request that died on an OS error: in this host's own
+            # work (a console that refused, a file it could not write) or
+            # because its caller went. It used to end with no answer, no
+            # access line and nothing here.
+            logger.warning('Android request ended on an OS error',exc_info=True)
+            try:self._fail(agentd.WorkstationError('internal',f'The Android host failed: {type(error).__name__}. Inspect its log.'))
+            except OSError:pass  # the caller is gone; the line above stands
         except Exception:
             logger.exception('Android request failed')
             if not upgraded:self._fail(agentd.WorkstationError('internal','The Android host failed. Inspect its log.'))

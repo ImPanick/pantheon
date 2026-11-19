@@ -249,8 +249,13 @@ def serve(stream, frame, event, release, *, frame_interval=.25):
                 event({"kind": "key", "down": bool(down), "keysym": keysym, "geometry": geometry})
             elif kind == 5:
                 buttons, x, y, scroll_x, scroll_y = struct.unpack(">HHHhh", stream.read(10))
-                if x >= width or y >= height or buttons & ~0x1ff:
-                    raise ProtocolError("The pointer event leaves the current phone display.")
+                if buttons & ~0x1ff:
+                    raise ProtocolError("The pointer event carries buttons this phone does not have.")
+                # A pointer at or past the edge is the edge: the viewer rounds
+                # as it scales, and a resize may still be on its way to it.
+                # Ending the stream for it cost the person their picture and
+                # the touch they were making (the owner's log, 2026-11-18).
+                x, y = min(x, width - 1), min(y, height - 1)
                 event({"kind": "pointer", "buttons": buttons, "x": x, "y": y,
                        "scroll_x": scroll_x, "scroll_y": scroll_y, "geometry": geometry})
             elif kind == 6:

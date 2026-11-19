@@ -443,12 +443,12 @@ CLAIMS: Tuple[Claim, ...] = (
     Claim(
         id="tests",
         area="Verification apparatus",
-        headline="Test files 792 -> 2288, and a suite of 20,309 passing with nothing red.",
-        stock="2288 test files.",
-        pantheon=("2288 test files, and 20,309 tests passing, 0 failing, 113 skipped, "
+        headline="Test files 792 -> 2290, and a suite of 20,309 passing with nothing red.",
+        stock="792 test files.",
+        pantheon=("2290 test files, and 20,309 tests passing, 0 failing, 113 skipped, "
                   "0 xfailed when the suite was last run whole — 2026-10-18, at `c66fe54`."),
-        before="2288 test files",
-        after="2288 test files · 20,309",
+        before="792 test files",
+        after="2290 test files · 20,309",
         provenance="diffed",
         repro=f"git ls-tree -r --name-only {FORK_POINT} | grep -c '^tests/test_.*\\.py$' && python3 -m pytest -q",
         evidence=("tests",),
@@ -461,7 +461,7 @@ CLAIMS: Tuple[Claim, ...] = (
             "block's code, a scan satisfied by a name inside `if False:`. "
             "**Proximity is not reachability**, and only a mutation run says so. "
             "**Re-measured 2026-10-17 and both figures were badly stale**: the claim "
-            "said *1,2288 test files and 14,154 passing*, last set when that was true, "
+            "said *1,182 test files and 14,154 passing*, last set when that was true, "
             "while the tree held **1,541** and the suite answered **20,092 passing, "
             "113 skipped, 2 xfailed, nothing red** in 1h16m. 353 of those files had "
             "landed without the headline moving — `B44`'s defect one level up, in the "
