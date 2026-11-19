@@ -108,6 +108,16 @@ the next one is cut.
 
 ### Added
 
+- **An admin chooses, per person, a desktop VM of their own or an account on a shared one**
+  (2026-11-17). On the VM workstation, Settings → Workstation has *New people's machine* (a
+  machine of their own, as before, or an account on the shared machine) and *Each person's
+  machine*, one row per person. The default only decides where a new person's desktop is made;
+  naming a person moves them, powering off the machine they leave and keeping its disk. On the
+  shared machine sudo is always off, other people's processes are hidden and Unix permissions keep
+  each home and projects folder closed to the others; restart and reset act on that person alone.
+  Phones are unchanged, one per person. Rebuild `workstation-vm` (its machines read the new
+  boot files); nobody moves until an admin chooses.
+
 - **The agent clicks numbered marks instead of guessing pixels** (2026-11-01, `B1735`,
   `D-2026-11-01-04`). Every screenshot of the workstation's screen the agent is shown has a
   numbered box on each button, menu, field, tab and row, and a list of them in words beside it

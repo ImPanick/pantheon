@@ -185,6 +185,10 @@ def test_the_keys_ship_off_and_the_destination_ships_empty():
         "workstation_vm_memory_mib": None,
         # Every processor the VM host may run on, until an admin sets a pool.
         "workstation_vm_cpus_max": None,
+        # A machine of their own for each new person, nobody named
+        # (the owner, 2026-11-17: own VM or the shared one, the admin's call).
+        "workstation_vm_placement": "own",
+        "workstation_vm_placement_people": {},
         "workstation_route_tools": True,
     }
     assert DEFAULT_SETTINGS["workstation_backend"] in P.BACKEND_CHOICES
@@ -430,6 +434,40 @@ def test_a_person_with_it_is_let_in_and_sees_only_their_own(app, ws):
     assert wa.routes_tools(ALLOWED, auth_manager=app.state.auth_manager) is True
     client, account = wa.workstation_for(ALLOWED, auth_manager=app.state.auth_manager)
     assert account == account_for(ALLOWED) and client.base == ws.url
+
+
+def test_restart_is_the_callers_own_erases_nothing_and_is_refused_without_the_privilege(app, ws):
+    """The owner, 2026-11-16: logged out of the desktop, and no control
+    brought it back. A person restarts their own workstation; nothing in the
+    request names whose, and somebody without the privilege is refused before
+    anything is asked of the workstation."""
+    switch_on(app, ws)
+    allowed = as_user(app, ALLOWED)
+    asyncio.run(wa.ensure_ready(ALLOWED, auth_manager=app.state.auth_manager))
+    asyncio.run(wa.ensure_ready(ALSO, auth_manager=app.state.auth_manager))
+    kept = ws.root / account_for(ALLOWED) / "kept.txt"
+    kept.write_text("still here")
+    r = allowed.post("/api/workstation/restart", json={"person": ALSO})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["ok"] is True and body["account"] == account_for(ALLOWED)
+    assert body["restarted"] == "desktop" and body["sentence"] == wa.RESTART_WORDS["desktop"]
+    assert kept.read_text() == "still here"
+    plain = as_user(app, PLAIN)
+    r = plain.post("/api/workstation/restart")
+    assert r.status_code == 403 and r.json()["detail"] == wa.NOT_PERMITTED_SENTENCE
+    assert account_for(PLAIN) not in ws.system.accounts()
+
+
+def test_a_workstation_older_than_restart_says_so(app, ws, monkeypatch):
+    switch_on(app, ws)
+
+    async def old(self, account):
+        raise WorkstationError("not_found", "This workstation backend does not serve that route.",
+                               status=404)
+    monkeypatch.setattr(WorkstationClient, "restart", old)
+    r = as_user(app, ALLOWED).post("/api/workstation/restart")
+    assert r.status_code == 503 and r.json()["detail"] == wa.RESTART_OLD_DAEMON
 
 
 def test_routing_is_the_admins_switch_and_off_is_the_default_answer(app, ws, auth):

@@ -87,7 +87,7 @@ export function fire(node, type, extra) { const e = ev(type, extra); node.dispat
 
 // ── a workstation, answering in the routes' shapes ─────────────────────────
 export const server = {
-  holder: 'agent', frame: 1, calls: [], refuse: null, resetOk: true,
+  holder: 'agent', frame: 1, calls: [], refuse: null, resetOk: true, restartOk: true,
 };
 const digest = () => String(server.frame).padStart(16, '0');
 globalThis.fetch = async (url, opts = {}) => {
@@ -97,7 +97,7 @@ globalThis.fetch = async (url, opts = {}) => {
   const reply = (status, payload) => ({ ok: status >= 200 && status < 300, status,
                                          json: async () => payload });
   const path = String(url).split('?')[0];
-  if (server.refuse && path !== '/api/workstation/reset') {
+  if (server.refuse && path !== '/api/workstation/reset' && path !== '/api/workstation/restart') {
     return reply(server.refuse.status, { detail: server.refuse.detail });
   }
   if (path === '/api/workstation/screen') {
@@ -116,6 +116,13 @@ globalThis.fetch = async (url, opts = {}) => {
       sentence: body.holder === 'person' ? '__HOLDING__' : '__BACK__' });
   }
   if (path === '/api/workstation/input') { server.frame += 1; return reply(200, { ok: true, action: body.action }); }
+  if (path === '/api/workstation/restart') {
+    server.frame += 1;
+    return server.restartOk
+      ? reply(200, { ok: true, restarted: 'machine',
+                     sentence: 'Your workstation machine powered off cleanly and started again.' })
+      : reply(503, { detail: 'The workstation did not answer.' });
+  }
   if (path === '/api/workstation/reset') {
     server.holder = 'agent'; server.frame += 1;
     return server.resetOk ? reply(200, { ok: true, sentence: 'Your workstation home is back to a clean start.' })
@@ -632,6 +639,51 @@ def test_a_reset_that_fails_is_said(sandbox):
         await open();
         server.resetOk = false;
         const ok = await mod.resetToClean();
+        out({ ok, status: read(mod).status });
+    """)
+    assert out["ok"] is False and out["status"] == "The workstation did not answer."
+
+
+# ── restart (the owner, 2026-11-16: logged out, and nothing brought it back) ──
+
+def test_restart_is_in_the_menu_asks_first_erases_nothing_and_asks_for_the_stream_again(sandbox):
+    out = _window(sandbox, """
+        await open();
+        const items = Array.from(document.querySelectorAll('.ctl-menu-item'))
+          .map((b) => b.className.split(' ').find((c) => c.startsWith('wsv-')));
+        globalThis.__confirmAnswer = false;
+        const no = await mod.restartWorkstation();
+        const afterNo = server.calls.filter((c) => c.url === '/api/workstation/restart').length;
+        globalThis.__confirmAnswer = true;
+        const desktopAsksBefore = server.calls.filter((c) => c.url.startsWith('/api/workstation/desktop')).length;
+        const yes = await mod.restartWorkstation();
+        const status = read(mod).status;
+        await settle(80);
+        out({ items, no, afterNo, yes, confirms: globalThis.__confirms, status,
+              restarts: server.calls.filter((c) => c.url === '/api/workstation/restart'),
+              resets: server.calls.filter((c) => c.url === '/api/workstation/reset').length,
+              desktopAsks: server.calls.filter((c) => c.url.startsWith('/api/workstation/desktop')).length
+                - desktopAsksBefore });
+    """)
+    assert out["items"][0] == "wsv-restart", "Restart is not the menu's first item"
+    assert "wsv-reset" in out["items"]
+    assert out["no"] is False and out["afterNo"] == 0
+    assert out["yes"] is True and len(out["restarts"]) == 1 and out["resets"] == 0
+    assert out["restarts"][0]["method"] == "POST" and out["restarts"][0]["body"] is None
+    question = out["confirms"][-1]
+    assert question["opts"]["title"] == "Restart your workstation?"
+    assert "kept" in question["message"] and "Nobody else" in question["message"]
+    assert not question["opts"].get("danger"), "a restart erases nothing; it is not dressed as Reset"
+    assert out["status"] == "Your workstation machine powered off cleanly and started again."
+    assert out["desktopAsks"] >= 1, "the old stream is gone; the window must ask for the new one"
+
+
+def test_a_restart_that_fails_is_said(sandbox):
+    out = _window(sandbox, """
+        await open();
+        server.restartOk = false;
+        globalThis.__confirmAnswer = true;
+        const ok = await mod.restartWorkstation();
         out({ ok, status: read(mod).status });
     """)
     assert out["ok"] is False and out["status"] == "The workstation did not answer."

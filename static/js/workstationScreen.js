@@ -57,7 +57,8 @@ import * as Modals from './modalManager.js?v=20261009census';
 import uiModule from './ui.js';
 import { makeWindowDraggable } from './windowDrag.js';
 import {
-  changeStartingPoint, confirmAndResetMine, readComputerUse, setComputerUse,
+  changeStartingPoint, confirmAndResetMine, confirmAndRestartMine, readComputerUse,
+  setComputerUse,
 } from './workstation.js';
 
 export const MODAL_ID = 'workstation-screen-modal';
@@ -96,6 +97,7 @@ const GLYPHS = {
   more: '<circle cx="6" cy="12" r="1.3" fill="currentColor"/><circle cx="12" cy="12" r="1.3" fill="currentColor"/><circle cx="18" cy="12" r="1.3" fill="currentColor"/>',
   save: '<path d="M7 4.5h10v15.5l-5-3.6-5 3.6z"/>',
   reset: '<path d="M4.5 12a7.5 7.5 0 1 0 2.2-5.3"/><path d="M4.2 4.2v4.5h4.5"/>',
+  restart: '<path d="M12 3.5v7"/><path d="M7.4 6.3a7.5 7.5 0 1 0 9.2 0"/>',
   hand: '<path d="M8.5 12.5V6.8a1.3 1.3 0 0 1 2.6 0V11M11.1 10.6V5.4a1.3 1.3 0 0 1 2.6 0v5.2M13.7 10.6V6.9a1.3 1.3 0 0 1 2.6 0v6.6a6 6 0 0 1-6 6h-.5a5 5 0 0 1-3.9-1.9l-2.4-3a1.4 1.4 0 0 1 2.1-1.8l1.3 1.4"/>',
   giveback: '<path d="M9 7.5L4.5 12 9 16.5"/><path d="M4.8 12h9.7a5 5 0 0 1 0 10"/>',
   agent: '<path d="M12 3.5l7.5 4.2v8.6L12 20.5l-7.5-4.2V7.7z"/><path d="M12 12l7.5-4.3M12 12v8.5M12 12L4.5 7.7"/>',
@@ -1106,6 +1108,22 @@ export async function saveStartingPoint() {
   return !!answer.ok;
 }
 
+/** *Restart*: the person's own workstation started again, nothing erased —
+ *  the way back from a desktop they cannot reach (logged out of, frozen).
+ *  The stream it had is gone with it, so the live desktop is asked for anew. */
+export async function restartWorkstation() {
+  const answer = await confirmAndRestartMine(() => { _say('Restarting your workstation…'); });
+  if (!answer) return false;
+  if (!answer.ok) { _sayError(answer.message); _kick(0); return false; }
+  _say(answer.message);
+  _digest = '';
+  _dropFrame();
+  _live = '';
+  _askDesktop();
+  _kick(0);
+  return true;
+}
+
 /** *Reset to clean*, behind the Settings panel's own confirmation. */
 export async function resetToClean() {
   const answer = await confirmAndResetMine();
@@ -1282,13 +1300,16 @@ function _build() {
   const copy = _iconButton('wsv-copy', 'copy', 'Copy what the workstation copied', () => { copyFromDesktop(); });
   // `B1733`, `PHW-CTL`: the starting point and Reset, behind ⋯. Both ask first.
   const moreWrap = _el('div', 'ctl-menu-wrap wsv-more-wrap');
-  const more = _iconButton('wsv-more', 'more', 'Starting point and reset', () => { _menu(); });
+  const more = _iconButton('wsv-more', 'more', 'Restart, starting point and reset', () => { _menu(); });
   more.setAttribute('aria-haspopup', 'menu');
   more.setAttribute('aria-expanded', 'false');
   const menu = _el('div', 'ctl-menu wsv-menu');
   menu.setAttribute('role', 'menu');
-  menu.setAttribute('aria-label', 'Starting point and reset');
+  menu.setAttribute('aria-label', 'Restart, starting point and reset');
   menu.hidden = true;
+  const restart = _menuItem('wsv-restart', 'restart', 'Restart…',
+    'Start the workstation again. Nothing is erased. Asks first.',
+    () => { restartWorkstation(); });
   const save = _menuItem('wsv-save', 'save', 'Save starting point…', 'Make the workstation as it is now what Reset puts back.',
     () => { saveStartingPoint(); });
   const rule = _el('div', 'ctl-menu-rule');
@@ -1296,6 +1317,7 @@ function _build() {
   const reset = _menuItem('wsv-reset', 'reset', 'Reset…', 'Put the workstation back to its starting point. Asks first.',
     () => { resetToClean(); });
   reset.dataset.tone = 'danger';
+  menu.appendChild(restart);
   menu.appendChild(save);
   menu.appendChild(rule);
   menu.appendChild(reset);
@@ -1616,5 +1638,6 @@ export const _test = {
 };
 
 export default { openWorkstationScreen, closeWorkstationScreen, takeOver, handBack, resetToClean,
+  restartWorkstation,
   toggleComputerUse, saveStartingPoint,   // `B1725`, `B1733`
   watchPerson, pasteToDesktop, copyFromDesktop };

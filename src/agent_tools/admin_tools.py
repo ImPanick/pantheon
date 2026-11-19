@@ -757,6 +757,10 @@ _SELF_RESTRAINT_KEYS = frozenset({
     "workstation_sudo",
     "workstation_network",
     "workstation_route_tools",
+    # Own VM or the shared one: moving a person onto the machine others
+    # use changes who their work sits beside, which only an admin decides.
+    "workstation_vm_placement",
+    "workstation_vm_placement_people",
     # `B980`: which certificate is trusted decides who receives the
     # token and every command over `https://`.
     "workstation_tls_pin",
@@ -852,6 +856,10 @@ _SELF_RESTRAINT_WHY = {
     "workstation_tls_pin":
         "is which certificate Pantheon trusts for the workstation, and so who gets "
         "my commands",
+    "workstation_vm_placement":
+        "decides whether new people get a workstation machine of their own or share one",
+    "workstation_vm_placement_people":
+        "decides who has a workstation machine of their own and who shares one",
 }
 
 # `B553`. Where a person can change each of those — the place the refusal
@@ -884,6 +892,9 @@ _SELF_RESTRAINT_WHERE = {
         "Workstation", "Agent shell, Python and file tools run in the workstation",
         "ws-route-tools"),
     "workstation_backend": None,
+    "workstation_vm_placement": ("Workstation", "New people's machine", "ws-vm-placement"),
+    "workstation_vm_placement_people": (
+        "Workstation", "Each person's machine", "ws-vm-placement-people"),
     "approval_timeout_seconds": None,
     "workflow_approval_timeout_seconds": None,
     "auth_login_rate_limit": None,
