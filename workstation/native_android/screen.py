@@ -2,6 +2,7 @@
 """One pixel transform for streamed frames, agent screenshots, marks and input."""
 from __future__ import annotations
 import io
+import logging
 import threading
 import time
 import re
@@ -16,6 +17,9 @@ KEYS = {0xff08:67,0xff09:61,0xff0d:66,0xff1b:111,0xffff:112,0xff50:122,0xff57:12
         0xff51:21,0xff52:19,0xff53:22,0xff54:20,0xff55:92,0xff56:93,
         0xffe1:59,0xffe2:60,0xffe3:113,0xffe4:114,0xffe9:57,0xffea:58,
         0xffeb:117,0xffec:118}
+logger=logging.getLogger(__name__)
+STALE_S=5  # a capture that keeps failing this long is said in the log
+
 NAMES={'Return':66,'Enter':66,'Tab':61,'Escape':111,'BackSpace':67,'Delete':112,
        'Left':21,'Right':22,'Up':19,'Down':20,'Home':122,'End':123,'space':62}
 MODIFIERS={'ctrl':(113,0x1000),'Control_L':(113,0x1000),'alt':(57,2),'shift':(59,1),'super':(117,0x10000)}
@@ -51,6 +55,35 @@ class Screen:
         self.lock=threading.RLock();self.cache=None;self.cached_at=0
         self.viewport=None;self.viewport_key=None;self.viewport_at=0;self.viewport_signature=None
         self.gestures={};self.key_states={};self.last_point=None
+        self.stale_since=None;self.stale_said=False;self.input_said=None
+
+    def _who(self):
+        return getattr(self.phone,'account',None)
+
+    def _stale(self,why):
+        """A capture failed and the last picture is shown instead. Brief while
+        Android starts. One that lasts is a phone that looks frozen and seems
+        to ignore every tap (the owner, 2026-11-18: "Zero control"), so it is
+        named in the log, once, with why."""
+        now=time.monotonic()
+        if self.stale_since is None:self.stale_since,self.stale_said=now,False
+        if not self.stale_said and now-self.stale_since>=STALE_S:
+            self.stale_said=True
+            logger.warning('Android phone for %s: its screen cannot be captured, so the picture shown is frozen: %s',
+                           self._who(),' '.join(str(why).split())[:300])
+
+    def _fresh(self):
+        if self.stale_said:
+            logger.info('Android phone for %s: its screen is captured again after %.0f s.',
+                        self._who(),time.monotonic()-self.stale_since)
+        self.stale_since=None;self.stale_said=False
+
+    def _input_failed(self,error):
+        """A tap or key that Android did not get, said once per reason."""
+        said=' '.join(str(error).split())[:300]
+        if said!=self.input_said:
+            self.input_said=said
+            logger.warning('Android phone for %s: a tap or key did not reach Android: %s',self._who(),said)
 
     @property
     def width(self): return (self.size or self.phone.screen_size())[0]
@@ -65,7 +98,8 @@ class Screen:
             if device.get('kind')=='foldable' and self.phone.posture=='closed':
                 key=(image.size,self.phone.device,self.phone.posture,self.phone.rotation)
                 if key!=self.viewport_key or time.monotonic()-self.viewport_at>1:
-                    text=self.phone.direct.shell(['dumpsys','input'],timeout=5)
+                    try:text=self.phone.direct.shell(['dumpsys','input'],timeout=5)
+                    except AdbError as error:raise PhoneError('unavailable',str(error)) from error
                     try:active=normalize_viewport(image,text)
                     except ValueError as error:raise PhoneError('unavailable',str(error)) from error
                     expected=(device['cover_width'],device.get('cover_height',device['height']))
@@ -92,6 +126,7 @@ class Screen:
                 self.phone.generation=secrets.token_hex(16)
             self.physical,self.size=physical,image.size
             self.cache=image;self.cached_at=time.monotonic()
+            self._fresh()
             return image
 
     def frame(self):
@@ -101,12 +136,13 @@ class Screen:
             self.phone.touch()
             if time.monotonic()-self.cached_at>.20:
                 try:image=self.refresh()
-                except PhoneError:
+                except PhoneError as error:
                     # Android's display is not steady while it starts: a capture
                     # fails as SurfaceFlinger hands over from the boot animation.
                     # A phone that still streams shows its last picture; only one
                     # with no picture yet fails (2026-11-17).
                     if self.cache is None:raise
+                    self._stale(error.message)
                     image=self.cache;self.cached_at=time.monotonic()
             else:image=self.cache
             return image.copy(),(self.phone.generation,self.size,self.physical)
@@ -183,7 +219,10 @@ class Screen:
                     elif down and (32<=symbol<=126 or 160<=symbol<=255 or symbol&0xff000000==0x01000000):
                         value=chr(symbol&0xffffff) if symbol>0xff else chr(symbol)
                         control.text(value)
-            except (AdbError,ValueError) as error: raise PhoneError('unavailable',str(error)) from error
+            except (AdbError,ValueError) as error:
+                self._input_failed(error)
+                raise PhoneError('unavailable',str(error)) from error
+            self.input_said=None
 
     def swipe(self,x,y,dx,dy):
         w,h=self.size
@@ -233,4 +272,7 @@ class Screen:
                     if 'agent' in self.gestures:self.gestures['agent']=(x,y)
                     self.release('agent')
                 elif name=='move' and 'agent' in self.gestures:self.touch(2,x,y);self.gestures['agent']=(x,y)
-            except AdbError as error:raise PhoneError('unavailable',str(error)) from error
+            except AdbError as error:
+                self._input_failed(error)
+                raise PhoneError('unavailable',str(error)) from error
+            self.input_said=None
