@@ -28,6 +28,17 @@ def plan_sync(local,remote,baseline):
     return out
 
 
+def _open_part(part,fd,index):
+    try:return os.open(part,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW,dir_fd=fd)
+    except PermissionError:
+        if index:raise
+        # The person's folder is there but closed to Pantheon: its group is not
+        # Pantheon's. A bare "[Errno 13] Permission denied: '<folder>'" named
+        # neither the side nor the cause (owner's Windows host, 2026-11-21).
+        raise RuntimeError("Pantheon cannot open your projects folder: it is not in Pantheon's group. "
+                           'Restart your workstation to put it back, then connect USB again.') from None
+
+
 class Folder:
     """Pinned directory descriptors; never follow a workstation-created link."""
     def __init__(self,base,parts,owner_uid=None):
@@ -44,7 +55,7 @@ class Folder:
                 created=False
                 try:os.mkdir(part,0o700,dir_fd=fd);created=True
                 except FileExistsError:pass  # already there; the O_NOFOLLOW open below refuses anything but a real directory
-                child=os.open(part,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW,dir_fd=fd)
+                child=_open_part(part,fd,index)
                 if index == 0 and not self.private_root(child):
                     os.close(child);raise RuntimeError('The user projects folder must be private before connecting USB.')
                 if index > 0 and created:os.fchmod(child,0o777)
@@ -56,7 +67,7 @@ class Folder:
         fd=os.open(self.base,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
         try:
             for index, part in enumerate(self.parts):
-                child=os.open(part,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW,dir_fd=fd)
+                child=_open_part(part,fd,index)
                 if index == 0 and not self.private_root(child):
                     os.close(child);raise RuntimeError('The user projects folder is no longer private; eject USB.')
                 os.close(fd);fd=child
