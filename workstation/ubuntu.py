@@ -1575,6 +1575,18 @@ class UbuntuSystem(System):
                     folder.mkdir()
                 if uid is not None:
                     gid = self.projects_gid if self.projects_gid is not None else uid
+                    if self.projects_gid is None and self.backend == "vm":
+                        # Inside a VM backend's machine the folder is the
+                        # host's own, shared over 9p, and the host has already
+                        # given it to Pantheon's group (`vm.project_share`).
+                        # The machine knows no pairing group, and a chown here
+                        # lands on the host as it is: giving the folder to the
+                        # account's own group locked Pantheon out of it, so
+                        # Connect USB said "Permission denied: <folder>"
+                        # (owner's Windows host, 2026-11-21). Keep the host's.
+                        held = os.stat(folder, follow_symlinks=False).st_gid
+                        if held != 0:
+                            gid = held
                     os.chown(folder, uid, gid, follow_symlinks=False)
                     os.chmod(folder, 0o2770)
             except OSError as e:
