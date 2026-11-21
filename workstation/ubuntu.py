@@ -1575,7 +1575,8 @@ class UbuntuSystem(System):
                     folder.mkdir()
                 if uid is not None:
                     gid = self.projects_gid if self.projects_gid is not None else uid
-                    if self.projects_gid is None and self.backend == "vm":
+                    if (self.projects_gid is None and self.backend == "vm"
+                            and not self.sudo_locked_off):
                         # Inside a VM backend's machine the folder is the
                         # host's own, shared over 9p, and the host has already
                         # given it to Pantheon's group (`vm.project_share`).
@@ -1584,6 +1585,9 @@ class UbuntuSystem(System):
                         # account's own group locked Pantheon out of it, so
                         # Connect USB said "Permission denied: <folder>"
                         # (owner's Windows host, 2026-11-21). Keep the host's.
+                        # Not on the machine several people share: there no
+                        # group is reserved for Pantheon, so the host's number
+                        # can be another account's own group here.
                         held = os.stat(folder, follow_symlinks=False).st_gid
                         if held != 0:
                             gid = held

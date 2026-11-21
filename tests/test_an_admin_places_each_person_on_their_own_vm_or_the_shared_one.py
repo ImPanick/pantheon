@@ -517,3 +517,27 @@ def test_on_the_shared_machine_one_person_cannot_reach_anothers_work(tmp_path, m
         assert not (homes[ANN] / "planted").exists()
     finally:
         shutil.rmtree(top, ignore_errors=True)
+
+
+@pytest.mark.skipif(os.geteuid() != 0, reason="Unix ownership needs root to set")
+def test_a_shared_machine_with_no_projects_group_keeps_each_folder_to_its_owner(tmp_path):
+    """A shared machine the host gave no projects group reserves none, so the
+    number the host left on a folder can be another account's own group here.
+    Keeping it would let that person into this one's folder."""
+    from workstation.ubuntu import UbuntuSystem
+    from tests.test_each_person_has_their_own_projects import A, B, ALLOWED
+    system = UbuntuSystem(tmp_path / "homes", skeleton=tmp_path / "skel", prepare=False)
+    root = tmp_path / "projects"
+    root.mkdir()
+    system.shared_roots = [root]
+    system.backend = "vm"
+    system.projects_gid = None
+    system.sudo_locked_off = True
+    other = system.registry.uid_for(B)
+    uid = system.registry.uid_for(A)
+    folder = root / P.project_folder(ALLOWED)
+    folder.mkdir()
+    os.chown(folder, 0, other)
+    os.chmod(folder, 0o2770)
+    system.make_project_dirs(A)
+    assert (os.stat(folder).st_uid, os.stat(folder).st_gid) == (uid, uid)
