@@ -47,6 +47,10 @@ Then, each step only when it is missing, under `~/.pantheon/android-host`
 
 1. A venv for the worker, from `host-requirements.lock`
    (`pip install --require-hashes`; every file's PyPI SHA-256 is pinned).
+   PyAV (`av`) is there to decode the phone's live screen: the pinned scrcpy
+   server streams it as H.264 at up to 30 frames a second, at the size the
+   viewer shows. Without PyAV the screen falls back to one raw `screencap`
+   per frame, which on an emulator is about one frame a second.
 2. Emulator 37.2.13 and platform-tools 37.0.1 from `dl.google.com`, checked
    against the size and SHA-1 in Google's catalogue. The SHA-256 of each
    archive is recorded the first time and required on every reinstall;
