@@ -27,6 +27,7 @@ except ImportError:
 from workstation import phone as PH
 from .adb import AdbError, AdbAuthenticationError, DirectAdb
 from .control import ScrcpyControl
+from .video import ScrcpyVideo
 from .radio import PrivateRadio, ProcessRadio
 from .platform_support import accelerator_name, check_python, console_path, native_abi, write_private  # noqa: F401 — re-exported
 
@@ -612,6 +613,10 @@ class NativePhone(PH.AccountPhone):
         if self.control is None:
             try: self.control=ScrcpyControl(self.direct,self.system.config['scrcpy_server']).start()
             except AdbError as error: raise PH.PhoneError('unavailable',str(error)) from error
+        if getattr(self.screen,'video',False) is None:
+            # The live screen as video once Android is on; it starts when the
+            # screen is first watched (`Screen._video`), not here.
+            self.screen.video=ScrcpyVideo(self.direct,self.system.config['scrcpy_server'],who=self.account)
         self.screen.refresh()
 
     def ensure_shown(self):
@@ -743,6 +748,8 @@ class NativePhone(PH.AccountPhone):
         self.generation=secrets.token_hex(16)
         if self.screen is not None: self.screen.release_all()
         if self.control is not None: self.control.close();self.control=None
+        if self.screen is not None and getattr(self.screen,'video',None) is not None:
+            self.screen.video.close();self.screen.video=None
         proc=self.emulator
         self._process_family()
         if proc is not None and proc.poll() is None:
