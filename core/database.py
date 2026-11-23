@@ -2110,6 +2110,67 @@ class ApolloGrantUse(Base):
     used_at  = Column(DateTime, nullable=False, default=utcnow_naive)
 
 
+class ApolloVoice(Base):
+    """Apollo's dials per person (phase 4, `src/apollo/voice.py`): warmth
+    (terse to warm) and play (dry to playful), -2 to 2, the preset they came
+    from, and every change, the person's and Apollo's nudges, so each one can
+    be shown and undone. A new table (`create_all` is its migration)."""
+    __tablename__ = "apollo_voices"
+
+    owner   = Column(String, primary_key=True)
+    warmth  = Column(Integer, nullable=False, default=0)
+    play    = Column(Integer, nullable=False, default=0)
+    preset  = Column(String, nullable=True)
+    changes = Column(Text, nullable=False, default="[]")
+
+
+class ApolloTrust(Base):
+    """Trust per kind of work (phase 4, `src/apollo/trust.py`): for one person,
+    one kind of Apollo task and one action, the run of clean Allows, and
+    whether "just do it" is drafting, offered, or granted. A new table
+    (`create_all` is its migration)."""
+    __tablename__ = "apollo_trust"
+
+    id          = Column(String, primary_key=True)
+    owner       = Column(String, nullable=False, index=True)
+    kind        = Column(String, nullable=False)
+    tool        = Column(String, nullable=False)
+    space_id    = Column(String, nullable=True)
+    state       = Column(String, nullable=False, default="drafting")
+    streak      = Column(Integer, nullable=False, default=0)
+    allowed     = Column(Integer, nullable=False, default=0)
+    denied      = Column(Integer, nullable=False, default=0)
+    offered_at  = Column(DateTime, nullable=True)
+    granted_at  = Column(DateTime, nullable=True)
+    declined_at = Column(DateTime, nullable=True)
+    updated_at  = Column(DateTime, nullable=True)
+
+    __table_args__ = (
+        UniqueConstraint("owner", "kind", "tool", name="uq_apollo_trust_owner_kind_tool"),
+    )
+
+
+class ApolloRhythm(Base):
+    """When Apollo speaks unasked, per person (phase 4, `src/apollo/rhythm.py`).
+
+    `briefing_ids` are the person's briefings, in time order, as daily
+    `ScheduledTask` rows bound to their Apollo; `checkin_task_id` is the one
+    check-in task, looking every `checkin_hours` (0 is off). Quiet hours are
+    local wall-clock `HH:MM`, read in Apollo's zone. `reported` is what Apollo
+    last said about each thing, so a thing is news only once it changes. A new
+    table (`create_all` is its migration)."""
+    __tablename__ = "apollo_rhythms"
+
+    owner           = Column(String, primary_key=True)
+    briefing_ids    = Column(Text, nullable=False, default="[]")
+    checkin_task_id = Column(String, nullable=True)
+    checkin_hours   = Column(Integer, nullable=False, default=3)
+    quiet_start     = Column(String, nullable=True)
+    quiet_end       = Column(String, nullable=True)
+    reported        = Column(Text, nullable=False, default="{}")
+    last_spoke_at   = Column(DateTime, nullable=True)
+
+
 class Event(Base):
     """One thing that happened, with the time it happened at (`P14-01`).
 

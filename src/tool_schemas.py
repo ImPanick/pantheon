@@ -367,7 +367,7 @@ FUNCTION_TOOL_SCHEMAS = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "action": {"type": "string", "enum": ["status", "create_task", "start_task", "update_task", "ask", "note", "settle_note", "remember", "confirm", "forget", "knows"], "description": "What to do"},
+                    "action": {"type": "string", "enum": ["status", "create_task", "start_task", "update_task", "ask", "note", "settle_note", "remember", "confirm", "forget", "knows", "nudge_voice"], "description": "What to do"},
                     "id": {"type": "string", "description": "A task's id (start_task, update_task, ask), a note's (settle_note) or a known line's (confirm, forget)"},
                     "title": {"type": "string", "description": "create_task/update_task: the task in a few words"},
                     "brief": {"type": "string", "description": "create_task/update_task: what done looks like, and anything the lead needs to know"},
@@ -383,7 +383,9 @@ FUNCTION_TOOL_SCHEMAS = [
                     "basis": {"type": "string", "enum": ["stated", "inferred"], "description": "remember: stated (they said it) or inferred (you noticed it; needs evidence)"},
                     "category": {"type": "string", "enum": ["fact", "rule", "preference"], "description": "remember: a fact, a rule they gave, or a preference"},
                     "evidence": {"type": "string", "description": "remember inferred: what you saw that suggests it, in a few words"},
-                    "task_id": {"type": "string", "description": "note: the task the note is about"}
+                    "task_id": {"type": "string", "description": "note: the task the note is about"},
+                    "toward": {"type": "string", "enum": ["terse", "warm", "dry", "playful", "fewer", "more"], "description": "nudge_voice: which end to move one step toward (fewer/more are check-ins)"},
+                    "reason": {"type": "string", "description": "nudge_voice: what the person did that suggests it, in a line; they see it and can undo"}
                 },
                 "required": ["action"]
             }

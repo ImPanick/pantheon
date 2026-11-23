@@ -16,6 +16,7 @@ Structured actions are tool calls with a schema, never parsed out of prose
   confirm       — an inferred line the person said is right becomes stated
   forget        — delete a line from Brain
   knows         — every line Apollo keeps about the person
+  nudge_voice   — move one of Apollo's dials one step from the person's reactions
 
 Every action is the caller's own: the owner comes from the run, never from the
 arguments, so one person's Apollo can't reach another's records.
@@ -34,7 +35,7 @@ from src.apollo.errors import ApolloRefused
 logger = logging.getLogger(__name__)
 
 ACTIONS = ("status", "create_task", "start_task", "update_task", "ask", "note", "settle_note",
-           "remember", "confirm", "forget", "knows")
+           "remember", "confirm", "forget", "knows", "nudge_voice")
 READ_ACTIONS = frozenset({"status", "knows"})
 WRITE_ACTIONS = frozenset(ACTIONS) - READ_ACTIONS
 DESTRUCTIVE_ACTIONS = frozenset({"forget"})
@@ -125,6 +126,11 @@ def _do(db, owner: str, args: Dict[str, Any], space_id: Optional[str] = None) ->
     if action == "confirm":
         line = knows.confirm(owner, args.get("id"), where=sc)
         return _out(f"Confirmed: {line['text']}", line=line), None
+    if action == "nudge_voice":
+        from src.apollo import voice
+        change = voice.nudge(db, owner, args.get("toward"), args.get("reason"))
+        return _out(f"{voice.describe(change)} Tell them in one line; they can undo it in one tap "
+                    "in the pane.", change=change), None
     if action == "forget":
         knows.forget(owner, args.get("id"), where=sc)
         return _out("Forgotten."), None

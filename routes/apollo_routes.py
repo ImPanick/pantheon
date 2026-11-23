@@ -23,7 +23,7 @@ from pydantic import BaseModel
 from core.database import SessionLocal
 from src.apollo import APOLLO_NAME
 from src.apollo import budget as B
-from src.apollo import knows, notebook, spaces, tasks
+from src.apollo import knows, notebook, rhythm, spaces, trust, tasks, voice
 from src.apollo.errors import ApolloRefused
 from src.auth_helpers import get_current_user
 from src.owner_identity import REQUEST_SENTINEL_OWNERS
@@ -91,6 +91,33 @@ class SpacePatch(BaseModel):
 class GrantIn(BaseModel):
     source_id: str
     scope: str
+
+
+class BriefingIn(BaseModel):
+    id: Optional[str] = None
+    time: str
+    enabled: bool = True
+
+
+class QuietIn(BaseModel):
+    start: Optional[str] = None
+    end: Optional[str] = None
+
+
+class VoiceIn(BaseModel):
+    warmth: Optional[int] = None
+    play: Optional[int] = None
+    preset: Optional[str] = None
+
+
+class OfferAnswer(BaseModel):
+    answer: str
+
+
+class RhythmIn(BaseModel):
+    briefings: Optional[list[BriefingIn]] = None
+    checkin_hours: Optional[int] = None
+    quiet: Optional[QuietIn] = None
 
 
 def _refused(err: ApolloRefused) -> JSONResponse:
@@ -399,5 +426,77 @@ def setup_apollo_routes() -> APIRouter:
         owner = _owner(request)
         return await _call(lambda db: {"session_id": spaces.chat_for(
             db, owner, spaces.resolve(db, owner, space_id))})
+
+    @router.get("/rhythm")
+    async def get_rhythm(request: Request):
+        """When Apollo speaks unasked: the person's briefings, how often
+        check-ins look, quiet hours, and when Apollo last spoke."""
+        owner = _owner(request)
+        return await _call(lambda db: rhythm.to_dict(db, owner))
+
+    @router.put("/rhythm")
+    async def set_rhythm(request: Request, body: RhythmIn):
+        """Set any of the three. Briefings are the whole list, in any order;
+        the earliest is First light."""
+        owner = _owner(request)
+        fields = body.model_dump(exclude_unset=True)
+        return await _call(lambda db: rhythm.save(
+            db, owner, briefings=fields.get("briefings"), checkin_hours=fields.get("checkin_hours"),
+            quiet=fields.get("quiet") if "quiet" in fields else None))
+
+    @router.get("/voice")
+    async def get_voice(request: Request):
+        """Apollo's dials, its presets, the nudges it made that still stand,
+        and how its talk model held up when pushed to agree (`pushback.py`)."""
+        owner = _owner(request)
+
+        def read(db):
+            out = voice.to_dict(db, owner)
+            from src.apollo import pushback
+            out["held"] = pushback.fit_for(db, owner)
+            return out
+        return await _call(read)
+
+    @router.put("/voice")
+    async def set_voice(request: Request, body: VoiceIn):
+        owner = _owner(request)
+        fields = body.model_dump(exclude_unset=True)
+        return await _call(lambda db: voice.set_voice(db, owner, **fields))
+
+    @router.post("/voice/undo/{change_id}")
+    async def undo_voice(request: Request, change_id: str):
+        """One tap: put a dial back where a change found it."""
+        owner = _owner(request)
+        return await _call(lambda db: voice.undo(db, owner, change_id))
+
+    @router.get("/trust")
+    async def get_trust(request: Request, space: Optional[str] = None, state: Optional[str] = None):
+        """Per kind of work and action: Apollo asks, offers to just do it, or
+        just does it, with the record behind each."""
+        owner = _owner(request)
+        return await _call(lambda db: {"trust": trust.list_for(db, owner, space=_view(db, owner, space),
+                                                               state=state or None)})
+
+    @router.post("/trust/{trust_id}")
+    async def answer_offer(request: Request, trust_id: str, body: OfferAnswer):
+        """Yes or not now to "just do it" for a kind. Yes needs the admin's
+        ceiling, the privilege Auto mode is held to."""
+        owner = _owner(request)
+        said = (body.answer or "").strip().lower()
+        if said not in ("yes", "no"):  # flag-spelling: the two answers an offer card sends, not a flag
+            raise HTTPException(400, "The answer is yes or no.")
+        if said == "yes":
+            from src.approval_mode import may_use_auto
+            auth = getattr(request.app.state, "auth_manager", None)
+            ok = await asyncio.to_thread(may_use_auto, owner, auth_manager=auth)
+        else:
+            ok = False
+        return await _call(lambda db: trust.answer(db, owner, trust_id, said == "yes", may_auto=ok))
+
+    @router.delete("/trust/{trust_id}")
+    async def take_back_trust(request: Request, trust_id: str):
+        """Apollo asks again for this kind, and its record starts over."""
+        owner = _owner(request)
+        return await _call(lambda db: trust.take_back(db, owner, trust_id))
 
     return router

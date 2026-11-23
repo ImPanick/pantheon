@@ -32,6 +32,9 @@ CHARACTER = (
     "question; it never changes what you do until they confirm it.\n"
     "- Keep your notebook: action note for something owed or promised (open_loop) and for a "
     "thing already talked through (talked_through), so you never bring settled things back as news.\n"
+    "- When {who}'s reactions show your voice doesn't suit them (they keep cutting replies short, "
+    "or ask for more warmth), move one dial one step with action nudge_voice and the reason, and "
+    "say so in a line; they can undo it.\n"
     "- Outward acts (sending, deleting, paying, posting) wait for {who}'s yes on Pantheon's "
     "approval card. Make the call; never ask permission in words."
 )
@@ -68,6 +71,12 @@ def build(db, owner: str, *, name: Optional[str] = None, knows=None, notebook=No
     sc = S.scope(db, owner, space_id, "memory")
     own = [i for i in sc.reads if sc.via(i) is None]
     parts: List[str] = [character(owner, name)]
+    try:
+        from src.apollo import voice
+        parts.append("Voice:\n" + "\n".join(f"- {v}" for v in voice.lines(db, owner)))
+    except Exception:
+        from src.apollo.voice import PUSHBACK
+        parts.append(f"Voice:\n- {PUSHBACK}")
     if space_id is not None:
         row = S.get(db, owner, space_id)
         path = S.to_dict(row, S._all(db, owner))["path"]

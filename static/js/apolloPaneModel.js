@@ -265,3 +265,78 @@ export function lockedNeeds(spaces, current) {
 export function lockedLine(space) {
   return `${(space && space.name) || 'A locked space'} is locked. Something there needs you.`;
 }
+
+/* ───────────── rhythm (phase 4) ───────────── */
+
+/** The check-in intervals the server takes, in hours; 0 is off. */
+export const CHECKIN_HOURS = [0, 1, 2, 3, 4, 6, 8, 12];
+
+/** What a check-in interval is called in the picker. */
+export function checkinLabel(hours) {
+  const h = Number(hours) || 0;
+  if (!h) return 'Off';
+  return h === 1 ? 'Every hour' : `Every ${h} hours`;
+}
+
+/** One plain line on when Apollo speaks unasked, for the main view. */
+export function rhythmLine(r) {
+  const x = r || {};
+  const on = (x.briefings || []).filter((b) => b && b.enabled);
+  const parts = [];
+  if (!on.length) parts.push('No briefings set.');
+  else if (on.length === 1) parts.push(`${on[0].name} at ${on[0].time}.`);
+  else parts.push(`${on[0].name} at ${on[0].time}, and ${on.length - 1} more ${on.length === 2 ? 'briefing' : 'briefings'}.`);
+  const h = Number(x.checkin_hours) || 0;
+  parts.push(h ? `Check-ins ${checkinLabel(h).toLowerCase()}, only when something changed.` : 'No check-ins.');
+  const q = x.quiet || {};
+  if (q.start && q.end) parts.push(`Quiet ${q.start} to ${q.end}.`);
+  return parts.join(' ');
+}
+
+/** A time for a new briefing: 07:00 for the first, otherwise the first whole
+ *  hour from 12:00 on that no briefing has. */
+export function nextBriefingTime(briefings) {
+  const taken = new Set((briefings || []).map((b) => b && b.time));
+  if (!taken.size) return '07:00';
+  for (let h = 12; h < 36; h += 1) {
+    const t = `${String(h % 24).padStart(2, '0')}:00`;
+    if (!taken.has(t)) return t;
+  }
+  return '';
+}
+
+/** When Apollo last spoke unasked, in plain words. */
+export function lastSpoke(iso, now = Date.now()) {
+  const at = Date.parse(iso || '');
+  if (!Number.isFinite(at)) return 'Apollo hasn’t spoken unasked yet.';
+  const min = Math.max(0, Math.round((now - at) / 60000));
+  if (min < 1) return 'Apollo last spoke just now.';
+  if (min < 60) return `Apollo last spoke ${min} ${min === 1 ? 'minute' : 'minutes'} ago.`;
+  const h = Math.round(min / 60);
+  if (h < 24) return `Apollo last spoke ${h} ${h === 1 ? 'hour' : 'hours'} ago.`;
+  const d = Math.round(h / 24);
+  return `Apollo last spoke ${d} ${d === 1 ? 'day' : 'days'} ago.`;
+}
+
+/* ───────────── voice (phase 4) ───────────── */
+
+/** The words at each end of a dial and at its centre. */
+export const DIAL_ENDS = { warmth: ['Terse', 'Warm'], play: ['Dry', 'Playful'] };
+
+/** Where a dial sits, in words: "Warm", "A little terse", "Apollo's own". */
+export function dialWords(dial, value) {
+  const v = Number(value) || 0;
+  const [lo, hi] = DIAL_ENDS[dial] || ['', ''];
+  if (!v) return 'Apollo’s own';
+  const end = v < 0 ? lo : hi;
+  return Math.abs(v) === 1 ? `A little ${end.toLowerCase()}` : end;
+}
+
+/** What the pane says of how Apollo held its ground on its talk model. */
+export function heldLine(held) {
+  const h = held || {};
+  if (!h.model) return 'Pushback hasn’t been measured: no talk model is set.';
+  if (h.badge === 'not-measured') return `Pushback hasn’t been measured on ${h.model} yet.`;
+  if (h.badge === 'needs-bigger') return `On ${h.model}, Apollo sometimes caved when pushed. A bigger model holds better.`;
+  return `On ${h.model}, Apollo held its ground when pushed.`;
+}
