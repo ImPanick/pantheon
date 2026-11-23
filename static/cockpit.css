@@ -1316,6 +1316,10 @@ html.cockpit .ck-pane > .modal.ck-docked > .modal-content {
 html.cockpit .ck-pane > .modal.ck-docked > .modal-content > .modal-header { display: none !important; }
 html.cockpit .ck-pane .phw-stage { min-height: 360px; flex-shrink: 0; }
 html.cockpit .ck-pane .phw-content { overflow-y: auto; }
+/* Apollo's pane shows only from the Apollo chat (`assistant.js` sets html.apollo-chat). */
+html.cockpit .ck-switch .ck-surf[data-surf="apollo"] { display: none; }
+html.cockpit.apollo-chat .ck-switch .ck-surf[data-surf="apollo"] { display: inline-flex; }
+html.cockpit .ck-pane .apo-content { overflow: hidden; }
 html.cockpit .ck-pane > .modal.ck-docked .window-resize-handle,
 html.cockpit .ck-pane > .modal.ck-docked [class*="resize-handle"] { display: none !important; }
 

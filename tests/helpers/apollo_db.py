@@ -14,5 +14,7 @@ def apollo_db(monkeypatch):
 
     SessionLocal, engine, tmp = make_temp_sqlite(database.Base.metadata)
     monkeypatch.setattr(database, "SessionLocal", SessionLocal)
+    import routes.apollo_routes as apollo_routes
+    monkeypatch.setattr(apollo_routes, "SessionLocal", SessionLocal)
     yield SessionLocal
     engine.dispose()
