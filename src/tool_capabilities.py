@@ -875,7 +875,7 @@ _PRIVATE_ACTION_WRITES: Mapping[str, frozenset[str]] = MappingProxyType(
         "apollo": frozenset({"create_task", "start_task", "update_task", "ask", "note",
                              "settle_note", "remember", "confirm", "forget",
                              "nudge_voice"}),
-        "fleet": frozenset({"delegate", "ask", "escalate"}),
+        "fleet": frozenset({"delegate", "ask", "escalate", "propose_agent"}),
         "manage_notes": frozenset({"add", "update", "delete", "toggle_item"}),
         "ledger_table": frozenset({"add", "update", "delete", "import"}),      # `P24-30`
         "manage_research": frozenset({"delete"}),

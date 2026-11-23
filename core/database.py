@@ -2170,6 +2170,39 @@ class ApolloMessage(Base):
     seen_at    = Column(DateTime, nullable=True)
 
 
+class ApolloAgentProposal(Base):
+    """A missing agent (phase 5b, `src/apollo/gaps.py`): the gap a lead found
+    on one person's goal, the draft made for it, its proof run, and an admin's
+    decision. Only an approved one reaches anyone else, through the platform
+    layer of the catalogue. A new table, so `create_all` is its whole
+    migration."""
+    __tablename__ = "apollo_agent_proposals"
+
+    id          = Column(String, primary_key=True)
+    owner       = Column(String, nullable=False, index=True)
+    task_id     = Column(String, nullable=True)
+    from_agent  = Column(String, nullable=True)
+    need        = Column(Text, nullable=False)
+    why         = Column(Text, nullable=False)
+    #: drafting, proving, waiting, published, rejected or failed.
+    state       = Column(String, nullable=False, default="drafting", index=True)
+    sentence    = Column(Text, nullable=True)
+    agent_id    = Column(String, nullable=True)
+    agent_name  = Column(String, nullable=True)
+    version     = Column(String, nullable=True)
+    #: The drafted `AGENT.md`, and its `evals.json`.
+    text        = Column(Text, nullable=True)
+    evals       = Column(Text, nullable=True)
+    model       = Column(String, nullable=True)
+    #: JSON: the proof run's row, as `src/agents/evals.py` writes it.
+    proof       = Column(Text, nullable=True)
+    badge       = Column(String, nullable=True)
+    reviewer    = Column(String, nullable=True)
+    review_note = Column(Text, nullable=True)
+    created_at  = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+    updated_at  = Column(DateTime, nullable=True)
+
+
 class ApolloTrust(Base):
     """Trust per kind of work (phase 4, `src/apollo/trust.py`): for one person,
     one kind of Apollo task and one action, the run of clean Allows, and

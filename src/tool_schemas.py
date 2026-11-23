@@ -395,12 +395,13 @@ FUNCTION_TOOL_SCHEMAS = [
         "type": "function",
         "function": {
             "name": "fleet",
-            "description": "Your team, while you lead one of the person's Apollo tasks: find agents in the roster that fit a need, hand one a sub-task, ask one a single question, or put a decision only the person can make to them. A delegate gets no more tools than you hold. Its report comes back to you as a new run.",
+            "description": "Your team, while you lead one of the person's Apollo tasks: find agents in the roster that fit a need, hand one a sub-task, ask one a single question, put a decision only the person can make to them, or, when no agent fits, propose the missing one for an admin to approve. A delegate gets no more tools than you hold. Its report comes back to you as a new run.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "action": {"type": "string", "enum": ["roster", "delegate", "ask", "escalate"], "description": "What to do"},
-                    "need": {"type": "string", "description": "roster: the kind of help you need, in a few words"},
+                    "action": {"type": "string", "enum": ["roster", "delegate", "ask", "escalate", "propose_agent"], "description": "What to do"},
+                    "need": {"type": "string", "description": "roster: the kind of help you need, in a few words; propose_agent: the job the missing agent would do"},
+                    "why": {"type": "string", "description": "propose_agent: why no agent in the roster fits it"},
                     "agent": {"type": "string", "description": "delegate/ask: the agent's id from roster"},
                     "brief": {"type": "string", "description": "delegate: what done looks like and what the agent needs to know"},
                     "review_by": {"type": "string", "description": "delegate: an agent id to review the work, or person to have the person check it; leave out for no review"},

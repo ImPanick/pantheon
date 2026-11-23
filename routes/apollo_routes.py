@@ -25,6 +25,7 @@ from src.apollo import APOLLO_NAME
 from src.apollo import budget as B
 from src.apollo import knows, notebook, rhythm, spaces, trust, tasks, voice
 from src.apollo.errors import ApolloRefused
+from core.middleware import require_admin
 from src.auth_helpers import get_current_user
 from src.owner_identity import REQUEST_SENTINEL_OWNERS
 
@@ -118,6 +119,18 @@ class RhythmIn(BaseModel):
     briefings: Optional[list[BriefingIn]] = None
     checkin_hours: Optional[int] = None
     quiet: Optional[QuietIn] = None
+
+
+class ReviewNote(BaseModel):
+    note: Optional[str] = None
+
+
+class AgentText(BaseModel):
+    text: str
+
+
+class RollbackIn(BaseModel):
+    version: str
 
 
 def _refused(err: ApolloRefused) -> JSONResponse:
@@ -515,5 +528,76 @@ def setup_apollo_routes() -> APIRouter:
         """Apollo asks again for this kind, and its record starts over."""
         owner = _owner(request)
         return await _call(lambda db: trust.take_back(db, owner, trust_id))
+
+    # ── Phase 5b: a missing agent, drafted, proven and approved ─────────────
+
+    @router.get("/agents/proposals")
+    async def my_proposals(request: Request):
+        """The agents being made for this person, and what became of each."""
+        owner = _owner(request)
+        from src.apollo import gaps as G
+        return await _call(lambda db: {"proposals": G.list_for(db, owner)})
+
+    @router.post("/agents/proposals/{pid}/retry")
+    async def retry_proposal(request: Request, pid: str):
+        owner = _owner(request)
+        from src.apollo import gaps as G
+        out = await _call(lambda db: G.to_dict(G.retry(db, owner, pid)))
+        if isinstance(out, dict):
+            G.start_build(pid)
+        return out
+
+    @router.get("/agents/review")
+    async def review_agents(request: Request):
+        """For an admin: every drafted agent waiting on a decision, with the
+        tools and effects it asks for beside its proof, and every platform
+        agent's versions."""
+        require_admin(request)
+        from src.apollo import gaps as G
+        return await _call(lambda db: {"waiting": G.waiting(db), "published": G.published()})
+
+    @router.post("/agents/review/{pid}/approve")
+    async def approve_agent(request: Request, pid: str):
+        require_admin(request)
+        admin = _owner(request)
+        from src.apollo import gaps as G
+        return await _call(lambda db: G.approve(db, admin, pid))
+
+    @router.post("/agents/review/{pid}/edit")
+    async def edit_agent(request: Request, pid: str, body: AgentText):
+        """An admin's edit is checked now, then proven again before it can be
+        approved."""
+        require_admin(request)
+        admin = _owner(request)
+        from src.apollo import gaps as G
+        out = await _call(lambda db: G.edit(db, admin, pid, body.text))
+        if isinstance(out, dict):
+            G.start_build(pid, text=body.text)
+        return out
+
+    @router.post("/agents/review/{pid}/reject")
+    async def reject_agent(request: Request, pid: str, body: ReviewNote):
+        require_admin(request)
+        admin = _owner(request)
+        from src.apollo import gaps as G
+        return await _call(lambda db: G.reject(db, admin, pid, body.note))
+
+    @router.post("/agents/platform/{agent_id}/update")
+    async def update_platform_agent(request: Request, agent_id: str, body: AgentText):
+        """A new version of a published agent, proven before it can be
+        approved, like a new one."""
+        require_admin(request)
+        admin = _owner(request)
+        from src.apollo import gaps as G
+        out = await _call(lambda db: G.to_dict(G.propose_update(db, admin, agent_id, body.text)))
+        if isinstance(out, dict):
+            G.start_build(out["id"], text=body.text)
+        return out
+
+    @router.post("/agents/platform/{agent_id}/rollback")
+    async def rollback_platform_agent(request: Request, agent_id: str, body: RollbackIn):
+        require_admin(request)
+        from src.apollo import gaps as G
+        return await _plain(lambda: G.rollback(agent_id, body.version))
 
     return router

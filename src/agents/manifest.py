@@ -332,7 +332,7 @@ class Manifest:
     budget: Dict[str, int]
     memory: str
     runbook: str
-    source: str = "shipped"           # shipped | own
+    source: str = "shipped"           # shipped | platform | own
     path: str = ""
     # `P24-28`. The company fields, all optional and read by nothing in the
     # runtime yet (see `DEPARTMENTS`, `ROLES`).
