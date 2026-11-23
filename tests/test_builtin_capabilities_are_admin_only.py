@@ -188,7 +188,8 @@ async def test_the_listing_covers_every_tool_section(router):
     # `P27-07`: + shell_with_login; `P27-09`: + connections; `P16-20`: + network;
     # `B1621`: + read_chat. `B1737`: + use_skill. `P24-30`: + ledger_table.
     # `B1755`: + find_tools. `B1878`: + manage_workflows. Apollo: + apollo.
-    assert len(expected) == 72
+    # Apollo's fleet (phase 5): + fleet.
+    assert len(expected) == 73
 
 
 # ── the loader and the flag ─────────────────────────────────────────────────
