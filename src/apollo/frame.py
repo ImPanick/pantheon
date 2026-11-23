@@ -53,66 +53,131 @@ def _task_line(t) -> str:
 
 
 def build(db, owner: str, *, name: Optional[str] = None, knows=None, notebook=None,
-          tasks=None) -> str:
-    """The frame for one turn: character, rules, open tasks, notebook, hunches."""
+          tasks=None, space_id: Optional[str] = None) -> str:
+    """The frame for one turn in a space (None is the top layer): character,
+    where it is, rules, open tasks and loops of the space and its parents,
+    what its grants let it read (each read logged), a count of what is under
+    it, and hunches. Nothing from a space it may not read is ever in it."""
     if knows is None:
         from src.apollo import knows
     if notebook is None:
         from src.apollo import notebook
     if tasks is None:
         from src.apollo import tasks
+    from src.apollo import spaces as S
+    sc = S.scope(db, owner, space_id, "memory")
+    own = [i for i in sc.reads if sc.via(i) is None]
     parts: List[str] = [character(owner, name)]
+    if space_id is not None:
+        row = S.get(db, owner, space_id)
+        path = S.to_dict(row, S._all(db, owner))["path"]
+        where = f"You are in the space “{path}”. What you make here (tasks, notes, lines) stays in it."
+        if sc.edge:
+            where += (" It is airgapped: nothing outside it reaches in and nothing in it goes out, "
+                      "and you can't ask or hand work across its edge.")
+        if sc.local_only:
+            where += " It keeps to local models."
+        parts.append(where)
     try:
-        rules = knows.stated_rules(owner)
+        rules = knows.stated_rules(owner, where=sc)
     except Exception:
         rules = []
     if rules:
         parts.append("Rules and preferences they stated (follow these):\n"
                      + "\n".join(f"- {r}" for r in rules))
-    open_tasks = tasks.list_for(db, owner, include_done=False, limit=12)
+
+    def label(t):
+        there = (t.space_id or None)
+        return _task_line(t) + ("" if there == space_id else f" (in {sc.names.get(there, 'Apollo')})")
+    open_tasks = tasks.list_for(db, owner, include_done=False, limit=12, space=own)
     if open_tasks:
-        parts.append("Open tasks:\n" + "\n".join(f"- {_task_line(t)}" for t in open_tasks))
+        parts.append("Open tasks:\n" + "\n".join(f"- {label(t)}" for t in open_tasks))
     else:
         parts.append("Open tasks: none.")
-    loops = notebook.list_for(db, owner, kind="open_loop", state="open", limit=10)
+    loops = notebook.list_for(db, owner, kind="open_loop", state="open", limit=10, space=own)
     if loops:
         parts.append("Open loops (owed or promised):\n" + "\n".join(f"- {n.text}" for n in loops))
-    talked = notebook.list_for(db, owner, kind="talked_through", limit=10)
+    talked = notebook.list_for(db, owner, kind="talked_through", limit=10, space=own)
     if talked:
         parts.append("Already talked through (not news):\n"
                      + "\n".join(f"- {n.text} [{n.state}]" for n in talked))
+    parts.extend(_granted(db, owner, sc, knows, tasks, S))
+    kids = S.children(db, owner, space_id)
+    if kids:
+        rows = []
+        for k in kids:
+            if k["sealed"]:
+                if k["needs_you"]:
+                    rows.append(f"- “{k['name']}” (airgapped): something there needs them.")
+            else:
+                rows.append(f"- “{k['name']}”: {k['open']} open, {k['needs_you']} need them.")
+        if rows:
+            parts.append("Spaces under this one (counts only; open one to see inside):\n" + "\n".join(rows))
     try:
-        hunches = knows.open_hunches(owner, limit=3)
+        hunches = knows.open_hunches(owner, limit=3, where=sc)
     except Exception:
         hunches = []
     if hunches:
         parts.append("Hunches not yet confirmed (ask, don't act):\n"
                      + "\n".join(f"- {h['text']} (because: {h['evidence']}; id {h['id']})"
-                                 for h in hunches))
+                                  for h in hunches))
     return "\n\n".join(parts)
 
 
+def _granted(db, owner: str, sc, knows, tasks, S) -> List[str]:
+    """What this space reads through its grants, read only, each use logged."""
+    out: List[str] = []
+    if sc.grants:
+        try:
+            lines = [x for x in knows.what_apollo_knows(owner, sc) if x.get("via_grant")]
+        except Exception:
+            lines = []
+        by: Dict[str, List[str]] = {}
+        for x in lines:
+            if x["basis"] == "stated":
+                by.setdefault(x["space_id"], []).append(x["text"])
+        for g, src in sc.grants:
+            got = by.get(src, [])[:8]
+            if got:
+                S.log_use(db, owner, g, f"Apollo read {len(got)} line(s) for a turn")
+                out.append(f"What they told you in “{sc.names.get(src)}” (read only; inform, never change):\n"
+                           + "\n".join(f"- {t}" for t in got))
+    osc = S.scope(db, owner, sc.space_id, "outcomes")
+    for g, src in osc.grants:
+        done = [t for t in tasks.list_for(db, owner, state="done", limit=5, space=src) if t.outcome]
+        if done:
+            S.log_use(db, owner, g, f"Apollo read {len(done)} outcome(s) for a turn")
+            out.append(f"What “{osc.names.get(src)}” finished (read only):\n"
+                       + "\n".join(f"- {t.title}: {t.outcome}" for t in done))
+    return out
+
+
 def apollo_session_for(db, owner: Optional[str], session_id: Optional[str]) -> Optional[Dict[str, Any]]:
-    """`{name}` when `session_id` is `owner`'s Apollo chat, else `None`."""
+    """`{name, crew_id, space_id}` when `session_id` is one of `owner`'s Apollo
+    chats (its main chat, or a space's), else `None`."""
     if not owner or not session_id:
         return None
     from core.database import CrewMember
+    from src.apollo import spaces as S
+    ok, space_id = S.space_of_session(db, owner, session_id)
+    if not ok:
+        return None
     crew = (db.query(CrewMember)
             .filter(CrewMember.owner == owner,
-                    CrewMember.is_default_assistant == True,  # noqa: E712
-                    CrewMember.session_id == session_id).first())
-    if crew is None:
-        return None
-    return {"name": crew.name or APOLLO_NAME, "crew_id": crew.id}
+                    CrewMember.is_default_assistant == True).first())  # noqa: E712
+    return {"name": (crew.name if crew else None) or APOLLO_NAME,
+            "crew_id": crew.id if crew else None, "space_id": space_id}
 
 
 def frame_messages(db, owner: Optional[str], session_id: Optional[str]) -> List[Dict[str, Any]]:
-    """The context message for a turn in `owner`'s Apollo chat, or `[]`."""
+    """The context message for a turn in one of `owner`'s Apollo chats, or `[]`."""
     found = apollo_session_for(db, owner, session_id)
     if found is None:
         return []
     from src.prompt_security import own_context_message
-    return [own_context_message("Apollo, your partner role", build(db, owner, name=found["name"]))]
+    text = build(db, owner, name=found["name"], space_id=found["space_id"])
+    db.commit()     # the grant uses `build` logged
+    return [own_context_message("Apollo, your partner role", text)]
 
 
 def into(messages: List[Dict[str, Any]], extra: List[Dict[str, Any]]) -> List[Dict[str, Any]]:

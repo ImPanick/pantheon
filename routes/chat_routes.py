@@ -2740,6 +2740,30 @@ def setup_chat_routes(
             except SummonRefused as _refused:
                 raise HTTPException(400, _refused.sentence)
             tool_policy = _summoned.policy(tool_policy)
+        # Apollo spaces. A chat that works inside a space pinned to local
+        # models (its Apollo chat, or a task's chat there) never sends a turn
+        # to a paid API: refused before anything leaves, whoever is summoned.
+        if not incognito and _user:
+            from src.apollo import spaces as _spaces
+
+            from src.apollo.errors import ApolloRefused as _Refused
+
+            def _pinned_off_the_loop():
+                # Both the pin and whether the model is billed read the
+                # database, so both stay off the event loop.
+                _pdb = SessionLocal()
+                try:
+                    _name = _spaces.local_only_for_session(_pdb, _user, session)
+                finally:
+                    _pdb.close()
+                if _name:
+                    _spaces.require_local(_name, sess.endpoint_url)
+            try:
+                await asyncio.to_thread(_pinned_off_the_loop)
+            except _Refused as _no:
+                raise HTTPException(_no.status, _no.sentence)
+            except Exception as _pin_err:
+                logger.warning("Apollo space pin unread: %s", _pin_err)
         # Apollo. A turn in the person's own Apollo chat carries Apollo's
         # character and what it is holding for them (rules, open tasks, open
         # loops), read off the loop. Nobody keeps nothing and reads nothing

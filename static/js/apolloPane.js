@@ -31,6 +31,7 @@ import { makeWindowDraggable } from './windowDrag.js';
 import { createTaskChat, popOutTaskChat, isTaskChatFloating } from './apolloTaskChat.js';
 import uiModule from './ui.js';
 import * as M from './apolloPaneModel.js';
+import * as Sp from './apolloSpaces.js';
 
 export const MODAL_ID = 'apollo-pane-modal';
 const REFRESH_MS = 8000;
@@ -40,13 +41,16 @@ const APOLLO_ICON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none"
   + '<circle cx="12" cy="12" r="4"/><path d="M12 2.5v2.5M12 19v2.5M2.5 12H5M19 12h2.5M5.3 5.3l1.8 1.8M16.9 16.9l1.8 1.8M5.3 18.7l1.8-1.8M16.9 7.1l1.8-1.8"/></svg>';
 
 let _win = null;        // the built window's parts
-let _view = 'main';     // main | task | knows
+let _view = 'main';     // main | task | knows | space
 let _taskId = '';       // the task the task view shows
 let _timer = null;
 let _gen = 0;           // a render started before a newer one is dropped
 let _showAll = false;   // Activity's Show more
 let _editing = '';      // the id of the knows line being edited
 let _chat = null;       // the embedded task chat, kept across redraws
+let _reach = 'here';    // Activity: 'here' (the space Apollo is in) or 'all'
+let _offSpace = null;   // stops following the space switcher
+let _deleting = '';     // a space whose Delete was pressed once
 
 function _el(tag, cls, text) {
   const n = document.createElement(tag);
@@ -79,6 +83,10 @@ async function _api(path, { method = 'GET', body } = {}) {
   return data;
 }
 
+/** `?space=` for where Apollo is, or for every open space. */
+function _here() { return encodeURIComponent(Sp.spaceParam()); }
+function _reachParam() { return _reach === 'all' ? 'all' : _here(); }
+
 function _say(msg) {
   try { uiModule.showToast(msg); } catch (_) { /* no toast host */ }
 }
@@ -102,6 +110,8 @@ function _build() {
   close.textContent = '✖';
   close.addEventListener('click', (e) => { e.preventDefault(); closeApolloPane(); });
   header.appendChild(h);
+  const switcher = Sp.createSwitcher();
+  header.appendChild(switcher.el);
   header.appendChild(close);
 
   // The status sits outside the views, so the dock's pane header can read it.
@@ -112,7 +122,7 @@ function _build() {
   content.appendChild(status);
   content.appendChild(body);
   modal.appendChild(content);
-  return { modal, content, header, status, body };
+  return { modal, content, header, status, body, switcher };
 }
 
 function _section(title, extra) {
@@ -221,10 +231,18 @@ function _approvalRow(a) {
   return row;
 }
 
-function _needsSection(list, approvals = []) {
-  if (!list.length && !approvals.length) return null;
+function _needsSection(list, approvals = [], locked = []) {
+  if (!list.length && !approvals.length && !locked.length) return null;
   const s = _section('Needs you');
   s.classList.add('apo-needs');
+  // A locked space says only that something there needs the person; what it
+  // is stays behind the airgap until they go in.
+  for (const sp of locked) {
+    const row = _el('div', 'apo-need apo-need-locked');
+    row.appendChild(_el('p', 'apo-q', M.lockedLine(sp)));
+    row.appendChild(_btn('apo-small', 'Go there', () => Sp.switchTo(sp.id), `Go to ${sp.name}`));
+    s.appendChild(row);
+  }
   for (const a of approvals) s.appendChild(_approvalRow(a));
   for (const t of list) {
     const row = _el('div', 'apo-need');
@@ -294,9 +312,27 @@ function _devicesSection(ws, phone) {
   return s;
 }
 
-function _activitySection(tasks) {
+function _reachToggle() {
+  const wrap = _el('span', 'apo-reach');
+  wrap.setAttribute('role', 'group');
+  wrap.setAttribute('aria-label', 'Which activity to show');
+  for (const [key, words] of [['here', 'This space'], ['all', 'All']]) {
+    const b = _btn(`apo-small apo-reach-b${_reach === key ? ' apo-on' : ''}`, words, () => {
+      if (_reach === key) return;
+      _reach = key;
+      _showAll = false;
+      _refresh();
+    });
+    b.setAttribute('aria-pressed', String(_reach === key));
+    wrap.appendChild(b);
+  }
+  return wrap;
+}
+
+function _activitySection(tasks, spaces = []) {
   const all = Array.isArray(tasks) ? tasks : [];
-  const s = _section('Activity');
+  const s = _section('Activity', spaces.length ? _reachToggle() : null);
+  const names = new Map(spaces.map((x) => [x.id, x.name]));
   if (!all.length) {
     s.appendChild(_el('p', 'apo-empty', 'Nothing yet. Ask Apollo for something in the chat and it shows here.'));
     return s;
@@ -310,8 +346,10 @@ function _activitySection(tasks) {
     const { dot, words } = _dot(t.state);
     b.appendChild(dot);
     b.appendChild(_el('span', 'apo-row-t', t.title));
+    const where = _reach === 'all' && t.space_id ? names.get(t.space_id) : '';
+    if (where) b.appendChild(_el('span', 'apo-row-sp', where));
     b.appendChild(_el('span', 'apo-row-s', words));
-    b.setAttribute('aria-label', `${t.title}, ${words}`);
+    b.setAttribute('aria-label', where ? `${t.title}, in ${where}, ${words}` : `${t.title}, ${words}`);
     b.addEventListener('click', () => _openTask(t.id));
     li.appendChild(b);
     list.appendChild(li);
@@ -335,6 +373,40 @@ function _outputsSection(tasks) {
     const li = _el('li', 'apo-out');
     li.appendChild(_btn('apo-link apo-out-t', o.title, () => _openTask(o.id)));
     li.appendChild(_el('p', 'apo-out-line', o.outcome));
+    list.appendChild(li);
+  }
+  s.appendChild(list);
+  return s;
+}
+
+function _spacesSection(state, spaces) {
+  const kids = (state && Array.isArray(state.children)) ? state.children : [];
+  const here = state && state.space;
+  if (!kids.length && !here && spaces.length) return null;
+  const s = _section('Spaces', here
+    ? _btn('apo-link', 'About this space', () => { _view = 'space'; _deleting = ''; _refresh(); })
+    : null);
+  if (!kids.length) {
+    s.appendChild(_el('p', 'apo-empty', here
+      ? 'No spaces inside this one.'
+      : 'Keep work apart with spaces, like one for a job and one for home. Make one from the switcher at the top.'));
+    return s;
+  }
+  const list = _el('ul', 'apo-list');
+  for (const k of kids) {
+    const li = _el('li', 'apo-row');
+    const b = _el('button', 'apo-row-b');
+    b.type = 'button';
+    if (k.sealed) {
+      const lock = _el('span', 'apo-lock');
+      lock.innerHTML = Sp.LOCK_ICON;   // a constant, never server text
+      b.appendChild(lock);
+    }
+    b.appendChild(_el('span', 'apo-row-t', k.name));
+    b.appendChild(_el('span', 'apo-row-s', M.childLine(k)));
+    b.setAttribute('aria-label', `${k.name}. ${M.childLine(k)} Go there`);
+    b.addEventListener('click', () => Sp.switchTo(k.id));
+    li.appendChild(b);
     list.appendChild(li);
   }
   s.appendChild(list);
@@ -367,13 +439,15 @@ function _loopsSection(notes) {
 }
 
 async function _drawMain(gen) {
-  const [state, tasksOut, notesOut, ws, apprOut, phone] = await Promise.all([
-    _api('/api/apollo/state'),
-    _api('/api/apollo/tasks'),
-    _api('/api/apollo/notebook?kind=open_loop&state=open'),
+  const reach = _reachParam();
+  const [state, tasksOut, notesOut, ws, apprOut, phone, spaces] = await Promise.all([
+    _api(`/api/apollo/state?space=${_here()}`),
+    _api(`/api/apollo/tasks?space=${reach}`),
+    _api(`/api/apollo/notebook?kind=open_loop&state=open&space=${reach}`),
     fetch('/api/workstation/status', { credentials: 'same-origin' }).then((r) => (r.ok ? r.json() : null)).catch(() => null),
-    _api('/api/apollo/approvals').catch(() => null),
+    _api(`/api/apollo/approvals?space=${reach}`).catch(() => null),
     fetch('/api/workstation/phone', { credentials: 'same-origin', cache: 'no-store' }).then((r) => (r.ok ? r.json() : null)).catch(() => null),
+    Sp.loadSpaces().catch(() => Sp.spaceList()),
   ]);
   if (gen !== _gen || !_win) return;
   const tasks = (tasksOut && tasksOut.tasks) || [];
@@ -381,11 +455,14 @@ async function _drawMain(gen) {
   const body = _win.body;
   body.textContent = '';
   body.appendChild(_profile(state));
-  const needs = _needsSection(M.needsYou(tasks), (apprOut && apprOut.approvals) || []);
+  const needs = _needsSection(M.needsYou(tasks), (apprOut && apprOut.approvals) || [],
+    M.lockedNeeds(spaces, Sp.currentSpace()));
   if (needs) body.appendChild(needs);
   body.appendChild(_computerSection(ws));
   body.appendChild(_devicesSection(ws, phone));
-  body.appendChild(_activitySection(tasks));
+  body.appendChild(_activitySection(tasks, spaces));
+  const room = _spacesSection(state, spaces);
+  if (room) body.appendChild(room);
   const outs = _outputsSection(tasks);
   if (outs) body.appendChild(outs);
   const loops = _loopsSection(notesOut && notesOut.notes);
@@ -529,7 +606,7 @@ function _lineRow(line) {
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
       try {
-        await _api(`/api/apollo/knows/${encodeURIComponent(line.id)}`, { method: 'PATCH', body: { text: input.value } });
+        await _api(`/api/apollo/knows/${encodeURIComponent(line.id)}?space=${_here()}`, { method: 'PATCH', body: { text: input.value } });
         _editing = '';
         _say('Saved. Apollo takes it as you wrote it.');
         _refresh();
@@ -541,11 +618,19 @@ function _lineRow(line) {
   }
   li.appendChild(_el('span', 'apo-line-t', line.text));
   if (line.basis !== 'stated' && line.evidence) li.appendChild(_el('span', 'apo-line-why', `From: ${line.evidence}`));
+  if (line.via_grant) {
+    // Read through a grant: it informs this space and is changed only in its own.
+    li.appendChild(_el('span', 'apo-line-why', `From ${line.space}, read only.`));
+    return li;
+  }
+  if (line.space && line.space_id !== Sp.currentSpace()) {
+    li.appendChild(_el('span', 'apo-line-why', `Kept in ${line.space}.`));
+  }
   const acts = _el('span', 'apo-acts');
   if (line.basis !== 'stated') {
     acts.appendChild(_btn('apo-small', 'That is right', async () => {
       try {
-        await _api(`/api/apollo/knows/${encodeURIComponent(line.id)}/confirm`, { method: 'POST' });
+        await _api(`/api/apollo/knows/${encodeURIComponent(line.id)}/confirm?space=${_here()}`, { method: 'POST' });
         _say('Confirmed.');
         _refresh();
       } catch (err) { _say(err.message); }
@@ -554,7 +639,7 @@ function _lineRow(line) {
   acts.appendChild(_btn('apo-small', 'Edit', () => { _editing = line.id; _refresh(); }, `Edit: ${line.text}`));
   acts.appendChild(_btn('apo-small', 'Forget', async () => {
     try {
-      await _api(`/api/apollo/knows/${encodeURIComponent(line.id)}`, { method: 'DELETE' });
+      await _api(`/api/apollo/knows/${encodeURIComponent(line.id)}?space=${_here()}`, { method: 'DELETE' });
       _say('Forgotten.');
       _refresh();
     } catch (err) { _say(err.message); }
@@ -564,7 +649,8 @@ function _lineRow(line) {
 }
 
 async function _drawKnows(gen) {
-  const [state, out] = await Promise.all([_api('/api/apollo/state'), _api('/api/apollo/knows')]);
+  const [state, out] = await Promise.all([
+    _api(`/api/apollo/state?space=${_here()}`), _api(`/api/apollo/knows?space=${_here()}`)]);
   if (gen !== _gen || !_win) return;
   _setStatus(state);
   const { stated, inferred } = M.knowsGroups(out && out.lines);
@@ -572,6 +658,9 @@ async function _drawKnows(gen) {
   body.textContent = '';
   body.appendChild(_back());
   body.appendChild(_el('h5', 'apo-task-t', 'What Apollo knows'));
+  if (state && state.space) {
+    body.appendChild(_el('p', 'apo-empty', `In ${M.spaceLabel(state.space)}: what's kept here and above it, and anything this space was given read of.`));
+  }
 
   const add = _el('form', 'apo-add');
   const input = _el('input', 'apo-input');
@@ -588,7 +677,7 @@ async function _drawKnows(gen) {
     const text = input.value.trim();
     if (!text) return;
     try {
-      await _api('/api/apollo/knows', { method: 'POST', body: { text } });
+      await _api(`/api/apollo/knows?space=${_here()}`, { method: 'POST', body: { text } });
       input.value = '';
       _say('Got it.');
       _refresh();
@@ -614,6 +703,178 @@ async function _drawKnows(gen) {
   body.appendChild(guessed);
 }
 
+/* ───────────── the space view ───────────── */
+
+function _switchRow(text, hint, on, disabled, onChange) {
+  const row = _el('label', 'apo-switch');
+  const box = _el('input');
+  box.type = 'checkbox';
+  box.checked = !!on;
+  box.disabled = !!disabled;
+  box.addEventListener('change', () => onChange(box.checked, box));
+  row.appendChild(box);
+  const words = _el('span', 'apo-switch-w');
+  words.appendChild(_el('span', 'apo-switch-t', text));
+  if (hint) words.appendChild(_el('span', 'apo-switch-h', hint));
+  row.appendChild(words);
+  return row;
+}
+
+function _readRow(r) {
+  const li = _el('li', 'apo-line');
+  li.appendChild(_el('span', 'apo-line-t', M.contextLine(r)));
+  if (r.grant_id) {
+    const acts = _el('span', 'apo-acts');
+    acts.appendChild(_btn('apo-small', 'Revoke', async () => {
+      try {
+        await _api(`/api/apollo/grants/${encodeURIComponent(r.grant_id)}`, { method: 'DELETE' });
+        _say('Revoked.');
+        _refresh();
+      } catch (err) { _say(err.message); }
+    }, `Revoke: ${M.contextLine(r)}`));
+    li.appendChild(acts);
+  }
+  return li;
+}
+
+async function _drawSpace(gen) {
+  const id = Sp.currentSpace();
+  if (!id) { _view = 'main'; await _drawMain(gen); return; }
+  const key = encodeURIComponent(id);
+  const [state, ctx, spaces] = await Promise.all([
+    _api(`/api/apollo/state?space=${key}`),
+    _api(`/api/apollo/spaces/${key}/context`),
+    Sp.loadSpaces().catch(() => Sp.spaceList()),
+  ]);
+  if (gen !== _gen || !_win) return;
+  _setStatus(state);
+  const sp = ctx.space;
+  const patch = async (fields, said) => {
+    try {
+      await _api(`/api/apollo/spaces/${key}`, { method: 'PATCH', body: fields });
+      if (said) _say(said);
+      await Sp.loadSpaces().catch(() => null);
+      Sp.noteSpace(id);
+    } catch (err) { _say(err.message); }
+    _refresh();
+  };
+  const body = _win.body;
+  body.textContent = '';
+  body.appendChild(_back());
+  body.appendChild(_el('h5', 'apo-task-t', M.spaceLabel(sp)));
+
+  const name = _el('form', 'apo-add');
+  const input = _el('input', 'apo-input');
+  input.type = 'text';
+  input.value = sp.name || '';
+  input.maxLength = 60;
+  input.setAttribute('aria-label', 'Name of this space');
+  const save = _el('button', 'apo-btn', 'Rename');
+  save.type = 'submit';
+  name.appendChild(input);
+  name.appendChild(save);
+  name.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const text = input.value.trim();
+    if (text && text !== sp.name) patch({ name: text }, 'Renamed.');
+  });
+  body.appendChild(name);
+
+  const edges = _section('Edges');
+  const inherited = sp.sealed && !sp.airgapped;
+  edges.appendChild(_switchRow('Airgapped',
+    inherited ? 'A space above this one is airgapped, so this one is too.'
+      : "Nothing outside reads in, and it reads nothing outside. Turning it on ends this space's grants.",
+    sp.sealed, inherited, (on) => patch({ airgapped: on }, on ? 'Airgapped.' : 'The airgap is off.')));
+  edges.appendChild(_switchRow('Local models only',
+    sp.airgapped ? "Nothing here goes to a paid model's server." : 'Needs this space airgapped first.',
+    sp.local_only, !sp.airgapped, (on) => patch({ local_only: on }, on ? 'Local models only here.' : 'Any model may work here.')));
+  body.appendChild(edges);
+
+  const from = _section('Reads from');
+  const fromRows = ctx.reads_from || [];
+  if (fromRows.length) {
+    const list = _el('ul', 'apo-list');
+    fromRows.forEach((r) => list.appendChild(_readRow(r)));
+    from.appendChild(list);
+  } else from.appendChild(_el('p', 'apo-empty', sp.sealed ? 'Nothing. It is airgapped.' : 'Nothing but what it holds.'));
+  const sources = M.grantSources(spaces, id, ctx, 'memory');
+  const sourcesOut = M.grantSources(spaces, id, ctx, 'outcomes');
+  if (!sp.sealed && (sources.length || sourcesOut.length)) {
+    const give = _el('form', 'apo-add apo-give');
+    const scope = _el('select', 'apo-input');
+    scope.setAttribute('aria-label', 'What this space may read');
+    for (const [v, words] of [['memory', 'What you told Apollo'], ['outcomes', 'What tasks came to']]) {
+      const o = _el('option', '', words);
+      o.value = v;
+      scope.appendChild(o);
+    }
+    const src = _el('select', 'apo-input');
+    src.setAttribute('aria-label', 'In which space');
+    const fill = () => {
+      src.textContent = '';
+      for (const x of M.grantSources(spaces, id, ctx, scope.value)) {
+        const o = _el('option', '', x.path || x.name);
+        o.value = x.id;
+        src.appendChild(o);
+      }
+    };
+    fill();
+    scope.addEventListener('change', fill);
+    const add = _el('button', 'apo-btn apo-primary', 'Let it read');
+    add.type = 'submit';
+    give.appendChild(_el('span', 'apo-give-w', 'Let this space read'));
+    give.appendChild(scope);
+    give.appendChild(_el('span', 'apo-give-w', 'in'));
+    give.appendChild(src);
+    give.appendChild(add);
+    give.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (!src.value) return;
+      try {
+        await _api(`/api/apollo/spaces/${key}/grants`, { method: 'POST', body: { source_id: src.value, scope: scope.value } });
+        _say('Done. It reads that from now on, and can change none of it.');
+        _refresh();
+      } catch (err) { _say(err.message); }
+    });
+    from.appendChild(give);
+  }
+  body.appendChild(from);
+
+  const by = _section('Read by');
+  const byRows = ctx.read_by || [];
+  if (byRows.length) {
+    const list = _el('ul', 'apo-list');
+    byRows.forEach((r) => list.appendChild(_readRow(r)));
+    by.appendChild(list);
+  } else by.appendChild(_el('p', 'apo-empty', 'No other space reads this one.'));
+  body.appendChild(by);
+
+  const uses = ctx.uses || [];
+  if (uses.length) {
+    const u = _section('Last reads');
+    const list = _el('ul', 'apo-list');
+    for (const x of uses) list.appendChild(_el('li', 'apo-line apo-line-t', x.what));
+    u.appendChild(list);
+    body.appendChild(u);
+  }
+
+  const del = _section('Delete');
+  del.appendChild(_el('p', 'apo-empty', 'Only an empty space can go: move or finish its tasks, and delete the spaces inside it, first.'));
+  del.appendChild(_btn(`apo-small${_deleting === id ? ' apo-danger' : ''}`,
+    _deleting === id ? 'Press again to delete' : 'Delete this space', async () => {
+      if (_deleting !== id) { _deleting = id; _refresh(); return; }
+      _deleting = '';
+      try {
+        await _api(`/api/apollo/spaces/${key}`, { method: 'DELETE' });
+        _say('Deleted.');
+        _view = 'main';
+        await Sp.switchTo(sp.parent_id || null);
+      } catch (err) { _say(err.message); _refresh(); }
+    }, `Delete ${sp.name}`));
+  body.appendChild(del);
+}
+
 /* ───────────── refresh and lifecycle ───────────── */
 
 function _openTask(id) {
@@ -629,6 +890,7 @@ async function _refresh() {
   try {
     if (_view === 'task' && _taskId) await _drawTask(gen);
     else if (_view === 'knows') await _drawKnows(gen);
+    else if (_view === 'space') await _drawSpace(gen);
     else await _drawMain(gen);
   } catch (err) {
     if (gen !== _gen || !_win) return;
@@ -654,12 +916,16 @@ function _teardown() {
   ++_gen;
   if (_timer) { clearTimeout(_timer); _timer = null; }
   _dropChat();
+  if (_offSpace) { _offSpace(); _offSpace = null; }
+  if (_win.switcher) _win.switcher.destroy();
   const modal = _win.modal;
   _win = null;
   _view = 'main';
   _taskId = '';
   _editing = '';
   _showAll = false;
+  _reach = 'here';
+  _deleting = '';
   if (modal.parentNode) modal.parentNode.removeChild(modal);
 }
 
@@ -675,6 +941,16 @@ export function openApolloPane() {
   _win = _build();
   document.body.appendChild(_win.modal);
   Modals.register(MODAL_ID, { restoreFn: _refresh, closeFn: _teardown });
+  // Moving Apollo to another space shows that space from the top.
+  _offSpace = Sp.onSpaceChange(() => {
+    _view = 'main';
+    _taskId = '';
+    _editing = '';
+    _deleting = '';
+    _showAll = false;
+    _dropChat();
+    _refresh();
+  });
   Modals.injectMinimizeButton(_win.modal, MODAL_ID);
   makeWindowDraggable(_win.modal, {
     content: _win.content, header: _win.header,

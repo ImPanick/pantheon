@@ -23,7 +23,8 @@ STATES = ("open", "settled", "dropped")
 TEXT_MAX = 600
 
 
-def add(db, owner: str, text: Any, *, kind: str = "working", task_id: Optional[str] = None):
+def add(db, owner: str, text: Any, *, kind: str = "working", task_id: Optional[str] = None,
+        space_id: Any = None):
     from core.database import ApolloNote
     words = " ".join(str(text or "").split())
     if not words:
@@ -32,7 +33,9 @@ def add(db, owner: str, text: Any, *, kind: str = "working", task_id: Optional[s
         raise ApolloRefused(f"A note is a line, {TEXT_MAX} characters at most.")
     if kind not in KINDS:
         raise ApolloRefused("A note is an open loop, a thing talked through, or a working note.")
-    note = ApolloNote(id=str(uuid.uuid4()), owner=owner, kind=kind, text=words,
+    from src.apollo import spaces as S
+    space = S.resolve(db, owner, space_id)
+    note = ApolloNote(id=str(uuid.uuid4()), owner=owner, space_id=space, kind=kind, text=words,
                       state="open", task_id=task_id)
     db.add(note)
     db.flush()
@@ -58,9 +61,23 @@ def set_state(db, owner: str, note_id: str, state: str):
 
 
 def list_for(db, owner: str, *, kind: Optional[str] = None, state: Optional[str] = None,
-             limit: int = 60) -> List[Any]:
+             limit: int = 60, space: Any = "all") -> List[Any]:
+    """Notes in a space, in the spaces a scope reads (a list, None is the top
+    layer), or by default in every space but the sealed ones."""
     from core.database import ApolloNote
+    from src.apollo import spaces as S
     q = db.query(ApolloNote).filter(ApolloNote.owner == owner)
+    if space == S.ALL:
+        sealed = S.sealed_ids(db, owner)
+        if sealed:
+            q = q.filter((ApolloNote.space_id.is_(None)) | (ApolloNote.space_id.notin_(sealed)))
+    else:
+        ids = list(space) if isinstance(space, (list, tuple, set)) else [space]
+        named = [i for i in ids if i]
+        if None in ids:
+            q = q.filter((ApolloNote.space_id.is_(None)) | (ApolloNote.space_id.in_(named or [""])))
+        else:
+            q = q.filter(ApolloNote.space_id.in_(named))
     if kind:
         q = q.filter(ApolloNote.kind == kind)
     if state:
@@ -70,5 +87,5 @@ def list_for(db, owner: str, *, kind: Optional[str] = None, state: Optional[str]
 
 def to_dict(note) -> Dict[str, Any]:
     return {"id": note.id, "kind": note.kind, "text": note.text, "state": note.state,
-            "task_id": note.task_id,
+            "task_id": note.task_id, "space_id": note.space_id,
             "updated_at": note.updated_at.isoformat() + "Z" if note.updated_at else None}

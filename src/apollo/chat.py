@@ -123,7 +123,7 @@ def post_line(session_manager: Any, owner: str, line: str, meta: Optional[Dict[s
     return True
 
 
-def waiting_approvals(db, owner: str) -> list:
+def waiting_approvals(db, owner: str, space: Any = "all") -> list:
     """The approvals the owner's Apollo leads are waiting on right now, one per
     parked run: `{task_id, title, run_task_id, run_id, approval_id, tool,
     question, why}`. Answered through the run's own door (`POST /api/tasks/{id}/
@@ -133,8 +133,9 @@ def waiting_approvals(db, owner: str) -> list:
     from src.agents import hires as H
     from src.task_scheduler import plain_waiting_list
 
+    from src.apollo import tasks as Tk
     by_run_task: Dict[str, Any] = {}
-    rows = (db.query(ApolloTask)
+    rows = (Tk._in_spaces(db.query(ApolloTask), db, owner, space)
             .filter(ApolloTask.owner == owner, ApolloTask.hire_id.isnot(None),
                     ApolloTask.state != "done")
             .all())

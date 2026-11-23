@@ -99,6 +99,14 @@ def prepare(db, owner: str, task, *, endpoint_url: Optional[str] = None,
             endpoint_url, _model, _h = resolve_task_endpoint(owner=owner)
         except Exception:
             endpoint_url = None
+    if task.space_id:
+        from src.apollo import spaces as S
+        sc = S.scope(db, owner, task.space_id, "memory")
+        if sc.local_only and B.billed(endpoint_url):
+            sentence = S.LOCAL_ONLY.format(name=sc.names.get(sc.edge, "This space"))
+            T.set_state(task, "needs_you", question=sentence)
+            db.flush()
+            return None, sentence
     ok, sentence = B.may_spend(task, endpoint_url)
     if not ok:
         T.set_state(task, "needs_you", question=sentence)
