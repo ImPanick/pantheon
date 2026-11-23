@@ -12,6 +12,10 @@ A task has a state the person can read at a glance and the server enforces:
 stuck on nothing, and an answered question doesn't linger. Every function
 takes the owner, and another person's task is "not found", never "forbidden",
 so its existence isn't told either.
+
+A task lives in one space (`space_id`, None for the top layer). `list_for`
+reads one space, the spaces a `Scope` may read, or, by default, every space
+but those inside an airgap's edge (`src.apollo.spaces`).
 """
 
 from __future__ import annotations
@@ -67,7 +71,7 @@ def get(db, owner: str, task_id: Any):
 
 def create(db, owner: str, *, title: Any, brief: Any = None, kind: Any = None,
            parent_id: Any = None, lead_agent: Any = None, budget_tokens: Any = None,
-           started_by: str = "person", pick=None):
+           started_by: str = "person", pick=None, space_id: Any = None):
     """A new task for `owner`. Its lead is the agent named, if it exists for
     this person, or else the roster's best fit (`lead.pick_lead`); with no fit
     the task still starts, led by Apollo, and says the roster has a gap."""
@@ -79,7 +83,11 @@ def create(db, owner: str, *, title: Any, brief: Any = None, kind: Any = None,
     title = _line(title, TITLE_MAX, "A task's title", required=True)
     brief = _brief(brief)
     kind = _line(kind, KIND_MAX, "A kind of work")
+    from src.apollo import spaces as S
+    space = S.resolve(db, owner, space_id)
     parent = get(db, owner, parent_id) if parent_id else None
+    if parent is not None and (parent.space_id or None) != space:
+        raise ApolloRefused("A sub-task lives in its parent's space.", 409)
     tokens = B.check_person_budget(budget_tokens)
     lead = None
     note = None
@@ -97,7 +105,8 @@ def create(db, owner: str, *, title: Any, brief: Any = None, kind: Any = None,
             lead = found["id"]
         else:
             note = "No agent in the roster fits this yet, so Apollo leads it."
-    task = ApolloTask(id=str(uuid.uuid4()), owner=owner, title=title, brief=brief, kind=kind,
+    task = ApolloTask(id=str(uuid.uuid4()), owner=owner, space_id=space,
+                      title=title, brief=brief, kind=kind,
                       parent_id=parent.id if parent else None, state="working",
                       lead_agent=lead, budget_tokens=tokens, spent_tokens=0,
                       started_by=started_by, next_step=note)
@@ -106,10 +115,27 @@ def create(db, owner: str, *, title: Any, brief: Any = None, kind: Any = None,
     return task
 
 
-def list_for(db, owner: str, *, state: Optional[str] = None, include_done: bool = True,
-             parent_id: Optional[str] = None, limit: int = 50) -> List[Any]:
+def _in_spaces(q, db, owner: str, space: Any):
+    """Filter a task query to a space: `ALL` (every space but the sealed ones),
+    a list of space ids (None is the top layer), or one space id / None."""
     from core.database import ApolloTask
-    q = db.query(ApolloTask).filter(ApolloTask.owner == owner)
+    from src.apollo import spaces as S
+    if space == S.ALL:
+        sealed = S.sealed_ids(db, owner)
+        return q.filter((ApolloTask.space_id.is_(None)) | (ApolloTask.space_id.notin_(sealed))) if sealed else q
+    ids = list(space) if isinstance(space, (list, tuple, set)) else [space]
+    named = [i for i in ids if i]
+    if None in ids and named:
+        return q.filter((ApolloTask.space_id.is_(None)) | (ApolloTask.space_id.in_(named)))
+    if None in ids:
+        return q.filter(ApolloTask.space_id.is_(None))
+    return q.filter(ApolloTask.space_id.in_(named))
+
+
+def list_for(db, owner: str, *, state: Optional[str] = None, include_done: bool = True,
+             parent_id: Optional[str] = None, limit: int = 50, space: Any = "all") -> List[Any]:
+    from core.database import ApolloTask
+    q = _in_spaces(db.query(ApolloTask).filter(ApolloTask.owner == owner), db, owner, space)
     if state:
         if state not in STATES:
             raise ApolloRefused("A task is working, needs you, waiting or done.")
@@ -142,11 +168,12 @@ def set_state(task, state: str, *, question: Any = None, next_step: Any = ...,
 
 
 def update(db, owner: str, task_id: Any, fields: Dict[str, Any]):
-    """The person's edits: title, brief, kind, lead, budget, next step, state."""
+    """The person's edits: title, brief, kind, lead, budget, next step, state,
+    and the space it lives in (its sub-tasks move with it)."""
     task = get(db, owner, task_id)
     fields = fields if isinstance(fields, dict) else {}
     unknown = set(fields) - {"title", "brief", "kind", "lead_agent", "budget_tokens",
-                             "next_step", "state", "question", "outcome"}
+                             "next_step", "state", "question", "outcome", "space_id"}
     if unknown:
         raise ApolloRefused(f"A task has no {sorted(unknown)[0]} to change.")
     if "title" in fields:
@@ -166,6 +193,8 @@ def update(db, owner: str, task_id: Any, fields: Dict[str, Any]):
             task.lead_agent = None
     if "budget_tokens" in fields:
         task.budget_tokens = B.check_person_budget(fields["budget_tokens"])
+    if "space_id" in fields:
+        move(db, owner, task, fields["space_id"])
     if "state" in fields:
         set_state(task, fields["state"], question=fields.get("question"),
                   next_step=fields.get("next_step", ...), outcome=fields.get("outcome", ...))
@@ -177,6 +206,25 @@ def update(db, owner: str, task_id: Any, fields: Dict[str, Any]):
     task.updated_at = _now()
     db.flush()
     return task
+
+
+def move(db, owner: str, task, space_id: Any) -> None:
+    """Move a top-level task, and every sub-task under it, to another space."""
+    from core.database import ApolloTask
+    from src.apollo import spaces as S
+    if task.parent_id:
+        raise ApolloRefused("A sub-task moves with its parent.", 409)
+    to = S.resolve(db, owner, space_id)
+    todo, seen = [task], set()
+    while todo:
+        t = todo.pop()
+        if t.id in seen:
+            continue
+        seen.add(t.id)
+        t.space_id = to
+        todo.extend(db.query(ApolloTask).filter(ApolloTask.owner == owner,
+                                                ApolloTask.parent_id == t.id).all())
+    db.flush()
 
 
 def answer(db, owner: str, task_id: Any, words: Any):
@@ -192,13 +240,23 @@ def answer(db, owner: str, task_id: Any, words: Any):
     return task
 
 
-def status(db, owner: str) -> Dict[str, Any]:
-    """What Apollo is doing now, for the pane header: Needs you, Working on N, Idle."""
+def status(db, owner: str, space: Any = "all") -> Dict[str, Any]:
+    """What Apollo is doing now, for the pane header: Needs you, Working on N,
+    Idle. Sealed spaces aren't counted in the All view; `sealed_needs_you`
+    says only that something behind an airgap waits on the person."""
     from sqlalchemy import func
 
     from core.database import ApolloTask
-    counts = dict(db.query(ApolloTask.state, func.count(ApolloTask.id))
-                  .filter(ApolloTask.owner == owner).group_by(ApolloTask.state).all())
+    from src.apollo import spaces as S
+    q = _in_spaces(db.query(ApolloTask.state, func.count(ApolloTask.id))
+                   .filter(ApolloTask.owner == owner), db, owner, space)
+    counts = dict(q.group_by(ApolloTask.state).all())
+    sealed_needs = False
+    if space == S.ALL:
+        sealed = S.sealed_ids(db, owner)
+        sealed_needs = bool(sealed and db.query(ApolloTask.id).filter(
+            ApolloTask.owner == owner, ApolloTask.space_id.in_(sealed),
+            ApolloTask.state == "needs_you").first())
     needs = int(counts.get("needs_you", 0))
     working = int(counts.get("working", 0))
     waiting = int(counts.get("waiting", 0))
@@ -209,7 +267,8 @@ def status(db, owner: str) -> Dict[str, Any]:
     else:
         state, words = "idle", "Idle"
     return {"state": state, "words": words,
-            "counts": {s: int(counts.get(s, 0)) for s in STATES}, "waiting": waiting}
+            "counts": {s: int(counts.get(s, 0)) for s in STATES}, "waiting": waiting,
+            "sealed_needs_you": sealed_needs}
 
 
 def to_dict(task, *, budget_cap: Optional[int] = None) -> Dict[str, Any]:
@@ -220,6 +279,7 @@ def to_dict(task, *, budget_cap: Optional[int] = None) -> Dict[str, Any]:
         "state": task.state, "state_words": STATE_WORDS.get(task.state, task.state),
         "next_step": task.next_step, "question": task.question, "outcome": task.outcome,
         "lead_agent": task.lead_agent, "parent_id": task.parent_id,
+        "space_id": task.space_id,
         "hire_id": task.hire_id, "session_id": task.session_id,
         "budget_tokens": task.budget_tokens, "spent_tokens": int(task.spent_tokens or 0),
         "budget_limit": B.limit_for(task, cap=budget_cap),

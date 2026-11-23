@@ -258,9 +258,10 @@ def test_what_apollo_knows_splits_stated_from_inferred_and_each_can_be_changed(b
     assert o["why"] == ["From: picked the aisle twice"]
     assert o["confirmOnStated"] is False
     assert [(w["method"], w["url"]) for w in o["writes"]] == [
-        ("POST", "/api/apollo/knows/k2/confirm"),
-        ("DELETE", "/api/apollo/knows/k1"),
-        ("POST", "/api/apollo/knows"),
+        # The top layer, by name: what's kept there (phase 3, Spaces).
+        ("POST", "/api/apollo/knows/k2/confirm?space=top"),
+        ("DELETE", "/api/apollo/knows/k1?space=top"),
+        ("POST", "/api/apollo/knows?space=top"),
     ]
     assert o["writes"][2]["body"] == {"text": "My sister is Maya"}
 

@@ -195,3 +195,73 @@ export function pendingApproval(history) {
   }
   return null;
 }
+
+/* ───────────── spaces (phase 3) ───────────── */
+
+/** The words for where Apollo is: the top layer or a space's path. */
+export function spaceLabel(space) {
+  if (!space) return 'Apollo';
+  return String(space.path || space.name || 'A space');
+}
+
+/** One line for a child space, as its parent sees it: counts, never
+ *  contents. An airgapped child says only whether something needs you. */
+export function childLine(child) {
+  const c = child || {};
+  if (c.sealed) return c.needs_you ? 'Locked. Something there needs you.' : 'Locked.';
+  const open = Number(c.open) || 0;
+  const needs = Number(c.needs_you) || 0;
+  if (!open) return 'Nothing open.';
+  const bits = [`${open} open`];
+  if (needs) bits.push(`${needs} need${needs === 1 ? 's' : ''} you`);
+  return `${bits.join(', ')}.`;
+}
+
+/** The spaces a space may be given read of: in the open, not itself, not
+ *  one above it (it already reads those), and not one it already reads for
+ *  that kind of content. */
+export function grantSources(spaces, current, context, scope) {
+  const list = Array.isArray(spaces) ? spaces : [];
+  const here = list.find((s) => s && s.id === current);
+  if (!here || here.sealed) return [];
+  const above = new Set();
+  let at = here;
+  while (at && at.parent_id) {
+    above.add(at.parent_id);
+    at = list.find((s) => s.id === at.parent_id);
+  }
+  const have = new Set(((context && context.reads_from) || [])
+    .filter((r) => r && r.how === 'grant' && r.scope === scope).map((r) => r.space_id));
+  return list.filter((s) => s && s.id !== current && !s.sealed && !above.has(s.id) && !have.has(s.id));
+}
+
+/** What a Context row says: where the read comes from and what it reads. */
+export function contextLine(row) {
+  const r = row || {};
+  const what = { memory: 'what you told Apollo there', outcomes: 'what its tasks came to' }[r.scope] || '';
+  if (r.how === 'above') return `${r.name}: everything, because it's above this space.`;
+  if (r.how === 'below') return `${r.name}: everything here, because it's inside this space.`;
+  return `${r.name}: ${what}, read only.`;
+}
+
+/** Locked spaces where something needs the person, from the spaces list,
+ *  leaving out the space Apollo is in and those above or inside it (whose
+ *  needs the pane already shows). */
+export function lockedNeeds(spaces, current) {
+  const list = Array.isArray(spaces) ? spaces : [];
+  const byId = new Map(list.map((s) => [s && s.id, s]));
+  const chain = (id) => {
+    const out = [];
+    let at = byId.get(id);
+    while (at && out.length <= list.length) { out.push(at.id); at = byId.get(at.parent_id); }
+    return out;
+  };
+  const above = new Set(current ? chain(current) : []);
+  return list.filter((s) => s && s.sealed && s.needs_you && !above.has(s.id)
+    && !(current && chain(s.id).includes(current)));
+}
+
+/** What the pane says of a locked space that needs the person. */
+export function lockedLine(space) {
+  return `${(space && space.name) || 'A locked space'} is locked. Something there needs you.`;
+}

@@ -23,7 +23,7 @@ from pydantic import BaseModel
 from core.database import SessionLocal
 from src.apollo import APOLLO_NAME
 from src.apollo import budget as B
-from src.apollo import knows, notebook, tasks
+from src.apollo import knows, notebook, spaces, tasks
 from src.apollo.errors import ApolloRefused
 from src.auth_helpers import get_current_user
 from src.owner_identity import REQUEST_SENTINEL_OWNERS
@@ -31,6 +31,7 @@ from src.owner_identity import REQUEST_SENTINEL_OWNERS
 
 class TaskIn(BaseModel):
     title: str
+    space_id: Optional[str] = None
     brief: Optional[str] = None
     kind: Optional[str] = None
     parent_id: Optional[str] = None
@@ -49,6 +50,7 @@ class TaskPatch(BaseModel):
     state: Optional[str] = None
     question: Optional[str] = None
     outcome: Optional[str] = None
+    space_id: Optional[str] = None
 
 
 class AnswerIn(BaseModel):
@@ -72,6 +74,23 @@ class LineIn(BaseModel):
 
 class LineEdit(BaseModel):
     text: str
+
+
+class SpaceIn(BaseModel):
+    name: str
+    parent_id: Optional[str] = None
+    airgapped: bool = False
+
+
+class SpacePatch(BaseModel):
+    name: Optional[str] = None
+    airgapped: Optional[bool] = None
+    local_only: Optional[bool] = None
+
+
+class GrantIn(BaseModel):
+    source_id: str
+    scope: str
 
 
 def _refused(err: ApolloRefused) -> JSONResponse:
@@ -116,20 +135,41 @@ def setup_apollo_routes() -> APIRouter:
         except ApolloRefused as err:
             return _refused(err)
 
+    def _view(db, owner: str, space: Optional[str]):
+        """`?space=`: `all` (or absent) is every space but the sealed ones;
+        `top` is Apollo's own layer; anything else is one of the person's
+        spaces, read on its own."""
+        if space in (None, "", spaces.ALL):
+            return spaces.ALL
+        return spaces.resolve(db, owner, space)
+
+    def _where(db, owner: str, space: Optional[str]):
+        """The scope a What-Apollo-knows call stands in; None for the All view."""
+        if space in (None, "", spaces.ALL):
+            return None
+        return spaces.scope(db, owner, spaces.resolve(db, owner, space), "memory")
+
     @router.get("/state")
-    async def state(request: Request):
+    async def state(request: Request, space: Optional[str] = None):
         owner = _owner(request)
 
         def read(db) -> Dict[str, Any]:
             cap = B.admin_cap()
-            return {"name": APOLLO_NAME, "status": tasks.status(db, owner),
-                    "goal_token_cap": cap,
-                    "open_loops": [notebook.to_dict(n) for n in notebook.list_for(
-                        db, owner, kind="open_loop", state="open", limit=20)]}
+            view = _view(db, owner, space)
+            out = {"name": APOLLO_NAME, "status": tasks.status(db, owner, space=view),
+                   "goal_token_cap": cap, "space": None,
+                   "open_loops": [notebook.to_dict(n) for n in notebook.list_for(
+                       db, owner, kind="open_loop", state="open", limit=20, space=view)]}
+            if view != spaces.ALL:
+                out["children"] = spaces.children(db, owner, view)
+                if view is not None:
+                    out["space"] = spaces.to_dict(spaces.get(db, owner, view), spaces._all(db, owner))
+            return out
         return await _call(read)
 
     @router.get("/tasks")
-    async def list_tasks(request: Request, state: Optional[str] = None, include_done: bool = True):
+    async def list_tasks(request: Request, state: Optional[str] = None, include_done: bool = True,
+                         space: Optional[str] = None):
         owner = _owner(request)
 
         def read(db):
@@ -137,7 +177,7 @@ def setup_apollo_routes() -> APIRouter:
             if state and state not in tasks.STATES:
                 raise ApolloRefused(f"A task is one of: {', '.join(tasks.STATES)}.")
             return {"tasks": [tasks.to_dict(t, budget_cap=cap) for t in tasks.list_for(
-                db, owner, state=state, include_done=include_done)]}
+                db, owner, state=state, include_done=include_done, space=_view(db, owner, space))]}
         return await _call(read)
 
     @router.post("/tasks")
@@ -148,7 +188,8 @@ def setup_apollo_routes() -> APIRouter:
         def write(db):
             t = tasks.create(db, owner, title=body.title, brief=body.brief, kind=body.kind,
                              parent_id=body.parent_id, lead_agent=body.lead_agent,
-                             budget_tokens=body.budget_tokens, started_by="person")
+                             budget_tokens=body.budget_tokens, started_by="person",
+                             space_id=body.space_id)
             if body.start and t.lead_agent:
                 from src.apollo import runs
                 holder["run"], _why = runs.prepare(db, owner, t,
@@ -234,17 +275,19 @@ def setup_apollo_routes() -> APIRouter:
         return {"line": out, "posted": posted}
 
     @router.get("/approvals")
-    async def approvals(request: Request):
+    async def approvals(request: Request, space: Optional[str] = None):
         """What the person's leads are waiting on their OK for, run by run."""
         owner = _owner(request)
         from src.apollo import chat
-        return await _call(lambda db: {"approvals": chat.waiting_approvals(db, owner)})
+        return await _call(lambda db: {"approvals": chat.waiting_approvals(
+            db, owner, space=_view(db, owner, space))})
 
     @router.get("/notebook")
-    async def list_notes(request: Request, kind: Optional[str] = None, state: Optional[str] = None):
+    async def list_notes(request: Request, kind: Optional[str] = None, state: Optional[str] = None,
+                         space: Optional[str] = None):
         owner = _owner(request)
         return await _call(lambda db: {"notes": [notebook.to_dict(n) for n in notebook.list_for(
-            db, owner, kind=kind, state=state)]})
+            db, owner, kind=kind, state=state, space=_view(db, owner, space))]})
 
     @router.patch("/notebook/{note_id}")
     async def set_note_state(request: Request, note_id: str, body: NoteState):
@@ -252,30 +295,109 @@ def setup_apollo_routes() -> APIRouter:
         return await _call(lambda db: notebook.to_dict(notebook.set_state(db, owner, note_id, body.state)))
 
     @router.get("/knows")
-    async def what_it_knows(request: Request):
+    async def what_it_knows(request: Request, space: Optional[str] = None):
         owner = _owner(request)
-        return await _plain(lambda: {"lines": knows.what_apollo_knows(owner)})
+        return await _call(lambda db: {"lines": knows.what_apollo_knows(owner, _where(db, owner, space))})
 
     @router.post("/knows")
-    async def tell_it(request: Request, body: LineIn):
+    async def tell_it(request: Request, body: LineIn, space: Optional[str] = None):
         owner = _owner(request)
         # What a person types on the page is theirs by definition: stated.
-        return await _plain(lambda: knows.remember(owner, body.text, basis="stated",
-                                                   category=body.category))
+        return await _call(lambda db: knows.remember(owner, body.text, basis="stated",
+                                                     category=body.category,
+                                                     where=_where(db, owner, space)))
 
     @router.post("/knows/{line_id}/confirm")
-    async def confirm_line(request: Request, line_id: str):
+    async def confirm_line(request: Request, line_id: str, space: Optional[str] = None):
         owner = _owner(request)
-        return await _plain(lambda: knows.confirm(owner, line_id))
+        return await _call(lambda db: knows.confirm(owner, line_id, _where(db, owner, space)))
 
     @router.patch("/knows/{line_id}")
-    async def edit_line(request: Request, line_id: str, body: LineEdit):
+    async def edit_line(request: Request, line_id: str, body: LineEdit, space: Optional[str] = None):
         owner = _owner(request)
-        return await _plain(lambda: knows.edit(owner, line_id, body.text))
+        return await _call(lambda db: knows.edit(owner, line_id, body.text, _where(db, owner, space)))
 
     @router.delete("/knows/{line_id}")
-    async def forget_line(request: Request, line_id: str):
+    async def forget_line(request: Request, line_id: str, space: Optional[str] = None):
         owner = _owner(request)
-        return await _plain(lambda: {"forgotten": knows.forget(owner, line_id)})
+        return await _call(lambda db: {"forgotten": knows.forget(owner, line_id, _where(db, owner, space))})
+
+    # -- spaces --------------------------------------------------------------
+
+    @router.get("/spaces")
+    async def list_spaces(request: Request):
+        """Every space, parents before children, with what each holds open."""
+        owner = _owner(request)
+
+        def read(db):
+            rows = spaces.tree(db, owner)
+            kids: Dict[str, Any] = {}
+            for parent in {r["parent_id"] for r in rows}:
+                kids.update({k["id"]: k for k in spaces.children(db, owner, parent)})
+            for r in rows:
+                k = kids.get(r["id"], {})
+                r["needs_you"] = k.get("needs_you")
+                r["open"] = k.get("open")
+            return {"spaces": rows}
+        return await _call(read)
+
+    @router.post("/spaces")
+    async def make_space(request: Request, body: SpaceIn):
+        owner = _owner(request)
+        return await _call(lambda db: spaces.to_dict(
+            spaces.create(db, owner, body.name, parent_id=body.parent_id, airgapped=body.airgapped),
+            spaces._all(db, owner)))
+
+    @router.patch("/spaces/{space_id}")
+    async def change_space(request: Request, space_id: str, body: SpacePatch):
+        """Rename, airgap on or off, local models only on or off."""
+        owner = _owner(request)
+        fields = body.model_dump(exclude_unset=True)
+
+        def write(db):
+            row = spaces.get(db, owner, space_id)
+            if "name" in fields:
+                spaces.rename(db, owner, row.id, fields["name"])
+            if "airgapped" in fields:
+                spaces.set_airgap(db, owner, row.id, bool(fields["airgapped"]))
+            if "local_only" in fields:
+                spaces.set_local_only(db, owner, row.id, bool(fields["local_only"]))
+            return spaces.to_dict(row, spaces._all(db, owner))
+        return await _call(write)
+
+    @router.delete("/spaces/{space_id}")
+    async def delete_space(request: Request, space_id: str):
+        owner = _owner(request)
+
+        def write(db):
+            spaces.remove(db, owner, space_id)
+            return {"deleted": True}
+        return await _call(write)
+
+    @router.get("/spaces/{space_id}/context")
+    async def space_context(request: Request, space_id: str):
+        """What the space reads from, what reads from it, and its grants' uses."""
+        owner = _owner(request)
+        return await _call(lambda db: spaces.context(db, owner, space_id))
+
+    @router.post("/spaces/{space_id}/grants")
+    async def give_grant(request: Request, space_id: str, body: GrantIn):
+        """Let this space read another's memory or outcomes, one way, read only."""
+        owner = _owner(request)
+        return await _call(lambda db: {"grant_id": spaces.grant(
+            db, owner, space_id, body.source_id, body.scope).id})
+
+    @router.delete("/grants/{grant_id}")
+    async def revoke_grant(request: Request, grant_id: str):
+        owner = _owner(request)
+        return await _call(lambda db: {"revoked": bool(spaces.revoke(db, owner, grant_id).revoked_at)})
+
+    @router.post("/spaces/{space_id}/chat")
+    async def space_chat(request: Request, space_id: str):
+        """The space's own Apollo chat (`top` is Apollo's main chat), made the
+        first time it's opened."""
+        owner = _owner(request)
+        return await _call(lambda db: {"session_id": spaces.chat_for(
+            db, owner, spaces.resolve(db, owner, space_id))})
 
     return router

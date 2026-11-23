@@ -439,16 +439,25 @@ async function _ensureHeaderAffordances(sessionId) {
   // was never cached, so the next switch asked again).
   if (!(await toolPollMayAsk('assistant'))) return;
   let isApollo = false;
+  let space;            // a space's id when this is that space's Apollo chat
   try {
     const settings = await _getSettings();
     isApollo = settings?.crew?.session_id === sessionId;
+    if (!isApollo) {
+      // Each of the person's spaces has its own Apollo chat (Spaces, phase 3).
+      const Sp = await import('./apolloSpaces.js');
+      space = await Sp.spaceOfSession(sessionId);
+      isApollo = space !== undefined;
+    }
   } catch {
     return;
   }
   _markApolloChat(isApollo);
   if (!isApollo) return;
+  import('./apolloSpaces.js').then((Sp) => Sp.noteSpace(space || null)).catch(() => {});
   const headerRight = document.querySelector('.chat-header-right, #chat-header .actions, .chat-header');
   if (!headerRight) return;
+  _ensureSpaceSwitcher(headerRight);
   _ensurePaneButton(headerRight);
   if (headerRight.querySelector('#assistant-header-gear')) return;
   const gear = document.createElement('button');
@@ -471,9 +480,23 @@ function _markApolloChat(isApollo) {
   root.classList.toggle('apollo-chat', isApollo);
   if (!isApollo) {
     document.getElementById('apollo-pane-btn')?.remove();
+    document.getElementById('apollo-space-switcher')?.remove();
     document.getElementById('assistant-header-gear')?.remove();
     if (was) import('./apolloPane.js').then((m) => { if (m.isApolloPaneOpen()) m.closeApolloPane(); }).catch(() => {});
   }
+}
+
+// The space switcher (Spaces, "Where it shows"): which space Apollo is in,
+// and the way to another. Made once; it follows the space by itself.
+function _ensureSpaceSwitcher(headerRight) {
+  if (headerRight.querySelector('#apollo-space-switcher')) return;
+  const slot = document.createElement('span');
+  slot.id = 'apollo-space-switcher';
+  headerRight.appendChild(slot);
+  import('./apolloSpaces.js').then((Sp) => {
+    if (!slot.isConnected) return;
+    slot.appendChild(Sp.createSwitcher().el);
+  }).catch(() => slot.remove());
 }
 
 function _ensurePaneButton(headerRight) {

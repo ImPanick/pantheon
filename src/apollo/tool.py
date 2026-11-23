@@ -26,7 +26,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from typing import Any, Dict, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 from src.apollo import knows, notebook, tasks
 from src.apollo.errors import ApolloRefused
@@ -57,22 +57,31 @@ def _out(text: str, **extra) -> Dict[str, Any]:
     return {"output": text, "exit_code": 0, **extra}
 
 
-def _do(db, owner: str, args: Dict[str, Any]) -> Tuple[Dict[str, Any], Any]:
-    """The action, done in `db`. Returns the result and, for start_task, the
-    scheduled task to run once the write is committed."""
+def _do(db, owner: str, args: Dict[str, Any], space_id: Optional[str] = None) -> Tuple[Dict[str, Any], Any]:
+    """The action, done in `db`, in the space whose Apollo chat called it (None
+    is the top layer). Returns the result and, for start_task, the scheduled
+    task to run once the write is committed."""
+    from src.apollo import spaces as S
     action = str(args.get("action") or "").strip().lower()
     if action not in ACTIONS:
         raise ApolloRefused(f"apollo needs an action: {', '.join(ACTIONS)}.")
+    sc = S.scope(db, owner, space_id, "memory")
+    own = [i for i in sc.reads if sc.via(i) is None]
+    if action in ("start_task", "update_task", "ask"):
+        t0 = tasks.get(db, owner, args.get("id"))
+        if (t0.space_id or None) not in own:
+            raise ApolloRefused("That task lives in a space this chat can't change.", 403)
     if action == "status":
-        st = tasks.status(db, owner)
-        open_ = [tasks.to_dict(t) for t in tasks.list_for(db, owner, include_done=False, limit=20)]
+        st = tasks.status(db, owner, space=own)
+        open_ = [tasks.to_dict(t) for t in tasks.list_for(db, owner, include_done=False, limit=20, space=own)]
         lines = [st["words"]] + [f"- [{t['state_words']}] {t['title']} (id {t['id']})" for t in open_]
         return _out("\n".join(lines), status=st, tasks=open_), None
     if action == "create_task":
         t = tasks.create(db, owner, title=args.get("title"), brief=args.get("brief"),
                          kind=args.get("kind"), parent_id=args.get("parent_id"),
                          lead_agent=args.get("lead_agent"),
-                         budget_tokens=args.get("budget_tokens"), started_by="apollo")
+                         budget_tokens=args.get("budget_tokens"), started_by="apollo",
+                         space_id=space_id)
         lead = f"led by {t.lead_agent}" if t.lead_agent else "with no roster agent to lead it yet"
         run = None
         if args.get("start", True) and t.lead_agent:
@@ -101,32 +110,36 @@ def _do(db, owner: str, args: Dict[str, Any]) -> Tuple[Dict[str, Any], Any]:
         return _out(f"“{t.title}” now waits on: {t.question}", task=tasks.to_dict(t)), None
     if action == "note":
         n = notebook.add(db, owner, args.get("text"), kind=args.get("kind") or "working",
-                         task_id=args.get("task_id"))
+                         task_id=args.get("task_id"), space_id=space_id)
         return _out(f"Noted ({n.kind}).", note=notebook.to_dict(n)), None
     if action == "settle_note":
+        if (notebook.get(db, owner, args.get("id")).space_id or None) not in own:
+            raise ApolloRefused("That note lives in a space this chat can't change.", 403)
         n = notebook.set_state(db, owner, args.get("id"), args.get("state") or "settled")
         return _out(f"Note {n.state}.", note=notebook.to_dict(n)), None
     if action == "remember":
         line = knows.remember(owner, args.get("text"), basis=args.get("basis") or "stated",
                               category=args.get("category") or "fact",
-                              evidence=args.get("evidence"))
+                              evidence=args.get("evidence"), where=sc)
         return _out(f"Kept ({line['basis']}): {line['text']}", line=line), None
     if action == "confirm":
-        line = knows.confirm(owner, args.get("id"))
+        line = knows.confirm(owner, args.get("id"), where=sc)
         return _out(f"Confirmed: {line['text']}", line=line), None
     if action == "forget":
-        knows.forget(owner, args.get("id"))
+        knows.forget(owner, args.get("id"), where=sc)
         return _out("Forgotten."), None
-    lines = knows.what_apollo_knows(owner)
+    lines = knows.what_apollo_knows(owner, sc)
     shown = "\n".join(f"- ({line['basis']}) {line['text']}" for line in lines[:40]) or "Nothing yet."
     return _out(shown, lines=lines), None
 
 
-def run_sync(owner: str, args: Dict[str, Any]) -> Tuple[Dict[str, Any], Any]:
+def run_sync(owner: str, args: Dict[str, Any], session_id: Any = None) -> Tuple[Dict[str, Any], Any]:
     from core.database import SessionLocal
+    from src.apollo import spaces as S
     db = SessionLocal()
     try:
-        result, run = _do(db, owner, args)
+        _ok, space_id = S.space_of_session(db, owner, str(session_id) if session_id else None)
+        result, run = _do(db, owner, args, space_id)
         db.commit()
         return result, run
     except ApolloRefused as refused:
@@ -143,7 +156,7 @@ async def apollo(content: Any, session_id: Any = None, owner: Any = None) -> Dic
     if keeps_nothing():
         return {"error": "Nobody mode keeps nothing, so Apollo keeps nothing from it.", "exit_code": 1}
     args = parse(content)
-    result, run = await asyncio.to_thread(run_sync, owner, args)
+    result, run = await asyncio.to_thread(run_sync, owner, args, session_id)
     if run and not await start_run(run):
         result["output"] = result.get("output", "") + " (The run couldn't start just now; it's on the task.)"
     return result

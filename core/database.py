@@ -2062,6 +2062,54 @@ class ApolloNote(TimestampMixin, Base):
     )
 
 
+class ApolloSpace(TimestampMixin, Base):
+    """One of a person's spaces: an area of work or life under Apollo's top layer.
+
+    The outline (*Spaces: layered chats and projects*, settled calls 11-13): a
+    space holds its own tasks, notebook, memory and Apollo chat; a sub-space
+    sees its parent; a grant gives one space read of another; an airgapped
+    space shares nothing in or out, and may be pinned to local models. Every
+    rule is enforced in `src/apollo/spaces.py`, on the server.
+
+    `session_id` is the space's own Apollo chat, made the first time it is
+    opened. A new table (`create_all` is its migration).
+    """
+    __tablename__ = "apollo_spaces"
+
+    id         = Column(String, primary_key=True)
+    owner      = Column(String, nullable=False, index=True)
+    parent_id  = Column(String, nullable=True, index=True)
+    name       = Column(String, nullable=False)
+    airgapped  = Column(Boolean, nullable=False, default=False)
+    local_only = Column(Boolean, nullable=False, default=False)
+    session_id = Column(String, nullable=True, index=True)
+
+
+class ApolloGrant(TimestampMixin, Base):
+    """One space's read of another, one way: `reader_id` may read `source_id`'s
+    `scope` (memory, files or outcomes). Read only, listed on both spaces,
+    logged on each use (`ApolloGrantUse`), revoked by setting `revoked_at`."""
+    __tablename__ = "apollo_grants"
+
+    id         = Column(String, primary_key=True)
+    owner      = Column(String, nullable=False, index=True)
+    reader_id  = Column(String, nullable=False, index=True)
+    source_id  = Column(String, nullable=False, index=True)
+    scope      = Column(String, nullable=False)
+    revoked_at = Column(DateTime, nullable=True)
+
+
+class ApolloGrantUse(Base):
+    """One use of a grant: when, and what it read (in a few words)."""
+    __tablename__ = "apollo_grant_uses"
+
+    id       = Column(String, primary_key=True)
+    owner    = Column(String, nullable=False, index=True)
+    grant_id = Column(String, nullable=False, index=True)
+    what     = Column(String, nullable=False)
+    used_at  = Column(DateTime, nullable=False, default=utcnow_naive)
+
+
 class Event(Base):
     """One thing that happened, with the time it happened at (`P14-01`).
 
@@ -2176,6 +2224,40 @@ class Memory(Base):
         Index('ix_memories_lookup', 'category', 'timestamp'),  # Composite for category-based queries
         Index('ix_memories_session', 'session_id', 'timestamp'),  # Composite for session-based queries
     )
+
+def _migrate_add_apollo_space_columns():
+    """Add `space_id` to `apollo_tasks` and `apollo_notes` (Apollo phase 3,
+    Spaces).
+
+    Both tables shipped in phase 1, tagged `apollo-phase-1` on dev; an install
+    built from that tag has them without the column, and `create_all` never
+    alters an existing table. Guarded on the column list, so it's a no-op on a
+    database made after this commit. NULL is the top layer, which is where
+    every earlier task and note was.
+    """
+    import sqlite3
+    db_path = DATABASE_URL.replace("sqlite:///", "")
+    if not os.path.exists(db_path):
+        return
+    conn = None
+    try:
+        conn = sqlite3.connect(db_path)
+        for table in ("apollo_tasks", "apollo_notes"):
+            if not list(conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table' AND name=?", (table,))):
+                continue        # create_all will build it complete
+            columns = [row[1] for row in conn.execute(f"PRAGMA table_info({table})")]
+            if "space_id" not in columns:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN space_id VARCHAR")
+                logging.getLogger(__name__).info(f"Migrated: added 'space_id' to {table}")
+            conn.execute(f"CREATE INDEX IF NOT EXISTS ix_{table}_space_id ON {table}(space_id)")
+        conn.commit()
+    except Exception as e:
+        logging.getLogger(__name__).warning(f"apollo space_id migration failed: {e}")
+    finally:
+        if conn is not None:
+            conn.close()
+
 
 def _migrate_add_events_name_column():
     """Add `name` and `run_id` to events (`P14-02`, `P4-25`).
@@ -4006,6 +4088,7 @@ def init_db():
     _migrate_add_document_archived_column()
     _migrate_add_last_message_at_column()
     _migrate_add_events_name_column()
+    _migrate_add_apollo_space_columns()          # Apollo phase 3, Spaces
     _migrate_add_folder_column()
     _migrate_add_token_columns()
     _migrate_add_mode_column()
