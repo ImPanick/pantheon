@@ -108,6 +108,13 @@ def prepare(db, owner: str, task, *, endpoint_url: Optional[str] = None,
             db.flush()
             return None, sentence
     ok, sentence = B.may_spend(task, endpoint_url)
+    if ok:
+        from src.apollo.fleet import root_of
+        root = root_of(db, task)
+        if root is not task:
+            # A delegate spends the goal's budget too (`report_landed` charges
+            # both), so the goal's cap holds across its whole team.
+            ok, sentence = B.may_spend(root, endpoint_url)
     if not ok:
         T.set_state(task, "needs_you", question=sentence)
         db.flush()
@@ -176,11 +183,18 @@ def apollo_plan_parts(db, hire, manifest) -> Optional[Dict[str, Any]]:
     if task is None:
         return None
     from src.prompt_security import own_context_message
+    from src.apollo import fleet as F
     body = task.brief or task.title
-    if task.next_step and task.next_step.startswith("You answered"):
+    if task.next_step and task.next_step.startswith(("You answered", "You asked for changes")):
         body = f"{body}\n\n{task.next_step}"
-    return {"system_prompt": apollo_brief(task, manifest, owner=hire.owner),
-            "context_messages": [own_context_message("the goal Apollo handed you", body)]}
+    team = F.plan_parts(db, task)
+    prompt = apollo_brief(task, manifest, owner=hire.owner)
+    if team["lines"]:
+        prompt = prompt.replace("\n# Runbook", "\n" + "\n\n".join(team["lines"]) + "\n\n# Runbook", 1)
+    return {"system_prompt": prompt,
+            "context_messages": [own_context_message("the goal Apollo handed you", body)]
+            + team["context_messages"],
+            "ceiling": team["ceiling"], "fleet": team["fleet"]}
 
 
 def run_tokens(db, run_id: Optional[str]) -> int:
@@ -194,10 +208,33 @@ def run_tokens(db, run_id: Optional[str]) -> int:
     return int(total or 0)
 
 
+def prepare_all(db, owner: str, task_ids: List[str], endpoint_url: Optional[str] = None) -> List[str]:
+    """The scheduled runs to start for the fleet's next tasks. A task that
+    can't start (its budget, a local-only space) already says why."""
+    out: List[str] = []
+    for tid in dict.fromkeys(task_ids or ()):
+        try:
+            t = T.get(db, owner, tid)
+        except ApolloRefused:
+            continue
+        if t.state == "done":
+            continue
+        try:
+            run, _why = prepare(db, owner, t, endpoint_url=endpoint_url)
+        except ApolloRefused as refused:
+            T.set_state(t, "needs_you", question=refused.sentence)
+            run = None
+        if run:
+            out.append(run)
+    db.commit()
+    return out
+
+
 def report_landed(db, scheduled_task, run_id: Optional[str], answer: str,
                   checks: Optional[List[Dict[str, Any]]] = None, *,
                   endpoint_url: Optional[str] = None,
-                  post: Optional[Callable[[str, str, Dict[str, Any]], None]] = None) -> Optional[str]:
+                  post: Optional[Callable[[str, str, Dict[str, Any]], None]] = None,
+                  start: Optional[Callable[[str], None]] = None) -> Optional[str]:
     """A lead's run finished. Charge its tokens, move the task on, and say one
     line in Apollo's chat. Returns that line, or `None` for a run that is not
     an Apollo task's."""
@@ -215,10 +252,16 @@ def report_landed(db, scheduled_task, run_id: Optional[str], answer: str,
                 endpoint_url, _m, _h = resolve_task_endpoint(owner=task.owner)
             except Exception:
                 endpoint_url = None
-    B.charge(task, run_tokens(db, run_id), endpoint_url)
+    from src.apollo import fleet as F
+    spent = run_tokens(db, run_id)
+    B.charge(task, spent, endpoint_url)
+    root = F.root_of(db, task)
+    if root is not task:
+        B.charge(root, spent, endpoint_url)      # a fleet spends the goal's budget
     if getattr(scheduled_task, "session_id", None):
         task.session_id = scheduled_task.session_id
     misses = failed(checks or [])
+    starts: List[str] = []
     if misses:
         T.set_state(task, "needs_you",
                     question="The run didn't deliver everything it should have. Run it again?",
@@ -226,10 +269,36 @@ def report_landed(db, scheduled_task, run_id: Optional[str], answer: str,
         line = f"“{task.title}” needs you: the run came back short. It's in the task."
     else:
         outcome = _first_line(_report_section(answer)) or _first_line(answer) or "Finished."
-        T.set_state(task, "done", outcome=outcome, next_step=None)
-        line = f"Done: {task.title}. {outcome}"
+        report = _report_section(answer).strip() or str(answer or "")
+        if task.state == "needs_you":
+            # The lead asked its one question (or escalated) during the run:
+            # the task waits on the person, whatever the run's last words were.
+            moved = {"state": "needs_you", "start": [],
+                     "line": f"“{task.title}” needs you: {task.question}" if task.question
+                     else f"“{task.title}” needs you."}
+        else:
+            moved = F.landed(db, task, report, outcome)
+        starts = list(moved["start"])
+        if moved["state"] is None:
+            T.set_state(task, "done", outcome=outcome, next_step=None)
+            line = f"Done: {task.title}. {outcome}"
+        elif task.parent_id:
+            # A child's progress is the goal's log; the person hears about the
+            # goal, unless the fleet says something needs them.
+            line = moved["line"]
+        elif moved["state"] == "done":
+            line = f"Done: {task.title}. {task.outcome or outcome}"
+        else:
+            line = moved["line"]
     db.commit()
-    if post is not None:
+    for run in prepare_all(db, task.owner, starts, endpoint_url):
+        if start is None:
+            break
+        try:
+            start(run)
+        except Exception:
+            logger.warning("Could not start the fleet's next run %s", run, exc_info=True)
+    if post is not None and line:
         try:
             post(task.owner, line, {"source": "apollo", "apollo_task_id": task.id,
                                     "state": task.state})

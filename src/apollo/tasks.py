@@ -234,6 +234,11 @@ def answer(db, owner: str, task_id: Any, words: Any):
     if task.state != "needs_you":
         raise ApolloRefused("That task isn't waiting on an answer from you.", 409)
     said = _line(words, LINE_MAX, "Your answer", required=True)
+    from src.apollo import fleet as F
+    moved = F.answered(db, task, said)      # a delegate's work, put to the person for review
+    if moved is not None:
+        task._fleet_moved = moved           # read by the caller: what to run next
+        return task
     asked = task.question
     set_state(task, "working", next_step=f"You answered “{asked}”: {said}")
     db.flush()

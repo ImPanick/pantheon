@@ -245,15 +245,24 @@ def setup_apollo_routes() -> APIRouter:
         holder: Dict[str, Any] = {}
 
         def write(db):
+            from src.apollo import runs
             t = tasks.get(db, owner, task_id)
             if before is not None:
                 t = before(db)
-            if t.lead_agent:
-                from src.apollo import runs
+            moved = getattr(t, "_fleet_moved", None)
+            if moved is not None:
+                # A review the person answered: a pass moves the goal on
+                # without running this task again; changes run its lead.
+                holder["next"] = runs.prepare_all(db, owner, moved["start"], None)
+            if t.lead_agent and (moved is None or moved["run_this"]):
                 holder["run"], holder["why"] = runs.prepare(
                     db, owner, t, auth_manager=getattr(request.app.state, "auth_manager", None))
             return tasks.to_dict(t, budget_cap=B.admin_cap())
         out = await _call(write)
+        if isinstance(out, dict) and holder.get("next"):
+            from src.apollo.tool import start_run
+            for run in holder["next"]:
+                await start_run(run)
         if isinstance(out, dict) and holder.get("run"):
             from src.apollo.tool import start_run
             out["started"] = await start_run(holder["run"])
@@ -274,6 +283,14 @@ def setup_apollo_routes() -> APIRouter:
         # The answer goes on the task, then its lead runs again with it.
         return await _start(request, owner, task_id,
                             before=lambda db: tasks.answer(db, owner, task_id, body.answer))
+
+    @router.get("/tasks/{task_id}/team")
+    async def task_team(request: Request, task_id: str):
+        """Phase 5. Who is working on this task's goal and what they said to
+        each other: the goal and every delegate under it, and the goal's log."""
+        owner = _owner(request)
+        from src.apollo import fleet as F
+        return await _call(lambda db: F.team(db, owner, tasks.get(db, owner, task_id)))
 
     @router.get("/tasks/{task_id}/chat")
     async def task_chat(request: Request, task_id: str):

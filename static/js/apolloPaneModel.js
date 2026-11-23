@@ -340,3 +340,27 @@ export function heldLine(held) {
   if (h.badge === 'needs-bigger') return `On ${h.model}, Apollo sometimes caved when pushed. A bigger model holds better.`;
   return `On ${h.model}, Apollo held its ground when pushed.`;
 }
+
+/** How a team member came to work on the goal, in a few words. */
+export function teamRole(member) {
+  const m = member || {};
+  if (!m.parent_id) return 'Leads the goal';
+  if (m.via === 'review') return 'Reviewing';
+  if (m.via === 'ask') return 'Answering a question';
+  if (m.review_by === 'person') return m.stage === 'in_review' ? 'Waiting on your review' : 'Delegate, you review';
+  if (m.review_by) return 'Delegate, reviewed';
+  return 'Delegate';
+}
+
+const _SAID = { delegate: 'handed', ask: 'asked', review: 'sent for review to', report: 'reported to', escalate: 'asked you' };
+
+/** One line of a goal's log: who said what to whom, first line only. */
+export function teamLine(msg, names = {}) {
+  const m = msg || {};
+  const who = (id) => (id === 'person' ? 'You' : (names[id] || id || 'Apollo'));
+  const verb = _SAID[m.kind] || m.kind || 'said';
+  const first = String(m.body || '').split('\n').find((l) => l.trim()) || '';
+  const short = first.length > 140 ? `${first.slice(0, 139)}…` : first;
+  const to = m.kind === 'escalate' ? '' : ` ${m.to === 'person' ? 'you' : (names[m.to] || m.to || '')}`;
+  return `${who(m.from)} ${verb}${to}${short ? `: ${short}` : ''}`.replace(/\s+:/, ':');
+}
