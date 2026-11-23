@@ -123,7 +123,7 @@ function mountField() {
 const RAIL_BANDS = [
   [['ck-rail-sidebar', 'sidebar', 'Sidebar', 'toggle_sidebar'], ['rail-search-btn', 'search', 'Search', 'search'], ['rail-new-session', 'plus', 'New chat', 'new_session']],
   [['rail-chats', 'chat', 'Chats'], ['rail-documents', 'doc', 'Documents'], ['rail-agents', 'agents', 'Agents'], ['rail-tasks', 'tasks', 'Tasks']],
-  [['rail-email', 'mail', 'Email'], ['rail-calendar', 'cal', 'Calendar'], ['rail-notes', 'notes', 'Notes'], ['rail-assistant', 'spark', 'Assistant']],
+  [['rail-email', 'mail', 'Email'], ['rail-calendar', 'cal', 'Calendar'], ['rail-notes', 'notes', 'Notes'], ['rail-assistant', 'spark', 'Apollo']],
   [['rail-cookbook', 'flame', 'Forge'], ['rail-research', 'research', 'Deep Research'], ['rail-compare', 'compare', 'Compare'],
     ['rail-workbench', 'flow', 'Workbench'], ['rail-memory', 'brain', 'Brain'], ['rail-archive', 'library', 'Library'], ['rail-gallery', 'image', 'Gallery']],
 ];

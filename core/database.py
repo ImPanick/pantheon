@@ -1990,6 +1990,78 @@ class AutoApproveAcceptance(Base):
     )
 
 
+class ApolloTask(TimestampMixin, Base):
+    """Apollo's unit of work: one goal or errand a person handed Apollo.
+
+    The outline (`pantheon/assistant-chat-outline`, settled calls 3, 8 and 9):
+    a task is its own record with a state, a next step and the one question
+    it is stuck on; each goal is run by a **lead agent** from the roster; and
+    the person sets a goal's budget under an admin cap that applies only to
+    API-billed models. The work itself runs as a hire of the lead agent, so a
+    task's runs are `ScheduledTask` runs (zones, retries, the run log, one run
+    at a time) and never a second scheduler.
+
+    `space_id` is the space the task lives in (phase 3, Spaces). NULL is the
+    person's top layer. It is a column now so Spaces needs no ALTER.
+
+    A new table, so `init_db`'s `create_all` is its whole migration.
+    """
+    __tablename__ = "apollo_tasks"
+
+    id          = Column(String, primary_key=True)
+    owner       = Column(String, nullable=False, index=True)
+    space_id    = Column(String, nullable=True, index=True)
+    parent_id   = Column(String, nullable=True, index=True)
+    title       = Column(String, nullable=False)
+    brief       = Column(Text, nullable=True)
+    #: The kind of work, in a few words ("mail reply", "cert renewal"). Trust
+    #: is earned per kind (phase 4), so it is recorded from the first task.
+    kind        = Column(String, nullable=True)
+    #: `working` | `needs_you` | `waiting` | `done` (`src.apollo.tasks.STATES`).
+    state       = Column(String, nullable=False, default="working")
+    next_step   = Column(Text, nullable=True)
+    question    = Column(Text, nullable=True)
+    outcome     = Column(Text, nullable=True)
+    lead_agent  = Column(String, nullable=True)
+    hire_id     = Column(String, nullable=True, index=True)
+    #: The task chat: an Agent-mode chat bound to this task's lead agent.
+    session_id  = Column(String, nullable=True)
+    #: Tokens this goal may spend on API-billed models; NULL is the admin cap.
+    budget_tokens = Column(Integer, nullable=True)
+    spent_tokens  = Column(Integer, nullable=False, default=0)
+    #: Who started it: `person` or `apollo`.
+    started_by  = Column(String, nullable=False, default="person")
+    done_at     = Column(DateTime, nullable=True)
+
+    __table_args__ = (
+        Index('ix_apollo_tasks_owner_state', 'owner', 'state', 'updated_at'),
+    )
+
+
+class ApolloNote(TimestampMixin, Base):
+    """Apollo's notebook: its working state, kept apart from what it knows.
+
+    Settled call 7: facts and rules go to Brain; working state goes here.
+    `open_loop` is something owed or promised, `talked_through` is a thing the
+    person already discussed (so a briefing never brings it back as news), and
+    `working` is a note to itself. A new table (`create_all` is its migration).
+    """
+    __tablename__ = "apollo_notes"
+
+    id        = Column(String, primary_key=True)
+    owner     = Column(String, nullable=False, index=True)
+    space_id  = Column(String, nullable=True, index=True)
+    kind      = Column(String, nullable=False, default="working")
+    text      = Column(Text, nullable=False)
+    #: `open` | `settled` | `dropped`.
+    state     = Column(String, nullable=False, default="open")
+    task_id   = Column(String, nullable=True)
+
+    __table_args__ = (
+        Index('ix_apollo_notes_owner_kind', 'owner', 'kind', 'updated_at'),
+    )
+
+
 class Event(Base):
     """One thing that happened, with the time it happened at (`P14-01`).
 

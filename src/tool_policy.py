@@ -134,6 +134,7 @@ _COMMON_TOOL_NAMES = {
     "resolve_contact",
     "search_chats",
     "read_chat",          # `B1621`
+    "apollo",             # Apollo's tasks, notebook and what it knows
     "search_hf_models",
     "send_email",
     "send_to_session",

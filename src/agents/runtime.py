@@ -341,8 +341,15 @@ def plan_for_task(db, task, run_id: Optional[str] = None) -> Optional[RunPlan]:
         m, line = _skill_messages(hire.owner, skill)
         msgs.extend(m)
         lines.append(line)
+    # Apollo. A hire that leads one of the person's Apollo goals is told it is
+    # doing that goal, and gets the brief; every other hire runs as before.
+    from src.apollo.runs import apollo_plan_parts
+    _apollo = apollo_plan_parts(db, hire, manifest)
+    if _apollo:
+        msgs = _apollo["context_messages"] + msgs
     return RunPlan(hire_id=hire.id, agent_id=manifest.id, name=hire.name,
-                   system_prompt=system_prompt(manifest, hire, owner=hire.owner), tools=tools,
+                   system_prompt=(_apollo["system_prompt"] if _apollo
+                                  else system_prompt(manifest, hire, owner=hire.owner)), tools=tools,
                    ask_effects=ask, never_effects=never, context_messages=msgs,
                    skill_lines=lines, memory=manifest.memory, delivers=manifest.delivers,
                    owner=hire.owner, inputs=inputs, project=hire.project,

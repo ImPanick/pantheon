@@ -82,7 +82,7 @@ const PRIV_LABELS = {
   // `B1191` (`D-2026-10-26-01` §5). One per Tools entry that had no switch for
   // a person. Off hides it, refuses its routes and holds its background work
   // with a sentence; nothing is deleted.
-  can_use_assistant: 'Assistant',
+  can_use_assistant: 'Apollo',
   can_use_calendar: 'Calendar',
   can_use_compare: 'Compare',
   can_use_email: 'Email',
@@ -2192,6 +2192,7 @@ const TOOL_META = {
   web_search:        { name: 'Web Search',       desc: 'Search the web via SearXNG',      cat: 'Search',     ctx: '~300' },
   search_chats:      { name: 'Search Chats',     desc: 'Search chat history',           cat: 'Search',     ctx: '~150' },
   read_chat:         { name: 'Read Chat',        desc: 'Read one of your chats through',  cat: 'Chats',      ctx: '~150' },  // `B1621`
+  apollo:            { name: 'Apollo',           desc: 'Apollo\'s tasks, notebook and what it knows', cat: 'Chats', ctx: '~600' },
   create_document:   { name: 'Create Document',  desc: 'Create new documents',            cat: 'Documents',  ctx: '~200' },
   update_document:   { name: 'Update Document',  desc: 'Modify existing documents',       cat: 'Documents',  ctx: '~200' },
   edit_document:     { name: 'Edit Document',    desc: 'Find & replace in documents',     cat: 'Documents',  ctx: '~200' },
@@ -2715,7 +2716,7 @@ const featureLabels = {
   gallery: 'Gallery',
   // `B1488`, the owner's ruling: the eight Tools entries `B1191` gave a
   // person's switch have one for everyone too (`src/tool_privileges.py`).
-  assistant: 'Assistant', calendar: 'Calendar', compare: 'Compare', email: 'Email',
+  assistant: 'Apollo', calendar: 'Calendar', compare: 'Compare', email: 'Email',
   notes: 'Notes', tasks: 'Tasks', theme: 'Theme', workbench: 'Workbench',
 };
 

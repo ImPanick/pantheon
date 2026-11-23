@@ -119,6 +119,7 @@ export const TOOL_NAMES = {
   'manage_bg_jobs': 'Background jobs',
   'search_chats': 'Search chats',
   'read_chat': 'Read a chat',   // `B1621`
+  'apollo': 'Apollo',
   'list_sessions': 'Chats',
   'create_session': 'New chat',
   'send_to_session': 'Send to chat',

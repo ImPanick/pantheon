@@ -803,6 +803,7 @@ _TOOL_NAME_MAP = {
     # `B1621`.
     "read_chat": "read_chat",
     "read_session": "read_chat",
+    "apollo": "apollo",
     "chat_with_model": "chat_with_model",
     "ask_model": "chat_with_model",
     "chat_model": "chat_with_model",
@@ -1290,6 +1291,8 @@ def _raw_openai_tool_call_to_block(value) -> Optional[ToolBlock]:
         content = args.get("query", "")
     elif tool_type == "read_chat":
         content = json.dumps(args)      # `B1621`
+    elif tool_type == "apollo":
+        content = json.dumps(args)
     elif tool_type == "chat_with_model":
         content = args.get("model", "") + "\n" + args.get("message", "")
     elif tool_type == "create_session":
