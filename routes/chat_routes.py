@@ -2552,6 +2552,7 @@ def setup_chat_routes(
                 "manage_notes", "manage_calendar", "manage_tasks",
                 "manage_workflows",   # `B1878`
                 "api_call",
+                "apollo",             # Apollo's tasks and notebook are personal
             }, WITHHELD_BY_POLICY)
             # Composition, not a clamp: this branch denied the web tools above
             # and takes them back out when the chat's own setting enabled them.
@@ -2572,6 +2573,7 @@ def setup_chat_routes(
                 "manage_memory",      # persistent memory store
                 "search_chats",       # past chat history
                 "read_chat",          # a past chat, read through (`B1621`)
+                "apollo",             # Apollo's notebook and what it knows
                 "manage_skills",      # skill presets tied to user
                 "use_skill",          # the same, read (`B1737`)
                 "create_session",
@@ -2738,6 +2740,25 @@ def setup_chat_routes(
             except SummonRefused as _refused:
                 raise HTTPException(400, _refused.sentence)
             tool_policy = _summoned.policy(tool_policy)
+        # Apollo. A turn in the person's own Apollo chat carries Apollo's
+        # character and what it is holding for them (rules, open tasks, open
+        # loops), read off the loop. Nobody keeps nothing and reads nothing
+        # personal, and a summoned agent's brief is the turn's own frame.
+        _apollo_frame = []
+        if not incognito and not _summoned and _user:
+            from src.apollo import frame as _apollo
+
+            def _apollo_off_the_loop():
+                _adb = SessionLocal()
+                try:
+                    return _apollo.frame_messages(_adb, _user, session)
+                finally:
+                    _adb.close()
+            try:
+                _apollo_frame = await asyncio.to_thread(_apollo_off_the_loop)
+            except Exception as _apollo_err:   # a frame is help, never a gate
+                logger.warning("Apollo frame skipped: %s", _apollo_err)
+                _apollo_frame = []
         # `B1399`. The names the **policy layer** added on top are the policy's,
         # not the caller's — a guide-only turn disables every tool in the
         # product — so `finish` attributes them and keeps the route's own
@@ -3722,7 +3743,9 @@ def setup_chat_routes(
                     async for chunk in stream_agent_loop(
                         sess.endpoint_url,
                         sess.model,
-                        _summoned.into(messages) if _summoned else messages,
+                        (_summoned.into(messages) if _summoned
+                         else _apollo.into(messages, _apollo_frame) if _apollo_frame
+                         else messages),
                         headers=sess.headers,
                         temperature=ctx.preset.temperature,
                         max_tokens=ctx.preset.max_tokens,

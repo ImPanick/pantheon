@@ -827,6 +827,10 @@ DEFAULT_SETTINGS = {
     # they were, and only the agent path lifts, to this default
     # (`src/llm_core.py`, `typed_local_max_tokens_ceiling`).
     "local_inference_max_tokens": 1_000_000,
+    # Apollo. The admin's cap on one goal's tokens, which a person's own goal
+    # budget sits under. It holds only on API-billed models; a local model has
+    # no cap. 0 is no cap. (`src/apollo/budget.py`)
+    "apollo_goal_token_cap": 2_000_000,
     # Soft input-token budget for the agent loop. The DEFAULT value (6000) is the
     # "auto" sentinel: it means "scale the budget to the model's context window"
     # (#1230) — so long-context models aren't capped at 6000. Set ANY OTHER value
@@ -1148,6 +1152,11 @@ def role_limit_ranges() -> dict[str, tuple[int, int]]:
 INT_SETTINGS_UNSET_BY_NULL = frozenset({"auth_events_retention_days"})
 
 
+def _apollo_cap_range() -> tuple[int, int]:
+    from src.apollo.budget import CAP_RANGE
+    return CAP_RANGE
+
+
 def int_setting_ranges() -> dict[str, tuple[int, int]]:
     """The whole-number settings that must sit in a range, and the range.
 
@@ -1234,6 +1243,8 @@ def int_setting_ranges() -> dict[str, tuple[int, int]]:
         # tokens is past any local context window and stops a typo from
         # becoming an unbounded generation.
         "local_inference_max_tokens": (0, 10_000_000),
+        # Apollo's per-goal token cap, from the module that holds goals to it.
+        "apollo_goal_token_cap": _apollo_cap_range(),
         # `P16-19`. The exporter floors this itself; clamping here too keeps
         # the STORED value and the EFFECTIVE value the same number, so the
         # settings page never shows a `1` that is really a `10`.

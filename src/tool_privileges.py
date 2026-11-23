@@ -58,7 +58,7 @@ _EMAIL_TOOLS = frozenset({
 
 #: privilege key → (the Tools entry's name, the agent tools it withholds)
 TOOL_PRIVILEGES: Dict[str, tuple] = {
-    "can_use_assistant": ("Assistant", frozenset()),
+    "can_use_assistant": ("Apollo", frozenset()),
     "can_use_calendar": ("Calendar", frozenset({"manage_calendar"})),
     "can_use_compare": ("Compare", frozenset()),
     "can_use_email": ("Email", _EMAIL_TOOLS),

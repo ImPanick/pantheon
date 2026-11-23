@@ -273,6 +273,7 @@ _register(
         "manage_documents",
         "manage_memory",
         "manage_notes",
+        "apollo",            # Apollo's tasks, notebook and Brain lines (`src/apollo/tool.py`)
         "ledger_table",      # `P24-30`: the person's ledger, read and written by its actions below
         "manage_research",
         "manage_session",
@@ -845,6 +846,7 @@ _PRIVATE_ACTION_READS: Mapping[str, frozenset[str]] = MappingProxyType(
         "manage_documents": frozenset({"list", "read", "view", "open", "get",
                                        "list_folders"}),
         "manage_memory": frozenset({"list", "search"}),
+        "apollo": frozenset({"status", "knows"}),
         "manage_notes": frozenset({"list", "search", "find", "view"}),
         "ledger_table": frozenset({"list", "sum"}),      # `P24-30`
         "manage_research": frozenset({"list", "read", "open", "view", "get"}),
@@ -868,6 +870,8 @@ _PRIVATE_ACTION_WRITES: Mapping[str, frozenset[str]] = MappingProxyType(
                                        "rename_folder", "move_folder", "move",
                                        "remove_folder", "reorganise", "apply_plan"}),
         "manage_memory": frozenset({"add", "edit", "delete"}),
+        "apollo": frozenset({"create_task", "start_task", "update_task", "ask", "note",
+                             "settle_note", "remember", "confirm", "forget"}),
         "manage_notes": frozenset({"add", "update", "delete", "toggle_item"}),
         "ledger_table": frozenset({"add", "update", "delete", "import"}),      # `P24-30`
         "manage_research": frozenset({"delete"}),
@@ -905,6 +909,7 @@ _ACTION_DESTRUCTIVE: Mapping[str, frozenset[str]] = MappingProxyType(
         # message, which is the exact inversion P7-06 exists to prevent.
         "bulk_email": frozenset({"delete", "junk"}),
         "manage_memory": frozenset({"delete"}),
+        "apollo": frozenset({"forget"}),
         "manage_mcp": frozenset({"delete"}),
         "manage_notes": frozenset({"delete"}),
         "ledger_table": frozenset({"delete"}),      # `P24-30`
@@ -926,6 +931,7 @@ _ACTION_DEFAULTS: Mapping[str, str] = MappingProxyType(
         "manage_research": "list",
         "manage_tasks": "list",
         "manage_workflows": "list",      # `B1878`
+        "apollo": "status",
     }
 )
 
@@ -985,7 +991,7 @@ class _ActionArgumentTooDeep(Exception):
 
 # `P16-20`: `network` too, so a bare `network reach 10.0.0.5 443` resolves its
 # action for the gate the same as the JSON form does.
-_LINE_ACTION_TOOLS = frozenset({"manage_memory", "manage_session", "network"})
+_LINE_ACTION_TOOLS = frozenset({"manage_memory", "manage_session", "network", "apollo"})
 
 # `B17`. A nesting depth beyond which we refuse to parse rather than ask CPython
 # to. `json.loads` recurses per level and raises `RecursionError`, which is a

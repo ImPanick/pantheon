@@ -66,7 +66,8 @@ AREAS: Tuple[Tuple[str, Dict[str, str]], ...] = (
         "suggest_document": "", "manage_documents": "", "generate_image": "", "edit_image": "",
     }),
     ("Memory, skills and chats", {
-        "manage_memory": "facts about the person", "use_skill": "open a how-to",
+        "manage_memory": "facts about the person", "apollo": "your partner's tasks and notebook",
+        "use_skill": "open a how-to",
         "manage_skills": "", "search_chats": "", "read_chat": "", "list_sessions": "chats",
         "manage_session": "rename/archive chats", "create_session": "new chat",
         "send_to_session": "", "manage_rag": "knowledge base",

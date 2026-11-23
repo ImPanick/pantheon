@@ -35,6 +35,7 @@ from .document_tools import CreateDocumentTool, UpdateDocumentTool, EditDocument
 from .interaction_tools import AskUserTool, UpdatePlanTool
 from .model_interaction_tools import ChatWithModelTool, AskTeacherTool, ListModelsTool
 from .bg_job_tools import ManageBgJobsTool
+from src.apollo.tool import ApolloTool
 from .session_tools import CreateSessionTool, ListSessionsTool, SendToSessionTool, ManageSessionTool, ReadChatTool
 from .admin_tools import (
     ADMIN_TOOL_HANDLERS,
@@ -74,6 +75,8 @@ TOOL_HANDLERS = {
     "manage_session": ManageSessionTool().execute,
     # `B1621`. One of the person's own chats, read through, a page at a time.
     "read_chat": ReadChatTool().execute,
+    # Apollo's tasks, notebook and what it knows (`src/apollo/tool.py`).
+    "apollo": ApolloTool().execute,
     # `P20-04`. The workstation's screen, mouse and keyboard. Dispatched by name
     # in `tool_execution` (it needs the owner, which the registry fallback does
     # not pass), offered only when the workstation would answer this person.
@@ -109,7 +112,7 @@ TOOL_TAGS = {"bash", "python", "web_search", "web_fetch", "read_file", "write_fi
              "apply_patch", "todowrite",
              "grep", "glob", "ls", "get_workspace", "manage_bg_jobs",
              "create_document", "update_document", "edit_document",
-             "search_chats", "read_chat",
+             "search_chats", "read_chat", "apollo",
              "chat_with_model", "create_session", "list_sessions",
              "send_to_session",
              "pipeline",

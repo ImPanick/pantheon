@@ -6238,6 +6238,17 @@ class TaskScheduler:
                                         checks=checks, repaired=repaired)
             except Exception:
                 logger.warning("Could not keep the report for %s's run", task.name, exc_info=True)
+            # Apollo. A run that leads one of the person's Apollo goals moves
+            # that goal on (Done, or Needs you with the one question), charges
+            # its tokens to the goal when the model is API-billed, and leaves
+            # one line in their Apollo chat. Every other run is untouched.
+            try:
+                from src.apollo import runs as _apollo_runs
+                _apollo_runs.report_landed(db, task, run_id, result or "", checks=checks,
+                                           endpoint_url=endpoint_url,
+                                           post=self._post_to_apollo)
+            except Exception:
+                logger.warning("Could not move the Apollo task for %s's run", task.name, exc_info=True)
             if _agent_rt.failed(checks):
                 from src.agents import hires as _hires
                 sentence = _agent_rt.undelivered_sentence(agent_plan.name, checks)
@@ -6248,6 +6259,27 @@ class TaskScheduler:
                 raise _agent_rt.AgentDidNotDeliver(sentence)
 
         return result
+
+    def _post_to_apollo(self, owner: str, line: str, meta: dict) -> None:
+        """One line from Apollo into `owner`'s Apollo chat. Silent when they
+        have no Apollo chat yet — the task's own record still says it."""
+        from core.database import CrewMember, SessionLocal as _SL
+        from core.models import ChatMessage as MemChatMessage
+        if not self._session_manager or not owner:
+            return
+        db = _SL()
+        try:
+            crew = (db.query(CrewMember)
+                    .filter(CrewMember.owner == owner,
+                            CrewMember.is_default_assistant == True)  # noqa: E712
+                    .first())
+            session_id = getattr(crew, "session_id", None)
+        finally:
+            db.close()
+        if not session_id:
+            return
+        self._session_manager.add_message(
+            session_id, MemChatMessage("assistant", line, metadata=dict(meta or {})))
 
     async def _deliver_task_result(self, task, result: str, db, model: str = None):
         """Deliver a completed task result according to output_target.
@@ -9574,6 +9606,7 @@ class TaskScheduler:
             return
         from core.database import SessionLocal, CrewMember, ScheduledTask
         from core.database import Session as DbSession
+        from src.apollo import APOLLO_NAME
 
         db = SessionLocal()
         try:
@@ -9582,6 +9615,11 @@ class TaskScheduler:
                 CrewMember.is_default_assistant == True,  # noqa: E712
             ).first()
             if existing:
+                # The Assistant is Apollo now. A name the person chose stays;
+                # the old default name, on the crew member and its chat, moves.
+                from src.apollo.seed import become_apollo
+                if become_apollo(db, existing):
+                    db.commit()
                 return  # already seeded
 
             # Resolve a default model/endpoint from any existing session so the
@@ -9589,7 +9627,7 @@ class TaskScheduler:
             endpoint_url, model = self._resolve_defaults(db, owner)
 
             default_personality = (
-                "You are the user's personal assistant. Concise, warm, a little dry. "
+                "You are Apollo, the user's partner in Pantheon. Concise, warm, a little dry. "
                 "Never waste time with fluff. Default to English. Only match the other language when replying to a non-English email.\n\n"
 
                 "CORE RULE: You MUST use your tools to take action — do not describe what you would do. "
@@ -9637,8 +9675,8 @@ class TaskScheduler:
                 "- Before starting a complex task, check manage_skills for an existing procedure.\n\n"
 
                 "AUTONOMY RULES:\n"
-                "- Auto-add calendar events from clear meeting invitations (mention what you added)\n"
-                "- Auto-draft email replies (cached for when user clicks Reply)\n"
+                "- Draft by default: prepare the calendar event or the reply, and let the person approve it\n"
+                "- Real work that takes more than a turn becomes a task with the apollo tool\n"
                 "- NEVER send emails without explicit user instruction\n"
                 "- NEVER delete anything without explicit instruction\n"
                 "- If uncertain, ask rather than guess"
@@ -9648,7 +9686,7 @@ class TaskScheduler:
             session_id = str(uuid.uuid4())
             sess = DbSession(
                 id=session_id,
-                name="Assistant",
+                name=APOLLO_NAME,
                 endpoint_url=endpoint_url or "",
                 model=model or "",
                 owner=owner,
@@ -9666,7 +9704,7 @@ class TaskScheduler:
             assistant = CrewMember(
                 id=crew_id,
                 owner=owner,
-                name="Assistant",
+                name=APOLLO_NAME,
                 avatar=None,
                 personality=default_personality,
                 model=model,
@@ -9680,7 +9718,7 @@ class TaskScheduler:
                     "create_document", "update_document", "edit_document",
                     "generate_image", "trigger_research",
                     "download_model", "serve_model", "list_served_models", "stop_served_model",
-                    "edit_image",
+                    "edit_image", "apollo",
                 ]),
                 session_id=session_id,
                 # (`B1480` retired `is_active` and `sort_order`: this was the

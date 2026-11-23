@@ -172,7 +172,7 @@ def test_with_the_sidebar_open_one_door_is_in_sight(doors):
     # the rail is the door and the row is not drawn. One door either way.
     assert doors["desk"]["railShown"] is True
     assert doors["desk"]["rowShown"] is False
-    assert doors["desk"]["rowText"] == "Assistant"
+    assert doors["desk"]["rowText"] == "Apollo"
     # A before B, as on the rail — and `P24-12`'s Agents before the Assistant
     # (Ag before As), the one row added above it since.
     assert doors["desk"]["firstTool"] == "tool-agents-btn"
@@ -187,7 +187,7 @@ def test_the_row_opens_the_assistants_own_chat(doors):
 
 def test_customize_ui_has_a_switch_and_it_hides_both_doors(doors):
     desk = doors["desk"]
-    assert desk["switchLabel"] == "Assistant"
+    assert desk["switchLabel"] == "Apollo"
     assert desk["switchOn"] is True and desk["switchAfter"] is False
     assert desk["stored"] is False
     assert desk["rowHidden"] == "none"

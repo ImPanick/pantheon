@@ -362,6 +362,36 @@ FUNCTION_TOOL_SCHEMAS = [
     {
         "type": "function",
         "function": {
+            "name": "apollo",
+            "description": "Apollo's own records for the person you work for: tasks (goals and errands, each led by an agent from the roster), the notebook (open loops, things already talked through) and what Apollo knows about them (stated or inferred). Use it to turn real work into a task instead of doing it inline, to ask the one question a task is stuck on, and to keep what you learn. The owner is always the signed-in person.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "action": {"type": "string", "enum": ["status", "create_task", "start_task", "update_task", "ask", "note", "settle_note", "remember", "confirm", "forget", "knows"], "description": "What to do"},
+                    "id": {"type": "string", "description": "A task's id (start_task, update_task, ask), a note's (settle_note) or a known line's (confirm, forget)"},
+                    "title": {"type": "string", "description": "create_task/update_task: the task in a few words"},
+                    "brief": {"type": "string", "description": "create_task/update_task: what done looks like, and anything the lead needs to know"},
+                    "kind": {"type": "string", "description": "create_task: the kind of work in a few words (mail reply, cert renewal)"},
+                    "lead_agent": {"type": "string", "description": "create_task/update_task: an agent id from the roster to lead it; leave out to let Pantheon pick by fit"},
+                    "budget_tokens": {"type": "integer", "description": "create_task/update_task: tokens it may spend on paid models (local models are never capped)"},
+                    "start": {"type": "boolean", "description": "create_task: start the lead now (default true)"},
+                    "state": {"type": "string", "enum": ["working", "needs_you", "waiting", "done", "open", "settled", "dropped"], "description": "update_task: working, needs_you, waiting or done; settle_note: settled or dropped"},
+                    "question": {"type": "string", "description": "ask (or update_task to needs_you): the one question the task is stuck on"},
+                    "next_step": {"type": "string", "description": "update_task: the next step, in a line"},
+                    "outcome": {"type": "string", "description": "update_task to done: the outcome, in a line"},
+                    "text": {"type": "string", "description": "note/remember: the line, in the person's words where they said it"},
+                    "basis": {"type": "string", "enum": ["stated", "inferred"], "description": "remember: stated (they said it) or inferred (you noticed it; needs evidence)"},
+                    "category": {"type": "string", "enum": ["fact", "rule", "preference"], "description": "remember: a fact, a rule they gave, or a preference"},
+                    "evidence": {"type": "string", "description": "remember inferred: what you saw that suggests it, in a few words"},
+                    "task_id": {"type": "string", "description": "note: the task the note is about"}
+                },
+                "required": ["action"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "chat_with_model",
             "description": "Send a message to another AI model and get its response. Use for getting a second opinion, delegating subtasks, or AI-to-AI communication.",
             "parameters": {
@@ -2555,6 +2585,8 @@ def function_call_to_tool_block(name: str, arguments: str) -> Optional[ToolBlock
         content = args.get("query", "")
     elif tool_type == "read_chat":
         content = json.dumps(args)      # `B1621`: `session_tools._read_chat_args` reads it
+    elif tool_type == "apollo":
+        content = json.dumps(args)      # `src/apollo/tool.py` reads it
     elif tool_type == "chat_with_model":
         content = args.get("model", "") + "\n" + args.get("message", "")
     elif tool_type == "create_session":
