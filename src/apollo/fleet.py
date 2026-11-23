@@ -45,7 +45,7 @@ from src.apollo.errors import ApolloRefused
 MAX_DEPTH = 3
 MAX_CHILDREN = 8
 REVIEW_ROUNDS = 2
-KINDS = ("ask", "delegate", "review", "report", "escalate")
+KINDS = ("ask", "delegate", "review", "report", "escalate", "gap")
 VIAS = ("delegate", "ask", "review")
 BODY_MAX = 6000
 PERSON = "person"

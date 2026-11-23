@@ -352,7 +352,7 @@ export function teamRole(member) {
   return 'Delegate';
 }
 
-const _SAID = { delegate: 'handed', ask: 'asked', review: 'sent for review to', report: 'reported to', escalate: 'asked you' };
+const _SAID = { delegate: 'handed', ask: 'asked', review: 'sent for review to', report: 'reported to', escalate: 'asked you', gap: 'found no agent for' };
 
 /** One line of a goal's log: who said what to whom, first line only. */
 export function teamLine(msg, names = {}) {
@@ -361,6 +361,44 @@ export function teamLine(msg, names = {}) {
   const verb = _SAID[m.kind] || m.kind || 'said';
   const first = String(m.body || '').split('\n').find((l) => l.trim()) || '';
   const short = first.length > 140 ? `${first.slice(0, 139)}…` : first;
-  const to = m.kind === 'escalate' ? '' : ` ${m.to === 'person' ? 'you' : (names[m.to] || m.to || '')}`;
+  const to = (m.kind === 'escalate' || m.kind === 'gap') ? '' : ` ${m.to === 'person' ? 'you' : (names[m.to] || m.to || '')}`;
   return `${who(m.from)} ${verb}${to}${short ? `: ${short}` : ''}`.replace(/\s+:/, ':');
+}
+
+/* ───────────── phase 5b: missing agents ───────────── */
+
+const _FIT = { 'runs-well': 'Runs well', 'runs-slowly': 'Runs, slowly',
+  'needs-bigger': 'Needs a bigger model', 'not-measured': 'Not measured' };
+
+/** A fit badge in words, as the hall says it. */
+export function fitWords(badge) { return _FIT[badge] || ''; }
+
+/** The person's proposals worth showing: every open one, and the settled
+ *  ones from the last week, newest first, six at most. */
+export function madeList(proposals, now = Date.now()) {
+  const week = 7 * 24 * 3600 * 1000;
+  return (Array.isArray(proposals) ? proposals : [])
+    .filter((p) => ['drafting', 'proving', 'waiting'].includes(p.state)
+      || (now - Date.parse(p.updated_at || p.created_at || 0)) < week)
+    .slice(0, 6);
+}
+
+/** What a drafted agent asks for, in one line an admin can weigh. */
+export function asksLine(asks) {
+  const a = asks || {};
+  if (a.error) return `Its file doesn't pass its check: ${a.error}`;
+  const tools = (a.tools || []).join(', ') || 'no tools';
+  const fx = Object.entries(a.effects || {}).map(([k, v]) => `${k} ${v}`).join(', ');
+  return `Uses ${tools}.${fx ? ` Effects: ${fx}.` : ''}`;
+}
+
+/** How its proof run went, in a line. */
+export function proofLine(p) {
+  const r = (p && p.proof) || null;
+  if (!r) return '';
+  const fit = fitWords(p.badge);
+  const n = Number(r.runs);
+  const passed = n > 0 && Number.isFinite(Number(r.pass_rate))
+    ? ` ${Math.round(Number(r.pass_rate) * n)} of ${n} runs passed.` : '';
+  return `Proven on ${p.model || r.model || 'your model'}${fit ? `: ${fit}` : ''}.${passed}`;
 }

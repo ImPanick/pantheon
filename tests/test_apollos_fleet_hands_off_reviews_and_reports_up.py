@@ -310,7 +310,7 @@ def test_the_tool_finds_its_task_from_the_run_never_from_the_arguments(db, apoll
     refused, _ = fleet_tool.run_sync(ADA, "nowhere", None, {"action": "roster"})
     assert refused == {"error": fleet_tool.NOT_A_LEAD, "exit_code": 1}
     bad, _ = fleet_tool.run_sync(ADA, "s-1", None, {"action": "fire"})
-    assert bad["error"] == "The fleet's actions are roster, delegate, ask, escalate."
+    assert bad["error"] == "The fleet's actions are roster, delegate, ask, escalate, propose_agent."
 
 
 def test_the_roster_action_leaves_the_asker_out(db, monkeypatch):
@@ -335,7 +335,8 @@ def test_the_tool_is_registered_everywhere_a_tool_must_be():
     effects = {a: {e.value for e in capabilities_for_action("fleet", f'{{"action": "{a}"}}').effects}
                for a in ACTIONS}
     assert effects == {"roster": {"read_private"}, "delegate": {"write_private"},
-                       "ask": {"write_private"}, "escalate": {"write_private"}}
+                       "ask": {"write_private"}, "escalate": {"write_private"},
+                       "propose_agent": {"write_private"}}
 
 
 # ── a lead's run landing ───────────────────────────────────────────────────

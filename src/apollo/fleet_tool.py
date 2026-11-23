@@ -11,6 +11,8 @@ from the arguments, so an agent can't reach another task or another person.
   delegate  — hand a sub-task to an agent: {agent, brief, review_by?}
   ask       — ask an agent one question: {agent, question}
   escalate  — a decision or a yes only the person can give: {question}
+  propose_agent — no agent fits: {need, why}. It's drafted, proven and
+              waits for an admin (`src/apollo/gaps.py`); this run carries on.
 """
 from __future__ import annotations
 
@@ -24,7 +26,7 @@ from src.apollo.errors import ApolloRefused
 
 logger = logging.getLogger(__name__)
 
-ACTIONS = ("roster", "delegate", "ask", "escalate")
+ACTIONS = ("roster", "delegate", "ask", "escalate", "propose_agent")
 READ_ACTIONS = frozenset({"roster"})
 WRITE_ACTIONS = frozenset(ACTIONS) - READ_ACTIONS
 NOT_A_LEAD = "The fleet is for an agent leading one of the person's Apollo tasks, and this run isn't one."
@@ -63,8 +65,8 @@ def _do(db, owner: str, task, agent_id: Optional[str], args: Dict[str, Any]) -> 
         found = roster(owner, args.get("need") or args.get("brief") or task.title)
         found = [a for a in found if a["id"] != me]
         if not found:
-            return _out("No agent in the roster fits that. Do it yourself, or say in your report what "
-                        "kind of agent the goal is missing."), []
+            return _out("No agent in the roster fits that. Do it yourself, and propose the missing agent "
+                        "with propose_agent if the job will come up again."), []
         return _out("\n".join(f"- {a['id']}: {a['name']} — {a['tagline']} ({a['fit']})" for a in found)), []
     if action in ("delegate", "ask"):
         brief = args.get("brief") if action == "delegate" else args.get("question")
@@ -84,6 +86,16 @@ def _do(db, owner: str, task, agent_id: Optional[str], args: Dict[str, Any]) -> 
         F.escalate(db, owner, task, from_agent=me, question=args.get("question"))
         db.commit()
         return _out("The person has the question. End this run; you run again with their answer."), []
+    if action == "propose_agent":
+        from src.apollo import gaps as G
+        row, made = G.propose(db, owner, need=args.get("need"), why=args.get("why"), task=task, from_agent=me)
+        db.commit()
+        if not made:
+            return _out(f"That agent is already being made ({G.STATE_WORDS.get(row.state, row.state)}). "
+                        f"Carry on without it."), []
+        return _out("Proposed. It's drafted and proven, then an admin decides whether it joins the roster. "
+                    "Carry on without it: do the part yourself, or say in your report what's waiting on it.",
+                    build=row.id), []
     raise ApolloRefused(f"The fleet's actions are {', '.join(ACTIONS)}.")
 
 
@@ -120,6 +132,10 @@ async def fleet(content: Any, ctx: Optional[Dict[str, Any]] = None) -> Dict[str,
         return {"error": NOT_A_LEAD, "exit_code": 1}
     result, runs_to_start = await asyncio.to_thread(run_sync, owner, ctx.get("session_id"),
                                                     ctx.get("agent_id"), parse(content))
+    build = result.pop("build", None)
+    if build:
+        from src.apollo import gaps as G
+        G.start_build(build)
     from src.apollo.tool import start_run
     for run in runs_to_start:
         if not await start_run(run):

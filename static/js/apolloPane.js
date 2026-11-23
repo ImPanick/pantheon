@@ -51,6 +51,7 @@ let _chat = null;       // the embedded task chat, kept across redraws
 let _reach = 'here';    // Activity: 'here' (the space Apollo is in) or 'all'
 let _offSpace = null;   // stops following the space switcher
 let _deleting = '';     // a space whose Delete was pressed once
+let _agentDraft = '';   // an admin's edit of a drafted agent, kept across redraws
 
 function _el(tag, cls, text) {
   const n = document.createElement(tag);
@@ -415,6 +416,130 @@ function _outputsSection(tasks) {
   return s;
 }
 
+/** Phase 5b. The agents being made for the person, from gaps a lead found. */
+function _madeSection(proposals) {
+  const list = M.madeList(proposals);
+  if (!list.length) return null;
+  const s = _section('Agents being made');
+  const ul = _el('ul', 'apo-list');
+  for (const p of list) {
+    const li = _el('li', `apo-out apo-made apo-made-${p.state}`);
+    li.appendChild(_el('p', 'apo-out-t', p.agent_name ? `${p.agent_name}: ${p.need}` : p.need));
+    li.appendChild(_el('p', 'apo-out-line', `${p.state_words}. ${p.sentence || ''}`.trim()));
+    if (p.state === 'failed') {
+      li.appendChild(_btn('apo-link', 'Try again', async () => {
+        try { await _api(`/api/apollo/agents/proposals/${encodeURIComponent(p.id)}/retry`, { method: 'POST' }); }
+        catch (err) { _say(err.message); }
+        _refresh();
+      }));
+    }
+    ul.appendChild(li);
+  }
+  s.appendChild(ul);
+  return s;
+}
+
+async function _review(path, body, said) {
+  try {
+    await _api(path, { method: 'POST', body: body || {} });
+    if (said) _say(said);
+  } catch (err) { _say(err.message); }
+  _editing = '';
+  _refresh();
+}
+
+function _proposalRow(p) {
+  const li = _el('li', 'apo-out apo-review');
+  const asks = p.asks_for || {};
+  li.appendChild(_el('p', 'apo-out-t', `${asks.name || p.agent_name || 'New agent'}${p.version ? ` ${p.version}` : ''}`));
+  li.appendChild(_el('p', 'apo-out-line', `For: ${p.need}`));
+  li.appendChild(_el('p', 'apo-out-line', `Why: ${p.why}`));
+  if (p.text) li.appendChild(_el('p', 'apo-out-line apo-review-asks', M.asksLine(asks)));
+  const proof = M.proofLine(p);
+  li.appendChild(_el('p', 'apo-out-line', proof || `${p.state_words}. ${p.sentence || ''}`.trim()));
+  const id = encodeURIComponent(p.id);
+  if (_editing === `agent:${p.id}`) {
+    const box = _el('textarea', 'apo-input apo-review-text');
+    box.value = _agentDraft;
+    box.rows = 14;
+    box.setAttribute('aria-label', 'The agent file');
+    box.addEventListener('input', () => { _agentDraft = box.value; });
+    li.appendChild(box);
+    const row = _el('div', 'apo-acts');
+    row.appendChild(_btn('apo-primary', 'Prove it again', () => _review(`/api/apollo/agents/review/${id}/edit`,
+      { text: _agentDraft }, 'Proving the edit.')));
+    row.appendChild(_btn('', 'Cancel', () => { _editing = ''; _refresh(); }));
+    li.appendChild(row);
+    return li;
+  }
+  const row = _el('div', 'apo-acts');
+  if (p.state === 'waiting' && p.proof) {
+    row.appendChild(_btn('apo-primary', 'Approve', () => _review(`/api/apollo/agents/review/${id}/approve`,
+      null, 'Published. Anyone on this server can hire it.'), `Approve ${asks.name || 'this agent'} for everyone`));
+  }
+  if (p.state === 'waiting' && p.text) {
+    row.appendChild(_btn('', 'Edit', () => { _editing = `agent:${p.id}`; _agentDraft = p.text; _refresh(); }));
+  }
+  row.appendChild(_btn('', 'Reject', () => _review(`/api/apollo/agents/review/${id}/reject`, {}, 'Turned down.')));
+  li.appendChild(row);
+  return li;
+}
+
+/** A published platform agent: a new version, proven before it's approved,
+ *  or a step back to an earlier one. */
+function _platformRow(a) {
+  const li = _el('li', 'apo-out apo-platform');
+  const id = encodeURIComponent(a.id);
+  li.appendChild(_el('p', 'apo-out-t', `${a.name}: version ${a.live || 'none'} is live`));
+  if (_editing === `update:${a.id}`) {
+    const box = _el('textarea', 'apo-input apo-review-text');
+    box.value = _agentDraft;
+    box.rows = 14;
+    box.setAttribute('aria-label', `The new version of ${a.name}`);
+    box.addEventListener('input', () => { _agentDraft = box.value; });
+    li.appendChild(box);
+    li.appendChild(_el('p', 'apo-out-line', 'Give it a new version number. It is proven before you can approve it.'));
+    const row = _el('div', 'apo-acts');
+    row.appendChild(_btn('apo-primary', 'Prove it', () => _review(`/api/apollo/agents/platform/${id}/update`,
+      { text: _agentDraft }, 'Proving the new version.')));
+    row.appendChild(_btn('', 'Cancel', () => { _editing = ''; _refresh(); }));
+    li.appendChild(row);
+    return li;
+  }
+  const row = _el('div', 'apo-acts');
+  row.appendChild(_btn('', 'New version', async () => {
+    try {
+      const src = await _api(`/api/agents/${id}/source`);
+      _agentDraft = (src && src.text) || '';
+      _editing = `update:${a.id}`;
+    } catch (err) { _say(err.message); }
+    _refresh();
+  }));
+  for (const v of (a.versions || [])) {
+    if (v.version === a.live) continue;
+    row.appendChild(_btn('apo-link', `Roll back to ${v.version}`, () => _review(
+      `/api/apollo/agents/platform/${id}/rollback`, { version: v.version }, `${a.name} is back on ${v.version}.`)));
+  }
+  li.appendChild(row);
+  return li;
+}
+
+/** Phase 5b, for an admin: drafted agents waiting on a decision, and the
+ *  platform agents' versions. Hidden when the server says this isn't an admin. */
+function _reviewSection(review) {
+  if (!review) return null;
+  const waiting = review.waiting || [];
+  const published = review.published || [];
+  if (!waiting.length && !published.length) return null;
+  const s = _section(waiting.length ? 'New agents to approve' : 'Agents made here');
+  s.appendChild(_el('p', 'apo-empty', 'An approved agent joins the roster for everyone on this server.'));
+  const ul = _el('ul', 'apo-list');
+  for (const p of waiting) ul.appendChild(_proposalRow(p));
+  for (const a of published) ul.appendChild(_platformRow(a));
+  s.appendChild(ul);
+  return s;
+}
+
 function _spacesSection(state, spaces) {
   const kids = (state && Array.isArray(state.children)) ? state.children : [];
   const here = state && state.space;
@@ -476,7 +601,7 @@ function _loopsSection(notes) {
 
 async function _drawMain(gen) {
   const reach = _reachParam();
-  const [state, tasksOut, notesOut, ws, apprOut, phone, spaces, rhythm, voice, trustOut] = await Promise.all([
+  const [state, tasksOut, notesOut, ws, apprOut, phone, spaces, rhythm, voice, trustOut, madeOut, review] = await Promise.all([
     _api(`/api/apollo/state?space=${_here()}`),
     _api(`/api/apollo/tasks?space=${reach}`),
     _api(`/api/apollo/notebook?kind=open_loop&state=open&space=${reach}`),
@@ -487,6 +612,8 @@ async function _drawMain(gen) {
     _api('/api/apollo/rhythm').catch(() => null),
     _api('/api/apollo/voice').catch(() => null),
     _api(`/api/apollo/trust?space=${reach}`).catch(() => null),
+    _api('/api/apollo/agents/proposals').catch(() => null),
+    fetch('/api/apollo/agents/review', { credentials: 'same-origin' }).then((r) => (r.ok ? r.json() : null)).catch(() => null),
   ]);
   if (gen !== _gen || !_win) return;
   const tasks = (tasksOut && tasksOut.tasks) || [];
@@ -505,6 +632,10 @@ async function _drawMain(gen) {
   if (room) body.appendChild(room);
   const outs = _outputsSection(tasks);
   if (outs) body.appendChild(outs);
+  const made = _madeSection(madeOut && madeOut.proposals);
+  if (made) body.appendChild(made);
+  const rev = _reviewSection(review);
+  if (rev) body.appendChild(rev);
   const loops = _loopsSection(notesOut && notesOut.notes);
   if (loops) body.appendChild(loops);
   body.appendChild(_rhythmSection(rhythm));
@@ -949,6 +1080,7 @@ async function _drawSpace(gen) {
     _deleting === id ? 'Press again to delete' : 'Delete this space', async () => {
       if (_deleting !== id) { _deleting = id; _refresh(); return; }
       _deleting = '';
+  _agentDraft = '';
       try {
         await _api(`/api/apollo/spaces/${key}`, { method: 'DELETE' });
         _say('Deleted.');

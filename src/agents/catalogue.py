@@ -2,7 +2,15 @@
 """`P24-02` · The catalogue: two layers, the same id shadowing.
 
     library/pantheon/agents/<id>/AGENT.md        shipped, read-only
+    <data>/agent_platform/live/<id>/AGENT.md      made for this server: drafted for a
+                                                  gap, proven, and approved by an admin
+                                                  (`src/apollo/gaps.py`); every account
+                                                  can hire it
     <data>/agents/<person>/<id>/AGENT.md          a person's own, or their copy
+
+The platform layer sits between the two: it never replaces a shipped agent
+(an approval refuses a shipped id), and a person's own file still shadows it
+for that person.
 
 A person's file with a shipped agent's id **shadows** it for that person and
 nobody else, exactly as a person's skill shadows a library skill. The person's
@@ -42,6 +50,12 @@ def own_root(owner: Optional[str], data_dir: Optional[str] = None) -> str:
     from src.workstation_access import workstation_owner
     from workstation.protocol import project_folder
     return os.path.join(data_dir or DATA_DIR, "agents", project_folder(workstation_owner(owner)))
+
+
+def platform_root(data_dir: Optional[str] = None) -> str:
+    """Where the server's approved agents live (phase 5b)."""
+    from src.constants import DATA_DIR
+    return os.path.join(data_dir or DATA_DIR, "agent_platform", "live")
 
 
 def _read(path: str, source: str):
@@ -95,13 +109,15 @@ def catalogue(owner: Optional[str], *, shipped_root: Optional[str] = None,
     section order, then starred first, then wave, then name."""
     from src.agents.manifest import SECTION_IDS
     shipped, broken_s = _layer(shipped_root or SHIPPED_ROOT, "shipped")
+    platform, broken_p = _layer(platform_root(data_dir), "platform")
     own, broken_o = _layer(own_root(owner, data_dir), "own")
-    merged = dict(shipped)
+    merged = dict(platform)
+    merged.update(shipped)          # a shipped id is never replaced by the platform's
     merged.update(own)
     order = {sid: n for n, sid in enumerate(SECTION_IDS)}
     agents = sorted(merged.values(),
                     key=lambda m: (order.get(m.section, 99), not m.starred, m.wave, m.name.lower()))
-    return agents, broken_s + broken_o
+    return agents, broken_s + broken_p + broken_o
 
 
 def get_agent(owner: Optional[str], agent_id: str, *, shipped_root: Optional[str] = None,
@@ -109,7 +125,8 @@ def get_agent(owner: Optional[str], agent_id: str, *, shipped_root: Optional[str
     """One agent as this person sees it, or `None`."""
     if not agent_id or "/" in agent_id or "\\" in agent_id or agent_id.startswith("."):
         return None
-    for root, source in ((own_root(owner, data_dir), "own"), (shipped_root or SHIPPED_ROOT, "shipped")):
+    for root, source in ((own_root(owner, data_dir), "own"), (shipped_root or SHIPPED_ROOT, "shipped"),
+                         (platform_root(data_dir), "platform")):
         got = _read(os.path.join(root, agent_id, MANIFEST_NAME), source)
         if isinstance(got, Manifest) and got.id == agent_id:
             return got

@@ -1489,6 +1489,7 @@ def main(argv=None) -> int:
     import argparse
     ap = argparse.ArgumentParser(description="Run agents' evaluation sets in an isolated world.")
     ap.add_argument("agent")
+    ap.add_argument("--file", help="prove this AGENT.md (with evals.json beside it) instead of a catalogue agent")
     ap.add_argument("--endpoint")
     ap.add_argument("--model")
     ap.add_argument("--runs", type=int, default=1)
@@ -1502,9 +1503,20 @@ def main(argv=None) -> int:
     if bool(args.endpoint) != bool(args.model):
         print("A proof run names both --endpoint and --model.")
         return 2
-    from src.agents.catalogue import catalogue
-    agents, _ = catalogue(None)
-    chosen = [m for m in agents if args.agent in ("all", m.id)]
+    if args.file:
+        # Phase 5b: a drafted agent, proven before anyone can hire it
+        # (`src/apollo/gaps.py`). Its file is read as the lint reads any.
+        from src.agents.manifest import ManifestRefused, parse_manifest
+        try:
+            with open(args.file, encoding="utf-8") as fh:
+                chosen = [parse_manifest(fh.read(), source="platform", path=os.path.abspath(args.file))]
+        except (OSError, ManifestRefused) as exc:
+            print(f"The file could not be proven: {getattr(exc, 'sentence', exc)}")
+            return 2
+    else:
+        from src.agents.catalogue import catalogue
+        agents, _ = catalogue(None)
+        chosen = [m for m in agents if args.agent in ("all", m.id)]
     if not chosen:
         print(f"There is no agent called {args.agent}.")
         return 2
