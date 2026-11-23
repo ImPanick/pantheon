@@ -311,7 +311,7 @@ async def prove(manifest, *, endpoint: str, model: str, runs: int = PROOF_RUNS,
     out = os.path.join(os.path.dirname(manifest.path), "proof.jsonl")
     try:
         os.remove(out)
-    except OSError:
+    except OSError:   # an old proof file may not be there; the run writes a fresh one
         pass
     cmd = [sys.executable, "-m", "src.agents.evals", manifest.id, "--file", manifest.path,
            "--endpoint", endpoint, "--model", model, "--runs", str(runs), "--out", out]
@@ -516,7 +516,7 @@ def approve(db, admin: str, pid: str, *, data_dir: Optional[str] = None) -> Dict
         json.dump(meta, fh, indent=1)
     try:
         os.remove(os.path.join(staged, "proof.jsonl"))
-    except OSError:
+    except OSError:   # nothing staged to clear: the edit is proven from scratch either way
         pass
     os.makedirs(os.path.dirname(vdir), exist_ok=True)
     _copy(staged, vdir)
@@ -571,7 +571,7 @@ def published(data_dir: Optional[str] = None) -> List[Dict[str, Any]]:
         try:
             with open(os.path.join(_live_dir(agent_id, data_dir), MANIFEST_NAME), encoding="utf-8") as fh:
                 live = parse_manifest(fh.read(), source="platform")
-        except (OSError, ManifestRefused):
+        except (OSError, ManifestRefused):   # no live copy yet, or one the catalogue would refuse: nothing to compare
             pass
         versions = []
         for v in sorted(os.listdir(os.path.join(root, agent_id))):
@@ -579,7 +579,7 @@ def published(data_dir: Optional[str] = None) -> List[Dict[str, Any]]:
             try:
                 with open(os.path.join(root, agent_id, v, "published.json"), encoding="utf-8") as fh:
                     meta = json.load(fh)
-            except (OSError, ValueError):
+            except (OSError, ValueError):   # a version folder with no readable record is listed without one
                 pass
             versions.append({"version": v, "approved_by": meta.get("approved_by"),
                              "approved_at": meta.get("approved_at"), "badge": meta.get("badge")})
