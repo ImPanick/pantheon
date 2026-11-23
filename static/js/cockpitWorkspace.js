@@ -3,8 +3,8 @@
 // cockpitWorkspace.js — the workspace dock: the right-hand column of the
 // cockpit shell (`static/cockpit.css`, note 8 of the V4 study).
 //
-// The column holds four surfaces, one or several at once: Documents,
-// Workstation, Browser and Mobile Emulator. **It builds none of
+// The column holds five surfaces, one or several at once: Apollo (only from
+// the Apollo chat), Documents, Workstation, Browser and Mobile Emulator. **It builds none of
 // them.** Each is the window its own module already draws —
 //
 //   Document     `#doc-editor-pane`        document.js (opened by `#overflow-doc-btn`)
@@ -39,10 +39,13 @@ const SURFACES = {
   vm: { label: 'Workstation', icon: 'monitor', node: () => document.querySelector('.modal.wsv-modal') },
   browser: { label: 'Browser', icon: 'browser', node: () => document.querySelector('.modal.abw-modal') },
   phone: { label: 'Mobile Emulator', icon: 'phone', node: () => document.querySelector('.modal.phw-modal') },
+  // Apollo's pane. Its tab shows only while the Apollo chat is open
+  // (`html.apollo-chat`, set by `assistant.js`); agent chats keep the rest.
+  apollo: { label: 'Apollo', icon: 'spark', node: () => document.querySelector('.modal.apo-modal') },
 };
-const ORDER = ['doc', 'vm', 'browser', 'phone'];
+const ORDER = ['apollo', 'doc', 'vm', 'browser', 'phone'];
 const LAYOUTS = [['one', 'l1', 'One at a time'], ['cols', 'lcols', 'Side by side'], ['rows', 'lrows', 'Stacked'], ['main', 'lmain', 'One large, the rest below']];
-const MODAL_IDS = { vm: 'workstation-screen-modal', browser: 'agent-browser-modal', phone: 'phone-modal' };
+const MODAL_IDS = { vm: 'workstation-screen-modal', browser: 'agent-browser-modal', phone: 'phone-modal', apollo: 'apollo-pane-modal' };
 
 const W = {
   layout: 'rows', focus: 'doc', max: null,
@@ -91,6 +94,8 @@ function openSurface(key) {
     import('./browserWindow.js').then((m) => m.openAgentBrowser({})).catch(() => {});
   } else if (key === 'phone') {
     import('./phoneWindow.js').then((m) => m.openPhone()).catch(() => {});
+  } else if (key === 'apollo') {
+    import('./apolloPane.js').then((m) => m.openApolloPane()).catch(() => {});
   }
 }
 
@@ -167,6 +172,12 @@ function syncHeader(key) {
       const st = $('.phw-bezel', node)?.dataset.state || 'checking';
       hold = { on: 'Watching', starting: 'Starting', off: 'Off', installing: 'Installing', unavailable: 'Unavailable' }[st] || 'Checking';
     }
+  } else if (key === 'apollo') {
+    // What Apollo is doing now, in the pane's own words.
+    const st = $('.apo-status', node);
+    hold = st?.textContent?.trim() || '';
+    if (st?.classList.contains('apo-tone-needs')) cls = 'you';
+    else if (st?.classList.contains('apo-tone-working')) cls = 'agent';
   }
   ttl.textContent = title;
   holder.textContent = hold;

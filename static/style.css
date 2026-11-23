@@ -51828,3 +51828,106 @@ body.plan-mode-active .chat-input-top > .model-picker-wrap:has(> .model-picker-m
 .wsv-actions .ctl-tip:last-child:focus::after, .wsv-more-wrap .ctl-tip:focus::after { transform: none; }
 .wsv-more.is-open::after { opacity: 0 !important; }
 .wsv-cu.ctl-tip::after { white-space: normal; width: 240px; text-align: left; }
+
+/* ── Apollo's pane (`apolloPane.js`) ───────────────────────────────────────
+   What Apollo is doing, what needs the person, what came of the work, and
+   what Apollo knows. Floats as a window, docks in the workspace column, and
+   is a full-screen sheet at phone width. The control tokens are the theme's
+   (`--ctl-*` above); the pane adds no colour of its own but the state dots. */
+#apollo-pane-modal .apo-content {
+  width: min(420px, 95vw);
+  height: min(760px, 90vh);
+  max-height: 90vh;
+}
+.apo-content { display: flex; flex-direction: column; min-width: 300px; }
+.apo-heading { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+.apo-icon { display: inline-flex; }
+.apo-status { margin: 0; padding: 6px 14px; font-size: 12px; color: var(--ctl-text-2); border-bottom: 1px solid var(--ctl-edge); }
+.apo-body { flex: 1 1 auto; overflow-y: auto; padding: 10px 14px 16px; display: flex; flex-direction: column; gap: 14px; }
+.apo-tone-needs { color: var(--color-warning); }
+.apo-tone-working { color: var(--ctl-ok); }
+
+.apo-profile { display: flex; align-items: center; gap: 10px; }
+.apo-avatar {
+  width: 34px; height: 34px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
+  background: var(--ctl-tint-2); color: var(--ctl-text); font-weight: 600; flex: 0 0 auto;
+}
+.apo-who { display: flex; flex-direction: column; min-width: 0; flex: 1 1 auto; }
+.apo-name { font-size: 14px; }
+.apo-now { font-size: 12px; color: var(--ctl-text-2); }
+
+.apo-btn {
+  font: inherit; font-size: 12px; padding: 5px 10px; border-radius: 999px; cursor: pointer;
+  border: 1px solid var(--ctl-edge); background: var(--ctl-tint); color: var(--ctl-text);
+}
+.apo-btn:hover:not(:disabled) { background: var(--ctl-tint-2); }
+.apo-btn:disabled { color: var(--ctl-text-3); cursor: default; }
+.apo-btn.apo-primary { background: var(--ctl-accent); color: var(--ctl-on-accent); border-color: transparent; }
+.apo-btn.apo-small { font-size: 11px; padding: 3px 8px; }
+.apo-btn.apo-link, .apo-btn.apo-back {
+  border: 0; background: none; padding: 0; color: var(--link-fg); text-align: left; border-radius: 0;
+}
+.apo-btn.apo-link:hover, .apo-btn.apo-back:hover { background: none; color: var(--link-hover-fg); text-decoration: underline; }
+.apo-btn.apo-back { align-self: flex-start; color: var(--ctl-text-2); }
+
+.apo-sec { display: flex; flex-direction: column; gap: 6px; }
+.apo-sec-h { display: flex; align-items: center; justify-content: space-between; }
+.apo-sec-t { margin: 0; font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--ctl-text-3); }
+.apo-empty, .apo-error { margin: 0; font-size: 12px; color: var(--ctl-text-2); }
+.apo-error { color: var(--color-error); }
+
+.apo-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.apo-row-b {
+  display: flex; align-items: center; gap: 8px; width: 100%; padding: 6px 8px; border-radius: 8px;
+  border: 0; background: none; color: var(--ctl-text); font: inherit; font-size: 13px; text-align: left; cursor: pointer;
+}
+.apo-row-b:hover { background: var(--ctl-tint); }
+.apo-row-t { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.apo-row-s { font-size: 11px; color: var(--ctl-text-3); flex: 0 0 auto; }
+
+.apo-dot { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 auto; background: var(--ctl-text-3); }
+.apo-dot-working { background: var(--ctl-ok); }
+.apo-dot-needs-you { background: var(--color-warning); }
+.apo-dot-waiting { background: var(--ctl-text-3); }
+.apo-dot-done { background: var(--color-accent); }
+
+.apo-needs .apo-need { padding: 8px; border-radius: 10px; background: var(--ctl-tint); display: flex; flex-direction: column; gap: 6px; }
+.apo-q { margin: 0; font-size: 13px; }
+.apo-answer, .apo-budget-form, .apo-add, .apo-edit { display: flex; gap: 6px; align-items: center; }
+.apo-input {
+  flex: 1 1 auto; min-width: 0; font: inherit; font-size: 13px; padding: 5px 8px; border-radius: 8px;
+  border: 1px solid var(--ctl-edge); background: var(--select-bg); color: var(--ctl-text);
+}
+
+.apo-card {
+  display: flex; flex-direction: column; gap: 4px; width: 100%; padding: 10px; border-radius: 10px; text-align: left;
+  border: 1px solid var(--ctl-edge); background: var(--ctl-tint); color: var(--ctl-text); font: inherit;
+}
+button.apo-card { cursor: pointer; }
+button.apo-card:hover { background: var(--ctl-tint-2); }
+.apo-card-top { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.apo-card-state { margin-left: auto; font-size: 11px; color: var(--ctl-text-2); }
+.apo-card-line { margin: 0; font-size: 12px; color: var(--ctl-text-2); }
+
+.apo-out, .apo-loop, .apo-line { display: flex; flex-direction: column; gap: 3px; padding: 6px 8px; border-radius: 8px; }
+.apo-out-line, .apo-line-why { margin: 0; font-size: 12px; color: var(--ctl-text-2); }
+.apo-loop-t, .apo-line-t { font-size: 13px; }
+.apo-acts { display: flex; flex-wrap: wrap; gap: 6px; }
+.apo-line-inferred { background: var(--ctl-tint); }
+
+.apo-task-h { display: flex; align-items: center; gap: 8px; }
+.apo-task-t { margin: 0; font-size: 15px; flex: 1 1 auto; min-width: 0; }
+.apo-fact { display: flex; flex-direction: column; gap: 2px; }
+.apo-fact-k { font-size: 11px; color: var(--ctl-text-3); text-transform: uppercase; letter-spacing: .04em; }
+.apo-fact-v { font-size: 13px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.apo-budget { display: flex; flex-direction: column; gap: 6px; }
+.apo-budget-line { margin: 0; font-size: 12px; color: var(--ctl-text-2); }
+.apo-task-acts { margin-top: 4px; }
+
+/* At phone width the pane is a full-screen sheet; nothing floats. */
+@media (max-width: 768px) {
+  #apollo-pane-modal .apo-content {
+    position: fixed !important; inset: 0 !important; width: 100vw !important; height: 100dvh !important;
+    max-width: none !important; max-height: none !important; min-width: 0; border-radius: 0 !important;
+  }
+}

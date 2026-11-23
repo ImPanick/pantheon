@@ -438,14 +438,18 @@ async function _ensureHeaderAffordances(sessionId) {
   // switched off for this person or everyone each ask was a 403 (and, failing,
   // was never cached, so the next switch asked again).
   if (!(await toolPollMayAsk('assistant'))) return;
+  let isApollo = false;
   try {
     const settings = await _getSettings();
-    if (settings?.crew?.session_id !== sessionId) return;
+    isApollo = settings?.crew?.session_id === sessionId;
   } catch {
     return;
   }
+  _markApolloChat(isApollo);
+  if (!isApollo) return;
   const headerRight = document.querySelector('.chat-header-right, #chat-header .actions, .chat-header');
   if (!headerRight) return;
+  _ensurePaneButton(headerRight);
   if (headerRight.querySelector('#assistant-header-gear')) return;
   const gear = document.createElement('button');
   gear.id = 'assistant-header-gear';
@@ -455,6 +459,36 @@ async function _ensureHeaderAffordances(sessionId) {
   gear.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>';
   gear.addEventListener('click', openAssistantSettings);
   headerRight.appendChild(gear);
+}
+
+// Apollo's pane (`apolloPane.js`) shows only from the Apollo chat (the
+// outline's first settled call): the chat header gets its button, the
+// workspace dock its tab (`html.apollo-chat`), and leaving the chat closes it.
+function _markApolloChat(isApollo) {
+  const root = document.documentElement;
+  if (!root || !root.classList) return;
+  const was = root.classList.contains('apollo-chat');
+  root.classList.toggle('apollo-chat', isApollo);
+  if (!isApollo) {
+    document.getElementById('apollo-pane-btn')?.remove();
+    document.getElementById('assistant-header-gear')?.remove();
+    if (was) import('./apolloPane.js').then((m) => { if (m.isApolloPaneOpen()) m.closeApolloPane(); }).catch(() => {});
+  }
+}
+
+function _ensurePaneButton(headerRight) {
+  if (headerRight.querySelector('#apollo-pane-btn')) return;
+  const btn = document.createElement('button');
+  btn.id = 'apollo-pane-btn';
+  btn.type = 'button';
+  btn.title = "Apollo's pane";
+  btn.setAttribute('aria-label', "Open Apollo's pane");
+  btn.className = 'chat-header-btn';
+  btn.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="2"/><path d="M14.5 4.5v15"/></svg>';
+  btn.addEventListener('click', () => {
+    import('./apolloPane.js').then((m) => m.openApolloPane()).catch(() => uiModule.showToast("Apollo's pane could not open"));
+  });
+  headerRight.appendChild(btn);
 }
 
 // `H02`. The gear appears when the assistant session becomes the open one,

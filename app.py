@@ -1260,6 +1260,9 @@ app.include_router(setup_git_routes())
 
 from routes.assistant_routes import setup_assistant_routes
 app.include_router(setup_assistant_routes(task_scheduler))
+# Apollo: the pane's tasks, open loops and what Apollo knows.
+from routes.apollo_routes import setup_apollo_routes
+app.include_router(setup_apollo_routes())
 
 # Calendar (CalDAV)
 from routes.calendar_routes import setup_calendar_routes
