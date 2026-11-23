@@ -77,6 +77,11 @@ class Station:
 
 
 class Handler(agentd.Handler):
+    # The phone's picture is a request, then an answer of a few writes, many
+    # times a second. With Nagle on, a write behind unacknowledged data waits
+    # for the relay's delayed ACK: about 40 ms a frame on Linux and longer on
+    # Windows, so the phone stuttered (the owner, 2026-11-23).
+    disable_nagle_algorithm=True
     def setup(self):
         super().setup();self.connection.settimeout(30)
         self.deadline=threading.Timer(8,self.expire);self.deadline.daemon=True;self.deadline.start()
