@@ -113,3 +113,85 @@ export function computerCard(ws) {
   const label = { up: 'Running', down: 'Stopped', off: 'Off', unconfigured: 'Not set up', not_permitted: 'Not available to you' }[state] || 'Unknown';
   return { label, state, sentence: s.sentence || '', opens: state === 'up' || state === 'down' };
 }
+
+/* ───────────── the task chat (phase 2b) ───────────── */
+
+function _textOf(content) {
+  if (typeof content === 'string') return content;
+  if (Array.isArray(content)) {
+    return content.map((p) => (typeof p === 'string' ? p : (p && typeof p.text === 'string' ? p.text : ''))).join('');
+  }
+  return '';
+}
+
+/** The task chat's lines from `GET /api/history/{id}`: the person's words and
+ *  the lead's answers, in order. Tool chatter, system lines and the hidden
+ *  stand-in a paused approval leaves are not lines a person reads here. */
+export function chatEntries(history) {
+  const out = [];
+  for (const m of (Array.isArray(history) ? history : [])) {
+    if (!m || (m.role !== 'user' && m.role !== 'assistant')) continue;
+    const meta = m.metadata || {};
+    if (meta.hidden) continue;
+    const text = _textOf(m.content).trim();
+    if (!text) continue;
+    out.push({ role: m.role, text, id: meta._db_id || null });
+  }
+  return out;
+}
+
+/** Split what a `chat_stream` reply has sent so far into its `data:` events.
+ *  Returns `{ events, rest }`: whole events parsed as JSON (a line that isn't
+ *  JSON is skipped), and the unfinished tail to keep for the next chunk. */
+export function sseEvents(buffer) {
+  const lines = String(buffer || '').split('\n');
+  const rest = lines.pop() || '';
+  const events = [];
+  for (const line of lines) {
+    if (!line.startsWith('data: ')) continue;
+    const data = line.slice(6).trim();
+    if (!data || data === '[DONE]') continue;
+    try { events.push(JSON.parse(data)); } catch (_) { /* not an event */ }
+  }
+  return { events, rest };
+}
+
+/** An approval the lead is waiting on, from a stream's `ask_user` event:
+ *  `{ id, question, options: [{ label, decision }] }`, or null. */
+export function approvalOf(event) {
+  const d = event && event.type === 'ask_user' ? event.data : null;
+  if (!d || d.kind !== 'tool_approval' || !d.approval_id) return null;
+  const options = (Array.isArray(d.options) ? d.options : [])
+    .map((o) => ({ label: String((o && (o.label || o.text)) || o || ''), decision: String((o && o.value) || '').toLowerCase() }))
+    .filter((o) => o.label && o.decision);
+  return options.length ? { id: String(d.approval_id), question: String(d.question || 'Allow this?'), options } : null;
+}
+
+/** How the pane shows a phone from `GET /api/workstation/phone`. */
+export function phoneCard(phone) {
+  const p = phone || {};
+  const state = p.state || 'unavailable';
+  const label = { on: 'Running', starting: 'Starting', installing: 'Installing', off: 'Off', unavailable: 'Not available' }[state] || 'Unknown';
+  const dev = (Array.isArray(p.devices) ? p.devices : []).find((d) => d && d.id === p.device);
+  return { label, state, name: (dev && dev.name) || 'Phone', sentence: state === 'unavailable' ? String(p.why || '') : '', opens: state === 'on' || state === 'starting' || state === 'off' };
+}
+
+/** An approval still waiting in a task chat's history: the newest lead
+ *  message's tool call that asked and was never answered. Answered calls
+ *  carry `ask_user.resolved`, which the server writes. */
+export function pendingApproval(history) {
+  const list = Array.isArray(history) ? history : [];
+  for (let i = list.length - 1; i >= 0; i -= 1) {
+    const m = list[i];
+    if (!m) continue;
+    if (m.role === 'user') return null;   // the person has spoken since
+    if (m.role !== 'assistant') continue;
+    const events = (m.metadata && Array.isArray(m.metadata.tool_events)) ? m.metadata.tool_events : [];
+    for (let j = events.length - 1; j >= 0; j -= 1) {
+      const ask = events[j] && events[j].ask_user;
+      if (ask && !ask.resolved) return approvalOf({ type: 'ask_user', data: ask });
+    }
+    return null;
+  }
+  return null;
+}

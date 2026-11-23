@@ -55,6 +55,10 @@ class AnswerIn(BaseModel):
     answer: str
 
 
+class SaidIn(BaseModel):
+    words: str
+
+
 class NoteState(BaseModel):
     state: str
 
@@ -202,6 +206,39 @@ def setup_apollo_routes() -> APIRouter:
         # The answer goes on the task, then its lead runs again with it.
         return await _start(request, owner, task_id,
                             before=lambda db: tasks.answer(db, owner, task_id, body.answer))
+
+    @router.get("/tasks/{task_id}/chat")
+    async def task_chat(request: Request, task_id: str):
+        """The chat bound to this task's lead: the one its runs write into."""
+        owner = _owner(request)
+        from src.apollo import chat
+        return await _call(lambda db: chat.task_chat(db, owner, task_id))
+
+    @router.post("/tasks/{task_id}/said")
+    async def task_said(request: Request, task_id: str, body: SaidIn):
+        """The person spoke to the task's lead in its chat: Apollo's chat gets
+        one line about it, never the conversation itself."""
+        owner = _owner(request)
+        from src.apollo import chat
+
+        def line(db):
+            found = chat.task_chat(db, owner, task_id)
+            task = tasks.get(db, owner, task_id)
+            return chat.said_line(task, body.words, lead=found["lead"])
+        out = await _call(line)
+        if not isinstance(out, str):
+            return out
+        posted = await asyncio.to_thread(
+            chat.post_line, getattr(request.app.state, "session_manager", None), owner, out,
+            {"source": "apollo", "apollo_task_id": task_id, "kind": "task_chat"})
+        return {"line": out, "posted": posted}
+
+    @router.get("/approvals")
+    async def approvals(request: Request):
+        """What the person's leads are waiting on their OK for, run by run."""
+        owner = _owner(request)
+        from src.apollo import chat
+        return await _call(lambda db: {"approvals": chat.waiting_approvals(db, owner)})
 
     @router.get("/notebook")
     async def list_notes(request: Request, kind: Optional[str] = None, state: Optional[str] = None):

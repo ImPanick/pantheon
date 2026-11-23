@@ -6263,23 +6263,8 @@ class TaskScheduler:
     def _post_to_apollo(self, owner: str, line: str, meta: dict) -> None:
         """One line from Apollo into `owner`'s Apollo chat. Silent when they
         have no Apollo chat yet — the task's own record still says it."""
-        from core.database import CrewMember, SessionLocal as _SL
-        from core.models import ChatMessage as MemChatMessage
-        if not self._session_manager or not owner:
-            return
-        db = _SL()
-        try:
-            crew = (db.query(CrewMember)
-                    .filter(CrewMember.owner == owner,
-                            CrewMember.is_default_assistant == True)  # noqa: E712
-                    .first())
-            session_id = getattr(crew, "session_id", None)
-        finally:
-            db.close()
-        if not session_id:
-            return
-        self._session_manager.add_message(
-            session_id, MemChatMessage("assistant", line, metadata=dict(meta or {})))
+        from src.apollo.chat import post_line
+        post_line(self._session_manager, owner, line, meta)
 
     async def _deliver_task_result(self, task, result: str, db, model: str = None):
         """Deliver a completed task result according to output_target.
