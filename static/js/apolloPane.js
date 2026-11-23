@@ -11,10 +11,13 @@
 //
 // Three views, one at a time, each with a way back:
 //
-//   main   — status, Text, Needs you, the Computer card, Activity, Outputs,
-//            Open loops, and the door to What Apollo knows
+//   main   — status, Call and Text, Needs you (questions and the approvals
+//            a lead is waiting on), the Computer card, Devices, Activity,
+//            Outputs, Open loops, and the door to What Apollo knows
 //   task   — one task's report: what it is, where it stands, its question,
-//            its budget (editable), Start or Run again, Chat with this agent
+//            its budget (editable), Start or Run again, and its chat with
+//            the lead under the report (the pane widens into a dual pane),
+//            or popped out into a window of its own (`apolloTaskChat.js`)
 //   knows  — what Apollo knows: what the person said, what Apollo inferred,
 //            each confirmable, editable or forgettable, and a line to add
 //
@@ -25,7 +28,7 @@
 
 import * as Modals from './modalManager.js?v=20261009census';
 import { makeWindowDraggable } from './windowDrag.js';
-import { selectSession } from './sessions.js';
+import { createTaskChat, popOutTaskChat, isTaskChatFloating } from './apolloTaskChat.js';
 import uiModule from './ui.js';
 import * as M from './apolloPaneModel.js';
 
@@ -43,6 +46,7 @@ let _timer = null;
 let _gen = 0;           // a render started before a newer one is dropped
 let _showAll = false;   // Activity's Show more
 let _editing = '';      // the id of the knows line being edited
+let _chat = null;       // the embedded task chat, kept across redraws
 
 function _el(tag, cls, text) {
   const n = document.createElement(tag);
@@ -139,11 +143,31 @@ function _profile(state) {
   who.appendChild(_el('span', `apo-now apo-tone-${hl.tone}`, hl.words));
   box.appendChild(avatar);
   box.appendChild(who);
-  box.appendChild(_btn('apo-text', 'Text', () => {
+  const acts = _el('div', 'apo-acts apo-talk');
+  acts.appendChild(_callButton());
+  acts.appendChild(_btn('apo-text', 'Text', () => {
     const composer = document.getElementById('message');
     if (composer) composer.focus();
   }, 'Write to Apollo'));
+  box.appendChild(acts);
   return box;
+}
+
+// Call: a voice conversation with Apollo in its own chat, through the call
+// the composer already has (Whisper hears, Kokoro speaks). The pane only
+// shows from the Apollo chat, so the call is Apollo's.
+function _callButton() {
+  const b = _btn('apo-call', 'Call', async () => {
+    try {
+      const vc = await import('./voiceCall.js');
+      vc.toggleVoiceCall();
+      setTimeout(() => { b.textContent = vc.isVoiceCallActive() ? 'End call' : 'Call'; }, 300);
+    } catch (_) {
+      _say('Calls are not available just now.');
+    }
+  }, 'Call Apollo');
+  import('./voiceCall.js').then((vc) => { if (vc.isVoiceCallActive()) b.textContent = 'End call'; }).catch(() => {});
+  return b;
 }
 
 function _answerBox(task, after) {
@@ -176,10 +200,32 @@ function _answerBox(task, after) {
   return form;
 }
 
-function _needsSection(list) {
-  if (!list.length) return null;
+function _approvalRow(a) {
+  const row = _el('div', 'apo-need apo-approval');
+  row.appendChild(_btn('apo-link apo-need-t', a.title, () => _openTask(a.task_id)));
+  row.appendChild(_el('p', 'apo-q', `Waiting for your OK to use ${a.tool}.`));
+  if (a.why) row.appendChild(_el('p', 'apo-card-line', a.why));
+  const acts = _el('div', 'apo-acts');
+  const answer = (decision, said) => async () => {
+    try {
+      await _api(`/api/tasks/${encodeURIComponent(a.run_task_id)}/runs/${encodeURIComponent(a.run_id)}/answer`, {
+        method: 'POST', body: { approval_id: a.approval_id, decision },
+      });
+      _say(said);
+    } catch (err) { _say(err.message); }
+    _refresh();
+  };
+  acts.appendChild(_btn('apo-primary', 'Allow once', answer('approve_task', 'Allowed. The lead carries on.'), `Allow once: ${a.tool}`));
+  acts.appendChild(_btn('', 'Deny', answer('deny', 'Denied. It was not done.'), `Deny: ${a.tool}`));
+  row.appendChild(acts);
+  return row;
+}
+
+function _needsSection(list, approvals = []) {
+  if (!list.length && !approvals.length) return null;
   const s = _section('Needs you');
   s.classList.add('apo-needs');
+  for (const a of approvals) s.appendChild(_approvalRow(a));
   for (const t of list) {
     const row = _el('div', 'apo-need');
     const title = _btn('apo-link apo-need-t', t.title, () => _openTask(t.id));
@@ -210,6 +256,41 @@ function _computerSection(ws) {
   card.appendChild(top);
   if (c.sentence) card.appendChild(_el('p', 'apo-card-line', c.sentence));
   s.appendChild(card);
+  return s;
+}
+
+// Devices: the person's workstation and phone, each with its state; a click
+// opens the one that can be opened. Each person sees only their own.
+function _devicesSection(ws, phone) {
+  const s = _section('Devices');
+  const list = _el('ul', 'apo-list');
+  const row = (name, label, state, opens, open, line) => {
+    const li = _el('li', 'apo-dev');
+    const b = _el(opens ? 'button' : 'div', 'apo-dev-b');
+    if (opens) {
+      b.type = 'button';
+      b.setAttribute('aria-label', `${name}, ${label}. Open it.`);
+      b.addEventListener('click', open);
+    }
+    const { dot } = _dot(state);
+    b.appendChild(dot);
+    b.appendChild(_el('span', 'apo-row-t', name));
+    b.appendChild(_el('span', 'apo-row-s', label));
+    li.appendChild(b);
+    if (line) li.appendChild(_el('p', 'apo-card-line', line));
+    list.appendChild(li);
+  };
+  const c = M.computerCard(ws);
+  row('Workstation', c.label, c.state === 'up' ? 'working' : 'waiting', c.opens, () => {
+    import('./workstationScreen.js').then((m) => m.openWorkstationScreen({ focus: true })).catch(() => {});
+  }, '');
+  if (phone) {
+    const p = M.phoneCard(phone);
+    row(p.name, p.label, p.state === 'on' ? 'working' : 'waiting', p.opens, () => {
+      import('./phoneWindow.js').then((m) => m.openPhone()).catch(() => {});
+    }, p.sentence);
+  }
+  s.appendChild(list);
   return s;
 }
 
@@ -286,11 +367,13 @@ function _loopsSection(notes) {
 }
 
 async function _drawMain(gen) {
-  const [state, tasksOut, notesOut, ws] = await Promise.all([
+  const [state, tasksOut, notesOut, ws, apprOut, phone] = await Promise.all([
     _api('/api/apollo/state'),
     _api('/api/apollo/tasks'),
     _api('/api/apollo/notebook?kind=open_loop&state=open'),
     fetch('/api/workstation/status', { credentials: 'same-origin' }).then((r) => (r.ok ? r.json() : null)).catch(() => null),
+    _api('/api/apollo/approvals').catch(() => null),
+    fetch('/api/workstation/phone', { credentials: 'same-origin', cache: 'no-store' }).then((r) => (r.ok ? r.json() : null)).catch(() => null),
   ]);
   if (gen !== _gen || !_win) return;
   const tasks = (tasksOut && tasksOut.tasks) || [];
@@ -298,9 +381,10 @@ async function _drawMain(gen) {
   const body = _win.body;
   body.textContent = '';
   body.appendChild(_profile(state));
-  const needs = _needsSection(M.needsYou(tasks));
+  const needs = _needsSection(M.needsYou(tasks), (apprOut && apprOut.approvals) || []);
   if (needs) body.appendChild(needs);
   body.appendChild(_computerSection(ws));
+  body.appendChild(_devicesSection(ws, phone));
   body.appendChild(_activitySection(tasks));
   const outs = _outputsSection(tasks);
   if (outs) body.appendChild(outs);
@@ -322,7 +406,7 @@ function _setStatus(state) {
 /* ───────────── the task view ───────────── */
 
 function _back(label = 'Back') {
-  return _btn('apo-back', `‹ ${label}`, () => { _view = 'main'; _editing = ''; _refresh(); }, 'Back to Apollo');
+  return _btn('apo-back', `‹ ${label}`, () => { _view = 'main'; _editing = ''; _dropChat(); _refresh(); }, 'Back to Apollo');
 }
 
 function _budgetEditor(task) {
@@ -397,12 +481,33 @@ async function _drawTask(gen) {
       } catch (err) { _say(err.message); }
     }));
   }
-  if (task.session_id) {
-    acts.appendChild(_btn('', 'Chat with this agent', () => {
-      selectSession(task.session_id).catch(() => _say('That chat could not be opened.'));
-    }));
+  const started = !!(task.session_id || task.hire_id);
+  const floating = started && isTaskChatFloating(task.id);
+  if (started) {
+    acts.appendChild(_btn('', floating ? 'Show its chat' : 'Pop out chat', () => {
+      _dropChat();
+      popOutTaskChat(task.id, { title: task.title });
+      _refresh();
+    }, floating ? 'Show this task\'s chat window' : 'Open this task\'s chat in its own window'));
   }
   if (acts.childNodes.length) body.appendChild(acts);
+  // The task chat, under the report: kept across redraws so a half-typed
+  // message and its scroll survive the pane's refresh.
+  if (started && !floating) {
+    if (!_chat || _chat.taskId !== String(task.id)) {
+      _dropChat();
+      _chat = createTaskChat(task.id);
+    }
+    body.appendChild(_chat.el);
+    _win.modal.classList.add('apo-wide');
+  } else {
+    _dropChat();
+  }
+}
+
+function _dropChat() {
+  if (_chat) { _chat.destroy(); _chat = null; }
+  if (_win) _win.modal.classList.remove('apo-wide');
 }
 
 /* ───────────── the knows view ───────────── */
@@ -535,7 +640,7 @@ async function _refresh() {
   if (gen === _gen && _win && !_editing && !_win.modal.classList.contains('modal-minimized')) {
     _timer = setTimeout(() => {
       const active = document.activeElement;
-      if (_win && active && _win.modal.contains(active) && active.tagName === 'INPUT') {
+      if (_win && active && _win.modal.contains(active) && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA')) {
         _timer = setTimeout(_refresh, REFRESH_MS);   // they are typing: look later
         return;
       }
@@ -548,6 +653,7 @@ function _teardown() {
   if (!_win) return;
   ++_gen;
   if (_timer) { clearTimeout(_timer); _timer = null; }
+  _dropChat();
   const modal = _win.modal;
   _win = null;
   _view = 'main';
@@ -572,7 +678,7 @@ export function openApolloPane() {
   Modals.injectMinimizeButton(_win.modal, MODAL_ID);
   makeWindowDraggable(_win.modal, {
     content: _win.content, header: _win.header,
-    skipSelector: 'button, input, select, label, form', minWidth: 300, minHeight: 360,
+    skipSelector: 'button, input, textarea, select, label, form', minWidth: 300, minHeight: 360,
   });
   _refresh();
   return true;

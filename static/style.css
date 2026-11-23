@@ -51877,11 +51877,12 @@ body.plan-mode-active .chat-input-top > .model-picker-wrap:has(> .model-picker-m
 .apo-error { color: var(--color-error); }
 
 .apo-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
-.apo-row-b {
+.apo-row-b, .apo-dev-b {
   display: flex; align-items: center; gap: 8px; width: 100%; padding: 6px 8px; border-radius: 8px;
   border: 0; background: none; color: var(--ctl-text); font: inherit; font-size: 13px; text-align: left; cursor: pointer;
 }
-.apo-row-b:hover { background: var(--ctl-tint); }
+.apo-row-b:hover, button.apo-dev-b:hover { background: var(--ctl-tint); }
+div.apo-dev-b { cursor: default; }
 .apo-row-t { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .apo-row-s { font-size: 11px; color: var(--ctl-text-3); flex: 0 0 auto; }
 
@@ -51929,5 +51930,49 @@ button.apo-card:hover { background: var(--ctl-tint-2); }
   #apollo-pane-modal .apo-content {
     position: fixed !important; inset: 0 !important; width: 100vw !important; height: 100dvh !important;
     max-width: none !important; max-height: none !important; min-width: 0; border-radius: 0 !important;
+  }
+}
+
+/* Apollo phase 2b: a task's chat with its lead. Embedded, the pane widens into
+   a dual pane (report on top, chat below); popped out, it is its own window,
+   and several stack a step apart. Nothing floats on a phone. */
+#apollo-pane-modal.apo-wide .apo-content { width: min(600px, 95vw); }
+.apo-talk { flex: 0 0 auto; }
+.apo-chat { display: flex; flex-direction: column; gap: 6px; border-top: 1px solid var(--ctl-edge); padding-top: 10px; }
+.apo-chat-h { display: flex; align-items: center; justify-content: space-between; }
+.apo-chat-log {
+  display: flex; flex-direction: column; gap: 8px; min-height: 120px; max-height: 46vh; overflow-y: auto;
+  padding: 8px; border-radius: 10px; background: var(--ctl-tint);
+}
+.apo-msg { display: flex; flex-direction: column; gap: 2px; max-width: 92%; }
+.apo-msg-you { align-self: flex-end; text-align: right; }
+.apo-msg-lead { align-self: flex-start; }
+.apo-msg-who { font-size: 11px; color: var(--ctl-text-3); }
+.apo-msg-t {
+  margin: 0; font-size: 13px; white-space: pre-wrap; overflow-wrap: anywhere; padding: 6px 9px; border-radius: 10px;
+  background: var(--ctl-tint-2); color: var(--ctl-text);
+}
+.apo-msg-you .apo-msg-t { background: var(--ctl-accent); color: var(--ctl-on-accent); }
+.apo-msg-live .apo-msg-t { color: var(--ctl-text-2); }
+.apo-chat-ask:empty { display: none; }
+.apo-chat-ask .apo-need { padding: 8px; border-radius: 10px; background: var(--ctl-tint); display: flex; flex-direction: column; gap: 6px; }
+.apo-chat-form { display: flex; gap: 6px; align-items: flex-end; }
+.apo-chat-form[hidden] { display: none; }
+.apo-chat-input { resize: vertical; min-height: 38px; max-height: 30vh; }
+.apo-chat-note { font-size: 11px; }
+.apo-needs .apo-approval { border: 1px solid var(--color-warning); }
+
+.apo-chat-modal .apo-chat-content {
+  width: min(440px, 95vw); height: min(620px, 85vh); display: flex; flex-direction: column;
+  top: calc(80px + var(--apo-stack, 0) * 28px); left: calc(120px + var(--apo-stack, 0) * 28px);
+}
+.apo-chat-modal .apo-chat { flex: 1 1 auto; border-top: 0; padding: 10px 14px 14px; min-height: 0; }
+.apo-chat-modal .apo-chat-log { flex: 1 1 auto; max-height: none; }
+
+@media (max-width: 768px) {
+  #apollo-pane-modal.apo-wide .apo-content { width: 100vw !important; }
+  .apo-chat-modal .apo-chat-content {
+    position: fixed !important; inset: 0 !important; width: 100vw !important; height: 100dvh !important;
+    max-width: none !important; max-height: none !important; border-radius: 0 !important;
   }
 }

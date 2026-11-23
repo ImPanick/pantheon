@@ -34,19 +34,20 @@ import { installDom, Node } from './dom.js';
 export const document = installDom();
 export { Node };
 export const sent = [];
-export const opened = { session: null, screen: 0 };
+export const opened = { session: null, screen: 0, phone: 0, calls: 0 };
 export const toasts = [];
 // Each route's answer: a function of (method, url, body) → [status, json].
 export const routes = {};
 globalThis.fetch = async (url, opts = {}) => {
   const method = (opts.method || 'GET').toUpperCase();
-  const body = opts.body ? JSON.parse(opts.body) : undefined;
+  const body = typeof opts.body === 'string' ? JSON.parse(opts.body)
+    : (opts.body instanceof FormData ? Object.fromEntries(opts.body) : undefined);
   sent.push({ method, url: String(url), body });
   const path = String(url).split('?')[0];
   const key = Object.keys(routes).sort((a, b) => b.length - a.length)
     .find((k) => { const [m, p] = k.split(' '); return m === method && (p === path || (p.endsWith('*') && path.startsWith(p.slice(0, -1)))); });
-  const [status, json] = key ? routes[key](method, String(url), body) : [404, { detail: 'not faked' }];
-  return { ok: status < 400, status, json: async () => json };
+  const [status, json, raw] = key ? routes[key](method, String(url), body) : [404, { detail: 'not faked' }];
+  return { ok: status < 400, status, json: async () => json, text: async () => (raw !== undefined ? raw : JSON.stringify(json)) };
 };
 export function settle(n = 12) {
   let p = Promise.resolve();
@@ -77,6 +78,15 @@ _STUBS = {
         "export async function selectSession(id) { opened.session = id; }\n"
     ),
     "ui.js": "import { toasts } from './shim.js';\nexport default { showToast: (m) => toasts.push(m) };\n",
+    "voiceCall.js": (
+        "import { opened } from './shim.js';\n"
+        "export function toggleVoiceCall() { opened.calls += 1; }\n"
+        "export function isVoiceCallActive() { return opened.calls % 2 === 1; }\n"
+    ),
+    "phoneWindow.js": (
+        "import { opened } from './shim.js';\n"
+        "export function openPhone() { opened.phone += 1; }\n"
+    ),
     "workstationScreen.js": (
         "import { opened } from './shim.js';\n"
         "export function openWorkstationScreen() { opened.screen += 1; }\n"
@@ -95,6 +105,8 @@ _PREAMBLE = (
     "routes['GET /api/workstation/status'] = () => [200, { state: 'up', sentence: 'Your workstation is running.' }];\n"
     "routes['GET /api/apollo/notebook'] = () => [200, { notes: [{ id: 'n1', kind: 'open_loop', text: 'Reply to the landlord', state: 'open' }] }];\n"
     "routes['GET /api/apollo/state'] = () => [200, { name: 'Apollo', status: { state: 'needs_you', words: 'Needs you' }, goal_token_cap: 2000000 }];\n"
+    "routes['GET /api/apollo/approvals'] = () => [200, { approvals: [] }];\n"
+    "routes['GET /api/workstation/phone'] = () => [200, { state: 'off', device: 'pixel', devices: [{ id: 'pixel', name: 'Pixel 9' }] }];\n"
 )
 
 
@@ -160,7 +172,7 @@ def test_an_answer_goes_to_its_task_and_a_loop_settles(box):
     assert "Sent. The lead is back on it." in o["toasts"]
 
 
-def test_a_task_view_sets_a_budget_starts_it_and_opens_its_chat(box):
+def test_a_task_view_sets_a_budget_starts_it_and_keeps_its_chat_under_the_report(box):
     o = _case(box, """
         const t = T('r1', 'waiting', { brief: 'Find a dentist open Saturdays', hire_id: 'h1', session_id: 's-r1',
                                        budget_tokens: 100000, budget_limit: 100000, spent_tokens: 12000 });
@@ -168,6 +180,12 @@ def test_a_task_view_sets_a_budget_starts_it_and_opens_its_chat(box):
         routes['GET /api/apollo/tasks/*'] = () => [200, t];
         routes['PATCH /api/apollo/tasks/*'] = (m, u, b) => [200, { ...t, budget_tokens: b.budget_tokens }];
         routes['POST /api/apollo/tasks/*'] = () => [200, { ...t, state: 'working', started: true }];
+        routes['GET /api/apollo/tasks/r1/chat'] = () => [200, { task_id: 'r1', session_id: 's-r1', title: t.title, lead: 'Researcher', lead_agent: 'researcher', state: 'waiting' }];
+        routes['GET /api/history/*'] = () => [200, { history: [
+          { role: 'user', content: 'Saturdays only, please' },
+          { role: 'tool', content: 'search results' },
+          { role: 'assistant', content: 'Two are open Saturdays.' },
+        ] }];
         P.openApolloPane();
         await settle();
         all(pane(), 'apo-row-b')[0].click();
@@ -181,16 +199,29 @@ def test_a_task_view_sets_a_budget_starts_it_and_opens_its_chat(box):
         await settle();
         button(pane(), 'Run again').click();
         await settle();
-        button(pane(), 'Chat with this agent').click();
-        await settle();
-        out({ facts, budget, writes: sent.filter((s) => s.method !== 'GET'), opened });
+        const chat = all(pane(), 'apo-chat')[0];
+        const lines = all(chat, 'apo-msg-t').map(text);
+        const wide = pane()._classes().includes('apo-wide');
+        const before = chat;
+        P.closeApolloPane(); P.openApolloPane(); await settle();
+        all(pane(), 'apo-row-b')[0].click();
+        await settle(30);
+        const kept = all(pane(), 'apo-chat').length;
+        out({ facts, budget, writes: sent.filter((s) => s.method !== 'GET'), opened, lines, wide,
+              popOut: !!button(pane(), 'Pop out chat'), kept, sessionOpened: opened.session });
     """)
     assert "Find a dentist open Saturdays" in o["facts"]
     assert o["budget"] == "12k of 100k tokens on paid models. Local models run uncapped."
     assert o["writes"][0] == {"method": "PATCH", "url": "/api/apollo/tasks/r1",
                               "body": {"budget_tokens": 250000}}
     assert o["writes"][1]["url"] == "/api/apollo/tasks/r1/start"
-    assert o["opened"]["session"] == "s-r1"
+    # The task's chat sits under the report, in the lead's words, and the main
+    # chat is never switched away (the outline: the main chat stays live).
+    assert o["lines"] == ["Saturdays only, please", "Two are open Saturdays."]
+    assert o["wide"] is True
+    assert o["popOut"] is True
+    assert o["kept"] == 1
+    assert o["sessionOpened"] is None
 
 
 def test_what_apollo_knows_splits_stated_from_inferred_and_each_can_be_changed(box):

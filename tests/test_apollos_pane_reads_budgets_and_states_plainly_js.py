@@ -107,3 +107,58 @@ def test_the_header_tone_follows_the_servers_state():
     ]""") == [{"words": "Needs you on 2", "tone": "needs"},
               {"words": "Working on 1", "tone": "working"},
               {"words": "Idle", "tone": "idle"}]
+
+
+def test_a_task_chat_shows_what_was_said_and_skips_hidden_lines():
+    got = _eval("""M.chatEntries([
+      { role: 'user', content: 'Saturdays only', metadata: { _db_id: 7 } },
+      { role: 'assistant', content: [{ type: 'text', text: 'Two are open.' }] },
+      { role: 'assistant', content: 'internal', metadata: { hidden: true } },
+      { role: 'tool', content: 'raw' },
+      { role: 'assistant', content: '   ' },
+    ]).map((e) => [e.role, e.text])""")
+    assert got == [["user", "Saturdays only"], ["assistant", "Two are open."]]
+
+
+def test_a_stream_is_read_line_by_line_and_keeps_its_unfinished_tail():
+    got = _eval("""M.sseEvents('data: {"delta":"Hi"}\\n\\ndata: [DONE]\\ndata: not json\\ndata: {"del')""")
+    assert got == {"events": [{"delta": "Hi"}], "rest": 'data: {"del'}
+
+
+def test_an_approval_is_read_from_the_stream_and_from_saved_history():
+    got = _eval("""[
+      M.approvalOf({ type: 'ask_user', data: { kind: 'tool_approval', approval_id: 'a1', question: 'Allow?',
+        options: [{ label: 'Allow for this task', value: 'approve_task' }, { label: 'Deny', value: 'deny' }] } }),
+      M.approvalOf({ type: 'ask_user', data: { kind: 'question', approval_id: 'a2', options: [{ label: 'x', value: 'y' }] } }),
+      M.approvalOf({ delta: 'hi' }),
+      M.pendingApproval([
+        { role: 'assistant', content: 'Allow?', metadata: { tool_events: [{ ask_user: { kind: 'tool_approval', approval_id: 'a3',
+          question: 'Allow?', options: [{ label: 'Deny', value: 'deny' }] } }] } },
+      ]),
+      M.pendingApproval([
+        { role: 'assistant', content: 'Allow?', metadata: { tool_events: [{ ask_user: { kind: 'tool_approval', approval_id: 'a4',
+          resolved: true, options: [{ label: 'Deny', value: 'deny' }] } }] } },
+      ]),
+      M.pendingApproval([
+        { role: 'assistant', content: 'Allow?', metadata: { tool_events: [{ ask_user: { kind: 'tool_approval', approval_id: 'a5',
+          options: [{ label: 'Deny', value: 'deny' }] } }] } },
+        { role: 'user', content: 'never mind' },
+      ]),
+    ]""")
+    assert got[0] == {"id": "a1", "question": "Allow?", "options": [
+        {"label": "Allow for this task", "decision": "approve_task"}, {"label": "Deny", "decision": "deny"}]}
+    assert got[1] is None and got[2] is None
+    assert got[3]["id"] == "a3"
+    # Answered, or talked past: nothing waits.
+    assert got[4] is None and got[5] is None
+
+
+def test_the_phone_card_names_the_phone_and_says_why_it_is_not_there():
+    got = _eval("""[
+      M.phoneCard({ state: 'on', device: 'p9', devices: [{ id: 'p9', name: 'Pixel 9' }] }),
+      M.phoneCard({ state: 'unavailable', why: 'This server has no KVM.' }),
+      M.phoneCard(null),
+    ]""")
+    assert got[0] == {"label": "Running", "state": "on", "name": "Pixel 9", "sentence": "", "opens": True}
+    assert got[1]["label"] == "Not available" and got[1]["sentence"] == "This server has no KVM."
+    assert got[1]["opens"] is False and got[2]["name"] == "Phone"
