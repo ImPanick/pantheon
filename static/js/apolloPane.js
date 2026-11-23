@@ -41,7 +41,7 @@ const APOLLO_ICON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none"
   + '<circle cx="12" cy="12" r="4"/><path d="M12 2.5v2.5M12 19v2.5M2.5 12H5M19 12h2.5M5.3 5.3l1.8 1.8M16.9 16.9l1.8 1.8M5.3 18.7l1.8-1.8M16.9 7.1l1.8-1.8"/></svg>';
 
 let _win = null;        // the built window's parts
-let _view = 'main';     // main | task | knows | space
+let _view = 'main';     // main | task | knows | space | rhythm
 let _taskId = '';       // the task the task view shows
 let _timer = null;
 let _gen = 0;           // a render started before a newer one is dropped
@@ -231,8 +231,43 @@ function _approvalRow(a) {
   return row;
 }
 
-function _needsSection(list, approvals = [], locked = []) {
-  if (!list.length && !approvals.length && !locked.length) return null;
+function _offerRow(o) {
+  const row = _el('div', 'apo-need apo-offer');
+  row.appendChild(_el('p', 'apo-q', o.words));
+  const acts = _el('div', 'apo-acts');
+  const answer = (yes) => async () => {
+    try {
+      await _api(`/api/apollo/trust/${encodeURIComponent(o.id)}`, { method: 'POST', body: { answer: yes ? 'yes' : 'no' } });
+      _say(yes ? `Apollo will just do ${o.tool} for ${o.kind}. Take it back any time.` : 'Not now. Apollo keeps asking.');
+    } catch (err) { _say(err.message); }
+    _refresh();
+  };
+  acts.appendChild(_btn('apo-primary', 'Just do it', answer(true), `Just do ${o.tool} for ${o.kind}`));
+  acts.appendChild(_btn('', 'Not now', answer(false), `Keep asking before ${o.tool} for ${o.kind}`));
+  row.appendChild(acts);
+  return row;
+}
+
+function _justDoesSection(granted) {
+  if (!granted.length) return null;
+  const s = _section('Apollo just does');
+  for (const g of granted) {
+    const row = _el('div', 'apo-nudge');
+    row.appendChild(_el('span', 'apo-nudge-t', g.words));
+    row.appendChild(_btn('apo-small', 'Ask me again', async () => {
+      try {
+        await _api(`/api/apollo/trust/${encodeURIComponent(g.id)}`, { method: 'DELETE' });
+        _say(`Apollo will ask before ${g.tool} for ${g.kind} again.`);
+      } catch (err) { _say(err.message); }
+      _refresh();
+    }, `Ask again before ${g.tool} for ${g.kind}`));
+    s.appendChild(row);
+  }
+  return s;
+}
+
+function _needsSection(list, approvals = [], locked = [], offers = []) {
+  if (!list.length && !approvals.length && !locked.length && !offers.length) return null;
   const s = _section('Needs you');
   s.classList.add('apo-needs');
   // A locked space says only that something there needs the person; what it
@@ -244,6 +279,7 @@ function _needsSection(list, approvals = [], locked = []) {
     s.appendChild(row);
   }
   for (const a of approvals) s.appendChild(_approvalRow(a));
+  for (const o of offers) s.appendChild(_offerRow(o));
   for (const t of list) {
     const row = _el('div', 'apo-need');
     const title = _btn('apo-link apo-need-t', t.title, () => _openTask(t.id));
@@ -440,7 +476,7 @@ function _loopsSection(notes) {
 
 async function _drawMain(gen) {
   const reach = _reachParam();
-  const [state, tasksOut, notesOut, ws, apprOut, phone, spaces] = await Promise.all([
+  const [state, tasksOut, notesOut, ws, apprOut, phone, spaces, rhythm, voice, trustOut] = await Promise.all([
     _api(`/api/apollo/state?space=${_here()}`),
     _api(`/api/apollo/tasks?space=${reach}`),
     _api(`/api/apollo/notebook?kind=open_loop&state=open&space=${reach}`),
@@ -448,6 +484,9 @@ async function _drawMain(gen) {
     _api(`/api/apollo/approvals?space=${reach}`).catch(() => null),
     fetch('/api/workstation/phone', { credentials: 'same-origin', cache: 'no-store' }).then((r) => (r.ok ? r.json() : null)).catch(() => null),
     Sp.loadSpaces().catch(() => Sp.spaceList()),
+    _api('/api/apollo/rhythm').catch(() => null),
+    _api('/api/apollo/voice').catch(() => null),
+    _api(`/api/apollo/trust?space=${reach}`).catch(() => null),
   ]);
   if (gen !== _gen || !_win) return;
   const tasks = (tasksOut && tasksOut.tasks) || [];
@@ -455,8 +494,9 @@ async function _drawMain(gen) {
   const body = _win.body;
   body.textContent = '';
   body.appendChild(_profile(state));
+  const trustRows = (trustOut && trustOut.trust) || [];
   const needs = _needsSection(M.needsYou(tasks), (apprOut && apprOut.approvals) || [],
-    M.lockedNeeds(spaces, Sp.currentSpace()));
+    M.lockedNeeds(spaces, Sp.currentSpace()), trustRows.filter((t) => t.state === 'offered'));
   if (needs) body.appendChild(needs);
   body.appendChild(_computerSection(ws));
   body.appendChild(_devicesSection(ws, phone));
@@ -467,6 +507,10 @@ async function _drawMain(gen) {
   if (outs) body.appendChild(outs);
   const loops = _loopsSection(notesOut && notesOut.notes);
   if (loops) body.appendChild(loops);
+  body.appendChild(_rhythmSection(rhythm));
+  if (voice) body.appendChild(_voiceSection(voice));
+  const just = _justDoesSection(trustRows.filter((t) => t.state === 'granted'));
+  if (just) body.appendChild(just);
   const knows = _section('About you');
   knows.appendChild(_el('p', 'apo-empty', 'What you told Apollo, and what it worked out. You can confirm, fix or remove any of it.'));
   knows.appendChild(_btn('apo-link', 'What Apollo knows', () => { _view = 'knows'; _refresh(); }));
@@ -875,6 +919,183 @@ async function _drawSpace(gen) {
   body.appendChild(del);
 }
 
+/* ───────────── rhythm: when Apollo speaks unasked ───────────── */
+
+function _rhythmSection(r) {
+  const sec = _section('When Apollo speaks');
+  sec.appendChild(_el('p', 'apo-empty', r ? M.rhythmLine(r) : 'Briefings and check-ins could not be read just now.'));
+  sec.appendChild(_btn('apo-link', 'Briefings and check-ins', () => { _view = 'rhythm'; _refresh(); }));
+  return sec;
+}
+
+/* ───────────── voice: one character, a few dials ───────────── */
+
+function _voiceSection(v) {
+  const sec = _section('Voice');
+  const put = async (fields, said) => {
+    try {
+      await _api('/api/apollo/voice', { method: 'PUT', body: fields });
+      if (said) _say(said);
+    } catch (err) { _say(err.message); }
+    _refresh();
+  };
+  const presets = _el('div', 'apo-presets');
+  presets.setAttribute('role', 'group');
+  presets.setAttribute('aria-label', 'Starting points');
+  for (const p of v.presets || []) {
+    const b = _btn(`apo-chip${v.preset === p.id ? ' apo-on' : ''}`, p.name, () => put({ preset: p.id }, `${p.name} it is.`));
+    b.setAttribute('aria-pressed', String(v.preset === p.id));
+    presets.appendChild(b);
+  }
+  sec.appendChild(presets);
+  for (const dial of ['warmth', 'play']) {
+    const [lo, hi] = M.DIAL_ENDS[dial];
+    const row = _el('label', 'apo-dial');
+    row.appendChild(_el('span', 'apo-dial-end', lo));
+    const r = _el('input', 'apo-range');
+    r.type = 'range';
+    r.min = '-2';
+    r.max = '2';
+    r.step = '1';
+    r.value = String(v[dial] || 0);
+    r.setAttribute('aria-label', `${lo} to ${hi}`);
+    r.setAttribute('aria-valuetext', M.dialWords(dial, v[dial]));
+    r.addEventListener('change', () => {
+      const n = Number(r.value) || 0;
+      if (n === (v[dial] || 0)) return;
+      put({ [dial]: n }, `${M.dialWords(dial, n)}.`);
+    });
+    row.appendChild(r);
+    row.appendChild(_el('span', 'apo-dial-end', hi));
+    sec.appendChild(row);
+  }
+  for (const n of v.nudges || []) {
+    const li = _el('div', 'apo-nudge');
+    li.appendChild(_el('span', 'apo-nudge-t', n.words));
+    li.appendChild(_btn('apo-small', 'Undo', async () => {
+      try {
+        await _api(`/api/apollo/voice/undo/${encodeURIComponent(n.id)}`, { method: 'POST' });
+        _say('Put back.');
+      } catch (err) { _say(err.message); }
+      _refresh();
+    }, `Undo: ${n.words}`));
+    sec.appendChild(li);
+  }
+  sec.appendChild(_el('p', 'apo-empty', 'Apollo still tells you when a plan has a hole or you’re wrong. No setting turns that off.'));
+  sec.appendChild(_el('p', 'apo-empty apo-held', M.heldLine(v.held)));
+  return sec;
+}
+
+async function _drawRhythm(gen) {
+  const [state, r] = await Promise.all([
+    _api(`/api/apollo/state?space=${_here()}`),
+    _api('/api/apollo/rhythm'),
+  ]);
+  if (gen !== _gen || !_win) return;
+  _setStatus(state);
+  const body = _win.body;
+  body.textContent = '';
+  body.appendChild(_back());
+  body.appendChild(_el('h5', 'apo-task-t', 'When Apollo speaks'));
+  const zone = r.timezone ? ` Times are in ${r.timezone}.` : '';
+  body.appendChild(_el('p', 'apo-empty',
+    `Briefings come at the times you set. Check-ins speak only when something changed, and never in quiet hours.${zone}`));
+  if (!r.has_chat) {
+    body.appendChild(_el('p', 'apo-error', 'Open your Apollo chat once first, so Apollo has somewhere to speak.'));
+    return;
+  }
+  const put = async (fields, said) => {
+    try {
+      await _api('/api/apollo/rhythm', { method: 'PUT', body: fields });
+      if (said) _say(said);
+    } catch (err) { _say(err.message); }
+    _refresh();
+  };
+  const list = (r.briefings || []).map((b) => ({ id: b.id, time: b.time, enabled: b.enabled }));
+
+  const brief = _section('Briefings');
+  if (!list.length) brief.appendChild(_el('p', 'apo-empty', 'None yet. The first of the day is First light.'));
+  const ul = _el('ul', 'apo-list');
+  (r.briefings || []).forEach((b, i) => {
+    const li = _el('li', 'apo-line apo-brief');
+    li.appendChild(_el('span', 'apo-brief-n', b.name));
+    const when = _el('input', 'apo-input apo-time');
+    when.type = 'time';
+    when.value = b.time;
+    when.setAttribute('aria-label', `${b.name} time`);
+    when.addEventListener('change', () => {
+      if (!when.value || when.value === b.time) return;
+      const next = list.map((x, j) => (j === i ? { ...x, time: when.value } : x));
+      put({ briefings: next }, 'Moved.');
+    });
+    li.appendChild(when);
+    li.appendChild(_switchRow('On', '', b.enabled, false, (on) => {
+      const next = list.map((x, j) => (j === i ? { ...x, enabled: on } : x));
+      put({ briefings: next }, on ? `${b.name} is on.` : `${b.name} is paused.`);
+    }));
+    const acts = _el('span', 'apo-acts');
+    acts.appendChild(_btn('apo-small', 'Remove', () => {
+      put({ briefings: list.filter((_, j) => j !== i) }, 'Removed.');
+    }, `Remove ${b.name} at ${b.time}`));
+    li.appendChild(acts);
+    ul.appendChild(li);
+  });
+  if (list.length) brief.appendChild(ul);
+  const at = M.nextBriefingTime(list);
+  if (list.length < 6 && at) {
+    brief.appendChild(_btn('apo-btn', list.length ? 'Add a briefing' : 'Add First light',
+      () => put({ briefings: [...list, { time: at, enabled: true }] }, `Added at ${at}. Change the time if you like.`)));
+  }
+  body.appendChild(brief);
+
+  const chk = _section('Check-ins');
+  chk.appendChild(_el('p', 'apo-empty', 'Between briefings Apollo looks, and says something only if a task needs you, finished, or waits for your yes.'));
+  const pick = _el('select', 'apo-input apo-select');
+  pick.setAttribute('aria-label', 'How often check-ins look');
+  for (const h of M.CHECKIN_HOURS) {
+    const o = _el('option', '', M.checkinLabel(h));
+    o.value = String(h);
+    if (h === (Number(r.checkin_hours) || 0)) o.selected = true;
+    pick.appendChild(o);
+  }
+  pick.addEventListener('change', () => {
+    const h = Number(pick.value) || 0;
+    put({ checkin_hours: h }, h ? `Check-ins ${M.checkinLabel(h).toLowerCase()}.` : 'Check-ins are off.');
+  });
+  chk.appendChild(pick);
+  chk.appendChild(_el('p', 'apo-empty', M.lastSpoke(r.last_spoke_at)));
+  body.appendChild(chk);
+
+  const q = r.quiet || {};
+  const quiet = _section('Quiet hours');
+  const form = _el('form', 'apo-quiet');
+  const from = _el('input', 'apo-input apo-time');
+  from.type = 'time';
+  from.value = q.start || '';
+  from.setAttribute('aria-label', 'Quiet from');
+  const to = _el('input', 'apo-input apo-time');
+  to.type = 'time';
+  to.value = q.end || '';
+  to.setAttribute('aria-label', 'Quiet until');
+  form.appendChild(_el('span', '', 'From'));
+  form.appendChild(from);
+  form.appendChild(_el('span', '', 'until'));
+  form.appendChild(to);
+  const save = _el('button', 'apo-btn apo-primary', 'Save');
+  save.type = 'submit';
+  form.appendChild(save);
+  form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    if (!from.value || !to.value) { _say('Quiet hours need a start and an end.'); return; }
+    put({ quiet: { start: from.value, end: to.value } }, `Quiet ${from.value} to ${to.value}.`);
+  });
+  quiet.appendChild(form);
+  if (q.start && q.end) {
+    quiet.appendChild(_btn('apo-small', 'No quiet hours', () => put({ quiet: { start: null, end: null } }, 'Quiet hours are off.')));
+  }
+  body.appendChild(quiet);
+}
+
 /* ───────────── refresh and lifecycle ───────────── */
 
 function _openTask(id) {
@@ -891,6 +1112,7 @@ async function _refresh() {
     if (_view === 'task' && _taskId) await _drawTask(gen);
     else if (_view === 'knows') await _drawKnows(gen);
     else if (_view === 'space') await _drawSpace(gen);
+    else if (_view === 'rhythm') await _drawRhythm(gen);
     else await _drawMain(gen);
   } catch (err) {
     if (gen !== _gen || !_win) return;

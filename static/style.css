@@ -52023,3 +52023,26 @@ button.apo-card:hover { background: var(--ctl-tint-2); }
 .apo-give-w { font-size: 12px; color: var(--ctl-text-2); }
 .apo-btn.apo-danger { color: var(--color-error); border-color: var(--color-error); font-weight: 600; }
 #apollo-pane-modal .modal-header .apo-space { margin-left: auto; margin-right: 8px; }
+
+/* Apollo's rhythm view (phase 4): briefings, check-ins, quiet hours. */
+.apo-brief { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.apo-brief-n { min-width: 84px; font-weight: 600; color: var(--ctl-text); }
+.apo-brief .apo-switch { margin: 0; }
+.apo-time { width: auto; min-width: 96px; }
+.apo-select { width: auto; min-width: 140px; }
+.apo-quiet { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; color: var(--ctl-text-2); }
+
+/* Apollo's voice (phase 4): starting points, two dials, nudges to undo. */
+.apo-presets { display: flex; gap: 6px; flex-wrap: wrap; }
+.apo-chip {
+  font: inherit; font-size: 12px; padding: 3px 10px; border-radius: 999px; cursor: pointer;
+  border: 1px solid var(--ctl-edge); background: var(--ctl-tint); color: var(--ctl-text-2);
+}
+.apo-chip:hover { background: var(--ctl-tint-2); }
+.apo-chip.apo-on { background: var(--ctl-tint-2); color: var(--ctl-text); font-weight: 600; }
+.apo-dial { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--ctl-text-2); }
+.apo-dial-end { min-width: 52px; }
+.apo-dial-end:last-child { text-align: right; }
+.apo-range { flex: 1 1 auto; }
+.apo-nudge { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 8px; background: var(--ctl-tint); }
+.apo-nudge-t { flex: 1 1 auto; font-size: 13px; color: var(--ctl-text); }
