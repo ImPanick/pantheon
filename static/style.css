@@ -52078,7 +52078,6 @@ button.apo-card:hover { background: var(--ctl-tint-2); }
   will-change: transform;
 }
 .apollo-orb:active { cursor: grabbing; }
-.apollo-orb:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px; }
 .apollo-orb-canvas { width: 56px; height: 56px; display: block; pointer-events: none; }
 .apollo-orb-say {
   position: fixed;
