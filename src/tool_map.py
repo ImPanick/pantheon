@@ -99,7 +99,7 @@ ALSO_KNOWN_AS: Dict[str, str] = {
     "computer": "vm virtual machine remote desktop workstation ubuntu linux screen mouse "
                 "keyboard gui firefox click screenshot phone android",
     "agent_browser": "browser website page url navigate firefox chrome",
-    "ui_control": "panel open show toggle switch theme",
+    "ui_control": "panel open show toggle switch theme point orb",
     "manage_calendar": "schedule meeting appointment event",
     "manage_notes": "todo reminder checklist",
     "manage_tasks": "automate workbench cron recurring",

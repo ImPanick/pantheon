@@ -1343,6 +1343,9 @@ def _raw_openai_tool_call_to_block(value) -> Optional[ToolBlock]:
                 content += f" {value}"
         elif action == "toggle":
             content = f"toggle {name_arg} {value}"
+        elif action == "show":
+            from src.apollo.orb import show_content
+            content = show_content(args)
         else:
             content = action
     elif tool_type in ("manage_tasks", "manage_skills", "api_call", "manage_endpoints",

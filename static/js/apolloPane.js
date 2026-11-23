@@ -32,6 +32,7 @@ import { createTaskChat, popOutTaskChat, isTaskChatFloating } from './apolloTask
 import uiModule from './ui.js';
 import * as M from './apolloPaneModel.js';
 import * as Sp from './apolloSpaces.js';
+import * as Orb from './apolloOrb.js';
 
 export const MODAL_ID = 'apollo-pane-modal';
 const REFRESH_MS = 8000;
@@ -283,6 +284,7 @@ function _needsSection(list, approvals = [], locked = [], offers = []) {
   for (const o of offers) s.appendChild(_offerRow(o));
   for (const t of list) {
     const row = _el('div', 'apo-need');
+    row.dataset.taskId = t.id;   // the orb finds a task by it (`apolloOrb.js`)
     const title = _btn('apo-link apo-need-t', t.title, () => _openTask(t.id));
     row.appendChild(title);
     if (t.question) row.appendChild(_el('p', 'apo-q', t.question));
@@ -378,6 +380,7 @@ function _activitySection(tasks, spaces = []) {
   const list = _el('ul', 'apo-list');
   for (const t of rows) {
     const li = _el('li', 'apo-row');
+    li.dataset.taskId = t.id;
     const b = _el('button', 'apo-row-b');
     b.type = 'button';
     const { dot, words } = _dot(t.state);
@@ -640,6 +643,7 @@ async function _drawMain(gen) {
   if (loops) body.appendChild(loops);
   body.appendChild(_rhythmSection(rhythm));
   if (voice) body.appendChild(_voiceSection(voice));
+  body.appendChild(_orbSection());
   const just = _justDoesSection(trustRows.filter((t) => t.state === 'granted'));
   if (just) body.appendChild(just);
   const knows = _section('About you');
@@ -653,6 +657,8 @@ function _setStatus(state) {
   const hl = M.headline(state);
   _win.status.textContent = hl.words;
   _win.status.className = `apo-status apo-tone-${hl.tone}`;
+  // The orb reads the same headline, so it needn't ask the server again.
+  document.dispatchEvent(new CustomEvent('pantheon:apollo-state', { detail: { tone: hl.tone } }));
 }
 
 /* ───────────── the task view ───────────── */
@@ -1097,6 +1103,19 @@ function _rhythmSection(r) {
   const sec = _section('When Apollo speaks');
   sec.appendChild(_el('p', 'apo-empty', r ? M.rhythmLine(r) : 'Briefings and check-ins could not be read just now.'));
   sec.appendChild(_btn('apo-link', 'Briefings and check-ins', () => { _view = 'rhythm'; _refresh(); }));
+  return sec;
+}
+
+/* ───────────── the orb (phase 6) ───────────── */
+
+// Both switches live in this browser (`apolloOrb.js`): the orb is how this
+// screen looks, like reduced motion, not a fact about the person.
+function _orbSection() {
+  const sec = _section('The orb');
+  sec.appendChild(_switchRow('Show the orb', 'Apollo’s light, over the page while this chat is open. Drag it anywhere; click it for this pane.',
+    Orb.orbShown(), false, (on) => { Orb.setOrbShown(on); _say(on ? 'The orb is back.' : 'The orb is put away.'); }));
+  sec.appendChild(_switchRow('Keep it still', 'No breathing or gliding. Your system’s reduced motion does this too.',
+    Orb.orbStill(), false, (on) => { Orb.setOrbStill(on); _say(on ? 'It keeps still now.' : 'It moves again.'); }));
   return sec;
 }
 

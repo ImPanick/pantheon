@@ -504,6 +504,7 @@ async def do_ui_control(content: str, session_id: Optional[str] = None, owner: O
       open_panel <name>       — Open a panel (documents, gallery, email, sessions, notes, memories, skills, settings, cookbook, workbench [workflow id])
       open_email_reply <uid> [folder] [reply|reply-all|ai-reply] [body text] — Open a reply draft document for an email; does not send. ALWAYS append the body text when the user told you what to say (one-shot draft); only omit body when the user just asked to "open a reply" without content.
       get_toggles             — Return current toggle states (server-side knowledge)
+      show <place> [id] [lines=A-B] [label] — Move Apollo's orb to point at a place (src/apollo/orb.py)
     """
     lines = content.strip().split("\n")
     if not lines:
@@ -690,6 +691,11 @@ async def do_ui_control(content: str, session_id: Optional[str] = None, owner: O
             "ui_event": "clear_highlight",
             "results": "Highlights cleared",
         }
+
+    elif action == "show":
+        # Apollo's orb (phase 6): point at a place on the person's screen.
+        from src.apollo import orb as _orb
+        return _orb.show(lines[0].split())   # every word: `parts` stops at three
 
     elif action == "open_panel":
         # Open a top-level panel/modal: documents/library, gallery,
