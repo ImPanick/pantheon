@@ -478,6 +478,8 @@ function _markApolloChat(isApollo) {
   if (!root || !root.classList) return;
   const was = root.classList.contains('apollo-chat');
   root.classList.toggle('apollo-chat', isApollo);
+  // Apollo's orb floats over the page while its chat is open (phase 6).
+  if (isApollo || was) import('./apolloOrb.js').then((o) => o.setApolloChat(isApollo)).catch(() => {});
   if (!isApollo) {
     document.getElementById('apollo-pane-btn')?.remove();
     document.getElementById('apollo-space-switcher')?.remove();

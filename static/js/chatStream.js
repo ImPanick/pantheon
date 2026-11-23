@@ -774,10 +774,17 @@ export function handleUIControl(uiData) {
           target.appendChild(lbl);
         }
       }
+      // Apollo's orb, where it is out, glides over to what was highlighted.
+      if (target) document.dispatchEvent(new CustomEvent('pantheon:orb-show', { detail: { place: 'selector', selector: uiData.selector, glideOnly: true } }));
+
+    } else if (uiEvent === 'orb_show' || uiData.ui_event === 'orb_show') {
+      // `ui_control show` (src/apollo/orb.py): `apolloOrb.js` resolves the place.
+      if (uiData.place) document.dispatchEvent(new CustomEvent('pantheon:orb-show', { detail: uiData }));
 
     } else if (uiEvent === 'clear_highlight' || uiData.ui_event === 'clear_highlight') {
       document.querySelectorAll('.pantheon-highlight').forEach(function(e) { e.classList.remove('pantheon-highlight'); });
       document.querySelectorAll('.pantheon-hl-label').forEach(function(e) { e.remove(); });
+      document.dispatchEvent(new CustomEvent('pantheon:orb-show', { detail: { place: 'home' } }));
 
     } else if (uiEvent === 'research_started' || uiData.ui_event === 'research_started') {
       // Agent kicked off deep research — adopt the session into the
