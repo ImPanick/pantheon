@@ -97,7 +97,7 @@ function _say(msg) {
 
 function _build() {
   const modal = _el('div', 'modal apo-modal');
-  modal.id = MODAL_ID;
+  modal.id = 'apollo-pane-modal';  // MODAL_ID, written out so check-wiring sees the pane made (apolloOrb.js finds it by id)
   const content = _el('div', 'modal-content apo-content');
   const header = _el('div', 'modal-header');
   const h = _el('h4', 'apo-heading');
