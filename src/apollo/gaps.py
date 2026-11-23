@@ -210,7 +210,9 @@ def _taken(agent_id: str, data_dir: Optional[str] = None) -> bool:
 
 
 def _with_id(text: str, agent_id: str) -> str:
-    return re.sub(r"(?m)^id:\s*.*$", f"id: {agent_id}", text, count=1)
+    # One class, no overlap: `\s*.*` could each take the same run of tabs, and
+    # CodeQL rightly called that polynomial on a drafted file.
+    return re.sub(r"(?m)^id:[^\n]*", lambda _m: f"id: {agent_id}", text, count=1)
 
 
 def unique_id(text: str, agent_id: str, data_dir: Optional[str] = None) -> Tuple[str, str]:

@@ -230,9 +230,14 @@ def _value(raw: str) -> Any:
         return False
     if low in ("null", "~"):
         return None
-    if re.fullmatch(r"-?\d+", raw):
+    # Read without a regex: a drafted manifest (Apollo's gaps, phase 5b) reaches
+    # here too, and CodeQL counts `-?\d+\.\d+` on a long run of digits as
+    # polynomial. `isdecimal` is the same set of digits `\d` matches.
+    body = raw[1:] if raw.startswith("-") else raw
+    if body.isdecimal():
         return int(raw)
-    if re.fullmatch(r"-?\d+\.\d+", raw):
+    head, dot, tail = body.partition(".")
+    if dot and head.isdecimal() and tail.isdecimal():
         return float(raw)
     return raw
 
