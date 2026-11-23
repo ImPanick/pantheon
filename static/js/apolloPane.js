@@ -565,8 +565,46 @@ function _fact(label, value) {
   return row;
 }
 
+function _teamSection(team) {
+  const members = (team && team.members) || [];
+  const log = (team && team.messages) || [];
+  if (members.length < 2 && !log.length) return null;
+  const sec = _el('section', 'apo-sec apo-team');
+  sec.appendChild(_el('h6', 'apo-sec-t', 'Team'));
+  const names = {};
+  for (const m of members) if (m.lead) names[m.lead] = m.lead_name || m.lead;
+  const ul = _el('ul', 'apo-list');
+  for (const m of members) {
+    const li = _el('li', `apo-row apo-team-m apo-team-d${Math.min(Number(m.depth) || 0, 3)}`);
+    const b = _el('button', 'apo-row-b');
+    b.type = 'button';
+    const { dot, words } = _dot(m.state);
+    const who = `${m.lead_name || m.lead || 'No lead'}, ${M.teamRole(m).toLowerCase()}`;
+    b.appendChild(dot);
+    b.appendChild(_el('span', 'apo-row-t', m.title));
+    b.appendChild(_el('span', 'apo-row-sp', who));
+    b.appendChild(_el('span', 'apo-row-s', words));
+    b.setAttribute('aria-label', `${m.title}, ${who}, ${words}`);
+    if (String(m.id) === String(_taskId)) b.setAttribute('aria-current', 'true');
+    else b.addEventListener('click', () => { _dropChat(); _openTask(m.id); });
+    li.appendChild(b);
+    ul.appendChild(li);
+  }
+  sec.appendChild(ul);
+  if (log.length) {
+    const ol = _el('ol', 'apo-team-log');
+    for (const msg of log.slice(-8)) ol.appendChild(_el('li', `apo-team-l apo-team-${msg.kind}`, M.teamLine(msg, names)));
+    sec.appendChild(ol);
+  }
+  return sec;
+}
+
 async function _drawTask(gen) {
-  const [state, task] = await Promise.all([_api('/api/apollo/state'), _api(`/api/apollo/tasks/${encodeURIComponent(_taskId)}`)]);
+  const [state, task, team] = await Promise.all([
+    _api('/api/apollo/state'),
+    _api(`/api/apollo/tasks/${encodeURIComponent(_taskId)}`),
+    _api(`/api/apollo/tasks/${encodeURIComponent(_taskId)}/team`).catch(() => null),
+  ]);
   if (gen !== _gen || !_win) return;
   _setStatus(state);
   const body = _win.body;
@@ -590,6 +628,8 @@ async function _drawTask(gen) {
     ask.appendChild(_answerBox(task, _refresh));
     body.appendChild(ask);
   }
+  const teamSec = _teamSection(team);
+  if (teamSec) body.appendChild(teamSec);
   body.appendChild(_budgetEditor(task));
   const acts = _el('div', 'apo-acts apo-task-acts');
   const verb = M.runVerb(task);

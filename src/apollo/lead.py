@@ -13,20 +13,21 @@ staffing the goal with a guess (phase 5 drafts the missing agent).
 
 from __future__ import annotations
 
-from typing import Any, Dict, Iterable, Optional
+from typing import Any, Dict, Iterable, List, Optional
 
 MIN_SCORE = 2
 FIT_BONUS = {"runs-well": 2, "runs-slowly": 1, "not-measured": 0}
 
 
-def pick_lead(owner: Optional[str], text: str, *, model: Optional[str] = None,
-              agents: Optional[Iterable[Any]] = None, fit_of=None) -> Optional[Dict[str, Any]]:
-    """`{id, name, tagline, why, fit}` for the agent that best leads `text`, or `None`."""
+def candidates(owner: Optional[str], text: str, *, model: Optional[str] = None,
+               agents: Optional[Iterable[Any]] = None, fit_of=None, limit: int = 6) -> List[Dict[str, Any]]:
+    """The agents that fit `text`, best first: `{id, name, tagline, fit, why,
+    words}` each. An agent measured as *Needs a bigger model* is left out."""
     from src.agents import suggest as S
 
     stems = S._stems(str(text or "")[:4000])
     if not stems:
-        return None
+        return []
     if agents is None:
         from src.agents.catalogue import catalogue
         agents, _broken = catalogue(owner)
@@ -45,11 +46,16 @@ def pick_lead(owner: Optional[str], text: str, *, model: Optional[str] = None,
         if badge == "needs-bigger":
             continue
         ranked.append((s["score"] + FIT_BONUS.get(badge, 0), s["score"], agent.id, agent, badge, s))
-    if not ranked:
-        return None
     # Highest total, then the higher word match, then the id: the same goal
     # gets the same lead every time.
     ranked.sort(key=lambda r: (-r[0], -r[1], r[2]))
-    _total, _score, _id, best, badge, s = ranked[0]
-    return {"id": best.id, "name": best.name, "tagline": best.tagline, "fit": badge,
-            "why": f"{best.name} does this: {best.tagline}", "words": s["words"]}
+    return [{"id": a.id, "name": a.name, "tagline": a.tagline, "fit": badge,
+             "why": f"{a.name} does this: {a.tagline}", "words": s["words"]}
+            for _t, _s, _i, a, badge, s in ranked[:max(1, limit)]]
+
+
+def pick_lead(owner: Optional[str], text: str, *, model: Optional[str] = None,
+              agents: Optional[Iterable[Any]] = None, fit_of=None) -> Optional[Dict[str, Any]]:
+    """`{id, name, tagline, why, fit}` for the agent that best leads `text`, or `None`."""
+    found = candidates(owner, text, model=model, agents=agents, fit_of=fit_of, limit=1)
+    return found[0] if found else None

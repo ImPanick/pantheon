@@ -274,6 +274,7 @@ _register(
         "manage_memory",
         "manage_notes",
         "apollo",            # Apollo's tasks, notebook and Brain lines (`src/apollo/tool.py`)
+        "fleet",             # an Apollo lead's team: sub-tasks, asks, escalations (`src/apollo/fleet_tool.py`)
         "ledger_table",      # `P24-30`: the person's ledger, read and written by its actions below
         "manage_research",
         "manage_session",
@@ -847,6 +848,7 @@ _PRIVATE_ACTION_READS: Mapping[str, frozenset[str]] = MappingProxyType(
                                        "list_folders"}),
         "manage_memory": frozenset({"list", "search"}),
         "apollo": frozenset({"status", "knows"}),
+        "fleet": frozenset({"roster"}),
         "manage_notes": frozenset({"list", "search", "find", "view"}),
         "ledger_table": frozenset({"list", "sum"}),      # `P24-30`
         "manage_research": frozenset({"list", "read", "open", "view", "get"}),
@@ -873,6 +875,7 @@ _PRIVATE_ACTION_WRITES: Mapping[str, frozenset[str]] = MappingProxyType(
         "apollo": frozenset({"create_task", "start_task", "update_task", "ask", "note",
                              "settle_note", "remember", "confirm", "forget",
                              "nudge_voice"}),
+        "fleet": frozenset({"delegate", "ask", "escalate"}),
         "manage_notes": frozenset({"add", "update", "delete", "toggle_item"}),
         "ledger_table": frozenset({"add", "update", "delete", "import"}),      # `P24-30`
         "manage_research": frozenset({"delete"}),
@@ -933,6 +936,7 @@ _ACTION_DEFAULTS: Mapping[str, str] = MappingProxyType(
         "manage_tasks": "list",
         "manage_workflows": "list",      # `B1878`
         "apollo": "status",
+        "fleet": "roster",
     }
 )
 
@@ -992,7 +996,7 @@ class _ActionArgumentTooDeep(Exception):
 
 # `P16-20`: `network` too, so a bare `network reach 10.0.0.5 443` resolves its
 # action for the gate the same as the JSON form does.
-_LINE_ACTION_TOOLS = frozenset({"manage_memory", "manage_session", "network", "apollo"})
+_LINE_ACTION_TOOLS = frozenset({"manage_memory", "manage_session", "network", "apollo", "fleet"})
 
 # `B17`. A nesting depth beyond which we refuse to parse rather than ask CPython
 # to. `json.loads` recurses per level and raises `RecursionError`, which is a

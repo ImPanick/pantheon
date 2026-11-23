@@ -6338,7 +6338,9 @@ class TaskScheduler:
                 from src.apollo import runs as _apollo_runs
                 _apollo_runs.report_landed(db, task, run_id, result or "", checks=checks,
                                            endpoint_url=endpoint_url,
-                                           post=self._post_to_apollo)
+                                           post=self._post_to_apollo,
+                                           start=lambda nxt, _rid=run_id: asyncio.create_task(
+                                               self._start_apollo_after(_rid, nxt)))
             except Exception:
                 logger.warning("Could not move the Apollo task for %s's run", task.name, exc_info=True)
             if _agent_rt.failed(checks):
@@ -6351,6 +6353,23 @@ class TaskScheduler:
                 raise _agent_rt.AgentDidNotDeliver(sentence)
 
         return result
+
+    async def _start_apollo_after(self, run_id, next_task_id: str, *, wait: float = 120.0) -> bool:
+        """Phase 5. The fleet's next run for an Apollo goal — a delegate, a
+        reviewer, or the lead again with its team's reports — started once
+        this run has let go of its slot, so a lead that re-runs itself never
+        overlaps its own finishing run. Started as the person's, as every
+        Apollo run is (`src/apollo/tool.py:start_run`)."""
+        from src.interactive_gate import STARTED_BY_PERSON
+        waited = 0.0
+        while run_id is not None and run_id in self._runs() and waited < wait:
+            await asyncio.sleep(0.25)
+            waited += 0.25
+        try:
+            return bool(await self.run_task_now(next_task_id, force=True, started_by=STARTED_BY_PERSON))
+        except Exception:
+            logger.warning("Could not start the Apollo fleet's next run %s", next_task_id, exc_info=True)
+            return False
 
     def _post_to_apollo(self, owner: str, line: str, meta: dict) -> None:
         """One line from Apollo into `owner`'s Apollo chat. Silent when they

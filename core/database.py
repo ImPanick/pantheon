@@ -2124,6 +2124,52 @@ class ApolloVoice(Base):
     changes = Column(Text, nullable=False, default="[]")
 
 
+class ApolloFleetLink(Base):
+    """How a child Apollo task came to be (phase 5, the fleet): who handed it
+    on, as what (`delegate`, `ask`, `review`), who reviews it, and the ceiling
+    its lead is held to — the delegating lead's tools, nevers and asks, so a
+    delegate never gets more than the agent that handed it the work.
+
+    A task the person or Apollo started has no row. A new table, so
+    `create_all` is its whole migration.
+    """
+    __tablename__ = "apollo_fleet_links"
+
+    task_id    = Column(String, primary_key=True)
+    owner      = Column(String, nullable=False, index=True)
+    goal_id    = Column(String, nullable=False, index=True)
+    from_agent = Column(String, nullable=True)
+    via        = Column(String, nullable=False, default="delegate")
+    #: An agent id, `person`, or NULL for no review.
+    review_by  = Column(String, nullable=True)
+    #: NULL, `in_review`, `passed` or `done`.
+    stage      = Column(String, nullable=True)
+    rounds     = Column(Integer, nullable=False, default=0)
+    #: JSON `{tools, never, ask}`.
+    ceiling    = Column(Text, nullable=True)
+
+
+class ApolloMessage(Base):
+    """One typed message on a goal's log (phase 5): `ask`, `delegate`,
+    `review`, `report` or `escalate`, from one agent (or the person) to
+    another. `task_id` is the task it was said on; `child_id` the task it
+    made or came from. A report is unseen by its task's lead until a run of
+    that lead is handed it (`seen_at`)."""
+    __tablename__ = "apollo_messages"
+
+    id         = Column(String, primary_key=True)
+    owner      = Column(String, nullable=False, index=True)
+    goal_id    = Column(String, nullable=False, index=True)
+    task_id    = Column(String, nullable=False, index=True)
+    kind       = Column(String, nullable=False)
+    from_agent = Column(String, nullable=True)
+    to_agent   = Column(String, nullable=True)
+    body       = Column(Text, nullable=True)
+    child_id   = Column(String, nullable=True)
+    created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+    seen_at    = Column(DateTime, nullable=True)
+
+
 class ApolloTrust(Base):
     """Trust per kind of work (phase 4, `src/apollo/trust.py`): for one person,
     one kind of Apollo task and one action, the run of clean Allows, and

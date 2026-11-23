@@ -2500,6 +2500,10 @@ def setup_chat_routes(
         # "admin" for a token. Cap it at the non-admin policy instead;
         # `stream_agent_loop` repeats this from `delegated_credential` so the
         # cap holds even for a caller that does not come through this route.
+        # The fleet is an Apollo lead's team. Only the scheduler's run of a
+        # lead gets it (`src/agents/runtime.py`, from its own plan), so a chat
+        # turn never offers it.
+        _withholds.deny({"fleet"}, WITHHELD_BY_POLICY)
         _delegated_credential = is_delegated_credential(request)
         if _delegated_credential:
             # A cap on what a minted token may do: a privilege decision, and
@@ -2553,6 +2557,7 @@ def setup_chat_routes(
                 "manage_workflows",   # `B1878`
                 "api_call",
                 "apollo",             # Apollo's tasks and notebook are personal
+                "fleet",              # so is an Apollo lead's team
             }, WITHHELD_BY_POLICY)
             # Composition, not a clamp: this branch denied the web tools above
             # and takes them back out when the chat's own setting enabled them.
@@ -2574,6 +2579,7 @@ def setup_chat_routes(
                 "search_chats",       # past chat history
                 "read_chat",          # a past chat, read through (`B1621`)
                 "apollo",             # Apollo's notebook and what it knows
+                "fleet",              # an Apollo lead's team
                 "manage_skills",      # skill presets tied to user
                 "use_skill",          # the same, read (`B1737`)
                 "create_session",

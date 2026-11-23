@@ -347,6 +347,13 @@ def plan_for_task(db, task, run_id: Optional[str] = None) -> Optional[RunPlan]:
     _apollo = apollo_plan_parts(db, hire, manifest)
     if _apollo:
         msgs = _apollo["context_messages"] + msgs
+        # The fleet (Apollo phase 5): a delegate is held to the ceiling of the
+        # agents that handed it the work — their tools, nevers and asks — and
+        # a lead with room in its chain gets the `fleet` tool to hand work on.
+        from src.apollo.fleet import narrow
+        tools, never, ask, allow = narrow(tools, never, ask, allow, _apollo.get("ceiling"))
+        if _apollo.get("fleet") and "fleet" not in tools:
+            tools = list(tools) + ["fleet"]
     return RunPlan(hire_id=hire.id, agent_id=manifest.id, name=hire.name,
                    system_prompt=(_apollo["system_prompt"] if _apollo
                                   else system_prompt(manifest, hire, owner=hire.owner)), tools=tools,

@@ -394,6 +394,25 @@ FUNCTION_TOOL_SCHEMAS = [
     {
         "type": "function",
         "function": {
+            "name": "fleet",
+            "description": "Your team, while you lead one of the person's Apollo tasks: find agents in the roster that fit a need, hand one a sub-task, ask one a single question, or put a decision only the person can make to them. A delegate gets no more tools than you hold. Its report comes back to you as a new run.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "action": {"type": "string", "enum": ["roster", "delegate", "ask", "escalate"], "description": "What to do"},
+                    "need": {"type": "string", "description": "roster: the kind of help you need, in a few words"},
+                    "agent": {"type": "string", "description": "delegate/ask: the agent's id from roster"},
+                    "brief": {"type": "string", "description": "delegate: what done looks like and what the agent needs to know"},
+                    "review_by": {"type": "string", "description": "delegate: an agent id to review the work, or person to have the person check it; leave out for no review"},
+                    "question": {"type": "string", "description": "ask: the one question; escalate: the decision or yes only the person can give"}
+                },
+                "required": ["action"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "chat_with_model",
             "description": "Send a message to another AI model and get its response. Use for getting a second opinion, delegating subtasks, or AI-to-AI communication.",
             "parameters": {
@@ -2589,6 +2608,8 @@ def function_call_to_tool_block(name: str, arguments: str) -> Optional[ToolBlock
         content = json.dumps(args)      # `B1621`: `session_tools._read_chat_args` reads it
     elif tool_type == "apollo":
         content = json.dumps(args)      # `src/apollo/tool.py` reads it
+    elif tool_type == "fleet":
+        content = json.dumps(args)      # `src/apollo/fleet_tool.py` reads it
     elif tool_type == "chat_with_model":
         content = args.get("model", "") + "\n" + args.get("message", "")
     elif tool_type == "create_session":
