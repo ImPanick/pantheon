@@ -15,6 +15,7 @@ import httpx
 
 from src.database import SessionLocal, Webhook
 from src.utc_clock import utcnow_naive  # `B2173`: the one clock
+from src.local_hosts import NEVER_FETCHED_NAMES
 
 logger = logging.getLogger(__name__)
 
@@ -70,7 +71,7 @@ _LAN_NETWORKS = (
     ipaddress.ip_network("100.64.0.0/10"),
     ipaddress.ip_network("fc00::/7"),
 )
-_NEVER_NAMES = ("localhost", "0.0.0.0", "metadata.google.internal", "metadata")
+_NEVER_NAMES = NEVER_FETCHED_NAMES | {"0.0.0.0"}
 
 
 def _ip_refused(addr: ipaddress._BaseAddress, *, allow_lan: bool) -> bool:

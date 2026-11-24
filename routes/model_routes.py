@@ -45,6 +45,7 @@ from src.endpoint_resolver import (
 )
 from src.auth_helpers import effective_user, owner_filter, require_user
 from src.env_flags import request_flag, request_truthy
+from src.local_hosts import ANY_ADDRESS_NAMES, LOCAL_SERVER_NAMES, THIS_MACHINE_NAMES
 
 logger = logging.getLogger(__name__)
 
@@ -251,8 +252,8 @@ def _default_endpoint_needs_assignment(
 # Loopback hosts a user might type for a local model server (LM Studio,
 # llama.cpp, vLLM, …). Inside Docker these point at the *container*, not the
 # host the server actually runs on.
-_ANY_BIND_HOSTS = {"0.0.0.0", "::"}
-_LOOPBACK_HOSTS = {"localhost", "127.0.0.1", "::1", *_ANY_BIND_HOSTS}
+_ANY_BIND_HOSTS = ANY_ADDRESS_NAMES
+_LOOPBACK_HOSTS = THIS_MACHINE_NAMES
 
 
 def _docker_host_gateway_reachable() -> bool:
@@ -804,7 +805,7 @@ def _probe_single_model(base: str, api_key: str, model_id: str, timeout: int = 1
 
 
 # Hostnames / IP prefixes that indicate a local endpoint
-_LOCAL_HOSTS = {"localhost", "127.0.0.1", "0.0.0.0", "::1"}
+_LOCAL_HOSTS = LOCAL_SERVER_NAMES
 _PRIVATE_NETWORKS = (
     ipaddress.ip_network("10.0.0.0/8"),
     ipaddress.ip_network("172.16.0.0/12"),

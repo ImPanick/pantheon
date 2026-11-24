@@ -10,6 +10,7 @@ import logging
 from urllib.parse import urlparse
 from fastapi import HTTPException
 from typing import List, Optional
+from src.local_hosts import LOCAL_ENDPOINT_NAMES
 
 logger = logging.getLogger(__name__)
 
@@ -93,7 +94,7 @@ def _is_local_host(host: Optional[str]) -> bool:
     host = (host or "").lower()
     if not host:
         return False
-    if host in {"localhost", "host.docker.internal"} or host.endswith(".local"):
+    if host in LOCAL_ENDPOINT_NAMES or host.endswith(".local"):
         return True
     try:
         ip = ipaddress.ip_address(host)

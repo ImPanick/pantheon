@@ -19,6 +19,7 @@ from urllib.parse import urljoin, urlparse
 import httpx
 
 from src.constants import WEB_FETCH_HARD_MAX_BYTES, WEB_FETCH_SOFT_MAX_BYTES
+from src.local_hosts import is_never_fetched_name
 
 
 _PRIVATE_NETWORKS = (
@@ -198,7 +199,7 @@ def _public_http_url(
         # is exactly what they want reached; it is judged by the address it
         # resolves to, so a name that resolves to loopback or does not resolve
         # at all is still refused.
-        if lower in ("localhost", "metadata", "metadata.google.internal") or lower.endswith(".localhost"):
+        if is_never_fetched_name(lower):
             return False
         allow_lan = lan_allowed()
         try:
@@ -252,7 +253,7 @@ def _resolve_public_ips(
             )
     except ImportError:
         pass
-    if host in ("localhost", "metadata", "metadata.google.internal"):
+    if is_never_fetched_name(host):
         raise httpx.RequestError(f"Blocked non-public hostname: {host}")
     try:
         ip = ipaddress.ip_address(host)

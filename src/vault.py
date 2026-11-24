@@ -43,6 +43,7 @@ import uuid
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 from urllib.parse import urlsplit
+from src.local_hosts import PLAIN_HTTP_SUFFIXES
 
 logger = logging.getLogger(__name__)
 
@@ -74,7 +75,7 @@ def account(owner: Optional[str]) -> str:
 
 # ── addresses ───────────────────────────────────────────────────────────────
 
-_LOCAL_SUFFIXES = (".lan", ".local", ".home", ".internal", ".localdomain", ".home.arpa", ".test")
+_LOCAL_SUFFIXES = PLAIN_HTTP_SUFFIXES
 
 
 def _is_local_host(host: str) -> bool:

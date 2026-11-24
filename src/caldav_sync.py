@@ -33,6 +33,7 @@ import socket
 import uuid
 from datetime import date, datetime, timedelta, timezone
 from urllib.parse import urlparse, urlunparse
+from src.local_hosts import NEVER_FETCHED_NAMES
 
 logger = logging.getLogger(__name__)
 
@@ -41,12 +42,7 @@ logger = logging.getLogger(__name__)
 # events still come through via RRULE expansion on the frontend.
 _LOOKBACK_DAYS = 90
 _LOOKAHEAD_DAYS = 365
-_BLOCKED_HOSTS = {
-    "localhost",
-    "localhost.",
-    "ip6-localhost",
-    "metadata.google.internal",
-}
+_BLOCKED_HOSTS = NEVER_FETCHED_NAMES
 
 
 def _private_caldav_allowed() -> bool:
