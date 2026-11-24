@@ -172,6 +172,13 @@ FILTER_ARG_MAX = 64
 # most 1,000,000); this is the same ceiling, stated so the cost of the change
 # is bounded by this module and not by a setting somewhere else.
 FROM_JSON_MAX_CHARS = 1_000_000
+# The deepest nesting `from_json` reads. It used to be "as deep as Python
+# reads", which was the recursion limit; Python 3.14 bounds the JSON decoder by
+# the C stack instead, so the same text parsed or not depending on the thread it
+# ran on (`B2192`). The bound is now this module's, the old limit's size.
+FROM_JSON_MAX_DEPTH = 1_000
+_JSON_STRING_RE = re.compile(r'"(?:[^"\\]|\\.)*"', re.S)
+_JSON_BRACKET_RE = re.compile(r"[\[\]{}]")
 _FILTER_NAME_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 _ARG_NUMBER_RE = re.compile(r"-?(?:0|[1-9][0-9]{0,14})(?:\.[0-9]{1,6})?")
 # The directives `date` writes, by this module's own table (`_format_moment`):
@@ -769,6 +776,20 @@ def _no_constant(word):
     raise ValueError(f"{word} is not JSON")
 
 
+def _deeper_than(text: str, limit: int) -> bool:
+    """Whether brackets outside JSON strings nest deeper than `limit`. Text
+    that is not JSON at all may answer either way; `json.loads` refuses it
+    after."""
+    depth = 0
+    for m in _JSON_BRACKET_RE.finditer(_JSON_STRING_RE.sub("", text)):
+        if m.group() in "[{":
+            depth += 1
+            if depth > limit:
+                return True
+        else:
+            depth -= 1
+    return False
+
 def read_json(value):
     """Text read as JSON, or `MISSING` for text that is not JSON (or longer
     than `FROM_JSON_MAX_CHARS`, or nested deeper than Python reads); a value
@@ -778,7 +799,7 @@ def read_json(value):
         return MISSING
     if not isinstance(value, str):
         return value
-    if len(value) > FROM_JSON_MAX_CHARS:
+    if len(value) > FROM_JSON_MAX_CHARS or _deeper_than(value, FROM_JSON_MAX_DEPTH):
         return MISSING
     try:
         return json.loads(value, parse_constant=_no_constant)
