@@ -454,10 +454,9 @@ async function _ensureHeaderAffordances(sessionId) {
     return;
   }
   _markApolloChat(isApollo);
-  if (!isApollo) {
-    _noteChat(sessionId);
-    return;
-  }
+  // A chat that isn't Apollo's is where the Chat side of the switch goes back to.
+  if (!isApollo) _noteChat(sessionId);
+  if (!isApollo) return;
   import('./apolloSpaces.js').then((Sp) => Sp.noteSpace(space || null)).catch(() => {});
   // Apollo's own page (`apolloView.js`): its bar, pane, controls and empty
   // state. The bar holds the Space switcher, the pane button and the gear that
