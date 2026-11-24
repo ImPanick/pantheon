@@ -14,10 +14,10 @@ import os
 import threading
 import time
 from contextlib import contextmanager
-from datetime import datetime
 from typing import NamedTuple, Optional
 
 from src.constants import AUTH_FILE
+from src.utc_clock import utcnow_naive  # `B2196`: not the deprecated datetime.utcnow()
 
 logger = logging.getLogger(__name__)
 
@@ -380,7 +380,7 @@ def build_trigger(source: str, name: str, data: Optional[dict] = None,
     envelope = {
         "source": source,
         "event": name,
-        "at": datetime.utcnow().isoformat() + "Z",
+        "at": utcnow_naive().isoformat() + "Z",
         "data": kept,
     }
     if origin is not None:
@@ -948,7 +948,7 @@ def _count_event(event_name: str, resolved_owner: Optional[str], trigger: dict,
                 # behind a model call, `next_run <= now` makes the trigger
                 # survive reboot instead of losing the event after the counter
                 # has already reset.
-                task.next_run = datetime.utcnow()
+                task.next_run = utcnow_naive()
                 # `B1075`. And WHAT fired it, with it: in a process with no
                 # scheduler (the email MCP server's subprocess) `next_run` was
                 # all that crossed to the main process, whose loop then ran the
@@ -1086,7 +1086,7 @@ def _record_queue_full(db, task) -> str:
     from core.database import TaskRun
 
     sentence = queue_full_sentence(task)
-    now = datetime.utcnow()
+    now = utcnow_naive()
     db.add(TaskRun(id=str(uuid.uuid4()), task_id=task.id, started_at=now, finished_at=now,
                    status="skipped", result=sentence, error=sentence))
     return sentence

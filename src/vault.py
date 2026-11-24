@@ -40,9 +40,9 @@ import re
 import threading
 import time
 import uuid
-from datetime import datetime
 from typing import Any, Dict, List, Optional
 from urllib.parse import urlsplit
+from src.utc_clock import utcnow_naive  # `B2196`: not the deprecated datetime.utcnow()
 
 logger = logging.getLogger(__name__)
 
@@ -558,7 +558,7 @@ def for_use(db, owner: Optional[str], ref: Any, *, by: str = "agent",
     if sealed.get("totp"):
         import pyotp
         otp = pyotp.TOTP(sealed["totp"]).now()
-    row.last_used_at = datetime.utcnow()
+    row.last_used_at = utcnow_naive()
     row.last_used_by = str(by or "agent")[:80]
     db.commit()
     logger.info("vault: %s item %s used by %s", acct, row.id, row.last_used_by)

@@ -22,13 +22,13 @@ harness. Versions are stamped with the time they are written, so the 60-second
 window holds without a fake clock.
 """
 
-from datetime import datetime
 
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from tests.test_the_documents_tidy_asks_first import LONG_AGO, cdb, doc, world  # noqa: F401
+from src.utc_clock import utcnow_naive  # `B2196`: not the deprecated datetime.utcnow()
 
 ARRIVED = "The quarterly report, as it arrived."
 
@@ -84,7 +84,7 @@ def autosave(editor, doc_id, content):
 
 @pytest.mark.parametrize("summary", ["Imported from report.docx", "Initial version"])
 def test_the_text_a_document_arrived_with_survives_an_edit_a_minute_later(world, editor, summary):
-    doc_id = page(world, (summary, ARRIVED, "user", datetime.utcnow()))
+    doc_id = page(world, (summary, ARRIVED, "user", utcnow_naive()))
     out = autosave(editor, doc_id, "corrected by me")
     assert history(world, doc_id) == [(summary, ARRIVED), ("Manual edit", "corrected by me")]
     assert out["version_count"] == 2
@@ -122,7 +122,7 @@ def test_a_restored_version_survives_the_next_autosave(world, editor):
 def test_typing_after_a_checkpoint_is_still_one_version(world, editor):
     """The coalescing stays: the autosaves after a checkpoint are one version,
     holding the newest text — they just no longer land on the checkpoint."""
-    doc_id = page(world, ("Saved version", "the text I saved", "user", datetime.utcnow()))
+    doc_id = page(world, ("Saved version", "the text I saved", "user", utcnow_naive()))
     autosave(editor, doc_id, "typing")
     out = autosave(editor, doc_id, "typing, and more")
     assert history(world, doc_id) == [

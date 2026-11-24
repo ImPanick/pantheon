@@ -19,6 +19,7 @@ from src import paced_http  # `B1014`: NO_PROXY ranges, read for every client
 from src.constants import DATA_DIR
 from src.upload_handler import reserve_upload_references
 from sqlalchemy.orm.attributes import flag_modified
+from src.utc_clock import utcnow_naive  # `B2196`: not the deprecated datetime.utcnow()
 
 logger = logging.getLogger(__name__)
 
@@ -379,7 +380,7 @@ async def dispatch_reminder(
                 _t = title or 'Note'
                 _t = _t[len('Reminder:'):].strip() if _t.lower().startswith('reminder:') else _t
                 msg["Subject"] = f"Reminder (Pantheon): {_t}"
-                msg["Date"] = _dt.utcnow().strftime("%a, %d %b %Y %H:%M:%S +0000")
+                msg["Date"] = utcnow_naive().strftime("%a, %d %b %Y %H:%M:%S +0000")
                 msg["X-Pantheon-Origin"] = "pantheon-ui"
                 msg["X-Pantheon-Kind"] = "reminder"
                 msg["X-Pantheon-Ref"] = str(note_id)

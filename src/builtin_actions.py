@@ -10,7 +10,7 @@ import logging
 import os
 import json
 import re
-from datetime import datetime, timezone
+from datetime import timezone
 from typing import Any, Tuple
 
 from src.auth_helpers import owner_filter
@@ -20,6 +20,7 @@ from src.constants import DATA_DIR, DEEP_RESEARCH_DIR, TIDY_CALENDAR_STATE_FILE,
 from src.interactive_gate import wait_for_interactive_quiet
 from src.env_flags import tool_arg_truthy
 from src import paced_http  # `B1014`: NO_PROXY ranges, read for every client
+from src.utc_clock import utcnow_naive  # `B2196`: not the deprecated datetime.utcnow()
 
 logger = logging.getLogger(__name__)
 
@@ -1230,7 +1231,7 @@ async def action_email_auto_translate(owner: str, **kwargs) -> Tuple[str, bool]:
         import email as _email_mod
         import json as _json
         import sqlite3 as _sql3
-        from datetime import datetime as _dt, timedelta as _td
+        from datetime import timedelta as _td
 
         from core.database import EmailAccount as _EA, SessionLocal as _SL
         from routes.email_helpers import (
@@ -1310,7 +1311,7 @@ async def action_email_auto_translate(owner: str, **kwargs) -> Tuple[str, bool]:
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     body_hash, owner, target_language, uid, folder, subject, sender,
-                    translation, 1 if same_language else 0, model_used, _dt.utcnow().isoformat(),
+                    translation, 1 if same_language else 0, model_used, utcnow_naive().isoformat(),
                 ))
                 c.commit()
             finally:
@@ -1348,7 +1349,7 @@ async def action_email_auto_translate(owner: str, **kwargs) -> Tuple[str, bool]:
             # reader's Translate reads the same way and the same cache.
             return _extract_translation(content)
 
-        since = (_dt.utcnow() - _td(days=days_back)).strftime("%d-%b-%Y")
+        since = (utcnow_naive() - _td(days=days_back)).strftime("%d-%b-%Y")
         examined = 0
         cached = 0
         translated = 0
@@ -1580,7 +1581,7 @@ async def action_classify_events(owner: str, **kwargs) -> Tuple[str, bool]:
 
         db = SessionLocal()
         try:
-            now = datetime.utcnow()
+            now = utcnow_naive()
             horizon = now + timedelta(days=30)
             # `B2030`. Only the owner's calendars. This read every person's
             # next 30 days, sent their titles and places to this owner's
@@ -1812,7 +1813,7 @@ async def action_learn_sender_signatures(owner: str, **kwargs) -> Tuple[str, boo
         import re as _re
         import email as _email_mod
         import asyncio as _aio
-        from datetime import datetime as _dt, timedelta as _td
+        from datetime import timedelta as _td
         from routes.email_helpers import _email_cache_owner_clause, _imap_connect, SCHEDULED_DB
         from src.llm_core import llm_call_async_with_fallback
 
@@ -1882,7 +1883,7 @@ async def action_learn_sender_signatures(owner: str, **kwargs) -> Tuple[str, boo
         except Exception:
             cached = {}
 
-        cutoff_iso = (_dt.utcnow() - _td(days=30)).isoformat()
+        cutoff_iso = (utcnow_naive() - _td(days=30)).isoformat()
         eligible: list[tuple[str, list[dict]]] = []
         for addr, msgs in by_sender.items():
             if len(msgs) < 3:
@@ -1989,7 +1990,7 @@ async def action_learn_sender_signatures(owner: str, **kwargs) -> Tuple[str, boo
                     "INSERT OR REPLACE INTO sender_signatures "
                     "(from_address, owner, signature_text, sample_count, last_built_at, model_used, source) "
                     "VALUES (?, ?, ?, ?, ?, ?, ?)",
-                    (addr, owner_value, cached_sig, len(bodies), _dt.utcnow().isoformat(), model, "llm"),
+                    (addr, owner_value, cached_sig, len(bodies), utcnow_naive().isoformat(), model, "llm"),
                 )
                 conn.commit()
                 conn.close()
@@ -2716,7 +2717,7 @@ async def action_check_email_urgency(owner: str, **kwargs) -> Tuple[str, bool]:
         import re as _re
         import time as _time
         import httpx
-        from datetime import datetime as _dt, timedelta as _td
+        from datetime import timedelta as _td
         from pathlib import Path as _P
         from core.database import SessionLocal as _SL, EmailAccount as _EA
         from routes.email_helpers import _imap_connect, _decode_header
@@ -2731,7 +2732,7 @@ async def action_check_email_urgency(owner: str, **kwargs) -> Tuple[str, bool]:
         CACHE_DIR = _P(EMAIL_URGENCY_CACHE_DIR)
         CACHE_DIR.mkdir(parents=True, exist_ok=True)
         STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
-        AGE_CUTOFF = _dt.utcnow() - _td(days=7)
+        AGE_CUTOFF = utcnow_naive() - _td(days=7)
         # `B1945`: 11 scores the cached verdicts of the old action rule again,
         # once, with no model call; mail already notified is not notified again.
         TRIAGE_VERSION = 11
@@ -3224,7 +3225,6 @@ async def action_check_email_urgency(owner: str, **kwargs) -> Tuple[str, bool]:
         try:
             import sqlite3 as _sql3
             from routes.email_helpers import SCHEDULED_DB, _init_scheduled_db
-            from datetime import datetime as _dt2
             _init_scheduled_db()
             _conn = _sql3.connect(SCHEDULED_DB)
             try:
@@ -3296,7 +3296,7 @@ async def action_check_email_urgency(owner: str, **kwargs) -> Tuple[str, bool]:
                             "VALUES (?, ?, ?, ?, 'INBOX', ?, ?, ?, ?, ?, ?)",
                             (_msg_id, _owner_key, _acc_id, _uid_only, _v.get("subject", ""),
                              _v.get("from", ""), _json.dumps(_new_tags), _spam, _v.get("reason", ""),
-                             _dt2.utcnow().isoformat()),
+                             utcnow_naive().isoformat()),
                         )
                         tag_write_details.append({
                             "uid": _uid_only,

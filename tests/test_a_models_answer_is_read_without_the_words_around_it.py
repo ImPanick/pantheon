@@ -24,7 +24,7 @@ route, the think-first order and the per-`[` scan are Pantheon's.
 """
 import email.utils
 import sqlite3
-from datetime import datetime, timedelta
+from datetime import timedelta
 from types import SimpleNamespace
 
 import pytest
@@ -33,6 +33,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 import core.database as cdb
+from src.utc_clock import utcnow_naive  # `B2196`: not the deprecated datetime.utcnow()
 
 BODY = ("Hola Alicia, te escribo para confirmar la reunión del jueves a las diez "
         "en la oficina de la calle Mayor. Un saludo, Ana")
@@ -221,7 +222,7 @@ def calendar(monkeypatch):
     monkeypatch.setattr(cdb, "SessionLocal", factory)
     monkeypatch.setattr("src.auth_manager_access.shared_auth_manager",
                         lambda: SimpleNamespace(is_configured=True))
-    start = datetime.utcnow() + timedelta(days=2)
+    start = utcnow_naive() + timedelta(days=2)
     with factory() as db:
         db.add(cdb.CalendarCal(id="alice-cal", owner="alice", name="Personal"))
         db.add(cdb.CalendarEvent(uid="sam", calendar_id="alice-cal", summary="Catch up with Sam",

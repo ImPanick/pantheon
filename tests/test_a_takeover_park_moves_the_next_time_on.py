@@ -13,7 +13,7 @@ the real due tick (`_check_due_tasks`) and the real sweeper.
 """
 
 import asyncio
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 import pytest
 
@@ -21,6 +21,7 @@ from src.task_scheduler import TAKEOVER_PARKED
 from tests.helpers.walker_harness import (
     make_db, node, recording_scheduler, row, runs_of, seed_workflow, settle,
 )
+from src.utc_clock import utcnow_naive  # `B2196`: not the deprecated datetime.utcnow()
 
 pytestmark = pytest.mark.asyncio
 
@@ -61,10 +62,10 @@ async def _park_by_a_takeover(factory, **task_kw):
 
 
 async def test_a_scheduled_workflow_parked_by_a_takeover_moves_its_next_time_on(factory):
-    past = datetime.utcnow() - timedelta(minutes=1)
+    past = utcnow_naive() - timedelta(minutes=1)
     await _park_by_a_takeover(factory, next_run=past)
     nr = row(factory, "wf").next_run
-    assert nr is not None and nr > datetime.utcnow(), (
+    assert nr is not None and nr > utcnow_naive(), (
         f"the parked run left next_run at {nr}, in the past")
 
 
@@ -72,7 +73,7 @@ async def test_the_next_tick_after_a_takeover_starts_nothing_and_writes_no_skipp
         factory, monkeypatch):
     import src.task_scheduler as ts
     monkeypatch.setattr(ts, "dispatch_hold", lambda *a, **k: 0.0)
-    past = datetime.utcnow() - timedelta(minutes=1)
+    past = utcnow_naive() - timedelta(minutes=1)
     s = await _park_by_a_takeover(factory, next_run=past)
     # The next tick: only the due-task half, so the sweeper does not resume
     # the parked run inside the same call.
@@ -88,20 +89,20 @@ async def test_the_next_tick_after_a_takeover_starts_nothing_and_writes_no_skipp
 async def test_the_parked_run_still_goes_on_once_pantheon_is_idle(factory):
     """The sweeper reads the step records, not `next_run`: moving the next
     time on does not strand the parked run."""
-    past = datetime.utcnow() - timedelta(minutes=1)
+    past = utcnow_naive() - timedelta(minutes=1)
     s = await _park_by_a_takeover(factory, next_run=past)
     assert await s._resume_due_waits() == 1
     await settle(s)
     [run] = runs_of(factory, "wf")
     assert run["status"] == "success", run
     nr = row(factory, "wf").next_run
-    assert nr is not None and nr > datetime.utcnow()
+    assert nr is not None and nr > utcnow_naive()
 
 
 async def test_a_webhook_workflow_parked_by_a_takeover_is_not_left_due(factory):
     """An event or webhook task runs when it is triggered: parked with no
     event queued, it is due for nothing (`_settle_event_next_run`)."""
-    past = datetime.utcnow() - timedelta(minutes=1)
+    past = utcnow_naive() - timedelta(minutes=1)
     await _park_by_a_takeover(factory, trigger_type="webhook", schedule=None,
                               scheduled_time=None, next_run=past)
     assert row(factory, "wf").next_run is None
@@ -109,7 +110,7 @@ async def test_a_webhook_workflow_parked_by_a_takeover_is_not_left_due(factory):
 
 async def test_a_wait_park_still_moves_the_next_time_on(factory):
     """The control: the `TaskWaiting` park was already right."""
-    past = datetime.utcnow() - timedelta(minutes=1)
+    past = utcnow_naive() - timedelta(minutes=1)
     seed_workflow(factory, [node("w", "Wait", "wait", mode="for", minutes=5)], [],
                   next_run=past)
     s = recording_scheduler({})
@@ -118,4 +119,4 @@ async def test_a_wait_park_still_moves_the_next_time_on(factory):
     [run] = runs_of(factory, "wf")
     assert run["status"] == "waiting"
     nr = row(factory, "wf").next_run
-    assert nr is not None and nr > datetime.utcnow()
+    assert nr is not None and nr > utcnow_naive()

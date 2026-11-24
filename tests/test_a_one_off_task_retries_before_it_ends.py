@@ -18,11 +18,12 @@ from __future__ import annotations
 
 import asyncio
 import json
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 import pytest
 
 from tests.helpers.walker_harness import make_db
+from src.utc_clock import utcnow_naive  # `B2196`: not the deprecated datetime.utcnow()
 
 
 @pytest.fixture()
@@ -54,7 +55,7 @@ def world(monkeypatch, tmp_path):
 
 def _seed(factory, kind, **kw):
     from core.database import ScheduledTask
-    when = datetime.utcnow() - timedelta(seconds=5)
+    when = utcnow_naive() - timedelta(seconds=5)
     extra = ({"task_type": "action", "action": "tidy_documents"} if kind == "action"
              else {"task_type": "llm", "prompt": "File the invoice."})
     db = factory()
