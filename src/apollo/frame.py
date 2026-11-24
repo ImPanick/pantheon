@@ -12,7 +12,7 @@ of it. It holds the one rule no dial turns off: Apollo pushes back.
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from src.apollo import APOLLO_NAME
 
@@ -74,6 +74,27 @@ def build(db, owner: str, *, name: Optional[str] = None, knows=None, notebook=No
     where it is, rules, open tasks and loops of the space and its parents,
     what its grants let it read (each read logged), a count of what is under
     it, and hunches. Nothing from a space it may not read is ever in it."""
+    head, tail = build_parts(db, owner, name=name, knows=knows, notebook=notebook,
+                             tasks=tasks, space_id=space_id)
+    return head + "\n\n" + tail
+
+
+def build_parts(db, owner: str, *, name: Optional[str] = None, knows=None, notebook=None,
+                tasks=None, space_id: Optional[str] = None) -> Tuple[str, str]:
+    """The frame in two parts: `(head, tail)`.
+
+    The head is what holds still from turn to turn (character, voice, where it
+    is, the stated rules). The tail is what moves (open tasks, loops, what was
+    talked through, what its grants read, the spaces under it, hunches).
+
+    They are two because of where they go (`into`). A local server keeps the
+    request's prefix in its KV cache and reuses it while the bytes match
+    (issue #2927, the date line's reason for sitting at the tail). The whole
+    frame used to sit right after the system prompt, ahead of the history, and
+    it is rebuilt every turn: one task changing state changed bytes near the
+    top, and the model read the whole conversation again. The head stays at
+    the top; the tail goes just before the newest message.
+    """
     if knows is None:
         from src.apollo import knows
     if notebook is None:
@@ -107,6 +128,8 @@ def build(db, owner: str, *, name: Optional[str] = None, knows=None, notebook=No
     if rules:
         parts.append("Rules and preferences they stated (follow these):\n"
                      + "\n".join(f"- {r}" for r in rules))
+    head = "\n\n".join(parts)
+    parts = []
 
     def label(t):
         there = (t.space_id or None)
@@ -143,7 +166,7 @@ def build(db, owner: str, *, name: Optional[str] = None, knows=None, notebook=No
         parts.append("Hunches not yet confirmed (ask, don't act):\n"
                      + "\n".join(f"- {h['text']} (because: {h['evidence']}; id {h['id']})"
                                   for h in hunches))
-    return "\n\n".join(parts)
+    return head, "\n\n".join(parts)
 
 
 def _granted(db, owner: str, sc, knows, tasks, S) -> List[str]:
@@ -192,23 +215,32 @@ def apollo_session_for(db, owner: Optional[str], session_id: Optional[str]) -> O
 
 
 def frame_messages(db, owner: Optional[str], session_id: Optional[str]) -> List[Dict[str, Any]]:
-    """The context message for a turn in one of `owner`'s Apollo chats, or `[]`."""
+    """The context messages for a turn in one of `owner`'s Apollo chats, or
+    `[]`: the frame's head, then its tail (`build_parts`, `into`)."""
     found = apollo_session_for(db, owner, session_id)
     if found is None:
         return []
     from src.prompt_security import own_context_message
-    text = build(db, owner, name=found["name"], space_id=found["space_id"])
+    head, tail = build_parts(db, owner, name=found["name"], space_id=found["space_id"])
     db.commit()     # the grant uses `build` logged
-    return [own_context_message("Apollo, your partner role", text)]
+    return [own_context_message("Apollo, your partner role", head),
+            own_context_message("Apollo, what is open right now", tail)]
 
 
 def into(messages: List[Dict[str, Any]], extra: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """`extra` after the leading system messages, as a summoned agent's brief goes."""
+    """`extra[0]` after the leading system messages, as a summoned agent's
+    brief goes; the rest of `extra` (the frame's tail) just before the newest
+    message, so what changes every turn sits after the cached prefix."""
     if not extra:
         return messages
     out = list(messages)
     at = 0
     while at < len(out) and out[at].get("role") == "system":
         at += 1
-    out[at:at] = extra
+    out[at:at] = extra[:1]
+    rest = list(extra[1:])
+    if rest:
+        last = len(out) - 1
+        end = last if last > at and out[last].get("role") == "user" else len(out)
+        out[end:end] = rest
     return out
