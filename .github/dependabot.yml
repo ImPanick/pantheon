@@ -19,6 +19,20 @@
 # provides none -- and it is why `.pantheon/check-pins.py` now fails the release
 # gate on an unpinned requirement, and why that checker also refuses a pinned
 # requirements file sitting in a directory no entry below covers.
+#
+# `B2210` (`D-2026-11-24-04`). Every entry below names `target-branch: dev`.
+# Without it Dependabot opens its pull requests against the default branch,
+# `main`, and nothing merges into `main` except a release from `dev`: on
+# 2026-11-24 eight Dependabot PRs (#63-#68, #92, #93) sat open against `main`
+# with no path to land. Security updates still go to the default branch
+# -- GitHub does not let `target-branch` move those -- which is the one case
+# where a PR on `main` is expected.
+#
+# What Dependabot cannot watch: the vendored browser libraries under
+# `static/lib/` are files, not a manifest, so no ecosystem reads them. Their
+# watcher is `.github/workflows/vendored-freshness.yml`, weekly, which fails on
+# a library that is behind upstream with no row that owns it.
+# `tests/test_dependabot_updates_land_on_dev.py` holds both halves.
 
 version: 2
 updates:
@@ -30,6 +44,7 @@ updates:
   # outside a directory listed here.
   - package-ecosystem: pip
     directory: "/"
+    target-branch: dev
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
@@ -54,6 +69,7 @@ updates:
   # Frontend / tooling npm packages (package.json).
   - package-ecosystem: npm
     directory: "/"
+    target-branch: dev
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
@@ -64,6 +80,7 @@ updates:
   # The pinned action SHAs used across .github/workflows.
   - package-ecosystem: github-actions
     directory: "/"
+    target-branch: dev
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
@@ -74,6 +91,21 @@ updates:
   # The Docker base image in the Dockerfile.
   - package-ecosystem: docker
     directory: "/"
+    target-branch: dev
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+
+  # `B2210`. The three compose files' third-party images (chroma, searxng,
+  # ntfy), each pinned to a release tag (`tests/test_searxng_image_pinned.py`).
+  # One directory covers all three files. `chromadb/chroma`'s tag is held equal
+  # to requirements.txt's `chromadb-client` pin by that test, so a chroma bump
+  # here goes red until the client moves with it: the two are one change.
+  # `ghcr.io/impanick/pantheon:latest` is this project's own image and moves by
+  # release, not by Dependabot.
+  - package-ecosystem: docker-compose
+    directory: "/"
+    target-branch: dev
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
@@ -85,6 +117,7 @@ updates:
   # is not an image reference, and is moved by hand with its hash.
   - package-ecosystem: docker
     directory: "/workstation"
+    target-branch: dev
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
@@ -95,6 +128,7 @@ updates:
   # chatterbox-tts pins, so they move with it and never on their own.
   - package-ecosystem: pip
     directory: "/voice/chatterbox"
+    target-branch: dev
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
@@ -103,6 +137,7 @@ updates:
         patterns: ["*"]
   - package-ecosystem: docker
     directory: "/voice/chatterbox"
+    target-branch: dev
     schedule:
       interval: weekly
     open-pull-requests-limit: 5

@@ -59,6 +59,11 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
+          # `B2210`. A schedule runs from the default branch, `main`, which
+          # holds the last release; bumps land on `dev`. Reading `main` kept
+          # this red for weeks after a fix had landed, so the weekly run reads
+          # `dev`, and a manual run reads the branch it was started on.
+          ref: ${{ github.event_name == 'schedule' && 'dev' || github.ref }}
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
         with:
           python-version: "3.11"
