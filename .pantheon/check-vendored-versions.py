@@ -551,9 +551,9 @@ VENDORED = [
              "moves again does not move it. Not driven in a browser here.",
     ),
     Vendored(
-        "Swagger UI", "swagger-ui-dist", "5.33.0", "2026-09-17",
-        "https://registry.npmjs.org/swagger-ui-dist/-/swagger-ui-dist-5.33.0.tgz",
-        "v5.33.0",
+        "Swagger UI", "swagger-ui-dist", "5.36.0", "2026-11-24",
+        "https://registry.npmjs.org/swagger-ui-dist/-/swagger-ui-dist-5.36.0.tgz",
+        "v5.36.0",
         manifest="static/lib/swagger-ui/MANIFEST.json",
         note="Bumped from 5.32.15 on 2026-09-17 (B335) through "
              "scripts/fetch-swagger-ui.py, which verified the registry's own "
@@ -564,7 +564,10 @@ VENDORED = [
              "undeclared package — and reading that sidecar at all is B339, "
              "which found React and ten others shipping in here with no notice "
              "anywhere. Hashes are not repeated here; the fetch script owns "
-             "them and writes MANIFEST.json.",
+             "them and writes MANIFEST.json. Bumped 5.33.0 -> 5.36.0 on "
+             "2026-11-24 (B2218) the same way; this time the sidecar moved "
+             "(DOMPurify 3.4.13 -> 3.4.17 inside, regenerator-runtime's notice "
+             "added), and both names were already claimed in check-licences.",
     ),
 ]
 

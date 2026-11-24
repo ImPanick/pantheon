@@ -281,6 +281,18 @@ def test_the_swagger_bundle_still_publishes_what_the_docs_page_calls(swagger):
     assert "apis" in (swagger["presets"] or []), swagger
 
 
+def test_the_swagger_bundle_is_the_one_the_records_name(swagger):
+    """`B2218`. **Fails on 5.33.0**, shipped until 2026-11-24: the bundle's own
+    `PACKAGE_VERSION` stamp, read off the bytes, against the version the fetch
+    script and `MANIFEST.json` record. The bump to 5.36.0 moved the webpack
+    sidecar too (DOMPurify 3.4.13 -> 3.4.17 inside, a `regenerator-runtime`
+    notice added), so this is the version `check-licences.py` rule 7 read."""
+    manifest = json.loads((ROOT / "static" / "lib" / "swagger-ui" / "MANIFEST.json")
+                          .read_text(encoding="utf-8"))
+    assert swagger["packageVersion"] == "5.36.0", swagger.get("packageVersion")
+    assert manifest["version"] == swagger["packageVersion"], manifest["version"]
+
+
 def test_the_standalone_preset_is_still_absent_on_purpose(swagger):
     """Not a regression — a recorded decision, asserted so it stays one.
 
