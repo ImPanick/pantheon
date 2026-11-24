@@ -104,9 +104,9 @@ def test_the_committed_look_is_exactly_what_the_generator_draws():
 
 def test_the_generator_draws_from_the_cockpits_default_theme():
     theme_js = (ROOT / "static" / "js" / "theme.js").read_text()
-    line = next(ln for ln in theme_js.splitlines() if re.match(r"\s*dark:\s*\{", ln))
+    line = next(ln for ln in theme_js.splitlines() if re.match(r"\s*pantheon:\s*\{", ln))
     tokens = dict(re.findall(r"(\w+):'(#[0-9a-fA-F]{6})'", line))
-    assert tokens == GEN.TOKENS, "THEMES.dark moved: run scripts/make-workstation-theme.py"
+    assert tokens == GEN.TOKENS, "THEMES.pantheon moved: run scripts/make-workstation-theme.py"
     p = GEN.palette()
     assert GEN.rgb_hex(p["close"]) == tokens["red"]
     assert GEN.rgb_hex(p["text"]) == tokens["fg"]

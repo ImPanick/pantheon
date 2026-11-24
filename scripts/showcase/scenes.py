@@ -31,6 +31,11 @@ import media
 DESKTOP = (1440, 900)
 PHONE = (390, 844)
 THEMES = ("dark", "light")
+# What a picture named `-dark` / `-light` shows: the default a new person gets,
+# the Pantheon preset in its hairline finish, chosen the way a first visit
+# chooses it (the system's colour scheme, nothing saved). `--classic` photographs
+# the original glass `dark` / `light` palettes instead, for a before-and-after.
+DEFAULT_PRESET = {"dark": "pantheon", "light": "pantheonlight"}
 LOOPBACK = {"127.0.0.1", "localhost", "::1", "[::1]"}
 
 # A pointer for the GIFs, drawn over the page and moved by the page's own
@@ -177,8 +182,10 @@ class Studio:
     def __init__(self, pw, base: str, username: str, password: str, colours: Dict[str, Dict[str, str]],
                  out: Path, *, force: bool = False, model=None, client=None,
                  report: Optional[dict] = None, workstation: bool = False,
-                 python: Optional[str] = None, tidy_workstation: Optional[Callable] = None):
+                 python: Optional[str] = None, tidy_workstation: Optional[Callable] = None,
+                 classic: bool = False):
         self.base, self.username, self.password = base, username, password
+        self.classic = classic
         self.colours, self.out, self.force = colours, out, force
         self.model, self.client, self.report = model, client, report or {}
         self.workstation = workstation
@@ -201,15 +208,20 @@ class Studio:
     # ── contexts ────────────────────────────────────────────────────────────
 
     def open(self, theme: str = "dark", size=DESKTOP, path: str = "/", phone: bool = False):
+        # The default look is what nobody has saved: no `pantheon-theme`, and the
+        # system scheme picks Pantheon or Pantheon light (`defaultThemeName()`).
+        default = not self.classic and theme in DEFAULT_PRESET
         ctx = self.browser.new_context(
             viewport={"width": size[0], "height": size[1]}, device_scale_factor=1,
             is_mobile=phone, has_touch=phone, locale="en-US",
+            color_scheme="light" if theme == "light" else "dark",
             service_workers="block", reduced_motion="no-preference")
-        theme_pref = json.dumps({"name": theme, "colors": self.colours[theme]})
+        theme_pref = "" if default else json.dumps({"name": theme, "colors": self.colours[theme]})
         ctx.add_init_script(
             "try{"
-            f"localStorage.setItem('pantheon-theme', {json.dumps(theme_pref)});"
-            "localStorage.setItem('pantheon-hint-drag-to-snap-seen','1');"
+            + ("localStorage.removeItem('pantheon-theme');" if default else
+               f"localStorage.setItem('pantheon-theme', {json.dumps(theme_pref)});")
+            + "localStorage.setItem('pantheon-hint-drag-to-snap-seen','1');"
             "localStorage.setItem('pantheon-ui-visibility', JSON.stringify({'first-run-tours': false}));"
             "}catch(_){}")
         ctx.route("**/*", self._guard)
@@ -625,14 +637,14 @@ def gif_describe(st: Studio, theme: str):
 
 
 def gif_themes(st: Studio, theme: str):
-    """Twenty palettes; a few of them, one click each."""
+    """Twenty-two palettes; a few of them, one click each."""
     page = st.open(theme, path="/#" + st.chat_id("week"))
     page.locator("#rail-theme").click()
     page.wait_for_selector("#theme-modal .theme-swatch", timeout=30000)
     page.wait_for_timeout(600)
     rec = Recorder(page)
     rec.hold(0.6)
-    for name in ("light", "paper", "forest", "ocean", "copper", "lavender", "dark"):
+    for name in ("pantheonlight", "light", "paper", "forest", "ocean", "lavender", "pantheon"):
         rec.click(page.locator(f"#theme-modal .theme-swatch[data-theme='{name}']").first,
                   seconds=0.45, settle=0.9)
     rec.hold(0.6)
@@ -766,7 +778,7 @@ SCENES: List[Scene] = [
     Scene("skills", "png", "the Skills window: yours, an imported package, a group", scene_skills),
     Scene("settings", "png", "Settings → Workstation", scene_settings),
     Scene("palette", "png", "the command palette (Ctrl+K)", scene_palette),
-    Scene("themes", "png", "the twenty palettes", scene_themes),
+    Scene("themes", "png", "the twenty-two palettes", scene_themes),
     Scene("agents", "png", "the Agents hall: agents to hire, and their teams", scene_agents),
     Scene("devices", "png", "the Workbench's Devices room: phones and tablets the agent drives", scene_devices,
           needs="workstation"),
