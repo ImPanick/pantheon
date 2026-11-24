@@ -16,7 +16,7 @@ Three rules:
      Dockerfile (by any of its spellings), a compose file, an npm
      `package.json` with dependencies, a pinned `requirements*.txt` — has an
      entry of that ecosystem for that directory, unless the reason it cannot
-     is written in `UNWATCHABLE` below;
+     is written in `UNWATCHABLE` below (empty today);
   3. the vendored libraries under `static/lib/`, which no ecosystem reads, have
      their own weekly watcher: `vendored-freshness.yml` runs on a schedule and
      runs the script that fails on a library behind upstream.
@@ -37,11 +37,11 @@ FRESHNESS = ROOT / ".github" / "workflows" / "vendored-freshness.yml"
 # A directory whose manifest Dependabot cannot move, and why. Each is a fact
 # about the manifest, so the day it stops being true the entry is wrong and the
 # rule should be re-run by deleting the line.
-UNWATCHABLE = {
-    # `FROM python@sha256:…` with no tag: Dependabot's docker updater needs a
-    # tag to compare, and a bare digest has none to move to.
-    ("docker", "/workstation/native_android"):
-        "Dockerfile.radio names its base by digest alone",
+UNWATCHABLE: dict[tuple[str, str], str] = {
+    # Empty since 2026-11-24. `workstation/native_android/Dockerfile.radio`
+    # named its base by digest alone (`FROM python@sha256:…`), which gives
+    # Dependabot no tag to compare; the Python worker of the same wave gave it
+    # one (`python:3.14.10-slim@sha256:…`), and its directory has an entry.
 }
 
 
@@ -98,16 +98,6 @@ def test_every_manifest_directory_has_a_watcher():
     assert not missing, (
         "manifests Dependabot is not watching (add an entry with target-branch: "
         f"dev, or say in UNWATCHABLE why it cannot): {missing}")
-
-
-def test_an_unwatchable_reason_is_still_true():
-    """`UNWATCHABLE` is an excuse written beside its fact; when the fact moves,
-    the excuse must go so rule 2 applies again."""
-    radio = (ROOT / "workstation" / "native_android" / "Dockerfile.radio").read_text()
-    first = next(line for line in radio.splitlines() if line.startswith("FROM "))
-    assert re.match(r"FROM [^:\s]+@sha256:", first), (
-        "Dockerfile.radio's base has a tag now — drop its UNWATCHABLE line and "
-        "add a docker entry for /workstation/native_android")
 
 
 def test_the_vendored_libraries_have_a_weekly_watcher():

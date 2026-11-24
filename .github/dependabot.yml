@@ -122,6 +122,16 @@ updates:
       interval: weekly
     open-pull-requests-limit: 5
 
+  # `B2210`. The phone radio sidecar (`workstation/native_android/Dockerfile.radio`),
+  # tagged and pinned to its digest so this entry has a tag to compare. Its
+  # Python base moves with the main image's, which the `/` entry watches.
+  - package-ecosystem: docker
+    directory: "/workstation/native_android"
+    target-branch: dev
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+
   # `B1729`. Chatterbox, the voice for an NVIDIA GPU (`voice/chatterbox/`):
   # its pinned requirements and its PyTorch base image, pinned to a tag and
   # its digest. torch and torchaudio come with that image, at the versions
