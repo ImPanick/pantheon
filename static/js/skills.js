@@ -41,7 +41,7 @@ import { markUnreached, quietIfUnreached } from './presets.js';
 
 import { scrollBehavior, whenShut } from './motion.js';
 // `P13-08`. The Growth view: what the system learned, dated.
-import { fetchGrowth, renderGrowth } from './skillGrowth.js';
+import { fetchGrowth, renderGrowth, GROWTH_PERIODS } from './skillGrowth.js';
 import { viewerMayAdminister } from './ui_visibility.js';
 const API = window.location.origin;
 let skills = [];
@@ -4351,7 +4351,10 @@ function _showSkillsView(m, view) {
 async function _loadGrowth(m) {
   const host = m.el('skills-growth');
   if (!host) return;
-  const days = Number(m.el('skills-growth-days')?.value || 7) || 7;
+  // `B2159`: a period the view offers (`GROWTH_PERIODS`, which the select's
+  // options match), never whatever the control happens to hold.
+  const asked = Number(m.el('skills-growth-days')?.value);
+  const days = GROWTH_PERIODS.includes(asked) ? asked : GROWTH_PERIODS[0];
   const sentence = m.el('skills-growth-sentence');
   if (sentence) sentence.textContent = 'Loading…';
   m.growth = await fetchGrowth(days);
