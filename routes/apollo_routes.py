@@ -23,7 +23,7 @@ from pydantic import BaseModel
 from core.database import SessionLocal
 from src.apollo import APOLLO_NAME
 from src.apollo import budget as B
-from src.apollo import knows, notebook, rhythm, spaces, trust, tasks, voice
+from src.apollo import conversations, knows, notebook, rhythm, spaces, trust, tasks, voice
 from src.apollo.errors import ApolloRefused
 from core.middleware import require_admin
 from src.auth_helpers import get_current_user
@@ -81,6 +81,10 @@ class SpaceIn(BaseModel):
     name: str
     parent_id: Optional[str] = None
     airgapped: bool = False
+
+
+class NewConversationIn(BaseModel):
+    space_id: Optional[str] = None
 
 
 class SpacePatch(BaseModel):
@@ -456,6 +460,21 @@ def setup_apollo_routes() -> APIRouter:
         owner = _owner(request)
         return await _call(lambda db: {"session_id": spaces.chat_for(
             db, owner, spaces.resolve(db, owner, space_id))})
+
+    @router.post("/conversations/new")
+    async def new_conversation(request: Request, body: Optional[NewConversationIn] = None):
+        """Start a new Apollo conversation. Tasks, the notebook, what Apollo
+        knows and Spaces stay; the old chat is kept as an earlier one."""
+        owner = _owner(request)
+        space = body.space_id if body else None
+        return await _call(lambda db: conversations.start_new(
+            db, owner, spaces.resolve(db, owner, space) if space else None))
+
+    @router.get("/conversations/earlier")
+    async def earlier_conversations(request: Request):
+        """The person's earlier Apollo conversations, newest first."""
+        owner = _owner(request)
+        return await _call(lambda db: {"conversations": conversations.earlier(db, owner)})
 
     @router.get("/rhythm")
     async def get_rhythm(request: Request):

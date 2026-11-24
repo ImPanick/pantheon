@@ -458,8 +458,12 @@ async function _ensureHeaderAffordances(sessionId) {
   // Apollo's own page (`apolloView.js`): its bar, pane, controls and empty
   // state. The bar holds the Space switcher, the pane button and the gear that
   // used to be mounted into a chat header this page does not have.
-  import('./apolloView.js').then((V) => V.enterApolloView({
+  // Its bar also holds New conversation and Earlier (`apolloConversations.js`).
+  Promise.all([import('./apolloView.js'), import('./apolloConversations.js')]).then(([V, Cv]) => V.enterApolloView({
     openSettings: openAssistantSettings,
+    // Apollo moves to the new chat: drop the cached settings, which name the
+    // old one, so the check above recognises the new chat as Apollo's.
+    extraButtons: Cv.barButtons({ onFresh: () => { _cachedSettings = null; } }),
   })).catch((e) => console.error('Apollo view failed:', e));
 }
 

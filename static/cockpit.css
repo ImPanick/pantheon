@@ -3214,3 +3214,22 @@ html.cockpit.apollo-view .chat-container.welcome-active .apo-hello {
 html.cockpit .apo-hello-mark { color: var(--ck-accent); transform: scale(2.2); margin-bottom: 14px; }
 html.cockpit .apo-hello-t { font-size: 22px; font-weight: 600; }
 html.cockpit .apo-hello-p { margin: 0; line-height: 1.5; color: var(--ck-text-2, var(--fg)); }
+
+/* Apollo's New conversation and Earlier (`apolloConversations.js`): text
+   buttons in its bar, and the earlier conversations listed in the page's flow
+   under it. */
+html.cockpit .apo-bar-btn-text { width: auto; gap: 6px; padding: 0 10px; font-size: 13px; }
+html.cockpit .apo-bar-btn-text[aria-expanded="true"] { background: var(--ck-tint, var(--ck-glass-soft)); }
+@media (max-width: 720px) { html.cockpit .apo-bar-btn-words { display: none; } }
+html.cockpit .apo-earlier {
+  display: flex; flex-direction: column; gap: 2px; margin: 8px auto; width: min(640px, calc(100% - 32px));
+  padding: 10px; border: 1px solid var(--ck-glass-soft); border-radius: 12px; background: var(--ck-glass-soft);
+}
+html.cockpit .apo-earlier-t { font-weight: 600; padding: 2px 6px 6px; color: var(--ck-text, var(--fg)); }
+html.cockpit .apo-earlier-none { margin: 0; padding: 4px 6px; color: var(--ck-text-2, var(--fg)); }
+html.cockpit .apo-earlier-row {
+  display: flex; justify-content: space-between; gap: 12px; padding: 8px 6px; border: 0; border-radius: 8px;
+  background: transparent; color: inherit; text-align: left; cursor: pointer;
+}
+html.cockpit .apo-earlier-row:hover { background: var(--ck-tint, var(--ck-glass-soft)); }
+html.cockpit .apo-earlier-when { color: var(--ck-text-2, var(--fg)); white-space: nowrap; }
