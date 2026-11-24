@@ -943,6 +943,16 @@ version against upstream, and its sha256 recomputed from the tree.
 
 ---
 
+## The website, getpantheon.ai
+
+`website/` is the public site. It is served as static files and ships its own copies of what it needs, so a visitor's browser never calls a CDN.
+
+| Project | Shipped as | Licence | Copyright |
+| --- | --- | --- | --- |
+| [three.js](https://threejs.org) 0.170.0 | `website/public/assets/vendor/three.module.min.js`, the npm package's `build/three.module.min.js` unchanged | MIT ([`licenses/three.js-MIT-LICENSE.txt`](licenses/three.js-MIT-LICENSE.txt)) | three.js authors |
+
+The fonts are the same Geist and Instrument Serif listed under [Fonts](#fonts).
+
 ## Loaded at runtime from a CDN
 
 **Nothing. This section is empty as of 2026-09-01, and that is the point.**
@@ -1010,8 +1020,8 @@ and whose Reserved Font Name the subset does not use.
 | Font | Files | Licence | Author | Reserved Font Name |
 |---|---|---|---|---|
 | [Fira Code](https://github.com/tonsky/FiraCode) | `static/fonts/FiraCode-{Light,Regular,SemiBold}.woff2` | SIL Open Font License 1.1 ([`licenses/FiraCode-OFL.txt`](licenses/FiraCode-OFL.txt)) | Nikita Prokopov & contributors | none declared |
-| [Geist](https://github.com/vercel/geist-font) via Fontsource 5.3.0 | `static/fonts/Geist-{Regular,Medium,SemiBold}.woff2`, `static/fonts/GeistMono-{Regular,Medium}.woff2` | SIL Open Font License 1.1 ([`licenses/Geist-OFL.txt`](licenses/Geist-OFL.txt)) | Vercel, with basement.studio | none declared |
-| [Instrument Serif](https://github.com/Instrument/instrument-serif) via Fontsource 5.3.0 | `static/fonts/InstrumentSerif-Regular.woff2` | SIL Open Font License 1.1 ([`licenses/InstrumentSerif-OFL.txt`](licenses/InstrumentSerif-OFL.txt)) | The Instrument Serif Project Authors | none declared |
+| [Geist](https://github.com/vercel/geist-font) via Fontsource 5.3.0 | `static/fonts/Geist-{Regular,Medium,SemiBold}.woff2`, `static/fonts/GeistMono-{Regular,Medium}.woff2`; copies on the website in `website/public/assets/fonts/` | SIL Open Font License 1.1 ([`licenses/Geist-OFL.txt`](licenses/Geist-OFL.txt)) | Vercel, with basement.studio | none declared |
+| [Instrument Serif](https://github.com/Instrument/instrument-serif) via Fontsource 5.3.0 | `static/fonts/InstrumentSerif-Regular.woff2`; on the website, `website/public/assets/fonts/InstrumentSerif-{Regular,Italic}.woff2` | SIL Open Font License 1.1 ([`licenses/InstrumentSerif-OFL.txt`](licenses/InstrumentSerif-OFL.txt)) | The Instrument Serif Project Authors | none declared |
 | [Inter](https://github.com/rsms/inter) v4.1 | `static/fonts/Inter-{Regular,Medium,SemiBold}.woff2`, `static/lib/pdf-fonts/Inter-{Regular,Bold,Italic,BoldItalic}.ttf` | SIL Open Font License 1.1 ([`licenses/Inter-OFL.txt`](licenses/Inter-OFL.txt)) | Rasmus Andersson | none declared |
 | [Noto Sans CJK](https://github.com/notofonts/noto-cjk) SC v2.004, two subsets | `static/lib/pdf-fonts/NotoSansCJKsc-{Regular,Symbols}.subset.ttf` | SIL Open Font License 1.1 ([`licenses/NotoSansCJK-OFL.txt`](licenses/NotoSansCJK-OFL.txt)) | Adobe, for Google's Noto project | **yes — `Source`**, which the subset's name does not use |
 | [OpenDyslexic](https://opendyslexic.org/) | `static/fonts/OpenDyslexic-{Regular,Bold}.woff2` | SIL Open Font License 1.1 ([`licenses/OpenDyslexic-OFL.txt`](licenses/OpenDyslexic-OFL.txt)) | Abbie Gonzalez | **yes — `OpenDyslexic`** |

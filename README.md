@@ -112,8 +112,8 @@ device in somebody else's cloud.
 | Where it runs | Accelerator | State |
 |---|---|---|
 | macOS on Apple Silicon | Hypervisor.Framework | Accepted on real hardware: boot, image switching, live input, file transfer |
-| Windows | WHPX | Built; acceptance on a real Windows host still open |
-| Linux | KVM | Built; acceptance on a real Linux host still open. Also runs inside a workstation VM with nested KVM |
+| Windows | WHPX | Tested on real hardware |
+| Linux | KVM | Tested on a multi-node Proxmox cluster, in Debian LXC containers running Docker. Also runs inside a workstation VM with nested KVM |
 | No hardware acceleration | none | No Android. You get a mobile browser view instead, and it says so |
 
 The phone runs on a small host worker outside Docker, because that's where the hypervisor is.

@@ -93,7 +93,10 @@ from ledger.source import tracked_files  # noqa: E402  (`B571`)
 
 # Roots scanned for undeclared files. A vendored asset that lands anywhere else
 # is out of scope here and stays that way until someone adds its root.
-ROOTS = ("static/lib/", "static/fonts/", "static/icons/", "library/")
+ROOTS = ("static/lib/", "static/fonts/", "static/icons/", "library/",
+         # The getpantheon.ai site (`website/`) ships its own copies: three.js
+         # for the hero and the same fonts as the app, so it never calls a CDN.
+         "website/public/assets/vendor/", "website/public/assets/fonts/")
 
 # `node_modules/<package>/`, with the scoped form. Anchored on the separator so
 # a bare mention of a package name in a string is not mistaken for a module
@@ -503,6 +506,11 @@ class Entry:
 
 
 INVENTORY = [
+    # The getpantheon.ai hero's dome (`website/public/assets/hero.js`): three.js
+    # 0.170.0's published `build/three.module.min.js`, byte for byte.
+    Entry("three.js", ["website/public/assets/vendor/three.module.min.js"], "MIT",
+          "three.js-MIT-LICENSE.txt", "three.js",
+          contents=CONTENTS_SINGLE, notices=("Three.js Authors",)),
     Entry("highlight.js", ["static/lib/highlight.min.js"], "BSD-3-Clause",
           "highlight.js-BSD-3-Clause.txt", "highlight.js",
           contents=CONTENTS_SINGLE, notices=("Highlight.js",)),
@@ -940,9 +948,12 @@ INVENTORY = [
     # Geist Mono for code and readouts, Instrument Serif for display words. The
     # latin subsets of the Fontsource 5.3.0 packages, byte for byte, so the
     # shell never asks a font CDN for anything (`Law 16`).
-    Entry("Geist", ["static/fonts/Geist-*.woff2", "static/fonts/GeistMono-*.woff2"], "OFL-1.1",
+    Entry("Geist", ["static/fonts/Geist-*.woff2", "static/fonts/GeistMono-*.woff2",
+                    "website/public/assets/fonts/Geist-*.woff2",
+                    "website/public/assets/fonts/GeistMono-*.woff2"], "OFL-1.1",
           "Geist-OFL.txt", "Geist"),
-    Entry("Instrument Serif", ["static/fonts/InstrumentSerif-*.woff2"], "OFL-1.1",
+    Entry("Instrument Serif", ["static/fonts/InstrumentSerif-*.woff2",
+                               "website/public/assets/fonts/InstrumentSerif-*.woff2"], "OFL-1.1",
           "InstrumentSerif-OFL.txt", "Instrument Serif"),
     # `B1674`: the same release's static TrueType faces, which the fallback
     # PDF embeds (`static/js/document.js` `PDF_FONTS`) — jsPDF takes `glyf`

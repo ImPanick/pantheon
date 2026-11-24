@@ -78,6 +78,9 @@ output.txt.txt
 !docs/*.jpeg
 !docs/*.png
 !docs/*.gif
+
+# …and the website's own screenshots, which getpantheon.ai serves.
+!website/public/**/*.webp
 !docs/*.webp
 # …and curated docs/ subfolder assets (e.g. accessibility before/after shots).
 !docs/**/*.png

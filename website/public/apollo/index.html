@@ -1,0 +1,256 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Introducing Apollo</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="description" content="Apollo, the partner assistant inside Pantheon. Frontier-level strength, hosted on your own infrastructure, reporting to nobody but you and your team.">
+<meta name="theme-color" content="#0b1020">
+<link rel="canonical" href="https://getpantheon.ai/apollo/">
+<link rel="icon" href="../assets/img/pantheon-app-icon.svg" type="image/svg+xml">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="Pantheon">
+<meta property="og:title" content="Introducing Apollo">
+<meta property="og:description" content="Your personal assistant, no longer cloud bound. Locally hosted, reporting to nobody but you and your team.">
+<meta property="og:url" content="https://getpantheon.ai/apollo/">
+<meta property="og:image" content="https://getpantheon.ai/apollo/media/agents-dark.webp">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="stylesheet" href="apollo.css">
+<script src="apollo.js" defer></script>
+</head>
+<body>
+<svg class="sprite" width="0" height="0" aria-hidden="true"><symbol id="mark" viewBox="0 0 32 32"><path fill="currentColor" fill-rule="evenodd" d="M5.18 12A11 11 0 0 1 26.82 12L25.74 12L16 7.82L6.26 12ZM16 10L30 16L2 16ZM4 18L28 18L28 20L4 20ZM5 20L8 20L8 26L5 26ZM11.33 20L14.33 20L14.33 26L11.33 26ZM17.67 20L20.67 20L20.67 26L17.67 26ZM24 20L27 20L27 26L24 26ZM2 26L30 26L30 28L2 28Z"/></symbol></svg>
+<header class="hero">
+  <div class="wrap">
+    <div class="masthead">
+      <a class="brand" href="../" aria-label="Back to Pantheon"><svg aria-hidden="true"><use href="#mark"/></svg>Pantheon</a>
+      <span class="meta">Product launch · November 2026</span>
+    </div>
+    <h1>Introducing<span class="comma">,</span> Apollo.</h1>
+    <p class="standfirst">Your personal assistant, no longer cloud bound. <strong>Frontier-level strength</strong>, locally hosted on your infrastructure, observing your data, and reporting to nobody but you and your teams.</p>
+    <div class="horizon">
+      <canvas id="orb" width="480" height="480" role="img" aria-label="Apollo's orb, drawn live by the same code that draws it in Pantheon"></canvas>
+      <div class="moods" role="group" aria-label="Show the orb's moods">
+        <button type="button" data-mood="idle" aria-pressed="true">Idle</button>
+        <button type="button" data-mood="listening" aria-pressed="false">Listening</button>
+        <button type="button" data-mood="thinking" aria-pressed="false">Thinking</button>
+        <button type="button" data-mood="speaking" aria-pressed="false">Speaking</button>
+        <button type="button" data-mood="needs" aria-pressed="false">Needs you</button>
+      </div>
+    </div>
+  </div>
+</header>
+
+<main>
+  <div class="wrap">
+
+    <section aria-labelledby="s-what" class="prose">
+      <h2 id="s-what">What Apollo is</h2>
+      <p class="lede">Apollo is the assistant built into Pantheon. You talk to it in one standing conversation. It turns what you ask into real tasks, hands each one to a specialist agent, keeps track of every moving part, and comes back with one line when the work is done.</p>
+      <p>You don't have to steer it step by step. It runs the work and reports back. It knows your open loops, remembers what you already settled, and only interrupts when something actually needs you.</p>
+      <p>And it all runs on your server, against the models you choose. What Apollo learns about you lives in Pantheon, not inside a model and not in someone else's cloud account. Swap the model next month and Apollo is still there, with everything it knew.</p>
+    </section>
+
+    <section aria-labelledby="s-diff">
+      <h2 id="s-diff">How it differs from a chat</h2>
+      <div class="table-scroll">
+        <table>
+          <thead><tr><th scope="col"></th><th scope="col">Chat and Agent mode</th><th scope="col">Apollo</th></tr></thead>
+          <tbody>
+            <tr><th scope="row">Who starts it</th><td>You, every time</td><td class="apollo">You, or Apollo on the schedule you set</td></tr>
+            <tr><th scope="row">Lifetime</th><td>One conversation</td><td class="apollo">One per person, permanent</td></tr>
+            <tr><th scope="row">Long work</th><td>Runs inline and holds the composer</td><td class="apollo">Becomes a task with its own lead agent and chat; you get one line back</td></tr>
+            <tr><th scope="row">Context</th><td>The chat plus recalled memories</td><td class="apollo">Your stated rules, its notebook, and live state: tasks, approvals, runs</td></tr>
+            <tr><th scope="row">Output</th><td>A transcript</td><td class="apollo">Short messages, a task list, and a pane that shows what is happening</td></tr>
+            <tr><th scope="row">Models</th><td>One per chat</td><td class="apollo">One to talk, and whichever model each task's agent needs</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section aria-labelledby="s-path">
+      <h2 id="s-path">How a goal gets done</h2>
+      <ol class="path">
+        <li><h3>You say it</h3><p>In the chat, by text or by voice call. "Get the Q3 cert renewals sorted before the 30th."</p></li>
+        <li><h3>Apollo makes it a task</h3><p>A record with a state, a next step, a budget, and the one question it is stuck on, if any.</p></li>
+        <li><h3>A lead agent takes it</h3><p>Picked from the roster by fit for the job and for the model it will run on. The lead owns the outcome.</p></li>
+        <li><h3>The team works it</h3><p>The lead delegates, asks, and sends work for review. Every message between agents is logged on the goal.</p></li>
+        <li><h3>You hear one line</h3><p>Done, or the one decision only you can make. Answer it in the pane and the lead picks it back up.</p></li>
+      </ol>
+    </section>
+
+    <section aria-labelledby="s-numbers">
+      <h2 id="s-numbers" class="col">The numbers</h2>
+      <div class="numbers">
+        <div><b>259</b><span>agents in the roster Apollo staffs from, across 26 departments and 18 teams</span></div>
+        <div><b>3</b><span>levels of delegation at most, with no agent allowed twice in one chain</span></div>
+        <div><b>5</b><span>clean approvals in a row before Apollo offers to just do that kind of work</span></div>
+        <div><b>0</b><span>caps on local models. Budgets only ever apply to paid API models</span></div>
+      </div>
+    </section>
+
+    <section aria-labelledby="s-caps">
+      <div class="index-head">
+        <h2 id="s-caps" class="col">What it can do</h2>
+        <p class="col">Every line below is in the shipped code. Jump to a part:</p>
+        <nav class="chapters" aria-label="Capabilities">
+          <a href="#chat">The chat</a><a href="#pane">Tasks and the pane</a><a href="#fleet">The fleet</a>
+          <a href="#knows">What Apollo knows</a><a href="#spaces">Spaces</a><a href="#rhythm">Briefings</a>
+          <a href="#voice">Voice and trust</a><a href="#models">Models and budgets</a><a href="#orb-cap">The orb</a><a href="#server">Built for the server</a>
+        </nav>
+      </div>
+      <div class="caps">
+
+        <article class="cap" id="chat">
+          <header><h3>One partner chat</h3><p>The front door to everything Apollo does.</p></header>
+          <ul>
+            <li><b>One standing chat per person.</b> Permanent and pinned. It replaces Pantheon's old Assistant chat.</li>
+            <li><b>Leads with the point.</b> Short, plain answers. No filler and no flattery.</li>
+            <li><b>Pushes back.</b> When a plan has a hole, Apollo says so with the evidence and holds its ground. No setting turns that off.</li>
+            <li><b>Real work leaves the chat.</b> Anything longer than a quick answer becomes a task, and the chat gets one line about it. Apollo never calls work done that a task hasn't reported done.</li>
+            <li><b>Call it.</b> Start a voice conversation from the pane. Whisper listens and Kokoro speaks, both running on your hardware.</li>
+          </ul>
+        </article>
+
+        <article class="cap" id="pane">
+          <header><h3>Tasks and the pane</h3><p>See what Apollo is doing without reading a transcript.</p></header>
+          <ul>
+            <li><b>Every goal is a record.</b> Working, Needs you, Waiting or Done, with its next step and the one question it is stuck on.</li>
+            <li><b>A side pane, docked beside the chat.</b> Status, Call and Text, Needs you, your Computer and Devices, Activity, Outputs and Open loops.</li>
+            <li><b>A report for every task.</b> What it is, where it stands, its budget (editable), and Start or Run again.</li>
+            <li><b>Talk to the agent doing the work.</b> Each task has its own chat with its lead, under the report or popped out into a window you can drag. Open several at once. Apollo hears one line about what you said, so the main chat stays clean.</li>
+            <li><b>Approvals in one place.</b> Every card a lead is waiting on shows under Needs you. Answer it there.</li>
+          </ul>
+        </article>
+
+        <article class="cap" id="fleet">
+          <header><h3>The agent fleet</h3><p>Hand Apollo a goal and a team of agents runs it like a company would.</p></header>
+          <ul>
+            <li><b>A lead agent per goal.</b> Chosen from the roster by fit for the job and for the model. An agent measured as needing a bigger model is never picked.</li>
+            <li><b>Agents work together.</b> They delegate, ask, review, report and escalate. Each message is typed, logged on the goal, and shown in the task's Team view.</li>
+            <li><b>Guardrails built in.</b> Delegation goes three levels deep at most. No agent appears twice in a chain. No agent reviews its own work. A delegate never gets more tools than the agent above it, and approval gates follow the work down.</li>
+            <li><b>Another agent's report is treated as data.</b> A send after reading one still needs your yes.</li>
+            <li><b>It fills its own gaps.</b> When no agent fits, the lead proposes one. A model drafts the agent with its runbook and test cases, it is checked and proven on the model it will run on, and an admin approves, edits or rejects it. Approved agents publish for every account on the server, versioned, with one-step rollback.</li>
+            <li><b>Drafted agents stay safe.</b> They can only name tools that already exist, and they can never register an MCP server.</li>
+          </ul>
+        </article>
+
+        <article class="cap" id="knows">
+          <header><h3>What Apollo knows</h3><p>An assistant you can read, correct and trust.</p></header>
+          <ul>
+            <li><b>Every line on one page.</b> What you told it, and what it worked out, each with the evidence and the date behind it.</li>
+            <li><b>Confirm, edit or forget in one tap.</b> Forget means delete.</li>
+            <li><b>Hunches stay hunches.</b> Something Apollo only inferred can shape a question or an offer. It never changes what Apollo does until you confirm it.</li>
+            <li><b>Memory outlives the model.</b> It lives in Pantheon's Brain on your server. Change models and nothing is lost.</li>
+            <li><b>A notebook for loose ends.</b> Open loops stay visible until settled, and anything you already talked through never comes back as news.</li>
+            <li><b>Nobody mode means nobody.</b> Apollo keeps nothing from a Nobody mode chat.</li>
+          </ul>
+        </article>
+
+        <article class="cap" id="spaces">
+          <header><h3>Spaces</h3><p>Separate areas of work and life, enforced by the server.</p></header>
+          <ul>
+            <li><b>Spaces and sub-spaces.</b> Each has its own Apollo chat, tasks, notebook and memory. Switch spaces from the top of the chat or the pane.</li>
+            <li><b>Layers that make sense.</b> A sub-space reads its parent. A parent sees what is open in its children and what needs you, never their contents.</li>
+            <li><b>Read-only grants.</b> Let one space read another's memory or finished work. One way, logged every time it is used, revoked in one tap.</li>
+            <li><b>Airgaps.</b> An airgapped space shares nothing in or out. Its memory sits in a sealed store of its own, and briefings show only that something there needs you, with no content.</li>
+            <li><b>Local-only.</b> Pin an airgapped space to local models and nothing in it ever runs on a paid API.</li>
+          </ul>
+        </article>
+
+        <article class="cap" id="rhythm">
+          <header><h3>Briefings and check-ins</h3><p>It speaks when it matters, and stays quiet when it doesn't.</p></header>
+          <ul>
+            <li><b>First light.</b> Briefings at the times you set. The first one of the day is your morning brief.</li>
+            <li><b>Check-ins that only speak on news.</b> Every 1 to 12 hours, or off. If nothing changed since Apollo last spoke, it stays silent. That call is made by Pantheon, without spending a model call.</li>
+            <li><b>Quiet hours hold.</b> Nothing lands while you are off.</li>
+          </ul>
+        </article>
+
+        <article class="cap" id="voice">
+          <header><h3>Voice and trust</h3><p>A personality you tune, and autonomy it earns.</p></header>
+          <ul>
+            <li><b>Two dials.</b> Terse to warm, and dry to playful. Start from a preset: Apollo, Razor, Strategist or Spark.</li>
+            <li><b>It adapts, in the open.</b> Apollo can move a dial one step based on how you react. It tells you, and one tap undoes it. It never touches a dial you set in the last week, never repeats a change you undid, and moves each dial at most once a day.</li>
+            <li><b>Pushback is measured.</b> Anti-flattery tests run against each model, and the result shows as a badge beside the dials. A model that caves under pressure fails.</li>
+            <li><b>"Just do it" is earned.</b> Approve the same kind of action five times in a row without a change and Apollo offers to handle it from then on. You decide. It applies to that action for that kind of work only.</li>
+            <li><b>The admin's ceiling always holds.</b> The permission is checked again at every run, and you can take it back in one tap.</li>
+          </ul>
+        </article>
+
+        <article class="cap" id="models">
+          <header><h3>Models and budgets</h3><p>Any model you like, and no surprise bills.</p></header>
+          <ul>
+            <li><b>Model-agnostic by design.</b> What Apollo surfaces, task state, approval gates and memory writes are all server rules. The model writes the words and picks the tools, so a local model and a frontier API model give you the same product.</li>
+            <li><b>Two roles.</b> One model to talk, and whatever model each task's agent runs best on.</li>
+            <li><b>Budgets per goal.</b> Set in tokens, under a cap the admin controls (2 million by default). Work handed down the chain counts against the goal it came from.</li>
+            <li><b>Local models run uncapped.</b> The cap only ever applies to paid API models.</li>
+          </ul>
+        </article>
+
+        <article class="cap" id="orb-cap">
+          <header><h3>The orb</h3><p>Apollo has a presence on the page.</p></header>
+          <ul>
+            <li><b>A small sun, drawn live.</b> It breathes at rest, pulses while you dictate, swirls while Apollo thinks, ripples with its voice when a reply is read aloud, and turns amber when something needs you.</li>
+            <li><b>Never docked.</b> Drag it anywhere or nudge it with the arrow keys. Click it to open the pane.</li>
+            <li><b>It shows you things.</b> Apollo can glide it to Needs you, Activity, a single task, the message box, or a line range in a code block, and any code editor in Pantheon can register itself so Apollo can highlight lines there too.</li>
+            <li><b>On your terms.</b> Keep it still, or switch it off. It follows your system's reduced motion setting.</li>
+          </ul>
+        </article>
+
+        <article class="cap" id="server">
+          <header><h3>Built for the server</h3><p>Ready for enterprise hardware and a whole team.</p></header>
+          <ul>
+            <li><b>One Apollo per account.</b> Every task, note, memory line and agent message belongs to its owner. Another person's record answers as if it doesn't exist.</li>
+            <li><b>Durable work.</b> Tasks run on Pantheon's scheduler, with a run log, retries, one run at a time per task, and the install's limit on agent runs.</li>
+            <li><b>Admin controls.</b> Turn Apollo on per person, set the budget cap, and approve every new agent before anyone can hire it.</li>
+            <li><b>Ships with Pantheon.</b> Docker Compose on your own machines, including NVIDIA and AMD GPU setups.</li>
+            <li><b>Free and open source, forever.</b> AGPL-3.0-or-later.</li>
+          </ul>
+        </article>
+
+      </div>
+    </section>
+
+    <section aria-labelledby="s-screens">
+      <h2 id="s-screens" class="col">Where it lives in Pantheon</h2>
+      <p class="col">Apollo runs on the parts of Pantheon people already use: the agent roster it staffs goals from, and the Brain where what it knows about you is kept.</p>
+      <div class="shots">
+        <figure>
+          <div class="frame">
+            <img class="d" src="media/agents-dark.webp" width="1440" height="900" alt="Pantheon's Agents window: teams such as Chief of Staff, Code Health and Engineering Desk above a search across 259 agents sorted into departments" loading="lazy">
+            <img class="l" src="media/agents-light.webp" width="1440" height="900" alt="Pantheon's Agents window in the light theme: teams above a search across 259 agents sorted into departments" loading="lazy">
+          </div>
+          <figcaption><b>The roster.</b> 259 agents in 26 departments and 18 teams. Apollo picks a lead for each goal from here.</figcaption>
+        </figure>
+        <figure>
+          <div class="frame">
+            <img class="d" src="media/brain-dark.webp" width="1440" height="900" alt="Pantheon's Brain window listing saved memories, each with a type, a source and how often it has been used" loading="lazy">
+            <img class="l" src="media/brain-light.webp" width="1440" height="900" alt="Pantheon's Brain window in the light theme listing saved memories with their type and source" loading="lazy">
+          </div>
+          <figcaption><b>The Brain.</b> Where Apollo keeps what you told it and what it worked out, on your own server.</figcaption>
+        </figure>
+      </div>
+      <p class="col note-small">Screens show Pantheon running on a fictional demo world.</p>
+    </section>
+
+    <section class="closing" aria-labelledby="s-get">
+      <h2 id="s-get">Getting Apollo</h2>
+      <p>It ships in Pantheon's dev branch. It's free and open source, it runs on your own hardware with the models you pick, and nothing leaves your server unless you send it.</p>
+      <p class="cta-row"><a href="../#install">Install Pantheon</a><a href="https://github.com/ImPanick/pantheon">Pantheon on GitHub</a></p>
+    </section>
+
+  </div>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span><a href="../">getpantheon.ai</a> · Apollo</span>
+    <span>The orb above is drawn by Apollo's own rendering code.</span>
+  </div>
+</footer>
+
+</body>
+</html>
