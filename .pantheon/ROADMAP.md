@@ -88,8 +88,8 @@ from scratch. Introduced 2026-08-31; the folds are listed in § *What this run l
 | P25 | The + menu, git per account, the agent browser | 13 | 0 | 0 | **13** |
 | P26 | Design — the studio, and notes on the live page | 10 | 0 | 0 | **10** |
 | P27 | Connections — the hub and the private vault | 11 | 1 | 0 | **10** |
-| Backlog | Bugs and hardening found in flight | 1691 | 73 | 0 | **1500** |
-| **Total** | | **2186** | **90** | **3** | **1975** |
+| Backlog | Bugs and hardening found in flight | 1702 | 73 | 0 | **1511** |
+| **Total** | | **2197** | **90** | **3** | **1986** |
 
 **Nothing is waiting on a decision** except one, and it is first: `P0-19` has to settle which of
 `CREDITS.md` and `ACKNOWLEDGMENTS.md` is the credits file. All eighteen ledger calls are answered
@@ -239,6 +239,10 @@ location was wrong until it was corrected on the row itself; the row is right no
 ---
 
 ## Progress
+
+### Every non-Python dependency at its newest release (2026-11-24, `D-2026-11-24-04`)
+
+**2197 tracked, 1986 done.** `B2210`–`B2220`, eleven rows filed and closed on `claude/webdeps-1124`. Dependabot now opens against `dev` and watches every manifest directory (`B2210`); seven Actions and zizmor moved to their newest releases by full SHA (`B2211`); branch protection is documented for `main` alone with twelve required checks (`B2212`); bombadil 0.8.0 (`B2213`); the workstation's Ubuntu, Debian, Fedora 45 and Rocky 9.9 bases, ntfy 2.38.2 and Docker CLI 29.10.0, with Rocky 10, SearXNG and scrcpy held for measured reasons (`B2214`); and the vendored libraries — Pyodide 314.0.8 (`B2215`), DOMPurify 3.5.0 and mammoth 1.13.0 (`B2216`), KaTeX 0.19.1 (`B2217`), Swagger UI 5.36.0 (`B2218`), docx 9.16.0 (`B2219`) and Mermaid 12.3.0 drawing with dagre and the classic look, its bundled ELK attributed (`B2220`). Each row says what was measured and what could not be seen here.
 
 ### An Agent turn costs what it asked for: one request for a finished answer, and a lean first request
 
