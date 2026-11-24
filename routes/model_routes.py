@@ -36,6 +36,12 @@ from src.endpoint_resolver import (
     build_chat_url,
     build_models_url,
     build_headers,
+    # `B2175`. The MLX DeepSeek-V4 shim rule, one copy: the endpoint resolver's,
+    # which this module had re-written word for word. Mlx_lm.server may list the
+    # original HF repo id though generation works only through Pantheon's local
+    # shim, so the shim is kept as the model id and the raw repo id hidden.
+    _filter_mlx_deepseek_v4_repo_when_shimmed,
+    _is_mlx_deepseek_v4_shim_id,
 )
 from src.auth_helpers import effective_user, owner_filter, require_user
 from src.env_flags import request_flag, request_truthy
@@ -1316,30 +1322,6 @@ def _merge_model_ids(*lists):
             seen.add(m)
             out.append(m)
     return out
-
-
-def _is_mlx_deepseek_v4_repo_id(model_id: str) -> bool:
-    m = str(model_id or "").lower()
-    return "mlx-community/deepseek-v4" in m
-
-
-def _is_mlx_deepseek_v4_shim_id(model_id: str) -> bool:
-    m = str(model_id or "").lower()
-    return "/.cache/pantheon/mlx-shims/deepseek-v4" in m
-
-
-def _filter_mlx_deepseek_v4_repo_when_shimmed(model_ids):
-    """Hide the broken MLX repo id when a launch-specific shim id is available.
-
-    mlx_lm.server may advertise the original HF repo id even though generation
-    only works through Pantheon' sanitized local shim. Keep the shim as the
-    submitted model id and remove the raw repo id from the picker/default list.
-    """
-    ids = list(model_ids or [])
-    has_shim = any(_is_mlx_deepseek_v4_shim_id(m) for m in ids)
-    if not has_shim:
-        return ids
-    return [m for m in ids if not _is_mlx_deepseek_v4_repo_id(m)]
 
 
 def _model_display_name(model_id: str) -> str:

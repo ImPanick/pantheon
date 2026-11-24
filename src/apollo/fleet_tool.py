@@ -17,12 +17,13 @@ from the arguments, so an agent can't reach another task or another person.
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 from typing import Any, Dict, List, Optional, Tuple
 
 from src.apollo import fleet as F
 from src.apollo.errors import ApolloRefused
+# `B2175`. One reading of a tool call's arguments for Apollo's two tools.
+from src.apollo.tool import parse
 
 logger = logging.getLogger(__name__)
 
@@ -112,17 +113,6 @@ def run_sync(owner: str, session_id: Any, agent_id: Any, args: Dict[str, Any]) -
         return {"error": refused.sentence, "exit_code": 1}, []
     finally:
         db.close()
-
-
-def parse(content: Any) -> Dict[str, Any]:
-    raw = str(content or "").strip()
-    if not raw:
-        return {}
-    try:
-        args = json.loads(raw)
-    except (TypeError, ValueError):
-        return {"action": raw.split()[0].lower()} if raw.split() else {}
-    return args if isinstance(args, dict) else {}
 
 
 async def fleet(content: Any, ctx: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
