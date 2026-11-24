@@ -396,11 +396,15 @@ def test_an_interpreter_that_is_not_cis_is_reported_rather_than_enforced(monkeyp
 def test_an_interpreter_two_minors_from_cis_is_reported(monkeypatch):
     """The one that matters most, because `dependency-review.yml` pins 3.14 with
     a comment explaining that the interpreter decides which dependencies the
-    image installs — while the suite runs on 3.11 (`B438`)."""
-    monkeypatch.setattr(release_gate, "ci_python_version", lambda: "3.14")
+    image installs — while the suite runs on 3.11 (`B438`).
+
+    `B2192`: two minors from the interpreter running this test, not a literal
+    3.14 — CI runs 3.14 now, where a literal would be no divergence at all."""
+    other = f"3.{sys.version_info.minor - 2}"
+    monkeypatch.setattr(release_gate, "ci_python_version", lambda: other)
     monkeypatch.setattr(release_gate, "ci_node_version", lambda: None)
     diverged = release_gate.environment_divergence()
-    assert any("CI pins 3.14" in d for d in diverged), diverged
+    assert any(f"CI pins {other}" in d for d in diverged), diverged
 
 
 def test_a_patch_level_difference_is_not_a_divergence(monkeypatch):

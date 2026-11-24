@@ -785,21 +785,12 @@ def rule_ratchet_values_live_in_ci() -> list[str]:
 # side makes the reason stale and somebody re-reads it. An entry for a job that
 # now matches, or that no longer runs the suite, is stale too.
 DOCKERFILE = ROOT / "Dockerfile"
-SUITE_ON_ANOTHER_PYTHON = {
+# `B2192`. Empty since 2026-11-24: every job that runs pytest is on 3.14, the
+# image's Python, and the reasons that stood here (3.11 against 3.14, `B438`)
+# went with the move. An entry is for a job that cannot follow the image, with
+# the measurement that says why.
+SUITE_ON_ANOTHER_PYTHON: dict[str, tuple[str, str, str]] = {
     # "workflow:job": (CI's python, the image's python, why)
-    "ci.yml:python-tests": (
-        "3.11", "3.14",
-        "B438: not yet measured on 3.14, and not a one-line bump. Every "
-        "python-version in ci.yml is one value the release gate mirrors (rule "
-        "5), so the suite moves with the checkers; the optional set changes "
-        "from 3.13 (requirements-optional.txt gates kokoro and soundfile, and "
-        "the Real-ESRGAN wheels do not build there, B850); and no run of the "
-        "suite on 3.14 exists to say what else moves. Until one is green, a "
-        "passing suite is evidence about 3.11."),
-    "ci.yml:law16-egress": (
-        "3.11", "3.14",
-        "B438: the egress test runs beside the suite, on the same pin, for the "
-        "same reason."),
 }
 
 
