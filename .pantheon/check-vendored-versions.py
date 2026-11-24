@@ -230,45 +230,27 @@ VENDORED = [
              "the SheetJS section of CREDITS.md before 'fixing' this.",
     ),
     Vendored(
-        "docx", "docx", "9.7.1", "2026-10-29",
-        "https://registry.npmjs.org/docx/-/docx-9.7.1.tgz",
-        "v9.7.1",
+        "docx", "docx", "9.16.0", "2026-11-24",
+        "https://registry.npmjs.org/docx/-/docx-9.16.0.tgz",
+        "v9.16.0",
         files={"static/lib/docx.umd.min.js":
-               "096ce30fdd0a8ddc94fe44a86ab1d5ce58165c88d8be797005eba8788fab7203"},
-        note="Bumped from 8.5.0 on 2026-10-29 (B424, D-2026-10-29-02 §4): "
-             "upstream's `dist/index.umd.cjs` byte for byte, from the tarball "
-             "the registry's `dist.integrity` vouched for. It is a Vite build "
-             "that names every module it took, so check-licences.py derives 45 "
-             "packages from it and each is declared. Zero advisories at 8.5.0 "
-             "and at 9.7.1 (OSV, 2026-10-29). `exportAsDocx`'s `word/document.xml` "
-             "body for Pantheon's shapes is byte-identical to 8.5.0's, and the "
-             "package gains what 8.5.0 left out — a `word/endnotes.xml`, and a "
-             "relationship to `word/fontTable.xml` (`tests/test_a_word_export_"
-             "keeps_its_body_and_gains_the_parts_8_5_0_left_out.py`; the third "
-             "defect B424 named, a missing `mc:Ignorable`, does not hold on "
-             "this path). Inside it, `nanoid`'s non-secure "
-             "generator is a release GHSA-28wg-ghj8-5hjv covers (< 5.1.16: a "
-             "negative size loops forever); docx calls it with 21, 8, 4 and 12 "
-             "and nothing else, so it is not reachable — no version string "
-             "survives in the bytes for `contains=` to pin.",
-        behind_ok="D-2026-10-29-02 §4 — the owner ruled 9.7.1, the release "
-             "B335 measured against Pantheon's export; 9.15.0 (npm `latest` on "
-             "2026-10-29) is B1673, to be measured the same "
-             "way before it is taken.",
-        contains=(
-            Inside(
-                "jszip", "3.10.1", "JSZip v3.10.1",
-                behind_ok="B424 — docx 9.7.1 bundles JSZip's own "
-                          "`dist/jszip.min.js` at 3.10.1; 3.10.2 "
-                          "(2026-09-08) arrives with a docx built against it, "
-                          "the same row as the docx bump.",
-                note="The zip writer behind every `.docx` this app exports, "
-                     "and a parser with an advisory history (CVE-2022-48285, "
-                     "fixed in 3.8.0). Zero advisories at 3.10.1 (OSV, "
-                     "2026-10-29). Read out of JSZip's own banner, which the "
-                     "bundle keeps.",
-            ),
-        ),
+               "9e882643b852c0865b2603ae31d795c3ba800dd18cabac7365aedbad6dd82b27"},
+        note="Bumped from 9.7.1 on 2026-11-24 (B2219, D-2026-11-24-04, which "
+             "overrides D-2026-10-29-02 §4's hold and closes B1673); 8.5.0 -> "
+             "9.7.1 was B424. Upstream's `dist/index.umd.cjs` byte for byte, "
+             "from the tarball the registry's `dist.integrity` vouched for. "
+             "Between the two, docx dropped JSZip for `fflate`, its XML "
+             "libraries and every Node polyfill: the build now names two "
+             "packages (`fflate`, `nanoid`) where 9.7.1 named 45, and loaded as "
+             "a script it adds `docx` to the page and nothing else (9.7.1 also "
+             "installed JSZip's `setImmediate`). `exportAsDocx`'s "
+             "`word/document.xml` body for Pantheon's shapes is still "
+             "byte-identical to 8.5.0's, and the endnotes part and font-table "
+             "relationship B424 gained are still there (tests/test_a_word_"
+             "export_keeps_its_body_and_gains_the_parts_8_5_0_left_out.py). "
+             "The `nanoid` inside is past GHSA-28wg-ghj8-5hjv's fix (its loop "
+             "reads `i-- > 0`, read off the bytes), and with JSZip gone there "
+             "is no inner version banner left for `contains=` to pin.",
     ),
     Vendored(
         "mammoth.js", "mammoth", "1.13.0", "2026-11-24",
@@ -521,6 +503,18 @@ VENDORED = [
              "Safari 17.4 / ES2024, and mermaid.min.js grows 3.57 MB -> 5.58 "
              "MB. The owner kept 11.x on 2026-10-29 (D-2026-10-29-02 §5) until a "
              "browser-driven check can compare diagrams, or an advisory names 11.x.",
+        contains=(
+            # `B2219` moved rule 6's subject here when docx stopped carrying
+            # JSZip: Mermaid's esbuild bundle keeps DOMPurify's own banner.
+            Inside(
+                "dompurify", "3.4.12", "@license DOMPurify 3.4.12",
+                behind_ok="B2220 — Mermaid 11.17.2 bundles DOMPurify 3.4.12; a "
+                          "newer DOMPurify arrives with the Mermaid bump.",
+                note="The sanitiser between a diagram's labels and the page. "
+                     "Read out of DOMPurify's own `@license` banner, which "
+                     "esbuild keeps.",
+            ),
+        ),
     ),
     Vendored(
         "Pyodide", "pyodide", "314.0.8", "2026-11-24",
