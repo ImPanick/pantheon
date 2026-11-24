@@ -40,14 +40,9 @@ from __future__ import annotations
 import json
 import logging
 import uuid
-from datetime import datetime, timezone
+from src.utc_clock import utcnow_naive  # `B2173`: the one clock
 
 logger = logging.getLogger(__name__)
-
-
-def _utcnow() -> datetime:
-    """Naive UTC, matching every other task column."""
-    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 # ── what a person is told ────────────────────────────────────────────────────
@@ -586,7 +581,7 @@ def _write_version(db, wf, graph: dict, *, source: str) -> None:
         id=str(uuid.uuid4()), workflow_id=wf.id, version=wf.version, name=wf.name,
         graph=json.dumps(version_graph(graph)),
         fingerprint=content_fingerprint(wf.name, graph),
-        source=source, created_at=_utcnow()))
+        source=source, created_at=utcnow_naive()))
     db.flush()
     prune_versions(db, wf)
 
@@ -855,7 +850,7 @@ def _marks_kept(graph: dict, before: dict, *, by_person: bool) -> dict:
             if isinstance(kept[1], dict):
                 node[UNCHECKED_KEY] = kept[1]
         elif not by_person:
-            at = at or _utcnow().isoformat() + "Z"
+            at = at or utcnow_naive().isoformat() + "Z"
             node[UNCHECKED_KEY] = {"origin": ORIGIN_ASSISTANT, "at": at, "needs": []}
         nodes.append(node)
     out["nodes"] = nodes
@@ -1307,7 +1302,7 @@ def create_from_document(db, *, owner, name, graph, trigger_fields, origin, need
                           if isinstance(n, dict) else n for n in (graph.get("nodes") or [])]
     parsed = check_document(db, graph, owner=owner, own_task_id=trigger.id, rows=rows,
                             resources=resources)
-    at = _utcnow().isoformat() + "Z"
+    at = utcnow_naive().isoformat() + "Z"
     needs = needs if isinstance(needs, dict) else {}
     marked = dict(parsed)
     marked["nodes"] = [dict(n, pinned=None, **{UNCHECKED_KEY: {
@@ -1460,7 +1455,7 @@ def convert_chain(db, *, owner, from_task_id, name=None, positions=None, name_of
                       "head_task_id": head.id,
                       "task_ids": _chain_from(tasks_by_id, head.id),
                       "head_was": head.status or "active",
-                      "converted_at": _utcnow().isoformat() + "Z",
+                      "converted_at": utcnow_naive().isoformat() + "Z",
                       "paused_by_switch": False,
                   }))
     db.add(wf)
@@ -1686,7 +1681,7 @@ def records_were_cleared(run, *, now=None) -> bool:
     if ended is None:
         return False
     from src.workflow_runs import node_records_days
-    return ended < (now or _utcnow()) - timedelta(days=node_records_days())
+    return ended < (now or utcnow_naive()) - timedelta(days=node_records_days())
 
 
 # ── On / Off, and the chain ──────────────────────────────────────────────────

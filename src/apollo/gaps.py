@@ -35,10 +35,10 @@ import re
 import shutil
 import sys
 import uuid
-from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 from src.apollo.errors import ApolloRefused
+from src.utc_clock import utcnow_naive  # `B2173`: the one clock
 
 logger = logging.getLogger(__name__)
 
@@ -60,10 +60,6 @@ NOTE_MAX = 600
 UPDATE_WHY = "An admin's update."
 NOT_DRAFTED = frozenset({"fleet", "apollo"})
 NO_MODEL = "No model is set up for scheduled work, so there's nothing to prove the agent on."
-
-
-def _now() -> datetime:
-    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 def _clip(text: Any, limit: int) -> str:
@@ -123,7 +119,7 @@ def propose(db, owner: str, *, need: Any, why: Any, task=None, from_agent: Optio
                             f"yourself for now, and say in your report what's missing.", 409)
     row = ApolloAgentProposal(id=str(uuid.uuid4()), owner=owner, need=need, why=why, state="drafting",
                               task_id=getattr(task, "id", None), from_agent=from_agent,
-                              sentence="Drafting it.", created_at=_now(), updated_at=_now())
+                              sentence="Drafting it.", created_at=utcnow_naive(), updated_at=utcnow_naive())
     db.add(row)
     if task is not None:
         from src.apollo import fleet as F
@@ -153,7 +149,7 @@ def propose_update(db, admin: str, agent_id: Any, text: Any):
     row = ApolloAgentProposal(id=str(uuid.uuid4()), owner=admin, need=_clip(f"A new version of {m.name}", NEED_MAX),
                               why=UPDATE_WHY, state="proving", agent_id=agent_id, agent_name=m.name,
                               version=m.version, reviewer=admin, sentence="Proving the new version.",
-                              created_at=_now(), updated_at=_now())
+                              created_at=utcnow_naive(), updated_at=utcnow_naive())
     db.add(row)
     db.flush()
     return row
@@ -162,7 +158,7 @@ def propose_update(db, admin: str, agent_id: Any, text: Any):
 def _set(row, state: str, sentence: str) -> None:
     row.state = state
     row.sentence = _clip(sentence, 600)
-    row.updated_at = _now()
+    row.updated_at = utcnow_naive()
 
 
 def to_dict(row, *, full: bool = False) -> Dict[str, Any]:
@@ -512,7 +508,7 @@ def approve(db, admin: str, pid: str, *, data_dir: Optional[str] = None) -> Dict
         raise ApolloRefused("Its staged files are gone. Edit it to stage and prove it again.", 409)
     with open(os.path.join(staged, "proofs.json"), "w", encoding="utf-8") as fh:
         json.dump([json.loads(row.proof)], fh, indent=1)
-    meta = {"proposal": row.id, "approved_by": admin, "approved_at": _now().isoformat() + "Z",
+    meta = {"proposal": row.id, "approved_by": admin, "approved_at": utcnow_naive().isoformat() + "Z",
             "badge": row.badge, "model": row.model}
     with open(os.path.join(staged, "published.json"), "w", encoding="utf-8") as fh:
         json.dump(meta, fh, indent=1)

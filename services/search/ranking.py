@@ -5,21 +5,16 @@ import math
 import re
 import logging
 from bisect import bisect_left
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import List, Optional
 from urllib.parse import urlparse
 
 from .query import NEWS_TERMS, is_news_query
+from src.utc_clock import utcnow_naive as _utcnow_naive  # `B2173`: the one clock; the name is a seam tests freeze
 
 logger = logging.getLogger(__name__)
 
 _AGE_FORMATS = ("%Y-%m-%d", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M:%S")
-
-
-def _utcnow_naive() -> datetime:
-    """Naive UTC 'now'. Matches the naive, UTC-style published dates parsed below,
-    and is safe on Python 3.14 where ``datetime.utcnow()`` is removed (#1116)."""
-    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 def recency_score(age_str: Optional[str], now: Optional[datetime] = None) -> float:

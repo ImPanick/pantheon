@@ -7,7 +7,8 @@ lazy (inside the functions), so no DB/sqlalchemy stack is pulled in here.
 """
 from datetime import datetime, timedelta, timezone
 
-from src.cleanup_service import _utcnow
+# `B2173`: the module reads the one clock now; this pins that it is naive UTC.
+from src.cleanup_service import utcnow_naive as _utcnow
 
 
 def test_utcnow_returns_naive_utc():

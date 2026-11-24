@@ -9,7 +9,8 @@ and the task scheduler / builtin actions system.
 import json
 import logging
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta, timezone
+from src.utc_clock import utcnow_naive  # `B2173`: the one clock
 
 logger = logging.getLogger(__name__)
 
@@ -31,11 +32,6 @@ def _chats(n: int) -> str:
     """`P23-05`: the result line a person reads in Tasks › Activity says chats, counted right."""
     return f"{n} chat" if n == 1 else f"{n} chats"
 
-def _utcnow_naive() -> datetime:
-    """Return naive UTC for existing session DateTime columns."""
-    return datetime.now(timezone.utc).replace(tzinfo=None)
-
-
 def _as_naive_utc(value):
     if value is None:
         return None
@@ -46,7 +42,7 @@ def _as_naive_utc(value):
 
 def is_session_recently_active(row, now=None, grace=_FRESH_SESSION_GRACE) -> bool:
     """Return True while a new or active session is too fresh to auto-delete."""
-    now = _as_naive_utc(now) or _utcnow_naive()
+    now = _as_naive_utc(now) or utcnow_naive()
     for attr in ("last_message_at", "last_accessed", "updated_at", "created_at"):
         value = _as_naive_utc(getattr(row, attr, None))
         if not value:
@@ -86,12 +82,12 @@ async def run_auto_sort(owner: str, skip_llm: bool = False, delete_throwaway: bo
             *([DbSession.owner == owner] if owner else []),
         ).all()
 
-        cleanup_now = _utcnow_naive()
+        cleanup_now = utcnow_naive()
         for row in rows:
             if getattr(row, 'is_important', False):
                 continue
-            created_at = _as_naive_utc(row.created_at or row.updated_at) or _utcnow_naive()
-            is_fresh = (_utcnow_naive() - created_at) < _FRESH_EMPTY_SESSION_GRACE
+            created_at = _as_naive_utc(row.created_at or row.updated_at) or utcnow_naive()
+            is_fresh = (utcnow_naive() - created_at) < _FRESH_EMPTY_SESSION_GRACE
             # `B2097`. A Nobody chat goes whole, by either of its names — the
             # browser has called it *Nobody* since the rename, and this read
             # only *Incognito*, so a Nobody chat waited for the empty-chat rule.
@@ -258,7 +254,7 @@ async def run_auto_sort(owner: str, skip_llm: bool = False, delete_throwaway: bo
                     db_sess = db.query(DbSession).filter(DbSession.id == full_id).first()
                     if db_sess:
                         db_sess.folder = folder_name
-                        db_sess.updated_at = _utcnow_naive()
+                        db_sess.updated_at = utcnow_naive()
                         updated += 1
         db.commit()
 

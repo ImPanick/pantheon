@@ -29,20 +29,17 @@ up and the person confirms."
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 from typing import Any, Dict, List, Optional
 
 from src.apollo.errors import ApolloRefused
+from src.utc_clock import utcnow_naive  # `B2173`: the one clock
 
 OFFER_AFTER = 5
 QUIET_AFTER_NO = timedelta(days=30)
 STATES = ("drafting", "offered", "granted")
 NO_CEILING = ("Your admin hasn't let Apollo act without asking, so it keeps asking. "
               "That's the autonomy ceiling, which only an admin can raise.")
-
-
-def _now() -> datetime:
-    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 def kind_key(kind: Any) -> str:
@@ -85,7 +82,7 @@ def record(db, owner: str, scheduled_task_id: Optional[str], decision: str, tool
         return None
     r = _row(db, owner, kind, tool)
     r.space_id = task.space_id
-    r.updated_at = _now()
+    r.updated_at = utcnow_naive()
     if decision == "deny":
         r.denied = (r.denied or 0) + 1
         r.streak = 0
@@ -95,10 +92,10 @@ def record(db, owner: str, scheduled_task_id: Optional[str], decision: str, tool
         return None
     r.allowed = (r.allowed or 0) + 1
     r.streak = (r.streak or 0) + 1
-    quiet = r.declined_at is not None and _now() - r.declined_at < QUIET_AFTER_NO
+    quiet = r.declined_at is not None and utcnow_naive() - r.declined_at < QUIET_AFTER_NO
     if r.state == "drafting" and r.streak >= OFFER_AFTER and not quiet:
         r.state = "offered"
-        r.offered_at = _now()
+        r.offered_at = utcnow_naive()
         db.flush()
         return to_dict(r)
     db.flush()
@@ -163,12 +160,12 @@ def answer(db, owner: str, trust_id: Any, yes: bool, *, may_auto: bool) -> Dict[
         if not may_auto:
             raise ApolloRefused(NO_CEILING, 403)
         r.state = "granted"
-        r.granted_at = _now()
+        r.granted_at = utcnow_naive()
     else:
         r.state = "drafting"
         r.streak = 0
-        r.declined_at = _now()
-    r.updated_at = _now()
+        r.declined_at = utcnow_naive()
+    r.updated_at = utcnow_naive()
     db.flush()
     return to_dict(r)
 
@@ -179,7 +176,7 @@ def take_back(db, owner: str, trust_id: Any) -> Dict[str, Any]:
     r.state = "drafting"
     r.streak = 0
     r.granted_at = None
-    r.updated_at = _now()
+    r.updated_at = utcnow_naive()
     db.flush()
     return to_dict(r)
 

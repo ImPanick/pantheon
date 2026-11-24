@@ -36,11 +36,11 @@ from __future__ import annotations
 
 import json
 import uuid
-from datetime import datetime, timezone
 from typing import Any, Dict, Iterable, List, Optional
 
 from src.apollo import tasks as T
 from src.apollo.errors import ApolloRefused
+from src.utc_clock import utcnow_naive  # `B2173`: the one clock
 
 MAX_DEPTH = 3
 MAX_CHILDREN = 8
@@ -50,10 +50,6 @@ VIAS = ("delegate", "ask", "review")
 BODY_MAX = 6000
 PERSON = "person"
 VERDICT_PASS = "pass"
-
-
-def _now() -> datetime:
-    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 def _clip(text: Any, limit: int = BODY_MAX) -> str:
@@ -94,7 +90,7 @@ def log(db, owner: str, task, kind: str, body: Any, *, from_agent: Optional[str]
         raise ValueError(kind)
     m = ApolloMessage(id=str(uuid.uuid4()), owner=owner, goal_id=root_of(db, task).id, task_id=task.id,
                       kind=kind, from_agent=from_agent, to_agent=to_agent, body=_clip(body),
-                      child_id=child_id, created_at=_now())
+                      child_id=child_id, created_at=utcnow_naive())
     db.add(m)
     db.flush()
     return m
@@ -265,7 +261,7 @@ def mark_seen(db, owner: str, task) -> None:
     for m in (db.query(ApolloMessage).filter(ApolloMessage.owner == owner, ApolloMessage.task_id == task.id,
                                              ApolloMessage.kind == "report",
                                              ApolloMessage.seen_at.is_(None)).all()):
-        m.seen_at = _now()
+        m.seen_at = utcnow_naive()
     db.flush()
 
 
@@ -419,7 +415,7 @@ def answered(db, task, said: str) -> Optional[Dict[str, Any]]:
         return None
     owner = task.owner
     said_msg = log(db, owner, task, "report", said, from_agent=PERSON, to_agent=task.lead_agent)
-    said_msg.seen_at = _now()       # it reaches the lead as its next step, not as a team report
+    said_msg.seen_at = utcnow_naive()       # it reaches the lead as its next step, not as a team report
     # flag-spelling: a reviewer's verdict in the person's words, not a flag
     if said.strip().lower().rstrip(".!") in ("pass", "passed", "ok", "okay", "looks good", "approve", "approved"):
         link.stage = "passed"

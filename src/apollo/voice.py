@@ -27,10 +27,11 @@ from __future__ import annotations
 
 import json
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
 from src.apollo.errors import ApolloRefused
+from src.utc_clock import utcnow_naive  # `B2173`: the one clock
 
 DIALS = ("warmth", "play")
 LOW, HIGH = -2, 2
@@ -66,10 +67,6 @@ HISTORY_MAX = 40
 QUIET_AFTER_PERSON = timedelta(days=7)
 RESPECT_UNDO = timedelta(days=30)
 ONE_A_DAY = timedelta(days=1)
-
-
-def _now() -> datetime:
-    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 def _iso(d: Optional[datetime]) -> Optional[str]:
@@ -123,7 +120,7 @@ def _apply(db, owner: str, r, dial: str, value: int) -> None:
 def _record(r, dial: str, old: int, new: int, by: str, reason: Optional[str] = None,
             **extra) -> Dict[str, Any]:
     change = {"id": uuid.uuid4().hex[:12], "dial": dial, "from": old, "to": new, "by": by,
-              "reason": reason, "at": _iso(_now()), "undone": False, **extra}
+              "reason": reason, "at": _iso(utcnow_naive()), "undone": False, **extra}
     changes = _changes(r)
     changes.append(change)
     _keep(r, changes)
@@ -198,7 +195,7 @@ def nudge(db, owner: str, toward: Any, reason: Any) -> Dict[str, Any]:
         raise ApolloRefused("Keep the reason to a line.")
     dial, sign = TOWARD[word]
     r = row(db, owner)
-    now = _now()
+    now = utcnow_naive()
     for c in reversed(_changes(r)):
         if c.get("dial") != dial:
             continue
