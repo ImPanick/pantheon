@@ -44,7 +44,7 @@ import services.memory.memory_extractor as mx
 
 
 DAY = 86400
-NOW = 1780000000.0
+NOW = float(int(time.time()))
 
 
 @pytest.fixture
