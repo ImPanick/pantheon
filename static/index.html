@@ -4401,6 +4401,22 @@
               </div>
               <div id="ws-vm-cpus-effect" class="admin-toggle-sub ws-effect" hidden></div>
 
+              <!-- Own VM or the shared one (the owner, 2026-11-17): where a
+                   new person's workstation is made, and each person's, named
+                   by the admin (`workstation.js` renderPlacement). -->
+              <div class="settings-row ws-field" id="ws-vm-placement-row" hidden>
+                <label class="settings-label" for="ws-vm-placement">New people's machine</label>
+                <select id="ws-vm-placement" class="settings-select" aria-describedby="ws-vm-placement-effect">
+                  <option value="own">A machine of their own</option>
+                  <option value="shared">An account on the shared machine</option>
+                </select>
+              </div>
+              <div id="ws-vm-placement-effect" class="admin-toggle-sub ws-effect" hidden></div>
+              <div class="settings-row ws-field" id="ws-vm-placement-people-row" hidden>
+                <span class="settings-label" id="ws-vm-placement-people-label">Each person's machine</span>
+                <div id="ws-vm-placement-people" class="ws-placement-people" role="group" aria-labelledby="ws-vm-placement-people-label"></div>
+              </div>
+
               <div class="admin-toggle-row ws-toggle">
                 <div>
                   <label class="admin-toggle-label" for="ws-route-tools">Agent shell, Python and file tools run in the workstation</label>
