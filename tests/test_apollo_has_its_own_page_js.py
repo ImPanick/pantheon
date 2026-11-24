@@ -144,7 +144,7 @@ def test_entering_apollo_makes_the_page_apollos(box):
           paneOpen: pane.open, untucked: dock.untucked,
           agent: P.agent.classList.contains('active'), chat: P.chat.classList.contains('active'),
           prompt: P.input.placeholder,
-          empty: !!document.getElementById('apollo-empty'),
+          empty: !!document.getElementById('apollo-hello'),
           on: V.isApolloView(),
         });
     """)
@@ -169,7 +169,7 @@ def test_leaving_apollo_puts_the_generic_page_back(box):
         out({
           viewClass: html.classList.contains('apollo-view'),
           bar: !!document.getElementById('apollo-bar'),
-          empty: !!document.getElementById('apollo-empty'),
+          empty: !!document.getElementById('apollo-hello'),
           paneOpen: pane.open,
           chat: P.chat.classList.contains('active'),
           prompt: P.input.placeholder,

@@ -3206,11 +3206,11 @@ html.cockpit .apo-bar-btn {
 html.cockpit .apo-bar-btn:hover { background: var(--ck-tint, var(--ck-glass-soft)); }
 
 /* The empty Apollo chat says what Apollo is, in place of Pantheon's welcome. */
-html.cockpit .apo-empty { display: none; }
-html.cockpit.apollo-view .chat-container.welcome-active .apo-empty {
+html.cockpit .apo-hello { display: none; }
+html.cockpit.apollo-view .chat-container.welcome-active .apo-hello {
   display: flex; flex-direction: column; align-items: center; gap: 10px;
   margin: 12vh auto 0; max-width: 520px; padding: 0 24px; text-align: center;
 }
-html.cockpit .apo-empty-mark { color: var(--ck-accent); transform: scale(2.2); margin-bottom: 14px; }
-html.cockpit .apo-empty-t { font-size: 22px; font-weight: 600; }
-html.cockpit .apo-empty-p { margin: 0; line-height: 1.5; color: var(--ck-text-2, var(--fg)); }
+html.cockpit .apo-hello-mark { color: var(--ck-accent); transform: scale(2.2); margin-bottom: 14px; }
+html.cockpit .apo-hello-t { font-size: 22px; font-weight: 600; }
+html.cockpit .apo-hello-p { margin: 0; line-height: 1.5; color: var(--ck-text-2, var(--fg)); }

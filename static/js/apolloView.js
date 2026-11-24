@@ -23,11 +23,11 @@
 //     choice for other chats is put back on the way out.
 //   - Its pane opened and docked on the right, so the work is on the page
 //     from the first look rather than behind a button.
-//   - Its own empty state and composer prompt.
+//   - Its own welcome and composer prompt.
 // Leaving the chat puts every one of those back.
 
 const BAR_ID = 'apollo-bar';
-const EMPTY_ID = 'apollo-empty';
+const EMPTY_ID = 'apollo-hello';
 const PROMPT = 'Tell Apollo what you need';
 
 const SUN = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.3 5.3l1.6 1.6M17.1 17.1l1.6 1.6M5.3 18.7l1.6-1.6M17.1 6.9l1.6-1.6"/></svg>';
@@ -40,7 +40,6 @@ let _priorPrompt = null;      // the composer's own placeholder, put back on the
 let _hooks = {};
 
 const byId = (id) => document.getElementById(id);
-const root = () => document.documentElement || document.body;
 
 function _button(id, label, svg, onClick) {
   const b = document.createElement('button');
@@ -112,16 +111,16 @@ function _buildEmpty() {
   if (!history || !history.parentNode) return;
   const box = document.createElement('section');
   box.id = EMPTY_ID;
-  box.className = 'apo-empty';
+  box.className = 'apo-hello';
   box.setAttribute('aria-label', 'Apollo');
   const mark = document.createElement('div');
-  mark.className = 'apo-empty-mark';
+  mark.className = 'apo-hello-mark';
   mark.innerHTML = SUN;
   const title = document.createElement('div');
-  title.className = 'apo-empty-t';
+  title.className = 'apo-hello-t';
   title.textContent = _hooks.name || 'Apollo';
   const line = document.createElement('p');
-  line.className = 'apo-empty-p';
+  line.className = 'apo-hello-p';
   line.textContent = "Tell me what you're working toward. I'll set up the work, run it with the right agents, and come back when something needs you.";
   box.appendChild(mark);
   box.appendChild(title);
@@ -147,8 +146,8 @@ function _restoreMode() {
 /** Turn the page into Apollo's. `hooks`: { name, openSettings, extraButtons }. */
 export function enterApolloView(hooks = {}) {
   _hooks = hooks || {};
-  const html = root();
-  if (html && html.classList) html.classList.add('apollo-view');
+  const html = document.documentElement;
+  if (html) html.classList.add('apollo-view');
   _buildBar();
   _buildEmpty();
   if (!_on) {
@@ -167,8 +166,8 @@ export function enterApolloView(hooks = {}) {
 export function leaveApolloView() {
   if (!_on) return;
   _on = false;
-  const html = root();
-  if (html && html.classList) html.classList.remove('apollo-view');
+  const html = document.documentElement;
+  if (html) html.classList.remove('apollo-view');
   byId(BAR_ID)?.remove();
   byId(EMPTY_ID)?.remove();
   _restoreMode();
