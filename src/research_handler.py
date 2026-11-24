@@ -6,9 +6,8 @@
 # cannot be marked consumed (`P3-17`), the `research_completed` event (`P8-23`),
 # the removal of an unused `generate_plan` (`B1470`), one reading of a research
 # run's numbers for the panel and the scheduler (`B1796`), thinking off on the
-# query rewrite and the reachability probe (`B2129`), the removal of the
-# legacy `research_engine` fallback (`B2150`) and the SPDX line above
-# (`P0-18`).
+# query rewrite and the reachability probe (`B2129`), no legacy research_engine
+# fallback (`B2150`) and the SPDX line above (`P0-18`).
 #
 # Upstream licence text (Tongyi DeepResearch): licenses/DeepResearch-Apache-2.0.txt
 # Attribution: CREDITS.md
