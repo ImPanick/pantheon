@@ -153,19 +153,26 @@ Each person gets a Linux desktop of their own for the agent to work in, kept bet
 - **What's in it:** XFCE, a shell, Python, files, Firefox (locked down by policy), sudo by default,
   and a projects folder shared with Pantheon. Streamed live over KasmVNC: watch the agent, take
   over, hand it back, or reset to a starting point you saved.
-- **Distros:** Ubuntu 24.04 by default, and Debian 13, Fedora 44 or Rocky Linux 9 where the operator
+- **Distros:** Ubuntu 24.04 by default, and Debian 13, Fedora 45 or Rocky Linux 9 where the operator
   has enabled them. Each person picks their own.
 - **Backends:**
 
   | Backend | What it is | When |
   |---|---|---|
-  | `vm` | A QEMU/KVM virtual machine per person, in the `workstation-vm` service | Hosts with KVM. The default under `auto`. |
+  | `vm` | A QEMU/KVM virtual machine per person, or a shared one, in the `workstation-vm` service | Hosts with KVM. The default under `auto`. |
   | `container` | One container, a Unix account and desktop per person | Hosts without KVM |
   | `remote` | A workstation daemon on another machine, reached over pinned TLS | Desktops on a separate box or hypervisor VM |
   | `auto` | The VM where Docker can use KVM, else the container | Default |
 
-- **Resources:** an admin sets the memory per machine and the pool of processors; each person picks
-  their own processor count within that pool. Idle machines power off and give their memory back.
+- **Own machine or shared machine:** on the `vm` backend an admin decides, per person, whether
+  someone gets a VM of their own or an account on one machine several people share. A default
+  covers new accounts and each person can be named on their own, so power users get a dedicated
+  machine and everyone else shares one. On the shared machine sudo is always off, other people's
+  processes are hidden, and only Unix permissions keep homes and projects folders apart. Moving
+  someone powers off the machine they leave and keeps its disk for when they come back.
+- **Resources:** an admin sets the memory per machine and the pool of processors; each person on a
+  machine of their own picks their processor count within that pool. Idle machines power off and
+  give their memory back.
 - **Network:** an admin chooses full access, internet only, or none, enforced from outside the
   desktop where its root user can't change it. Agents may read LAN or tailnet addresses by URL
   (never loopback or cloud metadata) unless an admin turns that off.
@@ -226,8 +233,9 @@ A real Android phone per person, not a desktop browser at phone width.
   generation, memory management, Auto approval and operating the instance. An admin can also limit
   which models each person may use.
 - **People are separate.** Each person has their own desktop VM or account, home, projects folder,
-  phone, memories, skills, chats and vault. There's no shared phone or shared desktop between
-  people.
+  phone, memories, skills, chats and vault. Each person always gets their own phone and their own
+  desktop session; when an admin puts several people on the shared desktop machine, each is a
+  separate Unix account there with sudo off.
 - **Nothing phones home.** Outbound calls are paced and listed, a fresh install reaches no external
   service on its own, and the workstation's screenshot pipeline fails if a page tries to reach
   another host.
@@ -257,6 +265,8 @@ Infrastructure work that's designed or under way, so you can plan around it:
 |---|---|
 | `android-vm`: phones as their own Compose service, one Android VM per person beside the desktops, with its own admin pool | Shipped |
 | An iOS VM family, as a third sibling service | Planned, nothing built |
+| Own desktop VM or an account on a shared one, chosen per person by an admin | Shipped |
+| A pool of several workstation hosts that desktops are spread across | Planned, nothing built |
 | Direct hypervisor backend: each person's desktop and phone created as sibling VMs on Proxmox, vSphere or KubeVirt | Planned, nothing built |
 | A Docker Swarm stack file | Planned |
 | A Helm chart for Kubernetes and k3s, with the KVM options in [the deployment guide](deployment.md#kubernetes-and-k3s) | Planned |

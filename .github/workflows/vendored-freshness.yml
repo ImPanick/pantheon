@@ -11,9 +11,10 @@
 # places, both read-only and unauthenticated:
 #
 #   registry.npmjs.org   what the record's `dist_tag` resolves to for each
-#                        package -- `latest` for most, `stable-0.27` for
-#                        Pyodide, whose npm `latest` is a different version
-#                        line altogether (`B335`)
+#                        package -- `latest` for all of them since Pyodide
+#                        moved onto its `latest` line (`B2215`); a record on
+#                        a maintained side line names that line's tag
+#                        (`B335`, when Pyodide was on `stable-0.27`)
 #   api.osv.dev          which advisories affect package@version -- for the
 #                        vendored package AND for every package the record
 #                        says is inside it (`B336`: html2pdf.js 0.14.0 has no
@@ -59,9 +60,14 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+          # `B2210`. A schedule runs from the default branch, `main`, which
+          # holds the last release; bumps land on `dev`. Reading `main` kept
+          # this red for weeks after a fix had landed, so the weekly run reads
+          # `dev`, and a manual run reads the branch it was started on.
+          ref: ${{ github.event_name == 'schedule' && 'dev' || github.ref }}
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
         with:
-          python-version: "3.11"
+          python-version: "3.14"
 
       # The offline check first. If the recorded hashes do not match the tree,
       # asking upstream anything is premature — we do not yet know what we ship.

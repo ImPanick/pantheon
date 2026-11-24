@@ -46,10 +46,8 @@ _EXPECTED = [
     "_parse_tool_args", "_resolve_cookbook_host", "_run_bw",
     "_scan_running_model_processes", "_skill_dump", "_string_arg",
     "_validate_cookbook_ssh_target",
-    # active-email facade helpers (no do_* prefix); consumed by
-    # routes/chat_routes.py — listed here because get_active_email has no
-    # in-repo importer, so the import-site scan below can't see it alone.
-    "set_active_email", "get_active_email", "clear_active_email",
+    # (`B2153`: the active-email helpers were listed here; the process-wide
+    # state they held was read by nothing and is gone.)
 ]
 
 

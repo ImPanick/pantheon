@@ -13,6 +13,7 @@ from typing import Dict, Optional
 from src.tools._common import _parse_tool_args
 from src.tool_utils import get_upload_handler
 from src.upload_handler import reserve_upload_references
+from src.utc_clock import utcnow_naive  # `B2196`: not the deprecated datetime.utcnow()
 
 logger = logging.getLogger(__name__)
 
@@ -217,7 +218,7 @@ async def do_manage_calendar(content: str, owner: Optional[str] = None) -> Dict:
         # time, so it is compared with their clock; with no zone known that is
         # the server's, as before.
         from src.user_time import now_user_local
-        now = datetime.utcnow() if is_utc else now_user_local().replace(tzinfo=None)
+        now = utcnow_naive() if is_utc else now_user_local().replace(tzinfo=None)
         if dtstart <= now:
             return None, "event already passed"
         if remind_at <= now:
@@ -346,7 +347,7 @@ async def do_manage_calendar(content: str, owner: Optional[str] = None) -> Dict:
                     start_local = midnight.replace(tzinfo=None)
                     start_utc = midnight.astimezone(timezone.utc).replace(tzinfo=None)
                 else:
-                    start_utc = start_local = datetime.utcnow().replace(
+                    start_utc = start_local = utcnow_naive().replace(
                         hour=0, minute=0, second=0, microsecond=0)
                 if end_raw:
                     end_utc, end_local = _bound(end_raw)

@@ -170,8 +170,8 @@ def test_a_vendored_file_with_no_version_record_fails(clean):
 def test_a_record_naming_no_inventory_entry_fails(clean):
     """The other half of the join. Renaming an entry in `check-licences.py`
     without renaming it here leaves two lists that each look complete."""
-    patch_checker(clean, '        "Mermaid", "mermaid", "11.17.2"',
-                  '        "Mermaidd", "mermaid", "11.17.2"')
+    patch_checker(clean, '        "Mermaid", "mermaid", "12.3.0"',
+                  '        "Mermaidd", "mermaid", "12.3.0"')
     r = run(clean)
     assert r.returncode == 1, r.stdout
     assert "NO ENTRY" in r.stdout and "Mermaidd" in r.stdout, r.stdout
@@ -259,7 +259,7 @@ def test_credits_that_does_not_carry_the_recorded_version_fails(clean):
     the version that drifts, and it drifted for weeks."""
     credits = clean / "CREDITS.md"
     credits.write_text(
-        credits.read_text(encoding="utf-8").replace("mammoth.js) v1.12.3",
+        credits.read_text(encoding="utf-8").replace("mammoth.js) v1.13.0",
                                                     "mammoth.js) v1.8.0"),
         encoding="utf-8")
     r = run(clean)
@@ -427,22 +427,28 @@ def test_the_offline_checker_never_reaches_the_network():
 # DOMPurify 3.3.1 with eighteen. `B421` (2026-10-29) took that bundle out:
 # jsPDF, html2canvas and DOMPurify are files of their own now, each its own
 # record, and the twenty-seven excuses went with the versions they excused.
-# The rule stays and has a new subject: docx 9.7.1 (`B424`) carries JSZip's own
-# `dist/jszip.min.js` — the zip writer behind every `.docx` this app exports,
-# a parser with an advisory history — and JSZip's banner says which release.
+# The rule stayed with a new subject: docx 9.7.1 (`B424`) carried JSZip's own
+# `dist/jszip.min.js`, and JSZip's banner said which release. docx 9.16.0
+# (`B2219`) zips with `fflate` and carries no banner, so the subject moved again:
+# Mermaid's esbuild bundle keeps DOMPurify's own `@license` banner — the
+# sanitiser between a diagram's labels and the page.
+
+# The DOMPurify release inside the shipped `mermaid.min.js`.
+MERMAID_DOMPURIFY = "3.4.17"
+
 
 def test_the_recorded_inner_versions_are_in_the_shipped_bytes():
-    """The real tree. `JSZip v3.10.1` is JSZip's own banner, which docx's build
-    kept, so the number is read out of the artifact rather than asserted
-    about it."""
+    """The real tree. `@license DOMPurify <v>` is DOMPurify's own banner,
+    which Mermaid's build kept, so the number is read out of the artifact
+    rather than asserted about it."""
     mod = load()
     recorded = {r.entry: r for r in mod.VENDORED}
-    inner = {i.package: i for i in recorded["docx"].contains}
-    assert set(inner) == {"jszip"}, sorted(inner)
-    assert inner["jszip"].version == "3.10.1"
-    bundle = (ROOT / "static" / "lib" / "docx.umd.min.js").read_bytes()
-    assert inner["jszip"].witness.encode() in bundle, inner["jszip"].witness
-    assert inner["jszip"].behind_ok, "being behind needs a row that owns it"
+    inner = {i.package: i for i in recorded["Mermaid"].contains}
+    assert set(inner) == {"dompurify"}, sorted(inner)
+    assert inner["dompurify"].version == MERMAID_DOMPURIFY
+    bundle = (ROOT / "static" / "lib" / "mermaid.min.js").read_bytes()
+    assert inner["dompurify"].witness.encode() in bundle, inner["dompurify"].witness
+    assert recorded["docx"].contains == (), "docx 9.16.0 carries no banner to pin"
 
 
 def test_the_html2pdf_excuses_left_with_the_versions_they_excused():
@@ -464,26 +470,27 @@ def test_the_html2pdf_excuses_left_with_the_versions_they_excused():
 
 
 def test_a_bundle_carrying_a_different_inner_version_fails(clean):
-    """The claim in one line. Swap docx for a build carrying a different JSZip
-    and this goes red — before anybody has re-asked OSV about the new one."""
-    target = clean / "static" / "lib" / "docx.umd.min.js"
+    """The claim in one line. Swap Mermaid for a build carrying a different
+    DOMPurify and this goes red — before anybody has re-asked OSV about the
+    new one."""
+    target = clean / "static" / "lib" / "mermaid.min.js"
     blob = target.read_bytes()
-    target.write_bytes(blob.replace(b"JSZip v3.10.1", b"JSZip v3.10.2"))
+    target.write_bytes(blob.replace(f"DOMPurify {MERMAID_DOMPURIFY}".encode(),
+                                    b"DOMPurify 0.0.1"))
     r = run(clean)
     assert r.returncode == 1, r.stdout
     # The hash moves too; the point is that the inner version is named.
     assert "INNER" in r.stdout, r.stdout
-    assert "jszip" in r.stdout and "3.10.1" in r.stdout, r.stdout
+    assert "dompurify" in r.stdout and MERMAID_DOMPURIFY in r.stdout, r.stdout
 
 
 def test_an_inner_witness_whose_file_is_gone_fails(clean):
     """A witness that names a file nobody ships would check nothing. An empty
     expectation going green is the trap `EMPTY MANIFEST` exists for, one level
     in."""
-    patch_checker(
-        clean,
-        '"jszip", "3.10.1", "JSZip v3.10.1",',
-        '"jszip", "3.10.1", "JSZip v3.10.1", where="licenses/not-a-file.txt",')
+    witness = f'"dompurify", "{MERMAID_DOMPURIFY}", "@license DOMPurify {MERMAID_DOMPURIFY}",'
+    patch_checker(clean, witness,
+                  witness + ' where="licenses/not-a-file.txt",')
     r = run(clean)
     assert r.returncode == 1, r.stdout
     assert "NO WITNESS" in r.stdout, r.stdout
@@ -498,18 +505,19 @@ def test_the_freshness_workflow_is_handed_the_inner_packages():
         [sys.executable, str(CHECKER), "--json"],
         cwd=ROOT, capture_output=True, text=True, check=True)
     records = {rec["entry"]: rec for rec in json.loads(r.stdout)}
-    inner = {i["package"]: i for i in records["docx"]["contains"]}
-    assert set(inner) == {"jszip"}, sorted(inner)
-    assert inner["jszip"]["version"] == "3.10.1"
-    assert inner["jszip"]["behind_ok"], "being behind here needs a row that owns it"
+    inner = {i["package"]: i for i in records["Mermaid"]["contains"]}
+    assert set(inner) == {"dompurify"}, sorted(inner)
+    assert inner["dompurify"]["version"] == MERMAID_DOMPURIFY
 
     # `B437`: driven, not grepped — the job asks OSV about the packages inside
     # the bundle, at the versions the record carries.
     asked = []
-    _freshness().ask([records["docx"]], lambda pkg: {"latest": "0"},
+    mermaid = records["Mermaid"]
+    _freshness().ask([mermaid], lambda pkg: {"latest": "0"},
                      lambda pkg, ver: asked.append((pkg, ver)) or [],
-                     _upstream_holds_ours([records["docx"]]))
-    assert ("jszip", "3.10.1") in asked and ("docx", "9.7.1") in asked, (
+                     _upstream_holds_ours([mermaid]))
+    assert (("dompurify", MERMAID_DOMPURIFY) in asked
+            and ("mermaid", mermaid["version"]) in asked), (
         "the freshness job no longer asks OSV about the packages inside a bundle")
 
 
@@ -524,11 +532,15 @@ def test_a_version_line_names_which_dist_tag_to_compare_against():
     """
     mod = load()
     records = {r.entry: r for r in mod.VENDORED}
-    assert records["Pyodide"].dist_tag == "stable-0.27", records["Pyodide"].dist_tag
+    # `B2215`, 2026-11-24: the owner asked for every dependency at its newest
+    # version, and Pyodide moved onto the `latest` line itself (314.0.8), so
+    # its record compares against `latest` like every other. The field stays,
+    # and is driven below with a record on a maintained side line.
+    assert records["Pyodide"].dist_tag == "latest", records["Pyodide"].dist_tag
     assert records["Mermaid"].dist_tag == "latest"
     # `B437`: driven against the freshness script, not grepped from the YAML.
-    rec = {"entry": "Pyodide", "package": "pyodide", "version": records["Pyodide"].version,
-           "registry": "npm", "dist_tag": records["Pyodide"].dist_tag, "source": "",
+    rec = {"entry": "Pyodide", "package": "pyodide", "version": "0.27.8",
+           "registry": "npm", "dist_tag": "stable-0.27", "source": "",
            "behind_ok": "", "osv_known": {}}
     found = _freshness().ask(
         [rec], lambda pkg: {"latest": "314.0.7", "stable-0.27": rec["version"]},
@@ -545,8 +557,8 @@ def test_a_build_command_with_no_input_record_fails(clean):
     nothing in the repository said so. The two halves are now required
     together."""
     patch_checker(
-        clean, '        "v11.17.2",',
-        '        "v11.17.2",\n        build="esbuild mermaid --bundle",')
+        clean, '        "v12.3.0",',
+        '        "v12.3.0",\n        build="esbuild mermaid --bundle",')
     r = run(clean)
     assert r.returncode == 1, r.stdout
     assert "NO INPUTS" in r.stdout, r.stdout

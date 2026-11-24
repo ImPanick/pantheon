@@ -28,7 +28,7 @@ harness, with only the model's reply faked.
 import json
 import re
 import uuid
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 import pytest
 from fastapi import FastAPI
@@ -36,6 +36,7 @@ from fastapi.testclient import TestClient
 
 from tests.test_the_documents_tidy_asks_first import LONG_AGO, cdb, doc, world  # noqa: F401
 from tests.test_a_document_the_ai_tidy_keeps_is_not_edited import library  # noqa: F401
+from src.utc_clock import utcnow_naive  # `B2196`: not the deprecated datetime.utcnow()
 
 TEXT = "Ship the migration in stages and keep every customer record."
 
@@ -174,7 +175,7 @@ def test_an_answer_whose_count_is_off_changes_nothing(world, library, monkeypatc
 
 
 def test_a_document_made_in_the_last_15_minutes_is_not_sent_to_the_model(world, library):
-    fresh = doc(world, "asdf", content="qwerty", created=datetime.utcnow() - timedelta(minutes=1))
+    fresh = doc(world, "asdf", content="qwerty", created=utcnow_naive() - timedelta(minutes=1))
     doc(world, "Budget 2026", content="real numbers")
     library.verdicts["asdf"] = "junk"
     out = library.tidy()

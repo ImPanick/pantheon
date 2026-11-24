@@ -18,7 +18,6 @@ import httpx
 # `follow_redirects=False`: `_ping_endpoint` reads a redirect to tell a model
 # server from this app's own login page.
 from src import paced_http
-from datetime import datetime
 from typing import List, Dict, Any, Optional
 from urllib.parse import urlparse, urlunparse
 from fastapi import APIRouter, HTTPException, Form, Query, Body, Request, Response
@@ -46,6 +45,7 @@ from src.endpoint_resolver import (
 from src.auth_helpers import effective_user, owner_filter, require_user
 from src.env_flags import request_flag, request_truthy
 from src.local_hosts import ANY_ADDRESS_NAMES, LOCAL_SERVER_NAMES, THIS_MACHINE_NAMES
+from src.utc_clock import utcnow_naive  # `B2196`: not the deprecated datetime.utcnow()
 
 logger = logging.getLogger(__name__)
 
@@ -3083,7 +3083,7 @@ def setup_model_routes(model_discovery):
         for row in rows:
             if _session_uses_endpoint_url(row.endpoint_url or "", base_url):
                 row.headers = {}
-                row.updated_at = datetime.utcnow()
+                row.updated_at = utcnow_naive()
                 cleared += 1
         return cleared
 

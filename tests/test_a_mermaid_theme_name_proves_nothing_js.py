@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 r"""`B883` — the vendored Mermaid accepts an unknown theme name in silence.
 
-**What is on the tree, measured 2026-09-19 against
+**What was on the tree, measured 2026-09-19 against
 `static/lib/mermaid.min.js` (11.17.2) through
 `tests/harness/mermaid_diagram_parse.js`.**
 
@@ -47,6 +47,11 @@ listed anywhere) are excluded from the comparison fingerprint, because they are
 the same in every scheme by construction and would make two different themes
 look more alike than they are. Both fingerprints are reported; the tests below
 use each where it belongs.
+
+**`B2220`, 2026-11-24: Mermaid 12.3.0.** Upstream fixed the echo (#8148): an
+unknown name now reads back as `default`, and `default` has 272 variables. The
+first test below now says so and fails on 11.17.2; the fingerprint guard is
+unchanged, because a name that reads right still proves nothing about the ink.
 
 This measures the library. It cannot rasterise — `render()` needs `getBBox`, a
 real stylesheet and a live SVG tree, and there is no browser here — which is
@@ -105,17 +110,20 @@ def theme_really_loaded(report, scheme, expected):
 
 # ── The defect, driven ─────────────────────────────────────────────────────
 
-def test_an_unknown_theme_name_is_echoed_back_as_if_it_had_been_applied(report):
-    """The first half of the defect: the config object agrees with you.
+def test_an_unknown_theme_name_now_comes_back_named_default(report):
+    """The first half of the defect, and how it closed.
 
-    Both names below are refused by nothing. If a future mermaid starts
-    throwing on an unknown theme — which is the fix upstream would ship — this
-    goes red and the row can be closed the other way.
+    On 11.17.2 both names below were echoed back as if they had been applied.
+    Mermaid 12.0.0 (#8148) fixed that upstream: *"An unrecognised theme name now
+    resolves to the default theme in name as well as in variables."* So since
+    `B2220` the config object no longer agrees with a wrong name. **Fails on
+    11.17.2.** The fingerprint check below stays the guard anyway: a name that
+    reads right is still not proof of what was drawn.
     """
     for name in ("light", "pantheon-not-a-theme"):
         got = report["themes"][name]
-        assert got["reported"] == name, (
-            f"mermaid no longer echoes an unknown theme name back: {got}"
+        assert got["reported"] == "default", (
+            f"mermaid echoes an unknown theme name back again: {got}"
         )
 
 
@@ -133,7 +141,7 @@ def test_an_unknown_theme_name_draws_the_default_theme_to_the_byte(report):
             f"({got} vs {default}); the guard below is measuring something "
             "else now and this file needs re-reading"
         )
-        assert got["count"] == 271, got
+        assert got["count"] == 272, got  # 271 on 11.17.2
 
 
 def test_the_name_check_passes_on_a_theme_nobody_ships_and_the_ink_check_fails(report):
@@ -144,7 +152,10 @@ def test_the_name_check_passes_on_a_theme_nobody_ships_and_the_ink_check_fails(r
     same measurement so the difference is visible rather than argued.
     """
     wrong = report["themes"]["light"]
-    assert wrong["reported"] == "light", wrong          # the check that lies
+    # On 11.17.2 this read back "light" — the check that lied. Mermaid 12
+    # reads back "default", so the name no longer lies; the fingerprint is
+    # still what this guard trusts.
+    assert wrong["reported"] == "default", wrong
     assert wrong["vars"]["hash"] == report["themes"]["default"]["vars"]["hash"]
     assert wrong["vars"]["hash"] != report["themes"]["neutral"]["vars"]["hash"], wrong
 

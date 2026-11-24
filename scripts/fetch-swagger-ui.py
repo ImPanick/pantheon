@@ -26,7 +26,7 @@ below were cross-checked against what cdn.jsdelivr.net serves at
 
     python3 scripts/fetch-swagger-ui.py          # fetch, verify, write
     python3 scripts/fetch-swagger-ui.py --check  # verify what is on disk
-    python3 scripts/fetch-swagger-ui.py --version 5.33.0
+    python3 scripts/fetch-swagger-ui.py --version 5.36.0
 
 WHY TWO FILES AND NOT THE WHOLE DIST. The published package unpacks to 11.7 MB
 -- ES bundles, a standalone preset, source maps, an OAuth redirect page we
@@ -56,7 +56,7 @@ DEST = ROOT / "static" / "lib" / "swagger-ui"
 LICENSES = ROOT / "licenses"
 REGISTRY = "https://registry.npmjs.org/swagger-ui-dist"
 
-VERSION = "5.33.0"
+VERSION = "5.36.0"
 
 # SHA-256 of each vendored file. First recorded 2026-09-16 at 5.32.15;
 # re-pinned 2026-09-17 at 5.33.0 (`B335`). `swagger-ui-bundle.js.LICENSE.txt`
@@ -64,12 +64,15 @@ VERSION = "5.33.0"
 # bundle; it lands in `licenses/`, next to the same kind of sidecar the
 # html2pdf bundle shipped with (`P0-21b`; that bundle went in `B421`). It is
 # byte-identical at 5.32.15 and 5.33.0, which is how the bump was shown to add
-# no undeclared package.
+# no undeclared package. Re-pinned 2026-11-24 at 5.36.0 (`B2218`); there the
+# sidecar DID move — DOMPurify 3.4.13 -> 3.4.17 inside, and a
+# `regenerator-runtime` notice added — and `check-licences.py` rule 7 reads
+# it, so the new name had to be claimed before the bump went green.
 PINNED = {
     "swagger-ui.css":
-        "1ac324f7dcd27e4b9386b4bd6421271ec147e922a22c05ba24b11515e9aa6321",
+        "7eb9f5a125e4bc9b3f0b71869b66d1a3d7c501f972f53d44ef91c2ae6c5bda5e",
     "swagger-ui-bundle.js":
-        "62df541529080464a7660adc793eab7128c6193ce3be24ddc1e0e0a4a63edc2f",
+        "b164c5a22535e40dae08c00271674a67e437ec195098c55fcedf8ffac7ac3c88",
 }
 
 # Paperwork that travels with the bytes, written to licenses/ rather than into

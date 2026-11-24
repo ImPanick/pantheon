@@ -379,11 +379,6 @@ def _append_endpoint_path(base: str, suffix: str) -> str:
     return urlunparse(parsed._replace(path=path, query="", fragment=""))
 
 
-def _pathless_host(base: str, host: str) -> bool:
-    parsed = urlparse(base)
-    return (parsed.hostname or "").lower() == host and not (parsed.path or "").strip("/")
-
-
 def _anthropic_api_root(base: str) -> str:
     """Return Anthropic's API root, preserving /v1 for OpenAI-compatible APIs elsewhere."""
     base = (base or "").strip().rstrip("/")

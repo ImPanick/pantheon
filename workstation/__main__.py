@@ -164,6 +164,58 @@ def shared_roots() -> List[Path]:
     return [Path(raw)]
 
 
+# Placement (the owner, 2026-11-17). What the VM host writes on a SHARED
+# machine's app disk (`vm.SHARED_MACHINE_FILE`, `vm.PROJECTS_GID_FILE`): that
+# several people have an account here, and the group each person's projects
+# folder is given to (the group Pantheon runs as on the host), so Pantheon
+# reads what they build and nobody else in the machine does.
+SHARED_MACHINE_FILE = "shared-machine"
+PROJECTS_GID_FILE = "projects-gid"
+APP_DIR = Path("/opt/pantheon-workstation/app")
+
+
+def shared_machine(app_dir: Path = APP_DIR) -> bool:
+    """Whether this VM machine is the one several people share."""
+    try:
+        return (app_dir / SHARED_MACHINE_FILE).read_text(encoding="utf-8").strip() == "1"
+    except OSError:
+        return False
+
+
+def shared_projects_gid(app_dir: Path = APP_DIR) -> Optional[int]:
+    """The host's projects group, for a shared machine; None when it gave none."""
+    try:
+        raw = (app_dir / PROJECTS_GID_FILE).read_text(encoding="utf-8").strip()
+    except OSError:
+        return None
+    return int(raw) if raw.isdigit() and 0 < int(raw) <= 1 << 20 else None
+
+
+def hide_other_peoples_processes(*, run: Callable = None,
+                                 mounts: Path = Path("/proc/mounts")) -> bool:
+    """On a shared machine: `/proc` remounted `hidepid=invisible`, so an
+    account sees its own processes and nobody else's — a command line can
+    carry a secret, and `ps` would show it to every other person here. Root
+    (this daemon) still sees all. A kernel that refuses it leaves `/proc` as
+    it was and says so; whether it held is the answer."""
+    import subprocess
+    run = run or subprocess.run
+    try:
+        if any(" /proc proc " in f" {line}" and "hidepid=invisible" in line
+               or " /proc proc " in f" {line}" and "hidepid=2" in line
+               for line in mounts.read_text(encoding="utf-8").splitlines()):
+            return True
+    except OSError:
+        pass  # unreadable: try the remount, which is what decides
+    done = run(["mount", "-o", "remount,hidepid=invisible", "/proc"],
+               capture_output=True, text=True)
+    if getattr(done, "returncode", 1) != 0:
+        logging.getLogger(__name__).warning("other people's processes stay visible on this "
+                                            "shared machine: %s", getattr(done, "stderr", ""))
+        return False
+    return True
+
+
 def mount_project_share(app_dir: Path = Path("/opt/pantheon-workstation/app"), *,
                         sys_root: Path = Path("/sys/bus/virtio/drivers/9pnet_virtio"),
                         mounts: Path = Path("/proc/mounts"),
@@ -174,11 +226,15 @@ def mount_project_share(app_dir: Path = Path("/opt/pantheon-workstation/app"), *
     none, and the machine runs as it always did. Returns where it is mounted."""
     import subprocess
     run = run or subprocess.run
+    shared = shared_machine(app_dir)
     try:
         folder = (app_dir / "projects-folder").read_text(encoding="utf-8").strip()
     except OSError:
-        return None
-    if not folder or "/" in folder or folder.startswith("."):
+        folder = ""
+    # A shared machine is given the projects root, each person's folder in
+    # it theirs alone (`UbuntuSystem.make_project_dirs`); a machine of one
+    # person's own is given that person's folder and nothing else.
+    if not shared and (not folder or "/" in folder or folder.startswith(".")):
         return None
     tags = []
     for tag_file in sys_root.glob("*/mount_tag"):
@@ -188,7 +244,7 @@ def mount_project_share(app_dir: Path = Path("/opt/pantheon-workstation/app"), *
             continue
     if "pantheon-projects" not in tags:
         return None
-    target = shared_roots()[0] / folder
+    target = shared_roots()[0] if shared else shared_roots()[0] / folder
     try:
         mounted = mounts.read_text(encoding="utf-8")
     except OSError:
@@ -293,10 +349,23 @@ def check_pairing_group(system: System, gid: Optional[int]) -> None:
 def build(args: argparse.Namespace):
     """`(server, system)`, listening, not yet serving."""
     in_machine = getattr(args, "backend", None) == "vm" and getattr(args, "token_file", None)
+    shared = bool(in_machine) and shared_machine()
     if in_machine:
         mount_project_share()   # `B1427`: a machine's own projects folder, if shared
         online_hotplugged_memory()   # the phone's memory, when the host plugs it in
+    if shared:
+        # Placement: several people, one machine. No sudo, ever; nobody sees
+        # another's processes; each projects folder is given to Pantheon's
+        # group, which no account here may have.
+        args.sudo = False
+        hide_other_peoples_processes()
+        gid = shared_projects_gid()
+        if gid is not None:
+            args.pairing_group = gid
     system = make_system(args)
+    if shared:
+        system.sudo_locked_off = True
+        system.set_sudo(False)
     if in_machine:
         system.phone_room_mib = phone_room_promised()
     check_pairing_group(system, args.pairing_group)

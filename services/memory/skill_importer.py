@@ -946,10 +946,6 @@ def pick_skill_md(files: Dict[str, str]) -> Tuple[str, str]:
     return best[1], best[2]
 
 
-def default_category_from_source(src: ResolvedSource) -> str:
-    return "imported"
-
-
 # ── Whole packages — `P8-49` ────────────────────────────────────────────────
 #
 # The owner, 2026-09-30: *"adding a multi-layer skill package also does not

@@ -15,6 +15,7 @@ account.
 import sqlite3
 
 import pytest
+from src.utc_clock import utcnow_naive  # `B2196`: not the deprecated datetime.utcnow()
 
 
 @pytest.fixture
@@ -193,7 +194,6 @@ async def test_discard_all_stops_at_the_owner_boundary(db, handlers):
 async def test_approve_makes_the_poller_pick_it_up(db, handlers):
     """The staged row has a far-future `send_at` the poller never reaches, so
     flipping the status alone would leave it exactly as stuck as before."""
-    from datetime import datetime
     _stage(db, "d1", "alice")
     assert _status(db, "d1")[1].startswith("2999")
     out = await _call(handlers["approve"], sid="d1", owner="alice")
@@ -201,7 +201,7 @@ async def test_approve_makes_the_poller_pick_it_up(db, handlers):
     status, send_at = _status(db, "d1")
     assert status == "pending"
     assert not send_at.startswith("2999")
-    assert send_at <= datetime.utcnow().isoformat()
+    assert send_at <= utcnow_naive().isoformat()
 
 
 @pytest.mark.asyncio

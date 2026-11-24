@@ -30,6 +30,7 @@ from mcp.types import Tool, TextContent
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src.mcp_tool_server import serve_stdio, tool_server  # noqa: E402
+from src.utc_clock import utcnow_naive  # noqa: E402 — `B2196`, not the deprecated datetime.utcnow()
 
 EMAIL_SOCKET_TIMEOUT = float(os.environ.get("EMAIL_SOCKET_TIMEOUT", "20"))
 # `B1230`. How long OPENING a mail connection may take — the TCP connect, the
@@ -1420,7 +1421,7 @@ def _stash_agent_draft(*, to, subject, body, in_reply_to=None, references=None,
         return {"success": False, "error": "Pending-email storage unavailable"}
     pending_id = uuid.uuid4().hex[:16]
     far_future = "9999-12-31T00:00:00"
-    now = datetime.utcnow().isoformat()
+    now = utcnow_naive().isoformat()
     try:
         conn = sqlite3.connect(SCHEDULED_EMAILS_DB)
         # Touch the schema in case the email-routes init hasn't run yet

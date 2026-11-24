@@ -12,6 +12,7 @@ from typing import Dict, Optional
 
 from src.constants import VAULT_FILE
 from src.tools._common import _parse_tool_args
+from src.utc_clock import utcnow_naive  # `B2196`: not the deprecated datetime.utcnow()
 
 logger = logging.getLogger(__name__)
 
@@ -314,8 +315,7 @@ async def do_vault_unlock(content: str, owner: Optional[str] = None) -> Dict:
         except Exception:
             pass
     cfg["session"] = session
-    from datetime import datetime as _dt
-    cfg["unlocked_at"] = _dt.utcnow().isoformat()
+    cfg["unlocked_at"] = utcnow_naive().isoformat()
     p.write_text(json.dumps(cfg, indent=2), encoding="utf-8")
     try:
         import os as _os

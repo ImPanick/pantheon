@@ -1195,8 +1195,9 @@ def setup_history_routes(session_manager, upload_handler=None) -> APIRouter:
             raise HTTPException(500, str(e))
 
     # (`B1453`: `GET /api/conversations/topics` was here with no caller in any
-    # layer. `src/topic_analyzer.analyze_topics` stays — the memory extractor's
-    # fallback uses it, owner-scoped.)
+    # layer. `src/topic_analyzer.analyze_topics` stays, owner-scoped, though
+    # nothing calls it: `B2161` — the memory extractor's fallback is
+    # `MemoryManager.extract_memory_from_chat`, not this.)
 
     @router.get("/api/session/{session_id}/context")
     async def get_session_context_usage(request: Request, session_id: str) -> Dict[str, Any]:

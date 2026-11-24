@@ -17,7 +17,7 @@ for nobody reads nothing once there are accounts (`B1271`).
 Pantheon's own finding; upstream Odysseus has the same query.
 """
 import json
-from datetime import datetime, timedelta
+from datetime import timedelta
 from types import SimpleNamespace
 
 import pytest
@@ -27,6 +27,7 @@ from sqlalchemy.pool import StaticPool
 
 import core.database as cdb
 from src import builtin_actions
+from src.utc_clock import utcnow_naive  # `B2196`: not the deprecated datetime.utcnow()
 
 UNTOUCHED = (None, "normal", None)   # event_type, importance, color as stored
 
@@ -42,7 +43,7 @@ def calendars(monkeypatch):
     factory = sessionmaker(bind=engine)
     monkeypatch.setattr(cdb, "SessionLocal", factory)
 
-    soon = datetime.utcnow() + timedelta(days=2)
+    soon = utcnow_naive() + timedelta(days=2)
     rows = [
         ("alice", "Catch up with Sam", "Alice's kitchen", soon, "confirmed"),
         ("alice", "Called off coffee", "", soon, "cancelled"),

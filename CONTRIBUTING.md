@@ -114,9 +114,12 @@ Manual development uses Python 3.11+:
 ```bash
 python3 -m venv venv
 source venv/bin/activate
-pip install -r requirements.txt
+pip install -r requirements.txt -r requirements-dev.txt
 python -m uvicorn app:app --host 127.0.0.1 --port 7000
 ```
+
+`requirements-dev.txt` is the test runner and what only tests import; the image and the launchers
+install `requirements.txt` alone. CI and the image run Python 3.14.
 
 Windows is not actively tested. Docker on Linux or a Linux/macOS manual install is the safer path for now.
 

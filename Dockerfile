@@ -10,6 +10,11 @@
 # request; move every `FROM` together (`B1591`'s stage and the desktop client's
 # share the base on purpose). tests/test_searxng_image_pinned.py holds every
 # Dockerfile to it.
+#
+# `D-2026-11-24-03`. 3.14.10 is still the newest 3.14, and 3.15 (#92) is not
+# taken: onnxruntime, which the embeddings and both CPU voices run on, has no
+# wheel for 3.15 and no source to build one from (1.32.0, 2026-11-13). Move
+# every `FROM` to 3.15 with the onnxruntime release that publishes cp315.
 
 # ---- builder: patch + build wheels for Real-ESRGAN's broken-on-3.14 deps ----
 # basicsr/gfpgan/facexlib read their version via exec()+locals()['__version__'],
@@ -152,7 +157,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # /var/run/docker.sock mount). The Debian `docker.io` package ships
 # dockerd but not the client binary on slim, so grab the static client
 # tarball from download.docker.com instead.
-ARG DOCKER_CLI_VERSION=29.6.2
+ARG DOCKER_CLI_VERSION=29.10.0
 RUN ARCH="$(dpkg --print-architecture)" \
     && case "$ARCH" in \
          amd64) DARCH=x86_64 ;; \

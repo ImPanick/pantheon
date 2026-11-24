@@ -4276,6 +4276,118 @@ Each ruling below is his, in his words where they are short.
 9. **Code-scanning alerts** `#526`, `#528`, `#530`, `#531` and `#536` are false
    positives to dismiss. *"Dismiss false-positives."*
 
+## D-2026-11-24-01 - wire what is unwired; remove only what is provably dead
+
+The owner, 2026-11-24 18:33 UTC, verbatim: *"No dead code but we dont delete..
+we wire it in where it's unwired and loop make the systems work. If its truly,
+no shit dead code.. We can remove it."*
+
+This supersedes `Law 1`'s *no deletion without a `DELETE` ruling* for the
+wiring audit of 2026-11-24 (`B2150`–`B2163`), and for that audit only. What it
+permits and what it cost:
+
+1. **Wired** where the thing had a clear purpose and a live place to serve it:
+   the document index records its retrieval hit rate (`B2152`), the Workbench
+   asks the tile manager whether it is maximized (`B2158`), the Growth view
+   asks only for the periods it offers (`B2159`), the capability reader
+   registry is typed by the contract `base.py` declares (`B2160`).
+2. **Removed** only where a search across `.py/.js/.html/.css/.md/.yml/.json/
+   .sh`, tests and Dockerfiles included, plus `getattr`/`importlib`/route
+   tables, was empty outside the definition, **or** the thing was superseded by
+   a live replacement named on its row (`B2150`, `B2151`, `B2153`–`B2157`).
+   Cost: two test files that pinned `RAGManager`, a wrapper the running product
+   never built, went with it; an operator who ran `scripts/index_documents.py`
+   by hand now re-indexes from Personal documents, which indexes under their
+   own name instead of under nobody's.
+3. **Left alone and listed** where the purpose is unclear, the surface is
+   public, or the call is a product decision (`B2162`): the vector tool
+   retrieval switch, `src/topic_analyzer.py`, `POST /api/auth/signup-toggle`,
+   `mcp_servers/memory_server.py`, the test-only route shims, the
+   maintainer scripts, `ge:inpaint-done`, and the test seams.
+## D-2026-11-24-04 — every non-Python dependency to its newest release, Dependabot onto `dev`, branch protection on `main` only
+
+The owner (Panick), 2026-11-24, verbatim: *"Branch protection. only on main.
+No dead code but we dont delete.. we wire it in where it's unwired and loop
+make the systems work. If its truly, no shit dead code.. We can remove it.
+Delete duplicates but ensure anything that is deleted is \*truly\* unused. Need
+all dependencies at the newest version and the platform made compatible with
+current and future updates.. etc.. Re-audit as needed prior to performing
+work.. There's been a lot of changes since then."*
+
+This entry records what that ruling did to the non-Python dependencies
+(`B2210`–`B2220`). Python dependencies, duplicates and dead code are recorded
+by the other workers of the same day.
+
+1. **Holds it overrides.** `D-2026-10-29-02` §4 (docx stays on 9.7.1) and §5
+   (Mermaid stays on 11.x), and the holds filed under them — `B423`, `B424`'s
+   `behind_ok`, `B1673` — and `B425`'s Pyodide `stable-0.27` line. Each was a
+   "measure first" hold; each library was measured here before it moved, and
+   the measurement is in its row: docx 9.16.0 (`B2219`), Mermaid 12.3.0 with
+   `layout: 'dagre'` and `look: 'classic'` named so existing diagrams resolve
+   as they did (`B2220`), Pyodide 314.0.8 with `enableRunUntilComplete` named
+   (`B2215`). KaTeX 0.19.1 (`B2217`), Swagger UI 5.36.0 (`B2218`), DOMPurify
+   3.5.0 and mammoth 1.13.0 (`B2216`) had no hold.
+2. **Branch protection is `main` only** (`B2212`). `docs/security-ci.md` §1
+   names twelve required checks, a pull request with no required approvals and
+   no Code Owners review, admins not enforced, no force pushes or deletions,
+   and no rule for `dev`. The settings themselves are the owner's to apply.
+3. **Dependabot opens against `dev`** (`B2210`), and the weekly
+   *Vendored freshness* job reads `dev` on its schedule.
+4. **Held on purpose, each for a measured reason** (`B2214`): Rocky Linux stays
+   on 9 (KasmVNC publishes no EL10 build, and Rocky 10 needs x86-64-v3); the
+   SearXNG image stays where it is until it can be booted; scrcpy stays on
+   3.3.4, because `control.py` speaks that release's wire protocol and the
+   change needs a phone to check.
+5. **Open for the owner.** elkjs, now inside `mermaid.min.js`, is offered as
+   EPL-2.0 OR GPL-3.0-or-later; which offer Pantheon takes is not decided here
+   (CREDITS *Licence scope*). SheetJS could not be re-checked from this
+   environment (its CDN is unreachable); it is recorded at 0.20.3.
+## D-2026-11-24-03 - every Python dependency at its newest, and the image on the newest Python that can carry it
+
+The owner, 2026-11-24: *"Need all dependencies at the newest version and the
+platform made compatible with current and future updates.. etc.. Re-audit as
+needed prior to performing work.."*
+
+1. **Every pin moves to the newest release on PyPI (`B2190`), majors
+   included,** in `requirements*.txt`, `voice/chatterbox/requirements.txt` and
+   the Android host's hash-checked lock. Where the newest cannot be installed,
+   the pin is the newest that can, and the reason stands beside it:
+   - `python-dateutil` 2.9.0.post0 (4.0.0 is out): `recurring-ical-events`
+     3.8.2, the newest, which caldav reaches, declares `<3.0.0`. Dependabot's
+     #93 was red for this one line.
+   - `numpy` 2.5.5 needs Python 3.12; a 3.11 host keeps 2.4.6 under a marker.
+     PyAV the same on the Android host (19.0.2 / 18.1.1).
+   - `av` 18.1.1 in the speech sets: faster-whisper 1.2.1 cannot open a
+     recording with 19 (`B1716`, unchanged).
+   - `charset-normalizer` 3.5.1 (3.5.3 is out): from 3.5.2 it offers a
+     Japanese codec for a GB line that quotes Japanese and `B1596`'s rule
+     takes it, mojibake; the rule fix is `B2197`, filed open.
+   - `huggingface-hub` 1.33.0 (2.4.0 is out): fastembed, transformers and
+     gradio all hold it below 2.0.
+   - Chatterbox's `fastapi` 0.163.2: chatterbox-tts 0.1.7 pins gradio 6.8.0,
+     which holds Starlette below 1.0, and FastAPI 0.164 needs 1.6.
+2. **The image stays on `python:3.14.10-slim`, the newest 3.14, and does not
+   take 3.15 (Dependabot's #92).** Measured with `uv pip compile` for CPython
+   3.15.2: onnxruntime 1.32.0 (2026-11-13), the newest, publishes cp311-cp314
+   wheels and no source, and fastembed (RAG, memory, tool selection),
+   faster-whisper, Piper and markitdown's magika all need it;
+   py-rust-stemmers 0.1.8 has no cp315 wheel either, and markitdown 0.1.8 on
+   declares `<3.15`. #92's own build failed earlier, on
+   youtube-transcript-api 1.2.4 (`<3.15`, fixed in 1.2.5, taken here).
+   **What reopens this:** an onnxruntime release with cp315 wheels. The
+   product's own code is checked on 3.15.2 meanwhile (the PR says which
+   files), so the move is a pin change when it comes.
+3. **CI runs the image's Python** (`B2192`): every `python-version` in
+   `ci.yml` is 3.14, so `check-ci-contract.py` rule 10 excuses nothing. The
+   supported floor for a host stays 3.11 (the launchers, `docs/setup.md`); it
+   is held by ruff's `target-version = "py311"`, which refuses newer syntax,
+   and by the markers in item 1, not by a second suite run.
+4. **The test runner is not a runtime dependency** (`B2192`): pytest,
+   pytest-asyncio and what only tests import live in `requirements-dev.txt`,
+   which CI installs and the image does not. Packages the product imports
+   directly and had only through another package are declared (`B2191`):
+   starlette, anyio, jsonschema, defusedxml, huggingface-hub, and onnxruntime
+   in the speech set.
 ## D-2026-11-24-02 - delete duplicates, but only what is truly unused
 
 The owner, 2026-11-24, for the duplicated-code pass: *"Delete duplicates but

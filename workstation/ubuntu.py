@@ -118,6 +118,11 @@ server stopped is started again on its next use and says so in the log, with
 how long it ran and its last words; a live-desktop server that keeps stopping
 within a minute is given up for Xvfb (`B1721`), because each start is a new
 session and a desktop that keeps reopening is the defect the person sees.
+**Log Out ends the session, not the display** (the owner, 2026-11-16: a
+black screen nothing brought back): the X server the viewer is joined to
+stays, so a session that ended is started again on it, at once and on the
+display's next use; one that keeps ending as it starts is left to the
+person's Restart (`ROUTES["restart"]`), which starts the display from nothing.
 
 **The grabber is `scrot`, measured** (2026-09-30, 1280x800 JWM desktop, three
 runs each): scrot PNG 64-70 ms and JPEG q75 20-24 ms; `xwd` plus a
@@ -246,6 +251,20 @@ RETIRED_HOME_FILES = {
 # keeps opening itself again.
 _QUICK_DEATH_S = 60.0
 _QUICK_DEATHS_MAX = 2
+# Log Out (reported by the owner, 2026-11-16: *"I logged out of the VM... And
+# now I'm in a blank (black) screen"*). Log Out ends the desktop session and
+# leaves the X server the person's viewer is joined to, so an ended session is
+# started again on that same server: by a watch on the session, a moment after
+# it ends (`_SESSION_AGAIN_AFTER_S`, so its own clients finish leaving), and on
+# the display's next use besides. A session that ends within `_SESSION_QUICK_S`
+# of starting, `_SESSION_QUICK_MAX` times in a row, is broken rather than
+# logged out of, and is not started in a loop: the display says so, and the
+# person's Restart (`ROUTES["restart"]`) starts the desktop from nothing.
+_SESSION_AGAIN_AFTER_S = 1.0
+_SESSION_QUICK_S = 10.0
+_SESSION_QUICK_MAX = 3
+SESSION_ENDED = ("The desktop session ended {times} times as soon as it started, so it is not "
+                 "started again by itself. Restart the workstation from its ⋯ menu.")
 # `D-2026-11-01-01`. What a display is for: the account's desktop, or its
 # browser's own screen — Firefox alone, with no desktop session around it
 # (`workstation/browser.py`), streamed like the desktop. Each has its own X
@@ -879,6 +898,15 @@ class XDisplay(Screen):
         self._server_tail: "collections.deque[str]" = collections.deque(maxlen=20)
         self._last_words = ""
         self._quick_deaths = 0
+        # Log Out: the desktop session on the server, when it started, how
+        # many in a row ended at once, and why it is no longer started again.
+        # `_generation` changes whenever the display is stopped, so a watch
+        # on a session from before then does nothing when that session ends.
+        self._session: Optional[subprocess.Popen] = None
+        self._session_started = 0.0
+        self._session_quick = 0
+        self._session_why = ""
+        self._generation = 0
 
     @property
     def name(self) -> Optional[str]:
@@ -913,6 +941,10 @@ class XDisplay(Screen):
     def start(self) -> str:
         with self._lock:
             if self.running() and self.number is not None:
+                # Log Out ended the session and left the server: the viewer
+                # is joined to a bare root window until a session is back.
+                if self._session_ended():
+                    self._session_again_locked()
                 return f":{self.number}"
             if self._procs:
                 # Said, because a display that keeps stopping is otherwise a
@@ -958,33 +990,105 @@ class XDisplay(Screen):
                 logger.info("%s screen :%s started for %s, live on 127.0.0.1:%s", self.role,
                             self.number, self.account, desktop[0] if desktop else "-")
                 return f":{self.number}"
-            _, denv = self.system.run_as(self.account)
-            # `D-2026-10-31-02`: XFCE, or JWM on a machine without it.
-            program, extra = desktop_session()
-            xfce = program == [XFCE_SESSION]
-            if xfce:
-                self.system.add_desktop_settings(self.account)
-                self.system.retire_shipped_files(self.account)  # `B1721`
-            # A session bus of the account's own, so a second Firefox launch
-            # finds the first one (without it: "Firefox is already running"),
-            # and XFCE's settings daemon (xfconfd) has a bus to be started on.
-            session = ["dbus-run-session", "--"] if shutil.which("dbus-run-session") else []
-            try:
-                self._procs.append(subprocess.Popen(
-                    [*prefix, *session, *program], env={**denv, **extra},
-                    cwd=str(self.system.home(self.account)),
-                    stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL, start_new_session=True))
-            except OSError as e:
-                logger.warning("desktop for %s did not start: %s", self.account, e)
-            else:
-                waited = self._wait_for_wm(prefix, denv, panel=xfce)
-                logger.debug("desktop (%s) for %s ready after %.2f s", program[0], self.account,
-                             waited)
+            self._start_session_locked()
             self._open_watch()  # `B974`
             logger.info("display :%s started for %s%s", self.number, self.account,
                         f", live desktop on 127.0.0.1:{desktop[0]}" if desktop else "")
             return f":{self.number}"
+
+    def _start_session_locked(self) -> None:
+        """The desktop session on the running server, as the account, and a
+        watch that starts it again when it ends (Log Out). Called with the
+        lock held, by `start` and by `_session_again_locked`."""
+        prefix, _ = self.system.run_as(self.account, with_display=False)
+        _, denv = self.system.run_as(self.account)
+        # `D-2026-10-31-02`: XFCE, or JWM on a machine without it.
+        program, extra = desktop_session()
+        xfce = program == [XFCE_SESSION]
+        if xfce:
+            self.system.add_desktop_settings(self.account)
+            self.system.retire_shipped_files(self.account)  # `B1721`
+        # A session bus of the account's own, so a second Firefox launch
+        # finds the first one (without it: "Firefox is already running"),
+        # and XFCE's settings daemon (xfconfd) has a bus to be started on.
+        session = ["dbus-run-session", "--"] if shutil.which("dbus-run-session") else []
+        self._procs = self._procs[:1]
+        self._session = None
+        try:
+            proc = subprocess.Popen(
+                [*prefix, *session, *program], env={**denv, **extra},
+                cwd=str(self.system.home(self.account)),
+                stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL, start_new_session=True)
+        except OSError as e:
+            logger.warning("desktop for %s did not start: %s", self.account, e)
+            return
+        self._procs.append(proc)
+        self._session = proc
+        self._session_started = time.monotonic()
+        threading.Thread(target=self._watch_session, args=(proc, self._generation),
+                         name=f"desktop-session-{self.account}", daemon=True).start()
+        waited = self._wait_for_wm(prefix, denv, panel=xfce)
+        logger.debug("desktop (%s) for %s ready after %.2f s", program[0], self.account, waited)
+
+    def _session_ended(self) -> bool:
+        """Whether this desktop's session ended (Log Out) and is to be
+        started again: not on the browser's or the phone's screen, which have
+        none, and not once it was given up as broken."""
+        session = self._session
+        return (self.role == "desktop" and session is not None and session.poll() is not None
+                and not self._session_why)
+
+    def _session_again_locked(self) -> None:
+        """A new desktop session on the same server, which keeps the viewer
+        joined — unless sessions keep ending as soon as they start, which is
+        said (`desktop_why`) and left to the person's Restart."""
+        lived = time.monotonic() - self._session_started
+        code = self._session.returncode if self._session is not None else None
+        self._session_quick = self._session_quick + 1 if lived < _SESSION_QUICK_S else 0
+        if self._session_quick >= _SESSION_QUICK_MAX:
+            self._session_why = SESSION_ENDED.format(times=self._session_quick)
+            logger.warning("display :%s for %s: %s (last exit %s)", self.number, self.account,
+                           self._session_why, code)
+            return
+        logger.info("the desktop session on :%s for %s ended (exit %s) after %.0f s; starting a "
+                    "new one", self.number, self.account, code, lived)
+        self._start_session_locked()
+
+    def _watch_session(self, proc: subprocess.Popen, generation: int) -> None:
+        """Wait for this session to end, then start it again (Log Out) — if
+        the display it was on is still the one running, and nothing else
+        started a session meanwhile."""
+        wait = getattr(proc, "wait", None)
+        if not callable(wait):
+            return
+        try:
+            wait()
+        except Exception:  # noqa: BLE001 — a session that cannot be waited for is not watched
+            logger.debug("display for %s: its desktop session cannot be waited for",
+                         self.account, exc_info=True)
+            return
+        time.sleep(_SESSION_AGAIN_AFTER_S)
+        with self._lock:
+            if (generation != self._generation or self._session is not proc
+                    or not self.running() or not self._session_ended()):
+                return
+            try:
+                self._session_again_locked()
+            except Exception:  # noqa: BLE001 — the next use of the display tries again
+                logger.warning("display :%s for %s: the desktop session could not be started "
+                               "again", self.number, self.account, exc_info=True)
+
+    def restart(self) -> str:
+        """`ROUTES["restart"]`: this display from nothing — its server, its
+        session, a new stream — and anything given up on it is tried again.
+        Who drives is kept, as across any restart of the display."""
+        with self._lock:
+            self._stop_locked()
+            self._quick_deaths = 0
+            self._session_quick = 0
+            self._session_why = ""
+        return self.start()
 
     def _start_server(self, prefix: List[str], env: Dict[str, str], auth: Path,
                       uid: int) -> Tuple[subprocess.Popen, int, Optional[Tuple[int, DesktopLogins]]]:
@@ -1081,7 +1185,7 @@ class XDisplay(Screen):
 
     @property
     def desktop_why(self) -> str:
-        return self._desktop_why or self._said("none")
+        return self._session_why or self._desktop_why or self._said("none")
 
     def desktop(self, viewer: str) -> Tuple[int, str]:
         """`(port, Authorization)` for `viewer` on this display's stream,
@@ -1176,9 +1280,11 @@ class XDisplay(Screen):
         if self._watch is not None:  # `B974`
             self._watch.close()
             self._watch = None
+        self._generation += 1   # a watch on a session from before this does nothing
         for proc in reversed(self._procs):
             _stop(proc)
         self._procs = []
+        self._session = None
         self.number = None
         self._desktop = None  # its logins die with it; the next start makes new ones
 
@@ -1469,7 +1575,8 @@ class UbuntuSystem(System):
                     folder.mkdir()
                 if uid is not None:
                     gid = self.projects_gid if self.projects_gid is not None else uid
-                    if self.projects_gid is None and self.backend == "vm":
+                    if (self.projects_gid is None and self.backend == "vm"
+                            and not self.sudo_locked_off):
                         # Inside a VM backend's machine the folder is the
                         # host's own, shared over 9p, and the host has already
                         # given it to Pantheon's group (`vm.project_share`).
@@ -1478,6 +1585,9 @@ class UbuntuSystem(System):
                         # account's own group locked Pantheon out of it, so
                         # Connect USB said "Permission denied: <folder>"
                         # (owner's Windows host, 2026-11-21). Keep the host's.
+                        # Not on the machine several people share: there no
+                        # group is reserved for Pantheon, so the host's number
+                        # can be another account's own group here.
                         held = os.stat(folder, follow_symlinks=False).st_gid
                         if held != 0:
                             gid = held
@@ -1653,8 +1763,19 @@ class UbuntuSystem(System):
                     # account (sudo is on to be here) can still fix itself.
                     logger.warning("could not give %s to %s: %s", p, account, e)
 
+    #: Placement (the owner, 2026-11-17). Set on a VM backend's SHARED machine
+    #: (`__main__.build`, from its app disk): several people have an account
+    #: here and only Unix permissions keep them apart, so `sudo` is off and
+    #: stays off — a `config` asking for it on writes it off, here as well as
+    #: on the host that never asks (`vm.Fleet.ready`).
+    sudo_locked_off = False
+
     def set_sudo(self, on: bool) -> None:
         on = bool(on)
+        if on and self.sudo_locked_off:
+            logger.warning("sudo stays off: this machine is shared by several people, and "
+                           "with sudo one person's agent is root and reads every home")
+            on = False
         write_sudoers(on, self.sudoers_path)
         self.state_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
         path = self._settings_path()

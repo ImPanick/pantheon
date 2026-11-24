@@ -7,6 +7,7 @@ import asyncio
 import collections
 import hashlib
 import time
+from src.utc_clock import utcnow_naive  # `B2196`: not the deprecated datetime.utcnow()
 
 # On Windows, asyncio.create_subprocess_exec/shell require the ProactorEventLoop.
 # When started via `python -m uvicorn` from a terminal, uvicorn sets this
@@ -65,8 +66,8 @@ from starlette.middleware.gzip import GZipMiddleware
 
 # Core imports
 from core.constants import (
-    BASE_DIR, STATIC_DIR, SESSIONS_FILE,
-    REQUEST_TIMEOUT, OPENAI_API_KEY, AUTH_FILE,
+    BASE_DIR, STATIC_DIR,
+    REQUEST_TIMEOUT, AUTH_FILE,
 )
 from core.database import SessionLocal, ApiToken
 from core.api_tokens import (
@@ -661,7 +662,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
                             _db = SessionLocal()
                             try:
                                 _db.query(ApiToken).filter(ApiToken.id == tid).update(
-                                    {"last_used_at": datetime.utcnow()}
+                                    {"last_used_at": utcnow_naive()}
                                 )
                                 _db.commit()
                             finally:
@@ -1140,7 +1141,9 @@ app.include_router(setup_image_proxy_routes())
 
 # Sessions
 from routes.session_routes import setup_session_routes
-session_config = {"REQUEST_TIMEOUT": REQUEST_TIMEOUT, "OPENAI_API_KEY": OPENAI_API_KEY, "SESSIONS_FILE": SESSIONS_FILE}
+# `B2157`: the routes read `REQUEST_TIMEOUT` and nothing else; the server's
+# `OPENAI_API_KEY` and `SESSIONS_FILE` rode along unread since `B1453`.
+session_config = {"REQUEST_TIMEOUT": REQUEST_TIMEOUT}
 app.include_router(setup_session_routes(
     session_manager,
     session_config,

@@ -38,7 +38,13 @@
     var loading = null;
     function load() {
       if (py) return Promise.resolve(py);
-      if (!loading) loading = loadPyodide({ indexURL: INDEX }).then(function (p) { py = p; return p; });
+      // `B2215`. Said explicitly: Pyodide turned it on by default in 0.27.7,
+      // and a default that moves again must not move what a block does.
+      // `loop.run_until_complete()` then runs where the browser has JS Promise
+      // Integration, and elsewhere raises a RuntimeError the wrapper prints as
+      // the run's traceback; 0.27.5 returned a pending Task instead.
+      if (!loading) loading = loadPyodide({ indexURL: INDEX, enableRunUntilComplete: true })
+        .then(function (p) { py = p; return p; });
       return loading;
     }
     self.onmessage = function (e) {

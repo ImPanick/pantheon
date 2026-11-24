@@ -28,7 +28,7 @@ import email
 import smtplib
 import socket
 import uuid
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 import pytest
 from fastapi import FastAPI
@@ -36,6 +36,7 @@ from fastapi.testclient import TestClient
 
 from tests.test_the_documents_tidy_asks_first import LONG_AGO, cdb, doc, world  # noqa: F401
 from tests.test_a_document_the_ai_tidy_keeps_is_not_edited import library  # noqa: F401
+from src.utc_clock import utcnow_naive  # `B2196`: not the deprecated datetime.utcnow()
 
 OWNER = "bob"
 REPLY_SUBJECT = "Q3 Board Pack – final (v2)"
@@ -252,7 +253,7 @@ def chat(world, name="Email: " + REPLY_SUBJECT, messages=0):
     db.add(cdb.Session(id=sid, owner=OWNER, name=name, model="m", endpoint_url="http://x"))
     for i in range(messages):
         db.add(cdb.ChatMessage(id=str(uuid.uuid4()), session_id=sid, role="user",
-                               content=f"message {i}", timestamp=datetime.utcnow()))
+                               content=f"message {i}", timestamp=utcnow_naive()))
     db.commit()
     db.close()
     return sid

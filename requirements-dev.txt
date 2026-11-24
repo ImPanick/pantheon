@@ -1,0 +1,26 @@
+# What the test suite needs on top of requirements.txt (`B2192`).
+#
+# pytest and pytest-asyncio were pinned in requirements.txt, so every image and
+# every host install carried a test runner the product never runs. They live
+# here now, with the other packages only tests import, and CI installs both
+# files:
+#
+#     pip install -r requirements.txt -r requirements-dev.txt
+#
+# The image does not install this file (the Dockerfile copies only the runtime
+# sets). Pinned exactly, for the reasons in requirements.txt's header (`B320`);
+# `.pantheon/check-pins.py` and Dependabot's pip entry for "/" cover it like
+# every `requirements*.txt` at the top of the tree.
+
+pytest==9.2.0
+# Not imported: pytest loads it by entry point as a plugin; `asyncio_mode =
+# "auto"` in pyproject.toml is the setting it reads.
+pytest-asyncio==1.5.0
+# Imported by the tests that read the compose files and workflows as YAML;
+# caldav brings it at runtime, which is not a promise a test may lean on.
+PyYAML==6.0.4
+# Imported by the tests that compare versions and specifiers
+# (`test_mcp_dependency_compatibility.py`, `test_kokoro_optional_requirements.py`,
+# `test_speech_to_text_keeps_up_with_a_conversation.py`), and by
+# `tests/conftest.py` to read a requirement's environment marker.
+packaging==26.4

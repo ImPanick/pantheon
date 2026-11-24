@@ -24,6 +24,7 @@ from src.tool_policy import tool_toggle_enabled
 from routes.prefs_routes import _load_for_user as load_prefs_for_user
 
 from fastapi import HTTPException
+from src.utc_clock import utcnow_naive  # `B2196`: not the deprecated datetime.utcnow()
 
 logger = logging.getLogger(__name__)
 
@@ -268,7 +269,7 @@ def _enforce_chat_privileges(request, sess) -> None:
     if cap <= 0:
         return
 
-    from datetime import datetime as _dt, timedelta as _td
+    from datetime import timedelta as _td
     from core.database import Session as _DbSess, ChatMessage as _Cm
     db = SessionLocal()
     try:
@@ -277,7 +278,7 @@ def _enforce_chat_privileges(request, sess) -> None:
             .join(_DbSess, _Cm.session_id == _DbSess.id)
             .filter(_DbSess.owner == user,
                     _Cm.role == "user",
-                    _Cm.timestamp >= _dt.utcnow() - _td(days=1))
+                    _Cm.timestamp >= utcnow_naive() - _td(days=1))
             .count()
         )
     finally:

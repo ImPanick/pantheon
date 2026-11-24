@@ -27,7 +27,7 @@ import os
 import re
 import sys
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 try:
@@ -207,7 +207,7 @@ def _build_new_entry(repo: str, recipe: dict, hf_info=None) -> dict | None:
         downloads = int(getattr(hf_info, "downloads", 0) or 0)
         likes = int(getattr(hf_info, "likes", 0) or 0)
     if not rel_date:
-        rel_date = str(meta.get("date_updated") or datetime.utcnow().strftime("%Y-%m-%d"))
+        rel_date = str(meta.get("date_updated") or datetime.now(timezone.utc).strftime("%Y-%m-%d"))
 
     entry: dict = {
         "name": repo,

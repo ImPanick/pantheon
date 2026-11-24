@@ -1,7 +1,12 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """
 Topic analysis for conversations — deduplicated from app.py.
-Used by /api/conversations/topics and /api/memory/extract fallback.
+
+`B2161`. Nothing in the running product calls this. It served
+`GET /api/conversations/topics`, retired by `B1453` with no caller; the note
+left there said `/api/memory/extract`'s fallback uses it, and that fallback is
+`MemoryManager.extract_memory_from_chat`, which does not. Kept, owner-scoped
+and tested, until the owner decides between a door and a deletion.
 """
 
 import re

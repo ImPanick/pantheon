@@ -13,6 +13,7 @@ import time
 import uuid
 from datetime import datetime, timezone
 from typing import Dict, Optional
+from src.utc_clock import utcnow_naive  # `B2196`: not the deprecated datetime.utcnow()
 
 # How many saved secrets per encrypted column are tried against the key, and for
 # how long a verdict stands. A wrong key fails every row alike, so a few rows say
@@ -167,5 +168,5 @@ def check_readiness(auth_manager=None) -> Dict[str, object]:
         "ready": ready,
         "version": APP_VERSION,
         "checks": checks,
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": utcnow_naive().isoformat(),
     }

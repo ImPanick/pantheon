@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 #
 # Make an Ubuntu 24.04 machine the workstation's userland — `P20-07`. Since
-# `B1747` also Debian 13, Fedora 44 and Rocky Linux 9 (the RHEL 9 family): the
+# `B1747` also Debian 13, Fedora 45 and Rocky Linux 9 (the RHEL 9 family): the
 # same workstation on each, which system read from /etc/os-release. Ubuntu and
 # Debian share one apt list; Fedora and Rocky one dnf list (`DNF_PACKAGES`),
 # the same things under their names there, with the differences named where
@@ -280,7 +280,7 @@ packages_apt() {
     fi
 }
 
-# `B1747`. Fedora 44 and Rocky Linux 9: the same workstation with dnf.
+# `B1747`. Fedora 45 and Rocky Linux 9: the same workstation with dnf.
 packages_dnf() {
     os=$1
     image=$2

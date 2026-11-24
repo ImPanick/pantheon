@@ -7,7 +7,7 @@
 //
 // It replaces `html2pdf_export_chain.js` (`B334`), which drove the same span
 // against `html2pdf.bundle.min.js`. That bundle is gone (`D-2026-10-29-02`
-// §2): jsPDF 4.2.1, html2canvas 1.4.1 and DOMPurify 3.4.17 ship as their own
+// §2): jsPDF 4.2.1, html2canvas 1.4.1 and DOMPurify (3.5.0 since `B2216`) ship as their own
 // published files, and `_rasterisePdf` calls
 //
 //     new jspdf.jsPDF(PDF_PAGE).html(container.outerHTML, { worker, margin,

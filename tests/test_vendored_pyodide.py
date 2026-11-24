@@ -35,7 +35,7 @@ SANDBOX_PAGE = ROOT / "static" / "python-sandbox.html"
 MIDDLEWARE = ROOT / "core" / "middleware.py"
 PYODIDE = ROOT / "static" / "lib" / "pyodide"
 
-REQUIRED = ("pyodide.js", "pyodide.asm.js", "pyodide.asm.wasm",
+REQUIRED = ("pyodide.js", "pyodide.asm.mjs", "pyodide.asm.wasm",
             "python_stdlib.zip", "pyodide-lock.json")
 
 
@@ -99,7 +99,7 @@ def test_vendored_bytes_match_the_pinned_hashes():
 def test_manifest_records_what_is_on_disk():
     m = json.loads((PYODIDE / "MANIFEST.json").read_text(encoding="utf-8"))
     assert m["licence"] == "MPL-2.0"
-    assert m["version"] == "0.27.5"
+    assert m["version"] == "314.0.8"
     for name in REQUIRED:
         want = m["files"][name]
         got = hashlib.sha256((PYODIDE / name).read_bytes()).hexdigest()
