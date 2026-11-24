@@ -1,10 +1,11 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 from email.message import EmailMessage
 
-from routes.email_routes import (
-    _dedupe_unsubscribe_candidates,
-    _email_unsubscribe_candidate_from_msg,
-    _parse_list_unsubscribe_header,
+# `B2171`: the one scorer the page and the agent share.
+from src.mail_unsubscribe import (
+    dedupe_unsubscribe_candidates as _dedupe_unsubscribe_candidates,
+    parse_list_unsubscribe_header as _parse_list_unsubscribe_header,
+    unsubscribe_candidate_from_msg as _email_unsubscribe_candidate_from_msg,
 )
 
 

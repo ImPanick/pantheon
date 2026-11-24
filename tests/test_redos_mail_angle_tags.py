@@ -52,7 +52,8 @@ _CASES += ["".join(_rng.choices(["<", ">", "<>", "a", " ", "\n", "<b>", "@"], k=
 
 def test_every_strip_and_scan_finds_what_the_old_patterns_found():
     import mcp_servers.email_server as server
-    from routes.email_routes import _message_id_chain, _parse_list_unsubscribe_header
+    from routes.email_routes import _message_id_chain
+    from src.mail_unsubscribe import parse_list_unsubscribe_header
     from src.integrations import _strip_html_tags
 
     for allow_empty, replacement in itertools.product((False, True), ("", " ")):
@@ -72,7 +73,8 @@ def test_every_strip_and_scan_finds_what_the_old_patterns_found():
     assert _message_id_chain(header, "<d@example.com>") == [
         "<a@example.com>", "<b@example.com>", "<d@example.com>"]
     unsubscribe = "<mailto:list@example.com?subject=unsubscribe>, <https://example.com/u/t>"
-    for parse in (_parse_list_unsubscribe_header, server._parse_list_unsubscribe_header):
+    # `B2171`: one parser now, the page's and the MCP server's alike.
+    for parse in (parse_list_unsubscribe_header,):
         assert [(m["kind"], m["target"]) for m in parse(unsubscribe)] == [
             ("mailto", "list@example.com"), ("url", "https://example.com/u/t")]
 
@@ -84,7 +86,8 @@ def test_a_mail_of_unclosed_angle_brackets_is_read_within_the_budget():
         "from email.mime.text import MIMEText\n"
         "import mcp_servers.email_server as server\n"
         "from routes.email_helpers import _extract_text\n"
-        "from routes.email_routes import _message_id_chain, _parse_list_unsubscribe_header\n"
+        "from routes.email_routes import _message_id_chain\n"
+        "from src.mail_unsubscribe import parse_list_unsubscribe_header\n"
         "from src.integrations import _strip_html_tags\n"
         "flood = '<' * 200_000\n"
         "mail = MIMEMultipart('alternative')\n"
@@ -94,8 +97,7 @@ def test_a_mail_of_unclosed_angle_brackets_is_read_within_the_budget():
         "for name, read in (('the app reads the body', lambda: _extract_text(mail)),\n"
         "                   ('the MCP server reads the body', lambda: server._extract_text(mail)),\n"
         "                   ('the reply chain', lambda: _message_id_chain(flood, flood)),\n"
-        "                   ('List-Unsubscribe', lambda: _parse_list_unsubscribe_header(flood)),\n"
-        "                   ('the MCP List-Unsubscribe', lambda: server._parse_list_unsubscribe_header(flood)),\n"
+        "                   ('List-Unsubscribe', lambda: parse_list_unsubscribe_header(flood)),\n"
         "                   ('an integration answer', lambda: _strip_html_tags(flood))):\n"
         "    read()\n"
         "    print(name, 'done', flush=True)",
