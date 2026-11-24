@@ -271,14 +271,21 @@ VENDORED = [
         ),
     ),
     Vendored(
-        "mammoth.js", "mammoth", "1.12.3", "2026-09-16",
-        "https://registry.npmjs.org/mammoth/-/mammoth-1.12.3.tgz",
-        "v1.12.3",
+        "mammoth.js", "mammoth", "1.13.0", "2026-11-24",
+        "https://registry.npmjs.org/mammoth/-/mammoth-1.13.0.tgz",
+        "v1.13.0",
         files={"static/lib/mammoth.browser.min.js":
-               "f9465c0e4b91c6ab5fe03db285aa3c5bd33a1d20da781b8dffc5676bc9689a95"},
-        note="Bumped from 1.8.0 on 2026-09-16 (B331). Fixes a crash on a "
-             "document carrying mc:AlternateContent with no mc:Fallback, which "
-             "1.8.0 rejected with a TypeError and no import.",
+               "92914a3708cfdf1e62cb553d1856a7fedab21da83d8ee82845de2f897b368cab"},
+        note="Bumped from 1.12.3 on 2026-11-24 (B2216, D-2026-11-24-04); "
+             "1.8.0 -> 1.12.3 was B331. Upstream's `mammoth.browser.min.js` "
+             "byte for byte. 1.13.0 replaces bluebird with native promises "
+             "(637 KB -> 405 KB; `bluebird` leaves the bundle and keeps its "
+             "text, tests/test_bundled_package_notices.py), reads w:customXml "
+             "children and moved-revision paragraphs, and escapes more in its "
+             "Markdown writer. Pantheon awaits `convertToHtml`, which was only "
+             "ever documented as a promise, so the change of promise type does "
+             "not reach it (tests/test_vendored_libraries_still_work.py drives "
+             "the shipped file).",
     ),
     # `B421`, 2026-10-29 (`D-2026-10-29-02` §2). The `html2pdf.js` record is
     # GONE with its bundle, and with it the twenty-seven advisory excuses
@@ -312,18 +319,19 @@ VENDORED = [
              "Current, and zero advisories (OSV, 2026-10-29).",
     ),
     Vendored(
-        "DOMPurify", "dompurify", "3.4.17", "2026-10-29",
-        "https://registry.npmjs.org/dompurify/-/dompurify-3.4.17.tgz",
-        "v3.4.17",
+        "DOMPurify", "dompurify", "3.5.0", "2026-11-24",
+        "https://registry.npmjs.org/dompurify/-/dompurify-3.5.0.tgz",
+        "v3.5.0",
         files={"static/lib/purify.min.js":
-               "cd37898f9782adf54820c413191b5691803f0f137c799d6edcfd38523b4c2c31"},
-        note="B421. Upstream's `dist/purify.min.js` byte for byte. Zero "
-             "advisories (OSV, 2026-10-29), against the eighteen at the 3.3.1 "
-             "inside html2pdf.js 0.14.0. On Pantheon's path now, where it was "
-             "not before: `_rasterisePdf` hands jsPDF's `html()` a string, and "
-             "`html()` sanitises a string with this before it is put into the "
-             "page (driven in tests/test_the_fallback_pdf_is_jspdfs_own_with_"
-             "its_links_in_a_browser.py).",
+               "f69a46022ab1f53e969c8ebbca98172c8995785a9b3be72ea4a12d25b1a1bf67"},
+        note="B421 took 3.4.17 as its own file; B2216 (2026-11-24, "
+             "D-2026-11-24-04) moved it to 3.5.0, upstream's `dist/purify.min.js` "
+             "byte for byte. On Pantheon's path: `_rasterisePdf` hands jsPDF's "
+             "`html()` a string, and `html()` sanitises a string with this "
+             "before it is put into the page (driven in tests/test_the_fallback_"
+             "pdf_is_jspdfs_own_with_its_links_in_a_browser.py and "
+             "tests/harness/jspdf_export_chain.js, which pin the version read "
+             "from the shipped file).",
     ),
     # `B1674`, 2026-10-29 (`D-2026-10-29-03` §3, "Inter + a CJK font"). The
     # faces the fallback PDF embeds for what jsPDF's built-in fonts cannot

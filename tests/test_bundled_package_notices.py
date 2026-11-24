@@ -182,9 +182,11 @@ def _browserify_packages(path):
     return found
 
 
-# What mammoth 1.12.3's module maps name, read from the shipped bytes.
+# What mammoth 1.13.0's module maps name, read from the shipped bytes.
+# `B2216`: `bluebird` left with 1.13.0 ("Replace the use of bluebird with
+# native promises", mammoth's NEWS), so seventeen; its text stays (`MAMMOTH_LEFT`).
 MAMMOTH_EXPECTED = {
-    "@xmldom/xmldom", "base64-js", "bluebird", "buffer", "dingbat-to-unicode",
+    "@xmldom/xmldom", "base64-js", "buffer", "dingbat-to-unicode",
     "ieee754", "immediate", "isarray", "jszip", "lie", "lop", "option", "pako",
     "process", "readable-stream", "set-immediate-shim", "underscore",
     "xmlbuilder",
@@ -196,8 +198,23 @@ _GRANTS = {"MIT": "Permission is hereby granted, free of charge",
            "BSD": "Redistribution and use in source and binary forms"}
 
 
+MAMMOTH_LEFT = {"bluebird"}
+
+
+@pytest.mark.parametrize("pkg", sorted(MAMMOTH_LEFT))
+def test_a_package_that_left_mammoth_keeps_its_text_and_says_when(pkg):
+    """`Law 1` applied to paperwork, as for the html2pdf packages below: every
+    tag up to this bump ships `bluebird` inside mammoth 1.12.3, so its text and
+    row stay, and the row says which mammoth it was last inside."""
+    assert pkg not in _browserify_packages(MAMMOTH), f"{pkg} is back inside mammoth"
+    owners = [e for e in _licences().INVENTORY if pkg in e.bundled]
+    assert owners and (ROOT / "licenses" / owners[0].text).is_file(), pkg
+    rows = [ln for ln in _credit_lines(owners[0].text) if f"[{pkg}]" in ln]
+    assert any("1.12.3" in ln and "mammoth" in ln for ln in rows), rows
+
+
 def test_what_mammoth_carries_is_read_from_its_module_maps_and_declared():
-    """Eighteen packages, read out of the bytes and written down, so a mammoth
+    """Seventeen packages (eighteen before 1.13.0), read out of the bytes and written down, so a mammoth
     bump that changes them says which. Before `B1959`, nine of them were
     declared by no Entry and had no notice anywhere."""
     found = _browserify_packages(MAMMOTH)
@@ -322,7 +339,7 @@ def test_the_bundle_and_its_one_string_deviation_are_history_now():
 @pytest.mark.parametrize("file,marker,credited", [
     ("jspdf.umd.min.js", "Version 4.2.1", "jsPDF](https://github.com/parallax/jsPDF) v4.2.1"),
     ("html2canvas.min.js", "html2canvas 1.4.1", "html2canvas](https://github.com/niklasvh/html2canvas) v1.4.1"),
-    ("purify.min.js", "DOMPurify 3.4.17", "DOMPurify](https://github.com/cure53/DOMPurify) v3.4.17"),
+    ("purify.min.js", "DOMPurify 3.5.0", "DOMPurify](https://github.com/cure53/DOMPurify) v3.5.0"),
 ])
 def test_the_pdf_files_carry_the_versions_credits_claims(file, marker, credited):
     """`B421`. Each of the three files states its own release in its banner, so

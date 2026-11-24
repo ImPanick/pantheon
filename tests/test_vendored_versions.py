@@ -259,7 +259,7 @@ def test_credits_that_does_not_carry_the_recorded_version_fails(clean):
     the version that drifts, and it drifted for weeks."""
     credits = clean / "CREDITS.md"
     credits.write_text(
-        credits.read_text(encoding="utf-8").replace("mammoth.js) v1.12.3",
+        credits.read_text(encoding="utf-8").replace("mammoth.js) v1.13.0",
                                                     "mammoth.js) v1.8.0"),
         encoding="utf-8")
     r = run(clean)
