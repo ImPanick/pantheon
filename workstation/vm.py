@@ -32,6 +32,22 @@ Pantheon's. A person who is root in their machine can read their token and
 reach the other machines' forwarded ports through QEMU's host alias, and every
 one of them refuses it. Pantheon's token is checked here and never leaves.
 
+**OR ONE MACHINE SEVERAL PEOPLE SHARE, WHEN THE ADMIN SAYS SO.** The owner
+(2026-11-17): a lean install should not need a VM per person, and a large one
+should be able to give its power users one. So a person is *placed*
+(`protocol.PLACEMENTS`): a machine of their own, as above, or an account on
+the one shared machine (`protocol.SHARED_MACHINE`), made the first time they
+use it, by that machine's daemon, the way the container makes one. The
+admin's default is for people who have no workstation yet, and an admin may
+place any one person either way; a person stays where their workstation was
+made unless the admin moves them (`placement_of`). The wall between two
+people on the shared machine is Unix permissions, so `sudo` is off in it and
+stays off whatever the admin chose for machines of their own — the host
+never asks it on, and the machine's daemon refuses it (`UbuntuSystem
+.sudo_locked_off`). Each person's processes are hidden from the others
+(`/proc` `hidepid`), and the projects root is shared into it with each
+person's folder theirs and Pantheon's group's alone, as in the container.
+
 **THE IMAGE.** Made once, on the first start, from Ubuntu's cloud image (in the
 container image, its checksum verified against Ubuntu's signed list at build):
 a cloud-init seed writes `provision.sh` and `vm-guest.sh` into it and runs
@@ -71,6 +87,7 @@ import stat
 import subprocess
 import sys
 import threading
+import types
 import time
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Tuple
@@ -100,6 +117,11 @@ APP_MOUNT = "/opt/pantheon-workstation/app"
 # disk and mounts the tag at start (`workstation/__main__.mount_project_share`).
 PROJECTS_TAG = "pantheon-projects"
 PROJECTS_FOLDER_FILE = "projects-folder"
+# Placement (the owner, 2026-11-17): what a SHARED machine's app disk says
+# (`workstation/__main__.py` reads both by these names) — that several people
+# have an account in it, and the group their projects folders are given to.
+SHARED_MACHINE_FILE = "shared-machine"
+PROJECTS_GID_FILE = "projects-gid"
 PROVISION_DIR = "/opt/pantheon-workstation/provision"
 IMAGE_READY = "PANTHEON-WORKSTATION-IMAGE-READY"
 IMAGE_FAILED = "PANTHEON-WORKSTATION-IMAGE-FAILED"
@@ -330,6 +352,16 @@ INTERNET_UNHELD_SENTENCE = (
     "Your workstation machine cannot hold the network an admin chose (internet only): it was "
     "made from an older image without the rules for it, so it was not started. Reset your "
     "workstation to make it from the current image.")
+
+
+# Placement: what a person on the shared machine is told when they choose
+# processors (`Fleet.machine_cpus`), and when something only a machine of
+# one's own has is asked of theirs.
+SHARED_CPUS_SENTENCE = ("Your workstation is an account on the machine several people share, "
+                        "which has every processor this workstation makes available to a "
+                        "machine. Ask an admin for a machine of your own to choose its "
+                        "processors.")
+SHARED_NOT_OWN = "Your workstation is an account on the shared machine, not a machine of your own."
 
 
 def _minutes(seconds: float) -> str:
@@ -721,9 +753,17 @@ class QemuMachine(Machine):
         fd = os.open(root / "token", os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
         with os.fdopen(fd, "w", encoding="utf-8") as f:
             f.write(self.token + "\n")
-        # `B1427`: which folder the machine mounts its projects share at.
-        (root / PROJECTS_FOLDER_FILE).write_text(P.project_folder_of(self.account) + "\n",
-                                                 encoding="utf-8")
+        if self.account == P.SHARED_MACHINE:
+            # Placement: the machine several people share. It mounts the
+            # projects root, and gives each person's folder to this group.
+            (root / SHARED_MACHINE_FILE).write_text("1\n", encoding="utf-8")
+            gid = self.fleet.shared_projects_gid()
+            if gid is not None:
+                (root / PROJECTS_GID_FILE).write_text(f"{gid}\n", encoding="utf-8")
+        else:
+            # `B1427`: which folder the machine mounts its projects share at.
+            (root / PROJECTS_FOLDER_FILE).write_text(P.project_folder_of(self.account) + "\n",
+                                                     encoding="utf-8")
         # The phone's room, so the guest's phone counts it before it is plugged in.
         (root / PHONE_ROOM_FILE).write_text(
             f"{self.fleet.started_phone_room(self.account)}\n", encoding="utf-8")
@@ -807,6 +847,15 @@ class Fleet(System):
 
     backend = "vm"
 
+    # Where each person's workstation is (`placement_of`). `__init__` reads
+    # them from disk; these are what a fleet made without it starts from
+    # (nobody placed, nobody on the shared machine). Changed by replacing,
+    # never in place, so these stay empty.
+    placement_default = P.DEFAULT_PLACEMENT
+    _placement_people: Dict[str, str] = types.MappingProxyType({})
+    _placement_made: Dict[str, str] = types.MappingProxyType({})
+    _placement_lock = threading.Lock()
+
     def __init__(self, state: Path, *, accel: str, accel_why: str = "",
                  base_image: Path = DEFAULT_BASE_IMAGE, payload: Path = DEFAULT_PAYLOAD,
                  memory_mib: int = DEFAULT_MEMORY_MIB, cpus: int = DEFAULT_CPUS,
@@ -859,6 +908,11 @@ class Fleet(System):
         self._locks: Dict[str, threading.Lock] = collections.defaultdict(threading.Lock)
         self._registry = threading.Lock()
         self.sudo = self._persisted_sudo()
+        # Placement (module docstring): the admin's default and per-person
+        # choices, and where each person's workstation was first made.
+        self._placement_lock = threading.Lock()
+        (self.placement_default, self._placement_people,
+         self._placement_made) = self._persisted_placement()
         # `B979`: when each machine was last used and how many requests are in
         # it now; the idle time and the cap (module comment above).
         self.idle_stop_s = idle_stop_s
@@ -878,11 +932,17 @@ class Fleet(System):
 
     def accounts(self) -> List[str]:
         root = self.state / "machines"
-        return sorted(p.name for p in root.iterdir()
-                      if P.ACCOUNT_RE.match(p.name) and self.machine_for(p.name).exists())
+        own = {p.name for p in root.iterdir()
+               if P.ACCOUNT_RE.match(p.name) and self.machine_for(p.name).exists()}
+        return sorted(own | set(self.shared_accounts()))
 
     def has_home(self, account: str) -> bool:
-        """`B959`: a person's machine exists — looked at, nothing started."""
+        """`B959`: a person's machine exists — looked at, nothing started.
+        On the shared machine: that machine exists and their account was made
+        in it."""
+        if self.placement_of(account) == "shared":
+            return (account in self.shared_accounts()
+                    and self.machine_for(P.SHARED_MACHINE).exists())
         return self.machine_for(account).exists()
 
     def machine(self) -> Dict:
@@ -909,6 +969,8 @@ class Fleet(System):
         os.replace(tmp, path)
         self.sudo = on
         for account, m in list(self._machines.items()):
+            if account == P.SHARED_MACHINE:
+                continue  # placement: sudo is off on the shared machine, always
             if m.running():
                 try:
                     self.forward(account, "config", {"sudo": on}, start=False)
@@ -1025,7 +1087,10 @@ class Fleet(System):
         return min(self.cpus_max_choice or host, host)
 
     def account_cpus(self, account: str) -> int:
-        """What this person's machine starts with."""
+        """What this person's machine starts with. The shared machine, which
+        is nobody's, starts with the whole pool."""
+        if account == P.SHARED_MACHINE:
+            return self.cpus_max
         return max(P.VM_CPUS_MIN,
                    min(self._account_cpus.get(account) or self.cpus, self.cpus_max))
 
@@ -1045,7 +1110,18 @@ class Fleet(System):
                 "cpus_default": min(self.cpus, self.cpus_max), "host_cpus": self.host_cpus}
 
     def machine_cpus(self, account: str, body: Dict) -> Dict:
-        """`ROUTES["cpus"]` for one person: asked, or chosen inside the pool."""
+        """`ROUTES["cpus"]` for one person: asked, or chosen inside the pool.
+        A person on the shared machine has no machine of their own to size:
+        asked, it says what the shared one has; chosen, it says why not."""
+        if self.placement_of(account) == "shared":
+            if body.get("cpus") is not None:
+                raise WorkstationError("bad_request", SHARED_CPUS_SENTENCE)
+            m = self.machine_for(P.SHARED_MACHINE)
+            return {"account": account, "cpus": self.cpus_max, "cpus_choice": None,
+                    "cpus_default": self.cpus_max, "cpus_max": self.cpus_max,
+                    "running_cpus": (self._started_cpus.get(P.SHARED_MACHINE)
+                                     if m.running() else None),
+                    "placement": "shared"}
         if "cpus" in body:
             count = body["cpus"]
             if count is not None and count > self.cpus_max:
@@ -1082,14 +1158,19 @@ class Fleet(System):
         return self.phone_room_for(self.memory_mib)
 
     def started_phone_room(self, account: str) -> int:
-        return self.phone_room_for(self._started_memory.get(account, self.memory_mib))
+        name = self.machine_name(account)
+        if name == P.SHARED_MACHINE:
+            return 0  # the phone is its own VM beside, never memory in a shared one
+        return self.phone_room_for(self._started_memory.get(name, self.memory_mib))
 
     def plugged_room(self, account: str) -> int:
-        return self._phone_room.get(account, 0)
+        return self._phone_room.get(self.machine_name(account), 0)
 
     def set_phone_room(self, account: str, mib: int) -> int:
         """Plug `mib` of the phone's memory into this person's running machine,
         or take it out (0); what it holds afterwards."""
+        if self.machine_name(account) == P.SHARED_MACHINE:
+            return 0
         m = self.machine_for(account)
         room = self.started_phone_room(account)
         if not room or not m.running():
@@ -1240,6 +1321,149 @@ class Fleet(System):
         except (OSError, ValueError, AttributeError):
             return True  # the product's default (`D-2026-09-30-03`)
         return value if isinstance(value, bool) else True
+
+    # -- placement: a machine of their own, or the shared one --------------------
+    #
+    # The owner (2026-11-17): the admin decides whether a person runs a VM of
+    # their own or has an account made on a shared one, so a small host stays
+    # lean and a large one gives its power users a machine each. Kept here, on
+    # the host, with the machines (`placement.json`): the admin's default, the
+    # people the admin placed by name, and where each person's workstation was
+    # first made — so changing the default moves nobody who already has one.
+
+    def _placement_path(self) -> Path:
+        return self.state / "placement.json"
+
+    def _persisted_placement(self) -> Tuple[str, Dict[str, str], Dict[str, str]]:
+        try:
+            data = json.loads(self._placement_path().read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            data = {}
+        if not isinstance(data, dict):
+            data = {}
+
+        def placed(raw) -> Dict[str, str]:
+            if not isinstance(raw, dict):
+                return {}
+            return {a: w for a, w in raw.items()
+                    if isinstance(a, str) and P.ACCOUNT_RE.match(a) and w in P.PLACEMENTS}
+        default = data.get("default")
+        return (default if default in P.PLACEMENTS else P.DEFAULT_PLACEMENT,
+                placed(data.get("people")), placed(data.get("made")))
+
+    def _save_placement(self) -> None:
+        path = self._placement_path()
+        tmp = path.with_name(path.name + ".tmp")
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump({"default": self.placement_default,
+                       "people": dict(sorted(self._placement_people.items())),
+                       "made": dict(sorted(self._placement_made.items()))}, f)
+        os.replace(tmp, path)
+
+    def placement_of(self, account: str) -> str:
+        """Where this person's workstation is (`protocol.PLACEMENTS`): where
+        the admin placed them by name; else where it was made; else — a
+        machine of their own from before placement existed — `own`; else the
+        admin's default, which is where it will be made."""
+        if account == P.SHARED_MACHINE:
+            return "shared"
+        with self._placement_lock:
+            chosen = self._placement_people.get(account) or self._placement_made.get(account)
+        if chosen:
+            return chosen
+        if P.ACCOUNT_RE.match(account or "") and self.machine_for(account).exists():
+            return "own"
+        return self.placement_default
+
+    def machine_name(self, account: str) -> str:
+        """The machine this person's routes go to: theirs, or the shared one.
+        A machine's own name answers itself, so every per-machine record
+        (`_started_memory`, `_locks`, `_use`, …) is kept by this name."""
+        return P.SHARED_MACHINE if self.placement_of(account) == "shared" else account
+
+    def machine_of(self, account: str) -> Machine:
+        return self.machine_for(self.machine_name(account))
+
+    def shared_accounts(self) -> List[str]:
+        """The people whose workstation was made on the shared machine."""
+        with self._placement_lock:
+            return sorted(a for a, w in self._placement_made.items() if w == "shared")
+
+    def _note_made(self, account: str) -> None:
+        """Where a person's workstation is made, kept the first time it is."""
+        if not P.ACCOUNT_RE.match(account or ""):
+            return
+        where = self.placement_of(account)
+        with self._placement_lock:
+            if self._placement_made.get(account) == where:
+                return
+            made = dict(self._placement_made)
+            made[account] = where
+            self._placement_made = made
+            self._save_placement()
+
+    def set_placement(self, default: str, people: Dict[str, str]) -> None:
+        """The admin's default and per-person placement (checked by
+        `agentd.check_placement`). A person moved off a machine of their own
+        has it powered off cleanly, its disk kept: their work goes on in the
+        shared machine, and their own machine is there again if they are
+        moved back. A person moved off the shared machine keeps their home in
+        it the same way."""
+        with self._placement_lock:
+            self.placement_default = default
+            self._placement_people = dict(people)
+            self._save_placement()
+        for name in self.running_accounts():
+            if name != P.SHARED_MACHINE and self.machine_name(name) != name:
+                self._power_off(name, "moved to the shared machine")
+
+    def _power_off(self, name: str, why: str) -> None:
+        def go() -> None:
+            with self._locks[name]:
+                m = self.machine_for(name)
+                if m.running():
+                    logger.info("powering off %s's machine: %s", name, why)
+                    m.stop(graceful=True)
+        t = threading.Thread(target=go, name=f"power-off-{name}", daemon=True)
+        self._retiring.append(t)
+        t.start()
+
+    def placement_report(self) -> Dict:
+        """`health`'s and `config`'s words for it (`protocol.ROUTES["config"]`)."""
+        with self._placement_lock:
+            default, people = self.placement_default, dict(sorted(self._placement_people.items()))
+        try:
+            where = {a: self.placement_of(a) for a in self.accounts()}
+        except OSError:
+            where = {}
+        return {"placement": {"default": default, "people": people, "where": where,
+                              "shared": {"running": self.machine_for(P.SHARED_MACHINE).running(),
+                                         "accounts": self.shared_accounts()},
+                              "shared_sudo": False}}
+
+    def set_admins(self, accounts) -> None:
+        """`B1424`, and on the shared machine too: who reaches every person's
+        projects folder there (a machine of one person's own has only theirs)."""
+        super().set_admins(accounts)
+        m = self.machine_for(P.SHARED_MACHINE)
+        if m.running():
+            try:
+                self._call(m, "config", body={"admins": sorted(self.admin_accounts)})
+            except WorkstationError as e:
+                logger.warning("could not tell the shared machine who the admins are: %s",
+                               e.message)
+
+    @staticmethod
+    def shared_projects_gid() -> Optional[int]:
+        """The group Pantheon runs as, which each person's projects folder on
+        the shared machine is given to — the pairing group
+        (`PANTHEON_WORKSTATION_PAIRING_GID`). Not `projects_gid`: that is the
+        `System` attribute every daemon has, and an instance's `None` there
+        hid a method of the same name."""
+        from workstation.__main__ import PAIRING_GID_ENV   # the one spelling
+        raw = os.environ.get(PAIRING_GID_ENV, "").strip()
+        return int(raw) if raw.isdigit() and 0 < int(raw) <= 1 << 20 else None
 
     # -- the image --------------------------------------------------------------
 
@@ -1400,6 +1624,7 @@ class Fleet(System):
         own folder, its forwarded port, and `restrict=on` when the network it
         is started with is *none* (`B992`)."""
         folder = self.state / "machines" / m.account
+        shared = m.account == P.SHARED_MACHINE
         return qemu_argv(name=f"pantheon-{m.account}", accel=self.accel,
                          cpus=self._started_cpus.get(m.account, self.account_cpus(m.account)),
                          memory_mib=self._started_memory.get(m.account, self.memory_mib),
@@ -1407,8 +1632,20 @@ class Fleet(System):
                          iso=folder / "app.iso", console=folder / "console.log",
                          qmp=folder / "qmp.sock", forward=("127.0.0.1", int(m.port or 0)),
                          restrict=self._restricted.get(m.account, False),
-                         share=self.project_share(m.account),
+                         share=self.projects_root_share() if shared
+                         else self.project_share(m.account),
                          hotplug_mib=self.started_phone_room(m.account))
+
+    def projects_root_share(self) -> Optional[Path]:
+        """Placement: what the shared machine is given — the projects root
+        itself, a real directory and not a link, or None without one. Its
+        daemon makes each person's folder in it theirs and Pantheon's group's,
+        `2770`, the root `0771` (`UbuntuSystem.make_project_dirs`), as the
+        container does on the same folder."""
+        root = Path(os.environ.get(P.PROJECTS_DIR_ENV, "").strip() or P.PROJECTS_DIR)
+        if not root.is_dir() or root.is_symlink():
+            return None
+        return root.resolve()
 
     def project_share(self, account: str) -> Optional[Path]:
         """`B1427`. This person's own projects folder on this host, made if
@@ -1463,7 +1700,12 @@ class Fleet(System):
             return m
 
     def ready(self, account: str) -> Machine:
-        """This person's machine, started and answering — or a sentence."""
+        """This person's machine, started and answering — or a sentence.
+        Placement: the shared machine for a person placed on it; `account`
+        may also be a machine's own name (`machine_name`)."""
+        self._note_made(account)
+        account = self.machine_name(account)
+        shared = account == P.SHARED_MACHINE
         m = self.machine_for(account)
         self._touch(account)  # `B979`
         with self._locks[account]:
@@ -1493,8 +1735,12 @@ class Fleet(System):
             logger.info("the machine for %s answered after %.1f s", account,
                         time.monotonic() - started)
             # A machine that just booted knows only what its disk remembers.
+            # The shared machine: sudo off, always (placement), and who the
+            # admins are, since everyone's projects folder is in it.
+            settings = ({"sudo": False, "admins": sorted(self.admin_accounts)} if shared
+                        else {"sudo": self.sudo})
             try:
-                self._call(m, "config", body={"sudo": self.sudo})
+                self._call(m, "config", body=settings)
             except WorkstationError as e:
                 m.stop(graceful=False)
                 raise WorkstationError("unavailable", f"Your workstation machine started but "
@@ -1554,6 +1800,8 @@ class Fleet(System):
         the machine is left off: the next thing that uses it starts it
         (`VmStation.starting_point` does, at once). Answers whether it
         was running, as `was_running`."""
+        if self.machine_name(account) != account:
+            raise WorkstationError("bad_request", SHARED_NOT_OWN)
         m = self.machine_for(account)
         root = self.starting_points_dir()
         with self._locks[account]:
@@ -1579,8 +1827,29 @@ class Fleet(System):
         logger.info("saved %s's machine disk as its starting point", account)
         return {**self.starting_point(account), "was_running": was_running}
 
+    def restart(self, account: str) -> None:
+        """This person's machine powered off — cleanly, as a stop for a new
+        size is (`STOP_GRACE_S`, then QEMU is told to quit) — and started
+        again with its disk as it was: the way back from a desktop nobody can
+        reach (the owner, 2026-11-16), short of Reset, which erases. Only this
+        account's machine, under its own lock; every other person's runs on.
+        What the host remembers of the running machine goes with it, as at a
+        reset (`ready` forgets it as it starts the machine), and the person's
+        own choices (processors, memory) are kept. Nothing else is stopped:
+        anything of theirs that runs beside this machine runs on."""
+        if self.machine_name(account) != account:
+            raise WorkstationError("bad_request", SHARED_NOT_OWN)
+        m = self.machine_for(account)
+        with self._locks[account]:
+            if m.running():
+                logger.info("restarting %s's machine at their request", account)
+                m.stop(graceful=True)
+        self.ready(account)
+
     def reset(self, account: str) -> None:
         """A fresh machine from the newest image (module docstring)."""
+        if self.machine_name(account) != account:
+            raise WorkstationError("bad_request", SHARED_NOT_OWN)
         m = self.machine_for(account)
         with self._locks[account]:
             if self.image_state != "ready":
@@ -1599,6 +1868,7 @@ class Fleet(System):
     # -- `B979`: use, idleness and the cap --------------------------------------
 
     def _touch(self, account: str) -> None:
+        account = self.machine_name(account)
         with self._use_lock:
             self._use.setdefault(account, [0, self._clock()])[1] = self._clock()
 
@@ -1606,6 +1876,7 @@ class Fleet(System):
     def _using(self, account: str):
         """A request in this person's machine: it is not idle while one is in
         flight, and its end is a use."""
+        account = self.machine_name(account)
         with self._use_lock:
             use = self._use.setdefault(account, [0, self._clock()])
             use[0] += 1
@@ -1745,7 +2016,7 @@ class Fleet(System):
                 query: Optional[Dict] = None, timeout: float = 120.0, start: bool = True,
                 allow_304: bool = False) -> Optional[Dict]:
         if not start:
-            m = self.machine_for(account)
+            m = self.machine_of(account)
             if not m.running():
                 raise WorkstationError("unavailable", "Your workstation machine is not running.")
             return self._call(m, name, account, body, query, timeout, allow_304=allow_304)
@@ -1874,12 +2145,18 @@ class VmStation(Workstation):
         `B979`: and whether that machine is running or powered off.
         `B1684`: the `$PANTHEON_PROJECTS` its commands are given is the
         machine's own (`agentd._exec_prepare` runs there), so only a running
-        machine says it; this host's would be a guess."""
-        m = self.system.machine_for(account)
+        machine says it; this host's would be a guess.
+        Placement: and, for a person who has one, where their workstation
+        is (`placement`). On
+        the shared machine, their account there is asked, not made."""
+        placement = self.system.placement_of(account)
+        m = self.system.machine_of(account)
         if m.running() and m.port is not None:
             try:
                 answer = dict(self.system._call(m, "account", account, timeout=10.0) or {})
                 answer["machine"] = "running"
+                if answer.get("exists"):
+                    answer["placement"] = placement
                 return answer
             except WorkstationError:
                 pass  # what the disk says is still true
@@ -1887,20 +2164,46 @@ class VmStation(Workstation):
         answer.pop("projects_env", None)
         if answer.get("exists"):
             answer["machine"] = "running" if m.running() else "stopped"
+            # Where a person who has one has it; a person with none yet has
+            # no placement to tell.
+            answer["placement"] = placement
         return answer
+
+    def _shared(self, account: str) -> bool:
+        return isinstance(self.system, Fleet) and self.system.placement_of(account) == "shared"
 
     def ensure(self, account: str) -> Dict:
         return self.system.forward(account, "ensure", {}, timeout=120.0)
 
     def reset(self, account: str) -> Dict:
+        if self._shared(account):
+            # Their home on the shared machine, back to its start — by that
+            # machine's daemon, as the container resets one. Nobody else's.
+            self.system.forward(account, "reset", {}, timeout=120.0)
+            self.system.forward(account, "ensure", {}, timeout=120.0)
+            return {"account": account, "reset": True}
         self.system.reset(account)
         # The protocol says a reset ends on a fresh desktop (`ROUTES["reset"]`).
         self.system.forward(account, "ensure", {}, timeout=120.0)
         return {"account": account, "reset": True}
 
+    def restart(self, account: str) -> Dict:
+        """`ROUTES["restart"]`: this person's machine powered off cleanly and
+        started again (`Fleet.restart`), and their desktop up on it. On the
+        shared machine, which others are working in: their desktop only."""
+        if self._shared(account):
+            return self.system.forward(account, "restart", {}, timeout=120.0)
+        self.system.restart(account)
+        self.system.forward(account, "ensure", {}, timeout=120.0)
+        return {"account": account, "restarted": "machine"}
+
     def starting_point(self, account: str, body: Dict) -> Dict:
         """`B1733`. Kept here, on the host, with the disks — never asked of
-        the machine. A machine powered off to be saved is started again."""
+        the machine. A machine powered off to be saved is started again.
+        On the shared machine it is their home, kept by that machine's daemon
+        beside the homes, as the container keeps one (scope `home`)."""
+        if self._shared(account):
+            return self.system.forward(account, "starting_point", body, timeout=300.0)
         answer = super().starting_point(account, body)
         if answer.pop("was_running", False):
             self.system.forward(account, "ensure", {}, timeout=120.0)
@@ -1986,7 +2289,7 @@ class VmStation(Workstation):
         action = body.get("action")
         starts = (action in self.PHONE_STARTS
                   or (action == "button" and body.get("button") == "power"))
-        room = fleet.started_phone_room(account) if fleet.machine_for(account).running() else 0
+        room = fleet.started_phone_room(account) if fleet.machine_of(account).running() else 0
         grew = False
         if starts and room and fleet.plugged_room(account) < room:
             got = fleet.set_phone_room(account, room)
@@ -2013,7 +2316,7 @@ class VmStation(Workstation):
         on this shared host when it does not."""
         action = body.get("action")
         if action == "status":
-            if not self.system.machine_for(account).running():
+            if not self.system.machine_of(account).running():
                 # The selected profile/image and SDK state live in the guest
                 # disk. Do not invent them or boot/provision a VM to look.
                 out = {"ok": True, "action": "status", "state": "off", "mode": None,
@@ -2027,7 +2330,7 @@ class VmStation(Workstation):
                     # using the VM even before its live stream can connect.
                     self.system._touch(account)
             return self._phone_host_capability(out)
-        if action == "stop" and not self.system.machine_for(account).running():
+        if action == "stop" and not self.system.machine_of(account).running():
             return {"ok": True, "action": "stop", "state": "off", "mode": None,
                     "machine": "stopped", "isolation": "per_user_vm"}
         if self.system.accel != "kvm" and action not in ("preview", "stop"):
@@ -2063,14 +2366,14 @@ class VmStation(Workstation):
                 "isolation": "per_user_vm", "why": self._phone_host_why()}
 
     def _phone_is_preview(self, account: str) -> bool:
-        if not self.system.machine_for(account).running():
+        if not self.system.machine_of(account).running():
             return False
         out = self.system.forward(account, "phone", {"action": "status"},
                                   timeout=120.0, start=False)
         return out.get("mode") == "mobile_view"
 
     def phone_screen(self, account: str) -> Dict:
-        if not self.system.machine_for(account).running():
+        if not self.system.machine_of(account).running():
             return {"kind": None, "holder": self.holder(account)["holder"],
                     "why": "Your VM is off; the phone has no live screen."}
         if self.system.accel != "kvm" and not self._phone_is_preview(account):
@@ -2109,7 +2412,7 @@ class VmStation(Workstation):
             raise WorkstationError("bad_request",
                                    f"“viewer” is one of {', '.join(P.DESKTOP_VIEWERS)}.")
         with self.system._using(account):
-            m = self.system.ready(account) if start else self.system.machine_for(account)
+            m = self.system.ready(account) if start else self.system.machine_of(account)
             if not m.running() or m.port is None:
                 raise WorkstationError("unavailable", "Your VM is off; the phone has no live screen.")
             _, path = P.route_path(route, account)
