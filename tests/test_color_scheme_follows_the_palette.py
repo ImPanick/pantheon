@@ -65,9 +65,9 @@ def test_there_are_twenty_three_themes_and_eight_of_them_are_light():
     """Guards every claim below. A parser that stops finding themes makes the
     separation test vacuous, and the count is `FORBIDDEN.md`'s."""
     bgs = _theme_backgrounds()
-    assert len(bgs) == 20, sorted(bgs)  # three retired: theme.js `RETIRED_THEMES`
+    assert len(bgs) == 22, sorted(bgs)  # three retired (theme.js `RETIRED_THEMES`), two Pantheon presets added
     light = {n for n, hexv in bgs.items() if _luminance(hexv) > THRESHOLD}
-    assert light == {"paper", "cute", "lavender", "light", "notebook", "codehost", "video", "mintchat"}, sorted(light)
+    assert light == {"paper", "cute", "lavender", "light", "notebook", "codehost", "video", "mintchat", "pantheonlight"}, sorted(light)
 
 
 def test_the_threshold_is_nowhere_near_any_theme():

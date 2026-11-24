@@ -725,7 +725,9 @@ export function handleUIControl(uiData) {
         var colors = tm.THEMES[themeName] || customThemes[themeName] || uiData.colors;
         if (colors) {
           tm.applyColors(colors);
-          tm.save(themeName, colors);
+          var themeFinish = (customThemes[themeName] && customThemes[themeName].finish) || (tm.defaultFinishFor ? tm.defaultFinishFor(themeName) : null);
+          if (themeFinish && tm.applyFinish) tm.applyFinish(themeFinish);
+          tm.save(themeName, colors, themeFinish ? { finish: themeFinish } : undefined);
           var grid = document.getElementById('themeGrid');
           if (grid) {
             grid.querySelectorAll('.theme-swatch').forEach(function(s) { s.classList.remove('active'); });
@@ -742,7 +744,9 @@ export function handleUIControl(uiData) {
         var name = uiData.theme_name || 'custom';
         if (colors2) {
           tm2.applyColors(colors2);
-          tm2.save(name, colors2);
+          // A theme made in chat keeps the finish on screen (glass or hairline).
+          var curFinish = document.documentElement.getAttribute('data-ck-finish');
+          tm2.save(name, colors2, curFinish ? { finish: curFinish } : undefined);
           // Background effects (animated pattern / frosted glass) the model
           // optionally set — apply them live and persist with the theme so
           // they survive re-applying it later.
@@ -755,6 +759,7 @@ export function handleUIControl(uiData) {
             if (bg.effectSize != null && tm2.applyBgEffectSize) { tm2.applyBgEffectSize(bg.effectSize); opts.bgEffectSize = bg.effectSize; }
             if (bg.frosted != null && tm2.applyFrostedGlass) { tm2.applyFrostedGlass(bg.frosted); opts.frosted = bg.frosted; }
           }
+          if (curFinish) opts.finish = curFinish;
           if (tm2.saveCustomTheme) tm2.saveCustomTheme(name, colors2, Object.keys(opts).length ? opts : undefined);
         }
       }

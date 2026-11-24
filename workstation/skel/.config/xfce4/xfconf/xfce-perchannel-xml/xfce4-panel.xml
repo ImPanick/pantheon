@@ -30,10 +30,10 @@
       <property name="leave-opacity" type="uint" value="100"/>
       <property name="background-style" type="uint" value="1"/>
       <property name="background-rgba" type="array">
-        <value type="double" value="0.106"/>
-        <value type="double" value="0.122"/>
-        <value type="double" value="0.133"/>
-        <value type="double" value="0.82"/>
+        <value type="double" value="0.039"/>
+        <value type="double" value="0.055"/>
+        <value type="double" value="0.090"/>
+        <value type="double" value="0.92"/>
       </property>
       <property name="plugin-ids" type="array">
         <value type="int" value="1"/>

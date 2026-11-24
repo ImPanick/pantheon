@@ -159,7 +159,7 @@ def _chips(row):
 
 def test_every_palette_and_every_chip_was_measured(measured):
     assert measured["errors"] == []
-    assert len(measured["palettes"]) == 20, sorted(measured["palettes"])  # three retired: theme.js `RETIRED_THEMES`
+    assert len(measured["palettes"]) == 22, sorted(measured["palettes"])  # three retired (theme.js `RETIRED_THEMES`), two Pantheon presets added
     for row in measured["palettes"].values():
         assert {"plan-toggle-btn", "web-toggle-btn", "bash-toggle-btn",
                 "workspace-indicator-btn",
