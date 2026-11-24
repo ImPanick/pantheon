@@ -416,14 +416,14 @@ VENDORED = [
     # question with a different answer (`Law 1`), and CREDITS.md says which
     # release was the last to carry the file.
     Vendored(
-        "KaTeX", "katex", "0.18.7", "2026-09-17",
-        "https://registry.npmjs.org/katex/-/katex-0.18.7.tgz",
-        "v0.18.7",
+        "KaTeX", "katex", "0.19.1", "2026-11-24",
+        "https://registry.npmjs.org/katex/-/katex-0.19.1.tgz",
+        "v0.19.1",
         files={
             "static/lib/katex/katex.min.js":
-                "10a91b479cd927446ceb60409fb0d72b5d0d05eaf446c9e52fafd64058c84540",
+                "fa140498b8cfc8302cbe5e7cb1bdbc1f952bc38b3fa258ede09e73edbf9a74bc",
             "static/lib/katex/katex.min.css":
-                "50d9c78e03da144a021001b7de679133355179bcb06fd11e9e309223056a03dd",
+                "00e0b094171b07f58422075f469b4feac2b2f7bce1aeec943c08da4d697f4dcf",
         },
         note="Bumped from 0.16.22 on 2026-09-17 (B335), across two 0.x minors "
              "that are both semver-breaking. Zero advisories either side. "
@@ -435,12 +435,16 @@ VENDORED = [
              "0.16.22 and 0.18.7, so the fonts moved version and not bytes. "
              "0.18.2 also carries an unnumbered prototype-pollution fix in "
              "settings, recorded because no scanner will ever flag it (B332's "
-             "shape).",
+             "shape). Bumped 0.18.7 -> 0.19.1 on 2026-11-24 (B2217): 0.19.0's "
+             "break routes a character with no font metrics through `strict` "
+             "(code symbolNotInFont); the call site passes no `strict`, so it "
+             "stays a console warning and the formula still typesets — "
+             "tests/test_vendored_bumps_still_render.py drives both.",
     ),
     Vendored(
-        "KaTeX fonts", "katex", "0.18.7", "2026-09-17",
-        "https://registry.npmjs.org/katex/-/katex-0.18.7.tgz",
-        "v0.18.7",
+        "KaTeX fonts", "katex", "0.19.1", "2026-11-24",
+        "https://registry.npmjs.org/katex/-/katex-0.19.1.tgz",
+        "v0.19.1",
         files={
             "static/lib/katex/fonts/KaTeX_AMS-Regular.woff2":
                 "0cdd387c9590a1a9f9794560022dbb59654a7d86f187aa0c81495ad42d3a7308",
@@ -491,7 +495,8 @@ VENDORED = [
              "Every one of the twenty is byte-identical at 0.16.22 and 0.18.7 "
              "— checked face by face on 2026-09-17 — so the 0.18.7 bump moved "
              "this record's version and not one byte under it, and the hashes "
-             "below are unchanged on purpose.",
+             "below are unchanged on purpose. The same held at 0.19.1, checked "
+             "face by face on 2026-11-24 (B2217).",
     ),
     Vendored(
         "Mermaid", "mermaid", "11.17.2", "2026-09-17",

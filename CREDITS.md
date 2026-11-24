@@ -502,7 +502,7 @@ embedded licence banner.
 | [set-immediate-shim](https://github.com/sindresorhus/set-immediate-shim) v1.0.1 | bundled inside `mammoth.browser.min.js` (in JSZip 3.7.1's `dist/jszip.min.js`) | `setImmediate` shim inside JSZip's own build | MIT ([`licenses/set-immediate-shim-MIT-LICENSE.txt`](licenses/set-immediate-shim-MIT-LICENSE.txt)) |
 | [underscore](https://github.com/jashkenas/underscore) v1.13.1 | bundled inside `mammoth.browser.min.js` | Collection helpers, in mammoth and `lop` | MIT ([`licenses/underscore-MIT-LICENSE.txt`](licenses/underscore-MIT-LICENSE.txt)) |
 | [xmlbuilder](https://github.com/oozcitak/xmlbuilder-js) v10.0.0 | bundled inside `mammoth.browser.min.js` | Writes XML, behind mammoth's style-map embedding | MIT ([`licenses/xmlbuilder-MIT-LICENSE.txt`](licenses/xmlbuilder-MIT-LICENSE.txt)) |
-| [KaTeX](https://github.com/KaTeX/KaTeX) v0.18.7 | `katex/katex.min.{js,css}` + `katex/fonts/*.woff2` | Math typesetting | MIT ([`licenses/KaTeX-MIT-LICENSE.txt`](licenses/KaTeX-MIT-LICENSE.txt)) |
+| [KaTeX](https://github.com/KaTeX/KaTeX) v0.19.1 | `katex/katex.min.{js,css}` + `katex/fonts/*.woff2` | Math typesetting | MIT ([`licenses/KaTeX-MIT-LICENSE.txt`](licenses/KaTeX-MIT-LICENSE.txt)) |
 | [Mermaid](https://github.com/mermaid-js/mermaid) v11.17.2 | `mermaid.min.js` | Diagrams from text | MIT ([`licenses/Mermaid-MIT-LICENSE.txt`](licenses/Mermaid-MIT-LICENSE.txt)) |
 | [vscode-languageserver](https://github.com/microsoft/vscode-languageserver-node) — `vscode-jsonrpc` v8.2.0, `vscode-languageserver-protocol` v3.17.5, `vscode-languageserver-types` v3.17.5 | bundled inside `mermaid.min.js` | Language-server plumbing behind Mermaid's parsers | MIT ([`licenses/vscode-languageserver-MIT-LICENSE.txt`](licenses/vscode-languageserver-MIT-LICENSE.txt)) |
 | [Lodash](https://github.com/lodash/lodash) (`lodash-es`) | bundled inside `mermaid.min.js` | Utility library behind Mermaid's config merge | MIT ([`licenses/lodash-MIT-LICENSE.txt`](licenses/lodash-MIT-LICENSE.txt)) |
@@ -532,9 +532,9 @@ upstream's own `NOTICE` travels with it.
 
 *Versions read out of the shipped bundles, not carried from a document:
 `highlight.min.js` v11.12.0 from its own banner, `katex.min.js`
-`version:"0.18.7"`, `mermaid.min.js` `11.17.2`. (Measured 2026-08-27; re-read
+`version:"0.19.1"`, `mermaid.min.js` `11.17.2`. (Measured 2026-08-27; re-read
 2026-09-16 after the bumps in `B331`, `B332`, `B334` and `B337`, and again
-2026-09-17 after `B335`.)*
+2026-09-17 after `B335`, and for KaTeX 2026-11-24 after `B2217`.)*
 
 **Every version in the table above is now checked against the shipped bytes.**
 See [How these stay current](#how-these-stay-current) — the versions here are no
@@ -1015,7 +1015,7 @@ and whose Reserved Font Name the subset does not use.
 | [Inter](https://github.com/rsms/inter) v4.1 | `static/fonts/Inter-{Regular,Medium,SemiBold}.woff2`, `static/lib/pdf-fonts/Inter-{Regular,Bold,Italic,BoldItalic}.ttf` | SIL Open Font License 1.1 ([`licenses/Inter-OFL.txt`](licenses/Inter-OFL.txt)) | Rasmus Andersson | none declared |
 | [Noto Sans CJK](https://github.com/notofonts/noto-cjk) SC v2.004, two subsets | `static/lib/pdf-fonts/NotoSansCJKsc-{Regular,Symbols}.subset.ttf` | SIL Open Font License 1.1 ([`licenses/NotoSansCJK-OFL.txt`](licenses/NotoSansCJK-OFL.txt)) | Adobe, for Google's Noto project | **yes — `Source`**, which the subset's name does not use |
 | [OpenDyslexic](https://opendyslexic.org/) | `static/fonts/OpenDyslexic-{Regular,Bold}.woff2` | SIL Open Font License 1.1 ([`licenses/OpenDyslexic-OFL.txt`](licenses/OpenDyslexic-OFL.txt)) | Abbie Gonzalez | **yes — `OpenDyslexic`** |
-| KaTeX (20 faces) v0.18.7 | `static/lib/katex/fonts/*.woff2` | SIL Open Font License 1.1 ([`licenses/KaTeX-fonts-OFL.txt`](licenses/KaTeX-fonts-OFL.txt)) | Design Science, Inc. and Khan Academy | **yes — every face** |
+| KaTeX (20 faces) v0.19.1 | `static/lib/katex/fonts/*.woff2` | SIL Open Font License 1.1 ([`licenses/KaTeX-fonts-OFL.txt`](licenses/KaTeX-fonts-OFL.txt)) | Design Science, Inc. and Khan Academy | **yes — every face** |
 
 **The fallback PDF's faces (`B1674`, `D-2026-10-29-03` §3).** `static/lib/pdf-fonts/`
 holds what *Print as PDF* embeds when the browser's print frame cannot print and
