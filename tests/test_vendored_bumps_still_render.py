@@ -22,9 +22,16 @@ and re-running the same harness.
 `render()` rasterise through d3 and need a real SVG tree with `getBBox`; this
 harness reaches `initialize()` and `parse()` and stops there. Swagger UI is a
 React application and only its exported surface is reachable off a browser.
-Those bounds are the reason `B423` files Mermaid 12.0.0 instead of taking it:
+Those bounds are the reason `B423` filed Mermaid 12.0.0 instead of taking it:
 12.0.0's headline change is that ELK replaces dagre as the default layout for
 seven diagram types, which is precisely the thing this file cannot see.
+
+`B2220` (2026-11-24) took Mermaid 12.3.0 anyway, on the owner's word, and made
+the change this file CAN see: Pantheon now names `layout: 'dagre'` and
+`look: 'classic'`, and the harness reads back what each diagram resolves to
+after `parse()`. A diagram drawn with the same layout engine and look is the
+best evidence available without a browser that it looks the same; it is not a
+pixel comparison, and nothing here claims one.
 """
 import json
 import shutil
@@ -190,13 +197,12 @@ def test_the_mermaid_config_is_understood_and_not_merely_stored(mermaid):
     `tests/test_every_palette_gets_a_legible_diagram_js.py`; this file's job is
     still whether the vendored bundle honours what it is handed.
 
-    `layout` and `look` are asserted too, and neither is set by Pantheon. They
-    are mermaid's own defaults, and they are here because **Mermaid 12.0.0
-    changes them** — `layout` becomes `elk` for seven diagram types and the
-    default look moves to `neo`, which the release notes describe as "this
-    changes how existing diagrams look". This assertion is what turns that from
-    a changelog sentence into something this repository measures, and it is the
-    evidence behind `B423`.
+    `layout` and `look` are asserted too. Until `B2220` neither was set by
+    Pantheon: they were mermaid's own defaults, asserted because **Mermaid
+    12.0.0 changes them** — `layout` becomes `elk` for seven diagram types and
+    the default look moves to `neo`. That measurement was the evidence behind
+    `B423`. Since 12.3.0 Pantheon names both (`mermaidTheme.js`), and the
+    assertions below are what holds it to them.
     """
     assert mermaid["callSiteConfig"]["startOnLoad"] is False, mermaid["callSiteConfig"]
     assert mermaid["callSiteConfig"]["theme"] == "dark", mermaid["callSiteConfig"]
@@ -212,10 +218,10 @@ def test_the_mermaid_config_is_understood_and_not_merely_stored(mermaid):
     assert cfg["securityLevel"] == "loose", cfg
     assert cfg["startOnLoad"] is False, cfg
     assert cfg["layout"] == "dagre", (
-        "mermaid's default layout is no longer dagre. Mermaid 12.0.0 makes it "
-        "elk, which re-lays-out every flowchart, state, class, ER, requirement, "
-        "use-case and agentflow diagram already in somebody's chat history. "
-        f"See B423 before taking this: {cfg}"
+        "mermaid's layout is no longer dagre. Mermaid 12 defaults to elk, which "
+        "re-lays-out every flowchart, state, class, ER, requirement, use-case "
+        "and agentflow diagram already in somebody's chat history; "
+        f"mermaidTheme.js has to ask for dagre (B2220): {cfg}"
     )
     assert cfg["look"] == "classic", cfg
 
@@ -328,3 +334,57 @@ def test_a_character_without_metrics_still_typesets_at_the_call_site(katex):
     no_metrics = katex["render"]["noMetrics"]
     assert "threw" not in no_metrics, no_metrics
     assert not no_metrics["error"] and no_metrics["katex"], no_metrics
+
+
+# ── B2220: Mermaid 12 keeps drawing what 11.x drew ─────────────────────────
+
+
+def test_pantheon_names_dagre_and_classic_in_its_initialize_call(mermaid):
+    """`B2220`. **Fails on the 12.3.0 bundle without the `mermaidTheme.js`
+    change** (measured by stashing it: `layout` reads back `elk`). Every scheme
+    the product can be in hands Mermaid both keys."""
+    for scheme, got in mermaid["schemes"].items():
+        assert got["applied"].get("layout") == "dagre", (scheme, got["applied"])
+        assert got["applied"].get("look") == "classic", (scheme, got["applied"])
+
+
+@pytest.mark.parametrize("case", ["flowchart", "sequence", "er", "state", "classDiagram"])
+def test_each_diagram_type_resolves_to_dagre_and_classic(mermaid, case):
+    """`B2220`. Mermaid 12 resolves `theme`, `look` and `layout` per diagram
+    type — front matter, then `initialize()`, then the type's own default
+    (`elk`, `neo`, `redux-color` for these), then the global default — and
+    `parse()` writes the answer into the live config. Read back after parsing,
+    so the type defaults have had their chance to win and did not."""
+    got = mermaid["parse"][case]
+    assert got["ok"], got
+    assert got["resolved"] == {"theme": "dark", "look": "classic", "layout": "dagre"}, got
+
+
+def test_a_diagram_that_asks_for_elk_still_gets_it(mermaid):
+    """The other half: Pantheon sets a default, not a ban. Front matter outranks
+    `initialize()`, so a diagram that names `layout: elk` is laid out by ELK —
+    which is why the ELK inside the bundle is attributed, not just carried."""
+    got = mermaid["parse"]["frontMatterElk"]
+    assert got["ok"] and got["resolved"]["layout"] == "elk", got
+
+
+def test_the_elk_inside_mermaid_is_declared_as_copyleft():
+    """`B2220`. **Fails before it**: Mermaid 12 bundles elkjs (EPL-2.0 OR
+    GPL-3.0-or-later) with no module path and no legal comment, so rules 7 and
+    8 of `check-licences.py` cannot see it. Read off the bytes here instead:
+    while the bundle carries the Eclipse Layout Kernel, an entry has to declare
+    it as copyleft, with its text on disk and a CREDITS row."""
+    import importlib.util
+    blob = (ROOT / "static" / "lib" / "mermaid.min.js").read_bytes()
+    if b"org.eclipse.elk" not in blob:
+        pytest.skip("this mermaid.min.js carries no ELK")
+    spec = importlib.util.spec_from_file_location(
+        "_check_licences_elk", ROOT / ".pantheon" / "check-licences.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    owners = [e for e in mod.INVENTORY if "elkjs" in e.bundled]
+    assert owners, "mermaid.min.js carries ELK and no Entry declares elkjs"
+    assert owners[0].copyleft, owners[0].licence
+    assert (ROOT / "licenses" / owners[0].text).is_file(), owners[0].text
+    credits = (ROOT / "CREDITS.md").read_text(encoding="utf-8")
+    assert f"licenses/{owners[0].text}" in credits

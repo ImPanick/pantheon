@@ -921,6 +921,16 @@ INVENTORY = [
           "vscode-languageserver-MIT-LICENSE.txt", "vscode-languageserver",
           bundled=("vscode-jsonrpc", "vscode-languageserver-protocol",
                    "vscode-languageserver-types")),
+    # `B2220`, 2026-11-24. Mermaid 12 bundles ELK (`elkjs`, the Eclipse Layout
+    # Kernel compiled to JavaScript) and registers it as a layout. It left no
+    # module path and no legal comment, so neither rule 7 nor rule 8 can see it;
+    # it was found by reading the 12.0.0 and 12.3.0 changelogs and confirmed in
+    # the bytes (`org.eclipse.elk` appears 345 times). Offered as `EPL-2.0 OR
+    # GPL-3.0-or-later` (its package.json); the text is its own LICENSE.md, the
+    # EPL-2.0. Copyleft, so rule 6 holds the scope section to naming it.
+    Entry("elkjs", [], "EPL-2.0 (or GPL-3.0-or-later)",
+          "elkjs-EPL-2.0-LICENSE.txt", "elkjs", copyleft=True,
+          bundled=("elkjs",)),
     Entry("Pyodide", ["static/lib/pyodide/*"], "MPL-2.0",
           "Pyodide-MPL-2.0.txt", "static/lib/pyodide", copyleft=True,
           contents=CONTENTS_SINGLE, notices=("Pyodide",)),

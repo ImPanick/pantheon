@@ -368,10 +368,12 @@ def test_the_pdf_files_carry_the_versions_credits_claims(file, marker, credited)
 MERMAID = ROOT / "static" / "lib" / "mermaid.min.js"
 # pnpm writes the version into the module path, so these are read out of the
 # shipped bytes rather than looked up.
+# `B2220`: Mermaid 12.3.0 moved them (8.2.0 / 3.17.5 / 3.17.5 in 11.17.2); the
+# three still ship the same Microsoft MIT text, compared byte for byte.
 VSCODE = {
-    "vscode-jsonrpc": "8.2.0",
-    "vscode-languageserver-protocol": "3.17.5",
-    "vscode-languageserver-types": "3.17.5",
+    "vscode-jsonrpc": "9.0.3",
+    "vscode-languageserver-protocol": "3.18.4",
+    "vscode-languageserver-types": "3.18.4",
 }
 _PNPM = re.compile(r'node_modules/\.pnpm/([^/"@]+)@([\d][^/"_]*)(?:_[^/"]*)?/node_modules/')
 

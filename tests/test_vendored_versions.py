@@ -170,8 +170,8 @@ def test_a_vendored_file_with_no_version_record_fails(clean):
 def test_a_record_naming_no_inventory_entry_fails(clean):
     """The other half of the join. Renaming an entry in `check-licences.py`
     without renaming it here leaves two lists that each look complete."""
-    patch_checker(clean, '        "Mermaid", "mermaid", "11.17.2"',
-                  '        "Mermaidd", "mermaid", "11.17.2"')
+    patch_checker(clean, '        "Mermaid", "mermaid", "12.3.0"',
+                  '        "Mermaidd", "mermaid", "12.3.0"')
     r = run(clean)
     assert r.returncode == 1, r.stdout
     assert "NO ENTRY" in r.stdout and "Mermaidd" in r.stdout, r.stdout
@@ -434,7 +434,7 @@ def test_the_offline_checker_never_reaches_the_network():
 # sanitiser between a diagram's labels and the page.
 
 # The DOMPurify release inside the shipped `mermaid.min.js`.
-MERMAID_DOMPURIFY = "3.4.12"
+MERMAID_DOMPURIFY = "3.4.17"
 
 
 def test_the_recorded_inner_versions_are_in_the_shipped_bytes():
@@ -557,8 +557,8 @@ def test_a_build_command_with_no_input_record_fails(clean):
     nothing in the repository said so. The two halves are now required
     together."""
     patch_checker(
-        clean, '        "v11.17.2",',
-        '        "v11.17.2",\n        build="esbuild mermaid --bundle",')
+        clean, '        "v12.3.0",',
+        '        "v12.3.0",\n        build="esbuild mermaid --bundle",')
     r = run(clean)
     assert r.returncode == 1, r.stdout
     assert "NO INPUTS" in r.stdout, r.stdout

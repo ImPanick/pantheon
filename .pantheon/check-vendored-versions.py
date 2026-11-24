@@ -481,38 +481,39 @@ VENDORED = [
              "face by face on 2026-11-24 (B2217).",
     ),
     Vendored(
-        "Mermaid", "mermaid", "11.17.2", "2026-09-17",
-        "https://registry.npmjs.org/mermaid/-/mermaid-11.17.2.tgz",
-        "v11.17.2",
+        "Mermaid", "mermaid", "12.3.0", "2026-11-24",
+        "https://registry.npmjs.org/mermaid/-/mermaid-12.3.0.tgz",
+        "v12.3.0",
         files={"static/lib/mermaid.min.js":
-               "581ed7d74bd9048d0e3a91363927d72ef22942d7722546b27f7cc29e35390eb8"},
-        note="Bumped from 11.16.1 on 2026-09-17 (B335) — same major, three "
-             "releases, zero advisories either side. Carries 11.17.0's fix for "
-             "a `RangeError: Invalid array length` crash on certain edges and "
-             "11.17.2's restoration of the `edgePaths` class the flowchart, "
-             "block and journey stylesheets hang off. The three Microsoft "
-             "vscode-* packages inside it are declared by B46's INVENTORY "
-             "entry, unchanged at the same versions; `lodash-es` and "
-             "`cytoscape` were found in here on 2026-09-17 by B339's new "
-             "reading of esbuild's own notice block, and had no notice "
-             "anywhere before that.",
-        behind_ok="B423 — 12.0.0 is current and changes how existing diagrams "
-             "look: ELK replaces dagre as the default layout for seven diagram "
-             "types (measured — `getConfig().layout` comes back `elk` after "
-             "Pantheon's own `initialize()` call), the browser floor rises to "
-             "Safari 17.4 / ES2024, and mermaid.min.js grows 3.57 MB -> 5.58 "
-             "MB. The owner kept 11.x on 2026-10-29 (D-2026-10-29-02 §5) until a "
-             "browser-driven check can compare diagrams, or an advisory names 11.x.",
+               "336df803d87a38b70a01e736e666c8f7601d2ce42f5e47c8fafe5d721074b9a3"},
+        note="Bumped from 11.17.2 on 2026-11-24 (B2220, D-2026-11-24-04, which "
+             "overrides D-2026-10-29-02 §5 and closes B423); 11.16.1 -> 11.17.2 "
+             "was B335. 12.0.0 made ELK the default layout for seven diagram "
+             "types and redux-color/neo the default theme/look for ten. "
+             "static/js/markdown/mermaidTheme.js now names `layout: 'dagre'` and "
+             "`look: 'classic'` — 11.x's defaults — and Mermaid 12 resolves "
+             "front matter, then initialize(), then a type's default, so every "
+             "diagram resolves to dagre/classic unless its own front matter "
+             "asks otherwise (measured after `parse()` for flowchart, sequence, "
+             "ER, state and class, tests/test_vendored_bumps_still_render.py). "
+             "12.0.0 also fixed B883's echo: an unknown theme name now reads "
+             "back as `default`. The bundle grows 3.57 MB -> 5.54 MB, mostly "
+             "elkjs (EPL-2.0 OR GPL-3.0-or-later, now inside it and declared "
+             "in check-licences.py), and B423 measured the browser floor rising "
+             "to Safari 17.4 / ES2024. The vscode-* packages inside moved to "
+             "jsonrpc 9.0.3 and protocol/types 3.18.4, same MIT text. Not "
+             "rendered in a browser here: run()/render() need a real SVG tree.",
         contains=(
             # `B2219` moved rule 6's subject here when docx stopped carrying
             # JSZip: Mermaid's esbuild bundle keeps DOMPurify's own banner.
             Inside(
-                "dompurify", "3.4.12", "@license DOMPurify 3.4.12",
-                behind_ok="B2220 — Mermaid 11.17.2 bundles DOMPurify 3.4.12; a "
-                          "newer DOMPurify arrives with the Mermaid bump.",
+                "dompurify", "3.4.17", "@license DOMPurify 3.4.17",
+                behind_ok="B2220 — Mermaid 12.3.0 (npm latest, 2026-11-24) "
+                          "bundles DOMPurify 3.4.17; 3.5.0 arrives with a "
+                          "Mermaid built against it.",
                 note="The sanitiser between a diagram's labels and the page. "
                      "Read out of DOMPurify's own `@license` banner, which "
-                     "esbuild keeps.",
+                     "esbuild keeps. 3.4.12 inside 11.17.2.",
             ),
         ),
     ),

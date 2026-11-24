@@ -146,7 +146,7 @@ file. Stated plainly, so nothing has to be inferred:
    with permissively-licensed work is not blocked by a *dependency*. It never
    meant Pantheon is distributable under MIT, and this file no longer says
    anything that could be read that way.
-4. **Nine third-party components are copyleft.** Two ship in every install,
+4. **Ten third-party components are copyleft.** Three ship in every install,
    five more are in the Docker image by default (four of which can be built out
    of it), one is in the workstation's image, and one ships in neither. Each is
    copyleft in a *different* way, which is the part worth reading — "copyleft"
@@ -166,6 +166,18 @@ file. Stated plainly, so nothing has to be inferred:
      ships them **unmodified**, so what is owed is the notice and a pointer to
      the source, both of which are here. Change one of those files and you owe
      that file's source under MPL — the rest of Pantheon is unaffected.
+   - **elkjs** — the Eclipse Layout Kernel compiled to JavaScript, offered as
+     **EPL-2.0 or GPL-3.0-or-later**, inside `static/lib/mermaid.min.js`.
+     **Ships by default** since Mermaid 12 (`B2220`, 2026-11-24), which bundles
+     it and registers it as a layout. Pantheon asks Mermaid for `dagre`, so ELK
+     runs only for a diagram whose own front matter asks for it. It is shipped
+     unmodified inside upstream's own bundle; what is owed is the notice (the
+     row above, and its EPL-2.0 text in [`licenses/`](licenses/)) and the
+     source, at [kieler/elkjs](https://github.com/kieler/elkjs) 0.12.0 and the
+     Eclipse ELK release it is built from. Either offer can be taken: EPL-2.0
+     is file-level, like MPL; GPL-3.0-or-later combines with Pantheon as Piper
+     does (GPLv3 §13, AGPLv3 §13). Which one this repository takes is recorded
+     as an open question for the owner, not decided here.
    - **PyMuPDF** — **AGPL-3.0**, and ships in neither the default install nor
      the default image. See [PyMuPDF](#pymupdf--scope-and-licence).
    - **Piper** (`piper-tts`) — the voice this server speaks with on its own
@@ -503,10 +515,11 @@ embedded licence banner.
 | [underscore](https://github.com/jashkenas/underscore) v1.13.1 | bundled inside `mammoth.browser.min.js` | Collection helpers, in mammoth and `lop` | MIT ([`licenses/underscore-MIT-LICENSE.txt`](licenses/underscore-MIT-LICENSE.txt)) |
 | [xmlbuilder](https://github.com/oozcitak/xmlbuilder-js) v10.0.0 | bundled inside `mammoth.browser.min.js` | Writes XML, behind mammoth's style-map embedding | MIT ([`licenses/xmlbuilder-MIT-LICENSE.txt`](licenses/xmlbuilder-MIT-LICENSE.txt)) |
 | [KaTeX](https://github.com/KaTeX/KaTeX) v0.19.1 | `katex/katex.min.{js,css}` + `katex/fonts/*.woff2` | Math typesetting | MIT ([`licenses/KaTeX-MIT-LICENSE.txt`](licenses/KaTeX-MIT-LICENSE.txt)) |
-| [Mermaid](https://github.com/mermaid-js/mermaid) v11.17.2 | `mermaid.min.js` | Diagrams from text | MIT ([`licenses/Mermaid-MIT-LICENSE.txt`](licenses/Mermaid-MIT-LICENSE.txt)) |
-| [vscode-languageserver](https://github.com/microsoft/vscode-languageserver-node) — `vscode-jsonrpc` v8.2.0, `vscode-languageserver-protocol` v3.17.5, `vscode-languageserver-types` v3.17.5 | bundled inside `mermaid.min.js` | Language-server plumbing behind Mermaid's parsers | MIT ([`licenses/vscode-languageserver-MIT-LICENSE.txt`](licenses/vscode-languageserver-MIT-LICENSE.txt)) |
+| [Mermaid](https://github.com/mermaid-js/mermaid) v12.3.0 | `mermaid.min.js` | Diagrams from text | MIT ([`licenses/Mermaid-MIT-LICENSE.txt`](licenses/Mermaid-MIT-LICENSE.txt)) |
+| [vscode-languageserver](https://github.com/microsoft/vscode-languageserver-node) — `vscode-jsonrpc` v9.0.3, `vscode-languageserver-protocol` v3.18.4, `vscode-languageserver-types` v3.18.4 (v8.2.0, v3.17.5, v3.17.5 through Mermaid 11.17.2) | bundled inside `mermaid.min.js` | Language-server plumbing behind Mermaid's parsers | MIT ([`licenses/vscode-languageserver-MIT-LICENSE.txt`](licenses/vscode-languageserver-MIT-LICENSE.txt)) |
 | [Lodash](https://github.com/lodash/lodash) (`lodash-es`) | bundled inside `mermaid.min.js` | Utility library behind Mermaid's config merge | MIT ([`licenses/lodash-MIT-LICENSE.txt`](licenses/lodash-MIT-LICENSE.txt)) |
 | [Cytoscape](https://github.com/cytoscape/cytoscape.js) | bundled inside `mermaid.min.js` | Graph layout behind Mermaid's mindmap/architecture diagrams | MIT ([`licenses/cytoscape-MIT-LICENSE.txt`](licenses/cytoscape-MIT-LICENSE.txt)) |
+| [elkjs](https://github.com/kieler/elkjs) v0.12.0 (the Eclipse Layout Kernel) | bundled inside `mermaid.min.js` from Mermaid 12.0 | The ELK graph layouts Mermaid 12 registers; Pantheon asks Mermaid for `dagre`, so ELK draws only a diagram whose own front matter asks for it | EPL-2.0 or GPL-3.0-or-later ([`licenses/elkjs-EPL-2.0-LICENSE.txt`](licenses/elkjs-EPL-2.0-LICENSE.txt); see *Licence scope*) |
 | [Pyodide](https://github.com/pyodide/pyodide) 314.0.8 | `pyodide/{pyodide.js,pyodide.asm.mjs,pyodide.asm.wasm,python_stdlib.zip,pyodide-lock.json}` | In-browser Python runtime for `” ```python ”` code blocks | MPL-2.0 ([`licenses/Pyodide-MPL-2.0.txt`](licenses/Pyodide-MPL-2.0.txt)) |
 | [Swagger UI](https://github.com/swagger-api/swagger-ui) v5.36.0 | `swagger-ui/{swagger-ui.css,swagger-ui-bundle.js}` | The API browser at `/docs` | Apache-2.0 ([`licenses/SwaggerUI-Apache-2.0.txt`](licenses/SwaggerUI-Apache-2.0.txt), [`licenses/SwaggerUI-NOTICE.txt`](licenses/SwaggerUI-NOTICE.txt)); bundle sidecar: [`licenses/swagger-ui-bundle.js.LICENSE.txt`](licenses/swagger-ui-bundle.js.LICENSE.txt) |
 | [React](https://github.com/facebook/react) — `react`, `react-dom`, `scheduler`, `use-sync-external-store` | bundled inside `swagger-ui-bundle.js` | Swagger UI is a React application | MIT ([`licenses/react-MIT-LICENSE.txt`](licenses/react-MIT-LICENSE.txt)) |
@@ -532,9 +545,9 @@ upstream's own `NOTICE` travels with it.
 
 *Versions read out of the shipped bundles, not carried from a document:
 `highlight.min.js` v11.12.0 from its own banner, `katex.min.js`
-`version:"0.19.1"`, `mermaid.min.js` `11.17.2`. (Measured 2026-08-27; re-read
+`version:"0.19.1"`, `mermaid.min.js` `12.3.0`. (Measured 2026-08-27; re-read
 2026-09-16 after the bumps in `B331`, `B332`, `B334` and `B337`, and again
-2026-09-17 after `B335`, and for KaTeX 2026-11-24 after `B2217`.)*
+2026-09-17 after `B335`, and 2026-11-24 after `B2217` and `B2220`.)*
 
 **Every version in the table above is now checked against the shipped bytes.**
 See [How these stay current](#how-these-stay-current) — the versions here are no
