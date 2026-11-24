@@ -3825,6 +3825,9 @@ def setup_chat_routes(
                             else (set(_summoned.tools) if _summoned else None)
                         ),
                         forced_tools=_forced_tools,
+                        # Apollo's chat keeps its own tools in reach on every
+                        # turn (`src/apollo/frame.TOOLS`): a goal names none.
+                        pinned_tools=(set(_apollo.TOOLS) if _apollo_frame and not _summoned else None),
                         uploaded_files=ctx.uploaded_files,
                         defer_context_shaping=_foreground_policy.enabled,
                         external_untrusted_context_seen=external_untrusted_context_seen,

@@ -9015,6 +9015,14 @@ async def stream_agent_loop(
     if not guide_only and _relevant_tools is not None and _workstation_lift:
         _relevant_tools.add("computer")
 
+    # A caller's pinned names (`pinned_tools`: Apollo's own tools in its chat,
+    # a scheduled task's assistant tools) stay in the set on every selection
+    # path, not only the suite plan's: vector retrieval and the keyword
+    # fallback above pick from the turn's words, and a goal names no tool.
+    # Capped below like every other addition, so a pin never widens access.
+    if not guide_only and _relevant_tools is not None and _turn_pinned_tools:
+        _relevant_tools |= _turn_pinned_tools
+
     # `B1350` (fx11-cap). **The invariant, in one place.** Everything above
     # widens `_relevant_tools` — the selector's floor, the intent's domains,
     # the cookbook and UI additions, the open document, uploads, forced tools,
