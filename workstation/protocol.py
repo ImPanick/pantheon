@@ -86,7 +86,7 @@ VM_PAIRING_DIR_ENV = "PANTHEON_WORKSTATION_VM_PAIRING"
 SYSTEMS = ("ubuntu", "debian", "fedora", "rocky")
 DEFAULT_SYSTEM = "ubuntu"
 SYSTEM_NAMES = {"ubuntu": "Ubuntu 24.04", "debian": "Debian 13",
-                "fedora": "Fedora 44", "rocky": "Rocky Linux 9"}
+                "fedora": "Fedora 45", "rocky": "Rocky Linux 9"}
 SYSTEM_PORTS = {"ubuntu": DEFAULT_PORT, "debian": 7042, "fedora": 7043, "rocky": 7044}
 
 

@@ -121,6 +121,12 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    # `B2214`. Rocky Linux 10 waits for a KasmVNC build for EL10 (KasmVNC
+    # publishes `oracle_9` and older); the reason is beside the FROM line in
+    # workstation/Dockerfile. Point releases and dated rebuilds of 9 still come.
+    ignore:
+      - dependency-name: rockylinux/rockylinux
+        update-types: ["version-update:semver-major"]
 
   # `B2210`. The phone radio sidecar (`workstation/native_android/Dockerfile.radio`),
   # tagged and pinned to its digest so this entry has a tag to compare. Its

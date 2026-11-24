@@ -173,7 +173,7 @@ data, `.pantheon/retrieval_eval.py --generate` builds a test set from your memor
 - **259 agents to hire.** 26 departments and 18 teams, each agent a runbook with its own schedule,
   tools and evaluation cases. `@` in the message box summons one, `/` calls a skill. The roster is
   growing: more agents are coming, and the ones already here keep getting sharper.
-- **A desktop of its own.** XFCE on Ubuntu 24.04, Debian 13, Fedora 44 or Rocky Linux 9, kept
+- **A desktop of its own.** XFCE on Ubuntu 24.04, Debian 13, Fedora 45 or Rocky Linux 9, kept
   between chats and streamed live over [KasmVNC](https://github.com/kasmtech/KasmVNC). The agent
   uses the mouse, keyboard, shell and files; you watch, take over, or reset it to a starting point
   you saved. It runs as a container, or as a full QEMU/KVM VM where the host has KVM.
