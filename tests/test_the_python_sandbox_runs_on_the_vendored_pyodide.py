@@ -78,13 +78,28 @@ def test_the_sandbox_says_run_until_complete_itself(plain):
     assert plain["options"].get("enableRunUntilComplete") is True, plain["options"]
 
 
+def _node_has_stack_switching(*flags: str) -> bool:
+    """Whether this Node offers JS Promise Integration without being asked.
+    Node 22 does not; newer Node turns it on by default, and CI's runner may
+    carry either. The probe is the one Pyodide's own `jspiSupported` reads."""
+    probe = ("process.stdout.write(String(typeof WebAssembly.promising === 'function'"
+             " || typeof WebAssembly.Suspending === 'function'))")
+    proc = subprocess.run(["node", *flags, "-e", probe], capture_output=True, text=True, timeout=60)
+    return proc.stdout.strip() == "true"
+
+
 @needs_node
-def test_without_stack_switching_run_until_complete_says_so(plain):
-    """Fails on 0.27.5: it printed `<PyodideTask pending ...>` as the answer."""
+def test_run_until_complete_answers_or_says_why_and_never_prints_a_pending_task(plain):
+    """Fails on 0.27.5: it printed `<PyodideTask pending ...>` as the answer.
+    Where plain Node has stack switching (newer Node, as CI's runner found on
+    2026-11-24), the block gets its answer; where it does not, it says so."""
     run = plain["runs"]["runUntilComplete"]
     assert "threw" not in run, run
     assert "PyodideTask" not in run["stdout"], run
-    assert "stack switching not supported" in run["stderr"], run
+    if _node_has_stack_switching():
+        assert run == {"stdout": "8\n", "stderr": ""}, run
+    else:
+        assert "stack switching not supported" in run["stderr"], run
 
 
 @needs_node
