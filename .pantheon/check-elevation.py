@@ -71,7 +71,9 @@ TIERS = (0.07, 0.17, 0.31, 0.50)
 #: above and re-derived by `derived_light_ratio()` below. 0.2 until 2026-10-30,
 #: when the cockpit retired three dark palettes (theme.js `RETIRED_THEMES`) and
 #: the median dark panel moved: 0.219, 0.223, 0.222, 0.220 across the tiers.
-LIGHT_RATIO = 0.22
+#: 0.20 again from 2026-11-24, when the two Pantheon presets joined (the
+#: darkest dark panel and a white light one): 0.205, 0.204, 0.202, 0.199.
+LIGHT_RATIO = 0.20
 
 #: `P1-13` swept 168 occurrences. A sweep that finds fewer has lost sites to a
 #: refactor and should be re-measured, not quietly accepted.

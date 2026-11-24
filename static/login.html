@@ -48,6 +48,23 @@
     // A retired preset (theme.js `RETIRED_THEMES`) paints nothing here; the
       // module moves it to Dark on boot.
       if (t && /^(terminal|retrowave|cyberpunk)$/.test(t.name)) t = null;
+      // Nobody has picked a theme: the default preset, as `static/index.html`'s
+      // first paint draws it (the Pantheon look, light or dark after the
+      // system). `THEMES.pantheon` / `THEMES.pantheonlight` in
+      // static/js/theme.js; tests/test_pantheon_is_the_default_theme.py holds
+      // the copies equal.
+      if (!t || !t.colors) {
+        var _osLight = false;
+        try { _osLight = !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches); } catch (_) {}
+        t = _osLight
+          ? { name: 'pantheonlight', colors: { bg:'#f3f5f9', fg:'#0d1220', panel:'#ffffff', border:'#cfd4de', red:'#a05e00' } }
+          : { name: 'pantheon', colors: { bg:'#06080e', fg:'#eaedf4', panel:'#0f1420', border:'#2a3142', red:'#f3b23f' } };
+      }
+      // The finish, as `static/index.html` sets it: hairline is the
+      // getpantheon.ai material (the rules under `data-ck-finish` below).
+      document.documentElement.setAttribute('data-ck-finish',
+        (t.finish === 'glass' || t.finish === 'hairline') ? t.finish
+          : (/^pantheon(light)?$/.test(t.name) ? 'hairline' : 'glass'));
       if (t && t.colors) {
       var c = t.colors;
       // Base palette
@@ -177,8 +194,8 @@
      localStorage — renders the login page in the same palette as the rest
      of the app instead of a different greys+offwhite scheme. */
   :root {
-    --bg: #282c34; --fg: #9cdef2; --panel: #111; --border: #355a66;
-    --red: #e06c75; --green: #50fa7b;
+    --bg: #06080e; --fg: #eaedf4; --panel: #0f1420; --border: #2a3142;
+    --red: #f3b23f; --green: #50fa7b;
     --bg-effect-intensity: 1;
     /* `B1575`. The muted foreground and its pivot, as `static/style.css`'s
        `:root` declares them (`P1-03`, `B1486`) — this page links no
@@ -488,6 +505,35 @@
   .signup-title { font-size: .85rem; font-weight: 500; color: var(--fg); }
   .signup-line { font-size: .75rem; line-height: 1.4; color: color-mix(in oklab, var(--fg) 60%, var(--fg-muted)); }
   @media (prefers-reduced-motion: reduce) { .ck-extend, .signup-switch, .signup-switch::after { transition: none; } }
+
+  /* ── The hairline finish (2026-11-24), the getpantheon.ai material, on the
+     one page `static/hairline.css` never reaches: no light field, a solid
+     card with a one-pixel line and a small radius, the wordmark in plain
+     serif, and the accent flat with its own legible ink. ── */
+  :root[data-ck-finish="hairline"] .ck-field span { display: none; }
+  :root[data-ck-finish="hairline"] .card {
+    background: var(--panel); -webkit-backdrop-filter: none; backdrop-filter: none;
+    border: 1px solid color-mix(in oklab, var(--fg) 14%, transparent); border-radius: 10px;
+    box-shadow: 0 24px 60px -32px color-mix(in srgb, #000 55%, transparent);
+  }
+  :root[data-ck-finish="hairline"] .logo span {
+    background: none; -webkit-text-fill-color: currentColor; color: var(--fg); letter-spacing: -.01em;
+  }
+  :root[data-ck-finish="hairline"] input:not(.remember-check) {
+    background: var(--bg); border-radius: 6px; border-color: color-mix(in oklab, var(--fg) 18%, transparent);
+  }
+  :root[data-ck-finish="hairline"] input:not(.remember-check):focus {
+    border-color: var(--ck-accent); box-shadow: 0 0 0 1px var(--ck-accent);
+  }
+  :root[data-ck-finish="hairline"] :is(button[type="submit"], #submitBtn) {
+    border-radius: 6px; background: var(--ck-accent); color: var(--on-accent, #000);
+    box-shadow: none; font-weight: 600;
+  }
+  :root[data-ck-finish="hairline"] :is(button[type="submit"], #submitBtn):hover { filter: brightness(1.06); }
+  :root[data-ck-finish="hairline"] .signup-choice { border-radius: 8px; background: transparent; border-color: color-mix(in oklab, var(--fg) 14%, transparent); }
+  :root[data-ck-finish="hairline"] .signup-check:checked + .signup-switch { background: var(--ck-accent); }
+  :root[data-ck-finish="hairline"] .signup-check:checked + .signup-switch::after { background: var(--on-accent, #000); }
+  :root[data-ck-finish="hairline"] .signup-check:focus-visible + .signup-switch { outline-color: var(--ck-accent); }
 </style>
 </head>
 <body>

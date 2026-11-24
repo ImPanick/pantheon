@@ -203,7 +203,7 @@ def palettes(tmp_path_factory) -> dict:
     painted = json.loads([l for l in proc.stdout.splitlines() if l.strip()][-1])
 
     assert sorted(painted) == sorted(THEME_NAMES), sorted(painted)
-    assert len(painted) == 20, sorted(painted)  # three retired: theme.js `RETIRED_THEMES`
+    assert len(painted) == 22, sorted(painted)  # three retired (theme.js `RETIRED_THEMES`), two Pantheon presets added
 
     out = {}
     for name, props in painted.items():
@@ -502,7 +502,7 @@ def test_scoping_a_token_did_not_move_it_on_the_surface_it_was_tuned_for(palette
     scoped -= elevation
 
     light = set(_light(palettes))
-    assert light == {"cute", "lavender", "light", "paper", "notebook", "codehost", "video", "mintchat"}, sorted(light)
+    assert light == {"cute", "lavender", "light", "paper", "notebook", "codehost", "video", "mintchat", "pantheonlight"}, sorted(light)
 
     for token, literal in dark_tuned.items():
         for name, theme in palettes.items():

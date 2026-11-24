@@ -7,7 +7,7 @@
   <title>Pantheon Chat</title>
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath fill='%23e06c75' fill-rule='evenodd' d='M5.18 12A11 11 0 0 1 26.82 12L25.74 12L16 7.82L6.26 12ZM16 10L30 16L2 16ZM4 18L28 18L28 20L4 20ZM5 20L8 20L8 26L5 26ZM11.33 20L14.33 20L14.33 26L11.33 26ZM17.67 20L20.67 20L20.67 26L17.67 26ZM24 20L27 20L27 26L24 26ZM2 26L30 26L30 28L2 28Z'/%3E%3C/svg%3E">
   <link rel="manifest" href="/static/manifest.json">
-  <meta name="theme-color" content="#282c34">
+  <meta name="theme-color" content="#06080e">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <!-- Disable iOS / Android auto-linkifying of numbers (phone/date/address)
@@ -23,6 +23,30 @@
       // A retired preset (theme.js `RETIRED_THEMES`) paints nothing here; the
       // module moves it to Dark on boot.
       if (t && /^(terminal|retrowave|cyberpunk)$/.test(t.name)) t = null;
+      // Nobody has picked a theme: paint the default the module will apply,
+      // the Pantheon preset (light or dark after the system), rather than the
+      // stylesheet's fallback palette for a frame. These two palettes are
+      // `THEMES.pantheon` / `THEMES.pantheonlight` in static/js/theme.js;
+      // tests/test_pantheon_is_the_default_theme.py holds them equal.
+      if (!t || !t.colors) {
+        var _osLight = false;
+        try { _osLight = !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches); } catch (_) {}
+        t = _osLight
+          ? { name: 'pantheonlight', colors: { bg:'#f3f5f9', fg:'#0d1220', panel:'#ffffff', border:'#cfd4de', red:'#a05e00',
+              advanced: { sendBtnBg:'#a05e00', sendBtnHover:'#8a5000', userBubbleBg:'#eceff5', aiBubbleBg:'#f3f5f9', bubbleBorder:'#dde1e9',
+                          inputBg:'#ffffff', inputBorder:'#cfd4de', sidebarBg:'#eceff5',
+                          brandColor:'#d98a0b', brandMixTo:'#a05e00', toggleActive:'#a05e00' } } }
+          : { name: 'pantheon', colors: { bg:'#06080e', fg:'#eaedf4', panel:'#0f1420', border:'#2a3142', red:'#f3b23f',
+              advanced: { sendBtnBg:'#f3b23f', sendBtnHover:'#ffc96a', userBubbleBg:'#151b2a', aiBubbleBg:'#06080e', bubbleBorder:'#1e2433',
+                          inputBg:'#0f1420', inputBorder:'#2a3142', sidebarBg:'#0a0e17',
+                          brandColor:'#f3b23f', brandMixTo:'#ffc96a', toggleActive:'#f3b23f' } } };
+      }
+      // The finish (`applyFinish()` in static/js/theme.js, `static/hairline.css`):
+      // the one saved with the theme, else the preset's own — hairline for the
+      // two Pantheon presets, glass for every other theme.
+      document.documentElement.setAttribute('data-ck-finish',
+        (t.finish === 'glass' || t.finish === 'hairline') ? t.finish
+          : (/^pantheon(light)?$/.test(t.name) ? 'hairline' : 'glass'));
       if (t && t.colors) {
         var s = document.documentElement.style;
         var c = t.colors;
@@ -350,6 +374,10 @@
   <link rel="preload" as="font" type="font/woff2" crossorigin href="/static/fonts/Geist-Regular.woff2">
   <link rel="preload" as="font" type="font/woff2" crossorigin href="/static/fonts/InstrumentSerif-Regular.woff2">
   <link rel="stylesheet" href="/static/cockpit.css">
+  <!-- The hairline finish (the getpantheon.ai material): every rule scoped to
+       `html.cockpit[data-ck-finish="hairline"]`, loaded after cockpit.css so it
+       wins a tie. The first-paint script above sets the attribute. -->
+  <link rel="stylesheet" href="/static/hairline.css">
   <link rel="modulepreload" href="/static/app.js?v=20261009census">
   <!-- B58. This must carry the SAME query as the <script> tag below, or the
        browser fetches chat.js twice: the cache and the module map are keyed on
@@ -367,7 +395,7 @@
        first impression), and it gains a stage line beneath it, because a
        progress indicator that cannot say what it is waiting for is a
        `Law 15` surface — it looks identical at 200ms and at 20 seconds. -->
-  <div id="app-loader" style="position:fixed;inset:0;z-index:99999;background:var(--bg,#282c34);display:flex;align-items:center;justify-content:center;flex-direction:column;gap:8px;transition:opacity .3s">
+  <div id="app-loader" style="position:fixed;inset:0;z-index:99999;background:var(--bg,#06080e);display:flex;align-items:center;justify-content:center;flex-direction:column;gap:8px;transition:opacity .3s">
     <div id="loader-wave" style="color:color-mix(in srgb, #9cdef2 62%, var(--brand-color,var(--red,#e06c75)));font-family:monospace;font-size:11px;opacity:.5;position:relative;padding-top:10px;line-height:1;white-space:pre">▁▂▃</div>
     <div id="loader-stage" role="status" aria-live="polite" style="font-family:monospace;font-size:10px;letter-spacing:.06em;color:var(--fg,#9cdef2);opacity:.45;min-height:1.2em;text-align:center;padding:0 16px">Starting Pantheon…</div>
   </div>
@@ -1113,6 +1141,13 @@
             <select id="theme-text-size-select" class="theme-fd-select" aria-label="Text size">
               <option value="100">Default</option>
               <option value="125">Larger</option>
+            </select>
+          </div>
+          <div class="theme-fd-group">
+            <label class="theme-fd-label" for="theme-finish-select">Finish</label>
+            <select id="theme-finish-select" class="theme-fd-select" title="How surfaces are drawn: Hairline is the getpantheon.ai look (solid panels, fine lines); Glass is translucent and soft">
+              <option value="hairline">Hairline</option>
+              <option value="glass">Glass</option>
             </select>
           </div>
           <div class="theme-fd-group" id="theme-frosted-group">
