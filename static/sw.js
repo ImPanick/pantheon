@@ -12,7 +12,7 @@
 // `?v=` — the JS/CSS branch below asks the network first, and the server
 // answers `no-cache` with an ETag — so a `?v=` is a module's identity, never
 // moved on one site (`.pantheon/AGENTS.md` § Operational facts).
-const CACHE_NAME = 'pantheon-v523-merged';
+const CACHE_NAME = 'pantheon-v524-hairline';
 
 // KaTeX resolves these from its own stylesheet, so caching the CSS without them
 // gives offline math fallback glyphs instead of proper typesetting.
@@ -88,6 +88,7 @@ const PRECACHE = [
   '/static/style.css?v=20261009census',
   // The cockpit: its stylesheet and the two modules index.html loads for it.
   '/static/cockpit.css',
+  '/static/hairline.css',
   '/static/js/cockpit.js',
   '/static/js/cockpitWorkspace.js',
   '/static/fonts/Geist-Regular.woff2',

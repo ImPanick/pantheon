@@ -655,6 +655,7 @@ html.cockpit .agent-thread-node:not(.error):not(.running):not(.blocked) > .agent
 html.cockpit .agent-thread-node.error > .agent-thread-dot { background: var(--ck-danger) !important; box-shadow: 0 0 8px color-mix(in oklab, var(--ck-danger) 60%, transparent) !important; }
 html.cockpit .agent-thread-node.running > .agent-thread-dot { background: var(--ck-accent) !important; box-shadow: 0 0 10px var(--ck-accent-glow) !important; animation: ck-pulse var(--ck-beat) var(--ck-ease) infinite !important; }
 html.cockpit .agent-thread-node.supervisor-step > .agent-thread-dot { background: var(--ck-warn) !important; }
+html.cockpit .agent-thread-node.supervisor-step[data-rung="stop"] > .agent-thread-dot { background: var(--ck-danger) !important; }
 html.cockpit .agent-thread-header {
   gap: 9px !important; padding: 6px 8px 6px 24px !important; font: 400 12.5px/1.4 var(--ck-font-ui) !important; color: var(--ck-text-2) !important;
   background: none !important; border: 0 !important; min-width: 0;
