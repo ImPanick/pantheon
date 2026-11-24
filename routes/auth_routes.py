@@ -350,8 +350,21 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
             await _audit("login", actor=body.username, outcome="error",
                          detail={"reason": "rate_limited"})
             raise HTTPException(429, "Too many requests — try again later")
-        # Verify password first
         username = body.username.strip().lower()
+        # `P3-16`. With `auth.json` unreadable there are no accounts in memory,
+        # so every password "fails" and the person was told their credentials
+        # were wrong. Try the file again (it may have been repaired) and, if it
+        # still can't be read, say so: no password is being judged at all.
+        if auth_manager.load_error and not await asyncio.to_thread(auth_manager.retry_load):
+            await _audit("login", actor=username, outcome="error",
+                         detail={"reason": "accounts_unreadable"})
+            raise HTTPException(
+                503,
+                "Pantheon can't read its account file, so nobody can sign in "
+                "until it can. The accounts in it are untouched; the server log "
+                "says what is wrong with the file.",
+            )
+        # Verify password first
         if not await asyncio.to_thread(auth_manager.verify_password, username, body.password):
             # The reason is `invalid_credentials` whether the account exists or
             # not, deliberately: the 401 above does not distinguish them and an

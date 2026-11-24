@@ -1779,7 +1779,7 @@ async def readiness_check(request: Request) -> JSONResponse:
     about the box than a stranger at the port needs. Signed in, it is whole.
     """
     from src.readiness import check_readiness
-    result = check_readiness()
+    result = await asyncio.to_thread(check_readiness, auth_manager)
     status = 200 if result.get("ready") else 503
     token = request.cookies.get(SESSION_COOKIE)
     if not (token and auth_manager.get_username_for_token(token)):
@@ -1824,6 +1824,17 @@ async def _startup_event():
     global upload_cleanup_task
     logger.info("Application starting up...")
     webhook_manager.set_loop(asyncio.get_running_loop())
+    # Accounts and saved secrets, said at startup rather than discovered at the
+    # first sign-in or the first provider call (`P3-16`, `src.readiness`).
+    try:
+        from src.readiness import check_readiness as _ready
+        _report = await asyncio.to_thread(_ready, auth_manager)
+        for _name in ("accounts", "secrets"):
+            _c = (_report.get("checks") or {}).get(_name) or {}
+            if _c and not _c.get("ok"):
+                logger.critical("Startup check '%s' failed: %s", _name, _c.get("error"))
+    except Exception as e:
+        logger.warning(f"Startup readiness check skipped: {e}")
     # Wipe any leftover incognito sessions from previous process — they're
     # ephemeral by design and must not survive a restart.
     try:
