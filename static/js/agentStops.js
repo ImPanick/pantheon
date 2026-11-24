@@ -135,7 +135,10 @@ export const AGENT_NOTE_TYPES = Object.freeze(['rounds_exhausted', 'budget_excee
   // `B1326`. A registered MCP server that is not answering, said in the chat
   // before the turn's first step — the model is told in its prompt (`B1307`),
   // and this is the person's half.
-  'mcp_unavailable']);
+  'mcp_unavailable',
+  // `B2241`. A reply the reasoning cache gave in the model's place: said beside
+  // it, with what each step of the entry did, live and after a reload.
+  'reasoning_cache']);
 
 /**
  * `P4-13` / `B921`. What a `compacted` event says, in the trim notice's words:
@@ -369,6 +372,27 @@ export function agentNoteNode(doc, event, opts = {}) {
       node.appendChild(words(d, servers.length > 1
         ? '. Their tools are not in this chat; the Workbench\u2019s MCP & Integrations room shows them.'
         : '. Its tools are not in this chat; the Workbench\u2019s MCP & Integrations room shows it.'));
+      return node;
+    }
+    case 'reasoning_cache': {
+      // `B2241`. The entry's own sentence about what it answers, and its
+      // narration, all model-written: text nodes only.
+      node.className = 'reasoning-cache-note';
+      node.style.cssText = QUIET_NOTE_STYLE;
+      node.appendChild(textPart(d, 'span', 'Answered from the reasoning cache, without the model'));
+      if (event.applies_when) {
+        node.appendChild(words(d, ': '));
+        node.appendChild(textPart(d, 'span', String(event.applies_when), { opacity: '0.75' }));
+      }
+      const steps = Array.isArray(event.narration) ? event.narration : [];
+      if (steps.length) {
+        const more = d.createElement('details');
+        more.appendChild(textPart(d, 'summary', 'What it did'));
+        const list = d.createElement('ol');
+        steps.forEach((step) => list.appendChild(textPart(d, 'li', String(step))));
+        more.appendChild(list);
+        node.appendChild(more);
+      }
       return node;
     }
     default:   // escalation_failed, skill_save_failed

@@ -466,7 +466,20 @@ def local_only_for_session(db, owner: Optional[str], session_id: Optional[str]) 
         t = (db.query(ApolloTask)
              .filter(ApolloTask.owner == owner, ApolloTask.session_id == session_id).first())
         sid = t.space_id if t is not None else None
-    edge = edge_of(spaces, sid)
+    return _local_only_name(spaces, sid)
+
+
+def local_only_for_space(db, owner: Optional[str], space_id: Optional[str]) -> Optional[str]:
+    """The name of the local-only space `space_id` sits in (itself or the
+    edge above it), or None. `B2241`: the reasoning cache asks it for an
+    Apollo goal run, which has a space and no chat of its own."""
+    if not owner or not space_id:
+        return None
+    return _local_only_name(_all(db, owner), space_id)
+
+
+def _local_only_name(spaces: Dict[str, Any], space_id: Optional[str]) -> Optional[str]:
+    edge = edge_of(spaces, space_id)
     if edge and spaces[edge].local_only:
         return spaces[edge].name
     return None

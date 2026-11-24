@@ -3770,7 +3770,31 @@ def setup_chat_routes(
                     # trimmed its request; a trim that left one out takes it
                     # off (`context_trimmed` below).
                     _memories_offered = list(ctx.used_memories or [])
-                    async for chunk in stream_agent_loop(
+                    # `B2241`. The reasoning cache consults this turn, unless it
+                    # is one the cache may neither answer nor learn from: Nobody,
+                    # a plan, an approval being replayed, a summoned agent, or a
+                    # turn about an open document, email or attachment. Its scope
+                    # is the Apollo space the chat works in, else the person's
+                    # ordinary chats; a local-only space keeps it to local models.
+                    from src.reasoning_cache import gate as _reasoning_cache
+                    _cache_consult = bool(_user) and not (
+                        incognito or plan_mode or exact_tool_approval or _summoned
+                        or active_doc or active_email_ctx or ctx.uploaded_files)
+                    _cache_scope, _cache_local = "chat", False
+                    if _cache_consult:
+                        def _cache_where_off_the_loop():
+                            _cdb = SessionLocal()
+                            try:
+                                return _reasoning_cache.chat_scope(_cdb, _user, session)
+                            finally:
+                                _cdb.close()
+                        try:
+                            _cache_scope, _cache_local = await asyncio.to_thread(
+                                _cache_where_off_the_loop)
+                        except Exception as _cache_err:   # help, never a gate
+                            logger.info("Reasoning cache sits this turn out: %s", _cache_err)
+                            _cache_consult = False
+                    async for chunk in _reasoning_cache.around(stream_agent_loop(
                         sess.endpoint_url,
                         sess.model,
                         (_summoned.into(messages) if _summoned
@@ -3833,7 +3857,11 @@ def setup_chat_routes(
                         external_untrusted_context_seen=external_untrusted_context_seen,
                         delegated_credential=_delegated_credential,
                         exact_approval=exact_tool_approval,
-                    ):
+                    ), owner=_user, scope=_cache_scope, messages=messages,
+                            workload="foreground", session_id=session,
+                            disabled_tools=disabled_tools or None,
+                            untrusted_seen=bool(external_untrusted_context_seen),
+                            local_only=_cache_local, consult=_cache_consult):
                         if chunk.startswith("data: ") and not chunk.startswith("data: [DONE]"):
                             try:
                                 data = json.loads(chunk[6:])

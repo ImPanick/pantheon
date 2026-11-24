@@ -755,6 +755,88 @@ async function initTaskModel() {
   if (overTasks) overTasks.addEventListener('change', saveOverTasks);
 }
 
+/* ── `B2241` · Reasoning cache ── */
+// The person's own mode is a preference (`PUT /api/prefs/reasoning_cache`);
+// the three models and the two numbers are the admin's settings.
+async function initReasoningCache() {
+  var modeSel = el('set-rcMode');
+  var msg = el('set-rcMsg');
+  if (!modeSel) return;
+  function say(text, bad) {
+    if (!msg) return;
+    msg.textContent = text;
+    msg.style.color = bad ? 'var(--red)' : 'var(--fg)';
+  }
+  try {
+    var pref = await fetch('/api/prefs/reasoning_cache', { credentials: 'same-origin' });
+    var body = await pref.json();
+    modeSel.value = (body && body.value) || 'off';
+  } catch (e) { modeSel.value = 'off'; }
+  modeSel.addEventListener('change', async function() {
+    try {
+      var res = await fetch('/api/prefs/reasoning_cache', {
+        method: 'PUT', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ value: modeSel.value }),
+      });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      say(modeSel.value === 'off' ? 'The reasoning cache is off for you.'
+        : modeSel.value === 'shadow' ? 'Entries are built and checked; the model still answers every turn.'
+        : 'An entry that has agreed with the model enough times answers in its place.');
+    } catch (e) { say(_notSaved(e), true); }
+  });
+
+  var _endpoints = [];
+  try { _endpoints = await _fetchModelEndpoints(); } catch (e) { console.warn('Failed to load endpoints for the reasoning cache', e); }
+  var settings = {};
+  try {
+    var res = await fetch('/api/auth/settings', { credentials: 'same-origin' });
+    settings = await res.json();
+  } catch (e) { /* the controls still work */ }
+
+  ['builder', 'target', 'judge'].forEach(function(role) {
+    var cap = role.charAt(0).toUpperCase() + role.slice(1);
+    var epSel = el('set-rc' + cap + 'Endpoint');
+    var modelSel = el('set-rc' + cap + 'Model');
+    if (!epSel || !modelSel) return;
+    _fillEndpointSelect(epSel, _endpoints, settings['reasoning_cache_' + role + '_endpoint_id'] || '', true);
+    if (epSel.options[0]) epSel.options[0].textContent = 'Same as utility';
+    function refreshModels(selected) {
+      var ep = _endpoints.find(function(x) { return x.id === epSel.value; });
+      _fillModelSelect(modelSel, ep ? ep.models : [], selected, true);
+      if (modelSel.options[0]) modelSel.options[0].textContent = 'Same as utility';
+    }
+    epSel.value = settings['reasoning_cache_' + role + '_endpoint_id'] || '';
+    refreshModels(settings['reasoning_cache_' + role + '_model'] || '');
+    async function save() {
+      var out = {};
+      out['reasoning_cache_' + role + '_endpoint_id'] = epSel.value;
+      out['reasoning_cache_' + role + '_model'] = modelSel.value;
+      try {
+        await _postSettings(out);
+        say('The ' + role + ' runs on ' + (epSel.value ? (modelSel.value || 'the endpoint default') : 'the utility model') + '.');
+      } catch (e) { say(_notSaved(e), true); }
+    }
+    epSel.addEventListener('change', function() { refreshModels(''); save(); });
+    modelSel.addEventListener('change', save);
+  });
+
+  [['set-rcMatch', 'reasoning_cache_match_percent'], ['set-rcAgreements', 'reasoning_cache_agreements']].forEach(function(pair) {
+    var input = el(pair[0]);
+    if (!input) return;
+    if (settings[pair[1]] != null) input.value = settings[pair[1]];
+    input.addEventListener('change', async function() {
+      var out = {};
+      out[pair[1]] = parseInt(input.value, 10);
+      try {
+        var saved = await _postSettings(out);
+        if (saved && saved[pair[1]] != null) input.value = saved[pair[1]];
+        say('Saved.');
+      } catch (e) { say(_notSaved(e), true); }
+    });
+  });
+}
+
 /* ── Utility Model ── */
 async function initUtilityModel() {
   var epSel = el('set-utilityEpSelect');
@@ -3705,6 +3787,7 @@ function initAll() {
     initEnvBackedFlags();   // B95
     initAgentBudget();   // H18
     initTaskModel();     // H18
+    initReasoningCache();   // `B2241`
     initDocStyle();      // H18
     initSafesearch();    // H18
     initReminderSettings();

@@ -173,6 +173,13 @@ def setup_prefs_routes():
                 value = checked_system(value)
             except ValueError as e:
                 raise HTTPException(400, str(e))
+        elif key == "reasoning_cache":
+            # `B2241`. This person's reasoning cache: off, shadow or live.
+            from src.reasoning_cache.roles import checked_mode
+            try:
+                value = checked_mode(value)
+            except ValueError as e:
+                raise HTTPException(400, str(e))
         elif key == "reactions_enabled":
             value = value is not False   # `B1736`: a switch, on unless turned off
         prefs[key] = value
