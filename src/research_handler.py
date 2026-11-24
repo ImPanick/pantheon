@@ -6,7 +6,8 @@
 # cannot be marked consumed (`P3-17`), the `research_completed` event (`P8-23`),
 # the removal of an unused `generate_plan` (`B1470`), one reading of a research
 # run's numbers for the panel and the scheduler (`B1796`), thinking off on the
-# query rewrite and the reachability probe (`B2129`) and the SPDX line above
+# query rewrite and the reachability probe (`B2129`), the removal of the
+# legacy `research_engine` fallback (`B2150`) and the SPDX line above
 # (`P0-18`).
 #
 # Upstream licence text (Tongyi DeepResearch): licenses/DeepResearch-Apache-2.0.txt
@@ -16,9 +17,8 @@
 # src/research_handler.py
 """Handler for research service integration with expandable UI support.
 
-Uses the IterResearch-style DeepResearcher (LLM-in-the-loop) as the primary
-engine, falling back to the legacy ResearchOrchestrator or basic web search
-if needed.
+Uses the IterResearch-style DeepResearcher (LLM-in-the-loop) as the engine,
+falling back to a basic web search if it fails.
 
 Includes a task registry so research survives page refreshes and can be cancelled.
 """
@@ -101,24 +101,14 @@ class ResearchHandler:
     """Handles research service operations with iterative deep research."""
 
     def __init__(self):
-        self._legacy_engine = None
+        # `B2150`. A legacy `ResearchOrchestrator` was tried here first, by a
+        # bare `from research_engine import ...`. No such module is in the tree,
+        # the requirements or the image, so every boot logged that it was not
+        # found; and a bare top-level import runs whatever file of that name
+        # sits first on `sys.path`. DeepResearcher replaced it; a failed run
+        # falls back to `_handle_research_failure`'s basic search.
         self._active_tasks: Dict[str, dict] = {}
-        self._initialize_legacy_engine()
         RESEARCH_DATA_DIR.mkdir(parents=True, exist_ok=True)
-
-    def _initialize_legacy_engine(self):
-        """Initialize the legacy research engine as a fallback."""
-        try:
-            from research_engine import ResearchOrchestrator, Config
-            config = Config(max_searches=12, max_content_per_page=15000)
-            self._legacy_engine = ResearchOrchestrator(config)
-            logger.info("Legacy ResearchOrchestrator initialized (fallback)")
-        except ImportError:
-            logger.info("Legacy research_engine.py not found — DeepResearcher only")
-            self._legacy_engine = None
-        except Exception as e:
-            logger.warning(f"Legacy research engine init failed: {e}")
-            self._legacy_engine = None
 
     # ------------------------------------------------------------------
     # Query synthesis & planning
@@ -871,39 +861,8 @@ class ResearchHandler:
         self, query: str, llm_endpoint: str, llm_model: str,
         max_time: int, primary_error: str,
     ) -> str:
-        """Fall back to legacy engine, then to basic web search."""
-        # Try legacy orchestrator
-        if self._legacy_engine:
-            try:
-                import asyncio
-                logger.info("Falling back to legacy ResearchOrchestrator...")
-                loop = asyncio.get_running_loop()
-                result = await loop.run_in_executor(
-                    None, self._legacy_engine.start_research, query, max_time
-                )
-                stats = self._get_legacy_stats()
-                elapsed = float(stats.get("Duration", "0").rstrip("s") or 0)
-                return self._format_research_report(query, result, stats, elapsed)
-            except Exception as e:
-                logger.error(f"Legacy engine also failed: {e}")
-
-        # Fall back to basic web search
+        """Fall back to a basic web search when DeepResearcher fails."""
         return self._handle_research_failure(query, primary_error)
-
-    def _get_legacy_stats(self) -> dict:
-        """Get statistics from the legacy research engine."""
-        if not self._legacy_engine:
-            return {}
-        try:
-            tracker = self._legacy_engine.progress_tracker
-            return {
-                "Findings": len(self._legacy_engine.findings),
-                "Sources": len(self._legacy_engine.source_reports),
-                "Searches": tracker.counters['searches_executed'],
-                "URLs": tracker.counters['urls_processed'],
-            }
-        except Exception:
-            return {}
 
     def _format_research_report(
         self, query: str, full_report: str, stats: dict, elapsed: float,
@@ -929,25 +888,6 @@ class ResearchHandler:
 {full_report}
 """
         return formatted
-
-    def _format_error_response(self, error_msg: str, query: str) -> str:
-        """Format error response in a user-friendly way."""
-        return f"""## Research Engine Unavailable
-
-**Query:** {query}
-
-**Error:** {error_msg}
-
-**Please check:**
-1. LLM endpoint is reachable
-2. SearXNG is running at the configured instance
-3. Application logs for detailed error information
-
-**Troubleshooting:**
-- Test basic search: Try the web search toggle first
-- Check search config: `/api/search/config`
-- Review logs for initialization errors
-"""
 
     def _handle_research_failure(self, query: str, error: str) -> str:
         """Handle research failure with fallback to basic search."""
