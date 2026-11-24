@@ -309,11 +309,11 @@ export function placeControl() {
       if (before && before.parentNode === sb) sb.insertBefore(control, before);
       else sb.appendChild(control);
     }
-    html?.classList.add('apollo-docked');
+    if (html) html.classList.add('apollo-docked');
     root.classList.add('rail-out');
   } else {
     if (control.parentNode !== root) root.insertBefore(control, root.firstChild || null);
-    html?.classList.remove('apollo-docked');
+    if (html) html.classList.remove('apollo-docked');
     root.classList.remove('rail-out');
   }
 }

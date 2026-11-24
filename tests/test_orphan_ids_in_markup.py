@@ -201,7 +201,7 @@ NEVER_BUILT: set = set()
 DEAD_ATTRIBUTE = {             # live element, dead id
     "adm-epApiKey-row", "agent-drafts-chevron", "auto-sort-sessions-row",
     "chats-section-label",
-    "settings-2fa-card", "settings-system-logs-card", "sidebar-user-bar",
+    "settings-2fa-card", "settings-system-logs-card",
     "theme-frosted-group", "theme-save-row",
 }
 ITEMISED = SUPERSEDED_MARKUP | NEVER_BUILT | DEAD_ATTRIBUTE
