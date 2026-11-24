@@ -36,6 +36,8 @@ STORED_OPTIONS = [
     "bgEffectIntensity",
     "bgEffectSize",
     "frosted",
+    # 2026-11-24: the finish (glass or hairline, `static/hairline.css`).
+    "finish",
 ]
 
 

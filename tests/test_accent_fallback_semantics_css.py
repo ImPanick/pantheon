@@ -500,9 +500,10 @@ def test_full_strength_accent_text_clears_the_floor_on_nine_palettes():
         "a palette leaving it means P1-08 has work it can retire."
     )
     clears = {n: r for n, r in measured.items() if n not in under}
-    # Fourteen since the cockpit retired three presets that all cleared it
-    # (theme.js `RETIRED_THEMES`).
-    assert len(clears) == 14, f"expected fourteen palettes above the floor, got {sorted(clears)}"
+    # Fourteen when the cockpit retired three presets that all cleared it
+    # (theme.js `RETIRED_THEMES`); sixteen since the two Pantheon presets,
+    # which both clear it, joined (2026-11-24).
+    assert len(clears) == 16, f"expected sixteen palettes above the floor, got {sorted(clears)}"
 
 
 def test_the_population_under_the_contrast_exception_cannot_grow():

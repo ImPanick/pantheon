@@ -25,9 +25,10 @@ ROOT = Path(__file__).resolve().parents[2]
 THEME_JS = ROOT / "static" / "js" / "theme.js"
 
 #: How many palettes `theme.js` ships. A count here rather than in each
-#: caller, so a new palette is one edit. Twenty since the cockpit retired
-#: `terminal`, `retrowave` and `cyberpunk` (theme.js `RETIRED_THEMES`).
-SHIPPED_PALETTES = 20
+#: caller, so a new palette is one edit. Twenty when the cockpit retired
+#: `terminal`, `retrowave` and `cyberpunk` (theme.js `RETIRED_THEMES`);
+#: twenty-two since `pantheon` and `pantheonlight` joined (2026-11-24).
+SHIPPED_PALETTES = 22
 
 
 class PaintsNothing(AssertionError):
