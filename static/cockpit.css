@@ -3189,6 +3189,8 @@ html.cockpit.apollo-view #incognito-btn,
 html.cockpit.apollo-view #welcome-scenery,
 html.cockpit.apollo-view #welcome-screen,
 html.cockpit.apollo-view .chat-top-bar #current-meta,
+html.cockpit.apollo-view .chat-top-bar #current-meta-count,
+html.cockpit.apollo-view .chat-top-bar #session-cost-display,
 html.cockpit.apollo-view #export-delete-btn { display: none !important; }
 
 html.cockpit .apo-bar {
@@ -3200,24 +3202,68 @@ html.cockpit .apo-bar-name { font-weight: 600; letter-spacing: .01em; font-size:
 html.cockpit .apo-bar-space { display: inline-flex; min-width: 0; }
 html.cockpit .apo-bar-grow { flex: 1 1 auto; }
 html.cockpit .apo-bar-btn {
-  display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px;
-  border: 1px solid transparent; border-radius: 8px; background: transparent; color: inherit; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; padding: 0;
+  border: 1px solid transparent; border-radius: 9px; background: transparent; color: var(--ck-text-2, inherit); cursor: pointer;
 }
+html.cockpit .apo-bar-btn:hover { color: var(--ck-text, var(--fg)); }
+html.cockpit .apo-bar-btn svg { width: 16px; height: 16px; }
+html.cockpit .apo-bar-btn-text svg { width: 15px; height: 15px; }
 html.cockpit .apo-bar-btn:hover { background: var(--ck-tint, var(--ck-glass-soft)); }
 
-/* Apollo's deck (`static/js/apolloDeck.js`): the page is the work. Goals on
-   the left, the open goal's board in the middle (plan, owners, handoffs, the
-   lead's chat), Needs you on the right; the chat under it is Apollo's command
-   line, kept short so the board leads. One column on a phone. */
+/* Apollo's deck (`static/js/apolloDeck.js`): the page is the work. The open
+   goal's board in the middle (plan, owners, handoffs, the lead's chat), Needs
+   you on the right, and Apollo's control pane (goals, chats, mail) on the
+   left: in the sidebar's place when the sidebar is showing (`apollo-docked`,
+   the deck then `rail-out`), otherwise the deck's first column. The chat under
+   it is Apollo's command line, kept short so the board leads.
+
+   The columns follow the width the deck has, not the window's (a container
+   query on the chat area), so the workspace opening beside it restacks the
+   deck instead of crushing the board to a word a line (owner's test,
+   2026-11-24). */
 html.cockpit .apo-deck { display: none; }
+html.cockpit.apollo-view #chat-container { container: apollo / inline-size; }
 html.cockpit.apollo-view .apo-deck {
-  display: grid; grid-template-columns: minmax(220px, 270px) minmax(0, 1fr) minmax(240px, 300px);
+  display: grid; gap: 12px; flex: 1 1 auto; min-height: 0; padding: 4px 16px 8px; color: var(--ck-text, var(--fg));
+  grid-template-columns: minmax(220px, 250px) minmax(0, 1fr) minmax(240px, 280px);
   grid-template-areas: "rail board needs" "status status status";
   grid-template-rows: minmax(0, 1fr) auto;
-  gap: 12px; flex: 1 1 auto; min-height: 0; padding: 4px 16px 8px; color: var(--ck-text, var(--fg));
 }
+html.cockpit.apollo-view .apo-deck.rail-out {
+  grid-template-columns: minmax(0, 1fr) minmax(240px, 280px);
+  grid-template-areas: "board needs" "status status";
+}
+/* Narrower: Needs you sits over the board as a strip; the pane keeps its column. */
+@container apollo (max-width: 1099px) {
+  html.cockpit.apollo-view .apo-deck {
+    grid-template-columns: minmax(200px, 230px) minmax(0, 1fr);
+    grid-template-areas: "rail needs" "rail board" "status status";
+    grid-template-rows: auto minmax(0, 1fr) auto;
+  }
+  html.cockpit .apo-deck .apo-deck-needs { max-height: 168px; }
+}
+@container apollo (max-width: 899px) {
+  html.cockpit.apollo-view .apo-deck.rail-out {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "needs" "board" "status";
+    grid-template-rows: auto minmax(0, 1fr) auto;
+  }
+  html.cockpit .apo-deck.rail-out .apo-deck-needs { max-height: 168px; }
+}
+/* Narrow (a phone, or the workspace wide open): one column, Needs you first. */
+@container apollo (max-width: 719px) {
+  html.cockpit.apollo-view .apo-deck, html.cockpit.apollo-view .apo-deck.rail-out {
+    grid-template-columns: minmax(0, 1fr); grid-template-areas: "needs" "rail" "board" "status";
+    grid-template-rows: auto auto auto auto; overflow-y: auto; padding: 4px 12px 8px;
+  }
+  html.cockpit .apo-deck .apo-deck-rail { max-height: 34vh; }
+  html.cockpit .apo-deck .apo-deck-board { overflow: visible; }
+}
+/* Nothing needs you: one quiet line, not an empty column's worth of panel. */
+html.cockpit .apo-deck-needs:has(.apo-deck-none) { align-self: start; }
+
 html.cockpit.apollo-view .chat-history {
-  flex: 0 1 auto !important; max-height: 26vh; min-height: 0; overflow-y: auto; padding-top: 8px;
+  flex: 0 1 auto !important; max-height: 22vh; min-height: 0; overflow-y: auto; padding-top: 8px;
 }
 html.cockpit.apollo-view .chat-container.welcome-active .chat-history { max-height: 0; }
 /* The command line sits at the foot of the deck, not lifted to the middle
@@ -3227,66 +3273,116 @@ html.cockpit .apo-deck-rail, html.cockpit .apo-deck-board, html.cockpit .apo-dec
   min-height: 0; overflow-y: auto; scrollbar-width: thin;
   border: 1px solid var(--ck-glass-soft); border-radius: 14px; background: var(--ck-glass-soft); padding: 10px;
 }
-html.cockpit .apo-deck-rail { grid-area: rail; display: flex; flex-direction: column; gap: 8px; }
-html.cockpit .apo-deck-board { grid-area: board; display: flex; flex-direction: column; gap: 14px; padding: 14px 18px; }
-html.cockpit .apo-deck-needs { grid-area: needs; display: flex; flex-direction: column; gap: 8px; }
+html.cockpit .apo-deck-rail { grid-area: rail; }
+html.cockpit .apo-deck-board { grid-area: board; display: flex; flex-direction: column; gap: 0; padding: 0 18px 16px; }
+html.cockpit .apo-deck-needs { grid-area: needs; display: flex; flex-direction: column; gap: 8px; padding: 12px; }
+html.cockpit .apo-deck-needs > .apo-deck-sec-t { display: flex; align-items: center; gap: 6px; }
+html.cockpit .apo-deck-needs-list { display: flex; flex-direction: column; gap: 8px; }
 html.cockpit .apo-deck-status { grid-area: status; margin: 0; font-size: 12px; color: var(--ck-warn-text); }
 html.cockpit .apo-deck-status:empty { display: none; }
-html.cockpit .apo-deck-rail-h { display: flex; gap: 6px; }
-html.cockpit .apo-deck-rail-h .apo-btn { flex: 1 1 0; }
-html.cockpit .apo-newgoal { display: flex; flex-direction: column; gap: 6px; }
+
+/* Apollo's control pane: New goal, Home, the goals, the person's chats and mail. */
+html.cockpit .apo-control { display: flex; flex-direction: column; gap: 4px; min-height: 0; overflow-y: auto; scrollbar-width: thin; }
+html.cockpit.apollo-view.apollo-docked .sidebar-inner { display: none !important; }
+html.cockpit .sidebar > .apo-control {
+  flex: 1 1 auto; padding: 2px 10px 12px; border: 0; border-radius: 0; background: transparent;
+}
+html.cockpit .apo-btn.apo-newgoal-b {
+  display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; min-height: 36px; margin-bottom: 6px;
+  border-radius: 10px; font-size: 13px; font-weight: 600; letter-spacing: .01em;
+}
+html.cockpit .apo-btn.apo-newgoal-b:hover:not(:disabled) { background: color-mix(in oklab, var(--ck-accent) 86%, var(--ck-text)); }
+html.cockpit .apo-ico { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; }
+html.cockpit .apo-nav {
+  display: flex; align-items: center; gap: 10px; width: 100%; min-height: 32px; padding: 6px 10px;
+  border: 1px solid transparent; border-radius: 10px; background: transparent; color: var(--ck-text);
+  font: inherit; font-size: 13px; text-align: left; cursor: pointer;
+}
+html.cockpit .apo-nav:hover { background: var(--ck-tint); }
+html.cockpit .apo-nav.is-open { background: var(--ck-tint); border-color: var(--ck-accent-line); }
+html.cockpit .apo-nav .apo-ico { color: var(--ck-text-2); }
+html.cockpit .apo-nav-t { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+html.cockpit .apo-nav.is-pinned .apo-nav-t { font-weight: 600; }
+html.cockpit .apo-nav-more { color: var(--ck-text-2); font-size: 12px; }
+html.cockpit .apo-nav-n[hidden] { display: none; }
+html.cockpit .apo-ctl-sec { display: flex; flex-direction: column; gap: 2px; margin-top: 10px; }
+html.cockpit .apo-ctl-sec[hidden] { display: none; }
+html.cockpit .apo-ctl-h { display: flex; align-items: center; gap: 2px; padding-right: 4px; }
+html.cockpit .apo-ctl-t {
+  flex: 1 1 auto; margin: 0; padding: 0 10px 4px; font-size: 11px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: .06em; color: var(--ck-text-2);
+}
+html.cockpit .apo-ctl-sec > .apo-ctl-t { padding-bottom: 4px; }
+html.cockpit .apo-ctl-act {
+  display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; padding: 0;
+  border: 0; border-radius: 8px; background: transparent; color: var(--ck-text-2); cursor: pointer;
+}
+html.cockpit .apo-ctl-act:hover { background: var(--ck-tint); color: var(--ck-text); }
+html.cockpit .apo-ctl-list { display: flex; flex-direction: column; gap: 1px; }
+html.cockpit .apo-newgoal { display: flex; flex-direction: column; gap: 6px; margin-bottom: 6px; }
 html.cockpit .apo-newgoal[hidden] { display: none; }
-html.cockpit .apo-deck-goals { display: flex; flex-direction: column; gap: 6px; }
+html.cockpit .apo-deck-goals { display: flex; flex-direction: column; gap: 4px; }
 html.cockpit .apo-goal {
   display: flex; flex-direction: column; gap: 3px; width: 100%; text-align: left; cursor: pointer;
-  padding: 9px 10px; border: 1px solid transparent; border-radius: 10px; background: transparent; color: inherit; font: inherit;
+  padding: 8px 10px; border: 1px solid transparent; border-radius: 10px; background: transparent; color: inherit; font: inherit;
 }
 html.cockpit .apo-goal:hover { background: var(--ck-tint); }
 html.cockpit .apo-goal.is-open { background: var(--ck-tint); border-color: var(--ck-accent-line); }
 html.cockpit .apo-goal-top { display: flex; align-items: center; gap: 8px; min-width: 0; }
 html.cockpit .apo-goal-t { font-weight: 600; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-html.cockpit .apo-goal-meta { font-size: 11px; color: var(--ck-text-2); }
+html.cockpit .apo-goal-meta { padding-left: 16px; font-size: 11px; color: var(--ck-text-2); }
 html.cockpit .apo-goal-line {
-  font-size: 12px; color: var(--ck-text-2); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  padding-left: 16px; font-size: 12px; color: var(--ck-text-2); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
 }
-html.cockpit .apo-deck-sub { margin: 8px 2px 0; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--ck-text-2); }
-html.cockpit .apo-deck-none { margin: 0; font-size: 12px; color: var(--ck-text-2); }
-html.cockpit .apo-deck-sec { display: flex; flex-direction: column; gap: 6px; }
+html.cockpit .apo-deck-sub { margin: 10px 10px 2px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--ck-text-2); }
+html.cockpit .apo-deck-none { margin: 0; padding: 2px 10px; font-size: 12px; color: var(--ck-text-2); }
+html.cockpit .apo-deck-needs .apo-deck-none { padding: 0; }
+
+/* The board: the goal's header stays in view while its plan, handoffs and the
+   lead's chat scroll under it. */
+html.cockpit .apo-deck-sec { display: flex; flex-direction: column; gap: 8px; padding: 14px 0; border-top: 1px solid var(--ck-glass-soft); }
+html.cockpit .apo-deck-board > .apo-deck-sec:first-of-type, html.cockpit .apo-board-h + .apo-deck-sec { border-top: 0; }
 html.cockpit .apo-deck-sec-t { margin: 0; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--ck-text-2); }
-html.cockpit .apo-deck-ask { padding: 10px; border-radius: 10px; background: color-mix(in oklab, var(--ck-warn) 12%, transparent); }
-html.cockpit .apo-board-h { display: flex; flex-direction: column; gap: 4px; }
-html.cockpit .apo-board-t { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 18px; font-weight: 600; }
+html.cockpit .apo-deck-ask { padding: 12px; margin-top: 12px; border: 0; border-radius: 12px; background: color-mix(in oklab, var(--ck-warn) 12%, transparent); }
+html.cockpit .apo-board-h {
+  position: sticky; top: 0; display: flex; flex-direction: column; gap: 4px;
+  margin: 0 -18px; padding: 16px 18px 12px; background: var(--ck-glass-solid); border-bottom: 1px solid var(--ck-glass-soft);
+}
+html.cockpit .apo-deck-board > .apo-board-t { margin-top: 16px; }
+html.cockpit .apo-board-t { display: flex; align-items: center; gap: 10px; margin: 0; font-size: 18px; font-weight: 600; line-height: 1.25; }
 html.cockpit .apo-board-meta { margin: 0; font-size: 12px; color: var(--ck-text-2); }
+html.cockpit .apo-board-h .apo-acts { margin-top: 6px; }
+html.cockpit .apo-deck-outcome .apo-card-line { color: var(--ck-text); font-size: 13px; }
 html.cockpit .apo-plan { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
 html.cockpit .apo-step {
-  display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 8px; align-items: center;
-  padding: 6px 8px 6px calc(8px + var(--depth, 0) * 18px); border-left: 2px solid var(--ck-accent-line); border-radius: 0 8px 8px 0;
+  display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 10px; row-gap: 2px; align-items: center;
+  padding: 8px 10px 8px calc(10px + var(--depth, 0) * 18px); border-left: 2px solid var(--ck-accent-line); border-radius: 0 10px 10px 0;
+  background: var(--ck-tint);
 }
 html.cockpit .apo-step-t { font-size: 13px; font-weight: 500; }
 html.cockpit .apo-step-who { grid-column: 2; font-size: 11px; color: var(--ck-text-2); }
 html.cockpit .apo-moves { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; font-size: 12px; }
-html.cockpit .apo-move { padding: 4px 8px; border-radius: 8px; background: var(--ck-tint); }
+html.cockpit .apo-move { padding: 6px 10px; border-radius: 8px; background: var(--ck-tint); }
 html.cockpit .apo-move-escalate, html.cockpit .apo-move-gap { background: color-mix(in oklab, var(--ck-warn) 14%, transparent); }
 html.cockpit .apo-row {
   display: block; width: 100%; text-align: left; border: 0; background: var(--ck-tint); color: inherit; font: inherit; font-size: 13px;
   padding: 8px 10px; border-radius: 8px; cursor: pointer;
 }
-html.cockpit .apo-need { display: flex; flex-direction: column; gap: 6px; padding: 8px; border-radius: 10px; background: var(--ck-tint); }
+html.cockpit .apo-row:hover { background: var(--ck-tint-2, var(--ck-tint)); }
+html.cockpit .apo-need { display: flex; flex-direction: column; gap: 6px; padding: 10px; border-radius: 10px; background: var(--ck-tint); }
 html.cockpit .apo-need-t { font-weight: 600; text-align: left; }
 html.cockpit .apo-answer { display: flex; gap: 6px; }
 html.cockpit .apo-answer .apo-input { flex: 1 1 auto; min-width: 0; }
 html.cockpit .apo-count {
   display: inline-block; min-width: 18px; padding: 0 5px; border-radius: 999px; text-align: center;
-  background: var(--ck-tint); color: var(--ck-text, var(--fg)); font-size: 11px;
+  background: var(--ck-tint); color: var(--ck-text, var(--fg)); font-size: 11px; font-weight: 600;
 }
-@media (max-width: 900px) {
-  html.cockpit.apollo-view .apo-deck {
-    grid-template-columns: minmax(0, 1fr); grid-template-areas: "needs" "rail" "board" "status";
-    grid-template-rows: auto auto auto auto; overflow-y: auto; padding: 4px 12px 8px;
-  }
-  html.cockpit .apo-deck-rail, html.cockpit .apo-deck-needs { max-height: 34vh; }
-  html.cockpit .apo-deck-board { overflow: visible; }
-}
+/* The lead's chat on the board reads as part of the board, not a box in a box. */
+html.cockpit .apo-deck-board .apo-chat { padding-top: 14px; border-top: 1px solid var(--ck-glass-soft); gap: 8px; }
+html.cockpit .apo-deck-board .apo-chat-log { max-height: none; min-height: 0; padding: 0; background: transparent; gap: 10px; }
+html.cockpit .apo-deck-board .apo-msg { max-width: 100%; }
+html.cockpit .apo-deck-board .apo-msg-lead .apo-msg-t { padding: 10px 12px; border-radius: 12px; }
+html.cockpit .apo-deck-board .apo-chat-form .apo-chat-input { border-radius: 10px; }
 
 /* Apollo's New conversation and Earlier (`apolloConversations.js`): text
    buttons in its bar, and the earlier conversations listed in the page's flow
