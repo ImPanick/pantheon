@@ -9,8 +9,9 @@ none was ever drawn, and every generic control stayed on.
 
 These check that the page Apollo mounts into is the page that ships, that the
 controls it hides exist (so the list can't silently rot), and, driven under
-node, that entering Apollo builds its bar, opens its pane, switches to Agent
-mode and changes the prompt, and that leaving puts all of it back.
+node, that entering Apollo builds its bar, mounts its deck (the work is the
+page; the pane stays one press away), switches to Agent mode and changes the
+prompt, and that leaving puts all of it back.
 """
 from __future__ import annotations
 
@@ -74,6 +75,7 @@ import { installDom } from './dom.js';
 export const document = installDom();
 if (!document.documentElement) document.documentElement = document.createElement('html');
 export const pane = { open: false, opens: 0 };
+export const deck = { mounted: 0, unmounted: 0 };
 export const dock = { untucked: 0 };
 globalThis.window = globalThis.window || globalThis;
 window.pantheonCockpit = { toggleWorkspace: (force) => { if (force === false) dock.untucked += 1; } };
@@ -106,6 +108,11 @@ _STUBS = {
         "export function closeApolloPane() { pane.open = false; }\n"
         "export function isApolloPaneOpen() { return pane.open; }\n"
     ),
+    "apolloDeck.js": (
+        "import { deck } from './shim.js';\n"
+        "export function mountDeck() { deck.mounted += 1; }\n"
+        "export function unmountDeck() { deck.unmounted += 1; }\n"
+    ),
     "apolloSpaces.js": (
         "import { document } from './shim.js';\n"
         "export function createSwitcher() { const el = document.createElement('span'); el.className = 'sp-switch'; return { el }; }\n"
@@ -113,7 +120,7 @@ _STUBS = {
 }
 
 _PREAMBLE = (
-    "import { document, pane, dock, settle, page } from './shim.js';\n"
+    "import { document, pane, dock, deck, settle, page } from './shim.js';\n"
     "const V = await import('./apolloView.js');\n"
     "const out = (o) => console.log(JSON.stringify(o));\n"
     "const P = page();\n"
@@ -141,10 +148,9 @@ def test_entering_apollo_makes_the_page_apollos(box):
           paneBtn: !!document.getElementById('apollo-pane-btn'),
           switcher: !!document.getElementById('apollo-space-switcher'),
           settingsOpened,
-          paneOpen: pane.open, untucked: dock.untucked,
+          paneOpen: pane.open, deck: deck.mounted,
           agent: P.agent.classList.contains('active'), chat: P.chat.classList.contains('active'),
           prompt: P.input.placeholder,
-          empty: !!document.getElementById('apollo-hello'),
           on: V.isApolloView(),
         });
     """)
@@ -153,10 +159,11 @@ def test_entering_apollo_makes_the_page_apollos(box):
     assert "Apollo" in o["barText"]
     assert o["paneBtn"] and o["switcher"]
     assert o["settingsOpened"] == 1
-    assert o["paneOpen"] is True and o["untucked"] >= 1
+    assert o["paneOpen"] is False, "the deck is the page; the pane waits on its button"
+    assert o["deck"] == 1
     assert o["agent"] is True and o["chat"] is False
     assert o["prompt"] == "Tell Apollo what you need"
-    assert o["empty"] is True and o["on"] is True
+    assert o["on"] is True
 
 
 @pytestmark_node
@@ -169,14 +176,14 @@ def test_leaving_apollo_puts_the_generic_page_back(box):
         out({
           viewClass: html.classList.contains('apollo-view'),
           bar: !!document.getElementById('apollo-bar'),
-          empty: !!document.getElementById('apollo-hello'),
+          deck: [deck.mounted, deck.unmounted],
           paneOpen: pane.open,
           chat: P.chat.classList.contains('active'),
           prompt: P.input.placeholder,
           on: V.isApolloView(),
         });
     """)
-    assert o == {"viewClass": False, "bar": False, "empty": False, "paneOpen": False,
+    assert o == {"viewClass": False, "bar": False, "deck": [1, 1], "paneOpen": False,
                  "chat": True, "prompt": "Message Pantheon", "on": False}
 
 
@@ -189,9 +196,9 @@ def test_entering_twice_builds_one_bar_and_keeps_the_persons_mode_to_restore(box
         const bars = document.body._walk([]).filter((n) => n.id === 'apollo-bar').length;
         V.leaveApolloView();
         await settle();
-        out({ bars, opens: pane.opens, chat: P.chat.classList.contains('active'), prompt: P.input.placeholder });
+        out({ bars, mounts: deck.mounted, chat: P.chat.classList.contains('active'), prompt: P.input.placeholder });
     """)
-    assert o == {"bars": 1, "opens": 1, "chat": True, "prompt": "Message Pantheon"}
+    assert o == {"bars": 1, "mounts": 1, "chat": True, "prompt": "Message Pantheon"}
 
 
 @pytestmark_node
@@ -201,8 +208,9 @@ def test_the_pane_button_toggles_the_pane(box):
         await settle();
         const b = document.getElementById('apollo-pane-btn');
         b.click(); await settle();
-        const afterClose = pane.open;
+        const afterOpen = pane.open;
+        const untucked = dock.untucked;
         b.click(); await settle();
-        out({ afterClose, afterOpen: pane.open });
+        out({ afterOpen, untucked, afterClose: pane.open });
     """)
-    assert o == {"afterClose": False, "afterOpen": True}
+    assert o == {"afterOpen": True, "untucked": 1, "afterClose": False}

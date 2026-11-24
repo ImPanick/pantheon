@@ -21,13 +21,16 @@
 //     and its controls (the pane, settings).
 //   - Agent mode, always: Apollo works through its tools. The person's own
 //     choice for other chats is put back on the way out.
-//   - Its pane opened and docked on the right, so the work is on the page
-//     from the first look rather than behind a button.
-//   - Its own welcome and composer prompt.
+//   - Its deck (`apolloDeck.js`) above the chat: the goals rail, the board of
+//     the open goal (its plan, owners, handoffs and the lead's own chat),
+//     Needs you, and home. The owner's verdict on the first cut was that the
+//     pane "does absolutely nothing different ... no planning, delegation,
+//     nothing", so the work is the page now, and the chat is Apollo's command
+//     line under it. The pane stays one press away on the bar.
+//   - Its own composer prompt.
 // Leaving the chat puts every one of those back.
 
 const BAR_ID = 'apollo-bar';
-const EMPTY_ID = 'apollo-hello';
 const PROMPT = 'Tell Apollo what you need';
 
 const SUN = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.3 5.3l1.6 1.6M17.1 17.1l1.6 1.6M5.3 18.7l1.6-1.6M17.1 6.9l1.6-1.6"/></svg>';
@@ -105,27 +108,12 @@ function _buildBar() {
   return bar;
 }
 
-function _buildEmpty() {
-  if (byId(EMPTY_ID)) return;
-  const history = byId('chat-history');
-  if (!history || !history.parentNode) return;
-  const box = document.createElement('section');
-  box.id = EMPTY_ID;
-  box.className = 'apo-hello';
-  box.setAttribute('aria-label', 'Apollo');
-  const mark = document.createElement('div');
-  mark.className = 'apo-hello-mark';
-  mark.innerHTML = SUN;
-  const title = document.createElement('div');
-  title.className = 'apo-hello-t';
-  title.textContent = _hooks.name || 'Apollo';
-  const line = document.createElement('p');
-  line.className = 'apo-hello-p';
-  line.textContent = "Tell me what you're working toward. I'll set up the work, run it with the right agents, and come back when something needs you.";
-  box.appendChild(mark);
-  box.appendChild(title);
-  box.appendChild(line);
-  history.parentNode.insertBefore(box, history);
+function _mountDeck() {
+  import('./apolloDeck.js').then((m) => { if (_on) m.mountDeck(); }).catch(() => { /* the bar and the chat still work */ });
+}
+
+function _unmountDeck() {
+  import('./apolloDeck.js').then((m) => m.unmountDeck()).catch(() => { /* nothing was mounted */ });
 }
 
 function _agentMode() {
@@ -149,7 +137,6 @@ export function enterApolloView(hooks = {}) {
   const html = document.documentElement;
   if (html) html.classList.add('apollo-view');
   _buildBar();
-  _buildEmpty();
   if (!_on) {
     _agentMode();
     const input = byId('message');
@@ -157,7 +144,8 @@ export function enterApolloView(hooks = {}) {
       _priorPrompt = input.placeholder;
       input.placeholder = PROMPT;
     }
-    import('./apolloPane.js').then((m) => { if (_on && !m.isApolloPaneOpen()) _openPane(m); }).catch(() => {});
+    _on = true;
+    _mountDeck();
   }
   _on = true;
 }
@@ -169,7 +157,7 @@ export function leaveApolloView() {
   const html = document.documentElement;
   if (html) html.classList.remove('apollo-view');
   byId(BAR_ID)?.remove();
-  byId(EMPTY_ID)?.remove();
+  _unmountDeck();
   _restoreMode();
   const input = byId('message');
   if (input && _priorPrompt !== null) input.placeholder = _priorPrompt;
