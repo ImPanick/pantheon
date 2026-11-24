@@ -70,10 +70,15 @@ SETTING_KEYS = (
     "workstation_network",
     "workstation_vm_memory_mib",
     "workstation_vm_cpus_max",
+    # Own VM or the shared one (the owner, 2026-11-17): the default for a
+    # person who has no workstation yet, and the admin's word for each person.
+    "workstation_vm_placement",
+    "workstation_vm_placement_people",
     "workstation_route_tools",
 )
 _BOOL_KEYS = ("workstation_enabled", "workstation_sudo", "workstation_route_tools")
-_ENUM_KEYS = {"workstation_backend": P.BACKEND_CHOICES, "workstation_network": P.NETWORK_MODES}
+_ENUM_KEYS = {"workstation_backend": P.BACKEND_CHOICES, "workstation_network": P.NETWORK_MODES,
+              "workstation_vm_placement": P.PLACEMENTS}
 # It goes in an `Authorization` header, so one line of visible ASCII: a newline
 # here would be a header of Pantheon's own making. The daemon mints 47
 # characters (`TOKEN_PREFIX` + 32 bytes urlsafe); 512 is room for an operator's
@@ -328,7 +333,9 @@ def _setting(key: str) -> Any:
 # and `tests/test_the_workstation_is_admin_controlled.py` pins the two equal.
 _DEFAULTS = {"workstation_sudo": None, "workstation_route_tools": True,
              "workstation_network": "full", "workstation_backend": "auto",
-             "workstation_vm_memory_mib": None, "workstation_vm_cpus_max": None}
+             "workstation_vm_memory_mib": None, "workstation_vm_cpus_max": None,
+             "workstation_vm_placement": P.DEFAULT_PLACEMENT,
+             "workstation_vm_placement_people": {}}
 
 
 def _bool(key: str, default: bool = False) -> bool:
@@ -387,6 +394,31 @@ def vm_cpus_max_choice() -> Optional[int]:
     return None
 
 
+def vm_placement_default() -> str:
+    """Where a person who has no workstation yet gets one on the VM backend:
+    a machine of their own (`own`, shipped) or an account on the machine
+    several people share (`shared`)."""
+    value = _setting("workstation_vm_placement")
+    return value if value in P.PLACEMENTS else P.DEFAULT_PLACEMENT
+
+
+def vm_placement_people() -> Dict[str, str]:
+    """The admin's word for each person, by Pantheon username: `own` or
+    `shared`. A person not named is where their workstation was made."""
+    value = _setting("workstation_vm_placement_people")
+    if not isinstance(value, dict):
+        return {}
+    return {k: v for k, v in value.items() if isinstance(k, str) and v in P.PLACEMENTS}
+
+
+def vm_placement_wanted() -> Dict[str, Any]:
+    """`config`'s `placement`: the default, and each named person by the
+    workstation account they work as (`account_of`)."""
+    return {"default": vm_placement_default(),
+            "people": {account_of(name): where
+                       for name, where in sorted(vm_placement_people().items())}}
+
+
 def backend_setting() -> str:
     """The backend in use (`auto` resolved — `wc.effective_backend`)."""
     return wc.effective_backend()
@@ -432,6 +464,11 @@ def settings_view() -> Dict[str, Any]:
         # Its pool of processors for each machine: the admin's, or None (all of
         # the host's); what the host has is the daemon's to say (`health`).
         "vm_cpus_max_choice": vm_cpus_max_choice(),
+        # Own VM or the shared one: the default for new people, the admin's
+        # word for each person by username, and the two words.
+        "vm_placement": vm_placement_default(),
+        "vm_placement_people": vm_placement_people(),
+        "vm_placements": list(P.PLACEMENTS),
         "route_tools": route_tools_wanted(),
         # `P16-20`. Reaching the local network, and raw-packet tools.
         "lan_reach": _bool("agent_lan_reach", True),
@@ -460,6 +497,8 @@ def validate_setting(key: str, value: Any) -> Any:
         return _memory_size(value)
     if key == "workstation_vm_cpus_max":
         return _cpus_count(value)
+    if key == "workstation_vm_placement_people":
+        return _placement_people(value)
     if key in _BOOL_KEYS:
         if not isinstance(value, bool):
             raise ValueError(f"{key} is true or false.")
@@ -551,6 +590,33 @@ def _cpus_count(value: Any) -> Optional[int]:
     return value
 
 
+def _placement_people(value: Any) -> Dict[str, str]:
+    """`{username: "own"|"shared"}`, or `ValueError` saying what is wrong. A
+    person given null (or an empty word) is taken off the list: their
+    workstation stays where it was made."""
+    from src.owner_identity import normalize_owner
+    words = " or ".join(P.PLACEMENTS)
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        raise ValueError(f"workstation_vm_placement_people maps each username to {words}.")
+    out: Dict[str, str] = {}
+    for name, where in value.items():
+        person = normalize_owner(name) if isinstance(name, str) else None
+        if not person:
+            raise ValueError(f"workstation_vm_placement_people: “{name}” is not a username.")
+        if where is None or (isinstance(where, str) and not where.strip()):
+            continue
+        where = where.strip().lower() if isinstance(where, str) else where
+        if where not in P.PLACEMENTS:
+            raise ValueError(f"workstation_vm_placement_people: {person} is {words}.")
+        out[person] = where
+    if len(out) > P.MAX_PLACEMENT_PEOPLE:
+        raise ValueError(f"workstation_vm_placement_people names at most "
+                         f"{P.MAX_PLACEMENT_PEOPLE} people.")
+    return dict(sorted(out.items()))
+
+
 # ── the daemon, made ready ────────────────────────────────────────────────────
 
 async def sync_config(client: WorkstationClient) -> Dict[str, Any]:
@@ -604,6 +670,14 @@ async def sync_config(client: WorkstationClient) -> Dict[str, Any]:
         pool = vm_cpus_max_choice()
         if daemon.get("cpus_max_choice") != pool:
             daemon.update(await client.config(cpus_max=pool))
+    # …and where each person's machine is: their own, or the shared one
+    # (the owner, 2026-11-17). Only the VM host reports `placement`.
+    held = daemon.get("placement")
+    if isinstance(held, dict):
+        placement = vm_placement_wanted()
+        if held.get("default") != placement["default"] \
+                or (held.get("people") or {}) != placement["people"]:
+            daemon.update(await client.config(placement=placement))
     # A VM host that makes its machine image on first use (the default stack,
     # `PANTHEON_WORKSTATION_VM_IMAGE=on_first_use`) starts on `config`: being
     # here means the switch is on (or an admin pressed *Check now*), so it is
@@ -743,6 +817,33 @@ async def reset_home(owner: Optional[str], *, auth_manager: Any = None) -> Dict[
     return await client.reset(account)
 
 
+#: What the person reads once their workstation started again, by what did.
+RESTART_WORDS = {
+    "machine": ("Your workstation machine powered off cleanly and started again. Your files and "
+                "everything installed are as they were."),
+    "desktop": "Your workstation desktop started again. Your files are as they were.",
+}
+RESTART_OLD_DAEMON = ("This workstation is older than Restart. Update it, or ask whoever runs "
+                      "Pantheon to restart the workstation.")
+
+
+async def restart_mine(owner: Optional[str], *, auth_manager: Any = None) -> Dict[str, Any]:
+    """This person's own workstation started again, nothing erased
+    (`protocol.ROUTES["restart"]`), and nobody else's. There is no parameter
+    naming whose: the account is derived from the caller."""
+    client, account = workstation_for(owner, auth_manager=auth_manager)
+    await client.health()
+    try:
+        answer = await client.restart(account)
+    except WorkstationError as e:
+        if e.status == 404 and e.code == "not_found":
+            raise WorkstationError("unavailable", RESTART_OLD_DAEMON, status=503) from e
+        raise
+    kind = answer.get("restarted")
+    return {"account": answer.get("account"), "restarted": kind,
+            "sentence": RESTART_WORDS.get(kind, RESTART_WORDS["desktop"])}
+
+
 #: `B1733`. What the person reads about their starting point, by its scope.
 STARTING_POINT_WORDS = {
     "home": ("Reset puts back your workstation home as you saved it. Software installed "
@@ -785,11 +886,22 @@ CPUS_OLD_DAEMON = ("This workstation is older than the processors setting: start
                    "from the current Pantheon to choose your machine's processors.")
 
 
+SHARED_CPUS_SENTENCE = ("Your workstation is an account on the machine several people share, "
+                        "which has every processor this workstation makes available to a "
+                        "machine. Ask an admin for a machine of your own to choose its "
+                        "processors.")
+
+
 def cpus_view(answer: Dict[str, Any]) -> Dict[str, Any]:
     """The VM host's answer about one person's processors, with the sentence
     Settings shows beside the choice."""
     keys = ("cpus", "cpus_choice", "cpus_default", "cpus_max", "running_cpus")
     out = {k: answer.get(k) for k in keys}
+    if answer.get("placement") == "shared":
+        # Not theirs to choose: the machine is several people's.
+        out["placement"] = "shared"
+        out["sentence"] = SHARED_CPUS_SENTENCE
+        return out
     words = (f"Your machine starts with {out['cpus']} of the {out['cpus_max']} processors this "
              "workstation makes available to each machine.")
     running = out.get("running_cpus")
@@ -817,6 +929,34 @@ async def machine_cpus(owner: Optional[str], *count: Optional[int],
     return cpus_view(answer)
 
 
+def vm_people_view(daemon: Dict[str, Any], auth_manager: Any = None) -> List[Dict[str, Any]]:
+    """Each person, for the admin's *Each person's machine* list: their
+    username, the admin's word for them (`choice`, None for none) and where
+    the VM host says their workstation is now (`where`, None while they have
+    none). Empty when the workstation reports no placement."""
+    held = daemon.get("placement") if isinstance(daemon, dict) else None
+    if not isinstance(held, dict):
+        return []
+    where = held.get("where") if isinstance(held.get("where"), dict) else {}
+    chosen = vm_placement_people()
+    try:
+        if auth_manager is None:
+            from src.auth_manager_access import shared_auth_manager
+            auth_manager = shared_auth_manager()
+        names = sorted(n for n, rec in (getattr(auth_manager, "users", {}) or {}).items()
+                       if isinstance(rec, dict))
+    except Exception as e:  # noqa: BLE001 — the list is a convenience, never a gate
+        logger.warning("could not list people for the workstation: %s", e)
+        names = sorted(chosen)
+    out = []
+    for name in sorted(set(names) | set(chosen)):
+        account = account_of(name)
+        out.append({"name": name, "account": account, "choice": chosen.get(name),
+                    "where": where.get(account) if where.get(account) in P.PLACEMENTS
+                    else None})
+    return out
+
+
 def _daemon_view(daemon: Dict[str, Any]) -> Dict[str, Any]:
     """The daemon's own answer, in the fields the panel shows."""
     keep = ("agent", "protocol", "backend", "version", "sudo", "network", "screen", "accounts",
@@ -827,7 +967,9 @@ def _daemon_view(daemon: Dict[str, Any]) -> Dict[str, Any]:
             # Settings shows beside the admin's choices.
             "memory_mib", "memory_choice", "memory_default_mib", "memory_default_source",
             "host_memory_mib", "memory_returns_to_host", "phone_room_mib",
-            "cpus_max", "cpus_max_choice", "cpus_default", "host_cpus")
+            "cpus_max", "cpus_max_choice", "cpus_default", "host_cpus",
+            # Own VM or the shared one, and who is where.
+            "placement")
     return {k: daemon.get(k) for k in keep if k in daemon}
 
 
@@ -884,6 +1026,8 @@ async def status_for(owner: Optional[str], *, is_admin: bool, auth_manager: Any 
     try:
         daemon = await sync_config(client)
         out["daemon"] = _daemon_view(daemon)
+        if is_admin and isinstance(daemon.get("placement"), dict):
+            out["settings"]["vm_people"] = vm_people_view(daemon, auth_manager)
         out["network"] = network_view(network_setting(), daemon)
         if enabled and permitted:
             # `B959`: looked at, not made — opening the panel makes no account.
@@ -896,6 +1040,9 @@ async def status_for(owner: Optional[str], *, is_admin: bool, auth_manager: Any 
                 # `B979`: on the VM backend, whether the person's machine is up
                 # or powered off until their next call — looked at, not booted.
                 out["you"]["machine"] = seen["machine"]
+            if seen.get("placement") in P.PLACEMENTS:
+                # Their own machine, or an account on the shared one.
+                out["you"]["placement"] = seen["placement"]
     except WorkstationError as e:
         out.update(probe=PROBE_FAILED, error={"code": e.code, "message": e.message})
         if enabled:
@@ -921,6 +1068,7 @@ __all__ = [
     "ensure_ready", "may_use", "network_setting", "reset_home", "route_tools_wanted",
     "routes_tools", "settings_view", "status_for", "sudo_wanted", "sync_config",
     "validate_setting", "workstation_for", "workstation_owner",
+    "vm_placement_default", "vm_placement_people", "vm_placement_wanted",
     # `P20-06`
     "NETWORK_ENFORCED", "NETWORK_ENFORCED_SUDO_OFF", "NETWORK_LIFTABLE", "NETWORK_NEEDS_RECREATE",
     "NETWORK_NOT_ENFORCED", "NETWORK_PENDING", "NETWORK_STATES", "NETWORK_UNKNOWN",

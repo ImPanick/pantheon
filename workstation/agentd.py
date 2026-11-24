@@ -188,6 +188,11 @@ class Screen:
     def set_driver(self, person: bool) -> None:
         """Whether the person's viewer may drive (they hold the display)."""
 
+    def restart(self) -> None:
+        """`ROUTES["restart"]`: start this display again from nothing — its
+        server and its desktop session. A screen with neither has nothing to
+        start again."""
+
     # -- `G2` (`D-2026-11-01-04`), added: what on the screen can be clicked --
 
     def marks(self) -> Dict:
@@ -314,6 +319,28 @@ MEMORY_NOT_HERE = ("This workstation runs on its host's own memory: only the VM 
                    "which gives each person a machine of their own, has a memory size to set.")
 CPUS_NOT_HERE = ("This workstation runs on its host's own processors: only the VM workstation, "
                  "which gives each person a machine of their own, has processors to set.")
+PLACEMENT_NOT_HERE = ("This workstation is one system for everyone on it: only the VM "
+                      "workstation can give a person a machine of their own or a place on a "
+                      "shared one.")
+
+
+def check_placement(value: object) -> Tuple[str, Dict[str, str]]:
+    """`config`'s `placement`, checked: `(default, {account: placement})`, or
+    `400` with a sentence (`protocol.ROUTES["config"]`)."""
+    words = (f"“placement” is {{\"default\": one of {', '.join(P.PLACEMENTS)}, "
+             f"\"people\": {{account: one of {', '.join(P.PLACEMENTS)}}}}}.")
+    if not isinstance(value, dict) or set(value) - {"default", "people"}:
+        raise WorkstationError("bad_request", words)
+    default = value.get("default", P.DEFAULT_PLACEMENT)
+    people = value.get("people", {})
+    if default not in P.PLACEMENTS or not isinstance(people, dict) \
+            or len(people) > P.MAX_PLACEMENT_PEOPLE:
+        raise WorkstationError("bad_request", words)
+    for account, where in people.items():
+        if not isinstance(account, str) or not P.ACCOUNT_RE.match(account) \
+                or where not in P.PLACEMENTS:
+            raise WorkstationError("bad_request", words)
+    return default, dict(people)
 
 
 class System:
@@ -515,6 +542,16 @@ class System:
 
     def machine_cpus(self, account: str, body: Dict) -> Dict:
         raise WorkstationError("bad_request", CPUS_NOT_HERE)
+
+    # -- placement (the owner, 2026-11-17) --------------------------------------
+    # Only the VM backend has machines to place people on (`vm.Fleet`): a
+    # machine of their own, or an account on the one they share.
+
+    def placement_report(self) -> Dict:
+        return {}
+
+    def set_placement(self, default: str, people: Dict[str, str]) -> None:
+        raise WorkstationError("bad_request", PLACEMENT_NOT_HERE)
 
     # -- the network mode (`P20-06`) -----------------------------------------
     # The base enforces nothing and says so; `UbuntuSystem` holds the mode for
@@ -760,7 +797,8 @@ class Workstation:
                 "projects_root": str(root), "projects_mounted": root.is_dir(),
                 **self.system.network_report(),  # `P20-06`
                 **self.system.memory_report(),
-                **self.system.cpus_report()}
+                **self.system.cpus_report(),
+                **self.system.placement_report()}
 
     def config(self, body: Dict) -> Dict:
         if "sudo" in body:
@@ -804,6 +842,12 @@ class Workstation:
                     or not all(isinstance(a, str) and P.ACCOUNT_RE.match(a) for a in admins)):
                 raise WorkstationError("bad_request", "“admins” is a list of workstation accounts.")
             self.system.set_admins(admins)
+        # Placement: where each person's VM machine is (`protocol.PLACEMENTS`).
+        if "placement" in body:
+            if not self.system.placement_report():
+                raise WorkstationError("bad_request", PLACEMENT_NOT_HERE)
+            default, people = check_placement(body["placement"])
+            self.system.set_placement(default, people)
         return self.settings()
 
     def clock(self, body: Dict) -> Dict:
@@ -842,6 +886,16 @@ class Workstation:
         self._set_driver(account, False)   # `D-2026-10-31-01`: the fresh desktop is the agent's
         self.system.reset(account)
         return {"account": account, "reset": True}
+
+    def restart(self, account: str) -> Dict:
+        """`ROUTES["restart"]`: the account's desktop started again, nothing
+        erased — its display and desktop session, not its browser's or its
+        phone's screen, and nobody else's. Who holds the screen is kept."""
+        self.system.ensure(account)
+        self.system.screen(account).restart()
+        with self._lock:
+            self._frames.pop(account, None)  # `B974`: the next picture is a new one
+        return {"account": account, "restarted": "desktop"}
 
     def starting_point(self, account: str, body: Dict) -> Dict:
         """`B1733`. `ROUTES["starting_point"]`: ask, save or forget the
@@ -1920,6 +1974,7 @@ class Handler(BaseHTTPRequestHandler):
                 return
             handler = {"ensure": lambda: self.station.ensure(account),
                        "reset": lambda: self.station.reset(account),
+                       "restart": lambda: self.station.restart(account),
                        "control": lambda: self.station.control(account, body),
                        "exec": lambda: self.station.exec(account, body),
                        "read": lambda: self.station.read(account, body),
