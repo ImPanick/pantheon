@@ -39,10 +39,10 @@
   <div class="wrap">
     <a class="brand" href="./" aria-label="Pantheon home"><svg aria-hidden="true"><use href="#mark"/></svg><span>Pantheon</span></a>
     <nav class="nav-links" aria-label="Sections">
+      <a href="#apollo">Apollo</a>
       <a href="#phone">Phone</a>
       <a href="#desktop">Desktop</a>
       <a href="#features">Features</a>
-      <a href="apollo/">Apollo</a>
       <a href="#install">Install</a>
       <a href="#questions">FAQ</a>
     </nav>
@@ -59,6 +59,7 @@
   <div class="hero-scene" id="scene" aria-hidden="true"></div>
   <div class="wrap">
     <div class="hero-copy">
+      <p class="news"><a href="#apollo">New: meet Apollo, your own partner inside Pantheon</a></p>
       <h1 id="h-hero">Pantheon</h1>
       <p class="what">The AI workspace you host yourself, where your agent gets its own computer. And its own phone.</p>
       <p class="body">Pantheon runs on your hardware and works with the models you already use, local or hosted. Your agent gets a Linux desktop and an Android phone to work on, right beside the chat. You can watch it work, take over, and hand it back. It's free and open source, and it doesn't phone home.</p>
@@ -66,7 +67,7 @@
         <a class="btn btn-sun" href="#install"><svg aria-hidden="true"><use href="#down"/></svg>Install Pantheon</a>
         <a class="btn btn-ghost" href="https://github.com/ImPanick/pantheon"><svg aria-hidden="true"><use href="#gh"/></svg>Source on GitHub</a>
       </div>
-      <p class="small">AGPL-3.0. Runs on Linux, Windows and macOS. New in the dev branch: <a href="apollo/">Apollo, a partner that runs the rest of it</a>.</p>
+      <p class="small">AGPL-3.0. Tested on Linux, Windows and macOS, and on Proxmox in Debian LXC containers running Docker.</p>
     </div>
     <figure class="hero-shot">
       <div class="shot">
@@ -74,6 +75,34 @@
       </div>
       <figcaption>The chat, the agent's desktop and a Galaxy S25 Ultra running Android 15, side by side in one window.</figcaption>
     </figure>
+  </div>
+</section>
+
+<section class="section" id="apollo" aria-labelledby="h-apollo">
+  <div class="wrap">
+    <div class="side"><h2 id="h-apollo">Meet Apollo</h2><p>One chat that runs the rest of Pantheon</p></div>
+    <div class="main">
+      <h3 class="headline">A partner you talk to, and a team of agents behind it.</h3>
+      <div class="prose">
+        <p>Apollo is one standing conversation that's yours. Tell it what you need, by text or by voice. It turns that into a task, gives it to a lead agent from a roster of 259, keeps track of everything in flight, and comes back with one line when it's done or when there's a decision only you can make.</p>
+        <p>It remembers what you've settled and what's still open, and it only interrupts when something needs you. When a plan has a hole, it says so. All of it runs on your server, with the models you pick, and what it knows about you stays in Pantheon. Change models next month and Apollo still knows you.</p>
+      </div>
+      <ol class="steps">
+        <li><div><p><b>You say it.</b> "Get the cert renewals sorted before the 30th."</p></div></li>
+        <li><div><p><b>Apollo makes it a task</b> with a state, a next step and a budget.</p></div></li>
+        <li><div><p><b>A lead agent takes it</b> and works it with the team: delegating, asking and sending work for review.</p></div></li>
+        <li><div><p><b>You hear one line.</b> Done, or the one question it's stuck on. Answer it and the work carries on.</p></div></li>
+      </ol>
+      <dl class="rows">
+        <div><dt>Everything in one pane</dt><dd>What's working, what needs you, the agent's desktop and phone, and every task's own chat with its lead.</dd></div>
+        <div><dt>Memory you can read</dt><dd>Every line it knows, with where it came from. Confirm, edit or forget in one tap. A guess stays a guess until you confirm it.</dd></div>
+        <div><dt>Spaces</dt><dd>Keep work and life apart. Airgap a space and nothing goes in or out, and you can pin it to local models only.</dd></div>
+        <div><dt>Briefings</dt><dd>A morning brief, and check-ins that only speak when something changed.</dd></div>
+        <div><dt>Trust it earns</dt><dd>Approve the same kind of action five times in a row and Apollo offers to just handle it from then on. You decide.</dd></div>
+        <div><dt>No surprise bills</dt><dd>Budgets per task on paid API models, under a cap your admin sets. Local models run uncapped.</dd></div>
+      </dl>
+      <p class="more-link"><a href="apollo/">Read the Apollo launch post</a></p>
+    </div>
   </div>
 </section>
 
@@ -104,8 +133,8 @@
           <thead><tr><th scope="col">Host</th><th scope="col">Hypervisor</th><th scope="col">Status</th></tr></thead>
           <tbody>
             <tr><th scope="row">macOS on Apple Silicon</th><td>Hypervisor.Framework</td><td class="ok">Tested on real hardware</td></tr>
-            <tr><th scope="row">Windows</th><td>WHPX</td><td>Shipped, real-hardware testing open</td></tr>
-            <tr><th scope="row">Linux</th><td>KVM</td><td>Shipped, real-hardware testing open</td></tr>
+            <tr><th scope="row">Windows</th><td>WHPX</td><td class="ok">Tested on real hardware</td></tr>
+            <tr><th scope="row">Linux</th><td>KVM</td><td class="ok">Tested on a multi-node Proxmox cluster, in Debian LXC containers running Docker</td></tr>
             <tr><th scope="row">No hypervisor</th><td>None</td><td>Falls back to a mobile browser view</td></tr>
           </tbody>
         </table>
@@ -145,8 +174,7 @@
     <div class="main">
       <h3 class="headline">Everything else the agent needs to finish the job.</h3>
       <dl class="rows">
-        <div><dt>Apollo</dt><dd><p>A standing chat that turns what you say into tasks, gives each one to a lead agent, and comes back with a line when it's done. It remembers what you've settled and only interrupts you when something needs you. New in the dev branch. <a href="apollo/">Read the launch post</a>.</p></dd></div>
-        <div><dt>The Brain</dt><dd><p>Pantheon remembers what you tell it: preferences, projects, people, facts. The part that matters is pulling up the right memory at the right moment, and it's very good at that. On our test set the right memory comes back first almost every time, and it's always in the top five. The search Pantheon replaced got it into the top five only four times out of ten.</p><p>It runs on a small embedding model that ships inside Pantheon, so nothing extra to install and nothing leaves the box. You can read every memory and see where it came from.</p></dd></div>
+                <div><dt>The Brain</dt><dd><p>Pantheon remembers what you tell it: preferences, projects, people, facts. The part that matters is pulling up the right memory at the right moment, and it's very good at that. On our test set the right memory comes back first almost every time, and it's always in the top five. The search Pantheon replaced got it into the top five only four times out of ten.</p><p>It runs on a small embedding model that ships inside Pantheon, so nothing extra to install and nothing leaves the box. You can read every memory and see where it came from.</p></dd></div>
         <div><dt>Agents</dt><dd>259 agents in 18 teams. They hand work to each other, review it and report back, and each one comes with test cases that run through the real harness.</dd></div>
         <div><dt>Workbench</dt><dd>Describe an automation in the chat and get a scheduled or event-driven workflow back, switched off until you've checked it. Branches, dry runs that touch nothing, and versions you can undo.</dd></div>
         <div><dt>Models</dt><dd>LM Studio, Ollama, vLLM, llama.cpp or any OpenAI-compatible server, plus the big hosted providers by API key or subscription. Use a different model for each task if you want.</dd></div>
@@ -322,7 +350,7 @@
       <a class="brand" href="./"><svg aria-hidden="true"><use href="#mark"/></svg><span>Pantheon</span></a>
       <p class="fine">The AI workspace you host yourself. Free and open source under AGPL-3.0-or-later.</p>
     </div>
-    <div><h4>Product</h4><ul><li><a href="#phone">Phone</a></li><li><a href="#desktop">Desktop</a></li><li><a href="apollo/">Apollo</a></li><li><a href="#install">Install</a></li></ul></div>
+    <div><h4>Product</h4><ul><li><a href="#apollo">Apollo</a></li><li><a href="#phone">Phone</a></li><li><a href="#desktop">Desktop</a></li><li><a href="apollo/">Apollo launch post</a></li><li><a href="#install">Install</a></li></ul></div>
     <div><h4>Docs</h4><ul><li><a href="https://github.com/ImPanick/pantheon/blob/dev/docs/setup.md">Setup</a></li><li><a href="https://github.com/ImPanick/pantheon/blob/dev/docs/deployment.md">Deployment</a></li><li><a href="https://github.com/ImPanick/pantheon/blob/dev/docs/features.md">Features</a></li><li><a href="https://github.com/ImPanick/pantheon/blob/main/SECURITY.md">Security policy</a></li></ul></div>
     <div><h4>Project</h4><ul><li><a href="https://github.com/ImPanick/pantheon">GitHub</a></li><li><a href="https://github.com/ImPanick/pantheon/blob/main/CONTRIBUTING.md">Contributing</a></li><li><a href="https://github.com/ImPanick/pantheon/blob/main/LICENSE">Licence</a></li><li><a href="https://github.com/ImPanick/pantheon/issues">Report an issue</a></li></ul></div>
   </div>

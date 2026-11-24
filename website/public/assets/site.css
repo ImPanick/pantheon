@@ -290,3 +290,10 @@ footer .fine { font-size: 13.5px; color: var(--faint); max-width: 40ch; margin-t
 .lost svg { color: var(--sun); width: 40px; height: 40px; }
 
 .sprite { position: absolute; width: 0; height: 0; overflow: hidden; }
+
+/* hero news line and section read-more link */
+.hero .news { font-size: 14px; }
+.hero .news a { color: var(--fg); text-decoration: underline; text-decoration-color: var(--sun); text-underline-offset: 4px; }
+.hero .news a::after { content: " \2192"; color: var(--sun); }
+.more-link a { color: var(--fg); text-decoration: underline; text-decoration-color: var(--sun); text-underline-offset: 4px; }
+.more-link a::after { content: " \2192"; color: var(--sun); }
