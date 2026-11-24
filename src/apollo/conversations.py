@@ -71,7 +71,7 @@ def start_new(db, owner: str, space_id: Optional[str] = None) -> Dict[str, Any]:
     if old is None:
         raise ApolloRefused("Your Apollo chat isn't set up yet. Open Apollo once first.", 409)
     if agent_runs.is_active(old_id):
-        raise ApolloRefused("Apollo is still working in this conversation. Stop it or let it finish, "
+        raise ApolloRefused("Apollo is still working in this chat. Stop it or let it finish, "
                             "then start a new one.", 409)
     if _messages_in(db, old_id) == 0:
         return {"session_id": old_id, "earlier_id": None, "unchanged": True}

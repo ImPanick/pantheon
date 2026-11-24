@@ -86,7 +86,7 @@ def test_new_conversation_posts_the_space_and_opens_the_new_chat(box):
     """)
     assert o["posts"] == [{"url": "/api/apollo/conversations/new", "body": {"space_id": "sp-work"}}]
     assert o["fresh"] == ["s-new"] and o["spaces"] == 1 and o["opened"] == ["s-new"]
-    assert "New conversation" in o["label"]
+    assert "New chat" in o["label"]
 
 
 def test_an_empty_chat_is_left_alone_and_said_so(box):
@@ -96,19 +96,19 @@ def test_an_empty_chat_is_left_alone_and_said_so(box):
         await settle();
         out({ opened: log.opened, fresh: log.fresh, toasts: log.toasts });
     """)
-    assert o == {"opened": [], "fresh": [], "toasts": ["This conversation is already empty."]}
+    assert o == {"opened": [], "fresh": [], "toasts": ["This chat is already empty."]}
 
 
 def test_a_refusal_is_said_in_its_own_words(box):
     o = _run(box, _PREAMBLE, """
         server.status = 409;
-        server.newReply = { detail: 'Apollo is still working in this conversation. Stop it or let it finish, then start a new one.' };
+        server.newReply = { detail: 'Apollo is still working in this chat. Stop it or let it finish, then start a new one.' };
         newBtn.click();
         await settle();
         out({ opened: log.opened, toasts: log.toasts });
     """)
     assert o["opened"] == []
-    assert o["toasts"] == ["Apollo is still working in this conversation. Stop it or let it finish, then start a new one."]
+    assert o["toasts"] == ["Apollo is still working in this chat. Stop it or let it finish, then start a new one."]
 
 
 def test_earlier_lists_the_old_chats_and_opens_one(box):
@@ -145,5 +145,5 @@ def test_earlier_with_none_says_where_they_come_from_and_toggles_shut(box):
         await settle();
         out({ text, shut: !document.getElementById('apollo-earlier'), expanded: earlierBtn.getAttribute('aria-expanded') });
     """)
-    assert "No earlier conversations yet" in o["text"]
+    assert "No earlier chats yet" in o["text"]
     assert o["shut"] is True and o["expanded"] == "false"

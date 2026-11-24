@@ -81,7 +81,7 @@ export async function startNewConversation() {
     return null;
   }
   if (out.unchanged) {
-    _say('This conversation is already empty.');
+    _say('This chat is already empty.');
     return out;
   }
   try { await _onFresh?.(out.session_id); } catch (_) { /* the caller's own trouble */ }
@@ -111,10 +111,10 @@ export async function toggleEarlier() {
   const box = document.createElement('section');
   box.id = EARLIER_ID;
   box.className = 'apo-earlier';
-  box.setAttribute('aria-label', 'Earlier conversations');
+  box.setAttribute('aria-label', 'Earlier chats');
   const head = document.createElement('div');
   head.className = 'apo-earlier-t';
-  head.textContent = 'Earlier conversations';
+  head.textContent = 'Earlier chats';
   box.appendChild(head);
   history.parentNode.insertBefore(box, history);
   _earlierBtn?.setAttribute('aria-expanded', 'true');
@@ -132,7 +132,7 @@ export async function toggleEarlier() {
   if (rows && !rows.length) {
     const p = document.createElement('p');
     p.className = 'apo-earlier-none';
-    p.textContent = 'No earlier conversations yet. Start a new one and this one moves here.';
+    p.textContent = 'No earlier chats yet. Start a new one and this one moves here.';
     box.appendChild(p);
   }
   for (const r of rows || []) {
@@ -159,7 +159,7 @@ export async function toggleEarlier() {
 export function barButtons({ onFresh } = {}) {
   _onFresh = onFresh || null;
   return [
-    () => _button('apollo-new-btn', 'New conversation', NEW, () => { startNewConversation(); }),
+    () => _button('apollo-new-btn', 'New chat', NEW, () => { startNewConversation(); }),
     () => {
       const b = _button('apollo-earlier-btn', 'Earlier', CLOCK, () => { toggleEarlier(); });
       b.setAttribute('aria-expanded', 'false');
