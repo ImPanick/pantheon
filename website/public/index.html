@@ -4,9 +4,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Pantheon</title>
+<title>Pantheon, the AI workspace you host yourself</title>
 <meta name="claude:viewport-fit-sides" content="cover">
-<meta name="description" content="Pantheon is a free, open source AI workspace you host yourself. Your agent gets a real Linux desktop and a real Android phone, on hardware you own, with the models you choose.">
+<meta name="description" content="Pantheon is a free, open source AI workspace you run on your own hardware, with the models you choose. Your agent gets its own Linux desktop and its own Android phone.">
 <meta name="theme-color" content="#06080e" media="(prefers-color-scheme: dark)">
 <meta name="theme-color" content="#f3f5f9" media="(prefers-color-scheme: light)">
 <meta name="color-scheme" content="dark light">
@@ -14,8 +14,8 @@
 <link rel="icon" href="assets/img/pantheon-app-icon.svg" type="image/svg+xml">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Pantheon">
-<meta property="og:title" content="Pantheon. Your agent gets its own computer, and its own phone.">
-<meta property="og:description" content="A free, open source AI workspace you host yourself. A real Linux desktop and a real Android phone for your agent, on hardware you own.">
+<meta property="og:title" content="Pantheon, the AI workspace you host yourself">
+<meta property="og:description" content="A free, open source AI workspace you run on your own hardware. Your agent gets its own Linux desktop and its own Android phone.">
 <meta property="og:url" content="https://getpantheon.ai/">
 <meta property="og:image" content="https://getpantheon.ai/assets/img/workstation-dark.webp">
 <meta name="twitter:card" content="summary_large_image">
@@ -39,15 +39,16 @@
   <div class="wrap">
     <a class="brand" href="./" aria-label="Pantheon home"><svg aria-hidden="true"><use href="#mark"/></svg><span>Pantheon</span></a>
     <nav class="nav-links" aria-label="Sections">
-      <a href="#phone">The phone</a>
-      <a href="#desktop">The desktop</a>
-      <a href="#everything">Everything else</a>
+      <a href="#phone">Phone</a>
+      <a href="#desktop">Desktop</a>
+      <a href="#features">Features</a>
       <a href="apollo/">Apollo</a>
       <a href="#install">Install</a>
+      <a href="#questions">FAQ</a>
     </nav>
     <div class="nav-cta">
       <a class="btn btn-ghost btn-sm" href="https://github.com/ImPanick/pantheon"><svg aria-hidden="true"><use href="#gh"/></svg>GitHub</a>
-      <a class="btn btn-sun btn-sm" href="#install">Get Pantheon</a>
+      <a class="btn btn-sun btn-sm" href="#install">Install</a>
     </div>
   </div>
 </header>
@@ -57,287 +58,258 @@
 <section class="hero" aria-labelledby="h-hero">
   <div class="hero-scene" id="scene" aria-hidden="true"></div>
   <div class="wrap">
-    <a class="badge" href="apollo/"><span class="pill">New</span>Meet <b>Apollo</b>, the partner that runs your whole operation.</a>
-    <h1 id="h-hero">Your agent gets its own computer. <em>And its own phone.</em></h1>
-    <p class="lead">Pantheon is an AI workspace you host yourself. The agent works on a real Linux desktop and a real Android phone while you watch, and you can take either one back whenever you want. <strong>Your hardware, your models, nobody else's cloud.</strong></p>
-    <div class="hero-actions">
-      <a class="btn btn-sun" href="#install"><svg aria-hidden="true"><use href="#down"/></svg>Install Pantheon</a>
-      <a class="btn btn-ghost" href="https://github.com/ImPanick/pantheon"><svg aria-hidden="true"><use href="#gh"/></svg>Read the source</a>
-    </div>
-    <div class="hero-meta"><span>Free and open source, forever</span><span>AGPL-3.0-or-later</span><span>Linux, Windows, macOS</span></div>
-
-    <div class="window-stage">
-      <div class="window" id="window">
-        <div class="window-bar"><i></i><i></i><i></i><span>localhost:7000</span></div>
-        <img src="assets/img/android-galaxy-s25-ultra.webp" width="1800" height="1098" alt="Pantheon's cockpit with the chat on the left, the agent's workstation screen open over it, and a Galaxy S25 Ultra profile running Android 15 live on the right with Back, Home, Apps, volume and Sleep keys under it" fetchpriority="high">
+    <div class="hero-copy">
+      <h1 id="h-hero">Pantheon</h1>
+      <p class="what">The AI workspace you host yourself, where your agent gets its own computer. And its own phone.</p>
+      <p class="body">Pantheon runs on your hardware and works with the models you already use, local or hosted. Your agent gets a Linux desktop and an Android phone to work on, right beside the chat. You can watch it work, take over, and hand it back. It's free and open source, and it doesn't phone home.</p>
+      <div class="hero-actions">
+        <a class="btn btn-sun" href="#install"><svg aria-hidden="true"><use href="#down"/></svg>Install Pantheon</a>
+        <a class="btn btn-ghost" href="https://github.com/ImPanick/pantheon"><svg aria-hidden="true"><use href="#gh"/></svg>Source on GitHub</a>
       </div>
-      <div class="window-glow"></div>
+      <p class="small">AGPL-3.0. Runs on Linux, Windows and macOS. New in the dev branch: <a href="apollo/">Apollo, a partner that runs the rest of it</a>.</p>
     </div>
-  </div>
-</section>
-
-<section class="numbers" aria-label="Pantheon in numbers">
-  <div class="wrap">
-    <div class="num"><b>259</b><span>agents in the roster, across 18 teams</span></div>
-    <div class="num"><b>19</b><span>Android device profiles, phones to foldables</span></div>
-    <div class="num"><b>0.931</b><span>memory recall (MRR), up from 0.319</span></div>
-    <div class="num"><b>0</b><span>calls home. Nothing leaves unless you send it</span></div>
+    <figure class="hero-shot">
+      <div class="shot">
+        <img src="assets/img/android-galaxy-s25-ultra.webp" width="1800" height="1098" alt="Pantheon with the chat on the left, the agent's workstation screen open over it, and a Galaxy S25 Ultra profile running Android 15 on the right with Back, Home, Apps, volume and Sleep keys under it" fetchpriority="high">
+      </div>
+      <figcaption>The chat, the agent's desktop and a Galaxy S25 Ultra running Android 15, side by side in one window.</figcaption>
+    </figure>
   </div>
 </section>
 
 <section class="section" id="phone" aria-labelledby="h-phone">
   <div class="wrap">
-    <div class="section-head reveal">
-      <span class="eyebrow">A real phone, not a mobile view</span>
-      <h2 class="display" id="h-phone">When the agent needs a phone, <em>Pantheon boots one.</em></h2>
-      <p class="lead">Google's Android Emulator running Android 15, accelerated by your own hypervisor. Not a desktop browser squeezed to phone width, and not a rented device in somebody else's cloud.</p>
-    </div>
-    <div class="reveal">
-      <div class="frame">
-        <img class="shot-d" src="assets/img/devices-dark.webp" width="1440" height="900" alt="Pantheon's device picker: Pixel phones and foldables listed on the left, each with Use this device, and the chosen phone shown switched off on the right" loading="lazy">
-        <img class="shot-l" src="assets/img/devices-light.webp" width="1440" height="900" alt="Pantheon's device picker in the light theme, with phones and foldables listed beside the chosen phone" loading="lazy">
+    <div class="side"><h2 id="h-phone">The phone</h2><p>Android 15 in Google's own emulator</p></div>
+    <div class="main">
+      <h3 class="headline">When a job needs a phone, Pantheon boots one.</h3>
+      <div class="prose">
+        <p>It's Google's Android Emulator running Android 15, sped up by your machine's own hypervisor. Pick a phone, a foldable or a tablet from 19 device profiles. If it isn't installed yet, Pantheon downloads it and sets it up, and the agent drives it the same way you do.</p>
       </div>
-      <p class="caption">Pick a phone, foldable or tablet. One that isn't on your machine yet is downloaded, installed and set up for you, and your agents use the same phone the same way.</p>
-    </div>
-    <div class="feature gap-top">
-      <ul class="ticks reveal">
-        <li><span><b>One phone per person.</b> Each person gets their own SDK home, ADB keys and emulator. Nobody shares a device.</span></li>
-        <li><span><b>You share it with the agent.</b> It sits live next to the chat. Take it over, hand it back.</span></li>
-        <li><span><b>It taps the button, not a guess.</b> Every screenshot comes with numbered marks read from Android's own UI tree.</span></li>
-        <li><span><b>Files move both ways.</b> A USB-style shared folder links your projects to the phone's Downloads.</span></li>
-      </ul>
-      <div class="reveal">
-        <div class="accel" role="table" aria-label="Where the phone runs">
-          <div role="row"><span role="cell">macOS on Apple Silicon</span><span role="cell">Hypervisor.Framework</span><span role="cell" class="state ok">Accepted</span></div>
-          <div role="row"><span role="cell">Windows</span><span role="cell">WHPX</span><span role="cell" class="state">Built</span></div>
-          <div role="row"><span role="cell">Linux</span><span role="cell">KVM</span><span role="cell" class="state">Built</span></div>
-          <div role="row"><span role="cell">No acceleration</span><span role="cell">none</span><span role="cell" class="state">Mobile view</span></div>
+      <figure>
+        <div class="shot">
+          <img class="shot-d" src="assets/img/devices-dark.webp" width="1440" height="900" alt="Pantheon's device picker: Pixel phones and foldables listed on the left, each with Use this device, and the chosen phone shown switched off on the right" loading="lazy">
+          <img class="shot-l" src="assets/img/devices-light.webp" width="1440" height="900" alt="Pantheon's device picker in the light theme, with phones and foldables listed beside the chosen phone" loading="lazy">
         </div>
-        <p class="caption">Accepted means proven on real hardware. Built means it ships and real-host acceptance is still open. The README keeps this table honest.</p>
+        <figcaption>The device picker. Phones you haven't used yet are fetched the first time you pick them.</figcaption>
+      </figure>
+      <dl class="rows">
+        <div><dt>Everyone gets their own</dt><dd>Each person has their own phone, SDK home and ADB keys. Nobody shares a device.</dd></div>
+        <div><dt>Shared with the agent</dt><dd>The phone sits live next to the chat. Take it over whenever you like and hand it back.</dd></div>
+        <div><dt>It taps what's there</dt><dd>Every screenshot the agent sees comes with numbered marks read from Android's own UI tree, so it taps the real button instead of guessing at pixels.</dd></div>
+        <div><dt>Files go both ways</dt><dd>A USB-style shared folder connects your projects to the phone's Downloads.</dd></div>
+      </dl>
+      <div class="table-wrap">
+        <table>
+          <caption class="sr-only">Where the phone runs</caption>
+          <thead><tr><th scope="col">Host</th><th scope="col">Hypervisor</th><th scope="col">Status</th></tr></thead>
+          <tbody>
+            <tr><th scope="row">macOS on Apple Silicon</th><td>Hypervisor.Framework</td><td class="ok">Tested on real hardware</td></tr>
+            <tr><th scope="row">Windows</th><td>WHPX</td><td>Shipped, real-hardware testing open</td></tr>
+            <tr><th scope="row">Linux</th><td>KVM</td><td>Shipped, real-hardware testing open</td></tr>
+            <tr><th scope="row">No hypervisor</th><td>None</td><td>Falls back to a mobile browser view</td></tr>
+          </tbody>
+        </table>
       </div>
     </div>
   </div>
 </section>
 
-<section class="section" id="desktop" aria-labelledby="h-desktop" data-flush>
+<section class="section" id="desktop" aria-labelledby="h-desktop">
   <div class="wrap">
-    <div class="feature flip">
-      <div class="feature-copy reveal">
-        <span class="eyebrow">A desktop of its own</span>
-        <h2 class="display" id="h-desktop">Work that has no API still <em>gets done.</em></h2>
-        <p class="lead">Most AI tools hand the model a chat box and a list of API calls. That falls apart the moment the work lives in a settings page, a web app behind a login, or an app that only exists on a phone. People do that work with a screen and a keyboard. In Pantheon, so does the agent.</p>
-        <ul class="ticks">
-          <li><span><b>A live Linux desktop</b> streamed into the cockpit. Watch it work, or take the keyboard.</span></li>
-          <li><span><b>Its own Firefox</b> on a separate screen, locked down by policy.</span></li>
-          <li><span><b>Saved starting points and Reset.</b> Break it, roll it back in one click.</span></li>
-          <li><span><b>Per-person homes and projects,</b> with networks declared per person.</span></li>
-        </ul>
+    <div class="side"><h2 id="h-desktop">The desktop</h2><p>A Linux machine the agent works on</p></div>
+    <div class="main">
+      <h3 class="headline">For the work that only happens on a screen.</h3>
+      <div class="prose">
+        <p>Most AI tools give a model a chat box and some API calls. Plenty of real work lives somewhere else: a settings page, a web app behind a login, a program that only exists on a phone. People get that done with a screen and a keyboard, and in Pantheon the agent does too.</p>
       </div>
-      <div class="feature-media reveal">
-        <div class="frame">
+      <figure>
+        <div class="shot">
           <img class="shot-d" src="assets/img/workstation-dark.webp" width="1440" height="900" alt="The agent's chat on the left, where it wrote a web page, listed it in a shell and started a web server, and on the right the live screen of the Ubuntu desktop it did that in, with Take over and Reset beside it" loading="lazy">
           <img class="shot-l" src="assets/img/workstation-light.webp" width="1440" height="900" alt="The agent's chat beside the live screen of its Ubuntu desktop, in the light theme" loading="lazy">
         </div>
+        <figcaption>The agent writes a page, serves it from a shell and opens it, on its own Ubuntu desktop.</figcaption>
+      </figure>
+      <dl class="rows">
+        <div><dt>Live in the chat</dt><dd>The desktop streams into Pantheon. Watch it work or take the keyboard.</dd></div>
+        <div><dt>Its own browser</dt><dd>A separate Firefox on its own screen, locked down by policy.</dd></div>
+        <div><dt>Snapshots and Reset</dt><dd>Save a starting point. If something breaks, roll back in one click.</dd></div>
+        <div><dt>Per person</dt><dd>Everyone has their own home folder, projects and network rules.</dd></div>
+      </dl>
+    </div>
+  </div>
+</section>
+
+<section class="section" id="features" aria-labelledby="h-features">
+  <div class="wrap">
+    <div class="side"><h2 id="h-features">Features</h2><p>What runs around the desktop and the phone</p></div>
+    <div class="main">
+      <h3 class="headline">Everything else the agent needs to finish the job.</h3>
+      <dl class="rows">
+        <div><dt>Apollo</dt><dd><p>A standing chat that turns what you say into tasks, gives each one to a lead agent, and comes back with a line when it's done. It remembers what you've settled and only interrupts you when something needs you. New in the dev branch. <a href="apollo/">Read the launch post</a>.</p></dd></div>
+        <div><dt>The Brain</dt><dd><p>Pantheon remembers what you tell it: preferences, projects, people, facts. The part that matters is pulling up the right memory at the right moment, and it's very good at that. On our test set the right memory comes back first almost every time, and it's always in the top five. The search Pantheon replaced got it into the top five only four times out of ten.</p><p>It runs on a small embedding model that ships inside Pantheon, so nothing extra to install and nothing leaves the box. You can read every memory and see where it came from.</p></dd></div>
+        <div><dt>Agents</dt><dd>259 agents in 18 teams. They hand work to each other, review it and report back, and each one comes with test cases that run through the real harness.</dd></div>
+        <div><dt>Workbench</dt><dd>Describe an automation in the chat and get a scheduled or event-driven workflow back, switched off until you've checked it. Branches, dry runs that touch nothing, and versions you can undo.</dd></div>
+        <div><dt>Models</dt><dd>LM Studio, Ollama, vLLM, llama.cpp or any OpenAI-compatible server, plus the big hosted providers by API key or subscription. Use a different model for each task if you want.</dd></div>
+        <div><dt>Voice</dt><dd>Talk to it like a phone call. Whisper listens, and Kokoro, Chatterbox or Piper answers, all on your own hardware.</dd></div>
+        <div><dt>Tools and MCP</dt><dd>Shell, files, skills and MCP servers, behind approval rules you set per person. The agent can write a new MCP server in its desktop and test it before an admin turns it on.</dd></div>
+        <div><dt>The rest</dt><dd>Research that reads its sources, a document editor with PDF and Word export, email triage with replies that wait for your OK, notes, tasks, a CalDAV calendar, and approvals on your lock screen.</dd></div>
+      </dl>
+      <div class="pair">
+        <figure>
+          <div class="shot">
+            <img class="shot-d" src="assets/img/workbench-dark.webp" width="1440" height="900" alt="The Workbench canvas: a chain of steps with a dashed failure branch" loading="lazy">
+            <img class="shot-l" src="assets/img/workbench-light.webp" width="1440" height="900" alt="The Workbench canvas in the light theme" loading="lazy">
+          </div>
+          <figcaption>The Workbench, with a failure branch.</figcaption>
+        </figure>
+        <figure>
+          <div class="shot">
+            <img class="shot-d" src="assets/img/documents-dark.webp" width="1440" height="900" alt="Pantheon's document editor with a draft open beside the chat" loading="lazy">
+            <img class="shot-l" src="assets/img/documents-light.webp" width="1440" height="900" alt="Pantheon's document editor in the light theme" loading="lazy">
+          </div>
+          <figcaption>Documents, next to the chat that's writing them.</figcaption>
+        </figure>
       </div>
     </div>
   </div>
 </section>
 
-<section class="section" id="everything" aria-labelledby="h-everything" data-flush>
+<section class="section" id="security" aria-labelledby="h-security">
   <div class="wrap">
-    <div class="section-head reveal">
-      <span class="eyebrow">Everything around them</span>
-      <h2 class="display" id="h-everything">A whole operation, <em>on one box you own.</em></h2>
-      <p class="lead">The desktop and the phone are where the work happens. This is everything the agent needs around them to finish it.</p>
-    </div>
-
-    <div class="bento">
-      <article class="tile apollo span-2 reveal">
-        <div class="sunball" aria-hidden="true"></div>
-        <span class="k">New in dev</span>
-        <h3>Apollo, your partner</h3>
-        <p>One standing chat that turns what you say into real tasks, hands each one to a lead agent, and comes back with one line when it's done. It remembers what you settled, pushes back when a plan has a hole, and only interrupts when something actually needs you.</p>
-        <a class="more" href="apollo/">Read the launch <svg width="16" height="16" aria-hidden="true"><use href="#arrow"/></svg></a>
-      </article>
-
-      <article class="tile reveal">
-        <span class="k">The Brain</span>
-        <div class="big">0.931<small>MRR on the retrieval set, from 0.319</small></div>
-        <p>A memory rebuilt around a local embedding model that ships in the image. No extra service, no network. Every memory shows where it came from.</p>
-      </article>
-
-      <article class="tile reveal">
-        <span class="k">The agents hall</span>
-        <h3>259 agents. 18 teams.</h3>
-        <p>A roster with evaluation cases run through the real harness and checks on which model each one needs. They delegate, review and report to each other.</p>
-      </article>
-
-      <article class="tile span-2 reveal">
-        <span class="k">The Workbench</span>
-        <h3>Automations from one sentence</h3>
-        <p>Describe it in chat and get a scheduled or event-driven workflow back, switched off for you to check. Branches, If and Switch, dry runs that run nothing, and versions you can undo.</p>
-        <div class="peek">
-          <img class="shot-d" src="assets/img/workbench-dark.webp" width="1440" height="900" alt="The Workbench canvas: a chain of steps with a dashed failure branch" loading="lazy">
-          <img class="shot-l" src="assets/img/workbench-light.webp" width="1440" height="900" alt="The Workbench canvas in the light theme" loading="lazy">
-        </div>
-      </article>
-
-      <article class="tile reveal">
-        <span class="k">Models</span>
-        <h3>Any model you trust</h3>
-        <p>Local servers or frontier APIs, mixed per task. Keys or your existing subscriptions.</p>
-        <div class="chips"><span>LM Studio</span><span>Ollama</span><span>vLLM</span><span>llama.cpp</span><span>Frontier APIs</span></div>
-      </article>
-
-      <article class="tile reveal">
-        <span class="k">Voice</span>
-        <h3>Talk to it like a call</h3>
-        <p>Whisper listens, Kokoro, Chatterbox or Piper answer. All of it on your own hardware.</p>
-        <div class="wave" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
-      </article>
-
-      <article class="tile reveal">
-        <span class="k">Tools</span>
-        <h3>MCP, built in</h3>
-        <p>Shell, files, skills and MCP servers behind per-person approval rules. It can even build an MCP server in its workstation and test it before an admin registers it.</p>
-      </article>
-
-      <article class="tile span-3 reveal">
-        <span class="k">The workspace</span>
-        <h3>Research, documents, mail, notes, calendar</h3>
-        <p>Deep research with source reading. A writing-first document editor with PDF and Word export. Email with triage and reply drafts that wait for your yes. Notes, tasks and a CalDAV calendar. Skills learned from finished chats. Approvals on your lock screen.</p>
-        <div class="peek">
-          <img class="shot-d" src="assets/img/documents-dark.webp" width="1440" height="900" alt="Pantheon's document editor with a draft open beside the chat" loading="lazy">
-          <img class="shot-l" src="assets/img/documents-light.webp" width="1440" height="900" alt="Pantheon's document editor in the light theme" loading="lazy">
-        </div>
-      </article>
+    <div class="side"><h2 id="h-security">Security</h2><p>Made to run on a server</p></div>
+    <div class="main">
+      <h3 class="headline">Your data stays on your hardware.</h3>
+      <dl class="rows">
+        <div><dt>No telemetry</dt><dd>Pantheon makes no calls home. A check in CI fails the build if a fresh install reaches out to the internet on its own.</dd></div>
+        <div><dt>Accounts</dt><dd>Sign-in is always on, with two-factor. People and instances are kept apart, right down to their own phone.</dd></div>
+        <div><dt>Approvals</dt><dd>Sending, deleting and anything risky waits for a person. You can approve from your lock screen with Pantheon closed.</dd></div>
+        <div><dt>Supply chain</dt><dd>Third-party code is pinned, vendored and licence-checked in CI instead of pulled at runtime.</dd></div>
+        <div><dt>The phone</dt><dd>Secure ADB checked at boot, a pinned <code>scrcpy-server</code> hash, and TLS with a pinned certificate for a phone on another machine.</dd></div>
+        <div><dt>Deployment</dt><dd>One Compose file, with NVIDIA and AMD GPU setups. The deployment guide covers hypervisor hosts, Swarm and a remote workstation.</dd></div>
+      </dl>
     </div>
   </div>
 </section>
 
-<section class="section trust" id="trust" aria-labelledby="h-trust">
+<section class="section" id="about" aria-labelledby="h-about">
   <div class="wrap">
-    <div class="section-head reveal">
-      <span class="eyebrow">Built for the server</span>
-      <h2 class="display" id="h-trust">Your data stays on your hardware. <em>Full stop.</em></h2>
-      <p class="lead">Pantheon is built to run on enterprise hardware for a whole team, and it's built like it.</p>
-    </div>
-    <div class="trust-grid reveal">
-      <div><h3>Nothing phones home</h3><p>No telemetry. The agent's Firefox is locked down by policy, and the screenshot pipeline fails if a page tries to reach another host.</p></div>
-      <div><h3>Pinned, vendored, licence-checked</h3><p>Third-party code ships pinned and verified in CI instead of pulled at runtime.</p></div>
-      <div><h3>Accounts that mean it</h3><p>Sign-in is always on, with 2FA. Every instance and every person is kept apart, down to their own phone.</p></div>
-      <div><h3>Approval gates</h3><p>Sends, deletes and anything risky wait for a person. Approve from your lock screen with Pantheon closed.</p></div>
-      <div><h3>A locked-down phone</h3><p>Secure ADB checked at boot, a pinned <code>scrcpy-server</code> hash, and TLS with a pinned certificate for a remote phone host.</p></div>
-      <div><h3>One compose file</h3><p><code>docker compose up</code> on your own machines, with NVIDIA and AMD GPU setups, Swarm and Kubernetes in the deployment guide.</p></div>
-    </div>
-  </div>
-</section>
-
-<section class="section vision" id="vision" aria-labelledby="h-vision">
-  <div class="wrap">
-    <span class="eyebrow reveal">The vision</span>
-    <blockquote class="reveal" id="h-vision">Whether you're one person on a single GPU or a billion-dollar firm, <em>if it's useful, use it.</em></blockquote>
-    <div class="cols reveal">
-      <p>Pantheon started as a fork of Odysseus. I liked its shell, but underneath it was a chatbot with a few half-built automations and a lot of finished work nobody had wired up. So I connected what was there, then built what would actually be useful: the desktop first, then the phone, then everything an agent needs around them to get real work done.</p>
-      <p>It's free, it's AGPL, and it isn't for sale. It runs on your machine and you pick the models. The idea is simple. The most capable assistant you can run should belong to you, live on hardware you control, and answer to nobody but you and your team.</p>
-    </div>
-    <p class="sig reveal">ImPanick, creator of Pantheon</p>
-  </div>
-</section>
-
-<section class="section" id="install" aria-labelledby="h-install" data-flush>
-  <div class="wrap">
-    <div class="section-head reveal">
-      <span class="eyebrow">Install</span>
-      <h2 class="display" id="h-install">Up and running in <em>four commands.</em></h2>
-      <p class="lead">Docker is the fastest way in. The Docker commands work the same in PowerShell and in a Linux or macOS terminal.</p>
-    </div>
-
-    <div class="install-card reveal">
-      <div class="tabs" role="tablist" aria-label="Install method">
-        <button role="tab" id="t-docker" aria-controls="p-docker" aria-selected="true">Docker <span class="tag">Recommended</span></button>
-        <button role="tab" id="t-windows" aria-controls="p-windows" aria-selected="false" tabindex="-1">Windows, native</button>
-        <button role="tab" id="t-mac" aria-controls="p-mac" aria-selected="false" tabindex="-1">macOS, Apple Silicon</button>
+    <div class="side"><h2 id="h-about">About</h2><p>Where Pantheon came from</p></div>
+    <div class="main">
+      <div class="prose">
+        <p>Pantheon started because I was bored. I wanted to see how far multi-agent orchestration could go in DevOps if I put several frontier models on the same work and let them run. Pantheon is what came out of that, after more than $45,000 in compute across three providers.</p>
+        <p>It's built on Odysseus. I liked its shell, but underneath was a chatbot with a few half-built automations and a lot of finished code nobody had wired up. I connected what was there and then built what an agent actually needs to get work done: the desktop first, then the phone, then everything around them. What came out is a next-generation agent harness.</p>
+        <p>It's free, it's AGPL and it isn't for sale. It runs on your machine with the models you pick, and it answers to you and your team.</p>
       </div>
+      <blockquote class="quote">Whether you're one person on a single GPU or a billion-dollar firm, if it's useful, use it.</blockquote>
+      <p class="sig">ImPanick, who builds Pantheon</p>
+    </div>
+  </div>
+</section>
 
-      <div class="panel" role="tabpanel" id="p-docker" aria-labelledby="t-docker">
-        <ol class="steps">
-          <li><div><p><b>Get the code</b> and drop into the folder.</p>
-            <div class="code"><pre><code><span class="p">$ </span>git clone https://github.com/ImPanick/pantheon.git
+<section class="section" id="install" aria-labelledby="h-install">
+  <div class="wrap">
+    <div class="side"><h2 id="h-install">Install</h2><p>Docker, a VM, or native</p></div>
+    <div class="main">
+      <h3 class="headline">Running in a few minutes.</h3>
+      <div>
+        <div class="tabs" role="tablist" aria-label="Install method">
+          <button role="tab" id="t-docker" aria-controls="p-docker" aria-selected="true">Docker</button>
+          <button role="tab" id="t-host" aria-controls="p-host" aria-selected="false" tabindex="-1">VM or LXC with a stack manager</button>
+          <button role="tab" id="t-windows" aria-controls="p-windows" aria-selected="false" tabindex="-1">Windows</button>
+          <button role="tab" id="t-mac" aria-controls="p-mac" aria-selected="false" tabindex="-1">macOS</button>
+        </div>
+
+        <div class="panel" role="tabpanel" id="p-docker" aria-labelledby="t-docker">
+          <p class="intro">The quickest way in. These commands work the same in PowerShell and in a Linux or macOS terminal.</p>
+          <ol class="steps">
+            <li><div><p><b>Get the code.</b></p>
+              <div class="code"><pre><code><span class="p">$ </span>git clone https://github.com/ImPanick/pantheon.git
 <span class="p">$ </span>cd pantheon</code></pre><button class="copy" type="button">Copy</button></div></div></li>
-          <li><div><p><b>Make your settings file.</b> It's commented and works as it is.</p>
-            <div class="code"><pre><code><span class="p">$ </span>cp .env.example .env</code></pre><button class="copy" type="button">Copy</button></div></div></li>
-          <li><div><p><b>Start it.</b> Everything the app serves is in the image.</p>
-            <div class="code"><pre><code><span class="p">$ </span>docker compose up -d --build</code></pre><button class="copy" type="button">Copy</button></div></div></li>
-          <li><div><p><b>Open <span class="mono">http://localhost:7000</span></b> and create the admin account.</p></div></li>
-        </ol>
-        <p class="note">Want the phone? An admin accepts Google's Android SDK License once, and nothing of Google's downloads before that: <span class="mono">docker compose run --rm android-vm accept-license</span>. It needs KVM, so Linux, or Docker Desktop on WSL 2.</p>
-      </div>
+            <li><div><p><b>Make your settings file.</b> It's commented and works as it is.</p>
+              <div class="code"><pre><code><span class="p">$ </span>cp .env.example .env</code></pre><button class="copy" type="button">Copy</button></div></div></li>
+            <li><div><p><b>Start it.</b></p>
+              <div class="code"><pre><code><span class="p">$ </span>docker compose up -d --build</code></pre><button class="copy" type="button">Copy</button></div></div></li>
+            <li><div><p><b>Open <span class="mono">http://localhost:7000</span></b> and create the admin account.</p></div></li>
+          </ol>
+          <p class="note"><b>For the phone,</b> an admin accepts Google's Android SDK licence once. Nothing of Google's is downloaded before that: <code>docker compose run --rm android-vm accept-license</code>. The phone needs KVM, so Linux, or Docker Desktop on WSL 2.</p>
+        </div>
 
-      <div class="panel" role="tabpanel" id="p-windows" aria-labelledby="t-windows" hidden>
-        <ol class="steps">
-          <li><div><p><b>Get the code</b> in PowerShell.</p>
-            <div class="code"><pre><code><span class="p">PS&gt; </span>git clone https://github.com/ImPanick/pantheon.git
+        <div class="panel" role="tabpanel" id="p-host" aria-labelledby="t-host" hidden>
+          <p class="intro">For a homelab or a server: Pantheon in its own VM or LXC container, deployed as a stack from Portainer, Dockhand, Arcane or any manager that runs Compose.</p>
+          <ol class="steps">
+            <li><div><p><b>Make the VM and pass virtualization through.</b> The desktops and phones need the CPU's VT-x or AMD-V inside the guest. On Proxmox, set the VM's CPU type to <span class="mono">host</span>. On ESXi, tick <i>Expose hardware assisted virtualization to the guest OS</i>. For an LXC container, pass <span class="mono">/dev/kvm</span> into it. Without this the desktops fall back to slow emulation and there are no phones.</p>
+              <div class="code"><pre><code><span class="p"># </span>qm set &lt;vmid&gt; --cpu host</code></pre><button class="copy" type="button">Copy</button></div></div></li>
+            <li><div><p><b>Install Docker and your stack manager</b> in the guest.</p></div></li>
+            <li><div><p><b>Add a stack from Git.</b> Repository <span class="mono">https://github.com/ImPanick/pantheon</span>, branch <span class="mono">main</span>, compose file <span class="mono">docker-compose.yml</span>. If your manager can't pull from Git, clone the repo into the guest and point it at that folder.</p></div></li>
+            <li><div><p><b>Let other machines reach it.</b> Pantheon only listens on the guest itself by default. Add this variable to the stack. Any other setting from <span class="mono">.env.example</span> can go in the same way.</p>
+              <div class="code"><pre><code>APP_BIND=0.0.0.0</code></pre><button class="copy" type="button">Copy</button></div></div></li>
+            <li><div><p><b>Deploy, then open <span class="mono">http://&lt;guest address&gt;:7000</span></b> and create the admin account. Put it behind your reverse proxy for HTTPS.</p></div></li>
+          </ol>
+          <p class="note"><b>For the phone,</b> accept Google's SDK licence once from a shell in the guest, inside a clone of the repo, with the stack's name as the project name: <code>docker compose -p &lt;stack name&gt; run --rm android-vm accept-license</code>. The <a href="https://github.com/ImPanick/pantheon/blob/dev/docs/deployment.md#hypervisor-hosts">hypervisor guide</a> covers ESXi, Proxmox and Hyper-V in full.</p>
+        </div>
+
+        <div class="panel" role="tabpanel" id="p-windows" aria-labelledby="t-windows" hidden>
+          <p class="intro">Native, no Docker needed.</p>
+          <ol class="steps">
+            <li><div><p><b>Get the code</b> in PowerShell.</p>
+              <div class="code"><pre><code><span class="p">PS&gt; </span>git clone https://github.com/ImPanick/pantheon.git
 <span class="p">PS&gt; </span>cd pantheon</code></pre><button class="copy" type="button">Copy</button></div></div></li>
-          <li><div><p><b>Run the launcher.</b> It builds a virtualenv, installs what it needs, asks for the admin account and starts the server. Safe to run again.</p>
-            <div class="code"><pre><code><span class="p">PS&gt; </span>powershell -ExecutionPolicy Bypass -File .\launch-windows.ps1</code></pre><button class="copy" type="button">Copy</button></div></div></li>
-          <li><div><p><b>Open <span class="mono">http://localhost:7000</span></b> and sign in.</p></div></li>
-        </ol>
-        <p class="note">No Docker needed. It binds to <span class="mono">127.0.0.1</span> by default, so only your machine can reach it until you say otherwise.</p>
-      </div>
+            <li><div><p><b>Run the launcher.</b> It sets up a Python environment, installs what it needs, asks for the admin account and starts the server. It's safe to run again.</p>
+              <div class="code"><pre><code><span class="p">PS&gt; </span>.\launch-windows.ps1</code></pre><button class="copy" type="button">Copy</button></div></div></li>
+            <li><div><p><b>Open <span class="mono">http://localhost:7000</span></b> and sign in.</p></div></li>
+          </ol>
+          <p class="note"><b>If PowerShell won't run the script</b> because of its execution policy, add <code>-ExecutionPolicy Bypass</code> for that one run: <code>powershell -ExecutionPolicy Bypass -File .\launch-windows.ps1</code>. Pantheon listens on <span class="mono">127.0.0.1</span> by default, so only your machine can reach it until you change that.</p>
+        </div>
 
-      <div class="panel" role="tabpanel" id="p-mac" aria-labelledby="t-mac" hidden>
-        <ol class="steps">
-          <li><div><p><b>Get the code.</b></p>
-            <div class="code"><pre><code><span class="p">$ </span>git clone https://github.com/ImPanick/pantheon.git
+        <div class="panel" role="tabpanel" id="p-mac" aria-labelledby="t-mac" hidden>
+          <p class="intro">Native on Apple Silicon, so your Mac's GPU serves the models.</p>
+          <ol class="steps">
+            <li><div><p><b>Get the code.</b></p>
+              <div class="code"><pre><code><span class="p">$ </span>git clone https://github.com/ImPanick/pantheon.git
 <span class="p">$ </span>cd pantheon</code></pre><button class="copy" type="button">Copy</button></div></div></li>
-          <li><div><p><b>Run the quick start.</b> It installs what Pantheon needs through Homebrew and launches the app, natively, so your Mac's GPU serves the models.</p>
-            <div class="code"><pre><code><span class="p">$ </span>./start-macos.sh</code></pre><button class="copy" type="button">Copy</button></div></div></li>
-          <li><div><p><b>Open <span class="mono">http://localhost:7000</span></b> and sign in.</p></div></li>
-        </ol>
-        <p class="note">The Android phone on a Mac runs on a small host worker with Hypervisor.Framework. The quick start sets it up for you.</p>
+            <li><div><p><b>Run the quick start.</b> It installs what Pantheon needs through Homebrew and launches it.</p>
+              <div class="code"><pre><code><span class="p">$ </span>./start-macos.sh</code></pre><button class="copy" type="button">Copy</button></div></div></li>
+            <li><div><p><b>Open <span class="mono">http://localhost:7000</span></b> and sign in.</p></div></li>
+          </ol>
+          <p class="note"><b>The phone</b> on a Mac runs on a small host worker that uses Hypervisor.Framework. The quick start sets it up.</p>
+        </div>
+      </div>
+      <div class="install-links">
+        <a href="https://github.com/ImPanick/pantheon/blob/dev/docs/setup.md">Setup guide</a>
+        <a href="https://github.com/ImPanick/pantheon/blob/dev/docs/deployment.md">Deploying on a server</a>
+        <a href="https://github.com/ImPanick/pantheon/blob/dev/docs/android-host.md">Android host guide</a>
+        <a href="https://github.com/ImPanick/pantheon/blob/dev/docs/capabilities.md">Everything it does</a>
       </div>
     </div>
-
-    <div class="reqs reveal">
-      <div><b>You need</b><span>Docker with Compose v2, or the native launchers</span></div>
-      <div><b>For the phone</b><span>A hardware hypervisor: KVM, WHPX or Apple Silicon</span></div>
-      <div><b>For models</b><span>A local server like LM Studio or Ollama, or an API key</span></div>
-    </div>
-    <div class="install-links reveal">
-      <a href="https://github.com/ImPanick/pantheon/blob/main/docs/setup.md">Setup guide</a>
-      <a href="https://github.com/ImPanick/pantheon/blob/main/docs/deployment.md">Deploying on a server</a>
-      <a href="https://github.com/ImPanick/pantheon/blob/main/docs/android-host.md">Android host guide</a>
-      <a href="https://github.com/ImPanick/pantheon/blob/main/docs/capabilities.md">Everything it does</a>
-    </div>
   </div>
 </section>
 
-<section class="section" id="faq" aria-labelledby="h-faq" data-flush>
-  <div class="wrap faq">
-    <div class="section-head faq-head reveal">
-      <span class="eyebrow">Questions</span>
-      <h2 class="display" id="h-faq">Straight answers.</h2>
-    </div>
-    <div class="faq-list reveal">
-      <details><summary>Is it really free?</summary><p>Yes. Pantheon is AGPL-3.0-or-later and it will stay free and open source. There's no paid tier and nothing held back. The only bills are the ones you choose, like a paid API model.</p></details>
-      <details><summary>Do I need a GPU?</summary><p>No. Point it at a model API and it runs on modest hardware. With a GPU you can serve models locally, and Pantheon ships compose files for NVIDIA and AMD setups.</p></details>
-      <details><summary>Which models does it work with?</summary><p>Any OpenAI-compatible server, including LM Studio, Ollama, vLLM and llama.cpp, plus the frontier providers by API key or an existing subscription. You can run one model to chat and another for each task.</p></details>
-      <details><summary>Does anything leave my server?</summary><p>Only what you send. Pantheon has no telemetry and makes no calls home. If you use a cloud model, that provider sees the requests you send it, and nothing else does.</p></details>
-      <details><summary>Can my team use one install?</summary><p>That's what it's built for. Accounts are separate down to each person's own desktop and phone, an admin decides who can use what, and it deploys on servers, Swarm or Kubernetes.</p></details>
-      <details><summary>Why does the phone need a hypervisor?</summary><p>It's Google's real Android Emulator, so it needs hardware acceleration to run well: KVM on Linux, WHPX on Windows, Hypervisor.Framework on Apple Silicon. Without one you get a mobile browser view instead, and Pantheon tells you so.</p></details>
-    </div>
-  </div>
-</section>
-
-<section class="section closing" aria-labelledby="h-close">
+<section class="section" id="questions" aria-labelledby="h-questions">
   <div class="wrap">
-    <svg class="closing-mark" width="44" height="44" aria-hidden="true"><use href="#mark"/></svg>
-    <h2 class="display" id="h-close">Give your agent <em>a place to work.</em></h2>
-    <p class="lead">Free, open source, and yours to run on the hardware you own.</p>
-    <div class="hero-actions">
-      <a class="btn btn-sun" href="#install"><svg aria-hidden="true"><use href="#down"/></svg>Install Pantheon</a>
-      <a class="btn btn-ghost" href="https://github.com/ImPanick/pantheon"><svg aria-hidden="true"><use href="#gh"/></svg>Star on GitHub</a>
+    <div class="side"><h2 id="h-questions">Questions</h2></div>
+    <div class="main">
+      <div class="faq">
+        <details open><summary>What hardware do I need?</summary><div class="a">
+          <p>The minimum runs one person with a hosted model, one desktop and one phone. The recommended spec leaves room for local models and a few people at once.</p>
+          <div class="table-wrap"><table>
+            <thead><tr><th scope="col"></th><th scope="col">Minimum</th><th scope="col">Recommended</th></tr></thead>
+            <tbody>
+              <tr><th scope="row">CPU</th><td>6 cores, 64-bit, with VT-x or AMD-V turned on</td><td>8 to 16 cores, more for a team</td></tr>
+              <tr><th scope="row">Memory</th><td>16 GB</td><td>32 GB, or 64 GB and up for a team or local models on the same machine</td></tr>
+              <tr><th scope="row">Storage</th><td>100 GB free on an SSD</td><td>250 GB or more on NVMe</td></tr>
+              <tr><th scope="row">GPU</th><td>None, with a hosted model</td><td>16 GB of VRAM for local models, 24 GB for the larger vision models that drive the desktop and phone</td></tr>
+              <tr><th scope="row">Host</th><td>Linux with KVM, Windows with WSL 2, or a Mac with Apple Silicon</td><td>Linux on bare metal</td></tr>
+            </tbody>
+          </table></div>
+          <p>Each phone takes 4 cores by default and each desktop 2, and both only hold the memory they're actually using. On a Mac, count unified memory: 16 GB to start, 32 GB or more for local models.</p>
+        </div></details>
+        <details><summary>Is it really free?</summary><div class="a"><p>Yes. Pantheon is AGPL-3.0-or-later and will stay free and open source. There's no paid tier and nothing held back. The only bills are ones you choose, like a hosted model.</p></div></details>
+        <details><summary>Do I need a GPU?</summary><div class="a"><p>No. Point it at a hosted model and it runs on modest hardware. With a GPU you can run models locally, and Pantheon ships Compose files for NVIDIA and AMD.</p></div></details>
+        <details><summary>Which models does it work with?</summary><div class="a"><p>Any OpenAI-compatible server, including LM Studio, Ollama, vLLM and llama.cpp, plus the big hosted providers by API key or an existing subscription. You can chat with one model and give each task another. To drive the desktop and phone, a model needs vision and tool calling.</p></div></details>
+        <details><summary>Does anything leave my server?</summary><div class="a"><p>Only what you send. Pantheon has no telemetry. If you use a hosted model, that provider sees the requests you send it, and nobody else sees anything.</p></div></details>
+        <details><summary>Can my team share one install?</summary><div class="a"><p>Yes, that's what it's built for. Everyone has a separate account down to their own desktop and phone, and an admin decides who can use what.</p></div></details>
+        <details><summary>Why does the phone need a hypervisor?</summary><div class="a"><p>It's Google's Android Emulator, and it needs hardware acceleration to run well: KVM on Linux, WHPX on Windows, Hypervisor.Framework on Apple Silicon. Without one you get a mobile browser view instead, and Pantheon tells you that's what happened.</p></div></details>
+      </div>
     </div>
   </div>
 </section>
@@ -348,10 +320,10 @@
   <div class="wrap">
     <div>
       <a class="brand" href="./"><svg aria-hidden="true"><use href="#mark"/></svg><span>Pantheon</span></a>
-      <p class="fine">A self-hosted AI workspace. Free and open source under AGPL-3.0-or-later.</p>
+      <p class="fine">The AI workspace you host yourself. Free and open source under AGPL-3.0-or-later.</p>
     </div>
-    <div><h4>Product</h4><ul><li><a href="#phone">The phone</a></li><li><a href="#desktop">The desktop</a></li><li><a href="apollo/">Apollo</a></li><li><a href="#install">Install</a></li></ul></div>
-    <div><h4>Docs</h4><ul><li><a href="https://github.com/ImPanick/pantheon/blob/main/docs/setup.md">Setup</a></li><li><a href="https://github.com/ImPanick/pantheon/blob/main/docs/deployment.md">Deployment</a></li><li><a href="https://github.com/ImPanick/pantheon/blob/main/docs/features.md">Features</a></li><li><a href="https://github.com/ImPanick/pantheon/blob/main/SECURITY.md">Security policy</a></li></ul></div>
+    <div><h4>Product</h4><ul><li><a href="#phone">Phone</a></li><li><a href="#desktop">Desktop</a></li><li><a href="apollo/">Apollo</a></li><li><a href="#install">Install</a></li></ul></div>
+    <div><h4>Docs</h4><ul><li><a href="https://github.com/ImPanick/pantheon/blob/dev/docs/setup.md">Setup</a></li><li><a href="https://github.com/ImPanick/pantheon/blob/dev/docs/deployment.md">Deployment</a></li><li><a href="https://github.com/ImPanick/pantheon/blob/dev/docs/features.md">Features</a></li><li><a href="https://github.com/ImPanick/pantheon/blob/main/SECURITY.md">Security policy</a></li></ul></div>
     <div><h4>Project</h4><ul><li><a href="https://github.com/ImPanick/pantheon">GitHub</a></li><li><a href="https://github.com/ImPanick/pantheon/blob/main/CONTRIBUTING.md">Contributing</a></li><li><a href="https://github.com/ImPanick/pantheon/blob/main/LICENSE">Licence</a></li><li><a href="https://github.com/ImPanick/pantheon/issues">Report an issue</a></li></ul></div>
   </div>
 </footer>

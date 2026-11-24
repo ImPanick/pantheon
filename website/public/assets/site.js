@@ -1,31 +1,18 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// getpantheon.ai page behaviour: nav state, install tabs, copy buttons, reveals,
-// the product window that settles flat as you scroll, and the tile glow.
+// getpantheon.ai page behaviour: the nav's rule once the page moves, the install tabs,
+// and copy buttons that copy commands without their prompts.
 (() => {
   "use strict";
   const root = document.documentElement;
   root.classList.add("js");
-  const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
   // nav border once the page moves
   const nav = document.querySelector(".nav");
   const onScroll = () => {
     if (nav) nav.classList.toggle("scrolled", scrollY > 8);
-    tilt();
   };
 
-  // product window: tilted back at rest, flat by the time it is centred
-  const win = document.getElementById("window");
-  function tilt() {
-    if (!win || reduced) return;
-    const r = win.getBoundingClientRect();
-    const vh = innerHeight || 800;
-    const t = Math.min(1, Math.max(0, (vh - r.top) / (vh * 0.9)));
-    const ease = 1 - Math.pow(1 - t, 3);
-    win.style.transform = `rotateX(${(14 * (1 - ease)).toFixed(2)}deg) scale(${(0.96 + 0.04 * ease).toFixed(4)})`;
-  }
   addEventListener("scroll", onScroll, { passive: true });
-  addEventListener("resize", tilt, { passive: true });
   onScroll();
 
   // install tabs (WAI-ARIA tabs pattern)
@@ -80,24 +67,4 @@
     });
   });
 
-  // reveal: only what starts below the fold waits, so the first frame is complete
-  if (!reduced && "IntersectionObserver" in window) {
-    const io = new IntersectionObserver((entries) => {
-      entries.forEach((e) => {
-        if (e.isIntersecting) { e.target.classList.remove("pending"); io.unobserve(e.target); }
-      });
-    }, { rootMargin: "0px 0px -8% 0px" });
-    document.querySelectorAll(".reveal").forEach((el) => {
-      if (el.getBoundingClientRect().top > innerHeight) { el.classList.add("pending"); io.observe(el); }
-    });
-  }
-
-  // tiles follow the pointer with a soft light
-  document.querySelectorAll(".tile").forEach((tile) => {
-    tile.addEventListener("pointermove", (e) => {
-      const r = tile.getBoundingClientRect();
-      tile.style.setProperty("--mx", `${e.clientX - r.left}px`);
-      tile.style.setProperty("--my", `${e.clientY - r.top}px`);
-    });
-  });
 })();

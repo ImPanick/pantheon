@@ -62,6 +62,9 @@ and the same `public` folder would deploy there unchanged.
 - Every claim about Pantheon has to be true of the code on the branch the site deploys from.
 - No em dashes. Write it the way you would say it.
 - No inline scripts or styles: `_headers` sets a strict Content Security Policy, and anything inline is blocked.
+- Keep it from reading as machine-made: no small-caps eyebrows over headings, no "not X, it's Y" lines,
+  no lists of three for rhythm, no stat strips, no gradient glows or glass panels. Say what the thing does.
+- The dome in the hero is the only animation. Everything else sits still.
 
 ## Third-party files
 
