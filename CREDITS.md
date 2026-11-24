@@ -1166,7 +1166,7 @@ Neither npm entry ships in anything:
 | Package | Where | Licence |
 |---|---|---|
 | [`acorn`](https://github.com/acornjs/acorn) `8.19.0` | `package.json` — `dependencies` | MIT |
-| [`@antithesishq/bombadil`](https://github.com/antithesishq/bombadil) `^0.7.6` | `package.json` — `devDependencies` | MIT |
+| [`@antithesishq/bombadil`](https://github.com/antithesishq/bombadil) `^0.8.0` | `package.json` — `devDependencies` | MIT |
 
 *`acorn` is a build tool of the Docker image (`B1591`, `D-2026-10-29-02` §6):
 the `js-without-comments` stage installs it with `npm ci --omit=dev` and runs
@@ -1177,10 +1177,11 @@ modules; no byte of acorn reaches the image. Pinned exactly, with its sha512 in
 dependencies, published 2026-10-05. The CI suite installs it the same way to
 drive the stage's command.*
 
-*`bombadil` re-read on 2026-09-18 from `package.json`, from
-`package-lock.json`'s recorded `"license": "MIT"` for the pinned 0.7.6, and
-from the npm registry metadata — still MIT, still zero runtime dependencies,
-still types-only. The range in each row is the one `package.json` declares:
+*`bombadil` re-read on 2026-11-24 (`B2213`) from `package.json`, from
+`package-lock.json`'s recorded `"license": "MIT"` for the pinned 0.8.0, and
+from the 0.8.0 tarball's own `package.json` — still MIT, still zero runtime
+dependencies, its JavaScript surface still types-only beside the fuzzer's
+native binaries. The range in each row is the one `package.json` declares:
 `check-licences.py` rule 9 fails when the two disagree, so a bump that moves
 one side and not the other is red in CI (`B623`).*
 
