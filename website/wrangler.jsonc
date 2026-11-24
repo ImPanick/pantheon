@@ -1,0 +1,13 @@
+// The getpantheon.ai site: a Cloudflare Worker that serves static files only.
+// No server code runs; Cloudflare serves public/ from its edge and applies public/_headers.
+{
+  "name": "getpantheon",
+  "compatibility_date": "2026-11-23",
+  "assets": {
+    "directory": "./public",
+    "not_found_handling": "404-page",
+    "html_handling": "auto-trailing-slash"
+  },
+  "workers_dev": true,
+  "preview_urls": true
+}

@@ -77,7 +77,8 @@ COMMENT = {
 # Vendored roots. `check-licences.py` owns these and their licences live in
 # `licenses/`; the two checkers must agree on the boundary or one of them is
 # making a claim about the other's files.
-VENDORED = ("static/lib/", "static/fonts/", "static/icons/", "library/")
+VENDORED = ("static/lib/", "static/fonts/", "static/icons/", "library/",
+            "website/public/assets/vendor/", "website/public/assets/fonts/")
 SKIP = VENDORED + ("licenses/",)
 
 # A first line the header must go *after*, not before: the kernel reads `#!`
