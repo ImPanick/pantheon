@@ -12119,11 +12119,14 @@ body.fullwidth-chat .chat-history {
 .agent-thread-node.supervisor-step .agent-thread-dot {
   background: color-mix(in srgb, var(--color-warning, #c08a3e) 60%, transparent);
 }
+/* Stop is the danger band, not the theme's `--red`: on a palette whose `--red`
+   is a gold accent (Pantheon), the theme's red would draw stop in the caution
+   band's own amber. */
 .agent-thread-node.supervisor-step[data-rung="stop"] .agent-thread-tool {
-  color: var(--red, #d65a5a);
+  color: var(--color-danger, #d65a5a);
 }
 .agent-thread-node.supervisor-step[data-rung="stop"] .agent-thread-dot {
-  background: color-mix(in srgb, var(--red, #d65a5a) 60%, transparent);
+  background: color-mix(in srgb, var(--color-danger, #d65a5a) 60%, transparent);
 }
 .agent-thread-dot {
   position: absolute;

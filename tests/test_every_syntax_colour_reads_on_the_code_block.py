@@ -38,8 +38,10 @@ TEXT = ("keyword", "string", "comment", "function", "number", "builtin", "variab
 
 # What the fixed lightnesses left under the floor before this row, per token —
 # `B395`'s count, which is also the set the walk had to move.
-# Less the three presets the cockpit retired (theme.js `RETIRED_THEMES`).
-WAS_UNDER = {"comment": 13, "number": 8, "string": 7, "builtin": 5, "keyword": 3}
+# Less the three presets the cockpit retired (theme.js `RETIRED_THEMES`), plus
+# what the two Pantheon presets (2026-11-24) brought: one comment, number,
+# string and builtin, all walked clear like the rest.
+WAS_UNDER = {"comment": 14, "number": 9, "string": 8, "builtin": 6, "keyword": 3}
 
 
 @pytest.fixture(scope="module")
@@ -82,7 +84,8 @@ def _hue(hexv):
 
 
 def test_all_shipped_palettes_were_derived(syntax):
-    assert len(syntax) == 20 and set(syntax) == set(THEME_NAMES), sorted(syntax)  # three retired: theme.js `RETIRED_THEMES`
+    # three retired (theme.js `RETIRED_THEMES`), two Pantheon presets added
+    assert len(syntax) == 22 and set(syntax) == set(THEME_NAMES), sorted(syntax)
 
 
 def test_every_syntax_colour_clears_the_code_block_on_every_palette(syntax):

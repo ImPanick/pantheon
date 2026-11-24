@@ -2487,7 +2487,7 @@ function _initPerlinFlow() {
   const _onResize = () => resize();
   window.addEventListener('resize', _onResize);
   function getColor() { const s = getComputedStyle(document.documentElement); return s.getPropertyValue('--bg-effect-color').trim() || s.getPropertyValue('--fg').trim() || '#9cdef2'; }
-  function getBg() { return getComputedStyle(document.documentElement).getPropertyValue('--bg').trim() || '#282c34'; }
+  function getBg() { return getComputedStyle(document.documentElement).getPropertyValue('--bg').trim() || '#06080e'; }
   let _cachedBg = '', _fadeStyle = '';
   function getFade() {
     const bg = getBg();
