@@ -11,9 +11,10 @@
 # places, both read-only and unauthenticated:
 #
 #   registry.npmjs.org   what the record's `dist_tag` resolves to for each
-#                        package -- `latest` for most, `stable-0.27` for
-#                        Pyodide, whose npm `latest` is a different version
-#                        line altogether (`B335`)
+#                        package -- `latest` for all of them since Pyodide
+#                        moved onto its `latest` line (`B2215`); a record on
+#                        a maintained side line names that line's tag
+#                        (`B335`, when Pyodide was on `stable-0.27`)
 #   api.osv.dev          which advisories affect package@version -- for the
 #                        vendored package AND for every package the record
 #                        says is inside it (`B336`: html2pdf.js 0.14.0 has no

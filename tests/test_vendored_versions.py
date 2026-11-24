@@ -524,11 +524,15 @@ def test_a_version_line_names_which_dist_tag_to_compare_against():
     """
     mod = load()
     records = {r.entry: r for r in mod.VENDORED}
-    assert records["Pyodide"].dist_tag == "stable-0.27", records["Pyodide"].dist_tag
+    # `B2215`, 2026-11-24: the owner asked for every dependency at its newest
+    # version, and Pyodide moved onto the `latest` line itself (314.0.8), so
+    # its record compares against `latest` like every other. The field stays,
+    # and is driven below with a record on a maintained side line.
+    assert records["Pyodide"].dist_tag == "latest", records["Pyodide"].dist_tag
     assert records["Mermaid"].dist_tag == "latest"
     # `B437`: driven against the freshness script, not grepped from the YAML.
-    rec = {"entry": "Pyodide", "package": "pyodide", "version": records["Pyodide"].version,
-           "registry": "npm", "dist_tag": records["Pyodide"].dist_tag, "source": "",
+    rec = {"entry": "Pyodide", "package": "pyodide", "version": "0.27.8",
+           "registry": "npm", "dist_tag": "stable-0.27", "source": "",
            "behind_ok": "", "osv_known": {}}
     found = _freshness().ask(
         [rec], lambda pkg: {"latest": "314.0.7", "stable-0.27": rec["version"]},

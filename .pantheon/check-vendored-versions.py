@@ -183,7 +183,9 @@ class Vendored:
         # this is a field: `dist-tags.latest` is 314.x, a CPython-aligned line
         # that 0.27.x does not belong to, so asking for `latest` reports a
         # library on a maintained line as permanently behind — a light that is
-        # always on. The 0.27 line's own tag is `stable-0.27`.
+        # always on. The 0.27 line's own tag is `stable-0.27`. `B2215`
+        # (2026-11-24): Pyodide is on `latest` itself now (314.0.8) and no
+        # record names another tag; the field stays for the next side line.
         self.dist_tag = dist_tag
 
 
@@ -508,27 +510,32 @@ VENDORED = [
              "browser-driven check can compare diagrams, or an advisory names 11.x.",
     ),
     Vendored(
-        "Pyodide", "pyodide", "0.27.5", "2026-09-16",
-        "https://registry.npmjs.org/pyodide/-/pyodide-0.27.5.tgz",
-        "0.27.5",
+        "Pyodide", "pyodide", "314.0.8", "2026-11-24",
+        "https://registry.npmjs.org/pyodide/-/pyodide-314.0.8.tgz",
+        "314.0.8",
         manifest="static/lib/pyodide/MANIFEST.json",
-        dist_tag="stable-0.27",
         note="Hashes are not repeated here — scripts/fetch-pyodide.py owns "
-             "them and writes MANIFEST.json. **npm `dist-tags.latest` is "
-             "314.0.7 and that is not this line.** Pyodide moved to a "
-             "CPython-aligned version scheme; the 0.27 line is still "
-             "maintained and its own tag is `stable-0.27` (0.27.8, "
-             "2026-09-16). That is the comparison this record asks for, which "
-             "is the human judgement B335 wanted: comparing 0.27.5 against "
-             "314.0.7 reports a supported runtime as permanently behind, and a "
-             "light that is always on is a light nobody reads.",
-        behind_ok="B425 — 0.27.8's own change is `python` CLI compatibility with "
-             "Node 26, a path Pantheon never runs (codeRunner.js loads the "
-             "browser runtime). Reaching it crosses 0.27.7's documented "
-             "breaking change — `enableRunUntilComplete` defaults on, which "
-             "turns a no-op into a crash where stack switching is off — and "
-             "that needs a browser matrix this wave could not run, for 13 MB "
-             "of new binaries.",
+             "them and writes MANIFEST.json. `B2215` (`D-2026-11-24-04`, the "
+             "owner's *\"all dependencies at the newest version\"*) moved "
+             "this from 0.27.5 on the `stable-0.27` line to 314.0.8, npm's "
+             "`latest`: the CPython-aligned line Pyodide now releases on, "
+             "Python 3.14.2 in place of 3.12.7. Two things changed under "
+             "Pantheon and both are handled. The runtime's JavaScript is "
+             "`pyodide.asm.mjs`, an ES module `pyodide.js` loads with "
+             "`import()` (0.28 on), so the sandbox's classic Worker now "
+             "imports a module from the opaque-origin frame: core/middleware.py "
+             "already gives /static/lib/pyodide/ `Access-Control-Allow-Origin: "
+             "*` and app.py serves `.mjs` as JavaScript, and both are pinned by "
+             "tests now. And `enableRunUntilComplete` (on by default since "
+             "0.27.7): measured under node with the sandbox's own wrapper, "
+             "0.27.5 answered `loop.run_until_complete(f())` with a pending "
+             "Task printed as if it were the result; 314.0.8 runs it where the "
+             "browser has JS Promise Integration and otherwise raises "
+             "*RuntimeError: WebAssembly stack switching not supported*, which "
+             "the wrapper prints as the run's traceback "
+             "(tests/test_the_python_sandbox_runs_on_the_vendored_pyodide.py). "
+             "pythonSandbox.js passes the flag explicitly so a default that "
+             "moves again does not move it. Not driven in a browser here.",
     ),
     Vendored(
         "Swagger UI", "swagger-ui-dist", "5.33.0", "2026-09-17",
