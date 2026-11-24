@@ -31,7 +31,9 @@
 //   - Apollo's control pane in the sidebar's place (`apolloDeck.js`
 //     `placeControl`): goals, the person's other chats and their mail, so the
 //     generic sidebar's list is put away while Apollo is up.
-// Leaving the chat puts every one of those back.
+// Leaving the chat puts every one of those back. The Chat / Apollo switch at
+// the end of the top bar (`modeSwitch.js`) is lit from `html.apollo-view`, so
+// both moves below tell it.
 
 const BAR_ID = 'apollo-bar';
 const PROMPT = 'Tell Apollo what you need';
@@ -115,6 +117,10 @@ function _mountDeck() {
   import('./apolloDeck.js').then((m) => { if (_on) m.mountDeck(); }).catch(() => { /* the bar and the chat still work */ });
 }
 
+function _syncSwitch() {
+  import('./modeSwitch.js').then((m) => m.syncModeSwitch()).catch(() => { /* no switch drawn */ });
+}
+
 function _unmountDeck() {
   import('./apolloDeck.js').then((m) => m.unmountDeck()).catch(() => { /* nothing was mounted */ });
 }
@@ -151,6 +157,7 @@ export function enterApolloView(hooks = {}) {
     _mountDeck();
   }
   _on = true;
+  _syncSwitch();
 }
 
 /** Put the generic chat page back. */
@@ -166,6 +173,7 @@ export function leaveApolloView() {
   if (input && _priorPrompt !== null) input.placeholder = _priorPrompt;
   _priorPrompt = null;
   import('./apolloPane.js').then((m) => { if (m.isApolloPaneOpen()) m.closeApolloPane(); }).catch(() => {});
+  _syncSwitch();
 }
 
 export function isApolloView() { return _on; }

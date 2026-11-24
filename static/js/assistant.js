@@ -14,6 +14,7 @@ import { toolPollMayAsk } from './ui_visibility.js';   // `B1542`
 const API = '/api/assistant';
 
 let _cachedSettings = null;   // most recent GET /api/assistant/settings payload
+const LAST_CHAT_KEY = 'pan-last-chat';   // the last chat open that wasn't Apollo's (`modeSwitch.js`)
 let _modalEl = null;
 
 async function _fetchJSON(url, opts = {}) {
@@ -453,7 +454,10 @@ async function _ensureHeaderAffordances(sessionId) {
     return;
   }
   _markApolloChat(isApollo);
-  if (!isApollo) return;
+  if (!isApollo) {
+    _noteChat(sessionId);
+    return;
+  }
   import('./apolloSpaces.js').then((Sp) => Sp.noteSpace(space || null)).catch(() => {});
   // Apollo's own page (`apolloView.js`): its bar, pane, controls and empty
   // state. The bar holds the Space switcher, the pane button and the gear that
@@ -497,10 +501,52 @@ function _watchForAssistantActivation() {
     const sessionId = ev?.detail?.sessionId;
     if (sessionId) _ensureHeaderAffordances(sessionId);
   });
+  // New chat, delete and archive clear the open chat without changing to
+  // another one, so `session-changed` never fired and Apollo's page stayed up
+  // over the chat (owner's test, 2026-11-24: "no way to leave apollo mode").
+  document.addEventListener('pantheon:session-cleared', () => _markApolloChat(false));
   // And once at boot, for a reload that lands directly on the assistant
   // session — the event fires on a CHANGE and there is none on first paint.
   const current = window.sessionModule?.getCurrentSessionId?.();
   if (current) _ensureHeaderAffordances(current);
+}
+
+// ── Chat or Apollo (`modeSwitch.js`) ──────────────────────────────────────
+//
+// Pantheon serves both: the chat, which can call agents, and Apollo, the
+// partner that runs the work. The switch at the end of the chat's top bar
+// moves between them. Chat goes back to the last chat that wasn't Apollo's,
+// or to a new one when there isn't one to go back to.
+
+function _noteChat(sessionId) {
+  try { localStorage.setItem(LAST_CHAT_KEY, String(sessionId)); } catch { /* private window */ }
+}
+
+function _lastChat() {
+  try { return localStorage.getItem(LAST_CHAT_KEY); } catch { return null; }
+}
+
+async function _backToChat() {
+  let S = null;
+  try { S = await import('./sessions.js'); } catch { /* no chat list: a new chat below */ }
+  const id = _lastChat();
+  const there = id && S?.getSessions?.().some((s) => String(s.id) === id && !s.archived);
+  if (there) {
+    await S.selectSession(id);
+    return;
+  }
+  _markApolloChat(false);
+  (document.getElementById('rail-new-session') || document.getElementById('sidebar-new-chat-btn'))?.click();
+}
+
+async function _mountModeSwitch() {
+  if (!(await toolPollMayAsk('assistant'))) return;   // Apollo off for this person: no switch
+  try {
+    const M = await import('./modeSwitch.js');
+    M.mountModeSwitch({ toChat: _backToChat, toApollo: () => openAssistantChat() });
+  } catch (e) {
+    console.error('Mode switch failed:', e);
+  }
 }
 
 // ── The door (`H02`) ───────────────────────────────────────────────────────
@@ -537,6 +583,7 @@ function _wireRailButton() {
 function _boot() {
   _wireRailButton();
   _watchForAssistantActivation();
+  _mountModeSwitch();
 }
 
 if (document.readyState === 'loading') {

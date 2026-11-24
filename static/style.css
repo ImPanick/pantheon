@@ -51958,6 +51958,11 @@ button.apo-card:hover { background: var(--ctl-tint-2); }
 }
 .apo-msg-you .apo-msg-t { background: var(--ctl-accent); color: var(--ctl-on-accent); }
 .apo-msg-live .apo-msg-t { color: var(--ctl-text-2); }
+/* Chat or Apollo (`static/js/modeSwitch.js`); `cockpit.css` gives it the pill. */
+.pan-modes { display: inline-flex; flex: none; gap: 2px; }
+.pan-mode-btn { padding: 4px 10px; border: 1px solid var(--border); border-radius: 999px; background: transparent; color: var(--fg); cursor: pointer; font: inherit; font-size: 12px; }
+.pan-mode-btn.active { background: var(--card); }
+
 .apo-chat-ask:empty { display: none; }
 /* A lead's report drawn as a report (`apolloText.js`), and Apollo's handoff
    that started the lead's run, as a line rather than a bubble. */
