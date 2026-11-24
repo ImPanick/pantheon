@@ -41,7 +41,7 @@ import threading
 import time
 import uuid
 from typing import Any, Dict, List, Optional
-from urllib.parse import urlsplit
+from urllib.parse import parse_qsl, urlsplit
 from src.utc_clock import utcnow_naive  # `B2196`: not the deprecated datetime.utcnow()
 
 logger = logging.getLogger(__name__)
@@ -399,14 +399,36 @@ def _clean_label(raw: Any) -> str:
 def _clean_totp(raw: Any) -> str:
     text = re.sub(r"\s+", "", str(raw or "")).upper()
     if text.startswith("OTPAUTH://"):
-        import pyotp
+        # Read the secret out of the link by hand: `pyotp.parse_uri` builds a
+        # TOTP, and pyotp 2.12 refuses a secret under 112 bits there, which
+        # would refuse the 16-character secrets most services issue.
         try:
-            text = pyotp.parse_uri(str(raw).strip()).secret
-        except Exception:  # noqa: BLE001 — any unreadable URI is the same sentence
-            raise VaultRefused("That one-time-code link could not be read.") from None
+            parts = urlsplit(str(raw).strip())
+            found = [v for k, v in parse_qsl(parts.query) if k.lower() == "secret"]
+            scheme = parts.scheme.lower()
+        except ValueError:
+            found, scheme = [], ""
+        if scheme != "otpauth" or len(found) != 1:
+            raise VaultRefused("That one-time-code link could not be read.")
+        text = re.sub(r"\s+", "", found[0]).upper()
     if not re.fullmatch(r"[A-Z2-7]{16,128}=*", text):
         raise VaultRefused("A one-time-code secret is the base32 text (or otpauth:// link) the service showed.")
     return text
+
+
+def _code_now(secret: str) -> str:
+    """The current one-time code for a secret a service issued.
+
+    The service chose the secret and the vault only reads it, so the vault's
+    own floor (16 base32 characters, 80 bits, `_clean_totp`) is the one that
+    applies. pyotp 2.12 refuses anything under 112 bits by default, which would
+    turn every common 16-character secret into a crash at use (`B2190`)."""
+    import pyotp
+
+    class _ServiceTOTP(pyotp.TOTP):
+        min_secret_length_bits = 80
+
+    return _ServiceTOTP(secret).now()
 
 
 def _apply(sealed: Dict[str, Any], body: Dict[str, Any]) -> Dict[str, Any]:
@@ -556,8 +578,7 @@ def for_use(db, owner: Optional[str], ref: Any, *, by: str = "agent",
     sealed = _open(_fernet(db, acct, create=True), row.sealed)
     otp = ""
     if sealed.get("totp"):
-        import pyotp
-        otp = pyotp.TOTP(sealed["totp"]).now()
+        otp = _code_now(sealed["totp"])
     row.last_used_at = utcnow_naive()
     row.last_used_by = str(by or "agent")[:80]
     db.commit()
@@ -696,9 +717,8 @@ async def _bw_for_use(owner: Optional[str], item_id: str) -> Dict[str, Any]:
             origins.append(o)
     otp = ""
     if login.get("totp"):
-        import pyotp
         try:
-            otp = pyotp.TOTP(_clean_totp(login["totp"])).now()
+            otp = _code_now(_clean_totp(login["totp"]))
         except VaultRefused:
             otp = ""   # a code Bitwarden holds in a form this cannot read is not offered; the form says so
     logger.info("vault: %s used bitwarden item %s", account(owner), item_id)
