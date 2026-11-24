@@ -19,7 +19,7 @@ import subprocess
 import threading
 import time
 
-IMAGE = "python@sha256:935c3c5b12357a7e10caa9c1e6ca5692344d97cf229832ef584be2cec9fc03df"
+IMAGE = "python:3.14.10-slim@sha256:22eafb370920ad8b429e0aec3fff433e0669968519f5d60469d83729c138b28b"
 TARGET = "pantheon-radio.invalid:7443"
 PREFACE = b"PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n" + bytes.fromhex("000000040000000000")
 RELAY = '''import socket,sys,threading
