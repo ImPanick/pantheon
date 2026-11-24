@@ -300,11 +300,11 @@ lands and test it on my own machines. The repository is the evidence:
   command you can run, and this README's own figures are pinned to their sources, so the build
   fails when one drifts.
 
-**2186 tracked tasks, 1975 done.** Over the last ten waves, done went **96.1% → 90.3%** and open
-went **71 → 211**: 348 rows filed against 208 closed, a file-to-close ratio of **1.673**. That's new
+**2194 tracked tasks, 1982 done.** Over the last ten waves, done went **95.8% → 90.3%** and open
+went **77 → 212**: 350 rows filed against 215 closed, a file-to-close ratio of **1.628**. That's new
 work held open until it's been tested by hand, not a pile of defects; on 2026-11-11 I closed 177 rows
 on CI evidence, every test each one names passing. Of the last 40 rows filed
-(`B2103`–`B2142`), **none** is on the ship line, the short list of things that would stop a
+(`B2111`–`B2177`), **none** is on the ship line, the short list of things that would stop a
 stranger relying on this repository ([`.pantheon/SHIP-LINE.md`](.pantheon/SHIP-LINE.md)).
 
 Test suite: **20,309 passing**, measured 2026-10-18 at `c66fe54`. A full run takes over an hour, so

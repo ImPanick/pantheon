@@ -4275,3 +4275,34 @@ Each ruling below is his, in his words where they are short.
    CI"*).
 9. **Code-scanning alerts** `#526`, `#528`, `#530`, `#531` and `#536` are false
    positives to dismiss. *"Dismiss false-positives."*
+
+## D-2026-11-24-02 - delete duplicates, but only what is truly unused
+
+The owner, 2026-11-24, for the duplicated-code pass: *"Delete duplicates but
+ensure anything that is deleted is *truly* unused."* With it, the same message:
+*"No dead code but we dont delete.. we wire it in where it's unwired and loop
+make the systems work. If its truly, no shit dead code.. We can remove it."*
+
+This sits beside `Law 1` (add, never subtract) rather than against it: a
+duplicate is a second definition of something that stays, so folding it
+removes no behaviour. How it was applied on `claude/dup-1124`:
+
+1. **One definition, the old names kept.** Where two modules defined the same
+   thing, one keeps it and the other imports it under its old name, so every
+   caller and every test seam (`monkeypatch` targets) keeps working. A name was
+   removed only where a search of the tree (`.py`, `.js`, `.html`, `.md`,
+   `.json`, `.yml`, `.sh`, Dockerfiles, tests, and dynamic lookups) found no
+   reader.
+2. **One trust store for pinned fetches** (`B2170`): certifi, or
+   `SSL_CERT_FILE` when set, through `httpx.create_ssl_context()`, the owner's
+   earlier pick. The pinned-IP defence in `FORBIDDEN.md` Part 2 is unchanged.
+3. **Local host names** (`B2177`): a set that allows something may not widen
+   and a set that refuses something may not narrow. Where two sites asked the
+   same question with different members, the allowing set kept its members and
+   the refusing sets took their union.
+4. **Kept on purpose.** The two `pantheon_api.py` files (each agent bundle
+   ships its own; a test holds them equal, `B2176`); the two "only a person
+   answers" sentences, which the `B1870`/`B1926` merge kept apart (now under
+   two names, `B2174`); and the pairs listed on `B2172`, which need a ruling or
+   touch files open pull requests change.
+
