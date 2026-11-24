@@ -20,6 +20,10 @@ Settings has three routes, and who may call each is the row:
                                  account is derived from the caller, so there
                                  is nothing to tamper with. The panel asks
                                  first.
+  POST /api/workstation/restart  the same people, the same way: their own
+                                 workstation started again, nothing erased
+                                 (their machine on the VM backend, their
+                                 desktop where accounts share a system).
 
 **Gated with `require_user` and `require_admin`, nothing hand-rolled.** A
 further way of asking "is this an admin" is what `.pantheon/check-auth-map.py`
@@ -307,6 +311,19 @@ def setup_workstation_routes() -> APIRouter:
         if point.get("saved"):
             sentence = "Your workstation is back at the starting point you saved."
         return {"ok": True, "account": answer.get("account"), "sentence": sentence}
+
+    @router.post("/restart")
+    async def workstation_restart(request: Request):
+        """The caller's own workstation started again, nothing erased — the
+        way back from a desktop they cannot reach (logged out of, frozen)."""
+        owner = require_user(request)
+        try:
+            answer = await wa.restart_mine(owner, auth_manager=_auth_manager(request))
+        except WorkstationError as e:
+            raise _http_error(e)
+        logger.info("workstation %s restarted for %s", answer.get("restarted"),
+                    answer.get("account"))
+        return {"ok": True, **answer}
 
     # `B1733` / `D-2026-11-01-02`. The caller's own starting point — what
     # Reset puts back. Saving and forgetting are the person's (`POST

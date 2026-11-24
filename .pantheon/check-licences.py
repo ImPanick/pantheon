@@ -114,6 +114,16 @@ _BUNDLE_SUFFIXES = {".js", ".mjs", ".cjs", ".css"}
 # happens to mention `node_modules` once in a comment.
 _BUNDLE_THRESHOLD = 3
 
+# `B2219`. One comment per module, as Vite/rolldown write them: `//#region
+# src/file/x.ts` up to docx 9.7.1, `// src/file/x.ts` from 9.16.0, and the
+# same for `node_modules/<pkg>/...`. Counted for a file declared `derived`: a
+# bundle that still marks its modules is one whose package list can still be
+# read, however few packages it took. docx 9.16.0 marks 368 modules and takes
+# two packages (`fflate`, `nanoid`), which the package count alone read as "the
+# bundler changed and nothing can see inside".
+_MODULE_MARKER = re.compile(
+    r"^[ \t]*//(?:#region)?[ \t]+\S+\.(?:[cm]?[jt]sx?|json)[ \t]*$", re.M)
+
 
 # `B339`. Rule 8's vocabulary. Kept as constants rather than bare strings so a
 # typo in an entry is an AttributeError at import rather than a file that
@@ -344,7 +354,9 @@ def check_contents(files):
         derived = bundled_packages(ROOT / rel)
 
         if answer == CONTENTS_DERIVED:
-            if len(derived) < _BUNDLE_THRESHOLD:
+            markers = len(_MODULE_MARKER.findall(blob))
+            if not derived or (len(derived) < _BUNDLE_THRESHOLD
+                               and markers < _BUNDLE_THRESHOLD):
                 problems.append(
                     f"NOT DERIVED {rel}\n"
                     f"            {entry.name!r} says its contents come from "
@@ -519,6 +531,10 @@ INVENTORY = [
     # answer is `derived` and rule 7 reads the list out of the bytes: 45
     # packages, each declared below with its licence text. The same library and
     # the same dependencies as 8.5.0 — that build simply did not say so.
+    # `B2219`, 2026-11-24 (`D-2026-11-24-04`): docx **9.16.0** dropped JSZip
+    # for `fflate` and shed its XML libraries and Node polyfills; its build marks
+    # modules as `// src/…` and names two packages, `fflate` and `nanoid`. The
+    # 9.7.1 entries below keep their texts (every tag before it ships them).
     Entry("docx", ["static/lib/docx.umd.min.js"], "MIT",
           "docx-MIT-LICENSE.txt", "dolanmiu/docx",
           contents=CONTENTS_DERIVED, notices=("dolanmiu/docx",)),
@@ -905,6 +921,16 @@ INVENTORY = [
           "vscode-languageserver-MIT-LICENSE.txt", "vscode-languageserver",
           bundled=("vscode-jsonrpc", "vscode-languageserver-protocol",
                    "vscode-languageserver-types")),
+    # `B2220`, 2026-11-24. Mermaid 12 bundles ELK (`elkjs`, the Eclipse Layout
+    # Kernel compiled to JavaScript) and registers it as a layout. It left no
+    # module path and no legal comment, so neither rule 7 nor rule 8 can see it;
+    # it was found by reading the 12.0.0 and 12.3.0 changelogs and confirmed in
+    # the bytes (`org.eclipse.elk` appears 345 times). Offered as `EPL-2.0 OR
+    # GPL-3.0-or-later` (its package.json); the text is its own LICENSE.md, the
+    # EPL-2.0. Copyleft, so rule 6 holds the scope section to naming it.
+    Entry("elkjs", [], "EPL-2.0 (or GPL-3.0-or-later)",
+          "elkjs-EPL-2.0-LICENSE.txt", "elkjs", copyleft=True,
+          bundled=("elkjs",)),
     Entry("Pyodide", ["static/lib/pyodide/*"], "MPL-2.0",
           "Pyodide-MPL-2.0.txt", "static/lib/pyodide", copyleft=True,
           contents=CONTENTS_SINGLE, notices=("Pyodide",)),

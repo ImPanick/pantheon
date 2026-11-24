@@ -1,16 +1,16 @@
 {
   "files": {
-    "pyodide-lock.json": "be1807745da93daa09d360b109c17a0e526e74d664d1f1b9870aafcce98ce426",
-    "pyodide.asm.js": "3a889f073e628c2196c705b42fa0e955ba2e25c034b1e3dd589c35be675bc01b",
-    "pyodide.asm.wasm": "f7fefe563134714a17abd65516d94960e8dbd96fe6778a7a842947fc9686b3a1",
-    "pyodide.js": "7fdbe66e53f68f6a4e93c295a667371759be093d2bd402bb44545514584039b6",
-    "python_stdlib.zip": "6030964967e447c887abc46c5f0967c55688644d759496de82a3ef09f49f5cba"
+    "pyodide-lock.json": "5dc2fc119108bc148c7457dc86e7675b5c87e1cafd420b9c34c1eaef7b36c010",
+    "pyodide.asm.mjs": "22514b8be6980e28a02c8b1d6387ce8dfe666fc4edf8d547cff5dce29ff4d972",
+    "pyodide.asm.wasm": "e14d49ceca9b4a0e274ea918f3a898de2d3880b6e5573a6cfe1a2267ecc70329",
+    "pyodide.js": "d4e1e0f06c29162eadf0c3f323c746884242b257d1faa94760442a4ac929e9a1",
+    "python_stdlib.zip": "2bd3394a145bfbbe5bbc9d9d6ab9136abbb986c6fef6c142b3a2962227aa5c28"
   },
   "licence": "MPL-2.0",
   "note": "Runtime and Python standard library only \u2014 no packages. codeRunner.js never calls loadPackage; adding one means vendoring its wheel here deliberately.",
   "package": "pyodide",
   "source": "https://registry.npmjs.org/pyodide",
-  "tarball": "https://registry.npmjs.org/pyodide/-/pyodide-0.27.5.tgz",
-  "tarball_integrity": "sha512-nXErpLzEdtQolt+sNQ/5mKuN9XTUwhxR2MRhRhZ6oDRGpYLXrOp5+kkTPGEwK+wn1ZA8+poNmoxKTj2sq/p9og==",
-  "version": "0.27.5"
+  "tarball": "https://registry.npmjs.org/pyodide/-/pyodide-314.0.8.tgz",
+  "tarball_integrity": "sha512-74Wq1kXOC+CCEzAfxuRAO701nAcCMLjf8NrwvWpu8S41dVMXwXmLQ05dYB+F4e46AdnGo0oq7YHSVUpHsoarLQ==",
+  "version": "314.0.8"
 }

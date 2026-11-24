@@ -86,7 +86,7 @@ VM_PAIRING_DIR_ENV = "PANTHEON_WORKSTATION_VM_PAIRING"
 SYSTEMS = ("ubuntu", "debian", "fedora", "rocky")
 DEFAULT_SYSTEM = "ubuntu"
 SYSTEM_NAMES = {"ubuntu": "Ubuntu 24.04", "debian": "Debian 13",
-                "fedora": "Fedora 44", "rocky": "Rocky Linux 9"}
+                "fedora": "Fedora 45", "rocky": "Rocky Linux 9"}
 SYSTEM_PORTS = {"ubuntu": DEFAULT_PORT, "debian": 7042, "fedora": 7043, "rocky": 7044}
 
 
@@ -179,6 +179,19 @@ ROUTES: Dict[str, Tuple[str, str]] = {
     # "admins": [account, ...] — the accounts admitted to every person's
     # projects folder (`B1424`, added)}.
     # Answers the effective settings, the same shape `health` reports them in.
+    # Placement (the owner, 2026-11-17), added — the VM backend's host only:
+    #   "placement": {"default": one of PLACEMENTS,
+    #                 "people": {account: one of PLACEMENTS}}
+    # where each person's machine is: one of their own, or the one machine
+    # several people share (`SHARED_MACHINE`), an account each in it. `default`
+    # is for a person who has no machine yet; once a person's workstation is
+    # made, it stays where it was made unless `people` names them. `people`
+    # replaces the whole list. The host's `health` and `config` answer
+    #   "placement": {"default", "people", "where": {account: one of
+    #                 PLACEMENTS} for every person with a workstation,
+    #                 "shared": {"running": bool,
+    #                 "accounts": [account, ...]}, "shared_sudo": false}
+    # and every other backend answers nothing and refuses the field (`400`).
     "config": ("POST", "/v1/config"),
     # Makes the account, its home and its display on first use; a no-op after.
     # {} -> {"account", "home", "display", "created": bool, "sudo": bool,
@@ -188,6 +201,14 @@ ROUTES: Dict[str, Tuple[str, str]] = {
     # The home back to the image's skeleton, the display restarted.
     # {} -> {"account", "reset": true}
     "reset": ("POST", "/v1/users/{account}/reset"),
+    # The account's own workstation started again, nothing erased (the owner,
+    # 2026-11-16: logged out of the desktop, and nothing brought it back).
+    # {} -> {"account", "restarted": one of RESTART_KINDS}: "machine" where
+    # the person has a machine of their own (the VM backend: powered off
+    # cleanly and started again, its disk as it was), "desktop" where accounts
+    # share one system (their display and desktop session, started again).
+    # Nobody else's is touched. A daemon older than the route answers 404.
+    "restart": ("POST", "/v1/users/{account}/restart"),
     # {"command": str, "shell": "bash"|"python", "cwd": str|None,
     #  "timeout_s": float, "env": {str: str}, "stdin": str|None,
     #  "stream": bool}
@@ -231,6 +252,8 @@ ROUTES: Dict[str, Tuple[str, str]] = {
     # until this route a panel that only looked made an account (and, on the
     # Ubuntu backend, a Unix user and a desktop). Never `ensure`s, never
     # starts anything. -> {"account", "exists": bool, "home": str|None}
+    # Placement, added: the VM backend's host also answers "placement" (one
+    # of PLACEMENTS: where this person's workstation is or will be made).
     # A daemon older than this answers `404 not_found`; a caller reads that
     # as "cannot tell", never as "does not exist".
     # `B1684`, added: "projects_env" — the folder this daemon gives every
@@ -571,6 +594,8 @@ def phone_screen_size(device: str) -> Tuple[int, int]:
 # and what one holds.
 STARTING_POINT_ACTIONS = ("status", "save", "forget")
 STARTING_POINT_SCOPES = ("home", "machine")
+# What `ROUTES["restart"]` started again.
+RESTART_KINDS = ("desktop", "machine")
 # Every action takes coordinates in the screenshot's own pixels; the screen is
 # a fixed size, so there is no scaling for either side to get wrong.
 INPUT_ACTIONS = (
@@ -675,6 +700,19 @@ VM_MEMORY_MAX_MIB = 262_144
 # `PANTHEON_WORKSTATION_VM_CPUS` always had.
 VM_CPUS_MIN = 1
 VM_CPUS_MAX = 64
+
+# Placement (the owner, 2026-11-17): where a person's machine is on the VM
+# backend. `own` is a machine of their own, the wall between people a
+# hypervisor. `shared` is one machine several people share, a Unix account and
+# desktop each in it, the wall Unix permissions — so `sudo` is always off in
+# it, whatever the admin chose for machines of their own: with it on, one
+# person's agent is root there and reads everyone's home. `SHARED_MACHINE` is
+# that machine's name on the host; it never matches `ACCOUNT_RE`, so no
+# person's own machine can be it.
+PLACEMENTS = ("own", "shared")
+DEFAULT_PLACEMENT = "own"
+SHARED_MACHINE = "shared"
+MAX_PLACEMENT_PEOPLE = 10_000
 
 # ── the network mode in force (`P20-06`, additive) ────────────────────────────
 #
@@ -895,6 +933,10 @@ __all__ = [
     "INTERNET_EXCLUDED_V6", "NETWORK_ENFORCEMENT",
     # `B1733`, added.
     "STARTING_POINT_ACTIONS", "STARTING_POINT_SCOPES",
+    # Restart (2026-11-16), added.
+    "RESTART_KINDS",
+    # Placement (2026-11-17), added.
+    "DEFAULT_PLACEMENT", "MAX_PLACEMENT_PEOPLE", "PLACEMENTS", "SHARED_MACHINE",
     # `B1747`, added.
     "DEFAULT_SYSTEM", "SYSTEMS", "SYSTEM_NAMES", "SYSTEM_PORTS", "system_pairing_dir",
     "system_pairing_dir_env", "system_url_env",

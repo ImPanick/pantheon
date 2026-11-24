@@ -29,7 +29,7 @@ together is that **virtual machines are never nested inside each other by Panthe
 |---|---|
 | **0, the host** | Bare metal, or a VM on ESXi, Proxmox or Hyper-V. Supplies the CPU's virtualization extensions (`/dev/kvm` on Linux). |
 | **1, Pantheon's services** | The app and its helpers (`pantheon`, `chromadb`, `searxng`, `ntfy`), and one service per VM family: `workstation-vm` for Linux desktops, `android-vm` for phones, a future one for iOS (nothing built). Each family is its own container, so they're siblings. |
-| **The VMs** | One per person per family. Alice's desktop and Alice's phone are two VMs side by side, each in its family's service, never one inside the other. Bob gets his own pair. |
+| **The VMs** | One per person per family. Alice's desktop and Alice's phone are two VMs side by side, each in its family's service, never one inside the other. Bob gets his own pair. An admin can instead put people on one shared desktop VM, an account each (see [Own desktop VM or a shared one](#own-desktop-vm-or-a-shared-one)); phones stay one per person. |
 
 A container isn't a virtualization layer, so on a bare-metal Linux host each person's desktop and
 phone run one hardware-virtualization layer deep: as fast as they're going to get. Every hypervisor
@@ -52,7 +52,7 @@ Splitting the families into separate services is deliberate:
 | `pantheon` | The app: web UI, API, agent loop, scheduler, mail pollers | `ghcr.io/impanick/pantheon` (published from `main`) or built from `Dockerfile` | `./data`, `./logs` (bind mounts by default) | None added. Drops to `PUID`/`PGID`. |
 | `chromadb` | Vector store for memory and document search | `chromadb/chroma:1.5.9`, pinned | `chromadb-data` volume | None added |
 | `searxng` | Self-hosted web search | `searxng/searxng`, pinned | `searxng-data` volume | `CHOWN`, `SETGID`, `SETUID`, `DAC_OVERRIDE` only, everything else dropped |
-| `ntfy` | Push for lock-screen approvals | `binwiederhier/ntfy:v2.34.0`, pinned | `ntfy-cache` volume | None added |
+| `ntfy` | Push for lock-screen approvals | `binwiederhier/ntfy:v2.38.2`, pinned | `ntfy-cache` volume | None added |
 | `workstation-net` | Owns the network namespace the container workstation runs in, and the only thing allowed to write its firewall rules | built from `workstation/` | pairing volume | `NET_ADMIN`, `CHOWN`; all else dropped |
 | `workstation` | Container backend for the desktop: one Ubuntu container, a Unix account and desktop per person. For hosts without KVM. | built from `workstation/` | `workstation-homes`, Android SDK volume | No added capability, `NET_RAW` dropped, one device-cgroup rule for `/dev/kvm` |
 | `workstation-debian` / `-fedora` / `-rocky` | The same desktop on another distro, for people who pick it. Off unless its profile is on. | built from `workstation/` | own homes and pairing volumes | as `workstation` |
@@ -119,7 +119,8 @@ said out loud, instead of the container refusing to start. `PANTHEON_WORKSTATION
 |---|---|---|
 | Desktop VM memory | Sized from the host, or what an admin chooses in Settings → Workstation (1 GiB to 256 GiB), else `PANTHEON_WORKSTATION_VM_MEMORY_MIB` | Admin |
 | Desktop VM processors | The admin sets the pool (`workstation_vm_cpus_max`, 1 to 64, empty for all of the host's); each person picks their own count within it, applied on their machine's next start. `PANTHEON_WORKSTATION_VM_CPUS` (2) is the default for someone who hasn't picked. | Admin sets the ceiling, each person picks under it |
-| Desktop VM disk | `PANTHEON_WORKSTATION_VM_DISK_GIB=20` per person | Operator |
+| Own VM or shared VM | `workstation_vm_placement` (`own` or `shared`) for people with no desktop yet, and `workstation_vm_placement_people` for each person by name. Settings → Workstation. | Admin |
+| Desktop VM disk | `PANTHEON_WORKSTATION_VM_DISK_GIB=20` per machine (the shared machine is one disk for everyone on it) | Operator |
 | Desktops running at once | `PANTHEON_WORKSTATION_VM_MAX_RUNNING=auto` | Operator |
 | Idle desktop powered off after | `PANTHEON_WORKSTATION_VM_IDLE_MIN=30` minutes | Operator |
 | Phone memory | `PANTHEON_ANDROID_VM_PHONE_MEMORY_MIB` each, sized from the host when empty | Operator |
@@ -132,6 +133,30 @@ memory setting is a ceiling, not a reservation. Plan for the ceiling anyway on a
 model server (vLLM, llama.cpp, Ollama) runs on the same host, its weights and KV cache come out of
 the same pool. Measure the app and helpers on your own host with `docker stats` after a day of use;
 a number written here would be wrong for your workload.
+
+### Own desktop VM or a shared one
+
+On the `vm` backend each person's desktop is either a VM of their own or an account on one VM
+several people share. A dedicated server can give everyone their own machine; a small box can keep
+most people on the shared one and give a machine of their own only to whoever needs the power.
+
+- **The default** (`workstation_vm_placement`, Settings → Workstation → New people's machine) is
+  for people who don't have a desktop yet. It ships as `own`. Changing it moves nobody who already
+  has one.
+- **Each person** (`workstation_vm_placement_people`, Settings → Workstation → Each person's
+  machine) overrides the default by username. Moving someone to the shared machine powers their own
+  VM off cleanly and keeps its disk, so moving them back finds their files where they left them.
+- **The shared machine** is one VM named `shared` on the `workstation-vm` volume, sized like any
+  other: the admin's memory, every processor in the pool. Sudo is off there whatever the sudo
+  switch says, `/proc` hides other people's processes, and each person's home and projects folder
+  are closed to everyone else by Unix permissions alone. Restart and reset act on that person's
+  desktop and home, not the whole machine. Saving a starting point and choosing processors need a
+  machine of one's own.
+- **Phones** are unchanged: one Android VM per person in `android-vm`, wherever their desktop is.
+
+Only the VM host takes a placement. The container backend is already one shared machine, and a
+remote workstation is whatever the operator runs there. Spreading desktops over several
+workstation hosts is planned, not built.
 
 **Disk.** Each person's desktop is a copy-on-write disk on the `workstation-vm` volume, up to
 `PANTHEON_WORKSTATION_VM_DISK_GIB`. The Ubuntu base image is made once, on first use. The Android

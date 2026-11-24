@@ -173,7 +173,7 @@ data, `.pantheon/retrieval_eval.py --generate` builds a test set from your memor
 - **259 agents to hire.** 26 departments and 18 teams, each agent a runbook with its own schedule,
   tools and evaluation cases. `@` in the message box summons one, `/` calls a skill. The roster is
   growing: more agents are coming, and the ones already here keep getting sharper.
-- **A desktop of its own.** XFCE on Ubuntu 24.04, Debian 13, Fedora 44 or Rocky Linux 9, kept
+- **A desktop of its own.** XFCE on Ubuntu 24.04, Debian 13, Fedora 45 or Rocky Linux 9, kept
   between chats and streamed live over [KasmVNC](https://github.com/kasmtech/KasmVNC). The agent
   uses the mouse, keyboard, shell and files; you watch, take over, or reset it to a starting point
   you saved. It runs as a container, or as a full QEMU/KVM VM where the host has KVM.
@@ -300,11 +300,11 @@ lands and test it on my own machines. The repository is the evidence:
   command you can run, and this README's own figures are pinned to their sources, so the build
   fails when one drifts.
 
-**2200 tracked tasks, 1987 done.** Over the last ten waves, done went **95.8% → 90.3%** and open
-went **77 → 213**: 356 rows filed against 220 closed, a file-to-close ratio of **1.618**. That's new
+**2211 tracked tasks, 1998 done.** Over the last ten waves, done went **96.0% → 90.4%** and open
+went **74 → 213**: 370 rows filed against 231 closed, a file-to-close ratio of **1.602**. That's new
 work held open until it's been tested by hand, not a pile of defects; on 2026-11-11 I closed 177 rows
 on CI evidence, every test each one names passing. Of the last 40 rows filed
-(`B2117`–`B2163`), **none** is on the ship line, the short list of things that would stop a
+(`B2128`–`B2220`), **none** is on the ship line, the short list of things that would stop a
 stranger relying on this repository ([`.pantheon/SHIP-LINE.md`](.pantheon/SHIP-LINE.md)).
 
 Test suite: **20,309 passing**, measured 2026-10-18 at `c66fe54`. A full run takes over an hour, so

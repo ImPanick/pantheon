@@ -531,6 +531,16 @@ DEFAULT_SETTINGS = {
     # inside it in Settings -> Workstation, else `PANTHEON_WORKSTATION_VM_CPUS`.
     # Pushed by `sync_config` to a VM host only.
     "workstation_vm_cpus_max": None,
+    # Where a person's VM workstation is (the owner, 2026-11-17): `own`, a
+    # machine of their own (shipped), or `shared`, an account on the one
+    # machine several people share, with sudo off there and only Unix
+    # permissions between them. This is the default for a person who has no
+    # workstation yet; a person's workstation stays where it was made.
+    "workstation_vm_placement": "own",
+    # The admin's word for each person, by username: {"ana": "own", "bo":
+    # "shared"}. Moving someone powers off the machine they leave, its files
+    # kept for when they come back. VM backend only; pushed by `sync_config`.
+    "workstation_vm_placement_people": {},
     # When the workstation is on, do the agent's `bash`, `python` and file
     # tools run in it (`P20-03`)? ON: that is the point of the phase — a shell
     # stops being a key to the house. Off puts them back where they run today.

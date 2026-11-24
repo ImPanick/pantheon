@@ -21,7 +21,7 @@ A CDN GET can only ever tell you what that CDN served you.
 
     python3 scripts/fetch-pyodide.py            # fetch, verify, write
     python3 scripts/fetch-pyodide.py --check     # verify what is on disk, write nothing
-    python3 scripts/fetch-pyodide.py --version 0.28.0   # a different release
+    python3 scripts/fetch-pyodide.py --version 314.0.9  # a different release
 
 Run with no network and nothing on disk, it fails loudly rather than leaving a
 half-populated directory -- Pyodide with a missing `python_stdlib.zip` starts
@@ -49,23 +49,26 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 DEST = ROOT / "static" / "lib" / "pyodide"
 REGISTRY = "https://registry.npmjs.org/pyodide"
 
-VERSION = "0.27.5"
+VERSION = "314.0.8"
 
-# SHA-256 of each vendored file, recorded when it was first vendored
-# (2026-09-01) and cross-checked: the bytes below are byte-identical to what
-# cdn.jsdelivr.net serves at v0.27.5/full/, verified file by file. Two
-# independent origins, one set of hashes.
+# SHA-256 of each vendored file. First recorded 2026-09-01 for 0.27.5 and
+# cross-checked against cdn.jsdelivr.net. `B2215`, 2026-11-24: 314.0.8, the
+# newest release on npm (`dist-tags.latest`, the CPython-aligned line: Python
+# 3.14), read out of the tarball whose sha512 the registry publishes. The
+# runtime's JavaScript half is `pyodide.asm.mjs` from 0.28 on, an ES module
+# `pyodide.js` loads with `import()` -- `pyodide.asm.js` is gone -- so the file
+# list moved as well as the hashes.
 PINNED = {
     "pyodide.js":
-        "7fdbe66e53f68f6a4e93c295a667371759be093d2bd402bb44545514584039b6",
-    "pyodide.asm.js":
-        "3a889f073e628c2196c705b42fa0e955ba2e25c034b1e3dd589c35be675bc01b",
+        "d4e1e0f06c29162eadf0c3f323c746884242b257d1faa94760442a4ac929e9a1",
+    "pyodide.asm.mjs":
+        "22514b8be6980e28a02c8b1d6387ce8dfe666fc4edf8d547cff5dce29ff4d972",
     "pyodide.asm.wasm":
-        "f7fefe563134714a17abd65516d94960e8dbd96fe6778a7a842947fc9686b3a1",
+        "e14d49ceca9b4a0e274ea918f3a898de2d3880b6e5573a6cfe1a2267ecc70329",
     "python_stdlib.zip":
-        "6030964967e447c887abc46c5f0967c55688644d759496de82a3ef09f49f5cba",
+        "2bd3394a145bfbbe5bbc9d9d6ab9136abbb986c6fef6c142b3a2962227aa5c28",
     "pyodide-lock.json":
-        "be1807745da93daa09d360b109c17a0e526e74d664d1f1b9870aafcce98ce426",
+        "5dc2fc119108bc148c7457dc86e7675b5c87e1cafd420b9c34c1eaef7b36c010",
 }
 
 
