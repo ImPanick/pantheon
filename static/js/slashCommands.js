@@ -1606,7 +1606,7 @@ async function _cmdTheme(args, ctx) {
     const saveName = args[1].toLowerCase().replace(/\s+/g, '-');
     if (tm.THEMES[saveName]) { slashReply('Cannot overwrite a built-in theme.'); return true; }
     const s = tm.getSaved();
-    const colors = s ? s.colors : tm.THEMES.dark;
+    const colors = s ? s.colors : tm.THEMES[tm.defaultThemeName ? tm.defaultThemeName() : 'pantheon'];
     tm.saveCustomTheme(saveName, colors);
     tm.save(saveName, colors);
     await typewriterReply(`Custom theme "${saveName}" saved`);
@@ -1633,7 +1633,11 @@ async function _cmdTheme(args, ctx) {
     return true;
   }
   tm.applyColors(colors);
-  tm.save(name, colors);
+  // The finish goes with the theme: the one a custom theme was saved with,
+  // else the preset's own (the Pantheon presets open in hairline).
+  const finish = (custom[name] && custom[name].finish) || (tm.defaultFinishFor ? tm.defaultFinishFor(name) : undefined);
+  if (finish && tm.applyFinish) tm.applyFinish(finish);
+  tm.save(name, colors, finish ? { finish } : undefined);
   const grid = document.getElementById('themeGrid');
   if (grid) {
     grid.querySelectorAll('.theme-swatch').forEach(s => s.classList.remove('active'));

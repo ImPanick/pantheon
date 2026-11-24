@@ -1,9 +1,9 @@
 /* XPM */
 static char * title_5_inactive_xpm[] = {
 "4 30 3 2",
-"aa	c #21282a",
-"ab	c #212425",
-"ac	c #181b1c",
+"aa	c #272c38",
+"ab	c #222834",
+"ac	c #191e2b",
 "aaaaaaaa",
 "abababab",
 "acacacac",

@@ -1,18 +1,18 @@
 /* SPDX-License-Identifier: AGPL-3.0-or-later */
 /*
  * The workstation desktop's touches over the dark Adwaita (D-2026-10-31-02):
- * the cockpit's surfaces and its accent (THEMES.dark in Pantheon's
+ * the cockpit's surfaces and its accent (THEMES.pantheon in Pantheon's
  * static/js/theme.js), and the panel's buttons as the cockpit's rail draws
  * them — flat, rounded, lit on hover, and the open window marked in the
  * accent. This file is in the account's home; "Reset to clean" puts it back.
  */
-@define-color ck_canvas #1b1f23;
-@define-color ck_view #15181c;
-@define-color ck_raised #23292c;
-@define-color ck_edge #303d41;
-@define-color ck_text #d4dee2;
-@define-color ck_accent #e06c75;
-@define-color ck_accent_deep #a9545c;
+@define-color ck_canvas #0a0e17;
+@define-color ck_view #06080e;
+@define-color ck_raised #0f1420;
+@define-color ck_edge #2a3142;
+@define-color ck_text #eaedf4;
+@define-color ck_accent #f3b23f;
+@define-color ck_accent_deep #a05e00;
 
 /* Adwaita's own names, for whatever reads them */
 @define-color theme_selected_bg_color @ck_accent_deep;
@@ -45,7 +45,7 @@ button.suggested-action { background: @ck_accent_deep; border-color: @ck_accent_
   background: transparent; border: none; box-shadow: none; border-radius: 8px;
   margin: 4px 2px; padding: 0 6px; color: @ck_text; transition: background-color 120ms ease;
 }
-.xfce4-panel button:hover { background-color: alpha(#9cdef2, 0.10); }
+.xfce4-panel button:hover { background-color: alpha(#eaedf4, 0.08); }
 .xfce4-panel button:active, .xfce4-panel button:checked {
   background-color: alpha(@ck_accent, 0.16); box-shadow: inset 0 -2px @ck_accent;
 }

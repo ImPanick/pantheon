@@ -23,6 +23,30 @@
       // A retired preset (theme.js `RETIRED_THEMES`) paints nothing here; the
       // module moves it to Dark on boot.
       if (t && /^(terminal|retrowave|cyberpunk)$/.test(t.name)) t = null;
+      // Nobody has picked a theme: paint the default the module will apply,
+      // the Pantheon preset (light or dark after the system), rather than the
+      // stylesheet's fallback palette for a frame. These two palettes are
+      // `THEMES.pantheon` / `THEMES.pantheonlight` in static/js/theme.js;
+      // tests/test_pantheon_is_the_default_theme.py holds them equal.
+      if (!t || !t.colors) {
+        var _osLight = false;
+        try { _osLight = !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches); } catch (_) {}
+        t = _osLight
+          ? { name: 'pantheonlight', colors: { bg:'#f3f5f9', fg:'#0d1220', panel:'#ffffff', border:'#cfd4de', red:'#a05e00',
+              advanced: { sendBtnBg:'#a05e00', sendBtnHover:'#8a5000', userBubbleBg:'#eceff5', aiBubbleBg:'#f3f5f9', bubbleBorder:'#dde1e9',
+                          inputBg:'#ffffff', inputBorder:'#cfd4de', sidebarBg:'#eceff5',
+                          brandColor:'#d98a0b', brandMixTo:'#a05e00', toggleActive:'#a05e00' } } }
+          : { name: 'pantheon', colors: { bg:'#06080e', fg:'#eaedf4', panel:'#0f1420', border:'#2a3142', red:'#f3b23f',
+              advanced: { sendBtnBg:'#f3b23f', sendBtnHover:'#ffc96a', userBubbleBg:'#151b2a', aiBubbleBg:'#06080e', bubbleBorder:'#1e2433',
+                          inputBg:'#0f1420', inputBorder:'#2a3142', sidebarBg:'#0a0e17',
+                          brandColor:'#f3b23f', brandMixTo:'#ffc96a', toggleActive:'#f3b23f' } } };
+      }
+      // The finish (`applyFinish()` in static/js/theme.js, `static/hairline.css`):
+      // the one saved with the theme, else the preset's own — hairline for the
+      // two Pantheon presets, glass for every other theme.
+      document.documentElement.setAttribute('data-ck-finish',
+        (t.finish === 'glass' || t.finish === 'hairline') ? t.finish
+          : (/^pantheon(light)?$/.test(t.name) ? 'hairline' : 'glass'));
       if (t && t.colors) {
         var s = document.documentElement.style;
         var c = t.colors;
@@ -350,6 +374,10 @@
   <link rel="preload" as="font" type="font/woff2" crossorigin href="/static/fonts/Geist-Regular.woff2">
   <link rel="preload" as="font" type="font/woff2" crossorigin href="/static/fonts/InstrumentSerif-Regular.woff2">
   <link rel="stylesheet" href="/static/cockpit.css">
+  <!-- The hairline finish (the getpantheon.ai material): every rule scoped to
+       `html.cockpit[data-ck-finish="hairline"]`, loaded after cockpit.css so it
+       wins a tie. The first-paint script above sets the attribute. -->
+  <link rel="stylesheet" href="/static/hairline.css">
   <link rel="modulepreload" href="/static/app.js?v=20261009census">
   <!-- B58. This must carry the SAME query as the <script> tag below, or the
        browser fetches chat.js twice: the cache and the module map are keyed on
@@ -1113,6 +1141,13 @@
             <select id="theme-text-size-select" class="theme-fd-select" aria-label="Text size">
               <option value="100">Default</option>
               <option value="125">Larger</option>
+            </select>
+          </div>
+          <div class="theme-fd-group" id="theme-finish-group">
+            <label class="theme-fd-label" for="theme-finish-select">Finish</label>
+            <select id="theme-finish-select" class="theme-fd-select" title="How surfaces are drawn: Hairline is the getpantheon.ai look (solid panels, fine lines); Glass is translucent and soft">
+              <option value="hairline">Hairline</option>
+              <option value="glass">Glass</option>
             </select>
           </div>
           <div class="theme-fd-group" id="theme-frosted-group">

@@ -68,7 +68,7 @@ def _css_sources():
     """(label, css) for every stylesheet this app actually ships, inline ones
     included. `static/lib/` is vendored and not ours to reason about."""
     out = []
-    for name in ("static/style.css", "static/cockpit.css"):
+    for name in ("static/style.css", "static/cockpit.css", "static/hairline.css"):
         out.append((name, (ROOT / name).read_text(encoding="utf-8")))
     for page in ("static/index.html", "static/login.html"):
         text = (ROOT / page).read_text(encoding="utf-8")
