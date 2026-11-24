@@ -4275,3 +4275,50 @@ Each ruling below is his, in his words where they are short.
    CI"*).
 9. **Code-scanning alerts** `#526`, `#528`, `#530`, `#531` and `#536` are false
    positives to dismiss. *"Dismiss false-positives."*
+
+## D-2026-11-24-03 - every Python dependency at its newest, and the image on the newest Python that can carry it
+
+The owner, 2026-11-24: *"Need all dependencies at the newest version and the
+platform made compatible with current and future updates.. etc.. Re-audit as
+needed prior to performing work.."*
+
+1. **Every pin moves to the newest release on PyPI (`B2190`), majors
+   included,** in `requirements*.txt`, `voice/chatterbox/requirements.txt` and
+   the Android host's hash-checked lock. Where the newest cannot be installed,
+   the pin is the newest that can, and the reason stands beside it:
+   - `python-dateutil` 2.9.0.post0 (4.0.0 is out): `recurring-ical-events`
+     3.8.2, the newest, which caldav reaches, declares `<3.0.0`. Dependabot's
+     #93 was red for this one line.
+   - `numpy` 2.5.5 needs Python 3.12; a 3.11 host keeps 2.4.6 under a marker.
+     PyAV the same on the Android host (19.0.2 / 18.1.1).
+   - `av` 18.1.1 in the speech sets: faster-whisper 1.2.1 cannot open a
+     recording with 19 (`B1716`, unchanged).
+   - `charset-normalizer` 3.5.1 (3.5.3 is out): from 3.5.2 it offers a
+     Japanese codec for a GB line that quotes Japanese and `B1596`'s rule
+     takes it, mojibake; the rule fix is `B2197`, filed open.
+   - `huggingface-hub` 1.33.0 (2.4.0 is out): fastembed, transformers and
+     gradio all hold it below 2.0.
+   - Chatterbox's `fastapi` 0.163.2: chatterbox-tts 0.1.7 pins gradio 6.8.0,
+     which holds Starlette below 1.0, and FastAPI 0.164 needs 1.6.
+2. **The image stays on `python:3.14.10-slim`, the newest 3.14, and does not
+   take 3.15 (Dependabot's #92).** Measured with `uv pip compile` for CPython
+   3.15.2: onnxruntime 1.32.0 (2026-11-13), the newest, publishes cp311-cp314
+   wheels and no source, and fastembed (RAG, memory, tool selection),
+   faster-whisper, Piper and markitdown's magika all need it;
+   py-rust-stemmers 0.1.8 has no cp315 wheel either, and markitdown 0.1.8 on
+   declares `<3.15`. #92's own build failed earlier, on
+   youtube-transcript-api 1.2.4 (`<3.15`, fixed in 1.2.5, taken here).
+   **What reopens this:** an onnxruntime release with cp315 wheels. The
+   product's own code is checked on 3.15.2 meanwhile (the PR says which
+   files), so the move is a pin change when it comes.
+3. **CI runs the image's Python** (`B2192`): every `python-version` in
+   `ci.yml` is 3.14, so `check-ci-contract.py` rule 10 excuses nothing. The
+   supported floor for a host stays 3.11 (the launchers, `docs/setup.md`); it
+   is held by ruff's `target-version = "py311"`, which refuses newer syntax,
+   and by the markers in item 1, not by a second suite run.
+4. **The test runner is not a runtime dependency** (`B2192`): pytest,
+   pytest-asyncio and what only tests import live in `requirements-dev.txt`,
+   which CI installs and the image does not. Packages the product imports
+   directly and had only through another package are declared (`B2191`):
+   starlette, anyio, jsonschema, defusedxml, huggingface-hub, and onnxruntime
+   in the speech set.
