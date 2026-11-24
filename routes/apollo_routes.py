@@ -23,7 +23,7 @@ from pydantic import BaseModel
 from core.database import SessionLocal
 from src.apollo import APOLLO_NAME
 from src.apollo import budget as B
-from src.apollo import knows, notebook, rhythm, spaces, trust, tasks, voice
+from src.apollo import conversations, knows, notebook, rhythm, spaces, trust, tasks, voice
 from src.apollo.errors import ApolloRefused
 from core.middleware import require_admin
 from src.auth_helpers import get_current_user
@@ -81,6 +81,10 @@ class SpaceIn(BaseModel):
     name: str
     parent_id: Optional[str] = None
     airgapped: bool = False
+
+
+class NewConversationIn(BaseModel):
+    space_id: Optional[str] = None
 
 
 class SpacePatch(BaseModel):
@@ -207,6 +211,20 @@ def setup_apollo_routes() -> APIRouter:
             return out
         return await _call(read)
 
+    def _led(owner: str, d, names: Optional[Dict[str, str]] = None):
+        """`d` (a task as `tasks.to_dict` writes it) with `lead_name`: the
+        lead's own name, so Apollo's deck can say who leads each goal without
+        a lookup per card. A lead the catalogue no longer has keeps its id."""
+        if not isinstance(d, dict) or "lead_agent" not in d:
+            return d
+        from src.apollo import fleet
+        key = d.get("lead_agent") or ""
+        names = {} if names is None else names
+        if key not in names:
+            names[key] = fleet._agent_name(owner, d.get("lead_agent"))
+        d["lead_name"] = names[key]
+        return d
+
     @router.get("/tasks")
     async def list_tasks(request: Request, state: Optional[str] = None, include_done: bool = True,
                          space: Optional[str] = None):
@@ -216,7 +234,8 @@ def setup_apollo_routes() -> APIRouter:
             cap = B.admin_cap()
             if state and state not in tasks.STATES:
                 raise ApolloRefused(f"A task is one of: {', '.join(tasks.STATES)}.")
-            return {"tasks": [tasks.to_dict(t, budget_cap=cap) for t in tasks.list_for(
+            names: Dict[str, str] = {}
+            return {"tasks": [_led(owner, tasks.to_dict(t, budget_cap=cap), names) for t in tasks.list_for(
                 db, owner, state=state, include_done=include_done, space=_view(db, owner, space))]}
         return await _call(read)
 
@@ -235,7 +254,7 @@ def setup_apollo_routes() -> APIRouter:
                 holder["run"], _why = runs.prepare(db, owner, t,
                                                    auth_manager=getattr(request.app.state, "auth_manager", None))
             return t
-        out = await _call(lambda db: tasks.to_dict(write(db), budget_cap=B.admin_cap()))
+        out = await _call(lambda db: _led(owner, tasks.to_dict(write(db), budget_cap=B.admin_cap())))
         if holder.get("run"):
             from src.apollo.tool import start_run
             await start_run(holder["run"])
@@ -244,8 +263,8 @@ def setup_apollo_routes() -> APIRouter:
     @router.get("/tasks/{task_id}")
     async def get_task(request: Request, task_id: str):
         owner = _owner(request)
-        return await _call(lambda db: tasks.to_dict(tasks.get(db, owner, task_id),
-                                                    budget_cap=B.admin_cap()))
+        return await _call(lambda db: _led(owner, tasks.to_dict(tasks.get(db, owner, task_id),
+                                                                budget_cap=B.admin_cap())))
 
     @router.patch("/tasks/{task_id}")
     async def patch_task(request: Request, task_id: str, body: TaskPatch):
@@ -270,7 +289,7 @@ def setup_apollo_routes() -> APIRouter:
             if t.lead_agent and (moved is None or moved["run_this"]):
                 holder["run"], holder["why"] = runs.prepare(
                     db, owner, t, auth_manager=getattr(request.app.state, "auth_manager", None))
-            return tasks.to_dict(t, budget_cap=B.admin_cap())
+            return _led(owner, tasks.to_dict(t, budget_cap=B.admin_cap()))
         out = await _call(write)
         if isinstance(out, dict) and holder.get("next"):
             from src.apollo.tool import start_run
@@ -456,6 +475,21 @@ def setup_apollo_routes() -> APIRouter:
         owner = _owner(request)
         return await _call(lambda db: {"session_id": spaces.chat_for(
             db, owner, spaces.resolve(db, owner, space_id))})
+
+    @router.post("/conversations/new")
+    async def new_conversation(request: Request, body: Optional[NewConversationIn] = None):
+        """Start a new Apollo conversation. Tasks, the notebook, what Apollo
+        knows and Spaces stay; the old chat is kept as an earlier one."""
+        owner = _owner(request)
+        space = body.space_id if body else None
+        return await _call(lambda db: conversations.start_new(
+            db, owner, spaces.resolve(db, owner, space) if space else None))
+
+    @router.get("/conversations/earlier")
+    async def earlier_conversations(request: Request):
+        """The person's earlier Apollo conversations, newest first."""
+        owner = _owner(request)
+        return await _call(lambda db: {"conversations": conversations.earlier(db, owner)})
 
     @router.get("/rhythm")
     async def get_rhythm(request: Request):

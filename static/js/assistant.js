@@ -455,24 +455,21 @@ async function _ensureHeaderAffordances(sessionId) {
   _markApolloChat(isApollo);
   if (!isApollo) return;
   import('./apolloSpaces.js').then((Sp) => Sp.noteSpace(space || null)).catch(() => {});
-  const headerRight = document.querySelector('.chat-header-right, #chat-header .actions, .chat-header');
-  if (!headerRight) return;
-  _ensureSpaceSwitcher(headerRight);
-  _ensurePaneButton(headerRight);
-  if (headerRight.querySelector('#assistant-header-gear')) return;
-  const gear = document.createElement('button');
-  gear.id = 'assistant-header-gear';
-  gear.type = 'button';
-  gear.title = 'Apollo settings';
-  gear.className = 'chat-header-btn';
-  gear.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>';
-  gear.addEventListener('click', openAssistantSettings);
-  headerRight.appendChild(gear);
+  // Apollo's own page (`apolloView.js`): its bar, pane, controls and empty
+  // state. The bar holds the Space switcher, the pane button and the gear that
+  // used to be mounted into a chat header this page does not have.
+  // Its bar also holds New conversation and Earlier (`apolloConversations.js`).
+  Promise.all([import('./apolloView.js'), import('./apolloConversations.js')]).then(([V, Cv]) => V.enterApolloView({
+    openSettings: openAssistantSettings,
+    // Apollo moves to the new chat: drop the cached settings, which name the
+    // old one, so the check above recognises the new chat as Apollo's.
+    extraButtons: Cv.barButtons({ onFresh: () => { _cachedSettings = null; } }),
+  })).catch((e) => console.error('Apollo view failed:', e));
 }
 
 // Apollo's pane (`apolloPane.js`) shows only from the Apollo chat (the
-// outline's first settled call): the chat header gets its button, the
-// workspace dock its tab (`html.apollo-chat`), and leaving the chat closes it.
+// outline's first settled call): the workspace dock gets its tab
+// (`html.apollo-chat`), and leaving the chat puts the generic page back.
 function _markApolloChat(isApollo) {
   const root = document.documentElement;
   if (!root || !root.classList) return;
@@ -480,40 +477,7 @@ function _markApolloChat(isApollo) {
   root.classList.toggle('apollo-chat', isApollo);
   // Apollo's orb floats over the page while its chat is open (phase 6).
   if (isApollo || was) import('./apolloOrb.js').then((o) => o.setApolloChat(isApollo)).catch(() => {});
-  if (!isApollo) {
-    document.getElementById('apollo-pane-btn')?.remove();
-    document.getElementById('apollo-space-switcher')?.remove();
-    document.getElementById('assistant-header-gear')?.remove();
-    if (was) import('./apolloPane.js').then((m) => { if (m.isApolloPaneOpen()) m.closeApolloPane(); }).catch(() => {});
-  }
-}
-
-// The space switcher (Spaces, "Where it shows"): which space Apollo is in,
-// and the way to another. Made once; it follows the space by itself.
-function _ensureSpaceSwitcher(headerRight) {
-  if (headerRight.querySelector('#apollo-space-switcher')) return;
-  const slot = document.createElement('span');
-  slot.id = 'apollo-space-switcher';
-  headerRight.appendChild(slot);
-  import('./apolloSpaces.js').then((Sp) => {
-    if (!slot.isConnected) return;
-    slot.appendChild(Sp.createSwitcher().el);
-  }).catch(() => slot.remove());
-}
-
-function _ensurePaneButton(headerRight) {
-  if (headerRight.querySelector('#apollo-pane-btn')) return;
-  const btn = document.createElement('button');
-  btn.id = 'apollo-pane-btn';
-  btn.type = 'button';
-  btn.title = "Apollo's pane";
-  btn.setAttribute('aria-label', "Open Apollo's pane");
-  btn.className = 'chat-header-btn';
-  btn.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="2"/><path d="M14.5 4.5v15"/></svg>';
-  btn.addEventListener('click', () => {
-    import('./apolloPane.js').then((m) => m.openApolloPane()).catch(() => uiModule.showToast("Apollo's pane could not open"));
-  });
-  headerRight.appendChild(btn);
+  if (!isApollo && was) import('./apolloView.js').then((V) => V.leaveApolloView()).catch(() => {});
 }
 
 // `H02`. The gear appears when the assistant session becomes the open one,

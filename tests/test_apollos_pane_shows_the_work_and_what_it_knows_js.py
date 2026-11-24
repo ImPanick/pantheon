@@ -318,6 +318,7 @@ def test_the_pane_docks_and_opens_only_from_the_apollo_chat():
     assert "m.openApolloPane()" in ws
     assert 'html.cockpit .ck-switch .ck-surf[data-surf="apollo"] { display: none; }' in css
     assert 'html.cockpit.apollo-chat .ck-switch .ck-surf[data-surf="apollo"] { display: inline-flex; }' in css
-    # The header button is built only after the Apollo session check passes.
+    # Apollo's page (its bar and pane button) is built only after the Apollo
+    # session check passes.
     body = assistant[assistant.index("async function _ensureHeaderAffordances("):]
-    assert body.index("if (!isApollo) return;") < body.index("_ensurePaneButton(headerRight)")
+    assert body.index("if (!isApollo) return;") < body.index("V.enterApolloView(")
