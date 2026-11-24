@@ -89,8 +89,10 @@ class SessionManager:
         session = manager.get_session(session_id)
     """
 
-    def __init__(self, sessions_file: str = None):
-        # sessions_file kept for backward compat, not used
+    def __init__(self):
+        # `B2157`: a `sessions_file` argument was taken here and ignored since
+        # sessions moved into the database. (`SESSIONS_FILE` names the sign-in
+        # token file `core/auth.py` keeps, which made passing it misleading.)
         self.sessions: Dict[str, Session] = {}
         self.upload_handler = None
         self.load_sessions()

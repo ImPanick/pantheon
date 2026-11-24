@@ -256,7 +256,7 @@ def _seed(db_factory):
 
 
 def _client(monkeypatch, db_factory, person=OWNER):
-    manager = SessionManager(sessions_file=":memory:")
+    manager = SessionManager()
     # `_verify_session_owner` reads the owner through its own module's factory.
     monkeypatch.setattr(session_routes, "SessionLocal", db_factory)
     monkeypatch.setattr(history_routes, "SessionLocal", db_factory)
