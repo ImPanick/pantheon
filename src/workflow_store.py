@@ -90,9 +90,11 @@ ONLY_A_PERSON_FIXES = ("Only you can apply a fix, from the Workbench — not an 
 # assistant's `app_api` loopback could list the card at `GET …/waiting` and
 # allow its own sealed action. Both doors now ask `request_is_a_person` first,
 # before anything is read or consumed, and say this.
-ONLY_A_PERSON_ANSWERS = ("Only you can answer a step that is waiting for your yes, from the "
-                         "notification or the Workbench — not an API token and not your "
-                         "assistant.")
+# `B2174`: its own name — it shared `auth_helpers.ONLY_A_PERSON_ANSWERS`'s with
+# different words, and the task door imported both and used whichever came last.
+ONLY_A_PERSON_ANSWERS_A_STEP = ("Only you can answer a step that is waiting for your yes, from the "
+                                "notification or the Workbench — not an API token and not "
+                                "your assistant.")
 
 # `P22-19` (§ 1.2). What a drafted or imported start falls back to, said: the
 # trigger is off, so a wrong guess runs nothing.

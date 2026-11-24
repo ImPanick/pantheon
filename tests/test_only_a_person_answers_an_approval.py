@@ -42,7 +42,7 @@ from core.middleware import INTERNAL_TOOL_HEADER, INTERNAL_TOOL_TOKEN
 from src.auth_helpers import ONLY_A_PERSON_ANSWERS
 # A task run's and a workflow step's doors say `B1870`'s sentence, which names
 # where the person answers them; the chat's and a skill test's say this one.
-from src.workflow_store import ONLY_A_PERSON_ANSWERS as WAITING_STEP_ANSWER
+from src.workflow_store import ONLY_A_PERSON_ANSWERS_A_STEP as WAITING_STEP_ANSWER
 from src.event_bus import TRIGGER_SOURCE_WEBHOOK, WEBHOOK_PAYLOAD_FIELDS, build_trigger
 from src.owner_identity import INTERNAL_TOOL_USER
 from src.task_scheduler import TaskScheduler
