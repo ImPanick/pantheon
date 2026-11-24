@@ -6,6 +6,7 @@
     python3 scripts/showcase/capture.py --workstation      # … and the workstation desktop
     python3 scripts/showcase/capture.py --only chat,workbench --no-gifs
     python3 scripts/showcase/capture.py --list             # what each scene shows
+    python3 scripts/showcase/capture.py --classic --out /tmp/before   # the original glass palettes
 
 What it does, in order — and nothing here is a mock of the product:
 
@@ -277,6 +278,8 @@ def main(argv: Optional[List[str]] = None) -> int:
                     help="KasmVNC's unpacked web client (`sh workstation/provision.sh client DIR`, "
                          "then DIR/www), so the workstation is drawn live, as in the Docker image")
     ap.add_argument("--force", action="store_true", help="rewrite files even when unchanged")
+    ap.add_argument("--classic", action="store_true",
+                    help="photograph the original glass dark/light palettes, not the Pantheon default")
     ap.add_argument("--keep-data", action="store_true", help="keep the throwaway data directory")
     ap.add_argument("--list", action="store_true", help="list the scenes and exit")
     args = ap.parse_args(argv)
@@ -338,7 +341,7 @@ def main(argv: Optional[List[str]] = None) -> int:
                                        theme_colours(), out, force=args.force, model=model,
                                        client=client, report=report, workstation=bool(ws),
                                        tidy_workstation=ws.tidy if ws else None,
-                                       python=python)
+                                       python=python, classic=args.classic)
                 try:
                     results = studio.run(only=only, gifs=not args.no_gifs)
                 finally:

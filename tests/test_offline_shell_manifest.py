@@ -702,6 +702,8 @@ def test_install_caches_everything_the_documents_it_stores_reference(installed):
         _shell_stylesheet(),
         # The cockpit's sheet, which names its own self-hosted faces.
         "/static/cockpit.css",
+        # The hairline finish (the getpantheon.ai material), after the cockpit.
+        "/static/hairline.css",
         "/static/lib/katex/katex.min.css",
         "/static/manifest.json",
     }, sorted(assets)

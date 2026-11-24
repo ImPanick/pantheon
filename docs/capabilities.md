@@ -220,7 +220,7 @@ A real Android phone per person, not a desktop browser at phone width.
 - **Voice:** talk to it like a call and cut it off mid-sentence. Whisper listens; Kokoro, Piper or
   Chatterbox (on an NVIDIA GPU) speak. All on your hardware.
 - **The cockpit:** one window with a tuckable workspace column (document, workstation, browser) in
-  four layouts, twenty palettes, light and dark, and the whole app at phone width.
+  four layouts, twenty-two palettes, light and dark, and the whole app at phone width.
 
 ---
 
