@@ -23,7 +23,7 @@ one a way a green check has meant nothing (three more, 8–10, below their own
 headings — 10 is `B438`, the interpreter the suite runs on):
 
   **1  A required check must name a job that exists.** `docs/security-ci.md`
-     tells the owner to type eight check names into branch protection. A name
+     tells the owner which check names to type into branch protection. A name
      that matches no job `name:` in any workflow is a required check that can
      never report, and GitHub's answer to that is to leave the merge button
      disabled forever — or, with the rule written the other way round, to let

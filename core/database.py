@@ -1127,10 +1127,11 @@ class Comparison(TimestampMixin, Base):
     model_b = Column(String, nullable=False)
     endpoint_a = Column(String, nullable=False)
     endpoint_b = Column(String, nullable=False)
-    response_a = Column(Text, nullable=True)
-    response_b = Column(Text, nullable=True)
     # (`B1480`, `B641`: `metrics_a` / `metrics_b` were declared here and never
-    # written or read; an install that has them keeps them, unused.)
+    # written or read; an install that has them keeps them, unused. `B2155`:
+    # `response_a` / `response_b` likewise — the Compare window keeps its
+    # replies in the browser and `/record` stores the vote — and an install
+    # that has them keeps them too, nullable and unread.)
     winner = Column(String, nullable=True)           # "a", "b", "tie", or null
     is_blind = Column(Boolean, default=True)
     # `P13-12`. This column now holds ONE thing again: which side of the blind

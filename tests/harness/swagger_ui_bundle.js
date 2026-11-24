@@ -110,4 +110,9 @@ out.apisPreset = !!(B && B.presets && B.presets.apis);
 out.plugins = B && B.plugins ? Object.keys(B.plugins).slice(0, 12) : null;
 // Reported, not asserted — see the header.
 out.standalonePreset = typeof (B && B.SwaggerUIStandalonePreset);
+// `B2218`. The version the bundle stamps into itself (its `versions` plugin
+// publishes it as `window.versions.swaggerUI` once a page has loaded). Read
+// from the bytes because the plugin only runs against a real DOM.
+const stamped = fs.readFileSync(LIB, 'utf8').match(/PACKAGE_VERSION:"([^"]+)"/);
+out.packageVersion = stamped ? stamped[1] : null;
 console.log(JSON.stringify(out));

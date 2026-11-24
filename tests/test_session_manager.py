@@ -26,7 +26,7 @@ def sm():
 
     orig_session_local = SessionManager.__init__
 
-    def patched_init(self, sessions_file=None):
+    def patched_init(self):
         """__init__ that skips DB load and starts with empty cache."""
         self.sessions = {}
 

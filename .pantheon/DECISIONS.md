@@ -4276,6 +4276,72 @@ Each ruling below is his, in his words where they are short.
 9. **Code-scanning alerts** `#526`, `#528`, `#530`, `#531` and `#536` are false
    positives to dismiss. *"Dismiss false-positives."*
 
+## D-2026-11-24-01 - wire what is unwired; remove only what is provably dead
+
+The owner, 2026-11-24 18:33 UTC, verbatim: *"No dead code but we dont delete..
+we wire it in where it's unwired and loop make the systems work. If its truly,
+no shit dead code.. We can remove it."*
+
+This supersedes `Law 1`'s *no deletion without a `DELETE` ruling* for the
+wiring audit of 2026-11-24 (`B2150`–`B2163`), and for that audit only. What it
+permits and what it cost:
+
+1. **Wired** where the thing had a clear purpose and a live place to serve it:
+   the document index records its retrieval hit rate (`B2152`), the Workbench
+   asks the tile manager whether it is maximized (`B2158`), the Growth view
+   asks only for the periods it offers (`B2159`), the capability reader
+   registry is typed by the contract `base.py` declares (`B2160`).
+2. **Removed** only where a search across `.py/.js/.html/.css/.md/.yml/.json/
+   .sh`, tests and Dockerfiles included, plus `getattr`/`importlib`/route
+   tables, was empty outside the definition, **or** the thing was superseded by
+   a live replacement named on its row (`B2150`, `B2151`, `B2153`–`B2157`).
+   Cost: two test files that pinned `RAGManager`, a wrapper the running product
+   never built, went with it; an operator who ran `scripts/index_documents.py`
+   by hand now re-indexes from Personal documents, which indexes under their
+   own name instead of under nobody's.
+3. **Left alone and listed** where the purpose is unclear, the surface is
+   public, or the call is a product decision (`B2162`): the vector tool
+   retrieval switch, `src/topic_analyzer.py`, `POST /api/auth/signup-toggle`,
+   `mcp_servers/memory_server.py`, the test-only route shims, the
+   maintainer scripts, `ge:inpaint-done`, and the test seams.
+## D-2026-11-24-04 — every non-Python dependency to its newest release, Dependabot onto `dev`, branch protection on `main` only
+
+The owner (Panick), 2026-11-24, verbatim: *"Branch protection. only on main.
+No dead code but we dont delete.. we wire it in where it's unwired and loop
+make the systems work. If its truly, no shit dead code.. We can remove it.
+Delete duplicates but ensure anything that is deleted is \*truly\* unused. Need
+all dependencies at the newest version and the platform made compatible with
+current and future updates.. etc.. Re-audit as needed prior to performing
+work.. There's been a lot of changes since then."*
+
+This entry records what that ruling did to the non-Python dependencies
+(`B2210`–`B2220`). Python dependencies, duplicates and dead code are recorded
+by the other workers of the same day.
+
+1. **Holds it overrides.** `D-2026-10-29-02` §4 (docx stays on 9.7.1) and §5
+   (Mermaid stays on 11.x), and the holds filed under them — `B423`, `B424`'s
+   `behind_ok`, `B1673` — and `B425`'s Pyodide `stable-0.27` line. Each was a
+   "measure first" hold; each library was measured here before it moved, and
+   the measurement is in its row: docx 9.16.0 (`B2219`), Mermaid 12.3.0 with
+   `layout: 'dagre'` and `look: 'classic'` named so existing diagrams resolve
+   as they did (`B2220`), Pyodide 314.0.8 with `enableRunUntilComplete` named
+   (`B2215`). KaTeX 0.19.1 (`B2217`), Swagger UI 5.36.0 (`B2218`), DOMPurify
+   3.5.0 and mammoth 1.13.0 (`B2216`) had no hold.
+2. **Branch protection is `main` only** (`B2212`). `docs/security-ci.md` §1
+   names twelve required checks, a pull request with no required approvals and
+   no Code Owners review, admins not enforced, no force pushes or deletions,
+   and no rule for `dev`. The settings themselves are the owner's to apply.
+3. **Dependabot opens against `dev`** (`B2210`), and the weekly
+   *Vendored freshness* job reads `dev` on its schedule.
+4. **Held on purpose, each for a measured reason** (`B2214`): Rocky Linux stays
+   on 9 (KasmVNC publishes no EL10 build, and Rocky 10 needs x86-64-v3); the
+   SearXNG image stays where it is until it can be booted; scrcpy stays on
+   3.3.4, because `control.py` speaks that release's wire protocol and the
+   change needs a phone to check.
+5. **Open for the owner.** elkjs, now inside `mermaid.min.js`, is offered as
+   EPL-2.0 OR GPL-3.0-or-later; which offer Pantheon takes is not decided here
+   (CREDITS *Licence scope*). SheetJS could not be re-checked from this
+   environment (its CDN is unreachable); it is recorded at 0.20.3.
 ## D-2026-11-24-03 - every Python dependency at its newest, and the image on the newest Python that can carry it
 
 The owner, 2026-11-24: *"Need all dependencies at the newest version and the

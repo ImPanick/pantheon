@@ -5,13 +5,12 @@
 # was enabled, because no other maintainer's approval could satisfy the gate.
 # A per-area ownership map (security/auth, CI, frontend, agent internals, with
 # multiple named owners per line) is being worked out in issue #593; once
-# agreed it replaces this file. Until then, required reviews and the security
-# CI gate (docs/security-ci.md) remain in force via branch protection.
+# agreed it replaces this file. Until then, the security CI gate
+# (docs/security-ci.md) remains in force via branch protection on `main`.
 #
-# One consequence worth stating so nobody reads a gate that is not there: with
-# this file empty, GitHub's "Require review from Code Owners" setting matches no
-# path and therefore requires nothing. `docs/security-ci.md` step 7 still tells
-# the operator to turn it on, and that is fine — it is harmless now and starts
-# doing real work the moment the per-area map lands — but "Require a pull
-# request before merging" plus the named status checks are what is actually
-# holding the line today.
+# `D-2026-11-24-04`: `docs/security-ci.md` §1 tells the operator to leave
+# "Require review from Code Owners" OFF and to require 0 approvals. Every pull
+# request comes from the owner's own account and GitHub does not let an author
+# approve their own, so a required review is a rule nobody can meet. "Require a
+# pull request before merging" plus the twelve named status checks are what
+# hold the line on `main`. Re-read that section before giving this file owners.

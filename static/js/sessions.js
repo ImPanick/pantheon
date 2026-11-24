@@ -971,7 +971,7 @@ function createSessionItem(s) {
 
   // B51 — "Memory", restored. `memoryModule.extractMemory(sessionId)` is a
   // complete implementation behind a live route (`POST /api/memory/extract`,
-  // with a `topic_analyzer` fallback) that renders its suggestions into the
+  // with a list-item fallback when the model fails) that renders its suggestions into the
   // memory modal for the person to approve. Nothing called it. The only markup
   // that ever pointed at it is `#memory-session-option` — "Memory / Extract
   // memories from this session" — inside a `.dropdown.hidden` in `index.html`

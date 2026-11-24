@@ -400,7 +400,9 @@ function _wireMaximize(modal) {
   };
   const toggle = () => {
     import('../tileManager.js').then((m) => {
-      m.setModalMaximized(modal, !isMax());
+      // `B2158`: the tile manager's own reading, which this window's quick
+      // `isMax` (used to draw before the module is loaded) mirrors.
+      m.setModalMaximized(modal, !m.isModalMaximized(modal));
       draw();
       // The canvas fits again when its viewport changes size (`P23-06`).
     }).catch((err) => console.error('The window could not be maximized:', err));

@@ -342,6 +342,11 @@ out.api = {
     personShape: 'flowchart TD\n  A@{ shape: person }\n  A --> B',
     folderShape: 'flowchart TD\n  A@{ shape: folder }',
     browserShape: 'flowchart TD\n  A@{ shape: browser }',
+    // `B2220`. Two of the types Mermaid 12 lays out with ELK and draws `neo`
+    // by default, and one diagram that asks for ELK itself in front matter.
+    state: 'stateDiagram-v2\n  [*] --> Idle\n  Idle --> [*]',
+    classDiagram: 'classDiagram\n  A <|-- B',
+    frontMatterElk: '---\nconfig:\n  layout: elk\n---\nflowchart TD\n  A --> B',
     // Not a diagram at any version: has to be rejected, not accepted.
     broken: 'graph TD; A--%%>B ??? [',
   };
@@ -372,7 +377,15 @@ out.api = {
   for (const [name, text] of Object.entries(CASES)) {
     try {
       const r = await mermaid.parse(text);
-      out.parse[name] = { ok: true, diagramType: (r && r.diagramType) || null };
+      // `B2220`. `parse` resolves `theme`, `look` and `layout` for the
+      // diagram's type into the live config (Mermaid 12: front matter, then
+      // `initialize()`, then the type's default, then the global default), so
+      // reading it back here is what this diagram would be drawn with.
+      const cfg = mermaid.mermaidAPI.getConfig();
+      out.parse[name] = {
+        ok: true, diagramType: (r && r.diagramType) || null,
+        resolved: { theme: cfg.theme, look: cfg.look, layout: cfg.layout },
+      };
     } catch (e) {
       out.parse[name] = {
         ok: false,

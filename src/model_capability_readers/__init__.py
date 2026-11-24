@@ -26,6 +26,7 @@ from typing import Any
 
 from src.model_capability_readers import generic_openai, google, llamacpp, lmstudio, ollama, openai, openrouter
 from src.model_capability_readers.base import (
+    CapabilityReader,
     ModelCapabilityRecord,
     VENDOR_ANTHROPIC,
     VENDOR_GENERIC_OPENAI,
@@ -44,7 +45,10 @@ from src.model_capability_readers.base import (
 )
 
 
-READER_MODULES = {
+# `B2160`: each reader module is a `CapabilityReader` (its `vendor` and its
+# `records_from_payload`), the contract `base.py` declares and
+# `tests/test_every_capability_reader_keeps_the_contract.py` holds each to.
+READER_MODULES: dict[str, CapabilityReader] = {
     VENDOR_GENERIC_OPENAI: generic_openai,
     VENDOR_OPENAI: openai,
     VENDOR_OPENROUTER: openrouter,

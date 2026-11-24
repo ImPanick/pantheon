@@ -183,7 +183,9 @@ class Vendored:
         # this is a field: `dist-tags.latest` is 314.x, a CPython-aligned line
         # that 0.27.x does not belong to, so asking for `latest` reports a
         # library on a maintained line as permanently behind — a light that is
-        # always on. The 0.27 line's own tag is `stable-0.27`.
+        # always on. The 0.27 line's own tag is `stable-0.27`. `B2215`
+        # (2026-11-24): Pyodide is on `latest` itself now (314.0.8) and no
+        # record names another tag; the field stays for the next side line.
         self.dist_tag = dist_tag
 
 
@@ -228,55 +230,44 @@ VENDORED = [
              "the SheetJS section of CREDITS.md before 'fixing' this.",
     ),
     Vendored(
-        "docx", "docx", "9.7.1", "2026-10-29",
-        "https://registry.npmjs.org/docx/-/docx-9.7.1.tgz",
-        "v9.7.1",
+        "docx", "docx", "9.16.0", "2026-11-24",
+        "https://registry.npmjs.org/docx/-/docx-9.16.0.tgz",
+        "v9.16.0",
         files={"static/lib/docx.umd.min.js":
-               "096ce30fdd0a8ddc94fe44a86ab1d5ce58165c88d8be797005eba8788fab7203"},
-        note="Bumped from 8.5.0 on 2026-10-29 (B424, D-2026-10-29-02 §4): "
-             "upstream's `dist/index.umd.cjs` byte for byte, from the tarball "
-             "the registry's `dist.integrity` vouched for. It is a Vite build "
-             "that names every module it took, so check-licences.py derives 45 "
-             "packages from it and each is declared. Zero advisories at 8.5.0 "
-             "and at 9.7.1 (OSV, 2026-10-29). `exportAsDocx`'s `word/document.xml` "
-             "body for Pantheon's shapes is byte-identical to 8.5.0's, and the "
-             "package gains what 8.5.0 left out — a `word/endnotes.xml`, and a "
-             "relationship to `word/fontTable.xml` (`tests/test_a_word_export_"
-             "keeps_its_body_and_gains_the_parts_8_5_0_left_out.py`; the third "
-             "defect B424 named, a missing `mc:Ignorable`, does not hold on "
-             "this path). Inside it, `nanoid`'s non-secure "
-             "generator is a release GHSA-28wg-ghj8-5hjv covers (< 5.1.16: a "
-             "negative size loops forever); docx calls it with 21, 8, 4 and 12 "
-             "and nothing else, so it is not reachable — no version string "
-             "survives in the bytes for `contains=` to pin.",
-        behind_ok="D-2026-10-29-02 §4 — the owner ruled 9.7.1, the release "
-             "B335 measured against Pantheon's export; 9.15.0 (npm `latest` on "
-             "2026-10-29) is B1673, to be measured the same "
-             "way before it is taken.",
-        contains=(
-            Inside(
-                "jszip", "3.10.1", "JSZip v3.10.1",
-                behind_ok="B424 — docx 9.7.1 bundles JSZip's own "
-                          "`dist/jszip.min.js` at 3.10.1; 3.10.2 "
-                          "(2026-09-08) arrives with a docx built against it, "
-                          "the same row as the docx bump.",
-                note="The zip writer behind every `.docx` this app exports, "
-                     "and a parser with an advisory history (CVE-2022-48285, "
-                     "fixed in 3.8.0). Zero advisories at 3.10.1 (OSV, "
-                     "2026-10-29). Read out of JSZip's own banner, which the "
-                     "bundle keeps.",
-            ),
-        ),
+               "9e882643b852c0865b2603ae31d795c3ba800dd18cabac7365aedbad6dd82b27"},
+        note="Bumped from 9.7.1 on 2026-11-24 (B2219, D-2026-11-24-04, which "
+             "overrides D-2026-10-29-02 §4's hold and closes B1673); 8.5.0 -> "
+             "9.7.1 was B424. Upstream's `dist/index.umd.cjs` byte for byte, "
+             "from the tarball the registry's `dist.integrity` vouched for. "
+             "Between the two, docx dropped JSZip for `fflate`, its XML "
+             "libraries and every Node polyfill: the build now names two "
+             "packages (`fflate`, `nanoid`) where 9.7.1 named 45, and loaded as "
+             "a script it adds `docx` to the page and nothing else (9.7.1 also "
+             "installed JSZip's `setImmediate`). `exportAsDocx`'s "
+             "`word/document.xml` body for Pantheon's shapes is still "
+             "byte-identical to 8.5.0's, and the endnotes part and font-table "
+             "relationship B424 gained are still there (tests/test_a_word_"
+             "export_keeps_its_body_and_gains_the_parts_8_5_0_left_out.py). "
+             "The `nanoid` inside is past GHSA-28wg-ghj8-5hjv's fix (its loop "
+             "reads `i-- > 0`, read off the bytes), and with JSZip gone there "
+             "is no inner version banner left for `contains=` to pin.",
     ),
     Vendored(
-        "mammoth.js", "mammoth", "1.12.3", "2026-09-16",
-        "https://registry.npmjs.org/mammoth/-/mammoth-1.12.3.tgz",
-        "v1.12.3",
+        "mammoth.js", "mammoth", "1.13.0", "2026-11-24",
+        "https://registry.npmjs.org/mammoth/-/mammoth-1.13.0.tgz",
+        "v1.13.0",
         files={"static/lib/mammoth.browser.min.js":
-               "f9465c0e4b91c6ab5fe03db285aa3c5bd33a1d20da781b8dffc5676bc9689a95"},
-        note="Bumped from 1.8.0 on 2026-09-16 (B331). Fixes a crash on a "
-             "document carrying mc:AlternateContent with no mc:Fallback, which "
-             "1.8.0 rejected with a TypeError and no import.",
+               "92914a3708cfdf1e62cb553d1856a7fedab21da83d8ee82845de2f897b368cab"},
+        note="Bumped from 1.12.3 on 2026-11-24 (B2216, D-2026-11-24-04); "
+             "1.8.0 -> 1.12.3 was B331. Upstream's `mammoth.browser.min.js` "
+             "byte for byte. 1.13.0 replaces bluebird with native promises "
+             "(637 KB -> 405 KB; `bluebird` leaves the bundle and keeps its "
+             "text, tests/test_bundled_package_notices.py), reads w:customXml "
+             "children and moved-revision paragraphs, and escapes more in its "
+             "Markdown writer. Pantheon awaits `convertToHtml`, which was only "
+             "ever documented as a promise, so the change of promise type does "
+             "not reach it (tests/test_vendored_libraries_still_work.py drives "
+             "the shipped file).",
     ),
     # `B421`, 2026-10-29 (`D-2026-10-29-02` §2). The `html2pdf.js` record is
     # GONE with its bundle, and with it the twenty-seven advisory excuses
@@ -310,18 +301,19 @@ VENDORED = [
              "Current, and zero advisories (OSV, 2026-10-29).",
     ),
     Vendored(
-        "DOMPurify", "dompurify", "3.4.17", "2026-10-29",
-        "https://registry.npmjs.org/dompurify/-/dompurify-3.4.17.tgz",
-        "v3.4.17",
+        "DOMPurify", "dompurify", "3.5.0", "2026-11-24",
+        "https://registry.npmjs.org/dompurify/-/dompurify-3.5.0.tgz",
+        "v3.5.0",
         files={"static/lib/purify.min.js":
-               "cd37898f9782adf54820c413191b5691803f0f137c799d6edcfd38523b4c2c31"},
-        note="B421. Upstream's `dist/purify.min.js` byte for byte. Zero "
-             "advisories (OSV, 2026-10-29), against the eighteen at the 3.3.1 "
-             "inside html2pdf.js 0.14.0. On Pantheon's path now, where it was "
-             "not before: `_rasterisePdf` hands jsPDF's `html()` a string, and "
-             "`html()` sanitises a string with this before it is put into the "
-             "page (driven in tests/test_the_fallback_pdf_is_jspdfs_own_with_"
-             "its_links_in_a_browser.py).",
+               "f69a46022ab1f53e969c8ebbca98172c8995785a9b3be72ea4a12d25b1a1bf67"},
+        note="B421 took 3.4.17 as its own file; B2216 (2026-11-24, "
+             "D-2026-11-24-04) moved it to 3.5.0, upstream's `dist/purify.min.js` "
+             "byte for byte. On Pantheon's path: `_rasterisePdf` hands jsPDF's "
+             "`html()` a string, and `html()` sanitises a string with this "
+             "before it is put into the page (driven in tests/test_the_fallback_"
+             "pdf_is_jspdfs_own_with_its_links_in_a_browser.py and "
+             "tests/harness/jspdf_export_chain.js, which pin the version read "
+             "from the shipped file).",
     ),
     # `B1674`, 2026-10-29 (`D-2026-10-29-03` §3, "Inter + a CJK font"). The
     # faces the fallback PDF embeds for what jsPDF's built-in fonts cannot
@@ -406,14 +398,14 @@ VENDORED = [
     # question with a different answer (`Law 1`), and CREDITS.md says which
     # release was the last to carry the file.
     Vendored(
-        "KaTeX", "katex", "0.18.7", "2026-09-17",
-        "https://registry.npmjs.org/katex/-/katex-0.18.7.tgz",
-        "v0.18.7",
+        "KaTeX", "katex", "0.19.1", "2026-11-24",
+        "https://registry.npmjs.org/katex/-/katex-0.19.1.tgz",
+        "v0.19.1",
         files={
             "static/lib/katex/katex.min.js":
-                "10a91b479cd927446ceb60409fb0d72b5d0d05eaf446c9e52fafd64058c84540",
+                "fa140498b8cfc8302cbe5e7cb1bdbc1f952bc38b3fa258ede09e73edbf9a74bc",
             "static/lib/katex/katex.min.css":
-                "50d9c78e03da144a021001b7de679133355179bcb06fd11e9e309223056a03dd",
+                "00e0b094171b07f58422075f469b4feac2b2f7bce1aeec943c08da4d697f4dcf",
         },
         note="Bumped from 0.16.22 on 2026-09-17 (B335), across two 0.x minors "
              "that are both semver-breaking. Zero advisories either side. "
@@ -425,12 +417,16 @@ VENDORED = [
              "0.16.22 and 0.18.7, so the fonts moved version and not bytes. "
              "0.18.2 also carries an unnumbered prototype-pollution fix in "
              "settings, recorded because no scanner will ever flag it (B332's "
-             "shape).",
+             "shape). Bumped 0.18.7 -> 0.19.1 on 2026-11-24 (B2217): 0.19.0's "
+             "break routes a character with no font metrics through `strict` "
+             "(code symbolNotInFont); the call site passes no `strict`, so it "
+             "stays a console warning and the formula still typesets — "
+             "tests/test_vendored_bumps_still_render.py drives both.",
     ),
     Vendored(
-        "KaTeX fonts", "katex", "0.18.7", "2026-09-17",
-        "https://registry.npmjs.org/katex/-/katex-0.18.7.tgz",
-        "v0.18.7",
+        "KaTeX fonts", "katex", "0.19.1", "2026-11-24",
+        "https://registry.npmjs.org/katex/-/katex-0.19.1.tgz",
+        "v0.19.1",
         files={
             "static/lib/katex/fonts/KaTeX_AMS-Regular.woff2":
                 "0cdd387c9590a1a9f9794560022dbb59654a7d86f187aa0c81495ad42d3a7308",
@@ -481,59 +477,78 @@ VENDORED = [
              "Every one of the twenty is byte-identical at 0.16.22 and 0.18.7 "
              "— checked face by face on 2026-09-17 — so the 0.18.7 bump moved "
              "this record's version and not one byte under it, and the hashes "
-             "below are unchanged on purpose.",
+             "below are unchanged on purpose. The same held at 0.19.1, checked "
+             "face by face on 2026-11-24 (B2217).",
     ),
     Vendored(
-        "Mermaid", "mermaid", "11.17.2", "2026-09-17",
-        "https://registry.npmjs.org/mermaid/-/mermaid-11.17.2.tgz",
-        "v11.17.2",
+        "Mermaid", "mermaid", "12.3.0", "2026-11-24",
+        "https://registry.npmjs.org/mermaid/-/mermaid-12.3.0.tgz",
+        "v12.3.0",
         files={"static/lib/mermaid.min.js":
-               "581ed7d74bd9048d0e3a91363927d72ef22942d7722546b27f7cc29e35390eb8"},
-        note="Bumped from 11.16.1 on 2026-09-17 (B335) — same major, three "
-             "releases, zero advisories either side. Carries 11.17.0's fix for "
-             "a `RangeError: Invalid array length` crash on certain edges and "
-             "11.17.2's restoration of the `edgePaths` class the flowchart, "
-             "block and journey stylesheets hang off. The three Microsoft "
-             "vscode-* packages inside it are declared by B46's INVENTORY "
-             "entry, unchanged at the same versions; `lodash-es` and "
-             "`cytoscape` were found in here on 2026-09-17 by B339's new "
-             "reading of esbuild's own notice block, and had no notice "
-             "anywhere before that.",
-        behind_ok="B423 — 12.0.0 is current and changes how existing diagrams "
-             "look: ELK replaces dagre as the default layout for seven diagram "
-             "types (measured — `getConfig().layout` comes back `elk` after "
-             "Pantheon's own `initialize()` call), the browser floor rises to "
-             "Safari 17.4 / ES2024, and mermaid.min.js grows 3.57 MB -> 5.58 "
-             "MB. The owner kept 11.x on 2026-10-29 (D-2026-10-29-02 §5) until a "
-             "browser-driven check can compare diagrams, or an advisory names 11.x.",
+               "336df803d87a38b70a01e736e666c8f7601d2ce42f5e47c8fafe5d721074b9a3"},
+        note="Bumped from 11.17.2 on 2026-11-24 (B2220, D-2026-11-24-04, which "
+             "overrides D-2026-10-29-02 §5 and closes B423); 11.16.1 -> 11.17.2 "
+             "was B335. 12.0.0 made ELK the default layout for seven diagram "
+             "types and redux-color/neo the default theme/look for ten. "
+             "static/js/markdown/mermaidTheme.js now names `layout: 'dagre'` and "
+             "`look: 'classic'` — 11.x's defaults — and Mermaid 12 resolves "
+             "front matter, then initialize(), then a type's default, so every "
+             "diagram resolves to dagre/classic unless its own front matter "
+             "asks otherwise (measured after `parse()` for flowchart, sequence, "
+             "ER, state and class, tests/test_vendored_bumps_still_render.py). "
+             "12.0.0 also fixed B883's echo: an unknown theme name now reads "
+             "back as `default`. The bundle grows 3.57 MB -> 5.54 MB, mostly "
+             "elkjs (EPL-2.0 OR GPL-3.0-or-later, now inside it and declared "
+             "in check-licences.py), and B423 measured the browser floor rising "
+             "to Safari 17.4 / ES2024. The vscode-* packages inside moved to "
+             "jsonrpc 9.0.3 and protocol/types 3.18.4, same MIT text. Not "
+             "rendered in a browser here: run()/render() need a real SVG tree.",
+        contains=(
+            # `B2219` moved rule 6's subject here when docx stopped carrying
+            # JSZip: Mermaid's esbuild bundle keeps DOMPurify's own banner.
+            Inside(
+                "dompurify", "3.4.17", "@license DOMPurify 3.4.17",
+                behind_ok="B2220 — Mermaid 12.3.0 (npm latest, 2026-11-24) "
+                          "bundles DOMPurify 3.4.17; 3.5.0 arrives with a "
+                          "Mermaid built against it.",
+                note="The sanitiser between a diagram's labels and the page. "
+                     "Read out of DOMPurify's own `@license` banner, which "
+                     "esbuild keeps. 3.4.12 inside 11.17.2.",
+            ),
+        ),
     ),
     Vendored(
-        "Pyodide", "pyodide", "0.27.5", "2026-09-16",
-        "https://registry.npmjs.org/pyodide/-/pyodide-0.27.5.tgz",
-        "0.27.5",
+        "Pyodide", "pyodide", "314.0.8", "2026-11-24",
+        "https://registry.npmjs.org/pyodide/-/pyodide-314.0.8.tgz",
+        "314.0.8",
         manifest="static/lib/pyodide/MANIFEST.json",
-        dist_tag="stable-0.27",
         note="Hashes are not repeated here — scripts/fetch-pyodide.py owns "
-             "them and writes MANIFEST.json. **npm `dist-tags.latest` is "
-             "314.0.7 and that is not this line.** Pyodide moved to a "
-             "CPython-aligned version scheme; the 0.27 line is still "
-             "maintained and its own tag is `stable-0.27` (0.27.8, "
-             "2026-09-16). That is the comparison this record asks for, which "
-             "is the human judgement B335 wanted: comparing 0.27.5 against "
-             "314.0.7 reports a supported runtime as permanently behind, and a "
-             "light that is always on is a light nobody reads.",
-        behind_ok="B425 — 0.27.8's own change is `python` CLI compatibility with "
-             "Node 26, a path Pantheon never runs (codeRunner.js loads the "
-             "browser runtime). Reaching it crosses 0.27.7's documented "
-             "breaking change — `enableRunUntilComplete` defaults on, which "
-             "turns a no-op into a crash where stack switching is off — and "
-             "that needs a browser matrix this wave could not run, for 13 MB "
-             "of new binaries.",
+             "them and writes MANIFEST.json. `B2215` (`D-2026-11-24-04`, the "
+             "owner's *\"all dependencies at the newest version\"*) moved "
+             "this from 0.27.5 on the `stable-0.27` line to 314.0.8, npm's "
+             "`latest`: the CPython-aligned line Pyodide now releases on, "
+             "Python 3.14.2 in place of 3.12.7. Two things changed under "
+             "Pantheon and both are handled. The runtime's JavaScript is "
+             "`pyodide.asm.mjs`, an ES module `pyodide.js` loads with "
+             "`import()` (0.28 on), so the sandbox's classic Worker now "
+             "imports a module from the opaque-origin frame: core/middleware.py "
+             "already gives /static/lib/pyodide/ `Access-Control-Allow-Origin: "
+             "*` and app.py serves `.mjs` as JavaScript, and both are pinned by "
+             "tests now. And `enableRunUntilComplete` (on by default since "
+             "0.27.7): measured under node with the sandbox's own wrapper, "
+             "0.27.5 answered `loop.run_until_complete(f())` with a pending "
+             "Task printed as if it were the result; 314.0.8 runs it where the "
+             "browser has JS Promise Integration and otherwise raises "
+             "*RuntimeError: WebAssembly stack switching not supported*, which "
+             "the wrapper prints as the run's traceback "
+             "(tests/test_the_python_sandbox_runs_on_the_vendored_pyodide.py). "
+             "pythonSandbox.js passes the flag explicitly so a default that "
+             "moves again does not move it. Not driven in a browser here.",
     ),
     Vendored(
-        "Swagger UI", "swagger-ui-dist", "5.33.0", "2026-09-17",
-        "https://registry.npmjs.org/swagger-ui-dist/-/swagger-ui-dist-5.33.0.tgz",
-        "v5.33.0",
+        "Swagger UI", "swagger-ui-dist", "5.36.0", "2026-11-24",
+        "https://registry.npmjs.org/swagger-ui-dist/-/swagger-ui-dist-5.36.0.tgz",
+        "v5.36.0",
         manifest="static/lib/swagger-ui/MANIFEST.json",
         note="Bumped from 5.32.15 on 2026-09-17 (B335) through "
              "scripts/fetch-swagger-ui.py, which verified the registry's own "
@@ -544,7 +559,10 @@ VENDORED = [
              "undeclared package — and reading that sidecar at all is B339, "
              "which found React and ten others shipping in here with no notice "
              "anywhere. Hashes are not repeated here; the fetch script owns "
-             "them and writes MANIFEST.json.",
+             "them and writes MANIFEST.json. Bumped 5.33.0 -> 5.36.0 on "
+             "2026-11-24 (B2218) the same way; this time the sidecar moved "
+             "(DOMPurify 3.4.13 -> 3.4.17 inside, regenerator-runtime's notice "
+             "added), and both names were already claimed in check-licences.",
     ),
 ]
 

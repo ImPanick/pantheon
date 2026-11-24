@@ -349,7 +349,7 @@ def test_the_picker_shows_every_system_and_what_to_do_about_one_not_running(tmp_
       }));
     """, view={"chosen": "rocky", "in_use": "ubuntu", "systems": systems})
     assert out["shown"] and out["value"] == "rocky"
-    assert out["labels"] == ["Ubuntu 24.04", "Debian 13 (not running)", "Fedora 44",
+    assert out["labels"] == ["Ubuntu 24.04", "Debian 13 (not running)", "Fedora 45",
                              "Rocky Linux 9 (not running)"]
     assert "Rocky Linux 9 is not running on this server, so you are on Ubuntu 24.04." in out["why"]
     assert "COMPOSE_PROFILES=rocky" in out["why"]

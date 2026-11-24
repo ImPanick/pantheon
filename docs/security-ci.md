@@ -172,21 +172,27 @@ the repository was public, not after.)*
 ### 1. Require the blocking checks before merging
 
 This makes the **Merge** button refuse to work until the gating checks pass.
+**It protects `main` only** — the owner's call on 2026-11-24
+(`D-2026-11-24-04`): *"Branch protection. only on main."* `dev` is where
+finished work merges and is left unprotected on purpose; the checks below still
+run on pull requests into it, and `main` takes nothing that has not passed
+them. *(Until 2026-11-24 this said to add the same rule a second time for
+`dev`, and to require Code Owners' review.)*
 
 1. Go to the repository on GitHub.
 2. Click **Settings** (top right of the repo).
-3. In the left sidebar, click **Branches**.
+3. In the left sidebar, click **Branches** (or **Rules → Rulesets**).
 4. Under **Branch protection rules**, click **Add branch ruleset** (or **Add
-   rule**), and set the branch name pattern to `main`. Then add the same rule
-   a second time for `dev`, the branch finished work merges into before it is
-   promoted to `main` (2026-08-30 this said `dev` when no `dev` existed, so
-   anyone who followed it protected nothing; `dev` has existed since, and the
-   correctness and security workflows run on pushes to both).
+   rule**), and set the branch name pattern to `main`. Add no rule for `dev`
+   or any other branch.
 5. Enable **Require status checks to pass before merging**.
 6. In the search box that appears, add these checks by name:
    - `Python syntax (compileall)`
    - `Python lint (ruff, names that crash)`
    - `JS syntax (node --check)`
+   - `Python tests (pytest)`
+   - `Wiring ratchet (check-wiring.py --max 0)`
+   - `Law 16 — no egress on a fresh install`
    - `gitleaks`
    - `actionlint`
    - `zizmor (Actions SAST)`
@@ -194,8 +200,12 @@ This makes the **Merge** button refuse to work until the gating checks pass.
    - `dependency-review (PR gate)`
    - `pip-audit (blocking)`
 
-   The first three come from the correctness CI (`ci.yml`); the rest are this
-   security suite.
+   The first six come from the correctness CI (`ci.yml`); the rest are this
+   security suite. `.pantheon/check-ci-contract.py` rule 1 fails if any name
+   above stops matching a job, because a required check that never reports
+   blocks every merge. Leave Trivy and CodeQL unchecked so they stay advisory.
+   Type `Law 16 — no egress on a fresh install` with its em dash: the name
+   has to match the job's exactly.
 
    > **`JS syntax (node --check)` was a required check that checked nothing on
    > the largest module in the app, from the fork baseline until 2026-09-14
@@ -211,13 +221,17 @@ This makes the **Merge** button refuse to work until the gating checks pass.
    > `_node_check`, which pipes each file in with `--input-type=module`, and
    > covers 187 files rather than 173.
 
-   Add `pip-audit (blocking)` to the list above as well, once it has run on one
-   pull request (`B322`). Leave pytest, Trivy, and CodeQL unchecked so they stay
-   advisory.
-7. Also enable **Require a pull request before merging** and **Require review
-   from Code Owners** (this uses the `.github/CODEOWNERS` file so every change
-   needs your sign-off).
-8. Click **Create** / **Save changes**.
+7. Enable **Require a pull request before merging**, with **Required
+   approvals** set to **0**. Leave **Require review from Code Owners** off.
+   Every pull request comes from the owner's own account, and GitHub does not
+   let an author approve their own pull request, so one required approval — or
+   a Code Owners review, which `.github/CODEOWNERS` cannot satisfy while it
+   names nobody — is a rule nobody can meet.
+8. Leave **Do not allow bypassing the above settings** (*Include
+   administrators* on the classic page) **off**: admins are not enforced.
+9. Leave **Allow force pushes** and **Allow deletions** **off**: nobody
+   force-pushes to `main` and nobody deletes it.
+10. Click **Create** / **Save changes**.
 
 Note: a check name only appears in the list after it has run at least once, so
 let the workflows run on one pull request first, then add them here.
