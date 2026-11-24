@@ -3161,3 +3161,56 @@ html.cockpit .wsv-modal .wsv-who select {
 }
 html.cockpit .wsv-modal .wsv-who select:hover { background-color: var(--ck-tint-2) !important; }
 html.cockpit .wsv-modal .wsv-who select:focus { background-color: var(--ck-tint-2) !important; box-shadow: 0 0 0 2px var(--ck-accent-line) !important; }
+
+/* ───── Apollo's own page (`static/js/apolloView.js`, html.apollo-view) ─────
+   The Apollo chat is not a generic chat: its controls are Apollo's. The
+   generic composer and header controls come off; the model picker stays,
+   because Apollo runs on the model the person picks. */
+html.cockpit.apollo-view .mode-toggle,
+html.cockpit.apollo-view #agent-limits-hint,
+html.cockpit.apollo-view #turn-chip,
+html.cockpit.apollo-view #plan-toggle-btn,
+html.cockpit.apollo-view #plan-mode-status,
+html.cockpit.apollo-view #web-toggle-btn,
+html.cockpit.apollo-view #bash-toggle-btn,
+html.cockpit.apollo-view #conversation-toggle-btn,
+html.cockpit.apollo-view #research-toggle-btn,
+html.cockpit.apollo-view #group-toggle-btn,
+html.cockpit.apollo-view #character-indicator-btn,
+html.cockpit.apollo-view #compare-indicator-btn,
+html.cockpit.apollo-view #workspace-indicator-btn,
+html.cockpit.apollo-view #summon-indicator-btn,
+html.cockpit.apollo-view #overflow-workspace-btn,
+html.cockpit.apollo-view #overflow-agents-btn,
+html.cockpit.apollo-view #overflow-git-btn,
+html.cockpit.apollo-view #overflow-modes-btn,
+html.cockpit.apollo-view #overflow-preset-btn,
+html.cockpit.apollo-view #incognito-btn,
+html.cockpit.apollo-view #welcome-scenery,
+html.cockpit.apollo-view #welcome-screen,
+html.cockpit.apollo-view .chat-top-bar #current-meta,
+html.cockpit.apollo-view #export-delete-btn { display: none !important; }
+
+html.cockpit .apo-bar {
+  display: flex; align-items: center; gap: 10px; flex: 1 1 auto; min-width: 0;
+  padding: 2px 4px; color: var(--ck-text, var(--fg));
+}
+html.cockpit .apo-bar-mark { display: inline-flex; color: var(--ck-accent); }
+html.cockpit .apo-bar-name { font-weight: 600; letter-spacing: .01em; font-size: 15px; }
+html.cockpit .apo-bar-space { display: inline-flex; min-width: 0; }
+html.cockpit .apo-bar-grow { flex: 1 1 auto; }
+html.cockpit .apo-bar-btn {
+  display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px;
+  border: 1px solid transparent; border-radius: 8px; background: transparent; color: inherit; cursor: pointer;
+}
+html.cockpit .apo-bar-btn:hover { background: var(--ck-tint, var(--ck-glass-soft)); }
+
+/* The empty Apollo chat says what Apollo is, in place of Pantheon's welcome. */
+html.cockpit .apo-empty { display: none; }
+html.cockpit.apollo-view .chat-container.welcome-active .apo-empty {
+  display: flex; flex-direction: column; align-items: center; gap: 10px;
+  margin: 12vh auto 0; max-width: 520px; padding: 0 24px; text-align: center;
+}
+html.cockpit .apo-empty-mark { color: var(--ck-accent); transform: scale(2.2); margin-bottom: 14px; }
+html.cockpit .apo-empty-t { font-size: 22px; font-weight: 600; }
+html.cockpit .apo-empty-p { margin: 0; line-height: 1.5; color: var(--ck-text-2, var(--fg)); }
