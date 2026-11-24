@@ -43,6 +43,16 @@ CHARACTER = (
 )
 
 
+# The tools Apollo's own chat always has in reach, whatever the turn's words.
+# The frame tells Apollo to turn real work into a task with `apollo`, hand it
+# to a lead (`fleet`) and point the orb (`ui_control`), but a turn's tools are
+# picked from its words, and a goal ("get the site live this week") names none
+# of them: on a local model's budget Apollo was told to delegate and handed
+# nothing to delegate with, so it answered like any chat (owner's test,
+# 2026-11-24). The chat route pins these on every turn in an Apollo chat.
+TOOLS = frozenset({"apollo", "fleet", "ui_control"})
+
+
 def character(owner: Optional[str], name: Optional[str] = None) -> str:
     return CHARACTER.format(name=name or APOLLO_NAME, who=owner or "the person")
 
